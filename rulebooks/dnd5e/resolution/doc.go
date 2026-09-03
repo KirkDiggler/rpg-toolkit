@@ -134,10 +134,11 @@
 // ADR-0026's Notify would have been a second of the latter kind, and is
 // deliberately absent — see strikeMachine.afterDamage. Publishing
 // DamageReceivedEvent applies the damage a second time to a monster target,
-// because that sheet's keeper treats the topic as an instruction, while a
-// character has no such handler and the same event is inert. One event meaning
-// two things is the classification slice 2 owes, and slice 1 records it rather
-// than shipping a double-apply.
+// because that sheet's keeper treats the topic as an instruction. Character
+// death-save failures no longer depend on that ambiguous topic: the root
+// Character.ApplyDamage transition owns positive applied damage at zero, so a
+// real Strike updates authoritative progress without installing or observing a
+// DamageReceivedEvent subscriber.
 //
 // Slice 2 settled it: the vocabulary does NOT grow a case. Three folds to one
 // pure effect does not justify a fifth step kind, the odd one out is honest
@@ -253,18 +254,21 @@
 // TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
 // and that every truth-bearing attached-behavior path reaches it.
 //
-// There are five such truth-bearing attached-behavior paths, and
+// There are six such truth-bearing attached-behavior paths, and
 // TestOnlyTheDoorInstallsGameContext holds the list. [Resolve] runs an
 // interaction. [ProjectCharacter] folds one derived
 // number for a caller with no interaction to run — a character joining a
 // session, who is not standing anywhere yet and so gets a context whose room
-// is honestly ABSENT rather than invented. [Standing] asks who is down.
-// [MakeCheck] makes one character's ability check with their conditions
-// attached — the living-world rung (rpg-toolkit#1380), and the check chain's
-// first live production audience. [LongRest] publishes the root rest rule to
-// one attached character. The latter four have no world, so their context
-// carries a room that is honestly ABSENT rather than invented. Each goes
-// through the same door, and none is a mode of another. A behavioural suite
+// is honestly ABSENT rather than invented. [Participation] asks for root
+// life-state policy and progress; [Standing] is its binary projection rather
+// than a second attached path. [MakeCheck] makes one character's ability check
+// with their conditions attached — the living-world rung (rpg-toolkit#1380),
+// and the check chain's first live production audience. [LongRest] publishes
+// the root rest rule to one attached character. [DeathSave] executes the root
+// typed death-save transition and returns its continuation unchanged. The
+// latter five have no world, so their context carries a room that is honestly
+// ABSENT rather than invented. Each goes through the same door, and none is a
+// mode of another. A behavioural suite
 // cannot make any of those claims: the defect is that tests supply what
 // production does not, so the tests are the last place it shows up.
 //

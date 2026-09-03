@@ -101,16 +101,18 @@ type Input struct {
 	// what the caller supplied, the way Deciders one field up are handed over.
 	Initiative encounter.InitiativeRoller
 
-	// Standing reports which members are down. REQUIRED.
+	// Standing carries the rulebook's participation answer. REQUIRED.
+	//
+	// The field remains encounter.Standing for source compatibility during the
+	// migration, but its concrete value MUST also implement
+	// encounter.Participation — equivalently, encounter.StandingWithParticipation.
+	// Validate rejects a legacy Standing-only value with
+	// encounter.ErrNoParticipation before loading the world.
 	//
 	// Carried, never consulted. This package loads the world and reads it back
-	// out as data; no verb that refreshes sight runs in between, so nothing
-	// here ever asks the question. The composition still refuses to load
-	// without one (rpg-toolkit#1077), and answering on the caller's behalf —
-	// "nobody is down" — would be this package deciding a rule about hit
-	// points it holds none of. So it is handed over, the way Deciders and
-	// Initiative above are handed over, and the caller that owns the sheets
-	// owns the answer (rpg-toolkit#1079).
+	// out as data; no encounter verb runs in between, so neither half is asked
+	// here. The caller owns the sheets and therefore owns this answer; inventing
+	// "nobody is down" or "everyone participates" would put a rule in wiring.
 	Standing encounter.Standing
 
 	// Sight reports how far each member can see, in cells. REQUIRED.
@@ -196,6 +198,10 @@ func (in *Input) Validate() error {
 	}
 	if in.Standing == nil {
 		return ErrNoStanding
+	}
+	if _, ok := in.Standing.(encounter.StandingWithParticipation); !ok {
+		return fmt.Errorf("resolution: Standing does not implement Participation: %w",
+			encounter.ErrNoParticipation)
 	}
 	if in.Sight == nil {
 		return ErrNoSight

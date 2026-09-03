@@ -86,9 +86,10 @@ func (s *StandingTestSuite) TestAMonsterIsAskedTheSameQuestion() {
 	s.Equal([]string{"wolf-1"}, out.Down)
 }
 
-// Cast order, not input order, so two calls over the same data answer the same
-// way whatever order the caller happened to assemble them in.
-func (s *StandingTestSuite) TestTheAnswerIsInCastOrder() {
+// Participation answers in caller order, and Standing is only its binary
+// compatibility projection. The subset therefore preserves that same order
+// rather than leaking attachAll's deterministic internal sort.
+func (s *StandingTestSuite) TestTheAnswerPreservesParticipationInputOrder() {
 	forwards, err := Standing(s.ctx, &StandingInput{Participants: []Participant{
 		{Character: s.hero("aaa", 0)}, {Character: s.hero("zzz", 0)},
 	}})
@@ -100,7 +101,8 @@ func (s *StandingTestSuite) TestTheAnswerIsInCastOrder() {
 	s.Require().NoError(err)
 
 	s.Equal([]string{"aaa", "zzz"}, forwards.Down)
-	s.Equal(forwards.Down, backwards.Down, "the report does not depend on how the caller stacked them")
+	s.Equal([]string{"zzz", "aaa"}, backwards.Down,
+		"the binary answer is the Down subset of the ordered participation answer")
 }
 
 // A CHARACTER carrying a blob this build cannot parse still answers. The
