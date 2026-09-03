@@ -87,7 +87,11 @@ func (s *RecordActivationSuite) storyEntries(enc *encounter.Encounter, who encou
 	return out
 }
 
+// validHealingResult is the representative Second Wind result: the healing
+// facts plus the sourced calculation behind the roll — a 1d10 pool whose face
+// was 6, plus the +1 Fighter level modifier, totaling the requested 7.
 func validHealingResult() encounter.ActivationResult {
+	level := 1
 	return encounter.ActivationResult{
 		Kind:      encounter.ResultHealingApplied,
 		Target:    activationFighter,
@@ -95,10 +99,29 @@ func validHealingResult() encounter.ActivationResult {
 		Name:      "Second Wind",
 		Amount:    2,
 		Requested: 7,
-		Roll:      6,
-		Modifier:  1,
 		Before:    8,
 		After:     10,
+		Calculation: &encounter.RollCalculation{
+			Components: []encounter.RollComponent{
+				{
+					Source: encounter.RollSource{Ref: "dnd5e:features:second_wind", Name: "Second Wind"},
+					Dice: &encounter.DiceTrace{
+						Notation:      "1d10",
+						DieSize:       10,
+						OriginalRolls: []int{6},
+						FinalRolls:    []int{6},
+						Subtotal:      6,
+					},
+				},
+				{
+					Source: encounter.RollSource{
+						Ref: "dnd5e:classes:fighter", Name: "Fighter", Label: "Fighter level",
+					},
+					Modifier: &level,
+				},
+			},
+			Total: 7,
+		},
 	}
 }
 
@@ -127,7 +150,7 @@ func (s *RecordActivationSuite) TestRecordActivationSecondWind() {
 
 	wantPayloads := []string{
 		`{"beat":"activated","actor":"fighter","ability":{"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
-		`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":2,"requested":7,"roll":6,"modifier":1,"before":8,"after":10,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+		`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":2,"requested":7,"before":8,"after":10,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":1}],"total":7},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
 	}
 	wantAudience := []string{"cleric", "fighter", "goblin-activation"}
 	for _, who := range []encounter.MemberID{activationFighter, activationCleric, activationGoblin} {
@@ -157,7 +180,7 @@ func (s *RecordActivationSuite) TestRecordActivationMultiResultOrder() {
 			{Kind: encounter.ResultConditionApplied, Target: activationFighter, Ref: "dnd5e:conditions:raging", Name: "Raging"},
 			{Kind: encounter.ResultCapacityGranted, Target: activationFighter, Description: "30ft movement"},
 			{Kind: encounter.ResultConditionRemoved, Target: activationCleric, Ref: "dnd5e:conditions:helped", Name: "Helped", Reason: "expired"},
-			{Kind: encounter.ResultHealingApplied, Target: activationCleric, Ref: "dnd5e:features:many-effects", Name: "Many Effects", Amount: 3, Requested: 3, Roll: 1, Modifier: 2, Before: 4, After: 7},
+			healingWithTotal(activationCleric, "dnd5e:features:many-effects", "Many Effects", 3, 1, 2),
 		},
 	}
 
@@ -198,6 +221,45 @@ func (s *RecordActivationSuite) TestRecordActivationMultiResultOrder() {
 	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"condition-applied","target":"fighter","ref":"dnd5e:conditions:raging","name":"Raging"}}`, string(entries[1].Payload))
 	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"capacity-granted","target":"fighter","description":"30ft movement"}}`, string(entries[2].Payload))
 	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"condition-removed","target":"cleric","ref":"dnd5e:conditions:helped","name":"Helped","reason":"expired"}}`, string(entries[3].Payload))
+	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"cleric","amount":3,"requested":3,"before":4,"after":7,"calculation":{"components":[{"source":{"ref":"dnd5e:features:many-effects","name":"Many Effects"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[1],"final_rolls":[1],"subtotal":1}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":2}],"total":3},"ref":"dnd5e:features:many-effects","name":"Many Effects"}}`, string(entries[4].Payload))
+}
+
+// healingWithTotal builds a healing result whose calculation rolls the given
+// face and adds the given Fighter-level modifier, so its total equals the
+// requested healing. Tests mutate the returned value to produce refusals.
+func healingWithTotal(target encounter.MemberID, ref, name string, requested, face, modifier int) encounter.ActivationResult {
+	fighterLevel := modifier
+	return encounter.ActivationResult{
+		Kind:      encounter.ResultHealingApplied,
+		Target:    target,
+		Ref:       ref,
+		Name:      name,
+		Amount:    requested,
+		Requested: requested,
+		Before:    4,
+		After:     requested + 4,
+		Calculation: &encounter.RollCalculation{
+			Components: []encounter.RollComponent{
+				{
+					Source: encounter.RollSource{Ref: ref, Name: name},
+					Dice: &encounter.DiceTrace{
+						Notation:      "1d10",
+						DieSize:       10,
+						OriginalRolls: []int{face},
+						FinalRolls:    []int{face},
+						Subtotal:      face,
+					},
+				},
+				{
+					Source: encounter.RollSource{
+						Ref: "dnd5e:classes:fighter", Name: "Fighter", Label: "Fighter level",
+					},
+					Modifier: &fighterLevel,
+				},
+			},
+			Total: face + fighterLevel,
+		},
+	}
 }
 
 // TestRecordActivationNoResults still records the successful use and consults
@@ -220,47 +282,57 @@ func (s *RecordActivationSuite) TestRecordActivationNoResults() {
 }
 
 // TestRecordActivationHealingZeroFactsAreStored inspects the stored bytes to
-// prove all six numeric healing facts survive even when every value is zero.
-// Decoding into ints would not distinguish an explicit zero from an omitted
-// field, so this exact-byte assertion protects every numeric payload tag from
-// acquiring omitempty.
+// prove every healing fact survives even when every value is zero — including
+// a participating zero modifier inside the calculation. Decoding into ints
+// would not distinguish an explicit zero from an omitted field, so this
+// exact-byte assertion protects every numeric payload tag from acquiring
+// omitempty.
 func (s *RecordActivationSuite) TestRecordActivationHealingZeroFactsAreStored() {
 	enc := s.scene(everyoneStanding{})
 	in := validActivationInput()
 	in.Results[0].Amount = 0
 	in.Results[0].Requested = 0
-	in.Results[0].Roll = 0
-	in.Results[0].Modifier = 0
 	in.Results[0].Before = 0
 	in.Results[0].After = 0
+	in.Results[0].Calculation = &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source:   encounter.RollSource{Ref: "dnd5e:features:second_wind", Name: "Second Wind"},
+				Modifier: intPtr(0),
+			},
+		},
+		Total: 0,
+	}
 
 	out, err := enc.RecordActivation(in)
 	s.Require().NoError(err)
 	entries := s.storyEntries(enc, activationFighter, out.Seqs)
 	s.Require().Len(entries, 2)
 	s.Equal(
-		`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":0,"requested":0,"roll":0,"modifier":0,"before":0,"after":0,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+		`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":0,"requested":0,"before":0,"after":0,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":0}],"total":0},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
 		string(entries[1].Payload),
 	)
 }
 
 // TestRecordActivationPreservesRulebookArithmetic pins the boundary: encounter
-// validates shape, not D&D arithmetic. Inconsistent and negative numbers remain
-// the exact facts supplied by the rulebook.
+// validates the calculation's internal arithmetic and its pairing with
+// Requested, but the rulebook's clamp is not arithmetic this composition
+// re-derives — a negative applied amount, negative HP facts, and a negative
+// modifier all remain the exact facts supplied.
 func (s *RecordActivationSuite) TestRecordActivationPreservesRulebookArithmetic() {
 	enc := s.scene(everyoneStanding{})
 	in := validActivationInput()
 	in.Results[0].Amount = -4
-	in.Results[0].Requested = 2
-	in.Results[0].Roll = 99
-	in.Results[0].Modifier = -101
+	in.Results[0].Requested = 3
 	in.Results[0].Before = 4
 	in.Results[0].After = -20
+	in.Results[0].Calculation.Components[1].Modifier = intPtr(-3)
+	in.Results[0].Calculation.Total = 3
 
 	out, err := enc.RecordActivation(in)
 	s.Require().NoError(err)
 	entries := s.storyEntries(enc, activationFighter, out.Seqs)
-	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":-4,"requested":2,"roll":99,"modifier":-101,"before":4,"after":-20,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`, string(entries[1].Payload))
+	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":-4,"requested":3,"before":4,"after":-20,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":-3}],"total":3},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`, string(entries[1].Payload))
 }
 
 // TestRecordActivationPayloadIsDeterministic compares the stored bytes, not
@@ -311,6 +383,109 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	add("healing forbids description", func(in *encounter.RecordActivationInput) { in.Results[0].Description = "not healing data" }, encounter.ErrInvalidData)
 	add("healing forbids reason", func(in *encounter.RecordActivationInput) { in.Results[0].Reason = "not healing data" }, encounter.ErrInvalidData)
 
+	// Every nested field of the healing calculation is mutated to an invalid
+	// value in turn. The unchanged calculation is what every other healing
+	// assertion in this suite persists, so each mutation is the only fault.
+	healingCalc := func(name string, mutate func(*encounter.ActivationResult)) {
+		add("healing calculation "+name, func(in *encounter.RecordActivationInput) {
+			mutate(&in.Results[0])
+		}, encounter.ErrInvalidData)
+	}
+	healingCalc("is missing", func(r *encounter.ActivationResult) { r.Calculation = nil })
+	healingCalc("total does not equal requested", func(r *encounter.ActivationResult) { r.Requested = 9 })
+	healingCalc("has no components", func(r *encounter.ActivationResult) {
+		*r.Calculation = encounter.RollCalculation{Total: r.Calculation.Total}
+	})
+	healingCalc("total does not equal component results", func(r *encounter.ActivationResult) { r.Calculation.Total = 8 })
+	healingCalc("dice source ref is missing", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Source.Ref = "" })
+	healingCalc("dice source ref is not canonical", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Source.Ref = "second wind" })
+	healingCalc("dice source name is missing", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Source.Name = "" })
+	healingCalc("dice notation is invalid", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Dice.Notation = "not dice" })
+	healingCalc("die size does not match notation", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Dice.DieSize = 8 })
+	healingCalc("die size is not positive", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Dice.DieSize = 0 })
+	healingCalc("original face is outside die range", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Dice.OriginalRolls[0] = 0 })
+	healingCalc("final face is outside die range", func(r *encounter.ActivationResult) { r.Calculation.Components[0].Dice.FinalRolls[0] = 11 })
+	healingCalc("original rolls are empty", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.OriginalRolls = nil
+		dice.FinalRolls = nil
+		dice.Subtotal = 0
+		r.Calculation.Total = 1 // the Fighter level modifier alone
+	})
+	healingCalc("notation cardinality does not match rolls", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.OriginalRolls = []int{6, 3}
+		dice.FinalRolls = []int{6, 3}
+		dice.Subtotal = 9
+	})
+	healingCalc("original and final cardinality differ", func(r *encounter.ActivationResult) {
+		r.Calculation.Components[0].Dice.FinalRolls = []int{}
+	})
+	healingCalc("reroll before does not match current face", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: 0, Before: 2, After: 6,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "Great Weapon Fighting"},
+		}}
+	})
+	healingCalc("reroll after is outside die range", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: 0, Before: 6, After: 11,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "Great Weapon Fighting"},
+		}}
+	})
+	healingCalc("reroll after is not propagated to final rolls", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: 0, Before: 6, After: 2,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "Great Weapon Fighting"},
+		}}
+	})
+	healingCalc("reroll source ref is missing", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{DieIndex: 0, Before: 6, After: 2, Source: encounter.RollSource{Name: "Great Weapon Fighting"}}}
+		dice.FinalRolls = []int{2}
+	})
+	healingCalc("reroll die index is negative", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: -1, Before: 6, After: 6,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "Great Weapon Fighting"},
+		}}
+	})
+	healingCalc("reroll die index is outside rolls", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: 1, Before: 6, After: 6,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "Great Weapon Fighting"},
+		}}
+	})
+	healingCalc("reroll source name is blank", func(r *encounter.ActivationResult) {
+		// Otherwise a consistent 6→2 reroll, so the only defect is the blank
+		// source name — the same presence floor every source is held to.
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: 0, Before: 6, After: 2,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "   "},
+		}}
+		dice.FinalRolls = []int{2}
+	})
+	healingCalc("kept index is outside final rolls", func(r *encounter.ActivationResult) {
+		r.Calculation.Components[0].Dice.KeptIndices = []int{2}
+	})
+	healingCalc("kept index is duplicated", func(r *encounter.ActivationResult) {
+		r.Calculation.Components[0].Dice.KeptIndices = []int{0, 0}
+	})
+	healingCalc("dice subtotal does not equal kept faces", func(r *encounter.ActivationResult) {
+		r.Calculation.Components[0].Dice.Subtotal = 5
+	})
+	healingCalc("component has neither dice nor modifier", func(r *encounter.ActivationResult) {
+		r.Calculation.Components = append(r.Calculation.Components, encounter.RollComponent{
+			Source: encounter.RollSource{Ref: "dnd5e:abilities:constitution", Name: "Constitution"},
+		})
+	})
+
 	conditionApplied := func() encounter.ActivationResult {
 		return encounter.ActivationResult{Kind: encounter.ResultConditionApplied, Target: activationFighter, Ref: "dnd5e:conditions:raging", Name: "Raging"}
 	}
@@ -328,10 +503,13 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	}{
 		{"amount", func(r *encounter.ActivationResult) { r.Amount = 1 }},
 		{"requested", func(r *encounter.ActivationResult) { r.Requested = 1 }},
-		{"roll", func(r *encounter.ActivationResult) { r.Roll = 1 }},
-		{"modifier", func(r *encounter.ActivationResult) { r.Modifier = 1 }},
 		{"before", func(r *encounter.ActivationResult) { r.Before = 1 }},
 		{"after", func(r *encounter.ActivationResult) { r.After = 1 }},
+		{"calculation", func(r *encounter.ActivationResult) {
+			r.Calculation = &encounter.RollCalculation{Components: []encounter.RollComponent{
+				{Source: encounter.RollSource{Ref: "dnd5e:conditions:raging", Name: "Raging"}, Modifier: intPtr(0)},
+			}, Total: 0}
+		}},
 		{"description", func(r *encounter.ActivationResult) { r.Description = "unexpected" }},
 		{"reason", func(r *encounter.ActivationResult) { r.Reason = "unexpected" }},
 	} {
@@ -363,10 +541,13 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	}{
 		{"amount", func(r *encounter.ActivationResult) { r.Amount = 1 }},
 		{"requested", func(r *encounter.ActivationResult) { r.Requested = 1 }},
-		{"roll", func(r *encounter.ActivationResult) { r.Roll = 1 }},
-		{"modifier", func(r *encounter.ActivationResult) { r.Modifier = 1 }},
 		{"before", func(r *encounter.ActivationResult) { r.Before = 1 }},
 		{"after", func(r *encounter.ActivationResult) { r.After = 1 }},
+		{"calculation", func(r *encounter.ActivationResult) {
+			r.Calculation = &encounter.RollCalculation{Components: []encounter.RollComponent{
+				{Source: encounter.RollSource{Ref: "dnd5e:conditions:raging", Name: "Raging"}, Modifier: intPtr(0)},
+			}, Total: 0}
+		}},
 		{"description", func(r *encounter.ActivationResult) { r.Description = "unexpected" }},
 	} {
 		forbidden := forbidden
@@ -391,10 +572,13 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 		{"name", func(r *encounter.ActivationResult) { r.Name = "unexpected" }},
 		{"amount", func(r *encounter.ActivationResult) { r.Amount = 1 }},
 		{"requested", func(r *encounter.ActivationResult) { r.Requested = 1 }},
-		{"roll", func(r *encounter.ActivationResult) { r.Roll = 1 }},
-		{"modifier", func(r *encounter.ActivationResult) { r.Modifier = 1 }},
 		{"before", func(r *encounter.ActivationResult) { r.Before = 1 }},
 		{"after", func(r *encounter.ActivationResult) { r.After = 1 }},
+		{"calculation", func(r *encounter.ActivationResult) {
+			r.Calculation = &encounter.RollCalculation{Components: []encounter.RollComponent{
+				{Source: encounter.RollSource{Ref: "dnd5e:abilities:strength", Name: "Strength"}, Modifier: intPtr(0)},
+			}, Total: 0}
+		}},
 		{"reason", func(r *encounter.ActivationResult) { r.Reason = "unexpected" }},
 	} {
 		forbidden := forbidden
@@ -407,6 +591,11 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	add("late invalid result after valid result", func(in *encounter.RecordActivationInput) {
 		in.Results = []encounter.ActivationResult{conditionApplied(), capacityGranted()}
 		in.Results[1].Description = ""
+	}, encounter.ErrInvalidData)
+	add("late malformed calculation after valid result", func(in *encounter.RecordActivationInput) {
+		in.Results = []encounter.ActivationResult{validHealingResult(), validHealingResult()}
+		in.Results[1].Target = activationCleric
+		in.Results[1].Calculation.Total = 8
 	}, encounter.ErrInvalidData)
 
 	for _, tc := range cases {
@@ -468,7 +657,7 @@ func (s *RecordActivationSuite) TestRecordActivationNoticeDownFailure() {
 // primitive carrier rather than importing or embedding root D&D event types.
 func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 	s.Equal([]string{"Ref", "Name"}, structFieldNames(encounter.ActivationIdentity{}))
-	s.Equal([]string{"Kind", "Target", "Ref", "Name", "Amount", "Requested", "Roll", "Modifier", "Before", "After", "Description", "Reason"}, structFieldNames(encounter.ActivationResult{}))
+	s.Equal([]string{"Kind", "Target", "Ref", "Name", "Amount", "Requested", "Before", "After", "Calculation", "Description", "Reason"}, structFieldNames(encounter.ActivationResult{}))
 	s.Equal([]string{"Actor", "Target", "Ability", "Results"}, structFieldNames(encounter.RecordActivationInput{}))
 	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordActivationOutput{}))
 }

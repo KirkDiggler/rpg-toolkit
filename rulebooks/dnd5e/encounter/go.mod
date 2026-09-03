@@ -4,6 +4,7 @@ go 1.24.1
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
+	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0

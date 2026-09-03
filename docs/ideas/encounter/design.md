@@ -29,7 +29,10 @@ This is NOT a play/ leaf — it composes them. Its own laws:
 
 - **C1 (public pieces only)** — depends only on published versions of
   `core`, `play/clock`, `play/intel`, `play/record`, `tools/spatial`
-  (v0.8.0+ managed seam), stdlib. NO `events` import for its own logic
+  (v0.8.0+ managed seam), `world` (journal/graph for concealed-structure
+  knowledge, since the concealment wave), `dice` (PARSE-ONLY: notation
+  validation for persisted roll traces — no Roller, no randomness, so C8
+  still holds), stdlib. NO `events` import for its own logic
   (see C4), NO `rulebooks/dnd5e` parent (arrives with perception
   checks), NO `play/interrupt` (arrives with the combat wave), NO old
   `encounter`.

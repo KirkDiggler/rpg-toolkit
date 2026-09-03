@@ -41,14 +41,19 @@ const (
 // primitives this composition can persist without importing the root D&D event
 // types that own the rule meaning.
 //
-// Every kind requires Target. Healing also requires Ref and Name and uses all
-// six numeric fields. Condition-applied requires Ref and Name. Condition-
-// removed requires Ref, Name, and Reason. Capacity-granted requires
-// Description. Fields outside a kind's shape are refused rather than silently
+// Every kind requires Target. Healing also requires Ref and Name, carries the
+// amount/requested/HP facts, and requires a non-nil [RollCalculation] whose
+// Total equals Requested — the roll trace IS the healing's roll record, so a
+// healing without one is not writable. Condition-applied requires Ref and
+// Name. Condition-removed requires Ref, Name, and Reason. Capacity-granted
+// requires Description. Fields outside a kind's shape — including a
+// calculation on any non-healing kind — are refused rather than silently
 // discarded.
 //
-// Numeric values are rulebook facts. Encounter validates which kinds may carry
-// them but never checks or recomputes their arithmetic.
+// Numeric values are rulebook facts. Encounter validates the calculation's
+// internal arithmetic and its pairing with Requested, and never checks or
+// recomputes the rulebook's clamp: Amount, Before, and After are preserved
+// exactly as supplied.
 type ActivationResult struct {
 	Kind   ActivationResultKind
 	Target MemberID
@@ -57,10 +62,14 @@ type ActivationResult struct {
 
 	Amount    int
 	Requested int
-	Roll      int
-	Modifier  int
 	Before    int
 	After     int
+
+	// Calculation carries the sourced dice, ordered rerolls, modifiers, and
+	// authoritative total behind a healing's roll. Required for
+	// ResultHealingApplied with Calculation.Total == Requested; forbidden on
+	// every other kind.
+	Calculation *RollCalculation
 
 	Description string
 	Reason      string
@@ -107,16 +116,15 @@ type activationResultPayload struct {
 }
 
 type healingAppliedPayload struct {
-	Kind      ActivationResultKind `json:"kind"`
-	Target    MemberID             `json:"target"`
-	Amount    int                  `json:"amount"`
-	Requested int                  `json:"requested"`
-	Roll      int                  `json:"roll"`
-	Modifier  int                  `json:"modifier"`
-	Before    int                  `json:"before"`
-	After     int                  `json:"after"`
-	Ref       string               `json:"ref"`
-	Name      string               `json:"name"`
+	Kind        ActivationResultKind `json:"kind"`
+	Target      MemberID             `json:"target"`
+	Amount      int                  `json:"amount"`
+	Requested   int                  `json:"requested"`
+	Before      int                  `json:"before"`
+	After       int                  `json:"after"`
+	Calculation *RollCalculation     `json:"calculation"`
+	Ref         string               `json:"ref"`
+	Name        string               `json:"name"`
 }
 
 type conditionAppliedPayload struct {
@@ -158,8 +166,10 @@ type capacityGrantedPayload struct {
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // selected target, or empty/unknown result target), ErrInvalidData (missing
-// ability identity, unknown result kind, or a missing/forbidden kind field), an
-// append error, or anything the Standing capability returns from noticeDown.
+// ability identity, unknown result kind, a missing/forbidden kind field, or a
+// healing whose calculation is absent, structurally inconsistent, or whose
+// Total does not equal the requested healing), an append error, or anything
+// the Standing capability returns from noticeDown.
 func (e *Encounter) RecordActivation(in *RecordActivationInput) (*RecordActivationOutput, error) {
 	prepared, err := e.prepareActivation(in)
 	if err != nil {
@@ -280,6 +290,24 @@ func (e *Encounter) prepareActivationResult(index int, result ActivationResult) 
 		if err := requireActivationIdentity(index, result); err != nil {
 			return nil, err
 		}
+		if result.Calculation == nil {
+			return nil, fmt.Errorf(
+				"record activation: result %d %s requires a calculation: %w",
+				index, result.Kind, ErrInvalidData,
+			)
+		}
+		if calcErr := ValidateRollCalculation(result.Calculation); calcErr != nil {
+			return nil, fmt.Errorf(
+				"record activation: result %d %s calculation: %v: %w",
+				index, result.Kind, calcErr, ErrInvalidData,
+			)
+		}
+		if result.Calculation.Total != result.Requested {
+			return nil, fmt.Errorf(
+				"record activation: result %d %s calculation total %d does not equal requested healing %d: %w",
+				index, result.Kind, result.Calculation.Total, result.Requested, ErrInvalidData,
+			)
+		}
 		if result.Description != "" {
 			return nil, forbiddenActivationResultField(index, result.Kind, "description")
 		}
@@ -289,16 +317,16 @@ func (e *Encounter) prepareActivationResult(index int, result ActivationResult) 
 		return healingAppliedPayload{
 			Kind: result.Kind, Target: result.Target,
 			Amount: result.Amount, Requested: result.Requested,
-			Roll: result.Roll, Modifier: result.Modifier,
 			Before: result.Before, After: result.After,
-			Ref: result.Ref, Name: result.Name,
+			Calculation: result.Calculation,
+			Ref:         result.Ref, Name: result.Name,
 		}, nil
 
 	case ResultConditionApplied:
 		if err := requireActivationIdentity(index, result); err != nil {
 			return nil, err
 		}
-		if field := numericActivationResultField(result); field != "" {
+		if field := rollFactsActivationResultField(result); field != "" {
 			return nil, forbiddenActivationResultField(index, result.Kind, field)
 		}
 		if result.Description != "" {
@@ -318,7 +346,7 @@ func (e *Encounter) prepareActivationResult(index int, result ActivationResult) 
 		if result.Reason == "" {
 			return nil, fmt.Errorf("record activation: result %d %s reason: %w", index, result.Kind, ErrInvalidData)
 		}
-		if field := numericActivationResultField(result); field != "" {
+		if field := rollFactsActivationResultField(result); field != "" {
 			return nil, forbiddenActivationResultField(index, result.Kind, field)
 		}
 		if result.Description != "" {
@@ -338,7 +366,7 @@ func (e *Encounter) prepareActivationResult(index int, result ActivationResult) 
 		if result.Name != "" {
 			return nil, forbiddenActivationResultField(index, result.Kind, "name")
 		}
-		if field := numericActivationResultField(result); field != "" {
+		if field := rollFactsActivationResultField(result); field != "" {
 			return nil, forbiddenActivationResultField(index, result.Kind, field)
 		}
 		if result.Reason != "" {
@@ -362,16 +390,21 @@ func requireActivationIdentity(index int, result ActivationResult) error {
 	return nil
 }
 
-func numericActivationResultField(result ActivationResult) string {
+// rollFactsActivationResultField names the first roll fact a non-healing
+// result may not carry: the calculation trace, then the healing's numeric
+// facts. Calculation is a pointer, so its PRESENCE is what is detected; the
+// numeric facts are plain ints, so what is detected (and refused) is a
+// NON-ZERO value — a zero is indistinguishable from an absent field here and
+// is not refused by these scalar checks.
+func rollFactsActivationResultField(result ActivationResult) string {
+	if result.Calculation != nil {
+		return "calculation"
+	}
 	switch {
 	case result.Amount != 0:
 		return "amount"
 	case result.Requested != 0:
 		return "requested"
-	case result.Roll != 0:
-		return "roll"
-	case result.Modifier != 0:
-		return "modifier"
 	case result.Before != 0:
 		return "before"
 	case result.After != 0:

@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"encoding/json"
 	"math"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -118,21 +119,26 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 
 // TestARecordedStrikeCarriesOrderedDetail pins the closed primitive carrier
 // that lets session replay the rulebook's strike evidence without giving this
-// composition rule imports or a prose channel.
+// composition rule imports or a prose channel. A multiplier-only component
+// still names its source on Roll — the same shape root's own immunity trait
+// produces — because every persisted roll fact names who provided it.
 func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
-	immunity := 0.0
 	in := &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice,
 		Targets: []encounter.MemberID{goblin},
 		DamageComponents: []encounter.DamageComponent{
 			{
-				Source: "weapon", SourceRef: "dnd5e:weapons:longsword",
-				Dice: "1d8", FinalRolls: []int{4}, FlatBonus: 0, DamageType: "slashing",
+				Source: "weapon",
+				Roll: encounter.RollComponent{
+					Source: encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+					Dice: &encounter.DiceTrace{
+						Notation: "1d8", DieSize: 8,
+						OriginalRolls: []int{4}, FinalRolls: []int{4}, Subtotal: 4,
+					},
+				},
+				DamageType: "slashing",
 			},
-			{
-				Source: "monster_trait", SourceRef: "dnd5e:monster-traits:immunity",
-				DamageType: "slashing", Multiplier: &immunity,
-			},
+			multiplierCarrier(),
 		},
 		AdvantageSources: []encounter.AttackModifierSource{
 			{SourceRef: "dnd5e:conditions:hidden", SourceID: "alice"},
@@ -169,6 +175,252 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
 	s.Require().NotNil(beat.DamageComponents[1].Multiplier,
 		"zero is a present immunity multiplier, not an absent multiplier")
 	s.Zero(*beat.DamageComponents[1].Multiplier)
+
+	// New writes carry only the roll representation: the component's closed
+	// key set is exactly the damage facts plus the nested roll. The legacy
+	// flat fields are session's read concern, never this transcript's write.
+	var rawBeat struct {
+		DamageComponents []map[string]json.RawMessage `json:"damage_components"`
+	}
+	s.Require().NoError(json.Unmarshal(first, &rawBeat))
+	s.Require().Len(rawBeat.DamageComponents, 2)
+	componentKeys := make([]string, 0, 4)
+	for key := range rawBeat.DamageComponents[0] {
+		componentKeys = append(componentKeys, key)
+	}
+	sort.Strings(componentKeys)
+	s.Equal([]string{"damage_type", "roll", "source"}, componentKeys,
+		"a persisted damage component carries exactly its category, its roll, and its damage type")
+}
+
+// TestARecordedStruckDamageComponentCarriesOrderedRollFacts pins the GWF
+// shape end to end: a struck outcome persists the ORIGINAL faces, the ordered
+// sourced reroll, the FINAL faces, the authoritative subtotal, and the
+// sourced modifier component — the facts a client needs to replay "2d6,
+// rerolled the 1 into a 4, plus 3 Strength" without ever recomputing it.
+func (s *OutcomeTestSuite) TestARecordedStruckDamageComponentCarriesOrderedRollFacts() {
+	enc := s.scene()
+
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice,
+		Targets: []encounter.MemberID{goblin},
+		Values: map[encounter.OutcomeValue]int{
+			encounter.ValueRoll: 17, encounter.ValueTotal: 22,
+			encounter.ValueAgainst: 15, encounter.ValueAmount: 12,
+		},
+		DamageComponents: gwfDamageComponents(),
+	})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: goblin})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+
+	var beat struct {
+		DamageComponents []encounter.DamageComponent `json:"damage_components"`
+	}
+	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	s.Require().Len(beat.DamageComponents, 2, "component order is preserved")
+
+	weapon := beat.DamageComponents[0]
+	s.Equal("weapon", weapon.Source)
+	s.Equal("slashing", weapon.DamageType)
+	s.Equal("dnd5e:weapons:greatsword", weapon.Roll.Source.Ref)
+	s.Equal("Greatsword", weapon.Roll.Source.Name)
+	s.Require().NotNil(weapon.Roll.Dice, "the weapon component rolled dice")
+	s.Equal("2d6", weapon.Roll.Dice.Notation)
+	s.Equal(6, weapon.Roll.Dice.DieSize)
+	s.Equal([]int{1, 5}, weapon.Roll.Dice.OriginalRolls, "original faces survive")
+	s.Require().Len(weapon.Roll.Dice.Rerolls, 1)
+	s.Equal(0, weapon.Roll.Dice.Rerolls[0].DieIndex)
+	s.Equal(1, weapon.Roll.Dice.Rerolls[0].Before)
+	s.Equal(4, weapon.Roll.Dice.Rerolls[0].After)
+	s.Equal("dnd5e:conditions:fighting_style_great_weapon_fighting",
+		weapon.Roll.Dice.Rerolls[0].Source.Ref, "the reroll names its rule")
+	s.Equal("Great Weapon Fighting", weapon.Roll.Dice.Rerolls[0].Source.Name)
+	s.Equal([]int{4, 5}, weapon.Roll.Dice.FinalRolls, "final faces survive")
+	s.Equal(9, weapon.Roll.Dice.Subtotal, "the provider's subtotal is authoritative")
+	s.Nil(weapon.Roll.Modifier, "the dice component contributed no modifier")
+
+	strength := beat.DamageComponents[1]
+	s.Equal("ability", strength.Source)
+	s.Nil(strength.Roll.Dice, "the modifier component rolled no dice")
+	s.Require().NotNil(strength.Roll.Modifier)
+	s.Equal(3, *strength.Roll.Modifier)
+}
+
+// TestRecordDamageComponentRollRefusals is the durable validation boundary
+// for struck outcomes: every nested roll fact is validated BEFORE anything is
+// appended, so a malformed component costs the transcript nothing. Each case
+// mutates one field of an otherwise accepted payload, which is what makes the
+// table non-vacuous — the unchanged payload is accepted by
+// TestARecordedStruckDamageComponentCarriesOrderedRollFacts.
+func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
+	type testCase struct {
+		name   string
+		change func([]encounter.DamageComponent)
+	}
+	var cases []testCase
+	add := func(name string, change func(*encounter.DamageComponent)) {
+		cases = append(cases, testCase{name: name, change: func(cs []encounter.DamageComponent) {
+			change(&cs[0])
+		}})
+	}
+
+	add("roll source ref is missing", func(c *encounter.DamageComponent) {
+		c.Roll.Source.Ref = ""
+	})
+	add("roll source ref is not a canonical ref", func(c *encounter.DamageComponent) {
+		c.Roll.Source.Ref = "greatsword"
+	})
+	add("roll source name is missing", func(c *encounter.DamageComponent) {
+		c.Roll.Source.Name = ""
+	})
+	add("dice notation is invalid", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.Notation = "not dice"
+	})
+	add("die size does not match notation", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.DieSize = 8
+	})
+	add("die size is not positive", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.DieSize = 0
+	})
+	add("original face is outside die range", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.OriginalRolls[0] = 0
+	})
+	add("final face is outside die range", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.FinalRolls[0] = 9
+	})
+	add("original and final cardinality differ", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.FinalRolls = []int{4}
+	})
+	add("reroll index is outside rolls", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.Rerolls[0].DieIndex = 2
+	})
+	add("reroll before does not match current face", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.Rerolls[0].Before = 2
+	})
+	add("reroll after is outside die range", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.Rerolls[0].After = 7
+	})
+	add("reroll after is not propagated to final rolls", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.FinalRolls[0] = 3
+	})
+	add("kept index is duplicated", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.KeptIndices = []int{0, 0}
+	})
+	add("kept index is outside final rolls", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.KeptIndices = []int{2}
+	})
+	add("dice subtotal does not equal kept faces", func(c *encounter.DamageComponent) {
+		c.Roll.Dice.Subtotal = 8
+	})
+	add("roll has neither dice, modifier, nor multiplier", func(c *encounter.DamageComponent) {
+		c.Roll.Dice = nil
+		c.Multiplier = nil
+	})
+	add("multiplier carrier roll source ref is missing", func(c *encounter.DamageComponent) {
+		*c = multiplierCarrier()
+		c.Roll.Source.Ref = ""
+	})
+	add("multiplier carrier roll source ref is not a canonical ref", func(c *encounter.DamageComponent) {
+		*c = multiplierCarrier()
+		c.Roll.Source.Ref = "immunity"
+	})
+
+	for _, tc := range cases {
+		tc := tc
+		s.Run(tc.name, func() {
+			enc := s.scene()
+			beforeLog := enc.WorldView().Log
+
+			components := gwfDamageComponents()
+			tc.change(components)
+
+			_, err := enc.Record(&encounter.RecordInput{
+				Kind: encounter.OutcomeStruck, Actor: alice,
+				Targets:          []encounter.MemberID{goblin},
+				DamageComponents: components,
+			})
+
+			s.Require().ErrorIs(err, encounter.ErrInvalidData)
+			s.Equal(beforeLog, enc.WorldView().Log,
+				"a malformed component must leave the story untouched")
+		})
+	}
+
+	s.Run("a malformed component after a valid one appends nothing", func() {
+		enc := s.scene()
+		beforeLog := enc.WorldView().Log
+
+		components := gwfDamageComponents()
+		components[1].Roll.Modifier = nil // second component loses its facts
+
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice,
+			Targets:          []encounter.MemberID{goblin},
+			DamageComponents: components,
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Equal(beforeLog, enc.WorldView().Log,
+			"validation runs over every component before the first append")
+	})
+}
+
+// multiplierCarrier is the accepted immunity-style component: a multiplier
+// with a sourced but fact-less roll — no dice, no modifier — the same shape
+// root's own immunity trait produces. TestARecordedStrikeCarriesOrderedDetail
+// records one successfully, and the multiplier-carrier refusal cases below
+// mutate fresh copies of it, which is what makes them non-vacuous.
+func multiplierCarrier() encounter.DamageComponent {
+	immunity := 0.0
+	return encounter.DamageComponent{
+		Source: "monster_trait",
+		Roll: encounter.RollComponent{
+			Source: encounter.RollSource{Ref: "dnd5e:monster-traits:immunity", Name: "Immunity"},
+		},
+		DamageType: "slashing", Multiplier: &immunity,
+	}
+}
+
+// gwfDamageComponents is the representative greatsword strike: the 2d6 pool
+// with the ordered Great Weapon Fighting reroll, plus the sourced +3 Strength
+// modifier component. Used as the accepted base of the refusal table.
+func gwfDamageComponents() []encounter.DamageComponent {
+	strength := 3
+	return []encounter.DamageComponent{
+		{
+			Source: "weapon",
+			Roll: encounter.RollComponent{
+				Source: encounter.RollSource{Ref: "dnd5e:weapons:greatsword", Name: "Greatsword"},
+				Dice: &encounter.DiceTrace{
+					Notation:      "2d6",
+					DieSize:       6,
+					OriginalRolls: []int{1, 5},
+					Rerolls: []encounter.DiceReroll{{
+						DieIndex: 0,
+						Before:   1,
+						After:    4,
+						Source: encounter.RollSource{
+							Ref:  "dnd5e:conditions:fighting_style_great_weapon_fighting",
+							Name: "Great Weapon Fighting",
+						},
+					}},
+					FinalRolls: []int{4, 5},
+					Subtotal:   9,
+				},
+			},
+			DamageType: "slashing",
+		},
+		{
+			Source: "ability",
+			Roll: encounter.RollComponent{
+				Source:   encounter.RollSource{Ref: "dnd5e:abilities:strength", Name: "Strength"},
+				Modifier: &strength,
+			},
+			DamageType: "slashing",
+		},
+	}
 }
 
 // TestARecordedMissCarriesNoCriticalKey pins that a miss's payload never
@@ -294,12 +546,31 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 		{"negative infinite multiplier", math.Inf(-1)},
 	} {
 		s.Run(tc.name, func() {
-			_, err := s.scene().Record(&encounter.RecordInput{
+			// The component is otherwise a legal multiplier carrier — the same
+			// immunity-style shape TestARecordedStrikeCarriesOrderedDetail
+			// records successfully — so the non-finite factor is the SOLE
+			// defect and these cases genuinely reach the finite-multiplier
+			// guard instead of dying earlier on source identity.
+			enc := s.scene()
+			beforeLog := enc.WorldView().Log
+
+			_, err := enc.Record(&encounter.RecordInput{
 				Kind: encounter.OutcomeStruck, Actor: alice,
-				DamageComponents: []encounter.DamageComponent{{Multiplier: &tc.multiplier}},
+				DamageComponents: []encounter.DamageComponent{{
+					Source: "monster_trait",
+					Roll: encounter.RollComponent{
+						Source: encounter.RollSource{
+							Ref: "dnd5e:monster-traits:immunity", Name: "Immunity",
+						},
+					},
+					DamageType: "slashing",
+					Multiplier: &tc.multiplier,
+				}},
 			})
 			s.ErrorIs(err, encounter.ErrInvalidData,
 				"an unrepresentable JSON number is structural invalid data")
+			s.Equal(beforeLog, enc.WorldView().Log,
+				"a rejected multiplier leaves entries and next_seq untouched")
 		})
 	}
 
