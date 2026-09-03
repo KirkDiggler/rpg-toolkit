@@ -432,6 +432,43 @@ func (f *field) isFloor(cell spatial.Position) bool {
 	return f.sceneryCells[cell]
 }
 
+// isStandable reports whether anybody's FEET may be on a cell: it is a
+// region's, and no region's cell is anything but standable in slice 1
+// (rpg-project#360, design §1.3).
+//
+// The other half of the pair [field.isFloor] opens. Every call site asks the
+// one it means, and which one it means is not a matter of taste: a wall's
+// endpoint, a door's edge, a prop's cell and a sightline ask isFloor, while a
+// member's seat, a step, an arrival and an ending's trigger cell ask this.
+// Before scenery the two were the same question and one predicate answered
+// both, which is exactly why the difference had to be named the moment a cell
+// could be one without the other.
+//
+// SLICE 2 SUBTRACTS THE SEALED CELLS HERE and nowhere else: a cell a wall
+// halves keeps its owner and loses its feet, which is this predicate's
+// business and not isFloor's.
+func (f *field) isStandable(cell spatial.Position) bool {
+	_, owned := f.regionOf(cell)
+
+	return owned
+}
+
+// notStandable is WHY nobody may stand on a cell, as a phrase to drop into a
+// refusal — in the cell's own terms rather than the map's.
+//
+// Scenery is floor, so telling its author it "is not floor" would be the
+// composition lying about a cell its own atlas lists (rpg-project#360, design
+// §6 as amended). Void keeps the sentence it has always had, because for void
+// that sentence is true. Derived from the two predicates rather than from the
+// scenery mask, so this adds no second reader of it.
+func (f *field) notStandable(cell spatial.Position) string {
+	if f.isFloor(cell) {
+		return "is scenery: floor nobody stands on"
+	}
+
+	return "is not floor"
+}
+
 // hasVoid reports whether any cell of the canvas is not floor — purely a cost
 // decision for the sight scan ([canvasRoom]): where there is no void, opaque
 // and transparent mean the same thing. Scenery counts as floor here, so a

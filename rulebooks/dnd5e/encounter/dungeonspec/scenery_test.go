@@ -96,6 +96,36 @@ start: [0, 0]
 `
 }
 
+// theLongStrip is theStrip with TWO scenery cells, so something can stand in
+// the middle of a way rather than only at its ends:
+//
+//	study [0,0] [1,0] | scenery [2,0] [3,0] | vault [4,0]
+//
+// `middle` is written between the two scenery cells; `far` goes in the far
+// room's own block.
+func theLongStrip(far, middle string) string {
+	return `
+version: 2
+key: longstrip
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+` + far + `    cells:
+      - [[4,0]]
+scenery:
+  - [[2,0],[3,0]]
+start: [0, 0]
+` + middle
+}
+
 // TestF1_ACellIsFloorOnce — a cell belongs to a region or to the scenery, and
 // nothing may claim it twice. Ownership has to be unique for "who owns this
 // cell" to be an answer rather than a guess, and scenery is a second claimant
@@ -259,11 +289,96 @@ func (s *ScenerySuite) TestC4_TheConcealmentWalkCrossesScenery() {
 		s.Contains(errs[0].Message, "the open way between [3,0] and the scenery at [2,0]")
 	})
 
-	s.Run("one refusal per path, not one per end", func() {
-		// The strip has two ends and the walk meets it from both. A path is
-		// ONE way, so the forgotten wall is one defect on the canvas rather
-		// than the same hole drawn twice.
+	s.Run("one refusal per path, not one per direction", func() {
+		// Crossings are undirected and the walk could meet the strip from
+		// either room. A path is ONE way, so the forgotten wall is one defect
+		// on the canvas rather than the same hole drawn twice.
 		s.Len(s.validate(theStrip(secret)), 1)
+	})
+
+	s.Run("a wall inside the strip is not a way at all", func() {
+		// The crossing that closes a way need not be at either end. A wall
+		// between the two scenery cells stops the flood exactly as a wall on
+		// a room's own edge does, and there is no way left to conceal.
+		walled := theLongStrip(secret, "walls:\n  - [[2,0],[3,0]]\n")
+		s.Empty(s.validate(walled))
+	})
+
+	s.Run("a concealed door between two scenery cells conceals the way", func() {
+		// The ruled rule is ANY crossing along the way, so the author may put
+		// the secret's door in the middle of the rubble rather than on either
+		// room's edge. A rule that classified a way by its two ends would
+		// call this a walk-in secret and refuse the dungeon.
+		doored := theLongStrip(secret, `doors:
+  - id: panel
+    edges: [[[2,0],[3,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+`)
+		s.Empty(s.validate(doored))
+
+		// And the same door left plain does not conceal it — so what made the
+		// scene above legal is the concealment, not the door.
+		plain := theLongStrip(secret, `doors:
+  - id: panel
+    edges: [[[2,0],[3,0]]]
+    closed: true
+`)
+		errs := s.validate(plain)
+		s.Require().Equal([]string{"regions[1].concealed"}, sceneryPaths(errs))
+		s.Contains(errs[0].Message, "the open way between [4,0] and the scenery at [3,0]")
+	})
+
+	s.Run("a scenery area touching two visible rooms and one hidden one", func() {
+		// A way is not a strip with two ends: one scenery cell has six
+		// neighbours, and this one touches three rooms. The study's crossing
+		// is a concealed door, so the study's way in is sealed — but the
+		// hall's is bare and the vault's is bare, so the hall's way is a
+		// walk-in secret and is refused through it.
+		//
+		// The hall touches the study directly, so visible reach still holds
+		// and the only defect in the scene is the one it is about.
+		three := `
+version: 2
+key: junction
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[2,0]]
+  - id: hall
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[2,-1]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[4,0]]
+scenery:
+  - [[3,0]]
+start: [2, 0]
+doors:
+  - id: panel
+    edges: [[[2,0],[3,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+`
+		errs := s.validate(three)
+		s.Require().Equal([]string{"regions[2].concealed"}, sceneryPaths(errs),
+			"one refusal: the hall's way in, not the study's sealed one")
+		s.Contains(errs[0].Message, "the open way between [4,0] and the scenery at [3,0]")
+
+		// Conceal the vault's own crossing instead and every way in carries a
+		// concealed door, so the junction is authorable.
+		sealed := strings.Replace(three,
+			"    edges: [[[2,0],[3,0]]]", "    edges: [[[2,0],[3,0]],[[3,0],[4,0]]]", 1)
+		s.Empty(s.validate(sealed))
 	})
 
 	s.Run("visible reach extends through scenery", func() {

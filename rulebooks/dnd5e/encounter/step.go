@@ -182,8 +182,11 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		return executedAction{}, fmt.Errorf("target is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
-	if _, owned := e.RegionAt(to); !owned {
-		return executedAction{}, fmt.Errorf("cell %v is not floor: %w", to, ErrBadPlacement)
+	// STANDABLE, not merely floor (rpg-project#360). Scenery is floor
+	// somebody painted and nobody walks, so the refusal names which of the
+	// two it met rather than calling a strip of rubble "not floor".
+	if !e.field.isStandable(to) {
+		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.field.notStandable(to), ErrBadPlacement)
 	}
 
 	// Where they are standing, read before the move because it is only knowable
