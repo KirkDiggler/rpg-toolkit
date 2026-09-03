@@ -104,6 +104,17 @@ var contractTypes = map[string]string{
 	// content, it is never resolved from a ref the way a monster's is.
 	"npc.Capability":   "contract type: reachable from WorldNPCDescriptor, same promise as npc.Data",
 	"npc.CombatPolicy": "contract type: reachable from WorldNPCDescriptor, same promise as npc.Data",
+
+	// Reachable from WorldNPCDescriptor.Inventory (interact.go, #1447).
+	// npcs.StockEntryView is display data npcs already builds and hands
+	// back read-only (npcs.VendorInventoryFromNPCData, VendorInventory.View)
+	// — this seam never constructs one field-by-field, only reads it — but
+	// it is still real domain vocabulary both sides agree on (a vendor's
+	// stock row), not an implementation detail we'd refactor without
+	// telling the host, so it sits here rather than under persistenceShapes.
+	// Its own fields already bottom out in strings and ints (shared.EquipmentType
+	// and npcs.StockMode are both string aliases).
+	"npcs.StockEntryView": "contract type: reachable from WorldNPCDescriptor, read-only display data npcs resolves and hands back",
 }
 
 // persistenceShapes are bytes the host round-trips and never builds.

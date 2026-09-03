@@ -87,8 +87,10 @@ var (
 	// ErrBadRef is returned when a ref is not a well-formed module:type:id.
 	ErrBadRef = errors.New("malformed ref")
 
-	// ErrBadNPC is returned when PlaceNPC is given npc.Data whose
-	// MovementPolicy is empty or unrecognized.
+	// ErrBadNPC is returned when stored npc.Data cannot be used as given:
+	// PlaceNPC rejects a MovementPolicy that is empty or unrecognized, and
+	// Interact rejects a stored Inventory whose bytes are present but
+	// malformed.
 	//
 	// Separate from ErrNoRef for the same reason ErrBadCharacter is separate
 	// from ErrNoCharacter: PlaceNPC takes already-built content directly
