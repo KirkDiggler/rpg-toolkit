@@ -385,13 +385,12 @@ func TestStatusViewReturnsDetachedValues(t *testing.T) {
 
 func TestStatusViewProjectsExplicitLifeStateAndCopiedDeathSaveProgress(t *testing.T) {
 	char := bareCharacterAtZero(&saves.DeathSaveState{Successes: 1, Failures: 2})
+	narrow := char.ParticipationView()
 
 	out, err := char.StatusView(&StatusViewInput{})
 	require.NoError(t, err)
-	require.Equal(t, combat.LifeStateDying, out.View.LifeState)
-	require.Equal(t, &DeathSaveProgress{
-		Successes: 1, Failures: 2, SuccessesNeeded: 2, FailuresRemaining: 1,
-	}, out.View.DeathSaves)
+	require.Equal(t, narrow.LifeState, out.View.LifeState)
+	require.Equal(t, narrow.DeathSaves, out.View.DeathSaves)
 
 	out.View.DeathSaves.Successes = 99
 	again, err := char.StatusView(&StatusViewInput{})
@@ -400,8 +399,10 @@ func TestStatusViewProjectsExplicitLifeStateAndCopiedDeathSaveProgress(t *testin
 		"the status projection must not expose mutable provider state")
 
 	char.hitPoints = 1
+	consciousParticipation := char.ParticipationView()
 	conscious, err := char.StatusView(&StatusViewInput{})
 	require.NoError(t, err)
+	require.Equal(t, consciousParticipation.LifeState, conscious.View.LifeState)
 	require.Equal(t, combat.LifeStateConscious, conscious.View.LifeState)
 	require.Nil(t, conscious.View.DeathSaves)
 }

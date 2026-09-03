@@ -161,18 +161,13 @@ func (c *Character) StatusView(_ *StatusViewInput) (*StatusViewOutput, error) {
 		return nil, err
 	}
 
-	lifeState := c.lifeState()
-	var progress *DeathSaveProgress
-	if lifeState != combat.LifeStateConscious {
-		copyProgress := deathSaveProgress(c.deathSaveState)
-		progress = &copyProgress
-	}
+	participation := c.ParticipationView()
 
 	view := &StatusView{
 		Level:         c.level,
 		HitPoints:     HitPointView{Current: c.hitPoints, Maximum: c.maxHitPoints},
-		LifeState:     lifeState,
-		DeathSaves:    progress,
+		LifeState:     participation.LifeState,
+		DeathSaves:    participation.DeathSaves,
 		BaseSpeedFeet: c.GetSpeed(),
 		Features:      featureViews,
 		Conditions:    conditionViews,

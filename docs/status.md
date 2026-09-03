@@ -33,8 +33,14 @@ auto-pass it, and dead characters and defeated monsters no longer participate.
 `combat.PartyDefeated` requires a non-empty player-character party with no
 conscious member, so an empty dungeon is not a defeat. The existing
 `combat.CanBeAttackTarget(kind, down)` surface delegates through the derived
-policy for compatibility with #1418. Session and encounter consumers remain
-follow-up work rather than being implied by the former binary down answer.
+policy for compatibility with #1418. `Character.ParticipationView` now exposes
+only the provider-derived life state and optional detached Death Save progress;
+it is independent of feature, condition, equipment, spell, resource, display,
+and event-publication surfaces. Full `Character.StatusView` reuses that narrow
+projection but remains intentionally strict about its no-magic display catalog,
+including rejecting the otherwise loadable Shield spell condition. Session and
+encounter consumers remain follow-up work rather than being implied by the
+former binary down answer.
 
 **#1366/#1367 — restore the Martial Arts bonus Attack declaration (provider
 shipped; session active).** Root D&D `v0.125.1` compiles the previously verified
