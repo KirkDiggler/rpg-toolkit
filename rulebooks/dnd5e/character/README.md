@@ -20,6 +20,10 @@ The character package is organized into several key components:
 4. **Explicit IDs** - All requirements use typed ChoiceID constants for unambiguous reference
 5. **Proto-Ready** - All constants designed to map to proto enums for API type safety
 
+## Appearance
+
+`Draft.SetAppearance` accepts a validated provider-neutral `customization.Appearance` and stores a deep copy. Drafts and finalized characters expose `Appearance()` getters that also return deep copies, and appearance is carried through `DraftData`, finalization, `Data`, and both character load paths. Nil nested fields remain omitted/defaulted, while present zero-valued colors remain explicitly present.
+
 ## The Choices System
 
 The choices system is the heart of character creation, handling the complex D&D 5e character creation rules.

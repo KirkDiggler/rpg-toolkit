@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -38,9 +39,10 @@ var _ combatabilities.CombatAbilityHolder = (*Character)(nil)
 // This is the domain model used during gameplay
 type Character struct {
 	// Identity
-	id       string
-	playerID string
-	name     string
+	id         string
+	playerID   string
+	name       string
+	appearance *customization.Appearance
 
 	// Core attributes
 	level            int
@@ -126,6 +128,12 @@ func (c *Character) GetType() core.EntityType {
 // GetName returns the character's name
 func (c *Character) GetName() string {
 	return c.name
+}
+
+// Appearance returns a deep copy of the character's appearance, or nil when
+// none has been selected.
+func (c *Character) Appearance() *customization.Appearance {
+	return customization.CloneAppearance(c.appearance)
 }
 
 // GetLevel returns the character's level
@@ -978,6 +986,7 @@ func (c *Character) ToData() *Data {
 		ClassID:             c.classID,
 		SubclassID:          c.subclassID,
 		BackgroundID:        c.backgroundID,
+		Appearance:          customization.CloneAppearance(c.appearance),
 		AbilityScores:       c.abilityScores,
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,

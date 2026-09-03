@@ -4,6 +4,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -15,6 +16,11 @@ import (
 // SetNameInput contains the input for setting a character's name
 type SetNameInput struct {
 	Name string `json:"name"`
+}
+
+// SetAppearanceInput contains the input for setting a character's appearance.
+type SetAppearanceInput struct {
+	Appearance *customization.Appearance `json:"appearance"`
 }
 
 // SetRaceInput contains the input for setting a character's race

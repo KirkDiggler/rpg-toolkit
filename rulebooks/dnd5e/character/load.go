@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -213,6 +214,10 @@ func (c *Character) unattach(
 // lives in [Attach] and [SheetKeeper]. The split is the point of this file:
 // what a character *is* no longer depends on there being a bus to load it onto.
 func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
+	if err := customization.ValidateAppearance(d.Appearance); err != nil {
+		return nil, err
+	}
+
 	char := &Character{
 		id:                  d.ID,
 		playerID:            d.PlayerID,
@@ -224,6 +229,7 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		classID:             d.ClassID,
 		subclassID:          d.SubclassID,
 		backgroundID:        d.BackgroundID,
+		appearance:          customization.CloneAppearance(d.Appearance),
 		createdAt:           d.CreatedAt,
 		abilityScores:       d.AbilityScores,
 		hitPoints:           d.HitPoints,

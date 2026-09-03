@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -34,6 +35,9 @@ type Draft struct {
 
 	// Basic info
 	name string
+
+	// Appearance
+	appearance *customization.Appearance
 
 	// Core choices
 	race       races.Race
@@ -110,6 +114,12 @@ func (d *Draft) PlayerID() string {
 // Name returns the character name
 func (d *Draft) Name() string {
 	return d.name
+}
+
+// Appearance returns a deep copy of the draft's appearance, or nil when none
+// has been selected.
+func (d *Draft) Appearance() *customization.Appearance {
+	return customization.CloneAppearance(d.appearance)
 }
 
 // Race returns the selected race
@@ -282,6 +292,25 @@ func (d *Draft) SetRace(input *SetRaceInput) error {
 	if d.IsRaceComplete() {
 		d.progress.Set(ProgressRace)
 	}
+
+	return nil
+}
+
+// SetAppearance validates and stores a deep copy of the character's
+// appearance. A nil input or appearance is rejected without mutating the draft.
+func (d *Draft) SetAppearance(input *SetAppearanceInput) error {
+	if input == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
+	}
+	if input.Appearance == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "appearance cannot be nil")
+	}
+	if err := customization.ValidateAppearance(input.Appearance); err != nil {
+		return err
+	}
+
+	d.appearance = customization.CloneAppearance(input.Appearance)
+	d.updatedAt = time.Now()
 
 	return nil
 }
@@ -540,6 +569,9 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	if bus == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
+	if err := customization.ValidateAppearance(d.appearance); err != nil {
+		return nil, err
+	}
 	if d.name == "" {
 		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "character name is required")
 	}
@@ -602,6 +634,7 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		id:                  characterID,
 		playerID:            d.playerID,
 		name:                d.name,
+		appearance:          customization.CloneAppearance(d.appearance),
 		level:               1,
 		proficiencyBonus:    2,
 		raceID:              d.race,
