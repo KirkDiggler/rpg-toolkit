@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/npcs"
 )
 
 // interact.go is the host seam's half of interacting with a placed world NPC
@@ -72,6 +73,13 @@ type WorldNPCDescriptor struct {
 	// CombatPolicy is the NPC's authored combat participation policy — the
 	// MVP has exactly one legal value, non-combatant.
 	CombatPolicy npc.CombatPolicy
+
+	// Inventory is the NPC's resolved vendor stock, in display-ready form.
+	// Empty (nil) for any NPC that isn't a vendor — the normal case for
+	// most world NPCs, not an error. Resolved fresh from the stored
+	// content on every call via npcs.VendorInventoryFromNPCData; a caller
+	// mutating this slice does not mutate session's stored record.
+	Inventory []npcs.StockEntryView
 }
 
 // InteractOutput reports the descriptor reached and what interacting
@@ -109,7 +117,9 @@ type InteractOutput struct {
 // (an internal inconsistency: encounter confirmed a KindWorld target but
 // session's own WorldNPCs store has nothing recorded for it — content the
 // session itself never recorded, the same shape of defect ErrNoSheet
-// already names for a monster), or ErrSaveFailed with a populated report.
+// already names for a monster), ErrBadNPC (the stored content's Inventory
+// bytes are present but malformed — a record no valid npc.New/npcs.NewMerchant
+// call could have produced), or ErrSaveFailed with a populated report.
 func (m *Manager) Interact(ctx context.Context, in *InteractInput) (*InteractOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("interact: %w", ErrNilInput)
@@ -171,12 +181,23 @@ func worldNPCDescriptor(data *SessionData, targetID string) (WorldNPCDescriptor,
 		if content.Ref != nil {
 			ref = content.Ref.String()
 		}
+
+		var stock []npcs.StockEntryView
+		inventory, ok, err := npcs.VendorInventoryFromNPCData(&content)
+		if err != nil {
+			return WorldNPCDescriptor{}, fmt.Errorf("world npc %q inventory: %w: %w", targetID, ErrBadNPC, err)
+		}
+		if ok {
+			stock = inventory.View().Entries
+		}
+
 		return WorldNPCDescriptor{
 			TargetID:     targetID,
 			Ref:          ref,
 			DisplayName:  content.DisplayName,
 			Capabilities: slices.Clone(content.Capabilities),
 			CombatPolicy: content.CombatPolicy,
+			Inventory:    stock,
 		}, nil
 	}
 	return WorldNPCDescriptor{}, fmt.Errorf("world npc %q: %w", targetID, ErrNoSheet)
