@@ -306,3 +306,86 @@ func (s *RevealSegmentsSuite) TestTheRevealAndTheAtlasAgree() {
 
 	s.Greater(len(after.Segments), len(before.Segments), "the reveal really did add walls")
 }
+
+// TestSealedIsAReplacementWithinTheRoomAndNotAnAddition is the relationship a
+// client has to apply, and it is NOT the one segments follow.
+//
+// Segments are a union: what they had, plus what the beat delivered, is what
+// they have. Sealed is not, and cannot be — CELLS LEAVE IT.
+//
+// The reason is footing (design C18). A wall presented to a non-knower stands
+// on floor they must be shown, or the floor stops one cell short of the wall
+// and marks the secret. That floor belongs to a room they cannot see, so it
+// reaches them as ownerless — and ownerless floor is floor nobody stands on,
+// which is exactly what their atlas says. It is not a leak: it is what makes
+// their map equal the honestly-authored twin, where the same cells are
+// scenery. The moment the room is theirs, those same cells are ordinary
+// standable floor and must come OFF the list.
+//
+// So the rule is REPLACE WITHIN THE REVEALED REGION, KEEP EVERYTHING ELSE, and
+// the beat carries the region's own cells so a client can tell which is which.
+// A client that appended the beat's sealed cells to its cache would leave the
+// footing marked unstandable forever — a room you can see and cannot walk into
+// at its edges.
+func (s *RevealSegmentsSuite) TestSealedIsAReplacementWithinTheRoomAndNotAnAddition() {
+	enc := s.open(findsEverything{})
+
+	before, err := enc.AtlasFor(finder)
+	s.Require().NoError(err)
+	s.findThenOpen(enc)
+	after, err := enc.AtlasFor(finder)
+	s.Require().NoError(err)
+
+	reveals := s.beats(enc, finder, "region_revealed")
+	s.Require().Len(reveals, 1)
+	body := reveals[0]
+
+	// The room's cells, as the beat states them.
+	inRoom := map[spatial.Position]bool{}
+	region := body["region"].(map[string]any)
+	for _, raw := range region["cells"].([]any) {
+		c := raw.(map[string]any)
+		inRoom[spatial.Position{X: c["x"].(float64), Y: c["y"].(float64)}] = true
+	}
+
+	// CELLS REALLY DO LEAVE, or this test is about nothing.
+	afterSealed := map[spatial.Position]bool{}
+	for _, c := range after.Sealed {
+		afterSealed[c] = true
+	}
+	left := make([]spatial.Position, 0)
+	for _, c := range before.Sealed {
+		if !afterSealed[c] {
+			left = append(left, c)
+		}
+	}
+	s.Require().NotEmpty(left,
+		"the footing of a presented wall is sealed to a non-knower and standable once the room is theirs")
+	for _, c := range left {
+		s.True(inRoom[c], "every cell that left the list belongs to the room just revealed")
+	}
+
+	// And the exact relationship: keep what was outside the room, take the
+	// room's own answer from the beat.
+	patched := map[spatial.Position]bool{}
+	for _, c := range before.Sealed {
+		if !inRoom[c] {
+			patched[c] = true
+		}
+	}
+	for _, raw := range body["sealed"].([]any) {
+		c := raw.(map[string]any)
+		patched[spatial.Position{X: c["x"].(float64), Y: c["y"].(float64)}] = true
+	}
+	s.Equal(afterSealed, patched,
+		"sealed after == (sealed before, minus the room's cells) plus the beat's sealed")
+
+	// The contrast, stated in the same test so the two are never conflated:
+	// segments ARE a union, and nothing leaves.
+	patchedSegs := append([]string(nil), segKeys(before.Segments)...)
+	for _, raw := range body["segments"].([]any) {
+		patchedSegs = append(patchedSegs, bodySegKey(raw))
+	}
+	s.ElementsMatch(segKeys(after.Segments), patchedSegs,
+		"segments after == segments before plus the beat's, exactly — no wall ever leaves")
+}

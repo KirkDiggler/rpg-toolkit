@@ -1190,6 +1190,17 @@ type RegionRevealedBody struct {
 	// Sealed is the cells of the revealed region nobody can stand on. A
 	// recipient who has just been handed the room's cells still needs telling
 	// which of them are not a place to put feet.
+	//
+	// APPLY IT AS A REPLACEMENT WITHIN THE ROOM, NOT AS AN ADDITION — this is
+	// the one place the two new fields behave differently, and getting it
+	// wrong leaves a room you can see and cannot walk into at its edges.
+	// Cells LEAVE the sealed set on a reveal: the floor a presented wall
+	// stands on reaches a non-knower as ownerless, which is floor nobody
+	// stands on, and becomes ordinary standable floor the moment the room is
+	// theirs. So for the cells in [RegionRevealedBody.Region], this list is
+	// the whole answer and the cache's previous one is discarded; everything
+	// outside the room is untouched. Segments, by contrast, are a pure
+	// addition and nothing ever leaves.
 	Sealed []spatial.Position `json:"sealed,omitempty"`
 }
 

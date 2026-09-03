@@ -130,6 +130,14 @@ func (e *Encounter) appendRegionRevealedBeat(
 	// its lighting and its archetype and loses only feet, so a recipient who
 	// has the room's cells still needs telling which of them are not a place
 	// to stand.
+	//
+	// SCOPED TO THE ROOM, AND A REPLACEMENT RATHER THAN AN ADDITION — which is
+	// why it is not a difference the way the segments are. Cells LEAVE a
+	// recipient's sealed set on a reveal: the footing of a wall presented to a
+	// non-knower reaches them as ownerless floor, which is floor nobody stands
+	// on, and is ordinary standable floor once the room is theirs. A
+	// difference could only ever add. Pinned by
+	// TestSealedIsAReplacementWithinTheRoomAndNotAnAddition.
 	sealed := make([]spatial.Position, 0)
 	for _, c := range scoped.Sealed {
 		if owned[c] {
