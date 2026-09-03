@@ -339,6 +339,40 @@ func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePreservesDeathSaveCapac
 	s.Equal(2, char.actionEconomy.Granted[GrantedDeathSaves])
 }
 
+func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePersistsSpentDeathSaveCapacityAtZero() {
+	input := &Data{
+		ID: "spent-death-save",
+		ActionEconomy: &ActionEconomyData{
+			Granted: map[GrantedActionKey]int{
+				GrantedAttacks:    2,
+				GrantedDeathSaves: 1,
+			},
+		},
+	}
+	char, err := Load(s.ctx, input)
+	s.Require().NoError(err)
+
+	fielded := char.toToolkitActionEconomy()
+	s.Require().Equal(1, fielded.DeathSavesRemaining)
+	fielded.SpendCapacity(combat.CapacityDeathSave, 1)
+	s.Require().Zero(fielded.DeathSavesRemaining)
+	char.fromToolkitActionEconomy(fielded)
+
+	s.Zero(char.CapacityLeft(combat.CapacityDeathSave))
+	exported := char.ToData()
+	s.Require().NotNil(exported.ActionEconomy)
+	s.NotContains(exported.ActionEconomy.Granted, GrantedDeathSaves,
+		"a spent one-shot grant must not survive persistence at its old value")
+	s.Equal(2, exported.ActionEconomy.Granted[GrantedAttacks],
+		"unrelated grant semantics must remain unchanged")
+
+	reloaded, err := Load(s.ctx, exported)
+	s.Require().NoError(err)
+	s.Zero(reloaded.toToolkitActionEconomy().DeathSavesRemaining,
+		"persisted zero must not resurrect the consumed Death Save")
+	s.Equal(2, reloaded.CapacityLeft(combat.CapacityAttack))
+}
+
 // --- Turn lifecycle ---
 
 func (s *ActionEconomyTestSuite) TestStartTurn() {

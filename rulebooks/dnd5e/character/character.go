@@ -982,7 +982,7 @@ func (c *Character) ToData() *Data {
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,
 		ArmorClass:          c.armorClass,
-		DeathSaveState:      c.deathSaveState,
+		DeathSaveState:      cloneDeathSaveState(c.deathSaveState),
 		Skills:              maps.Clone(c.skills),
 		SavingThrows:        maps.Clone(c.savingThrows),
 		ArmorProficiencies:  c.armorProficiencies,

@@ -496,6 +496,8 @@ func (c *Character) fromToolkitActionEconomy(ae *combat.ActionEconomy) {
 	}
 	if ae.DeathSavesRemaining > 0 {
 		c.actionEconomy.Granted[GrantedDeathSaves] = ae.DeathSavesRemaining
+	} else {
+		delete(c.actionEconomy.Granted, GrantedDeathSaves)
 	}
 
 	c.economyChanged()

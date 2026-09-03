@@ -190,6 +190,14 @@ func deathSaveOutcome(result *saves.DeathSaveResult) DeathSaveOutcome {
 	}
 }
 
+func cloneDeathSaveState(state *saves.DeathSaveState) *saves.DeathSaveState {
+	if state == nil {
+		return nil
+	}
+	cloned := *state
+	return &cloned
+}
+
 func deathSaveProgress(state *saves.DeathSaveState) DeathSaveProgress {
 	if state == nil {
 		state = &saves.DeathSaveState{}
@@ -287,11 +295,11 @@ func (c *Character) applyDeathSaveFailure(
 // authoritative state. The empty zero state is returned when no progress has
 // been recorded.
 func (c *Character) GetDeathSaveState() *saves.DeathSaveState {
-	if c.deathSaveState == nil {
+	state := cloneDeathSaveState(c.deathSaveState)
+	if state == nil {
 		return &saves.DeathSaveState{}
 	}
-	state := *c.deathSaveState
-	return &state
+	return state
 }
 
 // ResetDeathSaveState is an inert compatibility shim. Progress resets only as

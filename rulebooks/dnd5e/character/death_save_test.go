@@ -240,6 +240,53 @@ func TestDeathSaveStateCannotBeMutatedThroughLegacyCharacterDoors(t *testing.T) 
 	})
 }
 
+func TestDeathSaveStateDoesNotAliasPersistenceBoundaries(t *testing.T) {
+	t.Run("Load clones caller state", func(t *testing.T) {
+		input := &Data{
+			ID: "load-alias", HitPoints: 0, MaxHitPoints: 10,
+			DeathSaveState: &saves.DeathSaveState{Failures: 3, Dead: true},
+		}
+		char, err := Load(context.Background(), input)
+		require.NoError(t, err)
+		markSaved(char)
+
+		input.DeathSaveState.Failures = 0
+		input.DeathSaveState.Dead = false
+		input.DeathSaveState.Stabilized = true
+
+		require.Equal(t, combat.LifeStateDead, char.LifeState())
+		require.Equal(t, &saves.DeathSaveState{Failures: 3, Dead: true}, char.GetDeathSaveState())
+		require.False(t, char.IsDirty())
+	})
+
+	t.Run("ToData returns a detached state", func(t *testing.T) {
+		char := bareCharacterAtZero(&saves.DeathSaveState{Failures: 3, Dead: true})
+		markSaved(char)
+
+		exported := char.ToData()
+		require.NotNil(t, exported.DeathSaveState)
+		exported.DeathSaveState.Failures = 0
+		exported.DeathSaveState.Dead = false
+		exported.DeathSaveState.Stabilized = true
+
+		require.Equal(t, combat.LifeStateDead, char.LifeState())
+		require.Equal(t, &saves.DeathSaveState{Failures: 3, Dead: true}, char.GetDeathSaveState())
+		require.False(t, char.IsDirty())
+	})
+
+	t.Run("nil state remains safe and detached", func(t *testing.T) {
+		input := &Data{ID: "nil-alias", HitPoints: 0, MaxHitPoints: 10}
+		char, err := Load(context.Background(), input)
+		require.NoError(t, err)
+		markSaved(char)
+
+		require.Nil(t, char.ToData().DeathSaveState)
+		require.Equal(t, combat.LifeStateDying, char.LifeState())
+		require.Equal(t, &saves.DeathSaveState{}, char.GetDeathSaveState())
+		require.False(t, char.IsDirty())
+	})
+}
+
 func TestDeathSaveProgressRoundTripsExactly(t *testing.T) {
 	char := dyingCharacterForTurn(t, &saves.DeathSaveState{Successes: 1, Failures: 1})
 	_, err := char.MakeDeathSave(context.Background(), &MakeDeathSaveInput{
