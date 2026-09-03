@@ -97,9 +97,10 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 // instead of passing review.
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
-		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Regions"},
+		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Segments", "Sealed", "Regions"},
 		fieldsOf(session.Atlas{}),
-		"the map is a grid, which way its hexes point, its cells, the things standing on it, its walls, its doorways, and its regions",
+		"the map is a grid, which way its hexes point, its cells, the things standing on it, "+
+			"its walls as crossings and as lines, its doorways, which cells nobody stands on, and its regions",
 	)
 	s.Equal(
 		[]string{"ID", "Name", "Cells", "Archetype", "Lighting"},

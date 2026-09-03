@@ -453,10 +453,20 @@ func (e *Encounter) revealDoorTo(member MemberID, d *doorRecord, cause string, a
 // revealRegionTo writes the knowledge fact and the recipient-scoped
 // REGION_REVEALED beat.
 func (e *Encounter) revealRegionTo(member MemberID, region RegionID, cause string, at uint64) error {
+	// THE MAP AS THEY HAD IT, read before the knowledge fact lands. A reveal
+	// beat is a PATCH, and the only honest way to say which walls are new to
+	// somebody is to have seen which walls they already had — the alternative
+	// is working it out from the footprints a second time, beside the answer
+	// rather than from it, which is how a patch and an atlas learn to
+	// disagree (PR #1373 review, Minor 1).
+	before, err := e.AtlasFor(member)
+	if err != nil {
+		return fmt.Errorf("region reveal %q: %w", region, err)
+	}
 	if err := e.world.learnRegion(member, region, cause); err != nil {
 		return fmt.Errorf("learn region %q: %w", region, err)
 	}
-	if _, err := e.appendRegionRevealedBeat(member, region, at); err != nil {
+	if _, err := e.appendRegionRevealedBeat(member, region, before, at); err != nil {
 		return err
 	}
 	return nil

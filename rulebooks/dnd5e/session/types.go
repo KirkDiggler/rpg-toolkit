@@ -120,6 +120,27 @@ type Atlas struct {
 	// Doorways is every door's every edge, sorted by door ID then cell.
 	Doorways []AtlasDoorway `json:"doorways,omitempty"`
 
+	// Segments is every wall AS THE LINE IT IS, in the order the author drew
+	// them: what a client DRAWS, instead of chaining Boundaries back into runs
+	// under a straightness tolerance (rpg-project#360).
+	//
+	// Presentation, and the same walls. Boundaries stays the mechanical truth
+	// — every crossing nobody may take — and these are the lines those
+	// crossings came from, both derived from one authored line by the compiler
+	// so they cannot disagree. A door's gap is the reader's own arithmetic:
+	// the doorway's crossing, projected onto the segment it stands in.
+	Segments []AtlasSegment `json:"segments,omitempty"`
+
+	// Sealed is every cell in Cells NOBODY CAN STAND ON, sorted by coordinate:
+	// scenery, and the cells walls leave no room in.
+	//
+	// Needed because membership in a region stopped implying standable the
+	// moment a wall could halve a cell (rpg-project#360). A sealed cell keeps
+	// its region, its lighting and its archetype — a client draws it exactly
+	// as it draws the floor beside it — and refusing a step onto it is the
+	// engine's answer, never the client's guess.
+	Sealed []spatial.Position `json:"sealed,omitempty"`
+
 	// Regions is every named area of the map, sorted by ID, each listing the
 	// cells it owns in the same frame and order Cells uses (rpg-project#256).
 	// Every cell in Cells appears in exactly one region's Cells.
@@ -259,6 +280,39 @@ type AtlasDoorway struct {
 
 	// To is the other, adjacent to From.
 	To spatial.Position `json:"to"`
+}
+
+// AtlasSegment is one authored wall as a line: two ends, and the height it is
+// drawn at.
+//
+// NO NAME, NO FOOTPRINT AND NO DOOR IDS, mirroring the composition's own
+// (rpg-toolkit#1477). What a recipient may know about a door is the doorway
+// list's business and is withheld from a non-knower there; a segment that
+// carried its doors, or the cells it stood on, would say through the back door
+// what the front one refuses.
+type AtlasSegment struct {
+	// From is one end of the wall, in fractional axial.
+	From AxialPointF `json:"from"`
+
+	// To is the other end.
+	To AxialPointF `json:"to"`
+
+	// Height is the authored wall-height multiplier, carried verbatim.
+	// 0 = not authored = standard height.
+	Height float64 `json:"height,omitempty"`
+}
+
+// AxialPointF is a point in FRACTIONAL axial coordinates: the frame every cell
+// on this map already lives in, with the halves a wall endpoint needs.
+//
+// A wall ends at a hex's side midpoint or its centre, and a side midpoint is
+// exactly half a step from the centre it belongs to — so the halves are exact
+// and no second basis or world unit crosses this seam. A client's
+// axial-to-world formula already accepts fractions.
+type AxialPointF struct {
+	// Q and R are the axial coordinates, which may be halves.
+	Q float64 `json:"q"`
+	R float64 `json:"r"`
 }
 
 // WhereOutput is a member's own placement.
@@ -1122,6 +1176,32 @@ type RegionRevealedBody struct {
 	// recipient may now see — border walls included, still withholding any
 	// shared with a hidden neighbour.
 	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
+
+	// Segments is the walls the recipient DID NOT HAVE AND NOW DOES: the ones
+	// inside the room being revealed, which were withheld with it, and not the
+	// border walls they could already see (rpg-toolkit#1480).
+	//
+	// A DIFFERENCE, not a slice of the room, because a segment carries no
+	// footprint to ask which cells it stands on — see [AtlasSegment]. Apply
+	// these to the cached atlas and its Segments is what Atlas would now
+	// answer; the composition pins that agreement byte for byte.
+	Segments []AtlasSegment `json:"segments,omitempty"`
+
+	// Sealed is the cells of the revealed region nobody can stand on. A
+	// recipient who has just been handed the room's cells still needs telling
+	// which of them are not a place to put feet.
+	//
+	// APPLY IT AS A REPLACEMENT WITHIN THE ROOM, NOT AS AN ADDITION — this is
+	// the one place the two new fields behave differently, and getting it
+	// wrong leaves a room you can see and cannot walk into at its edges.
+	// Cells LEAVE the sealed set on a reveal: the floor a presented wall
+	// stands on reaches a non-knower as ownerless, which is floor nobody
+	// stands on, and becomes ordinary standable floor the moment the room is
+	// theirs. So for the cells in [RegionRevealedBody.Region], this list is
+	// the whole answer and the cache's previous one is discarded; everything
+	// outside the room is untouched. Segments, by contrast, are a pure
+	// addition and nothing ever leaves.
+	Sealed []spatial.Position `json:"sealed,omitempty"`
 }
 
 func (RegionRevealedBody) isEventBody() {}
