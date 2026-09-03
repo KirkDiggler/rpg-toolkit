@@ -541,11 +541,11 @@ var axialSteps = [6][2]float64{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, 1
 //	PARTY START.
 //
 // A "way" is a WALL-FREE PATH between two regions whose interior cells are
-// all scenery: a crossing straight from one room to the other, or a crossing
-// into a strip of scenery that leads to another room (rpg-project#360, C4).
-// It is a CONCEALED way exactly when its FIRST crossing — the one out of the
-// origin region — is a concealed door; what stands further along the path
-// classifies nothing, because a secret is kept at its entrance.
+// all scenery: a crossing straight from one room to the other, or a strip of
+// scenery joining them (rpg-project#360, C4). It is a CONCEALED way when a
+// concealed door stands at one of its ends — see [validation.sceneryWays] for
+// why a path with two ends is one way with two chances rather than two ways
+// that disagree.
 //
 // Scenery had to enter this walk rather than be left out of it. Before it,
 // every way was one crossing long and "is this room walled off" was a
@@ -555,8 +555,8 @@ var axialSteps = [6][2]float64{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, 1
 //
 // A door's ways count ONCE PER DOOR and neighbouring pair, never once per
 // edge — a door is one state over its edges (rpg-toolkit#1123), so a two-edge
-// gate is one way in and refuses once. Two refusals fall out, both at the region's own concealed field,
-// which is the one the form-filler flips:
+// gate is one way in and refuses once. Two refusals fall out, both at the
+// region's own concealed field, which is the one the form-filler flips:
 //
 //   - a way between an unconcealed region and a concealed one that is not a
 //     concealed door — a plain door, or a bare gap — is a way anyone can
