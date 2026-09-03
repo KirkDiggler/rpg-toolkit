@@ -15,7 +15,9 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -65,6 +67,18 @@ func (s *ClockBoundaryTestSuite) fight(aliceConditions ...json.RawMessage) *sess
 
 	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
 		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	// The composition's participation census decides a fight by CONTACT
+	// sides, and two armed players are one side: without a monster standing
+	// in the fight, the very first turn end reconciles the bubble away. A
+	// skeleton beside alice keeps the fight a real two-sided one, so the
+	// boundaries below fire on turns that survive it — the skeleton's own
+	// driven turn passes, which is all the scene ever needed of it.
+	_, err = mgr.Spawn(s.ctx, &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 3, Y: 1},
 	})
 	s.Require().NoError(err)
 	return mgr

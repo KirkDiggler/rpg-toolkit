@@ -750,17 +750,133 @@ type DownedBody struct {
 
 func (DownedBody) isEventBody() {}
 
+// RollSource identifies and describes the rulebook-owned source of a roll
+// fact. Ref is the canonical module:type:id string of the content that
+// produced the fact; Name is its display name. Label optionally describes the
+// source's role within its calculation ("Fighter level").
+//
+// This package's own string-ref twin of the root rulebook's roll-trace
+// primitives: the composition persists every *core.Ref as its canonical
+// string, so the wire carries no type this seam has to parse (S2).
+type RollSource struct {
+	// Ref is the canonical module:type:id string of the source content.
+	Ref string `json:"ref"`
+
+	// Name is the source's display name.
+	Name string `json:"name"`
+
+	// Label is the source's role within its calculation, when it has one.
+	Label string `json:"label,omitempty"`
+}
+
+// DiceReroll records one ordered replacement of a die face and its source.
+// Before must equal the die's current face under the rerolls that precede it.
+type DiceReroll struct {
+	// DieIndex is the die's position in the pool, 0-based.
+	DieIndex int `json:"die_index"`
+
+	// Before is the face the die showed before this replacement.
+	Before int `json:"before"`
+
+	// After is the face the replacement produced.
+	After int `json:"after"`
+
+	// Source is the rulebook-owned cause of the replacement.
+	Source RollSource `json:"source"`
+}
+
+// DiceTrace records the original and final faces of one homogeneous dice
+// pool. An empty KeptIndices means every final face contributes to Subtotal.
+type DiceTrace struct {
+	// Notation is the pool's notation in the dice package's normalized form
+	// ("d8", "2d6"), describing exactly the recorded faces.
+	Notation string `json:"notation"`
+
+	// DieSize is the size of every die in the pool.
+	DieSize int `json:"die_size"`
+
+	// OriginalRolls are the faces as first rolled.
+	OriginalRolls []int `json:"original_rolls"`
+
+	// Rerolls are the ordered sourced replacements applied to the pool.
+	Rerolls []DiceReroll `json:"rerolls,omitempty"`
+
+	// FinalRolls are the faces after every reroll, same order as
+	// OriginalRolls.
+	FinalRolls []int `json:"final_rolls"`
+
+	// KeptIndices are the FinalRolls positions that contribute to Subtotal;
+	// empty means every final face contributes.
+	KeptIndices []int `json:"kept_indices,omitempty"`
+
+	// Subtotal is the dice' authoritative contribution — faces kept, never
+	// resummed by a reader.
+	Subtotal int `json:"subtotal"`
+}
+
+// RollComponent records dice, a modifier, or both from one source.
+// A non-nil Modifier participates even when its value is zero.
+type RollComponent struct {
+	// Source is who provided this component's roll facts.
+	Source RollSource `json:"source"`
+
+	// Dice is the trace of the pool this component rolled, when it did.
+	Dice *DiceTrace `json:"dice,omitempty"`
+
+	// Modifier is the component's flat contribution, present whenever it
+	// contributed one — even when that value is zero. Nil means the modifier
+	// did not participate; a present zero is a real zero.
+	Modifier *int `json:"modifier,omitempty"`
+}
+
+// RollCalculation records the sourced components and authoritative total of
+// a roll, in the order the rulebook produced them.
+type RollCalculation struct {
+	// Components are the sourced dice and modifiers, in production order.
+	Components []RollComponent `json:"components"`
+
+	// Total is the roll's authoritative result.
+	Total int `json:"total"`
+}
+
 // DamageComponent is the replayable subset of one resolved damage component.
 // Its order and values come from resolution; consumers display rather than
 // recalculate it.
+//
+// Everything roll-shaped lives in [Roll]: the sourced identity, the dice
+// trace when the component rolled dice, and the modifier when it contributed
+// one — present even when that value is zero. The remaining fields are damage
+// facts, not roll facts: the category, the damage type, and the multiplier. A
+// component that exists only to carry a multiplier (resistance,
+// vulnerability, immunity) has a sourced Roll with neither dice nor a
+// modifier.
+//
+// The four scalar fields below it are the legacy READ representation for
+// payloads this package last persisted before roll traces: the strict decoder
+// maps exactly one representation into exactly one of the two field groups,
+// and never fabricates a Roll from the legacy scalars. New bodies carry only
+// Roll.
 type DamageComponent struct {
-	Source     string     `json:"source"`
-	SourceRef  string     `json:"source_ref,omitempty"`
-	Dice       string     `json:"dice,omitempty"`
-	FinalRolls []int      `json:"final_rolls,omitempty"`
-	FlatBonus  int        `json:"flat_bonus"`
-	DamageType DamageType `json:"damage_type"`
-	Multiplier *float64   `json:"multiplier,omitempty"`
+	Source     string        `json:"source"`
+	Roll       RollComponent `json:"roll"`
+	DamageType DamageType    `json:"damage_type"`
+	Multiplier *float64      `json:"multiplier,omitempty"`
+
+	// SourceRef is the legacy scalar provider identity, readable only from a
+	// pre-trace payload.
+	SourceRef string `json:"source_ref,omitempty"`
+
+	// Dice is the legacy scalar dice notation, readable only from a pre-trace
+	// payload.
+	Dice string `json:"dice,omitempty"`
+
+	// FinalRolls are the legacy scalar final faces, readable only from a
+	// pre-trace payload.
+	FinalRolls []int `json:"final_rolls,omitempty"`
+
+	// FlatBonus is the legacy scalar flat modifier, readable only from a
+	// pre-trace payload.
+	FlatBonus int `json:"flat_bonus,omitempty"`
 }
 
 // AttackModifierSource identifies one replayable advantage/disadvantage
@@ -838,16 +954,30 @@ func (ActivationResultBody) isEventBody() {}
 
 // HealingAppliedBody carries authoritative post-clamp healing facts from the
 // rulebook, including the requested amount and the source that authored it.
+//
+// The roll behind the requested heal is carried by [Calculation] — the sourced
+// dice trace and modifiers, in production order, exactly as the rulebook
+// published them. Roll and Modifier below it are the legacy READ
+// representation for payloads written before roll traces: the strict decoder
+// accepts exactly one representation and never fabricates a Calculation from
+// the legacy scalars.
 type HealingAppliedBody struct {
-	Target     string `json:"target"`
-	Amount     int    `json:"amount"`
-	Requested  int    `json:"requested"`
-	Roll       int    `json:"roll"`
-	Modifier   int    `json:"modifier"`
+	Target    string `json:"target"`
+	Amount    int    `json:"amount"`
+	Requested int    `json:"requested"`
+	// Roll is the legacy scalar dice result, readable only from a pre-trace
+	// payload.
+	Roll int `json:"roll,omitempty"`
+	// Modifier is the legacy scalar modifier, readable only from a pre-trace
+	// payload.
+	Modifier   int    `json:"modifier,omitempty"`
 	SourceRef  string `json:"source_ref"`
 	SourceName string `json:"source_name"`
 	HPBefore   int    `json:"hp_before"`
 	HPAfter    int    `json:"hp_after"`
+
+	// Calculation is the sourced roll behind the requested heal.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 // ConditionAppliedBody identifies a condition attached to a target.

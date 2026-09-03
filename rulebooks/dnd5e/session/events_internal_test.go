@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
@@ -165,14 +167,18 @@ func TestBodyForAcceptsACompleteBeat(t *testing.T) {
 
 // TestStruckBodyDecodesReplayDetail pins the second half of the projection:
 // the exact primitive payload session authored becomes its own exported body,
-// with a present zero multiplier and the supplied ordering intact.
+// with the sourced roll graph, a present zero modifier, and the supplied
+// ordering intact.
 func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 	kind, body := decodeBeat([]byte(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
 			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
 			`"damage_components":[` +
-			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[4],"flat_bonus":0,"damage_type":"slashing"},` +
-			`{"source":"monster_trait","damage_type":"slashing","flat_bonus":0,"multiplier":0}],` +
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},` +
+			`"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],` +
+			`"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":4},"modifier":0},` +
+			`"damage_type":"slashing"},` +
+			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}],` +
 			`"advantage_sources":[{"source_ref":"dnd5e:conditions:hidden","source_id":"alice"}],` +
 			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}]}`))
 	require.Equal(t, EventStruck, kind)
@@ -181,15 +187,35 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 	require.True(t, ok, "rich struck payload produces StruckBody, got %T", body)
 	require.Len(t, got.DamageComponents, 2)
 	zero := 0.0
+	zeroMod := 0
 	require.Equal(t, []DamageComponent{
 		{
-			Source: "weapon", SourceRef: "dnd5e:weapons:longsword", Dice: "1d8",
-			FinalRolls: []int{4}, DamageType: DamageSlashing,
+			Source: "weapon",
+			Roll: RollComponent{
+				Source: RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Dice: &DiceTrace{
+					Notation: "d8", DieSize: 8,
+					OriginalRolls: []int{2}, FinalRolls: []int{4}, Subtotal: 4,
+					Rerolls: []DiceReroll{{
+						DieIndex: 0, Before: 2, After: 4,
+						Source: RollSource{
+							Ref:  "dnd5e:conditions:fighting_style_great_weapon_fighting",
+							Name: "Great Weapon Fighting",
+						},
+					}},
+				},
+				Modifier: &zeroMod,
+			},
+			DamageType: DamageSlashing,
 		},
 		{
-			Source: "monster_trait", DamageType: DamageSlashing, Multiplier: &zero,
+			Source:     "monster_trait",
+			Roll:       RollComponent{Source: RollSource{Ref: "dnd5e:monster_traits:immunity", Name: "Immunity"}},
+			DamageType: DamageSlashing, Multiplier: &zero,
 		},
 	}, got.DamageComponents)
+	require.NotNil(t, got.DamageComponents[0].Roll.Modifier)
+	require.Zero(t, *got.DamageComponents[0].Roll.Modifier)
 	require.NotNil(t, got.DamageComponents[1].Multiplier)
 	require.Zero(t, *got.DamageComponents[1].Multiplier)
 	require.Equal(t,
@@ -200,17 +226,179 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 		got.DisadvantageSources)
 }
 
+// TestStruckBodyDecodesLegacyDamageComponents pins the legacy read fallback:
+// a pre-trace struck payload maps its scalar facts into the legacy fields, one
+// for one, and the decoder never fabricates a roll graph from them.
+func TestStruckBodyDecodesLegacyDamageComponents(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"damage_components":[` +
+			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[5],"flat_bonus":0,"damage_type":"slashing"},` +
+			`{"source":"monster_trait","flat_bonus":0,"damage_type":"slashing","multiplier":0}]}`))
+	require.Equal(t, EventStruck, kind)
+
+	got, ok := body.(StruckBody)
+	require.True(t, ok, "legacy struck payload produces StruckBody, got %T", body)
+	zero := 0.0
+	require.Equal(t, []DamageComponent{
+		{
+			Source: "weapon", SourceRef: "dnd5e:weapons:longsword", Dice: "1d8",
+			FinalRolls: []int{5}, DamageType: DamageSlashing,
+		},
+		{
+			Source: "monster_trait", DamageType: DamageSlashing, Multiplier: &zero,
+		},
+	}, got.DamageComponents)
+	require.Nil(t, got.DamageComponents[0].Roll.Dice,
+		"the legacy scalars are never refabricated into a trace")
+	require.Nil(t, got.DamageComponents[0].Roll.Modifier)
+	require.Empty(t, got.DamageComponents[0].Roll.Source.Ref)
+}
+
+// TestStruckBodyRejectsAmbiguousAndCorruptRollDetail pins the strict decoder's
+// refusals: mixed representations, duplicate keys at every depth, forbidden
+// nulls, unknown keys inside known roll bodies, and rolls whose arithmetic
+// does not replay. Every refusal keeps the KNOWN kind with a nil body.
+// TestStruckBodyRejectsAmbiguousAndCorruptRollDetail pins the strict decoder's
+// refusals: mixed representations, duplicate keys at every depth, forbidden
+// nulls, unknown keys inside known roll bodies, and rolls whose arithmetic
+// does not replay. Every refusal keeps the KNOWN kind with a nil body.
+func TestStruckBodyRejectsAmbiguousAndCorruptRollDetail(t *testing.T) {
+	base := `"actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,"critical":false,` +
+		`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}`
+	cases := []struct {
+		name string
+		json string
+		kind EventKind
+	}{
+		{
+			name: "component carries both representations",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":0},"source_ref":"dnd5e:weapons:longsword","damage_type":"slashing"}]`,
+		},
+		{
+			name: "roll trace alongside legacy final rolls",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"final_rolls":[5],"damage_type":"slashing"}]`,
+		},
+		{
+			name: "component with neither representation",
+			json: `"damage_components":[{"source":"weapon","damage_type":"slashing"}]`,
+		},
+		{
+			name: "unknown key inside the component body",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"note":"x","damage_type":"slashing"}]`,
+		},
+		{
+			name: "unknown key inside the roll body",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"note":"x"},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "unknown key inside the dice trace",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"final_rolls":[4],"subtotal":4,"faces":[1]}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "unknown key inside a reroll",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"},"why":1}],"subtotal":4}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "duplicate key at the payload level",
+			json: `"critical":false,"critical":true`,
+		},
+		{
+			name: "duplicate key inside the component",
+			json: `"damage_components":[{"source":"weapon","source":"monster_trait","damage_type":"slashing","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}}}]`,
+		},
+		{
+			name: "duplicate key inside the roll source",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","ref":"dnd5e:weapons:dagger","name":"Longsword"}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "duplicate key inside the dice trace",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"original_rolls":[5],"final_rolls":[5],"subtotal":5}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "null multiplier",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"damage_type":"slashing","multiplier":null}]`,
+		},
+		{
+			name: "null dice trace",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":null},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "null modifier",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":null},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "null source",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":null},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "missing source name in the roll",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword"},"modifier":0},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "subtotal contradicts the final faces",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[2,2],"final_rolls":[2,2],"subtotal":5}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "reroll before contradicts the current face",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[3],"final_rolls":[4],"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":4}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "reroll after outside the die",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[9],"rerolls":[{"die_index":0,"before":2,"after":9,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":9}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "kept indices contradict the subtotal",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"2d10","die_size":10,"original_rolls":[3,7],"final_rolls":[3,7],"kept_indices":[0],"subtotal":10}},"damage_type":"slashing"}]`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(`{"beat":"struck",` + base + `,` + tc.json + `}`))
+			require.Equal(t, EventStruck, kind, "a malformed known payload keeps its kind")
+			require.Nil(t, body)
+		})
+	}
+	// The miss twin: the same refusals without demoting the kind, on the one
+	// shared-field arm a miss carries.
+	kind, body := decodeBeat([]byte(`{"beat":"missed",` + base + `,"critical":false,"critical":true}`))
+	require.Equal(t, EventMissed, kind)
+	require.Nil(t, body)
+}
+
 // TestActivationResultsMapEveryProviderFieldInOrder guards the persistence
 // adapter rather than one currently-produced ability at a time. Resolution's
-// effect values are authoritative; Session copies every field and preserves
-// publication order without parsing refs or redoing arithmetic.
+// effect values are authoritative; Session copies every field — including the
+// healing's sourced roll calculation, cloned so no captured trace aliases the
+// provider's graph — and preserves publication order without parsing refs or
+// redoing arithmetic.
 func TestActivationResultsMapEveryProviderFieldInOrder(t *testing.T) {
+	three := 3
 	effects := []resolution.ActivationEffect{
 		{
 			Kind: resolution.EffectHealingApplied, TargetID: "alice",
 			Ref: "dnd5e:features:second_wind", Name: "Second Wind",
-			Amount: 2, Requested: 11, Roll: 8, Modifier: 3, Before: 28, After: 30,
-			Description: "provider-carried", Reason: "provider-carried",
+			Amount: 2, Requested: 11, Before: 28, After: 30,
+			Calculation: &dnd5eEvents.RollCalculation{
+				Components: []dnd5eEvents.RollComponent{
+					{
+						Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+						Dice: &dnd5eEvents.DiceTrace{
+							Notation: "1d10", DieSize: 10,
+							OriginalRolls: []int{8}, FinalRolls: []int{8}, Subtotal: 8,
+						},
+					},
+					{
+						Source: dnd5eEvents.RollSource{
+							Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level",
+						},
+						Modifier: &three,
+					},
+				},
+				Total: 11,
+			},
 		},
 		{
 			Kind: resolution.EffectConditionApplied, TargetID: "bob",
@@ -226,44 +414,95 @@ func TestActivationResultsMapEveryProviderFieldInOrder(t *testing.T) {
 		},
 	}
 
-	require.Equal(t, []encounter.ActivationResult{
-		{
-			Kind: encounter.ResultHealingApplied, Target: "alice",
-			Ref: "dnd5e:features:second_wind", Name: "Second Wind",
-			Amount: 2, Requested: 11, Roll: 8, Modifier: 3, Before: 28, After: 30,
-			Description: "provider-carried", Reason: "provider-carried",
-		},
-		{
-			Kind: encounter.ResultConditionApplied, Target: "bob",
-			Ref: "dnd5e:conditions:raging", Name: "Raging",
-		},
-		{
-			Kind: encounter.ResultConditionRemoved, Target: "carol",
-			Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
-		},
-		{
-			Kind: encounter.ResultCapacityGranted, Target: "dave",
-			Description: "30ft movement",
-		},
-	}, activationResults(effects))
+	results := activationResults(effects)
+	require.Len(t, results, 4)
+	require.Equal(t, encounter.ResultHealingApplied, results[0].Kind)
+	require.Equal(t, encounter.MemberID("alice"), results[0].Target)
+	require.Equal(t, 2, results[0].Amount)
+	require.Equal(t, 11, results[0].Requested)
+	require.Equal(t, 28, results[0].Before)
+	require.Equal(t, 30, results[0].After)
+	require.NotNil(t, results[0].Calculation)
+	require.Equal(t, 11, results[0].Calculation.Total)
+	require.Len(t, results[0].Calculation.Components, 2)
+	require.Equal(t, "dnd5e:features:second_wind", results[0].Calculation.Components[0].Source.Ref)
+	require.Equal(t, "Second Wind", results[0].Calculation.Components[0].Source.Name)
+	require.Equal(t, []int{8}, results[0].Calculation.Components[0].Dice.OriginalRolls)
+	require.Equal(t, 8, results[0].Calculation.Components[0].Dice.Subtotal)
+	require.Equal(t, "dnd5e:classes:fighter", results[0].Calculation.Components[1].Source.Ref)
+	require.Equal(t, "Fighter level", results[0].Calculation.Components[1].Source.Label)
+	require.NotNil(t, results[0].Calculation.Components[1].Modifier)
+	require.Equal(t, 3, *results[0].Calculation.Components[1].Modifier)
+
+	require.Equal(t, encounter.ActivationResult{
+		Kind: encounter.ResultConditionApplied, Target: "bob",
+		Ref: "dnd5e:conditions:raging", Name: "Raging",
+		Calculation: nil, // the non-healing kinds carry no calculation
+	}, results[1])
+	require.Equal(t, encounter.ActivationResult{
+		Kind: encounter.ResultConditionRemoved, Target: "carol",
+		Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
+	}, results[2])
+	require.Equal(t, encounter.ActivationResult{
+		Kind: encounter.ResultCapacityGranted, Target: "dave",
+		Description: "30ft movement",
+	}, results[3])
+
+	// No aliasing: mutating the provider's captured graph after projection
+	// cannot rewrite what persistence recorded.
+	effects[0].Calculation.Components[0].Dice.OriginalRolls[0] = 99
+	effects[0].Calculation.Components[1].Modifier = nil
+	require.Equal(t, []int{8}, results[0].Calculation.Components[0].Dice.OriginalRolls)
+	require.NotNil(t, results[0].Calculation.Components[1].Modifier)
+	require.Equal(t, 3, *results[0].Calculation.Components[1].Modifier)
+	require.NotSame(t, effects[0].Calculation, results[0].Calculation)
+	require.NotSame(t, effects[0].Calculation.Components[0].Dice,
+		results[0].Calculation.Components[0].Dice)
 }
 
 // TestActivationResultBodiesDecodeExactlyOneVariant exercises each closed
-// result shape, including condition-removed (which no current activation emits).
-// Every accepted payload populates exactly one pointer on the shared body.
+// result shape, including condition-removed (which no current activation emits)
+// and both healing representations. Every accepted payload populates exactly one
+// pointer on the shared body.
 func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
+	three := 3
 	cases := []struct {
 		name string
 		json string
 		want ActivationResultBody
 	}{
 		{
-			name: "healing applied with meaningful zeroes",
+			name: "healing applied with the legacy scalar representation",
 			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"healing-applied","target":"alice","amount":0,"requested":10,"roll":7,"modifier":3,"before":30,"after":30,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
 			want: ActivationResultBody{Actor: "alice", HealingApplied: &HealingAppliedBody{
 				Target: "alice", Amount: 0, Requested: 10, Roll: 7, Modifier: 3,
 				SourceRef: "dnd5e:features:second_wind", SourceName: "Second Wind",
 				HPBefore: 30, HPAfter: 30,
+			}},
+		},
+		{
+			name: "healing applied with a sourced calculation",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[8],"final_rolls":[8],"subtotal":8}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":3}],"total":11},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+			want: ActivationResultBody{Actor: "alice", HealingApplied: &HealingAppliedBody{
+				Target: "alice", Amount: 2, Requested: 11,
+				SourceRef: "dnd5e:features:second_wind", SourceName: "Second Wind",
+				HPBefore: 28, HPAfter: 30,
+				Calculation: &RollCalculation{
+					Components: []RollComponent{
+						{
+							Source: RollSource{Ref: "dnd5e:features:second_wind", Name: "Second Wind"},
+							Dice: &DiceTrace{
+								Notation: "1d10", DieSize: 10,
+								OriginalRolls: []int{8}, FinalRolls: []int{8}, Subtotal: 8,
+							},
+						},
+						{
+							Source:   RollSource{Ref: "dnd5e:classes:fighter", Name: "Fighter", Label: "Fighter level"},
+							Modifier: &three,
+						},
+					},
+					Total: 11,
+				},
 			}},
 		},
 		{
@@ -306,6 +545,105 @@ func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
 				}
 			}
 			require.Equal(t, 1, populated, "one payload must produce exactly one result body")
+		})
+	}
+}
+
+// TestHealingBodiesRejectMixedAndCorruptRollFacts pins the strict decoder's
+// refusals for the healing representation: both representations at once,
+// a calculation on a non-healing kind, forbidden nulls, duplicate keys at every
+// nested depth, unknown keys inside known roll bodies, arithmetic that does not
+// replay, and a calculation whose total contradicts the requested heal. Every
+// refusal keeps the KNOWN kind with a nil body.
+func TestHealingBodiesRejectMixedAndCorruptRollFacts(t *testing.T) {
+	identity := `"ref":"dnd5e:features:second_wind","name":"Second Wind"`
+	cases := []struct {
+		name string
+		json string
+		kind EventKind
+	}{
+		{
+			name: "legacy scalars beside a calculation",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"roll":8,"modifier":3,"before":28,"after":30,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":11}],"total":11},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "healing with neither representation",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "calculation on a condition-applied result",
+			json: `{"kind":"condition-applied","target":"alice","ref":"dnd5e:conditions:raging","name":"Raging","calculation":null}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "null calculation on a healing result",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":null,` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate key inside the calculation",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":11}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate key inside a calculation component",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":11,"modifier":11}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate key inside a reroll source",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"d10","die_size":10,"original_rolls":[2],"final_rolls":[11],"rerolls":[{"die_index":0,"before":2,"after":11,"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","name":"Second Wind"}}],"subtotal":11}}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "unknown key inside the calculation",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":11}],"note":"x"},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "unknown key inside a calculation component",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":11,"note":"x"}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "unknown key inside the dice trace",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"d10","die_size":10,"original_rolls":[11],"final_rolls":[11],"subtotal":11,"faces":[1]}}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "calculation total contradicts its components",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":12,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":11}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "dice subtotal contradicts the faces",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"d10","die_size":10,"original_rolls":[11],"final_rolls":[11],"subtotal":9}}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "calculation total contradicts the requested heal",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":10,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"modifier":10}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "null dice inside the calculation",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":null,"modifier":11}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "missing component source name",
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind"},"modifier":11}]},` + identity + `}`,
+			kind: EventActivationResult,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(`{"beat":"activation-result","actor":"alice","result":` + tc.json + `}`))
+			require.Equal(t, tc.kind, kind, "a malformed known payload keeps its kind")
+			require.Nil(t, body)
 		})
 	}
 }

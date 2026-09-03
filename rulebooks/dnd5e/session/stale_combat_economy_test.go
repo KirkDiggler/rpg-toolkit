@@ -124,6 +124,18 @@ func (s *StaleCombatEconomySuite) killAdjacentSkeleton(id string) {
 			DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
 		})
 		s.Require().NoError(err)
+		if s.storedHP(id) <= 0 {
+			break
+		}
+		// The lawful damage die caps the longsword at 8 + 3, so the catalog
+		// skeleton outlives one swing and alice gets one attack per turn:
+		// end her turn (the skeleton's driven turn passes) and swing again
+		// on a fresh one.
+		_, err = s.mgr.EndTurn(context.Background(), &session.EndTurnInput{
+			Session: "sess", Member: "alice",
+			DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+		})
+		s.Require().NoError(err)
 	}
 	s.Require().Zero(s.storedHP(id), "the blows really landed on the stored sheet")
 }

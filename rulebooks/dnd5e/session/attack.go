@@ -458,26 +458,100 @@ func recordFor(
 	return recorded
 }
 
+// rollSourceFor projects the rulebook's sourced roll identity onto the
+// composition's neutral carrier — the *core.Ref reduced to its canonical
+// module:type:id string, the display name, and the role label, each cloned
+// into fresh values. Pure: no arithmetic, no ref parsing, no name lookup.
+func rollSourceFor(source dnd5eEvents.RollSource) encounter.RollSource {
+	var ref string
+	if source.Ref != nil {
+		ref = source.Ref.String()
+	}
+	return encounter.RollSource{Ref: ref, Name: source.Name, Label: source.Label}
+}
+
+// diceRerollFor clones one ordered die replacement, source included.
+func diceRerollFor(reroll dnd5eEvents.DiceReroll) encounter.DiceReroll {
+	return encounter.DiceReroll{
+		DieIndex: reroll.DieIndex,
+		Before:   reroll.Before,
+		After:    reroll.After,
+		Source:   rollSourceFor(reroll.Source),
+	}
+}
+
+// diceTraceFor deep-clones one dice pool's trace, or nil when there is none.
+// Every face list, ordered reroll, and kept index is copied so neither side
+// can alias the other's graph; nil slices stay nil so absent and present
+// cannot blur.
+func diceTraceFor(trace *dnd5eEvents.DiceTrace) *encounter.DiceTrace {
+	if trace == nil {
+		return nil
+	}
+	clone := &encounter.DiceTrace{
+		Notation:      trace.Notation,
+		DieSize:       trace.DieSize,
+		OriginalRolls: append([]int(nil), trace.OriginalRolls...),
+		FinalRolls:    append([]int(nil), trace.FinalRolls...),
+		KeptIndices:   append([]int(nil), trace.KeptIndices...),
+		Subtotal:      trace.Subtotal,
+	}
+	if trace.Rerolls != nil {
+		clone.Rerolls = make([]encounter.DiceReroll, len(trace.Rerolls))
+		for i, reroll := range trace.Rerolls {
+			clone.Rerolls[i] = diceRerollFor(reroll)
+		}
+	}
+	return clone
+}
+
+// rollComponentFor deep-clones one component's roll facts: the sourced
+// identity, the dice trace when the component rolled dice, and the modifier
+// pointer when it contributed one — present even when the value is zero.
+func rollComponentFor(component dnd5eEvents.RollComponent) encounter.RollComponent {
+	var modifier *int
+	if component.Modifier != nil {
+		value := *component.Modifier
+		modifier = &value
+	}
+	return encounter.RollComponent{
+		Source:   rollSourceFor(component.Source),
+		Dice:     diceTraceFor(component.Dice),
+		Modifier: modifier,
+	}
+}
+
+// rollCalculationFor deep-clones one sourced roll calculation, or nil when
+// there is none. Components keep their production order; every component's
+// roll facts are cloned through rollComponentFor.
+func rollCalculationFor(calculation *dnd5eEvents.RollCalculation) *encounter.RollCalculation {
+	if calculation == nil {
+		return nil
+	}
+	clone := &encounter.RollCalculation{Total: calculation.Total}
+	if calculation.Components != nil {
+		clone.Components = make([]encounter.RollComponent, len(calculation.Components))
+		for i, component := range calculation.Components {
+			clone.Components[i] = rollComponentFor(component)
+		}
+	}
+	return clone
+}
+
 func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.DamageComponent {
 	if len(in) == 0 {
 		return nil
 	}
 	out := make([]encounter.DamageComponent, 0, len(in))
 	for _, component := range in {
-		var sourceRef string
-		if component.SourceRef != nil {
-			sourceRef = component.SourceRef.String()
-		}
 		var multiplier *float64
 		if component.Multiplier != nil {
 			value := *component.Multiplier
 			multiplier = &value
 		}
 		out = append(out, encounter.DamageComponent{
-			Source: string(component.Source), SourceRef: sourceRef, Dice: component.Dice,
-			FinalRolls: append([]int(nil), component.FinalDiceRolls...),
-			FlatBonus:  component.FlatBonus, DamageType: string(component.DamageType),
-			Multiplier: multiplier,
+			Source: string(component.Source), Roll: rollComponentFor(component.Roll),
+			DamageType: string(component.DamageType), Multiplier: multiplier,
 		})
 	}
 	return out

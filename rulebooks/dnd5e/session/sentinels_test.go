@@ -613,7 +613,12 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 func (s *SentinelSuite) TestADownedActorIsRefusedInOurWords() {
 	alice := armedFighter("alice")
 	alice.Level = 5
-	mgr := s.armedDuel(newFakeCharacters(alice, armedFighter("bob")))
+	bob := armedFighter("bob")
+	// The lawful damage die caps the longsword at 8 + 3 per swing, so two
+	// swings (22) must be enough to put bob at zero inside alice's own
+	// two-attack turn — which is the scene this test has always staged.
+	bob.HitPoints = 12
+	mgr := s.armedDuel(newFakeCharacters(alice, bob))
 	ctx := context.Background()
 
 	for i := 0; i < 2; i++ {

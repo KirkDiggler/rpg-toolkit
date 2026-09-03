@@ -35,6 +35,36 @@ func (walkEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.Member
 	return nil, nil
 }
 
+// Assess mirrors Standing: nobody is ever down, so every asked member waits
+// in contact and conscious (the StandingWithParticipation bridge).
+func (walkEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	return assessmentFromDown(members, nil), nil
+}
+
+// assessmentFromDown builds the participation answer a down list implies:
+// asked members wait in contact and conscious, and a reported-down member is
+// not in contact, not conscious, and removed from the turn order.
+func assessmentFromDown(members, reported []encounter.MemberID) *encounter.ParticipationAssessment {
+	down := make(map[encounter.MemberID]bool, len(reported))
+	for _, id := range reported {
+		down[id] = true
+	}
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		member := encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		}
+		if down[id] {
+			member.Down = true
+			member.Contact = false
+			member.Conscious = false
+			member.Turn = encounter.TurnParticipationRemove
+		}
+		assessment.Members = append(assessment.Members, member)
+	}
+	return assessment
+}
+
 // passDriver is the third: every unplayed member always passes. Shared across
 // this package's internal test files (attack_internal_test.go included)
 // rather than "walk"-prefixed, since it answers the same boring question

@@ -601,7 +601,7 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 	s.Equal(15, swing.Total, "10 + STR(+3) + proficiency(+2) — the longsword compiles, it is not waved through")
 	s.Equal(8, swing.Against, "the zombie's own armour class")
 	s.True(swing.Hit, "15 beats 8")
-	s.Equal(13, swing.Damage, "flat d8 plus STR(+3) — not enough to drop a 22-hit-point zombie")
+	s.Equal(11, swing.Damage, "a lawful d8 at its face plus STR(+3) — not enough to drop a 22-hit-point zombie")
 
 	endTurn := func(who string) *session.EndTurnOutput {
 		out, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{

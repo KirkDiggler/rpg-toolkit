@@ -446,8 +446,9 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
 			`"damage_components":[`+
-			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[5],"flat_bonus":0,"damage_type":"slashing"},`+
-			`{"source":"ability","source_ref":"dnd5e:abilities:str","flat_bonus":3,"damage_type":"slashing"}]}`,
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
+			`"dice":{"notation":"d8","die_size":8,"original_rolls":[5],"final_rolls":[5],"subtotal":5}},"damage_type":"slashing"},`+
+			`{"source":"ability","roll":{"source":{"ref":"dnd5e:abilities:str","name":"Strength"},"modifier":3},"damage_type":"slashing"}]}`,
 		string(last.Payload))
 	s.Equal(session.AttackRef{Ref: "dnd5e:weapons:longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }
