@@ -301,10 +301,10 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 // TestTwoPlayersOneSession precisely because it needs low HP to force both
 // downs, which that suite's own survival walk deliberately avoids.
 //
-// fighter and barbarian both start at 10 HP — one hit (12 damage under
-// testDice{}, verified against duelAC 12 the same way every other fixture
-// in this package is) downs either outright. skel-1 spawns adjacent to
-// barbarian, one cell short of fighter.
+// fighter and barbarian both start at 8 HP — one hit (8 damage under the
+// lawful testDice{}, a d6 rolling its face plus the shortsword's 2, verified
+// the same way every other fixture in this package is) downs either outright.
+// skel-1 spawns adjacent to barbarian, one cell short of fighter.
 //
 // Round 1: barbarian's own turn passes. Fighter's own EndTurn drives skel-1,
 // whose ONE attack downs barbarian — the fight is NOT decided (fighter still
@@ -321,9 +321,12 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	fighter := armedFighter("fighter")
-	fighter.HitPoints, fighter.MaxHitPoints = 10, 10
+	// One hit downs either side: the lawful damage die caps the skeleton's
+	// shortsword at 6 + 2, so 8 hit points is the low-HP fixture the scene
+	// has always needed from the dice.
+	fighter.HitPoints, fighter.MaxHitPoints = 8, 8
 	barbarian := armedBarbarian("barbarian")
-	barbarian.HitPoints, barbarian.MaxHitPoints = 10, 10
+	barbarian.HitPoints, barbarian.MaxHitPoints = 8, 8
 	stream := &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{

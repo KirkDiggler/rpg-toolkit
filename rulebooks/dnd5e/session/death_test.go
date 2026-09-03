@@ -192,6 +192,18 @@ func (s *DeathTestSuite) swingUntilTheSkeletonFalls() {
 	const runaway = 25
 	for i := 0; i < runaway && s.storedHP("skeleton") > 0; i++ {
 		s.aliceSwings()
+		if s.storedHP("skeleton") <= 0 {
+			break
+		}
+		// The lawful damage die caps the longsword at 8 + 3, so the catalog
+		// skeleton outlives one swing — and alice gets one attack per turn.
+		// End her turn (the skeleton's own driven turn passes) so the next
+		// iteration swings on a fresh one.
+		_, err := s.mgr.EndTurn(context.Background(), &session.EndTurnInput{
+			Session: "sess", Member: "alice",
+			DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+		})
+		s.Require().NoError(err)
 	}
 	s.Require().Zero(s.storedHP("skeleton"), "the blows really landed on the stored sheet")
 }
@@ -424,6 +436,11 @@ func (s *DeathTestSuite) TestNothingReachesAClientUnnamed() {
 // attackers only, so a monster cannot be the one who does it.
 func (s *DeathTestSuite) duelAtZero() {
 	s.characters.byID["bob"].Level = 5
+	// The lawful damage die caps the longsword at 8 + 3 per swing, so two
+	// swings (22) must be enough to end alice: 12 hit points keeps the whole
+	// takedown inside bob's own two-attack turn, which is what the fixture
+	// always needed from the dice.
+	s.characters.byID["alice"].HitPoints = 12
 	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "sess", Encounter: "world",
 		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),
@@ -453,6 +470,9 @@ func (s *DeathTestSuite) duelAtZero() {
 // only thing in this package that can drive alice to zero.
 func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
 	s.characters.byID["bob"].Level = 5
+	// Same arithmetic duelAtZero keeps: 12 hit points lets bob's two-attack
+	// turn carry the takedown under the lawful damage die.
+	s.characters.byID["alice"].HitPoints = 12
 	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "sess", Encounter: "world",
 		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),

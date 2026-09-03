@@ -230,6 +230,12 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		Ability:                    ability,
 		TargetID:                   in.Target,
 		ObserverPassivePerceptions: in.ObserverPassivePerceptions,
+		// A machine that rolls carries its own roller (resolution's rule):
+		// Second Wind is the one activation that rolls, and it rolls with the
+		// HOST'S dice through the same seam every other roll takes. A nil here
+		// is refused before anything is paid, and there is no process-global
+		// fallback for this verb to inherit (rpg-toolkit#1427).
+		Roller: &diceSeam{roller: m.dice},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", translateResolution(err))
@@ -314,7 +320,9 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 
 // activationResults projects resolution's ordered activation effects onto the
 // encounter composition's primitive persistence carrier. Every field is copied
-// directly; the providers own kind validity, identity, arithmetic, and which
+// directly — including the healing's sourced roll calculation, deep-cloned
+// through rollCalculationFor so no captured trace aliases the provider's own
+// graph; the providers own kind validity, identity, arithmetic, and which
 // fields are meaningful for each kind.
 func activationResults(effects []resolution.ActivationEffect) []encounter.ActivationResult {
 	if len(effects) == 0 {
@@ -329,12 +337,11 @@ func activationResults(effects []resolution.ActivationEffect) []encounter.Activa
 			Ref:    effect.Ref,
 			Name:   effect.Name,
 
-			Amount:    effect.Amount,
-			Requested: effect.Requested,
-			Roll:      effect.Roll,
-			Modifier:  effect.Modifier,
-			Before:    effect.Before,
-			After:     effect.After,
+			Amount:      effect.Amount,
+			Requested:   effect.Requested,
+			Before:      effect.Before,
+			After:       effect.After,
+			Calculation: rollCalculationFor(effect.Calculation),
 
 			Description: effect.Description,
 			Reason:      effect.Reason,

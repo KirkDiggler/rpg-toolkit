@@ -4,12 +4,9 @@
 package session_test
 
 import (
-	"bytes"
 	"context"
-	cryptorand "crypto/rand"
 	"encoding/json"
 	"errors"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,24 +19,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// cryptoReaderMu serializes the narrow replacement below. Second Wind still
-// rolls through dice's package default (rpg-toolkit#1427); these tests pin the
-// story facts without trying to solve that separate provider seam.
-var cryptoReaderMu sync.Mutex
-
-func activateWithCryptoByte(
-	mgr *session.Manager, in *session.ActivateInput, value byte,
-) (*session.ActivateOutput, error) {
-	cryptoReaderMu.Lock()
-	defer cryptoReaderMu.Unlock()
-
-	original := cryptorand.Reader
-	cryptorand.Reader = bytes.NewReader([]byte{value})
-	defer func() { cryptorand.Reader = original }()
-
-	return mgr.Activate(context.Background(), in)
-}
 
 type activationEventScene struct {
 	mgr        *session.Manager
@@ -150,10 +129,11 @@ func TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly(t *testin
 		secondWindFighter(t, "alice", 30, 30), armedFighter("bob"))
 
 	id := activationSelector(t, scene.mgr, "alice", refs.Features.SecondWind().String())
-	// crypto/rand.Int reads [0,10); byte 6 therefore makes the d10 roll 7.
-	out, err := activateWithCryptoByte(scene.mgr, &session.ActivateInput{
+	// Second Wind rolls through the host's dice seam now (rpg-toolkit#1427):
+	// the scene's testDice hands the d10 its maximum face, deterministically.
+	out, err := scene.mgr.Activate(context.Background(), &session.ActivateInput{
 		Session: "sess", Member: "alice", DeclarationID: id,
-	}, 6)
+	})
 	require.NoError(t, err)
 	require.Equal(t, refs.Features.SecondWind().String(), out.Ability)
 	require.Equal(t, 6, out.Delivery.Events, "two beats times the complete three-member roster")
@@ -176,11 +156,33 @@ func TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly(t *testin
 		require.Nil(t, result.ConditionApplied)
 		require.Nil(t, result.ConditionRemoved)
 		require.Nil(t, result.CapacityGranted)
+		modifier := 3
 		require.Equal(t, &session.HealingAppliedBody{
-			Target: "alice", Amount: 0, Requested: 10, Roll: 7, Modifier: 3,
+			Target: "alice", Amount: 0, Requested: 13,
 			SourceRef: refs.Features.SecondWind().String(), SourceName: "Second Wind",
 			HPBefore: 30, HPAfter: 30,
-		}, result.HealingApplied, "the requested heal is retained even when the HP clamp applies zero")
+			Calculation: &session.RollCalculation{
+				Components: []session.RollComponent{
+					{
+						Source: session.RollSource{
+							Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
+						},
+						Dice: &session.DiceTrace{
+							Notation: "1d10", DieSize: 10,
+							OriginalRolls: []int{10}, FinalRolls: []int{10}, Subtotal: 10,
+						},
+					},
+					{
+						Source: session.RollSource{
+							Ref: refs.Classes.Fighter().String(), Name: "Fighter", Label: "Fighter level",
+						},
+						Modifier: &modifier,
+					},
+				},
+				Total: 13,
+			},
+		}, result.HealingApplied,
+			"the sourced roll trace is the healing's only roll record, retained even when the HP clamp applies zero")
 
 		catchUp, storyErr := scene.mgr.Story(context.Background(), &session.StoryInput{
 			Session: "sess", Member: recipient, FromSeq: live[0].Seq,

@@ -8,7 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -437,11 +439,13 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 // activationResultBody decodes one result payload and rejects fields belonging
 // to a second result shape. Raw field presence is checked separately from typed
 // values: JSON null is still present, while a required numeric zero remains a
-// valid, present value. The activation-specific object scan also rejects the
-// duplicate result keys that encoding/json would otherwise resolve by keeping
-// only the last value.
+// valid, present value. The strict object scan rejects duplicate keys at every
+// depth it walks, and the healing's roll representation is checked whole: a
+// payload carrying both the legacy scalars and a calculation, a calculation
+// whose arithmetic or pairing does not hold, or a forbidden null is refused
+// rather than guessed at.
 func activationResultBody(payload []byte) EventBody {
-	outer, ok := activationJSONObject(payload, false)
+	outer, ok := strictJSONObject(payload)
 	if !ok {
 		return nil
 	}
@@ -457,7 +461,7 @@ func activationResultBody(payload []byte) EventBody {
 		return nil
 	}
 
-	fields, ok := activationJSONObject(resultPayload, true)
+	fields, ok := strictJSONObject(resultPayload)
 	if !ok {
 		return nil
 	}
@@ -471,10 +475,12 @@ func activationResultBody(payload []byte) EventBody {
 
 		Amount    *int `json:"amount"`
 		Requested *int `json:"requested"`
-		Roll      *int `json:"roll"`
-		Modifier  *int `json:"modifier"`
-		Before    *int `json:"before"`
-		After     *int `json:"after"`
+		// Roll and Modifier are the legacy scalar representation, readable only
+		// from payloads written before roll traces.
+		Roll     *int `json:"roll"`
+		Modifier *int `json:"modifier"`
+		Before   *int `json:"before"`
+		After    *int `json:"after"`
 
 		Description *string `json:"description"`
 		Reason      *string `json:"reason"`
@@ -493,20 +499,46 @@ func activationResultBody(payload []byte) EventBody {
 	_, afterPresent := fields["after"]
 	_, descriptionPresent := fields["description"]
 	_, reasonPresent := fields["reason"]
+	calculationRaw, calculationPresent := fields["calculation"]
 
-	numericPresent := amountPresent || requestedPresent || rollPresent ||
-		modifierPresent || beforePresent || afterPresent
-	allNumericPresent := amountPresent && requestedPresent && rollPresent &&
-		modifierPresent && beforePresent && afterPresent &&
-		result.Amount != nil && result.Requested != nil && result.Roll != nil &&
-		result.Modifier != nil && result.Before != nil && result.After != nil
+	healingNumericsPresent := amountPresent && requestedPresent && beforePresent && afterPresent &&
+		result.Amount != nil && result.Requested != nil && result.Before != nil && result.After != nil
 	identityPresent := refPresent && namePresent &&
 		result.Ref != nil && *result.Ref != "" && result.Name != nil && *result.Name != ""
+	// Every healing-shaped numeric, legacy scalars included: a non-healing
+	// kind may carry none of them, and null presence still counts as
+	// presence (the raw key was written).
+	numericPresent := amountPresent || requestedPresent || rollPresent ||
+		modifierPresent || beforePresent || afterPresent
 
 	body := ActivationResultBody{Actor: p.Actor}
 	switch result.Kind {
 	case encounter.ResultHealingApplied:
-		if !identityPresent || !allNumericPresent || descriptionPresent || reasonPresent {
+		if !identityPresent || !healingNumericsPresent || descriptionPresent || reasonPresent {
+			return nil
+		}
+		if calculationPresent {
+			// The NEW representation: the trace IS the roll record, and it
+			// must carry the roll alone — a payload that also carries the
+			// legacy scalars is ambiguous and refused.
+			if rollPresent || modifierPresent {
+				return nil
+			}
+			calculation, ok := decodeRollCalculation(calculationRaw)
+			if !ok || calculation.Total != *result.Requested {
+				return nil
+			}
+			body.HealingApplied = &HealingAppliedBody{
+				Target: result.Target, Amount: *result.Amount, Requested: *result.Requested,
+				SourceRef: *result.Ref, SourceName: *result.Name,
+				HPBefore: *result.Before, HPAfter: *result.After,
+				Calculation: calculation,
+			}
+			return body
+		}
+		// The legacy representation: scalar roll facts, read as written and
+		// never refabricated into a trace.
+		if !rollPresent || !modifierPresent || result.Roll == nil || result.Modifier == nil {
 			return nil
 		}
 		body.HealingApplied = &HealingAppliedBody{
@@ -515,15 +547,16 @@ func activationResultBody(payload []byte) EventBody {
 			SourceRef: *result.Ref, SourceName: *result.Name,
 			HPBefore: *result.Before, HPAfter: *result.After,
 		}
+		return body
 	case encounter.ResultConditionApplied:
-		if !identityPresent || numericPresent || descriptionPresent || reasonPresent {
+		if !identityPresent || calculationPresent || numericPresent || descriptionPresent || reasonPresent {
 			return nil
 		}
 		body.ConditionApplied = &ConditionAppliedBody{
 			Target: result.Target, Ref: *result.Ref, Name: *result.Name,
 		}
 	case encounter.ResultConditionRemoved:
-		if !identityPresent || numericPresent || descriptionPresent || !reasonPresent ||
+		if !identityPresent || calculationPresent || numericPresent || descriptionPresent || !reasonPresent ||
 			result.Reason == nil || *result.Reason == "" {
 			return nil
 		}
@@ -531,8 +564,11 @@ func activationResultBody(payload []byte) EventBody {
 			Target: result.Target, Ref: *result.Ref, Name: *result.Name, Reason: *result.Reason,
 		}
 	case encounter.ResultCapacityGranted:
-		if refPresent || namePresent || numericPresent || reasonPresent || !descriptionPresent ||
+		if refPresent || namePresent || reasonPresent || calculationPresent || !descriptionPresent ||
 			result.Description == nil || *result.Description == "" {
+			return nil
+		}
+		if numericPresent {
 			return nil
 		}
 		body.CapacityGranted = &CapacityGrantedBody{
@@ -545,11 +581,17 @@ func activationResultBody(payload []byte) EventBody {
 	return body
 }
 
-// activationJSONObject retains raw activation-result field presence while
-// walking an object one key at a time. At the outer boundary only a repeated
-// result is forbidden; inside result every duplicate is ambiguous and refused.
-// No other event decoder uses this stricter policy.
-func activationJSONObject(payload []byte, rejectEveryDuplicate bool) (map[string]json.RawMessage, bool) {
+// strictJSONObject walks one JSON object key by key, retaining each field's
+// raw value and refusing the ambiguities encoding/json resolves silently:
+// a repeated key at the depth it walks, a payload that is not exactly one
+// JSON object, and any trailing content after it. It runs at the OUTER beat
+// payload boundary and over the nested bodies this package routes through
+// strict decoding — activation results, damage components, and their roll
+// graphs. Bodies no decoder routes through it (the shared attack-scalar
+// pass, advantage/disadvantage source entries) keep encoding/json's tolerant
+// decoding, because a body that says a field twice has no lawful reading
+// only where this package vouches for the shape.
+func strictJSONObject(payload []byte) (map[string]json.RawMessage, bool) {
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	opening, err := decoder.Token()
 	if err != nil || opening != json.Delim('{') {
@@ -566,7 +608,7 @@ func activationJSONObject(payload []byte, rejectEveryDuplicate bool) (map[string
 		if !isString {
 			return nil, false
 		}
-		if _, duplicate := fields[key]; duplicate && (rejectEveryDuplicate || key == "result") {
+		if _, duplicate := fields[key]; duplicate {
 			return nil, false
 		}
 
@@ -588,6 +630,359 @@ func activationJSONObject(payload []byte, rejectEveryDuplicate bool) (map[string
 	return fields, true
 }
 
+// isJSONNull reports whether a retained raw value is the null literal —
+// present, but carrying no value. Inside a decoded roll body null is never an
+// answer: the composition writes absence by omitting a key, so a null is a
+// malformed payload, not a zero.
+func isJSONNull(raw json.RawMessage) bool {
+	return string(raw) == "null"
+}
+
+// decodeRollCalculation decodes one persisted roll calculation into the SDK's
+// string-ref shape, refusing unknown keys, nulls, duplicate keys at every
+// nested depth, and any structural or arithmetic inconsistency the
+// composition's own validator replays: face ranges, ordered rerolls, kept
+// indices, subtotals, and the total.
+func decodeRollCalculation(raw json.RawMessage) (*RollCalculation, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok {
+		return nil, false
+	}
+	for key := range fields {
+		switch key {
+		case "components", "total":
+		default:
+			return nil, false
+		}
+	}
+	for _, value := range fields {
+		if isJSONNull(value) {
+			return nil, false
+		}
+	}
+	componentsRaw, componentsPresent := fields["components"]
+	totalRaw, totalPresent := fields["total"]
+	if !componentsPresent || !totalPresent {
+		return nil, false
+	}
+
+	var elements []json.RawMessage
+	if json.Unmarshal(componentsRaw, &elements) != nil {
+		return nil, false
+	}
+	calculation := &RollCalculation{}
+	for _, element := range elements {
+		component, ok := decodeRollComponent(element)
+		if !ok {
+			return nil, false
+		}
+		calculation.Components = append(calculation.Components, component)
+	}
+	if json.Unmarshal(totalRaw, &calculation.Total) != nil {
+		return nil, false
+	}
+	if encounter.ValidateRollCalculation(validationCalculationFor(calculation)) != nil {
+		return nil, false
+	}
+	return calculation, true
+}
+
+// decodeRollComponent decodes one persisted roll component, refusing unknown
+// keys, nulls, and duplicate keys, and — when the component rolls dice — every
+// structural and arithmetic inconsistency the composition's validator can
+// replay. A component that contributes no dice and no modifier (the
+// multiplier-only trait component's shape) carries only its sourced identity,
+// and there is no arithmetic to replay.
+func decodeRollComponent(raw json.RawMessage) (RollComponent, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok {
+		return RollComponent{}, false
+	}
+	for key := range fields {
+		switch key {
+		case "source", "dice", "modifier":
+		default:
+			return RollComponent{}, false
+		}
+	}
+	for _, value := range fields {
+		if isJSONNull(value) {
+			return RollComponent{}, false
+		}
+	}
+	sourceRaw, sourcePresent := fields["source"]
+	if !sourcePresent {
+		return RollComponent{}, false
+	}
+	source, ok := decodeRollSource(sourceRaw)
+	if !ok {
+		return RollComponent{}, false
+	}
+	component := RollComponent{Source: source}
+	if diceRaw, present := fields["dice"]; present {
+		trace, ok := decodeDiceTrace(diceRaw)
+		if !ok {
+			return RollComponent{}, false
+		}
+		component.Dice = trace
+	}
+	if modifierRaw, present := fields["modifier"]; present {
+		var modifier int
+		if json.Unmarshal(modifierRaw, &modifier) != nil {
+			return RollComponent{}, false
+		}
+		component.Modifier = &modifier
+	}
+	if component.Dice == nil && component.Modifier == nil {
+		// No rollable fact: nothing to replay. The source identity is all this
+		// decoder can vouch for, and the damage facts beside the roll — a
+		// multiplier, on the damage carrier — say whether the component
+		// contributed at all.
+		return component, true
+	}
+	if encounter.ValidateRollCalculation(&encounter.RollCalculation{
+		Components: []encounter.RollComponent{validationComponentFor(component)},
+		Total:      rollComponentTotal(component),
+	}) != nil {
+		return RollComponent{}, false
+	}
+	return component, true
+}
+
+// decodeRollSource decodes one sourced identity, requiring the canonical ref
+// and display name and refusing nulls, duplicates, and unknown keys.
+func decodeRollSource(raw json.RawMessage) (RollSource, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok {
+		return RollSource{}, false
+	}
+	for key := range fields {
+		switch key {
+		case "ref", "name", "label":
+		default:
+			return RollSource{}, false
+		}
+	}
+	for _, value := range fields {
+		if isJSONNull(value) {
+			return RollSource{}, false
+		}
+	}
+	var source RollSource
+	refRaw, refPresent := fields["ref"]
+	if !refPresent || json.Unmarshal(refRaw, &source.Ref) != nil || source.Ref == "" {
+		return RollSource{}, false
+	}
+	// Canonical ref syntax, the same law the composition's own write-time
+	// validation applies to every persisted roll source: a ref this package
+	// cannot parse is a corrupted record, not a fact to pass through. The
+	// dice-bearing paths replay it again through the composition's
+	// validator; a multiplier-only roll's identity is checked HERE, because
+	// there is no trace for that validator to reach it through.
+	if _, err := core.ParseString(source.Ref); err != nil {
+		return RollSource{}, false
+	}
+	nameRaw, namePresent := fields["name"]
+	if !namePresent || json.Unmarshal(nameRaw, &source.Name) != nil || strings.TrimSpace(source.Name) == "" {
+		return RollSource{}, false
+	}
+	if labelRaw, labelPresent := fields["label"]; labelPresent {
+		if json.Unmarshal(labelRaw, &source.Label) != nil {
+			return RollSource{}, false
+		}
+	}
+	return source, true
+}
+
+// decodeDiceTrace decodes one persisted dice pool trace. Faces, rerolls, and
+// kept indices are retained exactly as written; their arithmetic is replayed
+// by decodeRollComponent's validator, which owns the refusal.
+func decodeDiceTrace(raw json.RawMessage) (*DiceTrace, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok {
+		return nil, false
+	}
+	for key := range fields {
+		switch key {
+		case "notation", "die_size", "original_rolls", "rerolls", "final_rolls", "kept_indices", "subtotal":
+		default:
+			return nil, false
+		}
+	}
+	for _, value := range fields {
+		if isJSONNull(value) {
+			return nil, false
+		}
+	}
+	trace := &DiceTrace{}
+	notationRaw, notationPresent := fields["notation"]
+	if !notationPresent || json.Unmarshal(notationRaw, &trace.Notation) != nil {
+		return nil, false
+	}
+	dieSizeRaw, dieSizePresent := fields["die_size"]
+	if !dieSizePresent || json.Unmarshal(dieSizeRaw, &trace.DieSize) != nil {
+		return nil, false
+	}
+	originalRaw, originalPresent := fields["original_rolls"]
+	if !originalPresent || json.Unmarshal(originalRaw, &trace.OriginalRolls) != nil ||
+		len(trace.OriginalRolls) == 0 {
+		return nil, false
+	}
+	finalRaw, finalPresent := fields["final_rolls"]
+	if !finalPresent || json.Unmarshal(finalRaw, &trace.FinalRolls) != nil {
+		return nil, false
+	}
+	subtotalRaw, subtotalPresent := fields["subtotal"]
+	if !subtotalPresent || json.Unmarshal(subtotalRaw, &trace.Subtotal) != nil {
+		return nil, false
+	}
+	if rerollsRaw, rerollsPresent := fields["rerolls"]; rerollsPresent {
+		var elements []json.RawMessage
+		if json.Unmarshal(rerollsRaw, &elements) != nil {
+			return nil, false
+		}
+		for _, element := range elements {
+			reroll, ok := decodeDiceReroll(element)
+			if !ok {
+				return nil, false
+			}
+			trace.Rerolls = append(trace.Rerolls, reroll)
+		}
+	}
+	if keptRaw, keptPresent := fields["kept_indices"]; keptPresent {
+		if json.Unmarshal(keptRaw, &trace.KeptIndices) != nil {
+			return nil, false
+		}
+	}
+	return trace, true
+}
+
+// decodeDiceReroll decodes one ordered die replacement, requiring its index,
+// faces, and source; the replay that checks the faces against the pool is
+// decodeRollComponent's.
+func decodeDiceReroll(raw json.RawMessage) (DiceReroll, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok {
+		return DiceReroll{}, false
+	}
+	for key := range fields {
+		switch key {
+		case "die_index", "before", "after", "source":
+		default:
+			return DiceReroll{}, false
+		}
+	}
+	for _, value := range fields {
+		if isJSONNull(value) {
+			return DiceReroll{}, false
+		}
+	}
+	reroll := DiceReroll{}
+	dieIndexRaw, dieIndexPresent := fields["die_index"]
+	if !dieIndexPresent || json.Unmarshal(dieIndexRaw, &reroll.DieIndex) != nil {
+		return DiceReroll{}, false
+	}
+	beforeRaw, beforePresent := fields["before"]
+	if !beforePresent || json.Unmarshal(beforeRaw, &reroll.Before) != nil {
+		return DiceReroll{}, false
+	}
+	afterRaw, afterPresent := fields["after"]
+	if !afterPresent || json.Unmarshal(afterRaw, &reroll.After) != nil {
+		return DiceReroll{}, false
+	}
+	sourceRaw, sourcePresent := fields["source"]
+	if !sourcePresent {
+		return DiceReroll{}, false
+	}
+	source, ok := decodeRollSource(sourceRaw)
+	if !ok {
+		return DiceReroll{}, false
+	}
+	reroll.Source = source
+	return reroll, true
+}
+
+// rollComponentTotal totals one component's roll facts the way the
+// composition's validator does: the dice trace's authoritative subtotal plus
+// any present modifier. It never resumms recorded faces.
+func rollComponentTotal(component RollComponent) int {
+	total := 0
+	if component.Dice != nil {
+		total += component.Dice.Subtotal
+	}
+	if component.Modifier != nil {
+		total += *component.Modifier
+	}
+	return total
+}
+
+// validationComponentFor projects the SDK's string-ref roll component onto the
+// composition's validator shape. The two carry identical fields, so the
+// projection is mechanical — and one-directional: it exists so replay
+// arithmetic lives in exactly one module instead of a copy here.
+func validationComponentFor(component RollComponent) encounter.RollComponent {
+	return encounter.RollComponent{
+		Source: encounter.RollSource{
+			Ref: component.Source.Ref, Name: component.Source.Name, Label: component.Source.Label,
+		},
+		Dice:     validationDiceTraceFor(component.Dice),
+		Modifier: cloneInt(component.Modifier),
+	}
+}
+
+// validationCalculationFor projects the SDK's string-ref calculation onto the
+// composition's validator shape, components in order.
+func validationCalculationFor(calculation *RollCalculation) *encounter.RollCalculation {
+	if calculation == nil {
+		return nil
+	}
+	clone := &encounter.RollCalculation{Total: calculation.Total}
+	if calculation.Components != nil {
+		clone.Components = make([]encounter.RollComponent, len(calculation.Components))
+		for i, component := range calculation.Components {
+			clone.Components[i] = validationComponentFor(component)
+		}
+	}
+	return clone
+}
+
+// validationDiceTraceFor projects the SDK's dice trace onto the composition's
+// validator shape, or nil when there is none.
+func validationDiceTraceFor(trace *DiceTrace) *encounter.DiceTrace {
+	if trace == nil {
+		return nil
+	}
+	clone := &encounter.DiceTrace{
+		Notation:      trace.Notation,
+		DieSize:       trace.DieSize,
+		OriginalRolls: append([]int(nil), trace.OriginalRolls...),
+		FinalRolls:    append([]int(nil), trace.FinalRolls...),
+		KeptIndices:   append([]int(nil), trace.KeptIndices...),
+		Subtotal:      trace.Subtotal,
+	}
+	if trace.Rerolls != nil {
+		clone.Rerolls = make([]encounter.DiceReroll, len(trace.Rerolls))
+		for i, reroll := range trace.Rerolls {
+			clone.Rerolls[i] = encounter.DiceReroll{
+				DieIndex: reroll.DieIndex, Before: reroll.Before, After: reroll.After,
+				Source: encounter.RollSource{
+					Ref: reroll.Source.Ref, Name: reroll.Source.Name, Label: reroll.Source.Label,
+				},
+			}
+		}
+	}
+	return clone
+}
+
+// cloneInt returns an independently owned copy of value, nil-safe.
+func cloneInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 // beatAttack is the wire shape Record's payload writes an attack identity
 // as (attack.go's recordFor) — decoded here rather than re-derived, since
 // this package is the one that wrote it in the first place.
@@ -606,7 +1001,29 @@ func (a beatAttack) toRef() AttackRef {
 // Critical, a missed one carries neither, matching StruckBody/MissedBody's
 // own shapes. targets is always exactly one member for an attack
 // (recordFor's own shape); a beat with none does not type.
+//
+// The outer object is scanned strictly — a duplicate key at the payload's
+// own level has no lawful reading — and each damage component is decoded
+// through its own strict scan, which also rejects a payload carrying both
+// the legacy scalars and a roll trace, forbidden nulls, unknown keys inside
+// known roll bodies, and rolls whose arithmetic does not replay. A missed
+// beat carries no components by contract, so their raw presence is left to
+// the scalar pass.
 func structBody(payload []byte, wantAmount bool) EventBody {
+	outer, ok := strictJSONObject(payload)
+	if !ok {
+		return nil
+	}
+	for key, value := range outer {
+		switch key {
+		case "beat", "actor", "targets", "roll", "total", "against", "amount", "critical",
+			"attack", "damage_components", "advantage_sources", "disadvantage_sources":
+			if isJSONNull(value) {
+				return nil
+			}
+		}
+	}
+
 	var p struct {
 		Actor               string                 `json:"actor"`
 		Targets             []string               `json:"targets"`
@@ -616,7 +1033,6 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		Amount              int                    `json:"amount"`
 		Critical            bool                   `json:"critical"`
 		Attack              beatAttack             `json:"attack"`
-		DamageComponents    []DamageComponent      `json:"damage_components"`
 		AdvantageSources    []AttackModifierSource `json:"advantage_sources"`
 		DisadvantageSources []AttackModifierSource `json:"disadvantage_sources"`
 	}
@@ -628,12 +1044,26 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		// rather than an ambiguous one to guess at (Copilot, PR #1174).
 		return nil
 	}
+	// A missed beat carries NO damage components by contract (MissedBody's own
+	// doc): the composition only writes the key for a strike that landed. So
+	// on a miss the key's mere presence — well-formed or malformed, decoded or
+	// not — is a shape this decoder does not recognise, refused BEFORE any
+	// decode rather than decoded and silently dropped.
+	if !wantAmount {
+		if _, present := outer["damage_components"]; present {
+			return nil
+		}
+	}
+	components, ok := decodeDamageComponents(outer["damage_components"])
+	if !ok {
+		return nil
+	}
 	if wantAmount {
 		return StruckBody{
 			Attacker: p.Actor, Target: p.Targets[0],
 			Roll: p.Roll, Total: p.Total, Against: p.Against, Damage: p.Amount,
 			Attack: p.Attack.toRef(), Critical: p.Critical,
-			DamageComponents: p.DamageComponents,
+			DamageComponents: components,
 			AdvantageSources: p.AdvantageSources, DisadvantageSources: p.DisadvantageSources,
 		}
 	}
@@ -641,4 +1071,119 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		Attacker: p.Actor, Target: p.Targets[0],
 		Roll: p.Roll, Total: p.Total, Against: p.Against, Attack: p.Attack.toRef(),
 	}
+}
+
+// decodeDamageComponents decodes a struck beat's ordered damage components.
+// nil means the key was absent — the composition omits it when a swing dealt
+// no componented damage — and absence is legal.
+func decodeDamageComponents(raw json.RawMessage) ([]DamageComponent, bool) {
+	if raw == nil {
+		return nil, true
+	}
+	var elements []json.RawMessage
+	if json.Unmarshal(raw, &elements) != nil {
+		return nil, false
+	}
+	if len(elements) == 0 {
+		return nil, true
+	}
+	components := make([]DamageComponent, 0, len(elements))
+	for _, element := range elements {
+		component, ok := decodeDamageComponent(element)
+		if !ok {
+			return nil, false
+		}
+		components = append(components, component)
+	}
+	return components, true
+}
+
+// damageComponentKeys are the field names one persisted damage component may
+// carry: the trace representation's four, the multiplier beside them, and the
+// legacy scalars that a pre-trace payload reads back through.
+var damageComponentKeys = map[string]struct{}{
+	"source": {}, "roll": {}, "damage_type": {}, "multiplier": {},
+	"source_ref": {}, "dice": {}, "final_rolls": {}, "flat_bonus": {},
+}
+
+// decodeDamageComponent decodes one damage component in exactly one of its two
+// representations. A component carrying the roll trace AND any legacy scalar
+// is mixing two shapes and is refused; so is one carrying neither. The legacy
+// scalars are read as written — the decoder never fabricates a trace from
+// them.
+func decodeDamageComponent(raw json.RawMessage) (DamageComponent, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok {
+		return DamageComponent{}, false
+	}
+	for key := range fields {
+		if _, known := damageComponentKeys[key]; !known {
+			return DamageComponent{}, false
+		}
+	}
+	for _, value := range fields {
+		if isJSONNull(value) {
+			return DamageComponent{}, false
+		}
+	}
+
+	_, rollPresent := fields["roll"]
+	legacyPresent := false
+	for _, key := range []string{"source_ref", "dice", "final_rolls", "flat_bonus", "multiplier"} {
+		if _, present := fields[key]; present {
+			legacyPresent = true
+		}
+	}
+	if rollPresent {
+		// The NEW representation. A multiplier rides BESIDE the roll as a
+		// damage fact and the two are one shape together; the four scalar
+		// roll facts are the OLD shape's representation of the same question
+		// and cannot coexist with a trace.
+		for _, key := range []string{"source_ref", "dice", "final_rolls", "flat_bonus"} {
+			if _, present := fields[key]; present {
+				return DamageComponent{}, false
+			}
+		}
+	} else if !legacyPresent {
+		// Neither representation — with no roll and no legacy scalar fact,
+		// the multiplier among them, there is nothing to read.
+		return DamageComponent{}, false
+	}
+
+	var scalar struct {
+		Source     string   `json:"source"`
+		SourceRef  string   `json:"source_ref"`
+		Dice       string   `json:"dice"`
+		FinalRolls []int    `json:"final_rolls"`
+		FlatBonus  int      `json:"flat_bonus"`
+		DamageType string   `json:"damage_type"`
+		Multiplier *float64 `json:"multiplier"`
+	}
+	if json.Unmarshal(raw, &scalar) != nil || scalar.Source == "" {
+		return DamageComponent{}, false
+	}
+
+	component := DamageComponent{
+		Source: scalar.Source, DamageType: DamageType(scalar.DamageType), Multiplier: scalar.Multiplier,
+	}
+	if rollPresent {
+		roll, ok := decodeRollComponent(fields["roll"])
+		if !ok {
+			return DamageComponent{}, false
+		}
+		component.Roll = roll
+		// A sourced identity alone contributes nothing — the composition
+		// refuses a component with neither dice, a modifier, nor a multiplier
+		// at write time, and the multiplier-only shape is the one way a
+		// component with neither rollable fact has a story to tell.
+		if roll.Dice == nil && roll.Modifier == nil && component.Multiplier == nil {
+			return DamageComponent{}, false
+		}
+		return component, true
+	}
+	component.SourceRef = scalar.SourceRef
+	component.Dice = scalar.Dice
+	component.FinalRolls = scalar.FinalRolls
+	component.FlatBonus = scalar.FlatBonus
+	return component, true
 }

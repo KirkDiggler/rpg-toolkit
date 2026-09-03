@@ -39,6 +39,12 @@ import (
 // standingSeam answers the composition's standing question out of the sheets
 // this one verb holds.
 //
+// COMPILE-TIME PROOF that the seam carries the migration bridge: the
+// composition's constructors demand a Standing value that also assesses
+// participation (encounter.StandingWithParticipation), and this package's one
+// seam satisfies both from the same sheet lookup.
+var _ encounter.StandingWithParticipation = standingSeam{}
+
 // # It is per call, and it has to be
 //
 // The context rides on the struct, which is ordinarily a smell and is the right
@@ -145,6 +151,41 @@ func (s standingSeam) Standing(members []encounter.MemberID) ([]encounter.Member
 	}
 
 	return reported, nil
+}
+
+// Assess is the composition's richer participation question, answered from the
+// same down list Standing reports — the migration bridge encounter v0.51.0
+// defines for stored-data and resolution constructors
+// (encounter.StandingWithParticipation). One answer per member asked: a downed
+// member is not in contact, not conscious, and removed from the turn order;
+// everyone standing waits for their player or driver and stays in contact.
+// Party-defeat and keep-turn-order are group POLICY the rulebook owns, and
+// nothing here rules on them — both false, exactly as the composition's own
+// bridge answers, until the rulebook says otherwise (rpg-toolkit#959).
+func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	down, err := s.Standing(members)
+	if err != nil {
+		return nil, err
+	}
+	downSet := make(map[encounter.MemberID]bool, len(down))
+	for _, id := range down {
+		downSet[id] = true
+	}
+
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		member := encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		}
+		if downSet[id] {
+			member.Down = true
+			member.Contact = false
+			member.Conscious = false
+			member.Turn = encounter.TurnParticipationRemove
+		}
+		assessment.Members = append(assessment.Members, member)
+	}
+	return assessment, nil
 }
 
 // recordsFor gathers the stored record behind each member, split by the store

@@ -48,6 +48,12 @@ func (aggregateRecordEveryoneStanding) Standing(
 	return nil, nil
 }
 
+// Assess mirrors Standing: nobody is ever down, so every asked member waits
+// in contact and conscious (the StandingWithParticipation bridge).
+func (aggregateRecordEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	return assessmentFromDown(members, nil), nil
+}
+
 type aggregateRecordEveryoneSees struct{}
 
 func (aggregateRecordEveryoneSees) Sight(
@@ -79,6 +85,7 @@ func (d *scriptedDice) Roll(_ context.Context, _ int) (int, error) {
 // receives only the approved ordered subset and never modifier prose.
 func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	immunity := 0.0
+	zero := 0
 	struck := resolution.StrikeOutcome{
 		Roll: 15, Total: 20, TargetAC: 12, Hit: true, Damage: 9,
 		DamageInstances: []damage.Instance{
@@ -87,14 +94,31 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		},
 		DamageComponents: []dnd5eEvents.DamageComponent{
 			{
-				Source: dnd5eEvents.DamageSourceWeapon, SourceRef: refs.Weapons.Longsword(), Dice: "1d8",
-				OriginalDiceRolls: []int{2}, FinalDiceRolls: []int{4},
-				Rerolls:   []dnd5eEvents.RerollEvent{{DieIndex: 0, Before: 2, After: 4, Reason: "ignored"}},
-				FlatBonus: 0, DamageType: damage.Slashing,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice: &dnd5eEvents.DiceTrace{
+						Notation: "d8", DieSize: 8, OriginalRolls: []int{2}, FinalRolls: []int{4},
+						Rerolls: []dnd5eEvents.DiceReroll{{
+							DieIndex: 0, Before: 2, After: 4,
+							Source: dnd5eEvents.RollSource{
+								Ref:   refs.Conditions.FightingStyleGreatWeaponFighting(),
+								Name:  "Great Weapon Fighting",
+								Label: "reroll",
+							},
+						}},
+						Subtotal: 4,
+					},
+					Modifier: &zero,
+				},
+				DamageType: damage.Slashing,
 				Properties: []damage.Property{damage.AddsAttackAbilityModifier}, IsCritical: true,
 			},
 			{
-				Source: dnd5eEvents.DamageSourceMonsterTrait, SourceRef: refs.MonsterTraits.Immunity(),
+				Source: dnd5eEvents.DamageSourceMonsterTrait,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+				},
 				DamageType: damage.Slashing, Multiplier: &immunity,
 			},
 		},
@@ -139,17 +163,261 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
 			`"damage_components":[`+
-			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[4],"flat_bonus":0,"damage_type":"slashing"},`+
-			`{"source":"monster_trait","source_ref":"dnd5e:monster_traits:immunity","flat_bonus":0,"damage_type":"slashing","multiplier":0}],`+
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
+			`"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],`+
+			`"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting","label":"reroll"}}],"subtotal":4},"modifier":0},`+
+			`"damage_type":"slashing"},`+
+			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}],`+
 			`"advantage_sources":[{"source_ref":"dnd5e:conditions:hidden","source_id":"alice"}],`+
 			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}]}`,
 		payload,
 	)
 	for _, excluded := range []string{
-		`"original_dice_rolls"`, `"rerolls"`, `"properties"`, `"is_critical"`, `"reason"`,
+		`"original_dice_rolls"`, `"properties"`, `"is_critical"`, `"reason"`, `"flat_bonus"`,
 	} {
 		require.NotContains(t, payload, excluded)
 	}
+}
+
+// TestRecordProjectsCriticalStrikeTrace runs the whole seam for a CRITICAL
+// strike whose provider hands over the ALREADY-RESOLVED doubled physical
+// trace — 2d8 as rolled, faces and subtotal settled upstream. Session rolls
+// and recalculates nothing: it projects the provider's trace through
+// Record → payload → projectEntry (the one projection live delivery and
+// Story catch-up both use) and asserts the doubled notation, faces, subtotal,
+// and the sourced modifier identity survive byte-honest — with no legacy
+// scalar fields fabricated anywhere on the way.
+func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
+	three := 3
+	struck := resolution.StrikeOutcome{
+		Roll: 20, Total: 25, TargetAC: 12, Hit: true, Critical: true, Damage: 14,
+		DamageComponents: []dnd5eEvents.DamageComponent{
+			{
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice: &dnd5eEvents.DiceTrace{
+						Notation: "2d8", DieSize: 8,
+						OriginalRolls: []int{5, 6}, FinalRolls: []int{5, 6}, Subtotal: 11,
+					},
+				},
+				DamageType: damage.Slashing,
+			},
+			{
+				Source: dnd5eEvents.DamageSourceAbility,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{
+						Ref: refs.Abilities.Strength(), Name: "Strength",
+					},
+					Modifier: &three,
+				},
+				DamageType: damage.Slashing,
+			},
+		},
+	}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{},
+		Sight:      aggregateRecordEveryoneSees{},
+		Standing:   aggregateRecordEveryoneStanding{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
+	_, err = enc.Record(recordFor(
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition,
+	))
+	require.NoError(t, err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: "bob"})
+	require.NoError(t, err)
+	require.NotEmpty(t, story)
+	entry := story[len(story)-1]
+	event := projectEntry("sess", "bob", entry, 1)
+	require.Equal(t, EventStruck, event.Kind)
+	require.JSONEq(t,
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":20,"total":25,"against":12,"amount":14,`+
+			`"critical":true,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
+			`"damage_components":[`+
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
+			`"dice":{"notation":"2d8","die_size":8,"original_rolls":[5,6],"final_rolls":[5,6],"subtotal":11}},"damage_type":"slashing"},`+
+			`{"source":"ability","roll":{"source":{"ref":"dnd5e:abilities:str","name":"Strength"},"modifier":3},"damage_type":"slashing"}]}`,
+		string(event.Payload))
+
+	got, ok := event.Body.(StruckBody)
+	require.True(t, ok, "the projected critical strike carries StruckBody, got %T", event.Body)
+	require.True(t, got.Critical)
+	require.Equal(t, 14, got.Damage)
+	require.Len(t, got.DamageComponents, 2)
+	require.Equal(t, RollComponent{
+		Source: RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+		Dice: &DiceTrace{
+			Notation: "2d8", DieSize: 8,
+			OriginalRolls: []int{5, 6}, FinalRolls: []int{5, 6}, Subtotal: 11,
+		},
+	}, got.DamageComponents[0].Roll, "the doubled physical trace survives projection whole")
+	require.Equal(t, RollComponent{
+		Source: RollSource{Ref: "dnd5e:abilities:str", Name: "Strength"}, Modifier: &three,
+	}, got.DamageComponents[1].Roll, "the modifier source survives with its value")
+	for _, component := range got.DamageComponents {
+		require.Empty(t, component.SourceRef, "no legacy identity is fabricated")
+		require.Empty(t, component.Dice, "no legacy notation is fabricated")
+		require.Nil(t, component.FinalRolls, "no legacy faces are fabricated")
+		require.Zero(t, component.FlatBonus, "no legacy bonus is fabricated")
+	}
+}
+
+// TestRecordDamageComponentsCloneEveryRollFact pins the persistence adapter's
+// whole shape: every face list, ordered reroll with its source and label, the
+// zero-modifier pointer presence, the subtotal, and the multiplier-only trait
+// component are copied one-for-one — and NOTHING aliases. A provider mutating
+// its published graph after the projection cannot rewrite what was recorded.
+func TestRecordDamageComponentsCloneEveryRollFact(t *testing.T) {
+	immunity := 0.0
+	zero := 0
+	in := []dnd5eEvents.DamageComponent{
+		{
+			Source: dnd5eEvents.DamageSourceWeapon,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref: refs.Weapons.Longsword(), Name: "Longsword", Label: "primary",
+				},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation: "2d6", DieSize: 6,
+					OriginalRolls: []int{2, 5},
+					Rerolls: []dnd5eEvents.DiceReroll{{
+						DieIndex: 0, Before: 2, After: 5,
+						Source: dnd5eEvents.RollSource{
+							Ref:   refs.Conditions.FightingStyleGreatWeaponFighting(),
+							Name:  "Great Weapon Fighting",
+							Label: "reroll",
+						},
+					}},
+					FinalRolls: []int{5, 5},
+					Subtotal:   10,
+				},
+				Modifier: &zero,
+			},
+			DamageType: damage.Slashing,
+		},
+		{
+			Source: dnd5eEvents.DamageSourceMonsterTrait,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+			},
+			DamageType: damage.Slashing, Multiplier: &immunity,
+		},
+	}
+
+	out := recordDamageComponents(in)
+	require.Len(t, out, 2)
+
+	weapon := out[0]
+	require.Equal(t, "weapon", weapon.Source)
+	require.Equal(t, "slashing", weapon.DamageType)
+	require.Equal(t, "dnd5e:weapons:longsword", weapon.Roll.Source.Ref)
+	require.Equal(t, "Longsword", weapon.Roll.Source.Name)
+	require.Equal(t, "primary", weapon.Roll.Source.Label)
+	require.NotNil(t, weapon.Roll.Modifier, "a present zero modifier stays present")
+	require.Zero(t, *weapon.Roll.Modifier)
+	require.NotNil(t, weapon.Roll.Dice)
+	require.Equal(t, "2d6", weapon.Roll.Dice.Notation)
+	require.Equal(t, []int{2, 5}, weapon.Roll.Dice.OriginalRolls)
+	require.Equal(t, []int{5, 5}, weapon.Roll.Dice.FinalRolls)
+	require.Equal(t, 10, weapon.Roll.Dice.Subtotal)
+	require.Len(t, weapon.Roll.Dice.Rerolls, 1)
+	require.Equal(t, encounter.DiceReroll{
+		DieIndex: 0, Before: 2, After: 5,
+		Source: encounter.RollSource{
+			Ref:  "dnd5e:conditions:fighting_style_great_weapon_fighting",
+			Name: "Great Weapon Fighting", Label: "reroll",
+		},
+	}, weapon.Roll.Dice.Rerolls[0])
+
+	trait := out[1]
+	require.Equal(t, "monster_trait", trait.Source)
+	require.Nil(t, trait.Roll.Dice, "the multiplier-only component rolls nothing")
+	require.Nil(t, trait.Roll.Modifier)
+	require.Equal(t, "dnd5e:monster_traits:immunity", trait.Roll.Source.Ref)
+	require.NotNil(t, trait.Multiplier)
+	require.Zero(t, *trait.Multiplier)
+
+	// No aliasing in either direction: mutating the provider's graph after the
+	// projection cannot rewrite the recorded carrier, and the carrier's own
+	// pointers are fresh.
+	in[0].Roll.Dice.OriginalRolls[0] = 99
+	in[0].Roll.Dice.FinalRolls[0] = 99
+	in[0].Roll.Dice.Rerolls[0].After = 99
+	in[0].Roll.Dice.Rerolls[0].Source.Name = "mutated"
+	in[0].Roll.Modifier = nil
+	in[1].Roll.Source.Name = "mutated"
+	*in[1].Multiplier = 9.0
+	require.Equal(t, []int{2, 5}, out[0].Roll.Dice.OriginalRolls)
+	require.Equal(t, []int{5, 5}, out[0].Roll.Dice.FinalRolls)
+	require.Equal(t, 5, out[0].Roll.Dice.Rerolls[0].After)
+	require.Equal(t, "Great Weapon Fighting", out[0].Roll.Dice.Rerolls[0].Source.Name)
+	require.NotNil(t, out[0].Roll.Modifier, "the recorded zero modifier is independently owned")
+	require.Zero(t, *out[0].Roll.Modifier)
+	require.Equal(t, "Immunity", out[1].Roll.Source.Name)
+	require.Zero(t, *out[1].Multiplier)
+	require.NotSame(t, in[0].Roll.Dice, out[0].Roll.Dice)
+	require.NotSame(t, in[0].Roll.Modifier, out[0].Roll.Modifier)
+	require.NotSame(t, in[1].Multiplier, out[1].Multiplier)
+}
+
+// TestRollCalculationForClonesComponentsInOrder pins the healing calculation's
+// persistence projection: components in production order, label carried, every
+// pointer fresh — a provider mutation after capture cannot rewrite the record.
+func TestRollCalculationForClonesComponentsInOrder(t *testing.T) {
+	zero := 0
+	three := 3
+	in := &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation: "1d10", DieSize: 10,
+					OriginalRolls: []int{7}, FinalRolls: []int{7}, Subtotal: 7,
+				},
+			},
+			{
+				Source: dnd5eEvents.RollSource{
+					Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level",
+				},
+				Modifier: &three,
+			},
+		},
+		Total: 10,
+	}
+
+	out := rollCalculationFor(in)
+	require.NotNil(t, out)
+	require.Len(t, out.Components, 2)
+	require.Equal(t, 10, out.Total)
+	require.Equal(t, "dnd5e:features:second_wind", out.Components[0].Source.Ref)
+	require.Equal(t, []int{7}, out.Components[0].Dice.OriginalRolls)
+	require.Equal(t, "dnd5e:classes:fighter", out.Components[1].Source.Ref)
+	require.Equal(t, "Fighter level", out.Components[1].Source.Label)
+	require.NotNil(t, out.Components[1].Modifier)
+	require.Equal(t, 3, *out.Components[1].Modifier)
+
+	in.Components[0].Dice.OriginalRolls[0] = 99
+	in.Components[1].Source.Label = "mutated"
+	in.Components[1].Modifier = &zero
+	require.Equal(t, []int{7}, out.Components[0].Dice.OriginalRolls)
+	require.Equal(t, "Fighter level", out.Components[1].Source.Label)
+	require.Equal(t, 3, *out.Components[1].Modifier)
+	require.Nil(t, rollCalculationFor(nil))
 }
 
 // halfBrokenCharacters writes the first sheet and refuses the second.

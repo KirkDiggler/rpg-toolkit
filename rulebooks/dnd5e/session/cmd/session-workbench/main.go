@@ -105,6 +105,18 @@ func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberI
 	return nil, nil
 }
 
+// Assess mirrors Standing: nobody is ever down, so every asked member waits
+// in contact and conscious.
+func (encEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		assessment.Members = append(assessment.Members, encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		})
+	}
+	return assessment, nil
+}
+
 type encOrderAsGiven struct{}
 
 func (encOrderAsGiven) RollInitiative(m []encounter.MemberID) ([]encounter.MemberID, error) {

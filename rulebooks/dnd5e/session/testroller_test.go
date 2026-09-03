@@ -24,11 +24,26 @@ type testDice struct {
 	calls *int
 }
 
-func (d testDice) Roll(_ context.Context, _ int) (int, error) {
+// Roll returns min(size, 10): deterministic, die-size-aware, and NOT the
+// same number for every die. A d8 rolls its own face (8), a d10 rolls 10, and
+// a d20 keeps the 10 every scene here was authored against.
+//
+// The face it returns must be INSIDE the die: a d8 that rolled a 10 cannot
+// have happened as told, and the strict roll-trace decoders downstream refuse
+// such a face (the same law every trace carries). An out-of-range face was
+// always a lie the old scalar payloads could hide; a trace makes the fixture
+// roll the die it is asked for.
+func (d testDice) Roll(_ context.Context, size int) (int, error) {
 	if d.calls != nil {
 		*d.calls++
 	}
-	return 10, nil
+	if size < 1 {
+		size = 1
+	}
+	if size > 10 {
+		return 10, nil
+	}
+	return size, nil
 }
 
 // sequenceDice hands out a scripted series of rolls, in order.
@@ -83,6 +98,33 @@ type encEveryoneStanding struct{}
 
 func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
 	return nil, nil
+}
+
+// Assess mirrors Standing: nobody is ever down, so every asked member waits
+// in contact and conscious.
+func (encEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	return assessmentFromDown(members, nil), nil
+}
+
+func assessmentFromDown(members, reported []encounter.MemberID) *encounter.ParticipationAssessment {
+	down := make(map[encounter.MemberID]bool, len(reported))
+	for _, id := range reported {
+		down[id] = true
+	}
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		member := encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		}
+		if down[id] {
+			member.Down = true
+			member.Contact = false
+			member.Conscious = false
+			member.Turn = encounter.TurnParticipationRemove
+		}
+		assessment.Members = append(assessment.Members, member)
+	}
+	return assessment
 }
 
 // encPassDriver is the TurnDriver capability the authored-world fixtures
