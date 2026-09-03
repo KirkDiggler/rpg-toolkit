@@ -80,6 +80,11 @@ type StoryInput struct {
 	FromSeq uint64
 }
 
+type rosterCharacterRow struct {
+	data *character.Data
+	err  error
+}
+
 // Roster returns the current public player and monster identities in encounter
 // order. It reloads every player character from the repository, strictly loads
 // each character so corrupt appearance data is refused, and projects only
@@ -114,27 +119,48 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 		return nil, fmt.Errorf("roster: %w", translate(err))
 	}
 
-	members := make([]PublicMember, 0, len(roster))
+	// Authorization is deliberately a separate pass. A caller who owns no
+	// seat must not learn whether another row is missing or corrupt, while a
+	// seated caller must still receive those integrity failures below.
+	characters := make(map[string]rosterCharacterRow)
 	seated := false
+	for _, member := range roster {
+		if member.Kind != encounter.KindPlayer {
+			continue
+		}
+		id := string(member.ID)
+		stored, fetchErr := m.fetchCharacterData(ctx, "roster", id)
+		characters[id] = rosterCharacterRow{data: stored, err: fetchErr}
+		if fetchErr == nil && stored.PlayerID == in.Player {
+			seated = true
+		}
+	}
+	if !seated {
+		return nil, fmt.Errorf("roster: %q: %w", in.Player, ErrNotSeated)
+	}
+
+	npcs, err := indexRosterNPCs(data.NPCs)
+	if err != nil {
+		return nil, fmt.Errorf("roster: %w", err)
+	}
+
+	members := make([]PublicMember, 0, len(roster))
 	for _, member := range roster {
 		id := string(member.ID)
 		switch member.Kind {
 		case encounter.KindPlayer:
-			stored, err := m.fetchCharacterData(ctx, "roster", id)
-			if err != nil {
-				return nil, fmt.Errorf("roster: %w", err)
+			row := characters[id]
+			if row.err != nil {
+				return nil, fmt.Errorf("roster: %w", row.err)
 			}
-			loaded, err := character.Load(ctx, stored)
+			loaded, err := character.Load(ctx, row.data)
 			if err != nil {
 				return nil, fmt.Errorf("roster: character %q: %w: %v", id, ErrBadCharacter, err)
 			}
-			if stored.PlayerID == in.Player {
-				seated = true
-			}
-			members = append(members, projectRosterCharacter(member, stored, loaded))
+			members = append(members, projectRosterCharacter(member, row.data, loaded))
 
 		case encounter.KindMonster:
-			projected, err := projectRosterMonster(member, data.NPCs)
+			projected, err := projectRosterMonster(member, npcs)
 			if err != nil {
 				return nil, fmt.Errorf("roster: %w", err)
 			}
@@ -148,9 +174,6 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 		}
 	}
 
-	if !seated {
-		return nil, fmt.Errorf("roster: %q: %w", in.Player, ErrNotSeated)
-	}
 	return &RosterOutput{Members: members}, nil
 }
 

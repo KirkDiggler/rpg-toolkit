@@ -170,6 +170,7 @@ func TestRosterIsReadOnlyAndPreservesEncounterOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, fixture.sessions.saves)
 	require.Zero(t, fixture.encounters.saves)
+	require.Zero(t, fixture.characters.saves)
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
 		Session: "sess", Player: "player-alice",
@@ -262,6 +263,74 @@ func TestRosterRefusesAnUnauthenticatedPrincipal(t *testing.T) {
 	require.Nil(t, out)
 }
 
+func TestRosterOutsiderCannotObserveUnrelatedRosterIntegrity(t *testing.T) {
+	cases := []struct {
+		name string
+		edit func(*rosterFixture)
+		want error
+	}{
+		{
+			name: "missing character",
+			edit: func(f *rosterFixture) { delete(f.characters.byID, "bob") },
+			want: session.ErrNoCharacter,
+		},
+		{
+			name: "malformed character",
+			edit: func(f *rosterFixture) {
+				f.characters.byID["bob"].Appearance = rosterAppearance()
+				f.characters.byID["bob"].Appearance.Hair.ColorSRGB = rosterPtr(uint32(0x1000000))
+			},
+			want: session.ErrBadCharacter,
+		},
+		{
+			name: "bad npc",
+			edit: func(f *rosterFixture) { f.sessions.byID["sess"].NPCs[0].Name = "" },
+			want: session.ErrBadNPC,
+		},
+		{
+			name: "unknown member kind",
+			edit: func(f *rosterFixture) {
+				for i := range f.encounters.byID["world"].Members {
+					if f.encounters.byID["world"].Members[i].ID == "bob" {
+						f.encounters.byID["world"].Members[i].Kind = encounter.MemberKind("summoned")
+					}
+				}
+			},
+			want: session.ErrInvalidWorld,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newRosterFixture(t)
+			tc.edit(fixture)
+
+			out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
+				Session: "sess", Player: "player-outsider",
+			})
+			require.ErrorIs(t, err, session.ErrNotSeated)
+			require.Nil(t, out)
+
+			out, err = fixture.manager.Roster(context.Background(), &session.RosterInput{
+				Session: "sess", Player: "player-alice",
+			})
+			require.ErrorIs(t, err, tc.want)
+			require.Nil(t, out)
+		})
+	}
+}
+
+func TestRosterReadsEachPlayerOncePerCall(t *testing.T) {
+	fixture := newRosterFixture(t)
+
+	_, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
+		Session: "sess", Player: "player-alice",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, fixture.characters.asked["alice"])
+	require.Equal(t, 1, fixture.characters.asked["bob"])
+}
+
 func TestRosterRefusesMissingCharacter(t *testing.T) {
 	fixture := newRosterFixture(t)
 	delete(fixture.characters.byID, "bob")
@@ -307,7 +376,7 @@ func TestRosterRefusesANilCharacterRepositoryResult(t *testing.T) {
 	out, err := manager.Roster(context.Background(), &session.RosterInput{
 		Session: "sess", Player: "player-alice",
 	})
-	require.ErrorIs(t, err, session.ErrBadRepository)
+	require.ErrorIs(t, err, session.ErrNotSeated)
 	require.Nil(t, out)
 }
 

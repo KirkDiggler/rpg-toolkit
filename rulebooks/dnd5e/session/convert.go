@@ -243,34 +243,35 @@ func projectRosterCharacter(member encounter.Member, data *character.Data, loade
 	}
 }
 
-func projectRosterMonster(member encounter.Member, npcs []monster.Data) (PublicMember, error) {
-	seen := make(map[string]struct{}, len(npcs))
-	var match *monster.Data
+func indexRosterNPCs(npcs []monster.Data) (map[string]*monster.Data, error) {
+	indexed := make(map[string]*monster.Data, len(npcs))
 	for i := range npcs {
 		stored := &npcs[i]
 		if stored.ID == "" || stored.Name == "" || stored.Ref == nil {
-			return PublicMember{}, fmt.Errorf("roster: npc at index %d has corrupt identity: %w", i, ErrBadNPC)
+			return nil, fmt.Errorf("roster: npc at index %d has corrupt identity: %w", i, ErrBadNPC)
 		}
-		if _, ok := seen[stored.ID]; ok {
-			return PublicMember{}, fmt.Errorf("roster: duplicate npc %q: %w", stored.ID, ErrBadNPC)
+		if _, ok := indexed[stored.ID]; ok {
+			return nil, fmt.Errorf("roster: duplicate npc %q: %w", stored.ID, ErrBadNPC)
 		}
-		seen[stored.ID] = struct{}{}
 		if err := stored.Ref.IsValid(); err != nil {
-			return PublicMember{}, fmt.Errorf("roster: npc %q has corrupt ref: %w: %v", stored.ID, ErrBadNPC, err)
+			return nil, fmt.Errorf("roster: npc %q has corrupt ref: %w: %v", stored.ID, ErrBadNPC, err)
 		}
-		if stored.ID == string(member.ID) {
-			match = stored
-		}
+		indexed[stored.ID] = stored
 	}
-	if match == nil {
+	return indexed, nil
+}
+
+func projectRosterMonster(member encounter.Member, npcs map[string]*monster.Data) (PublicMember, error) {
+	stored, ok := npcs[string(member.ID)]
+	if !ok {
 		return PublicMember{}, fmt.Errorf("roster: monster %q: %w", member.ID, ErrNoSheet)
 	}
 
 	return PublicMember{
 		ID:            string(member.ID),
 		Kind:          KindMonster,
-		Name:          match.Name,
-		MonsterRef:    match.Ref.String(),
+		Name:          stored.Name,
+		MonsterRef:    stored.Ref.String(),
 		Customization: Customization{},
 	}, nil
 }
