@@ -130,11 +130,16 @@ var (
 	// nothing under it, and an author who wrote it meant to paint something.
 	ErrRegionEmpty = errors.New("region has no cells")
 
-	// ErrRegionOverlap is returned when a cell belongs to two regions, or is
-	// listed twice by one (W2 — regions never overlap). Ownership has to be
+	// ErrRegionOverlap is returned when a cell is claimed twice: by two
+	// regions, twice by one (W2 — regions never overlap), by both a region
+	// and [FieldInput.Scenery], or twice by the scenery. Ownership has to be
 	// unique for [Encounter.RegionAt] to be an answer rather than a guess,
 	// and a cell painted twice is the one defect the builder's repaint can
 	// produce without noticing.
+	//
+	// Scenery is the same defect at one remove (rpg-project#360): "nobody
+	// owns this cell" is an ANSWER, so a cell that is both a region's and
+	// nobody's is a cell with two of them.
 	ErrRegionOverlap = errors.New("regions overlap")
 
 	// ErrRegionArchetypeMissing is returned when a region carries no
@@ -162,17 +167,21 @@ var (
 	// orientation and not the other.
 	ErrEdgeNotAdjacent = errors.New("edge joins cells that are not adjacent")
 
-	// ErrEdgeOffFloor is returned when a wall's endpoint is a cell no region
-	// owns. The envelope is implied, never written: a crossing from floor into
-	// void is a crossing nobody can make, and [Void] already says whether
-	// sight crosses it, so a wall drawn along the field's rim has nothing to
-	// stand on and is refused rather than silently dropped.
+	// ErrEdgeOffFloor is returned when a wall's endpoint is a cell that is not
+	// floor — neither a region's nor [FieldInput.Scenery]'s. The envelope is
+	// implied, never written: a crossing from floor into void is a crossing
+	// nobody can make, and [Void] already says whether sight crosses it, so a
+	// wall drawn along the field's rim has nothing to stand on and is refused
+	// rather than silently dropped.
+	//
+	// SCENERY IS SOMETHING TO STAND ON (rpg-project#360). A wall may run
+	// along a strip nobody walks; what it may not do is stand in the void.
 	ErrEdgeOffFloor = errors.New("edge endpoint is not floor")
 
-	// ErrDoorEdgeOffFloor is returned when a door's endpoint is a cell no
-	// region owns — ErrEdgeOffFloor's rule for a door (#880: a door hanging in
-	// the void is a wall drawn across nothing). Wrapped together with
-	// ErrBadDoor, so a caller may match either.
+	// ErrDoorEdgeOffFloor is returned when a door's endpoint is a cell that is
+	// not floor — ErrEdgeOffFloor's rule for a door (#880: a door hanging in
+	// the void is a wall drawn across nothing), scenery included as floor.
+	// Wrapped together with ErrBadDoor, so a caller may match either.
 	ErrDoorEdgeOffFloor = errors.New("door edge endpoint is not floor")
 
 	// ErrInBubble is returned when a verb requires its member NOT be in a

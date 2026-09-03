@@ -420,8 +420,12 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 				return fmt.Errorf("door %q edge (%g,%g)-(%g,%g): %w: %w",
 					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, ErrBadDoor, ErrEdgeNotAdjacent)
 			}
+			// FLOOR, NOT A REGION (rpg-project#360): a door may open onto
+			// a strip of scenery, the same way a wall may stand on one. What
+			// is refused is a door hanging in the VOID, which is what this
+			// check has always been about (#880).
 			for _, end := range []spatial.Position{edge.From, edge.To} {
-				if _, floor := f.regionOf(end); !floor {
+				if !f.isFloor(end) {
 					return fmt.Errorf("door %q edge endpoint (%g,%g): %w: %w",
 						d.ID, end.X, end.Y, ErrBadDoor, ErrDoorEdgeOffFloor)
 				}

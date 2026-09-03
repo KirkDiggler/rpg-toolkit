@@ -11,7 +11,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// compilefield.go is THE REGIONS ARE THE FLOOR (rpg-project#256).
+// compilefield.go is THE REGIONS ARE THE FLOOR (rpg-project#256), and since
+// rpg-project#360 the scenery is the rest of it.
+//
+// A cell carries two facts: an OWNER, which decides visibility, lighting and
+// meaning, and whether anyone can STAND on it. The regions give both. Scenery
+// gives only the second half's absence: floor that belongs to nobody, that a
+// wall may stand on and a sightline crosses, and that no foot ever touches.
+// [field.isFloor] is the one answer to the first question and [field.regionOf]
+// to the second, and every caller in this package asks whichever it means.
 //
 // One function, [compileField], turns an authored [FieldInput] into the one
 // thing this composition runs on: a validated, absolute picture of the floor
@@ -52,6 +60,10 @@ type field struct {
 	props   []PropInput
 	walls   []WallInput
 
+	// scenery is the authored scenery cells, deep-copied, in the AUTHORED
+	// frame — what ToData writes back out, beside regions/props/walls.
+	scenery []spatial.Position
+
 	void        Void
 	orientation Orientation
 
@@ -65,7 +77,15 @@ type field struct {
 	// than re-derived per call.
 	regionCells map[RegionID][]spatial.Position
 
-	// cells is the whole floor, absolute axial, sorted by coordinate.
+	// sceneryCells is THE OTHER HALF OF THE MASK: every scenery cell,
+	// absolute axial (rpg-project#360). A cell here is FLOOR that no region
+	// owns — a wall may stand on it, a prop may sit on it, a sightline
+	// crosses it, and nobody's feet ever touch it. Disjoint from owner by
+	// construction; compileField refuses the field otherwise.
+	sceneryCells map[spatial.Position]bool
+
+	// cells is the whole floor — owner ∪ scenery — absolute axial, sorted by
+	// coordinate.
 	cells []spatial.Position
 
 	// width and height are the span of the one hex grid that holds the
@@ -90,11 +110,12 @@ const (
 // (empty, then per region: empty or duplicate ID, no cells, no archetype, no
 // lighting, an intensity outside [0,1], the field's cell budget, a
 // non-integral or out-of-range cell, a cell owned twice — within one region
-// or across two); props (no ref, an unsaid blocking answer, a non-integral
-// cell, a cell no region owns, two props on one cell); walls (a non-integral
-// endpoint, an endpoint that is not floor, endpoints that are not adjacent
-// under the orientation, the same edge twice). Doors are checked by the
-// caller through validateDoorInputs, against the result.
+// or across two); the scenery (a non-integral cell, one listed twice, one a
+// region already owns); props (no ref, an unsaid blocking answer, a
+// non-integral cell, a cell that is not floor, two props on one cell); walls
+// (a non-integral endpoint, an endpoint that is not floor, endpoints that are
+// not adjacent under the orientation, the same edge twice). Doors are checked
+// by the caller through validateDoorInputs, against the result.
 //
 // Error messages carry NO verb prefix: each caller wraps its own at the call
 // site, so the same validator is honest about which seam refused.
@@ -111,13 +132,20 @@ func compileField(in FieldInput) (*field, error) {
 	}
 
 	f := &field{
-		void:        in.Canvas.Void,
-		orientation: in.Canvas.Orientation,
-		owner:       make(map[spatial.Position]RegionID),
-		regionCells: make(map[RegionID][]spatial.Position, len(in.Regions)),
+		void:         in.Canvas.Void,
+		orientation:  in.Canvas.Orientation,
+		owner:        make(map[spatial.Position]RegionID),
+		regionCells:  make(map[RegionID][]spatial.Position, len(in.Regions)),
+		sceneryCells: make(map[spatial.Position]bool, len(in.Scenery)),
 	}
 
 	if err := f.compileRegions(in.Regions); err != nil {
+		return nil, err
+	}
+	// SCENERY BEFORE PROPS AND WALLS, because both ask what is floor and
+	// scenery is half the answer (rpg-project#360). After the regions,
+	// because a cell a region already owns is the defect this refuses.
+	if err := f.compileScenery(in.Scenery); err != nil {
 		return nil, err
 	}
 	if err := f.compileProps(in.Props); err != nil {
@@ -207,6 +235,47 @@ func (f *field) compileRegions(regions []RegionInput) error {
 	return nil
 }
 
+// compileScenery marks every authored scenery cell as floor nobody owns,
+// refusing a cell some region already holds.
+//
+// The budget is shared with the regions on purpose: maxFieldCells bounds the
+// list [Encounter.Atlas] hands out, and scenery is in it.
+func (f *field) compileScenery(scenery []spatial.Position) error {
+	if len(scenery) == 0 {
+		return nil
+	}
+	if int64(len(f.cells))+int64(len(scenery)) > maxFieldCells {
+		return fmt.Errorf("field lists more than %d cells: %w", maxFieldCells, ErrNoField)
+	}
+
+	abs := make([]spatial.Position, 0, len(scenery))
+	for i, c := range scenery {
+		if !isAuthoredCell(c) {
+			return fmt.Errorf("scenery[%d] (%g,%g) is not a representable integral cell: %w",
+				i, c.X, c.Y, ErrNoField)
+		}
+		cell := f.cellAt(c)
+		// Through regionOf, never the map: ownership is answered in ONE
+		// place (rpg-toolkit#1108, pinned by
+		// TestRegionOwnershipIsAskedInOneFunction).
+		if owner, taken := f.regionOf(cell); taken {
+			return fmt.Errorf("scenery[%d] [%g,%g] already belongs to region %q: %w",
+				i, c.X, c.Y, owner, ErrRegionOverlap)
+		}
+		if f.sceneryCells[cell] {
+			return fmt.Errorf("scenery[%d] [%g,%g] is listed twice: %w", i, c.X, c.Y, ErrRegionOverlap)
+		}
+		f.sceneryCells[cell] = true
+		abs = append(abs, cell)
+	}
+
+	f.scenery = append([]spatial.Position(nil), scenery...)
+	f.cells = append(f.cells, abs...)
+	sortCells(f.cells)
+
+	return nil
+}
+
 // compileProps checks every prop says what it is and what it does, and stands
 // on a floor cell of its own.
 func (f *field) compileProps(props []PropInput) error {
@@ -231,8 +300,11 @@ func (f *field) compileProps(props []PropInput) error {
 				p.Ref, p.At.X, p.At.Y, ErrNoField)
 		}
 		cell := f.cellAt(p.At)
-		if _, floor := f.regionOf(cell); !floor {
-			return fmt.Errorf("prop %q at [%g,%g] stands on no region's floor: %w",
+		// A PROP MAY STAND ON ANY FLOOR, scenery included (rpg-project#360,
+		// design C3): a prop is furniture, not feet, and rubble in a doorway
+		// is exactly what an author reaches for a scenery brush to paint.
+		if !f.isFloor(cell) {
+			return fmt.Errorf("prop %q at [%g,%g] stands on no floor: %w",
 				p.Ref, p.At.X, p.At.Y, ErrBadPlacement)
 		}
 		if seen[cell] {
@@ -303,10 +375,14 @@ func (f *field) edgeOf(from, to spatial.Position) (DoorEdge, error) {
 		}
 	}
 	a, b := f.cellAt(from), f.cellAt(to)
+	// A WALL STANDS ON FLOOR, WHICH IS NOT ONLY THE ROOMS (rpg-project#360,
+	// design C2). The envelope is still implied — a crossing into the void has
+	// nothing to stand on — but scenery is floor, so a wall may run along a
+	// strip nobody stands on and a door may open into one.
 	for _, end := range []struct {
 		authored, abs spatial.Position
 	}{{from, a}, {to, b}} {
-		if _, floor := f.regionOf(end.abs); !floor {
+		if !f.isFloor(end.abs) {
 			return DoorEdge{}, fmt.Errorf("endpoint [%g,%g] is not floor: %w",
 				end.authored.X, end.authored.Y, ErrEdgeOffFloor)
 		}
@@ -340,9 +416,27 @@ func (f *field) regionOf(cell spatial.Position) (RegionID, bool) {
 	return id, ok
 }
 
-// hasVoid reports whether any cell of the canvas belongs to no region —
-// purely a cost decision for the sight scan ([canvasRoom]): where there is no
-// void, opaque and transparent mean the same thing.
+// isFloor reports whether a cell is FLOOR: owned by a region, or marked
+// scenery (rpg-project#360, design §1.1).
+//
+// The one answer to "is there ground here", and deliberately a different
+// question from [field.regionOf], which answers "whose ground". A wall's
+// endpoint, a door's edge, a prop's cell and a sightline ask this one; a
+// member's seat, a step and an ending's trigger ask regionOf, because feet
+// need an owner and scenery has none.
+func (f *field) isFloor(cell spatial.Position) bool {
+	if _, owned := f.regionOf(cell); owned {
+		return true
+	}
+
+	return f.sceneryCells[cell]
+}
+
+// hasVoid reports whether any cell of the canvas is not floor — purely a cost
+// decision for the sight scan ([canvasRoom]): where there is no void, opaque
+// and transparent mean the same thing. Scenery counts as floor here, so a
+// field whose regions and scenery tile their canvas exactly has no void at
+// all.
 func (f *field) hasVoid() bool {
 	return int64(f.width)*int64(f.height) != int64(len(f.cells))
 }

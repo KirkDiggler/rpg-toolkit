@@ -119,6 +119,7 @@ func Compile(spec *Spec) (Compiled, error) {
 	field := encounter.FieldInput{
 		Canvas:  encounter.CanvasInput{Void: void, Orientation: orientation},
 		Regions: regionsOf(spec),
+		Scenery: sceneryOf(spec),
 		Props:   propsOf(spec),
 		Walls:   wallsOf(spec),
 		Doors:   doorsOf(spec, orientation),
@@ -168,6 +169,21 @@ func regionsOf(spec *Spec) []encounter.RegionInput {
 		})
 	}
 	return out
+}
+
+// sceneryOf flattens the authored scenery rows into the flat cell list
+// [encounter.FieldInput.Scenery] takes, in the authored frame the regions use.
+// Nil for a dungeon that authors none, which is the same fact the absent key
+// is.
+func sceneryOf(spec *Spec) []spatial.Position {
+	var cells []spatial.Position
+	for _, row := range spec.Scenery {
+		for _, at := range row {
+			cells = append(cells, authored(at))
+		}
+	}
+
+	return cells
 }
 
 // propsOf is every prop, with both blocking answers copied rather than
