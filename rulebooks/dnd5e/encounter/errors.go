@@ -34,8 +34,9 @@ var (
 	ErrNoRegion = errors.New("no such region")
 
 	// ErrNoEnding is returned when Setup or Load is called with zero
-	// endings, a declared ending's key is empty or the reserved
-	// "abandoned", a declared ending's key duplicates an earlier one in
+	// endings, a declared ending's key is empty or one of the reserved
+	// "abandoned"/"party_defeated" keys, a declared ending's key duplicates
+	// an earlier one in
 	// the same input (#929 hardening round E — an unvalidated duplicate
 	// lets declaration order silently shadow a later ending, e.g. a
 	// reached_position twin permanently hiding an external ending), End
@@ -260,6 +261,11 @@ var (
 	// refused at construction rather than at the moment a body would have
 	// started a fight.
 	ErrNoStanding = errors.New("encounter: no standing capability")
+
+	// ErrNoParticipation indicates Setup or Load kept the source-compatible
+	// Standing field but supplied a concrete capability without Participation.
+	// There is no legacy binary fallback and no default assessment.
+	ErrNoParticipation = errors.New("encounter: no participation capability")
 
 	// ErrNoSight indicates this module was not told, usably, how far somebody
 	// can see. Three ways to earn it: Setup or Load was given no Sight

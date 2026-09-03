@@ -114,10 +114,14 @@ type Encounter struct {
 	// one; trigger detection refuses to start a fight without it rather than
 	// dropping the fight silently.
 	initiative InitiativeRoller
-	// standing reports who is down. Required at both constructors — see
-	// [Standing] for why it is asked rather than remembered, and why there is
-	// no default answer.
+	// standing retains the source-compatible constructor capability shape.
+	// The same concrete value is asserted once at construction and stored as
+	// participation below; no play path falls back to the binary answer.
 	standing Standing
+
+	// participation is the richer half of standing. Required at both
+	// constructors and never defaulted; see [StandingWithParticipation].
+	participation Participation
 
 	// sight reports how far each member can see. Required at both constructors
 	// — see [Sight] for why it is asked at every refresh rather than held, and
@@ -240,6 +244,10 @@ func isIntegralHexCell(pos spatial.Position) bool {
 // falls out of that rather than driving it.
 const DefaultRetention = 32
 
+// partyDefeatedEnding is the stable composition-owned outcome key used when a
+// supplied participation assessment says the party is defeated.
+const partyDefeatedEnding = "party_defeated"
+
 // RetentionUnbounded disables trimming entirely. Appropriate for
 // verified-transcript scenes, which assert on the story itself rather than on
 // the retention policy, and for any caller that genuinely needs the whole
@@ -301,6 +309,18 @@ func logFloorOf(data record.LogData) uint64 {
 // since load and the window is enforced at the storage boundary, in ToData.
 func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, error) {
 	return e.story.Append(in)
+}
+
+// NextStorySeq returns the global sequence the next successful story append
+// will use. It is a read: it does not reserve, increment, or append anything.
+// Encounter ingress is single-command in v1; this method makes no promise for a
+// future host that allows concurrent writers between this read and Record.
+func (e *Encounter) NextStorySeq() (uint64, error) {
+	next, err := e.story.NextSeq()
+	if err != nil {
+		return 0, fmt.Errorf("next story seq: %w", err)
+	}
+	return next, nil
 }
 
 // enforceRetention trims the story log down to the retention window and advances
@@ -434,6 +454,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	if in.Standing == nil {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoStanding)
 	}
+	standingWithParticipation, ok := in.Standing.(StandingWithParticipation)
+	if !ok {
+		return nil, fmt.Errorf("newencounter: Standing does not implement Participation: %w", ErrNoParticipation)
+	}
 
 	// Required for the third time, at the same door and by the same law: the
 	// sight consult runs at every refresh including first light, so an
@@ -480,7 +504,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// this class too).
 	seenEndingKeys := make(map[string]bool, len(in.Endings))
 	for _, ending := range in.Endings {
-		if ending.Key == "" || ending.Key == "abandoned" {
+		if ending.Key == "" || ending.Key == "abandoned" || ending.Key == partyDefeatedEnding {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 		}
 		if seenEndingKeys[ending.Key] {
@@ -574,18 +598,19 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		members:     make(map[MemberID]*memberRecord),
-		everMembers: make(map[MemberID]bool),
-		deciders:    make(map[MemberID]Decider),
-		field:       f,
-		initiative:  in.Initiative,
-		standing:    in.Standing,
-		sight:       in.Sight,
-		turnDriver:  in.TurnDriver,
-		striker:     in.Striker,
-		announcer:   in.Announcer,
-		endings:     nil,
-		retention:   normalizeRetention(in.Retention),
+		members:       make(map[MemberID]*memberRecord),
+		everMembers:   make(map[MemberID]bool),
+		deciders:      make(map[MemberID]Decider),
+		field:         f,
+		initiative:    in.Initiative,
+		standing:      standingWithParticipation,
+		participation: standingWithParticipation,
+		sight:         in.Sight,
+		turnDriver:    in.TurnDriver,
+		striker:       in.Striker,
+		announcer:     in.Announcer,
+		endings:       nil,
+		retention:     normalizeRetention(in.Retention),
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 

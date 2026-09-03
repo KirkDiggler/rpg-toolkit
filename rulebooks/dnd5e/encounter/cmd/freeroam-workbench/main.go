@@ -654,6 +654,16 @@ func (rollAllStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, err
 	return nil, nil
 }
 
+func (rollAllStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		assessment.Members = append(assessment.Members, encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		})
+	}
+	return assessment, nil
+}
+
 // nobodyIsListening is the workbench's Announcer capability. The workbench
 // drives clocks — turns end here — so unlike noAttacksExpected this really is
 // called. It succeeds silently: there is no rulebook attached to this scene,

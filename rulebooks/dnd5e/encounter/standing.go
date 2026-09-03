@@ -12,65 +12,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
-// Standing reports which of the given members are down — out of the fight,
-// however the rulebook decides that. The composition asks; the rulebook
-// answers.
+// Standing is the legacy binary source shape retained at constructor and
+// resolution boundaries. NewEncounter and LoadEncounter require its concrete
+// value to also implement [Participation], returning [ErrNoParticipation]
+// otherwise. Play consults only that richer assessment; it never falls back to
+// Standing or treats nil as everyone active.
 //
-// Injected rather than held, exactly as [Decider] and [InitiativeRoller] are,
-// and for the same reason [InitiativeRoller]'s doc gives with "randomness"
-// swapped for "hit points": this module's go.mod cannot import the rulebook
-// (law C1), so defeat is a fact it can only be TOLD. Member IDs in, member IDs
-// out — nothing here learns what a hit point is, and nothing here has to.
-//
-// # It is a pull, and that is the whole design
-//
-// The composition stores no down flag, in memory or in its blob. It asks at the
-// choke points where the answer could matter and acts on the answer it gets.
-// The alternative — being pushed a "this one is down" event and remembering it
-// — recreates the dual state the seam reshape spent rpg-toolkit#1040 removing:
-// heal a character and the sheet says four hit points while the composition
-// still says down. There is one source of truth for defeat and it is not this
-// package.
-//
-// Being a pull is also what makes it COMPLETE. Every route to zero — a strike,
-// a hazard, a rule nobody has written yet — is noticed at the next consult,
-// without that route knowing this interface exists.
-//
-// # What an implementation owes
-//
-// Answer about the members you were asked about. The composition hands over its
-// current roster, and a name in the answer that was not in the question is a
-// defect it refuses (ErrNotMember) rather than ignores — a mis-wired capability
-// must look like a mis-wired capability, not like a rule that silently never
-// fires. Order does not matter and duplicates are harmless.
-//
-// The answer is asked for again rather than carried between consults, including
-// twice within one [Encounter.Pump]. Carrying it would be a cache, and a cache
-// is the smallest possible version of the dual state above.
-//
-// Errors abort whatever verb was running, atomically (R5), the same as
-// [InitiativeRoller]'s: a world that cannot find out who is standing does not
-// half-act on a guess.
-//
-// # What being down governs today, and what it does not
-//
-// It governs the three things the death census (rpg-toolkit#959) named: a down
-// member is on no side of a contact, so they neither start a fight nor join
-// one; they take no turn, because they are spliced out of the order; and they
-// take no [Encounter.Pump] action, because their decider is not consulted.
-//
-// It does NOT gate the caller-driven verbs. A down member can still be walked
-// by [Encounter.Move] and still be the actor on an [Encounter.Record]. Both are
-// the same gap seen twice: the swing stops because the TURN ORDER stops, and
-// free roam has no turn order. Deliberate for this slice — the alternative is a
-// refusal shape nobody has ruled on, and an unbuilt refusal beats a built-and-
-// wrong one. The session supplies the real capability in the death lane's D4
-// slice, which is where that call belongs.
-//
-// It DOES end a fight, as of rpg-toolkit#1078: a bubble left with nobody
-// standing on one side of it dissolves itself with cause [ByDefeat], in the pass
-// that notices. Ruled fork (c) on rpg-toolkit#959, and only the bubble ends —
-// the encounter stays open and the bodies stay in it.
+// Keeping this interface lets existing Standing: fields remain source-compatible
+// while making participation an explicit required capability. Implementations
+// should answer both methods from the same rulebook truth.
 type Standing interface {
 	// Standing reports which of the given members are down. Returning none is
 	// the ordinary answer.
@@ -86,187 +36,212 @@ type Standing interface {
 // differently each time. An empty roster is not a question worth asking, and
 // the capability is not called for one.
 func (e *Encounter) standingNow() (map[MemberID]bool, error) {
-	if len(e.members) == 0 {
-		return nil, nil
-	}
-
-	roster := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		roster = append(roster, id)
-	}
-	sort.Slice(roster, func(i, j int) bool { return roster[i] < roster[j] })
-
-	reported, err := e.standing.Standing(roster)
+	participation, err := e.participationNow()
 	if err != nil {
-		return nil, fmt.Errorf("standing: %w", err)
+		return nil, err
 	}
-
-	down := make(map[MemberID]bool, len(reported))
-	for _, id := range reported {
-		if _, ok := e.members[id]; !ok {
-			return nil, fmt.Errorf("standing: reported %q down, who is not a member: %w", id, ErrNotMember)
-		}
-		down[id] = true
-	}
-
-	return down, nil
+	return participation.down, nil
 }
 
-// noticeDown is the world noticing, and it is the one place that happens.
+type participationPassInput struct {
+	// newlyActive names clocks whose active slot was created before this pass,
+	// such as EndTurn's successor. Mid-turn Record supplies none.
+	newlyActive []*clock.Turn
+	// deferReconcile keeps a one-sided bubble in place for the same call that
+	// records a stabilized or recovered Death Save. Its explicit continuation
+	// keeps control until the next turn-settlement boundary.
+	deferReconcile bool
+}
+
+// noticeDown performs one complete participation pass. The historical name is
+// retained for the call graph, but Down now governs narration only: Contact
+// chooses sides, Turn chooses retain/auto-pass/remove, and PartyDefeated is the
+// supplied run-ending policy answer.
 //
-// It pulls the standing answer, tells the story about anybody the story has not
-// been told about yet, takes them out of whatever fight they were in, and hands
-// the down set to [Encounter.applyTrigger], which has to classify contact
-// knowing who is a body and who is an enemy.
-//
-// Placement: [Encounter.applyTrigger] is reached from [Encounter.refreshSight]
-// — the choke point sight already flows through, so Step, Pump, Join
-// and Exit all pass here by writing the obvious call — and from Setup's first
-// light, which calls applyTrigger directly so its scene-opened beat can land
-// first. A scene can open with a body already on the floor.
-//
-// [Encounter.Record] reaches this function DIRECTLY rather than through
-// applyTrigger, and the difference is the point (rpg-toolkit#1083). Record
-// refreshes no sight, so it has no deltas to classify and no fight to start —
-// what it has is a beat that may have just changed the answer this function
-// pulls. Every other caller looks at a world something else changed; that one is
-// the change. Calling applyTrigger from it would mean synthesising an empty
-// delta map to satisfy a classification nobody asked for.
-//
-// # The order inside one pass
-//
-// Two passes over the fallen, sorted: ALL the news, then everything the news
-// does. Cause before effect, which is the same law [Encounter.refreshSight]
-// states for verbs, applied inside one.
-//
-// It is two passes rather than one interleaved loop because of what the second
-// pass can do. A bubble that has run out of a side ends (see
-// [Encounter.fightIsDecided]), and the beat saying so has to land after EVERY
-// down beat that explains it — including the ones for members this loop has not
-// reached yet. Interleaved, two monsters falling together would narrate the
-// first body, then the fight ending, then the second body: an ending that
-// arrives before half its own cause.
-//
-// # What the news does, per member
-//
-// A fight with somebody standing on both sides of it survives, and the body is
-// spliced out of the order — Transfer is the mid-round removal a straggler
-// leaving already used. A fight with nobody standing on one side ENDS instead,
-// and ending it re-homes everyone the fight held, bodies included, so no splice
-// is needed or wanted.
-//
-// The ending has to be decided BEFORE the splice rather than after it, which is
-// the one place this deviates from how rpg-toolkit#1078 describes itself. If
-// every member of a bubble is down, splicing first drains the bubble and
-// dropBubbleIfIdle deletes it from inside Transfer — leaving a check that runs
-// afterwards with no bubble to end and nobody to name in the beat. That husk
-// prune is exactly the accidental ending D2 replaces, so it must not be reached.
-//
-// # Why the STORY is the ledger
-//
-// The consult runs at every sight refresh, so something has to decide whether a
-// body is news. Nothing in this module can remember: doc.go's contract is that
-// every caller loads, acts and saves, so an Encounter lives for one verb and an
-// in-memory ledger would be empty on every call. That leaves persisted state,
-// and a persisted down flag is exactly the dual state [Standing] exists to
-// avoid.
-//
-// So the ledger is the STORY — the module's own persisted narration, and the
-// same trick logFloor already plays (derived from the log rather than stored
-// beside it, so it cannot drift out of agreement with the entries it
-// describes). "Has the story already said this?" is a question with one answer,
-// and no second thing to keep true.
-//
-// The cost, stated rather than hidden: the story has a retention window, so a
-// down beat can age out of it, and the next consult will say it again. That is
-// accepted. The obvious fix is to remember, and remembering is the disease.
-func (e *Encounter) noticeDown() (map[MemberID]bool, map[MemberID]*IntelDelta, error) {
-	down, err := e.standingNow()
+// The order is causal and deterministic: append every new Down beat in sorted
+// order; close a supplied party defeat; apply sorted Remove consequences;
+// retain or reconcile one-sided order by supplied group policy; settle only
+// newly active slots; then evaluate legacy declared MemberDown endings. Wait
+// never moves a slot. The story remains the down-narration ledger, so a
+// retained beat aging out may be told again rather than introducing duplicate
+// persisted life state.
+func (e *Encounter) noticeDown(
+	inputs ...participationPassInput,
+) (*participationState, map[MemberID]*IntelDelta, error) {
+	in := participationPassInput{}
+	if len(inputs) > 0 {
+		in = inputs[0]
+	}
+	participation, err := e.participationNow()
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(down) == 0 {
-		return down, nil, nil
-	}
+	down := participation.down
 
-	told, err := e.storyToldDown()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	fallen := make([]MemberID, 0, len(down))
-	for id := range down {
-		fallen = append(fallen, id)
-	}
-	sort.Slice(fallen, func(i, j int) bool { return fallen[i] < fallen[j] })
-
-	// The news, all of it, before anything acts on any of it.
-	for _, id := range fallen {
-		if told[id] {
-			continue
+	// First narrate every newly down member. Down is a story fact only; it no
+	// longer decides whether an initiative slot is retained or removed.
+	if len(down) > 0 {
+		told, terr := e.storyToldDown()
+		if terr != nil {
+			return nil, nil, terr
 		}
-		if berr := e.appendDownBeat(id); berr != nil {
-			return nil, nil, berr
+
+		fallen := make([]MemberID, 0, len(down))
+		for id := range down {
+			fallen = append(fallen, id)
+		}
+		sort.Slice(fallen, func(i, j int) bool { return fallen[i] < fallen[j] })
+		for _, id := range fallen {
+			if told[id] {
+				continue
+			}
+			if berr := e.appendDownBeat(id); berr != nil {
+				return nil, nil, berr
+			}
 		}
 	}
 
-	// Then what the news does.
+	// Party defeat is the rulebook's policy answer, not a threshold this
+	// composition derives. It closes only after all causal down beats.
+	if e.outcome == nil && participation.assessment.PartyDefeated {
+		if _, cerr := e.closeWith(partyDefeatedEnding, uint64(e.clock.ToData().HighWater)); cerr != nil {
+			return nil, nil, fmt.Errorf("participation party defeat: %w", cerr)
+		}
+		return participation, nil, nil
+	}
+
+	// Remove is the only answer that splices initiative. Wait (including a
+	// dying member) and AutoPass (including a stabilized member) retain their
+	// exact slots. All removals happen before scheduling, so an active member
+	// becoming Remove hands the clock forward exactly once.
+	toSettle := make(map[*clock.Turn]bool, len(in.newlyActive))
+	for _, bubble := range in.newlyActive {
+		toSettle[bubble] = true
+	}
+	removed := make([]MemberID, 0)
+	for id, member := range participation.members {
+		if member.Turn == TurnParticipationRemove {
+			removed = append(removed, id)
+		}
+	}
+	sort.Slice(removed, func(i, j int) bool { return removed[i] < removed[j] })
+
 	var intelDeltas map[MemberID]*IntelDelta
-	for _, id := range fallen {
+	for _, id := range removed {
 		bubble, berr := e.bubbleFor(id)
 		if berr != nil {
-			return nil, nil, fmt.Errorf("standing bubble %q: %w", id, berr)
+			return nil, nil, fmt.Errorf("participation bubble %q: %w", id, berr)
 		}
 		if bubble == nil {
 			continue
 		}
 
-		// The fight this body was in may not be a fight any more. Ending it
-		// re-homes everybody it held — the survivors AND the bodies — so the
-		// splice below is not reached for anyone in it, and the members who
-		// fell alongside this one find no bubble to be spliced out of.
-		decided, derr := e.fightIsDecided(bubble, down)
-		if derr != nil {
-			return nil, nil, fmt.Errorf("standing fight %q: %w", id, derr)
+		active, aerr := bubble.Active()
+		if aerr != nil {
+			return nil, nil, fmt.Errorf("participation active %q: %w", id, aerr)
 		}
-		if decided {
-			if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
-				return nil, nil, fmt.Errorf("standing dissolve %q: %w", id, xerr)
+		removedWasActive := MemberID(active) == id
+
+		// KeepTurnOrder is the supplied exception to ordinary fight defeat:
+		// remove the member but preserve the one-sided clock for ordered
+		// follow-up such as Death Saves.
+		if !participation.assessment.KeepTurnOrder {
+			decided, derr := e.fightIsDecided(bubble, participation)
+			if derr != nil {
+				return nil, nil, fmt.Errorf("participation fight %q: %w", id, derr)
 			}
-			continue
+			if decided {
+				if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
+					return nil, nil, fmt.Errorf("participation dissolve %q: %w", id, xerr)
+				}
+				delete(toSettle, bubble)
+				continue
+			}
 		}
 
-		// Out of the fight, which goes on without them. A body keeps no turn,
-		// and the order closes over the gap rather than holding it open —
-		// Transfer is the mid-round removal a straggler leaving already used.
-		//
-		// The world clock, not nowhere: R6 says every member is on exactly one
-		// clock, and ruled fork (a) on rpg-toolkit#959 says a body is still a
-		// member — on the map, in the roster, recordable, carried by Exit.
-		transferred, terr := e.Transfer(&TransferInput{Member: id, To: ClockWorld})
+		transferred, terr := e.transfer(&TransferInput{Member: id, To: ClockWorld}, false)
 		if terr != nil {
-			return nil, nil, fmt.Errorf("standing transfer %q: %w", id, terr)
+			return nil, nil, fmt.Errorf("participation transfer %q: %w", id, terr)
 		}
 		intelDeltas = mergeIntelDeltas(intelDeltas, transferred.IntelDeltas)
+		if removedWasActive {
+			toSettle[bubble] = true
+		}
 	}
 
-	// Then whether the world just ended. AFTER the bubble logic above, so a
-	// boss death dissolves its fight first and the run closes on the world
-	// clock — down → bubble-dissolved → ended is the beat order a client
-	// reads (Kirk's ruling, rpg-project#269 §6.6).
-	//
-	// Evaluated against EVERYONE down, not only the newly narrated: the fire
-	// is guarded by the outcome, not by the story ledger, so a down beat
-	// aging out of the retention window and being re-said cannot re-close
-	// anything, and an ending loaded over a member already down still fires
-	// at the next consult.
-	if e.outcome == nil {
+	// A later false KeepTurnOrder reconciles a one-sided bubble at its next
+	// settlement boundary, or while it still holds a down member whose ordered
+	// follow-up was the reason to retain it. This does not reinterpret an
+	// unrelated one-member fight as defeat merely because somebody elsewhere
+	// is down. Terminal Death Save detail defers same-call reconciliation so
+	// its explicit Continuation remains authoritative.
+	settlementOrder := append([]*clock.Turn(nil), e.bubbles...)
+	if !participation.assessment.KeepTurnOrder && !in.deferReconcile {
+		for _, bubble := range settlementOrder {
+			if !toSettle[bubble] {
+				order, oerr := bubble.Order()
+				if oerr != nil {
+					return nil, nil, fmt.Errorf("participation reconcile order: %w", oerr)
+				}
+				holdsDown := false
+				for _, id := range order {
+					if participation.down[id] {
+						holdsDown = true
+						break
+					}
+				}
+				if !holdsDown {
+					continue
+				}
+			}
+			decided, derr := e.fightIsDecided(bubble, participation)
+			if derr != nil {
+				return nil, nil, fmt.Errorf("participation reconcile: %w", derr)
+			}
+			if !decided {
+				continue
+			}
+			if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
+				return nil, nil, fmt.Errorf("participation reconcile dissolve: %w", xerr)
+			}
+			delete(toSettle, bubble)
+		}
+	}
+
+	// Drive only slots that became active in this pass. An already-active slot
+	// whose mid-turn Record changes to AutoPass remains active until its ruled
+	// continuation explicitly settles the turn.
+	for _, bubble := range settlementOrder {
+		if !toSettle[bubble] {
+			continue
+		}
+		order, oerr := bubble.Order()
+		if oerr != nil {
+			return nil, nil, fmt.Errorf("participation order: %w", oerr)
+		}
+		if len(order) == 0 || !e.bubbleHasPlayer(order) {
+			continue
+		}
+		drivenWrapped, drivenSeq, drivenDeltas, derr := e.driveTurnsWithParticipation(bubble, participation)
+		if derr != nil {
+			return nil, nil, fmt.Errorf("participation drive: %w", derr)
+		}
+		participation.scheduledWrapped = participation.scheduledWrapped || drivenWrapped
+		if drivenSeq != 0 {
+			participation.scheduledLastSeq = drivenSeq
+		}
+		intelDeltas = mergeIntelDeltas(intelDeltas, drivenDeltas)
+	}
+
+	// Preserve declared MemberDown endings. They still key off Down, but no
+	// initiative consequence does.
+	if e.outcome == nil && len(down) > 0 {
 		if err := e.firedMemberDown(down); err != nil {
 			return nil, nil, err
 		}
 	}
 
-	return down, intelDeltas, nil
+	return participation, intelDeltas, nil
 }
 
 // firedMemberDown evaluates every declared MemberDown ending against who is
@@ -291,30 +266,15 @@ func (e *Encounter) firedMemberDown(down map[MemberID]bool) error {
 	return nil
 }
 
-// fightIsDecided reports whether this bubble has run out of a side: whether the
-// members still standing in it are all players, or all monsters, or nobody at
-// all.
-//
-// # Why it is asked about a bubble a body is IN, never about the bubble list
-//
-// A one-sided bubble is not the same thing as a decided fight. A caller can
-// Transfer the last monster out of a fight with nobody down anywhere, and
-// calling that a defeat would write an ending into the story that nothing in the
-// fiction earned. So the question is reached through a member the world has just
-// noticed is down — the fight went one-sided BECAUSE somebody fell, which is the
-// only reading [ByDefeat] is entitled to.
-//
-// A fight nobody is left fighting for other reasons is a different ruling with a
-// different cause, and it is not this one.
-//
-// # The all-down case
-//
-// Both counts zero is decided, and deliberately so. That is the scene D1 ended
-// by accident: every member down, the order drained one splice at a time, and
-// dropBubbleIfIdle removing what was left. The fight ended correctly and
-// silently, because the pruner knows nothing about death. It now ends the way
-// every other defeat does, with the beat that says so.
-func (e *Encounter) fightIsDecided(bubble *clock.Turn, down map[MemberID]bool) (bool, error) {
+// fightIsDecided reports whether the complete supplied removal set leaves this
+// bubble without a Contact side. It is reached before any one member transfers,
+// so every TurnParticipationRemove member is excluded regardless of Contact:
+// the census describes the post-removal bubble rather than its current order.
+// Remove+Contact is rejected at capability ingress; the exclusion here remains
+// defense in depth over this consequence boundary. Down is not consulted;
+// retained dying and stabilized slots remain eligible exactly according to
+// their independent Contact answers.
+func (e *Encounter) fightIsDecided(bubble *clock.Turn, participation *participationState) (bool, error) {
 	order, err := bubble.Order()
 	if err != nil {
 		return false, err
@@ -322,9 +282,6 @@ func (e *Encounter) fightIsDecided(bubble *clock.Turn, down map[MemberID]bool) (
 
 	var players, monsters int
 	for _, id := range order {
-		if down[id] {
-			continue
-		}
 		member, ok := e.members[id]
 		if !ok {
 			// Unreachable against a coherent encounter — the load boundary
@@ -337,6 +294,13 @@ func (e *Encounter) fightIsDecided(bubble *clock.Turn, down map[MemberID]bool) (
 			// Loud, like ClockOf's on-no-clock check, for the same reason —
 			// the caller's obligation on error is to drop the encounter unsaved.
 			return false, fmt.Errorf("fight order holds %q, who is not a member: %w", id, ErrInvalidData)
+		}
+		memberParticipation, ok := participation.members[id]
+		if !ok {
+			return false, fmt.Errorf("fight order holds %q without a participation answer: %w", id, ErrInvalidData)
+		}
+		if memberParticipation.Turn == TurnParticipationRemove || !memberParticipation.Contact {
+			continue
 		}
 		switch member.Kind {
 		case KindPlayer:
@@ -360,8 +324,12 @@ func (e *Encounter) storyToldDown() (map[MemberID]bool, error) {
 	told := make(map[MemberID]bool)
 	for _, entry := range entries {
 		var beat struct {
-			Beat   string `json:"beat"`
-			Member string `json:"member"`
+			Beat      string `json:"beat"`
+			Member    string `json:"member"`
+			Actor     string `json:"actor"`
+			DeathSave *struct {
+				Recovered bool `json:"recovered"`
+			} `json:"death_save"`
 		}
 		// A payload this pass cannot read is not this pass's business. Every
 		// beat this module writes is a JSON object and decodes here (unknown
@@ -371,8 +339,15 @@ func (e *Encounter) storyToldDown() (map[MemberID]bool, error) {
 		if json.Unmarshal(entry.Payload, &beat) != nil {
 			continue
 		}
-		if beat.Beat == string(OutcomeDown) && beat.Member != "" {
+		switch {
+		case beat.Beat == string(OutcomeDown) && beat.Member != "":
 			told[MemberID(beat.Member)] = true
+		case beat.Beat == string(OutcomeDeathSave) && beat.Actor != "" &&
+			beat.DeathSave != nil && beat.DeathSave.Recovered:
+			// Recovery is already an authoritative closed Death Save fact. It
+			// clears story-derived toldness so a later fall is new, without
+			// inventing a second Up beat.
+			delete(told, MemberID(beat.Actor))
 		}
 	}
 

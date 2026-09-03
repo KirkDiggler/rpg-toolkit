@@ -74,8 +74,9 @@ type byDecision struct{}
 func (byDecision) Kind() DissolveKind { return DissolveByDecision }
 func (byDecision) isDissolveCause()   {}
 
-// ByDefeat is a fight that ran out of a side: the last skeleton drops and the
-// fight ends with nobody having called anything.
+// ByDefeat is a fight whose supplied participation leaves no Contact member on
+// one side and does not keep its turn order. The fight ends with nobody calling
+// Dissolve.
 //
 // Ruled fork (c) on rpg-toolkit#959, including the distinction the old stack
 // conflated. Its `all_hostiles_defeated` closed the whole ENCOUNTER, which in a
@@ -86,7 +87,7 @@ func (byDecision) isDissolveCause()   {}
 // Unreachable from outside this package, and that is the point: defeat is
 // something the composition NOTICES at [Encounter.noticeDown], never something a
 // caller declares. A caller who could hand this in would be a second system
-// deciding a fact the world already owns.
+// deciding a fact the supplied Participation capability already owns.
 func ByDefeat() DissolveCause { return byDefeat{} }
 
 type byDefeat struct{}

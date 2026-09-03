@@ -19,13 +19,20 @@ type oneDown struct {
 }
 
 func (d *oneDown) Standing(members []MemberID) ([]MemberID, error) {
+	return d.reported(members), nil
+}
+
+func (d *oneDown) Assess(members []MemberID) (*ParticipationAssessment, error) {
+	return testAssessmentFromDown(members, d.reported(members)), nil
+}
+
+func (d *oneDown) reported(members []MemberID) []MemberID {
 	for _, id := range members {
 		if id == d.who {
-			return []MemberID{id}, nil
+			return []MemberID{id}
 		}
 	}
-
-	return nil, nil
+	return nil
 }
 
 // TestADecidedFightRefusesToCountAGhost is the net under fightIsDecided, and it

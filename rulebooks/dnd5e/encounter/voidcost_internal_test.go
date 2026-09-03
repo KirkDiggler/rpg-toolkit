@@ -71,6 +71,9 @@ func (b benchSight) Sight(members []MemberID) (map[MemberID]int, error) {
 type benchStanding struct{}
 
 func (benchStanding) Standing(_ []MemberID) ([]MemberID, error) { return nil, nil }
+func (benchStanding) Assess(members []MemberID) (*ParticipationAssessment, error) {
+	return testAssessmentFromDown(members, nil), nil
+}
 
 type benchRoller struct{}
 

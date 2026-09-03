@@ -164,26 +164,12 @@ type trigger struct {
 // watching" without anything forming — cannot arise: the step that created the
 // watching was itself classified, and either formed a bubble or was a drop.
 //
-// STANDING IS THE ONE HOLE IN THAT INDUCTION, and it is worth stating rather
-// than discovering. A down member is on no side (see sidesInContactOrder), so
-// awareness created while they were down was classified as nothing — and if
-// they were later reported standing again, that awareness is already Refreshed
-// rather than FirstContact and will never trigger. A revived monster could
-// stand in plain sight of a player and start no fight until somebody moves.
-//
-// rpg-toolkit#1078 gives that hole a second face rather than a second cause: a
-// fight now ENDS when a side stops standing, so the monsters a party just
-// dropped are the ones whose awareness has already gone stale. Stand one of them
-// back up and the fight does not restart until somebody moves. Same hole, same
-// fix, one step more visible.
-//
-// Left open on purpose. Ruled fork (b) on rpg-toolkit#959 is that zero hit
-// points has no exit in v1 — death saves are deferred — so recovery is not a
-// path anything can currently take, and building against it would be untestable
-// behaviour shipped on faith. It is the same call contactDrop above documents
-// for the same reason. When recovery becomes real, the fix belongs where the
-// invariant says it does: in how percepts are PRODUCED, not in how they are
-// consumed here.
+// PARTICIPATION IS THE ONE HOLE IN THAT INDUCTION. A member absent from a
+// supplied Contact side can acquire awareness that classifies as nothing; if a
+// later assessment puts them back on a side, that awareness is Refreshed rather
+// than FirstContact. Recovery therefore does not itself restart contact until a
+// later sight transition. The fix belongs in percept production, not by
+// replacing the supplied Contact answer here.
 //
 // # Precedence
 //
@@ -205,7 +191,7 @@ type trigger struct {
 // PLAYER has been watching the whole time and is plainly not surprised, while
 // FirstContact-only surprise would say they were, because the player's own
 // first contact happened long ago and is not in this delta.
-func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, down map[MemberID]bool) (*trigger, error) {
+func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, contact map[MemberID]bool) (*trigger, error) {
 	sawFirst := func(observer, subject MemberID) bool {
 		delta, ok := deltas[observer]
 		if !ok || delta == nil {
@@ -220,7 +206,7 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, down map[MemberID]
 		return false
 	}
 
-	players, monsters := e.sidesInContactOrder(down)
+	players, monsters := e.sidesInContactOrder(contact)
 
 	var (
 		engaged = map[MemberID]bool{}
@@ -255,7 +241,7 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, down map[MemberID]
 	}
 
 	if len(engaged) > 0 {
-		return e.formation(engaged, down)
+		return e.formation(engaged, contact)
 	}
 
 	// The drop arm classifies and then does nothing. It is reachable now
@@ -275,7 +261,7 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, down map[MemberID]
 // other leave the world clock and everybody else keeps exploring. Stragglers
 // join later through the same classification, which is what makes a fight
 // grow rather than start twice.
-func (e *Encounter) formation(engaged map[MemberID]bool, down map[MemberID]bool) (*trigger, error) {
+func (e *Encounter) formation(engaged map[MemberID]bool, contact map[MemberID]bool) (*trigger, error) {
 	form := make([]MemberID, 0, len(engaged))
 	for id := range engaged {
 		form = append(form, id)
@@ -309,7 +295,7 @@ func (e *Encounter) formation(engaged map[MemberID]bool, down map[MemberID]bool)
 
 	surprised := make([]MemberID, 0, len(form))
 	for _, id := range form {
-		unaware, err := e.unawareOfOpposition(id, down)
+		unaware, err := e.unawareOfOpposition(id, contact)
 		if err != nil {
 			return nil, err
 		}
@@ -324,7 +310,7 @@ func (e *Encounter) formation(engaged map[MemberID]bool, down map[MemberID]bool)
 // unawareOfOpposition reports whether this member's CURRENT view holds nobody
 // from the other side — which is exactly 5e's surprise condition, read at
 // formation rather than inferred from whatever triggered it.
-func (e *Encounter) unawareOfOpposition(id MemberID, down map[MemberID]bool) (bool, error) {
+func (e *Encounter) unawareOfOpposition(id MemberID, contact map[MemberID]bool) (bool, error) {
 	member, ok := e.members[id]
 	if !ok {
 		return false, nil
@@ -346,9 +332,9 @@ func (e *Encounter) unawareOfOpposition(id MemberID, down map[MemberID]bool) (bo
 		if !ok {
 			continue
 		}
-		// A body in view is not opposition in view. Watching a corpse is not
-		// what stops you being surprised by the thing that is still standing.
-		if down[other.ID] {
+		// Contact participation, rather than Down's binary inverse, decides
+		// whether a visible member is opposition in this pass.
+		if !contact[other.ID] {
 			continue
 		}
 		if other.Kind != member.Kind {
@@ -359,22 +345,14 @@ func (e *Encounter) unawareOfOpposition(id MemberID, down map[MemberID]bool) (bo
 	return true, nil
 }
 
-// sidesInContactOrder returns the STANDING players and the STANDING monsters,
-// each sorted.
-//
-// Down members are on neither side, which is the census defect this closes: the
-// partition used to be by Kind alone, so a dead monster was still a monster and
-// sight started a fight with it. A corpse can neither start a fight nor be
-// pulled into one already running, from either side of the roster — a member
-// who is not on a side is in no pair, and a pair is the only thing that forms
-// or joins a bubble.
-//
-// Sorted because e.members is a map and C8 requires that what a pass concludes
-// be a function of persisted data rather than of iteration order — the same
-// reason buildMemberOutcomes sorts.
-func (e *Encounter) sidesInContactOrder(down map[MemberID]bool) (players, monsters []MemberID) {
+// sidesInContactOrder returns the players and monsters whose supplied Contact
+// answer puts them on a side, each sorted. It deliberately does not infer
+// Contact as !Down: life state and contact participation are separate rulebook
+// answers. A member absent from a side appears in no pair and cannot form or
+// join a bubble.
+func (e *Encounter) sidesInContactOrder(contact map[MemberID]bool) (players, monsters []MemberID) {
 	for id, member := range e.members {
-		if down[id] {
+		if !contact[id] {
 			continue
 		}
 		switch member.Kind {
@@ -406,7 +384,7 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 	// Both halves of that order matter: a body must not be classified as an
 	// enemy, and the beat saying so must not land after a bubble-formed beat
 	// it contradicts (rpg-toolkit#1075).
-	down, noticedDeltas, err := e.noticeDown()
+	participation, noticedDeltas, err := e.noticeDown()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -425,7 +403,7 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 		return nil, outputDeltas, nil
 	}
 
-	verdict, err := e.classify(deltas, down)
+	verdict, err := e.classify(deltas, participation.contact)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -455,7 +433,9 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 		return nil, nil, fmt.Errorf("trigger roll initiative: %w", err)
 	}
 
-	formed, err := e.form(&FormInput{Order: order, Surprised: verdict.surprised})
+	formed, err := e.formWithParticipation(
+		&FormInput{Order: order, Surprised: verdict.surprised}, participation,
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("trigger form: %w", err)
 	}

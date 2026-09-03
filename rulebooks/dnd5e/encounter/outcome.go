@@ -33,6 +33,9 @@ const (
 	// OutcomeMissed is an attack that did not.
 	OutcomeMissed OutcomeKind = "missed"
 
+	// OutcomeDeathSave is one authoritative tabletop death-save result.
+	OutcomeDeathSave OutcomeKind = "death_save"
+
 	// OutcomeDown is a member the rulebook reports out of the fight — the
 	// minimal death beat ruled on rpg-toolkit#959: this kind, and who.
 	//
@@ -127,6 +130,31 @@ type RecordInput struct {
 	// human-readable Reason string.
 	AdvantageSources    []AttackModifierSource
 	DisadvantageSources []AttackModifierSource
+
+	// DeathSave carries the authoritative primitive facts for
+	// OutcomeDeathSave. It is required for that kind and invalid for every
+	// other kind; the encounter preserves it without interpreting thresholds.
+	DeathSave *DeathSaveDetail
+}
+
+// DeathSaveDetail is the closed, rulebook-neutral story shape for one death
+// save. Its fields are primitive facts supplied by the authoritative rulebook;
+// this composition validates presence and preserves them verbatim.
+type DeathSaveDetail struct {
+	Roll              int    `json:"roll"`
+	Outcome           string `json:"outcome"`
+	SuccessesAdded    int    `json:"successes_added"`
+	FailuresAdded     int    `json:"failures_added"`
+	Successes         int    `json:"successes"`
+	Failures          int    `json:"failures"`
+	SuccessesNeeded   int    `json:"successes_needed"`
+	FailuresRemaining int    `json:"failures_remaining"`
+	Stabilized        bool   `json:"stabilized"`
+	Dead              bool   `json:"dead"`
+	Recovered         bool   `json:"recovered"`
+	HPRestored        int    `json:"hp_restored"`
+	Continuation      string `json:"continuation"`
+	PresentationID    string `json:"presentation_id"`
 }
 
 // DamageComponent carries one ordered, rulebook-neutral damage contribution.
@@ -268,10 +296,10 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
-// know, an Attack whose Ref or Name is empty, or a non-finite damage
-// multiplier JSON cannot represent), and anything the
-// [Standing] capability answers with — including ErrNotMember for an answer
-// naming a stranger.
+// know, missing or mismatched DeathSave detail, an Attack whose Ref or Name is
+// empty, or a non-finite damage multiplier JSON cannot represent), and
+// anything the [Participation] capability answers with — including
+// ErrNotMember for an answer naming a stranger.
 //
 // The input refusals all run before anything is appended, so a rejected input
 // costs the rulebook nothing. The consult does not: it runs after the beat, so a
@@ -288,9 +316,25 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 
 	switch in.Kind {
-	case OutcomeStruck, OutcomeMissed:
+	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave:
 	default:
 		return nil, fmt.Errorf("record: outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
+	if in.Kind == OutcomeDeathSave {
+		if in.DeathSave == nil {
+			return nil, fmt.Errorf("record: death save detail is required: %w", ErrInvalidData)
+		}
+		if in.DeathSave.Outcome == "" {
+			return nil, fmt.Errorf("record: death save outcome is required: %w", ErrInvalidData)
+		}
+		if in.DeathSave.Continuation == "" {
+			return nil, fmt.Errorf("record: death save continuation is required: %w", ErrInvalidData)
+		}
+		if in.DeathSave.PresentationID == "" {
+			return nil, fmt.Errorf("record: death save presentation id is required: %w", ErrInvalidData)
+		}
+	} else if in.DeathSave != nil {
+		return nil, fmt.Errorf("record: death save detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
 
 	if in.Actor == "" {
@@ -364,6 +408,9 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 			payload["disadvantage_sources"] = in.DisadvantageSources
 		}
 	}
+	if in.DeathSave != nil {
+		payload["death_save"] = in.DeathSave
+	}
 	if in.Attack != nil {
 		if in.Attack.Ref == "" {
 			return nil, fmt.Errorf("record: attack ref: %w", ErrInvalidData)
@@ -399,7 +446,17 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// And now the world finds out what that beat just changed. AFTER the append,
 	// never before: the outcome is the cause, and a down beat ahead of the strike
 	// that explains it would be a story told backwards. See the godoc.
-	_, intelDeltas, nerr := e.noticeDown()
+	//
+	// A stabilized or recovered Death Save carries an explicit turn
+	// continuation. Recording it happens inside the already-active turn, so it
+	// neither auto-passes that slot nor reconciles a retained one-sided bubble
+	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
+	// control until the eventual turn-settlement boundary.
+	pass := participationPassInput{}
+	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
+		pass.deferReconcile = true
+	}
+	_, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
 		return nil, fmt.Errorf("record: %w", nerr)
 	}

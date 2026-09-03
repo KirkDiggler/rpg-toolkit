@@ -883,10 +883,10 @@ type LoadEncounterInput struct {
 	// door, not a branch taken deep inside a verb.
 	Initiative InitiativeRoller
 
-	// Standing reports which members are down. REQUIRED, exactly as it is on
-	// SetupInput: a loaded encounter consults it on its first sight refresh,
-	// so a blob that comes back without one is as unusable as a Setup without
-	// one. Refused at the door, never guarded at the use site.
+	// Standing retains SetupInput's source-compatible field shape. REQUIRED,
+	// and its concrete value must also implement Participation
+	// (StandingWithParticipation). Load returns ErrNoParticipation for a
+	// Standing-only value and never falls back to its binary answer.
 	Standing Standing
 
 	// Sight reports how far each member can see, in cells. REQUIRED, exactly as
@@ -1018,6 +1018,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
 	}
+	standingWithParticipation, ok := input.Standing.(StandingWithParticipation)
+	if !ok {
+		return nil, fmt.Errorf("load encounter: Standing does not implement Participation: %w", ErrNoParticipation)
+	}
 
 	data, deciders := input.Data, input.Deciders
 
@@ -1032,7 +1036,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// identical check closes, mirrored at Load), and kind.
 	seenEndingKeys := make(map[string]bool, len(data.Endings))
 	for _, ed := range data.Endings {
-		if ed.Key == "" || ed.Key == "abandoned" {
+		if ed.Key == "" || ed.Key == "abandoned" || ed.Key == partyDefeatedEnding {
 			return nil, fmt.Errorf("load encounter: bad endings: %w: %w", ErrInvalidData, ErrNoEnding)
 		}
 		if seenEndingKeys[ed.Key] {
@@ -1067,8 +1071,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// Validate outcome (if present) references a declared ending
 	if data.Outcome != nil {
 		found := false
-		if data.Outcome.Ending == "abandoned" {
-			found = true // Reserved ending is valid
+		if data.Outcome.Ending == "abandoned" || data.Outcome.Ending == partyDefeatedEnding {
+			found = true // Composition-owned reserved endings are valid
 		} else {
 			for _, ed := range data.Endings {
 				if ed.Key == data.Outcome.Ending {
@@ -1331,19 +1335,20 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 	// All validated; now reconstruct via the same path Setup uses
 	e := &Encounter{
-		members:     make(map[MemberID]*memberRecord),
-		everMembers: make(map[MemberID]bool),
-		deciders:    make(map[MemberID]Decider),
-		initiative:  input.Initiative,
-		standing:    input.Standing,
-		sight:       input.Sight,
-		turnDriver:  input.TurnDriver,
-		striker:     input.Striker,
-		announcer:   input.Announcer,
-		endings:     nil,
-		retention:   normalizeRetention(data.Retention),
-		logFloor:    logFloorOf(data.Log),
-		field:       f,
+		members:       make(map[MemberID]*memberRecord),
+		everMembers:   make(map[MemberID]bool),
+		deciders:      make(map[MemberID]Decider),
+		initiative:    input.Initiative,
+		standing:      standingWithParticipation,
+		participation: standingWithParticipation,
+		sight:         input.Sight,
+		turnDriver:    input.TurnDriver,
+		striker:       input.Striker,
+		announcer:     input.Announcer,
+		endings:       nil,
+		retention:     normalizeRetention(data.Retention),
+		logFloor:      logFloorOf(data.Log),
+		field:         f,
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas

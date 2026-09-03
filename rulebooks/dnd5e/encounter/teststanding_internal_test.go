@@ -13,3 +13,26 @@ type everyoneStanding struct{}
 func (everyoneStanding) Standing([]MemberID) ([]MemberID, error) {
 	return nil, nil
 }
+
+func (everyoneStanding) Assess(members []MemberID) (*ParticipationAssessment, error) {
+	return testAssessmentFromDown(members, nil), nil
+}
+
+func testAssessmentFromDown(members, reported []MemberID) *ParticipationAssessment {
+	down := make(map[MemberID]bool, len(reported))
+	for _, id := range reported {
+		down[id] = true
+	}
+	assessment := &ParticipationAssessment{}
+	for _, id := range members {
+		member := MemberParticipation{Member: id, Contact: true, Conscious: true, Turn: TurnParticipationWait}
+		if down[id] {
+			member.Down = true
+			member.Contact = false
+			member.Conscious = false
+			member.Turn = TurnParticipationRemove
+		}
+		assessment.Members = append(assessment.Members, member)
+	}
+	return assessment
+}

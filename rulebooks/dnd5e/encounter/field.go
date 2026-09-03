@@ -574,12 +574,11 @@ type SetupInput struct {
 	// without it (ErrNoInitiative).
 	Initiative InitiativeRoller
 
-	// Standing reports which members are down (rpg-toolkit#1075). REQUIRED,
-	// for the same reason Initiative is: the consult runs from first light, so
-	// an encounter that cannot ask who is standing would start fights with
-	// bodies and walk them around the map. Setup refuses without it
-	// (ErrNoStanding). There is no default — a nil meaning "everyone is
-	// standing" would be this module deciding a rule it is not allowed to know.
+	// Standing retains the constructor's source-compatible binary shape. It is
+	// REQUIRED and its concrete value must also implement Participation
+	// (StandingWithParticipation); otherwise Setup returns ErrNoParticipation.
+	// Play consults the richer assessment only. Neither a nil nor a
+	// Standing-only value defaults to everyone active.
 	Standing Standing
 
 	// Sight reports how far each member can see, in cells (rpg-toolkit#1111).
