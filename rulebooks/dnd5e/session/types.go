@@ -1728,26 +1728,25 @@ type Shortfall struct {
 }
 
 // TargetKind tells a client which selector shape a Declaration accepts. A
-// closed set owned at the seam, mirroring the merged proto's TargetKind: the
-// currently executable verbs fix their kind — Activate by which ABILITY it is
-// rather than by the verb, since Help prompts for an ally and the rest prompt
-// for nobody — and a new kind arrives the
-// day a proven executor for it lands — never in advance.
+// closed set owned at the seam, mirroring the merged proto's TargetKind. The
+// fixed verb mapping is Attack -> TargetMember, Move -> TargetPath, DeathSave
+// -> TargetNone, and EndTurn -> TargetNone. Activate is ability-defined rather
+// than globally fixed: Help uses TargetMember, while every other currently
+// supported ability uses TargetNone. A new kind arrives only with a proven
+// executor for it, never in advance.
 //
-// FIXED FOR EVERY COMPILED OR BLOCKED DECLARATION: Attack -> TargetMember,
-// Move -> TargetPath, EndTurn -> TargetNone. A blocker keeps the fixed kind
-// even with empty candidates, so a client always knows which selector shape
-// the verb carries.
+// A blocked declaration keeps the shape known at its compilation point even
+// with empty candidates, so a client knows which selector shape it carries.
 type TargetKind string
 
 const (
-	// TargetNone is EndTurn's selector shape: no target. EndTurn is governed
-	// solely by its clock/turn gate and carries no candidate.
+	// TargetNone is the no-target selector shape used by DeathSave, EndTurn,
+	// and every currently supported Activate ability except Help.
 	TargetNone TargetKind = "none"
 
-	// TargetMember is Attack's selector shape: one member from the compiled
-	// candidate universe. Every live CurrentVia-nonempty holding except the
-	// actor appears exactly once in the declaration's Candidates.
+	// TargetMember is the one-member selector shape used by Attack and the
+	// Help Activate ability. Attack's compiled candidate universe contains
+	// every live CurrentVia-nonempty holding except the actor exactly once.
 	TargetMember TargetKind = "member"
 
 	// TargetPath is Move's selector shape: a walk along a path on the turn

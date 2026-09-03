@@ -86,8 +86,9 @@ type deathSaveResult struct {
 }
 
 // DeathSave executes the active Dying character's selected current offer.
-// Selection precedes both opaque-ID generation and the sole d20 roll. The
-// changed character is saved before Story so encounter participation observes
+// Required input validation precedes opening the write scope. Selection then
+// precedes both opaque-ID generation and the sole d20 roll. The changed
+// character is saved before Story so encounter participation observes
 // the authoritative post-save state; a later failure therefore returns a
 // SaveError and cannot be retried as though nothing happened.
 func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSaveOutput, error) {
@@ -96,6 +97,9 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 	}
 	if in.Member == "" {
 		return nil, fmt.Errorf("death save: %w", ErrNoMemberID)
+	}
+	if in.DeclarationID == "" {
+		return nil, fmt.Errorf("death save: %w", ErrNoDeclarationID)
 	}
 
 	scope, err := m.openForWrite(ctx, in.Session)

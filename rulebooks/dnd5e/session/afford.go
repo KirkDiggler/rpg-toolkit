@@ -192,10 +192,11 @@ type Declaration struct {
 	// DeathSave is present only on a compiled Death Save declaration.
 	DeathSave *DeathSaveRef `json:"death_save,omitempty"`
 
-	// TargetKind is fixed for every compiled or blocked declaration: Attack
-	// -> TargetMember, Move -> TargetPath, EndTurn -> TargetNone. A blocker
-	// keeps the fixed kind even with empty candidates, so a client always
-	// knows which selector shape the verb carries.
+	// TargetKind follows the fixed mapping Attack -> TargetMember, Move ->
+	// TargetPath, DeathSave -> TargetNone, and EndTurn -> TargetNone. Activate
+	// is ability-defined: Help uses TargetMember and every other currently
+	// supported ability uses TargetNone. A blocker keeps the shape known at
+	// its compilation point even with empty candidates.
 	TargetKind TargetKind `json:"target_kind"`
 
 	// Candidates is every member in the ruled candidate universe exactly
