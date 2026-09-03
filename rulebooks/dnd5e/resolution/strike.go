@@ -481,32 +481,32 @@ func (m *strikeMachine) rollDamageComponent(
 	}
 
 	// The trace records the pool AS ROLLED — for a critical, the doubled pool —
-	// so its notation describes the faces it carries, the same rule the root's
-	// martial-arts trace follows. The event's marked metadata above keeps the
-	// printed expression.
+	// under the notation that describes the faces it carries, in the dice
+	// package's normalized physical form (one die is "d6", not "1d6"). This is
+	// exactly the notation root and encounter validation replay the trace
+	// against: SimplePool(len(faces), die size).
 	subtotal := 0
 	for _, face := range rolls {
 		subtotal += face
 	}
-	notation := pool.Notation()
-	if isCritical {
-		notation = dice.SimplePool(len(rolls), dieSize, 0).Notation()
-	}
+	notation := dice.SimplePool(len(rolls), dieSize, 0).Notation()
 
 	source := dnd5eEvents.DamageSourceWeapon
 	if m.attack.Category == combatActions.AttackCategorySpell {
 		source = dnd5eEvents.DamageSourceSpell
 	}
 
-	// Provider identity: the profile supplies the most specific ref it carries
-	// — the weapon's own ref when the compiler recorded one, else the action's
-	// — and the compiled definition names it. The ref is cloned because the
+	// Provider identity: the compiled definition is the provenance PAIR —
+	// Definition.Ref with its own Definition.Name — exactly as compiled, even
+	// when the profile's weapon context names a different (valid) ref. The
+	// weapon ref keeps its separate job: the damage-chain WeaponRef field above
+	// is what the weapon predicates read. The ref is cloned because the
 	// definition (and the refs package) owns the original.
 	component := dnd5eEvents.DamageComponent{
 		Source: source,
 		Roll: dnd5eEvents.RollComponent{
 			Source: dnd5eEvents.RollSource{
-				Ref:  cloneCoreRef(m.sourceRef),
+				Ref:  cloneCoreRef(&m.in.Definition.Ref),
 				Name: m.in.Definition.Name,
 			},
 			Dice: &dnd5eEvents.DiceTrace{
@@ -791,13 +791,15 @@ func foldDamage(
 }
 
 // pureNdMNotation matches the pure NdM shape damage.Validate guarantees for a
-// declared pool's dice.
-var pureNdMNotation = regexp.MustCompile(`^(\d*)d(\d+)$`)
+// declared pool's dice — in either letter case, the same `[dD]` the dice
+// package's own notation grammar accepts ("1D6" and "1d6" are one notation).
+var pureNdMNotation = regexp.MustCompile(`^(\d*)[dD](\d+)$`)
 
 // parseDieSize extracts the die size from a pure NdM damage-pool notation
 // (e.g., "2d6" -> 6). The dice trace records it so a sourced reroll can name
-// the die it replaced. damage.Validate already refused anything but pure NdM;
-// the error path exists for the impossible case and names the notation.
+// the die it replaced. damage.Validate already refused anything but pure NdM
+// (either case); the error path exists for the impossible case and names the
+// notation.
 func parseDieSize(notation string) (int, error) {
 	matches := pureNdMNotation.FindStringSubmatch(notation)
 	if matches == nil {

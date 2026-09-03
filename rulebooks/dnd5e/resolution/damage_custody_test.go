@@ -336,6 +336,114 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 	require.Equal(t, []damage.Instance{{Amount: 12, Type: damage.Slashing}}, outcome.DamageInstances)
 }
 
+// damage.Validate and dice.ParseNotation both accept uppercase D in pure dice
+// notation, so a compiled definition saying "1D6" must roll, trace, and land —
+// not fail after the dice were thrown. The trace records the physical pool the
+// dice package normalized ("1d6") with its die size, and the flat bonus lands.
+func TestUppercaseDamageNotationRollsAndTraces(t *testing.T) {
+	definition := combatActions.Definition{
+		Ref:  *refs.Weapons.Greatsword(),
+		Name: "Greatsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1D6", Type: damage.Slashing, FlatBonus: 2}},
+		},
+	}
+	require.NoError(t, definition.Validate(), "the compiled definition itself is valid")
+
+	out, err := resolveOn(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Definition: definition,
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{4}},
+		}),
+	}, newSurface(events.NewEventBus()))
+	require.NoError(t, err, "the uppercase pool must roll, not die after the dice were thrown")
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	require.True(t, ok)
+	require.True(t, outcome.Hit)
+	require.Len(t, outcome.DamageComponents, 1)
+	trace := outcome.DamageComponents[0].Roll.Dice
+	require.NotNil(t, trace)
+	require.Equal(t, 6, trace.DieSize)
+	require.Equal(t, "d6", trace.Notation,
+		"the trace records the physical pool notation the dice package normalized — one die is d6")
+	require.Equal(t, []int{4}, trace.OriginalRolls)
+	require.Equal(t, []int{4}, trace.FinalRolls)
+	require.Equal(t, 4, trace.Subtotal)
+	require.Equal(t, 6, outcome.Damage, "4 pool + 2 flat bonus")
+	require.Len(t, out.DirtyMonsters, 1)
+}
+
+// THE TRACE'S SOURCE IS THE PAIR THE COMPILED DEFINITION CARRIES. When the
+// profile's weapon context names a different ref than the definition — a
+// valid, compilable shape — the roll's provenance is the Definition.Ref and
+// Definition.Name PAIR, not a weapon ref wearing the definition's name. The
+// weapon ref keeps its own job: the damage-chain WeaponRef predicates read.
+func TestProvenanceKeepsTheTraceSourcePairedToTheDefinition(t *testing.T) {
+	var folded *dnd5eEvents.DamageChainEvent
+	bus := events.NewEventBus()
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(context.Background(),
+		func(_ context.Context, e *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			folded = e
+			return c, nil
+		})
+	require.NoError(t, err)
+
+	weaponRef := refs.Weapons.Greatsword()
+	definition := combatActions.Definition{
+		Ref:  core.Ref{Module: "dnd5e", Type: "actions", ID: "longsword-strike"},
+		Name: "Longsword Strike",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Weapon:      &combatActions.WeaponContext{Ref: weaponRef},
+			Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Slashing, FlatBonus: 2}},
+		},
+	}
+	require.NoError(t, definition.Validate())
+
+	out, err := resolveOn(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Definition: definition,
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3}},
+		}),
+	}, newSurface(bus))
+	require.NoError(t, err)
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	require.True(t, ok)
+	require.True(t, outcome.Hit)
+	require.Len(t, outcome.DamageComponents, 1)
+	source := outcome.DamageComponents[0].Roll.Source
+	require.Equal(t, definition.Ref, *source.Ref,
+		"the trace's provenance ref is the compiled Definition.Ref, not the weapon's")
+	require.Equal(t, definition.Name, source.Name,
+		"the trace's provenance name is the paired Definition.Name")
+
+	require.NotNil(t, folded)
+	require.Equal(t, *weaponRef, *folded.WeaponRef,
+		"the damage-chain WeaponRef the weapon predicates read stays the weapon's ref")
+	require.Equal(t, 5, outcome.Damage, "3 pool + 2 flat bonus")
+}
+
 func oozeProfile(pools ...damage.Damage) combatActions.Definition {
 	return combatActions.Definition{
 		Ref:  *refs.MonsterActions.WolfBite(),
