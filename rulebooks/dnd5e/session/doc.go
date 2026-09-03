@@ -10,7 +10,7 @@
 //
 // # The loop
 //
-// The host implements a repository or two and then calls verbs with IDs. It
+// The host implements three repositories and then calls verbs with IDs. It
 // never holds a domain object:
 //
 //	mgr, err := session.NewManager(&session.Config{

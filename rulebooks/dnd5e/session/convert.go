@@ -4,10 +4,14 @@
 package session
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -226,6 +230,106 @@ func projectMember(in encounter.Member) Member {
 		Name:     in.Name,
 		Position: in.Position,
 	}
+}
+
+func projectRosterCharacter(member encounter.Member, data *character.Data, loaded *character.Character) PublicMember {
+	return PublicMember{
+		ID:            string(member.ID),
+		Kind:          KindPlayer,
+		Name:          loaded.GetName(),
+		ClassRef:      string(data.ClassID),
+		RaceRef:       string(data.RaceID),
+		Customization: projectCustomization(loaded.Appearance()),
+	}
+}
+
+func indexRosterNPCs(npcs []monster.Data) (map[string]*monster.Data, error) {
+	indexed := make(map[string]*monster.Data, len(npcs))
+	for i := range npcs {
+		stored := &npcs[i]
+		if stored.ID == "" || stored.Name == "" || stored.Ref == nil {
+			return nil, fmt.Errorf("roster: npc at index %d has corrupt identity: %w", i, ErrBadNPC)
+		}
+		if _, ok := indexed[stored.ID]; ok {
+			return nil, fmt.Errorf("roster: duplicate npc %q: %w", stored.ID, ErrBadNPC)
+		}
+		if err := stored.Ref.IsValid(); err != nil {
+			return nil, fmt.Errorf("roster: npc %q has corrupt ref: %w: %v", stored.ID, ErrBadNPC, err)
+		}
+		indexed[stored.ID] = stored
+	}
+	return indexed, nil
+}
+
+func projectRosterMonster(member encounter.Member, npcs map[string]*monster.Data) (PublicMember, error) {
+	stored, ok := npcs[string(member.ID)]
+	if !ok {
+		return PublicMember{}, fmt.Errorf("roster: monster %q: %w", member.ID, ErrNoSheet)
+	}
+
+	return PublicMember{
+		ID:            string(member.ID),
+		Kind:          KindMonster,
+		Name:          stored.Name,
+		MonsterRef:    stored.Ref.String(),
+		Customization: Customization{},
+	}, nil
+}
+
+func projectCustomization(in *customization.Appearance) Customization {
+	if in == nil {
+		return Customization{}
+	}
+	return Customization{
+		Hair:   projectHairCustomization(in.Hair),
+		Outfit: projectOutfitCustomization(in.Outfit),
+	}
+}
+
+func projectHairCustomization(in *customization.HairCustomization) *HairCustomization {
+	if in == nil {
+		return nil
+	}
+	out := &HairCustomization{
+		Scalp:      projectStyleSelection(in.Scalp),
+		FacialHair: projectStyleSelection(in.FacialHair),
+		ColorSRGB:  cloneUint32(in.ColorSRGB),
+		Roughness:  cloneFloat32(in.Roughness),
+	}
+	return out
+}
+
+func projectOutfitCustomization(in *customization.OutfitCustomization) *OutfitCustomization {
+	if in == nil {
+		return nil
+	}
+	return &OutfitCustomization{
+		PrimaryColorSRGB:   cloneUint32(in.PrimaryColorSRGB),
+		SecondaryColorSRGB: cloneUint32(in.SecondaryColorSRGB),
+	}
+}
+
+func projectStyleSelection(in *customization.StyleSelection) *StyleSelection {
+	if in == nil {
+		return nil
+	}
+	return &StyleSelection{Kind: StyleSelectionKind(in.Kind), StyleRef: in.StyleRef}
+}
+
+func cloneUint32(in *uint32) *uint32 {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+func cloneFloat32(in *float32) *float32 {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
 }
 
 // onMap is gone (rpg-toolkit#1059), and its absence is the point.

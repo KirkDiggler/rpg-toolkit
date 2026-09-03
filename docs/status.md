@@ -24,6 +24,15 @@ nested fields and present-zero colors remain distinct. Style refs remain
 opaque and unknown well-shaped refs are accepted; provider membership, defaults,
 and rendering resolution remain outside the toolkit.
 
+**#1451 — public session roster identity and customization projection (complete,
+2026-09-03).** `rulebooks/dnd5e/session` pins D&D 5e `v0.136.0` and exposes a
+read-only `Roster` seam with Session-owned flat public identity and appearance
+projection types. Player rows are loaded fresh and strictly through
+`character.Load`, authenticated principals must own a current seat, monster
+identity comes from session-owned NPC data, and world NPCs remain excluded.
+The projection carries exact optional hair/outfit presence and values without
+provider validation or defaults, and returns detached output.
+
 The top-level `github.com/KirkDiggler/rpg-toolkit/encounter` module was retired
 by rpg-toolkit#1215 after rpg-api moved to `rulebooks/dnd5e/session`. Current
 game execution lives in the independently versioned D&D 5e encounter
