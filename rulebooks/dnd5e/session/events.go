@@ -10,6 +10,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -768,6 +769,15 @@ func decodeRollSource(raw json.RawMessage) (RollSource, bool) {
 	if !refPresent || json.Unmarshal(refRaw, &source.Ref) != nil || source.Ref == "" {
 		return RollSource{}, false
 	}
+	// Canonical ref syntax, the same law the composition's own write-time
+	// validation applies to every persisted roll source: a ref this package
+	// cannot parse is a corrupted record, not a fact to pass through. The
+	// dice-bearing paths replay it again through the composition's
+	// validator; a multiplier-only roll's identity is checked HERE, because
+	// there is no trace for that validator to reach it through.
+	if _, err := core.ParseString(source.Ref); err != nil {
+		return RollSource{}, false
+	}
 	nameRaw, namePresent := fields["name"]
 	if !namePresent || json.Unmarshal(nameRaw, &source.Name) != nil || strings.TrimSpace(source.Name) == "" {
 		return RollSource{}, false
@@ -1105,14 +1115,24 @@ func decodeDamageComponent(raw json.RawMessage) (DamageComponent, bool) {
 
 	_, rollPresent := fields["roll"]
 	legacyPresent := false
-	for _, key := range []string{"source_ref", "dice", "final_rolls", "flat_bonus"} {
+	for _, key := range []string{"source_ref", "dice", "final_rolls", "flat_bonus", "multiplier"} {
 		if _, present := fields[key]; present {
 			legacyPresent = true
 		}
 	}
-	if rollPresent == legacyPresent {
-		// Neither representation, or both at once — a component whose roll
-		// facts this decoder cannot read as one shape.
+	if rollPresent {
+		// The NEW representation. A multiplier rides BESIDE the roll as a
+		// damage fact and the two are one shape together; the four scalar
+		// roll facts are the OLD shape's representation of the same question
+		// and cannot coexist with a trace.
+		for _, key := range []string{"source_ref", "dice", "final_rolls", "flat_bonus"} {
+			if _, present := fields[key]; present {
+				return DamageComponent{}, false
+			}
+		}
+	} else if !legacyPresent {
+		// Neither representation — with no roll and no legacy scalar fact,
+		// the multiplier among them, there is nothing to read.
 		return DamageComponent{}, false
 	}
 
@@ -1138,6 +1158,13 @@ func decodeDamageComponent(raw json.RawMessage) (DamageComponent, bool) {
 			return DamageComponent{}, false
 		}
 		component.Roll = roll
+		// A sourced identity alone contributes nothing — the composition
+		// refuses a component with neither dice, a modifier, nor a multiplier
+		// at write time, and the multiplier-only shape is the one way a
+		// component with neither rollable fact has a story to tell.
+		if roll.Dice == nil && roll.Modifier == nil && component.Multiplier == nil {
+			return DamageComponent{}, false
+		}
 		return component, true
 	}
 	component.SourceRef = scalar.SourceRef

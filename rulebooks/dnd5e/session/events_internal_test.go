@@ -256,10 +256,63 @@ func TestStruckBodyDecodesLegacyDamageComponents(t *testing.T) {
 	require.Empty(t, got.DamageComponents[0].Roll.Source.Ref)
 }
 
-// TestStruckBodyRejectsAmbiguousAndCorruptRollDetail pins the strict decoder's
-// refusals: mixed representations, duplicate keys at every depth, forbidden
-// nulls, unknown keys inside known roll bodies, and rolls whose arithmetic
-// does not replay. Every refusal keeps the KNOWN kind with a nil body.
+// TestStruckBodyDecodesLegacyMultiplierOnlyComponent pins the legacy read
+// fallback for the one pre-trace shape that carries neither a scalar roll fact
+// nor a flat bonus: a multiplier-only trait component. Its present non-null
+// multiplier is the legacy marker — the component maps into the legacy fields
+// alone, with the multiplier carried as a present zero and no roll graph
+// fabricated from it.
+func TestStruckBodyDecodesLegacyMultiplierOnlyComponent(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"damage_components":[` +
+			`{"source":"monster_trait","damage_type":"slashing","multiplier":0}]}`))
+	require.Equal(t, EventStruck, kind)
+
+	got, ok := body.(StruckBody)
+	require.True(t, ok, "legacy multiplier-only payload produces StruckBody, got %T", body)
+	require.Len(t, got.DamageComponents, 1)
+	zero := 0.0
+	require.Equal(t, DamageComponent{
+		Source: "monster_trait", DamageType: DamageSlashing, Multiplier: &zero,
+	}, got.DamageComponents[0], "legacy fields only: no source_ref, dice, final_rolls, or flat bonus")
+	require.NotNil(t, got.DamageComponents[0].Multiplier)
+	require.Zero(t, *got.DamageComponents[0].Multiplier)
+	require.Nil(t, got.DamageComponents[0].Roll.Dice,
+		"the legacy scalars are never refabricated into a trace")
+	require.Nil(t, got.DamageComponents[0].Roll.Modifier)
+	require.Empty(t, got.DamageComponents[0].Roll.Source.Ref)
+}
+
+// TestStruckBodyDecodesMultiplierOnlyNewRoll pins the new representation's
+// multiplier-only shape: a sourced identity beside a multiplier, with neither
+// dice nor a modifier — exactly the trait components the rulebook's own
+// producers emit. The identity is validated (canonical ref, name) even though
+// there is no trace to replay.
+func TestStruckBodyDecodesMultiplierOnlyNewRoll(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"damage_components":[` +
+			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}]}`))
+	require.Equal(t, EventStruck, kind)
+
+	got, ok := body.(StruckBody)
+	require.True(t, ok, "multiplier-only new payload produces StruckBody, got %T", body)
+	require.Len(t, got.DamageComponents, 1)
+	zero := 0.0
+	require.Equal(t, DamageComponent{
+		Source:     "monster_trait",
+		Roll:       RollComponent{Source: RollSource{Ref: "dnd5e:monster_traits:immunity", Name: "Immunity"}},
+		DamageType: DamageSlashing, Multiplier: &zero,
+	}, got.DamageComponents[0])
+	require.Nil(t, got.DamageComponents[0].Roll.Dice)
+	require.Nil(t, got.DamageComponents[0].Roll.Modifier)
+	require.NotNil(t, got.DamageComponents[0].Multiplier)
+	require.Zero(t, *got.DamageComponents[0].Multiplier)
+}
+
 // TestStruckBodyRejectsAmbiguousAndCorruptRollDetail pins the strict decoder's
 // refusals: mixed representations, duplicate keys at every depth, forbidden
 // nulls, unknown keys inside known roll bodies, and rolls whose arithmetic
@@ -283,6 +336,22 @@ func TestStruckBodyRejectsAmbiguousAndCorruptRollDetail(t *testing.T) {
 		{
 			name: "component with neither representation",
 			json: `"damage_components":[{"source":"weapon","damage_type":"slashing"}]`,
+		},
+		{
+			name: "new source-only roll without a multiplier",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"damage_type":"slashing"}]`,
+		},
+		{
+			name: "multiplier-only roll missing its ref",
+			json: `"damage_components":[{"source":"monster_trait","roll":{"source":{"name":"Immunity"}},"damage_type":"slashing","multiplier":0}]`,
+		},
+		{
+			name: "multiplier-only roll with a noncanonical ref",
+			json: `"damage_components":[{"source":"monster_trait","roll":{"source":{"ref":"monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}]`,
+		},
+		{
+			name: "multiplier-only roll with a blank name",
+			json: `"damage_components":[{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"   "}},"damage_type":"slashing","multiplier":0}]`,
 		},
 		{
 			name: "unknown key inside the component body",
