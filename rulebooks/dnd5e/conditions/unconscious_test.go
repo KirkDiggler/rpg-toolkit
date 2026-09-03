@@ -106,6 +106,14 @@ func (r *countingLegacyRoller) Roll(context.Context, int) (int, error) {
 	return r.value, nil
 }
 
-func (r *countingLegacyRoller) RollN(context.Context, int, int) ([]int, error) {
-	return nil, nil
+func (r *countingLegacyRoller) RollN(ctx context.Context, count, sides int) ([]int, error) {
+	rolls := make([]int, count)
+	for i := range rolls {
+		roll, err := r.Roll(ctx, sides)
+		if err != nil {
+			return nil, err
+		}
+		rolls[i] = roll
+	}
+	return rolls, nil
 }
