@@ -126,6 +126,51 @@ start: [0, 0]
 ` + middle
 }
 
+// twoHoles is the asymmetry fixture: one scenery cell that `near` meets by TWO
+// crossings and `far` by one.
+//
+//	near [2,0] [2,1] | scenery [3,0] | far [4,0]
+//
+// [2,0] and [2,1] are both neighbours of [3,0] under pointy-top and of each
+// other, so `near` is one room with two holes into the strip; [4,0] touches
+// neither of them, so the only route between the rooms runs through it.
+// `nearConcealed` says which of the two is the secret, which is the whole
+// subject: the walk runs from the LOWER-INDEXED room, so swapping them swaps
+// which side's holes are the ones enumerated.
+func twoHoles(first, second string, nearConcealed bool) string {
+	conceal := func(id string, yes bool) string {
+		if !yes {
+			return ""
+		}
+		_ = id
+		return "    concealed: true\n"
+	}
+	start := "[4, 0]"
+	if !nearConcealed {
+		start = "[2, 0]"
+	}
+	return `
+version: 2
+key: twoholes
+orientation: pointy
+void: opaque
+regions:
+  - id: ` + first + `
+    archetype: crypt
+    lighting: { intensity: 1 }
+` + conceal(first, nearConcealed) + `    cells:
+      - [[2,0],[2,1]]
+  - id: ` + second + `
+    archetype: crypt
+    lighting: { intensity: 1 }
+` + conceal(second, !nearConcealed) + `    cells:
+      - [[4,0]]
+scenery:
+  - [[3,0]]
+start: ` + start + `
+`
+}
+
 // TestF1_ACellIsFloorOnce — a cell belongs to a region or to the scenery, and
 // nothing may claim it twice. Ownership has to be unique for "who owns this
 // cell" to be an answer rather than a guess, and scenery is a second claimant
@@ -379,6 +424,61 @@ doors:
 		sealed := strings.Replace(three,
 			"    edges: [[[2,0],[3,0]]]", "    edges: [[[2,0],[3,0]],[[3,0],[4,0]]]", 1)
 		s.Empty(s.validate(sealed))
+	})
+
+	s.Run("two holes on the secret's own side are two defects", func() {
+		// The junction, mirrored: the SECRET is the lower-indexed room and it
+		// has two crossings into one scenery cell, which reaches the hall by
+		// one. Each hole is a separate thing the author has to close, so each
+		// is named. Keyed by the cell alone the flood marked the strip on the
+		// first hole and the second vanished, and the author met its twin only
+		// after walling the one the refusal named.
+		errs := s.validate(twoHoles("vault", "hall", true))
+		s.Require().Len(errs, 2, "two holes, two refusals")
+		s.Equal([]string{"regions[0].concealed", "regions[0].concealed"}, sceneryPaths(errs))
+		s.Contains(errs[0].Message, "the open way between [2,0] and the scenery at [3,0]")
+		s.Contains(errs[1].Message, "the open way between [2,1] and the scenery at [3,0]")
+	})
+
+	s.Run("two holes on the visible side are one defect", func() {
+		// The same shape with the rooms swapped. Now the two holes are the
+		// VISIBLE room's, and the sentence the author reads is about the
+		// secret's single crossing — walling either hole is not what fixes it,
+		// so saying it twice would be the same defect said twice.
+		errs := s.validate(twoHoles("hall", "vault", false))
+		s.Require().Len(errs, 1, "two ways, one crossing named, one refusal")
+		s.Equal([]string{"regions[1].concealed"}, sceneryPaths(errs))
+		s.Contains(errs[0].Message, "the open way between [4,0] and the scenery at [3,0]")
+	})
+
+	s.Run("two arrivals on the secret side stay two", func() {
+		// One hole out of the hall, two cells of the vault on the strip. Two
+		// crossings the author has to close, named separately, exactly as
+		// before this enumeration was fixed.
+		twoArrivals := `
+version: 2
+key: arrivals
+orientation: pointy
+void: opaque
+regions:
+  - id: hall
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[2,0]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[4,0],[3,1]]
+scenery:
+  - [[3,0]]
+start: [2, 0]
+`
+		errs := s.validate(twoArrivals)
+		s.Require().Len(errs, 2)
+		s.Equal([]string{"regions[1].concealed", "regions[1].concealed"}, sceneryPaths(errs))
 	})
 
 	s.Run("visible reach extends through scenery", func() {

@@ -16,10 +16,20 @@ import (
 //
 // A cell carries two facts: an OWNER, which decides visibility, lighting and
 // meaning, and whether anyone can STAND on it. The regions give both. Scenery
-// gives only the second half's absence: floor that belongs to nobody, that a
-// wall may stand on and a sightline crosses, and that no foot ever touches.
-// [field.isFloor] is the one answer to the first question and [field.regionOf]
-// to the second, and every caller in this package asks whichever it means.
+// gives neither: floor that belongs to nobody, that a wall may stand on and a
+// sightline crosses, and that no foot ever touches.
+//
+// So there are three questions and three answers, and every caller in this
+// package asks the one it means:
+//
+//   - [field.regionOf] answers the OWNER — whose floor is this.
+//   - [field.isStandable] answers STANDABLE — may feet be here.
+//   - [field.isFloor] is derived from both: owned or scenery, which is what a
+//     wall's endpoint, a door's edge, a prop and a sightline actually need.
+//
+// isFloor is the derived one rather than a fact of its own, which is why it
+// asks regionOf rather than reading the owner map: ownership is answered in
+// exactly one place (rpg-toolkit#1108).
 //
 // One function, [compileField], turns an authored [FieldInput] into the one
 // thing this composition runs on: a validated, absolute picture of the floor

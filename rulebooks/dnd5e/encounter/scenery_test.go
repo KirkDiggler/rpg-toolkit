@@ -78,7 +78,7 @@ func (s *ScenerySuite) open(field encounter.FieldInput, members ...encounter.Mem
 	return enc
 }
 
-// sceneryHolds reports whether the observer is CURRENTLY seeing the subject —
+// seesNow reports whether the observer is CURRENTLY seeing the subject —
 // sight_test.go's own reading, repeated here so this file does not depend on
 // that suite's receiver.
 func (s *ScenerySuite) seesNow(enc *encounter.Encounter, observer, subject core.EntityID) bool {

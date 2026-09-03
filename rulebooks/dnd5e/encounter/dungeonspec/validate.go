@@ -611,6 +611,15 @@ func (v *validation) concealment() {
 	// door on it is a hole in the secret. The refusal names the way as the
 	// SECRET'S OWN side meets it, which is the crossing its author has to wall
 	// or conceal.
+	//
+	// ONE REFUSAL PER CROSSING NAMED, not per way. Since the walk floods once
+	// per departure, two holes in a VISIBLE room leading through one area of
+	// scenery to a single crossing on the secret's side are two ways — and
+	// they are the same defect said twice, because the sentence the author
+	// reads is about the secret's crossing and closing either hole is not what
+	// fixes it. Two holes on the SECRET's own side name two crossings and
+	// survive as two, which is the point of the enumeration.
+	told := map[string]bool{}
 	for _, w := range open {
 		if s.Regions[w.a].Concealed == s.Regions[w.b].Concealed {
 			continue
@@ -619,7 +628,12 @@ func (v *validation) concealment() {
 		if s.Regions[w.b].Concealed {
 			hidden, desc = w.b, w.descB
 		}
-		v.fail(fmt.Sprintf("regions[%d].concealed", hidden),
+		at := fmt.Sprintf("regions[%d].concealed", hidden)
+		if told[at+desc] {
+			continue
+		}
+		told[at+desc] = true
+		v.fail(at,
 			"this room is concealed, but %s is there for anyone — "+
 				"a walk-in room cannot be a secret: conceal every way in, or unconceal the room", desc)
 	}
@@ -673,15 +687,37 @@ type wayIn struct {
 	descA, descB string
 }
 
-// wayKey identifies one way for deduplication: the two regions it joins and
-// the crossing it ARRIVES by — the door when a door stands there, so a
-// two-edge gate is one way in and refuses once (rpg-toolkit#1123), and a bare
-// crossing keys on itself so two separate holes into one room stay two
-// defects the author can see separately.
-type wayKey struct {
-	a, b     int
-	door     int // -1 when the arrival is a bare crossing
+// crossingKey identifies one crossing for deduplication: the DOOR standing in
+// it when there is one, so a two-edge gate counts once (rpg-toolkit#1123), and
+// otherwise the crossing itself.
+type crossingKey struct {
+	door     int // -1 when no door stands in the crossing
 	crossing [2]spatial.Position
+}
+
+// wayKey identifies one way for deduplication: the two regions it joins, the
+// crossing it DEPARTS by, and the crossing it ARRIVES by.
+//
+// BOTH ENDS, because either one is a hole the author has to close, and a key
+// that named only one of them enumerated that side's holes while collapsing
+// the other's. Which side collapsed was decided by region index order — the
+// walk runs from the lower-indexed room — so the same dungeon reported one
+// hole or two depending on the order its rooms were written in. Found by
+// Copilot on PR #1465, on a comment here that claimed the enumeration this
+// key now actually performs.
+type wayKey struct {
+	a, b           int
+	depart, arrive crossingKey
+}
+
+// crossingKeyOf collapses a crossing to what deduplication should count: the
+// door, when a door stands in it, and the crossing itself otherwise.
+func crossingKeyOf(c [2]spatial.Position, door int) crossingKey {
+	if door >= 0 {
+		return crossingKey{door: door}
+	}
+
+	return crossingKey{door: -1, crossing: c}
 }
 
 // waysFrom walks outward from one region and returns every way it finds.
@@ -704,32 +740,41 @@ type wayKey struct {
 // a scenery area may touch three regions, so a way has interior crossings and
 // more than two ends. A flood has no ends to be short of.
 //
-// The author may therefore put the concealed door on the hidden room's edge,
-// on the visible room's edge, or in the middle of the strip, and gets the same
-// answer from either direction.
+// # Once per DEPARTURE, not once per strip
+//
+// `visited` is keyed by cell AND the crossing the path departed by, so two
+// holes from one room into one area of scenery flood it twice and produce
+// their own ways. Keyed by the cell alone, the second hole found the first
+// hole's cells already marked and vanished — and the author, having walled the
+// hole the refusal named, recompiled to meet its twin.
+//
+// The cost is a flood per departure rather than per region, which is the
+// honest shape of the question: each hole is a separate thing the author has
+// to close, so each one has to be walked.
 func (v *validation) waysFrom(origin int, pastConcealed bool) []wayIn {
 	type reached struct {
-		cell  spatial.Position
-		first string // how the path that got here left the origin region
+		cell   spatial.Position
+		depart crossingKey // the crossing this path left the origin region by
+		first  string      // and how to say so
 	}
 
 	var out []wayIn
 	seen := map[wayKey]bool{}
-	visited := map[spatial.Position]bool{}
+	visited := map[reached]bool{}
 	var queue []reached
 
 	// arrive records a way, or extends the flood, for one crossing out of
-	// `from` into `n`. `first` is how the path already travelled left the
-	// origin region — the crossing itself, for a step out of the origin.
-	arrive := func(from, n spatial.Position, first string) {
+	// `from` into `n`. A zero `depart.door` marks a step out of the origin
+	// region itself, which is where the departure is established.
+	arrive := func(from, n spatial.Position, path reached) {
 		c := normalizedCrossing(from, n)
 		door, concealed, wall := v.claims(c)
 		if wall || (concealed && !pastConcealed) {
 			return
 		}
 		desc := v.crossingDesc(from, n, door)
-		if first == "" {
-			first = desc
+		if path.first == "" {
+			path.depart, path.first = crossingKeyOf(c, door), desc
 		}
 		if there, owned := v.owner[n]; owned {
 			// EACH PAIR IS DISCOVERED FROM ITS LOWER-INDEXED SIDE ONLY.
@@ -742,30 +787,30 @@ func (v *validation) waysFrom(origin int, pastConcealed bool) []wayIn {
 			if there <= origin {
 				return
 			}
-			w := wayIn{a: origin, b: there, descA: first, descB: desc}
-			key := wayKey{a: w.a, b: w.b, door: door}
-			if door < 0 {
-				key.crossing = c
-			}
+			key := wayKey{a: origin, b: there, depart: path.depart, arrive: crossingKeyOf(c, door)}
 			if seen[key] {
 				return
 			}
 			seen[key] = true
-			out = append(out, w)
+			out = append(out, wayIn{a: origin, b: there, descA: path.first, descB: desc})
 			return
 		}
-		if !v.sceneryAt[n] || visited[n] {
+		if !v.sceneryAt[n] {
 			return
 		}
-		visited[n] = true
-		queue = append(queue, reached{cell: n, first: first})
+		next := reached{cell: n, depart: path.depart, first: path.first}
+		if visited[next] {
+			return
+		}
+		visited[next] = true
+		queue = append(queue, next)
 	}
 
 	for _, row := range v.spec.Regions[origin].Cells {
 		for _, at := range row {
 			cell := v.cell(at)
 			for _, step := range axialSteps {
-				arrive(cell, spatial.Position{X: cell.X + step[0], Y: cell.Y + step[1]}, "")
+				arrive(cell, spatial.Position{X: cell.X + step[0], Y: cell.Y + step[1]}, reached{})
 			}
 		}
 	}
@@ -773,7 +818,7 @@ func (v *validation) waysFrom(origin int, pastConcealed bool) []wayIn {
 		here := queue[0]
 		queue = queue[1:]
 		for _, step := range axialSteps {
-			arrive(here.cell, spatial.Position{X: here.cell.X + step[0], Y: here.cell.Y + step[1]}, here.first)
+			arrive(here.cell, spatial.Position{X: here.cell.X + step[0], Y: here.cell.Y + step[1]}, here)
 		}
 	}
 
