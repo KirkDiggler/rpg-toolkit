@@ -5,6 +5,7 @@ package conditions_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -248,6 +249,133 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 
 	s.Equal([]int{1}, finalEvent.Components[0].Roll.Dice.FinalRolls)
 	s.Equal([]int{5}, finalEvent.Components[1].Roll.Dice.FinalRolls)
+}
+
+// TestRerollsCurrentFacesAfterAnExistingReroll pins the staged-face contract:
+// GWF judges the CURRENT final face, not the original. An earlier reroll rule
+// already replaced the original 1 with a 2; Great Weapon Fighting must reroll
+// that 2 to 5, extending the ordered history [1→2, 2→5] while the original
+// face stays 1 and the subtotal moves 2 → 5. Judging the original face would
+// record Before 1 against a current face of 2 — a trace that fails ordered
+// replay — and a subtotal delta measured from the wrong face.
+func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsCurrentFacesAfterAnExistingReroll() {
+	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-1", s.mockRoller)
+	s.Require().NoError(gwf.Apply(s.ctx, s.bus))
+	defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
+
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil).Times(1)
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
+					Dice: &dnd5eEvents.DiceTrace{
+						Notation:      "d6",
+						DieSize:       6,
+						OriginalRolls: []int{1},
+						Rerolls: []dnd5eEvents.DiceReroll{{
+							DieIndex: 0,
+							Before:   1,
+							After:    2,
+							// Any earlier reroll rule; its identity is not what
+							// this test pins — only that it exists and is valid.
+							Source: dnd5eEvents.RollSource{
+								Ref:  refs.Conditions.RecklessAttack(),
+								Name: "Reckless Attack",
+							},
+						}},
+						FinalRolls: []int{2},
+						Subtotal:   2,
+					},
+				},
+				DamageType: damage.Slashing,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	trace := finalEvent.Components[0].Roll.Dice
+	s.Require().NotNil(trace)
+	s.Equal([]int{1}, trace.OriginalRolls, "original faces remain untouched")
+	s.Require().Len(trace.Rerolls, 2, "history extends, never restarts")
+	s.Equal(1, trace.Rerolls[0].Before)
+	s.Equal(2, trace.Rerolls[0].After)
+	s.Equal(2, trace.Rerolls[1].Before, "Before is the current staged face, not the original")
+	s.Equal(5, trace.Rerolls[1].After)
+	s.Equal("Great Weapon Fighting", trace.Rerolls[1].Source.Name)
+	s.Equal([]int{5}, trace.FinalRolls)
+	s.Equal(5, trace.Subtotal, "subtotal 2 follows the 2→5 replacement, not the original 1")
+
+	// The extended history must replay cleanly: this is exactly the ordered
+	// validity the old original-face iteration destroyed.
+	calc := &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{finalEvent.Components[0].Roll},
+		Total:      5,
+	}
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(calc))
+}
+
+// TestRollerErrorLeavesTheCallerTraceUnmutated pins the all-or-nothing
+// contract: the caller-owned DiceTrace is published back only after every
+// required reroll succeeds. A failure on a LATER die must leave the complete
+// trace deeply equal to its pre-call state — no partial reroll, no moved
+// final face, no shifted subtotal.
+func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCallerTraceUnmutated() {
+	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-1", s.mockRoller)
+	s.Require().NoError(gwf.Apply(s.ctx, s.bus))
+	defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
+
+	// Die 0 rerolls successfully; die 1's reroll fails.
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil).Times(1)
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(0, errors.New("roller exploded")).Times(1)
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
+					Dice:   diceTrace(6, 1, 2), // original/final [1,2], subtotal 3
+				},
+				DamageType: damage.Slashing,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	_, execErr := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().Error(execErr, "the roller failure must surface to the caller")
+
+	// The complete caller-owned trace is deeply equal to its pre-call state:
+	// no staged mutation leaked through the failed reroll.
+	got := damageEvent.Components[0].Roll.Dice
+	s.Require().NotNil(got)
+	s.Equal(&dnd5eEvents.DiceTrace{
+		Notation:      "2d6",
+		DieSize:       6,
+		OriginalRolls: []int{1, 2},
+		FinalRolls:    []int{1, 2},
+		Subtotal:      3,
+	}, got, "a failed reroll leaves the caller-owned trace deeply unchanged")
+	s.Empty(got.Rerolls, "no partial reroll history leaks")
 }
 
 func (s *FightingStyleGreatWeaponFightingTestSuite) TestToJSON() {

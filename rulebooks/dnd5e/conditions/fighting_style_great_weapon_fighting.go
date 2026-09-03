@@ -121,10 +121,14 @@ func (f *FightingStyleGreatWeaponFightingCondition) loadJSON(data json.RawMessag
 }
 
 // onDamageChain rerolls 1s and 2s on the marked primary weapon component's
-// dice trace. It mutates only component.Roll.Dice: final faces are cloned
-// before the first write so the producer's original faces are never rewritten,
-// each ordered reroll is sourced to this condition's canonical ref and display
-// name, and the authoritative subtotal follows the replaced faces.
+// dice trace. It operates on a staged copy of the current final faces —
+// eligibility, the recorded Before, the replacement, and the subtotal delta
+// all use the face as it stands NOW, so an earlier rule's rerolls stay ordered
+// and valid — and publishes the staged finals, rerolls, and subtotal back to
+// component.Roll.Dice only after every required reroll succeeds, so a roller
+// failure cannot leak partial mutations. Original faces are never rewritten,
+// and every ordered reroll is sourced to this condition's canonical ref and
+// display name.
 func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
@@ -155,9 +159,15 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 			roller = dice.NewRoller()
 		}
 
-		cloned := false
-		for idx, face := range trace.OriginalRolls {
-			if face != 1 && face != 2 {
+		// Stage everything locally. The caller-owned trace is only published
+		// back once every required reroll has succeeded — a failure partway
+		// through leaves it exactly as the caller built it.
+		stagedFinals := slices.Clone(trace.FinalRolls)
+		var stagedRerolls []dnd5eEvents.DiceReroll
+		stagedSubtotal := trace.Subtotal
+
+		for idx, current := range stagedFinals {
+			if current != 1 && current != 2 {
 				continue
 			}
 			newRoll, rollErr := roller.Roll(modCtx, trace.DieSize)
@@ -165,28 +175,27 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 				return e, rpgerr.Wrap(rollErr, "failed to reroll die")
 			}
 
-			if !cloned {
-				// First write to the final faces: work on a clone so the
-				// producer's original faces (and any aliased slice) survive.
-				trace.FinalRolls = slices.Clone(trace.FinalRolls)
-				cloned = true
-			}
-
-			trace.Rerolls = append(trace.Rerolls, dnd5eEvents.DiceReroll{
+			stagedRerolls = append(stagedRerolls, dnd5eEvents.DiceReroll{
 				DieIndex: idx,
-				Before:   face,
+				Before:   current,
 				After:    newRoll,
 				Source: dnd5eEvents.RollSource{
 					Ref:  refs.Conditions.FightingStyleGreatWeaponFighting(),
 					Name: gwfDisplayName,
 				},
 			})
-			trace.FinalRolls[idx] = newRoll
+			stagedFinals[idx] = newRoll
 
 			// A kept die contributes to the subtotal; a dropped one does not.
 			if len(trace.KeptIndices) == 0 || slices.Contains(trace.KeptIndices, idx) {
-				trace.Subtotal += newRoll - face
+				stagedSubtotal += newRoll - current
 			}
+		}
+
+		if len(stagedRerolls) > 0 {
+			trace.FinalRolls = stagedFinals
+			trace.Rerolls = append(trace.Rerolls, stagedRerolls...)
+			trace.Subtotal = stagedSubtotal
 		}
 
 		return e, nil
