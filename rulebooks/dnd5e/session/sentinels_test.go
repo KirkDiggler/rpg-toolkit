@@ -190,6 +190,7 @@ var sessionSentinels = map[string]error{
 	"ErrBadCharacter":     session.ErrBadCharacter,
 	"ErrNoRef":            session.ErrNoRef,
 	"ErrBadRef":           session.ErrBadRef,
+	"ErrBadNPC":           session.ErrBadNPC,
 	"ErrNoLoader":         session.ErrNoLoader,
 	"ErrUnknownContent":   session.ErrUnknownContent,
 	"ErrNoMemberID":       session.ErrNoMemberID,

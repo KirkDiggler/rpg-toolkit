@@ -87,6 +87,18 @@ var (
 	// ErrBadRef is returned when a ref is not a well-formed module:type:id.
 	ErrBadRef = errors.New("malformed ref")
 
+	// ErrBadNPC is returned when PlaceNPC is given npc.Data whose
+	// MovementPolicy is empty or unrecognized.
+	//
+	// Separate from ErrNoRef for the same reason ErrBadCharacter is separate
+	// from ErrNoCharacter: PlaceNPC takes already-built content directly
+	// rather than resolving it from a ref, so nothing upstream of this seam
+	// validates it the way npc.New does for a caller who went through that
+	// constructor — a caller who builds npc.Data by hand can still reach
+	// this seam with a malformed value, and it must be named as itself
+	// rather than folded into ErrNoRef's "nil NPC" meaning.
+	ErrBadNPC = errors.New("npc data could not be used")
+
 	// ErrNoLoader is returned when a ref is well-formed but names a module or
 	// type this build cannot load — "homebrew:monsters:mind-flayer" in a build
 	// with no homebrew content registered.

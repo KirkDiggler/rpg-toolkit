@@ -383,7 +383,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	}
 
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "")
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -524,7 +524,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// baking a decision in here, at spawn time, would be the wrong place
 	// to make it.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
-		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions), sheet.Targeting.String())
+		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions), sheet.Targeting.String(), false)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -558,8 +558,11 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 // shape diverges from Spawn's.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef (a nil NPC),
-// ErrNoSession, ErrNoEncounter, ErrBadPosition if no room owns the cell,
-// ErrClosed, or ErrSaveFailed with a populated report.
+// ErrBadNPC (npc.Data with an empty or unrecognized MovementPolicy — see
+// that sentinel's own doc for why this seam cannot trust npc.New's
+// validation to have already run), ErrNoSession, ErrNoEncounter,
+// ErrBadPosition if no room owns the cell, ErrClosed, or ErrSaveFailed with
+// a populated report.
 func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("place npc: %w", ErrNilInput)
@@ -574,6 +577,17 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 		// PR #1414 review) so errors.Is(err, ErrNoRef) still matches; only
 		// the message changes.
 		return nil, fmt.Errorf("place npc: NPC is required: %w", ErrNoRef)
+	}
+
+	// PlaceNPC takes already-built content directly (PlaceNPCInput's own
+	// doc) rather than resolving it through npc.New, so nothing upstream of
+	// this seam guarantees MovementPolicy was validated — a caller who
+	// builds npc.Data by hand can still reach here with an empty or
+	// unrecognized value. Checked before openForWrite, with every other
+	// input-shape rejection, rather than discovered mid-write (rpg-toolkit#1434).
+	blocksMovement, err := in.NPC.MovementPolicy.BlocksMovement()
+	if err != nil {
+		return nil, fmt.Errorf("place npc: %w: %w", ErrBadNPC, err)
 	}
 
 	scope, err := m.openForWrite(ctx, in.Session)
@@ -601,7 +615,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	// enforces the one real rule (no decider) itself; place() never sets
 	// one for either existing caller.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "")
+		0, 0, nil, "", blocksMovement)
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -641,7 +655,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 // kills the pins on both. Same reasoning, one layer up.
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
-	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string,
+	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -673,10 +687,11 @@ func place(
 		// playing them. Both callers (Join, Spawn) compute these off the
 		// sheet or catalog content they just loaded and hand them straight
 		// through; see each verb's own doc for where its values come from.
-		SpeedFeet: speedFeet,
-		SightFeet: sightFeet,
-		Actions:   actions,
-		Targeting: targeting,
+		SpeedFeet:      speedFeet,
+		SightFeet:      sightFeet,
+		Actions:        actions,
+		Targeting:      targeting,
+		BlocksMovement: blocksMovement,
 	})
 	if err != nil {
 		return nil, translate(err)
