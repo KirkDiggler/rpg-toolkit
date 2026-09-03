@@ -387,8 +387,9 @@ func (e *Encounter) driveTurnsWithParticipation(
 				return wrapped, lastSeq, deltas, nil
 			}
 		case TurnParticipationRemove:
-			// Removal is applied by noticeParticipation before scheduling. A
-			// stale Remove here must not be interpreted as Wait or AutoPass.
+			// Removal is applied by the noticeDown participation pass before
+			// scheduling. A stale Remove here must not be interpreted as Wait
+			// or AutoPass.
 			return wrapped, lastSeq, deltas, nil
 		}
 
