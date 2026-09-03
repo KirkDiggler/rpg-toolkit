@@ -89,6 +89,22 @@ func TestRollCalculationValidOrderedRerollsAndKeptDice(t *testing.T) {
 	require.NoError(t, ValidateRollCalculation(calc))
 }
 
+func TestRollCalculationValidDiceAndModifierOnOneComponent(t *testing.T) {
+	calc := validRollCalculation()
+	calc.Components[0].Modifier = intPtr(2)
+	calc.Total = 14
+
+	require.NoError(t, ValidateRollCalculation(calc))
+}
+
+func TestRollCalculationValidNegativeModifier(t *testing.T) {
+	calc := validRollCalculation()
+	calc.Components[1].Modifier = intPtr(-3)
+	calc.Total = 6
+
+	require.NoError(t, ValidateRollCalculation(calc))
+}
+
 func TestRollCalculationValidation(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -128,6 +144,26 @@ func TestRollCalculationValidation(t *testing.T) {
 			name: "final face is outside die range",
 			change: func(calc *RollCalculation) {
 				calc.Components[0].Dice.FinalRolls[0] = 9
+			},
+		},
+		{
+			name: "original face is outside die range with consistent reroll",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.OriginalRolls = []int{7, 5}
+				calc.Components[0].Dice.Rerolls[0].Before = 7
+				calc.Components[0].Dice.Rerolls[0].After = 4
+				calc.Components[0].Dice.FinalRolls = []int{4, 5}
+				calc.Components[0].Dice.Subtotal = 9
+			},
+		},
+		{
+			name: "original rolls are empty",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.OriginalRolls = nil
+				calc.Components[0].Dice.Rerolls = nil
+				calc.Components[0].Dice.FinalRolls = nil
+				calc.Components[0].Dice.Subtotal = 0
+				calc.Total = 3
 			},
 		},
 		{
