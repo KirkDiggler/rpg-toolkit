@@ -289,7 +289,7 @@ reconsider as the count grows.
 ### rulebooks/dnd5e/session — A-
 
 The game server's single integration surface (#938, #943; v0.2.0). Thirteen
-verbs over two repositories and an event stream; the host implements get-by-id
+verbs over three repositories and an event stream; the host implements get-by-id
 and put-by-id and thereafter holds no domain object. The read surface now
 includes a public `Roster` projection: authenticated seat verification, fresh
 strict character loads, session-owned monster identity, world-NPC exclusion,
@@ -308,7 +308,7 @@ type grows one). Pins are mutation-proven throughout, including the
 uncomfortable ones: over-tightening kills only the positive controls, and
 "compute the snapshot but never save it" kills six tests because persistence is
 checked through separate reads rather than returned values. `verify.sh` clean at
-120 tests, `-race` clean, `gorelease` gated.
+751 tests, `-race` clean, `gorelease` gated.
 
 Its dependencies are the composition it wraps (`encounter`), the three `play`
 modules it projects from, `spatial` for coordinates, and — as of v0.2.0 —

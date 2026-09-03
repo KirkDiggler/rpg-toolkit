@@ -2,7 +2,7 @@
 
 **Charter: the game server's single point of contact with the toolkit.**
 
-A host implements two repositories and an event stream and, from then on, holds
+A host implements three repositories and an event stream and, from then on, holds
 no domain object at all — it names things and calls verbs.
 
 ## What it is
