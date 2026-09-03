@@ -75,6 +75,16 @@ func projectAtlas(in encounter.Atlas) Atlas {
 		Boundaries: make([]AtlasBoundary, 0, len(in.Boundaries)),
 		Doorways:   make([]AtlasDoorway, 0, len(in.Doorways)),
 		Regions:    make([]AtlasRegion, 0, len(in.Regions)),
+		Segments:   make([]AtlasSegment, 0, len(in.Segments)),
+		Sealed:     append([]spatial.Position(nil), in.Sealed...),
+	}
+
+	for _, seg := range in.Segments {
+		out.Segments = append(out.Segments, AtlasSegment{
+			From:   AxialPointF{Q: seg.From.Q, R: seg.From.R},
+			To:     AxialPointF{Q: seg.To.Q, R: seg.To.R},
+			Height: seg.Height,
+		})
 	}
 
 	for _, prop := range in.Props {

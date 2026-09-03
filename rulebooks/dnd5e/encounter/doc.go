@@ -95,7 +95,12 @@
 //     The MOVE LAW: a step stopped by one refuses byte-identical to a wall.
 //   - Reveals reach members as recipient-scoped beats (door_revealed,
 //     region_revealed — the wire's DOOR_REVEALED/REGION_REVEALED), and a
-//     concealed door's own state beats go to its knowers alone. THE
+//     concealed door's own state beats go to its knowers alone. A region
+//     reveal is a PATCH for the recipient's cached atlas, so it carries the
+//     room's own slice AND the walls they did not have a moment ago — the
+//     segments newly presented to them, and the cells of the room nobody
+//     stands on (rpg-toolkit#1480). A client draws walls from segments, so a
+//     reveal without them opens a secret onto a room with no walls. THE
 //     FRONTIER STOP (second-round ruling): a step whose destination lies
 //     inside a concealed region is delivered only to that region's knowers
 //     and the mover — the trail stops at the concealment boundary, resumes

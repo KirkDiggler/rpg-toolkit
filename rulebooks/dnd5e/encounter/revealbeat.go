@@ -49,11 +49,29 @@ func (e *Encounter) appendDoorRevealedBeat(recipient MemberID, d *doorRecord, at
 
 // appendRegionRevealedBeat records that a concealed region entered ONE
 // RECIPIENT's knowledge, carrying the region's whole atlas slice — the
-// region entry, the props standing in it, and every boundary touching its
-// cells, border walls and the frontier with any still-hidden neighbour
-// included, since the never-authored yardstick withheld them all. The beat
-// is the patch for the recipient's cached atlas: the load-once,
-// beat-refreshed shape (rpg-project#264).
+// region entry, the props standing in it, every boundary touching its
+// cells, THE WALLS IT IS DRAWN WITH and THE CELLS OF IT NOBODY STANDS ON —
+// border walls and the frontier with any still-hidden neighbour included,
+// since the never-authored yardstick withheld them all. The beat is the patch
+// for the recipient's cached atlas: the load-once, beat-refreshed shape
+// (rpg-project#264).
+//
+// # Segments, and why they are a difference rather than a slice
+//
+// A client draws walls from SEGMENTS since rpg-project#360, so a reveal that
+// carried a room's boundaries and not its segments would open the secret onto
+// a room with no walls — the tell the masquerade exists to remove, arriving at
+// the moment it matters most (rpg-toolkit#1480).
+//
+// Props and boundaries are sliced by asking which of the region's cells they
+// touch. A segment cannot be asked that: [AtlasSegment] carries no footprint,
+// deliberately, because a segment that named the cells it stood on would say
+// through the back door what the doorway list withholds. So the segments this
+// beat carries are the ones the recipient DID NOT HAVE AND NOW DOES — the
+// difference between their atlas before the knowledge landed and after. That
+// is a truer reading of a patch anyway: a border wall the recipient could
+// already see is not news, and the walls inside the room are exactly what was
+// withheld.
 //
 // BUILT FROM THE RECIPIENT'S OWN [Encounter.AtlasFor], deliberately: the
 // beat documents itself as the patch for that answer, so it is derived from
@@ -70,7 +88,9 @@ func (e *Encounter) appendDoorRevealedBeat(recipient MemberID, d *doorRecord, at
 // slice exactly as their atlas draws it. The recipient's knowledge fact is
 // already written when this runs, so the region being revealed is present
 // in its own patch.
-func (e *Encounter) appendRegionRevealedBeat(recipient MemberID, region RegionID, at uint64) (uint64, error) {
+func (e *Encounter) appendRegionRevealedBeat(
+	recipient MemberID, region RegionID, before Atlas, at uint64,
+) (uint64, error) {
 	scoped, err := e.AtlasFor(recipient)
 	if err != nil {
 		return 0, fmt.Errorf("region reveal %q: %w", region, err)
@@ -106,6 +126,17 @@ func (e *Encounter) appendRegionRevealedBeat(recipient MemberID, region RegionID
 		}
 	}
 
+	// THE CELLS OF THIS ROOM NOBODY STANDS ON. A sealed cell keeps its region,
+	// its lighting and its archetype and loses only feet, so a recipient who
+	// has the room's cells still needs telling which of them are not a place
+	// to stand.
+	sealed := make([]spatial.Position, 0)
+	for _, c := range scoped.Sealed {
+		if owned[c] {
+			sealed = append(sealed, c)
+		}
+	}
+
 	payload := map[string]interface{}{
 		"beat": "region_revealed",
 		"region": map[string]interface{}{
@@ -117,9 +148,51 @@ func (e *Encounter) appendRegionRevealedBeat(recipient MemberID, region RegionID
 		},
 		"props":      revealPropsPayload(props),
 		"boundaries": revealBoundariesPayload(boundaries),
+		"segments":   revealSegmentsPayload(newSegments(before.Segments, scoped.Segments)),
+		"sealed":     sealed,
 	}
 
 	return e.appendRevealBeat(recipient, payload, at)
+}
+
+// newSegments is every wall in `after` that was not in `before`, in after's
+// own order.
+//
+// A segment is identified by ITS TWO ENDS, which is the whole of what one is
+// on the wire — no name, no footprint, no doors. Both are exact halves of
+// axial steps, so they compare without a tolerance (rpg-project#360's design
+// note on why a corner needs no epsilon), and a map key over the pair is
+// honest rather than a rounding hazard.
+func newSegments(before, after []AtlasSegment) []AtlasSegment {
+	had := make(map[[2]AxialPointF]bool, len(before))
+	for _, seg := range before {
+		had[[2]AxialPointF{seg.From, seg.To}] = true
+	}
+
+	out := make([]AtlasSegment, 0)
+	for _, seg := range after {
+		if had[[2]AxialPointF{seg.From, seg.To}] {
+			continue
+		}
+		out = append(out, seg)
+	}
+
+	return out
+}
+
+// revealSegmentsPayload renders the walls a reveal newly presents, ends in
+// fractional axial exactly as the atlas carries them.
+func revealSegmentsPayload(segments []AtlasSegment) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(segments))
+	for _, seg := range segments {
+		out = append(out, map[string]interface{}{
+			"from":   seg.From,
+			"to":     seg.To,
+			"height": seg.Height,
+		})
+	}
+
+	return out
 }
 
 // revealPropsPayload renders props for a reveal beat, cells dungeon-absolute.

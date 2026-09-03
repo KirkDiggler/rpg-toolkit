@@ -415,19 +415,22 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Doorways: p.Doorways, Approaches: p.Approaches,
 		}
 	case EventRegionRevealed:
-		// The payload's region, props and boundaries carry exactly this
-		// package's atlas field names — the beat is the recipient's own
-		// atlas answer, sliced — so the types decode directly.
+		// The payload's region, props, boundaries, segments and sealed cells
+		// carry exactly this package's atlas field names — the beat is the
+		// recipient's own atlas answer, sliced — so the types decode directly.
 		var p struct {
-			Region     AtlasRegion     `json:"region"`
-			Props      []AtlasProp     `json:"props"`
-			Boundaries []AtlasBoundary `json:"boundaries"`
+			Region     AtlasRegion        `json:"region"`
+			Props      []AtlasProp        `json:"props"`
+			Boundaries []AtlasBoundary    `json:"boundaries"`
+			Segments   []AtlasSegment     `json:"segments"`
+			Sealed     []spatial.Position `json:"sealed"`
 		}
 		if json.Unmarshal(payload, &p) != nil || p.Region.ID == "" {
 			return nil
 		}
 		return RegionRevealedBody{
 			Region: p.Region, Props: p.Props, Boundaries: p.Boundaries,
+			Segments: p.Segments, Sealed: p.Sealed,
 		}
 	default:
 		// EventSceneOpened, EventTick: no body member exists for these — see

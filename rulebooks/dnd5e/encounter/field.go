@@ -291,7 +291,12 @@ type AxialPointF struct {
 	// Q and R are the axial coordinates, which may be halves: a wall ends at
 	// a side midpoint or a centre, and a side midpoint is exactly half a step
 	// from the centre it belongs to.
-	Q, R float64
+	//
+	// Tagged lowercase to match [spatial.Position] and everything else that
+	// crosses a beat payload, so a reveal's segments decode into the session
+	// mirror's own types the way its props and boundaries already do.
+	Q float64 `json:"q"`
+	R float64 `json:"r"`
 }
 
 // SegmentInput is one authored wall AS THE LINE IT IS: two ends, a height, the

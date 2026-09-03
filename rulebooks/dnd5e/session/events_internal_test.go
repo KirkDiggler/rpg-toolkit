@@ -12,6 +12,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // testKindOf is decodeBeat's own Kind half, isolated for the tests below
@@ -914,4 +915,80 @@ func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
 			require.Equal(t, tc.want, body)
 		})
 	}
+}
+
+// TestRegionRevealedCarriesTheRoomsWallsAndSealedCells is the session half of
+// rpg-toolkit#1480.
+//
+// A client draws walls from segments now, so a reveal that carried a room's
+// boundaries and not its lines would open the secret onto a room with no walls.
+// The payload below is the shape the composition emits — its own atlas answer,
+// sliced, with the field names this package's atlas types already use — so the
+// decode is a straight unmarshal and this test is the pin that the two agree
+// about the names.
+//
+// THE COMPOSITION'S SIDE IS PINNED IN THE COMPOSITION, where a real reveal is
+// driven end to end and the beat is checked against the recipient's own
+// AtlasFor byte for byte. This module cannot run that test until its pin moves
+// to the encounter tag that carries it; what it can and must own is that the
+// bytes arriving in this shape land in the right fields.
+func TestRegionRevealedCarriesTheRoomsWallsAndSealedCells(t *testing.T) {
+	payload := `{
+		"beat": "region_revealed",
+		"region": {
+			"id": "vault", "name": "Vault",
+			"cells": [{"x": 4, "y": 0}, {"x": 4, "y": 1}],
+			"archetype": "crypt",
+			"lighting": {"intensity": 0.2}
+		},
+		"props": [],
+		"boundaries": [
+			{"from": {"x": 3, "y": 1}, "to": {"x": 4, "y": 1},
+			 "blocks_movement": true, "blocks_line_of_sight": true, "height": 2}
+		],
+		"segments": [
+			{"from": {"q": 6, "r": 0.5}, "to": {"q": 5, "r": 2.5}, "height": 3},
+			{"from": {"q": 6, "r": 3.5}, "to": {"q": 5, "r": 5.5}}
+		],
+		"sealed": [{"x": 6, "y": 2}]
+	}`
+
+	kind, body := decodeBeat([]byte(payload))
+	require.Equal(t, EventRegionRevealed, kind)
+
+	region, ok := body.(RegionRevealedBody)
+	require.True(t, ok, "the reveal decodes to its own typed body")
+	require.Equal(t, "vault", region.Region.ID)
+
+	require.Len(t, region.Segments, 2, "the walls inside the room being revealed")
+	require.Equal(t, AxialPointF{Q: 6, R: 0.5}, region.Segments[0].From,
+		"fractional axial, halves and all")
+	require.Equal(t, AxialPointF{Q: 5, R: 2.5}, region.Segments[0].To)
+	require.Equal(t, 3.0, region.Segments[0].Height, "a raised wall is drawn raised")
+	require.Zero(t, region.Segments[1].Height, "and one that authored no height keeps the standard")
+
+	require.Equal(t, []spatial.Position{{X: 6, Y: 2}}, region.Sealed,
+		"the cells of the room nobody stands on")
+}
+
+// TestRegionRevealedWithoutWallsIsStillARoom — a room with no walls of its own
+// inside it reveals with no segments, and that is an ordinary answer rather
+// than a malformed beat. The empty-is-the-ordinary-case rule the door reveal
+// already follows.
+func TestRegionRevealedWithoutWallsIsStillARoom(t *testing.T) {
+	payload := `{
+		"beat": "region_revealed",
+		"region": {"id": "closet", "name": "Closet", "cells": [{"x": 2, "y": 0}],
+		           "archetype": "crypt", "lighting": {"intensity": 1}},
+		"props": [], "boundaries": []
+	}`
+
+	kind, body := decodeBeat([]byte(payload))
+	require.Equal(t, EventRegionRevealed, kind)
+
+	region, ok := body.(RegionRevealedBody)
+	require.True(t, ok)
+	require.Equal(t, "closet", region.Region.ID)
+	require.Empty(t, region.Segments, "no walls inside it is not a defect")
+	require.Empty(t, region.Sealed, "and nothing sealed is the ordinary case")
 }
