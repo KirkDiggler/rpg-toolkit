@@ -1,7 +1,7 @@
 ---
 name: rulebooks/dnd5e module
-description: D&D 5e rules implementation — the consumer-facing surface rpg-api imports across 31 sub-packages (character/ alone in 24 files)
-updated: 2026-08-25
+description: D&D 5e rules implementation — 43 Go sub-packages (44 packages including the module root; character/ alone is imported by 24 rpg-api files)
+updated: 2026-09-03
 confidence: high — verified by directory listing, grep over public symbols, rpg-api import-graph audit 049, and Wave 2.11d shipped-code verification
 ---
 
@@ -20,13 +20,11 @@ implementation of every D&D 5e rule or content clause.
 
 ## What rpg-api consumes
 
-Per a fresh grep on 2026-05-04, rpg-api imports **31 sub-packages** of
-`rulebooks/dnd5e` (the `character/` package alone is imported by 24 rpg-api
-files, which is where the audit's intro narrative's "24 sub-packages"
-phrasing comes from — that count is files-importing-`character`, not
-total sub-packages). The canonical integration path now consumes the session stack and built-in
-monster registry; the removed `monster/actions` package is not a supported
-surface.
+The module currently contains **43 Go sub-packages** (44 packages including
+its module root), verified with `go list ./...` on 2026-09-03. The `character/`
+package alone is imported by 24 rpg-api files. The canonical integration path
+now consumes the session stack and built-in monster registry; the removed
+`monster/actions` package is not a supported surface.
 
 This is the dominant consumer-facing surface. The top imports by file count:
 
@@ -63,6 +61,7 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 |---|---|---|
 | `character/` | Character struct, ToData/LoadFromData, finalization | High — full suite with fixture-driven tests |
 | `character/choices/` | Choice system (class/race at creation) | Medium — testdata from external API |
+| `customization/` | Provider-neutral appearance intent, validation, and deep cloning | High — focused validation, clone, and character integration tests |
 | `combat/` | AC chain, attack resolution, damage, healing, action economy | High — integration and unit tests |
 | `combatabilities/` | Attack, Dash, Disengage, Dodge, Hide, Move | Medium — `move.go` minimally tested |
 | `combat/actions/` | Inert shared definitions, typed attack profiles, validation, deep clones | High |

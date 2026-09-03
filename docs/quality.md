@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit quality scorecard
 description: Per-module grade with rationale — graded from code read, test run, and go.mod inspection 2026-05-02
-updated: 2026-08-23
+updated: 2026-09-03
 confidence: medium — first-pass grades from read-through and live test run; Wave 2.11d grades from shipped-code verification; rpg-toolkit#757 (encounter, tools/spawn) verified against shipped code 2026-07-13; no coverage tooling run. The top-level encounter module's former B+ assessment is retained only as a retirement note after #1215.
 ---
 
@@ -196,7 +196,7 @@ range ignoring the room's actual dimensions — see
 ### rulebooks/dnd5e — B+
 
 This is the most feature-complete and actively-worked module. All tests pass across
-42 sub-packages. Integration tests for Barbarian, Fighter, Monk, and Rogue
+43 Go sub-packages. Integration tests for Barbarian, Fighter, Monk, and Rogue
 encounters all pass. Character draft, equipment slots, combat, actions, conditions,
 features, initiative, saves, spells, monsters, monster traits, and provider-neutral
 appearance customization all have test coverage.
@@ -220,9 +220,13 @@ Known gaps that keep it from A:
 ### rulebooks/dnd5e/customization — A-
 
 Provider-neutral appearance intent has focused validation and deep-clone tests.
-The package deliberately accepts unknown opaque style refs and leaves provider
-membership, defaults, and rendering resolution to the provider. Its boundary is
-small and dependency-light; future integration belongs in `character`/Draft work.
+Task 6 adds character integration coverage for atomic validated
+`Draft.SetAppearance`, class carryover, draft/finalization/character
+round-trips, copy-returning getters, present-zero and nil preservation, nested
+pointer isolation, and strict/legacy malformed-persisted-data rejection. The
+package deliberately accepts unknown opaque style refs and leaves provider
+membership, defaults, and rendering resolution to the provider. Its boundary
+remains small and dependency-light.
 
 ### rulebooks/dnd5e/combat — A (Wave 2.11d, was A-)
 
@@ -380,7 +384,7 @@ Held back from B by the absence of any tests at the base-module level.
 - **C** — meaningful gap: missing tests for non-trivial logic, or known regression
 - **D** — tests broken or absent for load-bearing code; blocked from CI passing
 
-## Grade distribution (2026-08-23)
+## Grade distribution (2026-09-03)
 
 | Grade | Modules |
 |---|---|
