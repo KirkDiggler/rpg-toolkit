@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -154,6 +155,185 @@ func (s *DamageCustodyTestSuite) TestTypesAreGroupedSeparatelyThroughTheFold() {
 	s.Require().True(ok)
 	// Piercing 9 halved to 4; fire 6 untouched.
 	s.Require().Equal(4+6, outcome.Damage, "each type resolves on its own")
+}
+
+// THE OUTCOME OWNS ITS TRACES. The folded damage event is publisher-owned
+// state a chain subscriber can retain, so the outcome deep-clones every
+// component at capture: mutating every roll fact on the publisher's event
+// after the strike has reported cannot rewrite what it reported, and nothing
+// the fold appended afterwards leaks in.
+func (s *DamageCustodyTestSuite) TestTheStrikeOutcomeOwnsThePublisherTraceAfterTheFold() {
+	var folded *dnd5eEvents.DamageChainEvent
+	bus := events.NewEventBus()
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, e *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			folded = e
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	definition := oozeProfile(damage.Damage{
+		Dice: "1d8", Type: damage.Bludgeoning, FlatBonus: 2,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+	})
+	definition.Attack.Ability = &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: 3}
+
+	target := monsters.NewWolf(secondWolfID).ToData()
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   target.ID,
+			Definition: definition,
+			Roller:     &sequenceRoller{singles: []int{15}, pair: []int{5}},
+		}),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	struck, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.Require().Len(struck.DamageComponents, 2)
+	s.Require().NotNil(folded)
+
+	// MUTATE EVERY PUBLISHER-OWNED FACT after the fold captured them: faces,
+	// subtotal, reroll history, provider identity, modifier pointer, damage
+	// properties — and append a component the outcome must never see.
+	weaponEvent := &folded.Components[0]
+	weaponEvent.Roll.Dice.OriginalRolls[0] = 99
+	weaponEvent.Roll.Dice.FinalRolls[0] = 99
+	weaponEvent.Roll.Dice.Subtotal = 999
+	weaponEvent.Roll.Dice.Rerolls = append(weaponEvent.Roll.Dice.Rerolls, dnd5eEvents.DiceReroll{
+		DieIndex: 0, Before: 5, After: 1,
+		Source: dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+	})
+	weaponEvent.Roll.Source.Name = "tampered"
+	weaponEvent.Roll.Source.Ref.ID = "tampered"
+	*weaponEvent.Roll.Modifier = 99
+	weaponEvent.Properties[0] = damage.DoesNotCrit
+	folded.Components = append(folded.Components, dnd5eEvents.DamageComponent{
+		Source: dnd5eEvents.DamageSourceSpell,
+		Roll:   dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Name: "late arrival"}},
+	})
+
+	weapon := struck.DamageComponents[0]
+	s.Equal([]int{5}, weapon.Roll.Dice.OriginalRolls)
+	s.Equal([]int{5}, weapon.Roll.Dice.FinalRolls)
+	s.Equal(5, weapon.Roll.Dice.Subtotal)
+	s.Empty(weapon.Roll.Dice.Rerolls)
+	s.Equal("Ooze Strike", weapon.Roll.Source.Name)
+	s.Equal(refs.MonsterActions.WolfBite(), weapon.Roll.Source.Ref,
+		"the outcome's identity ref is an owned copy, not the publisher's")
+	s.Equal(2, *weapon.Roll.Modifier)
+	s.Equal([]damage.Property{damage.AddsAttackAbilityModifier}, weapon.Properties)
+
+	ability := struck.DamageComponents[1]
+	s.Equal("Strength", ability.Roll.Source.Name)
+	s.Equal(refs.Abilities.Strength(), ability.Roll.Source.Ref)
+	s.NotNil(ability.Roll.Modifier)
+	s.Equal(3, *ability.Roll.Modifier)
+
+	s.Len(struck.DamageComponents, 2, "a component appended after capture does not leak in")
+	s.Equal(10, struck.Damage, "5 pool + 2 flat + 3 Strength, settled during the fold")
+}
+
+// THE HEADLINE FOR DAMAGE: the strike preserves the root chain's complete
+// trace — original faces, the ordered sourced reroll, final faces, subtotal,
+// and the Strength modifier — instead of summing the pool into a scalar. The
+// Great Weapon Fighting chain attachment rerolls INSIDE the fold; resolution
+// carries the history it settled and rebuilds nothing.
+//
+// The GWF condition is constructed with its own roller because that constructor
+// is the injection point the root exposes: a condition attached from a
+// persisted sheet is built by the factory with a nil roller and falls back to
+// the crypto-backed default. The strike's own roller scripts the attack roll
+// and the weapon pool.
+func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
+	bus := events.NewEventBus()
+	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition(
+		heroID, &sequenceRoller{singles: []int{4}},
+	)
+	require.NoError(t, gwf.Apply(context.Background(), bus))
+
+	definition := combatActions.Definition{
+		Ref:  *refs.Weapons.Greatsword(),
+		Name: "Greatsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Ability:     &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: 3},
+			Weapon:      &combatActions.WeaponContext{TwoHanded: true},
+			Damage: []damage.Damage{{
+				Dice:       "2d6",
+				Type:       damage.Slashing,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			}},
+		},
+	}
+
+	out, err := resolveOn(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Definition: definition,
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{1, 5}},
+		}),
+	}, newSurface(bus))
+	require.NoError(t, err)
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	require.True(t, ok)
+	require.True(t, outcome.Hit)
+	require.False(t, outcome.Critical)
+	require.Equal(t, 12, outcome.Damage, "final [4,5] subtotal 9 plus Strength 3")
+
+	require.Len(t, outcome.DamageComponents, 2)
+	weapon := outcome.DamageComponents[0]
+	require.Equal(t, dnd5eEvents.DamageSourceWeapon, weapon.Source)
+	require.Equal(t, refs.Weapons.Greatsword(), weapon.Roll.Source.Ref)
+	require.Equal(t, "Greatsword", weapon.Roll.Source.Name,
+		"the weapon component's provider name comes from the compiled definition")
+	require.Equal(t, damage.Slashing, weapon.DamageType)
+	require.Equal(t, []damage.Property{damage.AddsAttackAbilityModifier}, weapon.Properties)
+	require.False(t, weapon.IsCritical)
+	require.Nil(t, weapon.Roll.Modifier, "the pool declares no flat bonus of its own")
+	require.NotNil(t, weapon.Roll.Dice)
+	trace := weapon.Roll.Dice
+	require.Equal(t, "2d6", trace.Notation)
+	require.Equal(t, 6, trace.DieSize)
+	require.Equal(t, []int{1, 5}, trace.OriginalRolls, "originals are never rewritten")
+	require.Equal(t, []dnd5eEvents.DiceReroll{{
+		DieIndex: 0, Before: 1, After: 4,
+		Source: dnd5eEvents.RollSource{
+			Ref:  refs.Conditions.FightingStyleGreatWeaponFighting(),
+			Name: "Great Weapon Fighting",
+		},
+	}}, trace.Rerolls, "the reroll is ordered and sourced to the condition")
+	require.Equal(t, []int{4, 5}, trace.FinalRolls)
+	require.Equal(t, 9, trace.Subtotal)
+	require.Empty(t, trace.KeptIndices)
+
+	ability := outcome.DamageComponents[1]
+	require.Equal(t, dnd5eEvents.DamageSourceAbility, ability.Source)
+	require.Equal(t, refs.Abilities.Strength(), ability.Roll.Source.Ref,
+		"the ability component's identity comes from the canonical ref")
+	require.Equal(t, "Strength", ability.Roll.Source.Name,
+		"the ability component's name comes from the ability's display authority")
+	require.Nil(t, ability.Roll.Dice)
+	require.NotNil(t, ability.Roll.Modifier)
+	require.Equal(t, 3, *ability.Roll.Modifier)
+	require.Equal(t, damage.Slashing, ability.DamageType)
+
+	require.Equal(t, []damage.Instance{{Amount: 12, Type: damage.Slashing}}, outcome.DamageInstances)
 }
 
 func oozeProfile(pools ...damage.Damage) combatActions.Definition {
@@ -367,8 +547,13 @@ func (s *DamageCustodyTestSuite) onDamageChain(
 func (s *DamageCustodyTestSuite) multiplyOnBus(bus events.EventBus, t damage.Type, factor float64) {
 	s.onDamageChain(bus, "test_multiplier_"+string(t), func(e *dnd5eEvents.DamageChainEvent) {
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:     dnd5eEvents.DamageSourceCondition,
-			SourceRef:  &core.Ref{Module: "test", Type: "conditions", ID: "multiplier"},
+			Source: dnd5eEvents.DamageSourceCondition,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref:  &core.Ref{Module: "test", Type: "conditions", ID: "multiplier"},
+					Name: "Test Multiplier",
+				},
+			},
 			Multiplier: dnd5eEvents.Multiply(factor),
 			DamageType: t,
 		})
@@ -383,10 +568,16 @@ func (s *DamageCustodyTestSuite) halveOnBus(bus events.EventBus, t damage.Type) 
 // Smite does.
 func (s *DamageCustodyTestSuite) addFlatOnBus(bus events.EventBus, amount int, t damage.Type) {
 	s.onDamageChain(bus, "test_flat_"+string(t), func(e *dnd5eEvents.DamageChainEvent) {
+		bonus := amount
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:     dnd5eEvents.DamageSourceCondition,
-			SourceRef:  refs.Conditions.Raging(),
-			FlatBonus:  amount,
+			Source: dnd5eEvents.DamageSourceCondition,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref:  refs.Conditions.Raging(),
+					Name: "Raging",
+				},
+				Modifier: &bonus,
+			},
 			DamageType: t,
 		})
 	})

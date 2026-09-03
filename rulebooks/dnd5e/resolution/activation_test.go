@@ -4,9 +4,7 @@
 package resolution
 
 import (
-	"bytes"
 	"context"
-	cryptoRand "crypto/rand"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -36,12 +34,78 @@ const (
 	activationAllyID    = "activation-ally"
 )
 
+// fixedRoller returns one scripted face for every die it is asked to roll,
+// whatever the die size — the deterministic stand-in for the crypto-backed
+// production roller an activation is handed in the field.
+type fixedRoller struct{ face int }
+
+func (r fixedRoller) Roll(_ context.Context, _ int) (int, error) { return r.face, nil }
+
+func (r fixedRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
+	rolls := make([]int, count)
+	for i := range rolls {
+		rolls[i] = r.face
+	}
+	return rolls, nil
+}
+
+// calculationModifier returns a fresh pointer so a present zero stays a
+// present zero and no fixture aliases another's pointer.
+func calculationModifier(value int) *int { return &value }
+
+// secondWindSourceRef returns a fresh copy of the canonical Second Wind ref so
+// a mutation proof corrupts nothing shared with the refs package.
+func secondWindSourceRef() *core.Ref {
+	ref := *refs.Features.SecondWind()
+	return &ref
+}
+
+// fighterLevelSourceRef returns a fresh copy of the canonical Fighter ref for
+// the same reason secondWindSourceRef exists.
+func fighterLevelSourceRef() *core.Ref {
+	ref := *refs.Classes.Fighter()
+	return &ref
+}
+
+// secondWindCalculation builds the complete sourced calculation the published
+// root Second Wind feature produces for a fixed face-6 1d10 roll at fighter
+// level 1: one dice trace, one present level modifier, authoritative total 7.
+// Fresh literals and fresh refs on every call.
+func secondWindCalculation() *dnd5eEvents.RollCalculation {
+	return &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: secondWindSourceRef(), Name: "Second Wind"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "1d10",
+					DieSize:       10,
+					OriginalRolls: []int{6},
+					FinalRolls:    []int{6},
+					Subtotal:      6,
+				},
+			},
+			{
+				Source: dnd5eEvents.RollSource{
+					Ref: fighterLevelSourceRef(), Name: "Fighter", Label: "Fighter level",
+				},
+				Modifier: calculationModifier(1),
+			},
+		},
+		Total: 7,
+	}
+}
+
 type ActivationTestSuite struct {
 	suite.Suite
 	ctx context.Context
 }
 
-func TestActivationSuite(t *testing.T) { suite.Run(t, new(ActivationTestSuite)) }
+// TestActivationCalculationSuite is the activation machine's whole suite —
+// conditions, capacity, refusals, and since roll traces the healing
+// calculation — under one entry. The name carries "Calculation" so the
+// focused command this task's plan runs (`Test.*Activation.*Calculation`)
+// reaches every test here, not only the ones whose own names happen to say it.
+func TestActivationCalculationSuite(t *testing.T) { suite.Run(t, new(ActivationTestSuite)) }
 
 func (s *ActivationTestSuite) SetupTest() { s.ctx = context.Background() }
 
@@ -92,16 +156,6 @@ func (s *ActivationTestSuite) fighter(id string, hitPoints, maxHitPoints int) *c
 	data.Resources = nil
 	data.Features = []json.RawMessage{secondWind}
 	return data
-}
-
-// withSecondWindRoll fixes the crypto-backed roll used by the published root
-// Second Wind feature. The feature currently constructs its own dice roller,
-// so resolution's interaction roller cannot script this one fact.
-func (s *ActivationTestSuite) withSecondWindRoll(roll byte, run func()) {
-	previous := cryptoRand.Reader
-	cryptoRand.Reader = bytes.NewReader([]byte{roll - 1})
-	defer func() { cryptoRand.Reader = previous }()
-	run()
 }
 
 func (s *ActivationTestSuite) world(members ...encounter.MemberInput) encounter.EncounterData {
@@ -181,7 +235,7 @@ func dirty(out *Output, id string) *character.Data {
 // the sheet that would be saved rather than about the call returning nil.
 func (s *ActivationTestSuite) TestRagingReachesTheSheetThatWouldBeSaved() {
 	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()},
+		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
 	)
@@ -205,7 +259,7 @@ func (s *ActivationTestSuite) TestRagingReachesTheSheetThatWouldBeSaved() {
 // applied its condition without spending a use would be free forever.
 func (s *ActivationTestSuite) TestTheChargeIsSpentOnTheSameSheet() {
 	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()},
+		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
 	)
@@ -220,7 +274,7 @@ func (s *ActivationTestSuite) TestTheChargeIsSpentOnTheSameSheet() {
 // is why Input.Cost stays nil.
 func (s *ActivationTestSuite) TestTheAbilitySpendsItsOwnSlot() {
 	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()},
+		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
 	)
@@ -237,7 +291,7 @@ func (s *ActivationTestSuite) TestTheAbilitySpendsItsOwnSlot() {
 // than a feature, reached through the other arm of ActivateAbility's lookup.
 func (s *ActivationTestSuite) TestDodgeReachesTheSheetTheSameWay() {
 	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Dodge()},
+		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Dodge(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
 	)
@@ -277,6 +331,7 @@ func (s *ActivationTestSuite) TestHelpCapturesTheSelectedAllyAsTheAffectedTarget
 	out, err := s.run(
 		&ActivationInput{
 			MemberID: heroID, Ability: refs.CombatAbilities.Help(), TargetID: activationAllyID,
+			Roller: dice.NewRoller(),
 		},
 		world,
 		[]Participant{{Character: s.barbarian(2)}, {Character: ally}},
@@ -294,7 +349,7 @@ func (s *ActivationTestSuite) TestHelpCapturesTheSelectedAllyAsTheAffectedTarget
 
 func (s *ActivationTestSuite) TestDashAppendsCapacityAfterBusEffects() {
 	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Dash()},
+		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Dash(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
 	)
@@ -308,46 +363,55 @@ func (s *ActivationTestSuite) TestDashAppendsCapacityAfterBusEffects() {
 	}}, outcome.Effects)
 }
 
-func (s *ActivationTestSuite) TestSecondWindCapturesThePostClampHealingFacts() {
-	s.withSecondWindRoll(6, func() {
-		out, err := s.run(
-			&ActivationInput{MemberID: activationFighterID, Ability: refs.Features.SecondWind()},
-			s.world(encounter.MemberInput{ID: activationFighterID, Kind: encounter.KindPlayer,
-				Position: spatial.Position{X: 1, Y: 1}}),
-			[]Participant{{Character: s.fighter(activationFighterID, 8, 10)}},
-		)
+// THE HEADLINE FOR HEALING: the injected interaction roller scripts the roll,
+// and the collector output owns the COMPLETE Second Wind calculation — dice
+// trace, fighter-level modifier, authoritative total — not a flattened
+// projection of it. No process-global randomness is touched to get here.
+func (s *ActivationTestSuite) TestSecondWindActivationCapturesTheCompleteCalculation() {
+	out, err := s.run(
+		&ActivationInput{
+			MemberID: activationFighterID, Ability: refs.Features.SecondWind(),
+			Roller: fixedRoller{face: 6},
+		},
+		s.world(encounter.MemberInput{ID: activationFighterID, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}}),
+		[]Participant{{Character: s.fighter(activationFighterID, 8, 10)}},
+	)
 
-		s.Require().NoError(err)
-		outcome, ok := out.Outcome.(ActivationOutcome)
-		s.Require().True(ok)
-		s.Equal([]ActivationEffect{{
-			Kind: EffectHealingApplied, TargetID: activationFighterID,
-			Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
-			Amount: 2, Requested: 7, Roll: 6, Modifier: 1, Before: 8, After: 10,
-		}}, outcome.Effects)
-	})
+	s.Require().NoError(err)
+	outcome, ok := out.Outcome.(ActivationOutcome)
+	s.Require().True(ok)
+	s.Equal([]ActivationEffect{{
+		Kind: EffectHealingApplied, TargetID: activationFighterID,
+		Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
+		Amount: 2, Requested: 7, Before: 8, After: 10,
+		Calculation: secondWindCalculation(),
+	}}, outcome.Effects)
 }
 
-// A zero applied amount is still a fact: the requested healing, roll, modifier,
-// and unchanged HP endpoints must not disappear just because the target was full.
+// A zero applied amount is still a fact: the requested healing and unchanged HP
+// endpoints must not disappear just because the target was full, and the
+// calculation survives the clamp alongside them.
 func (s *ActivationTestSuite) TestSecondWindCapturesZeroAppliedWithoutDroppingRollFacts() {
-	s.withSecondWindRoll(6, func() {
-		out, err := s.run(
-			&ActivationInput{MemberID: activationFighterID, Ability: refs.Features.SecondWind()},
-			s.world(encounter.MemberInput{ID: activationFighterID, Kind: encounter.KindPlayer,
-				Position: spatial.Position{X: 1, Y: 1}}),
-			[]Participant{{Character: s.fighter(activationFighterID, 10, 10)}},
-		)
+	out, err := s.run(
+		&ActivationInput{
+			MemberID: activationFighterID, Ability: refs.Features.SecondWind(),
+			Roller: fixedRoller{face: 6},
+		},
+		s.world(encounter.MemberInput{ID: activationFighterID, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}}),
+		[]Participant{{Character: s.fighter(activationFighterID, 10, 10)}},
+	)
 
-		s.Require().NoError(err)
-		outcome, ok := out.Outcome.(ActivationOutcome)
-		s.Require().True(ok)
-		s.Equal([]ActivationEffect{{
-			Kind: EffectHealingApplied, TargetID: activationFighterID,
-			Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
-			Amount: 0, Requested: 7, Roll: 6, Modifier: 1, Before: 10, After: 10,
-		}}, outcome.Effects)
-	})
+	s.Require().NoError(err)
+	outcome, ok := out.Outcome.(ActivationOutcome)
+	s.Require().True(ok)
+	s.Equal([]ActivationEffect{{
+		Kind: EffectHealingApplied, TargetID: activationFighterID,
+		Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
+		Amount: 0, Requested: 7, Before: 10, After: 10,
+		Calculation: secondWindCalculation(),
+	}}, outcome.Effects)
 }
 
 // A REFUSAL IS AN ERROR, AND NOTHING COMES BACK TO SAVE.
@@ -362,7 +426,7 @@ func (s *ActivationTestSuite) TestAnAbilityThatRefusesIsAnErrorNotADoneInteracti
 	s.Require().NoError(marshalErr)
 
 	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()},
+		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: record}},
 	)
@@ -386,7 +450,7 @@ func (s *ActivationTestSuite) TestAnAbilityThatRefusesIsAnErrorNotADoneInteracti
 // barbarian who is simply out of rages.
 func (s *ActivationTestSuite) TestARefusalIsNotAMalformedActivation() {
 	_, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()},
+		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(0)}},
 	)
@@ -397,7 +461,7 @@ func (s *ActivationTestSuite) TestARefusalIsNotAMalformedActivation() {
 
 func (s *ActivationTestSuite) TestAMemberWhoIsNotInTheCastIsRefused() {
 	_, err := s.run(
-		&ActivationInput{MemberID: "nobody", Ability: refs.Features.Rage()},
+		&ActivationInput{MemberID: "nobody", Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
 	)
@@ -420,7 +484,7 @@ func (s *ActivationTestSuite) TestAMonsterCannotDeclareAnActivation() {
 	)
 
 	_, err := s.run(
-		&ActivationInput{MemberID: wolfID, Ability: refs.CombatAbilities.Dodge()},
+		&ActivationInput{MemberID: wolfID, Ability: refs.CombatAbilities.Dodge(), Roller: dice.NewRoller()},
 		world,
 		[]Participant{{Character: s.barbarian(2)}, {Monster: wolf}},
 	)
@@ -433,6 +497,7 @@ func (s *ActivationTestSuite) TestATargetWhoIsNotInTheCastIsRefused() {
 	_, err := s.run(
 		&ActivationInput{
 			MemberID: heroID, Ability: refs.CombatAbilities.Help(), TargetID: "ghost",
+			Roller: dice.NewRoller(),
 		},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
@@ -458,6 +523,38 @@ func (s *ActivationTestSuite) TestTheDoorRefusesWhatNobodyCouldRun() {
 	// from wire strings can actually produce.
 	_, err = NewActivation(&ActivationInput{MemberID: heroID, Ability: &core.Ref{}})
 	s.Require().ErrorIs(err, ErrBadActivation)
+
+	// Everything else in order, but no roller: refused at the door, before the
+	// world is loaded and before any payment — the same rule a machine which
+	// rolls carries its own roller holds resolve.Input to.
+	_, err = NewActivation(&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()})
+	s.Require().ErrorIs(err, ErrBadActivation)
+	s.Contains(err.Error(), "roller")
+}
+
+// A machine that rolls carries its own roller, so a nil one is a caller defect
+// caught at construction — never a silent fall back to process-global
+// randomness mid-interaction.
+func (s *ActivationTestSuite) TestTheDoorRefusesARollerlessActivation() {
+	_, err := NewActivation(&ActivationInput{
+		MemberID: activationFighterID, Ability: refs.Features.SecondWind(),
+	})
+
+	s.Require().ErrorIs(err, ErrBadActivation)
+	s.Contains(err.Error(), "roller")
+}
+
+// The roller is carried, not recreated: the machine stores the interface the
+// caller supplied so the roll that happens during activation is the roll the
+// caller scripted.
+func (s *ActivationTestSuite) TestTheRollerIsCarriedNotRecreated() {
+	roller := fixedRoller{face: 6}
+	machine, err := NewActivation(&ActivationInput{
+		MemberID: heroID, Ability: refs.Features.Rage(), Roller: roller,
+	})
+	s.Require().NoError(err)
+
+	s.Equal(roller, machine.(*activationMachine).roller)
 }
 
 // The input is copied, so a caller that reuses its observer slice cannot change
@@ -468,6 +565,7 @@ func (s *ActivationTestSuite) TestTheInputIsCopied() {
 	in := &ActivationInput{
 		MemberID: heroID, Ability: refs.CombatAbilities.Hide(),
 		ObserverPassivePerceptions: observers,
+		Roller:                     dice.NewRoller(),
 	}
 	machine, err := NewActivation(in)
 	s.Require().NoError(err)
@@ -520,7 +618,7 @@ func (s *ActivationTestSuite) TestOffTheBusTheSameCallSucceedsAndAppliesNothing(
 // ability refusing.
 func (s *ActivationTestSuite) TestAnAbilityThatNeedsATargetRefusesWithoutOne() {
 	_, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Help()},
+		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Help(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
 	)
@@ -537,6 +635,7 @@ func (s *ActivationTestSuite) TestAnUntargetedAbilityRefusesATarget() {
 	_, err := s.run(
 		&ActivationInput{
 			MemberID: heroID, Ability: refs.CombatAbilities.Dodge(), TargetID: heroID,
+			Roller: dice.NewRoller(),
 		},
 		s.world(),
 		[]Participant{{Character: s.barbarian(2)}},
@@ -557,7 +656,7 @@ func (s *ActivationTestSuite) TestOutOfCombatIsARefusalNotAMalformedCall() {
 	cold.ActionEconomy = nil
 
 	_, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Help()},
+		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Help(), Roller: dice.NewRoller()},
 		s.world(),
 		[]Participant{{Character: cold}},
 	)
@@ -572,12 +671,46 @@ func (s *ActivationTestSuite) TestOutOfCombatIsARefusalNotAMalformedCall() {
 // WHICH ABILITY this machine activates after it was built.
 func (s *ActivationTestSuite) TestTheAbilityRefIsCopied() {
 	ref := *refs.Features.Rage()
-	machine, err := NewActivation(&ActivationInput{MemberID: heroID, Ability: &ref})
+	machine, err := NewActivation(&ActivationInput{MemberID: heroID, Ability: &ref, Roller: dice.NewRoller()})
 	s.Require().NoError(err)
 
 	ref.ID = "second_wind"
 
 	s.Equal("rage", machine.(*activationMachine).ability.ID)
+}
+
+// MUTATE EVERY PUBLISHER-OWNED FACT after synchronous publication: the source
+// ref, every dice face, the subtotal, the modifier pointer, the total. What
+// this interaction captured was cloned at capture time, so none of it lands.
+func (s *ActivationTestSuite) TestActivationCollectorCapturesCalculationWithoutAliasing() {
+	bus := events.NewEventBus()
+	collector, err := newActivationEffectCollector(s.ctx, bus)
+	s.Require().NoError(err)
+	defer func() { s.Require().NoError(collector.Close(s.ctx)) }()
+
+	source := *refs.Features.SecondWind()
+	calculation := secondWindCalculation()
+	s.Require().NoError(dnd5eEvents.HealingAppliedTopic.On(bus).Publish(s.ctx,
+		dnd5eEvents.HealingAppliedEvent{
+			TargetID: heroID, Requested: 7, Applied: 2, HPBefore: 8, HPAfter: 10,
+			SourceRef: &source, SourceName: "Second Wind", Calculation: calculation,
+		}))
+
+	source.ID = "tampered"
+	calculation.Components[0].Source.Name = "tampered"
+	calculation.Components[0].Dice.OriginalRolls[0] = 1
+	calculation.Components[0].Dice.FinalRolls[0] = 1
+	calculation.Components[0].Dice.Subtotal = 1
+	*calculation.Components[1].Modifier = 9
+	calculation.Total = 10
+
+	s.Equal([]ActivationEffect{{
+		Kind: EffectHealingApplied, TargetID: heroID,
+		Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
+		Amount: 2, Requested: 7, Before: 8, After: 10,
+		Calculation: secondWindCalculation(),
+	}}, collector.Effects(),
+		"the captured calculation is an owned clone, not the publisher's trace")
 }
 
 func (s *ActivationTestSuite) TestActivationCollectorCapturesConditionRemovedWithCatalogIdentity() {
@@ -606,10 +739,11 @@ func (s *ActivationTestSuite) TestActivationCollectorPreservesBusOrderAndReturns
 	defer func() { s.Require().NoError(collector.Close(s.ctx)) }()
 
 	source := *refs.Features.SecondWind()
+	calculation := secondWindCalculation()
 	s.Require().NoError(dnd5eEvents.HealingAppliedTopic.On(bus).Publish(s.ctx,
 		dnd5eEvents.HealingAppliedEvent{
 			TargetID: heroID, Requested: 7, Applied: 2, HPBefore: 8, HPAfter: 10,
-			Roll: 6, Modifier: 1, SourceRef: &source, SourceName: "Second Wind",
+			SourceRef: &source, SourceName: "Second Wind", Calculation: calculation,
 		}))
 	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(s.ctx,
 		dnd5eEvents.ConditionAppliedEvent{
@@ -622,15 +756,17 @@ func (s *ActivationTestSuite) TestActivationCollectorPreservesBusOrderAndReturns
 			Reason: "turn started",
 		}))
 
-	// Mutating the event's source ref after synchronous publication cannot
-	// rewrite the captured canonical identity.
+	// Mutating the publisher-owned identity after synchronous publication cannot
+	// rewrite the captured canonical identity. The full calculation mutation
+	// proof lives in TestActivationCollectorCapturesCalculationWithoutAliasing.
 	source.ID = "tampered"
 	got := collector.Effects()
 	s.Equal([]ActivationEffect{
 		{
 			Kind: EffectHealingApplied, TargetID: heroID,
 			Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
-			Amount: 2, Requested: 7, Roll: 6, Modifier: 1, Before: 8, After: 10,
+			Amount: 2, Requested: 7, Before: 8, After: 10,
+			Calculation: secondWindCalculation(),
 		},
 		{
 			Kind: EffectConditionApplied, TargetID: activationAllyID,
@@ -643,8 +779,12 @@ func (s *ActivationTestSuite) TestActivationCollectorPreservesBusOrderAndReturns
 	}, got)
 
 	got[0].Name = "caller mutation"
-	s.Equal("Second Wind", collector.Effects()[0].Name,
+	got[0].Calculation.Components[0].Dice.Subtotal = 999
+	after := collector.Effects()
+	s.Equal("Second Wind", after[0].Name,
 		"Effects must return a defensive slice copy")
+	s.Equal(6, after[0].Calculation.Components[0].Dice.Subtotal,
+		"the captured calculation must not alias the returned slice's trace")
 	s.Len(collector.subscriptionIDs, 3, "every typed subscription ID is retained for cleanup")
 }
 
@@ -669,11 +809,95 @@ func (s *ActivationTestSuite) TestActivationCollectorRefusesHealingWithoutCanoni
 			err = dnd5eEvents.HealingAppliedTopic.On(bus).Publish(s.ctx,
 				dnd5eEvents.HealingAppliedEvent{
 					TargetID: heroID, Requested: 7, Applied: 2, HPBefore: 8, HPAfter: 10,
-					Roll: 6, Modifier: 1,
 					SourceRef: test.sourceRef, SourceName: test.sourceName,
+					Calculation: secondWindCalculation(),
 				})
 
 			s.Require().Error(err)
+			s.Empty(collector.Effects(), "an invalid fact must not leave a partial effect")
+			s.Require().NoError(collector.Close(s.ctx))
+		})
+	}
+}
+
+// LEGACY HEALING IS NOT AN ACTIVATION RESULT.
+//
+// A heal published without a calculation — Hit Dice's scalar-only shape — is
+// not something an ability activated, so the collector captures nothing for it
+// and reports no error. The scalars are the legacy publisher's own record; the
+// collector no longer mirrors them onto effects.
+func (s *ActivationTestSuite) TestActivationCollectorSkipsLegacyHealingWithoutCalculation() {
+	bus := events.NewEventBus()
+	collector, err := newActivationEffectCollector(s.ctx, bus)
+	s.Require().NoError(err)
+	defer func() { s.Require().NoError(collector.Close(s.ctx)) }()
+
+	source := secondWindSourceRef()
+	err = dnd5eEvents.HealingAppliedTopic.On(bus).Publish(s.ctx,
+		dnd5eEvents.HealingAppliedEvent{
+			TargetID: heroID, Requested: 7, Applied: 2, HPBefore: 8, HPAfter: 10,
+			Roll: 6, Modifier: 1, SourceRef: source, SourceName: "Second Wind",
+		})
+
+	s.Require().NoError(err)
+	s.Empty(collector.Effects(), "a scalar-only heal is not an activation result")
+}
+
+// A trace-bearing heal with an invalid calculation is refused whole: no partial
+// effect, and the interaction's collector stays otherwise usable.
+func (s *ActivationTestSuite) TestActivationCollectorRefusesAnInvalidHealingCalculation() {
+	tests := []struct {
+		name        string
+		calculation *dnd5eEvents.RollCalculation
+	}{
+		{
+			name:        "no components",
+			calculation: &dnd5eEvents.RollCalculation{Total: 7},
+		},
+		{
+			name: "total disagrees with components",
+			calculation: func() *dnd5eEvents.RollCalculation {
+				calc := secondWindCalculation()
+				calc.Total = 9
+				return calc
+			}(),
+		},
+		{
+			name: "subtotal disagrees with faces",
+			calculation: func() *dnd5eEvents.RollCalculation {
+				calc := secondWindCalculation()
+				calc.Components[0].Dice.Subtotal = 5
+				return calc
+			}(),
+		},
+		{
+			name: "reroll does not replay",
+			calculation: func() *dnd5eEvents.RollCalculation {
+				calc := secondWindCalculation()
+				calc.Components[0].Dice.Rerolls = []dnd5eEvents.DiceReroll{{
+					DieIndex: 0, Before: 2, After: 6,
+					Source: dnd5eEvents.RollSource{Ref: secondWindSourceRef(), Name: "Second Wind"},
+				}}
+				return calc
+			}(),
+		},
+	}
+
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			bus := events.NewEventBus()
+			collector, err := newActivationEffectCollector(s.ctx, bus)
+			s.Require().NoError(err)
+
+			err = dnd5eEvents.HealingAppliedTopic.On(bus).Publish(s.ctx,
+				dnd5eEvents.HealingAppliedEvent{
+					TargetID: heroID, Requested: 7, Applied: 2, HPBefore: 8, HPAfter: 10,
+					SourceRef: secondWindSourceRef(), SourceName: "Second Wind",
+					Calculation: test.calculation,
+				})
+
+			s.Require().Error(err)
+			s.Contains(err.Error(), "calculation")
 			s.Empty(collector.Effects(), "an invalid fact must not leave a partial effect")
 			s.Require().NoError(collector.Close(s.ctx))
 		})
@@ -764,7 +988,9 @@ func (s *ActivationTestSuite) TestActivationSuccessPreservesCollectorCleanupErro
 	cleanupErr := errors.New("collector cleanup failed")
 	bus := newActivationFaultBus()
 	bus.unsubscribeErrs = []error{cleanupErr}
-	machine, err := NewActivation(&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()})
+	machine, err := NewActivation(&ActivationInput{
+		MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller(),
+	})
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
@@ -782,7 +1008,9 @@ func (s *ActivationTestSuite) TestActivationErrorJoinsCollectorCleanupError() {
 	cleanupErr := errors.New("collector cleanup failed")
 	bus := newActivationFaultBus()
 	bus.unsubscribeErrs = []error{cleanupErr}
-	machine, err := NewActivation(&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage()})
+	machine, err := NewActivation(&ActivationInput{
+		MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller(),
+	})
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{

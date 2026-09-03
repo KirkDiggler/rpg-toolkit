@@ -6,6 +6,8 @@ package resolution
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -389,11 +391,24 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 	// The two-weapon bonus attack omits a positive ability modifier from
 	// base damage. A negative modifier remains part of the base rule; the
 	// Two-Weapon Fighting style may restore a positive one during the fold.
+	//
+	// The ability component's identity is the canonical ability ref and the
+	// display authority's name; the modifier pointer is PRESENT even when the
+	// compiled modifier is zero — a present zero is a real zero, and nil is
+	// reserved for "the modifier did not participate". The ref is cloned:
+	// refs.Abilities hands back shared singletons, and the outcome's mutable
+	// component graph must never alias one.
 	if primary != nil && (!m.isOffHandAttack || m.abilityModifier < 0) {
+		modifier := m.abilityModifier
 		components = append(components, dnd5eEvents.DamageComponent{
-			Source:     dnd5eEvents.DamageSourceAbility,
-			SourceRef:  attackAbilityRef(m.ability),
-			FlatBonus:  m.abilityModifier,
+			Source: dnd5eEvents.DamageSourceAbility,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref:  cloneCoreRef(attackAbilityRef(m.ability)),
+					Name: m.ability.Display(),
+				},
+				Modifier: &modifier,
+			},
 			DamageType: primary.Type,
 			IsCritical: false,
 		})
@@ -447,7 +462,7 @@ func (m *strikeMachine) rollDamageComponent(
 	}
 
 	// Per-die, not summed: downstream rerolls address dice by index. Intrinsic
-	// arithmetic stays in FlatBonus and is therefore never part of a critical
+	// arithmetic stays in Roll.Modifier and is therefore never part of a critical
 	// hit's second roll.
 	rolls := flattenDice(result.Rolls())
 	isCritical := m.outcome.Critical && !declared.HasProperty(damage.DoesNotCrit)
@@ -459,22 +474,58 @@ func (m *strikeMachine) rollDamageComponent(
 		rolls = append(rolls, flattenDice(again.Rolls())...)
 	}
 
+	dieSize, err := parseDieSize(declared.Dice)
+	if err != nil {
+		return dnd5eEvents.DamageComponent{}, fmt.Errorf(
+			"%w: damage dice %q: %w", ErrBadAttack, declared.Dice, err)
+	}
+
+	// The trace records the pool AS ROLLED — for a critical, the doubled pool —
+	// so its notation describes the faces it carries, the same rule the root's
+	// martial-arts trace follows. The event's marked metadata above keeps the
+	// printed expression.
+	subtotal := 0
+	for _, face := range rolls {
+		subtotal += face
+	}
+	notation := pool.Notation()
+	if isCritical {
+		notation = dice.SimplePool(len(rolls), dieSize, 0).Notation()
+	}
+
 	source := dnd5eEvents.DamageSourceWeapon
 	if m.attack.Category == combatActions.AttackCategorySpell {
 		source = dnd5eEvents.DamageSourceSpell
 	}
 
-	return dnd5eEvents.DamageComponent{
-		Source:            source,
-		SourceRef:         m.sourceRef,
-		Dice:              declared.Dice,
-		OriginalDiceRolls: rolls,
-		FinalDiceRolls:    append([]int(nil), rolls...),
-		FlatBonus:         declared.FlatBonus,
-		DamageType:        declared.Type,
-		Properties:        append([]damage.Property(nil), declared.Properties...),
-		IsCritical:        isCritical,
-	}, nil
+	// Provider identity: the profile supplies the most specific ref it carries
+	// — the weapon's own ref when the compiler recorded one, else the action's
+	// — and the compiled definition names it. The ref is cloned because the
+	// definition (and the refs package) owns the original.
+	component := dnd5eEvents.DamageComponent{
+		Source: source,
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{
+				Ref:  cloneCoreRef(m.sourceRef),
+				Name: m.in.Definition.Name,
+			},
+			Dice: &dnd5eEvents.DiceTrace{
+				Notation:      notation,
+				DieSize:       dieSize,
+				OriginalRolls: append([]int(nil), rolls...),
+				FinalRolls:    append([]int(nil), rolls...),
+				Subtotal:      subtotal,
+			},
+		},
+		DamageType: declared.Type,
+		Properties: append([]damage.Property(nil), declared.Properties...),
+		IsCritical: isCritical,
+	}
+	if declared.FlatBonus != 0 {
+		bonus := declared.FlatBonus
+		component.Roll.Modifier = &bonus
+	}
+	return component, nil
 }
 
 func attackAbilityRef(ability abilities.Ability) *core.Ref {
@@ -528,7 +579,7 @@ func (m *strikeMachine) afterDamageChain(
 			Type:   string(instance.Type),
 		})
 	}
-	m.outcome.DamageComponents = append([]dnd5eEvents.DamageComponent(nil), folded.Components...)
+	m.outcome.DamageComponents = cloneDamageComponents(folded.Components)
 
 	// Bus-free, and the only phase that is: applying damage is the sheet's own
 	// business and takes no bus on either a character or a monster.
@@ -739,9 +790,99 @@ func foldDamage(
 	}
 }
 
+// pureNdMNotation matches the pure NdM shape damage.Validate guarantees for a
+// declared pool's dice.
+var pureNdMNotation = regexp.MustCompile(`^(\d*)d(\d+)$`)
+
+// parseDieSize extracts the die size from a pure NdM damage-pool notation
+// (e.g., "2d6" -> 6). The dice trace records it so a sourced reroll can name
+// the die it replaced. damage.Validate already refused anything but pure NdM;
+// the error path exists for the impossible case and names the notation.
+func parseDieSize(notation string) (int, error) {
+	matches := pureNdMNotation.FindStringSubmatch(notation)
+	if matches == nil {
+		return 0, fmt.Errorf("dice notation %q is not pure NdM", notation)
+	}
+	dieSize, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return 0, fmt.Errorf("dice notation %q has an unparsable die size: %w", notation, err)
+	}
+	return dieSize, nil
+}
+
+// cloneCoreRef returns an independently owned copy of ref, nil-safe. The refs
+// package hands back shared singletons and callers hand in their own mutable
+// structs; a component the strike publishes must never alias either.
+func cloneCoreRef(ref *core.Ref) *core.Ref {
+	if ref == nil {
+		return nil
+	}
+	clone := *ref
+	return &clone
+}
+
+// cloneDamageComponents returns an independently owned copy of the folded
+// components. The folded damage event is publisher-owned state a chain
+// subscriber can retain, so the outcome deep-clones every roll fact at the
+// moment it captures them: a late mutation of the publisher's trace cannot
+// rewrite what the strike already reported, and no component's trace ever
+// aliases another's.
+func cloneDamageComponents(components []dnd5eEvents.DamageComponent) []dnd5eEvents.DamageComponent {
+	if components == nil {
+		return nil
+	}
+	clones := make([]dnd5eEvents.DamageComponent, len(components))
+	for i, component := range components {
+		clones[i] = component
+		clones[i].Roll = cloneRollComponent(component.Roll)
+		clones[i].Properties = append([]damage.Property(nil), component.Properties...)
+		if component.Multiplier != nil {
+			factor := *component.Multiplier
+			clones[i].Multiplier = &factor
+		}
+	}
+	return clones
+}
+
+// cloneRollComponent deep-clones one component's roll facts: the provider's
+// identity ref, the dice trace with every face list and sourced reroll, and
+// the modifier pointer.
+func cloneRollComponent(roll dnd5eEvents.RollComponent) dnd5eEvents.RollComponent {
+	clone := dnd5eEvents.RollComponent{
+		Source: dnd5eEvents.RollSource{
+			Ref:   cloneCoreRef(roll.Source.Ref),
+			Name:  roll.Source.Name,
+			Label: roll.Source.Label,
+		},
+	}
+	if roll.Dice != nil {
+		dice := *roll.Dice
+		dice.OriginalRolls = append([]int(nil), roll.Dice.OriginalRolls...)
+		dice.FinalRolls = append([]int(nil), roll.Dice.FinalRolls...)
+		dice.KeptIndices = append([]int(nil), roll.Dice.KeptIndices...)
+		if roll.Dice.Rerolls != nil {
+			dice.Rerolls = make([]dnd5eEvents.DiceReroll, len(roll.Dice.Rerolls))
+			for i, reroll := range roll.Dice.Rerolls {
+				dice.Rerolls[i] = reroll
+				dice.Rerolls[i].Source = dnd5eEvents.RollSource{
+					Ref:   cloneCoreRef(reroll.Source.Ref),
+					Name:  reroll.Source.Name,
+					Label: reroll.Source.Label,
+				}
+			}
+		}
+		clone.Dice = &dice
+	}
+	if roll.Modifier != nil {
+		modifier := *roll.Modifier
+		clone.Modifier = &modifier
+	}
+	return clone
+}
+
 // flattenDice collapses a pool's grouped rolls into one per-die list, in roll
-// order. Per-die rather than summed because OriginalDiceRolls/FinalDiceRolls
-// are a per-die contract — downstream rerolls address dice by index.
+// order. Per-die rather than summed because the dice trace's original and
+// final faces are a per-die contract — downstream rerolls address dice by index.
 func flattenDice(groups [][]int) []int {
 	var dice []int
 	for _, group := range groups {

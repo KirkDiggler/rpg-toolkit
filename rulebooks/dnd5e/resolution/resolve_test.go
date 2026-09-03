@@ -612,13 +612,30 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 	})
 }
 
-// countingStanding answers like everyoneStanding and remembers being asked.
+// countingStanding answers like everyoneStanding and remembers being asked
+// through its Standing method.
 type countingStanding struct{ asks int }
 
 func (c *countingStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
 	c.asks++
 
 	return nil, nil
+}
+
+// Assess carries the participation answer the load door asks for since #1453.
+// It is deliberately NOT counted: the encounter asks participation to load;
+// this package's contract is that IT never consults the Standing capability,
+// and the uncounted Assess leaves the existing pin free to assert that.
+func (c *countingStanding) Assess(
+	members []encounter.MemberID,
+) (*encounter.ParticipationAssessment, error) {
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		assessment.Members = append(assessment.Members, encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		})
+	}
+	return assessment, nil
 }
 
 // TestTheStandingCapabilityIsCarriedAndNeverAsked pins both halves of what this

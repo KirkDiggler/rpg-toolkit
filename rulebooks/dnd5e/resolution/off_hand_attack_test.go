@@ -105,7 +105,8 @@ func TestOffHandAttackAbilityModifierDamage(t *testing.T) {
 			for _, component := range outcome.DamageComponents {
 				if component.Source == dnd5eEvents.DamageSourceAbility {
 					abilityParts++
-					require.Equal(t, tc.modifier, component.FlatBonus)
+					require.NotNil(t, component.Roll.Modifier)
+					require.Equal(t, tc.modifier, *component.Roll.Modifier)
 				}
 			}
 			require.Equal(t, tc.wantAbilityParts, abilityParts)
@@ -130,8 +131,11 @@ func TestTwoWeaponFightingStyleRestoresPositiveOffHandDamage(t *testing.T) {
 	require.Equal(t, 7, outcome.Damage)
 	require.Len(t, outcome.DamageComponents, 2)
 	require.Equal(t, dnd5eEvents.DamageSourceFeature, outcome.DamageComponents[1].Source)
-	require.Equal(t, refs.Conditions.FightingStyleTwoWeaponFighting(), outcome.DamageComponents[1].SourceRef)
-	require.Equal(t, 3, outcome.DamageComponents[1].FlatBonus)
+	require.Equal(t, refs.Conditions.FightingStyleTwoWeaponFighting(),
+		outcome.DamageComponents[1].Roll.Source.Ref)
+	require.Equal(t, "Two-Weapon Fighting", outcome.DamageComponents[1].Roll.Source.Name)
+	require.NotNil(t, outcome.DamageComponents[1].Roll.Modifier)
+	require.Equal(t, 3, *outcome.DamageComponents[1].Roll.Modifier)
 }
 
 func TestOrdinaryWeaponAttackStillAddsPositiveAbilityDamage(t *testing.T) {
@@ -145,5 +149,6 @@ func TestOrdinaryWeaponAttackStillAddsPositiveAbilityDamage(t *testing.T) {
 	require.Equal(t, 7, outcome.Damage)
 	require.Len(t, outcome.DamageComponents, 2)
 	require.Equal(t, dnd5eEvents.DamageSourceAbility, outcome.DamageComponents[1].Source)
-	require.Equal(t, 3, outcome.DamageComponents[1].FlatBonus)
+	require.NotNil(t, outcome.DamageComponents[1].Roll.Modifier)
+	require.Equal(t, 3, *outcome.DamageComponents[1].Roll.Modifier)
 }
