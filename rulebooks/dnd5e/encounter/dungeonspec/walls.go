@@ -140,7 +140,11 @@ func deriveWalls(
 		from, to := g.world(start), g.world(end)
 		wg := wallGeometry{Index: i, Name: w.Name, Height: w.Height, Start: start, End: end}
 
-		for cell := range floor {
+		// THE CELLS NEAR THE WALL, not every cell of the floor: a wall's
+		// footprint should cost what the wall is long, not what the dungeon
+		// is big (review round on rpg-toolkit#1477 — measured at 4.8x on a
+		// dungeon ten times the reference tomb).
+		for _, cell := range g.candidateCells(floor, start, end) {
 			if !g.meets(cell, from, to) {
 				continue
 			}

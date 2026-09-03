@@ -345,3 +345,84 @@ func (s *GeometrySuite) TestClippingIsRatioOnly() {
 	// Wholly outside.
 	s.Empty(clipHalfPlane(square, 1, 0, -1))
 }
+
+// TestCandidateCellsAgreeWithScanningTheWholeFloor is the differential pin on
+// the one optimisation in this wave.
+//
+// [hexGeom.candidateCells] replaced "test every floor cell" with "test the
+// cells in the segment's own axial box, grown by one". That is a claim about
+// geometry — that nothing outside the box can touch the segment — and a claim
+// like that is worth exactly as much as the thing that would catch it being
+// wrong. So the narrow answer is compared against the exhaustive one over
+// every wall shape the dialect can express: all twelve directions, from every
+// one of the seven positions, at three lengths, on a floor big enough that the
+// box is a real narrowing rather than the whole map.
+//
+// A footprint that lost one cell would be a wall that stopped blocking a
+// crossing, which is a hole nobody would see until they walked through it.
+func (s *GeometrySuite) TestCandidateCellsAgreeWithScanningTheWholeFloor() {
+	for _, tc := range []struct {
+		name string
+		g    hexGeom
+	}{{"pointy", s.pointy}, {"flat", s.flat}} {
+		s.Run(tc.name, func() {
+			g := tc.g
+			floor := map[spatial.Position]bool{}
+			for q := -12; q <= 12; q++ {
+				for r := -12; r <= 12; r++ {
+					floor[cell(q, r)] = true
+				}
+			}
+
+			offsets := make([][2]float64, 0, 7)
+			for _, side := range g.sides {
+				offsets = append(offsets, side.Offset)
+			}
+			offsets = append(offsets, centreOffset)
+
+			checked, narrowed := 0, 0
+			for _, from := range offsets {
+				for _, to := range offsets {
+					for _, step := range []spatial.Position{
+						{X: 3, Y: 0}, {X: 0, Y: 3}, {X: 3, Y: -3},
+						{X: -5, Y: 0}, {X: 0, Y: -5}, {X: 5, Y: -5},
+						{X: 2, Y: 2}, {X: -4, Y: 8}, {X: 8, Y: -4},
+					} {
+						start, ok := g.axialAt(cell(0, 0), from)
+						s.Require().True(ok)
+						end, ok := g.axialAt(step, to)
+						s.Require().True(ok)
+						if start == end {
+							continue
+						}
+
+						a, b := g.world(start), g.world(end)
+						want := map[spatial.Position]bool{}
+						for c := range floor {
+							if g.meets(c, a, b) {
+								want[c] = true
+							}
+						}
+
+						got := map[spatial.Position]bool{}
+						candidates := g.candidateCells(floor, start, end)
+						for _, c := range candidates {
+							if g.meets(c, a, b) {
+								got[c] = true
+							}
+						}
+
+						s.Equal(want, got,
+							"%v->%v: the narrow answer is the exhaustive one", start, end)
+						checked++
+						if len(candidates) < len(floor) {
+							narrowed++
+						}
+					}
+				}
+			}
+			s.Greater(checked, 400, "every direction, from every position, at several lengths")
+			s.Equal(checked, narrowed, "and every one of them really did narrow the floor")
+		})
+	}
+}

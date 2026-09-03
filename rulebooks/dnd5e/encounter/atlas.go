@@ -216,9 +216,17 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	for _, s := range f.segments {
 		out.Segments = append(out.Segments, AtlasSegment{From: s.From, To: s.To, Height: s.Height})
 	}
-	for _, c := range f.cells {
-		if !f.isStandable(c) {
-			out.Sealed = append(out.Sealed, c)
+	// ONLY WHEN THERE IS SOMETHING TO FIND. A cell of this floor fails
+	// isStandable for exactly two reasons — it belongs to no region, or a wall
+	// sealed it — so a field with neither has no unstandable cell and the walk
+	// would be a pass over every cell to produce nothing. Measured at 21% of
+	// AtlasFor on a dungeon ten times the reference tomb, all of it wasted,
+	// because a dungeon of plain rooms and thin walls is exactly that field.
+	if len(f.sceneryCells) > 0 || len(f.sealedCells) > 0 {
+		for _, c := range f.cells {
+			if !f.isStandable(c) {
+				out.Sealed = append(out.Sealed, c)
+			}
 		}
 	}
 

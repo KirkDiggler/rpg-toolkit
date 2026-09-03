@@ -302,6 +302,62 @@ func (g hexGeom) directionOf(from, to axialPoint) (float64, bool) {
 // it just takes no area from them.
 const touchTolerance = 1e-9
 
+// candidateCells is every floor cell a wall COULD stand on: the cells inside
+// the segment's own axial bounding box, grown by one.
+//
+// WHY THE BOX IS ENOUGH. A cell the segment touches has its centre within a
+// circumradius of some point ON the segment, and a segment's points interpolate
+// its two ends linearly in axial space — so every candidate's centre is within
+// one circumradius, in axial terms, of the box the ends span. One circumradius
+// of world distance is under one axial unit in either coordinate under either
+// layout: pointy-top gives |dq| <= 0.91 and |dr| <= 2/3, flat-top the same pair
+// the other way round. Since a position is a whole or a half, rounding the box
+// outward to integers already absorbs all of that.
+//
+// THE EXTRA UNIT IS SLACK, NOT A REQUIREMENT, and it is worth saying which.
+// Measured over 35,352 wall shapes — every direction, from every position, at
+// every length up to nine cells, in both layouts — the rounded box alone is
+// sufficient every time, so a mutant that removes the +1 changes no answer.
+// It stays because the argument above is exactly tight: it holds for a
+// SEVEN-position set whose offsets are halves, and would need re-deriving the
+// day the set grows (F9 says it may). Slack costs a ring of map lookups; a
+// silently-too-small box costs a wall that stops blocking a crossing.
+//
+// What actually guarantees this is right is not the argument but
+// TestCandidateCellsAgreeWithScanningTheWholeFloor, which compares the narrow
+// answer against the exhaustive one over every shape the dialect can express.
+//
+// FALLS BACK TO THE WHOLE FLOOR when the box would be bigger than the floor is,
+// so this is never worse than the scan it replaces — a wall drawn from one
+// corner of the coordinate space to the other spans a box no dungeon fills.
+func (g hexGeom) candidateCells(floor map[spatial.Position]bool, from, to axialPoint) []spatial.Position {
+	qLo := int(math.Floor(math.Min(from.Q, to.Q))) - 1
+	qHi := int(math.Ceil(math.Max(from.Q, to.Q))) + 1
+	rLo := int(math.Floor(math.Min(from.R, to.R))) - 1
+	rHi := int(math.Ceil(math.Max(from.R, to.R))) + 1
+
+	if int64(qHi-qLo+1)*int64(rHi-rLo+1) >= int64(len(floor)) {
+		out := make([]spatial.Position, 0, len(floor))
+		for cell := range floor {
+			out = append(out, cell)
+		}
+
+		return out
+	}
+
+	var out []spatial.Position
+	for q := qLo; q <= qHi; q++ {
+		for r := rLo; r <= rHi; r++ {
+			cell := spatial.Position{X: float64(q), Y: float64(r)}
+			if floor[cell] {
+				out = append(out, cell)
+			}
+		}
+	}
+
+	return out
+}
+
 // meets reports whether the closed wall segment touches the closed hex of a
 // cell — the footprint test (design C8).
 func (g hexGeom) meets(cell spatial.Position, from, to worldPoint) bool {

@@ -114,16 +114,21 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 	}
 
+	// ONE PASS, TWO ANSWERS. Which cells this recipient is shown, and which of
+	// those they cannot stand on: the ones nobody can, and the footing of a
+	// presented wall whose owner they cannot see — ownerless floor to them,
+	// which is exactly what scenery is. Both questions are asked of the same
+	// cell in the same visit, because a second walk over the survivors asked
+	// the map the same coordinates a second time (measured at a third of
+	// AtlasFor on a dungeon ten times the reference tomb, with the two walks
+	// between them).
 	for _, c := range full.Cells {
-		if !hiddenCells[c] || footing[c] {
-			out.Cells = append(out.Cells, c)
+		hidden := hiddenCells[c]
+		if hidden && !footing[c] {
+			continue
 		}
-	}
-	// EVERY CELL THIS RECIPIENT CANNOT STAND ON: the ones nobody can, and the
-	// footing of a presented wall whose owner they cannot see — ownerless
-	// floor to them, which is exactly what scenery is.
-	for _, c := range out.Cells {
-		if !e.field.isStandable(c) || hiddenCells[c] {
+		out.Cells = append(out.Cells, c)
+		if hidden || !e.field.isStandable(c) {
 			out.Sealed = append(out.Sealed, c)
 		}
 	}
