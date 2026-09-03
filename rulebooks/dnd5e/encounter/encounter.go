@@ -629,8 +629,9 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		memberIDs = append(memberIDs, mi.ID)
 
 		entity := &memberEntity{
-			id:   string(mi.ID),
-			kind: mi.Kind,
+			id:             string(mi.ID),
+			kind:           mi.Kind,
+			blocksMovement: mi.BlocksMovement,
 		}
 
 		// Authored offset at the seat, absolute on the canvas: converted
@@ -641,13 +642,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 
 		member := &memberRecord{
-			ID:        mi.ID,
-			Kind:      mi.Kind,
-			Name:      mi.Name,
-			SpeedFeet: mi.SpeedFeet,
-			SightFeet: mi.SightFeet,
-			Actions:   mi.Actions,
-			Targeting: mi.Targeting,
+			ID:             mi.ID,
+			Kind:           mi.Kind,
+			Name:           mi.Name,
+			SpeedFeet:      mi.SpeedFeet,
+			SightFeet:      mi.SightFeet,
+			Actions:        mi.Actions,
+			Targeting:      mi.Targeting,
+			BlocksMovement: mi.BlocksMovement,
 		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
@@ -809,15 +811,16 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 
 	region, _ := e.RegionAt(cell)
 	return Member{
-		ID:        record.ID,
-		Kind:      record.Kind,
-		Name:      record.Name,
-		Region:    region,
-		Position:  cell,
-		SpeedFeet: record.SpeedFeet,
-		SightFeet: record.SightFeet,
-		Actions:   record.Actions,
-		Targeting: record.Targeting,
+		ID:             record.ID,
+		Kind:           record.Kind,
+		Name:           record.Name,
+		Region:         region,
+		Position:       cell,
+		SpeedFeet:      record.SpeedFeet,
+		SightFeet:      record.SightFeet,
+		Actions:        record.Actions,
+		Targeting:      record.Targeting,
+		BlocksMovement: record.BlocksMovement,
 	}, nil
 }
 
@@ -1783,8 +1786,9 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	entity := &memberEntity{
-		id:   string(in.Member),
-		kind: in.Kind,
+		id:             string(in.Member),
+		kind:           in.Kind,
+		blocksMovement: in.BlocksMovement,
 	}
 
 	if err := e.canvas.PlaceEntity(entity, in.Cell); err != nil {
@@ -1793,13 +1797,14 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 
 	// Register the member
 	member := &memberRecord{
-		ID:        in.Member,
-		Kind:      in.Kind,
-		Name:      in.Name,
-		SpeedFeet: in.SpeedFeet,
-		SightFeet: in.SightFeet,
-		Actions:   in.Actions,
-		Targeting: in.Targeting,
+		ID:             in.Member,
+		Kind:           in.Kind,
+		Name:           in.Name,
+		SpeedFeet:      in.SpeedFeet,
+		SightFeet:      in.SightFeet,
+		Actions:        in.Actions,
+		Targeting:      in.Targeting,
+		BlocksMovement: in.BlocksMovement,
 	}
 	e.members[in.Member] = member
 	e.everMembers[in.Member] = true // Track in everMembers
@@ -2049,6 +2054,12 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 type memberEntity struct {
 	id   string
 	kind MemberKind
+
+	// blocksMovement carries the member's authored BlocksMovement fact
+	// (rpg-toolkit#1434) into the canvas's own occupancy seam. False for
+	// every member before this field existed, and still false for any
+	// caller who doesn't set it — see MemberInput.BlocksMovement's doc.
+	blocksMovement bool
 }
 
 // GetID returns the member's ID
@@ -2071,7 +2082,9 @@ func (m *memberEntity) BlocksLineOfSight() bool {
 	return false
 }
 
-// BlocksMovement returns false for members
+// BlocksMovement reports the member's authored BlocksMovement fact
+// (rpg-toolkit#1434). False for a caller who never set it — the behavior
+// every member had before this field existed.
 func (m *memberEntity) BlocksMovement() bool {
-	return false
+	return m.blocksMovement
 }

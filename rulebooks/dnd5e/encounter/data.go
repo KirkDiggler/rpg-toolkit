@@ -535,6 +535,13 @@ type MemberData struct {
 	SightFeet int              `json:"sight_feet,omitempty"`
 	Actions   []ActionViewData `json:"actions,omitempty"`
 	Targeting string           `json:"targeting,omitempty"`
+
+	// BlocksMovement carries forward memberRecord.BlocksMovement
+	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
+	// written before this field existed has no blocks_movement key and
+	// unmarshals to false, which is exactly what every member's blocking
+	// answer already was.
+	BlocksMovement bool `json:"blocks_movement,omitempty"`
 }
 
 // ActionViewData is the persistent representation of an [ActionView] — a
@@ -630,14 +637,15 @@ func (e *Encounter) snapshot() EncounterData {
 			continue // Not placed (shouldn't happen in valid encounter)
 		}
 		membersData = append(membersData, MemberData{
-			ID:        m.ID,
-			Kind:      m.Kind,
-			Name:      m.Name,
-			Cell:      &PositionData{X: cell.X, Y: cell.Y},
-			SpeedFeet: m.SpeedFeet,
-			SightFeet: m.SightFeet,
-			Actions:   actionViewDataFrom(m.Actions),
-			Targeting: m.Targeting,
+			ID:             m.ID,
+			Kind:           m.Kind,
+			Name:           m.Name,
+			Cell:           &PositionData{X: cell.X, Y: cell.Y},
+			SpeedFeet:      m.SpeedFeet,
+			SightFeet:      m.SightFeet,
+			Actions:        actionViewDataFrom(m.Actions),
+			Targeting:      m.Targeting,
+			BlocksMovement: m.BlocksMovement,
 		})
 	}
 
@@ -1359,8 +1367,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// Re-place members at persisted positions (no surveil here — outcomes already in intel)
 	for _, m := range data.Members {
 		entity := &memberEntity{
-			id:   string(m.ID),
-			kind: m.Kind,
+			id:             string(m.ID),
+			kind:           m.Kind,
+			blocksMovement: m.BlocksMovement,
 		}
 
 		if err = e.canvas.PlaceEntity(entity, spatial.Position{X: m.Cell.X, Y: m.Cell.Y}); err != nil {
@@ -1368,13 +1377,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 
 		member := &memberRecord{
-			ID:        m.ID,
-			Kind:      m.Kind,
-			Name:      m.Name,
-			SpeedFeet: m.SpeedFeet,
-			SightFeet: m.SightFeet,
-			Actions:   actionViewsFrom(m.Actions),
-			Targeting: m.Targeting,
+			ID:             m.ID,
+			Kind:           m.Kind,
+			Name:           m.Name,
+			SpeedFeet:      m.SpeedFeet,
+			SightFeet:      m.SightFeet,
+			Actions:        actionViewsFrom(m.Actions),
+			Targeting:      m.Targeting,
+			BlocksMovement: m.BlocksMovement,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
