@@ -13,6 +13,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 )
 
 // LongRestInput is the persisted character to recover through the root D&D
@@ -112,6 +113,7 @@ func cloneCharacterData(in *character.Data) *character.Data {
 	}
 
 	out := *in
+	out.Appearance = customization.CloneAppearance(in.Appearance)
 	out.AbilityScores = maps.Clone(in.AbilityScores)
 	if in.DeathSaveState != nil {
 		state := *in.DeathSaveState
