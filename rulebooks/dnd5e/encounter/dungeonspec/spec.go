@@ -19,7 +19,9 @@
 // the dungeon builder writes (rpg-project#256) — describes the FLOOR directly:
 // named regions painted cell by cell, walls and doors as edges between adjacent
 // floor cells, everything in absolute [col,row] under one declared
-// orientation. Version 1 is deleted, not supported: a file that says
+// orientation. [Spec.Scenery] is the floor that belongs to no region
+// (rpg-project#360): the same cells, painted with a different brush, that
+// nobody stands on. Version 1 is deleted, not supported: a file that says
 // `version: 1` is refused by name, and the reference tomb is re-authored in
 // version 2 and compiles to the identical atlas (golden_test.go).
 //
@@ -87,8 +89,24 @@ type Spec struct {
 	// REQUIRED: [encounter.CanvasInput.Void] has no default by ruling.
 	Void string `yaml:"void"`
 
-	// Regions are the floor: their cells' union, and nothing else.
+	// Regions are the OWNED floor: their cells' union.
 	Regions []RegionSpec `yaml:"regions"`
+
+	// Scenery is floor nobody stands on, as rows of [col,row] pairs — the
+	// same encoding and the same nesting-for-diff-readability as
+	// [RegionSpec.Cells] (rpg-project#360, wall-geometry design §3.1).
+	// Optional; omitted means none. Written after `regions` and before
+	// `start`.
+	//
+	// A CELL BELONGS TO A REGION OR TO THIS LIST, NEVER BOTH. What the two
+	// carry is different in kind: a region's cell has an OWNER, which decides
+	// visibility, lighting and archetype, and feet may touch it. A scenery
+	// cell has neither — it is floor a wall can stand on, a prop can sit on
+	// and a sightline crosses, belonging to nobody and standable by nobody.
+	// So a cell in both is not a cell with two answers, it is a cell whose
+	// author meant two incompatible things, and [Validate] refuses it naming
+	// the cell and the region.
+	Scenery [][][2]int `yaml:"scenery,omitempty"`
 
 	// Start is where the party comes in: an absolute [col,row] cell that
 	// must be floor. REQUIRED and explicit — version 1 derived it from an

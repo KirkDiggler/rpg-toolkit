@@ -68,6 +68,31 @@ func TestRegionOwnershipIsAskedInOneFunction(t *testing.T) {
 			"a second function reading the owner map is a second answer to which region holds a cell")
 }
 
+// TestWhatIsFloorIsAskedInOneFunction is the owner test's twin for the other
+// half of the mask (rpg-project#360).
+//
+// Scenery made "is there ground on this cell" a question with two sources —
+// the regions and the strip — and a question with two sources is exactly where
+// a second implementation grows: every caller that needs floor could union the
+// two maps itself, and every one of them would be right until somebody adds a
+// third source. So the scenery mask has the same shape the owner map has, a
+// builder that writes it and a lookup that reads it, and nothing else may
+// index it. [field.isFloor] is the lookup, and it asks regionOf for the owned
+// half rather than reading that map itself.
+func TestWhatIsFloorIsAskedInOneFunction(t *testing.T) {
+	readers := functionsWhoseBodyReads(t, func(n ast.Node) bool {
+		index, ok := n.(*ast.IndexExpr)
+		if !ok {
+			return false
+		}
+		sel, ok := index.X.(*ast.SelectorExpr)
+		return ok && sel.Sel.Name == "sceneryCells"
+	})
+	require.Equal(t, []string{"compileScenery", "isFloor"}, readers,
+		"whether a cell is floor must be answered in exactly one place (rpg-project#360): "+
+			"a second function reading the scenery mask is a second answer to what a wall may stand on")
+}
+
 // TestTheOneConversionIsCalledInOnePlace.
 //
 // HexCellAt is the ONE conversion from an authored [col,row] pair to the

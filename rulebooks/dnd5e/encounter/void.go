@@ -288,10 +288,19 @@ type canvasRoom struct {
 // keeps this rule pinned to the boundary rule as spatial's rasterization
 // changes, rather than pinned to it by coincidence today.
 //
-// Floor is asked through the compiled field's owner map, the one answer in
-// this package to which region holds a cell. Not a copy of the rule and not a
-// mask beside it: a second answer to "is this floor" is exactly what region.go
-// exists to prevent.
+// Floor is asked through the compiled field's own [field.isFloor], the one
+// answer in this package to whether there is ground on a cell. Not a copy of
+// the rule and not a mask beside it: a second answer to "is this floor" is
+// exactly what region.go exists to prevent.
+//
+// SCENERY IS FLOOR HERE, AND THEREFORE TRANSPARENT WHATEVER THE FIELD
+// DECLARED (rpg-project#360, design §1.10). The declaration is about the space
+// BETWEEN the floor — the gap between two chambers, the margin outside them
+// all — and a strip somebody painted is not that space. So a sightline crosses
+// scenery under an opaque void exactly as it crosses a room, and what stops it
+// is a wall, which is the only thing that ever seals anything. Asking
+// regionOf here instead would have made an authored strip of rubble as opaque
+// as the stone it was cut from.
 //
 // Under [VoidTransparent] this is spatial's answer unchanged, which is the honest
 // shape of "the declaration decides": there is nothing to add to a sightline
@@ -325,7 +334,7 @@ type canvasRoom struct {
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 	if c.field.hasVoid() && c.field.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
-			if _, floor := c.field.regionOf(cell); !floor {
+			if !c.field.isFloor(cell) {
 				return true
 			}
 		}

@@ -125,6 +125,17 @@ type FieldData struct {
 	// non-empty at load.
 	Regions []RegionData `json:"regions"`
 
+	// Scenery is the authored floor nobody stands on, in authored order,
+	// with cells in the AUTHORED offset frame ([FieldInput.Scenery],
+	// rpg-project#360).
+	//
+	// NOT REQUIRED AT LOAD, on PropData.Facing's rule: omitted and written
+	// as an empty list are the same fact by design, so a blob from before
+	// scenery existed simply unmarshals to none — the exact bytes every
+	// pre-scenery blob already has — and a dungeon that authors none writes
+	// no key at all.
+	Scenery []PositionData `json:"scenery,omitempty"`
+
 	// Props are the authored things standing on the floor, in authored
 	// order, with cells in the AUTHORED offset frame.
 	Props []PropData `json:"props,omitempty"`
@@ -772,6 +783,13 @@ func fieldDataFrom(f *field) FieldData {
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
 			Lighting:  &LightingData{Intensity: &intensity},
 			Concealed: r.Concealed,
+		}
+	}
+
+	if len(f.scenery) > 0 {
+		out.Scenery = make([]PositionData, len(f.scenery))
+		for i, c := range f.scenery {
+			out.Scenery[i] = PositionData{X: c.X, Y: c.Y}
 		}
 	}
 
@@ -1630,6 +1648,10 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			Lighting:  &Lighting{Intensity: *rd.Lighting.Intensity},
 			Concealed: rd.Concealed,
 		}
+	}
+
+	for _, sd := range fd.Scenery {
+		in.Scenery = append(in.Scenery, spatial.Position{X: sd.X, Y: sd.Y})
 	}
 
 	for _, pd := range fd.Props {

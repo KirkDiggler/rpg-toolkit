@@ -60,14 +60,17 @@ type Lighting struct {
 	Intensity float64
 }
 
-// RegionInput is one named set of cells — the ONLY thing that makes floor
-// (rpg-project#256).
+// RegionInput is one named set of cells — the only thing that makes OWNED
+// floor (rpg-project#256).
 //
-// # The regions are the floor
+// # The regions are the floor that belongs to somebody
 //
 // There is no room, no rectangle, no anchor and no connection any more. A
 // region lists the cells it owns, absolute, and the field's floor is the union
-// of every region's cells; every other cell on the canvas is void. A cell in
+// of every region's cells plus [FieldInput.Scenery], the cells that belong to
+// nobody (rpg-project#360); every other cell on the canvas is void. Only a
+// region's cells are STANDABLE, and only a region's cells carry lighting, an
+// archetype and concealment — those are what having an owner means. A cell in
 // two regions is refused (W2, ErrRegionOverlap), a region with no cells is
 // refused (ErrRegionEmpty), and there is no other floor.
 //
@@ -286,9 +289,37 @@ type FieldInput struct {
 	// module is not allowed to pick either (rpg-toolkit#1116, #1127).
 	Canvas CanvasInput
 
-	// Regions are the named cell sets whose union is the floor. REQUIRED
-	// non-empty. See [RegionInput].
+	// Regions are the named cell sets whose union is the OWNED floor.
+	// REQUIRED non-empty. See [RegionInput].
 	Regions []RegionInput
+
+	// Scenery is floor nobody stands on: absolute authored offset [col,row]
+	// cells that belong to no region (rpg-project#360, wall-geometry design
+	// §1.4). Optional; omitted means none.
+	//
+	// A CELL CARRIES TWO FACTS, AND THIS IS WHAT SPLITS THEM. Before scenery
+	// the region mask answered everything at once — who owns this cell, is it
+	// floor, may a wall stand on it, does a sightline stop here, may somebody
+	// stand here. Scenery has the second, third and fourth without the first
+	// and the fifth:
+	//
+	//   - FLOOR is [FieldInput.Regions] ∪ Scenery. A wall's endpoint may be
+	//     scenery, a door's edge may cross it, a prop may sit on it, and it
+	//     is in [Atlas.Cells].
+	//   - STANDABLE is the regions alone. A member seat, a step and an
+	//     ending's trigger cell are all refused on scenery exactly as they
+	//     are refused in the void.
+	//   - OWNER decides visibility and meaning — concealment, lighting,
+	//     archetype — and scenery has none, so it is in EVERY member's
+	//     [Encounter.AtlasFor] and carries no light of its own.
+	//   - TRANSPARENT REGARDLESS of [CanvasInput.Void]: scenery is floor, and
+	//     the void declaration is about the space BETWEEN the floor.
+	//
+	// Refused when a cell is not a representable integral cell, is listed
+	// twice, or is already a region's (ErrRegionOverlap — ownership has to be
+	// unique for [Encounter.RegionAt] to be an answer rather than a guess,
+	// and "no owner" is an answer too).
+	Scenery []spatial.Position
 
 	// Props are the things standing on the floor that are not creatures, in
 	// absolute authored cells. Optional. See [PropInput].

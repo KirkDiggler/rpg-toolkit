@@ -81,6 +81,9 @@ func Validate(spec *Spec) []FieldError {
 	v.header()
 	v.regions()
 	if v.geometryUsable() {
+		// SCENERY FIRST inside the geometry block: everything below asks
+		// what is floor, and scenery is half the answer (rpg-project#360).
+		v.scenery()
 		v.walls()
 		v.doors()
 		v.start()
@@ -101,6 +104,11 @@ type validation struct {
 	// that owns it — the same map compileField builds, built here so the
 	// file's own defects are reported in the file's own paths.
 	owner map[spatial.Position]int
+
+	// sceneryAt is every scenery cell (absolute axial) — the other half of
+	// the floor, the half nobody stands on. Disjoint from owner: a cell in
+	// both is refused.
+	sceneryAt map[spatial.Position]bool
 
 	// regionOK is whether the region list was sound enough to check edges
 	// and placements against.
@@ -218,6 +226,49 @@ func (v *validation) regions() {
 	}
 }
 
+// scenery marks every authored scenery cell as floor nobody owns, refusing a
+// cell a region already holds and one listed twice (F1). Cells land in
+// `authored` beside the regions' so a refusal about a crossing into scenery
+// can name it in the file's own coordinates.
+func (v *validation) scenery() {
+	v.sceneryAt = map[spatial.Position]bool{}
+	for row, cells := range v.spec.Scenery {
+		for col, at := range cells {
+			p := fmt.Sprintf("scenery[%d][%d]", row, col)
+			cell := v.cell(at)
+			if prev, taken := v.owner[cell]; taken {
+				v.fail(p, "[%d,%d] is already painted in region %q", at[0], at[1], v.spec.Regions[prev].ID)
+				continue
+			}
+			if v.sceneryAt[cell] {
+				v.fail(p, "[%d,%d] is painted twice in the scenery", at[0], at[1])
+				continue
+			}
+			v.sceneryAt[cell] = true
+			v.authored[cell] = at
+		}
+	}
+}
+
+// floor reports whether a cell is FLOOR — a region's, or scenery's. What a
+// wall stands on, what a door opens onto, and what a prop sits on (C2, C3).
+func (v *validation) floor(cell spatial.Position) bool {
+	if _, owned := v.owner[cell]; owned {
+		return true
+	}
+
+	return v.sceneryAt[cell]
+}
+
+// walled reports whether an authored WALL claims a crossing. A door's claim
+// is not a wall's: a door standing in a wall replaces it (see doors()), and
+// the frontier walk treats that crossing as a way in.
+func (v *validation) walled(c [2]spatial.Position) bool {
+	path, claimed := v.crossings[c]
+
+	return claimed && strings.HasPrefix(path, "walls[")
+}
+
 // edge checks one authored crossing: both endpoints floor, and adjacent under
 // the orientation. Returns the normalized absolute crossing and whether it
 // passed.
@@ -225,7 +276,7 @@ func (v *validation) edge(path string, e EdgeSpec) ([2]spatial.Position, bool) {
 	a, b := v.cell(e[0]), v.cell(e[1])
 	ok := true
 	for i, end := range []spatial.Position{a, b} {
-		if _, floor := v.owner[end]; !floor {
+		if !v.floor(end) {
 			v.fail(path, "endpoint [%d,%d] is not floor: the envelope is implied, never written", e[i][0], e[i][1])
 			ok = false
 		}
@@ -365,7 +416,15 @@ func (v *validation) start() {
 		v.fail("start", "the dungeon does not say where the party starts")
 		return
 	}
-	if _, floor := v.owner[v.cell(*s.Start)]; !floor {
+	// STANDABLE, NOT MERELY FLOOR (rpg-project#360, F2). Scenery is floor
+	// and nobody's feet touch it, so a start painted on the strip is refused
+	// with the reason rather than with "not floor", which would now be a lie.
+	start := v.cell(*s.Start)
+	if v.sceneryAt[start] {
+		v.fail("start", "the party starts at [%d,%d], which is scenery: nobody can stand there", s.Start[0], s.Start[1])
+		return
+	}
+	if _, floor := v.owner[start]; !floor {
 		v.fail("start", "the party starts at [%d,%d], which is not floor", s.Start[0], s.Start[1])
 		return
 	}
@@ -386,8 +445,18 @@ func (v *validation) place() {
 		if err != nil {
 			v.fail(p+".ref", "%v", err)
 		}
-		owner, floor := v.owner[v.cell(pl.At)]
-		if !floor {
+		at := v.cell(pl.At)
+		owner, owned := v.owner[at]
+		// A PROP MAY SIT ON ANY FLOOR; A MONSTER NEEDS SOMEWHERE TO STAND
+		// (rpg-project#360, F2). Rubble in a doorway is exactly what a
+		// scenery brush is for; a skeleton on it is a creature standing on
+		// something that is not standable, and the refusal says which.
+		switch {
+		case !owned && v.sceneryAt[at]:
+			if kind == typeMonsters {
+				v.fail(p+".at", "%q at [%d,%d], which is scenery: nobody can stand there", pl.Ref, pl.At[0], pl.At[1])
+			}
+		case !owned:
 			v.fail(p+".at", "%q at [%d,%d], which is not floor", pl.Ref, pl.At[0], pl.At[1])
 		}
 		if prev, taken := occupied[pl.At]; taken {
@@ -413,7 +482,7 @@ func (v *validation) place() {
 			if pl.Targeting != nil && !targetings[*pl.Targeting] {
 				v.fail(p+".targeting", "%q declares targeting %q, which is not a word this build knows", pl.Ref, *pl.Targeting)
 			}
-			if pl.Boss && floor {
+			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {
 					v.fail(p+".boss", "region %q already names %q (place[%d]) as its boss", s.Regions[owner].ID, s.Place[prev].Ref, prev)
 				} else {
@@ -471,12 +540,23 @@ var axialSteps = [6][2]float64{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, 1
 //	DOORS AND NOTHING ELSE, AND VISIBLE SPACE IS CONNECTED FROM THE
 //	PARTY START.
 //
-// A "way" is a crossing between two regions that is not a wall: a door's
-// edge, or a bare doorless gap. A door's ways count ONCE PER DOOR and
-// neighbouring pair, never once per edge — a door is one state over its
-// edges (rpg-toolkit#1123), so a two-edge gate is one way in and refuses
-// once. Two refusals fall out, both at the region's own concealed field,
-// which is the one the form-filler flips:
+// A "way" is a WALL-FREE PATH between two regions whose interior cells are
+// all scenery: a crossing straight from one room to the other, or a strip of
+// scenery joining them (rpg-project#360, C4). It is a CONCEALED way when a
+// concealed door stands at one of its ends — see [validation.sceneryWays] for
+// why a path with two ends is one way with two chances rather than two ways
+// that disagree.
+//
+// Scenery had to enter this walk rather than be left out of it. Before it,
+// every way was one crossing long and "is this room walled off" was a
+// question about neighbours; a strip of ownerless floor between a visible
+// room and a secret one is a corridor anybody can walk, and a frontier rule
+// that could not see down it would have compiled a walk-in secret.
+//
+// A door's ways count ONCE PER DOOR and neighbouring pair, never once per
+// edge — a door is one state over its edges (rpg-toolkit#1123), so a two-edge
+// gate is one way in and refuses once. Two refusals fall out, both at the
+// region's own concealed field, which is the one the form-filler flips:
 //
 //   - a way between an unconcealed region and a concealed one that is not a
 //     concealed door — a plain door, or a bare gap — is a way anyone can
@@ -517,78 +597,31 @@ func (v *validation) concealment() {
 		return
 	}
 
-	// The ways: every non-wall crossing between two regions, door ways
-	// deduped per door and pair.
-	type wayIn struct {
-		a, b      int // region indices, a <= b
-		concealed bool
-		desc      string
-	}
-	var ways []wayIn
-	seenCrossing := map[[2]spatial.Position]bool{}
-	seenDoor := map[[3]int]bool{}
-	for _, r := range s.Regions {
-		for _, row := range r.Cells {
-			for _, at := range row {
-				cell := v.cell(at)
-				here := v.owner[cell]
-				for _, step := range axialSteps {
-					n := spatial.Position{X: cell.X + step[0], Y: cell.Y + step[1]}
-					there, floor := v.owner[n]
-					if !floor || there == here {
-						continue
-					}
-					c := normalizedCrossing(cell, n)
-					if seenCrossing[c] {
-						continue
-					}
-					seenCrossing[c] = true
-					path, claimed := v.crossings[c]
-					if claimed && strings.HasPrefix(path, "walls[") {
-						continue // a wall is not a way in
-					}
-					a, b := here, there
-					if b < a {
-						a, b = b, a
-					}
-					w := wayIn{a: a, b: b}
-					if claimed {
-						d := v.doorAt[c]
-						if seenDoor[[3]int{d, a, b}] {
-							continue // one door, one way (rpg-toolkit#1123)
-						}
-						seenDoor[[3]int{d, a, b}] = true
-						w.concealed = s.Doors[d].Concealed != nil
-						w.desc = fmt.Sprintf("its door %q (doors[%d])", s.Doors[d].ID, d)
-					} else {
-						na := v.authored[n]
-						w.desc = fmt.Sprintf("the open way between [%d,%d] and [%d,%d]", at[0], at[1], na[0], na[1])
-					}
-					ways = append(ways, w)
-				}
-			}
-		}
-	}
+	ways := append(v.directWays(), v.sceneryWays()...)
 
 	// The frontier: a way between visible and hidden space that is not a
-	// concealed door is a hole in the secret.
+	// concealed door is a hole in the secret. The refusal names the way as
+	// the SECRET'S OWN side meets it, which is the crossing its author has
+	// to wall or conceal.
 	for _, w := range ways {
 		if s.Regions[w.a].Concealed == s.Regions[w.b].Concealed || w.concealed {
 			continue
 		}
-		hidden := w.a
+		hidden, desc := w.a, w.descA
 		if s.Regions[w.b].Concealed {
-			hidden = w.b
+			hidden, desc = w.b, w.descB
 		}
 		v.fail(fmt.Sprintf("regions[%d].concealed", hidden),
 			"this room is concealed, but %s is there for anyone — "+
-				"a walk-in room cannot be a secret: conceal every way in, or unconceal the room", w.desc)
+				"a walk-in room cannot be a secret: conceal every way in, or unconceal the room", desc)
 	}
 
 	// Visible space is connected from the party start. Walked over
 	// unconcealed ways between unconcealed regions only: a concealed door
 	// does not extend visible reach (finding it is what would), and hidden
-	// space is not a corridor visible space may route through.
+	// space is not a corridor visible space may route through. Scenery IS
+	// such a corridor — it belongs to nobody and hides nothing — so a room
+	// reachable only across a strip is reachable.
 	if s.Start == nil {
 		return // start defects are start()'s to report; reach needs an anchor
 	}
@@ -621,6 +654,199 @@ func (v *validation) concealment() {
 			"this room can only be entered through a concealed door — "+
 				"conceal the room too, or give it another way in")
 	}
+}
+
+// wayIn is one way between two regions: which two, whether it is concealed,
+// and how it reads from each side. The two descriptions differ only for a way
+// THROUGH SCENERY, which meets each room at its own crossing; a way that is
+// one crossing reads the same from both.
+type wayIn struct {
+	a, b         int // region indices, a <= b
+	concealed    bool
+	descA, descB string
+}
+
+// directWays is every non-wall crossing straight from one region to another —
+// the whole of this walk before scenery existed. A door's ways count ONCE PER
+// DOOR and neighbouring pair, never once per edge (rpg-toolkit#1123).
+func (v *validation) directWays() []wayIn {
+	s := v.spec
+	var out []wayIn
+	seenCrossing := map[[2]spatial.Position]bool{}
+	seenDoor := map[[3]int]bool{}
+	for _, r := range s.Regions {
+		for _, row := range r.Cells {
+			for _, at := range row {
+				cell := v.cell(at)
+				here := v.owner[cell]
+				for _, step := range axialSteps {
+					n := spatial.Position{X: cell.X + step[0], Y: cell.Y + step[1]}
+					there, owned := v.owner[n]
+					if !owned || there == here {
+						continue
+					}
+					c := normalizedCrossing(cell, n)
+					if seenCrossing[c] {
+						continue
+					}
+					seenCrossing[c] = true
+					path, claimed := v.crossings[c]
+					if claimed && strings.HasPrefix(path, "walls[") {
+						continue // a wall is not a way in
+					}
+					a, b := here, there
+					if b < a {
+						a, b = b, a
+					}
+					w := wayIn{a: a, b: b}
+					if claimed {
+						d := v.doorAt[c]
+						if seenDoor[[3]int{d, a, b}] {
+							continue // one door, one way (rpg-toolkit#1123)
+						}
+						seenDoor[[3]int{d, a, b}] = true
+						w.concealed = s.Doors[d].Concealed != nil
+						w.descA = fmt.Sprintf("its door %q (doors[%d])", s.Doors[d].ID, d)
+					} else {
+						na := v.authored[n]
+						w.descA = fmt.Sprintf("the open way between [%d,%d] and [%d,%d]",
+							at[0], at[1], na[0], na[1])
+					}
+					w.descB = w.descA
+					out = append(out, w)
+				}
+			}
+		}
+	}
+
+	return out
+}
+
+// approach is one way a region meets a strip of scenery: the crossing between
+// them, whether a concealed door stands in it, and how to say so.
+//
+// `key` is what makes a two-edge gate one approach rather than two: a
+// door-claimed crossing keys on the DOOR, a bare one on the crossing itself
+// (rpg-toolkit#1123, carried into the strip).
+type approach struct {
+	region    int
+	key       approachKey
+	concealed bool
+	desc      string
+}
+
+type approachKey struct {
+	region   int
+	door     int // -1 for a bare crossing
+	crossing [2]spatial.Position
+}
+
+// sceneryWays is every way that runs THROUGH a strip of scenery
+// (rpg-project#360, C4).
+//
+// # One way per path, concealed if EITHER end is
+//
+// A strip has two ends and the walk meets it from both, so "its first
+// crossing" — the design's words, written for a way one crossing long — names
+// two different crossings depending on which room you start in. Enumerating
+// per direction would classify one path twice and disagree with itself
+// whenever only one end carries the concealed door, which is the ordinary
+// shape: a secret room with a strip of rubble in front of its own hidden
+// door. So a path is ONE way, and it is concealed when either end crossing is
+// a concealed door.
+//
+// That refuses exactly the hazard and nothing else. Both ends bare is a strip
+// anybody walks into the secret, and is refused. Either end a concealed door
+// means a non-knower meets a wall — a real one, or the mask a concealed door
+// wears — before they ever reach the strip's far crossing, so their map is the
+// honestly-authored twin's and there is nothing to give away. That is also
+// what keeps C6 true: a bare crossing from scenery into hidden space exists
+// only behind a wall or behind a mask, so the masquerade never has to stand
+// one there.
+func (v *validation) sceneryWays() []wayIn {
+	if len(v.sceneryAt) == 0 {
+		return nil
+	}
+
+	var out []wayIn
+	member := make(map[spatial.Position]bool, len(v.sceneryAt))
+	for _, row := range v.spec.Scenery {
+		for _, at := range row {
+			start := v.cell(at)
+			if member[start] || !v.sceneryAt[start] {
+				continue
+			}
+			meets := v.approachesTo(start, member)
+			for i, ap := range meets {
+				for _, other := range meets[i+1:] {
+					if ap.region == other.region {
+						continue // out through the strip and back into the same room
+					}
+					w := wayIn{a: ap.region, b: other.region, concealed: ap.concealed || other.concealed,
+						descA: ap.desc, descB: other.desc}
+					if w.b < w.a {
+						w.a, w.b, w.descA, w.descB = other.region, ap.region, other.desc, ap.desc
+					}
+					out = append(out, w)
+				}
+			}
+		}
+	}
+
+	return out
+}
+
+// approachesTo floods one wall-free component of scenery from `start`,
+// marking its cells in `member`, and returns every distinct way a region
+// meets it — in a fixed order, so the ways and any refusals about them land
+// the same way on every run.
+//
+// A WALL SEALS A STRIP AS IT SEALS A ROOM: the flood never crosses one, which
+// is what makes "wall it off" the author's fix for a strip that leads
+// somewhere it should not.
+func (v *validation) approachesTo(start spatial.Position, member map[spatial.Position]bool) []approach {
+	var out []approach
+	seen := map[approachKey]bool{}
+	visited := map[spatial.Position]bool{start: true}
+	member[start] = true
+	for queue := []spatial.Position{start}; len(queue) > 0; {
+		here := queue[0]
+		queue = queue[1:]
+		for _, step := range axialSteps {
+			n := spatial.Position{X: here.X + step[0], Y: here.Y + step[1]}
+			c := normalizedCrossing(here, n)
+			if v.walled(c) {
+				continue
+			}
+			if r, owned := v.owner[n]; owned {
+				ap := approach{region: r, key: approachKey{region: r, door: -1, crossing: c}}
+				path, claimed := v.crossings[c]
+				if claimed && !strings.HasPrefix(path, "walls[") {
+					d := v.doorAt[c]
+					ap.key = approachKey{region: r, door: d}
+					ap.concealed = v.spec.Doors[d].Concealed != nil
+					ap.desc = fmt.Sprintf("its door %q (doors[%d])", v.spec.Doors[d].ID, d)
+				} else {
+					na, sc := v.authored[n], v.authored[here]
+					ap.desc = fmt.Sprintf("the open way between [%d,%d] and the scenery at [%d,%d]",
+						na[0], na[1], sc[0], sc[1])
+				}
+				if !seen[ap.key] {
+					seen[ap.key] = true
+					out = append(out, ap)
+				}
+				continue
+			}
+			if !v.sceneryAt[n] || visited[n] {
+				continue
+			}
+			visited[n] = true
+			member[n] = true
+			queue = append(queue, n)
+		}
+	}
+
+	return out
 }
 
 // refKind returns a ref's type segment, which is what routes a placement.

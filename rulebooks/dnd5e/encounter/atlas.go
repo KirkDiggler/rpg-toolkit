@@ -28,8 +28,14 @@ type Atlas struct {
 	// the screen an axial cell lands.
 	Orientation Orientation
 
-	// Cells is every floor cell, sorted by coordinate — the union of every
-	// region's cells, and nothing else.
+	// Cells is every floor cell, sorted by coordinate: the union of every
+	// region's cells AND the field's scenery (rpg-project#360).
+	//
+	// A CELL HERE AND IN NO REGION BELOW IS SCENERY — floor nobody owns and
+	// nobody stands on. That is the whole of what a host needs to be told
+	// about it, which is why nothing else on this snapshot names it: the two
+	// lists already say it, and a third statement of the same fact is a third
+	// place for it to be wrong.
 	Cells []spatial.Position
 
 	// Regions is every region, sorted by region ID (C8), each listing its

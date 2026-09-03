@@ -155,13 +155,21 @@
 //     left with the room chain (#256): a region is painted on a hex grid,
 //     and a second family would be a second frame for every coordinate to
 //     be wrong in.
-//   - W2 (regions never overlap) — the floor is the union of the regions'
-//     cells, and a cell belongs to exactly one region. A cell listed twice,
-//     in one region or across two, is refused (ErrRegionOverlap); touching
-//     is legal, sharing a cell is not.
+//   - W2 (nothing claims a cell twice) — the floor is the union of the
+//     regions' cells and [FieldInput.Scenery], and every cell of it is
+//     claimed exactly once. A cell listed twice, in one region, across two,
+//     in both a region and the scenery, or twice in the scenery, is refused
+//     (ErrRegionOverlap); touching is legal, sharing a cell is not.
+//     SCENERY IS THE FLOOR THAT BELONGS TO NOBODY (rpg-project#360): a wall
+//     stands on it, a prop sits on it, a sightline crosses it whatever
+//     [Void] says, it is in every member's map, and nobody's feet touch it.
+//     Standing is what an OWNER grants, so a seat, a step and an ending's
+//     trigger cell all ask [Encounter.RegionAt], not merely whether there
+//     is ground.
 //   - W3 (a door edge joins two adjacent floor cells) — every authored
-//     edge, wall or door, has both endpoints on the floor and adjacent
-//     under the declared orientation (ErrEdgeOffFloor, ErrEdgeNotAdjacent).
+//     edge, wall or door, has both endpoints on the floor — a region's or
+//     the scenery's — and adjacent under the declared orientation
+//     (ErrEdgeOffFloor, ErrEdgeNotAdjacent).
 //     The envelope is implied, never written: a crossing from floor into
 //     void is a crossing nobody can make, and [Void] already says whether
 //     sight crosses it.
