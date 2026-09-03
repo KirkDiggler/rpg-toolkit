@@ -4,6 +4,7 @@
 package npc_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -222,4 +223,84 @@ func (s *NPCSuite) TestRefsAreCopiedAtBoundaries() {
 	fromData := n.ToData()
 	fromData.Ref.ID = "mutated-output"
 	s.Equal(core.ID("merchant"), n.Ref().ID)
+}
+
+// TestInventoryIsOpaqueAndUnvalidated pins the whole point of the field
+// (rpg-toolkit#1444): this package carries it and never reads it. Malformed,
+// non-JSON bytes are exactly as legal as well-formed ones — the same
+// treatment Capability strings get, not the treatment a policy enum gets.
+func (s *NPCSuite) TestInventoryIsOpaqueAndUnvalidated() {
+	data := s.data()
+	data.Inventory = json.RawMessage(`not valid json at all`)
+
+	n, err := npc.Load(data)
+
+	s.Require().NoError(err, "an opaque field is never validated, malformed or not")
+	s.Equal(json.RawMessage(`not valid json at all`), n.Inventory())
+}
+
+// TestNewCarriesInventoryFromConfig proves the field travels through New,
+// not only through Load.
+func (s *NPCSuite) TestNewCarriesInventoryFromConfig() {
+	n, err := npc.New(npc.Config{
+		Ref:          s.ref,
+		DisplayName:  "Merchant",
+		Capabilities: []npc.Capability{npc.CapabilityVendor},
+		Inventory:    json.RawMessage(`{"stock":["longsword"]}`),
+	})
+	s.Require().NoError(err)
+
+	s.Equal(json.RawMessage(`{"stock":["longsword"]}`), n.Inventory())
+	s.Equal(json.RawMessage(`{"stock":["longsword"]}`), n.ToData().Inventory)
+}
+
+// TestInventoryRoundTripsByteForByte is the load-bearing round-trip: Load
+// then ToData must reproduce the exact bytes, not merely "non-nil".
+func (s *NPCSuite) TestInventoryRoundTripsByteForByte() {
+	data := s.data()
+	data.Inventory = json.RawMessage(`{"entries":[{"id":"longbow"},{"id":"arrows-20"}]}`)
+
+	n, err := npc.Load(data)
+	s.Require().NoError(err)
+
+	s.Equal(data.Inventory, n.Inventory())
+	s.Equal(data.Inventory, n.ToData().Inventory)
+}
+
+// TestNoInventoryRoundTripsAsNilAndOmitsFromJSON proves the omitempty
+// contract directly — the key must be absent from marshaled JSON, not
+// merely present-and-null.
+func (s *NPCSuite) TestNoInventoryRoundTripsAsNilAndOmitsFromJSON() {
+	n, err := npc.Load(s.data())
+	s.Require().NoError(err)
+
+	s.Nil(n.Inventory())
+
+	marshaled, err := json.Marshal(n.ToData())
+	s.Require().NoError(err)
+
+	var raw map[string]interface{}
+	s.Require().NoError(json.Unmarshal(marshaled, &raw))
+	s.NotContains(raw, "inventory", "omitempty must drop a nil Inventory from the JSON entirely")
+}
+
+// TestInventoryIsCopiedAtBoundaries is Capabilities' own mutation-proof
+// standard, applied to the new field.
+func (s *NPCSuite) TestInventoryIsCopiedAtBoundaries() {
+	data := s.data()
+	data.Inventory = json.RawMessage(`{"stock":["longsword"]}`)
+
+	n, err := npc.Load(data)
+	s.Require().NoError(err)
+
+	data.Inventory[0] = 'X'
+	s.Equal(json.RawMessage(`{"stock":["longsword"]}`), n.Inventory())
+
+	fromAccessor := n.Inventory()
+	fromAccessor[0] = 'X'
+	s.Equal(json.RawMessage(`{"stock":["longsword"]}`), n.Inventory())
+
+	fromData := n.ToData()
+	fromData.Inventory[0] = 'X'
+	s.Equal(json.RawMessage(`{"stock":["longsword"]}`), n.Inventory())
 }

@@ -4,6 +4,7 @@
 package npc
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ type NPC struct {
 	observationPolicy ObservationPolicy
 	dispositionPolicy DispositionPolicy
 	movementPolicy    MovementPolicy
+	inventory         json.RawMessage
 }
 
 // Config provides authoring values for a new NPC.
@@ -34,6 +36,10 @@ type Config struct {
 	ObservationPolicy ObservationPolicy
 	DispositionPolicy DispositionPolicy
 	MovementPolicy    MovementPolicy
+
+	// Inventory is opaque rulebook-owned content this package never reads —
+	// see [Data.Inventory]'s own doc for why.
+	Inventory json.RawMessage
 }
 
 // Data is the serializable form of an NPC.
@@ -45,6 +51,19 @@ type Data struct {
 	ObservationPolicy ObservationPolicy `json:"observation_policy"`
 	DispositionPolicy DispositionPolicy `json:"disposition_policy"`
 	MovementPolicy    MovementPolicy    `json:"movement_policy"`
+
+	// Inventory is opaque rulebook-owned content — a vendor's stock, or
+	// whatever else a future NPC role needs to carry — that this package
+	// never reads, validates, or requires. The same JSON-in/JSON-out
+	// convention this toolkit already uses for conditions and features:
+	// the rulebook package that knows what "inventory" means marshals its
+	// own typed shape into these bytes and unmarshals it back out. This
+	// package treats it exactly as it already treats [Capability] — an
+	// opaque label another package may route on, carried and never
+	// interpreted. Nil is legal and means "no inventory content," which is
+	// every NPC that isn't a vendor (or whatever future role uses this
+	// slot).
+	Inventory json.RawMessage `json:"inventory,omitempty"`
 }
 
 // New creates a generic NPC content record.
@@ -57,6 +76,7 @@ func New(config Config) (*NPC, error) {
 		ObservationPolicy: defaultObservationPolicy(config.ObservationPolicy),
 		DispositionPolicy: defaultDispositionPolicy(config.DispositionPolicy),
 		MovementPolicy:    defaultMovementPolicy(config.MovementPolicy),
+		Inventory:         config.Inventory,
 	}
 
 	return load(data)
@@ -93,6 +113,17 @@ func (n *NPC) Capabilities() []Capability {
 		return nil
 	}
 	return slices.Clone(n.capabilities)
+}
+
+// Inventory returns the NPC's opaque rulebook-owned content, unread and
+// unvalidated by this package — see [Data.Inventory]'s own doc. Copy-out,
+// the same as [NPC.Capabilities]: mutating the returned bytes does not
+// mutate the NPC's own stored value.
+func (n *NPC) Inventory() json.RawMessage {
+	if n == nil {
+		return nil
+	}
+	return slices.Clone(n.inventory)
 }
 
 // CombatPolicy returns the NPC's authored combat participation policy.
@@ -140,6 +171,7 @@ func (n *NPC) ToData() *Data {
 		ObservationPolicy: n.observationPolicy,
 		DispositionPolicy: n.dispositionPolicy,
 		MovementPolicy:    n.movementPolicy,
+		Inventory:         slices.Clone(n.inventory),
 	}
 }
 
@@ -156,6 +188,7 @@ func load(data *Data) (*NPC, error) {
 		observationPolicy: data.ObservationPolicy,
 		dispositionPolicy: data.DispositionPolicy,
 		movementPolicy:    data.MovementPolicy,
+		inventory:         slices.Clone(data.Inventory),
 	}, nil
 }
 
