@@ -4,12 +4,14 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -21,6 +23,7 @@ func (standingOnly) Standing([]encounter.MemberID) ([]encounter.MemberID, error)
 type scriptedParticipation struct {
 	members       map[encounter.MemberID]encounter.MemberParticipation
 	partyDefeated bool
+	keepTurnOrder bool
 	assessment    *encounter.ParticipationAssessment
 	returnNil     bool
 	err           error
@@ -43,7 +46,10 @@ func (s *scriptedParticipation) Assess(members []encounter.MemberID) (*encounter
 		return s.assessment, nil
 	}
 
-	out := &encounter.ParticipationAssessment{PartyDefeated: s.partyDefeated}
+	out := &encounter.ParticipationAssessment{
+		PartyDefeated: s.partyDefeated,
+		KeepTurnOrder: s.keepTurnOrder,
+	}
 	for _, id := range members {
 		member, ok := s.members[id]
 		if !ok {
@@ -55,6 +61,29 @@ func (s *scriptedParticipation) Assess(members []encounter.MemberID) (*encounter
 		out.Members = append(out.Members, member)
 	}
 	return out, nil
+}
+
+type waitingAfterStrike struct {
+	participation *scriptedParticipation
+	member        encounter.MemberID
+	calls         int
+}
+
+func (s *waitingAfterStrike) Strike(
+	_ context.Context,
+	enc *encounter.Encounter,
+	attacker encounter.MemberID,
+	target encounter.MemberID,
+	_ core.Ref,
+) error {
+	s.calls++
+	s.participation.members[s.member] = encounter.MemberParticipation{
+		Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+	}
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: attacker, Targets: []encounter.MemberID{target},
+	})
+	return err
 }
 
 func participationSetup(capability encounter.Standing, members ...encounter.MemberInput) *encounter.SetupInput {
@@ -158,6 +187,9 @@ func TestParticipationQuestionAndAnswerContract(t *testing.T) {
 		{name: "unknown turn", assessment: &encounter.ParticipationAssessment{Members: []encounter.MemberParticipation{
 			{Member: alice, Contact: true, Conscious: true, Turn: encounter.TurnParticipation("delay")},
 		}}, sentinel: encounter.ErrInvalidData},
+		{name: "remove member still claims contact", assessment: &encounter.ParticipationAssessment{Members: []encounter.MemberParticipation{
+			{Member: alice, Contact: true, Turn: encounter.TurnParticipationRemove},
+		}}, sentinel: encounter.ErrInvalidData},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			capability := &scriptedParticipation{assessment: tc.assessment, returnNil: tc.name == "nil assessment"}
@@ -206,6 +238,47 @@ func TestDyingRetainsItsExactInitiativeSlotAndCanBecomeActive(t *testing.T) {
 	require.Equal(t, []encounter.MemberID{alice, bob, goblin}, state.Order)
 }
 
+func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.T) {
+	const zara encounter.MemberID = "zara"
+	capability := &scriptedParticipation{}
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Attack{Target: alice, Action: testMeleeAction},
+		encounter.Pass{},
+	}}
+	striker := &waitingAfterStrike{participation: capability, member: zara}
+	setup := participationSetup(capability,
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+		encounter.MemberInput{
+			ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, SpeedFeet: 30,
+			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}},
+		},
+		encounter.MemberInput{ID: zara, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 2}},
+	)
+	setup.TurnDriver = driver
+	setup.Striker = striker
+	enc, err := encounter.NewEncounter(setup)
+	require.NoError(t, err)
+
+	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+		zara: {Contact: true, Conscious: false, Turn: encounter.TurnParticipationAutoPass},
+	}
+	callsBefore := len(capability.questions)
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+	require.Equal(t, zara, out.Next)
+	require.Equal(t, zara, clockState(t, enc, zara).Active,
+		"the fresh Wait answer after the strike wins over the stale AutoPass answer")
+	require.Equal(t, 1, striker.calls)
+	require.Len(t, driver.calls, 2, "the driven monster attacks once and then passes")
+	require.Len(t, capability.questions, callsBefore+5,
+		"boundary pass, two views, nested Record pass, and post-interaction scheduling reassessment")
+
+	for _, beat := range storyBeats(t, enc, zara) {
+		require.False(t, beat["beat"] == "turn-ended" && beat["member"] == string(zara),
+			"fresh Wait must not be auto-passed")
+	}
+}
+
 func TestStabilizedAutoPassesInPlaceAndOrdinaryWaitReturnsWithoutReinsertion(t *testing.T) {
 	capability := &scriptedParticipation{}
 	enc := participationTrio(t, capability)
@@ -229,6 +302,36 @@ func TestStabilizedAutoPassesInPlaceAndOrdinaryWaitReturnsWithoutReinsertion(t *
 	state = clockState(t, enc, bob)
 	require.Equal(t, bob, state.Active)
 	require.Equal(t, []encounter.MemberID{alice, bob, goblin}, state.Order, "the same slot becomes controlled")
+}
+
+func TestMidTurnStabilizedDeathSaveDoesNotAutoPassAlreadyActiveSlot(t *testing.T) {
+	capability := &scriptedParticipation{}
+	enc := participationTrio(t, capability)
+	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+		alice: {Down: true, Turn: encounter.TurnParticipationAutoPass},
+	}
+	callsBefore := len(capability.questions)
+
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeDeathSave, Actor: alice,
+		DeathSave: &encounter.DeathSaveDetail{
+			Roll: 10, Outcome: "stabilized", SuccessesAdded: 1, Successes: 3,
+			FailuresRemaining: 3, Stabilized: true, Continuation: "end_turn", PresentationID: "death-save",
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, capability.questions, callsBefore+1)
+	require.Equal(t, alice, clockState(t, enc, alice).Active,
+		"Record settles facts inside the current turn; it does not create a new active slot")
+	for _, beat := range storyBeats(t, enc, alice) {
+		require.False(t, beat["beat"] == "turn-ended" && beat["member"] == string(alice),
+			"the stabilized result does not end its own already-active turn")
+	}
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+	require.Equal(t, bob, clockState(t, enc, bob).Active,
+		"the later explicit continuation advances through EndTurn")
 }
 
 func TestConsecutiveStabilizedMembersAdvanceIteratively(t *testing.T) {
@@ -268,37 +371,55 @@ func TestRemoveLeavesInitiativeButKeepsMapAndRoster(t *testing.T) {
 	require.Equal(t, cellAt(1, 2), members[1].Position)
 }
 
-func TestRemoveWithContactTrueUsesPostRemovalSidesAndDissolves(t *testing.T) {
+func TestRemoveWithContactTrueIsRefusedBeforeDefeatConsequences(t *testing.T) {
 	capability := &scriptedParticipation{}
 	enc := participationTrio(t, capability)
 	require.Equal(t, encounter.ClockTurn, clockState(t, enc, alice).Kind)
 	callsBefore := len(capability.questions)
 
 	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
-		goblin: {
-			Down: true, Contact: true, Turn: encounter.TurnParticipationRemove,
-		},
+		goblin: {Down: true, Contact: true, Turn: encounter.TurnParticipationRemove},
 	}
 	_, err := enc.Record(&encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 	})
-	require.NoError(t, err)
-	require.Len(t, capability.questions, callsBefore+1,
-		"the post-removal census reuses the consequence pass assessment")
-
-	for _, id := range []encounter.MemberID{alice, bob, goblin} {
-		require.Equal(t, encounter.ClockWorld, clockState(t, enc, id).Kind,
-			"the defeated side is gone, so the bubble dissolves instead of stranding its other side")
+	require.ErrorIs(t, err, encounter.ErrInvalidData)
+	require.Len(t, capability.questions, callsBefore+1)
+	require.Equal(t, []encounter.MemberID{alice, bob, goblin}, clockState(t, enc, alice).Order,
+		"an incoherent answer cannot splice or dissolve the bubble")
+	for _, beat := range storyBeats(t, enc, alice) {
+		require.NotEqual(t, "down", beat["beat"], "validation precedes down narration")
+		require.NotEqual(t, "bubble-dissolved", beat["beat"], "validation precedes defeat consequences")
 	}
-	require.Empty(t, enc.ToData().Bubbles)
+}
 
-	beats := storyBeats(t, enc, alice)
-	kinds := make([]string, 0, len(beats))
-	for _, beat := range beats {
-		kinds = append(kinds, beat["beat"].(string))
-	}
-	require.Equal(t, []string{"scene-opened", "bubble-formed", "missed", "down", "bubble-dissolved"}, kinds,
-		"the triggering outcome and down beat remain ahead of the dissolution they cause")
+func TestRemoveWithContactTrueCannotFormAtFirstLightOrJoinAtATrigger(t *testing.T) {
+	t.Run("first light", func(t *testing.T) {
+		capability := &scriptedParticipation{members: map[encounter.MemberID]encounter.MemberParticipation{
+			goblin: {Contact: true, Turn: encounter.TurnParticipationRemove},
+		}}
+		_, err := encounter.NewEncounter(participationSetup(capability,
+			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+		))
+		require.ErrorIs(t, err, encounter.ErrInvalidData)
+	})
+
+	t.Run("join trigger", func(t *testing.T) {
+		capability := &scriptedParticipation{}
+		enc := participationTrio(t, capability)
+		capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+			wolf: {Contact: true, Turn: encounter.TurnParticipationRemove},
+		}
+
+		_, err := enc.Join(&encounter.JoinInput{
+			Member: wolf, Kind: encounter.KindMonster, Cell: cellAt(2, 10),
+		})
+		require.ErrorIs(t, err, encounter.ErrInvalidData)
+		require.Equal(t, []encounter.MemberID{alice, bob, goblin}, clockState(t, enc, alice).Order,
+			"the invalid newcomer never joins the running bubble")
+		require.Equal(t, encounter.ClockWorld, clockState(t, enc, wolf).Kind)
+	})
 }
 
 func TestRemovingTheActiveMemberAdvancesExactlyOnce(t *testing.T) {
@@ -332,6 +453,7 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 		bob:   {Down: true, Turn: encounter.TurnParticipationWait},
 	}
 	capability.partyDefeated = true
+	capability.keepTurnOrder = true
 
 	_, err := enc.Record(&encounter.RecordInput{
 		Kind:  encounter.OutcomeDeathSave,
@@ -365,6 +487,111 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 	require.Equal(t, "party_defeated", reloadedStatus.Outcome.Ending)
 }
 
+func prepareDyingVictory(
+	t *testing.T,
+) (*encounter.Encounter, *scriptedParticipation) {
+	t.Helper()
+	capability := &scriptedParticipation{keepTurnOrder: true}
+	enc := participationTrio(t, capability)
+	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+		bob: {Down: true, Turn: encounter.TurnParticipationWait},
+	}
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+	require.Equal(t, bob, clockState(t, enc, bob).Active)
+
+	capability.members[goblin] = encounter.MemberParticipation{
+		Down: true, Turn: encounter.TurnParticipationRemove,
+	}
+	_, err = enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: bob, Targets: []encounter.MemberID{goblin},
+	})
+	require.NoError(t, err)
+	require.Equal(t, encounter.ClockWorld, clockState(t, enc, goblin).Kind)
+	require.Equal(t, []encounter.MemberID{alice, bob}, clockState(t, enc, bob).Order)
+	require.Equal(t, bob, clockState(t, enc, bob).Active,
+		"KeepTurnOrder preserves the dying member's save turn after victory")
+	return enc, capability
+}
+
+func TestKeepTurnOrderCarriesTheDyingVictoryJourney(t *testing.T) {
+	t.Run("ordinary and third success", func(t *testing.T) {
+		enc, capability := prepareDyingVictory(t)
+
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeDeathSave, Actor: bob,
+			DeathSave: &encounter.DeathSaveDetail{
+				Roll: 10, Outcome: "success", SuccessesAdded: 1, Successes: 1,
+				SuccessesNeeded: 2, FailuresRemaining: 3,
+				Continuation: "end_turn", PresentationID: "death-save",
+			},
+		})
+		require.NoError(t, err)
+		require.Equal(t, bob, clockState(t, enc, bob).Active,
+			"an ordinary save leaves the dying turn waiting")
+
+		capability.keepTurnOrder = false
+		capability.members[bob] = encounter.MemberParticipation{
+			Down: true, Turn: encounter.TurnParticipationAutoPass,
+		}
+		turnEndsBefore := countTurnEndedBy(t, enc, bob)
+		_, err = enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeDeathSave, Actor: bob,
+			DeathSave: &encounter.DeathSaveDetail{
+				Roll: 10, Outcome: "stabilized", SuccessesAdded: 1, Successes: 3,
+				FailuresRemaining: 3, Stabilized: true,
+				Continuation: "end_turn", PresentationID: "death-save",
+			},
+		})
+		require.NoError(t, err)
+		require.Equal(t, bob, clockState(t, enc, bob).Active,
+			"the mid-turn terminal save defers auto-pass and one-sided reconciliation")
+		require.Equal(t, turnEndsBefore, countTurnEndedBy(t, enc, bob),
+			"Record does not append a turn-ended beat for an already-active slot")
+
+		_, err = enc.EndTurn(&encounter.EndTurnInput{Member: bob})
+		require.NoError(t, err)
+		require.Empty(t, enc.ToData().Bubbles,
+			"post-settlement EndTurn reconciles and dissolves the one-sided fight")
+		for _, id := range []encounter.MemberID{alice, bob, goblin} {
+			require.Equal(t, encounter.ClockWorld, clockState(t, enc, id).Kind)
+		}
+	})
+
+	t.Run("natural 20 keeps the current turn", func(t *testing.T) {
+		enc, capability := prepareDyingVictory(t)
+		capability.keepTurnOrder = false
+		capability.members[bob] = encounter.MemberParticipation{
+			Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		}
+		turnEndsBefore := countTurnEndedBy(t, enc, bob)
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeDeathSave, Actor: bob,
+			DeathSave: &encounter.DeathSaveDetail{
+				Roll: 20, Outcome: "recovered", Recovered: true, HPRestored: 1,
+				SuccessesNeeded: 3, FailuresRemaining: 3,
+				Continuation: "keep_turn", PresentationID: "natural-20",
+			},
+		})
+		require.NoError(t, err)
+		require.Equal(t, bob, clockState(t, enc, bob).Active,
+			"natural-20 continuation keeps the already-active turn")
+		require.Equal(t, []encounter.MemberID{alice, bob}, clockState(t, enc, bob).Order)
+		require.Equal(t, turnEndsBefore, countTurnEndedBy(t, enc, bob))
+	})
+}
+
+func countTurnEndedBy(t *testing.T, enc *encounter.Encounter, member encounter.MemberID) int {
+	t.Helper()
+	count := 0
+	for _, beat := range storyBeats(t, enc, member) {
+		if beat["beat"] == "turn-ended" && beat["member"] == string(member) {
+			count++
+		}
+	}
+	return count
+}
+
 func TestPartyDefeatedFalseWithDyingAndConsciousAlliesKeepsFightOpen(t *testing.T) {
 	capability := &scriptedParticipation{}
 	enc := participationTrio(t, capability)
@@ -380,6 +607,52 @@ func TestPartyDefeatedFalseWithDyingAndConsciousAlliesKeepsFightOpen(t *testing.
 	require.True(t, status.Open)
 	require.Equal(t, encounter.ClockTurn, clockState(t, enc, bob).Kind)
 	require.Equal(t, []encounter.MemberID{alice, bob, goblin}, clockState(t, enc, bob).Order)
+}
+
+func TestRecoveredDeathSaveClearsStoryDownLedgerForASecondFall(t *testing.T) {
+	capability := &scriptedParticipation{keepTurnOrder: true}
+	enc := participationTrio(t, capability)
+	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+		alice: {Down: true, Turn: encounter.TurnParticipationWait},
+	}
+
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: goblin, Targets: []encounter.MemberID{alice},
+	})
+	require.NoError(t, err)
+
+	capability.members[alice] = encounter.MemberParticipation{
+		Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+	}
+	_, err = enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeDeathSave, Actor: alice,
+		DeathSave: &encounter.DeathSaveDetail{
+			Roll: 20, Outcome: "recovered", Recovered: true, HPRestored: 1,
+			SuccessesNeeded: 3, FailuresRemaining: 3,
+			Continuation: "keep_turn", PresentationID: "natural-20",
+		},
+	})
+	require.NoError(t, err)
+
+	capability.members[alice] = encounter.MemberParticipation{
+		Down: true, Turn: encounter.TurnParticipationWait,
+	}
+	_, err = enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: goblin, Targets: []encounter.MemberID{alice},
+	})
+	require.NoError(t, err)
+
+	downBeats, upBeats := 0, 0
+	for _, beat := range storyBeats(t, enc, alice) {
+		switch beat["beat"] {
+		case "down":
+			downBeats++
+		case "up":
+			upBeats++
+		}
+	}
+	require.Equal(t, 2, downBeats, "recovery clears toldness so the second fall is news")
+	require.Zero(t, upBeats, "recovery is already closed DeathSave detail, not a second Up beat")
 }
 
 func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.T) {

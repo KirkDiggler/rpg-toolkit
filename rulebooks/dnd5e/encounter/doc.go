@@ -11,8 +11,9 @@
 // thinks on the tick. Participation is supplied by the rulebook: Down writes
 // the story beat, Contact decides sides, and Turn independently retains,
 // auto-passes, or removes an initiative slot. Removed members keep their map
-// placement and roster entry. Party defeat is likewise supplied policy, never
-// a threshold inferred here.
+// placement and roster entry. Party defeat and whether a one-sided bubble must
+// retain turn order are likewise supplied group policy, never thresholds
+// inferred here; party defeat takes precedence.
 //
 // LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. play/intel stores channel-
 // sourced testimony opaquely; this composition gives sight payloads their

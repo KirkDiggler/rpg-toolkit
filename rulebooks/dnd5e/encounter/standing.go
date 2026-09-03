@@ -43,6 +43,16 @@ func (e *Encounter) standingNow() (map[MemberID]bool, error) {
 	return participation.down, nil
 }
 
+type participationPassInput struct {
+	// newlyActive names clocks whose active slot was created before this pass,
+	// such as EndTurn's successor. Mid-turn Record supplies none.
+	newlyActive []*clock.Turn
+	// deferReconcile keeps a one-sided bubble in place for the same call that
+	// records a stabilized or recovered Death Save. Its explicit continuation
+	// keeps control until the next turn-settlement boundary.
+	deferReconcile bool
+}
+
 // noticeDown performs one complete participation pass. The historical name is
 // retained for the call graph, but Down now governs narration only: Contact
 // chooses sides, Turn chooses retain/auto-pass/remove, and PartyDefeated is the
@@ -50,11 +60,18 @@ func (e *Encounter) standingNow() (map[MemberID]bool, error) {
 //
 // The order is causal and deterministic: append every new Down beat in sorted
 // order; close a supplied party defeat; apply sorted Remove consequences;
-// iteratively drive AutoPass and ordinary unplayed turns; then evaluate legacy
-// declared MemberDown endings. Wait never moves a slot. The story remains the
-// down-narration ledger, so a retained beat aging out may be told again rather
-// than introducing duplicate persisted life state.
-func (e *Encounter) noticeDown() (*participationState, map[MemberID]*IntelDelta, error) {
+// retain or reconcile one-sided order by supplied group policy; settle only
+// newly active slots; then evaluate legacy declared MemberDown endings. Wait
+// never moves a slot. The story remains the down-narration ledger, so a
+// retained beat aging out may be told again rather than introducing duplicate
+// persisted life state.
+func (e *Encounter) noticeDown(
+	inputs ...participationPassInput,
+) (*participationState, map[MemberID]*IntelDelta, error) {
+	in := participationPassInput{}
+	if len(inputs) > 0 {
+		in = inputs[0]
+	}
 	participation, err := e.participationNow()
 	if err != nil {
 		return nil, nil, err
@@ -97,6 +114,10 @@ func (e *Encounter) noticeDown() (*participationState, map[MemberID]*IntelDelta,
 	// dying member) and AutoPass (including a stabilized member) retain their
 	// exact slots. All removals happen before scheduling, so an active member
 	// becoming Remove hands the clock forward exactly once.
+	toSettle := make(map[*clock.Turn]bool, len(in.newlyActive))
+	for _, bubble := range in.newlyActive {
+		toSettle[bubble] = true
+	}
 	removed := make([]MemberID, 0)
 	for id, member := range participation.members {
 		if member.Turn == TurnParticipationRemove {
@@ -115,15 +136,27 @@ func (e *Encounter) noticeDown() (*participationState, map[MemberID]*IntelDelta,
 			continue
 		}
 
-		decided, derr := e.fightIsDecided(bubble, participation)
-		if derr != nil {
-			return nil, nil, fmt.Errorf("participation fight %q: %w", id, derr)
+		active, aerr := bubble.Active()
+		if aerr != nil {
+			return nil, nil, fmt.Errorf("participation active %q: %w", id, aerr)
 		}
-		if decided {
-			if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
-				return nil, nil, fmt.Errorf("participation dissolve %q: %w", id, xerr)
+		removedWasActive := MemberID(active) == id
+
+		// KeepTurnOrder is the supplied exception to ordinary fight defeat:
+		// remove the member but preserve the one-sided clock for ordered
+		// follow-up such as Death Saves.
+		if !participation.assessment.KeepTurnOrder {
+			decided, derr := e.fightIsDecided(bubble, participation)
+			if derr != nil {
+				return nil, nil, fmt.Errorf("participation fight %q: %w", id, derr)
 			}
-			continue
+			if decided {
+				if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
+					return nil, nil, fmt.Errorf("participation dissolve %q: %w", id, xerr)
+				}
+				delete(toSettle, bubble)
+				continue
+			}
 		}
 
 		transferred, terr := e.transfer(&TransferInput{Member: id, To: ClockWorld}, false)
@@ -131,12 +164,57 @@ func (e *Encounter) noticeDown() (*participationState, map[MemberID]*IntelDelta,
 			return nil, nil, fmt.Errorf("participation transfer %q: %w", id, terr)
 		}
 		intelDeltas = mergeIntelDeltas(intelDeltas, transferred.IntelDeltas)
+		if removedWasActive {
+			toSettle[bubble] = true
+		}
 	}
 
-	// Drive every still-running bubble from this same assessment. AutoPass is
-	// iterative and uses ordinary turn-ended beats and boundary announcements;
-	// the first player-controlled Wait slot stops it.
-	for _, bubble := range append([]*clock.Turn(nil), e.bubbles...) {
+	// A later false KeepTurnOrder reconciles a one-sided bubble at its next
+	// settlement boundary, or while it still holds a down member whose ordered
+	// follow-up was the reason to retain it. This does not reinterpret an
+	// unrelated one-member fight as defeat merely because somebody elsewhere
+	// is down. Terminal Death Save detail defers same-call reconciliation so
+	// its explicit Continuation remains authoritative.
+	settlementOrder := append([]*clock.Turn(nil), e.bubbles...)
+	if !participation.assessment.KeepTurnOrder && !in.deferReconcile {
+		for _, bubble := range settlementOrder {
+			if !toSettle[bubble] {
+				order, oerr := bubble.Order()
+				if oerr != nil {
+					return nil, nil, fmt.Errorf("participation reconcile order: %w", oerr)
+				}
+				holdsDown := false
+				for _, id := range order {
+					if participation.down[id] {
+						holdsDown = true
+						break
+					}
+				}
+				if !holdsDown {
+					continue
+				}
+			}
+			decided, derr := e.fightIsDecided(bubble, participation)
+			if derr != nil {
+				return nil, nil, fmt.Errorf("participation reconcile: %w", derr)
+			}
+			if !decided {
+				continue
+			}
+			if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
+				return nil, nil, fmt.Errorf("participation reconcile dissolve: %w", xerr)
+			}
+			delete(toSettle, bubble)
+		}
+	}
+
+	// Drive only slots that became active in this pass. An already-active slot
+	// whose mid-turn Record changes to AutoPass remains active until its ruled
+	// continuation explicitly settles the turn.
+	for _, bubble := range settlementOrder {
+		if !toSettle[bubble] {
+			continue
+		}
 		order, oerr := bubble.Order()
 		if oerr != nil {
 			return nil, nil, fmt.Errorf("participation order: %w", oerr)
@@ -192,8 +270,10 @@ func (e *Encounter) firedMemberDown(down map[MemberID]bool) error {
 // bubble without a Contact side. It is reached before any one member transfers,
 // so every TurnParticipationRemove member is excluded regardless of Contact:
 // the census describes the post-removal bubble rather than its current order.
-// Down is not consulted; retained dying and stabilized slots remain eligible
-// exactly according to their independent Contact answers.
+// Remove+Contact is rejected at capability ingress; the exclusion here remains
+// defense in depth over this consequence boundary. Down is not consulted;
+// retained dying and stabilized slots remain eligible exactly according to
+// their independent Contact answers.
 func (e *Encounter) fightIsDecided(bubble *clock.Turn, participation *participationState) (bool, error) {
 	order, err := bubble.Order()
 	if err != nil {
@@ -244,8 +324,12 @@ func (e *Encounter) storyToldDown() (map[MemberID]bool, error) {
 	told := make(map[MemberID]bool)
 	for _, entry := range entries {
 		var beat struct {
-			Beat   string `json:"beat"`
-			Member string `json:"member"`
+			Beat      string `json:"beat"`
+			Member    string `json:"member"`
+			Actor     string `json:"actor"`
+			DeathSave *struct {
+				Recovered bool `json:"recovered"`
+			} `json:"death_save"`
 		}
 		// A payload this pass cannot read is not this pass's business. Every
 		// beat this module writes is a JSON object and decodes here (unknown
@@ -255,8 +339,15 @@ func (e *Encounter) storyToldDown() (map[MemberID]bool, error) {
 		if json.Unmarshal(entry.Payload, &beat) != nil {
 			continue
 		}
-		if beat.Beat == string(OutcomeDown) && beat.Member != "" {
+		switch {
+		case beat.Beat == string(OutcomeDown) && beat.Member != "":
 			told[MemberID(beat.Member)] = true
+		case beat.Beat == string(OutcomeDeathSave) && beat.Actor != "" &&
+			beat.DeathSave != nil && beat.DeathSave.Recovered:
+			// Recovery is already an authoritative closed Death Save fact. It
+			// clears story-derived toldness so a later fall is new, without
+			// inventing a second Up beat.
+			delete(told, MemberID(beat.Actor))
 		}
 	}
 

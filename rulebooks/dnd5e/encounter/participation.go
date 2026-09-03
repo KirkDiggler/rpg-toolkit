@@ -25,7 +25,8 @@ const (
 
 	// TurnParticipationRemove transfers the member out of a turn bubble. The
 	// member remains on the map, in the encounter roster, and on the world
-	// clock.
+	// clock. A Remove member cannot also report Contact; that incoherent answer
+	// is refused as invalid participation data.
 	TurnParticipationRemove TurnParticipation = "remove"
 )
 
@@ -40,11 +41,16 @@ type MemberParticipation struct {
 }
 
 // ParticipationAssessment is one complete answer about the roster supplied to
-// [Participation.Assess]. PartyDefeated is policy supplied by the rulebook; the
-// encounter never derives it from member counts.
+// [Participation.Assess]. PartyDefeated and KeepTurnOrder are group policy
+// supplied by the rulebook; the encounter never derives either from member
+// counts. PartyDefeated takes precedence over KeepTurnOrder.
 type ParticipationAssessment struct {
 	Members       []MemberParticipation
 	PartyDefeated bool
+	// KeepTurnOrder retains a one-sided bubble so members such as dying
+	// characters can finish ordered turns after their opposition is removed.
+	// A later false answer reconciles and dissolves that bubble.
+	KeepTurnOrder bool
 }
 
 // Participation assesses encounter membership for contact, narration,
@@ -106,10 +112,13 @@ func (e *Encounter) participationNow() (*participationState, error) {
 	}
 
 	state := &participationState{
-		assessment: &ParticipationAssessment{PartyDefeated: assessment.PartyDefeated},
-		members:    make(map[MemberID]MemberParticipation, len(roster)),
-		down:       make(map[MemberID]bool),
-		contact:    make(map[MemberID]bool),
+		assessment: &ParticipationAssessment{
+			PartyDefeated: assessment.PartyDefeated,
+			KeepTurnOrder: assessment.KeepTurnOrder,
+		},
+		members: make(map[MemberID]MemberParticipation, len(roster)),
+		down:    make(map[MemberID]bool),
+		contact: make(map[MemberID]bool),
 	}
 	for _, member := range assessment.Members {
 		if !asked[member.Member] {
@@ -119,7 +128,13 @@ func (e *Encounter) participationNow() (*participationState, error) {
 			return nil, fmt.Errorf("participation: reported %q twice: %w", member.Member, ErrInvalidData)
 		}
 		switch member.Turn {
-		case TurnParticipationWait, TurnParticipationAutoPass, TurnParticipationRemove:
+		case TurnParticipationWait, TurnParticipationAutoPass:
+		case TurnParticipationRemove:
+			if member.Contact {
+				return nil, fmt.Errorf(
+					"participation: member %q cannot be removed while remaining in contact: %w",
+					member.Member, ErrInvalidData)
+			}
 		default:
 			return nil, fmt.Errorf("participation: member %q has unknown turn participation %q: %w",
 				member.Member, member.Turn, ErrInvalidData)

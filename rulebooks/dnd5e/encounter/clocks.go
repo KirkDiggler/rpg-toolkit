@@ -302,11 +302,13 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 	return e.driveTurnsWithParticipation(bubble, participation)
 }
 
-// driveTurnsWithParticipation advances every consecutive automatic slot from
-// one validated assessment. AutoPass and unplayed Wait members share the same
-// ordinary boundary/beat path; a player-controlled Wait slot stops the loop.
-// The loop is iterative and bounded by the retained order, so consecutive
-// stabilized members cannot recurse or grow the stack.
+// driveTurnsWithParticipation advances consecutive automatic slots, starting
+// from the caller's validated assessment and reassessing after every driven
+// interaction before it interprets the next active member. AutoPass and
+// unplayed Wait members share the same ordinary boundary/beat path; a
+// player-controlled Wait slot stops the loop. The loop remains iterative and
+// bounded by the retained order, so consecutive stabilized members cannot
+// recurse or grow the stack.
 func (e *Encounter) driveTurnsWithParticipation(
 	bubble *clock.Turn, participation *participationState,
 ) (wrapped bool, lastSeq uint64, deltas map[MemberID]*IntelDelta, err error) {
@@ -328,6 +330,26 @@ func (e *Encounter) driveTurnsWithParticipation(
 	}
 
 	for i := 0; i < len(order); i++ {
+		if i > 0 {
+			// The previous iteration crossed a boundary after an AutoPass or
+			// driven turn. Reassess now, at the top of the next iteration, so a
+			// strike or boundary cannot leave a stale Wait/AutoPass/Remove answer
+			// governing the newly active slot. noticeDown also applies
+			// any fresh consequences; its nested scheduler is stopped by the
+			// reentrancy guard held by this outer loop.
+			fresh, freshDeltas, ferr := e.noticeDown(participationPassInput{
+				newlyActive: []*clock.Turn{bubble},
+			})
+			if ferr != nil {
+				return wrapped, lastSeq, deltas, fmt.Errorf("drive monster turns reassess: %w", ferr)
+			}
+			participation = fresh
+			deltas = mergeIntelDeltas(deltas, freshDeltas)
+			if e.outcome != nil {
+				return wrapped, lastSeq, deltas, nil
+			}
+		}
+
 		remaining, oerr := bubble.Order()
 		if oerr != nil {
 			return wrapped, lastSeq, deltas, fmt.Errorf("drive monster turns: %w", oerr)
@@ -1492,7 +1514,9 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	// retains Wait, automatically advances AutoPass, and then drives any
 	// consecutive unplayed Wait members. The caller receives the first slot
 	// that genuinely waits for player input.
-	participation, moreDeltas, nerr := e.noticeDown()
+	participation, moreDeltas, nerr := e.noticeDown(participationPassInput{
+		newlyActive: []*clock.Turn{bubble},
+	})
 	if nerr != nil {
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, nerr)
 	}

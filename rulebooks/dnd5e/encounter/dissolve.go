@@ -74,8 +74,9 @@ type byDecision struct{}
 func (byDecision) Kind() DissolveKind { return DissolveByDecision }
 func (byDecision) isDissolveCause()   {}
 
-// ByDefeat is a fight whose supplied participation removes a member and leaves
-// no Contact member on one side. The fight ends with nobody calling Dissolve.
+// ByDefeat is a fight whose supplied participation leaves no Contact member on
+// one side and does not keep its turn order. The fight ends with nobody calling
+// Dissolve.
 //
 // Ruled fork (c) on rpg-toolkit#959, including the distinction the old stack
 // conflated. Its `all_hostiles_defeated` closed the whole ENCOUNTER, which in a

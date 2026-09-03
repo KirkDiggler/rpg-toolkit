@@ -446,7 +446,17 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// And now the world finds out what that beat just changed. AFTER the append,
 	// never before: the outcome is the cause, and a down beat ahead of the strike
 	// that explains it would be a story told backwards. See the godoc.
-	_, intelDeltas, nerr := e.noticeDown()
+	//
+	// A stabilized or recovered Death Save carries an explicit turn
+	// continuation. Recording it happens inside the already-active turn, so it
+	// neither auto-passes that slot nor reconciles a retained one-sided bubble
+	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
+	// control until the eventual turn-settlement boundary.
+	pass := participationPassInput{}
+	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
+		pass.deferReconcile = true
+	}
+	_, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
 		return nil, fmt.Errorf("record: %w", nerr)
 	}
