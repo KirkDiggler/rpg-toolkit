@@ -68,6 +68,7 @@ trying to learn all of them.
 | Area | Current packages | What they own |
 |---|---|---|
 | Boundary vocabulary | `refs`, `abilities`, `damage`, `skills`, `languages`, `weapons`, `armor` | Typed identifiers and rulebook vocabulary |
+| Customization | `customization` | Provider-neutral appearance intent, semantic validation, and deep cloning |
 | Characters | `character`, `character/choices`, `class`, `classes`, `race`, `races`, `backgrounds`, `packs`, `equipment` | Character authoring, grants, equipment, runtime state, and persistence |
 | Rules | `combat`, `combat/actions`, `combatabilities`, `checks`, `saves`, `initiative`, `features`, `conditions`, `fightingstyles`, `resources`, `spells` | D&D-specific data contracts, resolution rules, and behavior |
 | Monsters | `monster`, `monster/monsters`, `monstertraits` | Runtime/data model, direct definitions, built-in factories/registry, and trait behaviors |

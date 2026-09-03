@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -39,6 +40,9 @@ type Data struct {
 
 	// BackgroundData
 	BackgroundID backgrounds.Background `json:"background_id"`
+
+	// Appearance
+	Appearance *customization.Appearance `json:"appearance,omitempty"`
 
 	// Ability scores (final values including racial modifiers)
 	AbilityScores shared.AbilityScores `json:"ability_scores"`

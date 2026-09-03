@@ -11,6 +11,19 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**#1450 — toolkit-owned provider-neutral appearance semantics and character
+persistence (complete, 2026-09-03).** `rulebooks/dnd5e/customization` owns the
+neutral `Appearance`, hair, outfit, and style-selection shapes, including exact
+shape/range validation and deep cloning. `character.Draft.SetAppearance` now
+requires a nonnil Appearance, validates before atomic deep-copying, updates the
+draft timestamp without changing progress, and carries the value through class
+changes, DraftData, finalization, Character, Data, and both load paths. Draft
+and Character getters return deep copies; malformed persisted Appearance is
+rejected through toolkit validation in strict and legacy loads, while nil
+nested fields and present-zero colors remain distinct. Style refs remain
+opaque and unknown well-shaped refs are accepted; provider membership, defaults,
+and rendering resolution remain outside the toolkit.
+
 The top-level `github.com/KirkDiggler/rpg-toolkit/encounter` module was retired
 by rpg-toolkit#1215 after rpg-api moved to `rulebooks/dnd5e/session`. Current
 game execution lives in the independently versioned D&D 5e encounter

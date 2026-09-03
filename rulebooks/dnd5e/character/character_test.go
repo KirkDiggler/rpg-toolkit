@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -891,6 +892,20 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestSpellSlotsSurviveRoundTrip() {
 	s.Equal(1, out.SpellSlots[2].Max, "level-2 slot Max must survive round-trip")
 }
 
+// TestAppearanceSurvivesRoundTrip verifies that the complete character data
+// round-trip carries the provider-neutral appearance state.
+func (s *CharacterLoadFromDataRoundTripSuite) TestAppearanceSurvivesRoundTrip() {
+	in := s.minimalSpellcasterData()
+	expected := customization.CloneAppearance(in.Appearance)
+
+	char, err := LoadFromData(s.ctx, in, s.bus)
+	s.Require().NoError(err)
+	s.Require().NotNil(char)
+
+	out := char.ToData()
+	s.Require().Equal(expected, out.Appearance)
+}
+
 // TestClassResourcesSurviveRoundTrip is the partner regression: ClassResources
 // has the same shape and was dropped by the same code path.
 func (s *CharacterLoadFromDataRoundTripSuite) TestClassResourcesSurviveRoundTrip() {
@@ -937,8 +952,15 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestNilSpellSlots_StaysNil() {
 // covers the constructor's expected fields without bringing in equipment or
 // feature complexity.
 func (s *CharacterLoadFromDataRoundTripSuite) minimalSpellcasterData() *Data {
+	zero := uint32(0)
 	return &Data{
-		ID:               "wendy-test",
+		ID: "wendy-test",
+		Appearance: &customization.Appearance{
+			Hair: &customization.HairCustomization{ColorSRGB: &zero},
+			Outfit: &customization.OutfitCustomization{
+				PrimaryColorSRGB: &zero,
+			},
+		},
 		Name:             "Wendy",
 		Level:            1,
 		ProficiencyBonus: 2,

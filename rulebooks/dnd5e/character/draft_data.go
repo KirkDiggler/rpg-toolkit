@@ -4,6 +4,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -16,7 +17,8 @@ type DraftData struct {
 	PlayerID string `json:"player_id"`
 
 	// Basic info
-	Name string `json:"name,omitempty"`
+	Name       string                    `json:"name,omitempty"`
+	Appearance *customization.Appearance `json:"appearance,omitempty"`
 
 	// Core choices
 	Race       races.Race             `json:"race,omitempty"`
@@ -45,6 +47,7 @@ func (d *Draft) ToData() *DraftData {
 		ID:                d.id,
 		PlayerID:          d.playerID,
 		Name:              d.name,
+		Appearance:        customization.CloneAppearance(d.appearance),
 		Race:              d.race,
 		Subrace:           d.subrace,
 		Class:             d.class,
@@ -66,6 +69,7 @@ func LoadDraftFromData(data *DraftData) *Draft {
 		id:                data.ID,
 		playerID:          data.PlayerID,
 		name:              data.Name,
+		appearance:        customization.CloneAppearance(data.Appearance),
 		race:              data.Race,
 		subrace:           data.Subrace,
 		class:             data.Class,
