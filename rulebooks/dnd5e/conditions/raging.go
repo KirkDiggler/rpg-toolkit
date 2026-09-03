@@ -438,16 +438,20 @@ func (r *RagingCondition) onDamageChain(
 				return e, nil
 			}
 
-			// Append rage damage component
+			// Append rage damage component. The modifier is a copy so the
+			// component cannot alias the live condition's field.
+			damageBonus := r.DamageBonus
 			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-				Source:            dnd5eEvents.DamageSourceCondition,
-				SourceRef:         refs.Conditions.Raging(),
-				OriginalDiceRolls: nil, // No dice
-				FinalDiceRolls:    nil,
-				Rerolls:           nil,
-				FlatBonus:         r.DamageBonus,
-				DamageType:        e.WeaponDamageType, // Same as marked primary weapon type
-				IsCritical:        false,
+				Source: dnd5eEvents.DamageSourceCondition,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{
+						Ref:  refs.Conditions.Raging(),
+						Name: "Raging",
+					},
+					Modifier: &damageBonus, // No dice
+				},
+				DamageType: e.WeaponDamageType, // Same as marked primary weapon type
+				IsCritical: false,
 			})
 			return e, nil
 		}
@@ -469,8 +473,13 @@ func (r *RagingCondition) onDamageChain(
 			}
 			for damageType := range physicalTypes {
 				e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-					Source:     dnd5eEvents.DamageSourceCondition,
-					SourceRef:  refs.Conditions.Raging(),
+					Source: dnd5eEvents.DamageSourceCondition,
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{
+							Ref:  refs.Conditions.Raging(),
+							Name: "Raging",
+						},
+					},
 					DamageType: damageType,
 					Multiplier: dnd5eEvents.Multiply(0.5), // Resistance halves damage
 				})

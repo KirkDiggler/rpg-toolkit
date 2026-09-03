@@ -138,7 +138,8 @@ type ConditionBehavior interface {
 // =============================================================================
 
 // DamageSourceType categorizes where damage bonuses come from.
-// This is the category only - use SourceRef for the specific reference.
+// This is the category only — the specific provider identity (ref and display
+// name) lives on [DamageComponent.Roll].Source.
 type DamageSourceType string
 
 // Damage source category constants
@@ -156,26 +157,28 @@ const (
 // Damage Components
 // =============================================================================
 
-// RerollEvent tracks a single die reroll
-type RerollEvent struct {
-	DieIndex int    // Which die was rerolled (0-based in OriginalDiceRolls)
-	Before   int    // Value before reroll
-	After    int    // Value after reroll
-	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
-}
-
-// DamageComponent represents damage from one source
+// DamageComponent represents damage from one source.
+//
+// Everything roll-shaped lives in [DamageComponent.Roll]: the provider-owned
+// [RollSource] (ref and display name), the dice trace when this component
+// rolled dice, and the modifier when this component contributed one. The
+// remaining fields are damage facts, not roll facts — Roll records who
+// provided the component and what its dice did, while these fields describe
+// what the damage is and how it lands.
 type DamageComponent struct {
-	Source            DamageSourceType  // Category: weapon, ability, condition, etc.
-	SourceRef         *core.Ref         // Specific reference (e.g., refs.Weapons.Longsword())
-	Dice              string            // Pure notation for this component's declared dice pool.
-	OriginalDiceRolls []int             // As first rolled
-	FinalDiceRolls    []int             // After all rerolls
-	Rerolls           []RerollEvent     // History of rerolls
-	FlatBonus         int               // Flat modifier (0 if none)
-	DamageType        damage.Type       // damage.Slashing, damage.Fire, etc.
-	Properties        []damage.Property // Behavior belonging to this component's declared pool.
-	IsCritical        bool              // Was this doubled for crit?
+	Source DamageSourceType // Category: weapon, ability, condition, etc.
+
+	// Roll carries who provided this component's roll facts and what they
+	// were. Roll.Dice records the pool as rolled — original faces, ordered
+	// sourced rerolls, final faces, and the authoritative subtotal — and
+	// Roll.Modifier is present whenever this component contributed a
+	// modifier, even when that modifier's value is zero. Nil means the
+	// modifier did not participate; a present zero is a real zero.
+	Roll RollComponent
+
+	DamageType damage.Type       // damage.Slashing, damage.Fire, etc.
+	Properties []damage.Property // Behavior belonging to this component's declared pool.
+	IsCritical bool              // Was this doubled for crit?
 	// Multiplier scales the other components of the same damage type rather
 	// than adding damage of its own: vulnerability (2.0), resistance (0.5),
 	// immunity (0.0).
@@ -214,11 +217,17 @@ func Multiply(factor float64) *float64 {
 	return &factor
 }
 
-// Total returns the total damage for this component
+// Total returns the total damage for this component: the dice trace's
+// authoritative subtotal plus any present modifier. It reads the trace's
+// subtotal and the modifier pointer; it never resums recorded faces, which
+// would reconstruct reroll history the provider already settled.
 func (dc *DamageComponent) Total() int {
-	total := dc.FlatBonus
-	for _, roll := range dc.FinalDiceRolls {
-		total += roll
+	total := 0
+	if dc.Roll.Dice != nil {
+		total += dc.Roll.Dice.Subtotal
+	}
+	if dc.Roll.Modifier != nil {
+		total += *dc.Roll.Modifier
 	}
 	return total
 }

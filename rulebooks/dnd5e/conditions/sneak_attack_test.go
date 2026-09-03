@@ -94,12 +94,14 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 	}
 
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{5},
-		FinalDiceRolls:    []int{5},
-		DamageType:        componentType,
-		IsCritical:        false,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+			Dice:   testDiceTrace(6, 5),
+		},
+		DamageType: componentType,
+		IsCritical: false,
 	}
 
 	targetID := input.targetID
@@ -189,7 +191,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
 	// Verify sneak attack component uses DamageSourceFeature
 	sneakComp := finalEvent.Components[1]
 	s.Equal(dnd5eEvents.DamageSourceFeature, sneakComp.Source)
-	s.Equal([]int{4}, sneakComp.FinalDiceRolls, "Should have rolled 1d6")
+	s.Equal([]int{4}, sneakComp.Roll.Dice.FinalRolls, "Should have rolled 1d6")
 	s.Equal(4, sneakComp.Total(), "Sneak attack should add 4 damage")
 }
 
@@ -216,7 +218,7 @@ func (s *SneakAttackTestSuite) TestCriticalRollsSneakDiceTwice() {
 	s.Require().Len(finalEvent.Components, 2)
 
 	sneakComp := finalEvent.Components[1]
-	s.Equal([]int{4, 5}, sneakComp.FinalDiceRolls)
+	s.Equal([]int{4, 5}, sneakComp.Roll.Dice.FinalRolls)
 	s.Equal(damage.Piercing, sneakComp.DamageType)
 	s.True(sneakComp.IsCritical)
 }
@@ -244,7 +246,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel5() {
 
 	sneakComp := finalEvent.Components[1]
 	s.Equal(dnd5eEvents.DamageSourceFeature, sneakComp.Source)
-	s.Equal([]int{3, 5, 6}, sneakComp.FinalDiceRolls, "Should have rolled 3d6")
+	s.Equal([]int{3, 5, 6}, sneakComp.Roll.Dice.FinalRolls, "Should have rolled 3d6")
 	s.Equal(14, sneakComp.Total(), "Sneak attack should add 14 damage (3+5+6)")
 }
 
@@ -590,12 +592,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
 
 	// Execute damage chain WITHOUT advantage but WITH ally adjacent
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{5},
-		FinalDiceRolls:    []int{5},
-		DamageType:        damage.Piercing,
-		IsCritical:        false,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+			Dice:   testDiceTrace(6, 5),
+		},
+		DamageType: damage.Piercing,
+		IsCritical: false,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -706,11 +710,13 @@ func (s *SneakAttackTestSuite) runDamageChain(
 		AttackerID: attackerID,
 		TargetID:   targetID,
 		Components: []dnd5eEvents.DamageComponent{{
-			Source:            dnd5eEvents.DamageSourceWeapon,
-			Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-			OriginalDiceRolls: []int{5},
-			FinalDiceRolls:    []int{5},
-			DamageType:        damage.Piercing,
+			Source:     dnd5eEvents.DamageSourceWeapon,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+				Dice:   testDiceTrace(6, 5),
+			},
+			DamageType: damage.Piercing,
 		}},
 		HasAdvantage: false,
 		AbilityUsed:  abilities.DEX,
@@ -755,12 +761,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() 
 
 	// Execute damage chain with room context (but no advantage and no ally adjacent)
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{5},
-		FinalDiceRolls:    []int{5},
-		DamageType:        damage.Piercing,
-		IsCritical:        false,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+			Dice:   testDiceTrace(6, 5),
+		},
+		DamageType: damage.Piercing,
+		IsCritical: false,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -819,12 +827,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
 
 	// Execute damage chain WITHOUT advantage and ally too far
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{5},
-		FinalDiceRolls:    []int{5},
-		DamageType:        damage.Piercing,
-		IsCritical:        false,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+			Dice:   testDiceTrace(6, 5),
+		},
+		DamageType: damage.Piercing,
+		IsCritical: false,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -882,12 +892,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenOnlyEnemyAdjacen
 	// No roller expectation
 
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{5},
-		FinalDiceRolls:    []int{5},
-		DamageType:        damage.Piercing,
-		IsCritical:        false,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+			Dice:   testDiceTrace(6, 5),
+		},
+		DamageType: damage.Piercing,
+		IsCritical: false,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{

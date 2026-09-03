@@ -44,16 +44,20 @@ func (s *LoaderTestSuite) executeDamageChain(
 	baseDamage, abilityBonus int,
 ) (*dnd5eEvents.DamageChainEvent, error) {
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{baseDamage},
-		FinalDiceRolls:    []int{baseDamage},
-		DamageType:        damage.Slashing,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+			Dice:   testDiceTrace(6, baseDamage),
+		},
+		DamageType: damage.Slashing,
 	}
 
 	abilityComp := dnd5eEvents.DamageComponent{
-		Source:    dnd5eEvents.DamageSourceAbility,
-		FlatBonus: abilityBonus,
+		Source: dnd5eEvents.DamageSourceAbility, Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+			Modifier: intPtr(abilityBonus),
+		},
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -260,7 +264,7 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripWithSubscriptions() {
 	// Should have 3 components: weapon, ability, and rage bonus
 	s.Require().Len(finalEvent.Components, 3, "Should have weapon, ability, and rage components")
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
-	s.Equal(2, finalEvent.Components[2].FlatBonus, "Rage should add +2 damage from deserialized condition")
+	s.Equal(2, finalEvent.Components[2].Total(), "Rage should add +2 damage from deserialized condition")
 }
 
 func (s *LoaderTestSuite) TestRagingConditionRoundTripCleanup() {

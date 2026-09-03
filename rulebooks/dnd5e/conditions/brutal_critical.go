@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -187,16 +188,31 @@ func (b *BrutalCriticalCondition) onDamageChain(
 			return e, rpgerr.Wrap(rollErr, "failed to roll brutal critical dice")
 		}
 
-		// Append brutal critical damage component
+		subtotal := 0
+		for _, face := range extraRolls {
+			subtotal += face
+		}
+
+		// Append brutal critical damage component. The trace records the dice
+		// actually rolled — a critical's extra dice — so the notation describes
+		// the physical pool, not the weapon's printed expression.
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceFeature,
-			SourceRef:         refs.Features.BrutalCritical(),
-			OriginalDiceRolls: extraRolls,
-			FinalDiceRolls:    extraRolls,
-			Rerolls:           nil,
-			FlatBonus:         0,
-			DamageType:        e.WeaponDamageType,
-			IsCritical:        false,
+			Source: dnd5eEvents.DamageSourceFeature,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref:  refs.Features.BrutalCritical(),
+					Name: "Brutal Critical",
+				},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      dice.SimplePool(len(extraRolls), dieSize, 0).Notation(),
+					DieSize:       dieSize,
+					OriginalRolls: extraRolls,
+					FinalRolls:    slices.Clone(extraRolls),
+					Subtotal:      subtotal,
+				},
+			},
+			DamageType: e.WeaponDamageType,
+			IsCritical: false,
 		})
 		return e, nil
 	}

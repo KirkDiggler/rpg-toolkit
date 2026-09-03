@@ -186,6 +186,10 @@ func (ma *MartialArtsCondition) onDamageChain(
 			if err != nil {
 				return e, rpgerr.Wrapf(err, "failed to parse martial arts dice: %s", martialArtsDice)
 			}
+			maDieSize, err := parseDieSize(martialArtsDice)
+			if err != nil {
+				return e, rpgerr.Wrap(err, "failed to parse martial arts die size")
+			}
 
 			// Roll the dice (double for crits)
 			times := 1
@@ -206,10 +210,21 @@ func (ma *MartialArtsCondition) onDamageChain(
 			}
 
 			// Replace only the component carrying the canonical primary marker.
-			component.Dice = martialArtsDice
+			// The trace records the martial arts dice actually rolled — for a
+			// critical, the doubled pool — while the event's marked metadata
+			// follows the printed expression.
+			subtotal := 0
+			for _, face := range newRolls {
+				subtotal += face
+			}
+			component.Roll.Dice = &dnd5eEvents.DiceTrace{
+				Notation:      dice.SimplePool(len(newRolls), maDieSize, 0).Notation(),
+				DieSize:       maDieSize,
+				OriginalRolls: append([]int(nil), newRolls...),
+				FinalRolls:    append([]int(nil), newRolls...),
+				Subtotal:      subtotal,
+			}
 			e.WeaponDamageDice = martialArtsDice
-			component.OriginalDiceRolls = append([]int(nil), newRolls...)
-			component.FinalDiceRolls = append([]int(nil), newRolls...)
 			component.IsCritical = times == 2
 
 		}
@@ -220,9 +235,10 @@ func (ma *MartialArtsCondition) onDamageChain(
 				component := &e.Components[i]
 				if component.Source == dnd5eEvents.DamageSourceAbility {
 					// Replace STR modifier value with DEX modifier
-					component.FlatBonus = dexMod
-					// Update the SourceRef label so combat log shows DEX, not STR
-					component.SourceRef = refs.Abilities.Dexterity()
+					component.Roll.Modifier = &dexMod
+					// Update the source identity so combat log shows DEX, not STR
+					component.Roll.Source.Ref = refs.Abilities.Dexterity()
+					component.Roll.Source.Name = abilities.DEX.Display()
 					// Update the ability used in the event
 					e.AbilityUsed = abilities.DEX
 					break

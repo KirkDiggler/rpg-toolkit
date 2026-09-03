@@ -115,34 +115,39 @@ func (s *MartialArtsTestSuite) TestApplyAndRemove() {
 // TestUnarmedStrikeDamageScaling tests that unarmed damage scales with monk level
 func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 	testCases := []struct {
-		name          string
-		monkLevel     int
-		expectedDice  string
-		expectedRolls []int
+		name             string
+		monkLevel        int
+		expectedDice     string
+		expectedNotation string
+		expectedRolls    []int
 	}{
 		{
-			name:          "Level 1-4: 1d4",
-			monkLevel:     1,
-			expectedDice:  "1d4",
-			expectedRolls: []int{3},
+			name:             "Level 1-4: 1d4",
+			monkLevel:        1,
+			expectedDice:     "1d4",
+			expectedNotation: "d4",
+			expectedRolls:    []int{3},
 		},
 		{
-			name:          "Level 5-10: 1d6",
-			monkLevel:     5,
-			expectedDice:  "1d6",
-			expectedRolls: []int{5},
+			name:             "Level 5-10: 1d6",
+			monkLevel:        5,
+			expectedDice:     "1d6",
+			expectedNotation: "d6",
+			expectedRolls:    []int{5},
 		},
 		{
-			name:          "Level 11-16: 1d8",
-			monkLevel:     11,
-			expectedDice:  "1d8",
-			expectedRolls: []int{7},
+			name:             "Level 11-16: 1d8",
+			monkLevel:        11,
+			expectedDice:     "1d8",
+			expectedNotation: "d8",
+			expectedRolls:    []int{7},
 		},
 		{
-			name:          "Level 17+: 1d10",
-			monkLevel:     17,
-			expectedDice:  "1d10",
-			expectedRolls: []int{9},
+			name:             "Level 17+: 1d10",
+			monkLevel:        17,
+			expectedDice:     "1d10",
+			expectedNotation: "d10",
+			expectedRolls:    []int{9},
 		},
 	}
 
@@ -183,18 +188,21 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 				TargetID:   "target-1",
 				Components: []dnd5eEvents.DamageComponent{
 					{
-						Source:            dnd5eEvents.DamageSourceWeapon,
-						Dice:              "1d1",
-						OriginalDiceRolls: []int{1}, // Will be replaced
-						FinalDiceRolls:    []int{1},
-						FlatBonus:         0,
-						DamageType:        "bludgeoning",
-						Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-						IsCritical:        false,
+						Source: dnd5eEvents.DamageSourceWeapon,
+						Roll: dnd5eEvents.RollComponent{
+							Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+							Dice:   testDiceTrace(6, 1),
+						},
+						DamageType: "bludgeoning",
+						Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+						IsCritical: false,
 					},
 					{
-						Source:     dnd5eEvents.DamageSourceAbility,
-						FlatBonus:  0, // Will be replaced with DEX modifier
+						Source: dnd5eEvents.DamageSourceAbility,
+						Roll: dnd5eEvents.RollComponent{
+							Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+							Modifier: intPtr(0), // Will be replaced with DEX modifier
+						},
 						DamageType: "bludgeoning",
 					},
 				},
@@ -215,17 +223,18 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 			s.Require().NoError(err)
 
 			// Verify weapon damage dice were updated
-			s.Equal(tc.expectedDice, finalEvent.Components[0].Dice)
+			s.Equal(tc.expectedNotation, finalEvent.Components[0].Roll.Dice.Notation,
+				"the trace records the physical pool in canonical notation")
 			s.Equal(tc.expectedDice, finalEvent.WeaponDamageDice,
 				"marked weapon metadata must follow the exact component replacement")
 
 			// Verify weapon component has new rolls
 			weaponComponent := &finalEvent.Components[0]
-			s.Equal(tc.expectedRolls, weaponComponent.FinalDiceRolls)
+			s.Equal(tc.expectedRolls, weaponComponent.Roll.Dice.FinalRolls)
 
 			// Verify ability modifier was replaced with DEX
 			abilityComponent := &finalEvent.Components[1]
-			s.Equal(3, abilityComponent.FlatBonus) // DEX modifier (+3)
+			s.Equal(3, abilityComponent.Total()) // DEX modifier (+3)
 			s.Equal(abilities.DEX, finalEvent.AbilityUsed)
 		})
 	}
@@ -261,18 +270,21 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 		TargetID:   "target-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Dice:              "1d1",
-				OriginalDiceRolls: []int{1}, // Will be replaced
-				FinalDiceRolls:    []int{1},
-				FlatBonus:         0,
-				DamageType:        "bludgeoning",
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				IsCritical:        true,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(6, 1),
+				},
+				DamageType: "bludgeoning",
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				IsCritical: true,
 			},
 			{
-				Source:     dnd5eEvents.DamageSourceAbility,
-				FlatBonus:  0,
+				Source: dnd5eEvents.DamageSourceAbility,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+					Modifier: intPtr(0),
+				},
 				DamageType: "bludgeoning",
 				IsCritical: true,
 			},
@@ -294,7 +306,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 
 	// Verify weapon component has two dice (critical)
 	weaponComponent := &finalEvent.Components[0]
-	s.Equal([]int{4, 4}, weaponComponent.FinalDiceRolls)
+	s.Equal([]int{4, 4}, weaponComponent.Roll.Dice.FinalRolls)
 }
 
 func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesMarkedPrimaryWhenPoolsShareType() {
@@ -315,19 +327,19 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesMarkedPrimaryWhenPoolsSh
 		WeaponRef:   refs.Weapons.UnarmedStrike(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{9},
-				FinalDiceRolls:    []int{9},
-				Dice:              "1d10",
-				DamageType:        damage.Bludgeoning,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(10, 9),
+				}, DamageType: damage.Bludgeoning,
 			},
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{1},
-				FinalDiceRolls:    []int{1},
-				Dice:              "1d1",
-				DamageType:        damage.Bludgeoning,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(6, 1),
+				}, DamageType: damage.Bludgeoning,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 			},
 			{
 				Source:     dnd5eEvents.DamageSourceAbility,
@@ -343,10 +355,10 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesMarkedPrimaryWhenPoolsSh
 	finalEvent, err := modifiedChain.Execute(s.ctx, event)
 	s.Require().NoError(err)
 
-	s.Equal([]int{9}, finalEvent.Components[0].FinalDiceRolls)
-	s.Equal([]int{3}, finalEvent.Components[1].FinalDiceRolls)
-	s.Equal("1d4", finalEvent.Components[1].Dice)
-	s.Equal("1d10", finalEvent.Components[0].Dice)
+	s.Equal([]int{9}, finalEvent.Components[0].Roll.Dice.FinalRolls)
+	s.Equal([]int{3}, finalEvent.Components[1].Roll.Dice.FinalRolls)
+	s.Equal("d4", finalEvent.Components[1].Roll.Dice.Notation)
+	s.Equal("d10", finalEvent.Components[0].Roll.Dice.Notation)
 }
 
 func (s *MartialArtsTestSuite) TestUnarmedStrikeDoesNotDoubleMarkedDoesNotCritPool() {
@@ -368,11 +380,11 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDoesNotDoubleMarkedDoesNotCritPo
 		WeaponRef:   refs.Weapons.UnarmedStrike(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{1},
-				FinalDiceRolls:    []int{1},
-				Dice:              "1d1",
-				DamageType:        damage.Bludgeoning,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(6, 1),
+				}, DamageType: damage.Bludgeoning,
 				Properties: []damage.Property{
 					damage.AddsAttackAbilityModifier,
 					damage.DoesNotCrit,
@@ -388,7 +400,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDoesNotDoubleMarkedDoesNotCritPo
 	finalEvent, err := modifiedChain.Execute(s.ctx, event)
 	s.Require().NoError(err)
 
-	s.Equal([]int{3}, finalEvent.Components[0].FinalDiceRolls)
+	s.Equal([]int{3}, finalEvent.Components[0].Roll.Dice.FinalRolls)
 	s.False(finalEvent.Components[0].IsCritical)
 }
 
@@ -414,15 +426,19 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			TargetID:   "target-1",
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Dice:              "1d1",
-					OriginalDiceRolls: []int{3},
-					FinalDiceRolls:    []int{3},
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+					Source: dnd5eEvents.DamageSourceWeapon,
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(6, 3),
+					},
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					FlatBonus: 0, // STR modifier
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(0), // STR modifier
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -439,7 +455,7 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 		s.Require().NoError(err)
 
 		// Verify DEX modifier is used
-		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(3, finalEvent.Components[1].Total())
 		s.Equal(abilities.DEX, finalEvent.AbilityUsed)
 	})
 
@@ -462,15 +478,19 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			TargetID:   "target-1",
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Dice:              "1d1",
-					OriginalDiceRolls: []int{3},
-					FinalDiceRolls:    []int{3},
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+					Source: dnd5eEvents.DamageSourceWeapon,
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(6, 3),
+					},
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					FlatBonus: 3, // STR modifier
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(3), // STR modifier
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -487,7 +507,7 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 		s.Require().NoError(err)
 
 		// Verify STR modifier is retained (DEX is not higher)
-		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(3, finalEvent.Components[1].Total())
 		s.Equal(abilities.STR, finalEvent.AbilityUsed)
 	})
 }
@@ -514,17 +534,19 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 			TargetID:   "target-1",
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					SourceRef:         refs.Weapons.UnarmedStrike(),
-					Dice:              "1d1",
-					OriginalDiceRolls: []int{3},
-					FinalDiceRolls:    []int{3},
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+					Source: dnd5eEvents.DamageSourceWeapon,
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(6, 3),
+					},
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					SourceRef: refs.Abilities.Strength(), // Initial STR label
-					FlatBonus: 0,                         // STR modifier (+0)
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(0), // STR modifier (+0)
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -541,11 +563,11 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 		s.Require().NoError(err)
 
 		// Verify value is DEX
-		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(3, finalEvent.Components[1].Total())
 		s.Equal(abilities.DEX, finalEvent.AbilityUsed)
 
 		// Verify label (SourceRef) is also updated to DEX — this is the bug (#605)
-		s.Equal(refs.Abilities.Dexterity(), finalEvent.Components[1].SourceRef,
+		s.Equal(refs.Abilities.Dexterity(), finalEvent.Components[1].Roll.Source.Ref,
 			"SourceRef label must be DEX when Martial Arts replaces STR with DEX modifier")
 	})
 
@@ -568,17 +590,19 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 			TargetID:   "target-1",
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					SourceRef:         refs.Weapons.UnarmedStrike(),
-					Dice:              "1d1",
-					OriginalDiceRolls: []int{3},
-					FinalDiceRolls:    []int{3},
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+					Source: dnd5eEvents.DamageSourceWeapon,
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(6, 3),
+					},
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					SourceRef: refs.Abilities.Strength(), // STR label should stay
-					FlatBonus: 3,                         // STR modifier (+3)
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(3), // STR modifier (+3)
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -595,9 +619,9 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 		s.Require().NoError(err)
 
 		// STR is higher, so STR label and value are retained
-		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(3, finalEvent.Components[1].Total())
 		s.Equal(abilities.STR, finalEvent.AbilityUsed)
-		s.Equal(refs.Abilities.Strength(), finalEvent.Components[1].SourceRef,
+		s.Equal(refs.Abilities.Strength(), finalEvent.Components[1].Roll.Source.Ref,
 			"SourceRef label must stay STR when STR modifier is retained")
 	})
 
@@ -619,15 +643,18 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 			TargetID:   "target-1",
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					SourceRef:         refs.Weapons.Shortsword(),
-					OriginalDiceRolls: []int{5},
-					FinalDiceRolls:    []int{5},
+					Source: dnd5eEvents.DamageSourceWeapon,
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(6, 5),
+					},
 				},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					SourceRef: refs.Abilities.Strength(), // Initial STR label
-					FlatBonus: 0,                         // STR modifier (+0)
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(0), // STR modifier (+0)
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -644,11 +671,11 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 		s.Require().NoError(err)
 
 		// Verify value is DEX
-		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(3, finalEvent.Components[1].Total())
 		s.Equal(abilities.DEX, finalEvent.AbilityUsed)
 
 		// Verify label (SourceRef) is also updated to DEX
-		s.Equal(refs.Abilities.Dexterity(), finalEvent.Components[1].SourceRef,
+		s.Equal(refs.Abilities.Dexterity(), finalEvent.Components[1].Roll.Source.Ref,
 			"SourceRef label must be DEX when Martial Arts replaces STR with DEX modifier for monk weapon")
 	})
 }
@@ -719,13 +746,18 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 		TargetID:   "target-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{6},
-				FinalDiceRolls:    []int{6},
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(6, 6),
+				},
 			},
 			{
-				Source:    dnd5eEvents.DamageSourceAbility,
-				FlatBonus: 0, // Will be replaced with DEX
+				Source: dnd5eEvents.DamageSourceAbility,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+					Modifier: intPtr(0), // Will be replaced with DEX
+				},
 			},
 		},
 		AbilityUsed: abilities.STR,
@@ -742,7 +774,7 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 	s.Require().NoError(err)
 
 	// Verify DEX modifier is used for monk weapon
-	s.Equal(3, finalEvent.Components[1].FlatBonus) // DEX modifier (+3)
+	s.Equal(3, finalEvent.Components[1].Total()) // DEX modifier (+3)
 	s.Equal(abilities.DEX, finalEvent.AbilityUsed)
 }
 
@@ -767,13 +799,18 @@ func (s *MartialArtsTestSuite) TestNonMonkWeaponNotModified() {
 		TargetID:   "target-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{10},
-				FinalDiceRolls:    []int{10},
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(10, 10),
+				},
 			},
 			{
-				Source:    dnd5eEvents.DamageSourceAbility,
-				FlatBonus: 0, // Should stay 0 (not modified)
+				Source: dnd5eEvents.DamageSourceAbility,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+					Modifier: intPtr(0), // Should stay 0 (not modified)
+				},
 			},
 		},
 		AbilityUsed: abilities.STR,
@@ -790,7 +827,7 @@ func (s *MartialArtsTestSuite) TestNonMonkWeaponNotModified() {
 	s.Require().NoError(err)
 
 	// Verify event was not modified (greatsword is not a monk weapon)
-	s.Equal(0, finalEvent.Components[1].FlatBonus)
+	s.Equal(0, finalEvent.Components[1].Total())
 	s.Equal(abilities.STR, finalEvent.AbilityUsed)
 }
 
@@ -990,13 +1027,18 @@ func (s *MartialArtsTestSuite) TestOtherCharacterNotModified() {
 		TargetID:   "target-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{1},
-				FinalDiceRolls:    []int{1},
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(6, 1),
+				},
 			},
 			{
-				Source:    dnd5eEvents.DamageSourceAbility,
-				FlatBonus: 2,
+				Source: dnd5eEvents.DamageSourceAbility,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+					Modifier: intPtr(2),
+				},
 			},
 		},
 		WeaponRef: refs.Weapons.UnarmedStrike(),
@@ -1014,6 +1056,6 @@ func (s *MartialArtsTestSuite) TestOtherCharacterNotModified() {
 	s.Require().NoError(err)
 
 	// Verify event was not modified
-	s.Equal(originalEvent.Components[0].FinalDiceRolls, finalEvent.Components[0].FinalDiceRolls)
-	s.Equal(originalEvent.Components[1].FlatBonus, finalEvent.Components[1].FlatBonus)
+	s.Equal(originalEvent.Components[0].Roll.Dice.FinalRolls, finalEvent.Components[0].Roll.Dice.FinalRolls)
+	s.Equal(originalEvent.Components[1].Total(), finalEvent.Components[1].Total())
 }

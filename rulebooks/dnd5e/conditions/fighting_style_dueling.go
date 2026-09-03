@@ -167,15 +167,18 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 		if primary == nil {
 			return e, nil
 		}
+		bonus := 2
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceFeature,
-			SourceRef:         refs.Conditions.FightingStyleDueling(),
-			OriginalDiceRolls: nil,
-			FinalDiceRolls:    nil,
-			Rerolls:           nil,
-			FlatBonus:         2,
-			DamageType:        e.WeaponDamageType,
-			IsCritical:        false,
+			Source: dnd5eEvents.DamageSourceFeature,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref:  refs.Conditions.FightingStyleDueling(),
+					Name: "Dueling",
+				},
+				Modifier: &bonus,
+			},
+			DamageType: e.WeaponDamageType,
+			IsCritical: false,
 		})
 		return e, nil
 	}

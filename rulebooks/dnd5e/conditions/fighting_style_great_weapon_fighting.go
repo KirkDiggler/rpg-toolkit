@@ -8,8 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -21,9 +20,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
-
-// gwfDiceRegex matches dice notation like "1d8", "2d6", etc.
-var gwfDiceRegex = regexp.MustCompile(`(\d+)[dD](\d+)`)
 
 // FightingStyleGreatWeaponFightingData is the JSON structure for persisting GWF condition state
 type FightingStyleGreatWeaponFightingData struct {
@@ -124,7 +120,15 @@ func (f *FightingStyleGreatWeaponFightingCondition) loadJSON(data json.RawMessag
 	return nil
 }
 
-// onDamageChain rerolls 1s and 2s on weapon damage dice.
+// onDamageChain rerolls 1s and 2s on the marked primary weapon component's
+// dice trace. It operates on a staged copy of the current final faces —
+// eligibility, the recorded Before, the replacement, and the subtotal delta
+// all use the face as it stands NOW, so an earlier rule's rerolls stay ordered
+// and valid — and publishes the staged finals, rerolls, and subtotal back to
+// component.Roll.Dice only after every required reroll succeeds, so a roller
+// failure cannot leak partial mutations. Original faces are never rewritten,
+// and every ordered reroll is sourced to this condition's canonical ref and
+// display name.
 func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
@@ -145,40 +149,59 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 		if componentIndex < 0 {
 			return e, nil
 		}
-		component := &e.Components[componentIndex]
+		trace := e.Components[componentIndex].Roll.Dice
+		if trace == nil {
+			// Fail closed: a marked primary weapon without a dice trace is a
+			// malformed provider claim, not a swing with no dice. Skipping
+			// silently would report damage that skipped GWF without anyone
+			// noticing.
+			return e, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"great weapon fighting requires a dice trace on the marked primary weapon component for character %s", f.MemberID)
+		}
 
 		roller := f.roller
 		if roller == nil {
 			roller = dice.NewRoller()
 		}
 
-		dieSize, err := parseGWFWeaponDieSize(component.Dice)
-		if err != nil {
-			return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", component.Dice)
-		}
+		// Stage everything locally. The caller-owned trace is only published
+		// back once every required reroll has succeeded — a failure partway
+		// through leaves it exactly as the caller built it.
+		stagedFinals := slices.Clone(trace.FinalRolls)
+		var stagedRerolls []dnd5eEvents.DiceReroll
+		stagedSubtotal := trace.Subtotal
 
-		newRolls := make([]int, len(component.OriginalDiceRolls))
-		copy(newRolls, component.OriginalDiceRolls)
+		for idx, current := range stagedFinals {
+			if current != 1 && current != 2 {
+				continue
+			}
+			newRoll, rollErr := roller.Roll(modCtx, trace.DieSize)
+			if rollErr != nil {
+				return e, rpgerr.Wrap(rollErr, "failed to reroll die")
+			}
 
-		for idx, roll := range component.OriginalDiceRolls {
-			if roll == 1 || roll == 2 {
-				newRoll, rollErr := roller.Roll(modCtx, dieSize)
-				if rollErr != nil {
-					return e, rpgerr.Wrap(rollErr, "failed to reroll die")
-				}
+			stagedRerolls = append(stagedRerolls, dnd5eEvents.DiceReroll{
+				DieIndex: idx,
+				Before:   current,
+				After:    newRoll,
+				Source: dnd5eEvents.RollSource{
+					Ref:  refs.Conditions.FightingStyleGreatWeaponFighting(),
+					Name: gwfDisplayName,
+				},
+			})
+			stagedFinals[idx] = newRoll
 
-				component.Rerolls = append(component.Rerolls, dnd5eEvents.RerollEvent{
-					DieIndex: idx,
-					Before:   roll,
-					After:    newRoll,
-					Reason:   "great_weapon_fighting",
-				})
-
-				newRolls[idx] = newRoll
+			// A kept die contributes to the subtotal; a dropped one does not.
+			if len(trace.KeptIndices) == 0 || slices.Contains(trace.KeptIndices, idx) {
+				stagedSubtotal += newRoll - current
 			}
 		}
 
-		component.FinalDiceRolls = newRolls
+		if len(stagedRerolls) > 0 {
+			trace.FinalRolls = stagedFinals
+			trace.Rerolls = append(trace.Rerolls, stagedRerolls...)
+			trace.Subtotal = stagedSubtotal
+		}
 
 		return e, nil
 	}
@@ -189,6 +212,11 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 
 	return c, nil
 }
+
+// gwfDisplayName is the canonical display name this condition sources its
+// rerolls with — the same rulebook-owned label the conditions display catalog
+// carries for the condition's ref.
+const gwfDisplayName = "Great Weapon Fighting"
 
 // primaryWeaponComponentIndex finds the weapon component carrying the exact
 // canonical ability marker. Type and position cannot identify the primary
@@ -202,19 +230,4 @@ func primaryWeaponComponentIndex(event *dnd5eEvents.DamageChainEvent) int {
 		}
 	}
 	return -1
-}
-
-// parseGWFWeaponDieSize extracts the die size from weapon damage notation
-func parseGWFWeaponDieSize(notation string) (int, error) {
-	matches := gwfDiceRegex.FindStringSubmatch(notation)
-	if len(matches) < 3 {
-		return 0, rpgerr.Newf(rpgerr.CodeInvalidArgument, "invalid weapon damage notation: %s", notation)
-	}
-
-	dieSize, err := strconv.Atoi(matches[2])
-	if err != nil {
-		return 0, rpgerr.Wrapf(err, "invalid die size in notation: %s", notation)
-	}
-
-	return dieSize, nil
 }

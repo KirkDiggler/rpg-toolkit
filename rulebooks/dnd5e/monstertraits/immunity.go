@@ -162,8 +162,13 @@ func (i *immunityCondition) onDamageChain(
 	// Add immunity multiplier component (0 = negate all damage of this type)
 	addMultiplier := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:     dnd5eEvents.DamageSourceMonsterTrait,
-			SourceRef:  refs.MonsterTraits.Immunity(),
+			Source: dnd5eEvents.DamageSourceMonsterTrait,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref:  refs.MonsterTraits.Immunity(),
+					Name: "Immunity",
+				},
+			},
 			DamageType: i.damageType,
 			Multiplier: dnd5eEvents.Multiply(0), // immunity: nothing gets through
 		})

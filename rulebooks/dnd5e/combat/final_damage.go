@@ -41,12 +41,19 @@ type DamageInstanceInput struct {
 //
 // Components carrying a Multiplier are modifiers (resistance 0.5,
 // vulnerability 2.0, immunity 0.0); every other component contributes its
-// Total() as base damage. Both are grouped by damage type before the
-// multipliers apply, because 5e resists a TYPE rather than a source.
+// Total() — the authoritative dice subtotal plus any present modifier.
+// Both are grouped by damage type before the multipliers apply, because 5e
+// resists a TYPE rather than a source.
 //
 // Modifier-or-damage is decided by the Multiplier's PRESENCE, never its value:
 // immunity's factor is zero, so a value test cannot tell it from an absent
 // modifier. It could not, and immunity silently did nothing (rpg-toolkit#1012).
+//
+// Component totals come from the roll trace's authoritative subtotal and the
+// modifier POINTER — never from resumming recorded faces, which would
+// reconstruct reroll history the provider already settled. A kept-dice trace
+// (advantage, a keep-high rule) intentionally has faces that sum to more than
+// its subtotal; the subtotal is the number the provider asserted.
 //
 // Instances come back sorted by damage type, and a zero or negative instance
 // is dropped rather than reported as landing.
@@ -83,9 +90,13 @@ func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInst
 		// dropped immunity entirely (rpg-toolkit#1012).
 		if component.Multiplier != nil {
 			byType[dmgType].multipliers = append(byType[dmgType].multipliers, *component.Multiplier)
-		} else {
-			byType[dmgType].baseDamage += component.Total()
+			continue
 		}
+
+		// Total() reads the dice trace's authoritative subtotal plus any
+		// present modifier pointer — the one arithmetic a damage component
+		// already owns.
+		byType[dmgType].baseDamage += component.Total()
 	}
 
 	// Apply multipliers to each damage type

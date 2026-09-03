@@ -91,16 +91,19 @@ func (s *MartialArtsCastSuite) abilityBonusAfter(
 		WeaponRef: refs.Weapons.UnarmedStrike(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Dice:              "1d1",
-				OriginalDiceRolls: []int{1},
-				FinalDiceRolls:    []int{1},
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+					Dice:   testDiceTrace(6, 1),
+				},
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 			},
 			{
-				Source:    dnd5eEvents.DamageSourceAbility,
-				SourceRef: refs.Abilities.Strength(),
-				FlatBonus: seededSTR,
+				Source: dnd5eEvents.DamageSourceAbility,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+					Modifier: intPtr(seededSTR),
+				},
 			},
 		},
 		AbilityUsed: abilities.STR,
@@ -115,7 +118,7 @@ func (s *MartialArtsCastSuite) abilityBonusAfter(
 
 	for _, comp := range final.Components {
 		if comp.Source == dnd5eEvents.DamageSourceAbility {
-			return comp.FlatBonus, final.AbilityUsed
+			return comp.Total(), final.AbilityUsed
 		}
 	}
 	s.Require().Fail("no ability component survived the fold")
