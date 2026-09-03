@@ -584,9 +584,13 @@ func activationResultBody(payload []byte) EventBody {
 // strictJSONObject walks one JSON object key by key, retaining each field's
 // raw value and refusing the ambiguities encoding/json resolves silently:
 // a repeated key at the depth it walks, a payload that is not exactly one
-// JSON object, and any trailing content after it. Duplicate keys are refused
-// at the outer payload boundary and at every nested body this package decodes,
-// because a body that says a field twice has no lawful reading.
+// JSON object, and any trailing content after it. It runs at the OUTER beat
+// payload boundary and over the nested bodies this package routes through
+// strict decoding — activation results, damage components, and their roll
+// graphs. Bodies no decoder routes through it (the shared attack-scalar
+// pass, advantage/disadvantage source entries) keep encoding/json's tolerant
+// decoding, because a body that says a field twice has no lawful reading
+// only where this package vouches for the shape.
 func strictJSONObject(payload []byte) (map[string]json.RawMessage, bool) {
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	opening, err := decoder.Token()
@@ -1039,6 +1043,16 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		// naming zero or several is not a shape this decoder recognises
 		// rather than an ambiguous one to guess at (Copilot, PR #1174).
 		return nil
+	}
+	// A missed beat carries NO damage components by contract (MissedBody's own
+	// doc): the composition only writes the key for a strike that landed. So
+	// on a miss the key's mere presence — well-formed or malformed, decoded or
+	// not — is a shape this decoder does not recognise, refused BEFORE any
+	// decode rather than decoded and silently dropped.
+	if !wantAmount {
+		if _, present := outer["damage_components"]; present {
+			return nil
+		}
 	}
 	components, ok := decodeDamageComponents(outer["damage_components"])
 	if !ok {

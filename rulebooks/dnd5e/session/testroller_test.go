@@ -24,7 +24,9 @@ type testDice struct {
 	calls *int
 }
 
-// Roll returns the die's maximum face, deterministic and die-size-aware.
+// Roll returns min(size, 10): deterministic, die-size-aware, and NOT the
+// same number for every die. A d8 rolls its own face (8), a d10 rolls 10, and
+// a d20 keeps the 10 every scene here was authored against.
 //
 // The face it returns must be INSIDE the die: a d8 that rolled a 10 cannot
 // have happened as told, and the strict roll-trace decoders downstream refuse

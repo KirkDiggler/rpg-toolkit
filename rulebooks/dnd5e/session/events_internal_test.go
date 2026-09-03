@@ -313,6 +313,92 @@ func TestStruckBodyDecodesMultiplierOnlyNewRoll(t *testing.T) {
 	require.Zero(t, *got.DamageComponents[0].Multiplier)
 }
 
+// TestAMissedBeatCarriesNoDamageComponents pins the miss contract at the
+// decoder: damage_components belongs to the STRUCK shape alone, so its mere
+// presence on a missed beat — well-formed or malformed — is a shape this
+// decoder does not recognise. Both retain the KNOWN EventMissed kind with a
+// nil body; neither is decoded-and-dropped.
+func TestAMissedBeatCarriesNoDamageComponents(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+	}{
+		{
+			name: "well-formed components on a miss",
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"final_rolls":[4],"subtotal":4}},"damage_type":"slashing"}]}`,
+		},
+		{
+			name: "malformed components on a miss",
+			json: `"damage_components":[{"note":"x"}]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(
+				`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,` +
+					`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` + tc.json))
+			require.Equal(t, EventMissed, kind, "the KNOWN kind is never demoted")
+			require.Nil(t, body, "a miss carries no damage components, however they arrive")
+		})
+	}
+}
+
+// TestStrictJSONObjectRefusesTrailingContent pins the walker's own boundary:
+// one JSON object and nothing after it.
+func TestStrictJSONObjectRefusesTrailingContent(t *testing.T) {
+	_, ok := strictJSONObject([]byte(`{"beat":"struck"}`))
+	require.True(t, ok, "the well-formed object itself still parses")
+	_, ok = strictJSONObject([]byte(`{"beat":"struck"} 42`))
+	require.False(t, ok, "a trailing JSON value is trailing content")
+	_, ok = strictJSONObject([]byte(`{"beat":"struck"} garbage`))
+	require.False(t, ok, "and so is trailing garbage")
+	_, ok = strictJSONObject([]byte(`{"beat":"struck"} {"beat":"moved"}`))
+	require.False(t, ok, "a trailing object is still trailing content")
+}
+
+// TestKnownBeatPayloadsRefuseNullResultAndRoll pins the two forbidden-null
+// shapes the decoders own directly: a null result on an activation beat and a
+// null roll on a damage component. Both keep their kind with a nil body.
+func TestKnownBeatPayloadsRefuseNullResultAndRoll(t *testing.T) {
+	kind, body := decodeBeat([]byte(`{"beat":"activation-result","actor":"alice","result":null}`))
+	require.Equal(t, EventActivationResult, kind)
+	require.Nil(t, body)
+
+	kind, body = decodeBeat([]byte(
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"damage_components":[{"source":"weapon","roll":null,"damage_type":"slashing"}]}`))
+	require.Equal(t, EventStruck, kind)
+	require.Nil(t, body)
+}
+
+// TestOuterActivationDuplicatesKeepTheirKind pins the outer duplicate-key
+// refusal on the activation-result beat: a repeated actor — or a repeated
+// beat, which the tolerant kind peek resolves by last value — is ambiguous
+// and refused while the KNOWN kind is retained.
+func TestOuterActivationDuplicatesKeepTheirKind(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+	}{
+		{
+			name: "duplicate actor",
+			json: `"actor":"alice","actor":"bob","result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"}`,
+		},
+		{
+			name: "duplicate beat",
+			json: `"beat":"activation-result","actor":"alice","result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(`{"beat":"activation-result",` + tc.json + `}`))
+			require.Equal(t, EventActivationResult, kind)
+			require.Nil(t, body)
+		})
+	}
+}
+
 // TestStruckBodyRejectsAmbiguousAndCorruptRollDetail pins the strict decoder's
 // refusals: mixed representations, duplicate keys at every depth, forbidden
 // nulls, unknown keys inside known roll bodies, and rolls whose arithmetic
