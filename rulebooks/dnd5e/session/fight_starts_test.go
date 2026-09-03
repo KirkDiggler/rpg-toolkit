@@ -56,7 +56,7 @@ func managerOver(t fataler, sessions *fakeSessions, encounters *fakeEncounters) 
 func managerOverRepos(
 	t fataler, sessions session.SessionRepository, encounters session.EncounterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	if err != nil {
@@ -212,7 +212,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 	for i := 0; i < runs; i++ {
 		sessions, encounters := newFakeSessions(), newFakeEncounters()
 		dice := &sequenceDice{rolls: []int{5, 18, 11}}
-		mgr, err := session.NewManager(&session.Config{
+		mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 			Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 			Characters: testCharacters(), Events: session.DiscardEvents{},
 		})
@@ -252,7 +252,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 // strand it.
 func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDrivenPastFightStart() {
 	dice := &sequenceDice{rolls: []int{1, 20}} // alice, then ogre — alphabetical asking order
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
@@ -286,7 +286,7 @@ func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDri
 // — an order that looks fine and is not. The seam keeps the error the rulebook
 // threw away, and a fight that cannot be ordered does not half-start.
 func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})

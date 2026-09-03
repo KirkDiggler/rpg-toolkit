@@ -83,7 +83,7 @@ func offsetWorld(t fataler) *encounter.EncounterData {
 
 func (s *OneMapSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -174,7 +174,7 @@ func (s *OneMapSuite) TestAWalkCrossesTheDoorway() {
 // else a client sees.
 func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})
@@ -388,7 +388,7 @@ func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 // [2,3] and the stairs are at authored [5,3], three cells east along row 3.
 func (s *OneMapSuite) shallowSession() *session.Manager {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})

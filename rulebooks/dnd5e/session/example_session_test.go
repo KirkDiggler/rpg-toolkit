@@ -31,7 +31,7 @@ func Example_theSession() {
 	ctx := context.Background()
 
 	// The host's entire integration: two stores.
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
@@ -132,7 +132,7 @@ func Example_theSession() {
 // (rpg-toolkit#964), so what reaches the host is news rather than a question.
 func Example_theFightThatStartsItself() {
 	ctx := context.Background()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})

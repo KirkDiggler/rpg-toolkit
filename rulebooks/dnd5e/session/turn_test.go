@@ -273,7 +273,7 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	// Fresh stores rather than the suite's own s.sessions/s.encounters — this
 	// scene stands alone, so it gets alice and the ogre with nobody else's
 	// "sess" session sharing the same encounter ID underneath it.
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: pointerPass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -302,7 +302,7 @@ func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 	s.fight()
 
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})

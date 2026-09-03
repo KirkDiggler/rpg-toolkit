@@ -75,6 +75,11 @@ type Config struct {
 	// guard at the use site.
 	Dice Roller
 
+	// PresentationIDs supplies opaque correlation tokens for explicit rolls.
+	// Required. The token is shared by response and every story witness while
+	// each recipient keeps its own numeric sequence.
+	PresentationIDs PresentationIDGenerator
+
 	// TurnDriver decides what a member with no player does when a fight's
 	// clock lands on their turn. Required.
 	//
@@ -96,12 +101,13 @@ type Config struct {
 // calls, which is what allows several servers to serve the same session with
 // no coordination.
 type Manager struct {
-	sessions   SessionRepository
-	encounters EncounterRepository
-	characters CharacterRepository
-	events     EventStream
-	initiative encounter.InitiativeRoller
-	turnDriver encounter.TurnDriver
+	sessions        SessionRepository
+	encounters      EncounterRepository
+	characters      CharacterRepository
+	events          EventStream
+	initiative      encounter.InitiativeRoller
+	turnDriver      encounter.TurnDriver
+	presentationIDs PresentationIDGenerator
 
 	// targetPreflight is the one shared target gate used by offer projection
 	// and regenerated Attack execution. It is a pure function seam rather than
@@ -143,6 +149,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Characters", cfg.Characters != nil},
 		{"Events", cfg.Events != nil},
 		{"Dice", cfg.Dice != nil},
+		{"PresentationIDs", cfg.PresentationIDs != nil},
 		{"TurnDriver", cfg.TurnDriver != nil},
 	}
 	for _, dep := range required {
@@ -159,6 +166,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		initiative:      initiativeSeam{dice: cfg.Dice},
 		dice:            cfg.Dice,
 		turnDriver:      turnDriverSeam{driver: cfg.TurnDriver},
+		presentationIDs: cfg.PresentationIDs,
 		targetPreflight: buildTargetPreflight,
 	}, nil
 }

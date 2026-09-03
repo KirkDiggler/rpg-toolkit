@@ -15,6 +15,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -255,12 +257,23 @@ func (p *printStream) Publish(_ context.Context, events []session.Event) error {
 	return nil
 }
 
+type opaquePresentationIDs struct{}
+
+func (opaquePresentationIDs) Generate() string {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(value[:])
+}
+
 func drive(out *bytes.Buffer) error {
 	ctx := context.Background()
 
 	mgr, err := session.NewManager(&session.Config{Dice: loadedDice{},
-		Sessions:   &memSessions{byID: map[string]*session.SessionData{}},
-		Encounters: &memEncounters{byID: map[string]*encounter.EncounterData{}},
+		PresentationIDs: opaquePresentationIDs{},
+		Sessions:        &memSessions{byID: map[string]*session.SessionData{}},
+		Encounters:      &memEncounters{byID: map[string]*encounter.EncounterData{}},
 		Characters: &memCharacters{
 			byID: map[string]*character.Data{"alice": aliceTheFighter(), "bob": bobTheDwarf()},
 		},

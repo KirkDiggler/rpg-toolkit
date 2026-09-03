@@ -60,8 +60,8 @@ corner-rule sight test is the named second customer; that file moves to
 `tools/spatial` when it arrives, and not before. Design and plan:
 rpg-project#360.
 
-**#1437 — root D&D life-state participation provider (provider complete;
-consumers pending).** `combat.IsDown` remains the canonical standing answer, not
+**#1437/#1440 — D&D life-state participation and explicit session Death Saves
+(active).** `combat.IsDown` remains the canonical standing answer, not
 a complete participation policy. `combat.ClassifyLifeState` combines that answer
 with combatant kind plus stabilization and death facts to distinguish conscious,
 dying, stabilized, dead, and defeated states. `combat.ParticipationFor` is the
@@ -77,9 +77,25 @@ only the provider-derived life state and optional detached Death Save progress;
 it is independent of feature, condition, equipment, spell, resource, display,
 and event-publication surfaces. Full `Character.StatusView` reuses that narrow
 projection but remains intentionally strict about its no-magic display catalog,
-including rejecting the otherwise loadable Shield spell condition. Session and
-encounter consumers remain follow-up work rather than being implied by the
-former binary down answer.
+including rejecting the otherwise loadable Shield spell condition. Encounter
+now consumes the richer scheduling/contact assessment, and session maps the
+same resolution answer into both legacy Standing and explicit participant
+LifeState/DeathSaveProgress. A non-empty player party with no Conscious member
+is defeated; while a Dying player still needs saves and a Conscious ally remains,
+KeepTurnOrder retains the one-sided bubble. Attack candidates preserve Dying and
+Stabilized targets while omitting Dead characters and Defeated monsters through
+the provider's AttackTarget fact.
+
+An active eligible Dying character receives a selector-version-v2
+`death_save` declaration alongside the independently available End Turn and
+blocked normal actions. Execution regenerates/selects before generating a
+required host-supplied bounded opaque PresentationID or rolling exactly once.
+It saves the returned character before recording the typed Death Save Story,
+checks that Record used the pending global sequence internally, and returns the
+actor's recipient-local Seq separately. The opaque token and authoritative roll
+are shared unchanged by response and every witness. Stabilized/ordinary results
+report EndTurn, natural-20 recovery reports KeepTurn, and death reports
+AlreadyAdvanced after encounter participation settlement.
 
 **#1366/#1367 — restore the Martial Arts bonus Attack declaration (provider
 shipped; session active).** Root D&D `v0.125.1` compiles the previously verified

@@ -33,7 +33,7 @@ func (s *AcceptanceWorldNPCSuite) TestVendorSurvivesAFightItNeverJoins() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(alice)
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice:       &sequenceDice{rolls: []int{0, 0}}, // two initiative rolls, order unasserted here
 		TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},

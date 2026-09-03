@@ -20,14 +20,15 @@ import (
 // selector document shape, or the verb/slot bytes requires a selector-version
 // bump — see docs/ideas/session-combat/experience/design.md.
 const (
-	declarationDomain    = "session-declaration:v1"
-	declarationPrefix    = "v1."
-	variantMoveSealed    = "session:move:v1"
-	variantEndTurnSealed = "session:end-turn:v1"
+	declarationDomain      = "session-declaration:v2"
+	declarationPrefix      = "v2."
+	variantMoveSealed      = "session:move:v2"
+	variantDeathSaveSealed = "session:death-save:v2"
+	variantEndTurnSealed   = "session:end-turn:v2"
 	// variantActivatePrefix namespaces an activation's variant so an ability
 	// ref can never collide with a sealed string, however the ref catalog
 	// grows.
-	variantActivatePrefix = "session:activate:v1:"
+	variantActivatePrefix = "session:activate:v2:"
 )
 
 // errDeclarationIDCollision is returned internally when two non-identical
@@ -100,7 +101,7 @@ type selectorDocument struct {
 //
 // The document is canonicalized with the JSON Canonicalization Scheme
 // (RFC 8785) via [jsoncanonicalizer.Transform], hashed with SHA-256, and
-// encoded as unpadded base64url after the prefix "v1.". The full digest is
+// encoded as unpadded base64url after the prefix "v2.". The full digest is
 // encoded with no truncation. Numbers outside RFC 8785's interoperable exact
 // range are rejected by the canonicalizer rather than approximated.
 func declarationID(input declarationIDInput) (string, error) {
@@ -161,7 +162,7 @@ func canonicalSelectorVariant(raw json.RawMessage) (json.RawMessage, error) {
 // under the current version without an explicit bump.
 func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 	switch verb {
-	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate:
+	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbDeathSave:
 	default:
 		return fmt.Errorf("unsupported declaration verb %q", verb)
 	}
@@ -192,6 +193,8 @@ func selectorVariant(
 	switch verb {
 	case VerbMove:
 		return json.RawMessage(`"` + variantMoveSealed + `"`), nil
+	case VerbDeathSave:
+		return json.RawMessage(`"` + variantDeathSaveSealed + `"`), nil
 	case VerbEndTurn:
 		return json.RawMessage(`"` + variantEndTurnSealed + `"`), nil
 	case VerbActivate:

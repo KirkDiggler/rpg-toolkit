@@ -669,6 +669,14 @@ func place(
 	// and the composition's account still crosses as TEXT rather than as a
 	// chain a host could match on (the S2 leak, rpg-toolkit#1058).
 	//
+	// The same ordering applies to participation kind: Join can assess the
+	// newcomer during its own sight/contact refresh, so the shared kind snapshot
+	// must learn the authoritative declared kind first.
+	if scope.standing.kinds == nil {
+		return nil, fmt.Errorf("placing member %q without participation kinds: %w", id, ErrInvalidWorld)
+	}
+	scope.standing.kinds[id] = encounter.MemberKind(kind)
+
 	// scope.sight learns about THIS member before Join does, not after:
 	// arriving triggers its own sight refresh (does the newcomer see
 	// anyone; is the newcomer seen), and that refresh asks about the
@@ -898,7 +906,7 @@ type writeScope struct {
 	// actor has fallen (refuseIfDown). Rebuilding it at each use would compile
 	// and would quietly allow two capabilities reading different sheets within
 	// one verb.
-	standing encounter.Standing
+	standing standingSeam
 
 	// sight is the SAME *sightSeam the live encounter holds — see the
 	// type's own doc on why a pointer, not a value. place adds a member
@@ -966,6 +974,10 @@ func (s *writeScope) deliveredSeq(member string, seq uint64) uint64 {
 // swap, and so the novelty has exactly one home to document.
 func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error {
 	scope.sight = &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)}
+	// Resolution returned this authoritative roster snapshot with the world.
+	// Replace kinds before constructing its encounter so every assessment made
+	// during load sees exactly that one snapshot.
+	scope.standing.kinds = encounterDataKinds(world.Members)
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       world,
 		Initiative: m.initiative,
@@ -992,6 +1004,31 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)
 	}
 	scope.enc = enc
+	return nil
+}
+
+// saveCharacterRecord writes one authoritative character snapshot and records
+// the durable aggregate on the active write scope. It is shared by resolution
+// dirty-sheet writes and Death Save's required character-first ordering.
+func (m *Manager) saveCharacterRecord(
+	ctx context.Context, scope *writeScope, data *character.Data,
+) error {
+	aggregate := "character:" + data.ID
+	if err := m.characters.SaveCharacter(ctx, data); err != nil {
+		return &SaveError{
+			Report: SaveReport{
+				Written: append([]string(nil), scope.written...),
+				Failed:  []string{aggregate},
+			},
+			Err: fmt.Errorf("saving character: %w", err),
+		}
+	}
+	for _, written := range scope.written {
+		if written == aggregate {
+			return nil
+		}
+	}
+	scope.written = append(scope.written, aggregate)
 	return nil
 }
 

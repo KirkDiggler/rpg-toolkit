@@ -58,7 +58,7 @@ func (s *ClockBoundaryTestSuite) fight(aliceConditions ...json.RawMessage) *sess
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -340,7 +340,7 @@ func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 	liar := &impersonatingCharacters{fakeCharacters: s.characters, always: armedFighter("bob")}
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: liar,
 		Events: session.DiscardEvents{},

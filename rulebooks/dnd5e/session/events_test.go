@@ -36,7 +36,7 @@ func (s *EventsTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
@@ -153,7 +153,7 @@ func (s *EventsTestSuite) TestEventsAreAddressed() {
 func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(), Events: stream,
 	})
 	s.Require().NoError(err)
@@ -181,7 +181,7 @@ func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 // error the host has to interpret. The log is the truth and sequences are
 // gapless, so clients self-heal.
 func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: &failingStream{err: errBroken},
 	})
@@ -215,7 +215,7 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 // did, and would make a genuinely silent run indistinguishable from a broken
 // one.
 func (s *EventsTestSuite) TestDiscardingEventsStillReportsHonestly() {
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})

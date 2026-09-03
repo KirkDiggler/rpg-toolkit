@@ -31,7 +31,7 @@ func (s *MoveTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: s.stream,
 	})

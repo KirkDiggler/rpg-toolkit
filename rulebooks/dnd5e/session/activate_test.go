@@ -205,7 +205,7 @@ func aTwoPlayerFightAt(
 	t.Helper()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	chars := newFakeCharacters(alice, bob)
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: chars, Events: session.DiscardEvents{},
 	})

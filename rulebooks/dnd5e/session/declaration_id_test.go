@@ -54,7 +54,16 @@ func TestMoveDeclarationIDGolden(t *testing.T) {
 		Verb: VerbMove, Slot: SlotNone,
 	})
 	require.NoError(t, err)
-	require.Equal(t, "v1.Mhnl9aRJjeAvMxtlbRFFHVH-XoMkgR4l1pasCSyzrjc", got)
+	require.Equal(t, "v2.D6nzrPOMnQdG5pz-YGPxRKtJOdeODW1mE_f7UeZu5n4", got)
+}
+
+func TestDeathSaveDeclarationIDGolden(t *testing.T) {
+	got, err := declarationID(declarationIDInput{
+		Session: "session-1", Member: "fighter-1",
+		Verb: VerbDeathSave, Slot: SlotNone,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "v2.IXIjjUz567HkJQi48Ar91imEcWPlZOJHplMUgp65sNU", got)
 }
 
 func TestEndTurnDeclarationIDGolden(t *testing.T) {
@@ -63,7 +72,7 @@ func TestEndTurnDeclarationIDGolden(t *testing.T) {
 		Verb: VerbEndTurn, Slot: SlotNone,
 	})
 	require.NoError(t, err)
-	require.Equal(t, "v1.yZ1FHWnV7SnulpNVV4kz1BSkslDxfXr-lEINSahGUDo", got)
+	require.Equal(t, "v2.UdUdOidNATr3ZZPKTIc2-nqeN3cb4pWLqNAz1Q0A0tg", got)
 }
 
 func TestAttackDeclarationIDGolden(t *testing.T) {
@@ -75,7 +84,7 @@ func TestAttackDeclarationIDGolden(t *testing.T) {
 		Verb: VerbAttack, Slot: SlotAction, Attack: &def,
 	})
 	require.NoError(t, err)
-	require.Equal(t, "v1.ZmGXGvVkJHmrxzEhR7xYqlIEkrB6xRsawMp6l4UX6fM", got)
+	require.Equal(t, "v2.HXq0p1bPN6Vf3EnZiyXYbd79wKnRT8mosqD90XfzTWY", got)
 }
 
 func TestDeclarationIDMapInsertionOrderIsCanonical(t *testing.T) {
@@ -222,9 +231,9 @@ func TestDeclarationIDFullDigestPayload(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.True(t, strings.HasPrefix(got, "v1."),
-		"selector ID must carry the v1. prefix; got %q", got)
-	digest := strings.TrimPrefix(got, "v1.")
+	require.True(t, strings.HasPrefix(got, "v2."),
+		"selector ID must carry the v2. prefix; got %q", got)
+	digest := strings.TrimPrefix(got, "v2.")
 	require.Len(t, digest, 43,
 		"the base64url digest payload must be the full 43-character SHA-256 encoding; got %q", digest)
 	require.NotContains(t, digest, "=",

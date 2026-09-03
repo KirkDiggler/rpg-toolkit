@@ -360,7 +360,9 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", translate(err))
 	}
-	down, err := standingSet(m.standingFor(ctx, data), rosterIDs(roster))
+	down, err := standingSet(
+		m.standingFor(ctx, data, encounterRosterKinds(roster)), rosterIDs(roster),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", err)
 	}
@@ -529,24 +531,24 @@ func (m *Manager) loadWorldWithBaseline(
 	ctx context.Context, data *SessionData,
 	striker encounter.Striker, announcer encounter.Announcer, sight *sightSeam,
 	resolver encounter.CheckResolver, witness encounter.Witness,
-) (*encounter.Encounter, uint64, encounter.Standing, error) {
+) (*encounter.Encounter, uint64, standingSeam, error) {
 	encID := data.Encounter
 
 	world, err := m.encounters.GetEncounter(ctx, encID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, 0, nil, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
+			return nil, 0, standingSeam{}, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
 		}
-		return nil, 0, nil, err
+		return nil, 0, standingSeam{}, err
 	}
 	if world == nil {
-		return nil, 0, nil, fmt.Errorf(
+		return nil, 0, standingSeam{}, fmt.Errorf(
 			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
 
 	sight.members = append(sight.members, world.Members...)
 
-	standing := m.standingFor(ctx, data)
+	standing := m.standingFor(ctx, data, encounterDataKinds(world.Members))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,
@@ -579,7 +581,7 @@ func (m *Manager) loadWorldWithBaseline(
 		// every one of those is a module we intend to keep replaceable. %v
 		// hands whoever debugs it the whole account and hands a host nothing to
 		// match on but ours (S2).
-		return nil, 0, nil, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
+		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
 	}
 	return enc, world.Log.NextSeq, standing, nil
 }

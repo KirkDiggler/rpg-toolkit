@@ -29,6 +29,27 @@ func rosterKinds(roster []encounter.Member) map[string]MemberKind {
 	return out
 }
 
+// encounterRosterKinds snapshots authoritative kinds from one live roster read
+// for a standalone session projection. The participation seam copies this map,
+// so one assessment cannot observe a second roster snapshot.
+func encounterRosterKinds(roster []encounter.Member) map[string]encounter.MemberKind {
+	out := make(map[string]encounter.MemberKind, len(roster))
+	for _, member := range roster {
+		out[string(member.ID)] = member.Kind
+	}
+	return out
+}
+
+// encounterDataKinds snapshots authoritative kinds at a persisted-world load
+// or setup boundary. It is the construction twin of encounterRosterKinds.
+func encounterDataKinds(roster []encounter.MemberData) map[string]encounter.MemberKind {
+	out := make(map[string]encounter.MemberKind, len(roster))
+	for _, member := range roster {
+		out[string(member.ID)] = member.Kind
+	}
+	return out
+}
+
 // standingSet batches a down-check over a set of member ids into a lookup —
 // one Standing() call per verb rather than one per sighted subject or
 // participant, and the same batching turn.go's own participantsFor uses.
@@ -42,6 +63,27 @@ func standingSet(standing encounter.Standing, ids []encounter.MemberID) (map[str
 		out[string(id)] = true
 	}
 	return out, nil
+}
+
+type richParticipationLookup struct {
+	members map[string]encounter.MemberParticipation
+	views   map[string]participantView
+}
+
+// richParticipationSet derives encounter scheduling, binary down, explicit
+// life state, and Death Save progress from one provider snapshot.
+func richParticipationSet(
+	standing standingSeam, ids []encounter.MemberID,
+) (*richParticipationLookup, error) {
+	snapshot, err := standing.participation(ids)
+	if err != nil {
+		return nil, err
+	}
+	members := make(map[string]encounter.MemberParticipation, len(snapshot.assessment.Members))
+	for _, member := range snapshot.assessment.Members {
+		members[string(member.Member)] = member
+	}
+	return &richParticipationLookup{members: members, views: snapshot.views}, nil
 }
 
 // rosterIDs pulls the bare ids out of a roster read, for callers that need

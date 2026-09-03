@@ -50,7 +50,7 @@ func (s *JoinFoldsACTestSuite) SetupTest() {
 	s.characters.byID[ragingID] = barbarianCharacter(ragingID)
 	s.encounters = newFakeEncounters()
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},

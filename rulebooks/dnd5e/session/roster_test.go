@@ -89,7 +89,8 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 	}
 
 	manager, err := session.NewManager(&session.Config{
-		Sessions: sessions, Encounters: encounters, Characters: characters,
+		PresentationIDs: testPresentationIDs{},
+		Sessions:        sessions, Encounters: encounters, Characters: characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},
 	})
 	require.NoError(t, err)
@@ -367,7 +368,8 @@ func TestRosterRefusesACharacterReturnedUnderTheWrongID(t *testing.T) {
 func TestRosterRefusesANilCharacterRepositoryResult(t *testing.T) {
 	fixture := newRosterFixture(t)
 	manager, err := session.NewManager(&session.Config{
-		Sessions: fixture.sessions, Encounters: fixture.encounters,
+		PresentationIDs: testPresentationIDs{},
+		Sessions:        fixture.sessions, Encounters: fixture.encounters,
 		Characters: nilRosterRepository{}, Events: session.DiscardEvents{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 	})
@@ -535,7 +537,8 @@ func TestRosterSurvivesManagerRestartFromCopiedPersistence(t *testing.T) {
 	restartedEncounters.byID["world"] = storedEncounter
 	restartedCharacters := newFakeCharacters(alice, bob)
 	restarted, err := session.NewManager(&session.Config{
-		Sessions: restartedSessions, Encounters: restartedEncounters,
+		PresentationIDs: testPresentationIDs{},
+		Sessions:        restartedSessions, Encounters: restartedEncounters,
 		Characters: restartedCharacters, Events: session.DiscardEvents{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 	})
@@ -564,7 +567,8 @@ func TestRosterRejectsMalformedNPCRefWithoutLeakingCoreErrors(t *testing.T) {
 		}},
 	})
 	manager, err := session.NewManager(&session.Config{
-		Sessions: sessions, Encounters: fixture.encounters, Characters: fixture.characters,
+		PresentationIDs: testPresentationIDs{},
+		Sessions:        sessions, Encounters: fixture.encounters, Characters: fixture.characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},
 	})
 	require.NoError(t, err)

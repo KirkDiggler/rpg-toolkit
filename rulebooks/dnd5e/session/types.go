@@ -639,6 +639,11 @@ const (
 	// successful activation. Its body carries exactly one result pointer.
 	EventActivationResult EventKind = "activation_result"
 
+	// EventDeathSave reports one explicit authoritative Death Save result.
+	// Its PresentationID is the same opaque token returned to the actor and to
+	// every other witness; Seq remains recipient-local.
+	EventDeathSave EventKind = "death_save"
+
 	// EventDowned reports that a member is DOWNED: at zero hit points, out of
 	// the fight. The opposite state is UP.
 	//
@@ -765,8 +770,8 @@ type Event struct {
 }
 
 // EventBody is the beat, typed — a sealed interface with one struct per
-// kind Event.Body carries: TurnEndedBody, DownedBody, StruckBody,
-// MissedBody, ActivatedBody, ActivationResultBody, FightStartedBody,
+// kind Event.Body carries: TurnEndedBody, DownedBody, DeathSaveBody,
+// StruckBody, MissedBody, ActivatedBody, ActivationResultBody, FightStartedBody,
 // FightEndedBody, MovedBody, JoinedBody, ExitedBody, EndedBody, DoorBody.
 // Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
@@ -803,6 +808,29 @@ type DownedBody struct {
 }
 
 func (DownedBody) isEventBody() {}
+
+// DeathSaveBody is EventDeathSave's typed game result. It contains the same
+// projected provider facts as DeathSaveOutput, excluding persistence/delivery
+// and recipient-local sequence.
+type DeathSaveBody struct {
+	Actor             string                `json:"actor"`
+	Roll              int                   `json:"roll"`
+	Outcome           DeathSaveOutcome      `json:"outcome"`
+	SuccessesAdded    int                   `json:"successes_added"`
+	FailuresAdded     int                   `json:"failures_added"`
+	Successes         int                   `json:"successes"`
+	Failures          int                   `json:"failures"`
+	SuccessesNeeded   int                   `json:"successes_needed"`
+	FailuresRemaining int                   `json:"failures_remaining"`
+	Stabilized        bool                  `json:"stabilized"`
+	Dead              bool                  `json:"dead"`
+	Recovered         bool                  `json:"recovered"`
+	HPRestored        int                   `json:"hp_restored"`
+	Continuation      DeathSaveContinuation `json:"continuation"`
+	PresentationID    string                `json:"presentation_id"`
+}
+
+func (DeathSaveBody) isEventBody() {}
 
 // RollSource identifies and describes the rulebook-owned source of a roll
 // fact. Ref is the canonical module:type:id string of the content that

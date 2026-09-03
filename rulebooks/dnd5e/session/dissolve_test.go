@@ -167,7 +167,7 @@ func (s *DissolveTestSuite) TestTheEndingReachesClients() {
 	s.fight()
 
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})

@@ -96,7 +96,7 @@ type targetPreflight struct {
 
 // compileOffersFor builds only the requested compiled offers for one member on
 // the turn clock, applying the same per-verb blocker matrix. [Manager.Afford]
-// requests all four verbs from one actor snapshot; Move and Attack each request
+// requests all five verbs from one actor snapshot; Move and Attack each request
 // only their own offer before selecting an echoed ID. EndTurn execution keeps
 // its direct clock-only builder.
 //
@@ -171,12 +171,36 @@ func (m *Manager) compileOffersFor(
 		)
 	}
 
+	// Death Save is compiled before the generic downed blocker: Dying is the
+	// one provider state where being down disables normal actions and enables
+	// this explicit roll. Stabilized, Dead, and Conscious actors produce no
+	// Death Save offer.
+	var deathSave compiledOffer
+	if requested[VerbDeathSave] && actor.downed {
+		// Dying actors do not reach the normal-action readying below, but their
+		// once-per-turn Death Save capacity is granted by that same provider
+		// operation. Ready this ephemeral snapshot before asking eligibility;
+		// Afford never saves it, while execution hands this exact readied record
+		// to resolution for charge-and-save.
+		if err := readyForTurn(ctx, sheet, clock.Round); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
+		}
+	}
+	if requested[VerbDeathSave] && character.CanMakeDeathSave(sheet) {
+		var err error
+		deathSave, err = m.buildDeathSaveOffer(sessionID, member, sheet)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if actor.downed {
 		why := Shortfall{Reason: ShortfallDowned, Text: "member is downed"}
 		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
+			deathSave,
 			endTurn,
 		)
 	}
@@ -221,7 +245,8 @@ func (m *Manager) compileOffersFor(
 	if requested[VerbActivate] {
 		var err error
 		activations, err = m.buildActivationOffers(
-			enc, m.standingFor(ctx, data), sessionID, member, sheet, roster, positions, holdings,
+			enc, m.standingFor(ctx, data, encounterRosterKinds(roster)),
+			sessionID, member, sheet, roster, positions, holdings,
 		)
 		if err != nil {
 			return nil, err
@@ -237,7 +262,8 @@ func (m *Manager) compileOffersFor(
 		}
 	}
 	if !requested[VerbAttack] {
-		return finishRequestedOffers(requested, append([]compiledOffer{move, endTurn}, activations...)...)
+		return finishRequestedOffers(requested,
+			append([]compiledOffer{move, deathSave, endTurn}, activations...)...)
 	}
 
 	// Price BEFORE assembly. The complete Definition is selector material, so
@@ -291,6 +317,14 @@ func (m *Manager) compileOffersFor(
 	candidates, err := m.targetPreflight(
 		enc, positions, excludeWorldNPCs(holdings, rosterKinds(roster)), member, definition.Attack.Delivery.MaxRangeFeet(),
 	)
+	if err != nil {
+		return nil, err
+	}
+	// Sight and reach establish the candidate universe first. The root
+	// participation provider then removes only states it marks ineligible as an
+	// AttackTarget: Dying and Stabilized remain; Dead and Defeated do not. The
+	// executor regenerates this same offer, so it needs no second target rule.
+	candidates, err = filterAttackTargets(ctx, candidates, cast)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +404,7 @@ func (m *Manager) compileOffersFor(
 		attacks = append(attacks, offHandAttack)
 	}
 
-	offers := append(attacks, move, endTurn)
+	offers := append(attacks, move, deathSave, endTurn)
 	return finishRequestedOffers(requested, append(offers, activations...)...)
 }
 
@@ -528,6 +562,25 @@ func (m *Manager) buildEndTurnOffer(session, member string) (compiledOffer, erro
 	}, nil
 }
 
+// buildDeathSaveOffer builds the one capacity-gated explicit saving throw.
+// Eligibility is checked by the root provider before this helper is called.
+func (m *Manager) buildDeathSaveOffer(
+	session, member string, sheet *character.Character,
+) (compiledOffer, error) {
+	id, variant, err := selectorIDFor(session, member, VerbDeathSave, SlotNone, nil, "")
+	if err != nil {
+		return compiledOffer{}, err
+	}
+	return compiledOffer{
+		declaration: Declaration{
+			Verb: VerbDeathSave, Slot: SlotNone, Available: true, ID: id,
+			DeathSave:  &DeathSaveRef{Name: "Death Saving Throw"},
+			TargetKind: TargetNone, Candidates: []TargetCandidate{},
+		},
+		sheet: sheet, verb: VerbDeathSave, slot: SlotNone, variant: variant,
+	}, nil
+}
+
 // buildMoveOffer builds the compiled Move declaration off the readied sheet.
 // Move has no fixed price until a path is chosen, so Available answers only
 // whether ANY step at all is still possible — one cell, five feet, the
@@ -650,6 +703,32 @@ func buildTargetPreflight(
 		}
 		why := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "target out of reach"}
 		out = append(out, targetPreflight{member: id, available: false, why: &why})
+	}
+	return out, nil
+}
+
+func filterAttackTargets(
+	ctx context.Context, candidates []targetPreflight, cast []resolution.Participant,
+) ([]targetPreflight, error) {
+	participation, err := resolution.Participation(ctx, &resolution.ParticipationInput{Participants: cast})
+	if err != nil {
+		return nil, fmt.Errorf("attack target participation: %w", translateResolution(err))
+	}
+	eligible := make(map[string]bool, len(participation.Members))
+	known := make(map[string]bool, len(participation.Members))
+	for _, member := range participation.Members {
+		known[member.Member] = true
+		eligible[member.Member] = member.Participation.AttackTarget
+	}
+
+	out := make([]targetPreflight, 0, len(candidates))
+	for _, candidate := range candidates {
+		// A missing raw cast record remains so the existing Unreadable path can
+		// explain it. Only an authoritative provider answer may omit a target.
+		if known[candidate.member] && !eligible[candidate.member] {
+			continue
+		}
+		out = append(out, candidate)
 	}
 	return out, nil
 }
@@ -784,8 +863,8 @@ func offerSelectorEqual(a, b compiledOffer) bool {
 }
 
 // verbRank orders declarations in the deterministic output order the seam
-// promises: Attack first, then Move, then EndTurn — the order a turn panel
-// renders its action, movement and end-turn controls. Assertions may rely on
+// promises: Attack, Move, Activate, Death Save, then EndTurn — the order a turn
+// panel renders its controls. Assertions may rely on
 // this order; it never depends on candidate state.
 func verbRank(v Verb) int {
 	switch v {
@@ -795,10 +874,12 @@ func verbRank(v Verb) int {
 		return 1
 	case VerbActivate:
 		return 2
-	case VerbEndTurn:
+	case VerbDeathSave:
 		return 3
-	default:
+	case VerbEndTurn:
 		return 4
+	default:
+		return 5
 	}
 }
 

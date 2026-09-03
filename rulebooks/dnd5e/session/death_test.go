@@ -94,7 +94,7 @@ func (s *DeathTestSuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -455,6 +455,14 @@ func (s *DeathTestSuite) duelAtZero() {
 		s.Require().NoError(err)
 	}
 	s.Require().Zero(s.characters.byID["alice"].HitPoints, "alice is down")
+
+	// Dying retains initiative. Settle Bob's completed attack turn so the
+	// explicit-save turn reaches Alice instead of relying on the old splice.
+	_, err = s.mgr.EndTurn(context.Background(), &session.EndTurnInput{
+		Session: "sess", Member: "bob",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "bob"),
+	})
+	s.Require().NoError(err)
 }
 
 // TestTheKillingBlowNoticesACHARACTERToo is the other store's half of the same
@@ -569,7 +577,7 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 		failAt:         2,
 		err:            errBoundaryCharacterSave,
 	}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: failing, Events: s.stream,
 	})
@@ -633,7 +641,7 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 	chars := &brokenAfterWriting{
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 	}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
@@ -700,8 +708,16 @@ func (s *DeathTestSuite) TestADownedActorCannotWalk() {
 func (s *DeathTestSuite) TestAMemberStillUpIsNotRefused() {
 	s.duelAtZero()
 
-	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+	// Alice's Dying slot remains in initiative. Her independently available
+	// End Turn advances to Bob, whose ordinary move remains available.
+	_, err := s.mgr.EndTurn(context.Background(), &session.EndTurnInput{
+		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+	})
+	s.Require().NoError(err)
+	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},
+		DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "bob"),
 	})
 	s.Require().NoError(err, "the one still standing walks")
 }
@@ -818,6 +834,7 @@ func (s *DeathTestSuite) TestTheAnswerIsAskedAgainNotRemembered() {
 
 	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+		DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err, "she is up, so she walks, and nothing had to be told")
 }
@@ -947,7 +964,7 @@ func (m *markedCharacters) GetCharacter(ctx context.Context, id string) (*charac
 // is a request the host can no longer stop.
 func (s *DeathTestSuite) TestTheSeamReadsOnTheCallersContext() {
 	chars := &markedCharacters{fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob"))}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
@@ -1005,7 +1022,7 @@ func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 		broken:         "bob",
 	}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
