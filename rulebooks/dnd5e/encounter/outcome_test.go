@@ -529,12 +529,31 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 		{"negative infinite multiplier", math.Inf(-1)},
 	} {
 		s.Run(tc.name, func() {
-			_, err := s.scene().Record(&encounter.RecordInput{
+			// The component is otherwise a legal multiplier carrier — the same
+			// immunity-style shape TestARecordedStrikeCarriesOrderedDetail
+			// records successfully — so the non-finite factor is the SOLE
+			// defect and these cases genuinely reach the finite-multiplier
+			// guard instead of dying earlier on source identity.
+			enc := s.scene()
+			beforeLog := enc.WorldView().Log
+
+			_, err := enc.Record(&encounter.RecordInput{
 				Kind: encounter.OutcomeStruck, Actor: alice,
-				DamageComponents: []encounter.DamageComponent{{Multiplier: &tc.multiplier}},
+				DamageComponents: []encounter.DamageComponent{{
+					Source: "monster_trait",
+					Roll: encounter.RollComponent{
+						Source: encounter.RollSource{
+							Ref: "dnd5e:monster-traits:immunity", Name: "Immunity",
+						},
+					},
+					DamageType: "slashing",
+					Multiplier: &tc.multiplier,
+				}},
 			})
 			s.ErrorIs(err, encounter.ErrInvalidData,
 				"an unrepresentable JSON number is structural invalid data")
+			s.Equal(beforeLog, enc.WorldView().Log,
+				"a rejected multiplier leaves entries and next_seq untouched")
 		})
 	}
 
