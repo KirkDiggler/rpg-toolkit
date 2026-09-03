@@ -77,9 +77,10 @@ type field struct {
 	void        Void
 	orientation Orientation
 
-	// owner is THE MASK: every floor cell, absolute axial, to the region
-	// that owns it. A cell absent here is void. Unique by construction —
-	// compileField refuses the field otherwise (W2).
+	// owner is HALF THE MASK: every OWNED cell, absolute axial, to the region
+	// that owns it. A cell absent here is void or scenery — sceneryCells is
+	// the other half, and [field.isFloor] is the two of them together. Unique
+	// by construction — compileField refuses the field otherwise (W2).
 	owner map[spatial.Position]RegionID
 
 	// regionCells is each region's cells, absolute axial and sorted by

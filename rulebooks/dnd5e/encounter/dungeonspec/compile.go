@@ -392,8 +392,10 @@ func seatsOf(spec *Spec, o encounter.Orientation) ([]Seat, error) {
 	return seats, nil
 }
 
-// ownerOf is every floor cell, absolute axial, to the ID of the region that
-// owns it — the file's own statement of the floor, read once per compile.
+// ownerOf is every OWNED cell, absolute axial, to the ID of the region that
+// owns it — read once per compile. Scenery is floor too and is deliberately
+// absent here: this map exists to answer which region a seat or a monster
+// stands in, and scenery's answer to that is that nobody stands on it.
 func ownerOf(spec *Spec, o encounter.Orientation) map[spatial.Position]string {
 	owner := map[spatial.Position]string{}
 	for _, r := range spec.Regions {

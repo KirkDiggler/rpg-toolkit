@@ -100,9 +100,10 @@ type validation struct {
 
 	orientation encounter.Orientation
 
-	// owner is every floor cell (absolute axial) to the index of the region
+	// owner is every OWNED cell (absolute axial) to the index of the region
 	// that owns it — the same map compileField builds, built here so the
-	// file's own defects are reported in the file's own paths.
+	// file's own defects are reported in the file's own paths. The floor is
+	// this and sceneryAt together; [validation.floor] is the pair.
 	owner map[spatial.Position]int
 
 	// sceneryAt is every scenery cell (absolute axial) — the other half of
