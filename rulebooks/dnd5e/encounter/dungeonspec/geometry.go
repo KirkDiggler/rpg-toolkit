@@ -55,6 +55,17 @@ import (
 // neighbour (q+dq, r+dr) is axial (q+dq/2, r+dr/2), and every dq/2 is a half.
 // The embedding is needed only for ANGLES and AREAS, which is what the rest of
 // this file is.
+//
+// THAT SPLIT IS WHY A CORNER NEEDS NO TOLERANCE. Halves are exact in binary,
+// so two walls written to end at the same position arrive at the far end
+// carrying byte-identical endpoints — and two positions that name the same
+// physical point from different cells (the midpoint of one hex's east side is
+// the midpoint of its neighbour's west side) compare equal on the nose. If a
+// position had been rounded through the embedding instead, every join would
+// have needed an epsilon, and the size of that epsilon would have decided
+// where one wall ended and the next began — which is precisely the
+// straightness-tolerance problem this design exists to delete, moved one layer
+// down.
 
 // sqrt3 is the one irrational this embedding uses: the ratio between a hex's
 // two spans.
@@ -320,8 +331,22 @@ func (g hexGeom) blocks(a, b spatial.Position, from, to worldPoint) bool {
 	return segmentsMeet(g.centreOf(a), g.centreOf(b), from, to)
 }
 
-// standingFraction is how much of a cell's hex is left on the near side of
-// every wall through it, as a fraction of the whole (design C10).
+// standingFraction is A CELL'S STANDABLE FRACTION: the part of it inside the
+// space the walls bound, as a fraction of the whole hex (design C10).
+//
+// EVERY WALL IN WHOSE FOOTPRINT THE CELL SITS CONTRIBUTES ITS HALF-PLANE —
+// including a wall that only touches the cell at a corner position, which is
+// the ordinary shape of a room's corner: one wall runs through the cell and
+// the other leaves from the point where they meet. The half-plane is the
+// wall's LINE, not its segment, because what is being measured is the room the
+// walls enclose and not the stone's own length.
+//
+// That reading is not a convenience; it is what produces the design's two
+// corner numbers. A square room's inside corner — a quarter line meeting a
+// midpoint line — keeps exactly 3/4, and a hexagonal room's corner — two
+// quarter lines at 60° — keeps 7/12. Both are pinned from the design's own
+// arithmetic in geometry_internal_test.go, and 3/4 is why [MinStandable] is
+// 0.7 rather than 0.75.
 //
 // NEAR SIDE means the side the cell's own centre is on: a wall takes the far
 // half-plane away and leaves what an author could still stand in. A wall
