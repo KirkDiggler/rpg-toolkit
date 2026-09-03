@@ -2,6 +2,7 @@ package npcs_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -314,6 +315,82 @@ func (s *VendorSuite) TestVendorScenarioValidation() {
 		Vendor:   vendor,
 	})
 	s.ErrorIs(err, npcs.ErrNoWorldMembership)
+}
+
+func (s *VendorSuite) TestVendorInventoryFromNPCDataMatchesVendorInventory() {
+	vendor, err := npcs.NewMerchant(nil)
+	s.Require().NoError(err)
+
+	inventory, ok, err := npcs.VendorInventoryFromNPCData(vendor.NPC().ToData())
+
+	s.Require().NoError(err)
+	s.True(ok)
+	s.Equal(vendor.Inventory().ToData(), inventory.ToData())
+	s.Len(inventory.Entries(), 3)
+}
+
+func (s *VendorSuite) TestVendorInventoryFromNPCDataReturnsCleanNoneWithoutInventory() {
+	_, ok, err := npcs.VendorInventoryFromNPCData(nil)
+	s.Require().NoError(err)
+	s.False(ok)
+
+	base, err := npc.New(npc.Config{
+		Ref:         refs.NPCs.Vendor(),
+		DisplayName: "Villager",
+	})
+	s.Require().NoError(err)
+
+	inventory, ok, err := npcs.VendorInventoryFromNPCData(base.ToData())
+
+	s.Require().NoError(err)
+	s.False(ok)
+	s.Equal(npcs.VendorInventory{}, inventory)
+}
+
+func (s *VendorSuite) TestVendorInventoryFromNPCDataErrorsOnMalformedInventory() {
+	tests := []struct {
+		name string
+		raw  json.RawMessage
+	}{
+		{name: "not json", raw: json.RawMessage(`not valid json`)},
+		{name: "valid json wrong shape", raw: json.RawMessage(`{}`)},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			base, err := npc.New(npc.Config{
+				Ref:         refs.NPCs.Vendor(),
+				DisplayName: "Villager",
+				Inventory:   tt.raw,
+			})
+			s.Require().NoError(err)
+
+			_, ok, err := npcs.VendorInventoryFromNPCData(base.ToData())
+
+			s.False(ok)
+			s.Error(err)
+		})
+	}
+}
+
+func (s *VendorSuite) TestVendorInventoryFromNPCDataIsCopyOut() {
+	vendor, err := npcs.NewMerchant(nil)
+	s.Require().NoError(err)
+	data := vendor.NPC().ToData()
+
+	first, ok, err := npcs.VendorInventoryFromNPCData(data)
+	s.Require().NoError(err)
+	s.Require().True(ok)
+
+	entries := first.Entries()
+	entries[0] = entries[1]
+	firstData := first.ToData()
+	firstData.Entries[0].ID = "changed"
+
+	second, ok, err := npcs.VendorInventoryFromNPCData(data)
+	s.Require().NoError(err)
+	s.Require().True(ok)
+	s.Equal(string(weapons.Longsword), second.ToData().Entries[0].ID)
 }
 
 func (s *VendorSuite) mustNPCData() *npc.Data {
