@@ -11,7 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
-func TestCanBeAttackTargetDistinguishesUnconsciousFromDefeated(t *testing.T) {
+func TestCanBeAttackTargetPreservesDerivedLifeStateTruthTable(t *testing.T) {
 	tests := []struct {
 		name string
 		kind combat.CombatantKind
@@ -19,7 +19,7 @@ func TestCanBeAttackTargetDistinguishesUnconsciousFromDefeated(t *testing.T) {
 		want bool
 	}{
 		{name: "standing character", kind: combat.CombatantKindCharacter, want: true},
-		{name: "unconscious character", kind: combat.CombatantKindCharacter, down: true, want: true},
+		{name: "dying character", kind: combat.CombatantKindCharacter, down: true, want: true},
 		{name: "standing monster", kind: combat.CombatantKindMonster, want: true},
 		{name: "defeated monster", kind: combat.CombatantKindMonster, down: true, want: false},
 		{name: "unknown kind", kind: combat.CombatantKind("unknown"), want: false},

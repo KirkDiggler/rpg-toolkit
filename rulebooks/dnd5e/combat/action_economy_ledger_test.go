@@ -80,6 +80,9 @@ func (s *ActionEconomyLedgerTestSuite) TestKeyedCapacityIsTheFieldedCapacity() {
 	economy.BankCapacity(combat.CapacityFlurryStrike, 2)
 	s.Equal(2, economy.FlurryStrikesRemaining)
 
+	economy.BankCapacity(combat.CapacityDeathSave, 1)
+	s.Equal(1, economy.DeathSavesRemaining)
+
 	economy.SetMovement(30)
 	s.Equal(30, economy.CapacityLeft(combat.CapacityMovement))
 

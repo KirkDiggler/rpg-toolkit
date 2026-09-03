@@ -265,3 +265,36 @@ func (s *DeathSaveTestSuite) TestNilStateReturnsError() {
 	s.Nil(result)
 	s.Contains(err.Error(), "state cannot be nil")
 }
+
+func (s *DeathSaveTestSuite) TestResultAuthorsExactProgressDeltas() {
+	tests := []struct {
+		roll         int
+		successes    int
+		failures     int
+		criticalFail bool
+		criticalSave bool
+	}{
+		{roll: 1, failures: 2, criticalFail: true},
+		{roll: 2, failures: 1},
+		{roll: 9, failures: 1},
+		{roll: 10, successes: 1},
+		{roll: 19, successes: 1},
+		{roll: 20, criticalSave: true},
+	}
+
+	for _, tc := range tests {
+		s.Run(fmt.Sprintf("roll_%d", tc.roll), func() {
+			s.SetupTest()
+			s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(tc.roll, nil)
+			result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
+				Roller: s.mockRoller,
+				State:  &DeathSaveState{},
+			})
+			s.Require().NoError(err)
+			s.Equal(tc.successes, result.SuccessesAdded)
+			s.Equal(tc.failures, result.FailuresAdded)
+			s.Equal(tc.criticalFail, result.IsCriticalFail)
+			s.Equal(tc.criticalSave, result.IsCriticalSuccess)
+		})
+	}
+}

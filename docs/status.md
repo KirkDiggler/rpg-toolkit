@@ -21,6 +21,21 @@ Executable character/monster action packages and producer-specific resolution
 compilers are retired. Older sections below retain the legacy module's delivery
 history and must not be read as current support.
 
+**#1437 — root D&D life-state participation provider (provider complete;
+consumers pending).** `combat.IsDown` remains the canonical standing answer, not
+a complete participation policy. `combat.ClassifyLifeState` combines that answer
+with combatant kind plus stabilization and death facts to distinguish conscious,
+dying, stabilized, dead, and defeated states. `combat.ParticipationFor` is the
+single policy for normal action, death saves, retained initiative, automatic
+turn passing, attack targetability, and consciousness: dying and stabilized
+characters retain their player turn and remain targets, stabilized characters
+auto-pass it, and dead characters and defeated monsters no longer participate.
+`combat.PartyDefeated` requires a non-empty player-character party with no
+conscious member, so an empty dungeon is not a defeat. The existing
+`combat.CanBeAttackTarget(kind, down)` surface delegates through the derived
+policy for compatibility with #1418. Session and encounter consumers remain
+follow-up work rather than being implied by the former binary down answer.
+
 **#1366/#1367 — restore the Martial Arts bonus Attack declaration (provider
 shipped; session active).** Root D&D `v0.125.1` compiles the previously verified
 rule into ADR-0045's inert action model: an eligible unarmored Martial Arts

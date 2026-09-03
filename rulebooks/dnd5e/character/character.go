@@ -271,78 +271,6 @@ func (c *Character) MakeSavingThrow(
 	})
 }
 
-// MakeDeathSaveInput contains parameters for a character death saving throw
-type MakeDeathSaveInput struct {
-	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
-	// Pass a mock roller here for testing.
-	Roller dice.Roller
-}
-
-// MakeDeathSave makes a death saving throw for this character.
-// The character's death save state is automatically updated based on the roll.
-// Returns the result including the updated state.
-func (c *Character) MakeDeathSave(
-	ctx context.Context, input *MakeDeathSaveInput,
-) (*saves.DeathSaveResult, error) {
-	// Initialize death save state if nil
-	if c.deathSaveState == nil {
-		c.deathSaveState = &saves.DeathSaveState{}
-	}
-
-	result, err := saves.MakeDeathSave(ctx, &saves.DeathSaveInput{
-		Roller: input.Roller,
-		State:  c.deathSaveState,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Update the character's state with the result
-	c.deathSaveState = result.State
-
-	return result, nil
-}
-
-// TakeDamageWhileUnconsciousInput contains parameters for taking damage at 0 HP
-type TakeDamageWhileUnconsciousInput struct {
-	// IsCritical is true if the damage was from a critical hit (adds 2 failures instead of 1)
-	IsCritical bool
-}
-
-// TakeDamageWhileUnconscious handles taking damage while at 0 HP.
-// Adds 1 failure for normal damage, 2 for critical hits.
-// Returns the result including the updated state.
-func (c *Character) TakeDamageWhileUnconscious(
-	ctx context.Context, input *TakeDamageWhileUnconsciousInput,
-) (*saves.DamageWhileUnconsciousResult, error) {
-	// Initialize death save state if nil
-	if c.deathSaveState == nil {
-		c.deathSaveState = &saves.DeathSaveState{}
-	}
-
-	result, err := saves.TakeDamageWhileUnconscious(ctx, &saves.DamageWhileUnconsciousInput{
-		State:      c.deathSaveState,
-		IsCritical: input.IsCritical,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Update the character's state with the result
-	c.deathSaveState = result.State
-
-	return result, nil
-}
-
-// GetDeathSaveState returns the character's current death save state.
-// Returns an empty state if the character has never made death saves.
-func (c *Character) GetDeathSaveState() *saves.DeathSaveState {
-	if c.deathSaveState == nil {
-		return &saves.DeathSaveState{}
-	}
-	return c.deathSaveState
-}
-
 // SpendHitDiceInput contains parameters for spending hit dice during a short rest
 type SpendHitDiceInput struct {
 	// Count is the number of hit dice to spend (must be >= 1)
@@ -380,6 +308,10 @@ func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) 
 	}
 	if input.Count < 1 {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "must spend at least 1 hit die")
+	}
+	if c.lifeState() == combat.LifeStateDead {
+		return nil, rpgerr.New(rpgerr.CodeInvalidState,
+			"dead characters cannot spend hit dice")
 	}
 
 	// Get hit dice resource
@@ -448,12 +380,6 @@ func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) 
 		TotalHealing: totalHealing,
 		Remaining:    hitDiceResource.Current(),
 	}, nil
-}
-
-// ResetDeathSaveState clears the character's death save state.
-// Call this when the character is healed above 0 HP or regains consciousness.
-func (c *Character) ResetDeathSaveState() {
-	c.deathSaveState = &saves.DeathSaveState{}
 }
 
 // LongRest performs a long rest, restoring HP to maximum and all long-rest resources.
@@ -663,9 +589,7 @@ func (c *Character) GetMaxHitPoints() int {
 // for persisting the updated character state.
 //
 // Implements combat.Combatant interface.
-//
-//nolint:revive // ctx is unused but kept for interface consistency and future use
-func (c *Character) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
+func (c *Character) ApplyDamage(ctx context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
 		return &combat.ApplyDamageResult{
 			CurrentHP:  c.hitPoints,
@@ -676,18 +600,35 @@ func (c *Character) ApplyDamage(_ context.Context, input *combat.ApplyDamageInpu
 	previousHP := c.hitPoints
 	totalDamage := 0
 
-	// Sum all damage instances
+	// Instances have already passed the damage fold. Only positive amounts
+	// represent applied damage; an empty/finally-immune input lands nothing.
 	for _, instance := range input.Instances {
-		totalDamage += instance.Amount
+		if instance.Amount > 0 {
+			totalDamage += instance.Amount
+		}
 	}
 
-	// Apply damage (minimum HP is 0)
-	c.hitPoints -= totalDamage
-	if c.hitPoints < 0 {
-		c.hitPoints = 0
-	}
+	if totalDamage > 0 {
+		// Damage received while already at zero is an authoritative death-save
+		// transition. It is applied here because the direct damage resolution
+		// path does not publish DamageReceivedEvent.
+		deathSaveChanged := false
+		if previousHP == 0 && c.lifeState() != combat.LifeStateDead {
+			_, deathSaveChanged, _ = c.applyDeathSaveFailure(ctx, input.IsCritical)
+		}
 
-	c.dirty = true // Mark dirty when HP changes
+		c.hitPoints -= totalDamage
+		if c.hitPoints < 0 {
+			c.hitPoints = 0
+		}
+
+		// Positive damage either moved hit points or death-save progress. A Dead
+		// character already at zero ignores further failures and has no change
+		// to report.
+		if previousHP > 0 || deathSaveChanged {
+			c.dirty = true
+		}
+	}
 
 	return &combat.ApplyDamageResult{
 		TotalDamage:   totalDamage,
@@ -1041,7 +982,7 @@ func (c *Character) ToData() *Data {
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,
 		ArmorClass:          c.armorClass,
-		DeathSaveState:      c.deathSaveState,
+		DeathSaveState:      cloneDeathSaveState(c.deathSaveState),
 		Skills:              maps.Clone(c.skills),
 		SavingThrows:        maps.Clone(c.savingThrows),
 		ArmorProficiencies:  c.armorProficiencies,
@@ -1306,6 +1247,9 @@ func (c *Character) onHealingReceived(
 	if event.TargetID != c.id {
 		return nil
 	}
+	if c.lifeState() == combat.LifeStateDead {
+		return rpgerr.New(rpgerr.CodeInvalidState, "dead characters cannot receive ordinary healing")
+	}
 
 	hpBefore := c.hitPoints
 
@@ -1313,6 +1257,13 @@ func (c *Character) onHealingReceived(
 	c.hitPoints += event.Amount
 	if c.hitPoints > c.maxHitPoints {
 		c.hitPoints = c.maxHitPoints
+	}
+
+	// Any healing that raises a Dying or Stabilized character above zero also
+	// clears the authoritative death-save progress. Life state is derived from
+	// those two facts; no condition gets a second write.
+	if hpBefore <= 0 && c.hitPoints > 0 {
+		c.deathSaveState = &saves.DeathSaveState{}
 	}
 
 	// HP is persisted, and ApplyDamage marks dirty for the same reason. This

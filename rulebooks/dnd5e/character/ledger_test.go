@@ -342,6 +342,17 @@ func (s *SheetLedgerTestSuite) TestMartialArtsCapacityUsesTheExistingPersistedKe
 		"a second spelling would strand previously persisted grants")
 }
 
+func (s *SheetLedgerTestSuite) TestDeathSaveCapacityUsesThePersistedDeathSaveKey() {
+	char := s.loaded()
+
+	char.BankCapacity(combat.CapacityDeathSave, 1)
+
+	s.Equal(1, char.GetActionEconomy().Granted[GrantedDeathSaves])
+	s.NotContains(char.GetActionEconomy().Granted,
+		GrantedActionKey(combat.CapacityDeathSave),
+		"the capacity and persisted storage vocabularies have one explicit bridge")
+}
+
 // Movement is keyed capacity to the gate and a field on the sheet, and they
 // are one thing. What a path costs is the path's business — the profile only
 // ever says "spend this much".

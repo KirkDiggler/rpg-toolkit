@@ -190,7 +190,8 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 			ReactionsRemaining:    1,
 			MovementRemaining:     15,
 			Granted: map[GrantedActionKey]int{
-				GrantedAttacks: 2,
+				GrantedAttacks:    2,
+				GrantedDeathSaves: 1,
 			},
 		},
 	}
@@ -211,6 +212,7 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 	s.Equal(1, roundTripped.ActionEconomy.ReactionsRemaining)
 	s.Equal(15, roundTripped.ActionEconomy.MovementRemaining)
 	s.Equal(2, roundTripped.ActionEconomy.Granted[GrantedAttacks])
+	s.Equal(1, roundTripped.ActionEconomy.Granted[GrantedDeathSaves])
 }
 
 // TestSeededEconomy_RoundTrip_ActivateAbility_NoNilMapPanic is the #706
@@ -321,6 +323,54 @@ func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePreservesMartialArtsCap
 	char.fromToolkitActionEconomy(toolkitEconomy)
 	s.Equal(2, char.actionEconomy.Granted[GrantedMartialArtsBonus],
 		"the fielded economy must write the same persisted grant back")
+}
+
+func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePreservesDeathSaveCapacity() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	char.actionEconomy = &ActionEconomyData{
+		Granted: map[GrantedActionKey]int{GrantedDeathSaves: 1},
+	}
+
+	toolkitEconomy := char.toToolkitActionEconomy()
+	s.Equal(1, toolkitEconomy.DeathSavesRemaining)
+
+	toolkitEconomy.DeathSavesRemaining = 2
+	char.fromToolkitActionEconomy(toolkitEconomy)
+	s.Equal(2, char.actionEconomy.Granted[GrantedDeathSaves])
+}
+
+func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePersistsSpentDeathSaveCapacityAtZero() {
+	input := &Data{
+		ID: "spent-death-save",
+		ActionEconomy: &ActionEconomyData{
+			Granted: map[GrantedActionKey]int{
+				GrantedAttacks:    2,
+				GrantedDeathSaves: 1,
+			},
+		},
+	}
+	char, err := Load(s.ctx, input)
+	s.Require().NoError(err)
+
+	fielded := char.toToolkitActionEconomy()
+	s.Require().Equal(1, fielded.DeathSavesRemaining)
+	fielded.SpendCapacity(combat.CapacityDeathSave, 1)
+	s.Require().Zero(fielded.DeathSavesRemaining)
+	char.fromToolkitActionEconomy(fielded)
+
+	s.Zero(char.CapacityLeft(combat.CapacityDeathSave))
+	exported := char.ToData()
+	s.Require().NotNil(exported.ActionEconomy)
+	s.NotContains(exported.ActionEconomy.Granted, GrantedDeathSaves,
+		"a spent one-shot grant must not survive persistence at its old value")
+	s.Equal(2, exported.ActionEconomy.Granted[GrantedAttacks],
+		"unrelated grant semantics must remain unchanged")
+
+	reloaded, err := Load(s.ctx, exported)
+	s.Require().NoError(err)
+	s.Zero(reloaded.toToolkitActionEconomy().DeathSavesRemaining,
+		"persisted zero must not resurrect the consumed Death Save")
+	s.Equal(2, reloaded.CapacityLeft(combat.CapacityAttack))
 }
 
 // --- Turn lifecycle ---

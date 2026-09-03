@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
 )
@@ -468,174 +469,18 @@ func TestCharacterSavingThrowSuite(t *testing.T) {
 	suite.Run(t, new(CharacterSavingThrowTestSuite))
 }
 
-// CharacterDeathSaveTestSuite tests death saving throw functionality
-type CharacterDeathSaveTestSuite struct {
-	suite.Suite
-	ctx       context.Context
-	character *Character
-}
-
-func (s *CharacterDeathSaveTestSuite) SetupTest() {
-	s.ctx = context.Background()
-	s.character = &Character{
-		id:             "test-char",
-		hitPoints:      0, // At 0 HP for death saves
-		maxHitPoints:   10,
-		deathSaveState: nil, // Will be initialized by methods
-	}
-}
-
-func (s *CharacterDeathSaveTestSuite) TestGetDeathSaveStateReturnsEmptyStateInitially() {
-	state := s.character.GetDeathSaveState()
-	s.Require().NotNil(state)
-	s.Equal(0, state.Successes)
-	s.Equal(0, state.Failures)
-	s.False(state.Stabilized)
-	s.False(state.Dead)
-}
-
-func (s *CharacterDeathSaveTestSuite) TestMakeDeathSaveUpdatesState() {
-	// Use mock roller for deterministic test
-	mockRoller := &mockDeathSaveRoller{rollValue: 12} // Success case (10-19)
-
-	result, err := s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{
-		Roller: mockRoller,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(12, result.Roll)
-	state := s.character.GetDeathSaveState()
-	s.Equal(1, state.Successes, "roll 12 should add 1 success")
-	s.Equal(0, state.Failures)
-}
-
-func (s *CharacterDeathSaveTestSuite) TestMakeDeathSaveWithMockRoller() {
-	// Use a mock roller to test specific outcomes
-	mockRoller := &mockDeathSaveRoller{rollValue: 15}
-
-	result, err := s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{
-		Roller: mockRoller,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(15, result.Roll)
-	s.Equal(1, result.State.Successes, "roll 15 should add 1 success")
-	s.Equal(0, result.State.Failures)
-}
-
-func (s *CharacterDeathSaveTestSuite) TestTakeDamageWhileUnconsciousAddsFailure() {
-	result, err := s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
-		IsCritical: false,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(1, result.FailuresAdded)
-	state := s.character.GetDeathSaveState()
-	s.Equal(1, state.Failures)
-}
-
-func (s *CharacterDeathSaveTestSuite) TestTakeCriticalDamageWhileUnconsciousAddsTwoFailures() {
-	result, err := s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
-		IsCritical: true,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(2, result.FailuresAdded)
-	state := s.character.GetDeathSaveState()
-	s.Equal(2, state.Failures)
-}
-
-func (s *CharacterDeathSaveTestSuite) TestResetDeathSaveStateClearsState() {
-	// Add some failures first
-	_, _ = s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
-		IsCritical: false,
-	})
-
-	// Verify state has failures
-	state := s.character.GetDeathSaveState()
-	s.Equal(1, state.Failures)
-
-	// Reset the state
-	s.character.ResetDeathSaveState()
-
-	// Verify state is cleared
-	state = s.character.GetDeathSaveState()
-	s.Equal(0, state.Successes)
-	s.Equal(0, state.Failures)
-	s.False(state.Stabilized)
-	s.False(state.Dead)
-}
-
-func (s *CharacterDeathSaveTestSuite) TestDeathSaveStatePersistsAcrossCalls() {
-	// Make multiple death saves and verify state accumulates
-	mockRoller := &mockDeathSaveRoller{rollValue: 5} // Failure
-
-	_, _ = s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{Roller: mockRoller})
-	_, _ = s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{Roller: mockRoller})
-
-	state := s.character.GetDeathSaveState()
-	s.Equal(2, state.Failures, "failures should accumulate")
-}
-
-func (s *CharacterDeathSaveTestSuite) TestDeathSaveStateSerializationRoundTrip() {
-	// Add some death save state
-	mockRoller := &mockDeathSaveRoller{rollValue: 5} // Failure
-	_, _ = s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{Roller: mockRoller})
-	_, _ = s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
-		IsCritical: false,
-	})
-
-	// Serialize to Data
-	data := s.character.ToData()
-	s.Require().NotNil(data.DeathSaveState)
-	s.Equal(2, data.DeathSaveState.Failures, "serialized state should have 2 failures")
-
-	// Load from Data
-	bus := events.NewEventBus()
-	loaded, err := LoadFromData(s.ctx, data, bus)
-	s.Require().NoError(err)
-	s.Require().NotNil(loaded)
-
-	// Verify state was restored
-	loadedState := loaded.GetDeathSaveState()
-	s.Equal(2, loadedState.Failures, "loaded state should have 2 failures")
-	s.Equal(0, loadedState.Successes, "loaded state should have 0 successes")
-	s.False(loadedState.Dead)
-	s.False(loadedState.Stabilized)
-}
-
-func TestCharacterDeathSaveSuite(t *testing.T) {
-	suite.Run(t, new(CharacterDeathSaveTestSuite))
-}
-
-// mockDeathSaveRoller is a simple mock for testing death saves
-type mockDeathSaveRoller struct {
-	rollValue int
-}
-
-func (m *mockDeathSaveRoller) Roll(_ context.Context, _ int) (int, error) {
-	return m.rollValue, nil
-}
-
-func (m *mockDeathSaveRoller) RollN(_ context.Context, n, _ int) ([]int, error) {
-	result := make([]int, n)
-	for i := range result {
-		result[i] = m.rollValue
-	}
-	return result, nil
-}
+// Death save operation coverage lives in death_save_test.go, where every roll uses
+// a Dying-turn capacity fixture rather than the superseded no-economy contract.
 
 // mockHitDiceRoller allows controlled rolls for hit dice tests
 type mockHitDiceRoller struct {
 	rolls []int // Sequence of rolls to return
 	index int   // Current position in sequence
+	calls int
 }
 
 func (m *mockHitDiceRoller) Roll(_ context.Context, _ int) (int, error) {
+	m.calls++
 	if m.index >= len(m.rolls) {
 		m.index = 0 // Loop back
 	}
@@ -645,6 +490,7 @@ func (m *mockHitDiceRoller) Roll(_ context.Context, _ int) (int, error) {
 }
 
 func (m *mockHitDiceRoller) RollN(_ context.Context, n, _ int) ([]int, error) {
+	m.calls++
 	result := make([]int, n)
 	for i := range result {
 		if m.index >= len(m.rolls) {
@@ -706,6 +552,34 @@ func (s *CharacterHitDiceTestSuite) TearDownTest() {
 }
 
 func (s *CharacterHitDiceTestSuite) TestSpendHitDice() {
+	s.Run("dead character is rejected before rolling or spending", func() {
+		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.HitDice),
+			Maximum:     4,
+			CharacterID: "test-fighter",
+			ResetType:   coreResources.ResetLongRest,
+		})
+		s.character.AddResource(resources.HitDice, hitDiceResource)
+		s.character.hitPoints = 0
+		s.character.deathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
+		markSaved(s.character)
+		roller := &mockHitDiceRoller{rolls: []int{10, 10}}
+
+		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
+			Count:  2,
+			Roller: roller,
+		})
+
+		s.Require().Error(err)
+		s.Equal(rpgerr.CodeInvalidState, rpgerr.GetCode(err))
+		s.Nil(result)
+		s.Zero(roller.calls)
+		s.Equal(4, hitDiceResource.Current())
+		s.Zero(s.character.GetHitPoints())
+		s.Equal(&saves.DeathSaveState{Failures: 3, Dead: true}, s.character.GetDeathSaveState())
+		s.False(s.character.IsDirty())
+	})
+
 	s.Run("spends hit dice and heals character", func() {
 		// Setup: Add hit dice resource (4 dice for level 4)
 		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{

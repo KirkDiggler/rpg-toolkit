@@ -40,6 +40,12 @@ type DeathSaveResult struct {
 	// Roll is the d20 roll result
 	Roll int
 
+	// SuccessesAdded and FailuresAdded report the exact progress authored by
+	// this roll, so a provider does not have to infer a rule result by diffing
+	// mutable counters.
+	SuccessesAdded int
+	FailuresAdded  int
+
 	// State is the updated death save state after this roll
 	State *DeathSaveState
 
@@ -119,13 +125,16 @@ func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult
 	case roll == 1:
 		// Critical fail: 2 failures
 		result.IsCriticalFail = true
-		newState.Failures += 2
+		result.FailuresAdded = 2
+		newState.Failures += result.FailuresAdded
 	case roll >= 2 && roll <= 9:
 		// Failure: 1 failure
-		newState.Failures++
+		result.FailuresAdded = 1
+		newState.Failures += result.FailuresAdded
 	case roll >= 10 && roll <= 19:
 		// Success: 1 success
-		newState.Successes++
+		result.SuccessesAdded = 1
+		newState.Successes += result.SuccessesAdded
 	case roll == 20:
 		// Critical success: regain consciousness at 1 HP
 		result.IsCriticalSuccess = true

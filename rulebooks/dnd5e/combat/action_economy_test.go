@@ -834,4 +834,10 @@ func (s *ActionEconomyTestSuite) TestResetClearsGrantedCapacity() {
 		s.economy.Reset()
 		s.Equal(0, s.economy.FlurryStrikesRemaining)
 	})
+
+	s.Run("reset clears death saves", func() {
+		s.economy.BankCapacity(CapacityDeathSave, 1)
+		s.economy.Reset()
+		s.Equal(0, s.economy.DeathSavesRemaining)
+	})
 }

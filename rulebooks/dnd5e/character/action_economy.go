@@ -87,13 +87,18 @@ func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartT
 // this turn's to spend. Shared by the turn-start verb and the freshness helper
 // so the two cannot drift into disagreeing about what a fresh turn looks like.
 func (c *Character) seedTurn(turnNumber, speed int) {
+	granted := make(map[GrantedActionKey]int)
+	if combat.ParticipationFor(c.lifeState()).NeedsDeathSave {
+		granted[GrantedDeathSaves] = 1
+	}
+
 	c.actionEconomy = &ActionEconomyData{
 		TurnNumber:            turnNumber,
 		ActionsRemaining:      1,
 		BonusActionsRemaining: 1,
 		ReactionsRemaining:    1,
 		MovementRemaining:     speed,
-		Granted:               make(map[GrantedActionKey]int),
+		Granted:               granted,
 	}
 	c.economyChanged()
 }
@@ -457,6 +462,9 @@ func (c *Character) toToolkitActionEconomy() *combat.ActionEconomy {
 	if flurry, ok := c.actionEconomy.Granted[GrantedFlurryStrikes]; ok {
 		ae.FlurryStrikesRemaining = flurry
 	}
+	if deathSaves, ok := c.actionEconomy.Granted[GrantedDeathSaves]; ok {
+		ae.DeathSavesRemaining = deathSaves
+	}
 
 	return ae
 }
@@ -473,7 +481,7 @@ func (c *Character) fromToolkitActionEconomy(ae *combat.ActionEconomy) {
 	c.actionEconomy.ReactionsRemaining = ae.ReactionsRemaining
 	c.actionEconomy.MovementRemaining = ae.MovementRemaining
 
-	// Sync granted capacity back
+	// Sync granted capacity back.
 	if ae.AttacksRemaining > 0 {
 		c.actionEconomy.Granted[GrantedAttacks] = ae.AttacksRemaining
 	}
@@ -485,6 +493,11 @@ func (c *Character) fromToolkitActionEconomy(ae *combat.ActionEconomy) {
 	}
 	if ae.FlurryStrikesRemaining > 0 {
 		c.actionEconomy.Granted[GrantedFlurryStrikes] = ae.FlurryStrikesRemaining
+	}
+	if ae.DeathSavesRemaining > 0 {
+		c.actionEconomy.Granted[GrantedDeathSaves] = ae.DeathSavesRemaining
+	} else {
+		delete(c.actionEconomy.Granted, GrantedDeathSaves)
 	}
 
 	c.economyChanged()

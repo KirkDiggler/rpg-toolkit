@@ -16,7 +16,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
-// UnconsciousData is the JSON structure for persisting unconscious condition state
+// UnconsciousData is the legacy JSON structure for persisted unconscious
+// condition state. The counters remain loadable for migration compatibility,
+// but Character.Data.DeathSaveState is authoritative.
 type UnconsciousData struct {
 	Ref        *core.Ref `json:"ref"`
 	MemberID   string    `json:"member_id"`
@@ -26,28 +28,30 @@ type UnconsciousData struct {
 	Dead       bool      `json:"dead"`
 }
 
-// UnconsciousCondition represents an unconscious character making death saves.
-// It subscribes to turn start, damage, and healing events to automate
-// death saving throws per D&D 5e rules.
+// UnconsciousCondition is a compatibility shell for legacy persisted blobs.
+// It deliberately owns no death-save behavior: its turn, damage, and healing
+// handlers are inert and therefore cannot maintain a second progress ledger
+// beside Character.Data.DeathSaveState. Long-rest removal remains so an old
+// condition can age out normally after loading.
 type UnconsciousCondition struct {
-	CharacterID     string
-	Roller          dice.Roller
+	CharacterID string
+
+	// Roller remains for Go source compatibility with the historical
+	// constructor and struct surface. It is never invoked.
+	Roller dice.Roller
+
 	deathSaveState  *saves.DeathSaveState
 	subscriptionIDs []string
 	bus             events.EventBus
 }
 
-// Ensure UnconsciousCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnconsciousCondition)(nil)
 
-// Ref returns the canonical ref this condition names itself by — the same ref
-// its ToJSON embeds and its loader routes on.
+// Ref returns the canonical ref embedded by the legacy persistence format.
 func (c *UnconsciousCondition) Ref() *core.Ref { return refs.Conditions.Unconscious() }
 
-// NewUnconsciousCondition creates a new Unconscious condition for the
-// specified character, using roller for its auto-rolled death saves.
-// Mirrors NewDodgingCondition's constructor pattern; Unconscious additionally
-// needs a dice.Roller since (unlike Dodging) it rolls dice on its own.
+// NewUnconsciousCondition constructs the compatibility condition. Death-save
+// execution belongs to character.MakeDeathSave rather than this condition.
 func NewUnconsciousCondition(characterID string, roller dice.Roller) *UnconsciousCondition {
 	return &UnconsciousCondition{
 		CharacterID: characterID,
@@ -55,61 +59,65 @@ func NewUnconsciousCondition(characterID string, roller dice.Roller) *Unconsciou
 	}
 }
 
-// IsApplied returns true if this condition is currently applied
-func (c *UnconsciousCondition) IsApplied() bool {
-	return c.bus != nil
-}
+// IsApplied reports whether the compatibility shell is attached to a bus.
+func (c *UnconsciousCondition) IsApplied() bool { return c.bus != nil }
 
-// Apply subscribes this condition to relevant combat events
+// Apply keeps the legacy subscription shape for attach/rollback compatibility,
+// but all three death-save handlers are inert. Only long-rest cleanup can
+// mutate the condition.
 func (c *UnconsciousCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if c.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "unconscious condition already applied")
 	}
-
 	if c.deathSaveState == nil {
 		c.deathSaveState = &saves.DeathSaveState{}
 	}
 
 	c.bus = bus
 
-	// Subscribe to turn start events to auto-roll death saves
-	turnStarts := dnd5eEvents.TurnStartTopic.On(bus)
-	subID1, err := turnStarts.Subscribe(ctx, c.onTurnStart)
+	turnSubID, err := dnd5eEvents.TurnStartTopic.On(bus).Subscribe(ctx, c.onTurnStart)
 	if err != nil {
 		c.bus = nil
 		return err
 	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID1)
+	c.subscriptionIDs = append(c.subscriptionIDs, turnSubID)
 
-	// Subscribe to damage events to add automatic failures
-	damages := dnd5eEvents.DamageReceivedTopic.On(bus)
-	subID2, err := damages.Subscribe(ctx, c.onDamageReceived)
+	damageSubID, err := dnd5eEvents.DamageReceivedTopic.On(bus).Subscribe(ctx, c.onDamageReceived)
 	if err != nil {
 		_ = c.Remove(ctx, bus)
 		return err
 	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID2)
+	c.subscriptionIDs = append(c.subscriptionIDs, damageSubID)
 
-	// Subscribe to healing events to wake up
-	healings := dnd5eEvents.HealingReceivedTopic.On(bus)
-	subID3, err := healings.Subscribe(ctx, c.onHealingReceived)
+	healingSubID, err := dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, c.onHealingReceived)
 	if err != nil {
 		_ = c.Remove(ctx, bus)
 		return err
 	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID3)
+	c.subscriptionIDs = append(c.subscriptionIDs, healingSubID)
 
-	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, c.CharacterID, c.Ref(), c.Remove)
+	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, c.CharacterID, c.Ref(), c.Remove)
 	if err != nil {
 		_ = c.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to long rest")
 	}
-	c.subscriptionIDs = append(c.subscriptionIDs, longRestSubID)
-
+	c.subscriptionIDs = append(c.subscriptionIDs, restSubID)
 	return nil
 }
 
-// Remove unsubscribes this condition from events using error-collection pattern
+func (c *UnconsciousCondition) onTurnStart(context.Context, dnd5eEvents.TurnStartEvent) error {
+	return nil
+}
+
+func (c *UnconsciousCondition) onDamageReceived(context.Context, dnd5eEvents.DamageReceivedEvent) error {
+	return nil
+}
+
+func (c *UnconsciousCondition) onHealingReceived(context.Context, dnd5eEvents.HealingReceivedEvent) error {
+	return nil
+}
+
+// Remove unsubscribes the compatibility shell.
 func (c *UnconsciousCondition) Remove(ctx context.Context, bus events.EventBus) error {
 	if c.bus == nil {
 		return nil
@@ -121,7 +129,6 @@ func (c *UnconsciousCondition) Remove(ctx context.Context, bus events.EventBus) 
 			errs = append(errs, err)
 		}
 	}
-
 	c.subscriptionIDs = nil
 	c.bus = nil
 
@@ -131,7 +138,8 @@ func (c *UnconsciousCondition) Remove(ctx context.Context, bus events.EventBus) 
 	return nil
 }
 
-// ToJSON converts the condition to JSON for persistence
+// ToJSON retains the legacy schema so loading and writing an old blob is
+// lossless until its normal removal.
 func (c *UnconsciousCondition) ToJSON() (json.RawMessage, error) {
 	data := UnconsciousData{
 		Ref:      refs.Conditions.Unconscious(),
@@ -146,7 +154,8 @@ func (c *UnconsciousCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(data)
 }
 
-// loadJSON loads unconscious condition state from JSON
+// loadJSON restores the legacy blob without promoting its counters to an
+// active rules ledger.
 func (c *UnconsciousCondition) loadJSON(data json.RawMessage) error {
 	var ud UnconsciousData
 	if err := json.Unmarshal(data, &ud); err != nil {
@@ -160,202 +169,5 @@ func (c *UnconsciousCondition) loadJSON(data json.RawMessage) error {
 		Stabilized: ud.Stabilized,
 		Dead:       ud.Dead,
 	}
-
-	return nil
-}
-
-// onTurnStart handles turn start events to auto-roll death saves
-func (c *UnconsciousCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.SubjectID != c.CharacterID {
-		return nil
-	}
-	if c.deathSaveState.Stabilized || c.deathSaveState.Dead {
-		return nil
-	}
-
-	// Reload survives CharacterID + death-save counters (loadJSON) but NOT
-	// Roller — every RPC reconstructs the encounter/character fresh from
-	// persisted JSON, so a character that went unconscious on a prior RPC
-	// has Roller == nil here on the next one. Lazy-fallback at point-of-use,
-	// mirroring BrutalCriticalCondition.onDamageChain / SneakAttackCondition.
-	// onDamageChain, rather than depending on construction-time injection
-	// surviving a reload (rpg-toolkit#733).
-	roller := c.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
-
-	result, err := saves.MakeDeathSave(ctx, &saves.DeathSaveInput{
-		Roller: roller,
-		State:  c.deathSaveState,
-	})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to make death save for character %s", c.CharacterID)
-	}
-
-	// Update internal state from result
-	c.deathSaveState = result.State
-
-	// Publish death save rolled event
-	rolledEvent := dnd5eEvents.DeathSaveRolledEvent{
-		CharacterID:           c.CharacterID,
-		Roll:                  result.Roll,
-		IsSuccess:             result.Roll >= 10,
-		IsCriticalFail:        result.IsCriticalFail,
-		IsCriticalSuccess:     result.IsCriticalSuccess,
-		Successes:             result.State.Successes,
-		Failures:              result.State.Failures,
-		Stabilized:            result.State.Stabilized,
-		Dead:                  result.State.Dead,
-		RegainedConsciousness: result.RegainedConsciousness,
-		HPRestored:            result.HPRestored,
-	}
-
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(c.bus)
-	if err := rolledTopic.Publish(ctx, rolledEvent); err != nil {
-		return rpgerr.Wrapf(err, "failed to publish death save rolled event for character %s", c.CharacterID)
-	}
-
-	// Handle outcomes
-	if result.State.Dead {
-		diedTopic := dnd5eEvents.CharacterDiedTopic.On(c.bus)
-		if err := diedTopic.Publish(ctx, dnd5eEvents.CharacterDiedEvent{
-			CharacterID: c.CharacterID,
-		}); err != nil {
-			return rpgerr.Wrapf(err, "failed to publish character died event for character %s", c.CharacterID)
-		}
-		return nil
-	}
-
-	if result.State.Stabilized {
-		stabilizedTopic := dnd5eEvents.CharacterStabilizedTopic.On(c.bus)
-		if err := stabilizedTopic.Publish(ctx, dnd5eEvents.CharacterStabilizedEvent{
-			CharacterID: c.CharacterID,
-		}); err != nil {
-			return rpgerr.Wrapf(err, "failed to publish character stabilized event for character %s", c.CharacterID)
-		}
-		return nil
-	}
-
-	if result.RegainedConsciousness {
-		// Capture bus before Remove nils it
-		bus := c.bus
-
-		// Remove self first (unsubscribe from events before publishing healing
-		// to avoid re-triggering onHealingReceived)
-		if err := c.Remove(ctx, bus); err != nil {
-			return rpgerr.Wrapf(err, "failed to remove unconscious condition for character %s", c.CharacterID)
-		}
-
-		// Publish condition removal
-		removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
-		if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-			MemberID:     c.CharacterID,
-			ConditionRef: refs.Conditions.Unconscious().String(),
-			Reason:       "nat_20",
-		}); err != nil {
-			return rpgerr.Wrapf(err, "failed to publish condition removed event for character %s", c.CharacterID)
-		}
-
-		// Publish healing event for 1 HP
-		healingTopic := dnd5eEvents.HealingReceivedTopic.On(bus)
-		if err := healingTopic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
-			TargetID: c.CharacterID,
-			Amount:   1,
-			Source:   "death_save_nat_20",
-		}); err != nil {
-			return rpgerr.Wrapf(err, "failed to publish healing event for character %s", c.CharacterID)
-		}
-
-		return nil
-	}
-
-	return nil
-}
-
-// onDamageReceived handles damage events to add automatic death save failures
-func (c *UnconsciousCondition) onDamageReceived(ctx context.Context, event dnd5eEvents.DamageReceivedEvent) error {
-	if event.TargetID != c.CharacterID {
-		return nil
-	}
-	if c.deathSaveState.Dead {
-		return nil
-	}
-
-	// Per 5e RAW, a stabilized-but-unconscious creature taking damage
-	// loses stabilization and gains a death save failure
-	if c.deathSaveState.Stabilized {
-		c.deathSaveState.Stabilized = false
-	}
-
-	result, err := saves.TakeDamageWhileUnconscious(ctx, &saves.DamageWhileUnconsciousInput{
-		State:      c.deathSaveState,
-		IsCritical: event.IsCritical,
-	})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to process damage while unconscious for character %s", c.CharacterID)
-	}
-
-	// Update internal state
-	c.deathSaveState = result.State
-
-	// Publish death save rolled event (roll=0 indicates damage, not a roll)
-	rolledEvent := dnd5eEvents.DeathSaveRolledEvent{
-		CharacterID: c.CharacterID,
-		Roll:        0,
-		Successes:   result.State.Successes,
-		Failures:    result.State.Failures,
-		Dead:        result.State.Dead,
-	}
-
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(c.bus)
-	if err := rolledTopic.Publish(ctx, rolledEvent); err != nil {
-		return rpgerr.Wrapf(err, "failed to publish death save rolled event for character %s", c.CharacterID)
-	}
-
-	if result.State.Dead {
-		diedTopic := dnd5eEvents.CharacterDiedTopic.On(c.bus)
-		if err := diedTopic.Publish(ctx, dnd5eEvents.CharacterDiedEvent{
-			CharacterID: c.CharacterID,
-		}); err != nil {
-			return rpgerr.Wrapf(err, "failed to publish character died event for character %s", c.CharacterID)
-		}
-	}
-
-	return nil
-}
-
-// onHealingReceived handles healing events to wake up unconscious characters
-func (c *UnconsciousCondition) onHealingReceived(ctx context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-	if event.TargetID != c.CharacterID {
-		return nil
-	}
-	if c.deathSaveState.Dead {
-		return nil
-	}
-
-	// Reset death save state
-	c.deathSaveState.Successes = 0
-	c.deathSaveState.Failures = 0
-	c.deathSaveState.Stabilized = false
-
-	// Capture bus before Remove nils it
-	bus := c.bus
-
-	// Remove self first
-	if err := c.Remove(ctx, bus); err != nil {
-		return rpgerr.Wrapf(err, "failed to remove unconscious condition for character %s", c.CharacterID)
-	}
-
-	// Publish condition removal
-	removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
-	if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     c.CharacterID,
-		ConditionRef: refs.Conditions.Unconscious().String(),
-		Reason:       "healed",
-	}); err != nil {
-		return rpgerr.Wrapf(err, "failed to publish condition removed event for character %s", c.CharacterID)
-	}
-
 	return nil
 }
