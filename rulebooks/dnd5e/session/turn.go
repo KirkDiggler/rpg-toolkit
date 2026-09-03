@@ -84,16 +84,14 @@ type Participant struct {
 
 	// Standing is on their feet or downed.
 	//
-	// A DOWNED PARTICIPANT DOES NOT LINGER HERE. This mirrors Order exactly
-	// (Participants is a projection of it, never a second opinion about who
-	// belongs), and the composition splices a body out of Order the moment
-	// it notices one (encounter.noticeDown, rpg-toolkit#1078: "a body keeps
-	// no turn, and the order closes over the gap rather than holding it
-	// open"). Standing is still meaningful here, though: a member reported
-	// active or seated in an initiative order this call already trusts can
-	// still, in principle, be down for one beat before the next sight
-	// refresh notices — Where, View and Story all keep answering about a
-	// downed member regardless of whether Order still holds them.
+	// DOWNED DOES NOT BY ITSELF DECIDE ORDER MEMBERSHIP. Participants mirrors
+	// Order exactly, and provider participation distinguishes the life states:
+	// Dying retains a waiting slot for an explicit Death Save; Stabilized
+	// retains an auto-pass slot (and a character stabilized on their active
+	// turn keeps that slot until EndTurn); Dead characters and Defeated
+	// monsters are removed. LifeState says which case this downed row is.
+	// Where, View, and Story keep answering about every downed member whether
+	// or not Order retains them.
 	Standing Standing `json:"standing"`
 
 	// Active is whether it is this member's turn. Exactly one true on the

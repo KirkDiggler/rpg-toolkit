@@ -180,10 +180,8 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 	if err != nil {
 		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, translate(err)))
 	}
-	if recorded.Seq != pendingGlobalSeq {
-		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope,
-			fmt.Errorf("recorded sequence %d, expected pending %d: %w",
-				recorded.Seq, pendingGlobalSeq, ErrInvalidWorld)))
+	if err := validateDeathSaveRecordSequence(recorded.Seq, pendingGlobalSeq); err != nil {
+		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, err))
 	}
 	if err := assertDeathSaveContinuation(scope.enc, in.Member, result.Continuation); err != nil {
 		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, err))
@@ -195,6 +193,16 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 	}
 
 	return result.output(scope.deliveredSeq(in.Member, recorded.Seq), report, delivery), nil
+}
+
+// validateDeathSaveRecordSequence keeps the append-order assertion internal.
+// A mismatch remains ErrInvalidWorld but exposes neither global sequence value
+// nor the pending global watermark through the host-facing error.
+func validateDeathSaveRecordSequence(recorded, pending uint64) error {
+	if recorded == pending {
+		return nil
+	}
+	return fmt.Errorf("death save record sequence mismatch: %w", ErrInvalidWorld)
 }
 
 func projectDeathSaveResult(

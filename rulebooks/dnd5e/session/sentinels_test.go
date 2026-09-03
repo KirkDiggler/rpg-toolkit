@@ -570,16 +570,17 @@ func (s *SentinelSuite) TestASwingWithAnEmptyHandIsNotRefused() {
 	s.NoError(err)
 }
 
-// TestOneSheetStoredUnderTwoNames pins dependency preflight ahead of
-// resolution. The roster holds two members and the repository answers both
-// with Alice's sheet; Afford marks the Attack Unreadable, and echoing that
-// unavailable selector is stale before resolution or mutation.
+// TestOneSheetStoredUnderTwoNames pins repository identity validation ahead of
+// resolution and offer policy. The roster holds two members and the repository
+// answers both with Alice's sheet; the successful wrong-ID lookup is a host
+// contract violation rather than a Conscious fallback or stale declaration.
 func (s *SentinelSuite) TestOneSheetStoredUnderTwoNames() {
 	chars := newFakeCharacters(armedFighter("alice"))
 	chars.byID["bob"] = armedFighter("alice")
+	mgr := s.armedDuel(chars)
 
-	err := s.swing(s.armedDuel(chars))
-	s.refusedInOurVocabulary(err, session.ErrStaleDeclaration)
+	_, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	s.refusedInOurVocabulary(err, session.ErrBadRepository)
 }
 
 // TestASwingWithAnUnreadableSheet is the loader's own refusal on the swing
