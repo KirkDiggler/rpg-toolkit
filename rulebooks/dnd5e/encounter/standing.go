@@ -115,7 +115,7 @@ func (e *Encounter) noticeDown() (*participationState, map[MemberID]*IntelDelta,
 			continue
 		}
 
-		decided, derr := e.fightIsDecided(bubble, participation.contact)
+		decided, derr := e.fightIsDecided(bubble, participation)
 		if derr != nil {
 			return nil, nil, fmt.Errorf("participation fight %q: %w", id, derr)
 		}
@@ -188,12 +188,13 @@ func (e *Encounter) firedMemberDown(down map[MemberID]bool) error {
 	return nil
 }
 
-// fightIsDecided reports whether a removal leaves this bubble without a
-// supplied Contact side. It is reached only through a TurnParticipationRemove
-// member, so an unrelated caller transfer cannot fabricate defeat. Down is not
-// consulted: a retained dying or stabilized slot does not itself decide a
-// fight, while Contact remains the rulebook's side-membership answer.
-func (e *Encounter) fightIsDecided(bubble *clock.Turn, contact map[MemberID]bool) (bool, error) {
+// fightIsDecided reports whether the complete supplied removal set leaves this
+// bubble without a Contact side. It is reached before any one member transfers,
+// so every TurnParticipationRemove member is excluded regardless of Contact:
+// the census describes the post-removal bubble rather than its current order.
+// Down is not consulted; retained dying and stabilized slots remain eligible
+// exactly according to their independent Contact answers.
+func (e *Encounter) fightIsDecided(bubble *clock.Turn, participation *participationState) (bool, error) {
 	order, err := bubble.Order()
 	if err != nil {
 		return false, err
@@ -214,7 +215,11 @@ func (e *Encounter) fightIsDecided(bubble *clock.Turn, contact map[MemberID]bool
 			// the caller's obligation on error is to drop the encounter unsaved.
 			return false, fmt.Errorf("fight order holds %q, who is not a member: %w", id, ErrInvalidData)
 		}
-		if !contact[id] {
+		memberParticipation, ok := participation.members[id]
+		if !ok {
+			return false, fmt.Errorf("fight order holds %q without a participation answer: %w", id, ErrInvalidData)
+		}
+		if memberParticipation.Turn == TurnParticipationRemove || !memberParticipation.Contact {
 			continue
 		}
 		switch member.Kind {

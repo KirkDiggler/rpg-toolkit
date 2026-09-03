@@ -268,6 +268,39 @@ func TestRemoveLeavesInitiativeButKeepsMapAndRoster(t *testing.T) {
 	require.Equal(t, cellAt(1, 2), members[1].Position)
 }
 
+func TestRemoveWithContactTrueUsesPostRemovalSidesAndDissolves(t *testing.T) {
+	capability := &scriptedParticipation{}
+	enc := participationTrio(t, capability)
+	require.Equal(t, encounter.ClockTurn, clockState(t, enc, alice).Kind)
+	callsBefore := len(capability.questions)
+
+	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+		goblin: {
+			Down: true, Contact: true, Turn: encounter.TurnParticipationRemove,
+		},
+	}
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
+	})
+	require.NoError(t, err)
+	require.Len(t, capability.questions, callsBefore+1,
+		"the post-removal census reuses the consequence pass assessment")
+
+	for _, id := range []encounter.MemberID{alice, bob, goblin} {
+		require.Equal(t, encounter.ClockWorld, clockState(t, enc, id).Kind,
+			"the defeated side is gone, so the bubble dissolves instead of stranding its other side")
+	}
+	require.Empty(t, enc.ToData().Bubbles)
+
+	beats := storyBeats(t, enc, alice)
+	kinds := make([]string, 0, len(beats))
+	for _, beat := range beats {
+		kinds = append(kinds, beat["beat"].(string))
+	}
+	require.Equal(t, []string{"scene-opened", "bubble-formed", "missed", "down", "bubble-dissolved"}, kinds,
+		"the triggering outcome and down beat remain ahead of the dissolution they cause")
+}
+
 func TestRemovingTheActiveMemberAdvancesExactlyOnce(t *testing.T) {
 	capability := &scriptedParticipation{}
 	enc := participationTrio(t, capability)
