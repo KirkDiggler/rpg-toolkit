@@ -137,6 +137,23 @@ func TestRollCalculationValidation(t *testing.T) {
 			},
 		},
 		{
+			name: "signed negative notation",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.Notation = "-d6"
+				calc.Components[0].Dice.OriginalRolls = []int{5}
+				calc.Components[0].Dice.Rerolls = nil
+				calc.Components[0].Dice.FinalRolls = []int{5}
+				calc.Components[0].Dice.Subtotal = 5
+				calc.Total = 8
+			},
+		},
+		{
+			name: "signed composite notation",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.Notation = "-d6+2d6"
+			},
+		},
+		{
 			name: "original and final cardinality differ",
 			change: func(calc *RollCalculation) {
 				calc.Components[0].Dice.FinalRolls = []int{4}

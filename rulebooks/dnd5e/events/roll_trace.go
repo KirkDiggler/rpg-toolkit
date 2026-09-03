@@ -209,6 +209,16 @@ func validateDiceTrace(trace *DiceTrace) error {
 		return fmt.Errorf("die size must be positive")
 	}
 
+	// dice.ParseNotation normalizes signed notation (e.g. "-d6" parses as one
+	// positive d6 and composite terms drop negative parts), but a DiceTrace
+	// records one unsigned homogeneous pool; modifiers live on the component.
+	if strings.ContainsAny(trace.Notation, "+-") {
+		return fmt.Errorf(
+			"dice notation %q must be unsigned homogeneous dice without signed or composite terms",
+			trace.Notation,
+		)
+	}
+
 	pool, err := dice.ParseNotation(trace.Notation)
 	if err != nil {
 		return fmt.Errorf("invalid dice notation %q: %w", trace.Notation, err)
