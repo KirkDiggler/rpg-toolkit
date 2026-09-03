@@ -38,6 +38,9 @@ type FightingStyleGreatWeaponFightingCondition struct {
 // Ensure FightingStyleGreatWeaponFightingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleGreatWeaponFightingCondition)(nil)
 
+// Ensure FightingStyleGreatWeaponFightingCondition can receive a runtime roller.
+var _ RollerBinder = (*FightingStyleGreatWeaponFightingCondition)(nil)
+
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
 func (f *FightingStyleGreatWeaponFightingCondition) Ref() *core.Ref {
@@ -52,6 +55,17 @@ func NewFightingStyleGreatWeaponFightingCondition(
 		MemberID: characterID,
 		roller:   roller,
 	}
+}
+
+// BindRoller binds the roller this condition rerolls weapon dice with, so a
+// condition restored from persisted JSON — whose loader has no roller to give
+// it — rolls the interaction's dice instead of a process-global default. A
+// nil roller leaves the current one alone.
+func (f *FightingStyleGreatWeaponFightingCondition) BindRoller(roller dice.Roller) {
+	if roller == nil {
+		return
+	}
+	f.roller = roller
 }
 
 // IsApplied returns true if this condition is currently applied.

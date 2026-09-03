@@ -42,6 +42,20 @@ type MartialArtsCondition struct {
 // Ensure MartialArtsCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*MartialArtsCondition)(nil)
 
+// Ensure MartialArtsCondition can receive a runtime roller.
+var _ RollerBinder = (*MartialArtsCondition)(nil)
+
+// BindRoller binds the roller this condition rolls martial arts damage with,
+// so a condition restored from persisted JSON — whose loader has no roller to
+// give it — rolls the interaction's dice instead of a process-global default.
+// A nil roller leaves the current one alone.
+func (ma *MartialArtsCondition) BindRoller(roller dice.Roller) {
+	if roller == nil {
+		return
+	}
+	ma.roller = roller
+}
+
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
 func (ma *MartialArtsCondition) Ref() *core.Ref { return refs.Conditions.MartialArts() }
