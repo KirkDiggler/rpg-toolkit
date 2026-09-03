@@ -123,7 +123,6 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 // still names its source on Roll — the same shape root's own immunity trait
 // produces — because every persisted roll fact names who provided it.
 func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
-	immunity := 0.0
 	in := &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice,
 		Targets: []encounter.MemberID{goblin},
@@ -139,13 +138,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
 				},
 				DamageType: "slashing",
 			},
-			{
-				Source: "monster_trait",
-				Roll: encounter.RollComponent{
-					Source: encounter.RollSource{Ref: "dnd5e:monster-traits:immunity", Name: "Immunity"},
-				},
-				DamageType: "slashing", Multiplier: &immunity,
-			},
+			multiplierCarrier(),
 		},
 		AdvantageSources: []encounter.AttackModifierSource{
 			{SourceRef: "dnd5e:conditions:hidden", SourceID: "alice"},
@@ -326,6 +319,14 @@ func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
 		c.Roll.Dice = nil
 		c.Multiplier = nil
 	})
+	add("multiplier carrier roll source ref is missing", func(c *encounter.DamageComponent) {
+		*c = multiplierCarrier()
+		c.Roll.Source.Ref = ""
+	})
+	add("multiplier carrier roll source ref is not a canonical ref", func(c *encounter.DamageComponent) {
+		*c = multiplierCarrier()
+		c.Roll.Source.Ref = "immunity"
+	})
 
 	for _, tc := range cases {
 		tc := tc
@@ -364,6 +365,22 @@ func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
 		s.Equal(beforeLog, enc.WorldView().Log,
 			"validation runs over every component before the first append")
 	})
+}
+
+// multiplierCarrier is the accepted immunity-style component: a multiplier
+// with a sourced but fact-less roll — no dice, no modifier — the same shape
+// root's own immunity trait produces. TestARecordedStrikeCarriesOrderedDetail
+// records one successfully, and the multiplier-carrier refusal cases below
+// mutate fresh copies of it, which is what makes them non-vacuous.
+func multiplierCarrier() encounter.DamageComponent {
+	immunity := 0.0
+	return encounter.DamageComponent{
+		Source: "monster_trait",
+		Roll: encounter.RollComponent{
+			Source: encounter.RollSource{Ref: "dnd5e:monster-traits:immunity", Name: "Immunity"},
+		},
+		DamageType: "slashing", Multiplier: &immunity,
+	}
 }
 
 // gwfDamageComponents is the representative greatsword strike: the 2d6 pool

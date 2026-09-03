@@ -392,8 +392,10 @@ func requireActivationIdentity(index int, result ActivationResult) error {
 
 // rollFactsActivationResultField names the first roll fact a non-healing
 // result may not carry: the calculation trace, then the healing's numeric
-// facts. A zero is still a present fact, so zero is refused beside a kind
-// whose shape has no numbers at all.
+// facts. Calculation is a pointer, so its PRESENCE is what is detected; the
+// numeric facts are plain ints, so what is detected (and refused) is a
+// NON-ZERO value — a zero is indistinguishable from an absent field here and
+// is not refused by these scalar checks.
 func rollFactsActivationResultField(result ActivationResult) string {
 	if result.Calculation != nil {
 		return "calculation"

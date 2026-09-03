@@ -447,6 +447,30 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 		dice.Rerolls = []encounter.DiceReroll{{DieIndex: 0, Before: 6, After: 2, Source: encounter.RollSource{Name: "Great Weapon Fighting"}}}
 		dice.FinalRolls = []int{2}
 	})
+	healingCalc("reroll die index is negative", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: -1, Before: 6, After: 6,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "Great Weapon Fighting"},
+		}}
+	})
+	healingCalc("reroll die index is outside rolls", func(r *encounter.ActivationResult) {
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: 1, Before: 6, After: 6,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "Great Weapon Fighting"},
+		}}
+	})
+	healingCalc("reroll source name is blank", func(r *encounter.ActivationResult) {
+		// Otherwise a consistent 6→2 reroll, so the only defect is the blank
+		// source name — the same presence floor every source is held to.
+		dice := r.Calculation.Components[0].Dice
+		dice.Rerolls = []encounter.DiceReroll{{
+			DieIndex: 0, Before: 6, After: 2,
+			Source: encounter.RollSource{Ref: "dnd5e:conditions:fighting_style_great_weapon_fighting", Name: "   "},
+		}}
+		dice.FinalRolls = []int{2}
+	})
 	healingCalc("kept index is outside final rolls", func(r *encounter.ActivationResult) {
 		r.Calculation.Components[0].Dice.KeptIndices = []int{2}
 	})
