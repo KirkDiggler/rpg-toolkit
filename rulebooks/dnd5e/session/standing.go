@@ -149,9 +149,22 @@ func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.Participa
 // unplayable. Neither is a rule this package gets to write.
 func (s standingSeam) recordsFor(
 	members []encounter.MemberID,
-) (characters, monsters []resolution.Participant, err error) {
+) (
+	characters, monsters []resolution.Participant,
+	worldNPCs map[string]bool,
+	err error,
+) {
+	worldNPCs = worldNPCSet(s.data)
 	for _, id := range members {
 		name := string(id)
+
+		// KindWorld identity wins before either combatant store. A host may own
+		// a character with the same ID, and malformed/session-seeded data may
+		// also retain an NPC sheet collision; neither turns the placed bystander
+		// into a combatant.
+		if worldNPCs[name] {
+			continue
+		}
 
 		if sheet, ok := npcSheet(s.data, name); ok {
 			monsters = append(monsters, resolution.Participant{Monster: sheet})
@@ -164,17 +177,31 @@ func (s standingSeam) recordsFor(
 				continue
 			}
 
-			return nil, nil, fetchErr
+			return nil, nil, nil, fetchErr
 		}
 		if data == nil {
-			return nil, nil, fmt.Errorf(
+			return nil, nil, nil, fmt.Errorf(
 				"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
 		}
 
 		characters = append(characters, resolution.Participant{Character: data})
 	}
 
-	return characters, monsters, nil
+	return characters, monsters, worldNPCs, nil
+}
+
+// worldNPCSet indexes the session's explicit non-combatant identities. It
+// reads no content and derives no rule; PlacedWorldNPC is already the
+// session-owned statement that these member IDs are KindWorld bystanders.
+func worldNPCSet(data *SessionData) map[string]bool {
+	out := make(map[string]bool)
+	if data == nil {
+		return out
+	}
+	for _, placed := range data.WorldNPCs {
+		out[placed.MemberID] = true
+	}
+	return out
 }
 
 // npcSheet finds a session-scoped sheet by member ID.

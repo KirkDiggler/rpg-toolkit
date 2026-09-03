@@ -60,7 +60,7 @@ type participationSnapshot struct {
 func (s standingSeam) participation(
 	members []encounter.MemberID,
 ) (*participationSnapshot, error) {
-	characters, monsters, err := s.recordsFor(members)
+	characters, monsters, worldNPCs, err := s.recordsFor(members)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +101,13 @@ func (s standingSeam) participation(
 
 	views := make(map[string]participantView, len(members))
 	for _, id := range members {
+		if worldNPCs[string(id)] {
+			member, view := neutralWorldNPCParticipation(id)
+			assessment.Members = append(assessment.Members, member)
+			views[string(id)] = view
+			continue
+		}
+
 		fact, ok := facts[string(id)]
 		if !ok {
 			// Existing authored worlds can contain members without a stored sheet.
@@ -126,6 +133,20 @@ func (s standingSeam) participation(
 	}
 
 	return &participationSnapshot{assessment: assessment, views: views}, nil
+}
+
+// neutralWorldNPCParticipation projects the explicit KindWorld invariant into
+// the two session-owned views. It reads no content and chooses no combat rule:
+// a placed WorldNPC is already declared non-combatant, so every combat
+// participation capability is false and encounter removes any accidental turn
+// slot while retaining the required one-answer-per-request shape.
+func neutralWorldNPCParticipation(
+	id encounter.MemberID,
+) (encounter.MemberParticipation, participantView) {
+	return encounter.MemberParticipation{
+		Member: id,
+		Turn:   encounter.TurnParticipationRemove,
+	}, participantView{LifeState: LifeStateUnknown}
 }
 
 func encounterParticipation(

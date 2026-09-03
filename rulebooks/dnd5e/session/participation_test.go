@@ -16,17 +16,22 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/npcs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 type participationCharacterStore struct {
-	byID map[string]*character.Data
-	err  error
+	byID  map[string]*character.Data
+	asked map[string]int
+	err   error
 }
 
 func (s participationCharacterStore) GetCharacter(_ context.Context, id string) (*character.Data, error) {
+	if s.asked != nil {
+		s.asked[id]++
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -91,6 +96,59 @@ func TestParticipationMapsProviderFactsWithoutThresholds(t *testing.T) {
 	down, err := seam.Standing(ids)
 	require.NoError(t, err)
 	require.Equal(t, ids[:4], down, "binary Standing delegates to the same rich answer")
+}
+
+func TestParticipationWorldNPCIdentityWinsBeforeCombatantLookup(t *testing.T) {
+	dying := dwarfCharacterRecord("dying", 0)
+	characterCollision := dwarfCharacterRecord("character-collision", 10)
+	monsterCollisionCharacter := dwarfCharacterRecord("monster-collision", 10)
+	monsterCollision, err := instantiate("monster-collision", "dnd5e:monsters:skeleton")
+	require.NoError(t, err)
+	merchant, err := npcs.NewMerchant(nil)
+	require.NoError(t, err)
+
+	asked := map[string]int{}
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{
+			byID: map[string]*character.Data{
+				"dying": dying, "character-collision": characterCollision,
+				"monster-collision": monsterCollisionCharacter,
+			},
+			asked: asked,
+		},
+		data: &SessionData{
+			NPCs: []monster.Data{*monsterCollision},
+			WorldNPCs: []PlacedWorldNPC{
+				{MemberID: "character-collision", NPC: *merchant.NPC().ToData()},
+				{MemberID: "monster-collision", NPC: *merchant.NPC().ToData()},
+			},
+		},
+	}
+
+	ids := []encounter.MemberID{"dying", "character-collision", "monster-collision"}
+	snapshot, err := seam.participation(ids)
+	require.NoError(t, err)
+	require.Equal(t, &encounter.ParticipationAssessment{
+		Members: []encounter.MemberParticipation{
+			{Member: "dying", Down: true, Turn: encounter.TurnParticipationWait},
+			{Member: "character-collision", Turn: encounter.TurnParticipationRemove},
+			{Member: "monster-collision", Turn: encounter.TurnParticipationRemove},
+		},
+		PartyDefeated: true,
+	}, snapshot.assessment)
+	require.False(t, snapshot.assessment.KeepTurnOrder,
+		"world NPC collisions cannot masquerade as conscious player allies")
+
+	for _, id := range []string{"character-collision", "monster-collision"} {
+		require.Zero(t, asked[id], "%s must be classified before character lookup", id)
+		view := snapshot.views[id]
+		require.Equal(t, LifeStateUnknown, view.LifeState)
+		require.Nil(t, view.DeathSaves)
+		require.False(t, view.attackTarget,
+			"a KindWorld bystander cannot leak into Attack candidates")
+	}
+	require.Equal(t, 1, asked["dying"], "the actual player is still fetched once")
 }
 
 func TestParticipationPartyDefeatUsesOnlyRequestedPlayers(t *testing.T) {
