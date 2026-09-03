@@ -29,11 +29,19 @@ type RegionID = string
 
 // RegionAt reports which region holds a dungeon-absolute cell.
 //
-// TOTAL OVER FLOOR, AND ONLY OVER FLOOR: a cell is floor if and only if exactly
-// one region owns it. The canvas spans the field's whole bounding BOX, so
-// "on the map" and "somewhere a member can stand" are different questions, and
-// this answers the second one. False means the cell is void — the space between
-// or beside the regions — which Step and Join refuse to place anybody on.
+// TOTAL OVER OWNED FLOOR, AND ONLY OVER IT: a cell has a region if and only if
+// exactly one region owns it. The canvas spans the field's whole bounding BOX,
+// so "on the map" and "somewhere a member can stand" are different questions,
+// and this answers the second one.
+//
+// FALSE NO LONGER MEANS VOID (rpg-project#360). Since scenery, an unowned cell
+// is void OR floor nobody stands on, and this read cannot tell them apart —
+// which is right, because it is the OWNERSHIP question and scenery's answer to
+// it is genuinely "nobody". A caller that wants to know whether there is
+// ground on a cell is asking a different question, and [Encounter.Atlas]
+// answers it: a cell in Cells and in no region's cells is scenery. What has
+// not changed is what this read is FOR: both a void cell and a scenery cell
+// are cells Step and Join refuse to place anybody on.
 //
 // W2 (regions never overlap) makes ownership unique, and it is enforced at
 // construction rather than checked here: the owner map is built by

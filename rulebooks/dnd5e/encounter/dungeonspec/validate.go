@@ -100,9 +100,10 @@ type validation struct {
 
 	orientation encounter.Orientation
 
-	// owner is every floor cell (absolute axial) to the index of the region
+	// owner is every OWNED cell (absolute axial) to the index of the region
 	// that owns it — the same map compileField builds, built here so the
-	// file's own defects are reported in the file's own paths.
+	// file's own defects are reported in the file's own paths. The floor is
+	// this and sceneryAt together; [validation.floor] is the pair.
 	owner map[spatial.Position]int
 
 	// sceneryAt is every scenery cell (absolute axial) — the other half of
@@ -258,15 +259,6 @@ func (v *validation) floor(cell spatial.Position) bool {
 	}
 
 	return v.sceneryAt[cell]
-}
-
-// walled reports whether an authored WALL claims a crossing. A door's claim
-// is not a wall's: a door standing in a wall replaces it (see doors()), and
-// the frontier walk treats that crossing as a way in.
-func (v *validation) walled(c [2]spatial.Position) bool {
-	path, claimed := v.crossings[c]
-
-	return claimed && strings.HasPrefix(path, "walls[")
 }
 
 // edge checks one authored crossing: both endpoints floor, and adjacent under
@@ -541,11 +533,15 @@ var axialSteps = [6][2]float64{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, 1
 //	PARTY START.
 //
 // A "way" is a WALL-FREE PATH between two regions whose interior cells are
-// all scenery: a crossing straight from one room to the other, or a strip of
-// scenery joining them (rpg-project#360, C4). It is a CONCEALED way when a
-// concealed door stands at one of its ends — see [validation.sceneryWays] for
-// why a path with two ends is one way with two chances rather than two ways
-// that disagree.
+// all scenery: a crossing straight from one room to the other, or an area of
+// scenery joining them (rpg-project#360, C4).
+//
+// IT IS A CONCEALED WAY IFF ANY CROSSING ALONG IT IS A CONCEALED DOOR, which
+// is the same answer from either end. The author may put the secret's door on
+// the hidden room's edge, on the visible room's edge, or between two scenery
+// cells, and a crossing further along the path counts exactly as much as one
+// at its end. See [validation.waysFrom] for why the walk is a flood and what
+// classifying a way by its ENDS got wrong.
 //
 // Scenery had to enter this walk rather than be left out of it. Before it,
 // every way was one crossing long and "is this room walled off" was a
@@ -597,31 +593,58 @@ func (v *validation) concealment() {
 		return
 	}
 
-	ways := append(v.directWays(), v.sceneryWays()...)
+	// Two walks over the same map, differing in one crossing kind.
+	//
+	// `open` stops at concealed doors, so every way it finds has no concealed
+	// door anywhere along it — which by the rule above is exactly the set of
+	// UNCONCEALED ways, and exactly what the frontier refuses and what visible
+	// reach may use. `all` crosses them, so it finds every way of any kind,
+	// which is what "a region with no ways at all is nobody's business" needs
+	// to be able to tell apart from "a region reachable only through a
+	// secret".
+	var open, all []wayIn
+	for i := range s.Regions {
+		open = append(open, v.waysFrom(i, false)...)
+		all = append(all, v.waysFrom(i, true)...)
+	}
 
-	// The frontier: a way between visible and hidden space that is not a
-	// concealed door is a hole in the secret. The refusal names the way as
-	// the SECRET'S OWN side meets it, which is the crossing its author has
-	// to wall or conceal.
-	for _, w := range ways {
-		if s.Regions[w.a].Concealed == s.Regions[w.b].Concealed || w.concealed {
+	// The frontier: a way between visible and hidden space with no concealed
+	// door on it is a hole in the secret. The refusal names the way as the
+	// SECRET'S OWN side meets it, which is the crossing its author has to wall
+	// or conceal.
+	//
+	// ONE REFUSAL PER CROSSING NAMED, not per way. Since the walk floods once
+	// per departure, two holes in a VISIBLE room leading through one area of
+	// scenery to a single crossing on the secret's side are two ways — and
+	// they are the same defect said twice, because the sentence the author
+	// reads is about the secret's crossing and closing either hole is not what
+	// fixes it. Two holes on the SECRET's own side name two crossings and
+	// survive as two, which is the point of the enumeration.
+	told := map[string]bool{}
+	for _, w := range open {
+		if s.Regions[w.a].Concealed == s.Regions[w.b].Concealed {
 			continue
 		}
 		hidden, desc := w.a, w.descA
 		if s.Regions[w.b].Concealed {
 			hidden, desc = w.b, w.descB
 		}
-		v.fail(fmt.Sprintf("regions[%d].concealed", hidden),
+		at := fmt.Sprintf("regions[%d].concealed", hidden)
+		if told[at+desc] {
+			continue
+		}
+		told[at+desc] = true
+		v.fail(at,
 			"this room is concealed, but %s is there for anyone — "+
 				"a walk-in room cannot be a secret: conceal every way in, or unconceal the room", desc)
 	}
 
-	// Visible space is connected from the party start. Walked over
-	// unconcealed ways between unconcealed regions only: a concealed door
-	// does not extend visible reach (finding it is what would), and hidden
-	// space is not a corridor visible space may route through. Scenery IS
-	// such a corridor — it belongs to nobody and hides nothing — so a room
-	// reachable only across a strip is reachable.
+	// Visible space is connected from the party start, over unconcealed ways
+	// between unconcealed regions only: a concealed door does not extend
+	// visible reach (finding it is what would), and hidden space is not a
+	// corridor visible space may route through. SCENERY IS such a corridor —
+	// it belongs to nobody and hides nothing — so a room reachable only across
+	// a strip is reachable, and `open` already says so.
 	if s.Start == nil {
 		return // start defects are start()'s to report; reach needs an anchor
 	}
@@ -632,8 +655,8 @@ func (v *validation) concealment() {
 	visible := map[int]bool{startRegion: true}
 	for changed := true; changed; {
 		changed = false
-		for _, w := range ways {
-			if w.concealed || s.Regions[w.a].Concealed || s.Regions[w.b].Concealed {
+		for _, w := range open {
+			if s.Regions[w.a].Concealed || s.Regions[w.b].Concealed {
 				continue
 			}
 			if visible[w.a] != visible[w.b] {
@@ -643,7 +666,7 @@ func (v *validation) concealment() {
 		}
 	}
 	hasWay := make([]bool, len(s.Regions))
-	for _, w := range ways {
+	for _, w := range all {
 		hasWay[w.a], hasWay[w.b] = true, true
 	}
 	for i, r := range s.Regions {
@@ -656,197 +679,189 @@ func (v *validation) concealment() {
 	}
 }
 
-// wayIn is one way between two regions: which two, whether it is concealed,
-// and how it reads from each side. The two descriptions differ only for a way
-// THROUGH SCENERY, which meets each room at its own crossing; a way that is
-// one crossing reads the same from both.
+// wayIn is one way between two regions: which two, and how it reads from each
+// side. The two descriptions differ only for a way that runs THROUGH scenery,
+// which meets each room at its own crossing; a way that IS one crossing reads
+// the same from both.
 type wayIn struct {
-	a, b         int // region indices, a <= b
-	concealed    bool
+	a, b         int // region indices, a < b by construction (see waysFrom)
 	descA, descB string
 }
 
-// directWays is every non-wall crossing straight from one region to another —
-// the whole of this walk before scenery existed. A door's ways count ONCE PER
-// DOOR and neighbouring pair, never once per edge (rpg-toolkit#1123).
-func (v *validation) directWays() []wayIn {
-	s := v.spec
-	var out []wayIn
-	seenCrossing := map[[2]spatial.Position]bool{}
-	seenDoor := map[[3]int]bool{}
-	for _, r := range s.Regions {
-		for _, row := range r.Cells {
-			for _, at := range row {
-				cell := v.cell(at)
-				here := v.owner[cell]
-				for _, step := range axialSteps {
-					n := spatial.Position{X: cell.X + step[0], Y: cell.Y + step[1]}
-					there, owned := v.owner[n]
-					if !owned || there == here {
-						continue
-					}
-					c := normalizedCrossing(cell, n)
-					if seenCrossing[c] {
-						continue
-					}
-					seenCrossing[c] = true
-					path, claimed := v.crossings[c]
-					if claimed && strings.HasPrefix(path, "walls[") {
-						continue // a wall is not a way in
-					}
-					a, b := here, there
-					if b < a {
-						a, b = b, a
-					}
-					w := wayIn{a: a, b: b}
-					if claimed {
-						d := v.doorAt[c]
-						if seenDoor[[3]int{d, a, b}] {
-							continue // one door, one way (rpg-toolkit#1123)
-						}
-						seenDoor[[3]int{d, a, b}] = true
-						w.concealed = s.Doors[d].Concealed != nil
-						w.descA = fmt.Sprintf("its door %q (doors[%d])", s.Doors[d].ID, d)
-					} else {
-						na := v.authored[n]
-						w.descA = fmt.Sprintf("the open way between [%d,%d] and [%d,%d]",
-							at[0], at[1], na[0], na[1])
-					}
-					w.descB = w.descA
-					out = append(out, w)
-				}
-			}
-		}
-	}
-
-	return out
-}
-
-// approach is one way a region meets a strip of scenery: the crossing between
-// them, whether a concealed door stands in it, and how to say so.
-//
-// `key` is what makes a two-edge gate one approach rather than two: a
-// door-claimed crossing keys on the DOOR, a bare one on the crossing itself
-// (rpg-toolkit#1123, carried into the strip).
-type approach struct {
-	region    int
-	key       approachKey
-	concealed bool
-	desc      string
-}
-
-type approachKey struct {
-	region   int
-	door     int // -1 for a bare crossing
+// crossingKey identifies one crossing for deduplication: the DOOR standing in
+// it when there is one, so a two-edge gate counts once (rpg-toolkit#1123), and
+// otherwise the crossing itself.
+type crossingKey struct {
+	door     int // -1 when no door stands in the crossing
 	crossing [2]spatial.Position
 }
 
-// sceneryWays is every way that runs THROUGH a strip of scenery
-// (rpg-project#360, C4).
+// wayKey identifies one way for deduplication: the two regions it joins, the
+// crossing it DEPARTS by, and the crossing it ARRIVES by.
 //
-// # One way per path, concealed if EITHER end is
+// BOTH ENDS, because either one is a hole the author has to close, and a key
+// that named only one of them enumerated that side's holes while collapsing
+// the other's. Which side collapsed was decided by region index order — the
+// walk runs from the lower-indexed room — so the same dungeon reported one
+// hole or two depending on the order its rooms were written in. Found by
+// Copilot on PR #1465, on a comment here that claimed the enumeration this
+// key now actually performs.
+type wayKey struct {
+	a, b           int
+	depart, arrive crossingKey
+}
+
+// crossingKeyOf collapses a crossing to what deduplication should count: the
+// door, when a door stands in it, and the crossing itself otherwise.
+func crossingKeyOf(c [2]spatial.Position, door int) crossingKey {
+	if door >= 0 {
+		return crossingKey{door: door}
+	}
+
+	return crossingKey{door: -1, crossing: c}
+}
+
+// waysFrom walks outward from one region and returns every way it finds.
 //
-// A strip has two ends and the walk meets it from both, so "its first
-// crossing" — the design's words, written for a way one crossing long — names
-// two different crossings depending on which room you start in. Enumerating
-// per direction would classify one path twice and disagree with itself
-// whenever only one end carries the concealed door, which is the ordinary
-// shape: a secret room with a strip of rubble in front of its own hidden
-// door. So a path is ONE way, and it is concealed when either end crossing is
-// a concealed door.
+// A FLOOD OVER CELLS, not a scan of neighbours (rpg-project#360, C4 as
+// ruled). It leaves the origin region by any crossing it may take, travels
+// only through SCENERY — never through another region's cells, whose floor is
+// somebody's and whose crossings are that region's own frontier — and stops
+// at the first cell of another region, which is a way between the two.
 //
-// That refuses exactly the hazard and nothing else. Both ends bare is a strip
-// anybody walks into the secret, and is refused. Either end a concealed door
-// means a non-knower meets a wall — a real one, or the mask a concealed door
-// wears — before they ever reach the strip's far crossing, so their map is the
-// honestly-authored twin's and there is nothing to give away. That is also
-// what keeps C6 true: a bare crossing from scenery into hidden space exists
-// only behind a wall or behind a mask, so the masquerade never has to stand
-// one there.
-func (v *validation) sceneryWays() []wayIn {
-	if len(v.sceneryAt) == 0 {
-		return nil
+// `pastConcealed` is the one thing that varies. False stops at a concealed
+// door as it stops at a wall, so nothing it finds has a concealed door
+// anywhere along it: those are the unconcealed ways. True crosses them, so it
+// finds every way of either kind.
+//
+// That is what makes the rule "a way is concealed iff ANY crossing along it is
+// a concealed door" fall out rather than be enforced. An earlier draft
+// enumerated strips and classified them by their two END crossings, which is
+// strip-shaped thinking: a door may stand between two scenery cells (C2), and
+// a scenery area may touch three regions, so a way has interior crossings and
+// more than two ends. A flood has no ends to be short of.
+//
+// # Once per DEPARTURE, not once per strip
+//
+// `visited` is keyed by cell AND the crossing the path departed by, so two
+// holes from one room into one area of scenery flood it twice and produce
+// their own ways. Keyed by the cell alone, the second hole found the first
+// hole's cells already marked and vanished — and the author, having walled the
+// hole the refusal named, recompiled to meet its twin.
+//
+// The cost is a flood per departure rather than per region, which is the
+// honest shape of the question: each hole is a separate thing the author has
+// to close, so each one has to be walked.
+func (v *validation) waysFrom(origin int, pastConcealed bool) []wayIn {
+	type reached struct {
+		cell   spatial.Position
+		depart crossingKey // the crossing this path left the origin region by
+		first  string      // and how to say so
 	}
 
 	var out []wayIn
-	member := make(map[spatial.Position]bool, len(v.sceneryAt))
-	for _, row := range v.spec.Scenery {
+	seen := map[wayKey]bool{}
+	visited := map[reached]bool{}
+	var queue []reached
+
+	// arrive records a way, or extends the flood, for one crossing out of
+	// `from` into `n`. A zero `depart.door` marks a step out of the origin
+	// region itself, which is where the departure is established.
+	arrive := func(from, n spatial.Position, path reached) {
+		c := normalizedCrossing(from, n)
+		door, concealed, wall := v.claims(c)
+		if wall || (concealed && !pastConcealed) {
+			return
+		}
+		desc := v.crossingDesc(from, n, door)
+		if path.first == "" {
+			path.depart, path.first = crossingKeyOf(c, door), desc
+		}
+		if there, owned := v.owner[n]; owned {
+			// EACH PAIR IS DISCOVERED FROM ITS LOWER-INDEXED SIDE ONLY.
+			// Crossings are undirected and both walls and concealed doors
+			// stop the flood in either direction, so whatever B reaches
+			// through the scenery A reaches too — walking from both ends
+			// would report one hole twice. `there == origin` is the same
+			// rule's other half: out through the strip and back into the
+			// room you left is not a way between two rooms.
+			if there <= origin {
+				return
+			}
+			key := wayKey{a: origin, b: there, depart: path.depart, arrive: crossingKeyOf(c, door)}
+			if seen[key] {
+				return
+			}
+			seen[key] = true
+			out = append(out, wayIn{a: origin, b: there, descA: path.first, descB: desc})
+			return
+		}
+		if !v.sceneryAt[n] {
+			return
+		}
+		next := reached{cell: n, depart: path.depart, first: path.first}
+		if visited[next] {
+			return
+		}
+		visited[next] = true
+		queue = append(queue, next)
+	}
+
+	for _, row := range v.spec.Regions[origin].Cells {
 		for _, at := range row {
-			start := v.cell(at)
-			if member[start] || !v.sceneryAt[start] {
-				continue
+			cell := v.cell(at)
+			for _, step := range axialSteps {
+				arrive(cell, spatial.Position{X: cell.X + step[0], Y: cell.Y + step[1]}, reached{})
 			}
-			meets := v.approachesTo(start, member)
-			for i, ap := range meets {
-				for _, other := range meets[i+1:] {
-					if ap.region == other.region {
-						continue // out through the strip and back into the same room
-					}
-					w := wayIn{a: ap.region, b: other.region, concealed: ap.concealed || other.concealed,
-						descA: ap.desc, descB: other.desc}
-					if w.b < w.a {
-						w.a, w.b, w.descA, w.descB = other.region, ap.region, other.desc, ap.desc
-					}
-					out = append(out, w)
-				}
-			}
+		}
+	}
+	for len(queue) > 0 {
+		here := queue[0]
+		queue = queue[1:]
+		for _, step := range axialSteps {
+			arrive(here.cell, spatial.Position{X: here.cell.X + step[0], Y: here.cell.Y + step[1]}, here)
 		}
 	}
 
 	return out
 }
 
-// approachesTo floods one wall-free component of scenery from `start`,
-// marking its cells in `member`, and returns every distinct way a region
-// meets it — in a fixed order, so the ways and any refusals about them land
-// the same way on every run.
+// claims reports what an authored thing has put in a crossing: the index of
+// the door standing in it (or -1), whether that door is concealed, and whether
+// a wall is drawn there.
 //
-// A WALL SEALS A STRIP AS IT SEALS A ROOM: the flood never crosses one, which
-// is what makes "wall it off" the author's fix for a strip that leads
-// somewhere it should not.
-func (v *validation) approachesTo(start spatial.Position, member map[spatial.Position]bool) []approach {
-	var out []approach
-	seen := map[approachKey]bool{}
-	visited := map[spatial.Position]bool{start: true}
-	member[start] = true
-	for queue := []spatial.Position{start}; len(queue) > 0; {
-		here := queue[0]
-		queue = queue[1:]
-		for _, step := range axialSteps {
-			n := spatial.Position{X: here.X + step[0], Y: here.Y + step[1]}
-			c := normalizedCrossing(here, n)
-			if v.walled(c) {
-				continue
-			}
-			if r, owned := v.owner[n]; owned {
-				ap := approach{region: r, key: approachKey{region: r, door: -1, crossing: c}}
-				path, claimed := v.crossings[c]
-				if claimed && !strings.HasPrefix(path, "walls[") {
-					d := v.doorAt[c]
-					ap.key = approachKey{region: r, door: d}
-					ap.concealed = v.spec.Doors[d].Concealed != nil
-					ap.desc = fmt.Sprintf("its door %q (doors[%d])", v.spec.Doors[d].ID, d)
-				} else {
-					na, sc := v.authored[n], v.authored[here]
-					ap.desc = fmt.Sprintf("the open way between [%d,%d] and the scenery at [%d,%d]",
-						na[0], na[1], sc[0], sc[1])
-				}
-				if !seen[ap.key] {
-					seen[ap.key] = true
-					out = append(out, ap)
-				}
-				continue
-			}
-			if !v.sceneryAt[n] || visited[n] {
-				continue
-			}
-			visited[n] = true
-			member[n] = true
-			queue = append(queue, n)
-		}
+// A door's claim is not a wall's: a door standing in a wall replaces it (see
+// doors()), which is why the walk treats that crossing as a way in.
+func (v *validation) claims(c [2]spatial.Position) (door int, concealed, wall bool) {
+	path, claimed := v.crossings[c]
+	if !claimed {
+		return -1, false, false
 	}
+	if strings.HasPrefix(path, "walls[") {
+		return -1, false, true
+	}
+	d := v.doorAt[c]
 
-	return out
+	return d, v.spec.Doors[d].Concealed != nil, false
+}
+
+// crossingDesc says how a crossing reads in the author's own coordinates, for
+// the refusal that names it. A crossing into or out of scenery says so, since
+// "the open way between two cells" would otherwise send the author looking for
+// a room that is not there.
+func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
+	if door >= 0 {
+		return fmt.Sprintf("its door %q (doors[%d])", v.spec.Doors[door].ID, door)
+	}
+	f, t := v.authored[from], v.authored[to]
+	switch {
+	case v.sceneryAt[from]:
+		return fmt.Sprintf("the open way between [%d,%d] and the scenery at [%d,%d]", t[0], t[1], f[0], f[1])
+	case v.sceneryAt[to]:
+		return fmt.Sprintf("the open way between [%d,%d] and the scenery at [%d,%d]", f[0], f[1], t[0], t[1])
+	default:
+		return fmt.Sprintf("the open way between [%d,%d] and [%d,%d]", f[0], f[1], t[0], t[1])
+	}
 }
 
 // refKind returns a ref's type segment, which is what routes a placement.

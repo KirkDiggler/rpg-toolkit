@@ -82,7 +82,12 @@ func (s *RegionSuite) TestTheTombsThreeChambersAreRegions() {
 
 // TestRegionAtIsTotalOverFloorAndSilentOverVoid pins the invariant the whole
 // slice rests on, swept over the canvas the field actually compiles onto: a
-// cell is floor if and only if exactly one region owns it.
+// cell has a region if and only if exactly one region owns it.
+//
+// Owned floor, not floor: since rpg-project#360 a field may also carry
+// scenery, which is floor no region owns, and this fixture authors none — so
+// here unowned still means void, and the sweep below is measuring what it
+// always was.
 //
 // The tomb's canvas is its bounding box, so there ARE cells on it that no
 // chamber owns — the strip below and left of the chain, which the authored

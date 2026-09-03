@@ -96,6 +96,81 @@ start: [0, 0]
 `
 }
 
+// theLongStrip is theStrip with TWO scenery cells, so something can stand in
+// the middle of a way rather than only at its ends:
+//
+//	study [0,0] [1,0] | scenery [2,0] [3,0] | vault [4,0]
+//
+// `middle` is written between the two scenery cells; `far` goes in the far
+// room's own block.
+func theLongStrip(far, middle string) string {
+	return `
+version: 2
+key: longstrip
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+` + far + `    cells:
+      - [[4,0]]
+scenery:
+  - [[2,0],[3,0]]
+start: [0, 0]
+` + middle
+}
+
+// twoHoles is the asymmetry fixture: one scenery cell that `near` meets by TWO
+// crossings and `far` by one.
+//
+//	near [2,0] [2,1] | scenery [3,0] | far [4,0]
+//
+// [2,0] and [2,1] are both neighbours of [3,0] under pointy-top and of each
+// other, so `near` is one room with two holes into the strip; [4,0] touches
+// neither of them, so the only route between the rooms runs through it.
+// `nearConcealed` says which of the two is the secret, which is the whole
+// subject: the walk runs from the LOWER-INDEXED room, so swapping them swaps
+// which side's holes are the ones enumerated.
+func twoHoles(first, second string, nearConcealed bool) string {
+	conceal := func(id string, yes bool) string {
+		if !yes {
+			return ""
+		}
+		_ = id
+		return "    concealed: true\n"
+	}
+	start := "[4, 0]"
+	if !nearConcealed {
+		start = "[2, 0]"
+	}
+	return `
+version: 2
+key: twoholes
+orientation: pointy
+void: opaque
+regions:
+  - id: ` + first + `
+    archetype: crypt
+    lighting: { intensity: 1 }
+` + conceal(first, nearConcealed) + `    cells:
+      - [[2,0],[2,1]]
+  - id: ` + second + `
+    archetype: crypt
+    lighting: { intensity: 1 }
+` + conceal(second, !nearConcealed) + `    cells:
+      - [[4,0]]
+scenery:
+  - [[3,0]]
+start: ` + start + `
+`
+}
+
 // TestF1_ACellIsFloorOnce — a cell belongs to a region or to the scenery, and
 // nothing may claim it twice. Ownership has to be unique for "who owns this
 // cell" to be an answer rather than a guess, and scenery is a second claimant
@@ -259,11 +334,151 @@ func (s *ScenerySuite) TestC4_TheConcealmentWalkCrossesScenery() {
 		s.Contains(errs[0].Message, "the open way between [3,0] and the scenery at [2,0]")
 	})
 
-	s.Run("one refusal per path, not one per end", func() {
-		// The strip has two ends and the walk meets it from both. A path is
-		// ONE way, so the forgotten wall is one defect on the canvas rather
-		// than the same hole drawn twice.
+	s.Run("one refusal per path, not one per direction", func() {
+		// Crossings are undirected and the walk could meet the strip from
+		// either room. A path is ONE way, so the forgotten wall is one defect
+		// on the canvas rather than the same hole drawn twice.
 		s.Len(s.validate(theStrip(secret)), 1)
+	})
+
+	s.Run("a wall inside the strip is not a way at all", func() {
+		// The crossing that closes a way need not be at either end. A wall
+		// between the two scenery cells stops the flood exactly as a wall on
+		// a room's own edge does, and there is no way left to conceal.
+		walled := theLongStrip(secret, "walls:\n  - [[2,0],[3,0]]\n")
+		s.Empty(s.validate(walled))
+	})
+
+	s.Run("a concealed door between two scenery cells conceals the way", func() {
+		// The ruled rule is ANY crossing along the way, so the author may put
+		// the secret's door in the middle of the rubble rather than on either
+		// room's edge. A rule that classified a way by its two ends would
+		// call this a walk-in secret and refuse the dungeon.
+		doored := theLongStrip(secret, `doors:
+  - id: panel
+    edges: [[[2,0],[3,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+`)
+		s.Empty(s.validate(doored))
+
+		// And the same door left plain does not conceal it — so what made the
+		// scene above legal is the concealment, not the door.
+		plain := theLongStrip(secret, `doors:
+  - id: panel
+    edges: [[[2,0],[3,0]]]
+    closed: true
+`)
+		errs := s.validate(plain)
+		s.Require().Equal([]string{"regions[1].concealed"}, sceneryPaths(errs))
+		s.Contains(errs[0].Message, "the open way between [4,0] and the scenery at [3,0]")
+	})
+
+	s.Run("a scenery area touching two visible rooms and one hidden one", func() {
+		// A way is not a strip with two ends: one scenery cell has six
+		// neighbours, and this one touches three rooms. The study's crossing
+		// is a concealed door, so the study's way in is sealed — but the
+		// hall's is bare and the vault's is bare, so the hall's way is a
+		// walk-in secret and is refused through it.
+		//
+		// The hall touches the study directly, so visible reach still holds
+		// and the only defect in the scene is the one it is about.
+		three := `
+version: 2
+key: junction
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[2,0]]
+  - id: hall
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[2,-1]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[4,0]]
+scenery:
+  - [[3,0]]
+start: [2, 0]
+doors:
+  - id: panel
+    edges: [[[2,0],[3,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+`
+		errs := s.validate(three)
+		s.Require().Equal([]string{"regions[2].concealed"}, sceneryPaths(errs),
+			"one refusal: the hall's way in, not the study's sealed one")
+		s.Contains(errs[0].Message, "the open way between [4,0] and the scenery at [3,0]")
+
+		// Conceal the vault's own crossing instead and every way in carries a
+		// concealed door, so the junction is authorable.
+		sealed := strings.Replace(three,
+			"    edges: [[[2,0],[3,0]]]", "    edges: [[[2,0],[3,0]],[[3,0],[4,0]]]", 1)
+		s.Empty(s.validate(sealed))
+	})
+
+	s.Run("two holes on the secret's own side are two defects", func() {
+		// The junction, mirrored: the SECRET is the lower-indexed room and it
+		// has two crossings into one scenery cell, which reaches the hall by
+		// one. Each hole is a separate thing the author has to close, so each
+		// is named. Keyed by the cell alone the flood marked the strip on the
+		// first hole and the second vanished, and the author met its twin only
+		// after walling the one the refusal named.
+		errs := s.validate(twoHoles("vault", "hall", true))
+		s.Require().Len(errs, 2, "two holes, two refusals")
+		s.Equal([]string{"regions[0].concealed", "regions[0].concealed"}, sceneryPaths(errs))
+		s.Contains(errs[0].Message, "the open way between [2,0] and the scenery at [3,0]")
+		s.Contains(errs[1].Message, "the open way between [2,1] and the scenery at [3,0]")
+	})
+
+	s.Run("two holes on the visible side are one defect", func() {
+		// The same shape with the rooms swapped. Now the two holes are the
+		// VISIBLE room's, and the sentence the author reads is about the
+		// secret's single crossing — walling either hole is not what fixes it,
+		// so saying it twice would be the same defect said twice.
+		errs := s.validate(twoHoles("hall", "vault", false))
+		s.Require().Len(errs, 1, "two ways, one crossing named, one refusal")
+		s.Equal([]string{"regions[1].concealed"}, sceneryPaths(errs))
+		s.Contains(errs[0].Message, "the open way between [4,0] and the scenery at [3,0]")
+	})
+
+	s.Run("two arrivals on the secret side stay two", func() {
+		// One hole out of the hall, two cells of the vault on the strip. Two
+		// crossings the author has to close, named separately, exactly as
+		// before this enumeration was fixed.
+		twoArrivals := `
+version: 2
+key: arrivals
+orientation: pointy
+void: opaque
+regions:
+  - id: hall
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[2,0]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[4,0],[3,1]]
+scenery:
+  - [[3,0]]
+start: [2, 0]
+`
+		errs := s.validate(twoArrivals)
+		s.Require().Len(errs, 2)
+		s.Equal([]string{"regions[1].concealed", "regions[1].concealed"}, sceneryPaths(errs))
 	})
 
 	s.Run("visible reach extends through scenery", func() {

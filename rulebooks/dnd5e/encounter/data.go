@@ -1176,7 +1176,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// outside the field entirely, and a cell in the space BETWEEN
 		// regions, which the canvas spans but which is not floor. The SAME
 		// lookup the live verbs use (rpg-toolkit#1108).
-		if _, owned := f.regionOf(cell); !owned {
+		if !f.isStandable(cell) {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 	}
@@ -1218,7 +1218,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			// cell against the region NAMED BESIDE IT in the blob; with the
 			// region derived rather than stored there is nothing to
 			// cross-check, only somewhere to be (rpg-toolkit#1108).
-			if _, owned := f.regionOf(spatial.Position{X: om.Cell.X, Y: om.Cell.Y}); !owned {
+			if !f.isStandable(spatial.Position{X: om.Cell.X, Y: om.Cell.Y}) {
 				return nil, fmt.Errorf("load encounter: outcome member %q cell is owned by no region: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
 			}
 		}

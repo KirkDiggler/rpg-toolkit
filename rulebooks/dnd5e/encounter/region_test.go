@@ -85,7 +85,7 @@ func (s *RegionSetupSuite) TestSetup_RegionsMakeTheFloor() {
 
 	atlas, err := enc.Atlas()
 	s.Require().NoError(err)
-	s.Equal(want, atlas.Cells, "the floor is the union of the regions' cells, sorted")
+	s.Equal(want, atlas.Cells, "this field authors no scenery, so its floor is the regions' cells, sorted")
 	s.Len(atlas.Cells, 20+14+15)
 
 	for cell, id := range owner {
