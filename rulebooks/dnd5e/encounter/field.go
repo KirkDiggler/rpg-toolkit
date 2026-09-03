@@ -398,6 +398,15 @@ type MemberInput struct {
 	// this the same way a monster's does). Opaque here (C1): this
 	// composition carries the string and never branches on it.
 	Targeting string
+
+	// BlocksMovement says whether this member refuses a later arrival on
+	// its cell (rpg-toolkit#1434) — a bare fact, the same species as
+	// SpeedFeet and SightFeet: this composition carries it and never asks
+	// what kind of member set it or why. False (the zero value) is legal
+	// and means what it always has for a player or monster: no member kind
+	// blocked movement before this field existed, and none does now unless
+	// its caller opts in.
+	BlocksMovement bool
 }
 
 // ActionView is a static fact about one action a member can take — an
@@ -689,6 +698,10 @@ type Member struct {
 	SightFeet int
 	Actions   []ActionView
 	Targeting string
+
+	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
+	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
+	BlocksMovement bool
 }
 
 // memberRecord is what the composition stores about a member: identity,
@@ -710,13 +723,14 @@ type Member struct {
 // (C1). No parallel monster-only struct: Targeting is the only field of the
 // four that is not filled for a player, and it is simply empty for one.
 type memberRecord struct {
-	ID        MemberID
-	Kind      MemberKind
-	Name      string
-	SpeedFeet int
-	SightFeet int
-	Actions   []ActionView
-	Targeting string
+	ID             MemberID
+	Kind           MemberKind
+	Name           string
+	SpeedFeet      int
+	SightFeet      int
+	Actions        []ActionView
+	Targeting      string
+	BlocksMovement bool
 }
 
 // Status represents the encounter's open/closed state.
@@ -945,6 +959,10 @@ type JoinInput struct {
 	SightFeet int
 	Actions   []ActionView
 	Targeting string
+
+	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
+	// arriving mid-scene carries it exactly as an authored one does.
+	BlocksMovement bool
 }
 
 // JoinOutput reports the results of a successful join.
