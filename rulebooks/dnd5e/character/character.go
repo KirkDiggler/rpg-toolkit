@@ -309,6 +309,10 @@ func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) 
 	if input.Count < 1 {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "must spend at least 1 hit die")
 	}
+	if c.lifeState() == combat.LifeStateDead {
+		return nil, rpgerr.New(rpgerr.CodeInvalidState,
+			"dead characters cannot spend hit dice")
+	}
 
 	// Get hit dice resource
 	hitDiceResource := c.GetResource(resources.HitDice)

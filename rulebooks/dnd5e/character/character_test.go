@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
 )
@@ -475,9 +476,11 @@ func TestCharacterSavingThrowSuite(t *testing.T) {
 type mockHitDiceRoller struct {
 	rolls []int // Sequence of rolls to return
 	index int   // Current position in sequence
+	calls int
 }
 
 func (m *mockHitDiceRoller) Roll(_ context.Context, _ int) (int, error) {
+	m.calls++
 	if m.index >= len(m.rolls) {
 		m.index = 0 // Loop back
 	}
@@ -487,6 +490,7 @@ func (m *mockHitDiceRoller) Roll(_ context.Context, _ int) (int, error) {
 }
 
 func (m *mockHitDiceRoller) RollN(_ context.Context, n, _ int) ([]int, error) {
+	m.calls++
 	result := make([]int, n)
 	for i := range result {
 		if m.index >= len(m.rolls) {
@@ -548,6 +552,34 @@ func (s *CharacterHitDiceTestSuite) TearDownTest() {
 }
 
 func (s *CharacterHitDiceTestSuite) TestSpendHitDice() {
+	s.Run("dead character is rejected before rolling or spending", func() {
+		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.HitDice),
+			Maximum:     4,
+			CharacterID: "test-fighter",
+			ResetType:   coreResources.ResetLongRest,
+		})
+		s.character.AddResource(resources.HitDice, hitDiceResource)
+		s.character.hitPoints = 0
+		s.character.deathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
+		markSaved(s.character)
+		roller := &mockHitDiceRoller{rolls: []int{10, 10}}
+
+		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
+			Count:  2,
+			Roller: roller,
+		})
+
+		s.Require().Error(err)
+		s.Equal(rpgerr.CodeInvalidState, rpgerr.GetCode(err))
+		s.Nil(result)
+		s.Zero(roller.calls)
+		s.Equal(4, hitDiceResource.Current())
+		s.Zero(s.character.GetHitPoints())
+		s.Equal(&saves.DeathSaveState{Failures: 3, Dead: true}, s.character.GetDeathSaveState())
+		s.False(s.character.IsDirty())
+	})
+
 	s.Run("spends hit dice and heals character", func() {
 		// Setup: Add hit dice resource (4 dice for level 4)
 		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{

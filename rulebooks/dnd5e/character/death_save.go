@@ -213,6 +213,12 @@ func remainingDeathSaves(progress int) int {
 	return remaining
 }
 
+// LifeState reports the character's authoritative derived life state without
+// exposing mutable death-save progress.
+func (c *Character) LifeState() combat.LifeState {
+	return c.lifeState()
+}
+
 // lifeState derives current state exclusively from the character-owned hit
 // points and death-save progress.
 func (c *Character) lifeState() combat.LifeState {
@@ -229,30 +235,25 @@ func (c *Character) lifeState() combat.LifeState {
 	})
 }
 
-// TakeDamageWhileUnconsciousInput is retained for source compatibility. New
-// damage must enter through Character.ApplyDamage, which uses the same helper.
+// TakeDamageWhileUnconsciousInput is retained for source compatibility.
 type TakeDamageWhileUnconsciousInput struct {
 	IsCritical bool
 }
 
-// TakeDamageWhileUnconscious applies the authoritative damage-at-zero
-// transition for legacy Go callers. It delegates to the same transition used
-// by ApplyDamage; it is not a second progress ledger.
+// TakeDamageWhileUnconscious is an inert compatibility shim. Damage must enter
+// through [Character.ApplyDamage], where positive applied damage and HP-at-zero
+// eligibility are established before death-save progress can change.
+//
+// Deprecated: use [Character.ApplyDamage].
 func (c *Character) TakeDamageWhileUnconscious(
-	ctx context.Context, input *TakeDamageWhileUnconsciousInput,
+	_ context.Context, input *TakeDamageWhileUnconsciousInput,
 ) (*saves.DamageWhileUnconsciousResult, error) {
 	if input == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
 			"damage while unconscious input is required")
 	}
-	result, changed, err := c.applyDeathSaveFailure(ctx, input.IsCritical)
-	if err != nil {
-		return nil, err
-	}
-	if changed {
-		c.dirty = true
-	}
-	return result, nil
+	return nil, rpgerr.New(rpgerr.CodeInvalidState,
+		"direct unconscious damage is disabled; use Character.ApplyDamage")
 }
 
 // applyDeathSaveFailure is the one character-owned damage transition. It
@@ -282,17 +283,23 @@ func (c *Character) applyDeathSaveFailure(
 	return result, true, nil
 }
 
-// GetDeathSaveState returns the character's current authoritative state. The
-// empty zero state is returned when no progress has been recorded.
+// GetDeathSaveState returns a defensive copy of the character's current
+// authoritative state. The empty zero state is returned when no progress has
+// been recorded.
 func (c *Character) GetDeathSaveState() *saves.DeathSaveState {
 	if c.deathSaveState == nil {
 		return &saves.DeathSaveState{}
 	}
-	return c.deathSaveState
+	state := *c.deathSaveState
+	return &state
 }
 
-// ResetDeathSaveState clears authoritative death-save progress.
-func (c *Character) ResetDeathSaveState() {
-	c.deathSaveState = &saves.DeathSaveState{}
-	c.dirty = true
+// ResetDeathSaveState is an inert compatibility shim. Progress resets only as
+// part of an authoritative recovery transition such as accepted healing,
+// natural-20 recovery, or a long rest.
+//
+// Deprecated: use an authoritative recovery operation.
+func (c *Character) ResetDeathSaveState() error {
+	return rpgerr.New(rpgerr.CodeInvalidState,
+		"direct death-save reset is disabled; use an authoritative recovery operation")
 }

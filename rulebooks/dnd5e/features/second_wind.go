@@ -26,6 +26,7 @@ type SecondWind struct {
 	level       int                              // Fighter level for healing calculation
 	characterID string                           // Character this feature belongs to
 	resource    *dnd5eCombat.RecoverableResource // Tracks second wind uses (1 per short/long rest)
+	roller      dice.Roller                      // Optional deterministic roller; nil uses the default.
 }
 
 // SecondWindData is the JSON structure for persisting Second Wind state
@@ -78,8 +79,17 @@ func (s *SecondWind) GetType() core.EntityType {
 	return EntityTypeFeature
 }
 
+type lifeStateProvider interface {
+	LifeState() dnd5eCombat.LifeState
+}
+
 // CanActivate implements core.Action[FeatureInput]
-func (s *SecondWind) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+func (s *SecondWind) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
+	if provider, ok := owner.(lifeStateProvider); ok &&
+		provider.LifeState() == dnd5eCombat.LifeStateDead {
+		return rpgerr.New(rpgerr.CodeInvalidState, "dead characters cannot use second wind")
+	}
+
 	// Check if we have uses remaining
 	if !s.resource.IsAvailable() {
 		return rpgerr.New(rpgerr.CodeResourceExhausted, "no second wind uses remaining")
@@ -118,7 +128,7 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 		return rpgerr.Wrapf(err, "failed to parse healing dice")
 	}
 
-	result := pool.Roll(nil) // nil uses default roller
+	result := pool.RollContext(ctx, s.roller)
 	if result.Error() != nil {
 		return rpgerr.Wrapf(result.Error(), "failed to roll healing dice")
 	}

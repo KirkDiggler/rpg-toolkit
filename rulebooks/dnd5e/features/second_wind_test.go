@@ -7,11 +7,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
 type SecondWindTestSuite struct {
@@ -41,6 +45,72 @@ func (s *SecondWindTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 	s.secondWind = newSecondWindForTest("second-wind-feature", 3, "fighter-1") // Level 3 fighter
 	s.ctx = context.Background()
+}
+
+type deadSecondWindOwner struct {
+	id             string
+	hitPoints      int
+	deathSaveState saves.DeathSaveState
+	dirty          bool
+}
+
+func (o *deadSecondWindOwner) GetID() string            { return o.id }
+func (o *deadSecondWindOwner) GetType() core.EntityType { return "character" }
+func (o *deadSecondWindOwner) LifeState() combat.LifeState {
+	return combat.ClassifyLifeState(combat.LifeStateInput{
+		Kind:       combat.CombatantKindCharacter,
+		Down:       o.hitPoints <= 0,
+		Stabilized: o.deathSaveState.Stabilized,
+		Dead:       o.deathSaveState.Dead,
+	})
+}
+
+type countingSecondWindRoller struct {
+	calls int
+}
+
+func (r *countingSecondWindRoller) Roll(_ context.Context, _ int) (int, error) {
+	r.calls++
+	return 10, nil
+}
+
+func (r *countingSecondWindRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
+	r.calls++
+	return make([]int, count), nil
+}
+
+var _ dice.Roller = (*countingSecondWindRoller)(nil)
+
+func (s *SecondWindTestSuite) TestDeadOwnerIsRejectedBeforeRollOrSpend() {
+	owner := &deadSecondWindOwner{
+		id:             "fighter-1",
+		deathSaveState: saves.DeathSaveState{Failures: 3, Dead: true},
+	}
+	roller := &countingSecondWindRoller{}
+	s.secondWind.roller = roller
+	published := 0
+	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(
+		s.ctx,
+		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+			published++
+			owner.hitPoints += event.Amount
+			owner.deathSaveState = saves.DeathSaveState{}
+			owner.dirty = true
+			return nil
+		},
+	)
+	s.Require().NoError(err)
+
+	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+
+	s.Require().Error(err)
+	s.Equal(rpgerr.CodeInvalidState, rpgerr.GetCode(err))
+	s.Zero(roller.calls)
+	s.Equal(1, s.secondWind.resource.Current())
+	s.Zero(owner.hitPoints)
+	s.Equal(saves.DeathSaveState{Failures: 3, Dead: true}, owner.deathSaveState)
+	s.False(owner.dirty)
+	s.Zero(published)
 }
 
 func (s *SecondWindTestSuite) TestCanActivate() {

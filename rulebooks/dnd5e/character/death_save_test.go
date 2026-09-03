@@ -185,6 +185,61 @@ func TestMakeDeathSaveNatural20KeepsTheActiveTurn(t *testing.T) {
 	require.Equal(t, before.MovementRemaining, char.GetActionEconomy().MovementRemaining)
 }
 
+func TestDeathSaveStateCannotBeMutatedThroughLegacyCharacterDoors(t *testing.T) {
+	t.Run("getter returns a defensive copy", func(t *testing.T) {
+		char := bareCharacterAtZero(&saves.DeathSaveState{Successes: 1, Failures: 1})
+		markSaved(char)
+
+		exposed := char.GetDeathSaveState()
+		exposed.Successes = 3
+		exposed.Failures = 3
+		exposed.Stabilized = true
+		exposed.Dead = true
+
+		require.Equal(t, &saves.DeathSaveState{Successes: 1, Failures: 1}, char.GetDeathSaveState())
+		require.Equal(t, combat.LifeStateDying, char.LifeState())
+		require.False(t, char.IsDirty())
+	})
+
+	t.Run("low-level damage rule cannot bypass Character ApplyDamage", func(t *testing.T) {
+		char := bareCharacterAtZero(&saves.DeathSaveState{Failures: 1})
+		markSaved(char)
+
+		result, err := saves.TakeDamageWhileUnconscious(context.Background(),
+			&saves.DamageWhileUnconsciousInput{
+				State:      char.GetDeathSaveState(),
+				IsCritical: true,
+			})
+		require.NoError(t, err)
+		require.Equal(t, &saves.DeathSaveState{Failures: 3, Dead: true}, result.State)
+		require.Equal(t, &saves.DeathSaveState{Failures: 1}, char.GetDeathSaveState())
+		require.Equal(t, combat.LifeStateDying, char.LifeState())
+		require.False(t, char.IsDirty())
+	})
+
+	t.Run("deprecated Character mutation methods refuse to mutate", func(t *testing.T) {
+		char := bareCharacterAtZero(&saves.DeathSaveState{Failures: 2})
+		markSaved(char)
+
+		result, err := char.TakeDamageWhileUnconscious(context.Background(),
+			&TakeDamageWhileUnconsciousInput{IsCritical: true})
+		require.Error(t, err)
+		require.Equal(t, rpgerr.CodeInvalidState, rpgerr.GetCode(err))
+		require.Nil(t, result)
+		require.Equal(t, &saves.DeathSaveState{Failures: 2}, char.GetDeathSaveState())
+		require.False(t, char.IsDirty())
+
+		dead := bareCharacterAtZero(&saves.DeathSaveState{Failures: 3, Dead: true})
+		markSaved(dead)
+		err = dead.ResetDeathSaveState()
+		require.Error(t, err)
+		require.Equal(t, rpgerr.CodeInvalidState, rpgerr.GetCode(err))
+		require.Equal(t, &saves.DeathSaveState{Failures: 3, Dead: true}, dead.GetDeathSaveState())
+		require.Equal(t, combat.LifeStateDead, dead.LifeState())
+		require.False(t, dead.IsDirty())
+	})
+}
+
 func TestDeathSaveProgressRoundTripsExactly(t *testing.T) {
 	char := dyingCharacterForTurn(t, &saves.DeathSaveState{Successes: 1, Failures: 1})
 	_, err := char.MakeDeathSave(context.Background(), &MakeDeathSaveInput{
