@@ -41,7 +41,7 @@ declaration, and `gorelease` gates every release.
 | `data.go` | What this package persists |
 | `types.go` | What this package returns |
 | `convert.go` | The converter layer: inner shapes → ours |
-| `read.go` | `Atlas`, `Status`, `View`, `Story`, and the shared load path |
+| `read.go` | `Roster`, `Atlas`, `Status`, `View`, `Story`, and the shared load path |
 | `conceal.go` | The two concealment capabilities: the check resolver and the witness |
 | `search.go` | `Search` — the player's sweep of the room they stand in |
 | `stream.go` | Per-recipient dense numbering: each member's delivered stream, counted for them |

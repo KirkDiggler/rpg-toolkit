@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -77,6 +78,80 @@ type StoryInput struct {
 	// To resume after entry N, pass N+1. Named for what it does, unlike the
 	// composition's own field, whose name predates its behaviour.
 	FromSeq uint64
+}
+
+// Roster returns the current public player and monster identities in encounter
+// order. It reloads every player character from the repository, strictly loads
+// each character so corrupt appearance data is refused, and projects only
+// public identity and customization. KindWorld members are omitted.
+//
+// The authenticated host principal in RosterInput.Player must match at least
+// one current player character's PlayerID; otherwise ErrNotSeated is returned.
+// Other refusals include ErrNilInput, ErrNoSessionID, ErrNoMemberID,
+// ErrNoSession, ErrNoEncounter, ErrNoCharacter, ErrBadCharacter,
+// ErrBadRepository, ErrNoSheet, ErrBadNPC, or ErrInvalidWorld.
+func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("roster: %w", ErrNilInput)
+	}
+	if in.Session == "" {
+		return nil, fmt.Errorf("roster: %w", ErrNoSessionID)
+	}
+	if in.Player == "" {
+		return nil, fmt.Errorf("roster: %w", ErrNoMemberID)
+	}
+
+	data, err := m.loadSessionData(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("roster: %w", err)
+	}
+	enc, err := m.loadWorld(ctx, data)
+	if err != nil {
+		return nil, fmt.Errorf("roster: %w", err)
+	}
+	roster, err := enc.Members()
+	if err != nil {
+		return nil, fmt.Errorf("roster: %w", translate(err))
+	}
+
+	members := make([]PublicMember, 0, len(roster))
+	seated := false
+	for _, member := range roster {
+		id := string(member.ID)
+		switch member.Kind {
+		case encounter.KindPlayer:
+			stored, err := m.fetchCharacterData(ctx, "roster", id)
+			if err != nil {
+				return nil, fmt.Errorf("roster: %w", err)
+			}
+			loaded, err := character.Load(ctx, stored)
+			if err != nil {
+				return nil, fmt.Errorf("roster: character %q: %w: %v", id, ErrBadCharacter, err)
+			}
+			if stored.PlayerID == in.Player {
+				seated = true
+			}
+			members = append(members, projectRosterCharacter(member, stored, loaded))
+
+		case encounter.KindMonster:
+			projected, err := projectRosterMonster(member, data.NPCs)
+			if err != nil {
+				return nil, fmt.Errorf("roster: %w", err)
+			}
+			members = append(members, projected)
+
+		case encounter.KindWorld:
+			continue
+
+		default:
+			return nil, fmt.Errorf("roster: member %q has unknown kind %q: %w", id, member.Kind, ErrInvalidWorld)
+		}
+	}
+
+	if !seated {
+		return nil, fmt.Errorf("roster: %q: %w", in.Player, ErrNotSeated)
+	}
+	return &RosterOutput{Members: members}, nil
 }
 
 // Atlas returns the session's world map AS ONE MEMBER KNOWS IT: one set of

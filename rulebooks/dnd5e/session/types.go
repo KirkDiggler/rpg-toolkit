@@ -1291,6 +1291,107 @@ const (
 	KindWorld MemberKind = "world"
 )
 
+// RosterInput asks for the public identity of every current encounter member.
+// Player is the authenticated host principal, not a client-supplied authority
+// token; the manager uses it only to verify that the caller owns a seat.
+type RosterInput struct {
+	// Session is the session whose encounter roster to read.
+	Session string
+
+	// Player is the authenticated host principal requesting the roster.
+	Player string
+}
+
+// RosterOutput contains the current public encounter roster in composition
+// order. World NPC members are intentionally omitted.
+type RosterOutput struct {
+	// Members is the public identity of each player and monster in the roster.
+	Members []PublicMember `json:"members,omitempty"`
+}
+
+// PublicMember is the identity and cosmetic projection visible in a public
+// roster. It deliberately contains no position, hit points, inventory,
+// player principal, or other private sheet facts.
+type PublicMember struct {
+	// ID is the member's encounter identifier.
+	ID string `json:"id"`
+
+	// Kind identifies whether the member is player-controlled or a monster.
+	Kind MemberKind `json:"kind"`
+
+	// Name is the member's current public display name.
+	Name string `json:"name"`
+
+	// ClassRef is the player's class identifier. It is empty for monsters.
+	ClassRef string `json:"class_ref,omitempty"`
+
+	// RaceRef is the player's race identifier. It is empty for monsters.
+	RaceRef string `json:"race_ref,omitempty"`
+
+	// MonsterRef is the stored catalog reference. It is empty for players.
+	MonsterRef string `json:"monster_ref,omitempty"`
+
+	// Customization is the player's exact cosmetic selection, or an empty
+	// customization for monsters.
+	Customization Customization `json:"customization"`
+}
+
+// StyleSelectionKind identifies whether a style slot selects a provider-owned
+// style or explicitly contains no style.
+type StyleSelectionKind string
+
+const (
+	// StyleSelectionStyle selects the provider-owned style named by StyleRef.
+	StyleSelectionStyle StyleSelectionKind = "style"
+
+	// StyleSelectionNone explicitly removes the style from the slot.
+	StyleSelectionNone StyleSelectionKind = "none"
+)
+
+// StyleSelection is the Session-owned projection of one opaque style choice.
+type StyleSelection struct {
+	// Kind identifies a style selection or an explicit no-style selection.
+	Kind StyleSelectionKind `json:"kind"`
+
+	// StyleRef is the opaque provider-owned style reference, when selected.
+	StyleRef string `json:"style_ref,omitempty"`
+}
+
+// HairCustomization is the Session-owned projection of optional hair choices.
+type HairCustomization struct {
+	// Scalp is the selected scalp style, when present.
+	Scalp *StyleSelection `json:"scalp,omitempty"`
+
+	// FacialHair is the selected facial-hair style, when present.
+	FacialHair *StyleSelection `json:"facial_hair,omitempty"`
+
+	// ColorSRGB is the packed sRGB hair color, when present.
+	ColorSRGB *uint32 `json:"color_srgb,omitempty"`
+
+	// Roughness is the provider-neutral hair roughness, when present.
+	Roughness *float32 `json:"roughness,omitempty"`
+}
+
+// OutfitCustomization is the Session-owned projection of optional outfit
+// colors.
+type OutfitCustomization struct {
+	// PrimaryColorSRGB is the packed sRGB primary outfit color, when present.
+	PrimaryColorSRGB *uint32 `json:"primary_color_srgb,omitempty"`
+
+	// SecondaryColorSRGB is the packed sRGB secondary outfit color, when present.
+	SecondaryColorSRGB *uint32 `json:"secondary_color_srgb,omitempty"`
+}
+
+// Customization is the Session-owned projection of a player's appearance.
+// Nil nested values preserve the absence of a selected customization slot.
+type Customization struct {
+	// Hair contains the selected hair values, when present.
+	Hair *HairCustomization `json:"hair,omitempty"`
+
+	// Outfit contains the selected outfit colors, when present.
+	Outfit *OutfitCustomization `json:"outfit,omitempty"`
+}
+
 // Member is a participant's placement in the world.
 type Member struct {
 	// ID is the member's identifier.

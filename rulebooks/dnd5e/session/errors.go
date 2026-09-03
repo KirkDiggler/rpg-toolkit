@@ -141,6 +141,10 @@ var (
 	// not hold.
 	ErrNoMember = errors.New("no such member")
 
+	// ErrNotSeated is returned when an authenticated principal owns no current
+	// player seat in the requested session.
+	ErrNotSeated = errors.New("player is not seated in this session")
+
 	// ErrStoryTrimmed is returned by Story when the requested resume point has
 	// aged out of the retention window. The caller must resync from zero
 	// rather than resume: a short answer would be indistinguishable from a
