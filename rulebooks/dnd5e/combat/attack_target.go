@@ -18,19 +18,10 @@ const (
 )
 
 // CanBeAttackTarget reports whether a combatant remains a creature an Attack
-// can target. A down character is unconscious and remains targetable; a down
-// monster is defeated and does not. Unknown kinds fail closed.
-//
-// down must be the current [IsDown] answer rather than a hit-point comparison,
-// so exceptions such as Undead Fortitude can evolve there without changing
-// this rule or its callers.
+// can target. It is the compatibility surface for callers that can express
+// only kind and the current [IsDown] answer; richer callers should use
+// [ClassifyLifeState] and [ParticipationFor].
 func CanBeAttackTarget(kind CombatantKind, down bool) bool {
-	switch kind {
-	case CombatantKindCharacter:
-		return true
-	case CombatantKindMonster:
-		return !down
-	default:
-		return false
-	}
+	state := ClassifyLifeState(LifeStateInput{Kind: kind, Down: down})
+	return ParticipationFor(state).AttackTarget
 }
