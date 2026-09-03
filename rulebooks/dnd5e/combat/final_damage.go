@@ -41,8 +41,9 @@ type DamageInstanceInput struct {
 //
 // Components carrying a Multiplier are modifiers (resistance 0.5,
 // vulnerability 2.0, immunity 0.0); every other component contributes its
-// dice subtotal and modifier. Both are grouped by damage type before the
-// multipliers apply, because 5e resists a TYPE rather than a source.
+// Total() — the authoritative dice subtotal plus any present modifier.
+// Both are grouped by damage type before the multipliers apply, because 5e
+// resists a TYPE rather than a source.
 //
 // Modifier-or-damage is decided by the Multiplier's PRESENCE, never its value:
 // immunity's factor is zero, so a value test cannot tell it from an absent
@@ -92,14 +93,10 @@ func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInst
 			continue
 		}
 
-		// The dice trace's subtotal is authoritative; the modifier pointer is
-		// read on presence, so a real zero still participates.
-		if component.Roll.Dice != nil {
-			byType[dmgType].baseDamage += component.Roll.Dice.Subtotal
-		}
-		if component.Roll.Modifier != nil {
-			byType[dmgType].baseDamage += *component.Roll.Modifier
-		}
+		// Total() reads the dice trace's authoritative subtotal plus any
+		// present modifier pointer — the one arithmetic a damage component
+		// already owns.
+		byType[dmgType].baseDamage += component.Total()
 	}
 
 	// Apply multipliers to each damage type

@@ -151,7 +151,12 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 		}
 		trace := e.Components[componentIndex].Roll.Dice
 		if trace == nil {
-			return e, nil
+			// Fail closed: a marked primary weapon without a dice trace is a
+			// malformed provider claim, not a swing with no dice. Skipping
+			// silently would report damage that skipped GWF without anyone
+			// noticing.
+			return e, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"great weapon fighting requires a dice trace on the marked primary weapon component for character %s", f.MemberID)
 		}
 
 		roller := f.roller

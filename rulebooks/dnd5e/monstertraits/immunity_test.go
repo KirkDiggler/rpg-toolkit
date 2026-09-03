@@ -49,7 +49,7 @@ func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
 				Roll: dnd5eEvents.RollComponent{
-					Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Dagger(), Name: "Dagger"},
 					Dice:     testDiceTrace(6, 3, 4),
 					Modifier: intPtr(2),
 				},
@@ -81,6 +81,10 @@ func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
 	// Second component: immunity multiplier (0 = negate damage)
 	s.Assert().Equal(dnd5eEvents.DamageSourceMonsterTrait, result.Components[1].Source)
 	s.Assert().Equal(damage.Poison, result.Components[1].DamageType)
+	s.Assert().Equal(refs.MonsterTraits.Immunity(), result.Components[1].Roll.Source.Ref,
+		"the immunity component carries its provider's canonical ref")
+	s.Assert().Equal("Immunity", result.Components[1].Roll.Source.Name,
+		"the immunity component carries its provider's display name")
 	s.Require().NotNil(result.Components[1].Multiplier,
 		"immunity is a modifier carrying the factor zero, not an absent modifier — rpg-toolkit#1012")
 	s.Assert().Equal(0.0, *result.Components[1].Multiplier)
@@ -102,7 +106,7 @@ func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
 				Roll: dnd5eEvents.RollComponent{
-					Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
 					Dice:     testDiceTrace(6, 3, 4),
 					Modifier: intPtr(2),
 				},
@@ -144,7 +148,7 @@ func (s *ImmunityTestSuite) TestImmunityIgnoresOtherTargets() {
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
 				Roll: dnd5eEvents.RollComponent{
-					Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Dagger(), Name: "Dagger"},
 					Dice:     testDiceTrace(6, 3, 4),
 					Modifier: intPtr(2),
 				},

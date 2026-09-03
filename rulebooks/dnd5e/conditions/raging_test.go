@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -950,8 +951,13 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceUsesComponentTyp
 			{
 				Source: dnd5eEvents.DamageSourceFeature,
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
-					Dice:   testDiceTrace(7, 7),
+					// Test-owned fire feature: the catalog has no real feature
+					// to borrow for synthetic fire damage.
+					Source: dnd5eEvents.RollSource{
+						Ref:  &core.Ref{Module: "dnd5e", Type: "features", ID: "fire_damage"},
+						Name: "Fire Damage",
+					},
+					Dice: testDiceTrace(7, 7),
 				},
 				DamageType: damage.Fire,
 			},

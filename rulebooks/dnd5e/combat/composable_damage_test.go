@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -24,6 +25,15 @@ type ComposableDamageTestSuite struct {
 	ctx context.Context
 	bus events.EventBus
 }
+
+// lifedrinkerRef is a test-owned ref for the synthetic Lifedrinker-style
+// feature: the rulebook catalog has no Lifedrinker entry to borrow, so the
+// test owns the identity rather than disguising the feature as Sneak Attack.
+var lifedrinkerRef = &core.Ref{Module: "dnd5e", Type: "features", ID: "lifedrinker"}
+
+// syntheticDefensesRef is a test-owned ref for the synthetic type-defense
+// multipliers installed by installTypeSpecificDefenses.
+var syntheticDefensesRef = &core.Ref{Module: "dnd5e", Type: "conditions", ID: "synthetic_type_defenses"}
 
 func TestLifedrinkerComposableDamageSuite(t *testing.T) {
 	suite.Run(t, new(ComposableDamageTestSuite))
@@ -133,7 +143,7 @@ func (s *ComposableDamageTestSuite) installFlatNecroticFeature(charismaModifier 
 					event.Components = append(event.Components, dnd5eEvents.DamageComponent{
 						Source: dnd5eEvents.DamageSourceFeature,
 						Roll: dnd5eEvents.RollComponent{
-							Source:   dnd5eEvents.RollSource{Ref: refs.Features.SneakAttack(), Name: "Sneak Attack"},
+							Source:   dnd5eEvents.RollSource{Ref: lifedrinkerRef, Name: "Lifedrinker"},
 							Modifier: intPtr(max(1, charismaModifier)),
 						},
 						DamageType: damage.Necrotic,
@@ -154,12 +164,18 @@ func (s *ComposableDamageTestSuite) installTypeSpecificDefenses(featurePresentAt
 					*featurePresentAtConditions = componentBySourceAndType(event.Components, dnd5eEvents.DamageSourceFeature, damage.Necrotic) != nil
 					event.Components = append(event.Components,
 						dnd5eEvents.DamageComponent{
-							Source:     dnd5eEvents.DamageSourceCondition,
+							Source: dnd5eEvents.DamageSourceCondition,
+							Roll: dnd5eEvents.RollComponent{
+								Source: dnd5eEvents.RollSource{Ref: syntheticDefensesRef, Name: "Synthetic Type Defenses"},
+							},
 							Multiplier: dnd5eEvents.Multiply(2),
 							DamageType: damage.Slashing,
 						},
 						dnd5eEvents.DamageComponent{
-							Source:     dnd5eEvents.DamageSourceCondition,
+							Source: dnd5eEvents.DamageSourceCondition,
+							Roll: dnd5eEvents.RollComponent{
+								Source: dnd5eEvents.RollSource{Ref: syntheticDefensesRef, Name: "Synthetic Type Defenses"},
+							},
 							Multiplier: dnd5eEvents.Multiply(0.5),
 							DamageType: damage.Necrotic,
 						},

@@ -378,6 +378,48 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCall
 	s.Empty(got.Rerolls, "no partial reroll history leaks")
 }
 
+// TestNilPrimaryDiceTraceFailsClosed pins fail-closed behavior: a marked
+// primary weapon component without a dice trace is a malformed provider
+// claim, not a swing with no dice — GWF refuses the chain loudly rather
+// than silently skipping and reporting a damage total without rerolls.
+func (s *FightingStyleGreatWeaponFightingTestSuite) TestNilPrimaryDiceTraceFailsClosed() {
+	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-1", s.mockRoller)
+	s.Require().NoError(gwf.Apply(s.ctx, s.bus))
+	defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
+
+	// No roller expectations: the failure must precede any reroll attempt.
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
+					// Roll.Dice deliberately nil: a marked primary weapon
+					// carrying no dice trace.
+				},
+				DamageType: damage.Slashing,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	_, err = modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().Error(err, "a marked primary weapon without a dice trace fails closed")
+	s.Contains(err.Error(), "dice trace")
+
+	// Nothing mutated: the caller-owned component is exactly as built.
+	s.Len(damageEvent.Components, 1)
+	s.Nil(damageEvent.Components[0].Roll.Dice, "no trace is invented for the caller")
+}
+
 func (s *FightingStyleGreatWeaponFightingTestSuite) TestToJSON() {
 	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-1", s.mockRoller)
 

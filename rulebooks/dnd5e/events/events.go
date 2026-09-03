@@ -138,7 +138,8 @@ type ConditionBehavior interface {
 // =============================================================================
 
 // DamageSourceType categorizes where damage bonuses come from.
-// This is the category only - use SourceRef for the specific reference.
+// This is the category only — the specific provider identity (ref and display
+// name) lives on [DamageComponent.Roll].Source.
 type DamageSourceType string
 
 // Damage source category constants
@@ -161,9 +162,9 @@ const (
 // Everything roll-shaped lives in [DamageComponent.Roll]: the provider-owned
 // [RollSource] (ref and display name), the dice trace when this component
 // rolled dice, and the modifier when this component contributed one. The
-// domain facts — category, damage type, properties, critical state, and the
-// multiplier — stay root fields, because they are damage facts, not roll
-// facts (docs/superpowers specs, server-authored roll traces).
+// remaining fields are damage facts, not roll facts — Roll records who
+// provided the component and what its dice did, while these fields describe
+// what the damage is and how it lands.
 type DamageComponent struct {
 	Source DamageSourceType // Category: weapon, ability, condition, etc.
 
