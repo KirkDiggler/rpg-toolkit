@@ -222,12 +222,19 @@ func (s *FighterEncounterSuite) TestSecondWind_HealsCharacter() {
 		// Verify healing event was published
 		s.Require().NotNil(healingEvent, "Should publish HealingReceivedEvent")
 		s.Equal(s.fighter.GetID(), healingEvent.TargetID)
-		s.Equal(1, healingEvent.Modifier, "Modifier should be fighter level (1)")
-		s.GreaterOrEqual(healingEvent.Roll, 1, "Roll should be at least 1")
-		s.LessOrEqual(healingEvent.Roll, 10, "Roll should be at most 10")
-		s.Equal(healingEvent.Roll+healingEvent.Modifier, healingEvent.Amount)
+		s.Require().NotNil(healingEvent.Calculation, "Second Wind publishes a sourced calculation")
+		s.Equal(healingEvent.Calculation.Total, healingEvent.Amount)
+		s.Require().Len(healingEvent.Calculation.Components, 2)
+		trace := healingEvent.Calculation.Components[0].Dice
+		s.Require().NotNil(trace)
+		s.Equal("1d10", trace.Notation)
+		s.GreaterOrEqual(trace.Subtotal, 1, "Rolled at least 1")
+		s.LessOrEqual(trace.Subtotal, 10, "Rolled at most 10")
+		s.Require().NotNil(healingEvent.Calculation.Components[1].Modifier)
+		s.Equal(1, *healingEvent.Calculation.Components[1].Modifier, "Modifier should be fighter level (1)")
+		s.Equal(trace.Subtotal+1, healingEvent.Amount)
 
-		s.T().Logf("✓ Second Wind healed for %d (rolled %d + %d level)", healingEvent.Amount, healingEvent.Roll, healingEvent.Modifier)
+		s.T().Logf("✓ Second Wind healed for %d (rolled %d + 1 level)", healingEvent.Amount, trace.Subtotal)
 	})
 }
 
@@ -314,10 +321,14 @@ func (s *FighterEncounterSuite) TestSecondWind_ScalesWithLevel() {
 		s.Require().NoError(err)
 
 		s.Require().NotNil(healingEvent)
-		s.Equal(5, healingEvent.Modifier, "Modifier should be fighter level (5)")
-		s.Equal(healingEvent.Roll+5, healingEvent.Amount, "Total should be 1d10 + 5")
+		s.Require().NotNil(healingEvent.Calculation)
+		s.Require().Len(healingEvent.Calculation.Components, 2)
+		s.Require().NotNil(healingEvent.Calculation.Components[1].Modifier)
+		s.Equal(5, *healingEvent.Calculation.Components[1].Modifier, "Modifier should be fighter level (5)")
+		s.Equal(healingEvent.Calculation.Total, healingEvent.Amount, "Total should be 1d10 + 5")
 
-		s.T().Logf("✓ Second Wind at level 5 healed for %d (rolled %d + 5)", healingEvent.Amount, healingEvent.Roll)
+		s.T().Logf("✓ Second Wind at level 5 healed for %d (rolled %d + 5)",
+			healingEvent.Amount, healingEvent.Calculation.Components[0].Dice.Subtotal)
 	})
 }
 

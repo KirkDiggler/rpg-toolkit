@@ -440,6 +440,21 @@ func (m *Monster) onHealingReceived(
 		return nil
 	}
 
+	// A calculation-bearing publisher must agree with itself before this sheet
+	// moves: the trace is validated and the requested amount must equal the
+	// calculation's authoritative total. Both checks precede every mutation so
+	// invalid input leaves HP and the dirty mark untouched.
+	if event.Calculation != nil {
+		if err := dnd5eEvents.ValidateRollCalculation(event.Calculation); err != nil {
+			return rpgerr.WrapWithCode(err, rpgerr.CodeInvalidArgument, "healing calculation is invalid")
+		}
+		if event.Amount != event.Calculation.Total {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"healing amount %d does not match calculation total %d",
+				event.Amount, event.Calculation.Total)
+		}
+	}
+
 	hpBefore := m.hp
 	m.hp += event.Amount
 	if m.hp > m.maxHP {
@@ -456,16 +471,26 @@ func (m *Monster) onHealingReceived(
 		sourceRef = &clone
 	}
 
+	// Legacy publishers (Hit Dice) carry their roll facts as scalars with no
+	// calculation. The owner mirrors them onto the applied fact only then: a
+	// calculation-bearing request leaves both scalars zero, because the
+	// calculation clone is the roll record and the two never coexist.
+	var appliedRoll, appliedModifier int
+	if event.Calculation == nil {
+		appliedRoll, appliedModifier = event.Roll, event.Modifier
+	}
+
 	return dnd5eEvents.HealingAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
-		TargetID:   m.id,
-		Requested:  event.Amount,
-		Applied:    m.hp - hpBefore,
-		HPBefore:   hpBefore,
-		HPAfter:    m.hp,
-		Roll:       event.Roll,
-		Modifier:   event.Modifier,
-		SourceRef:  sourceRef,
-		SourceName: event.SourceName,
+		TargetID:    m.id,
+		Requested:   event.Amount,
+		Applied:     m.hp - hpBefore,
+		HPBefore:    hpBefore,
+		HPAfter:     m.hp,
+		Roll:        appliedRoll,
+		Modifier:    appliedModifier,
+		SourceRef:   sourceRef,
+		SourceName:  event.SourceName,
+		Calculation: dnd5eEvents.CloneRollCalculation(event.Calculation),
 	})
 }
 

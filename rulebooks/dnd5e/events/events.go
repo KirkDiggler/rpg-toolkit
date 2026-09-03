@@ -602,26 +602,42 @@ type DamageReceivedEvent struct {
 type HealingReceivedEvent struct {
 	TargetID   string    // ID of the member receiving healing — character or monster
 	Amount     int       // Amount of healing requested before the target's HP cap
-	Roll       int       // The dice roll result (before modifiers)
-	Modifier   int       // Any modifier added to the roll (e.g., fighter level)
+	Roll       int       // Legacy scalar dice result, set only by publishers that have not adopted calculations (e.g. Hit Dice)
+	Modifier   int       // Legacy scalar modifier, set only by publishers that have not adopted calculations
 	Source     string    // Legacy identifier for what caused this healing (e.g., "second_wind")
 	SourceRef  *core.Ref // Canonical reference for what caused the healing, when available
 	SourceName string    // Toolkit-authored display name for the source, when available
+
+	// Calculation is the publisher-authored sourced roll calculation behind the
+	// requested healing, when the publisher rolls through the shared trace
+	// primitives. The HP owner validates it against Amount and publishes a deep
+	// clone; nil remains legal for non-roll healing, whose publishers keep the
+	// legacy scalar path.
+	Calculation *RollCalculation
 }
 
 // HealingAppliedEvent reports the actual post-clamp healing applied by a
-// member's sheet keeper. It preserves the requested roll and source alongside
-// the target's before/after HP so observers never have to infer the clamp.
+// member's sheet keeper. It carries the requested and applied amounts, the
+// target's before/after HP, the healing source identity, and a deep clone of
+// the received roll calculation so observers never infer the clamp or rebuild
+// the roll from scalars.
+//
+// Roll and Modifier are legacy-only compatibility fields: the HP owner mirrors
+// them from the received event when it carried no calculation (Hit Dice and
+// other publishers that have not adopted calculations), and leaves both zero
+// whenever the request carried a calculation — the clone is the roll record,
+// and a calculation never coexists with the scalars.
 type HealingAppliedEvent struct {
-	TargetID   string
-	Requested  int
-	Applied    int
-	HPBefore   int
-	HPAfter    int
-	Roll       int
-	Modifier   int
-	SourceRef  *core.Ref
-	SourceName string
+	TargetID    string
+	Requested   int
+	Applied     int
+	HPBefore    int
+	HPAfter     int
+	Roll        int // Legacy scalar dice result, mirrored only when the request carried no calculation
+	Modifier    int // Legacy scalar modifier, mirrored only when the request carried no calculation
+	SourceRef   *core.Ref
+	SourceName  string
+	Calculation *RollCalculation // Deep clone of the received calculation, when the request carried one
 }
 
 // ConditionAppliedEvent is published when a condition is applied to an entity

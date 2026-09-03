@@ -762,6 +762,86 @@ func (s *CharacterHitDiceTestSuite) TestSpendHitDice() {
 	})
 }
 
+// TestSpendHitDiceAppliedEventCarriesLegacyRollFacts is the Hit Dice applied-event
+// regression: Hit Dice publishes nil-calculation healing with legacy Roll/Modifier
+// scalars, and the owner must mirror them onto HealingAppliedEvent — post-clamp —
+// while leaving Calculation nil.
+func (s *CharacterHitDiceTestSuite) TestSpendHitDiceAppliedEventCarriesLegacyRollFacts() {
+	s.Run("legacy roll and modifier survive the applied event unclamped", func() {
+		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.HitDice),
+			Maximum:     4,
+			CharacterID: "test-fighter",
+			ResetType:   coreResources.ResetLongRest,
+		})
+		s.character.AddResource(resources.HitDice, hitDiceResource)
+
+		var got *dnd5eEvents.HealingAppliedEvent
+		_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+			s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+				got = &event
+				return nil
+			})
+		s.Require().NoError(err)
+
+		// 10 (roll) + 2 (CON mod) = 12 healing, below the cap.
+		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
+			Count:  1,
+			Roller: &mockHitDiceRoller{rolls: []int{10}},
+		})
+
+		s.Require().NoError(err)
+		s.Require().Equal(12, result.TotalHealing)
+		s.Require().NotNil(got, "SpendHitDice publishes an applied healing fact")
+		s.Require().Equal(12, got.Requested)
+		s.Require().Equal(12, got.Applied)
+		s.Require().Equal(15, got.HPBefore)
+		s.Require().Equal(27, got.HPAfter)
+		s.Require().Nil(got.Calculation, "Hit Dice healing carries no calculation")
+		s.Require().Equal(10, got.Roll, "legacy roll survives the applied event")
+		s.Require().Equal(2, got.Modifier, "legacy modifier survives the applied event")
+	})
+
+	s.Run("legacy roll and modifier survive the post-clamp applied event", func() {
+		s.character.hitPoints = 35
+		markSaved(s.character)
+		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.HitDice),
+			Maximum:     4,
+			CharacterID: "test-fighter",
+			ResetType:   coreResources.ResetLongRest,
+		})
+		s.character.AddResource(resources.HitDice, hitDiceResource)
+
+		var got *dnd5eEvents.HealingAppliedEvent
+		_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+			s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+				got = &event
+				return nil
+			})
+		s.Require().NoError(err)
+
+		// 10 (roll) + 2 (CON mod) = 12 requested, clamped to 5 applied at max HP.
+		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
+			Count:  1,
+			Roller: &mockHitDiceRoller{rolls: []int{10}},
+		})
+
+		s.Require().NoError(err)
+		s.Require().Equal(12, result.TotalHealing)
+		s.Require().Equal(40, s.character.GetHitPoints(), "clamped at max HP")
+		s.Require().NotNil(got)
+		s.Require().Equal(12, got.Requested)
+		s.Require().Equal(5, got.Applied, "post-clamp applied amount")
+		s.Require().Equal(35, got.HPBefore)
+		s.Require().Equal(40, got.HPAfter)
+		s.Require().Nil(got.Calculation, "Hit Dice healing carries no calculation")
+		s.Require().Equal(10, got.Roll, "legacy roll survives the post-clamp applied event")
+		s.Require().Equal(2, got.Modifier, "legacy modifier survives the post-clamp applied event")
+		s.True(s.character.IsDirty())
+	})
+}
+
 func TestCharacterHitDiceSuite(t *testing.T) {
 	suite.Run(t, new(CharacterHitDiceTestSuite))
 }

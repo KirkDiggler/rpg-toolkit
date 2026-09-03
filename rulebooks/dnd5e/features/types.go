@@ -3,6 +3,7 @@ package features
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
@@ -31,4 +32,10 @@ type FeatureInput struct {
 
 	// Action is provided for features with action choices (e.g., Step of the Wind: "disengage" or "dash")
 	Action string `json:"action,omitempty"`
+
+	// Roller is the interaction-scoped dice roller for features that roll
+	// (e.g., Second Wind's healing d10). Nil retains the production default
+	// roller; resolution supplies the interaction's roller so exact traces
+	// never depend on process-global randomness.
+	Roller dice.Roller `json:"-"`
 }
