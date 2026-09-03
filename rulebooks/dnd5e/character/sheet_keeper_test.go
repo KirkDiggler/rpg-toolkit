@@ -230,9 +230,13 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 		})
 	s.Require().NoError(err)
 
+	// The stray scalars ride along on the received event to prove the owner
+	// never lets them coexist with a calculation on the applied fact.
 	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID:    s.char.GetID(),
 		Amount:      7,
+		Roll:        6,
+		Modifier:    1,
 		SourceRef:   &source,
 		SourceName:  "Second Wind",
 		Calculation: calculation,
@@ -248,6 +252,11 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()))
 	s.Require().Equal("Second Wind", got.SourceName)
 	s.Require().NotSame(&source, got.SourceRef, "the applied fact owns its source identity")
+
+	// A calculation-bearing request must leave both legacy scalars zero: the
+	// calculation clone is the roll record, and the two never coexist.
+	s.Require().Zero(got.Roll, "calculation-bearing healing carries no legacy roll scalar")
+	s.Require().Zero(got.Modifier, "calculation-bearing healing carries no legacy modifier scalar")
 
 	// The applied fact carries a deep clone of the received calculation.
 	s.Require().NotNil(got.Calculation, "the applied fact carries the roll calculation")
@@ -283,7 +292,8 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedWithoutCalculationReportsNil
 	s.Require().NoError(err)
 
 	// Non-roll healing may publish without a calculation and stays legal; the
-	// legacy scalar fields remain the publisher's own record.
+	// legacy scalar fields remain the publisher's own record and the owner
+	// mirrors them onto the applied fact.
 	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID: s.char.GetID(),
 		Amount:   7,
@@ -298,6 +308,8 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedWithoutCalculationReportsNil
 	s.Require().Equal(30, got.HPBefore)
 	s.Require().Equal(30, got.HPAfter)
 	s.Require().Nil(got.Calculation, "non-roll healing carries no calculation")
+	s.Require().Equal(6, got.Roll, "legacy roll facts mirror onto the applied event")
+	s.Require().Equal(1, got.Modifier, "legacy modifier facts mirror onto the applied event")
 	s.Require().True(s.char.IsDirty())
 }
 

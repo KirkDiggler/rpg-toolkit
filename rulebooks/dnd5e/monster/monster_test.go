@@ -194,9 +194,13 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 		})
 	s.Require().NoError(err)
 
+	// The stray scalars ride along on the received event to prove the owner
+	// never lets them coexist with a calculation on the applied fact.
 	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID:    monster.GetID(),
 		Amount:      7,
+		Roll:        6,
+		Modifier:    1,
 		SourceRef:   &source,
 		SourceName:  "Second Wind",
 		Calculation: calculation,
@@ -212,6 +216,11 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()))
 	s.Require().Equal("Second Wind", got.SourceName)
 	s.Require().NotSame(&source, got.SourceRef, "the applied fact owns its source identity")
+
+	// A calculation-bearing request must leave both legacy scalars zero: the
+	// calculation clone is the roll record, and the two never coexist.
+	s.Require().Zero(got.Roll, "calculation-bearing healing carries no legacy roll scalar")
+	s.Require().Zero(got.Modifier, "calculation-bearing healing carries no legacy modifier scalar")
 
 	// The applied fact carries a deep clone of the received calculation.
 	s.Require().NotNil(got.Calculation, "the applied fact carries the roll calculation")
@@ -260,6 +269,43 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedAtMaximumReportsZeroApplied(
 	s.Require().Equal(10, got.HPBefore)
 	s.Require().Equal(10, got.HPAfter)
 	s.Require().Nil(got.Calculation, "non-roll healing carries no calculation")
+	s.Require().True(monster.IsDirty())
+}
+
+// A legacy publisher (Hit Dice) sends scalar roll facts with no calculation;
+// the owner mirrors them onto the applied fact, and they survive the clamp.
+func (s *HealingAppliedTestSuite) TestHealingAppliedCarriesLegacyScalarsWithoutCalculation() {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	monster := New(Config{ID: "hit-dice-monster", Name: "Hit Dice", HP: 13, AC: 10})
+	monster.TakeDamage(3)
+	s.Require().NoError(monster.SheetKeeper().Apply(ctx, bus))
+
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(
+		ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: monster.GetID(),
+		Amount:   7,
+		Roll:     6,
+		Modifier: 1,
+		Source:   "hit_dice",
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(7, got.Requested)
+	s.Require().Equal(3, got.Applied)
+	s.Require().Equal(10, got.HPBefore)
+	s.Require().Equal(13, got.HPAfter)
+	s.Require().Nil(got.Calculation, "non-roll healing carries no calculation")
+	s.Require().Equal(6, got.Roll, "legacy roll facts survive the clamp")
+	s.Require().Equal(1, got.Modifier, "legacy modifier facts survive the clamp")
 	s.Require().True(monster.IsDirty())
 }
 

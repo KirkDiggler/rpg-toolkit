@@ -621,12 +621,20 @@ type HealingReceivedEvent struct {
 // target's before/after HP, the healing source identity, and a deep clone of
 // the received roll calculation so observers never infer the clamp or rebuild
 // the roll from scalars.
+//
+// Roll and Modifier are legacy-only compatibility fields: the HP owner mirrors
+// them from the received event when it carried no calculation (Hit Dice and
+// other publishers that have not adopted calculations), and leaves both zero
+// whenever the request carried a calculation — the clone is the roll record,
+// and a calculation never coexists with the scalars.
 type HealingAppliedEvent struct {
 	TargetID    string
 	Requested   int
 	Applied     int
 	HPBefore    int
 	HPAfter     int
+	Roll        int // Legacy scalar dice result, mirrored only when the request carried no calculation
+	Modifier    int // Legacy scalar modifier, mirrored only when the request carried no calculation
 	SourceRef   *core.Ref
 	SourceName  string
 	Calculation *RollCalculation // Deep clone of the received calculation, when the request carried one

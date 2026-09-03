@@ -471,12 +471,23 @@ func (m *Monster) onHealingReceived(
 		sourceRef = &clone
 	}
 
+	// Legacy publishers (Hit Dice) carry their roll facts as scalars with no
+	// calculation. The owner mirrors them onto the applied fact only then: a
+	// calculation-bearing request leaves both scalars zero, because the
+	// calculation clone is the roll record and the two never coexist.
+	var appliedRoll, appliedModifier int
+	if event.Calculation == nil {
+		appliedRoll, appliedModifier = event.Roll, event.Modifier
+	}
+
 	return dnd5eEvents.HealingAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
 		TargetID:    m.id,
 		Requested:   event.Amount,
 		Applied:     m.hp - hpBefore,
 		HPBefore:    hpBefore,
 		HPAfter:     m.hp,
+		Roll:        appliedRoll,
+		Modifier:    appliedModifier,
 		SourceRef:   sourceRef,
 		SourceName:  event.SourceName,
 		Calculation: dnd5eEvents.CloneRollCalculation(event.Calculation),
