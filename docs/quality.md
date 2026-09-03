@@ -196,10 +196,10 @@ range ignoring the room's actual dimensions — see
 ### rulebooks/dnd5e — B+
 
 This is the most feature-complete and actively-worked module. All tests pass across
-41 sub-packages. Integration tests for Barbarian, Fighter, Monk, and Rogue
+42 sub-packages. Integration tests for Barbarian, Fighter, Monk, and Rogue
 encounters all pass. Character draft, equipment slots, combat, actions, conditions,
-features, initiative, saves, spells, monsters, and monster traits all have
-test coverage.
+features, initiative, saves, spells, monsters, monster traits, and provider-neutral
+appearance customization all have test coverage.
 
 Known gaps that keep it from A:
 1. **Several data-only sub-packages have no tests:** `abilities`, `ammunition`,
@@ -216,6 +216,13 @@ Known gaps that keep it from A:
    on when this was fetched or how to refresh it.
 4. **`combatabilities` dash, disengage, and dodge** are tested but `move.go` is
    tested minimally — no test for stopping reasons or multi-leg paths.
+
+### rulebooks/dnd5e/customization — A-
+
+Provider-neutral appearance intent has focused validation and deep-clone tests.
+The package deliberately accepts unknown opaque style refs and leaves provider
+membership, defaults, and rendering resolution to the provider. Its boundary is
+small and dependency-light; future integration belongs in `character`/Draft work.
 
 ### rulebooks/dnd5e/combat — A (Wave 2.11d, was A-)
 
@@ -377,7 +384,7 @@ Held back from B by the absence of any tests at the base-module level.
 
 | Grade | Modules |
 |---|---|
-| A / A- | core, rpgerr, dice, rulebooks/dnd5e/combat |
+| A / A- | core, rpgerr, dice, rulebooks/dnd5e/customization, rulebooks/dnd5e/combat |
 | B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e, rulebooks/dnd5e/conditions |
 | B | mechanics/effects, mechanics/conditions, mechanics/proficiency, tools/environments, tools/spawn |
 | B- | mechanics/spells |

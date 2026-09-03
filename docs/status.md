@@ -11,6 +11,13 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**#1450 — toolkit-owned provider-neutral appearance semantics (Task 5; toolkit half).**
+`rulebooks/dnd5e/customization` owns the neutral `Appearance`, hair, outfit, and
+style-selection shapes, including exact shape/range validation and deep cloning.
+Style refs remain opaque and unknown well-shaped refs are accepted; provider
+membership, defaults, and rendering resolution remain outside the toolkit. The
+follow-up Draft command integration owns requiring a nonnil appearance command.
+
 The top-level `github.com/KirkDiggler/rpg-toolkit/encounter` module was retired
 by rpg-toolkit#1215 after rpg-api moved to `rulebooks/dnd5e/session`. Current
 game execution lives in the independently versioned D&D 5e encounter
