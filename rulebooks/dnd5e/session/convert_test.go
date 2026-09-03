@@ -124,6 +124,16 @@ var omitted = map[string]string{
 		"MonsterView.Seen, and a roster listing has no use for the raw range itself",
 	"encounter.Member.Actions":   "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Actions",
 	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
+
+	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
+	// occupancy check at Join/Step time — it decides whether an arrival is
+	// refused, not something a roster listing reports back afterward. The
+	// one caller who sets it (PlaceNPC, from npc.Data.MovementPolicy)
+	// already knows the value it gave; nothing yet reads it back off a
+	// placed member the way MonsterView reads SpeedFeet/Actions for a
+	// TurnDriver. Add a projection when a real reader needs one, rather
+	// than widening this wire type on spec.
+	"encounter.Member.BlocksMovement": "an occupancy fact consulted at placement time; no roster-listing consumer reads it back yet",
 }
 
 // TestEveryInnerFieldIsCarriedOrJustified is the completeness check.
