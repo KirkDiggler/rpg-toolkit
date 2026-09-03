@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>The Nervous System</title>
+<meta name="description" content="How core.Ref restored polymorphic rules, Rage found the event bus, Bless expanded the relationship graph, and AttackChain made the system predictable.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/the-nervous-system/">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Nervous System">
+<meta property="og:description" content="How core.Ref restored polymorphic rules, Rage found the event bus, Bless expanded the relationship graph, and AttackChain made the system predictable.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/the-nervous-system/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/the-nervous-system.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/the-nervous-system.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading The Nervous System beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Nervous System">
+<meta name="twitter:description" content="How core.Ref restored polymorphic rules, Rage found the event bus, Bless expanded the relationship graph, and AttackChain made the system predictable.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/the-nervous-system.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading The Nervous System beside a blue D20 wireframe.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+  :root{
+    --ground:#11141a;
+    --surface:#181c23;
+    --surface-warm:#221a1b;
+    --primary:#f1f3f5;
+    --muted:#c2c8d0;
+    --faint:#9da7b4;
+    --rule:#343b46;
+    --rule-strong:#4c5665;
+    --accent:#7189d7;
+    --accent-strong:#8ea2e4;
+    --accent-soft:#1b2236;
+    --pressure:#c96d62;
+    --pressure-soft:#2b1e20;
+    --life:#76a58c;
+    --life-soft:#192922;
+    --signal:#d2ad68;
+    --signal-soft:#2b261a;
+  }
+  *{box-sizing:border-box}
+  html{overflow-x:clip;background:var(--ground);color-scheme:dark}
+  body{
+    margin:0;background:var(--ground);color:var(--primary);
+    font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+  .page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+  header{padding:82px 72px 76px;border-bottom:1px solid var(--rule)}
+  .eyebrow,.question-label,.date-label,.micro,code,.mono{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+  }
+  .eyebrow{color:var(--accent);font-size:.76rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase}
+  h1,h2,.end-question{
+    font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1;text-wrap:balance;
+  }
+  h1{max-width:900px;margin:.28em 0 .22em;font-size:clamp(4rem,9vw,7.2rem);letter-spacing:-.04em}
+  .dek{max-width:800px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+  .origin-links{display:flex;flex-wrap:wrap;gap:1.8rem;max-width:850px;margin-top:1.7rem}
+  .origin-link{
+    display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);color:inherit;text-decoration:none;
+  }
+  .origin-link span{color:var(--accent);font:600 .68rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+  .origin-link strong{color:var(--primary);font:600 1rem/1.2 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+  .origin-link:hover strong{color:var(--accent)}
+  .opening-proof{
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));max-width:850px;margin-top:36px;
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+  }
+  .opening-proof div{padding:14px 18px 14px 0}
+  .opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+  .opening-proof b{display:block;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:1.04rem;font-weight:600}
+  .opening-proof span{color:var(--muted);font-size:.86rem}
+  .legend{display:flex;gap:1.5rem;max-width:850px;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+  .legend span{display:inline-flex;align-items:center;gap:.48rem}
+  .legend i{display:inline-block;width:22px;height:2px;background:var(--accent)}
+  .legend span+span i{background:var(--pressure)}
+  .timeline{position:relative}
+  .timeline::before{content:"";position:absolute;top:0;bottom:0;left:55px;width:1px;background:var(--rule-strong)}
+  .timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px;margin:0}
+  .rail{position:relative;padding-top:47px;text-align:right}
+  .node{
+    position:absolute;top:50px;right:-8px;z-index:2;display:grid;width:18px;height:18px;place-items:center;
+    border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent);
+  }
+  .pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}
+  .rail-number{display:block;padding-right:22px;color:var(--accent);font:600 1.25rem/1 "IBM Plex Mono",ui-monospace,monospace}
+  .pressure-panel .rail-number{color:var(--pressure)}
+  .date-label{
+    display:block;max-width:88px;margin:12px 16px 0 auto;color:var(--faint);
+    font-size:.7rem;letter-spacing:.08em;line-height:1.35;text-transform:uppercase;
+  }
+  .panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule);background:transparent}
+  .question-label{margin-bottom:7px;color:var(--accent);font-size:.73rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase}
+  .pressure-panel .question-label{color:var(--pressure)}
+  h2{max-width:850px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+  p{max-width:74ch;margin:.76em 0}
+  .lead{color:var(--muted);font-size:1.07rem}
+  .lead strong{color:var(--primary)}
+  code{color:var(--accent);font-size:.88em}
+  figure{
+    margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;
+    border-top:1px solid var(--rule-strong);border-bottom:1px solid var(--rule-strong);background:transparent;
+    scrollbar-color:var(--rule-strong) var(--ground);
+  }
+  figure svg{display:block;width:100%;min-width:800px;height:auto;margin:0 auto}
+  figcaption{max-width:78ch;margin-top:12px;color:var(--faint);font:400 .82rem/1.55 "IBM Plex Mono",ui-monospace,monospace}
+  .law{
+    max-width:790px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);
+    color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",ui-monospace,monospace;
+  }
+  .law b{color:var(--primary);font-weight:600}
+  .pressure-law{border-left-color:var(--pressure)}
+  .note{max-width:78ch;margin-top:18px;padding:.45rem 0 .45rem 1rem;border-left:2px solid var(--rule-strong);color:var(--muted);font-size:.92rem}
+  .note strong{color:var(--primary)}
+  .quote{max-width:790px;margin:24px 0 0;color:var(--primary);font-size:clamp(1.15rem,2.3vw,1.48rem);font-style:italic;line-height:1.45}
+  .end-question{max-width:830px;margin:34px 0 23px;padding-top:28px;border-top:1px solid var(--rule);font-size:clamp(1.8rem,3.6vw,2.65rem)}
+  .next-card{display:inline-flex;align-items:center;gap:.75rem;padding:.72rem 0;border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);color:var(--primary);font:600 .84rem/1.5 "IBM Plex Mono",ui-monospace,monospace}
+  .next-card span{color:var(--accent);font-size:.65rem;letter-spacing:.12em;text-transform:uppercase}
+  footer{max-width:900px;margin:72px 0 0 136px;padding:28px 0 0;border-top:1px solid var(--rule);color:var(--muted)}
+  footer h2{margin-bottom:.45rem;color:var(--primary);font-size:1.4rem}
+  footer p{margin:.45rem 0;font-size:.86rem}
+  footer code{color:var(--accent)}
+  svg{color:var(--primary)}
+  svg text{fill:currentColor;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:15px}
+  svg .t-title{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px;font-weight:600}
+  svg .t-big{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:24px;font-weight:600}
+  svg .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px}
+  svg .small{fill:var(--muted);font-size:13px}
+  svg .tiny{fill:var(--muted);font-size:12px}
+  svg .label{fill:var(--muted);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;font-weight:600;letter-spacing:.8px}
+  svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.2}
+  svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.2;stroke-dasharray:7 6}
+  svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.3}
+  svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.3}
+  svg .life{fill:var(--life-soft);stroke:var(--life);stroke-width:1.3}
+  svg .signal{fill:var(--signal-soft);stroke:var(--signal);stroke-width:1.3}
+  svg .wire{fill:none;stroke:var(--primary);stroke-width:1.4}
+  svg .wire-muted{fill:none;stroke:var(--rule-strong);stroke-width:1.3}
+  svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}
+  svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}
+  svg .wire-life{fill:none;stroke:var(--life);stroke-width:1.8}
+  svg .dash{stroke-dasharray:6 5}
+  svg .blue{fill:var(--accent)}
+  svg .rust{fill:var(--pressure)}
+  svg .green{fill:var(--life)}
+  svg .gold{fill:var(--signal)}
+  figure::before{display:none}
+  @media(max-width:760px){
+    figure::before{
+      content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;
+      margin:0 0 11px;padding:.3rem 0;border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);
+      background:var(--ground);color:var(--accent);font:500 .7rem/1.3 "IBM Plex Mono",ui-monospace,monospace;
+      letter-spacing:.08em;text-transform:uppercase;
+    }
+    .page{padding:14px 14px 70px}
+    header{padding:58px 14px 56px 42px}
+    .origin-links{display:block}
+    .origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}
+    .opening-proof{grid-template-columns:1fr}
+    .opening-proof div{padding:11px 0}
+    .opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}
+    .legend{align-items:flex-start;flex-direction:column;gap:.55rem}
+    .timeline::before{left:16px}
+    .timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}
+    .rail{padding-top:39px}
+    .node{top:42px;right:9px;width:14px;height:14px;border-width:3px}
+    .rail-number{padding-right:0;font-size:0}
+    .date-label{position:absolute;top:62px;left:-5px;width:48px;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.64rem;white-space:nowrap}
+    .panel-body{padding:40px 13px 48px}
+    figure{margin-inline:0;padding:14px 0 10px}
+    figure svg{min-width:900px}
+    footer{margin:50px 0 0 42px}
+  }
+  @media(max-width:420px){
+    body{font-size:16px}
+    header{padding-left:38px}
+    h1{font-size:3.65rem}
+  }
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header>
+    <div class="eyebrow">Layer 2 · Polymorphic rules and events</div>
+    <h1>The Nervous System</h1>
+    <p class="dek">Saving a character restored its shape. Making Rage true meant restoring behavior, then giving every independent rule a way to hear what happened, respond without permission, and clean up after itself.</p>
+    <div class="origin-links">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets &rarr;</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/"><span>Previous field note</span><strong>When Configuration Becomes a Programming Language &rarr;</strong></a>
+    </div>
+    <div class="opening-proof" aria-label="Story coordinates">
+      <div><b>Start</b><span>restore the rule</span></div>
+      <div><b>Stress test</b><span>cast Bless</span></div>
+      <div><b>Limit</b><span>wait for a person</span></div>
+    </div>
+    <div class="legend" aria-label="Visual legend"><span><i></i>new seam</span><span><i></i>next real case</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Seven-panel event architecture timeline">
+    <section class="timeline-panel pressure-panel" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">01</span><span class="date-label">The question</span></div>
+      <div class="panel-body">
+        <div class="question-label">Layer 1 left something inside the data</div>
+        <h2 id="panel-1-title">Well, Rage is part of that data, right?</h2>
+        <p class="lead"><code>ToData</code> and <code>LoadFromData</code> worked when a value had one known Go struct. A character&rsquo;s name, level, and hit points fit that model. Features were deliberately different. <code>Feature</code> was an interface, and every feature only had to satisfy that shared contract. Character did not need to know whether it held Rage, Second Wind, or something supplied by another module. It only needed to activate it.</p>
+        <p class="lead">That was the abstraction working. Persistence should not make Character learn the concrete types again. Each Feature could own <code>ToJSON</code> and its reverse path; CharacterData could hold <code>Features []json.RawMessage</code>. Conditions could use the same pattern.</p>
+        <figure>
+          <svg viewBox="0 0 1040 525" role="img" aria-label="Known character fields such as name, level, and hit points round trip through one CharacterData struct. Dynamic features share a Feature interface, so Character only needs to activate them without knowing their concrete types. JSON preserves that separation for storage, while feature and condition family loaders still need to identify which concrete value each blob contains.">
+            <title>The Feature interface hides concrete runtime types while JSON preserves their data</title>
+            <defs><marker id="a1b6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="a1r6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+
+            <text x="27" y="27" class="label blue">KNOWN STRUCT FIELDS</text>
+            <rect x="27" y="49" width="263" height="105" class="soft"/>
+            <text x="52" y="80" class="label blue">CHARACTER</text>
+            <text x="52" y="113" class="mono">name · level · hit points</text>
+            <text x="52" y="138" class="small">one known shape</text>
+            <line x1="290" y1="101" x2="364" y2="101" class="wire-blue" marker-end="url(#a1b6)"/>
+            <rect x="366" y="49" width="284" height="105" class="box"/>
+            <text x="508" y="80" text-anchor="middle" class="label">ROUND TRIP</text>
+            <text x="508" y="112" text-anchor="middle" class="mono">ToData ↔ LoadFromData</text>
+            <text x="508" y="138" text-anchor="middle" class="small">typed in both directions</text>
+            <line x1="650" y1="101" x2="724" y2="101" class="wire-blue" marker-end="url(#a1b6)"/>
+            <rect x="726" y="49" width="287" height="105" class="life"/>
+            <text x="751" y="80" class="label green">CHARACTERDATA</text>
+            <text x="751" y="113" class="mono">Name string · Level int</text>
+            <text x="751" y="138" class="small">one struct can receive it</text>
+
+            <line x1="27" y1="195" x2="1013" y2="195" class="wire-muted dash"/>
+            <text x="27" y="229" class="label rust">DYNAMIC INTERFACE FIELDS</text>
+            <rect x="27" y="251" width="263" height="208" class="pressure"/>
+            <text x="52" y="283" class="label rust">CHARACTER</text>
+            <text x="52" y="317" class="mono">Features []Feature</text>
+            <text x="72" y="346" class="small">Rage · Second Wind · ...</text>
+            <text x="52" y="385" class="mono">Conditions []Condition</text>
+            <text x="72" y="414" class="small">Blessed · Poisoned · ...</text>
+            <text x="52" y="445" class="small">shared interfaces, different shapes</text>
+
+            <path d="M290 317H340V280H380" class="wire-blue" marker-end="url(#a1b6)"/>
+            <rect x="382" y="243" width="280" height="118" class="life"/>
+            <text x="407" y="274" class="label green">RUNTIME CONTRACT</text>
+            <text x="407" y="307" class="mono">Feature interface</text>
+            <text x="407" y="334" class="small">Activate(input) · all Character needs</text>
+
+            <path d="M290 397H340V427H380" class="wire-blue" marker-end="url(#a1b6)"/>
+            <rect x="382" y="387" width="280" height="112" class="soft"/>
+            <text x="407" y="418" class="label blue">SMALLER SEAM</text>
+            <text x="407" y="452" class="mono">ToJSON → json.RawMessage</text>
+            <text x="407" y="480" class="small">Features[] · Conditions[]</text>
+
+            <line x1="662" y1="443" x2="724" y2="443" class="wire-blue" marker-end="url(#a1b6)"/>
+            <rect x="726" y="251" width="287" height="248" class="box"/>
+            <text x="751" y="283" class="label">LOAD THE BLOBS</text>
+            <rect x="751" y="306" width="237" height="52" class="soft"/>
+            <text x="869" y="338" text-anchor="middle" class="mono">features.LoadJSON(blob)</text>
+            <rect x="751" y="371" width="237" height="52" class="soft"/>
+            <text x="869" y="403" text-anchor="middle" class="mono">conditions.LoadJSON(blob)</text>
+            <text x="751" y="455" class="label rust">WHICH CONCRETE VALUE?</text>
+            <text x="751" y="480" class="small">the family is known; the member is not</text>
+          </svg>
+          <figcaption>The interface intentionally hid each concrete type at runtime. JSON preserved that separation across storage, but it left each family loader staring at an arbitrary blob.</figcaption>
+        </figure>
+        <div class="law"><b>The runtime contract was enough:</b> Character only needed a <code>Feature</code> it could activate. Each implementation could own its JSON shape.</div>
+        <div class="law pressure-law"><b>The routing question:</b> the character knew to ask the Features package. How did that loader know the blob meant Rage?</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">02</span><span class="date-label">The blocker · 2025-08-11</span></div>
+      <div class="panel-body">
+        <div class="question-label">Give every shape a route home</div>
+        <h2 id="panel-2-title">The little Ref told the loader what to build</h2>
+        <p class="lead">The blob carried one small route: <code>module : type : value</code>. In this design those parts meant package, loader location, and concrete ID. <code>features.LoadJSON</code> or <code>conditions.LoadJSON</code> could peek at the <code>core.Ref</code>, dispatch to the owning module, and return the shared interface. Rage could finally load into the bus that was already waiting.</p>
+        <p class="lead">Then came the next test: could the same route reach a class the toolkit had never heard of? <code>homebrew:classes:artificer</code> proved it could.</p>
+        <figure>
+          <svg viewBox="0 0 1040 520" role="img" aria-label="Opaque JSON contains the ref homebrew classes artificer. Core peeks at the ref, routes it to the registered homebrew module, and that module chooses an Artificer loader which owns the JSON shape and returns a Class interface. Unlinked code remains unavailable.">
+            <title>A ref routes opaque JSON to the module that owns its loader</title>
+            <defs><marker id="a5b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="a5r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <text x="26" y="28" class="label blue">TOJSON OUTPUT · REF + OWNED PAYLOAD</text>
+            <rect x="26" y="50" width="306" height="248" class="box"/>
+            <text x="51" y="86" class="mono">{</text>
+            <text x="72" y="118" class="mono blue">"ref":</text>
+            <text x="72" y="148" class="mono blue">"homebrew:classes:artificer",</text>
+            <text x="72" y="182" class="mono">"data": {</text>
+            <text x="94" y="212" class="mono">... module-owned shape ...</text>
+            <text x="72" y="242" class="mono">}</text>
+            <text x="51" y="272" class="mono">}</text>
+
+            <line x1="332" y1="173" x2="407" y2="173" class="wire-blue" marker-end="url(#a5b)"/>
+            <text x="370" y="154" text-anchor="middle" class="label blue">PEEK REF</text>
+            <rect x="409" y="50" width="242" height="248" class="soft"/>
+            <text x="434" y="83" class="label blue">CORE.REF · THE ROUTE</text>
+            <text x="434" y="122" class="mono">module: homebrew</text>
+            <text x="434" y="153" class="mono">type: classes</text>
+            <text x="434" y="184" class="mono">value: artificer</text>
+            <line x1="434" y1="211" x2="626" y2="211" class="wire-muted dash"/>
+            <text x="434" y="245" class="small">package · loader location · ID</text>
+            <text x="434" y="272" class="small">choose registered implementation</text>
+
+            <line x1="651" y1="173" x2="726" y2="173" class="wire-blue" marker-end="url(#a5b)"/>
+            <rect x="728" y="50" width="286" height="248" class="life"/>
+            <text x="753" y="83" class="label green">HOMEBREW PACKAGE</text>
+            <text x="753" y="122" class="t-title">Artificer loader</text>
+            <text x="753" y="158" class="mono">owns JSON shape</text>
+            <text x="753" y="189" class="mono">restores behavior</text>
+            <rect x="753" y="219" width="236" height="52" class="box"/>
+            <text x="871" y="251" text-anchor="middle" class="mono">returns core.Class</text>
+
+            <rect x="26" y="348" width="625" height="112" class="soft"/>
+            <text x="51" y="380" class="label blue">THE FAMILY LOADER PEEKS AT THE REF</text>
+            <text x="51" y="414" class="mono">features.LoadJSON → dnd5e:feature:rage → Rage</text>
+            <text x="51" y="443" class="mono">conditions.LoadJSON → dnd5e:condition:blessed → Blessed</text>
+            <rect x="728" y="348" width="286" height="112" class="pressure"/>
+            <text x="753" y="380" class="label rust">HARD BOUNDARY</text>
+            <text x="753" y="416" class="mono">code not linked?</text>
+            <text x="753" y="445" class="small">a string cannot load it</text>
+            <line x1="651" y1="404" x2="726" y2="404" class="wire-rust dash" marker-end="url(#a5r)"/>
+            <text x="689" y="386" text-anchor="middle" class="label rust">NO</text>
+          </svg>
+          <figcaption><code>ToJSON</code> wrote the route into the blob; the family loader followed it home. Rage and Blessed fell out of the same design. Artificer proved that design could also reach a linked and registered external package.</figcaption>
+        </figure>
+        <div class="law"><b>The law:</b> the JSON carries an address, not an implementation.</div>
+        <p class="note"><strong>This was where <code>core.Ref</code> became valuable.</strong> Character did not learn Rage, Blessed, or Artificer. Each loader only needed a stable route to the package and concrete ID that it already knew how to restore.</p>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">03</span><span class="date-label">The runtime seam · bus from 2025-07-02</span></div>
+      <div class="panel-body">
+        <div class="question-label">Now Rage can arrive</div>
+        <h2 id="panel-3-title">Once Rage could load, the bus could make it true</h2>
+        <p class="lead">The event bus was already waiting. Polymorphic loading removed the blocker to using it with a real condition. Rage could return from data, subscribe to the moments it cared about, add outgoing damage, reduce incoming damage, track activity, and hear when it should end.</p>
+        <p class="lead">The initial bus was surprisingly capable: synchronous publication, source and target, cancellation, modifiers, and ordered handlers. It even copied subscribers before invoking them, so its registry lock was not held over Rage&rsquo;s code.</p>
+        <figure>
+          <svg viewBox="0 0 1040 510" role="img" aria-label="Runtime code publishes attack, damage, and turn events without naming Rage. The bus copies matching subscribers, releases its lock, and invokes Rage handlers that add damage, reduce damage, and track activity. Strings, maps, assertions, and priority numbers create pressure.">
+            <title>The existing event bus gives loaded Rage a runtime nervous system</title>
+            <defs><marker id="a2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <rect x="28" y="55" width="212" height="116" class="box"/>
+            <text x="53" y="88" class="label">RUNTIME MOMENT</text>
+            <text x="53" y="124" class="mono">Publish(event)</text>
+            <text x="53" y="150" class="small">does not name Rage</text>
+            <line x1="240" y1="113" x2="313" y2="113" class="wire-blue" marker-end="url(#a2b)"/>
+
+            <rect x="315" y="30" width="374" height="246" class="soft"/>
+            <text x="342" y="63" class="label blue">EVENT</text>
+            <text x="342" y="101" class="mono">type: "attack" · "damage" · "turn"</text>
+            <text x="342" y="132" class="mono">source · target · timestamp</text>
+            <rect x="342" y="155" width="320" height="45" class="box"/>
+            <text x="362" y="183" class="mono">Context: map[string]any</text>
+            <rect x="342" y="211" width="320" height="43" class="box"/>
+            <text x="362" y="238" class="mono">Modifier[]: source · type · value</text>
+
+            <line x1="689" y1="113" x2="762" y2="113" class="wire-blue" marker-end="url(#a2b)"/>
+            <rect x="764" y="55" width="248" height="116" class="life"/>
+            <text x="789" y="88" class="label green">SAFE DISPATCH</text>
+            <text x="789" y="122" class="mono">copy subscribers</text>
+            <text x="789" y="149" class="mono">release lock</text>
+
+            <text x="28" y="322" class="label">THEN INVOKE IN PRIORITY ORDER</text>
+            <rect x="28" y="343" width="216" height="78" class="box"/>
+            <text x="136" y="374" text-anchor="middle" class="label">OUTGOING DAMAGE</text>
+            <text x="136" y="402" text-anchor="middle" class="mono">Rage adds damage</text>
+            <line x1="244" y1="382" x2="303" y2="382" class="wire-blue" marker-end="url(#a2b)"/>
+            <rect x="305" y="343" width="216" height="78" class="box"/>
+            <text x="413" y="374" text-anchor="middle" class="label">INCOMING DAMAGE</text>
+            <text x="413" y="402" text-anchor="middle" class="mono">Rage reduces damage</text>
+            <line x1="521" y1="382" x2="580" y2="382" class="wire-blue" marker-end="url(#a2b)"/>
+            <rect x="582" y="343" width="216" height="78" class="box"/>
+            <text x="690" y="374" text-anchor="middle" class="label">ACTIVITY</text>
+            <text x="690" y="402" text-anchor="middle" class="mono">Rage decides to end</text>
+            <rect x="826" y="322" width="186" height="120" class="pressure"/>
+            <text x="848" y="351" class="label rust">PRESSURE</text>
+            <text x="848" y="381" class="mono">"attack"</text>
+            <text x="848" y="407" class="mono">value.(Entity)</text>
+            <text x="848" y="432" class="mono">priority: 50</text>
+            <line x1="28" y1="474" x2="1012" y2="474" class="wire-muted dash"/>
+            <text x="520" y="500" text-anchor="middle" class="label">STRINGS + MAPS + RUNTIME ASSERTIONS + MAGIC ORDER</text>
+          </svg>
+          <figcaption>Loading restored Rage as a participant. The bus gave that participant moments to react to without putting Rage-specific branches into combat.</figcaption>
+        </figure>
+        <div class="law"><b>The seam:</b> combat could publish a moment without naming Rage. Rage could own what that moment meant to it.</div>
+        <div class="law pressure-law"><b>The pressure:</b> strings, maps, runtime assertions, and numeric priorities were becoming rules nobody could see in one place.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">04</span><span class="date-label">The next real case</span></div>
+      <div class="panel-body">
+        <div class="question-label">One working effect is not enough</div>
+        <h2 id="panel-4-title">Rage worked. Naturally, I tried Bless.</h2>
+        <p class="lead">Rage proved that one loaded effect could own its event behavior. Bless asked whether the same seam could support several condition instances created by one cast. Combat still should not switch on <code>Blessed</code>. Each condition should filter for its own grantee and roll a fresh d4 for every qualifying attack.</p>
+        <figure>
+          <svg viewBox="0 0 1040 520" role="img" aria-label="A Cleric casts Bless on Fighter and Rogue. Each target receives an independent Blessed condition that subscribes to before attack. When Fighter attacks, Fighter's condition rolls a fresh d4 and contributes a modifier while Rogue's condition ignores the event.">
+            <title>Blessed conditions react independently to attack events</title>
+            <defs><marker id="a3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="a3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--life)"/></marker></defs>
+            <rect x="400" y="31" width="240" height="91" class="signal"/>
+            <text x="520" y="62" text-anchor="middle" class="label gold">CASTER</text>
+            <text x="520" y="96" text-anchor="middle" class="t-title">Cleric casts Bless</text>
+            <path d="M520 122V154H232V181" class="wire-blue" marker-end="url(#a3b)"/>
+            <path d="M520 122V154H808V181" class="wire-blue" marker-end="url(#a3b)"/>
+
+            <rect x="92" y="183" width="280" height="150" class="life"/>
+            <text x="117" y="214" class="label green">CONDITION · FIGHTER</text>
+            <text x="117" y="250" class="t-title">Blessed</text>
+            <text x="117" y="282" class="mono">Apply() → subscribe</text>
+            <text x="117" y="310" class="mono">Remove() → unsubscribe</text>
+            <rect x="668" y="183" width="280" height="150" class="life"/>
+            <text x="693" y="214" class="label green">CONDITION · ROGUE</text>
+            <text x="693" y="250" class="t-title">Blessed</text>
+            <text x="693" y="282" class="mono">Apply() → subscribe</text>
+            <text x="693" y="310" class="mono">Remove() → unsubscribe</text>
+
+            <path d="M232 333V367H520" class="wire-life"/>
+            <path d="M808 333V367H520" class="wire-life"/>
+            <rect x="374" y="344" width="292" height="72" class="soft"/>
+            <text x="520" y="375" text-anchor="middle" class="label blue">EVENT BUS</text>
+            <text x="520" y="402" text-anchor="middle" class="mono">"before_attack"</text>
+
+            <rect x="92" y="443" width="280" height="54" class="life"/>
+            <text x="232" y="476" text-anchor="middle" class="mono">Fighter? roll fresh 1d4</text>
+            <rect x="668" y="443" width="280" height="54" class="box"/>
+            <text x="808" y="476" text-anchor="middle" class="mono">Rogue? ignore this attack</text>
+            <path d="M374 380H232V441" class="wire-blue" marker-end="url(#a3b)"/>
+            <path d="M666 380H808V441" class="wire-muted" marker-end="url(#a3g)"/>
+          </svg>
+          <figcaption>The condition supplied the rule. The combat code supplied the moment. The d4 was rolled when the qualifying event happened, not stored as an old result.</figcaption>
+        </figure>
+        <div class="law"><b>The promise:</b> behavior belonged to the condition. Combat did not need to know Bless existed.</div>
+        <p class="quote">Rage worked. So I gave the seam the next real thing I thought might break it.</p>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="5" aria-labelledby="panel-5-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">05</span><span class="date-label">Bless expands</span></div>
+      <div class="panel-body">
+        <div class="question-label">The graph leaves working memory</div>
+        <h2 id="panel-5-title">One spell was already a relationship</h2>
+        <p class="lead">Bless was not two isolated bonuses. One caster owned one concentration relationship connecting every condition created by that cast. The cascade worked: breaking that relationship removed every Blessed condition and every subscription. Looking backward, one actor is missing from the graph. At the time, we could not see the question yet.</p>
+        <figure>
+          <svg viewBox="0 0 1040 620" role="img" aria-label="A Cleric owns one concentration relationship connected to Blessed conditions on Fighter and Rogue. Those conditions own attack subscriptions. The archived demo manually says the Cleric failed a concentration save, then calls BreakAllRelationships, removing both conditions. The save and player decision are marked as missing.">
+            <title>Bless creates a relationship graph and the demo skips the concentration save</title>
+            <defs><marker id="a4b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="a4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <rect x="405" y="28" width="230" height="82" class="signal"/>
+            <text x="520" y="59" text-anchor="middle" class="label gold">SOURCE</text>
+            <text x="520" y="91" text-anchor="middle" class="t-title">Cleric</text>
+            <line x1="520" y1="110" x2="520" y2="151" class="wire-blue" marker-end="url(#a4b)"/>
+            <rect x="342" y="153" width="356" height="94" class="soft"/>
+            <text x="520" y="185" text-anchor="middle" class="label blue">RELATIONSHIP MANAGER</text>
+            <text x="520" y="219" text-anchor="middle" class="t-title">concentration · one cast</text>
+            <path d="M430 247V279H210V304" class="wire-blue" marker-end="url(#a4b)"/>
+            <path d="M610 247V279H830V304" class="wire-blue" marker-end="url(#a4b)"/>
+            <rect x="70" y="306" width="280" height="92" class="life"/>
+            <text x="95" y="338" class="label green">GRANTEE · FIGHTER</text>
+            <text x="95" y="373" class="t-title">Blessed condition</text>
+            <rect x="690" y="306" width="280" height="92" class="life"/>
+            <text x="715" y="338" class="label green">GRANTEE · ROGUE</text>
+            <text x="715" y="373" class="t-title">Blessed condition</text>
+            <rect x="70" y="425" width="280" height="54" class="box"/>
+            <text x="210" y="458" text-anchor="middle" class="mono">owns attack subscription</text>
+            <rect x="690" y="425" width="280" height="54" class="box"/>
+            <text x="830" y="458" text-anchor="middle" class="mono">owns attack subscription</text>
+            <line x1="210" y1="398" x2="210" y2="423" class="wire-life"/>
+            <line x1="830" y1="398" x2="830" y2="423" class="wire-life"/>
+
+            <line x1="28" y1="512" x2="1012" y2="512" class="wire-muted dash"/>
+            <rect x="28" y="537" width="210" height="58" class="pressure"/>
+            <text x="133" y="572" text-anchor="middle" class="mono">Cleric takes damage</text>
+            <line x1="238" y1="566" x2="288" y2="566" class="wire-rust" marker-end="url(#a4r)"/>
+            <rect x="290" y="529" width="280" height="74" class="pressure"/>
+            <text x="430" y="559" text-anchor="middle" class="label rust">THE DEMO PRINTS</text>
+            <text x="430" y="585" text-anchor="middle" class="mono">"fails concentration save"</text>
+            <line x1="570" y1="566" x2="620" y2="566" class="wire-rust" marker-end="url(#a4r)"/>
+            <rect x="622" y="537" width="230" height="58" class="soft"/>
+            <text x="737" y="572" text-anchor="middle" class="mono">BreakAllRelationships</text>
+            <line x1="852" y1="566" x2="900" y2="566" class="wire-blue" marker-end="url(#a4b)"/>
+            <text x="957" y="559" text-anchor="middle" class="label blue">REMOVE</text>
+            <text x="957" y="582" text-anchor="middle" class="small">both conditions</text>
+
+            <rect x="735" y="36" width="267" height="130" class="ghost"/>
+            <text x="758" y="67" class="label rust">INVISIBLE AT THE TIME</text>
+            <text x="758" y="99" class="mono">who rolls the save?</text>
+            <text x="758" y="127" class="mono">who can answer?</text>
+            <text x="758" y="151" class="small">we did not know to ask</text>
+            <path d="M735 131H680L635 104" class="wire-rust dash"/>
+          </svg>
+          <figcaption>The cascade was real. The test supplied the failed save as a fact, so nobody noticed that the architecture did not know who was supposed to produce that fact.</figcaption>
+        </figure>
+        <p class="quote">The test supplied the answer. We did not know to ask who was supposed to produce it.</p>
+        <div class="law"><b>What it proved:</b> one relationship could cleanly remove every dependent condition created by the cast.</div>
+        <div class="law pressure-law"><b>The unknown unknown:</b> who fires the save, where does the answer come from, and what waits while a person decides?</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="6" aria-labelledby="panel-6-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">06</span><span class="date-label">2025-08-12 → later</span></div>
+      <div class="panel-body">
+        <div class="question-label">Pressure, then relief</div>
+        <h2 id="panel-6-title">Rage found the lock. AttackChain.On(bus) let me sleep.</h2>
+        <p class="lead">The ref-based rewrite made runtime-loaded rules possible and introduced a regression the first bus had avoided. It held a read lock while invoking handlers. Rage heard that it should end and tried to unsubscribe, which needed the write lock. Dispatch waited for Rage; Rage waited for dispatch.</p>
+        <p class="lead">Deferred intent made self-removal safe again. But the larger graph still relied on priority arithmetic to decide how independent rules changed one calculation. <code>AttackChain.On(bus)</code> was the moment discovery and rules order finally became separate ideas.</p>
+        <figure>
+          <svg viewBox="0 0 1040 640" role="img" aria-label="Rage self-removal deadlocks when the bus holds a read lock while its handler requests a write lock. After a safe subscriber boundary is restored, AttackChain On bus lets runtime-loaded rules contribute named transformations to explicit base, features, conditions, equipment, and final stages.">
+            <title>Rage exposes the lock regression before AttackChain makes discovery and order explicit</title>
+            <defs><marker id="a6b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="a6r2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <text x="27" y="28" class="label rust">PRESSURE · RAGE REMOVES ITSELF</text>
+            <rect x="27" y="51" width="220" height="83" class="pressure"/>
+            <text x="137" y="82" text-anchor="middle" class="label rust">BUS DISPATCH</text>
+            <text x="137" y="113" text-anchor="middle" class="mono">holds RLock</text>
+            <line x1="247" y1="93" x2="308" y2="93" class="wire-rust" marker-end="url(#a6r2)"/>
+            <rect x="310" y="51" width="250" height="83" class="pressure"/>
+            <text x="435" y="82" text-anchor="middle" class="label rust">RAGE END HANDLER</text>
+            <text x="435" y="113" text-anchor="middle" class="mono">Unsubscribe()</text>
+            <line x1="560" y1="93" x2="621" y2="93" class="wire-rust" marker-end="url(#a6r2)"/>
+            <rect x="623" y="51" width="220" height="83" class="pressure"/>
+            <text x="733" y="82" text-anchor="middle" class="label rust">UNSUBSCRIBE</text>
+            <text x="733" y="113" text-anchor="middle" class="mono">needs write Lock</text>
+            <path d="M733 134V176H137V136" class="wire-rust dash" marker-end="url(#a6r2)"/>
+            <text x="435" y="166" text-anchor="middle" class="label rust">DEADLOCK · EACH WAITS FOR THE OTHER</text>
+
+            <rect x="872" y="51" width="143" height="125" class="soft"/>
+            <text x="943" y="80" text-anchor="middle" class="label blue">SAFE AGAIN</text>
+            <text x="943" y="108" text-anchor="middle" class="small">snapshot</text>
+            <text x="943" y="132" text-anchor="middle" class="small">release lock</text>
+            <text x="943" y="156" text-anchor="middle" class="small">then invoke</text>
+            <line x1="843" y1="93" x2="870" y2="93" class="wire-blue" marker-end="url(#a6b2)"/>
+
+            <line x1="27" y1="224" x2="1015" y2="224" class="wire-muted dash"/>
+            <text x="27" y="263" class="label blue">RELIEF · DISCOVERY AND RULES ORDER SEPARATE</text>
+
+            <rect x="27" y="290" width="236" height="88" class="life"/>
+            <text x="145" y="322" text-anchor="middle" class="label green">RUNTIME-LOADED RULES</text>
+            <text x="145" y="352" text-anchor="middle" class="mono">Rage · Blessed · gear</text>
+            <line x1="263" y1="334" x2="330" y2="334" class="wire-blue" marker-end="url(#a6b2)"/>
+            <rect x="332" y="290" width="376" height="88" class="soft"/>
+            <text x="520" y="323" text-anchor="middle" class="label blue">THE CONNECTION</text>
+            <text x="520" y="355" text-anchor="middle" class="t-big">AttackChain.On(bus)</text>
+            <line x1="708" y1="334" x2="775" y2="334" class="wire-blue" marker-end="url(#a6b2)"/>
+            <rect x="777" y="290" width="238" height="88" class="box"/>
+            <text x="896" y="322" text-anchor="middle" class="label">GATHER FIRST</text>
+            <text x="896" y="352" text-anchor="middle" class="mono">execute once</text>
+
+            <rect x="27" y="433" width="164" height="92" class="box"/>
+            <text x="109" y="466" text-anchor="middle" class="label">BASE</text>
+            <text x="109" y="500" text-anchor="middle" class="mono">weapon die</text>
+            <line x1="191" y1="479" x2="222" y2="479" class="wire-blue" marker-end="url(#a6b2)"/>
+            <rect x="224" y="433" width="164" height="92" class="soft"/>
+            <text x="306" y="466" text-anchor="middle" class="label blue">FEATURES</text>
+            <text x="306" y="500" text-anchor="middle" class="mono">Rage</text>
+            <line x1="388" y1="479" x2="419" y2="479" class="wire-blue" marker-end="url(#a6b2)"/>
+            <rect x="421" y="433" width="164" height="92" class="life"/>
+            <text x="503" y="466" text-anchor="middle" class="label green">CONDITIONS</text>
+            <text x="503" y="500" text-anchor="middle" class="mono">Blessed</text>
+            <line x1="585" y1="479" x2="616" y2="479" class="wire-blue" marker-end="url(#a6b2)"/>
+            <rect x="618" y="433" width="164" height="92" class="box"/>
+            <text x="700" y="466" text-anchor="middle" class="label">EQUIPMENT</text>
+            <text x="700" y="500" text-anchor="middle" class="mono">magic weapon</text>
+            <line x1="782" y1="479" x2="813" y2="479" class="wire-blue" marker-end="url(#a6b2)"/>
+            <rect x="815" y="433" width="200" height="92" class="signal"/>
+            <text x="915" y="466" text-anchor="middle" class="label gold">FINAL</text>
+            <text x="915" y="500" text-anchor="middle" class="mono">explainable result</text>
+
+            <line x1="27" y1="571" x2="1015" y2="571" class="wire-muted dash"/>
+            <text x="27" y="603" class="label">EVENTS DISCOVER WHO PARTICIPATES</text>
+            <text x="1015" y="603" text-anchor="end" class="label blue">ATTACKCHAIN DEFINES HOW THEY RUN</text>
+          </svg>
+          <figcaption>Loaded rules could still discover the attack through the bus. The chain gave their named transformations a rulebook-defined place and produced one explainable result.</figcaption>
+        </figure>
+        <p class="quote"><code>AttackChain.On(bus)</code> was the thing that let me go to sleep that night. When I saw it, I knew we were going to be okay.</p>
+        <div class="law"><b>The distinction:</b> events solved who gets to react. AttackChain solved how all those reactions become one deterministic result.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="7" aria-labelledby="panel-7-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">07</span><span class="date-label">The boundary</span></div>
+      <div class="panel-body">
+        <div class="question-label">The person who is not in memory</div>
+        <h2 id="panel-7-title">Every bus still lived on one call stack</h2>
+        <p class="lead">The missing actor in the Bless demo stayed invisible until much later. Concentration code could hear damage and publish <code>concentration.check</code>. Another handler could answer immediately. But a Discord player might answer minutes or hours later, through another request handled by another process.</p>
+        <p class="lead">Nested publication was still one synchronous call stack. Deferred operations still ran after dispatch in the same process. Chained topics still gathered live Go functions from current subscriptions. None of them could turn an unfinished interaction into something storage could hold.</p>
+        <figure>
+          <svg viewBox="0 0 1040 560" role="img" aria-label="Inside one process, damage synchronously publishes a concentration check and invokes current subscribers on one call stack. The stack cannot cross an RPC and time gap to reach a player who may respond minutes or hours later in another process. Pause, persist, wait, rehydrate, and resume are listed as missing capabilities.">
+            <title>The event bus cannot wait across a process and time boundary</title>
+            <defs><marker id="a8b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="a8r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <rect x="27" y="39" width="586" height="313" class="soft"/>
+            <text x="54" y="73" class="label blue">ONE PROCESS · NOW</text>
+            <rect x="54" y="101" width="216" height="68" class="box"/>
+            <text x="162" y="128" text-anchor="middle" class="label">DAMAGE EVENT</text>
+            <text x="162" y="153" text-anchor="middle" class="mono">Cleric loses HP</text>
+            <line x1="270" y1="135" x2="333" y2="135" class="wire-blue" marker-end="url(#a8b)"/>
+            <rect x="335" y="101" width="250" height="68" class="box"/>
+            <text x="460" y="128" text-anchor="middle" class="label">NESTED PUBLISH</text>
+            <text x="460" y="153" text-anchor="middle" class="mono">concentration.check</text>
+            <line x1="460" y1="169" x2="460" y2="208" class="wire-blue" marker-end="url(#a8b)"/>
+            <rect x="335" y="210" width="250" height="68" class="box"/>
+            <text x="460" y="237" text-anchor="middle" class="label">CURRENT SUBSCRIBERS</text>
+            <text x="460" y="262" text-anchor="middle" class="mono">must return now</text>
+            <path d="M335 244H162V171" class="wire-blue dash" marker-end="url(#a8b)"/>
+            <text x="191" y="230" class="label blue">ONE CALL STACK</text>
+            <rect x="54" y="299" width="531" height="30" class="box"/>
+            <text x="319" y="319" text-anchor="middle" class="small">publish → invoke → return → continue</text>
+
+            <rect x="650" y="39" width="64" height="313" class="pressure"/>
+            <text x="682" y="187" transform="rotate(-90 682 187)" text-anchor="middle" class="label rust">RPC + TIME + PROCESS BOUNDARY</text>
+            <line x1="613" y1="196" x2="646" y2="196" class="wire-rust dash" marker-end="url(#a8r)"/>
+
+            <rect x="751" y="39" width="262" height="313" class="pressure"/>
+            <text x="778" y="73" class="label rust">ANOTHER PROCESS · LATER</text>
+            <circle cx="882" cy="137" r="38" fill="none" stroke="var(--pressure)" stroke-width="1.5"/>
+            <path d="M813 260C820 203 846 181 882 181C918 181 944 203 951 260" fill="none" stroke="var(--pressure)" stroke-width="1.5"/>
+            <rect x="789" y="279" width="186" height="47" class="box"/>
+            <text x="882" y="308" text-anchor="middle" class="mono">player replies</text>
+            <text x="882" y="347" text-anchor="middle" class="small">minutes or hours later</text>
+
+            <text x="27" y="404" class="label rust">A CALL STACK CANNOT REPRESENT</text>
+            <rect x="27" y="430" width="172" height="70" class="box"/><text x="113" y="459" text-anchor="middle" class="mono">pause now</text><text x="113" y="483" text-anchor="middle" class="small">and return</text>
+            <rect x="230" y="430" width="172" height="70" class="box"/><text x="316" y="459" text-anchor="middle" class="mono">persist</text><text x="316" y="483" text-anchor="middle" class="small">unfinished work</text>
+            <rect x="433" y="430" width="172" height="70" class="box"/><text x="519" y="459" text-anchor="middle" class="mono">wait</text><text x="519" y="483" text-anchor="middle" class="small">without memory</text>
+            <rect x="636" y="430" width="172" height="70" class="box"/><text x="722" y="459" text-anchor="middle" class="mono">rehydrate</text><text x="722" y="483" text-anchor="middle" class="small">somewhere else</text>
+            <rect x="839" y="430" width="174" height="70" class="box"/><text x="926" y="459" text-anchor="middle" class="mono">resume</text><text x="926" y="483" text-anchor="middle" class="small">the exact step</text>
+            <line x1="27" y1="532" x2="1013" y2="532" class="wire-muted dash"/>
+            <text x="520" y="556" text-anchor="middle" class="label">THE UNFINISHED INTERACTION WOULD HAVE TO BECOME DATA</text>
+          </svg>
+          <figcaption>The missing subscriber was not the real problem. The architecture had no durable form for a question whose answer would arrive after the process returned.</figcaption>
+        </figure>
+        <p class="quote">That was the unknown unknown: not how to calculate a save, but how to wait for the person who had to answer. We would slay that dragon much, much later.</p>
+        <p class="end-question">The event bus could ask every rule in memory. It could not wait for a person who was not there yet.</p>
+        <div class="next-card"><span>The next seam</span> Make the unfinished interaction data</div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>This chapter follows the problem from persistence into runtime; the underlying pieces were developed in overlapping order. The first bus dates to <code>2025-07-02</code>; conditions and generalized relationships followed through <code>2025-07-05</code>. The external Artificer question appeared on <code>2025-07-29</code>. <code>core.Ref</code> and the complete polymorphic <code>ToJSON</code> loader pattern converged on <code>2025-08-11</code>.</p>
+    <p>The ref-based bus rewrite, Rage self-removal deadlock, deferred operations, and typed <code>.On(bus)</code> topics followed from <code>2025-08-12</code> through <code>2025-08-18</code>. Chains came later, preserving event discovery while moving calculation into rulebook-defined stages.</p>
+  </footer>
+</main>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{ "token": "51a3147a2b384c0cb2f6a1f7a694b180" }'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
