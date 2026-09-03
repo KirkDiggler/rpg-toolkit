@@ -228,40 +228,112 @@ func (s *RollerBindingTestSuite) TestLenientRouteBindsTheSuppliedRoller() {
 	s.Equal(9, trace.Subtotal)
 }
 
-// TestFailedStrictAttachLeavesNoRollerBoundAndRetryBindsOne pins the rollback
-// contract with a roller in play: GWF applies, Brutal Critical's first
-// subscription is refused, and the whole strict attach rolls back — the
-// supplied roller must never have been called, because binding happens only
-// after every effect has applied. The sheet is byte-identical, and a retry on
-// a good bus binds the RETRY'S roller.
-func (s *RollerBindingTestSuite) TestFailedStrictAttachLeavesNoRollerBoundAndRetryBindsOne() {
-	data := rollerBindingSheet(gwfBlob(&s.Suite, "roller-fighter"))
-	data.Conditions = append(data.Conditions, brutalCriticalBlob(&s.Suite))
+// twoConditionSheet is the roller-binding sheet with a second condition after
+// GWF, so an attach failure can land on a subscription GWF has already
+// applied past.
+func twoConditionSheet(s *suite.Suite) *Data {
+	data := rollerBindingSheet(gwfBlob(s, "roller-fighter"))
+	data.Conditions = append(data.Conditions, brutalCriticalBlob(s))
+
+	return data
+}
+
+// lastSubscriptionOf counts, on a throwaway bus, every subscription attaching
+// this exact sheet makes, and returns the 1-based index of the LAST one — the
+// counted warmup pattern the attach rollback tests use, pointed at the end of
+// the sheet rather than at a literal subscription number, so the test stays
+// aimed at "every rolling condition has already applied past here" however
+// many hooks the keeper, GWF, Brutal Critical, or the carried reaction make.
+func (s *RollerBindingTestSuite) lastSubscriptionOf(data *Data) int {
+	counter := newFailingBus(0)
+	warmup, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, warmup, counter))
+
+	return counter.calls
+}
+
+// TestFailedStrictAttachNilRollerRetryLeavesTheFailedRollerUncalled pins the
+// rollback contract with a roller in play. The failing bus is pointed, by
+// counted warmup, at the sheet's LAST subscription — a point GWF has already
+// applied past — so the whole strict attach rolls back with GWF among the
+// undone. The failed attempt's roller must never be called: binding happens
+// only after every effect has applied, so a failed attach binds nothing. The
+// retry then attaches with a NIL roller and the damage chain still rerolled —
+// through GWF's roll-time default, never through the failed attempt's roller.
+// This fails deterministically if binding moves before or inside the failed
+// apply loop: the undone condition would still hold the failed attempt's
+// roller (Remove revokes subscriptions, not rollers), and the nil-retry chain
+// would call it.
+func (s *RollerBindingTestSuite) TestFailedStrictAttachNilRollerRetryLeavesTheFailedRollerUncalled() {
+	data := twoConditionSheet(&s.Suite)
+	failureAt := s.lastSubscriptionOf(data)
 
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
 	before := marshalData(&s.Suite, char.ToData())
 
-	// Five keeper hooks, GWF's one damage-chain subscription, then Brutal
-	// Critical's first subscription.
 	failedRoller := &scriptedRoller{results: []int{4}}
-	bus := newFailingBus(7)
+	bus := newFailingBus(failureAt)
 	err = AttachWithRoller(s.ctx, char, bus, failedRoller)
 
-	s.Require().Error(err)
+	s.Require().ErrorIs(err, errRefused)
 	s.Empty(failedRoller.calls, "a failed attach binds nothing: the roller is never called")
 	s.Equal(before, marshalData(&s.Suite, char.ToData()),
 		"the sheet is byte-identical after the failed attach")
 	s.Require().Len(char.pendingEffects, 2, "both conditions are pending again")
 
-	// The retry binds its own roller, and the failed one stays untouched.
+	// The retry attaches with NO roller: nil binds nothing and erases nothing,
+	// and the chain still rerolled — the reroll's face is GWF's roll-time
+	// default, its identity GWF's canonical ref, and the 5 is never a
+	// candidate.
+	good := events.NewEventBus()
+	s.Require().NoError(AttachWithRoller(s.ctx, char, good, nil))
+
+	final := s.runWeaponDamage(good, 1, 5)
+
+	trace := final.Components[0].Roll.Dice
+	s.Require().NotNil(trace)
+	s.Equal([]int{1, 5}, trace.OriginalRolls, "original faces are immutable")
+	s.Equal(5, trace.FinalRolls[1], "the 5 is never a reroll candidate")
+	s.Require().Len(trace.Rerolls, 1, "the chain ran GWF's rule and rerolled the 1")
+	s.Equal(1, trace.Rerolls[0].Before)
+	s.Require().NotNil(trace.Rerolls[0].Source.Ref)
+	s.Equal(refs.Conditions.FightingStyleGreatWeaponFighting().String(),
+		trace.Rerolls[0].Source.Ref.String())
+
+	s.Empty(failedRoller.calls,
+		"the failed attempt's roller is still uncalled after the nil-retry chain")
+}
+
+// TestFailedStrictAttachRetryBindsTheRetryRoller keeps the other half of the
+// rollback story: after the same counted-position failure, a retry with a NEW
+// non-nil roller is the one that binds — the failed attempt's roller is never
+// called, and the retry's rerolled trace is exactly its script.
+func (s *RollerBindingTestSuite) TestFailedStrictAttachRetryBindsTheRetryRoller() {
+	data := twoConditionSheet(&s.Suite)
+	failureAt := s.lastSubscriptionOf(data)
+
+	char, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+	before := marshalData(&s.Suite, char.ToData())
+
+	failedRoller := &scriptedRoller{results: []int{4}}
+	bus := newFailingBus(failureAt)
+	err = AttachWithRoller(s.ctx, char, bus, failedRoller)
+
+	s.Require().ErrorIs(err, errRefused)
+	s.Empty(failedRoller.calls, "the failed attach never called its roller")
+	s.Equal(before, marshalData(&s.Suite, char.ToData()),
+		"the sheet is byte-identical after the failed attach")
+
 	retryRoller := &scriptedRoller{results: []int{4}}
 	good := events.NewEventBus()
 	s.Require().NoError(AttachWithRoller(s.ctx, char, good, retryRoller))
 
 	final := s.runWeaponDamage(good, 1, 5)
 
-	s.Empty(failedRoller.calls, "the failed attach's roller is still never called")
+	s.Empty(failedRoller.calls, "the failed attempt's roller is still never called")
 	s.Equal([]int{6}, retryRoller.calls, "the retry's roller is the one bound")
 	trace := final.Components[0].Roll.Dice
 	s.Require().NotNil(trace)

@@ -19,11 +19,12 @@ import (
 // way to hand it to a persisted sheet.
 //
 // It is an optional interface rather than a loader parameter on purpose, the
-// same way [dnd5eEvents.EffectScoper] is: putting a roller on every load path
-// would fork each one into roller and roller-less variants for a concern only
-// an attach site has. Attach is the moment a condition goes on a bus — the
-// same moment its subscriptions go live — so it is also the moment the runtime
-// roller it will roll with can be handed over. A condition that does not
+// same way the dnd5e events package's EffectScoper contract is: putting a
+// roller on every load path would fork each one into roller and roller-less
+// variants for a concern only an attach site has. Attach is the moment a
+// condition goes on a bus — the same moment its subscriptions go live — so it
+// is also when the runtime roller it will roll with can be handed over. A
+// condition that does not
 // implement it is untouched, and a host that supplies no roller changes
 // nothing.
 type RollerBinder interface {
