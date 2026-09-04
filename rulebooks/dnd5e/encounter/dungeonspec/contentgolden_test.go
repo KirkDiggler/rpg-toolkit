@@ -63,6 +63,7 @@ type contentGolden struct {
 	// Scenarios is what this slice added that a host can observe and the
 	// atlas does not carry (rpg-project#368). Exits, prop ids and
 	// holdability all ride in the atlas above, which is already here.
+	Intel     []encounter.IntelRecord      `json:"intel"`
 	Scenarios map[string]map[string]string `json:"scenarios"`
 }
 
@@ -80,6 +81,7 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		Exits:       atlas.Exits,
 		PartyStart:  compiled.PartyStart,
 		Monsters:    compiled.Monsters,
+		Intel:       compiled.Intel,
 		Scenarios:   compiled.Scenarios,
 	}
 }

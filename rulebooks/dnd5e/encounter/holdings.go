@@ -29,7 +29,7 @@ import (
 // copy of the answer stored beside them:
 //
 //   - holds:prop:<id>     — Actor now carries that prop.
-//   - holds:intel:door:<id> — Actor now carries the way to that door.
+//   - holds:intel:<id>    — Actor now carries that intel RECORD.
 //   - held:<id>           — that prop has been picked up off the floor.
 //   - dropped:<id>@<x>,<y> — that prop is back on the floor, at that cell.
 //
@@ -105,9 +105,16 @@ type ExitID = string
 // holdsPropKind mints the fact kind recording that somebody carries a prop.
 func holdsPropKind(id PropID) journal.Kind { return journal.Kind("holds:prop:" + id) }
 
-// holdsIntelDoorKind mints the fact kind recording that somebody carries the
-// way to a door.
-func holdsIntelDoorKind(id DoorID) journal.Kind { return journal.Kind("holds:intel:door:" + id) }
+// holdsIntelKind mints the fact kind recording that somebody carries an
+// intel record.
+//
+// THE RECORD, NOT WHAT IT REVEALS (rpg-project#372, design §3). The fact
+// names the thing that was placed; what it means is read from the field's
+// intel table when it changes hands. That is the whole indirection: this one
+// fact kind serves a door today and every later [RevealTargets] field
+// without a single stored fact changing shape, and a saved run written
+// before a new target existed keeps meaning exactly what it meant.
+func holdsIntelKind(id IntelID) journal.Kind { return journal.Kind("holds:intel:" + id) }
 
 // heldKind mints the fact kind recording that a prop has left the floor.
 func heldKind(id PropID) journal.Kind { return journal.Kind("held:" + id) }
@@ -123,10 +130,10 @@ func droppedKind(id PropID, at spatial.Position) journal.Kind {
 
 // holdingsPrefix and friends are the parse side of the four minters above.
 const (
-	holdsPropPrefix      = "holds:prop:"
-	holdsIntelDoorPrefix = "holds:intel:door:"
-	heldPrefix           = "held:"
-	droppedPrefix        = "dropped:"
+	holdsPropPrefix  = "holds:prop:"
+	holdsIntelPrefix = "holds:intel:"
+	heldPrefix       = "held:"
+	droppedPrefix    = "dropped:"
 )
 
 // holdings is the run's answer to who has what: the append-only journal and
@@ -143,8 +150,8 @@ func newHoldings() *holdings { return &holdings{log: journal.New()} }
 // know.
 //
 // Called when a member ENTERS THE WORLD, and only then — at construction
-// ([MemberInput.Knows]) or on arrival ([JoinInput.Knows]), which are the two
-// doors in. NEVER AT LOAD: see [MemberInput.Knows] on why Load replays this
+// ([MemberInput.Holds]) or on arrival ([JoinInput.Holds]), which are the two
+// ways in. NEVER AT LOAD: see [MemberInput.Holds] on why Load replays this
 // journal instead of re-seeding it, which would hand a looted captain back
 // the intel somebody already took off them.
 //
@@ -155,15 +162,15 @@ func newHoldings() *holdings { return &holdings{log: journal.New()} }
 // Audience is EMPTY, not the holder: a holding is not a thing that happened
 // to anybody, and [journal.Journal] is incurious about who witnessed what.
 // Nothing folds these by audience, because nothing but this file reads them.
-func (h *holdings) seedIntel(member MemberID, doors []DoorID) error {
-	for _, id := range doors {
+func (h *holdings) seedIntel(member MemberID, records []IntelID) error {
+	for _, id := range records {
 		if _, err := h.log.Append(journal.Fact{
-			Kind:    holdsIntelDoorKind(id),
+			Kind:    holdsIntelKind(id),
 			Actor:   journal.EntityID(member),
-			Subject: journal.EntityID(doorEntityID(id)),
+			Subject: journal.EntityID("intel:" + id),
 			Outcome: journal.Outcome{Detail: "authored"},
 		}); err != nil {
-			return fmt.Errorf("seed intel door %q for %q: %w", id, member, err)
+			return fmt.Errorf("seed intel %q for %q: %w", id, member, err)
 		}
 	}
 	return nil
@@ -180,12 +187,12 @@ func (h *holdings) holdProp(member MemberID, id PropID, cause string) error {
 	return err
 }
 
-// holdIntelDoor records that member now carries the way to the door.
-func (h *holdings) holdIntelDoor(member MemberID, id DoorID, cause string) error {
+// holdIntel records that member now carries the intel record.
+func (h *holdings) holdIntel(member MemberID, id IntelID, cause string) error {
 	_, err := h.log.Append(journal.Fact{
-		Kind:    holdsIntelDoorKind(id),
+		Kind:    holdsIntelKind(id),
 		Actor:   journal.EntityID(member),
-		Subject: journal.EntityID(doorEntityID(id)),
+		Subject: journal.EntityID("intel:" + id),
 		Outcome: journal.Outcome{Detail: cause},
 	})
 	return err
@@ -216,31 +223,31 @@ type holding struct {
 	// prop is the prop id when this holding is a thing; empty otherwise.
 	prop PropID
 
-	// door is the door id when this holding is the way to one; empty
-	// otherwise. Exactly one of prop and door is set.
-	door DoorID
+	// record is the intel record id when this holding is knowledge; empty
+	// otherwise. Exactly one of prop and record is set.
+	record IntelID
 }
 
 // holdingsOf folds one member's present holdings, in a deterministic order:
-// intel first by door id, then props by prop id.
+// intel first by record id, then props by prop id.
 //
 // SUPERSESSION IS BY SUBJECT, IN SEQ ORDER. The last member to be recorded
 // holding a thing is the one holding it, and a prop dropped after that is
 // held by nobody. Computed fresh on every question — there is no second copy
 // of "who has what" anywhere to disagree with this one.
 func (h *holdings) holdingsOf(member MemberID) []holding {
-	props, doors := h.fold()
+	props, records := h.fold()
 
-	out := make([]holding, 0, len(props)+len(doors))
-	doorIDs := make([]DoorID, 0, len(doors))
-	for id, holders := range doors {
+	out := make([]holding, 0, len(props)+len(records))
+	recordIDs := make([]IntelID, 0, len(records))
+	for id, holders := range records {
 		if holders[member] {
-			doorIDs = append(doorIDs, id)
+			recordIDs = append(recordIDs, id)
 		}
 	}
-	sort.Strings(doorIDs)
-	for _, id := range doorIDs {
-		out = append(out, holding{door: id})
+	sort.Strings(recordIDs)
+	for _, id := range recordIDs {
+		out = append(out, holding{record: id})
 	}
 
 	propIDs := make([]PropID, 0, len(props))
@@ -257,25 +264,25 @@ func (h *holdings) holdingsOf(member MemberID) []holding {
 }
 
 // fold walks the journal once in Seq order and returns who holds what: each
-// prop to its ONE holder, and each door to the SET of members who know the
-// way to it — the move/copy split this file's doc comment states. A prop
+// prop to its ONE holder, and each record to the SET of members who hold
+// it — the move/copy split this file's doc comment states. A prop
 // nobody holds is absent from the first map, because a dropped thing is held
 // by nobody.
 //
 // ONE WALK, TWO ANSWERS, because every question here needs the same walk and
 // two of them would be two chances to fold differently.
-func (h *holdings) fold() (props map[PropID]MemberID, doors map[DoorID]map[MemberID]bool) {
+func (h *holdings) fold() (props map[PropID]MemberID, records map[IntelID]map[MemberID]bool) {
 	props = map[PropID]MemberID{}
-	doors = map[DoorID]map[MemberID]bool{}
+	records = map[IntelID]map[MemberID]bool{}
 	for _, f := range h.log.All() {
 		kind := string(f.Kind)
 		switch {
-		case strings.HasPrefix(kind, holdsIntelDoorPrefix):
-			id := strings.TrimPrefix(kind, holdsIntelDoorPrefix)
-			if doors[id] == nil {
-				doors[id] = map[MemberID]bool{}
+		case strings.HasPrefix(kind, holdsIntelPrefix):
+			id := strings.TrimPrefix(kind, holdsIntelPrefix)
+			if records[id] == nil {
+				records[id] = map[MemberID]bool{}
 			}
-			doors[id][MemberID(f.Actor)] = true
+			records[id][MemberID(f.Actor)] = true
 		case strings.HasPrefix(kind, holdsPropPrefix):
 			props[strings.TrimPrefix(kind, holdsPropPrefix)] = MemberID(f.Actor)
 		case strings.HasPrefix(kind, droppedPrefix):
@@ -287,7 +294,7 @@ func (h *holdings) fold() (props map[PropID]MemberID, doors map[DoorID]map[Membe
 			}
 		}
 	}
-	return props, doors
+	return props, records
 }
 
 // propPlacement is where one prop physically is, folded on the truth grain —

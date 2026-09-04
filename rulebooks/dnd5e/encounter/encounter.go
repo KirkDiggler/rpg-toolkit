@@ -442,6 +442,32 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 	return nil
 }
 
+// validateIntelTargets rejects a record whose target this field does not
+// have: a record revealing a door nobody declared can never tell anybody
+// anything, which is the same dead-declaration hole [ErrNoEnding] refuses
+// for an ending naming an unreachable cell.
+//
+// Checked identically at Setup and Load, against the compiled field, with no
+// verb prefix — each caller wraps its own at the call site.
+//
+// WHETHER THE DOOR IS CONCEALED IS NOT ASKED. Revealing the way to a door
+// anyone can already see is inert, not an error, and refusing it would make
+// a record's legality depend on a fact about a different declaration
+// ([RevealTargets.Door]).
+func validateIntelTargets(f *field, doors []DoorInput) error {
+	declared := make(map[DoorID]bool, len(doors))
+	for _, d := range doors {
+		declared[d.ID] = true
+	}
+	for _, rec := range f.intel {
+		if rec.Reveals.Door != "" && !declared[rec.Reveals.Door] {
+			return fmt.Errorf("intel record %q reveals door %q, which this field does not declare: %w",
+				rec.ID, rec.Reveals.Door, ErrNoDoor)
+		}
+	}
+	return nil
+}
+
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no
 // endings, empty-or-reserved ending key, duplicate ending key, empty member
@@ -615,19 +641,28 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
-	// A knowledge link must name a door this field declares (design P1).
-	// Refused here, before anything is built (R5): a link to nothing is a
-	// secret the author thinks they placed and did not. Whether that door is
-	// CONCEALED is deliberately not asked — knowing an ordinary door is
-	// inert, not an error ([MemberInput.Knows]).
-	declaredDoors := make(map[DoorID]bool, len(in.Field.Doors))
-	for _, d := range in.Field.Doors {
-		declaredDoors[d.ID] = true
+	// A record's target must name a door this field declares, and a holder
+	// must name a record it declares (design §2). Refused here, before
+	// anything is built (R5): either one dangling is knowledge the author
+	// thinks they placed and did not. Whether the door is CONCEALED is
+	// deliberately not asked — revealing an ordinary door is inert, not an
+	// error ([RevealTargets.Door]).
+	if err = validateIntelTargets(f, in.Field.Doors); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 	for _, mi := range in.Members {
-		for _, id := range mi.Knows {
-			if !declaredDoors[id] {
-				return nil, fmt.Errorf("newencounter: member %q knows door %q: %w", mi.ID, id, ErrNoDoor)
+		for _, id := range mi.Holds {
+			if _, declared := f.intelByID[id]; !declared {
+				return nil, fmt.Errorf("newencounter: member %q holds intel %q: %w", mi.ID, id, ErrNoIntel)
+			}
+		}
+	}
+	// A PROP may hold records too (R6), and a dangling one is the same
+	// mistake wherever it is written.
+	for _, prop := range f.props {
+		for _, id := range prop.Holds {
+			if _, declared := f.intelByID[id]; !declared {
+				return nil, fmt.Errorf("newencounter: prop %q holds intel %q: %w", prop.Ref, id, ErrNoIntel)
 			}
 		}
 	}
@@ -737,10 +772,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			e.deciders[mi.ID] = mi.Decider
 		}
 
-		// The author's knowledge links, seeded as the holdings they are
-		// (design P1). SETUP ONLY — Load replays the journal instead, so
+		// The author's placed records, seeded as the holdings they are
+		// (design §3). SETUP ONLY — Load replays the journal instead, so
 		// intel somebody already looted is not handed back to the body.
-		if err = e.holdings.seedIntel(mi.ID, mi.Knows); err != nil {
+		if err = e.holdings.seedIntel(mi.ID, mi.Holds); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 	}
@@ -1855,15 +1890,14 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	// A knowledge link must name a door this field declares — the SAME
-	// refusal NewEncounter makes, and asked here for the reason the line
-	// above is: Join mutates a live encounter, so every refusal happens
-	// before the first mutation rather than needing to be rolled back.
-	// Whether the door is CONCEALED is deliberately not asked
-	// ([JoinInput.Knows]).
-	for _, id := range in.Knows {
-		if _, declared := e.doorsByID[id]; !declared {
-			return nil, fmt.Errorf("join: member %q knows door %q: %w", in.Member, id, ErrNoDoor)
+	// A holder must name a record this field declares — the SAME refusal
+	// NewEncounter makes, and asked here for the reason the line above is:
+	// Join mutates a live encounter, so every refusal happens before the
+	// first mutation rather than needing to be rolled back
+	// ([JoinInput.Holds]).
+	for _, id := range in.Holds {
+		if _, declared := e.field.intelByID[id]; !declared {
+			return nil, fmt.Errorf("join: member %q holds intel %q: %w", in.Member, id, ErrNoIntel)
 		}
 	}
 
@@ -1920,12 +1954,12 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		e.deciders[in.Member] = in.Decider
 	}
 
-	// The joiner's knowledge links, seeded as the holdings they are — the
+	// The joiner's placed records, seeded as the holdings they are — the
 	// SAME call NewEncounter makes for an authored member, so intel enters a
 	// run one way (design P5). Before the beat below, because a holding is
 	// state the join establishes rather than something the join narrates:
 	// nothing about it is ever narrated (design P3).
-	if err := e.holdings.seedIntel(in.Member, in.Knows); err != nil {
+	if err := e.holdings.seedIntel(in.Member, in.Holds); err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 

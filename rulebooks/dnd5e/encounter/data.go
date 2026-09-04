@@ -71,7 +71,7 @@ type EncounterData struct {
 	// dungeon with no secret anywhere can still have a holdable idol on a
 	// plinth.
 	//
-	// The journal is the ONE answer (design P5). [MemberInput.Knows] seeds
+	// The journal is the ONE answer (design P5). [MemberInput.Holds] seeds
 	// it at Setup and is deliberately absent from [MemberData]: re-seeding
 	// at load would hand a looted captain back the intel somebody already
 	// took off them.
@@ -156,6 +156,12 @@ type FieldData struct {
 	// Props are the authored things standing on the floor, in authored
 	// order, with cells in the AUTHORED offset frame.
 	Props []PropData `json:"props,omitempty"`
+
+	// Intel is the authored knowledge records, in authored order
+	// (rpg-project#372). Scenery's omitempty rule: omitted and empty are the
+	// same fact, so a blob written before intel existed simply loads with
+	// none.
+	Intel []IntelData `json:"intel,omitempty"`
 
 	// Exits are the authored ways out, in authored order, with cells in the
 	// AUTHORED offset frame ([FieldInput.Exits], rpg-project#368). Scenery's
@@ -255,6 +261,18 @@ type PropData struct {
 	ID       PropID `json:"id,omitempty"`
 	Holdable bool   `json:"holdable,omitempty"`
 
+	// Holds is the intel records this prop carries ([PropInput.Holds],
+	// rpg-project#372 R6). Field STRUCTURE, like the record table itself:
+	// what a scroll says never changes during a run, and who is holding the
+	// scroll is the holdings journal's business.
+	//
+	// PERSISTED, and it has to be. A host that saves between verbs rebuilds
+	// the field from these bytes, so a prop whose records did not survive
+	// the round trip would be a scroll that taught the first person to pick
+	// it up and nobody after — found by the session seam's own scene, which
+	// loads a stored encounter rather than building one in memory.
+	Holds []IntelID `json:"holds,omitempty"`
+
 	Ref               string       `json:"ref"`
 	At                PositionData `json:"at"`
 	BlocksMovement    *bool        `json:"blocks_movement"`
@@ -267,6 +285,19 @@ type PropData struct {
 	// absent — an old blob simply unmarshals both to their zero values.
 	Facing string     `json:"facing,omitempty"`
 	Offset [3]float64 `json:"offset"`
+}
+
+// IntelData is the persistent representation of one authored knowledge
+// record — [IntelRecord]. Field STRUCTURE, not state: what a record reveals
+// never changes during a run, and who holds it lives in the holdings journal.
+type IntelData struct {
+	ID IntelID `json:"id"`
+
+	// Door is what the record reveals, when that is a door. One key per
+	// target, omitted when unset — the same shape [RevealTargets] has, and
+	// a persisted record naming a target this build does not know is refused
+	// at load rather than carried.
+	Door DoorID `json:"door,omitempty"`
 }
 
 // ExitData is the persistent representation of one authored way out —
@@ -432,20 +463,16 @@ func holdingsDataFrom(h *holdings) *HoldingsData {
 // Both are silent. Loading is where bytes stop being somebody else's problem.
 //
 // Four things are checked, and nothing else is: a kind this build mints, a
-// prop or door this field declares, an actor this encounter has ever had, and
-// a drop cell that is floor. What a fold MEANS is not re-derived here — that
+// prop or intel record this field declares, an actor this encounter has ever
+// had, and a drop cell that is floor. What a fold MEANS is not re-derived here — that
 // is holdings.go's, and a second copy of it would be a second thing to be
 // wrong.
-func validateHoldingsFacts(data *HoldingsData, f *field, doors []DoorInput, everMembers []MemberID) error {
+func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID) error {
 	props := make(map[PropID]bool, len(f.props))
 	for _, p := range f.props {
 		if p.ID != "" {
 			props[p.ID] = true
 		}
-	}
-	declaredDoors := make(map[DoorID]bool, len(doors))
-	for _, d := range doors {
-		declaredDoors[d.ID] = true
 	}
 	members := make(map[string]bool, len(everMembers))
 	for _, id := range everMembers {
@@ -460,10 +487,16 @@ func validateHoldingsFacts(data *HoldingsData, f *field, doors []DoorInput, ever
 
 		kind := fd.Kind
 		switch {
-		case strings.HasPrefix(kind, holdsIntelDoorPrefix):
-			id := strings.TrimPrefix(kind, holdsIntelDoorPrefix)
-			if !declaredDoors[id] {
-				return fmt.Errorf("holdings fact %d carries the way to door %q, which this field does not declare: %w",
+		case strings.HasPrefix(kind, holdsIntelPrefix):
+			// EXTENDED FOR THE RECORD (rpg-project#372, design §3). The fact
+			// names a record now, so this asks the field's intel table
+			// rather than its door list — a holding naming a record nobody
+			// declared would resolve to nothing at transfer time and reveal
+			// silently nothing, which is the quiet corruption this boundary
+			// exists to refuse.
+			id := strings.TrimPrefix(kind, holdsIntelPrefix)
+			if _, declared := f.intelByID[id]; !declared {
+				return fmt.Errorf("holdings fact %d holds intel %q, which this field does not declare: %w",
 					i, id, ErrInvalidData)
 			}
 		case strings.HasPrefix(kind, holdsPropPrefix):
@@ -1032,6 +1065,7 @@ func fieldDataFrom(f *field) FieldData {
 			out.Props[i] = PropData{
 				ID:                p.ID,
 				Holdable:          p.Holdable,
+				Holds:             append([]IntelID(nil), p.Holds...),
 				Ref:               p.Ref,
 				At:                PositionData{X: p.At.X, Y: p.At.Y},
 				BlocksMovement:    &blocksMovement,
@@ -1039,6 +1073,13 @@ func fieldDataFrom(f *field) FieldData {
 				Facing:            p.Facing,
 				Offset:            p.Offset,
 			}
+		}
+	}
+
+	if len(f.intel) > 0 {
+		out.Intel = make([]IntelData, len(f.intel))
+		for i, rec := range f.intel {
+			out.Intel[i] = IntelData{ID: rec.ID, Door: rec.Reveals.Door}
 		}
 	}
 
@@ -1655,12 +1696,20 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
+	// A record's target must name a door this field declares — the SAME
+	// check NewEncounter makes, against the same compiled field, so a blob
+	// and a fresh setup refuse identically rather than one loading what the
+	// other would not build.
+	if err = validateIntelTargets(f, doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
 	// The holdings journal replayed — see EncounterData.Holdings. This is the
-	// ONE restore of "who has what": nothing re-seeds [MemberInput.Knows]
+	// ONE restore of "who has what": nothing re-seeds [MemberInput.Holds]
 	// here, because the journal already holds whatever is left of it after
 	// however much looting happened.
 	if data.Holdings != nil {
-		if err = validateHoldingsFacts(data.Holdings, f, doorInputs, data.EverMembers); err != nil {
+		if err = validateHoldingsFacts(data.Holdings, f, data.EverMembers); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 		if err = replayHoldingsFacts(e.holdings, data.Holdings); err != nil {
@@ -1986,6 +2035,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.Props = append(in.Props, PropInput{
 			ID:                pd.ID,
 			Holdable:          pd.Holdable,
+			Holds:             append([]IntelID(nil), pd.Holds...),
 			Ref:               pd.Ref,
 			At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
 			BlocksMovement:    &blocksMovement,
@@ -1997,6 +2047,10 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 
 	for _, ed := range fd.Exits {
 		in.Exits = append(in.Exits, FieldExit{ID: ed.ID, At: spatial.Position{X: ed.At.X, Y: ed.At.Y}})
+	}
+
+	for _, rd := range fd.Intel {
+		in.Intel = append(in.Intel, IntelRecord{ID: rd.ID, Reveals: RevealTargets{Door: rd.Door}})
 	}
 
 	for _, wd := range fd.Walls {

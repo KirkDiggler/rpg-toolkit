@@ -280,11 +280,11 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 	})
 }
 
-// TestConstructionRefusesAnUnauthoredKnowledgeLink: a link to a door that
-// does not exist is a secret the author thinks they placed and did not
-// (design P1). Whether the door is CONCEALED is deliberately not asked.
+// TestConstructionRefusesAnUnauthoredKnowledgeLink: a holder naming a record
+// that does not exist is knowledge the author thinks they placed and did not
+// (rpg-project#372, design §2).
 func (s *HoldingsSuite) TestConstructionRefusesAnUnauthoredKnowledgeLink() {
-	setup := func(knows []encounter.DoorID) error {
+	setup := func(holds []encounter.IntelID) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
@@ -292,15 +292,15 @@ func (s *HoldingsSuite) TestConstructionRefusesAnUnauthoredKnowledgeLink() {
 			Field: heirloomField(),
 			Members: []encounter.MemberInput{
 				{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
-				{ID: captain, Kind: encounter.KindMonster, Position: captainCell, Knows: knows},
+				{ID: captain, Kind: encounter.KindMonster, Position: captainCell, Holds: holds},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})
 		return err
 	}
 
-	s.Require().ErrorIs(setup([]encounter.DoorID{"cellar-hatch"}), encounter.ErrNoDoor)
-	s.Require().NoError(setup([]encounter.DoorID{tombVault}))
+	s.Require().ErrorIs(setup([]encounter.IntelID{"no-such-record"}), encounter.ErrNoIntel)
+	s.Require().NoError(setup([]encounter.IntelID{vaultMap}))
 	s.Require().NoError(setup(nil))
 }
 
@@ -456,8 +456,10 @@ func (s *HoldingsSuite) TestLoadRefusesABrokenExitedHoldingEnding() {
 }
 
 // TestAnInertKnowledgeLinkTransfersNothingVisible: knowing an ORDINARY door
-// is legal and inert ([MemberInput.Knows]). Looting it writes the holding and
+// is legal and inert ([MemberInput.Holds]). Looting it writes the holding and
 // causes no reveal, because there is nothing to reveal.
+const plainMap = "plain-map"
+
 func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 	plain := encounter.FieldInput{
 		Canvas:  pointyCanvas(),
@@ -466,6 +468,9 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 		Doors: []encounter.DoorInput{{
 			ID: "plain-door", Edges: doorEdgesAcross(2, 3), State: encounter.DoorIsOpen(),
 		}},
+		Intel: []encounter.IntelRecord{
+			{ID: plainMap, Reveals: encounter.RevealTargets{Door: "plain-door"}},
+		},
 		Exits: []encounter.FieldExit{{ID: frontGate, At: raiderCell}},
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -475,7 +480,7 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
 			{ID: captain, Kind: encounter.KindMonster, Position: partnerCell,
-				Knows: []encounter.DoorID{"plain-door"}},
+				Holds: []encounter.IntelID{plainMap}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -634,10 +639,10 @@ func (s *HoldingsSuite) TestJoinRefusesAnUnauthoredKnowledgeLink() {
 		_, err := enc.Join(&encounter.JoinInput{
 			Member: "latecomer", Kind: encounter.KindMonster,
 			Cell:  cellAt(int(sentryCell.X), int(sentryCell.Y)),
-			Knows: []encounter.DoorID{"cellar-hatch"},
+			Holds: []encounter.IntelID{"no-such-record"},
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoDoor)
-		s.Require().Contains(err.Error(), "cellar-hatch")
+		s.Require().ErrorIs(err, encounter.ErrNoIntel)
+		s.Require().Contains(err.Error(), "no-such-record")
 	})
 
 	s.Run("and the refusal happened before anything was placed", func() {
@@ -651,12 +656,168 @@ func (s *HoldingsSuite) TestJoinRefusesAnUnauthoredKnowledgeLink() {
 		}
 	})
 
-	s.Run("a real door is accepted, concealed or not", func() {
+	s.Run("a declared record is accepted", func() {
 		_, err := enc.Join(&encounter.JoinInput{
 			Member: "latecomer", Kind: encounter.KindMonster,
 			Cell:  cellAt(int(sentryCell.X), int(sentryCell.Y)),
-			Knows: []encounter.DoorID{tombVault},
+			Holds: []encounter.IntelID{vaultMap},
 		})
 		s.Require().NoError(err)
+	})
+}
+
+// TestConstructionRefusesABadIntelTable is the composition's own half of
+// design §2's refusals.
+//
+// dungeonspec refuses every one of these at the file, and that is where an
+// author meets them. These exist because a HOST ASSEMBLING A FieldInput BY
+// HAND does not go through dungeonspec — rpg-api builds one from a compiled
+// dungeon, and a future caller may build one from something else. A record
+// with no id, two records sharing one, a record that reveals nothing, or one
+// pointing at a door this field does not declare are all states the
+// composition must refuse for itself, or they arrive as a holding that
+// silently reveals nothing.
+func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
+	setup := func(mutate func(*encounter.FieldInput)) error {
+		field := heirloomField()
+		field.Intel = append([]encounter.IntelRecord(nil), field.Intel...)
+		mutate(&field)
+		_, err := encounter.NewEncounter(&encounter.SetupInput{
+			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			CheckResolver: findsNothing{}, Witness: s.witness,
+			Field:   field,
+			Members: []encounter.MemberInput{{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell}},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		})
+		return err
+	}
+
+	s.Run("the authored table is legal", func() {
+		s.Require().NoError(setup(func(*encounter.FieldInput) {}))
+	})
+
+	s.Run("a record with no id", func() {
+		err := setup(func(f *encounter.FieldInput) {
+			f.Intel = append(f.Intel, encounter.IntelRecord{
+				Reveals: encounter.RevealTargets{Door: tombVault},
+			})
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoIntel)
+		s.Require().Contains(err.Error(), "has no id")
+	})
+
+	s.Run("two records sharing an id", func() {
+		err := setup(func(f *encounter.FieldInput) {
+			f.Intel = append(f.Intel, encounter.IntelRecord{
+				ID: vaultMap, Reveals: encounter.RevealTargets{Door: tombVault},
+			})
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoIntel)
+		s.Require().Contains(err.Error(), "duplicate")
+	})
+
+	s.Run("a record that reveals nothing", func() {
+		// Nothing is defaulted: there is no "reveals the nearest door".
+		err := setup(func(f *encounter.FieldInput) {
+			f.Intel = append(f.Intel, encounter.IntelRecord{ID: "empty-map"})
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoIntel)
+		s.Require().Contains(err.Error(), "does not say what it reveals")
+	})
+
+	s.Run("a record revealing a door this field does not declare", func() {
+		err := setup(func(f *encounter.FieldInput) {
+			f.Intel = append(f.Intel, encounter.IntelRecord{
+				ID: "cellar-map", Reveals: encounter.RevealTargets{Door: "cellar-hatch"},
+			})
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoDoor)
+		s.Require().Contains(err.Error(), "cellar-hatch")
+	})
+
+	s.Run("a PROP holding a record this field does not declare", func() {
+		// R6 made `holds` legal on props, so a dangling one is now
+		// reachable from a second kind of placement. dungeonspec refuses it
+		// at the file; the composition refuses it again, because a host
+		// assembling a FieldInput by hand does not go through dungeonspec.
+		err := setup(func(f *encounter.FieldInput) {
+			props := append([]encounter.PropInput(nil), f.Props...)
+			ghost := holdableProp("ghost-scroll", "dnd5e:props:scroll", partnerCell)
+			ghost.Holds = []encounter.IntelID{"no-such-record"}
+			f.Props = append(props, ghost)
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoIntel)
+		s.Require().Contains(err.Error(), "no-such-record")
+	})
+
+	s.Run("a prop holding a DECLARED record is legal, holdable or not", func() {
+		// A prop nobody can pick up carrying a record is inert, not an
+		// error — the same call the design makes about an unconcealed door.
+		s.Require().NoError(setup(func(f *encounter.FieldInput) {
+			props := append([]encounter.PropInput(nil), f.Props...)
+			plinth := encounter.PropInput{
+				ID: "plinth", Ref: "dnd5e:props:plinth", At: partnerCell,
+				BlocksMovement: no(), BlocksLineOfSight: no(),
+				Holds: []encounter.IntelID{vaultMap},
+			}
+			f.Props = append(props, plinth)
+		}))
+	})
+
+	s.Run("a record revealing an UNCONCEALED door is legal and inert", func() {
+		// Refusing it would make this record's legality depend on a fact
+		// about a different declaration.
+		s.Require().NoError(setup(func(f *encounter.FieldInput) {
+			f.Doors = append(append([]encounter.DoorInput(nil), f.Doors...), encounter.DoorInput{
+				ID: "open-arch", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsOpen(),
+			})
+			f.Walls = append(seamWallExcept(3, 8, hallGapRow, hallGateRow, 1), seamWallExcept(7, 8, vaultSeamRow)...)
+			f.Intel = append(f.Intel, encounter.IntelRecord{
+				ID: "arch-map", Reveals: encounter.RevealTargets{Door: "open-arch"},
+			})
+		}))
+	})
+}
+
+// TestLoadRefusesABadIntelTable: the same table checked at the trust
+// boundary, because a blob's field is bytes somebody could have edited.
+func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
+	enc := s.open(true)
+	data := enc.ToData()
+	s.Require().Len(data.Field.Intel, 3, "the field's records persist as structure")
+	s.Require().Equal(vaultMap, data.Field.Intel[0].ID)
+	s.Require().Equal(tombVault, data.Field.Intel[0].Door)
+
+	load := func(mutate func(*encounter.EncounterData)) error {
+		blob := enc.ToData()
+		mutate(&blob)
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Data:  blob,
+			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			CheckResolver: findsNothing{}, Witness: s.witness,
+		})
+		return err
+	}
+
+	s.Require().NoError(load(func(*encounter.EncounterData) {}))
+
+	s.Run("a record pointing at a door the field does not declare", func() {
+		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Door = "cellar-hatch" })
+		s.Require().ErrorIs(err, encounter.ErrNoDoor)
+	})
+
+	s.Run("a record that reveals nothing", func() {
+		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Door = "" })
+		s.Require().ErrorIs(err, encounter.ErrNoIntel)
+	})
+
+	s.Run("a holding naming a record the field no longer declares", func() {
+		// Drop only the captain's record; the scroll still needs its own or
+		// the field itself refuses first, which would be a different test.
+		err := load(func(d *encounter.EncounterData) { d.Field.Intel = d.Field.Intel[1:] })
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), vaultMap)
 	})
 }

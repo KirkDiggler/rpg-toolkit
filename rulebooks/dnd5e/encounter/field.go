@@ -220,6 +220,27 @@ type PropInput struct {
 	// field by hand cannot produce one either.
 	ID PropID
 
+	// Holds is the intel records this prop carries, by record id
+	// (rpg-project#372, design R6). Optional; omitted means it carries none.
+	//
+	// CONSTRUCTION TRUTH, and it STAYS WITH THE PROP. Picking the prop up
+	// applies its records to whoever holds it (copies, as intel always
+	// does), and the prop keeps them — so a scroll handed on, or dropped and
+	// picked up by somebody else, teaches the next holder too. That is the
+	// hold-out's letter with nothing added: the paper does not stop saying
+	// what it says because somebody read it.
+	//
+	// A prop with records is why intel does not need a fight to test (R6,
+	// Kirk walking): "if we want to test the intel we need to be able to
+	// place it on a few things — not the hardest monster to kill in the
+	// game."
+	//
+	// A record this field does not declare is refused at construction
+	// (ErrNoIntel). A prop that carries records need NOT be [Holdable] —
+	// authoring one that nobody can pick up is inert, not an error, the same
+	// call [RevealTargets.Door] makes about an unconcealed door.
+	Holds []IntelID
+
 	// Holdable is whether a member can pick this prop up (design §5).
 	// Optional, and FALSE IS THE HONEST ZERO VALUE here — unlike the two
 	// blocking flags below, which are pointers because all four of their
@@ -452,6 +473,19 @@ type FieldInput struct {
 	// seam; a door inside a region is legal.
 	Doors []DoorInput
 
+	// Intel is this field's authored knowledge records — the table a
+	// holding is resolved through (rpg-project#372, design §3). Optional;
+	// omitted means the dungeon declares none.
+	//
+	// CONSTRUCTION TRUTH, like the doors: what a record reveals never
+	// changes during a run, and WHO HOLDS IT is the journal's business
+	// (holdings.go). That split is the whole point of the indirection — a
+	// holding names a record, and the record is looked up when it changes
+	// hands, so the same fact kind serves a door today and whatever
+	// [RevealTargets] grows tomorrow without a single stored fact changing
+	// shape.
+	Intel []IntelRecord
+
 	// Exits are the authored ways out of this field (rpg-project#368,
 	// design §3.1). Optional; omitted means none, and a field with none
 	// behaves exactly as every field did before this list existed —
@@ -468,6 +502,59 @@ type FieldInput struct {
 	// defaulted (rpg-toolkit#1033), and a dungeon whose entrance is also its
 	// way out authors that in one line.
 	Exits []FieldExit
+}
+
+// IntelID is the author's name for one intel record — [IntelRecord.ID].
+type IntelID = string
+
+// IntelRecord is one authored piece of knowledge: an id, and what learning it
+// reveals.
+//
+// # Why knowledge is a record and not a door id
+//
+// Until rpg-project#372 a member simply held a door id, which made "what does
+// knowing this tell you" a question with exactly one possible answer forever.
+// A record puts one indirection in the middle, and that indirection is what
+// lets a DM author knowledge as a THING: a record can be held by two
+// monsters, grow a body to read, or reveal something that is not a door, and
+// none of those touch the fact that says who holds it.
+//
+// Carried and never interpreted beyond [RevealTargets]' own fields — this
+// composition cannot import the rulebook (C1), and what a door MEANS is not
+// its business either way.
+type IntelRecord struct {
+	// ID names the record. REQUIRED non-empty and unique within the field —
+	// refused at construction (ErrNoIntel), because a holding names a record
+	// by id and an ambiguous one has no answer.
+	ID IntelID
+
+	// Reveals is what learning this record tells you. REQUIRED to name
+	// something — a record that reveals nothing is one an author started and
+	// did not finish, and it is refused rather than carried as a holding
+	// that does nothing.
+	Reveals RevealTargets
+}
+
+// RevealTargets is what an intel record tells whoever learns it.
+//
+// ONE FIELD PER USE CASE, exactly one set. Today that is a door, because the
+// only use case anybody has is the way into the vault. A region, a location,
+// a lock's approach, a camp's disposition — each is a field here, and each
+// arrives WITH the use case that wants it and never ahead of it (design R5).
+//
+// A STRUCT RATHER THAN AN OPEN MAP, deliberately: a target this build does
+// not understand is a record nothing can apply, and carrying one hopefully
+// would mean a dungeon that loads and a secret that never reveals. Refused
+// at the door instead.
+type RevealTargets struct {
+	// Door is the door this record reveals the way to, or empty. Must name a
+	// door this field declares — refused at construction (ErrNoDoor).
+	//
+	// A DECLARED BUT UNCONCEALED DOOR IS LEGAL AND INERT, exactly as the
+	// knowledge link it replaced was: revealing the way to a door anyone can
+	// already see tells nobody anything, and refusing it would make this
+	// declaration depend on a fact about a different one.
+	Door DoorID
 }
 
 // FieldExit is one authored way out: an id and the cell a member has to be
@@ -587,10 +674,10 @@ type MemberInput struct {
 	// its caller opts in.
 	BlocksMovement bool
 
-	// Knows is the doors this member carries the way to, by door ID
-	// (rpg-project#368, design P1) — the author's knowledge links, seeded
-	// at construction as holdings facts nobody but the engine ever sees.
-	// Optional; omitted means they carry nothing.
+	// Holds is the intel records this member carries, by record id
+	// (rpg-project#372, design §3) — the author's placement, seeded at
+	// construction as holdings nobody but the engine ever sees. Optional;
+	// omitted means they carry nothing.
 	//
 	// SETUP ONLY, AND DELIBERATELY. This is a SEED, not a running answer:
 	// [Encounter.Loot] moves intel off a body, so re-seeding it at Load
@@ -604,15 +691,14 @@ type MemberInput struct {
 	// and no output says who carries intel, because the affordance must not
 	// answer the question it exists to ask: Loot is offered on EVERY body,
 	// and a body with nothing to give has to be indistinguishable from the
-	// one that has everything. See holdings.go, which is the only file that
-	// reads these facts.
+	// one that has everything. See holdings.go, the only file that reads
+	// these facts.
 	//
-	// A door that does not exist is refused at construction (ErrNoDoor). A
-	// door that exists and is NOT concealed is legal and INERT: knowing
-	// where an ordinary door is tells you nothing you could not already
-	// see, and refusing it would make this declaration depend on a fact
-	// about a different one.
-	Knows []DoorID
+	// A record this field does not declare is refused at construction
+	// (ErrNoIntel). What the record reveals is NOT asked here — that is read
+	// when the holding changes hands, which is the whole reason a holding
+	// names a record rather than a door ([IntelRecord]).
+	Holds []IntelID
 }
 
 // ActionView is a static fact about one action a member can take — an
@@ -1214,8 +1300,8 @@ type JoinInput struct {
 	// arriving mid-scene carries it exactly as an authored one does.
 	BlocksMovement bool
 
-	// Knows is the doors this member carries the way to, by door ID
-	// (rpg-project#368, design §3.1) — [MemberInput.Knows] for a member who
+	// Holds is the intel records this member carries, by record id
+	// (rpg-project#372, design §3) — [MemberInput.Holds] for a member who
 	// arrives mid-scene instead of being authored into the roster.
 	// Optional; omitted means they carry nothing.
 	//
@@ -1223,26 +1309,23 @@ type JoinInput struct {
 	//
 	// THE AUTHORED ROSTER IS NOT HOW MONSTERS GET INTO A RUN. The host
 	// builds the world empty of members and spawns each one through the
-	// seam, which lands here — so a knowledge link authored on a placement
-	// reached [MemberInput.Knows], which construction reads, and never
-	// reached the captain who was spawned. The dungeon said the captain
-	// knows the vault door and the captain did not, which makes design R2's
-	// second way to win unwalkable: loot the body and learn nothing.
+	// seam, which lands here — so a record placed on a monster reached
+	// [MemberInput.Holds], which construction reads, and never reached the
+	// captain who was spawned. The dungeon would say the captain holds the
+	// vault map and the captain would not.
 	//
 	// # It is the same seed, not a second one
 	//
-	// Written through the SAME path [MemberInput.Knows] uses — one holdings
-	// fact per door on the member — so there is one way intel enters a run
-	// and one place it is read (design P5). A door this field does not
-	// declare is refused (ErrNoDoor), and a door that exists but is not
-	// concealed is legal and inert, both exactly as at construction.
+	// Written through the SAME path [MemberInput.Holds] uses — one holdings
+	// fact per record on the member — so there is one way intel enters a run
+	// and one place it is read (design P5). A record this field does not
+	// declare is refused (ErrNoIntel).
 	//
 	// NEVER PROJECTED, ANYWHERE (design P3): no atlas, no percept, no beat
 	// and no output says who carries intel, and the join beat is
-	// byte-identical whether a joiner knows every secret in the dungeon or
-	// none. Loot is offered on every body, so a body with nothing to give
-	// has to be indistinguishable from the one that has everything.
-	Knows []DoorID
+	// byte-identical whether a joiner holds every record in the dungeon or
+	// none.
+	Holds []IntelID
 }
 
 // JoinOutput reports the results of a successful join.
