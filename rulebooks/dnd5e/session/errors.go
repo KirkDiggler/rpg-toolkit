@@ -517,4 +517,34 @@ var (
 	// that has not been updated to translate it hits this rather than
 	// silently treating the new outcome as Pass.
 	ErrBadTurnOutcome = errors.New("turn driver returned an unrecognised outcome")
+
+	// ErrGiveNotSupported is returned when Trade names a non-empty Give —
+	// this wave only supports one direction (a vendor purchase, Receive
+	// only). Accepting arbitrary items into a vendor's stock raises
+	// unresolved questions (does an unlisted item create a new stock row?)
+	// that belong to a later sell/barter wave, not this one.
+	ErrGiveNotSupported = errors.New("give is not supported yet")
+
+	// ErrInvalidTradeOffer is returned when Trade's Receive does not name
+	// exactly one item, or that item has an empty ID or a nonpositive
+	// quantity. One sentinel covers all three shapes: each is a caller
+	// defect in the request's shape, not a smaller-but-legal input — the
+	// same convention encounter.Interact already applies to a negative
+	// Range.
+	ErrInvalidTradeOffer = errors.New("invalid trade offer")
+
+	// ErrNotAVendor is returned when Trade's target has no
+	// npc.CapabilityVendor. Player-to-player trade needs a consent
+	// mechanic this verb does not have; a non-vendor world NPC has nothing
+	// to sell.
+	ErrNotAVendor = errors.New("target is not a vendor")
+
+	// ErrOutOfStock is returned when Trade's target vendor cannot fulfill
+	// the requested item — it never carried it, or a limited row does not
+	// hold enough of it. Wraps npcs.ErrOutOfStock, the same double-wrap
+	// convention worldNPCDescriptor already applies for ErrBadNPC: a host
+	// matching on this seam's own vocabulary needs only this sentinel, but
+	// the inner npcs error rides along for anyone who already depends on
+	// that package too.
+	ErrOutOfStock = errors.New("vendor cannot fulfill this trade")
 )

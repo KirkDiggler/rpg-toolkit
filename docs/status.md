@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-03
+updated: 2026-09-04
 confidence: high — active #1366/#1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
 ---
 
@@ -10,6 +10,19 @@ confidence: high — active #1366/#1246 boundaries and gates are verified in the
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Current direction
+
+**rpg-project#369 — `session.Trade`, the first real vendor purchase (complete,
+2026-09-04).** A player who has already reached a placed `KindWorld` vendor
+through `Interact` can now `session.Trade` for one listed item: `character.AddInventoryItem`
+lands it in the buyer's stored inventory (merging into an existing stack by
+type/id), `npcs.DecrementVendorStock` spends the vendor's stock (a
+`StockModeLimited` row is removed once exhausted rather than left at an
+invalid zero — rpg-toolkit#1508), and `encounter.OutcomeTraded` records the
+beat. Reuses `encounter.Interact` as-is for the reach/visibility check, so a
+purchase carries two beats (`interacted` then `traded`). This wave is
+one-directional only — `Give` must be empty, `Receive` exactly one item at
+any quantity in stock — and vendor-only: no currency, no selling, no barter,
+no player-to-player trade (design.md at rpg-project#370 §6).
 
 **#1450 — toolkit-owned provider-neutral appearance semantics and character
 persistence (complete, 2026-09-03).** `rulebooks/dnd5e/customization` owns the
