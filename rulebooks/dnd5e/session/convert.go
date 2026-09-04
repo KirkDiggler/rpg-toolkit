@@ -147,7 +147,7 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	return out
 }
 
-// doorIDs converts the seam's plain door ids to the composition's own type.
+// intelIDs converts the seam's plain record ids to the composition's own type.
 //
 // A CONVERSION, not a cast at the call site: a []string and a []DoorID differ
 // only in a name Go will not bridge for a slice, and doing it here keeps the
@@ -157,13 +157,13 @@ func projectAtlas(in encounter.Atlas) Atlas {
 // nil in, nil out — a member that knows nothing hands the composition
 // nothing, rather than an empty slice that would read as "asked and answered
 // none".
-func doorIDs(in []string) []encounter.DoorID {
+func intelIDs(in []string) []encounter.IntelID {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]encounter.DoorID, 0, len(in))
+	out := make([]encounter.IntelID, 0, len(in))
 	for _, id := range in {
-		out = append(out, encounter.DoorID(id))
+		out = append(out, encounter.IntelID(id))
 	}
 	return out
 }

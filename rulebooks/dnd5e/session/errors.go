@@ -200,6 +200,18 @@ var (
 	// remedy is OpenDoor, not different coordinates.
 	ErrDoorShut = errors.New("door is shut")
 
+	// ErrNoIntel is the translation of a composition-side refusal about an
+	// intel record: a spawn naming a record the dungeon does not declare
+	// (rpg-project#372).
+	//
+	// A CALLER'S MISTAKE, and the one worth making loud: a host forwarding
+	// the AUTHOR's raw record id instead of the compiled `<key>/<id>`
+	// dungeonspec mints gets this, rather than a monster that arrives
+	// holding nothing and is looted for an empty answer. It is NOT
+	// ErrNoConnection — that one is about crossing a doorway and would send
+	// a caller looking at geometry for a naming problem.
+	ErrNoIntel = errors.New("no such intel record")
+
 	// ErrNoConnection is the translation of a composition-side refusal to cross
 	// a doorway.
 	//

@@ -54,6 +54,7 @@ const (
 	heirloomID = "heirloom"
 	chaliceID  = "chalice"
 	relicID    = "relic"
+	scrollID   = "hall-scroll"
 	urnID      = "urn"
 	pillarID   = "pillar"
 	frontGate  = "front-gate"
@@ -70,7 +71,9 @@ var (
 
 	// Inside the concealed vault: nobody in the hall is shown these cells.
 	relicCell = cell(8, 2)
-	urnCell   = cell(9, 2)
+	// scrollCell is beside alice, so reading it needs no walk and no fight.
+	scrollCell = cell(1, 1)
+	urnCell    = cell(9, 2)
 
 	// In the hall corner, where everybody can see it: the prop that says
 	// nothing about being holdable, which is what every prop was before this
@@ -99,16 +102,21 @@ func scenery(id, ref string, at spatial.Position) encounter.PropInput {
 	}
 }
 
-// heirloomWorld is the fixture described at the top of this file. knows says
-// whether the captain was authored knowing the veil — the ONE difference the
-// secrecy scenes vary, so that everything else about the two worlds is
+// veilMap is the fixture's one intel record: the way through the veil. What
+// the captain HOLDS is this id; what it reveals is the field's to say
+// (rpg-project#372).
+const veilMap = "veil-map"
+
+// heirloomWorld is the fixture described at the top of this file. holds says
+// whether the captain was authored holding the veil map — the ONE difference
+// the secrecy scenes vary, so that everything else about the two worlds is
 // identical by construction rather than by inspection.
-func heirloomWorld(t fataler, knows bool) *encounter.EncounterData {
+func heirloomWorld(t fataler, holds bool) *encounter.EncounterData {
 	captain := encounter.MemberInput{
 		ID: "captain", Kind: encounter.KindMonster, Position: captainCell,
 	}
-	if knows {
-		captain.Knows = []encounter.DoorID{"veil"}
+	if holds {
+		captain.Holds = []encounter.IntelID{veilMap}
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -123,6 +131,9 @@ func heirloomWorld(t fataler, knows bool) *encounter.EncounterData {
 				concealRegion(rectRegion("vault", 6, 0, 6, 6)),
 			},
 			Walls: axialSeam(0),
+			Intel: []encounter.IntelRecord{
+				{ID: veilMap, Reveals: encounter.RevealTargets{Door: "veil"}},
+			},
 			Doors: []encounter.DoorInput{{
 				ID:        "veil",
 				Edges:     []encounter.DoorEdge{{From: cell(5, 0), To: cell(6, 0)}},
@@ -133,6 +144,13 @@ func heirloomWorld(t fataler, knows bool) *encounter.EncounterData {
 				holdable(heirloomID, "dnd5e:props:reliquary", heirloomCell),
 				holdable(chaliceID, "dnd5e:props:chalice", chaliceCell),
 				holdable(relicID, "dnd5e:props:relic", relicCell),
+				// A scroll carrying the veil map (design R6): intel a party
+				// can reach without a fight, and the shape the walk uses.
+				func() encounter.PropInput {
+					p := holdable(scrollID, "dnd5e:props:scroll", scrollCell)
+					p.Holds = []encounter.IntelID{veilMap}
+					return p
+				}(),
 				scenery(urnID, "dnd5e:props:urn", urnCell),
 				scenery(pillarID, "dnd5e:props:pillar", pillarCell),
 			},

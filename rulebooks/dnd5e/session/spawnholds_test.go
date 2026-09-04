@@ -3,14 +3,15 @@
 
 package session_test
 
-// spawnknows_test.go closes the last gap between the dungeon file and the
-// live game (rpg-project#368 P1, found from the rpg-api side wiring wave 2).
+// spawnholds_test.go closes the last gap between the dungeon file and the
+// live game (rpg-project#368 P1, found from the rpg-api side wiring wave 2; carried to
+// the intel record by rpg-project#372).
 //
 // Everything else in this slice was reachable from an AUTHORED captain, and
 // the holdings suite next door proves it that way. But a host that resolves
 // monster content at runtime builds its world empty of members and brings
-// every monster in through Spawn, so an authored `knows:` that could only be
-// read at construction was a link the game never saw. Path 2 — kill the
+// every monster in through Spawn, so an authored `holds:` that could only be
+// read at construction was a record the game never saw. Path 2 — kill the
 // captain, loot the way in — could not happen live while every test passed.
 //
 // The scene here is the live shape: nobody is authored knowing anything, the
@@ -25,15 +26,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// spawnKnowingCaptain spawns a skeleton beside alice carrying the author's
-// link to the veil, then puts it on the floor by zeroing its stored sheet —
+// spawnHoldingCaptain spawns a skeleton beside alice carrying the author's
+// record for the veil, then puts it on the floor by zeroing its stored sheet —
 // the same way the holdings suite makes a body, because it is the same
 // mechanism: the composition is TOLD who is down.
-func (s *HoldingsSuite) spawnKnowingCaptain(knows []string) {
+func (s *HoldingsSuite) spawnHoldingCaptain(holds []string) {
 	s.T().Helper()
 	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
 		Session: "sess", ID: "latecomer", Ref: refs.Monsters.Skeleton().String(),
-		Position: absolute(spatial.Position{X: 0, Y: 1}), Knows: knows,
+		Position: absolute(spatial.Position{X: 0, Y: 1}), Holds: holds,
 	})
 	s.Require().NoError(err)
 
@@ -47,12 +48,12 @@ func (s *HoldingsSuite) spawnKnowingCaptain(knows []string) {
 	s.Require().Fail("the spawn recorded no sheet to put on the floor")
 }
 
-// TestASpawnedMonsterCarriesTheAuthorsKnowledgeLinks is the scene: spawn with
-// Knows, loot, and the looter alone learns the way in.
-func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheAuthorsKnowledgeLinks() {
+// TestASpawnedMonsterCarriesTheRecordsItWasPlacedWith is the scene: spawn with
+// Holds, loot, and the looter alone learns the way in.
+func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheRecordsItWasPlacedWith() {
 	ctx := context.Background()
 	s.start(false) // NOBODY was authored knowing anything
-	s.spawnKnowingCaptain([]string{"veil"})
+	s.spawnHoldingCaptain([]string{veilMap})
 	s.stream.published = nil
 
 	_, err := s.mgr.Loot(ctx, &session.LootInput{
@@ -85,18 +86,18 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheAuthorsKnowledgeLinks() {
 	})
 }
 
-// TestASpawnedMonsterKnowingNothingRevealsNothing is the negative that makes
-// the scene above a claim about Knows rather than about spawning.
+// TestASpawnedMonsterHoldingNothingRevealsNothing is the negative that makes
+// the scene above a claim about Holds rather than about spawning.
 //
 // Same verb, same body, same loot — the ONE difference is the field — and the
 // bystander's bytes are identical either way, which is design P3 asked of the
 // live path.
-func (s *HoldingsSuite) TestASpawnedMonsterKnowingNothingRevealsNothing() {
+func (s *HoldingsSuite) TestASpawnedMonsterHoldingNothingRevealsNothing() {
 	ctx := context.Background()
 
-	loot := func(knows []string) ([]session.EventKind, string) {
+	loot := func(holds []string) ([]session.EventKind, string) {
 		s.start(false)
-		s.spawnKnowingCaptain(knows)
+		s.spawnHoldingCaptain(holds)
 		s.stream.published = nil
 		_, err := s.mgr.Loot(ctx, &session.LootInput{
 			Session: "sess", Member: "alice", Target: "latecomer", Range: 2})
@@ -104,7 +105,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterKnowingNothingRevealsNothing() {
 		return s.kinds("bob"), s.storyBytes("bob")
 	}
 
-	richKinds, richStory := loot([]string{"veil"})
+	richKinds, richStory := loot([]string{veilMap})
 	poorKinds, poorStory := loot(nil)
 
 	s.Equal([]session.EventKind{session.EventLooted}, poorKinds)
@@ -114,22 +115,22 @@ func (s *HoldingsSuite) TestASpawnedMonsterKnowingNothingRevealsNothing() {
 			"only secret are indistinguishable to everybody but the looter")
 }
 
-// TestASpawnCannotKnowADoorThatIsNotThere is the fail-closed half at the
-// seam: an unauthored link is refused by name rather than arriving ignorant,
-// and the refusal crosses as this package's own sentinel.
+// TestASpawnCannotHoldARecordThatIsNotThere is the fail-closed half at the
+// seam: an unauthored record is refused by name rather than arriving
+// ignorant, and the refusal crosses as this package's own sentinel.
 //
-// This is the failure a host hits by forwarding the AUTHOR's raw door id
+// This is the failure a host hits by forwarding the AUTHOR's raw record id
 // instead of the compiled `<key>/<id>` dungeonspec mints, which is the one
 // mistake worth making loud.
-func (s *HoldingsSuite) TestASpawnCannotKnowADoorThatIsNotThere() {
+func (s *HoldingsSuite) TestASpawnCannotHoldARecordThatIsNotThere() {
 	s.start(false)
 
 	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
 		Session: "sess", ID: "latecomer", Ref: refs.Monsters.Skeleton().String(),
-		Position: absolute(spatial.Position{X: 0, Y: 1}), Knows: []string{"no-such-door"},
+		Position: absolute(spatial.Position{X: 0, Y: 1}), Holds: []string{"no-such-record"},
 	})
-	s.Require().ErrorIs(err, session.ErrNoConnection,
-		"a door this field does not declare, named at the seam that declares doors")
+	s.Require().ErrorIs(err, session.ErrNoIntel,
+		"a record this dungeon does not declare — not ErrNoConnection, which is about geometry")
 
 	var placed bool
 	for _, npc := range s.sessions.byID["sess"].NPCs {
