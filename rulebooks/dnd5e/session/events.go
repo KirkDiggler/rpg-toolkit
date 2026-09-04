@@ -283,6 +283,18 @@ func kindFor(beat string) EventKind {
 		return EventDoorRevealed
 	case "region_revealed":
 		return EventRegionRevealed
+	// The holdings verbs, named by what the record says (rpg-project#368
+	// §4.1). "looted", "held" and "dropped" are the composition's own words
+	// for what it did, so they cross unchanged — unlike "down"/"downed"
+	// above, which is a translation and says why. NOTHING HERE SAYS "took":
+	// Take is reserved for the act that lands a thing in inventory (R10),
+	// and no beat this seam publishes may claim it.
+	case "looted":
+		return EventLooted
+	case "held":
+		return EventHeld
+	case "dropped":
+		return EventDropped
 	default:
 		return EventUnknown
 	}
@@ -312,12 +324,19 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return JoinedBody{Member: p.Member}
 	case EventExited:
 		var p struct {
-			Member string `json:"member"`
+			Member  string   `json:"member"`
+			Holding []string `json:"holding"`
+			Exit    string   `json:"exit"`
 		}
 		if json.Unmarshal(payload, &p) != nil || p.Member == "" {
 			return nil
 		}
-		return ExitedBody{Member: p.Member}
+		// Neither new field gates the body. A departure carrying nothing
+		// through no authored exit is the ORDINARY case and must still
+		// decode; requiring either would demote every ordinary exit to an
+		// untyped payload, which is the failure this function's own doc
+		// warns kind-and-body conflation causes.
+		return ExitedBody{Member: p.Member, Holding: p.Holding, Exit: p.Exit}
 	case EventEnded:
 		var p struct {
 			Ending string `json:"ending"`
@@ -400,6 +419,43 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DownedBody{Member: p.Member}
+	case EventLooted:
+		var p struct {
+			Member string `json:"member"`
+			Target string `json:"target"`
+		}
+		// THE COMPOSITION'S KEYS ARE member/target AND THE BODY'S ARE
+		// looter/body. The beat is written by a verb whose input names an
+		// actor and a target; the body is read by a client narrating a
+		// sentence, and "looter" and "body" are the words that sentence uses.
+		// The rename is one line here rather than a second vocabulary
+		// upstream — the same move kindFor makes for "down"/"downed".
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Target == "" {
+			return nil
+		}
+		return LootedBody{Looter: p.Member, Body: p.Target}
+	case EventHeld:
+		var p struct {
+			Holder string `json:"holder"`
+			Prop   string `json:"prop"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Holder == "" || p.Prop == "" {
+			return nil
+		}
+		return HeldBody{Holder: p.Holder, Prop: p.Prop}
+	case EventDropped:
+		var p struct {
+			Member   string           `json:"member"`
+			Prop     string           `json:"prop"`
+			Position spatial.Position `json:"position"`
+		}
+		// "position" in, At out — the composition's own key for a cell, read
+		// into the word a client narrating a drop uses, exactly as EventMoved
+		// reads "position" into MovedBody.To one arm above.
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Prop == "" {
+			return nil
+		}
+		return DroppedBody{Member: p.Member, Prop: p.Prop, At: p.Position}
 	case EventDoorRevealed:
 		// The composition writes doorways as bare from/to pairs; the body
 		// re-carries them as [AtlasDoorway] entries with Door filled, so

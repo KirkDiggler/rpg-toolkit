@@ -151,6 +151,33 @@ type Atlas struct {
 	// how bright it is — which a client that could not read them off the wire
 	// would re-derive by experiment.
 	Regions []AtlasRegion `json:"regions,omitempty"`
+
+	// Exits is every authored way out, sorted by id (rpg-project#368 §5).
+	//
+	// STRUCTURE ON THE TRUTH GRAIN, the same for every member — a way out is
+	// a fact about the building, and a party that has not found the vault has
+	// still walked in through the front gate. The composition carries it
+	// unfiltered through its own per-member projection for that reason, and
+	// this seam does no more than copy it across.
+	//
+	// WHAT AN EXIT MEANS IS NOT HERE. An ending that names one is a
+	// scenario's business; a client that could read "this is the winning one"
+	// off the map would be reading the scenario off the geometry. Leave is
+	// offered wherever the client likes and the server decides what a
+	// departure means (design §5's wire paragraph).
+	Exits []AtlasExit `json:"exits,omitempty"`
+}
+
+// AtlasExit is one authored way out: its id, and the cell somebody stands on
+// to leave through it.
+type AtlasExit struct {
+	// ID is the author's name for this exit — the dungeon file's
+	// `exits[].id`, what a scenario binds to and what [ExitedBody.Exit]
+	// reports.
+	ID string `json:"id"`
+
+	// At is the floor cell, in dungeon-absolute space.
+	At spatial.Position `json:"at"`
 }
 
 // AtlasRegion is one named set of cells with the world facts it carries.
@@ -188,6 +215,35 @@ type Lighting struct {
 // pile of bones is walked through and seen over. A host that wants the old
 // "occluders" list filters on BlocksLineOfSight.
 type AtlasProp struct {
+	// ID is the author's name for this placement — the dungeon file's
+	// `place[].id` (rpg-project#368 P2). Empty when the author named none,
+	// which is most props: an id is required only by whatever binds to one —
+	// a scenario binding, or [Manager.Hold], which names its target by this
+	// id and nothing else.
+	//
+	// A HELD PROP IS ABSENT FROM EVERY MEMBER'S ATLAS rather than marked
+	// held: an object that left the floor left it for everyone, so absence
+	// already answers the question a flag would answer twice. A prop dropped
+	// after being carried appears again at its drop cell, carrying this same
+	// id.
+	ID string `json:"id,omitempty"`
+
+	// Holdable is whether a member can pick this up — the author's
+	// `holdable` flag, verbatim.
+	//
+	// STRUCTURE ON THE TRUTH GRAIN (design §5's wire paragraph): a holdable
+	// thing LOOKS holdable, and every member who can see the cell sees the
+	// same thing. A CLIENT OFFERS HOLD ONLY WHERE THIS IS TRUE AND NEVER
+	// GUESSES FROM AN ID — ids exist for anything a scenario binds to, so
+	// inferring the verb from a name would put the button on the altar as
+	// readily as on the reliquary.
+	//
+	// No omitempty, for its three neighbours' reason: false is the ANSWER —
+	// a thing nobody declared holdable is scenery — not an absent one.
+	// Offering is also not permission: [Manager.Hold] still refuses out of
+	// range, already held, or off-turn in a fight.
+	Holdable bool `json:"holdable"`
+
 	// Ref names what this is, so a host can draw it.
 	Ref string `json:"ref"`
 
@@ -701,6 +757,40 @@ const (
 	// cells. Always recipient-scoped to exactly one member.
 	EventRegionRevealed EventKind = "region_revealed"
 
+	// EventLooted reports that a member looted a downed body — who looted
+	// whom, and DELIBERATELY NOTHING ELSE (rpg-project#368 P3).
+	//
+	// The affordance must not say which body carries anything. Loot is
+	// offered on every downed member, a body with nothing transfers nothing,
+	// and this beat is identical either way: no list, no count, no flag. What
+	// actually moved reaches the LOOTER ALONE as the kind that carries it —
+	// intel arrives as EventDoorRevealed on their own stream, byte-identical
+	// to the reveal a successful search produces. Everyone present hears
+	// this one.
+	EventLooted EventKind = "looted"
+
+	// EventHeld reports that a member picked a holdable prop up.
+	//
+	// PHYSICAL STATE FOLDS ON THE TRUTH GRAIN: an object leaving the floor is
+	// not a secret, so this goes to everyone present and every recipient's
+	// atlas loses the prop. A client patches its cached Atlas by removing the
+	// prop with this id — the load-once, beat-refreshed law running in the
+	// subtractive direction, where EventDoorRevealed runs it in the additive
+	// one — and a refetch agrees, because Atlas omits held props for
+	// everyone.
+	EventHeld EventKind = "held"
+
+	// EventDropped reports that a holding landed back on the map.
+	//
+	// NOT A PLAYER VERB, and this slice adds none: a drop is what happens
+	// when a carrier leaves from anywhere but a scenario's bound exit (design
+	// R9). Without it a carrier who walks out through the lobby — or simply
+	// disconnects — walks off with the only win in the run. The prop
+	// reappears at [DroppedBody.At] for everyone present; the journal
+	// underneath stays append-only, since a drop is a new fact rather than
+	// the erasure of the hold.
+	EventDropped EventKind = "dropped"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret
@@ -1130,13 +1220,86 @@ type JoinedBody struct {
 
 func (JoinedBody) isEventBody() {}
 
-// ExitedBody is EventExited's typed body: who left the encounter. See
-// JoinedBody's own doc — the same reasoning, the opposite beat.
+// ExitedBody is EventExited's typed body: who left the encounter, what they
+// carried out, and the authored way they left by. See JoinedBody's own doc for
+// why the departure names itself — the same reasoning, the opposite beat.
 type ExitedBody struct {
 	Member string `json:"member"`
+
+	// Holding is the PROP placement ids the member carried out
+	// (rpg-project#368 §5). Empty is the ordinary case and the honest one:
+	// most departures carry nothing.
+	//
+	// SINGULAR ON PURPOSE, though the field is a list: it is the participle
+	// in the statement this beat makes — "Aldric exited, holding the
+	// heirloom" — which is the naming rule the whole slice runs on. The seam
+	// already names repeated fields this way where the word is not a count
+	// noun (ExitOutput.Carry, the atlas's Sealed).
+	//
+	// PROPS ONLY. Intel is a holding too, and the same one mechanism moves
+	// it, but it NEVER appears here or anywhere else that leaves this seam
+	// (design P3): a departure carrying nothing but knowledge is
+	// indistinguishable from one carrying nothing at all, which is the
+	// point.
+	//
+	// A departure from anywhere but a scenario's bound exit does not populate
+	// this — the carrier DROPS what they hold where they stood (R9) and
+	// EventDropped says so, so a holding is either carried out or left on the
+	// floor, never silently deleted.
+	Holding []string `json:"holding,omitempty"`
+
+	// Exit is the authored exit id they left through — one of the dungeon
+	// file's `exits[].id`.
+	//
+	// EMPTY FOR A DEPARTURE FROM ELSEWHERE, which is every departure today
+	// that is not a scenario ending: the lobby's abandon, a disconnect, a
+	// member walking out at a cell nobody authored as a way out. Empty is not
+	// "unknown"; it is the truth that no authored exit was used.
+	Exit string `json:"exit,omitempty"`
 }
 
 func (ExitedBody) isEventBody() {}
+
+// LootedBody is EventLooted's typed body: who looted whom, and nothing of
+// what moved. See EventLooted for the law this shape keeps.
+type LootedBody struct {
+	// Looter is who looted.
+	Looter string `json:"looter"`
+
+	// Body is the downed member whose body was looted — a member id, the
+	// same vocabulary ExitedBody.Member and DownedBody.Member speak.
+	Body string `json:"body"`
+}
+
+func (LootedBody) isEventBody() {}
+
+// HeldBody is EventHeld's typed body: who picked up which prop.
+type HeldBody struct {
+	// Holder is who picked it up, and who has it until they carry it out
+	// through a bound exit ([ExitedBody.Holding]) or drop it.
+	Holder string `json:"holder"`
+
+	// Prop is the placement id — the same id [AtlasProp.ID] carries.
+	Prop string `json:"prop"`
+}
+
+func (HeldBody) isEventBody() {}
+
+// DroppedBody is EventDropped's typed body: who dropped which prop, and where
+// it landed.
+type DroppedBody struct {
+	// Member is the departing carrier who dropped it.
+	Member string `json:"member"`
+
+	// Prop is the placement id dropped.
+	Prop string `json:"prop"`
+
+	// At is the cell it landed on — where the carrier stood on the way out,
+	// dungeon-absolute like every position on this seam.
+	At spatial.Position `json:"at"`
+}
+
+func (DroppedBody) isEventBody() {}
 
 // EndedBody is EventEnded's typed body: the declared ending that fired.
 //

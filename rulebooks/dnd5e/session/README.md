@@ -44,6 +44,8 @@ declaration, and `gorelease` gates every release.
 | `read.go` | `Roster`, `Atlas`, `Status`, `View`, `Story`, and the shared load path |
 | `conceal.go` | The two concealment capabilities: the check resolver and the witness |
 | `search.go` | `Search` — the player's sweep of the room they stand in |
+| `loot.go` | `Loot` — everything a downed body holds, moved to the looter |
+| `hold.go` | `Hold` — a holdable prop picked up off the floor |
 | `stream.go` | Per-recipient dense numbering: each member's delivered stream, counted for them |
 | `write.go` | `Join`, `Exit`, `End`, and the save/publish seam |
 | `move.go` | `Move` (walking a path) and `Traverse` |

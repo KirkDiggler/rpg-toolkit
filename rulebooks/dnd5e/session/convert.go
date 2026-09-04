@@ -81,6 +81,18 @@ func projectAtlas(in encounter.Atlas) Atlas {
 		Regions:    make([]AtlasRegion, 0, len(in.Regions)),
 		Segments:   make([]AtlasSegment, 0, len(in.Segments)),
 		Sealed:     append([]spatial.Position(nil), in.Sealed...),
+		Exits:      make([]AtlasExit, 0, len(in.Exits)),
+	}
+
+	// THE HELD FILTER IS INHERITED, THE FIELDS ARE NOT. A prop somebody
+	// picked up is already gone from the composition's answer and a dropped
+	// one already stands at its drop cell, so nothing here folds a journal —
+	// that is a fold this seam must not re-derive. But this function is a
+	// field-for-field copy, so the two facts the composition added BESIDE
+	// that filter (an exit list, and whether a prop can be picked up) reach a
+	// client only by being carried, and the wire needs both (design §5).
+	for _, ex := range in.Exits {
+		out.Exits = append(out.Exits, AtlasExit{ID: string(ex.ID), At: ex.At})
 	}
 
 	for _, seg := range in.Segments {
@@ -93,6 +105,8 @@ func projectAtlas(in encounter.Atlas) Atlas {
 
 	for _, prop := range in.Props {
 		out.Props = append(out.Props, AtlasProp{
+			ID:                string(prop.ID),
+			Holdable:          prop.Holdable,
 			Ref:               prop.Ref,
 			At:                prop.At,
 			BlocksMovement:    prop.BlocksMovement,

@@ -145,6 +145,44 @@
 // own numbering. What makes that durable is a persisted cursor per member on
 // the session record, advanced in the same commit as the beats it counts.
 //
+// # Holdings: Loot, Hold, and the ending on the way out
+//
+// Slice 2 (rpg-toolkit#1496, ruled on rpg-project#368) adds two verbs and
+// changes what a departure says, in the shape the package already had.
+//
+// The verbs are Loot (loot.go) and Hold (hold.go): looter and body, or member
+// and prop id, and the composition does the rest. NEITHER OWNS A RULE. The
+// transfer, the free-and-no-check ruling, the turn-clock gate in a fight, and
+// the probe law are all the composition's; this seam supplies the range the
+// host declares, translates four new refusals, and scopes delivery.
+//
+// LOOT'S ANSWER NEVER LEAKS THE QUESTION. Loot is offered on every downed
+// member and its response is identical whether the body carried the run's
+// only secret or nothing: no found list, no count, no flag. What moved
+// reaches the LOOTER ALONE — intel as their own EventDoorRevealed, which is
+// the beat a successful search already sends, through the same
+// recipient-scoped path — while everyone present hears EventLooted, naming
+// looter and body and nothing else.
+//
+// A HELD PROP IS GONE FOR EVERYBODY. Where a thing physically is folds on the
+// truth grain, unlike knowledge, so the composition drops it from the atlas
+// itself and both Atlas and AtlasOf inherit that by construction. What this
+// package adds beside it is carriage: Atlas.Exits, AtlasProp.ID and
+// AtlasProp.Holdable are facts a client needs and a field-for-field
+// projection would otherwise silently drop.
+//
+// EXIT SAYS WHAT IT DID NOT SAY BEFORE. ExitedBody carries what the member
+// walked out with and the authored exit they used, both empty for the
+// ordinary departure; a departure that did not end the run drops what was
+// carried on the cell they stood on (EventDropped); and a departure through a
+// scenario's bound exit while holding its artifact fires that scenario's
+// ending, which arrives through ExitOutput.Closed exactly as every other
+// ending does.
+//
+// TAKE IS NOT A WORD THIS PACKAGE USES. It is reserved for the act that lands
+// a thing in a character's inventory; a holding is run-scoped and writes no
+// sheet.
+//
 // # The suspension spine, and where it went
 //
 // S5 and S7 were laws here through v0.2.0: Pending was the one suspension

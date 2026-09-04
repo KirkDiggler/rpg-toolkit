@@ -646,6 +646,31 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrOutOfRange):
 		return fmt.Errorf("%w", ErrOutOfRange)
+	case errors.Is(err, encounter.ErrNotDown):
+		// Loot's ordinary refusal: the body is up. Nothing to hide, so this
+		// says what it means (rpg-project#368 §4.2).
+		return fmt.Errorf("%w", ErrNotDown)
+	case errors.Is(err, encounter.ErrNoProp):
+		// THE PROBE LAW SURVIVES THE SEAM. The composition already answers
+		// every refusal about a prop the member cannot see with a bare
+		// ErrNoProp, and translate returns OUR sentinel ALONE — no inner
+		// text, no wrapped chain — so the four cases stay byte-identical
+		// here too, which is what a caller with a guessed id would be
+		// comparing.
+		//
+		// encounter.ErrNoExit deliberately has NO ARM. It is a construction
+		// refusal — an exit with no id, a duplicate, one nobody can stand on
+		// — and no verb at this seam takes an exit id, so the only way it
+		// reaches a caller is through loadWorld, which already carries it as
+		// ErrInvalidWorld with the reason as text. An arm for it would have
+		// to answer either "no such prop", which is a lie, or ErrInvalidWorld,
+		// which is what already happens; both would be a claim this file
+		// cannot back with a reachable path.
+		return fmt.Errorf("%w", ErrNoProp)
+	case errors.Is(err, encounter.ErrNotHoldable):
+		return fmt.Errorf("%w", ErrNotHoldable)
+	case errors.Is(err, encounter.ErrAlreadyHeld):
+		return fmt.Errorf("%w", ErrAlreadyHeld)
 	case errors.Is(err, encounter.ErrNotVisible):
 		return fmt.Errorf("%w", ErrNotVisible)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):

@@ -123,3 +123,84 @@ func TestEmptyDeclarationsIsAnAnswerOnTheWire(t *testing.T) {
 		"the world clock's empty answer must still be a key on the wire: %s", raw)
 	require.JSONEq(t, "[]", string(wire["declarations"]))
 }
+
+// TestTheHoldingsWireNamesMatchTheContract pins the JSON names of everything
+// rpg-project#368 added to this seam.
+//
+// # Why the bytes rather than the Go values
+//
+// A tag regression is INVISIBLE to every other test in this package: the Go
+// field keeps its name, every scene keeps passing, and the only thing that
+// changes is what a host reading these as JSON sees. The names here are the
+// proto's names — `holding`, `exit`, `looter`, `body`, `holder`, `prop`, `at`
+// — and a body whose key silently stopped matching would leave the beat
+// undecodable on the far side while the whole suite stayed green. Found by
+// the mutation pass: renaming ExitedBody's `holding` tag killed nothing.
+//
+// The two claims are separate on purpose. `holdable` must be SAID when false,
+// on AtlasProp's own stated rule — a thing nobody declared holdable is
+// scenery, and a client reading a missing key cannot tell that from an older
+// server. `holding` and `exit` must be OMITTED when empty, because an
+// ordinary departure carries neither and spending the keys on every exit
+// would say "this departure had an empty list" where the truth is "this
+// departure was not that kind of thing".
+func TestTheHoldingsWireNamesMatchTheContract(t *testing.T) {
+	keys := func(v any) map[string]json.RawMessage {
+		raw, err := json.Marshal(v)
+		require.NoError(t, err)
+		var out map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(raw, &out))
+		return out
+	}
+
+	t.Run("the three new bodies", func(t *testing.T) {
+		looted := keys(session.LootedBody{Looter: "alice", Body: "captain"})
+		require.Equal(t, `"alice"`, string(looted["looter"]))
+		require.Equal(t, `"captain"`, string(looted["body"]))
+
+		held := keys(session.HeldBody{Holder: "alice", Prop: "heirloom"})
+		require.Equal(t, `"alice"`, string(held["holder"]))
+		require.Equal(t, `"heirloom"`, string(held["prop"]))
+
+		dropped := keys(session.DroppedBody{
+			Member: "bob", Prop: "chalice", At: spatial.Position{X: 4, Y: 1}})
+		require.Equal(t, `"bob"`, string(dropped["member"]))
+		require.Equal(t, `"chalice"`, string(dropped["prop"]))
+		require.Contains(t, dropped, "at",
+			"the cell is `at` here, though the composition writes its beats with `position`")
+	})
+
+	t.Run("the departure, carrying something and carrying nothing", func(t *testing.T) {
+		carried := keys(session.ExitedBody{
+			Member: "alice", Holding: []string{"heirloom"}, Exit: "front-gate"})
+		require.Equal(t, `["heirloom"]`, string(carried["holding"]))
+		require.Equal(t, `"front-gate"`, string(carried["exit"]))
+
+		ordinary := keys(session.ExitedBody{Member: "bob"})
+		require.NotContains(t, ordinary, "holding",
+			"an ordinary departure carried nothing, and says so by saying nothing")
+		require.NotContains(t, ordinary, "exit",
+			"and used no authored way out")
+	})
+
+	t.Run("an exit on the map", func(t *testing.T) {
+		exit := keys(session.AtlasExit{ID: "front-gate", At: spatial.Position{X: 1, Y: 1}})
+		require.Equal(t, `"front-gate"`, string(exit["id"]))
+		require.Contains(t, exit, "at")
+	})
+
+	t.Run("a prop that cannot be picked up still says so", func(t *testing.T) {
+		scenery := keys(session.AtlasProp{Ref: "pillar", Holdable: false})
+		require.Contains(t, scenery, "holdable",
+			"false is the ANSWER — a thing nobody declared holdable IS scenery — and a "+
+				"client reading a missing key cannot tell that from an older server")
+		require.Equal(t, "false", string(scenery["holdable"]))
+		require.NotContains(t, scenery, "id",
+			"but an unnamed placement spends no key: most props have no author's name, "+
+				"and empty and absent are the same fact")
+
+		named := keys(session.AtlasProp{Ref: "reliquary", ID: "heirloom", Holdable: true})
+		require.Equal(t, `"heirloom"`, string(named["id"]))
+		require.Equal(t, "true", string(named["holdable"]))
+	})
+}
