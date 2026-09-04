@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -322,6 +323,48 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 		s.Require().NoError(err)
 		s.NotNil(char)
 	}
+}
+
+// (a2) A KindWorld member on the roster alongside the skeleton must not
+// break the driven monster turn: compileResolutionCast, castFor, and
+// boundaryCast all built their cast by checking KindMonster and otherwise
+// ASSUMING a character, so a placed world NPC (no sheet at all) used to
+// fail the whole EndTurn call with ErrNoCharacter (rpg-toolkit#1493).
+func (s *MonsterTurnTestSuite) TestPlacedWorldNPCDoesNotBreakTheMonstersTurn() {
+	ctx := context.Background()
+	mgr := s.tombManager(session.Behavior(), testDice{})
+
+	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
+	})
+	s.Require().NoError(err)
+
+	merchant, err := npc.New(npc.Config{
+		Ref: refs.NPCs.Merchant(), DisplayName: "Demo Merchant",
+		Capabilities: []npc.Capability{npc.CapabilityVendor},
+	})
+	s.Require().NoError(err)
+	_, err = mgr.PlaceNPC(ctx, &session.PlaceNPCInput{
+		Session: "sess", Member: "vendor-1", Position: spatial.Position{X: 1, Y: 1}, NPC: merchant.ToData(),
+	})
+	s.Require().NoError(err)
+
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 4, Y: 0},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(spawned.Formed, "spawning in sight and in range must start the fight on the spot")
+
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
+	})
+	s.Require().NoError(err, "a placed world NPC on the roster must not break the skeleton's driven turn")
 }
 
 // (b) A skeleton behind a wall from the only player never sees them: sight
