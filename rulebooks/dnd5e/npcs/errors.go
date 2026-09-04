@@ -44,4 +44,11 @@ var (
 
 	// ErrNoWorldMembership reports a world declaration config without a membership relation.
 	ErrNoWorldMembership = errors.New("dnd5e npcs: world membership relation is required")
+
+	// ErrOutOfStock reports a DecrementVendorStock request this vendor cannot
+	// fulfill — either the item is not a stocked row at all, or a
+	// StockModeLimited row does not hold as much as requested. One sentinel
+	// covers both: from a caller's perspective "never carried it" and "no
+	// longer has enough of it" are the same refusal.
+	ErrOutOfStock = errors.New("dnd5e npcs: insufficient vendor stock")
 )
