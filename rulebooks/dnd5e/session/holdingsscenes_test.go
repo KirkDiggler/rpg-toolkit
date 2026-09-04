@@ -631,3 +631,42 @@ func marshal(t fataler, v any) string {
 	}
 	return string(raw)
 }
+
+// TestHoldingAScrollTeachesTheHolderAtTheSeam is design R6 across the seam:
+// the walk's easy path, end to end through the manager and the event stream.
+//
+// Kirk's reason for the ruling — "if we want to test the intel we need to be
+// able to place it on a few things — not the hardest monster to kill in the
+// game" — is only true if the reveal actually reaches a client. The
+// composition applies the record; this asserts the seam publishes it, to the
+// holder alone, with the typed body a client reads.
+func (s *HoldingsSuite) TestHoldingAScrollTeachesTheHolderAtTheSeam() {
+	ctx := context.Background()
+	s.start(false) // NOBODY was authored holding anything
+
+	_, err := s.mgr.Hold(ctx, &session.HoldInput{
+		Session: "sess", Member: "alice", Target: scrollID, Range: 2})
+	s.Require().NoError(err)
+
+	s.Run("the holder is told what it says, after being told they hold it", func() {
+		s.Equal([]session.EventKind{session.EventHeld, session.EventDoorRevealed}, s.kinds("alice"),
+			"picking it up is the cause; what it teaches is the consequence")
+
+		body, ok := s.bodyOf("alice", session.EventDoorRevealed).(session.DoorRevealedBody)
+		s.Require().True(ok, "the reveal crosses as its own typed body")
+		s.Equal("veil", body.Door)
+	})
+
+	s.Run("the bystander sees a thing picked up and is taught nothing", func() {
+		s.Equal([]session.EventKind{session.EventHeld}, s.kinds("bob"),
+			"holding is public; what the scroll says is not")
+	})
+
+	s.Run("and no beat anywhere says which prop carried intel", func() {
+		// Design P3 at the seam: the Held body names holder and prop, and
+		// nothing about records. A client offering Hold must not be able to
+		// tell the scroll from the chalice.
+		s.Equal(session.HeldBody{Holder: "alice", Prop: scrollID},
+			s.bodyOf("bob", session.EventHeld))
+	})
+}

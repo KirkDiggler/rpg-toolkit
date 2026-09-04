@@ -54,6 +54,7 @@ const (
 	heirloomID = "heirloom"
 	chaliceID  = "chalice"
 	relicID    = "relic"
+	scrollID   = "hall-scroll"
 	urnID      = "urn"
 	pillarID   = "pillar"
 	frontGate  = "front-gate"
@@ -70,7 +71,9 @@ var (
 
 	// Inside the concealed vault: nobody in the hall is shown these cells.
 	relicCell = cell(8, 2)
-	urnCell   = cell(9, 2)
+	// scrollCell is beside alice, so reading it needs no walk and no fight.
+	scrollCell = cell(1, 1)
+	urnCell    = cell(9, 2)
 
 	// In the hall corner, where everybody can see it: the prop that says
 	// nothing about being holdable, which is what every prop was before this
@@ -141,6 +144,13 @@ func heirloomWorld(t fataler, holds bool) *encounter.EncounterData {
 				holdable(heirloomID, "dnd5e:props:reliquary", heirloomCell),
 				holdable(chaliceID, "dnd5e:props:chalice", chaliceCell),
 				holdable(relicID, "dnd5e:props:relic", relicCell),
+				// A scroll carrying the veil map (design R6): intel a party
+				// can reach without a fight, and the shape the walk uses.
+				func() encounter.PropInput {
+					p := holdable(scrollID, "dnd5e:props:scroll", scrollCell)
+					p.Holds = []encounter.IntelID{veilMap}
+					return p
+				}(),
 				scenery(urnID, "dnd5e:props:urn", urnCell),
 				scenery(pillarID, "dnd5e:props:pillar", pillarCell),
 			},
