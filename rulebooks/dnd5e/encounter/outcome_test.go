@@ -85,6 +85,67 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 	s.Equal(float64(9), beat["amount"])
 }
 
+// TestATradedItemReachesTheStoryAndRejectsMismatches is OutcomeTraded's half
+// of Record, the same shape TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches
+// (participation_test.go) already pins for OutcomeDeathSave: the detail
+// round-trips through the beat verbatim, is required for its own kind, and
+// is refused on every other kind.
+func (s *OutcomeTestSuite) TestATradedItemReachesTheStoryAndRejectsMismatches() {
+	enc := s.scene()
+	detail := &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1}
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeTraded, Actor: alice, Targets: []encounter.MemberID{goblin}, Trade: detail,
+	})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq)
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("traded", beat["beat"])
+
+	raw, err := json.Marshal(beat["trade"])
+	s.Require().NoError(err)
+	var got encounter.TradeDetail
+	s.Require().NoError(json.Unmarshal(raw, &got))
+	s.Equal(*detail, got)
+	s.Equal([]string{"ItemType", "ItemID", "Quantity"}, structFieldNames(encounter.TradeDetail{}),
+		"closed detail has no caller prose field")
+
+	s.Run("missing detail", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{Kind: encounter.OutcomeTraded, Actor: alice})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("empty item id", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeTraded, Actor: alice,
+			Trade: &encounter.TradeDetail{ItemType: "weapon", Quantity: 1},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("nonpositive quantity", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeTraded, Actor: alice,
+			Trade: &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword"},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("detail on a mismatched kind", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeMissed, Actor: alice, Trade: detail,
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
 // TestARecordedStrikeCarriesWhatWasSwung pins rpg-toolkit#866/#941's half of
 // Record: Critical and Attack are carried into the beat's payload exactly as
 // the numeric Values already are, so a witness who was not the one swinging
@@ -508,7 +569,7 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack",
-		"DamageComponents", "AdvantageSources", "DisadvantageSources", "DeathSave",
+		"DamageComponents", "AdvantageSources", "DisadvantageSources", "DeathSave", "Trade",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")

@@ -1,8 +1,10 @@
 package npcs
 
 import (
+	"encoding/json"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -64,6 +66,64 @@ func LoadVendorInventory(data *VendorInventoryData) (VendorInventory, error) {
 	}
 
 	return loadInventory(data)
+}
+
+// DecrementVendorStock decrements one stock row of a placed vendor's stored
+// content by quantity, mutating data.Inventory in place — the runtime
+// counterpart to VendorInventoryFromNPCData's read-only resolve, for a
+// caller (session.Trade) that needs to actually spend a unit of stock rather
+// than just display it.
+//
+// A StockModeLimited row is decremented, and refused with ErrOutOfStock if
+// quantity exceeds what remains. A StockModeUnlimited row is left
+// untouched — decrementing an always-available row would be meaningless —
+// and still reports success, since the item was available either way. An
+// item that names no stocked row at all is also ErrOutOfStock: a vendor that
+// never carried something and a vendor that ran out of it are the same
+// refusal from a buyer's side.
+func DecrementVendorStock(data *npc.Data, itemType shared.EquipmentType, id string, quantity int) error {
+	if data == nil {
+		return ErrNoVendorNPC
+	}
+	if quantity <= 0 {
+		return fmt.Errorf("%w: decrement quantity must be positive, got %d", ErrInvalidStockQuantity, quantity)
+	}
+	if len(data.Inventory) == 0 {
+		return ErrNoInventory
+	}
+
+	var inventory VendorInventoryData
+	if err := json.Unmarshal(data.Inventory, &inventory); err != nil {
+		return fmt.Errorf("unmarshal vendor inventory: %w", err)
+	}
+
+	for i := range inventory.Entries {
+		entry := &inventory.Entries[i]
+		if entry.Type != itemType || entry.ID != id {
+			continue
+		}
+
+		switch entry.Availability.Mode {
+		case StockModeUnlimited:
+			return nil
+		case StockModeLimited:
+			if entry.Availability.Quantity < quantity {
+				return ErrOutOfStock
+			}
+			entry.Availability.Quantity -= quantity
+
+			marshaled, err := json.Marshal(inventory)
+			if err != nil {
+				return fmt.Errorf("marshal vendor inventory: %w", err)
+			}
+			data.Inventory = marshaled
+			return nil
+		default:
+			return fmt.Errorf("%w: %q", ErrUnknownStockMode, entry.Availability.Mode)
+		}
+	}
+
+	return ErrOutOfStock
 }
 
 // Entries returns resolved stock rows.

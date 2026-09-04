@@ -100,3 +100,26 @@ type quietAnnouncer struct{}
 func (quietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
 	return nil
 }
+
+// nothingIsEverFound resolves every find check as a failure. These scenes are
+// about GEOMETRY, and a concealed dungeon needs a resolver at the door
+// whether or not anything in the scene searches — so this one is supplied and
+// says the least interesting thing it can, exactly as its three siblings
+// above do. What a DC means is the rulebook's; a scene about walls has no
+// business deciding it either way.
+type nothingIsEverFound struct{}
+
+func (nothingIsEverFound) ResolveCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return &encounter.ResolveCheckOutput{Beaten: false}, nil
+}
+
+// nobodyPerceivesAnything answers that no member perceives any open concealed
+// door — the counterpart to nothingIsEverFound, and required for the same
+// reason. A concealed dungeon in this package is a compile to be inspected,
+// not a run to be played, so the atlas these tests read is the one nobody has
+// found anything in yet.
+type nobodyPerceivesAnything struct{}
+
+func (nobodyPerceivesAnything) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
+	return nil, nil
+}

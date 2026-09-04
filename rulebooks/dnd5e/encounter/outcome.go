@@ -54,6 +54,13 @@ const (
 	// beat says what the rulebook answered; it has never said what a caller
 	// claimed, and a kind here would be the only way to change that.
 	OutcomeDown OutcomeKind = "down"
+
+	// OutcomeTraded is one item changing hands between an actor and a
+	// counterparty — a vendor purchase, today (rpg-project#369's Trade
+	// verb). Carries TradeDetail the same way OutcomeDeathSave carries
+	// DeathSaveDetail: required primitives this composition preserves
+	// without interpreting.
+	OutcomeTraded OutcomeKind = "traded"
 )
 
 // OutcomeValue names one number a rulebook outcome carries.
@@ -135,6 +142,11 @@ type RecordInput struct {
 	// OutcomeDeathSave. It is required for that kind and invalid for every
 	// other kind; the encounter preserves it without interpreting thresholds.
 	DeathSave *DeathSaveDetail
+
+	// Trade carries the authoritative primitive facts for OutcomeTraded. It
+	// is required for that kind and invalid for every other kind; the
+	// encounter preserves it without interpreting what the item does.
+	Trade *TradeDetail
 }
 
 // DeathSaveDetail is the closed, rulebook-neutral story shape for one death
@@ -155,6 +167,22 @@ type DeathSaveDetail struct {
 	HPRestored        int    `json:"hp_restored"`
 	Continuation      string `json:"continuation"`
 	PresentationID    string `json:"presentation_id"`
+}
+
+// TradeDetail is the closed, rulebook-neutral story shape for one traded
+// item. Its fields are primitive facts supplied by the authoritative
+// rulebook; this composition validates presence and preserves them
+// verbatim.
+//
+// ItemType is a plain string, not a closed encounter-level enum, for the
+// same reason AttackIdentity.DamageType is: this module's go.mod cannot
+// import the rulebook package that owns that vocabulary (C1). Session,
+// which already depends on that package, maps it onto and off of a closed
+// Go type.
+type TradeDetail struct {
+	ItemType string `json:"item_type"`
+	ItemID   string `json:"item_id"`
+	Quantity int    `json:"quantity"`
 }
 
 // DamageComponent carries one ordered, rulebook-neutral damage contribution.
@@ -335,11 +363,11 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
-// know, missing or mismatched DeathSave detail, an Attack whose Ref or Name is
-// empty, a damage component whose roll facts are missing or internally
-// inconsistent, or a non-finite damage multiplier JSON cannot represent), and
-// anything the [Participation] capability answers with — including
-// ErrNotMember for an answer naming a stranger.
+// know, missing or mismatched DeathSave or Trade detail, an Attack whose Ref
+// or Name is empty, a damage component whose roll facts are missing or
+// internally inconsistent, or a non-finite damage multiplier JSON cannot
+// represent), and anything the [Participation] capability answers with —
+// including ErrNotMember for an answer naming a stranger.
 //
 // The input refusals all run before anything is appended, so a rejected input
 // costs the rulebook nothing. The consult does not: it runs after the beat, so a
@@ -356,7 +384,7 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 
 	switch in.Kind {
-	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave:
+	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeTraded:
 	default:
 		return nil, fmt.Errorf("record: outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
@@ -375,6 +403,19 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		}
 	} else if in.DeathSave != nil {
 		return nil, fmt.Errorf("record: death save detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
+	if in.Kind == OutcomeTraded {
+		if in.Trade == nil {
+			return nil, fmt.Errorf("record: trade detail is required: %w", ErrInvalidData)
+		}
+		if in.Trade.ItemID == "" {
+			return nil, fmt.Errorf("record: trade item id is required: %w", ErrInvalidData)
+		}
+		if in.Trade.Quantity <= 0 {
+			return nil, fmt.Errorf("record: trade quantity must be positive: %w", ErrInvalidData)
+		}
+	} else if in.Trade != nil {
+		return nil, fmt.Errorf("record: trade detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
 
 	if in.Actor == "" {
@@ -453,6 +494,9 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 	if in.DeathSave != nil {
 		payload["death_save"] = in.DeathSave
+	}
+	if in.Trade != nil {
+		payload["trade"] = in.Trade
 	}
 	if in.Attack != nil {
 		if in.Attack.Ref == "" {

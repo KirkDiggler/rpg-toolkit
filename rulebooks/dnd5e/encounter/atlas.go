@@ -77,6 +77,33 @@ type Atlas struct {
 	// draws it exactly as it draws the floor beside it — and refusing a step
 	// onto it is the engine's answer, not the client's guess.
 	Sealed []spatial.Position
+
+	// Exits is every authored way out, sorted by id (rpg-project#368) — so a
+	// client can draw the way out and offer Leave where it stands.
+	//
+	// STRUCTURE ON THE TRUTH GRAIN, the same for every member, like the floor
+	// itself. A way out is not a secret: it is a fact about the building, and
+	// a party that has not found the vault has still walked in through the
+	// front gate. Nothing here varies by recipient, so this survives
+	// [Encounter.AtlasFor] unfiltered, which is exactly the claim its test
+	// pins.
+	//
+	// What an exit MEANS is not here and never will be: an ending naming one
+	// ([TriggerExitedHolding]) is a scenario's business, and a client that
+	// could read "this is the winning one" off the map would be reading the
+	// scenario off the geometry.
+	Exits []AtlasExit
+}
+
+// AtlasExit is one authored way out: its id, and the cell somebody stands on
+// to leave through it. [FieldExit] as a snapshot.
+type AtlasExit struct {
+	// ID is the author's name for this exit — what an ending names, and what
+	// a client shows if it labels the door.
+	ID ExitID
+
+	// At is the cell, in dungeon-absolute space.
+	At spatial.Position
 }
 
 // AtlasSegment is one authored wall as a line: two ends in fractional axial,
@@ -126,6 +153,16 @@ type AtlasRegion struct {
 // it: what it is, where it stands in dungeon-absolute space, and what it does
 // to a step and to a sightline. See [PropInput] for the authoring side.
 type AtlasProp struct {
+	// ID is the author's name for this placement, or empty when they gave it
+	// none ([PropInput.ID]). Carried, never interpreted — a client renders it
+	// and a verb names a prop by it.
+	ID PropID
+
+	// Holdable is whether a member can pick this up ([PropInput.Holdable]).
+	// Carried so a client can offer the verb without asking a second
+	// question about a thing it is already drawing.
+	Holdable bool
+
 	// Ref is content's identifier for this thing, carried through the
 	// compile unchanged and never interpreted by this module.
 	Ref string
@@ -216,6 +253,14 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	for _, s := range f.segments {
 		out.Segments = append(out.Segments, AtlasSegment{From: s.From, To: s.To, Height: s.Height})
 	}
+
+	// Sorted by id rather than left in authored order: every other list on
+	// this snapshot is sorted so nothing about how the field was authored
+	// leaks through the order, and an exit list is no different.
+	for _, ex := range f.exits {
+		out.Exits = append(out.Exits, AtlasExit{ID: ex.ID, At: f.cellAt(ex.At)})
+	}
+	sort.Slice(out.Exits, func(i, j int) bool { return out.Exits[i].ID < out.Exits[j].ID })
 	// ONLY WHEN THERE IS SOMETHING TO FIND. A cell of this floor fails
 	// isStandable for exactly two reasons — it belongs to no region, or a wall
 	// sealed it — so a field with neither has no unstandable cell and the walk
@@ -242,10 +287,33 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	}
 	sort.Slice(out.Regions, func(i, j int) bool { return out.Regions[i].ID < out.Regions[j].ID })
 
+	// WHERE A THING PHYSICALLY IS FOLDS HERE, not in the per-member
+	// projection: it is truth-grain state, one answer for every member
+	// (ruled 2026-09-01), unlike knowledge — which is audience-scoped and
+	// belongs in AtlasFor. A prop somebody took is gone from everybody's
+	// atlas; a prop somebody dropped stands where they dropped it. Putting
+	// this in Atlas rather than in AtlasFor is also what makes the rule
+	// total: AtlasFor short-circuits to this answer for a field with no
+	// concealment, so a filter added there would silently not apply to
+	// every plain dungeon (rpg-project#368).
+	//
+	// The atlas itself stays CONSTRUCTION TRUTH — nothing above mutates
+	// f.props — and this is a fold over the journal, computed fresh, the
+	// same move concealment already makes for doors.
+	placements := e.holdings.propPlacements()
 	for _, p := range f.props {
+		at := f.cellAt(p.At)
+		if placement, moved := placements[p.ID]; p.ID != "" && moved {
+			if placement.gone {
+				continue
+			}
+			at = placement.at
+		}
 		out.Props = append(out.Props, AtlasProp{
+			ID:                p.ID,
+			Holdable:          p.Holdable,
 			Ref:               p.Ref,
-			At:                f.cellAt(p.At),
+			At:                at,
 			BlocksMovement:    *p.BlocksMovement,
 			BlocksLineOfSight: *p.BlocksLineOfSight,
 			Facing:            p.Facing,

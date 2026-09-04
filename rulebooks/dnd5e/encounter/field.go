@@ -205,6 +205,29 @@ type RegionInput struct {
 // boundary EDGES cannot. So a prop that must genuinely stop a sightline needs
 // width — or it wants to be a wall.
 type PropInput struct {
+	// ID is the author's name for this placement (rpg-project#368, design
+	// P2). Optional and, like Ref, never interpreted: a prop nothing binds
+	// to and nobody can pick up needs no name, and the empty string carries
+	// forward to [AtlasProp.ID] as the fact that it has none.
+	//
+	// REQUIRED WHEN Holdable, refused at construction otherwise (ErrNoField).
+	// Two things name a prop by id and both say it out loud: a scenario
+	// binds an artifact by id, and the `held` beat says which thing was
+	// picked up. A holdable prop with no id would be advertised to every client
+	// as something anybody can pick up while no [HoldInput] could ever name
+	// it — an offer with nothing behind it. dungeonspec refuses it at the
+	// file and [compileField] refuses it again here, so a host assembling a
+	// field by hand cannot produce one either.
+	ID PropID
+
+	// Holdable is whether a member can pick this prop up (design §5).
+	// Optional, and FALSE IS THE HONEST ZERO VALUE here — unlike the two
+	// blocking flags below, which are pointers because all four of their
+	// combinations are real content. There is only one thing "said nothing
+	// about holdable" can mean: a thing nobody declared holdable stays
+	// scenery, which is what every prop that existed before this field did.
+	Holdable bool
+
 	// Ref is content's identifier for this thing, e.g.
 	// "dnd5e:props:pillar". REQUIRED and never inspected here — see the
 	// type's doc comment.
@@ -428,6 +451,53 @@ type FieldInput struct {
 	// simply a gap nobody can shut. A door edge need not sit on a region
 	// seam; a door inside a region is legal.
 	Doors []DoorInput
+
+	// Exits are the authored ways out of this field (rpg-project#368,
+	// design §3.1). Optional; omitted means none, and a field with none
+	// behaves exactly as every field did before this list existed —
+	// [Encounter.Exit] is still a departure, it simply happens nowhere in
+	// particular.
+	//
+	// STRUCTURE, NOT SCENARIO. A dungeon has ways out whatever the party is
+	// there for, so this sits beside the regions and the doors rather than
+	// inside an ending. What an exit MEANS is a scenario's business: an
+	// ending naming one ([TriggerExitedHolding]) is how "leaving here counts
+	// as winning" gets said, and nothing here decides that.
+	//
+	// The party's START is deliberately not one of these. Nothing is
+	// defaulted (rpg-toolkit#1033), and a dungeon whose entrance is also its
+	// way out authors that in one line.
+	Exits []FieldExit
+}
+
+// FieldExit is one authored way out: an id and the cell a member has to be
+// standing on for [Encounter.Exit] to count as leaving through it.
+//
+// # Why this is not called ExitInput
+//
+// Every other member of [FieldInput] is an `Input` — [RegionInput],
+// [PropInput], [WallInput], [DoorInput]. This one is not, because
+// [ExitInput] is already the Exit VERB's input and has been since long
+// before a field had exits. Two unrelated things under one name is the
+// collision this package refuses everywhere else (see [doorEntityID] on
+// prefixing two id namespaces rather than trusting them not to collide), so
+// the authored fact takes a different word rather than the verb giving up
+// its own.
+type FieldExit struct {
+	// ID names this exit. REQUIRED non-empty and unique within the field:
+	// an ending names an exit by id, and an ambiguous one has no answer.
+	// Refused at construction (ErrNoExit).
+	ID ExitID
+
+	// At is the cell somebody stands on to leave through it: an ABSOLUTE
+	// authored offset [col,row] pair, converted once at construction through
+	// the same [HexCellAt] every other authored cell goes through.
+	//
+	// Must be STANDABLE — a cell some region owns, not scenery and not
+	// sealed. An exit nobody can stand on is a run nobody can leave, which
+	// is [ErrNoEnding]'s own liveness argument about a trigger cell applied
+	// to the cell the trigger is about. Refused at construction (ErrNoExit).
+	At spatial.Position
 }
 
 // MemberInput describes a member being placed into the encounter AT
@@ -516,6 +586,33 @@ type MemberInput struct {
 	// blocked movement before this field existed, and none does now unless
 	// its caller opts in.
 	BlocksMovement bool
+
+	// Knows is the doors this member carries the way to, by door ID
+	// (rpg-project#368, design P1) — the author's knowledge links, seeded
+	// at construction as holdings facts nobody but the engine ever sees.
+	// Optional; omitted means they carry nothing.
+	//
+	// SETUP ONLY, AND DELIBERATELY. This is a SEED, not a running answer:
+	// [Encounter.Loot] moves intel off a body, so re-seeding it at Load
+	// would hand the captain back what somebody already looted. After
+	// construction the holdings journal is the one answer to "who has what"
+	// (design P5), it persists with the encounter, and [LoadEncounter]
+	// replays it rather than re-reading this field — which is why
+	// [MemberData] has no counterpart to it.
+	//
+	// NEVER PROJECTED, ANYWHERE (design P3). No atlas, no percept, no beat
+	// and no output says who carries intel, because the affordance must not
+	// answer the question it exists to ask: Loot is offered on EVERY body,
+	// and a body with nothing to give has to be indistinguishable from the
+	// one that has everything. See holdings.go, which is the only file that
+	// reads these facts.
+	//
+	// A door that does not exist is refused at construction (ErrNoDoor). A
+	// door that exists and is NOT concealed is legal and INERT: knowing
+	// where an ordinary door is tells you nothing you could not already
+	// see, and refusing it would make this declaration depend on a fact
+	// about a different one.
+	Knows []DoorID
 }
 
 // ActionView is a static fact about one action a member can take — an
@@ -624,6 +721,51 @@ type TriggerExternal struct{}
 
 // isTrigger marks TriggerExternal as a Trigger.
 func (t TriggerExternal) isTrigger() {}
+
+// TriggerExitedHolding fires when a member standing on Exit's cell declares
+// [Encounter.Exit] while holding Item (rpg-project#368, design §6, ruled R6
+// and R7).
+//
+// # Explicit, never on arrival
+//
+// The player says when. An arrival filter on [TriggerReachedPosition] would
+// have been the smaller change — one field, evaluated where arrivals already
+// are — and it was rejected for what it does at the table: nobody's run
+// should end because the carrier stepped on a cell while retreating to help
+// a friend. Kirk, ruling it: "explicit."
+//
+// # Evaluated after the departure beat
+//
+// In the one place a departure is noticed, AFTER the beat that narrates it,
+// so the record reads "left through the front gate with the heirloom" and
+// then "ended" — the same cause-then-effect ordering [Encounter.refreshSight]
+// states for every verb.
+//
+// # What a departure from anywhere else does
+//
+// It DROPS (design R9). A carrier who leaves from any cell but this one drops
+// the holding where they stood, and it reappears there as a holdable prop for
+// everybody. Otherwise a carrier who quits through the lobby — or simply
+// disconnects — takes the only win out of the run with them. That rule lives
+// with [Encounter.Exit] rather than here, because it holds whether or not any
+// ending names the item.
+type TriggerExitedHolding struct {
+	// Exit is the authored exit whose cell the member must be standing on.
+	// REQUIRED, and must name a [FieldExit] this field declares — refused at
+	// construction (ErrNoEnding), for the reason a ReachedPosition ending
+	// naming an unreachable cell is: an ending that can never fire is a
+	// liveness hole.
+	Exit ExitID
+
+	// Item is the prop that must be held. REQUIRED, and must name a prop
+	// this field declares as [PropInput.Holdable] — refused at construction
+	// (ErrNoEnding). A prop nobody can pick up can never be held, so an
+	// ending waiting for somebody to hold one is the same dead ending.
+	Item PropID
+}
+
+// isTrigger marks TriggerExitedHolding as a Trigger.
+func (t TriggerExitedHolding) isTrigger() {}
 
 // EndingInput describes a declared encounter ending.
 type EndingInput struct {

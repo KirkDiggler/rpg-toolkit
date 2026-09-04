@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
@@ -59,7 +60,23 @@ type EncounterData struct {
 	// holds from frame one for reloads too). The graph the
 	// facts fold against is NOT stored: it is construction truth, reseeded
 	// from the field at every load, so it cannot drift from the dungeon.
-	World       *WorldData   `json:"world,omitempty"`
+	World *WorldData `json:"world,omitempty"`
+
+	// Holdings is the run's answer to who has what: the journal facts
+	// recording holdings, takings and drops (rpg-project#368, holdings.go).
+	// PRESENT EXACTLY WHEN SOMETHING HAS HAPPENED — an encounter where
+	// nobody was authored knowing anything and nobody has picked anything up
+	// writes no key at all, the exact bytes every pre-holdings blob already
+	// has. Unlike World above, this is NOT conditioned on the field: a
+	// dungeon with no secret anywhere can still have a holdable idol on a
+	// plinth.
+	//
+	// The journal is the ONE answer (design P5). [MemberInput.Knows] seeds
+	// it at Setup and is deliberately absent from [MemberData]: re-seeding
+	// at load would hand a looted captain back the intel somebody already
+	// took off them.
+	Holdings *HoldingsData `json:"holdings,omitempty"`
+
 	Endings     []EndingData `json:"endings"`
 	EverMembers []MemberID   `json:"ever_members"`
 	// Retention is the story-beat window this encounter was built with (see
@@ -139,6 +156,12 @@ type FieldData struct {
 	// Props are the authored things standing on the floor, in authored
 	// order, with cells in the AUTHORED offset frame.
 	Props []PropData `json:"props,omitempty"`
+
+	// Exits are the authored ways out, in authored order, with cells in the
+	// AUTHORED offset frame ([FieldInput.Exits], rpg-project#368). Scenery's
+	// omitempty rule: omitted and empty are the same fact, so a blob written
+	// before exits existed simply loads with none.
+	Exits []ExitData `json:"exits,omitempty"`
 
 	// Walls are the authored walls, in authored order, with endpoints in the
 	// AUTHORED offset frame.
@@ -224,6 +247,14 @@ type LightingData struct {
 // different facts, and a blob that lost the difference would reload a coffin
 // as decoration. Required at load, refused by name, never defaulted.
 type PropData struct {
+	// ID and Holdable mirror [PropInput.ID] and [PropInput.Holdable]
+	// (rpg-project#368). NEITHER IS REQUIRED AT LOAD, on Facing's rule
+	// below: omitted and written-as-the-zero-value are the same fact, so a
+	// blob from before either existed loads as a nameless prop nobody can
+	// pick up — which is exactly what every prop was.
+	ID       PropID `json:"id,omitempty"`
+	Holdable bool   `json:"holdable,omitempty"`
+
 	Ref               string       `json:"ref"`
 	At                PositionData `json:"at"`
 	BlocksMovement    *bool        `json:"blocks_movement"`
@@ -236,6 +267,13 @@ type PropData struct {
 	// absent — an old blob simply unmarshals both to their zero values.
 	Facing string     `json:"facing,omitempty"`
 	Offset [3]float64 `json:"offset"`
+}
+
+// ExitData is the persistent representation of one authored way out —
+// [FieldExit], with its cell in the AUTHORED offset frame.
+type ExitData struct {
+	ID ExitID       `json:"id"`
+	At PositionData `json:"at"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -349,6 +387,134 @@ type WorldData struct {
 	// clock (facts fold in sequence), so load replays them in this order
 	// and the reassigned sequence numbers come out identical.
 	Facts []FactData `json:"facts"`
+}
+
+// HoldingsData is the persistent representation of the run's holdings
+// journal — the facts, and nothing else. Present state is FOLDED from them
+// on every question (holdings.go), so there is no second copy of "who has
+// what" here to disagree with the record.
+type HoldingsData struct {
+	// Facts are the holdings facts in append order. Order IS the journal's
+	// clock — a later fact about the same subject supersedes an earlier one
+	// — so load replays them in this order and the reassigned sequence
+	// numbers come out identical.
+	Facts []FactData `json:"facts"`
+}
+
+// holdingsDataFrom renders the holdings journal for the blob, or nil when
+// nothing has happened.
+func holdingsDataFrom(h *holdings) *HoldingsData {
+	facts := h.log.All()
+	if len(facts) == 0 {
+		return nil
+	}
+	out := &HoldingsData{Facts: make([]FactData, 0, len(facts))}
+	for _, f := range facts {
+		out.Facts = append(out.Facts, FactData{
+			Kind:     string(f.Kind),
+			Actor:    string(f.Actor),
+			Subject:  string(f.Subject),
+			Audience: []string{},
+			Detail:   f.Outcome.Detail,
+		})
+	}
+	return out
+}
+
+// validateHoldingsFacts is THE TRUST BOUNDARY for the holdings journal —
+// [validateWorldFacts]'s job, one journal over (Copilot, PR #1497 review).
+//
+// The concealment world validated its facts and this one did not, which left
+// a real hole rather than a theoretical one: a `dropped:` fact naming a cell
+// off the floor puts a prop in the void in every atlas, and a `holds:prop:`
+// fact naming an actor who was never a member gives the run's artifact to a
+// ghost, so the ending can never fire and no living member can pick it up.
+// Both are silent. Loading is where bytes stop being somebody else's problem.
+//
+// Four things are checked, and nothing else is: a kind this build mints, a
+// prop or door this field declares, an actor this encounter has ever had, and
+// a drop cell that is floor. What a fold MEANS is not re-derived here — that
+// is holdings.go's, and a second copy of it would be a second thing to be
+// wrong.
+func validateHoldingsFacts(data *HoldingsData, f *field, doors []DoorInput, everMembers []MemberID) error {
+	props := make(map[PropID]bool, len(f.props))
+	for _, p := range f.props {
+		if p.ID != "" {
+			props[p.ID] = true
+		}
+	}
+	declaredDoors := make(map[DoorID]bool, len(doors))
+	for _, d := range doors {
+		declaredDoors[d.ID] = true
+	}
+	members := make(map[string]bool, len(everMembers))
+	for _, id := range everMembers {
+		members[string(id)] = true
+	}
+
+	for i, fd := range data.Facts {
+		if fd.Actor == "" || !members[fd.Actor] {
+			return fmt.Errorf("holdings fact %d actor %q is no member this encounter has ever had: %w",
+				i, fd.Actor, ErrInvalidData)
+		}
+
+		kind := fd.Kind
+		switch {
+		case strings.HasPrefix(kind, holdsIntelDoorPrefix):
+			id := strings.TrimPrefix(kind, holdsIntelDoorPrefix)
+			if !declaredDoors[id] {
+				return fmt.Errorf("holdings fact %d carries the way to door %q, which this field does not declare: %w",
+					i, id, ErrInvalidData)
+			}
+		case strings.HasPrefix(kind, holdsPropPrefix):
+			if id := strings.TrimPrefix(kind, holdsPropPrefix); !props[id] {
+				return fmt.Errorf("holdings fact %d holds prop %q, which this field does not place: %w",
+					i, id, ErrInvalidData)
+			}
+		case strings.HasPrefix(kind, heldPrefix):
+			if id := strings.TrimPrefix(kind, heldPrefix); !props[id] {
+				return fmt.Errorf("holdings fact %d picks up prop %q, which this field does not place: %w",
+					i, id, ErrInvalidData)
+			}
+		case strings.HasPrefix(kind, droppedPrefix):
+			id, at, ok := parseDropped(kind)
+			if !ok {
+				return fmt.Errorf("holdings fact %d names kind %q, which is not a drop this build writes: %w",
+					i, kind, ErrInvalidData)
+			}
+			if !props[id] {
+				return fmt.Errorf("holdings fact %d drops prop %q, which this field does not place: %w",
+					i, id, ErrInvalidData)
+			}
+			// FLOOR, not standable: a prop may sit on any floor, scenery
+			// included ([PropInput]'s own rule), and a cell off the floor
+			// would put the thing in the void on every map.
+			if !f.isFloor(at) {
+				return fmt.Errorf("holdings fact %d drops prop %q at [%g,%g], which is not floor: %w",
+					i, id, at.X, at.Y, ErrInvalidData)
+			}
+		default:
+			return fmt.Errorf("holdings fact %d names kind %q, which this build does not mint: %w",
+				i, kind, ErrInvalidData)
+		}
+	}
+	return nil
+}
+
+// replayHoldingsFacts restores the holdings journal from the blob, in the
+// stored order.
+func replayHoldingsFacts(h *holdings, data *HoldingsData) error {
+	for _, fd := range data.Facts {
+		if _, err := h.log.Append(journal.Fact{
+			Kind:    journal.Kind(fd.Kind),
+			Actor:   journal.EntityID(fd.Actor),
+			Subject: journal.EntityID(fd.Subject),
+			Outcome: journal.Outcome{Detail: fd.Detail},
+		}); err != nil {
+			return fmt.Errorf("replay holdings fact %q: %w: %w", fd.Kind, ErrInvalidData, err)
+		}
+	}
+	return nil
 }
 
 // FactData is the persistent representation of one journal fact, exactly as
@@ -628,6 +794,14 @@ type EndingData struct {
 	Kind   string        `json:"kind"`
 	At     *PositionData `json:"at,omitempty"`
 	Member MemberID      `json:"member,omitempty"`
+
+	// Exit and Item carry a [TriggerExitedHolding] (rpg-project#368): the
+	// authored way out, and the prop that has to be in hand. Both written
+	// only for that kind, and both REQUIRED at load for it — an ending that
+	// names neither could never fire, which is the liveness hole
+	// [ErrNoEnding] exists for.
+	Exit ExitID `json:"exit,omitempty"`
+	Item PropID `json:"item,omitempty"`
 }
 
 // ToData returns a persistent snapshot of this Encounter.
@@ -724,6 +898,10 @@ func (e *Encounter) snapshot() EncounterData {
 		case TriggerMemberDown:
 			ed.Kind = "member_down"
 			ed.Member = t.Member
+		case TriggerExitedHolding:
+			ed.Kind = "exited_holding"
+			ed.Exit = t.Exit
+			ed.Item = t.Item
 		}
 
 		endingsData[i] = ed
@@ -791,6 +969,10 @@ func (e *Encounter) snapshot() EncounterData {
 		worldData = worldDataFrom(e.world)
 	}
 
+	// The holdings journal, present exactly when it holds anything — see
+	// EncounterData.Holdings.
+	holdingsData := holdingsDataFrom(e.holdings)
+
 	return EncounterData{
 		Outcome:     outcomeData,
 		Clock:       e.clock.ToData(),
@@ -801,6 +983,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Members:     membersData,
 		Doors:       doorData,
 		World:       worldData,
+		Holdings:    holdingsData,
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
 		Retention:   e.retention,
@@ -847,6 +1030,8 @@ func fieldDataFrom(f *field) FieldData {
 			// not alias one bool.
 			blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
 			out.Props[i] = PropData{
+				ID:                p.ID,
+				Holdable:          p.Holdable,
 				Ref:               p.Ref,
 				At:                PositionData{X: p.At.X, Y: p.At.Y},
 				BlocksMovement:    &blocksMovement,
@@ -854,6 +1039,13 @@ func fieldDataFrom(f *field) FieldData {
 				Facing:            p.Facing,
 				Offset:            p.Offset,
 			}
+		}
+	}
+
+	if len(f.exits) > 0 {
+		out.Exits = make([]ExitData, len(f.exits))
+		for i, ex := range f.exits {
+			out.Exits[i] = ExitData{ID: ex.ID, At: PositionData{X: ex.At.X, Y: ex.At.Y}}
 		}
 	}
 
@@ -1115,7 +1307,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		seenEndingKeys[ed.Key] = true
 
-		if ed.Kind != "reached_position" && ed.Kind != "external" && ed.Kind != "member_down" {
+		if ed.Kind != "reached_position" && ed.Kind != "external" &&
+			ed.Kind != "member_down" && ed.Kind != "exited_holding" {
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
 		}
 
@@ -1136,6 +1329,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf(
 				"load encounter: ending %q member_down names no member: %w: %w",
 				ed.Key, ErrInvalidData, ErrNoEnding)
+		}
+
+		// An exited_holding ending missing either half is the same class of
+		// refusal: it could never fire. Whether the exit and the item EXIST
+		// in this field is validateEndingTriggers' question, run below
+		// against the compiled field — this is the trust boundary refusing
+		// bytes that are not an ending at all.
+		if ed.Kind == "exited_holding" && (ed.Exit == "" || ed.Item == "") {
+			return nil, fmt.Errorf(
+				"load encounter: ending %q exited_holding names exit %q and item %q, and needs both: %w: %w",
+				ed.Key, ed.Exit, ed.Item, ErrInvalidData, ErrNoEnding)
 		}
 	}
 
@@ -1420,6 +1624,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		retention:     normalizeRetention(data.Retention),
 		logFloor:      logFloorOf(data.Log),
 		field:         f,
+		// Built with the struct, not later: the percept rebuild below
+		// reaches Atlas, which folds this journal, so a nil here would be a
+		// panic on the load path rather than an empty answer.
+		holdings: newHoldings(),
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas
@@ -1444,6 +1652,19 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			if err = replayWorldFacts(e.world, data.World); err != nil {
 				return nil, fmt.Errorf("load encounter: %w", err)
 			}
+		}
+	}
+
+	// The holdings journal replayed — see EncounterData.Holdings. This is the
+	// ONE restore of "who has what": nothing re-seeds [MemberInput.Knows]
+	// here, because the journal already holds whatever is left of it after
+	// however much looting happened.
+	if data.Holdings != nil {
+		if err = validateHoldingsFacts(data.Holdings, f, doorInputs, data.EverMembers); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
+		}
+		if err = replayHoldingsFacts(e.holdings, data.Holdings); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}
 
@@ -1596,6 +1817,8 @@ func endingTriggerFromData(ed EndingData) Trigger {
 		return TriggerExternal{}
 	case "member_down":
 		return TriggerMemberDown{Member: ed.Member}
+	case "exited_holding":
+		return TriggerExitedHolding{Exit: ed.Exit, Item: ed.Item}
 	}
 	return nil
 }
@@ -1761,6 +1984,8 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		}
 		blocksMovement, blocksSight := *pd.BlocksMovement, *pd.BlocksLineOfSight
 		in.Props = append(in.Props, PropInput{
+			ID:                pd.ID,
+			Holdable:          pd.Holdable,
 			Ref:               pd.Ref,
 			At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
 			BlocksMovement:    &blocksMovement,
@@ -1768,6 +1993,10 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			Facing:            pd.Facing,
 			Offset:            pd.Offset,
 		})
+	}
+
+	for _, ed := range fd.Exits {
+		in.Exits = append(in.Exits, FieldExit{ID: ed.ID, At: spatial.Position{X: ed.At.X, Y: ed.At.Y}})
 	}
 
 	for _, wd := range fd.Walls {

@@ -405,6 +405,39 @@ var (
 	// where ErrBadDoor is a field that could not be built.
 	ErrNoDoor = errors.New("no such door")
 
+	// ErrNoExit is a way out that is not one: an authored exit with no id,
+	// two exits sharing one, an exit standing where nobody's feet can go,
+	// or a verb naming an exit this field does not declare
+	// (rpg-project#368). An exit nobody can stand on is a run nobody can
+	// leave, which is ErrNoEnding's liveness hole reached from the outside.
+	ErrNoExit = errors.New("no such exit")
+
+	// ErrNoProp is a prop this field does not have, named by a verb that
+	// needs one — [Encounter.Hold]'s target, or an ending's item.
+	//
+	// A PROBE ANSWERS NOTHING (the law slice 1 set for doors): inside space
+	// the asker cannot see, "no such prop" and "not holdable" are the SAME
+	// refusal, so a guessed id cannot map the room somebody has not found.
+	// A visible pillar refuses by name, because there is no secret in it.
+	ErrNoProp = errors.New("no such prop")
+
+	// ErrNotHoldable is a prop nobody declared holdable, reached by
+	// [Encounter.Hold]. A thing nobody said could be picked up stays
+	// scenery — the same "no default" law [PropInput]'s two blocking flags
+	// follow, applied to a fact with only one honest zero value.
+	ErrNotHoldable = errors.New("prop is not holdable")
+
+	// ErrAlreadyHeld is a prop that has already left the floor. Somebody is
+	// carrying it, or carried it out; either way it is not there to pick up.
+	ErrAlreadyHeld = errors.New("prop is already held")
+
+	// ErrNotDown is a member who is still standing, reached by
+	// [Encounter.Loot]. An ORDINARY refusal, deliberately: the body is
+	// visible and whether it is down is not a secret, so this says what it
+	// means rather than hiding behind a probe-proof answer the way the
+	// prop refusals above do.
+	ErrNotDown = errors.New("member is not down")
+
 	// ErrBadDoor is returned when a door cannot be part of a field
 	// (rpg-toolkit#1123): an empty or duplicated ID, no edges at all, a
 	// missing state (required, never defaulted — see [DoorState]), a lock
