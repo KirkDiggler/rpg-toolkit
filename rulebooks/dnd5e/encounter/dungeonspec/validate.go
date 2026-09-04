@@ -625,8 +625,8 @@ func (v *validation) place() {
 						"%q knows door %q, and no door in this dungeon has that id", pl.Ref, id)
 				}
 			}
-			if pl.Takeable != nil {
-				v.fail(p+".takeable", "%q is not a prop and cannot be taken", pl.Ref)
+			if pl.Holdable != nil {
+				v.fail(p+".holdable", "%q is not a prop and cannot be taken", pl.Ref)
 			}
 			if pl.BlocksMovement != nil {
 				v.fail(p+".blocks_movement", "%q is not a prop and cannot declare what it blocks", pl.Ref)
@@ -654,10 +654,10 @@ func (v *validation) place() {
 			if len(pl.Knows) > 0 {
 				v.fail(p+".knows", "%q is not a monster and holds nothing to know", pl.Ref)
 			}
-			// A takeable prop must be nameable: the scenario binding names it
+			// A holdable prop must be nameable: the scenario binding names it
 			// and so does the `taken` beat.
-			if pl.Takeable != nil && *pl.Takeable && pl.ID == "" {
-				v.fail(p+".id", "%q is takeable and has no id, and a thing that can be picked up has to be nameable", pl.Ref)
+			if pl.Holdable != nil && *pl.Holdable && pl.ID == "" {
+				v.fail(p+".id", "%q is holdable and has no id, and a thing that can be picked up has to be nameable", pl.Ref)
 			}
 			if pl.Targeting != nil {
 				v.fail(p+".targeting", "%q is not a monster and cannot have targeting", pl.Ref)
@@ -739,7 +739,7 @@ func (v *validation) exits() {
 // whether the scenario id is one that exists, which keys it wants, which are
 // required, and whether the thing a key names is the right KIND of thing —
 // a prop where a prop is wanted, an exit where an exit is wanted, and
-// takeable when the scenario is about carrying something out. Every one of
+// holdable when the scenario is about carrying something out. Every one of
 // those is a fact about a SCENARIO, and a scenario is content this package
 // may not resolve. They are the scenario package's own refusals, made at its
 // `New(cfg, compiled)` in form-filler words, where the author is looking at

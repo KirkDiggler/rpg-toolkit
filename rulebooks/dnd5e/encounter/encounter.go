@@ -156,7 +156,7 @@ type Encounter struct {
 	// holdings is WHO HAS WHAT: the run's append-only journal of holdings,
 	// takings and drops (rpg-project#368, design §5). ALWAYS PRESENT, unlike
 	// world above — holdings are not about concealment, and a dungeon with
-	// no secret anywhere can still have a takeable idol on a plinth. An
+	// no secret anywhere can still have a holdable idol on a plinth. An
 	// encounter where nobody holds anything writes no facts and no bytes.
 	holdings *holdings
 
@@ -421,8 +421,8 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			if eh.Item == "" {
 				return fmt.Errorf("ending %q names no item to be holding: %w", ei.Key, ErrNoEnding)
 			}
-			if _, takeable := f.takeable[eh.Item]; !takeable {
-				return fmt.Errorf("ending %q waits for %q to be held, and no prop with that id is takeable: %w",
+			if _, holdable := f.holdable[eh.Item]; !holdable {
+				return fmt.Errorf("ending %q waits for %q to be held, and no prop with that id is holdable: %w",
 					ei.Key, eh.Item, ErrNoEnding)
 			}
 		}
@@ -2080,7 +2080,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	// R9 — THEY DROP IT. A departure that did not end the run leaves
 	// everything the member was carrying on the cell they stood on, as
-	// takeable props anybody can pick up again. Otherwise a carrier who
+	// holdable props anybody can pick up again. Otherwise a carrier who
 	// leaves through the lobby — or simply disconnects — takes the only win
 	// out of a run that is still going.
 	if firedOutcome == nil {

@@ -413,23 +413,23 @@ var (
 	ErrNoExit = errors.New("no such exit")
 
 	// ErrNoProp is a prop this field does not have, named by a verb that
-	// needs one — [Encounter.Take]'s target, or an ending's item.
+	// needs one — [Encounter.Hold]'s target, or an ending's item.
 	//
 	// A PROBE ANSWERS NOTHING (the law slice 1 set for doors): inside space
-	// the asker cannot see, "no such prop" and "not takeable" are the SAME
+	// the asker cannot see, "no such prop" and "not holdable" are the SAME
 	// refusal, so a guessed id cannot map the room somebody has not found.
 	// A visible pillar refuses by name, because there is no secret in it.
 	ErrNoProp = errors.New("no such prop")
 
-	// ErrNotTakeable is a prop nobody declared takeable, reached by
-	// [Encounter.Take]. A thing nobody said could be picked up stays
+	// ErrNotHoldable is a prop nobody declared holdable, reached by
+	// [Encounter.Hold]. A thing nobody said could be picked up stays
 	// scenery — the same "no default" law [PropInput]'s two blocking flags
 	// follow, applied to a fact with only one honest zero value.
-	ErrNotTakeable = errors.New("prop is not takeable")
+	ErrNotHoldable = errors.New("prop is not holdable")
 
-	// ErrAlreadyTaken is a prop that has already left the floor. Somebody is
-	// carrying it, or carried it out; either way it is not there to take.
-	ErrAlreadyTaken = errors.New("prop has already been taken")
+	// ErrAlreadyHeld is a prop that has already left the floor. Somebody is
+	// carrying it, or carried it out; either way it is not there to pick up.
+	ErrAlreadyHeld = errors.New("prop is already held")
 
 	// ErrNotDown is a member who is still standing, reached by
 	// [Encounter.Loot]. An ORDINARY refusal, deliberately: the body is

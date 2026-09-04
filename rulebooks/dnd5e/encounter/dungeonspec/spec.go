@@ -531,7 +531,7 @@ type PlaceSpec struct {
 	// REQUIRED BY WHATEVER BINDS TO IT, and by nothing else. A knowledge
 	// link's SUBJECT needs none — `knows` names doors, and a monster that
 	// knows one is just a monster. A scenario binding needs one, and a
-	// takeable prop needs one because both the binding and the `taken` beat
+	// holdable prop needs one because both the binding and the `held` beat
 	// have to be able to say WHICH thing. Refused on collision, naming both
 	// lines.
 	ID string `yaml:"id,omitempty"`
@@ -616,18 +616,18 @@ type PlaceSpec struct {
 	// about a DIFFERENT declaration.
 	Knows []string `yaml:"knows,omitempty"`
 
-	// Takeable is whether a member can pick this prop up (design §5).
+	// Holdable is whether a member can pick this prop up (design §5).
 	// Optional; PROPS ONLY, and refused on a monster.
 	//
 	// A POINTER, for [PlaceSpec.BlocksMovement]'s reason one type over: an
-	// omitted `takeable` and an authored `takeable: false` are the same fact
-	// here — a thing nobody declared takeable stays scenery — but the
+	// omitted `holdable` and an authored `holdable: false` are the same fact
+	// here — a thing nobody declared holdable stays scenery — but the
 	// pointer is what lets the refusal below distinguish "said nothing" from
-	// "said false" on a monster, so a monster that wrote `takeable: false`
+	// "said false" on a monster, so a monster that wrote `holdable: false`
 	// is told it cannot declare that at all rather than silently accepted.
 	//
 	// A TAKEABLE PROP MUST HAVE AN ID, refused otherwise: the scenario
-	// binding names it and the `taken` beat names it, and neither can name a
+	// binding names it and the `held` beat names it, and neither can name a
 	// thing with no name.
-	Takeable *bool `yaml:"takeable,omitempty"`
+	Holdable *bool `yaml:"holdable,omitempty"`
 }

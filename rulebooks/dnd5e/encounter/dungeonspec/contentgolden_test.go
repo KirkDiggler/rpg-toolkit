@@ -56,13 +56,13 @@ type contentGolden struct {
 	Props       []encounter.AtlasProp          `json:"props"`
 	Boundaries  []encounter.AtlasBoundary      `json:"boundaries"`
 	Doorways    []encounter.AtlasDoorway       `json:"doorways"`
+	Exits       []encounter.AtlasExit          `json:"exits"`
 	PartyStart  []dungeonspec.Seat             `json:"party_start"`
 	Monsters    []dungeonspec.MonsterPlacement `json:"monsters"`
 
-	// Exits and Scenarios are the two things this slice added that a host
-	// can observe and the atlas does not carry (rpg-project#368). Prop ids
-	// and takeability ride in Props, which is already here.
-	Exits     []encounter.FieldExit        `json:"exits"`
+	// Scenarios is what this slice added that a host can observe and the
+	// atlas does not carry (rpg-project#368). Exits, prop ids and
+	// holdability all ride in the atlas above, which is already here.
 	Scenarios map[string]map[string]string `json:"scenarios"`
 }
 
@@ -77,9 +77,9 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		Props:       atlas.Props,
 		Boundaries:  atlas.Boundaries,
 		Doorways:    atlas.Doorways,
+		Exits:       atlas.Exits,
 		PartyStart:  compiled.PartyStart,
 		Monsters:    compiled.Monsters,
-		Exits:       compiled.Field.Exits,
 		Scenarios:   compiled.Scenarios,
 	}
 }

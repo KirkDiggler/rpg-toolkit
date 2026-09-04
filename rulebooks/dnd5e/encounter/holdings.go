@@ -30,7 +30,7 @@ import (
 //
 //   - holds:prop:<id>     — Actor now carries that prop.
 //   - holds:intel:door:<id> — Actor now carries the way to that door.
-//   - taken:<id>          — that prop has left the floor.
+//   - held:<id>           — that prop has been picked up off the floor.
 //   - dropped:<id>@<x>,<y> — that prop is back on the floor, at that cell.
 //
 // A fold in Seq order is the whole rule. Nothing is ever edited and nothing
@@ -74,7 +74,7 @@ import (
 // "a field with none builds no world machinery at all, which is what keeps a
 // plain dungeon byte-identical to what it was before that file existed"
 // (conceal.go). Holdings are not about concealment: a dungeon with no secret
-// anywhere can still have a takeable idol on a plinth. So this journal is
+// anywhere can still have a holdable idol on a plinth. So this journal is
 // always present and independently persisted, and an encounter where nobody
 // holds anything writes NO holdings at all — `holdings` is omitempty, so a
 // plain dungeon's blob is byte-identical to what it was before this file
@@ -88,7 +88,7 @@ import (
 // no verb output reads a `holds:` fact — the ONLY observable consequence of
 // one is what its transfer causes, which for intel is the ordinary
 // DOOR_REVEALED beat a search would have produced, and for a prop is the
-// prop's own presence on the floor. `taken` and `dropped` are different in
+// prop's own presence on the floor. `held` and `dropped` are different in
 // kind and deliberately so: where a thing physically IS folds on the truth
 // grain, the same for everybody (ruled 2026-09-01).
 
@@ -109,8 +109,8 @@ func holdsPropKind(id PropID) journal.Kind { return journal.Kind("holds:prop:" +
 // way to a door.
 func holdsIntelDoorKind(id DoorID) journal.Kind { return journal.Kind("holds:intel:door:" + id) }
 
-// takenKind mints the fact kind recording that a prop has left the floor.
-func takenKind(id PropID) journal.Kind { return journal.Kind("taken:" + id) }
+// heldKind mints the fact kind recording that a prop has left the floor.
+func heldKind(id PropID) journal.Kind { return journal.Kind("held:" + id) }
 
 // droppedKind mints the fact kind recording that a prop is back on the floor
 // at a cell. The cell is IN THE KIND rather than in the outcome, so a fold
@@ -125,7 +125,7 @@ func droppedKind(id PropID, at spatial.Position) journal.Kind {
 const (
 	holdsPropPrefix      = "holds:prop:"
 	holdsIntelDoorPrefix = "holds:intel:door:"
-	takenPrefix          = "taken:"
+	heldPrefix           = "held:"
 	droppedPrefix        = "dropped:"
 )
 
@@ -182,10 +182,10 @@ func (h *holdings) holdIntelDoor(member MemberID, id DoorID, cause string) error
 	return err
 }
 
-// takeProp records that the prop has left the floor.
-func (h *holdings) takeProp(member MemberID, id PropID) error {
+// markHeld records that the prop has left the floor.
+func (h *holdings) markHeld(member MemberID, id PropID) error {
 	_, err := h.log.Append(journal.Fact{
-		Kind:    takenKind(id),
+		Kind:    heldKind(id),
 		Actor:   journal.EntityID(member),
 		Subject: journal.EntityID("prop:" + id),
 	})
@@ -202,8 +202,8 @@ func (h *holdings) dropProp(member MemberID, id PropID, at spatial.Position) err
 	return err
 }
 
-// heldItem is one thing a body carries, in the fold's own terms.
-type heldItem struct {
+// holding is one thing a body carries, in the fold's own terms.
+type holding struct {
 	// prop is the prop id when this holding is a thing; empty otherwise.
 	prop PropID
 
@@ -212,17 +212,17 @@ type heldItem struct {
 	door DoorID
 }
 
-// heldBy folds one member's present holdings, in a deterministic order:
+// holdingsOf folds one member's present holdings, in a deterministic order:
 // intel first by door id, then props by prop id.
 //
 // SUPERSESSION IS BY SUBJECT, IN SEQ ORDER. The last member to be recorded
 // holding a thing is the one holding it, and a prop dropped after that is
 // held by nobody. Computed fresh on every question — there is no second copy
 // of "who has what" anywhere to disagree with this one.
-func (h *holdings) heldBy(member MemberID) []heldItem {
+func (h *holdings) holdingsOf(member MemberID) []holding {
 	props, doors := h.fold()
 
-	out := make([]heldItem, 0, len(props)+len(doors))
+	out := make([]holding, 0, len(props)+len(doors))
 	doorIDs := make([]DoorID, 0, len(doors))
 	for id, holders := range doors {
 		if holders[member] {
@@ -231,7 +231,7 @@ func (h *holdings) heldBy(member MemberID) []heldItem {
 	}
 	sort.Strings(doorIDs)
 	for _, id := range doorIDs {
-		out = append(out, heldItem{door: id})
+		out = append(out, holding{door: id})
 	}
 
 	propIDs := make([]PropID, 0, len(props))
@@ -242,7 +242,7 @@ func (h *holdings) heldBy(member MemberID) []heldItem {
 	}
 	sort.Strings(propIDs)
 	for _, id := range propIDs {
-		out = append(out, heldItem{prop: id})
+		out = append(out, holding{prop: id})
 	}
 	return out
 }
@@ -284,7 +284,7 @@ func (h *holdings) fold() (props map[PropID]MemberID, doors map[DoorID]map[Membe
 // propPlacement is where one prop physically is, folded on the truth grain —
 // the same answer for every member (ruled 2026-09-01).
 type propPlacement struct {
-	// gone is whether the prop has been taken off the floor. When true, At
+	// gone is whether the prop has been picked up off the floor. When true, At
 	// is meaningless.
 	gone bool
 
@@ -296,17 +296,17 @@ type propPlacement struct {
 	moved bool
 }
 
-// propPlacements folds where every prop physically is: taken off the floor,
+// propPlacements folds where every prop physically is: picked up off the floor,
 // dropped at a cell, or exactly where the author put it (absent from the
-// map). The LAST fact about a prop wins, so a thing taken, dropped and taken
-// again is gone.
+// map). The LAST fact about a prop wins, so a thing picked up, dropped and
+// picked up again is gone.
 func (h *holdings) propPlacements() map[PropID]propPlacement {
 	out := map[PropID]propPlacement{}
 	for _, f := range h.log.All() {
 		kind := string(f.Kind)
 		switch {
-		case strings.HasPrefix(kind, takenPrefix):
-			out[strings.TrimPrefix(kind, takenPrefix)] = propPlacement{gone: true}
+		case strings.HasPrefix(kind, heldPrefix):
+			out[strings.TrimPrefix(kind, heldPrefix)] = propPlacement{gone: true}
 		case strings.HasPrefix(kind, droppedPrefix):
 			if id, at, ok := parseDropped(kind); ok {
 				out[id] = propPlacement{at: at, moved: true}
@@ -370,7 +370,7 @@ func (f *field) exitAt(cell spatial.Position) ExitID {
 // does not have.
 func (e *Encounter) heldPropsOf(member MemberID) []PropID {
 	out := []PropID{}
-	for _, item := range e.holdings.heldBy(member) {
+	for _, item := range e.holdings.holdingsOf(member) {
 		if item.prop != "" {
 			out = append(out, item.prop)
 		}
@@ -439,7 +439,7 @@ func (e *Encounter) firedExitedHolding(
 // departure that DID end the run drops nothing, because there is no longer a
 // run for anybody to be denied.
 //
-// The dropped prop reappears exactly as the takeable prop it was: same id,
+// The dropped prop reappears exactly as the holdable prop it was: same id,
 // same ref, same flags, at the drop cell — a fold over the atlas, not a new
 // kind of thing (holdings.go).
 func (e *Encounter) dropCarried(

@@ -210,23 +210,23 @@ type PropInput struct {
 	// to and nobody can pick up needs no name, and the empty string carries
 	// forward to [AtlasProp.ID] as the fact that it has none.
 	//
-	// REQUIRED WHEN Takeable, refused at construction otherwise (ErrNoField).
+	// REQUIRED WHEN Holdable, refused at construction otherwise (ErrNoField).
 	// Two things name a prop by id and both say it out loud: a scenario
-	// binds an artifact by id, and the `taken` beat says which thing was
-	// taken. A takeable prop with no id would be advertised to every client
-	// as something anybody can pick up while no [TakeInput] could ever name
+	// binds an artifact by id, and the `held` beat says which thing was
+	// picked up. A holdable prop with no id would be advertised to every client
+	// as something anybody can pick up while no [HoldInput] could ever name
 	// it — an offer with nothing behind it. dungeonspec refuses it at the
 	// file and [compileField] refuses it again here, so a host assembling a
 	// field by hand cannot produce one either.
 	ID PropID
 
-	// Takeable is whether a member can pick this prop up (design §5).
+	// Holdable is whether a member can pick this prop up (design §5).
 	// Optional, and FALSE IS THE HONEST ZERO VALUE here — unlike the two
 	// blocking flags below, which are pointers because all four of their
 	// combinations are real content. There is only one thing "said nothing
-	// about takeable" can mean: a thing nobody declared takeable stays
+	// about holdable" can mean: a thing nobody declared holdable stays
 	// scenery, which is what every prop that existed before this field did.
-	Takeable bool
+	Holdable bool
 
 	// Ref is content's identifier for this thing, e.g.
 	// "dnd5e:props:pillar". REQUIRED and never inspected here — see the
@@ -744,7 +744,7 @@ func (t TriggerExternal) isTrigger() {}
 // # What a departure from anywhere else does
 //
 // It DROPS (design R9). A carrier who leaves from any cell but this one drops
-// the holding where they stood, and it reappears there as a takeable prop for
+// the holding where they stood, and it reappears there as a holdable prop for
 // everybody. Otherwise a carrier who quits through the lobby — or simply
 // disconnects — takes the only win out of the run with them. That rule lives
 // with [Encounter.Exit] rather than here, because it holds whether or not any
@@ -758,7 +758,7 @@ type TriggerExitedHolding struct {
 	Exit ExitID
 
 	// Item is the prop that must be held. REQUIRED, and must name a prop
-	// this field declares as [PropInput.Takeable] — refused at construction
+	// this field declares as [PropInput.Holdable] — refused at construction
 	// (ErrNoEnding). A prop nobody can pick up can never be held, so an
 	// ending waiting for somebody to hold one is the same dead ending.
 	Item PropID

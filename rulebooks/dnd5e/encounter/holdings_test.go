@@ -4,7 +4,7 @@
 package encounter_test
 
 // holdings_test.go is living-world SLICE 2 (rpg-project#368,
-// recover-the-artifact): Loot, Take, holdings, and the ending that fires
+// recover-the-artifact): Loot, Hold, holdings, and the ending that fires
 // when somebody walks out of a bound exit carrying the artifact.
 //
 // One scene per row of the design's §8 acceptance table that this module
@@ -21,11 +21,11 @@ package encounter_test
 // walled except row 2, where the concealed VAULT DOOR stands — the only way
 // in, and shut.
 //
-// Four props. The HEIRLOOM and the CHALICE are takeable and stand in the
+// Four props. The HEIRLOOM and the CHALICE are holdable and stand in the
 // TOMB, where the scenes about carrying things can reach them without first
-// having to find a secret. The RELIC is takeable and stands inside the
+// having to find a secret. The RELIC is holdable and stands inside the
 // concealed vault, which is what the probe-law scene is about. The PILLAR
-// says nothing about being takeable, which is what every prop was before
+// says nothing about being holdable, which is what every prop was before
 // this slice.
 //
 // The party: RAIDER and PARTNER in the hall, the CAPTAIN standing in the
@@ -86,11 +86,11 @@ func vaultFindCheck() []encounter.CheckApproach {
 func no() *bool  { v := false; return &v }
 func yes() *bool { v := true; return &v }
 
-// takeableProp is a prop somebody can pick up: named, in nobody's way, and
+// holdableProp is a prop somebody can pick up: named, in nobody's way, and
 // saying both blocking answers out loud as every prop must.
-func takeableProp(id encounter.PropID, ref string, at spatial.Position) encounter.PropInput {
+func holdableProp(id encounter.PropID, ref string, at spatial.Position) encounter.PropInput {
 	return encounter.PropInput{
-		ID: id, Takeable: true, Ref: ref, At: at,
+		ID: id, Holdable: true, Ref: ref, At: at,
 		BlocksMovement: no(), BlocksLineOfSight: no(),
 	}
 }
@@ -116,10 +116,10 @@ func heirloomField() encounter.FieldInput {
 			State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
 		}},
 		Props: []encounter.PropInput{
-			takeableProp(heirloom, "dnd5e:props:reliquary", heirloomCell),
-			takeableProp(chalice, "dnd5e:props:chalice", chaliceCell),
-			takeableProp(relic, "dnd5e:props:relic", relicCell),
-			// A prop that said nothing about being takeable, which is every
+			holdableProp(heirloom, "dnd5e:props:reliquary", heirloomCell),
+			holdableProp(chalice, "dnd5e:props:chalice", chaliceCell),
+			holdableProp(relic, "dnd5e:props:relic", relicCell),
+			// A prop that said nothing about being holdable, which is every
 			// prop that existed before this slice.
 			{ID: pillar, Ref: "dnd5e:props:pillar", At: pillarCell,
 				BlocksMovement: yes(), BlocksLineOfSight: yes()},

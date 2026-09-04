@@ -127,11 +127,11 @@ type field struct {
 	// argument, one noun over.
 	exitCells map[ExitID]spatial.Position
 
-	// takeable is every prop id the author declared takeable, to its index
+	// holdable is every prop id the author declared holdable, to its index
 	// in props. Built here because "is this a thing that can be picked up"
-	// is a question about the FIELD, asked by [Encounter.Take] and by the
+	// is a question about the FIELD, asked by [Encounter.Hold] and by the
 	// ending validation, and neither should walk the prop list to answer it.
-	takeable map[PropID]int
+	holdable map[PropID]int
 
 	// width and height are the span of the one hex grid that holds the
 	// floor's bounding box (W6).
@@ -339,7 +339,7 @@ func (f *field) compileScenery(scenery []spatial.Position) error {
 // on a floor cell of its own.
 func (f *field) compileProps(props []PropInput) error {
 	f.props = make([]PropInput, len(props))
-	f.takeable = map[PropID]int{}
+	f.holdable = map[PropID]int{}
 	seen := make(map[spatial.Position]bool, len(props))
 	seenID := make(map[PropID]int, len(props))
 
@@ -380,18 +380,18 @@ func (f *field) compileProps(props []PropInput) error {
 				return fmt.Errorf("props[%d] and props[%d] share the id %q: %w", prev, i, p.ID, ErrNoField)
 			}
 			seenID[p.ID] = i
-			if p.Takeable {
-				f.takeable[p.ID] = i
+			if p.Holdable {
+				f.holdable[p.ID] = i
 			}
-		} else if p.Takeable {
+		} else if p.Holdable {
 			// A TAKEABLE PROP MUST BE NAMEABLE. Without an id, every atlas
-			// would advertise a thing anybody can pick up and no [TakeInput]
+			// would advertise a thing anybody can pick up and no [HoldInput]
 			// could ever name it — an offer with nothing behind it, which is
 			// the shape of lie [PropInput]'s two blocking flags are pointers
 			// to avoid. dungeonspec refuses this at the file; refused here
 			// too, so a host assembling a field by hand cannot produce it
 			// either (Copilot, PR #1497 review).
-			return fmt.Errorf("prop %q at [%g,%g] is takeable and has no id: %w",
+			return fmt.Errorf("prop %q at [%g,%g] is holdable and has no id: %w",
 				p.Ref, p.At.X, p.At.Y, ErrNoField)
 		}
 
@@ -401,7 +401,7 @@ func (f *field) compileProps(props []PropInput) error {
 		// are already immune to the aliasing the two flags guard against.
 		blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
 		f.props[i] = PropInput{
-			ID: p.ID, Takeable: p.Takeable,
+			ID: p.ID, Holdable: p.Holdable,
 			Ref: p.Ref, At: p.At, BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksSight,
 			Facing: p.Facing, Offset: p.Offset,
 		}
@@ -444,9 +444,9 @@ func (f *field) compileExits(exits []FieldExit) error {
 }
 
 // propIndexOf is the index of the prop with this id, or -1. Linear over a
-// list of props, deliberately: the takeable index above answers the hot
+// list of props, deliberately: the holdable index above answers the hot
 // question, and this one exists only for the probe law's "does anything at
-// all have that id", asked once per refused Take.
+// all have that id", asked once per refused Hold.
 func (f *field) propIndexOf(id PropID) int {
 	if id == "" {
 		return -1

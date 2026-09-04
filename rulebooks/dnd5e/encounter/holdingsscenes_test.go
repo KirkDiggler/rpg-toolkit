@@ -150,12 +150,12 @@ func (s *HoldingsSuite) TestKillingTheCaptainAndNeverLootingLearnsNothing() {
 	})
 }
 
-// TestTakeRemovesThePropForEveryoneAndTheTakerHoldsIt is §8 row 4.
-func (s *HoldingsSuite) TestTakeRemovesThePropForEveryoneAndTheTakerHoldsIt() {
+// TestHoldRemovesThePropForEveryoneAndTheHolderHasIt is §8 row 4.
+func (s *HoldingsSuite) TestHoldRemovesThePropForEveryoneAndTheHolderHasIt() {
 	enc := s.open(false)
 	s.walkTo(enc, raider, chaliceCell)
 
-	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 	s.Require().NoError(err)
 
 	s.Run("the prop is gone from EVERY member's atlas", func() {
@@ -171,17 +171,17 @@ func (s *HoldingsSuite) TestTakeRemovesThePropForEveryoneAndTheTakerHoldsIt() {
 		s.Require().False(present, "and it is gone from the truth-grain atlas too")
 	})
 
-	s.Run("the taken beat reaches everyone present", func() {
+	s.Run("the held beat reaches everyone present", func() {
 		for _, member := range []core.EntityID{raider, partner} {
-			taken := s.beatsOfKind(enc, member, "taken")
+			taken := s.beatsOfKind(enc, member, "held")
 			s.Require().Len(taken, 1, "%s did not hear it", member)
 			s.Require().Equal(map[string]any{
-				"beat": "taken", "member": string(raider), "prop": chalice,
+				"beat": "held", "holder": string(raider), "prop": chalice,
 			}, taken[0])
 		}
 	})
 
-	s.Run("the taker carries it out", func() {
+	s.Run("the holder carries it out", func() {
 		out, err := enc.Exit(&encounter.ExitInput{Member: raider})
 		s.Require().NoError(err)
 		exited := s.beatsOfKind(enc, partner, "exited")
@@ -219,7 +219,7 @@ func (s *HoldingsSuite) TestExitAtTheBoundExitHoldingTheArtifactEndsTheRun() {
 
 	// The carrier walks into the tomb, takes the heirloom, and comes back.
 	s.walkTo(enc, raider, heirloomCell)
-	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: heirloom})
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
 	s.Require().NoError(err)
 	s.walkTo(enc, raider, raiderCell)
 
@@ -274,7 +274,7 @@ func (s *HoldingsSuite) TestExitAwayFromTheExitDropsTheHolding() {
 		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
 	})
 	s.walkTo(enc, raider, heirloomCell)
-	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: heirloom})
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
 	s.Require().NoError(err)
 
 	out, err := enc.Exit(&encounter.ExitInput{Member: raider})
@@ -303,12 +303,12 @@ func (s *HoldingsSuite) TestExitAwayFromTheExitDropsTheHolding() {
 		prop, present := propInAtlas(atlas, heirloom)
 		s.Require().True(present)
 		s.Require().Equal(cellAt(int(heirloomCell.X), int(heirloomCell.Y)), prop.At)
-		s.Require().True(prop.Takeable, "and it is the same takeable thing it was")
+		s.Require().True(prop.Holdable, "and it is the same holdable thing it was")
 	})
 
 	s.Run("somebody else can pick it up and finish", func() {
 		s.walkTo(enc, partner, heirloomCell)
-		_, err := enc.Take(&encounter.TakeInput{Member: partner, Target: heirloom})
+		_, err := enc.Hold(&encounter.HoldInput{Member: partner, Target: heirloom})
 		s.Require().NoError(err)
 		s.walkTo(enc, partner, raiderCell)
 		out, err := enc.Exit(&encounter.ExitInput{Member: partner})
@@ -332,7 +332,7 @@ func (s *HoldingsSuite) TestLeavingThroughAnUnboundExitDoesNotWalkTheArtifactOut
 		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
 	})
 	s.walkTo(enc, raider, heirloomCell)
-	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: heirloom})
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
 	s.Require().NoError(err)
 	s.walkTo(enc, raider, sideDoorCell)
 
@@ -366,7 +366,7 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 	_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
 	s.Require().NoError(err)
 	s.walkTo(enc, raider, chaliceCell)
-	_, err = enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+	_, err = enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 	s.Require().NoError(err)
 	_, err = enc.Exit(&encounter.ExitInput{Member: raider})
 	s.Require().NoError(err)
@@ -376,7 +376,7 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 		kinds[beat["beat"].(string)] = true
 	}
 	s.Require().True(kinds["looted"])
-	s.Require().True(kinds["taken"])
+	s.Require().True(kinds["held"])
 	s.Require().True(kinds["dropped"])
 	s.Require().False(kinds["interacted"], "Interact stays the NPC verb; it names no rule half here")
 }
@@ -394,7 +394,7 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 	_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
 	s.Require().NoError(err)
 	s.walkTo(enc, raider, heirloomCell)
-	_, err = enc.Take(&encounter.TakeInput{Member: raider, Target: heirloom})
+	_, err = enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
 	s.Require().NoError(err)
 
 	data := enc.ToData()
@@ -500,7 +500,7 @@ func (s *HoldingsSuite) TestLootTakesThePropOffTheBody() {
 		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
 	})
 	s.walkTo(enc, raider, heirloomCell)
-	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: heirloom})
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
 	s.Require().NoError(err)
 
 	s.Run("the carrier falls, still holding it", func() {
@@ -641,7 +641,7 @@ func (s *HoldingsSuite) TestLeavingTheBoundExitWithTheWRONGThingDoesNotWin() {
 		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
 	})
 	s.walkTo(enc, raider, chaliceCell)
-	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 	s.Require().NoError(err)
 	s.walkTo(enc, raider, raiderCell)
 
@@ -657,4 +657,88 @@ func (s *HoldingsSuite) TestLeavingTheBoundExitWithTheWRONGThingDoesNotWin() {
 	dropped := s.beatsOfKind(enc, partner, "dropped")
 	s.Require().Len(dropped, 1, "and the run goes on, so what they carried stays in it")
 	s.Require().Equal(chalice, dropped[0]["prop"])
+}
+
+// TestTheAtlasCarriesTheWaysOut is the projection half of the exits contract
+// (rpg-project#368): a way out is structure on the truth grain, so it is in
+// every member's atlas, unchanged, whatever they have and have not found.
+//
+// The client needs both halves of this to draw a dungeon: where the way out
+// is, and which things on the floor can be picked up.
+func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOut() {
+	enc := s.open(true, recoverEnding(), encounter.EndingInput{
+		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
+	})
+
+	s.Run("an exit authored is an exit projected, sorted by id", func() {
+		atlas, err := enc.Atlas()
+		s.Require().NoError(err)
+		s.Require().Equal([]encounter.AtlasExit{
+			{ID: frontGate, At: cellAt(int(raiderCell.X), int(raiderCell.Y))},
+			{ID: sideDoor, At: cellAt(int(sideDoorCell.X), int(sideDoorCell.Y))},
+		}, atlas.Exits)
+	})
+
+	s.Run("and every member sees the same ones", func() {
+		full, err := enc.Atlas()
+		s.Require().NoError(err)
+		for _, member := range []core.EntityID{raider, partner, captain} {
+			mine, err := enc.AtlasFor(member)
+			s.Require().NoError(err)
+			s.Require().Equal(full.Exits, mine.Exits,
+				"%s sees a different way out; an exit is not a secret", member)
+		}
+	})
+
+	s.Run("a field with no exits projects none", func() {
+		plain := encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 6, 6)},
+		}
+		bare, err := encounter.NewEncounter(&encounter.SetupInput{
+			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			Field:   plain,
+			Members: []encounter.MemberInput{{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell}},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		})
+		s.Require().NoError(err)
+		atlas, err := bare.Atlas()
+		s.Require().NoError(err)
+		s.Require().Empty(atlas.Exits, "nothing is defaulted; start is not implicitly a way out")
+	})
+}
+
+// TestTheAtlasSaysWhatCanBePickedUp is the other half: the holdable flag
+// round-trips to every member, so a client offers the Hold action exactly
+// where the author allowed it and nowhere else.
+func (s *HoldingsSuite) TestTheAtlasSaysWhatCanBePickedUp() {
+	enc := s.open(false)
+
+	s.Run("the flag round-trips, and only for what was declared", func() {
+		for _, member := range []core.EntityID{raider, partner} {
+			atlas, err := enc.AtlasFor(member)
+			s.Require().NoError(err)
+
+			heirloomProp, ok := propInAtlas(atlas, heirloom)
+			s.Require().True(ok)
+			s.Require().True(heirloomProp.Holdable)
+
+			chaliceProp, ok := propInAtlas(atlas, chalice)
+			s.Require().True(ok)
+			s.Require().True(chaliceProp.Holdable)
+
+			pillarProp, ok := propInAtlas(atlas, pillar)
+			s.Require().True(ok)
+			s.Require().False(pillarProp.Holdable,
+				"a thing nobody declared holdable stays scenery, and the client must not offer it")
+		}
+	})
+
+	s.Run("the vault's relic is withheld from a member who has not found it", func() {
+		atlas, err := enc.AtlasFor(raider)
+		s.Require().NoError(err)
+		_, ok := propInAtlas(atlas, relic)
+		s.Require().False(ok, "a holdable prop inside concealed space is still concealed")
+	})
 }
