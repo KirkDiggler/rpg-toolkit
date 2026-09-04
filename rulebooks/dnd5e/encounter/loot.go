@@ -161,13 +161,16 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 //
 // Each kind moves by what that kind means:
 //
-//   - INTEL becomes knowledge: learnDoor for the receiver, cause "loot", plus
+//   - INTEL is COPIED to the receiver: learnDoor for them, cause "loot", plus
 //     their own DOOR_REVEALED beat — the reveal path search already owns
-//     (P4), reused rather than duplicated. The holding moves too, so a
-//     looter's own body can be looted in turn and the intel keeps travelling.
-//   - A PROP becomes the receiver's holding. Where it physically is does not
+//     (P4), reused rather than duplicated. The body keeps knowing too, so
+//     the second player to loot the captain learns the way in exactly as the
+//     first did. Knowledge is not an object; see holdings.go on why, and on
+//     which shelf turns it into one.
+//   - A PROP is MOVED to the receiver. Where it physically is does not
 //     change: it is already off the floor (`taken`), and passing it from one
-//     pair of hands to another moves nothing anybody can see.
+//     pair of hands to another moves nothing anybody can see. One of it
+//     exists, so the body no longer has it.
 //
 // A body with nothing transfers nothing and appends nothing — the empty case
 // is not a special case, it is the loop running zero times.
@@ -183,6 +186,21 @@ func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64)
 			if err := e.holdings.holdIntelDoor(to, item.door, cause); err != nil {
 				return fmt.Errorf("transfer intel door %q: %w", item.door, err)
 			}
+			// Nothing to reveal when: the door is not this field's, the
+			// field carries no concealment at all, the door is not
+			// concealed, or the receiver already knows it.
+			//
+			// THE THIRD CLAUSE IS REDUNDANT AND KEPT ON PURPOSE. knowsDoor
+			// folds a graph that declares only CONCEALED entities, and
+			// graph.State.Visible answers true for anything it was never
+			// told about — so an unconcealed door is "already known" to
+			// everybody and the fourth clause alone would decide this case.
+			// A mutation pass proves it: dropping `d.concealed == nil`
+			// kills no test. It stays because removing it would make this
+			// rule — "an unconcealed door has nothing to reveal" — true
+			// only by an undocumented default of a package one layer down,
+			// and the next person to read the graph's contract differently
+			// would silently start narrating reveals for open doorways.
 			d, ok := e.doorsByID[item.door]
 			if !ok || e.world == nil || d.concealed == nil || e.world.knowsDoor(to, d.id) {
 				continue

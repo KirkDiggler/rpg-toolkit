@@ -33,10 +33,30 @@ import (
 //   - taken:<id>          — that prop has left the floor.
 //   - dropped:<id>@<x>,<y> — that prop is back on the floor, at that cell.
 //
-// A later fact supersedes an earlier one about the same subject; a fold in
-// Seq order is the whole rule. Nothing is ever edited and nothing is ever
-// removed, which is the [journal.Journal]'s own contract and the reason the
-// answer cannot disagree with the record.
+// A fold in Seq order is the whole rule. Nothing is ever edited and nothing
+// is ever removed, which is the [journal.Journal]'s own contract and the
+// reason the answer cannot disagree with the record.
+//
+// # A prop MOVES; intel COPIES
+//
+// The two kinds of holding fold differently, because they are different
+// kinds of thing:
+//
+//   - A PROP IS AN OBJECT. One of it exists, one person has it, and a later
+//     holds:prop fact supersedes the earlier one — looting a body takes the
+//     thing off the body.
+//   - INTEL IS KNOWLEDGE. Two monsters may be authored knowing one door, two
+//     players may loot the same body, and neither takes anything from
+//     anyone. So intel folds to a SET of holders per door, and a transfer
+//     ADDS one rather than replacing it.
+//
+// Design §9 is where this stops being true, and says so: the parchment shelf
+// makes loot "yield an ITEM that carries the intel instead of the intel
+// itself", at which point the intel becomes a prop and inherits the prop
+// rule above with nothing here to change. Until then, taking the knowledge
+// of a door off a corpse the way you take a coin off it would mean the
+// SECOND player to loot the captain learns nothing — which is not a rule
+// anybody wrote, and reads at the table as a bug.
 //
 // # Two prefixes, not one namespace
 //
@@ -204,8 +224,8 @@ func (h *holdings) heldBy(member MemberID) []heldItem {
 
 	out := make([]heldItem, 0, len(props)+len(doors))
 	doorIDs := make([]DoorID, 0, len(doors))
-	for id, holder := range doors {
-		if holder == member {
+	for id, holders := range doors {
+		if holders[member] {
 			doorIDs = append(doorIDs, id)
 		}
 	}
@@ -227,21 +247,26 @@ func (h *holdings) heldBy(member MemberID) []heldItem {
 	return out
 }
 
-// fold walks the journal once in Seq order and returns who holds what: props
-// by id to their holder, and doors by id to theirs. A prop nobody holds is
-// absent from the first map — dropping it removes it, because a dropped
-// thing is held by nobody.
+// fold walks the journal once in Seq order and returns who holds what: each
+// prop to its ONE holder, and each door to the SET of members who know the
+// way to it — the move/copy split this file's doc comment states. A prop
+// nobody holds is absent from the first map, because a dropped thing is held
+// by nobody.
 //
 // ONE WALK, TWO ANSWERS, because every question here needs the same walk and
 // two of them would be two chances to fold differently.
-func (h *holdings) fold() (props map[PropID]MemberID, doors map[DoorID]MemberID) {
+func (h *holdings) fold() (props map[PropID]MemberID, doors map[DoorID]map[MemberID]bool) {
 	props = map[PropID]MemberID{}
-	doors = map[DoorID]MemberID{}
+	doors = map[DoorID]map[MemberID]bool{}
 	for _, f := range h.log.All() {
 		kind := string(f.Kind)
 		switch {
 		case strings.HasPrefix(kind, holdsIntelDoorPrefix):
-			doors[strings.TrimPrefix(kind, holdsIntelDoorPrefix)] = MemberID(f.Actor)
+			id := strings.TrimPrefix(kind, holdsIntelDoorPrefix)
+			if doors[id] == nil {
+				doors[id] = map[MemberID]bool{}
+			}
+			doors[id][MemberID(f.Actor)] = true
 		case strings.HasPrefix(kind, holdsPropPrefix):
 			props[strings.TrimPrefix(kind, holdsPropPrefix)] = MemberID(f.Actor)
 		case strings.HasPrefix(kind, droppedPrefix):
@@ -367,9 +392,20 @@ func (e *Encounter) heldPropsOf(member MemberID) []PropID {
 func (e *Encounter) firedExitedHolding(
 	member MemberID, through ExitID, carried []PropID, at uint64, audience []MemberID,
 ) (*Outcome, error) {
-	if e.outcome != nil || through == "" || len(carried) == 0 {
-		return nil, nil
-	}
+	// NO GUARDS BUT THE LOOP. Three were written here first and a mutation
+	// pass removed all three, because none of them decided anything:
+	//
+	//   - "they left from no exit" and "they carried nothing" both fall out
+	//     of the match below, since an ending names a real exit and a real
+	//     item and neither can match an empty answer;
+	//   - "the encounter is already closed" is unreachable — [Encounter.Exit]
+	//     refuses ErrClosed long before this, and nothing between the two can
+	//     close the scene (the sight refresh that can runs afterwards).
+	//
+	// [Encounter.firedReachedPosition] keeps that last guard and needs it:
+	// the sight refresh preceding ITS scan can close the encounter. This one
+	// has no such caller, and a branch nothing can reach is a branch nobody
+	// can be sure of. A second caller adds it back, with a scene.
 	holding := make(map[PropID]bool, len(carried))
 	for _, id := range carried {
 		holding[id] = true

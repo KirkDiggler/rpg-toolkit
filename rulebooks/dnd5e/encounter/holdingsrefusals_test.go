@@ -71,21 +71,34 @@ func (s *HoldingsSuite) TestLootRefusesInOrder() {
 // TestLootIsOfferedOnEveryBody is design P3 from the refusal side: no body is
 // specially lootable, and the verb never refuses because a body is empty.
 func (s *HoldingsSuite) TestLootIsOfferedOnEveryBody() {
-	enc := s.open(false)
+	// The captain knows the vault door. The partner knows nothing. Both are
+	// down, and BOTH are lootable — that is the affordance half of P3.
+	enc := s.open(true)
 	s.standing.down = []encounter.MemberID{captain, partner}
 	_, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 
-	_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: partner})
-	s.Require().NoError(err, "a fellow player's body is a body")
+	s.Run("a fellow player's empty body is a body, and gives nothing", func() {
+		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: partner})
+		s.Require().NoError(err)
+		s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 1)
+		// THE SECRECY HALF. A body with nothing must transfer nothing —
+		// which is only true if the transfer reads the holdings of THIS
+		// body rather than of whoever happens to hold something.
+		s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"),
+			"looting an empty body must not hand over somebody else's secret")
+		doors, err := enc.DoorsFor(raider)
+		s.Require().NoError(err)
+		s.Require().False(doorsListed(doors, tombVault))
+	})
 
-	s.walkTo(enc, raider, captainCell)
-	_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
-	s.Require().NoError(err, "and so is a monster's, carrying nothing")
-
-	s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 2)
-	s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"),
-		"nothing moved, because there was nothing to move")
+	s.Run("and the body that DOES carry it gives it", func() {
+		s.walkTo(enc, raider, captainCell)
+		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
+		s.Require().NoError(err)
+		s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 2)
+		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+	})
 }
 
 // TestTakeRefusesInOrder walks design §4.3's validation order.

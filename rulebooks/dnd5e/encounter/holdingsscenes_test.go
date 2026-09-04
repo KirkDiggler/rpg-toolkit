@@ -413,21 +413,36 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 		s.Require().False(present)
 	})
 
-	s.Run("the looter still knows the door and the body no longer has it", func() {
+	s.Run("the looter still knows the door", func() {
 		doors, err := reloaded.DoorsFor(raider)
 		s.Require().NoError(err)
 		s.Require().True(doorsListed(doors, tombVault))
+	})
 
-		// Loot the body a second time. If Load had re-seeded MemberInput.Knows
-		// the captain would be carrying the intel again — and the partner
-		// would learn it here.
+	s.Run("and the second player to loot the body learns it too", func() {
+		// Knowledge copies (holdings.go): the captain still knows the way
+		// in, and the next person to search the body finds it exactly as
+		// the first did.
 		s.walkTo(reloaded, partner, captainCell)
-		_, err = reloaded.Loot(&encounter.LootInput{Member: partner, Target: captain})
+		_, err := reloaded.Loot(&encounter.LootInput{Member: partner, Target: captain})
 		s.Require().NoError(err)
 		partnerDoors, err := reloaded.DoorsFor(partner)
 		s.Require().NoError(err)
-		s.Require().False(doorsListed(partnerDoors, tombVault),
-			"the captain has nothing left to give; a re-seed at load would show here")
+		s.Require().True(doorsListed(partnerDoors, tombVault))
+	})
+
+	s.Run("the journal is REPLAYED, never re-seeded", func() {
+		// A load that re-ran MemberInput.Knows would append the author's
+		// links a second time, and a third on the next load, growing the
+		// blob without bound. The fact count is what catches that.
+		fresh, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Data:  data,
+			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			CheckResolver: findsNothing{}, Witness: s.witness,
+		})
+		s.Require().NoError(err)
+		s.Require().Equal(len(data.Holdings.Facts), len(fresh.ToData().Holdings.Facts))
 	})
 
 	s.Run("the carrier still walks out and wins", func() {
@@ -472,4 +487,174 @@ func (s *HoldingsSuite) TestTheLootedIntelKeepsTravelling() {
 	doors, err := enc.DoorsFor(partner)
 	s.Require().NoError(err)
 	s.Require().True(doorsListed(doors, tombVault))
+}
+
+// TestLootTakesThePropOffTheBody is design P5's other half — "a fallen
+// holder's body holds it still, and the same loot verb takes it back."
+//
+// One transfer routine moves EVERY holding, and until this scene existed
+// only the intel half of it was covered: a mutation pass that stopped props
+// transferring killed no test.
+func (s *HoldingsSuite) TestLootTakesThePropOffTheBody() {
+	enc := s.open(false, recoverEnding(), encounter.EndingInput{
+		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
+	})
+	s.walkTo(enc, raider, heirloomCell)
+	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: heirloom})
+	s.Require().NoError(err)
+
+	s.Run("the carrier falls, still holding it", func() {
+		s.standing.down = []encounter.MemberID{raider}
+		_, err := enc.Pump(&encounter.PumpInput{})
+		s.Require().NoError(err)
+		atlas, err := enc.Atlas()
+		s.Require().NoError(err)
+		_, present := propInAtlas(atlas, heirloom)
+		s.Require().False(present, "a body holds what it was carrying; nothing fell out")
+	})
+
+	s.Run("a companion loots the body and carries it out", func() {
+		s.walkTo(enc, partner, heirloomCell)
+		_, err := enc.Loot(&encounter.LootInput{Member: partner, Target: raider, Range: 2})
+		s.Require().NoError(err)
+
+		s.walkTo(enc, partner, raiderCell)
+		out, err := enc.Exit(&encounter.ExitInput{Member: partner})
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Closed, "the heirloom changed hands, so the run can still be won")
+		s.Require().Equal(recovered, out.Closed.Ending)
+	})
+}
+
+// TestLootingTheSameIntelTwiceRevealsOnce: the transfer reuses the reveal
+// path search owns, and that path is idempotent — knowledge already held is
+// never re-written and never re-beat (conceal.go's own law).
+func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
+	// TWO monsters, both authored knowing the vault door — which is what it
+	// takes to reach the guard at all: looting one body empties it, so a
+	// second loot of the SAME body transfers nothing and would say nothing
+	// whatever the guard did.
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+		Field: heirloomField(),
+		Members: []encounter.MemberInput{
+			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
+			{ID: captain, Kind: encounter.KindMonster, Position: captainCell,
+				Knows: []encounter.DoorID{tombVault}},
+			{ID: sentry, Kind: encounter.KindMonster, Position: sentryCell,
+				Knows: []encounter.DoorID{tombVault}},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+
+	s.standing.down = []encounter.MemberID{captain, sentry}
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+
+	s.walkTo(enc, raider, captainCell)
+	_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
+	s.Require().NoError(err)
+	for _, b := range s.beats(enc, raider) {
+		s.T().Logf("BEAT %v", b["beat"])
+	}
+	s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+
+	s.Run("the same body a second time has nothing left to give", func() {
+		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
+		s.Require().NoError(err)
+		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+	})
+
+	s.Run("a DIFFERENT body that still carries it reveals nothing new", func() {
+		// The guard that matters: knowledge already held is never
+		// re-written and never re-beat (conceal.go's own law), reached
+		// through a body that genuinely still has the intel to give.
+		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: sentry, Range: 2})
+		s.Require().NoError(err)
+		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1,
+			"a second arrival of knowledge already held is not a second reveal")
+		s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 3, "and all three loots happened")
+	})
+}
+
+// TestLootingIntelForAnOrdinaryDoorRevealsNothing: knowing an unconcealed
+// door is inert ([MemberInput.Knows]), and inert means no beat — even in a
+// dungeon that DOES carry concealment elsewhere, which is the case the
+// world-is-nil short-circuit does not cover.
+func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
+	// The fixture, with a SECOND opening in the hall|tomb seam at row 1 and
+	// an ordinary door standing in it. Rebuilt rather than appended to: the
+	// seam is a whole wall set, and adding a second copy of it would list
+	// every crossing twice.
+	field := heirloomField()
+	field.Walls = append(
+		seamWallExcept(3, 8, hallGapRow, 1),
+		seamWallExcept(7, 8, vaultSeamRow)...)
+	field.Doors = append(append([]encounter.DoorInput(nil), field.Doors...), encounter.DoorInput{
+		ID: "hall-tomb-gate", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
+	})
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+		Field: field,
+		Members: []encounter.MemberInput{
+			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
+			// The captain knows the ORDINARY gate, not the vault door. The
+			// field still carries concealment, so the world exists and the
+			// only thing standing between this loot and a spurious reveal is
+			// the concealed check itself.
+			{ID: captain, Kind: encounter.KindMonster, Position: partnerCell,
+				Knows: []encounter.DoorID{"hall-tomb-gate"}},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+
+	s.standing.down = []encounter.MemberID{captain}
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+
+	before, err := enc.AtlasFor(raider)
+	s.Require().NoError(err)
+	_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain, Range: 2})
+	s.Require().NoError(err)
+	after, err := enc.AtlasFor(raider)
+	s.Require().NoError(err)
+
+	s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"),
+		"there is nothing to reveal about a door anybody can already see")
+	s.Require().Equal(before, after)
+	s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 1, "and the loot itself happened")
+}
+
+// TestLeavingTheBoundExitWithTheWRONGThingDoesNotWin: the ending names an
+// item, and carrying a different one is not carrying that one.
+func (s *HoldingsSuite) TestLeavingTheBoundExitWithTheWRONGThingDoesNotWin() {
+	enc := s.open(false, recoverEnding(), encounter.EndingInput{
+		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
+	})
+	s.walkTo(enc, raider, chaliceCell)
+	_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+	s.Require().NoError(err)
+	s.walkTo(enc, raider, raiderCell)
+
+	out, err := enc.Exit(&encounter.ExitInput{Member: raider})
+	s.Require().NoError(err)
+
+	s.Require().Nil(out.Closed, "the chalice is not the artifact")
+	exited := s.beatsOfKind(enc, partner, "exited")
+	s.Require().Len(exited, 1)
+	s.Require().Equal(frontGate, exited[0]["exit"], "they did leave by the bound exit")
+	s.Require().Equal([]any{chalice}, exited[0]["holding"])
+
+	dropped := s.beatsOfKind(enc, partner, "dropped")
+	s.Require().Len(dropped, 1, "and the run goes on, so what they carried stays in it")
+	s.Require().Equal(chalice, dropped[0]["prop"])
 }
