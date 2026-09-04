@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Rage Is Not Raging</title>
+<meta name="description" content="How a compiler error separated Rage from Raging, gave each responsibility an owner, and made an autonomous +2 explain itself.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/rage-is-not-raging/">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Rage Is Not Raging">
+<meta property="og:description" content="How a compiler error separated Rage from Raging, gave each responsibility an owner, and made an autonomous +2 explain itself.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/rage-is-not-raging/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/rage-is-not-raging.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/rage-is-not-raging.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading Rage Is Not Raging beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Rage Is Not Raging">
+<meta name="twitter:description" content="How a compiler error separated Rage from Raging, gave each responsibility an owner, and made an autonomous +2 explain itself.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/rage-is-not-raging.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading Rage Is Not Raging beside a blue D20 wireframe.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+  :root{
+    --ground:#11141a;
+    --surface:#181c23;
+    --primary:#f1f3f5;
+    --muted:#c2c8d0;
+    --faint:#9da7b4;
+    --rule:#343b46;
+    --rule-strong:#4c5665;
+    --accent:#7189d7;
+    --accent-strong:#8ea2e4;
+    --accent-soft:#1b2236;
+    --pressure:#c96d62;
+    --pressure-soft:#2b1e20;
+    --life:#76a58c;
+    --life-soft:#192922;
+    --signal:#d2ad68;
+    --signal-soft:#2b261a;
+  }
+  *{box-sizing:border-box}
+  html{overflow-x:clip;background:var(--ground);color-scheme:dark}
+  body{
+    margin:0;background:var(--ground);color:var(--primary);
+    font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+  .page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+  header{padding:82px 72px 76px;border-bottom:1px solid var(--rule)}
+  .eyebrow,.question-label,.date-label,.micro,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+  .eyebrow{color:var(--accent);font-size:.76rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase}
+  h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1;text-wrap:balance}
+  h1{max-width:940px;margin:.28em 0 .22em;font-size:clamp(4rem,9vw,7.2rem);letter-spacing:-.04em}
+  .dek{max-width:800px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+  .origin-links{display:flex;flex-wrap:wrap;gap:1.8rem;max-width:880px;margin-top:1.7rem}
+  .origin-link{
+    display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);color:inherit;text-decoration:none;
+  }
+  .origin-link span{color:var(--accent);font:600 .68rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+  .origin-link strong{color:var(--primary);font:600 1rem/1.2 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+  .origin-link:hover strong{color:var(--accent)}
+  .opening-proof{
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));max-width:880px;margin-top:36px;
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+  }
+  .opening-proof div{padding:14px 18px 14px 0}
+  .opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+  .opening-proof b{display:block;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:1.04rem;font-weight:600}
+  .opening-proof span{color:var(--muted);font-size:.86rem}
+  .legend{display:flex;gap:1.5rem;max-width:880px;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+  .legend span{display:inline-flex;align-items:center;gap:.48rem}
+  .legend i{display:inline-block;width:22px;height:2px;background:var(--accent)}
+  .legend span+span i{background:var(--pressure)}
+  .timeline{position:relative}
+  .timeline::before{content:"";position:absolute;top:0;bottom:0;left:55px;width:1px;background:var(--rule-strong)}
+  .timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px;margin:0}
+  .rail{position:relative;padding-top:47px;text-align:right}
+  .node{
+    position:absolute;top:50px;right:-8px;z-index:2;display:grid;width:18px;height:18px;place-items:center;
+    border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent);
+  }
+  .pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}
+  .rail-number{display:block;padding-right:22px;color:var(--accent);font:600 1.25rem/1 "IBM Plex Mono",ui-monospace,monospace}
+  .pressure-panel .rail-number{color:var(--pressure)}
+  .date-label{
+    display:block;max-width:90px;margin:12px 16px 0 auto;color:var(--faint);
+    font-size:.7rem;letter-spacing:.08em;line-height:1.35;text-transform:uppercase;
+  }
+  .panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule);background:transparent}
+  .question-label{margin-bottom:7px;color:var(--accent);font-size:.73rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase}
+  .pressure-panel .question-label{color:var(--pressure)}
+  h2{max-width:860px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+  p{max-width:74ch;margin:.76em 0}
+  .lead{color:var(--muted);font-size:1.07rem}
+  .lead strong{color:var(--primary)}
+  code{color:var(--accent);font-size:.88em}
+  figure{
+    margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;
+    border-top:1px solid var(--rule-strong);border-bottom:1px solid var(--rule-strong);background:transparent;
+    scrollbar-color:var(--rule-strong) var(--ground);
+  }
+  figure svg{display:block;width:100%;min-width:820px;height:auto;margin:0 auto}
+  figcaption{max-width:78ch;margin-top:12px;color:var(--faint);font:400 .82rem/1.55 "IBM Plex Mono",ui-monospace,monospace}
+  .law{
+    max-width:800px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);
+    color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",ui-monospace,monospace;
+  }
+  .law b{color:var(--primary);font-weight:600}
+  .pressure-law{border-left-color:var(--pressure)}
+  .quote{max-width:810px;margin:24px 0 0;color:var(--primary);font-size:clamp(1.15rem,2.3vw,1.48rem);font-style:italic;line-height:1.45}
+  .end-question{max-width:860px;margin:34px 0 23px;padding-top:28px;border-top:1px solid var(--rule);font-size:clamp(1.8rem,3.6vw,2.65rem)}
+  footer{max-width:920px;margin:72px 0 0 136px;padding:28px 0 0;border-top:1px solid var(--rule);color:var(--muted)}
+  footer h2{margin-bottom:.45rem;color:var(--primary);font-size:1.4rem}
+  footer p{margin:.45rem 0;font-size:.86rem}
+  footer code{color:var(--accent)}
+  svg{color:var(--primary)}
+  svg text{fill:currentColor;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:15px}
+  svg .t-title{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px;font-weight:600}
+  svg .t-big{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:25px;font-weight:600}
+  svg .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px}
+  svg .small{fill:var(--muted);font-size:13px}
+  svg .tiny{fill:var(--muted);font-size:12px}
+  svg .label{fill:var(--muted);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;font-weight:600;letter-spacing:.8px}
+  svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.2}
+  svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.2;stroke-dasharray:7 6}
+  svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.3}
+  svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.3}
+  svg .life{fill:var(--life-soft);stroke:var(--life);stroke-width:1.3}
+  svg .signal{fill:var(--signal-soft);stroke:var(--signal);stroke-width:1.3}
+  svg .wire{fill:none;stroke:var(--primary);stroke-width:1.4}
+  svg .wire-muted{fill:none;stroke:var(--rule-strong);stroke-width:1.3}
+  svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}
+  svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}
+  svg .wire-life{fill:none;stroke:var(--life);stroke-width:1.8}
+  svg .dash{stroke-dasharray:6 5}
+  svg .blue{fill:var(--accent)}
+  svg .rust{fill:var(--pressure)}
+  svg .green{fill:var(--life)}
+  svg .gold{fill:var(--signal)}
+  figure::before{display:none}
+  @media(max-width:760px){
+    figure::before{
+      content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;
+      margin:0 0 11px;padding:.3rem 0;border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);
+      background:var(--ground);color:var(--accent);font:500 .7rem/1.3 "IBM Plex Mono",ui-monospace,monospace;
+      letter-spacing:.08em;text-transform:uppercase;
+    }
+    .page{padding:14px 14px 70px}
+    header{padding:58px 14px 56px 42px}
+    .origin-links{display:block}
+    .origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}
+    .opening-proof{grid-template-columns:1fr}
+    .opening-proof div{padding:11px 0}
+    .opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}
+    .legend{align-items:flex-start;flex-direction:column;gap:.55rem}
+    .timeline::before{left:16px}
+    .timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}
+    .rail{padding-top:39px}
+    .node{top:42px;right:9px;width:14px;height:14px;border-width:3px}
+    .rail-number{padding-right:0;font-size:0}
+    .date-label{position:absolute;top:62px;left:-5px;width:48px;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.64rem;white-space:nowrap}
+    .panel-body{padding:40px 13px 48px}
+    figure{margin-inline:0;padding:14px 0 10px}
+    figure svg{min-width:900px}
+    footer{margin:50px 0 0 42px}
+  }
+  @media(max-width:420px){
+    body{font-size:16px}
+    header{padding-left:38px}
+    h1{font-size:3.65rem}
+  }
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header>
+    <div class="eyebrow">Layer 3 · Actions and active state</div>
+    <h1>Rage Is Not Raging</h1>
+    <p class="dek">D&amp;D used one word for both the ability and the state it created. The compiler made me admit they were different responsibilities. Splitting them turned one overloaded feature into a composable handoff, then made the hidden <code>+2</code> explain itself.</p>
+    <div class="origin-links">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets &rarr;</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/the-nervous-system/"><span>Previous field note</span><strong>The Nervous System &rarr;</strong></a>
+    </div>
+    <div class="opening-proof" aria-label="Story coordinates">
+      <div><b>Start</b><span>one feature owns everything</span></div>
+      <div><b>Turn</b><span>the compiler refuses</span></div>
+      <div><b>Proof</b><span>the +2 explains itself</span></div>
+    </div>
+    <div class="legend" aria-label="Visual legend"><span><i></i>responsibility finds an owner</span><span><i></i>architecture pushes back</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Six-panel Rage responsibility timeline">
+    <section class="timeline-panel pressure-panel" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">01</span><span class="date-label">2025-08-17 · rewind one day</span></div>
+      <div class="panel-body">
+        <div class="question-label">Before the small API felt inevitable</div>
+        <h2 id="panel-1-title">One object doing everything</h2>
+        <p class="lead">The last field note ended with the confidence of <code>.On(bus)</code>. Rewind one day. The first real Rage Feature was roughly 170 lines because activating Rage and remaining enraged were still treated as one responsibility.</p>
+        <p class="lead">It checked and spent uses, remembered its owner, subscribed to attacks and incoming damage, added damage and resistance, tracked subscription IDs, ended itself, and announced that it had started and stopped.</p>
+        <figure>
+          <svg viewBox="0 0 1040 520" role="img" aria-label="One overloaded Rage Feature sits at the center of eight responsibilities: uses, activation, attack subscription, damage bonus, resistance, activity tracking, unsubscribe, and ending.">
+            <title>The early Rage Feature owns every responsibility</title>
+            <defs><marker id="p1r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <text x="28" y="28" class="label rust">COMMIT C578C911 · ROUGHLY 170 LINES</text>
+            <rect x="392" y="177" width="256" height="166" class="pressure"/>
+            <text x="520" y="216" text-anchor="middle" class="label rust">ONE OBJECT</text>
+            <text x="520" y="263" text-anchor="middle" class="t-big">Rage Feature</text>
+            <text x="520" y="299" text-anchor="middle" class="mono">active · owner · subscriptions</text>
+            <text x="520" y="325" text-anchor="middle" class="small">every reason to change</text>
+
+            <rect x="28" y="69" width="214" height="72" class="box"/><text x="135" y="98" text-anchor="middle" class="label">RESOURCE</text><text x="135" y="125" text-anchor="middle" class="mono">check + spend uses</text>
+            <rect x="413" y="51" width="214" height="72" class="box"/><text x="520" y="80" text-anchor="middle" class="label">ACTIVATION</text><text x="520" y="107" text-anchor="middle" class="mono">start Rage</text>
+            <rect x="798" y="69" width="214" height="72" class="box"/><text x="905" y="98" text-anchor="middle" class="label">SUBSCRIBE</text><text x="905" y="125" text-anchor="middle" class="mono">watch attacks</text>
+            <rect x="28" y="224" width="214" height="72" class="box"/><text x="135" y="253" text-anchor="middle" class="label">MODIFY</text><text x="135" y="280" text-anchor="middle" class="mono">add damage</text>
+            <rect x="798" y="224" width="214" height="72" class="box"/><text x="905" y="253" text-anchor="middle" class="label">MODIFY</text><text x="905" y="280" text-anchor="middle" class="mono">apply resistance</text>
+            <rect x="28" y="379" width="214" height="72" class="box"/><text x="135" y="408" text-anchor="middle" class="label">OBSERVE</text><text x="135" y="435" text-anchor="middle" class="mono">track activity</text>
+            <rect x="413" y="397" width="214" height="72" class="box"/><text x="520" y="426" text-anchor="middle" class="label">CLEAN UP</text><text x="520" y="453" text-anchor="middle" class="mono">unsubscribe itself</text>
+            <rect x="798" y="379" width="214" height="72" class="box"/><text x="905" y="408" text-anchor="middle" class="label">LIFECYCLE</text><text x="905" y="435" text-anchor="middle" class="mono">decide when to end</text>
+
+            <path d="M423 177 242 132" class="wire-rust" marker-end="url(#p1r)"/><path d="M520 177V125" class="wire-rust" marker-end="url(#p1r)"/><path d="M617 177 798 132" class="wire-rust" marker-end="url(#p1r)"/>
+            <path d="M392 260H244" class="wire-rust" marker-end="url(#p1r)"/><path d="M648 260H796" class="wire-rust" marker-end="url(#p1r)"/>
+            <path d="M423 343 242 397" class="wire-rust" marker-end="url(#p1r)"/><path d="M520 343V395" class="wire-rust" marker-end="url(#p1r)"/><path d="M617 343 798 397" class="wire-rust" marker-end="url(#p1r)"/>
+            <text x="520" y="506" text-anchor="middle" class="label rust">EIGHT RESPONSIBILITIES · ONE FEATURE</text>
+          </svg>
+          <figcaption>The implementation was not large because Rage was unusually complicated. It was large because the capability and its ongoing state had not yet become separate owners.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>The pressure:</b> one D&amp;D word was hiding two different kinds of behavior.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">02</span><span class="date-label">2025-08-20 · the split</span></div>
+      <div class="panel-body">
+        <div class="question-label">One word, two owners</div>
+        <h2 id="panel-2-title">Rage is not Raging</h2>
+        <p class="lead">Rage is something a Barbarian can do. Raging is the temporary state that follows. The feature should decide whether activation is allowed and spend the use. The condition should own everything that remains true afterward.</p>
+        <figure>
+          <svg viewBox="0 0 1040 470" role="img" aria-label="The overloaded Rage node splits into a Rage Feature that can activate and spend a use, and a Raging Condition that remains active, changes calculations, and watches its ending.">
+            <title>Rage and Raging become separate responsibilities</title>
+            <defs><marker id="p2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <rect x="380" y="39" width="280" height="88" class="pressure"/>
+            <text x="520" y="72" text-anchor="middle" class="label rust">ONE D&amp;D WORD</text>
+            <text x="520" y="106" text-anchor="middle" class="t-big">Rage</text>
+            <path d="M460 127V169H259V204" class="wire-blue" marker-end="url(#p2b)"/>
+            <path d="M580 127V169H781V204" class="wire-blue" marker-end="url(#p2b)"/>
+            <text x="520" y="164" text-anchor="middle" class="label blue">SPLIT BY RESPONSIBILITY</text>
+
+            <rect x="92" y="206" width="334" height="204" class="soft"/>
+            <text x="120" y="240" class="label blue">PERMANENT CAPABILITY</text>
+            <text x="120" y="282" class="t-big">Rage Feature</text>
+            <line x1="120" y1="304" x2="398" y2="304" class="wire-muted dash"/>
+            <text x="120" y="338" class="mono">CanActivate</text>
+            <text x="120" y="368" class="mono">spend one use</text>
+            <text x="120" y="398" class="small">begin the handoff</text>
+
+            <rect x="614" y="206" width="334" height="204" class="life"/>
+            <text x="642" y="240" class="label green">TEMPORARY STATE</text>
+            <text x="642" y="282" class="t-big">Raging Condition</text>
+            <line x1="642" y1="304" x2="920" y2="304" class="wire-muted dash"/>
+            <text x="642" y="338" class="mono">change calculations</text>
+            <text x="642" y="368" class="mono">watch combat activity</text>
+            <text x="642" y="398" class="small">own how the state ends</text>
+
+            <text x="259" y="452" text-anchor="middle" class="label blue">THE VERB</text>
+            <text x="781" y="452" text-anchor="middle" class="label green">WHAT REMAINS TRUE</text>
+          </svg>
+          <figcaption>D&amp;D could keep one familiar name. The code needed to distinguish the capability somebody owns from the state currently affecting them.</figcaption>
+        </figure>
+        <div class="law"><b>The split:</b> Features activate. Conditions persist.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">03</span><span class="date-label">2025-09-28 → 11-16</span></div>
+      <div class="panel-body">
+        <div class="question-label">The package graph tells the truth</div>
+        <h2 id="panel-3-title">The compiler agrees</h2>
+        <p class="lead">The concepts were separate. Their dependencies were not. Rage needed to create Raging. Conditions needed the D&amp;D event topics. The root D&amp;D package defined those events while also trying to import its child implementations.</p>
+        <p class="lead">Go refused the circular dependency. I could move the names around, but I would not continue until the arrows expressed one honest direction of ownership.</p>
+        <figure>
+          <svg viewBox="0 0 1040 470" role="img" aria-label="Features, the root D and D package, and conditions form a circular dependency. The center shows Go's import cycle not allowed error. The root package is labeled as trying to be both foundation and coordinator.">
+            <title>Go rejects the circular package dependency</title>
+            <defs><marker id="p3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <text x="28" y="29" class="label rust">THE ATTEMPTED HANDOFF</text>
+            <rect x="62" y="82" width="254" height="114" class="pressure"/>
+            <text x="189" y="118" text-anchor="middle" class="label rust">DND5E / FEATURES</text>
+            <text x="189" y="156" text-anchor="middle" class="t-title">Rage Feature</text>
+            <text x="189" y="181" text-anchor="middle" class="small">needs to create Raging</text>
+
+            <rect x="724" y="82" width="254" height="114" class="pressure"/>
+            <text x="851" y="118" text-anchor="middle" class="label rust">DND5E / CONDITIONS</text>
+            <text x="851" y="156" text-anchor="middle" class="t-title">RagingCondition</text>
+            <text x="851" y="181" text-anchor="middle" class="small">needs D&amp;D event topics</text>
+
+            <rect x="358" y="284" width="324" height="125" class="pressure"/>
+            <text x="520" y="317" text-anchor="middle" class="label rust">ROOT DND5E PACKAGE</text>
+            <text x="520" y="353" text-anchor="middle" class="t-title">foundation + coordinator</text>
+            <text x="520" y="384" text-anchor="middle" class="small">defines events · imports children</text>
+
+            <path d="M316 139H722" class="wire-rust" marker-end="url(#p3r)"/>
+            <path d="M851 196V245H648V282" class="wire-rust" marker-end="url(#p3r)"/>
+            <path d="M392 284V245H189V198" class="wire-rust" marker-end="url(#p3r)"/>
+
+            <rect x="358" y="87" width="324" height="100" class="box"/>
+            <text x="520" y="121" text-anchor="middle" class="label rust">GO BUILD</text>
+            <text x="520" y="157" text-anchor="middle" class="mono rust">import cycle not allowed</text>
+            <text x="520" y="444" text-anchor="middle" class="label rust">THE ARROWS CANNOT ALL BE TRUE</text>
+          </svg>
+          <figcaption>The compiler error was not an inconvenience to route around. It was evidence that a package was claiming two incompatible architectural roles.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>The refusal:</b> a circular dependency is architecture arguing with itself.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">04</span><span class="date-label">Already present · 2025-08-16</span></div>
+      <div class="panel-body">
+        <div class="question-label">The smaller contract was waiting</div>
+        <h2 id="panel-4-title">Give the job to the thing that can own it</h2>
+        <p class="lead"><code>Action[T]</code> had landed before both the overloaded Rage and the compiler wall. Its first example was Rage. The contract asked only whether an action could activate, then let it activate. The cycle made the value of that restraint visible.</p>
+        <p class="lead">The answer was not another object above everything. It was giving each responsibility to the thing that could do it well and own the result.</p>
+        <figure>
+          <svg viewBox="0 0 1040 500" role="img" aria-label="A four-row responsibility ledger assigns activation to Rage, active behavior and ending to Raging, the active-condition collection to Character, and shared handoff vocabulary to dnd5e events. Action T contains only CanActivate and Activate.">
+            <title>Each responsibility moves to the thing that can own it</title>
+            <text x="28" y="29" class="label blue">RESPONSIBILITY LEDGER</text>
+            <rect x="28" y="52" width="984" height="94" class="soft"/>
+            <text x="58" y="84" class="label blue">RAGE · ACTION[T]</text>
+            <text x="58" y="121" class="t-title">CanActivate + Activate</text>
+            <text x="980" y="103" text-anchor="end" class="small">check availability · spend the use · begin the handoff</text>
+
+            <rect x="28" y="158" width="984" height="94" class="life"/>
+            <text x="58" y="190" class="label green">RAGING · CONDITIONBEHAVIOR</text>
+            <text x="58" y="227" class="t-title">Own the temporary state</text>
+            <text x="980" y="209" text-anchor="end" class="small">modify calculations · observe activity · end cleanly</text>
+
+            <rect x="28" y="264" width="984" height="94" class="box"/>
+            <text x="58" y="296" class="label">CHARACTER</text>
+            <text x="58" y="333" class="t-title">Own active conditions</text>
+            <text x="980" y="315" text-anchor="end" class="small">verify target · apply behavior · store the condition</text>
+
+            <rect x="28" y="370" width="984" height="94" class="soft"/>
+            <text x="58" y="402" class="label blue">DND5E / EVENTS</text>
+            <text x="58" y="439" class="t-title">Own the handoff contract</text>
+            <text x="980" y="421" text-anchor="end" class="small">topics · event types · small shared interfaces</text>
+            <text x="520" y="493" text-anchor="middle" class="label blue">ONE JOB EACH · ONE DIRECTION BETWEEN THEM</text>
+          </svg>
+          <figcaption>The generic Action contract is supporting evidence, not a new subsystem tour. Its importance is how little it asks Rage to own.</figcaption>
+        </figure>
+        <div class="law"><b>The rule:</b> Put each responsibility with the thing that can do it well and own the result.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="5" aria-labelledby="panel-5-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">05</span><span class="date-label">2025-11-17 · the handoff</span></div>
+      <div class="panel-body">
+        <div class="question-label">A foundation that imports no children</div>
+        <h2 id="panel-5-title">Give the handoff neutral ground</h2>
+        <p class="lead">The final correction extracted <code>dnd5e/events</code>. It owned the topics, event types, and small <code>ConditionBehavior</code> interface without importing Feature, Condition, or Character implementations. Every domain package could point toward the same foundation.</p>
+        <p class="lead">Rage could create Raging and announce the handoff. Character could receive it, apply it, and store it. Raging could subscribe to the moments and chains it owned from there.</p>
+        <figure>
+          <svg viewBox="0 0 1040 650" role="img" aria-label="Features, conditions, and character all depend one way on a neutral dnd5e events foundation. Below, Rage creates a RagingCondition and publishes a ConditionAppliedEvent carrying ConditionBehavior. Character receives it, applies and stores it, and the RagingCondition subscribes to its runtime concerns.">
+            <title>A neutral events package enables the typed Rage to Raging handoff</title>
+            <defs><marker id="p5b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="p5g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--life)"/></marker></defs>
+            <text x="28" y="29" class="label blue">01 · ONE-WAY PACKAGE FOUNDATION</text>
+            <rect x="42" y="58" width="258" height="92" class="box"/>
+            <text x="171" y="91" text-anchor="middle" class="label">FEATURES</text>
+            <text x="171" y="125" text-anchor="middle" class="mono">Rage</text>
+            <rect x="391" y="58" width="258" height="92" class="box"/>
+            <text x="520" y="91" text-anchor="middle" class="label">CONDITIONS</text>
+            <text x="520" y="125" text-anchor="middle" class="mono">RagingCondition</text>
+            <rect x="740" y="58" width="258" height="92" class="box"/>
+            <text x="869" y="91" text-anchor="middle" class="label">CHARACTER</text>
+            <text x="869" y="125" text-anchor="middle" class="mono">active conditions</text>
+
+            <path d="M171 150V201H405V226" class="wire-blue" marker-end="url(#p5b)"/>
+            <path d="M520 150V224" class="wire-blue" marker-end="url(#p5b)"/>
+            <path d="M869 150V201H635V226" class="wire-blue" marker-end="url(#p5b)"/>
+            <rect x="333" y="226" width="374" height="105" class="soft"/>
+            <text x="520" y="260" text-anchor="middle" class="label blue">DND5E / EVENTS · FOUNDATION</text>
+            <text x="520" y="296" text-anchor="middle" class="mono">topics · event types · ConditionBehavior</text>
+            <text x="520" y="319" text-anchor="middle" class="small">imports no D&amp;D child implementation</text>
+
+            <line x1="28" y1="377" x2="1012" y2="377" class="wire-muted dash"/>
+            <text x="28" y="411" class="label blue">02 · THE TYPED HANDOFF</text>
+            <rect x="28" y="437" width="232" height="118" class="soft"/>
+            <text x="53" y="469" class="label blue">RAGE.ACTIVATE</text>
+            <text x="53" y="505" class="mono">spend one use</text>
+            <text x="53" y="533" class="mono">create RagingCondition</text>
+            <line x1="260" y1="496" x2="324" y2="496" class="wire-blue" marker-end="url(#p5b)"/>
+            <rect x="326" y="425" width="296" height="142" class="soft"/>
+            <text x="474" y="457" text-anchor="middle" class="label blue">CONDITIONAPPLIEDEVENT</text>
+            <text x="351" y="493" class="mono">Target: barbarian</text>
+            <text x="351" y="521" class="mono">Type: raging</text>
+            <text x="351" y="549" class="mono">Condition: ConditionBehavior</text>
+            <line x1="622" y1="496" x2="686" y2="496" class="wire-blue" marker-end="url(#p5b)"/>
+            <rect x="688" y="437" width="324" height="118" class="box"/>
+            <text x="713" y="469" class="label">CHARACTER RECEIVES</text>
+            <text x="713" y="505" class="mono">Condition.Apply(bus)</text>
+            <text x="713" y="533" class="mono">append(activeConditions)</text>
+            <path d="M850 555V597H520" class="wire-life" marker-end="url(#p5g)"/>
+            <rect x="327" y="581" width="386" height="54" class="life"/>
+            <text x="520" y="614" text-anchor="middle" class="mono">Raging owns what happens next</text>
+          </svg>
+          <figcaption>The event bus carried a typed handoff across the boundary. Character remained the owner of its collection, and Raging remained the owner of the active behavior.</figcaption>
+        </figure>
+        <div class="law"><b>The handoff:</b> the event bus was the route. It did not own the result.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="6" aria-labelledby="panel-6-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">06</span><span class="date-label">2025-11-17 → 11-19</span></div>
+      <div class="panel-body">
+        <div class="question-label">The insides become observable</div>
+        <h2 id="panel-6-title">Why is this 13 damage?</h2>
+        <p class="lead">The proof did not need the whole combat system. A Barbarian attacked a Monster. The active RagingCondition joined <code>DamageChain</code> and contributed its bonus. The result kept enough provenance to explain itself.</p>
+        <figure>
+          <svg viewBox="0 0 1040 570" role="img" aria-label="A Barbarian attacks a Monster through DamageChain. A large combat breakdown shows 8 weapon damage, plus 3 Strength modifier, plus 2 Rage bonus, totaling 13 damage. The Rage contribution is highlighted blue.">
+            <title>The Rage contribution becomes visible in a 13 damage breakdown</title>
+            <defs><marker id="p6b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <text x="28" y="29" class="label">ONE COMPLETE PATH</text>
+            <rect x="28" y="53" width="244" height="87" class="box"/>
+            <text x="150" y="85" text-anchor="middle" class="label">BARBARIAN</text>
+            <text x="150" y="118" text-anchor="middle" class="mono">Raging active</text>
+            <line x1="272" y1="97" x2="396" y2="97" class="wire-blue" marker-end="url(#p6b)"/>
+            <rect x="398" y="53" width="244" height="87" class="soft"/>
+            <text x="520" y="85" text-anchor="middle" class="label blue">DAMAGECHAIN</text>
+            <text x="520" y="118" text-anchor="middle" class="mono">gather → execute</text>
+            <line x1="642" y1="97" x2="766" y2="97" class="wire-blue" marker-end="url(#p6b)"/>
+            <rect x="768" y="53" width="244" height="87" class="box"/>
+            <text x="890" y="85" text-anchor="middle" class="label">MONSTER</text>
+            <text x="890" y="118" text-anchor="middle" class="mono">takes final damage</text>
+
+            <rect x="176" y="192" width="688" height="326" class="box"/>
+            <text x="214" y="229" class="label">DAMAGE BREAKDOWN · SOURCE-BACKED TEST</text>
+            <line x1="214" y1="252" x2="826" y2="252" class="wire-muted"/>
+            <text x="214" y="301" class="mono">1d12 weapon damage</text>
+            <text x="826" y="301" text-anchor="end" class="mono">8</text>
+            <text x="214" y="352" class="mono">Strength modifier</text>
+            <text x="826" y="352" text-anchor="end" class="mono">+3</text>
+            <rect x="201" y="374" width="638" height="61" class="soft"/>
+            <text x="214" y="412" class="mono blue">Rage bonus</text>
+            <text x="826" y="412" text-anchor="end" class="mono blue">+2</text>
+            <line x1="214" y1="460" x2="826" y2="460" class="wire-blue"/>
+            <text x="214" y="500" class="t-big">total damage</text>
+            <text x="826" y="500" text-anchor="end" class="t-big">13</text>
+            <text x="520" y="554" text-anchor="middle" class="label blue">THE AUTONOMOUS RULE CAN NAME ITS CONTRIBUTION</text>
+          </svg>
+          <figcaption>The archived integration test rolled 8, added a +3 Strength modifier, and received +2 from Raging. Without the active condition, the Rage line disappears.</figcaption>
+        </figure>
+        <p class="end-question">Eight from the die. Three from Strength. Two from Rage. Composable rules still need to explain themselves.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>The overloaded Rage comes from commit <code>c578c911</code>; the earlier Action contract from <code>b553c735</code>; typed and chained topics from <code>65516107</code>; and the first coupled Rage-to-Raging split from <code>a6a87e09</code>.</p>
+    <p>The compiler wall is recorded in Journey 044. The final typed handoff and Character condition ownership come from <code>6f428d47</code>. Raging joins DamageChain in <code>8c1c0606</code>; the full integration proof is <code>0228d23a</code>; and the observable breakdown arrives in <code>0fd81d75</code>.</p>
+  </footer>
+</main>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
