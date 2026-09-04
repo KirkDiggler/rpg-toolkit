@@ -294,10 +294,14 @@ func (s *HoldingsSuite) TestExitAwayFromTheExitDropsTheHolding() {
 		s.Require().Nil(out.Closed)
 	})
 
-	s.Run("the departure names no exit", func() {
+	s.Run("the departure names no exit, and claims nothing left with them", func() {
 		exited := s.beatsOfKind(enc, partner, "exited")
 		s.Require().Len(exited, 1)
 		s.Require().Equal("", exited[0]["exit"])
+		// This scene passed on main WITH the #1507 bug, because it asserted
+		// nothing about holding. The next beat drops the heirloom; this one
+		// must not claim it left.
+		s.Require().Equal([]any{}, exited[0]["holding"])
 	})
 
 	s.Run("a dropped beat reaches everyone present", func() {
@@ -354,6 +358,11 @@ func (s *HoldingsSuite) TestLeavingThroughAnUnboundExitDoesNotWalkTheArtifactOut
 	exited := s.beatsOfKind(enc, partner, "exited")
 	s.Require().Len(exited, 1)
 	s.Require().Equal(sideDoor, exited[0]["exit"], "they did leave by a real, authored exit")
+	// THE THING THIS TEST IS NAMED FOR. "Does not walk the artifact out" is a
+	// claim about the beat as much as about the floor, and until #1510 this
+	// scene asserted only the floor half — so it passed with the bug.
+	s.Require().Equal([]any{}, exited[0]["holding"],
+		"the artifact did not leave the run, and the beat must not say it did")
 
 	dropped := s.beatsOfKind(enc, partner, "dropped")
 	s.Require().Len(dropped, 1, "and the artifact stays in the run, at the side door")
@@ -882,59 +891,22 @@ func (s *HoldingsSuite) TestTheDepartureBeatSaysWhatActuallyLeft() {
 		})
 	}
 
-	s.Run("leaving at the bound exit with the artifact: holding names it, nothing drops", func() {
-		enc := withEndings()
-		s.walkTo(enc, raider, heirloomCell)
-		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
-		s.Require().NoError(err)
-		s.walkTo(enc, raider, raiderCell)
+	// WHAT THIS TEST OWNS, after the #1510 review (finding 3): the beat
+	// ORDER on the drop path, and the invariant across both paths. The
+	// CONTENTS are asserted next door — TestExitAtTheBoundExitHolding...
+	// covers the winning shape and its exited-before-ended order, and
+	// TestExitAwayFromTheExitDropsTheHolding covers the dropping shape. A
+	// third statement of either would be a third place for them to disagree.
 
-		out, err := enc.Exit(&encounter.ExitInput{Member: raider})
-		s.Require().NoError(err)
-		s.Require().NotNil(out.Closed)
-
-		exited := s.beatsOfKind(enc, partner, "exited")
-		s.Require().Len(exited, 1)
-		s.Require().Equal([]any{heirloom}, exited[0]["holding"])
-		s.Require().Equal(frontGate, exited[0]["exit"])
-		s.Require().Empty(s.beatsOfKind(enc, partner, "dropped"),
-			"it left with them; there is nothing on the floor to narrate")
-
-		// Order: exited, then ended. Never the other way round.
-		var exitedAt, endedAt = -1, -1
-		for i, b := range s.beats(enc, partner) {
-			switch b["beat"] {
-			case "exited":
-				exitedAt = i
-			case "ended":
-				endedAt = i
-			}
-		}
-		s.Require().Greater(exitedAt, -1)
-		s.Require().Greater(endedAt, exitedAt, "design §6: the departure is narrated before the ending")
-	})
-
-	s.Run("leaving anywhere else while holding: holding is empty, and it drops", func() {
+	s.Run("the drop is narrated AFTER the departure, never before", func() {
 		enc := withEndings()
 		s.walkTo(enc, raider, heirloomCell)
 		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
 		s.Require().NoError(err)
 
-		out, err := enc.Exit(&encounter.ExitInput{Member: raider})
+		_, err = enc.Exit(&encounter.ExitInput{Member: raider})
 		s.Require().NoError(err)
-		s.Require().Nil(out.Closed)
 
-		exited := s.beatsOfKind(enc, partner, "exited")
-		s.Require().Len(exited, 1)
-		s.Require().Equal([]any{}, exited[0]["holding"],
-			"nothing left the run, so the beat claims nothing")
-		s.Require().Equal("", exited[0]["exit"])
-
-		dropped := s.beatsOfKind(enc, partner, "dropped")
-		s.Require().Len(dropped, 1)
-		s.Require().Equal(heirloom, dropped[0]["prop"])
-
-		// Order: exited, then dropped. The departure is still the cause.
 		var exitedAt, droppedAt = -1, -1
 		for i, b := range s.beats(enc, partner) {
 			switch b["beat"] {
@@ -945,12 +917,14 @@ func (s *HoldingsSuite) TestTheDepartureBeatSaysWhatActuallyLeft() {
 			}
 		}
 		s.Require().Greater(exitedAt, -1)
-		s.Require().Greater(droppedAt, exitedAt, "the drop is a consequence of the departure")
+		s.Require().Greater(droppedAt, exitedAt,
+			"design §6: the departure is the cause and the drop is its consequence")
 	})
 
-	s.Run("the two beats never disagree about one departure", func() {
-		// The defect in one sentence: whatever `holding` names must not
-		// also be dropped, on any departure, ever.
+	s.Run("whatever holding names is never also dropped, on any departure", func() {
+		// The #1507 defect stated as ONE invariant rather than as example
+		// shapes, so a third departure shape added later is covered by
+		// construction instead of needing a third scene.
 		for _, walkToExit := range []bool{true, false} {
 			enc := withEndings()
 			s.walkTo(enc, raider, heirloomCell)
@@ -973,6 +947,60 @@ func (s *HoldingsSuite) TestTheDepartureBeatSaysWhatActuallyLeft() {
 					"%q is claimed as carried out AND dropped", b["prop"])
 			}
 			s.SetupTest()
+		}
+	})
+}
+
+// TestACarrierWalksOutWithEVERYTHINGTheyHold closes the coverage hole the
+// independent review of #1510 found (finding 1).
+//
+// Every winning departure in this suite carried exactly ONE prop, and that
+// prop was always the ending's own item — so `holding = carried` and
+// `holding = []PropID{theEndingsItem}` were indistinguishable, and a mutant
+// swapping them survived. The beat is not "what the ending was about". It is
+// everything that left the run with the member, and a carrier who picked up
+// the chalice on the way to the exit walks out with both.
+func (s *HoldingsSuite) TestACarrierWalksOutWithEVERYTHINGTheyHold() {
+	enc := s.open(false, recoverEnding(), encounter.EndingInput{
+		Key: "withdrawn", Trigger: encounter.TriggerExternal{},
+	})
+
+	// Two props, only one of which any ending names.
+	s.walkTo(enc, raider, heirloomCell)
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
+	s.Require().NoError(err)
+	s.walkTo(enc, raider, chaliceCell)
+	_, err = enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
+	s.Require().NoError(err)
+
+	s.walkTo(enc, raider, raiderCell)
+	out, err := enc.Exit(&encounter.ExitInput{Member: raider})
+	s.Require().NoError(err)
+
+	s.Run("the run ends on the artifact", func() {
+		s.Require().NotNil(out.Closed)
+		s.Require().Equal(recovered, out.Closed.Ending)
+	})
+
+	s.Run("and BOTH props left with them", func() {
+		exited := s.beatsOfKind(enc, partner, "exited")
+		s.Require().Len(exited, 1)
+		// heldPropsOf sorts by prop id, so this order is the fold's, not
+		// the order they were picked up in.
+		s.Require().Equal([]any{chalice, heirloom}, exited[0]["holding"],
+			"the beat reports everything carried out, not just the ending's item")
+	})
+
+	s.Run("nothing was dropped", func() {
+		s.Require().Empty(s.beatsOfKind(enc, partner, "dropped"))
+	})
+
+	s.Run("and neither is back on the floor", func() {
+		atlas, aerr := enc.Atlas()
+		s.Require().NoError(aerr)
+		for _, id := range []encounter.PropID{heirloom, chalice} {
+			_, present := propInAtlas(atlas, id)
+			s.Require().False(present, "%q came back", id)
 		}
 	})
 }
