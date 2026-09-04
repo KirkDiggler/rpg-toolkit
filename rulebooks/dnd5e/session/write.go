@@ -96,24 +96,30 @@ type SpawnInput struct {
 	// JoinInput.Position.
 	Position spatial.Position
 
-	// Knows is the doors this monster carries the way to, by door id — the
-	// author's knowledge links from the dungeon file's `place[].knows`
-	// (rpg-project#368 P1), forwarded to the composition untouched.
+	// Holds is the intel records this monster carries, by record id — the
+	// author's placement from the dungeon file's `place[].holds`
+	// (rpg-project#372, design §3), forwarded to the composition untouched.
 	//
-	// THIS IS THE ONLY WAY AN AUTHORED LINK REACHES A LIVE MONSTER. A host
+	// THIS IS THE ONLY WAY AN AUTHORED RECORD REACHES A LIVE MONSTER. A host
 	// that resolves monster content at runtime builds its world empty of
-	// members and brings every monster in through this verb, so a link that
-	// could only be read at construction was a link the game never saw: the
-	// captain who knows the vault door would be looted for nothing.
+	// members and brings every monster in through this verb, so a record
+	// that could only be read at construction was a record the game never
+	// saw: the captain who holds the vault map would be looted for nothing.
 	//
-	// COMPILED DOOR IDS, not the author's own. dungeonspec mints
+	// COMPILED RECORD IDS, not the author's own. dungeonspec mints
 	// `<key>/<id>` so two dungeons in one process cannot collide, and its
-	// MonsterPlacement.Knows already carries the minted form. Passing the raw
-	// authored id names a door the composition does not have, and the spawn
+	// MonsterPlacement.Holds already carries the minted form. Passing the raw
+	// authored id names a record the composition does not have, and the spawn
 	// is refused by name rather than silently arriving ignorant.
 	//
-	// Empty is the ordinary case: most monsters know nothing.
-	Knows []string
+	// WHAT THE RECORD REVEALS IS NOT THIS SEAM'S BUSINESS. It forwards an id;
+	// the composition reads what the record means from the dungeon's own
+	// intel table when the holding changes hands. That is why this field
+	// carries no target and never will — a second kind of target is a
+	// dungeonspec and encounter change, and nothing here moves.
+	//
+	// Empty is the ordinary case: most monsters hold nothing.
+	Holds []string
 }
 
 // SpawnOutput reports the spawn and what it revealed.
@@ -544,7 +550,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// to make it.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
-		sheet.Targeting.String(), false, in.Knows)
+		sheet.Targeting.String(), false, in.Holds)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -676,7 +682,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
 	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
-	knows []string,
+	holds []string,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -721,10 +727,10 @@ func place(
 		Actions:        actions,
 		Targeting:      targeting,
 		BlocksMovement: blocksMovement,
-		// The author's knowledge links, converted at the boundary and
-		// nowhere else — a []string in, the composition's own DoorID out
-		// (S2: no inner type crosses this seam's exported surface).
-		Knows: doorIDs(knows),
+		// The author's placed records, converted at the boundary and nowhere
+		// else — a []string in, the composition's own IntelID out (S2: no
+		// inner type crosses this seam's exported surface).
+		Holds: intelIDs(holds),
 	})
 	if err != nil {
 		return nil, translate(err)

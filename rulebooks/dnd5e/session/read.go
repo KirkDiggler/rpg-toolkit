@@ -622,6 +622,12 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrClosed)
 	case errors.Is(err, encounter.ErrNoEnding):
 		return fmt.Errorf("%w", ErrNoEnding)
+	case errors.Is(err, encounter.ErrNoIntel):
+		// BEFORE the door arm below, because a record naming a door this
+		// field lacks refuses with ErrNoDoor and a HOLDER naming a record it
+		// lacks refuses with ErrNoIntel — two different mistakes, and the
+		// caller can only fix the one they made.
+		return fmt.Errorf("%w", ErrNoIntel)
 	case errors.Is(err, encounter.ErrNoDoor),
 		errors.Is(err, encounter.ErrBadDoor):
 		return fmt.Errorf("%w", ErrNoConnection)

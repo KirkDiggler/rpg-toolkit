@@ -207,6 +207,7 @@ var sessionSentinels = map[string]error{
 	"ErrDoorShut":          session.ErrDoorShut,
 	"ErrElsewhere":         session.ErrElsewhere,
 	"ErrNoConnection":      session.ErrNoConnection,
+	"ErrNoIntel":           session.ErrNoIntel,
 	"ErrBadPosition":       session.ErrBadPosition,
 	"ErrNoSessionID":       session.ErrNoSessionID,
 	"ErrNoEncounterID":     session.ErrNoEncounterID,
