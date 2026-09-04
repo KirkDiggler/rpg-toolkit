@@ -64,10 +64,10 @@ type EncounterData struct {
 	// Holdings is the run's answer to who has what: the journal facts
 	// recording holdings, takings and drops (rpg-project#368, holdings.go).
 	// PRESENT EXACTLY WHEN SOMETHING HAS HAPPENED — an encounter where
-	// nobody was authored knowing anything and nobody has taken anything
+	// nobody was authored knowing anything and nobody has picked anything up
 	// writes no key at all, the exact bytes every pre-holdings blob already
 	// has. Unlike World above, this is NOT conditioned on the field: a
-	// dungeon with no secret anywhere can still have a takeable idol on a
+	// dungeon with no secret anywhere can still have a holdable idol on a
 	// plinth.
 	//
 	// The journal is the ONE answer (design P5). [MemberInput.Knows] seeds
@@ -246,13 +246,13 @@ type LightingData struct {
 // different facts, and a blob that lost the difference would reload a coffin
 // as decoration. Required at load, refused by name, never defaulted.
 type PropData struct {
-	// ID and Takeable mirror [PropInput.ID] and [PropInput.Takeable]
+	// ID and Holdable mirror [PropInput.ID] and [PropInput.Holdable]
 	// (rpg-project#368). NEITHER IS REQUIRED AT LOAD, on Facing's rule
 	// below: omitted and written-as-the-zero-value are the same fact, so a
 	// blob from before either existed loads as a nameless prop nobody can
 	// pick up — which is exactly what every prop was.
 	ID       PropID `json:"id,omitempty"`
-	Takeable bool   `json:"takeable,omitempty"`
+	Holdable bool   `json:"holdable,omitempty"`
 
 	Ref               string       `json:"ref"`
 	At                PositionData `json:"at"`
@@ -950,7 +950,7 @@ func fieldDataFrom(f *field) FieldData {
 			blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
 			out.Props[i] = PropData{
 				ID:                p.ID,
-				Takeable:          p.Takeable,
+				Holdable:          p.Holdable,
 				Ref:               p.Ref,
 				At:                PositionData{X: p.At.X, Y: p.At.Y},
 				BlocksMovement:    &blocksMovement,
@@ -1901,7 +1901,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		blocksMovement, blocksSight := *pd.BlocksMovement, *pd.BlocksLineOfSight
 		in.Props = append(in.Props, PropInput{
 			ID:                pd.ID,
-			Takeable:          pd.Takeable,
+			Holdable:          pd.Holdable,
 			Ref:               pd.Ref,
 			At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
 			BlocksMovement:    &blocksMovement,

@@ -280,7 +280,7 @@ func propsOf(spec *Spec) []encounter.PropInput {
 		}
 		blocksMovement, blocksLoS := *p.BlocksMovement, *p.BlocksLoS
 		prop := encounter.PropInput{
-			ID: p.ID, Takeable: p.Takeable != nil && *p.Takeable,
+			ID: p.ID, Holdable: p.Holdable != nil && *p.Holdable,
 			Ref: p.Ref, At: authored(p.At),
 			BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksLoS,
 			Facing: p.Facing,

@@ -3,7 +3,7 @@
 
 package encounter_test
 
-// holdingsrefusals_test.go is what Loot and Take REFUSE, and the two
+// holdingsrefusals_test.go is what Loot and Hold REFUSE, and the two
 // construction refusals the new authored facts bring with them
 // (rpg-project#368, design §4.2, §4.3, §4.4 and §6).
 //
@@ -101,51 +101,51 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBody() {
 	})
 }
 
-// TestTakeRefusesInOrder walks design §4.3's validation order.
-func (s *HoldingsSuite) TestTakeRefusesInOrder() {
+// TestHoldRefusesInOrder walks design §4.3's validation order.
+func (s *HoldingsSuite) TestHoldRefusesInOrder() {
 	enc := s.open(false)
 
 	s.Run("nil input", func() {
-		_, err := enc.Take(nil)
+		_, err := enc.Hold(nil)
 		s.Require().ErrorIs(err, encounter.ErrNilInput)
 	})
 	s.Run("empty member", func() {
-		_, err := enc.Take(&encounter.TakeInput{Target: chalice})
+		_, err := enc.Hold(&encounter.HoldInput{Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
 	})
 	s.Run("empty target", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: raider})
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider})
 		s.Require().ErrorIs(err, encounter.ErrNoProp)
 	})
 	s.Run("a negative range", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: chalice, Range: -1})
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice, Range: -1})
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
 	})
 	s.Run("not a member", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: "ghost", Target: chalice})
+		_, err := enc.Hold(&encounter.HoldInput{Member: "ghost", Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrNotMember)
 	})
 	s.Run("no such prop", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: "nothing-like-this"})
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: "nothing-like-this"})
 		s.Require().ErrorIs(err, encounter.ErrNoProp)
 	})
 	s.Run("out of range", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrOutOfRange)
 	})
 	s.Run("already taken", func() {
 		s.walkTo(enc, raider, chaliceCell)
-		_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 		s.Require().NoError(err)
-		_, err = enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
-		s.Require().ErrorIs(err, encounter.ErrAlreadyTaken)
-		_, err = enc.Take(&encounter.TakeInput{Member: partner, Target: chalice})
-		s.Require().ErrorIs(err, encounter.ErrAlreadyTaken, "and it is gone for everybody, not just the taker")
+		_, err = enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
+		s.Require().ErrorIs(err, encounter.ErrAlreadyHeld)
+		_, err = enc.Hold(&encounter.HoldInput{Member: partner, Target: chalice})
+		s.Require().ErrorIs(err, encounter.ErrAlreadyHeld, "and it is gone for everybody, not just the holder")
 	})
 	s.Run("a closed encounter refuses before any of it", func() {
 		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
 		s.Require().NoError(err)
-		_, err = enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+		_, err = enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrClosed)
 	})
 }
@@ -161,23 +161,23 @@ func (s *HoldingsSuite) TestTheProbeLawAppliesToProps() {
 	enc := s.open(false)
 	s.walkTo(enc, raider, chaliceCell)
 
-	s.Run("a visible prop that is not takeable refuses BY NAME", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: pillar, Range: 9})
-		s.Require().ErrorIs(err, encounter.ErrNotTakeable)
+	s.Run("a visible prop that is not holdable refuses BY NAME", func() {
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: pillar, Range: 9})
+		s.Require().ErrorIs(err, encounter.ErrNotHoldable)
 	})
 
 	s.Run("a prop inside space they cannot see refuses as NO SUCH PROP", func() {
-		// The relic is takeable, and it is in the concealed vault. It is
+		// The relic is holdable, and it is in the concealed vault. It is
 		// out of range too — but the probe answer is decided before range
 		// is ever measured, so a guesser cannot walk the map by comparing
 		// which refusal they got.
-		_, err := enc.Take(&encounter.TakeInput{Member: raider, Target: relic, Range: 99})
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: relic, Range: 99})
 		s.Require().ErrorIs(err, encounter.ErrNoProp)
 	})
 
 	s.Run("and an id that names nothing refuses the same way", func() {
-		_, invented := enc.Take(&encounter.TakeInput{Member: raider, Target: "no-such-thing", Range: 99})
-		_, hidden := enc.Take(&encounter.TakeInput{Member: raider, Target: relic, Range: 99})
+		_, invented := enc.Hold(&encounter.HoldInput{Member: raider, Target: "no-such-thing", Range: 99})
+		_, hidden := enc.Hold(&encounter.HoldInput{Member: raider, Target: relic, Range: 99})
 		// The only thing either message carries beyond the sentinel is the
 		// id the CALLER supplied, which the caller already knows. Blank
 		// that out and the two must be the same sentence — a guesser
@@ -235,12 +235,12 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 	s.Require().Equal(active, clock.Active)
 
 	s.Run("the member whose turn it is may take", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: active, Target: target})
+		_, err := enc.Hold(&encounter.HoldInput{Member: active, Target: target})
 		s.Require().NoError(err, "free on their own turn")
 	})
 
 	s.Run("a member whose turn it is not may not", func() {
-		_, err := enc.Take(&encounter.TakeInput{Member: waiting, Target: otherTarget})
+		_, err := enc.Hold(&encounter.HoldInput{Member: waiting, Target: otherTarget})
 		s.Require().ErrorIs(err, encounter.ErrNotActive,
 			"this mirrors Step's turn gate exactly (ADR-0044)")
 	})
@@ -329,7 +329,7 @@ func (s *HoldingsSuite) TestConstructionRefusesADeadEndingAndABadExit() {
 			}}
 		})
 		s.Require().ErrorIs(err, encounter.ErrNoEnding)
-		s.Require().Contains(err.Error(), "takeable")
+		s.Require().Contains(err.Error(), "holdable")
 	})
 
 	s.Run("an ending naming no item at all", func() {
@@ -370,23 +370,23 @@ func (s *HoldingsSuite) TestConstructionRefusesADeadEndingAndABadExit() {
 		s.Require().ErrorIs(err, encounter.ErrNoExit)
 	})
 
-	s.Run("a takeable prop with no id", func() {
+	s.Run("a holdable prop with no id", func() {
 		// Without an id every atlas would advertise a thing anybody can
-		// pick up while no TakeInput could ever name it. dungeonspec
+		// pick up while no HoldInput could ever name it. dungeonspec
 		// refuses this at the file; the composition refuses it again, so a
 		// host assembling a field by hand cannot produce one either
 		// (Copilot, PR #1497 review).
 		err := setup(func(in *encounter.SetupInput) {
 			field := in.Field
-			nameless := takeableProp("", "dnd5e:props:decoy", partnerCell)
+			nameless := holdableProp("", "dnd5e:props:decoy", partnerCell)
 			field.Props = append(append([]encounter.PropInput(nil), field.Props...), nameless)
 			in.Field = field
 		})
 		s.Require().ErrorIs(err, encounter.ErrNoField)
-		s.Require().Contains(err.Error(), "takeable and has no id")
+		s.Require().Contains(err.Error(), "holdable and has no id")
 	})
 
-	s.Run("an UNtakeable prop with no id is ordinary scenery", func() {
+	s.Run("an UNholdable prop with no id is ordinary scenery", func() {
 		s.Require().NoError(setup(func(in *encounter.SetupInput) {
 			field := in.Field
 			plain := encounter.PropInput{
@@ -402,7 +402,7 @@ func (s *HoldingsSuite) TestConstructionRefusesADeadEndingAndABadExit() {
 		err := setup(func(in *encounter.SetupInput) {
 			field := in.Field
 			props := append([]encounter.PropInput(nil), field.Props...)
-			props = append(props, takeableProp(heirloom, "dnd5e:props:decoy", partnerCell))
+			props = append(props, holdableProp(heirloom, "dnd5e:props:decoy", partnerCell))
 			field.Props = props
 			in.Field = field
 		})
@@ -484,14 +484,14 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 	s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 1)
 }
 
-// TestATakenPropIsGoneForABlindMemberToo: the taken filter lives in Atlas,
+// TestAHeldPropIsGoneForABlindMemberToo: the taken filter lives in Atlas,
 // not in AtlasFor, so it applies on the path AtlasFor short-circuits — every
 // plain dungeon with no concealment at all.
-func (s *HoldingsSuite) TestATakenPropIsGoneForABlindMemberToo() {
+func (s *HoldingsSuite) TestAHeldPropIsGoneForABlindMemberToo() {
 	plain := encounter.FieldInput{
 		Canvas:  pointyCanvas(),
 		Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 6, 6)},
-		Props:   []encounter.PropInput{takeableProp(chalice, "dnd5e:props:chalice", partnerCell)},
+		Props:   []encounter.PropInput{holdableProp(chalice, "dnd5e:props:chalice", partnerCell)},
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
@@ -505,7 +505,7 @@ func (s *HoldingsSuite) TestATakenPropIsGoneForABlindMemberToo() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Take(&encounter.TakeInput{Member: raider, Target: chalice})
+	_, err = enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 	s.Require().NoError(err)
 
 	for _, member := range []core.EntityID{raider, partner} {

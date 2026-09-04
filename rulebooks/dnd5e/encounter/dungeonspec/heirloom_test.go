@@ -5,7 +5,7 @@ package dungeonspec_test
 
 // heirloom_test.go is the recover-the-artifact authoring slice
 // (rpg-project#368, design §3.1 and §3.3): placement ids, knowledge links,
-// takeable props, exits, and scenario bindings — what each compiles to, and
+// holdable props, exits, and scenario bindings — what each compiles to, and
 // every way the file can get one wrong.
 //
 // The refusals are the deliverable as much as the compile is. Each scene
@@ -76,7 +76,7 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 	compiled, err := dungeonspec.Load([]byte(heirloomSource(t)))
 	require.NoError(t, err)
 
-	t.Run("the artifact is a takeable prop with an id", func(t *testing.T) {
+	t.Run("the artifact is a holdable prop with an id", func(t *testing.T) {
 		var found []encounter.PropInput
 		for _, p := range compiled.Field.Props {
 			if p.ID != "" {
@@ -85,7 +85,7 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 		}
 		require.Len(t, found, 1, "one named prop in this dungeon")
 		require.Equal(t, "heirloom", found[0].ID)
-		require.True(t, found[0].Takeable)
+		require.True(t, found[0].Holdable)
 		require.Equal(t, "dnd5e:props:reliquary", found[0].Ref)
 	})
 
@@ -162,7 +162,7 @@ func TestTheScenarioBindingsAreCarriedAndNothingElse(t *testing.T) {
 	t.Run("a binding naming a monster compiles, because kind is not this layer's question", func(t *testing.T) {
 		edited := strings.Replace(source, "    artifact: heirloom", "    artifact: captain", 1)
 		require.Empty(t, defectsIn(t, edited),
-			"whether an artifact must be a takeable prop is the scenario's refusal, in form-filler words")
+			"whether an artifact must be a holdable prop is the scenario's refusal, in form-filler words")
 	})
 
 	t.Run("a binding naming nothing is refused, at the binding", func(t *testing.T) {
@@ -227,29 +227,29 @@ func TestKnowsRefusals(t *testing.T) {
 	})
 }
 
-// TestTakeableRefusals covers design §5's authoring rules.
-func TestTakeableRefusals(t *testing.T) {
+// TestHoldableRefusals covers design §5's authoring rules.
+func TestHoldableRefusals(t *testing.T) {
 	source := heirloomSource(t)
 
-	t.Run("a takeable prop with no id is refused", func(t *testing.T) {
+	t.Run("a holdable prop with no id is refused", func(t *testing.T) {
 		edited := strings.Replace(source, "  - { id: heirloom, ref:", "  - { ref:", 1)
-		requireDefect(t, defectsIn(t, edited), ".id", "is takeable and has no id", "has to be nameable")
+		requireDefect(t, defectsIn(t, edited), ".id", "is holdable and has no id", "has to be nameable")
 	})
 
-	t.Run("takeable on a monster is refused", func(t *testing.T) {
-		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], takeable: true }", 1)
-		requireDefect(t, defectsIn(t, edited), ".takeable", "is not a prop and cannot be taken")
+	t.Run("holdable on a monster is refused", func(t *testing.T) {
+		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], holdable: true }", 1)
+		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be taken")
 	})
 
-	t.Run("takeable FALSE on a monster is refused too", func(t *testing.T) {
+	t.Run("holdable FALSE on a monster is refused too", func(t *testing.T) {
 		// The pointer is what makes this reachable: an authored `false` and
 		// an omitted key are the same fact for a prop, and a monster that
 		// wrote either has still declared something it cannot declare.
-		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], takeable: false }", 1)
-		requireDefect(t, defectsIn(t, edited), ".takeable", "is not a prop and cannot be taken")
+		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], holdable: false }", 1)
+		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be taken")
 	})
 
-	t.Run("a prop with an id and no takeable is ordinary scenery", func(t *testing.T) {
+	t.Run("a prop with an id and no holdable is ordinary scenery", func(t *testing.T) {
 		edited := strings.Replace(source,
 			`  - { ref: "dnd5e:props:candles", at: [26,5]`,
 			`  - { id: candles, ref: "dnd5e:props:candles", at: [26,5]`, 1)
@@ -258,7 +258,7 @@ func TestTakeableRefusals(t *testing.T) {
 		require.NoError(t, err)
 		for _, p := range compiled.Field.Props {
 			if p.ID == "candles" {
-				require.False(t, p.Takeable, "a thing nobody declared takeable stays scenery")
+				require.False(t, p.Holdable, "a thing nobody declared holdable stays scenery")
 			}
 		}
 	})
@@ -308,7 +308,7 @@ func TestTheUnchangedTombIsUnchanged(t *testing.T) {
 	require.Nil(t, compiled.Scenarios)
 	for _, p := range compiled.Field.Props {
 		require.Empty(t, p.ID)
-		require.False(t, p.Takeable)
+		require.False(t, p.Holdable)
 	}
 	for _, m := range compiled.Monsters {
 		require.Empty(t, m.ID)

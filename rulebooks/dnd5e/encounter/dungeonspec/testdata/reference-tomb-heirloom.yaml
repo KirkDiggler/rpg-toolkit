@@ -7,7 +7,7 @@
 #   - a VAULT: an eighth row of hidden floor behind the tomb, its own region,
 #     concealed, reachable only through a concealed door in the tomb's east
 #     wall;
-#   - the HEIRLOOM: a takeable prop with an id, standing in the vault;
+#   - the HEIRLOOM: a holdable prop with an id, standing in the vault;
 #   - the CAPTAIN: the same skeleton captain, now carrying `knows: [vault]`
 #     and carrying NO boss flag — this dungeon ends because a scenario says
 #     so, not because a monster has a flag on it (design R8);
@@ -145,7 +145,7 @@ place:
   - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
       knows: [vault] }
   - { id: heirloom, ref: "dnd5e:props:reliquary", at: [29,3],
-      blocks_movement: false, blocks_los: false, takeable: true }
+      blocks_movement: false, blocks_los: false, holdable: true }
 
 # The ways out. `start` is NOT implicitly one of these — nothing is defaulted
 # — so the entrance the party walks in through is authored as an exit here in

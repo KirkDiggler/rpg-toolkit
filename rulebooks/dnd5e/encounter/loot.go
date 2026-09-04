@@ -108,7 +108,7 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 
 	// ORDINARY REFUSALS, both of them (design §4.2): the body is visible and
 	// there is no secret in whether it is down or how far away it is, so
-	// these say what they mean. That is the opposite of Take's prop
+	// these say what they mean. That is the opposite of Hold's prop
 	// refusals, and the difference is exactly whether the asker could have
 	// learned the answer by looking.
 	down, err := e.isDown(in.Target)
@@ -180,7 +180,7 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 // causes no reveal, because there is nothing to reveal. A field with no
 // concealment at all has no world, and the same holds for the same reason.
 func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64) error {
-	for _, item := range e.holdings.heldBy(from) {
+	for _, item := range e.holdings.holdingsOf(from) {
 		switch {
 		case item.door != "":
 			if err := e.holdings.holdIntelDoor(to, item.door, cause); err != nil {
@@ -228,7 +228,7 @@ func (e *Encounter) isDown(member MemberID) (bool, error) {
 	return participation.down[member], nil
 }
 
-// refuseOffTurn is the in-combat rule (design §4.4), shared by Loot and Take.
+// refuseOffTurn is the in-combat rule (design §4.4), shared by Loot and Hold.
 //
 // Out of combat both verbs are free. 5e gives one free object interaction a
 // turn and charges an action past that, and neither verb joins the [Afford]
@@ -274,7 +274,7 @@ func (e *Encounter) refuseOutOfReach(verb string, member, target MemberID, reach
 }
 
 // refuseOutOfReachCell is the measurement itself, against a bare cell — the
-// half [Encounter.Take] needs, since a prop is at a cell rather than being an
+// half [Encounter.Hold] needs, since a prop is at a cell rather than being an
 // entity with a position.
 func (e *Encounter) refuseOutOfReachCell(verb string, from, to spatial.Position, reach int, what string) error {
 	if reach == 0 {
