@@ -154,6 +154,10 @@ func (a announcerSeam) boundaryCast(
 			continue
 		}
 
+		if member.Kind == encounter.MemberKind(KindWorld) {
+			continue // placed world NPC — no sheet, contributes nothing to the cast
+		}
+
 		data, err := a.m.fetchCharacterData(ctx, "participant", id)
 		if err != nil {
 			if errors.Is(err, ErrNoCharacter) {

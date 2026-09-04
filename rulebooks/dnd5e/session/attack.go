@@ -565,6 +565,10 @@ func (m *Manager) compileResolutionCast(
 			continue
 		}
 
+		if member.Kind == encounter.MemberKind(KindWorld) {
+			continue // placed world NPC — no sheet, contributes nothing to the cast
+		}
+
 		if readied != nil && readied.ID == id {
 			cast = append(cast, resolution.Participant{Character: readied})
 			continue
@@ -638,6 +642,10 @@ func (m *Manager) castFor(
 			}
 			cast = append(cast, resolution.Participant{Monster: sheet})
 			continue
+		}
+
+		if member.Kind == encounter.MemberKind(KindWorld) {
+			continue // placed world NPC — no sheet, contributes nothing to the cast
 		}
 
 		if readied != nil && readied.ID == id {
