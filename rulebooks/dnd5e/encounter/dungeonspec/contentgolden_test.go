@@ -57,6 +57,7 @@ type contentGolden struct {
 	Boundaries  []encounter.AtlasBoundary      `json:"boundaries"`
 	Doorways    []encounter.AtlasDoorway       `json:"doorways"`
 	Exits       []encounter.AtlasExit          `json:"exits"`
+	Start       *encounter.AtlasStart          `json:"start"`
 	PartyStart  []dungeonspec.Seat             `json:"party_start"`
 	Monsters    []dungeonspec.MonsterPlacement `json:"monsters"`
 
@@ -79,6 +80,7 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		Boundaries:  atlas.Boundaries,
 		Doorways:    atlas.Doorways,
 		Exits:       atlas.Exits,
+		Start:       atlas.Start,
 		PartyStart:  compiled.PartyStart,
 		Monsters:    compiled.Monsters,
 		Intel:       compiled.Intel,

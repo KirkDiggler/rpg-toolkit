@@ -502,6 +502,13 @@ type FieldInput struct {
 	// defaulted (rpg-toolkit#1033), and a dungeon whose entrance is also its
 	// way out authors that in one line.
 	Exits []FieldExit
+
+	// Start is where the party comes in and which way they face
+	// (rpg-project#374). OPTIONAL, and a nil is the honest answer for a
+	// field nobody authored one for — a zero-valued start would claim the
+	// party arrives at [0,0] looking nowhere, which is a fact about a
+	// dungeon rather than the absence of one. See [FieldStart].
+	Start *FieldStart
 }
 
 // IntelID is the author's name for one intel record — [IntelRecord.ID].
@@ -585,6 +592,37 @@ type FieldExit struct {
 	// is [ErrNoEnding]'s own liveness argument about a trigger cell applied
 	// to the cell the trigger is about. Refused at construction (ErrNoExit).
 	At spatial.Position
+}
+
+// FieldStart is where the party comes in, and which way they are looking when
+// they get there (rpg-project#374).
+//
+// PRESENTATION, AND ONLY PRESENTATION. Nothing in this composition reads it:
+// it gates no movement, no sight and no verb, and no member is placed from it
+// — a host reads the compiled seat list for that. It rides the field so that
+// a client drawing the map can open the camera the way the author meant,
+// which is the whole of what it is for.
+//
+// It is on the FIELD rather than beside it for [FieldExit]'s reason: it is a
+// fact about the building, so it belongs with the building and survives a
+// save. A start kept only on the compiled spec would be lost the moment the
+// dungeon was stored, and a live session's map could never answer for it.
+type FieldStart struct {
+	// At is the cell the party arrives on: an ABSOLUTE authored offset
+	// [col,row] pair, converted once at construction through the same
+	// [HexCellAt] every other authored cell goes through.
+	At spatial.Position
+
+	// Facing is the direction they are looking, one of the eight
+	// true-compass names — n|ne|e|se|s|sw|w|nw (rpg-project#272). Empty
+	// means the author stated none.
+	//
+	// CARRIED VERBATIM AND NEVER INTERPRETED, exactly as [PropInput.Facing]
+	// is: the word is the authoring dialect's to validate, this module's to
+	// pass through, and the client's to turn into an angle. A composition
+	// that re-checked the vocabulary would be a second place it could drift
+	// from the first.
+	Facing string
 }
 
 // MemberInput describes a member being placed into the encounter AT

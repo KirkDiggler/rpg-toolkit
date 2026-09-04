@@ -95,7 +95,12 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		// grain, the same for every member (rpg-project#368). Every other
 		// list below is rebuilt because concealment withholds part of it;
 		// this one has nothing to withhold.
-		Exits:      full.Exits,
+		Exits: full.Exits,
+		// The way in, carried through unfiltered for Exits' own reason: it
+		// is structure, the same for every member. The pointer is the
+		// snapshot's own — Atlas built it fresh — so sharing it here hands
+		// nobody a route back into the field.
+		Start:      full.Start,
 		Cells:      make([]spatial.Position, 0, len(full.Cells)),
 		Regions:    make([]AtlasRegion, 0, len(full.Regions)),
 		Props:      make([]AtlasProp, 0, len(full.Props)),

@@ -127,6 +127,11 @@ type field struct {
 	// what ToData writes back out beside the regions and the props.
 	exits []FieldExit
 
+	// start is where the party comes in and which way they face, in the
+	// AUTHORED frame — nil when the field declares none (rpg-project#374).
+	// Carried, never read by anything in this composition; see [FieldStart].
+	start *FieldStart
+
 	// exitCells is every authored exit's ID to the ABSOLUTE cell somebody
 	// stands on to leave through it — converted once, at construction,
 	// through the same [HexCellAt] the regions went through. An ending is
@@ -219,6 +224,15 @@ func compileField(in FieldInput) (*field, error) {
 	}
 	// EXITS LAST, because standable is the question they ask and the sealed
 	// cells above are half its answer.
+	// The start, copied rather than aliased so a caller mutating the input
+	// it handed in cannot reach into the compiled field. Nothing validates
+	// it: the cell is presentation and the facing is a word this module
+	// carries without reading (see [FieldStart]).
+	if in.Start != nil {
+		startCopy := *in.Start
+		f.start = &startCopy
+	}
+
 	if err := f.compileExits(in.Exits); err != nil {
 		return nil, err
 	}

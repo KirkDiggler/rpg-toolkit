@@ -108,10 +108,11 @@ type Spec struct {
 	// the cell and the region.
 	Scenery [][][2]int `yaml:"scenery,omitempty"`
 
-	// Start is where the party comes in: an absolute [col,row] cell that
-	// must be floor. REQUIRED and explicit — version 1 derived it from an
-	// archetype, which is the shape of defaulting rpg-toolkit#1033 forbids.
-	Start *[2]int `yaml:"start"`
+	// Start is where the party comes in, and optionally which way they are
+	// looking when they get there. REQUIRED and explicit — version 1 derived
+	// it from an archetype, which is the shape of defaulting
+	// rpg-toolkit#1033 forbids. See [StartSpec] for the two spellings.
+	Start *StartSpec `yaml:"start"`
 
 	// Walls are STRAIGHT LINES between two picked positions, each blocking
 	// both movement and sight along everything it stands in the way of
@@ -322,6 +323,95 @@ type PositionSpec struct {
 	// `[0,0]` is a real position and an author who meant it says so, which
 	// is what keeps a forgotten key from quietly becoming a thick wall.
 	Offset [2]float64 `yaml:"offset"`
+}
+
+// StartSpec is where the party comes in: a cell, and optionally the direction
+// they are facing when they arrive.
+//
+// # Two spellings, one meaning
+//
+// The bare pair is the whole of what a start was before facings existed, and
+// it stays legal forever:
+//
+//	start: [4, 7]
+//	start: { at: [4, 7], facing: e }
+//
+// A dungeon that says nothing about facing is not a dungeon facing north — it
+// is a dungeon whose author did not say, and the empty string is that fact
+// (zero values tell the truth). Every reference fixture keeps the bare pair,
+// and the golden files are byte-unchanged by this addition.
+//
+// Both spellings are read by hand rather than by a struct tag because a
+// scalar and a mapping cannot both satisfy one Go type through the decoder,
+// and because a custom unmarshaler bypasses KnownFields — so an unknown key
+// has to be refused here, by name, exactly as [PositionSpec] does one type
+// over and for that type's stated reason.
+type StartSpec struct {
+	// At is the absolute [col,row] cell the party arrives on. REQUIRED in
+	// both spellings, and it must be floor nobody is standing on — the
+	// refusals are unchanged by facing (see validate.go).
+	At [2]int
+
+	// Facing is the direction the party is looking on arrival, one of the
+	// eight true-compass names props already speak — n|ne|e|se|s|sw|w|nw
+	// (rpg-project#272). Empty means the author stated none.
+	//
+	// PRESENTATION, and the compiler treats it as such: it says which way a
+	// camera opens, and nothing anywhere reads it to decide what a member
+	// may see, reach or do. A word outside the eight is refused BY NAME
+	// rather than snapped to the nearest — the vocabulary rule every
+	// authored word in this dialect follows.
+	Facing string
+}
+
+// UnmarshalYAML reads a start in either spelling — the bare cell pair, or the
+// object with an explicit `at` and an optional `facing`.
+//
+// An unknown key is refused by name for [PositionSpec.UnmarshalYAML]'s
+// reason: a custom unmarshaler anywhere above this in the tree bypasses the
+// decoder's KnownFields, so a typo would be silently dropped by the very
+// strictness Decode exists to provide.
+func (s *StartSpec) UnmarshalYAML(value *yaml.Node) error {
+	// The bare pair, and the ONLY spelling that existed before facings. A
+	// sequence here is unambiguous: an object start is a mapping.
+	if value.Kind == yaml.SequenceNode {
+		var at [2]int
+		if err := value.Decode(&at); err != nil {
+			return err
+		}
+		s.At, s.Facing = at, ""
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf(
+			"line %d: a start is [col,row] or { at: [col,row], facing: n|ne|e|se|s|sw|w|nw }",
+			value.Line)
+	}
+
+	var sawAt bool
+	for i := 0; i < len(value.Content); i += 2 {
+		switch key := value.Content[i].Value; key {
+		case "at":
+			sawAt = true
+		case "facing":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.StartSpec",
+				value.Content[i].Line, key)
+		}
+	}
+	if !sawAt {
+		return fmt.Errorf("line %d: a start does not say which cell the party arrives on", value.Line)
+	}
+
+	var obj struct {
+		At     [2]int `yaml:"at"`
+		Facing string `yaml:"facing"`
+	}
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	s.At, s.Facing = obj.At, obj.Facing
+	return nil
 }
 
 // UnmarshalYAML reads a position, refusing an unknown key and a missing one by

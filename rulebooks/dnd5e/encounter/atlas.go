@@ -93,6 +93,39 @@ type Atlas struct {
 	// could read "this is the winning one" off the map would be reading the
 	// scenario off the geometry.
 	Exits []AtlasExit
+
+	// Start is where the party came in and which way they were looking, or
+	// nil when the field declares none (rpg-project#374).
+	//
+	// STRUCTURE ON THE TRUTH GRAIN, like [Atlas.Exits] beside it and for the
+	// same reason: the way in is a fact about the building, identical for
+	// every member, so it survives [Encounter.AtlasFor] unfiltered.
+	//
+	// PRESENTATION, AND IT GATES NOTHING. It exists so a client can open the
+	// camera the way the author meant — Kirk, walking the dungeon: "we
+	// always start looking the wrong way" — and no rule anywhere reads it.
+	// Where members ACTUALLY are is Members' answer and always was; this is
+	// where the dungeon says it begins.
+	//
+	// NIL RATHER THAN A ZERO VALUE, because the zero would lie: a start at
+	// [0,0] facing nowhere is a real dungeon somebody could author, so a
+	// field that declares none has to be distinguishable from one that
+	// declares that.
+	Start *AtlasStart
+}
+
+// AtlasStart is the authored way in: a cell, and the direction the party is
+// looking when they arrive. [FieldStart] as a snapshot.
+type AtlasStart struct {
+	// At is the cell, in dungeon-absolute space.
+	At spatial.Position
+
+	// Facing is one of the eight true-compass names — n|ne|e|se|s|sw|w|nw
+	// (rpg-project#272, the same eight [AtlasProp.Facing] speaks) — or empty
+	// when the author stated none. Carried verbatim: the wire names the
+	// fact, and turning a name into an angle is the client's own calibrated
+	// table, never this module's arithmetic.
+	Facing string
 }
 
 // AtlasExit is one authored way out: its id, and the cell somebody stands on
@@ -261,6 +294,13 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		out.Exits = append(out.Exits, AtlasExit{ID: ex.ID, At: f.cellAt(ex.At)})
 	}
 	sort.Slice(out.Exits, func(i, j int) bool { return out.Exits[i].ID < out.Exits[j].ID })
+
+	// The way in, converted once through the same cellAt the exits went
+	// through. A COPY: the atlas is a snapshot, and a caller holding a
+	// pointer into the compiled field could reach back into the world.
+	if f.start != nil {
+		out.Start = &AtlasStart{At: f.cellAt(f.start.At), Facing: f.start.Facing}
+	}
 	// ONLY WHEN THERE IS SOMETHING TO FIND. A cell of this floor fails
 	// isStandable for exactly two reasons — it belongs to no region, or a wall
 	// sealed it — so a field with neither has no unstandable cell and the walk
