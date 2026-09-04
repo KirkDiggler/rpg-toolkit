@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
@@ -418,6 +419,86 @@ func holdingsDataFrom(h *holdings) *HoldingsData {
 		})
 	}
 	return out
+}
+
+// validateHoldingsFacts is THE TRUST BOUNDARY for the holdings journal —
+// [validateWorldFacts]'s job, one journal over (Copilot, PR #1497 review).
+//
+// The concealment world validated its facts and this one did not, which left
+// a real hole rather than a theoretical one: a `dropped:` fact naming a cell
+// off the floor puts a prop in the void in every atlas, and a `holds:prop:`
+// fact naming an actor who was never a member gives the run's artifact to a
+// ghost, so the ending can never fire and no living member can pick it up.
+// Both are silent. Loading is where bytes stop being somebody else's problem.
+//
+// Four things are checked, and nothing else is: a kind this build mints, a
+// prop or door this field declares, an actor this encounter has ever had, and
+// a drop cell that is floor. What a fold MEANS is not re-derived here — that
+// is holdings.go's, and a second copy of it would be a second thing to be
+// wrong.
+func validateHoldingsFacts(data *HoldingsData, f *field, doors []DoorInput, everMembers []MemberID) error {
+	props := make(map[PropID]bool, len(f.props))
+	for _, p := range f.props {
+		if p.ID != "" {
+			props[p.ID] = true
+		}
+	}
+	declaredDoors := make(map[DoorID]bool, len(doors))
+	for _, d := range doors {
+		declaredDoors[d.ID] = true
+	}
+	members := make(map[string]bool, len(everMembers))
+	for _, id := range everMembers {
+		members[string(id)] = true
+	}
+
+	for i, fd := range data.Facts {
+		if fd.Actor == "" || !members[fd.Actor] {
+			return fmt.Errorf("holdings fact %d actor %q is no member this encounter has ever had: %w",
+				i, fd.Actor, ErrInvalidData)
+		}
+
+		kind := fd.Kind
+		switch {
+		case strings.HasPrefix(kind, holdsIntelDoorPrefix):
+			id := strings.TrimPrefix(kind, holdsIntelDoorPrefix)
+			if !declaredDoors[id] {
+				return fmt.Errorf("holdings fact %d carries the way to door %q, which this field does not declare: %w",
+					i, id, ErrInvalidData)
+			}
+		case strings.HasPrefix(kind, holdsPropPrefix):
+			if id := strings.TrimPrefix(kind, holdsPropPrefix); !props[id] {
+				return fmt.Errorf("holdings fact %d holds prop %q, which this field does not place: %w",
+					i, id, ErrInvalidData)
+			}
+		case strings.HasPrefix(kind, heldPrefix):
+			if id := strings.TrimPrefix(kind, heldPrefix); !props[id] {
+				return fmt.Errorf("holdings fact %d picks up prop %q, which this field does not place: %w",
+					i, id, ErrInvalidData)
+			}
+		case strings.HasPrefix(kind, droppedPrefix):
+			id, at, ok := parseDropped(kind)
+			if !ok {
+				return fmt.Errorf("holdings fact %d names kind %q, which is not a drop this build writes: %w",
+					i, kind, ErrInvalidData)
+			}
+			if !props[id] {
+				return fmt.Errorf("holdings fact %d drops prop %q, which this field does not place: %w",
+					i, id, ErrInvalidData)
+			}
+			// FLOOR, not standable: a prop may sit on any floor, scenery
+			// included ([PropInput]'s own rule), and a cell off the floor
+			// would put the thing in the void on every map.
+			if !f.isFloor(at) {
+				return fmt.Errorf("holdings fact %d drops prop %q at [%g,%g], which is not floor: %w",
+					i, id, at.X, at.Y, ErrInvalidData)
+			}
+		default:
+			return fmt.Errorf("holdings fact %d names kind %q, which this build does not mint: %w",
+				i, kind, ErrInvalidData)
+		}
+	}
+	return nil
 }
 
 // replayHoldingsFacts restores the holdings journal from the blob, in the
@@ -1579,6 +1660,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// here, because the journal already holds whatever is left of it after
 	// however much looting happened.
 	if data.Holdings != nil {
+		if err = validateHoldingsFacts(data.Holdings, f, doorInputs, data.EverMembers); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
+		}
 		if err = replayHoldingsFacts(e.holdings, data.Holdings); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
