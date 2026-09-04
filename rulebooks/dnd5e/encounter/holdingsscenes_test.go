@@ -742,3 +742,111 @@ func (s *HoldingsSuite) TestTheAtlasSaysWhatCanBePickedUp() {
 		s.Require().False(ok, "a holdable prop inside concealed space is still concealed")
 	})
 }
+
+// TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith is the join-time half
+// of design P1, and it is what makes path 2 walkable in the real game.
+//
+// THE AUTHORED ROSTER IS NOT HOW MONSTERS GET INTO A RUN. The host builds
+// the world empty of members and spawns each one through the seam, which
+// lands in [Encounter.Join] — so before [JoinInput.Knows] existed, a captain
+// the dungeon authored as knowing the vault door arrived knowing nothing,
+// and looting the body taught the party nothing. The fixture said one thing
+// and the run did another.
+func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
+	// The world starts with the players and NO captain — the shape the host
+	// actually builds.
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+		Field: heirloomField(),
+		Members: []encounter.MemberInput{
+			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
+			{ID: partner, Kind: encounter.KindPlayer, Position: partnerCell},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+
+	before := s.atlasBytes(enc, partner)
+
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: captain, Kind: encounter.KindMonster,
+		Cell:  cellAt(int(captainCell.X), int(captainCell.Y)),
+		Knows: []encounter.DoorID{tombVault},
+	})
+	s.Require().NoError(err)
+
+	s.Run("the join says nothing about what they carry", func() {
+		// Design P3 at the door it enters by: the beat is byte-identical
+		// whether the joiner knows every secret in the dungeon or none.
+		joined := s.beatsOfKind(enc, partner, "joined")
+		s.Require().Len(joined, 1)
+		s.Require().Equal(map[string]any{
+			"beat": "joined", "member": string(captain),
+		}, joined[0])
+		s.Require().Empty(s.beatsOfKind(enc, partner, "door_revealed"))
+		s.Require().Equal(before, s.atlasBytes(enc, partner),
+			"a monster arriving with the run's only secret moves nobody's map")
+	})
+
+	// Kill it and loot it — path 2, end to end, on a spawned monster.
+	s.drop(enc)
+	s.walkTo(enc, raider, captainCell)
+	_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
+	s.Require().NoError(err)
+
+	s.Run("the looter alone learns the way in", func() {
+		reveals := s.beatsOfKind(enc, raider, "door_revealed")
+		s.Require().Len(reveals, 1)
+		s.Require().Equal(tombVault, reveals[0]["door"])
+
+		doors, derr := enc.DoorsFor(raider)
+		s.Require().NoError(derr)
+		s.Require().True(doorsListed(doors, tombVault))
+	})
+
+	s.Run("and nobody else's bytes moved", func() {
+		s.Require().Empty(s.beatsOfKind(enc, partner, "door_revealed"))
+		doors, derr := enc.DoorsFor(partner)
+		s.Require().NoError(derr)
+		s.Require().False(doorsListed(doors, tombVault))
+		s.Require().Equal(before, s.atlasBytes(enc, partner),
+			"the other member's atlas is unchanged from before the captain even arrived")
+	})
+}
+
+// TestASpawnedMonsterWithNothingIsIndistinguishable is design P3 across the
+// join seam: spawning a monster that knows a door and one that knows nothing
+// must produce the same bytes for everybody until somebody loots.
+func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
+	spawn := func(knows []encounter.DoorID) (string, string) {
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			CheckResolver: findsNothing{}, Witness: s.witness,
+			Field: heirloomField(),
+			Members: []encounter.MemberInput{
+				{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
+			},
+			Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+			Retention: encounter.RetentionUnbounded,
+		})
+		s.Require().NoError(err)
+		_, err = enc.Join(&encounter.JoinInput{
+			Member: captain, Kind: encounter.KindMonster,
+			Cell:  cellAt(int(captainCell.X), int(captainCell.Y)),
+			Knows: knows,
+		})
+		s.Require().NoError(err)
+		return s.storyBytes(enc, raider), s.atlasBytes(enc, raider)
+	}
+
+	richStory, richAtlas := spawn([]encounter.DoorID{tombVault})
+	s.SetupTest()
+	poorStory, poorAtlas := spawn(nil)
+
+	s.Require().Equal(poorStory, richStory, "no beat says who carries intel")
+	s.Require().Equal(poorAtlas, richAtlas, "and no map does either")
+}
