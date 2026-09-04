@@ -139,3 +139,42 @@ func TestAnEmptyAtlasProjectsEmptyLists(t *testing.T) {
 	require.Empty(t, out.Segments)
 	require.Empty(t, out.Sealed)
 }
+
+// TestTheStartIsCopiedNotShared pins that projectAtlas hands out its OWN
+// pointer for the way in.
+//
+// INTERNAL, and it has to be. The obvious external version — read an atlas,
+// mutate its Start, read again — cannot fail: every seam read reloads the
+// encounter from the repository, so each call already builds a fresh pointer
+// whether or not this function copies. Verified by writing that test first
+// and watching it pass against a projectAtlas that deliberately shared.
+//
+// The mutant it exists to kill is a plausible one rather than a contrived
+// one: [AtlasStart] and [encounter.AtlasStart] have identical layouts, so
+// `(*AtlasStart)(in.Start)` compiles and looks like a tidy saving. It would
+// hand a host a pointer into the composition's own snapshot, which is exactly
+// what S2 forbids.
+func TestTheStartIsCopiedNotShared(t *testing.T) {
+	inner := &encounter.AtlasStart{At: spatial.Position{X: 1, Y: 3}, Facing: "e"}
+	out := projectAtlas(encounter.Atlas{
+		Orientation: encounter.HexesArePointyTop(),
+		Start:       inner,
+	})
+
+	require.NotNil(t, out.Start)
+	require.Equal(t, inner.At, out.Start.At, "same fact")
+	require.Equal(t, inner.Facing, out.Start.Facing)
+
+	out.Start.Facing = "s"
+	out.Start.At = spatial.Position{X: 99, Y: 99}
+	require.Equal(t, "e", inner.Facing, "a caller's edit must not reach the composition")
+	require.Equal(t, spatial.Position{X: 1, Y: 3}, inner.At)
+}
+
+// TestAnAtlasWithNoStartProjectsNil is the zero-value half, in the one place
+// the conversion decides it: nil in, nil out, never a zero-valued start that
+// would claim the party arrives at the origin looking nowhere.
+func TestAnAtlasWithNoStartProjectsNil(t *testing.T) {
+	out := projectAtlas(encounter.Atlas{Orientation: encounter.HexesArePointyTop()})
+	require.Nil(t, out.Start)
+}

@@ -95,6 +95,14 @@ func projectAtlas(in encounter.Atlas) Atlas {
 		out.Exits = append(out.Exits, AtlasExit{ID: string(ex.ID), At: ex.At})
 	}
 
+	// The way in, copied the same way and for the same reason. A NEW POINTER
+	// rather than the composition's: an inner type must not cross this
+	// seam's exported surface (S2), and sharing the pointee would hand a
+	// host a route back into the world it is not supposed to hold.
+	if in.Start != nil {
+		out.Start = &AtlasStart{At: in.Start.At, Facing: in.Start.Facing}
+	}
+
 	for _, seg := range in.Segments {
 		out.Segments = append(out.Segments, AtlasSegment{
 			From:   AxialPointF{Q: seg.From.Q, R: seg.From.R},
