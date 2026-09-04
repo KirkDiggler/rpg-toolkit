@@ -2068,14 +2068,41 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	leftThrough := e.field.exitAt(finalCell)
 	carried := e.heldPropsOf(in.Member)
 
+	// DECIDE BEFORE NARRATING (rpg-toolkit#1507). The beat says what LEFT
+	// THE RUN, so it cannot be written until it is known whether this
+	// departure carried anything out or dropped it — and those are the same
+	// question as whether an ending fired.
+	//
+	// This used to run the other way round: the beat was appended with
+	// everything the member held, and the drop happened after. A carrier
+	// leaving from a non-exit produced `exited holding=[chalice]` followed
+	// by `dropped chalice` — two beats about one departure, disagreeing,
+	// with a client patching from the first believing the chalice had left
+	// the dungeon. Deciding first costs nothing and removes the
+	// disagreement rather than asking every reader to reconcile it.
+	//
+	// The BEAT ORDER design §6 fixes is untouched: the departure beat still
+	// precedes both `dropped` and `ended`. What moved is the decision, not
+	// the narration.
+	fired := e.matchExitedHolding(leftThrough, carried)
+
+	// What actually walked out with them: everything they held when an
+	// ending fired on this departure, and nothing otherwise. Never nil — an
+	// empty list and an absent field are different facts to a reader, and
+	// this is always the empty list.
+	departing := []PropID{}
+	if fired != nil {
+		departing = carried
+	}
+
 	beatPayload := map[string]interface{}{
 		"beat":   "exited",
 		"member": string(in.Member),
-		// holding is what they walked out carrying, and exit is the authored
+		// holding is what LEFT THE RUN with them, and exit is the authored
 		// way they left by — empty when they left from anywhere else, which
 		// is what a departure through the lobby looks like. Both always
 		// present so a reader never has to tell "absent" from "none".
-		"holding": carried,
+		"holding": departing,
 		"exit":    string(leftThrough),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
@@ -2092,20 +2119,21 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	seqNum := appendOut.Seq
 
-	// THE ENDING, AFTER THE DEPARTURE BEAT (design §6): the record reads
-	// "left through the front gate with the heirloom" and then "ended".
-	firedOutcome, err := e.firedExitedHolding(in.Member, leftThrough, carried, clockReadingForBeat, audience)
-	if err != nil {
-		return nil, fmt.Errorf("exit: %w", err)
-	}
-
 	// R9 — THEY DROP IT. A departure that did not end the run leaves
 	// everything the member was carrying on the cell they stood on, as
 	// holdable props anybody can pick up again. Otherwise a carrier who
 	// leaves through the lobby — or simply disconnects — takes the only win
 	// out of a run that is still going.
-	if firedOutcome == nil {
+	var firedOutcome *Outcome
+	if fired == nil {
 		if err := e.dropCarried(in.Member, carried, finalCell, clockReadingForBeat, audience); err != nil {
+			return nil, fmt.Errorf("exit: %w", err)
+		}
+	} else {
+		// THE ENDING, AFTER THE DEPARTURE BEAT (design §6): the record reads
+		// "left through the front gate with the heirloom" and then "ended".
+		firedOutcome, err = e.closeWith(fired.key, clockReadingForBeat, audience...)
+		if err != nil {
 			return nil, fmt.Errorf("exit: %w", err)
 		}
 	}
