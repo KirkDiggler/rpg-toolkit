@@ -261,6 +261,18 @@ type PropData struct {
 	ID       PropID `json:"id,omitempty"`
 	Holdable bool   `json:"holdable,omitempty"`
 
+	// Holds is the intel records this prop carries ([PropInput.Holds],
+	// rpg-project#372 R6). Field STRUCTURE, like the record table itself:
+	// what a scroll says never changes during a run, and who is holding the
+	// scroll is the holdings journal's business.
+	//
+	// PERSISTED, and it has to be. A host that saves between verbs rebuilds
+	// the field from these bytes, so a prop whose records did not survive
+	// the round trip would be a scroll that taught the first person to pick
+	// it up and nobody after — found by the session seam's own scene, which
+	// loads a stored encounter rather than building one in memory.
+	Holds []IntelID `json:"holds,omitempty"`
+
 	Ref               string       `json:"ref"`
 	At                PositionData `json:"at"`
 	BlocksMovement    *bool        `json:"blocks_movement"`
@@ -1053,6 +1065,7 @@ func fieldDataFrom(f *field) FieldData {
 			out.Props[i] = PropData{
 				ID:                p.ID,
 				Holdable:          p.Holdable,
+				Holds:             append([]IntelID(nil), p.Holds...),
 				Ref:               p.Ref,
 				At:                PositionData{X: p.At.X, Y: p.At.Y},
 				BlocksMovement:    &blocksMovement,
@@ -2022,6 +2035,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.Props = append(in.Props, PropInput{
 			ID:                pd.ID,
 			Holdable:          pd.Holdable,
+			Holds:             append([]IntelID(nil), pd.Holds...),
 			Ref:               pd.Ref,
 			At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
 			BlocksMovement:    &blocksMovement,

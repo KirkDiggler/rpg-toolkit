@@ -1284,3 +1284,48 @@ func (s *HoldingsSuite) TestAPropWithNoRecordsTeachesNothing() {
 		s.Require().NotContains(string(raw), vaultMap)
 	})
 }
+
+// TestAScrollStillTeachesAfterASaveAndLoad is the round trip, and it exists
+// because the first version of R6 did not survive one.
+//
+// A prop's records are field STRUCTURE, so they have to persist with the
+// field — but PropData carried the id and the holdable flag and not the
+// records, so a scroll taught the first person to pick it up and nobody
+// after. Every in-memory scene passed. The session seam's own scene caught
+// it, because that layer loads a stored encounter rather than building one,
+// which is what the real game does between every verb.
+func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
+	enc := s.open(false)
+	data := enc.ToData()
+
+	s.Run("the prop's records are in the blob", func() {
+		var scrollData encounter.PropData
+		for _, p := range data.Field.Props {
+			if p.ID == scroll {
+				scrollData = p
+			}
+		}
+		s.Require().Equal(scroll, scrollData.ID)
+		s.Require().Equal([]encounter.IntelID{scrollNotes, scrollMargin}, scrollData.Holds)
+	})
+
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:  data,
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+	})
+	s.Require().NoError(err)
+
+	s.Run("and a reloaded scroll still teaches whoever picks it up", func() {
+		s.walkTo(reloaded, raider, scrollCell)
+		_, herr := reloaded.Hold(&encounter.HoldInput{Member: raider, Target: scroll})
+		s.Require().NoError(herr)
+
+		var learned []any
+		for _, b := range s.beatsOfKind(reloaded, raider, "door_revealed") {
+			learned = append(learned, b["door"])
+		}
+		s.Require().ElementsMatch([]any{tombVault, hallGate}, learned)
+	})
+}
