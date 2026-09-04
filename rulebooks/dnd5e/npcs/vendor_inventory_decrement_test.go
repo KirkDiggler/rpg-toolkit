@@ -60,15 +60,20 @@ func (s *DecrementVendorStockSuite) merchantData() *npc.Data {
 }
 
 func (s *DecrementVendorStockSuite) stockOf(data *npc.Data, itemID string) npcs.Availability {
+	avail, ok := s.findStockEntry(data, itemID)
+	s.Require().True(ok, "no such stock entry %q", itemID)
+	return avail
+}
+
+func (s *DecrementVendorStockSuite) findStockEntry(data *npc.Data, itemID string) (npcs.Availability, bool) {
 	var inventory npcs.VendorInventoryData
 	s.Require().NoError(json.Unmarshal(data.Inventory, &inventory))
 	for _, entry := range inventory.Entries {
 		if entry.ID == itemID {
-			return entry.Availability
+			return entry.Availability, true
 		}
 	}
-	s.Failf("no such stock entry", "item %q", itemID)
-	return npcs.Availability{}
+	return npcs.Availability{}, false
 }
 
 func (s *DecrementVendorStockSuite) TestPartialDecrementLeavesRemainder() {
@@ -82,14 +87,28 @@ func (s *DecrementVendorStockSuite) TestPartialDecrementLeavesRemainder() {
 	s.Equal(1, avail.Quantity)
 }
 
-func (s *DecrementVendorStockSuite) TestExactDecrementReachesZero() {
+// TestExactDecrementRemovesTheRow pins the fix for a real bug this suite
+// caught: a StockModeLimited row written back at Quantity: 0 is not a value
+// validateAvailability accepts (vendor_test.go's "limited stock without
+// quantity" case), so the row must be REMOVED once exhausted rather than
+// left at zero — otherwise the very next resolve of this vendor's stock
+// (VendorInventoryFromNPCData, session.Interact/Trade's own read path)
+// would fail to unmarshal a value this same package just wrote.
+func (s *DecrementVendorStockSuite) TestExactDecrementRemovesTheRow() {
 	data := s.merchantData()
 
 	err := npcs.DecrementVendorStock(data, shared.EquipmentTypeWeapon, string(weapons.Longsword), 2)
 	s.Require().NoError(err)
 
-	avail := s.stockOf(data, string(weapons.Longsword))
-	s.Equal(0, avail.Quantity)
+	_, ok := s.findStockEntry(data, string(weapons.Longsword))
+	s.False(ok, "an exhausted limited row must be removed, not left at zero")
+
+	// The write-back must still be valid data: the remaining unlimited row
+	// resolves cleanly through the same path Interact/Trade use to read it.
+	inventory, ok, err := npcs.VendorInventoryFromNPCData(data)
+	s.Require().NoError(err)
+	s.Require().True(ok)
+	s.Len(inventory.View().Entries, 1)
 }
 
 func (s *DecrementVendorStockSuite) TestInsufficientQuantityIsRefused() {

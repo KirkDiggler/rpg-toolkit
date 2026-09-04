@@ -75,12 +75,23 @@ func LoadVendorInventory(data *VendorInventoryData) (VendorInventory, error) {
 // than just display it.
 //
 // A StockModeLimited row is decremented, and refused with ErrOutOfStock if
-// quantity exceeds what remains. A StockModeUnlimited row is left
-// untouched — decrementing an always-available row would be meaningless —
-// and still reports success, since the item was available either way. An
-// item that names no stocked row at all is also ErrOutOfStock: a vendor that
-// never carried something and a vendor that ran out of it are the same
-// refusal from a buyer's side.
+// quantity exceeds what remains. A row decremented to exactly zero is
+// REMOVED from the stored entries rather than left at Quantity: 0 — a
+// Limited row with a zero or negative quantity is not a value this package's
+// own validateAvailability accepts (vendor_test.go's "limited stock without
+// quantity" case pins that for authoring), so leaving one behind would write
+// data the very next read of this vendor could not unmarshal. A vendor whose
+// every row was Limited and is now fully sold out serializes to an empty
+// Entries list, which LoadVendorInventory also refuses (ErrNoStock) — a
+// known limit of the current shape, not silently papered over here; the
+// toolkit's shipped demo vendor always keeps one StockModeUnlimited row, so
+// this case is not reachable through it today.
+//
+// A StockModeUnlimited row is left untouched — decrementing an
+// always-available row would be meaningless — and still reports success,
+// since the item was available either way. An item that names no stocked
+// row at all is also ErrOutOfStock: a vendor that never carried something
+// and a vendor that ran out of it are the same refusal from a buyer's side.
 func DecrementVendorStock(data *npc.Data, itemType shared.EquipmentType, id string, quantity int) error {
 	if data == nil {
 		return ErrNoVendorNPC
@@ -98,7 +109,7 @@ func DecrementVendorStock(data *npc.Data, itemType shared.EquipmentType, id stri
 	}
 
 	for i := range inventory.Entries {
-		entry := &inventory.Entries[i]
+		entry := inventory.Entries[i]
 		if entry.Type != itemType || entry.ID != id {
 			continue
 		}
@@ -110,7 +121,12 @@ func DecrementVendorStock(data *npc.Data, itemType shared.EquipmentType, id stri
 			if entry.Availability.Quantity < quantity {
 				return ErrOutOfStock
 			}
-			entry.Availability.Quantity -= quantity
+			remaining := entry.Availability.Quantity - quantity
+			if remaining == 0 {
+				inventory.Entries = append(inventory.Entries[:i:i], inventory.Entries[i+1:]...)
+			} else {
+				inventory.Entries[i].Availability.Quantity = remaining
+			}
 
 			marshaled, err := json.Marshal(inventory)
 			if err != nil {
