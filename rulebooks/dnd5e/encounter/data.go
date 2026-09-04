@@ -169,6 +169,15 @@ type FieldData struct {
 	// before exits existed simply loads with none.
 	Exits []ExitData `json:"exits,omitempty"`
 
+	// Start is the authored way in, with its cell in the AUTHORED offset
+	// frame ([FieldInput.Start], rpg-project#374). Omitted when the field
+	// declares none — a POINTER rather than a value for the reason
+	// [AtlasStart] gives: a zero-valued start is a real dungeon, so absence
+	// has to be spelled differently from [0,0] facing nowhere. A blob
+	// written before starts were carried loads with none, which is exactly
+	// what every stored field had.
+	Start *StartData `json:"start,omitempty"`
+
 	// Walls are the authored walls, in authored order, with endpoints in the
 	// AUTHORED offset frame.
 	Walls []BoundaryData `json:"walls,omitempty"`
@@ -305,6 +314,18 @@ type IntelData struct {
 type ExitData struct {
 	ID ExitID       `json:"id"`
 	At PositionData `json:"at"`
+}
+
+// StartData is the persistent representation of the authored way in —
+// [FieldStart], with its cell in the AUTHORED offset frame.
+//
+// The facing is omitempty because empty is a FACT here, not a gap: an author
+// who stated no direction and a blob that predates facings say the same
+// thing, and both should read as "open the camera however you opened it
+// before".
+type StartData struct {
+	At     PositionData `json:"at"`
+	Facing string       `json:"facing,omitempty"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -1087,6 +1108,13 @@ func fieldDataFrom(f *field) FieldData {
 		out.Exits = make([]ExitData, len(f.exits))
 		for i, ex := range f.exits {
 			out.Exits[i] = ExitData{ID: ex.ID, At: PositionData{X: ex.At.X, Y: ex.At.Y}}
+		}
+	}
+
+	if f.start != nil {
+		out.Start = &StartData{
+			At:     PositionData{X: f.start.At.X, Y: f.start.At.Y},
+			Facing: f.start.Facing,
 		}
 	}
 
@@ -2047,6 +2075,13 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 
 	for _, ed := range fd.Exits {
 		in.Exits = append(in.Exits, FieldExit{ID: ed.ID, At: spatial.Position{X: ed.At.X, Y: ed.At.Y}})
+	}
+
+	if fd.Start != nil {
+		in.Start = &FieldStart{
+			At:     spatial.Position{X: fd.Start.At.X, Y: fd.Start.At.Y},
+			Facing: fd.Start.Facing,
+		}
 	}
 
 	for _, rd := range fd.Intel {

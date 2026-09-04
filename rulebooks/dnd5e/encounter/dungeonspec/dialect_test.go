@@ -89,7 +89,9 @@ func (s *DialectSuite) TestTheShippingTombDecodes() {
 	s.Equal("pointy", spec.Orientation)
 	s.Equal("opaque", spec.Void)
 	s.Require().NotNil(spec.Start)
-	s.Equal([2]int{1, 3}, *spec.Start)
+	s.Equal(dungeonspec.StartSpec{At: [2]int{1, 3}}, *spec.Start,
+		"the bare pair stays legal, and states no facing — every shipping fixture "+
+			"still spells it this way (rpg-project#374)")
 	s.Len(spec.Regions, 3)
 	s.Len(spec.Regions[0].Cells, 8, "eight rows")
 	s.Len(spec.Regions[0].Cells[0], 6, "six cells each")

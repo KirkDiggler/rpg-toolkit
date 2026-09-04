@@ -541,16 +541,29 @@ func (v *validation) start() {
 		v.fail("start", "the dungeon does not say where the party starts")
 		return
 	}
+	// THE FACING IS ASKED FIRST, and separately from the cell: it is a
+	// vocabulary question, not a geometry one, so an author who wrote a
+	// direction that does not exist hears about the WORD rather than
+	// nothing — a start that is also off the floor reports both, one per
+	// failure, the way every other check here does.
+	//
+	// Empty is not a word: it is the author saying nothing, which is legal
+	// and means the camera opens however it opened before.
+	if s.Start.Facing != "" && !facings[s.Start.Facing] {
+		v.fail("start.facing",
+			"%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", s.Start.Facing)
+	}
+
 	// STANDABLE, NOT MERELY FLOOR (rpg-project#360, F2). Scenery is floor
 	// and nobody's feet touch it, so a start painted on the strip is refused
 	// with the reason rather than with "not floor", which would now be a lie.
-	start := v.cell(*s.Start)
+	start := v.cell(s.Start.At)
 	if v.sceneryAt[start] {
-		v.fail("start", "the party starts at [%d,%d], which is scenery: nobody can stand there", s.Start[0], s.Start[1])
+		v.fail("start", "the party starts at [%d,%d], which is scenery: nobody can stand there", s.Start.At[0], s.Start.At[1])
 		return
 	}
 	if _, floor := v.owner[start]; !floor {
-		v.fail("start", "the party starts at [%d,%d], which is not floor", s.Start[0], s.Start[1])
+		v.fail("start", "the party starts at [%d,%d], which is not floor", s.Start.At[0], s.Start.At[1])
 		return
 	}
 	// C12: A CELL A WALL HAS TOO LITTLE OF IS NOT A PLACE TO STAND, and the
@@ -558,12 +571,12 @@ func (v *validation) start() {
 	// the author moves to fix it.
 	if wall, sealed := v.derived.Sealed[start]; sealed {
 		v.fail("start", "the party starts at [%d,%d], where %s leaves no room to stand",
-			s.Start[0], s.Start[1], v.wallLabel(wall))
+			s.Start.At[0], s.Start.At[1], v.wallLabel(wall))
 		return
 	}
 	for i, pl := range s.Place {
-		if pl.At == *s.Start {
-			v.fail("start", "the party starts at [%d,%d], where %q (place[%d]) already stands", s.Start[0], s.Start[1], pl.Ref, i)
+		if pl.At == s.Start.At {
+			v.fail("start", "the party starts at [%d,%d], where %q (place[%d]) already stands", s.Start.At[0], s.Start.At[1], pl.Ref, i)
 		}
 	}
 }
@@ -960,7 +973,7 @@ func (v *validation) concealment() {
 	if s.Start == nil {
 		return // start defects are start()'s to report; reach needs an anchor
 	}
-	startRegion, onFloor := v.owner[v.cell(*s.Start)]
+	startRegion, onFloor := v.owner[v.cell(s.Start.At)]
 	if !onFloor {
 		return
 	}

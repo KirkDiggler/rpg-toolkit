@@ -42,6 +42,20 @@ type Compiled struct {
 	// Never empty for a spec that compiled.
 	PartyStart []Seat
 
+	// StartFacing is the direction the party is looking when they arrive —
+	// one of the eight true-compass names, or empty when the author stated
+	// none (rpg-project#374).
+	//
+	// A CONVENIENCE BESIDE PartyStart, and deliberately not a second source
+	// of truth: both are DERIVED at compile time from the one authored
+	// `start:`, in the same pass, so there is no window in which they could
+	// disagree. It sits here because a host reading the seats to place a
+	// party wants the camera direction in the same breath, and reaching into
+	// Field.Start for one word would be the awkward half of an otherwise
+	// clean read. The field's copy is the one that SURVIVES — see
+	// [Compiled.Field].
+	StartFacing string
+
 	// Monsters is every authored monster, in the order the author wrote
 	// them. The half that still needs a sheet.
 	Monsters []MonsterPlacement
@@ -180,6 +194,15 @@ func Compile(spec *Spec) (Compiled, error) {
 		Doors:    doorsOf(spec, orientation),
 		Exits:    exitsOf(spec),
 		Intel:    intelOf(spec),
+		// The way in rides the FIELD, so it survives being stored: a start
+		// kept only on Compiled would be lost the moment the dungeon was
+		// saved, and a live session's map could never answer for it
+		// (rpg-project#374). Authored frame, converted once by the
+		// composition like every other authored cell.
+		Start: &encounter.FieldStart{
+			At:     spatial.Position{X: float64(spec.Start.At[0]), Y: float64(spec.Start.At[1])},
+			Facing: spec.Start.Facing,
+		},
 	}
 
 	start, err := seatsOf(spec, orientation)
@@ -188,11 +211,12 @@ func Compile(spec *Spec) (Compiled, error) {
 	}
 
 	return Compiled{
-		Field:      field,
-		PartyStart: start,
-		Monsters:   monstersOf(spec, orientation),
-		Scenarios:  scenariosOf(spec),
-		Intel:      field.Intel,
+		Field:       field,
+		PartyStart:  start,
+		StartFacing: spec.Start.Facing,
+		Monsters:    monstersOf(spec, orientation),
+		Scenarios:   scenariosOf(spec),
+		Intel:       field.Intel,
 	}, nil
 }
 
@@ -582,10 +606,10 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 // left out: a party member cannot share a cell with a pillar.
 func seatsOf(spec *Spec, o encounter.Orientation) ([]Seat, error) {
 	owner := ownerOf(spec, o)
-	from := encounter.HexCellAt(o, spec.Start[0], spec.Start[1])
+	from := encounter.HexCellAt(o, spec.Start.At[0], spec.Start.At[1])
 	region, ok := owner[from]
 	if !ok {
-		return nil, fmt.Errorf("the party starts at [%d,%d], which is not floor: %w", spec.Start[0], spec.Start[1], ErrBadSpec)
+		return nil, fmt.Errorf("the party starts at [%d,%d], which is not floor: %w", spec.Start.At[0], spec.Start.At[1], ErrBadSpec)
 	}
 
 	taken := make(map[[2]int]bool, len(spec.Place))
@@ -621,7 +645,7 @@ func seatsOf(spec *Spec, o encounter.Orientation) ([]Seat, error) {
 		return ci[1] < cj[1]
 	})
 	if len(seats) == 0 {
-		return nil, fmt.Errorf("the party starts at [%d,%d], where something already stands: %w", spec.Start[0], spec.Start[1], ErrBadSpec)
+		return nil, fmt.Errorf("the party starts at [%d,%d], where something already stands: %w", spec.Start.At[0], spec.Start.At[1], ErrBadSpec)
 	}
 	return seats, nil
 }

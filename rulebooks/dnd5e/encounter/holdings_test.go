@@ -274,6 +274,37 @@ func (s *HoldingsSuite) open(holds bool, endings ...encounter.EndingInput) *enco
 	return enc
 }
 
+// openWithField is open() with the FIELD named, for the scenes that vary the
+// dungeon rather than the cast — the start-facing ones, which are about a fact
+// the field carries and nothing else touches.
+func (s *HoldingsSuite) openWithField(field encounter.FieldInput) *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+		Field:     field,
+		Members:   s.cast(false),
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// reload round-trips an encounter through its own blob, the way a host does
+// between two verbs.
+func (s *HoldingsSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
+	data := enc.ToData()
+	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:  data,
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+	})
+	s.Require().NoError(err)
+	return out
+}
+
 // beats reads one member's whole story, decoded, in order — the same read a
 // client makes, so recipient scoping is asserted through the projection
 // rather than around it.
