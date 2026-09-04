@@ -153,6 +153,13 @@ type Encounter struct {
 	// than promised.
 	world *encounterWorld
 
+	// holdings is WHO HAS WHAT: the run's append-only journal of holdings,
+	// takings and drops (rpg-project#368, design §5). ALWAYS PRESENT, unlike
+	// world above — holdings are not about concealment, and a dungeon with
+	// no secret anywhere can still have a holdable idol on a plinth. An
+	// encounter where nobody holds anything writes no facts and no bytes.
+	holdings *holdings
+
 	// checkResolver rolls a find check when a member searches. Required at
 	// both constructors exactly when the field carries concealment; unread
 	// otherwise. See [CheckResolver].
@@ -401,6 +408,24 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 		if md, ok := ei.Trigger.(TriggerMemberDown); ok && md.Member == "" {
 			return fmt.Errorf("ending %q names no member: %w", ei.Key, ErrNoEnding)
 		}
+		// An ExitedHolding ending must name an exit this field declares and
+		// a prop it declares TAKEABLE. Either one missing is an ending that
+		// can never fire — the same liveness hole an unreachable trigger
+		// cell is, and refused here for the same reason
+		// ([TriggerExitedHolding]).
+		if eh, ok := ei.Trigger.(TriggerExitedHolding); ok {
+			if _, declared := f.exitCells[eh.Exit]; !declared {
+				return fmt.Errorf("ending %q names exit %q, which this field does not declare: %w",
+					ei.Key, eh.Exit, ErrNoEnding)
+			}
+			if eh.Item == "" {
+				return fmt.Errorf("ending %q names no item to be holding: %w", ei.Key, ErrNoEnding)
+			}
+			if _, holdable := f.holdable[eh.Item]; !holdable {
+				return fmt.Errorf("ending %q waits for %q to be held, and no prop with that id is holdable: %w",
+					ei.Key, eh.Item, ErrNoEnding)
+			}
+		}
 		trigger, ok := ei.Trigger.(TriggerReachedPosition)
 		if !ok {
 			continue
@@ -590,6 +615,23 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
+	// A knowledge link must name a door this field declares (design P1).
+	// Refused here, before anything is built (R5): a link to nothing is a
+	// secret the author thinks they placed and did not. Whether that door is
+	// CONCEALED is deliberately not asked — knowing an ordinary door is
+	// inert, not an error ([MemberInput.Knows]).
+	declaredDoors := make(map[DoorID]bool, len(in.Field.Doors))
+	for _, d := range in.Field.Doors {
+		declaredDoors[d.ID] = true
+	}
+	for _, mi := range in.Members {
+		for _, id := range mi.Knows {
+			if !declaredDoors[id] {
+				return nil, fmt.Errorf("newencounter: member %q knows door %q: %w", mi.ID, id, ErrNoDoor)
+			}
+		}
+	}
+
 	// A TriggerReachedPosition ending must name a reachable cell (#929 T3
 	// Opus round F5) — see validateEndingTriggers.
 	if err = validateEndingTriggers(f, in.Endings); err != nil {
@@ -613,6 +655,11 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		retention:     normalizeRetention(in.Retention),
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
+
+	// The holdings journal, always. It starts empty and stays empty for a
+	// field nobody carries anything in, which is what keeps such a field's
+	// blob byte-identical to what it was before holdings existed.
+	e.holdings = newHoldings()
 
 	// The world, seeded from the concealed structure — and only then: a
 	// field with none leaves e.world nil and every concealment path a
@@ -688,6 +735,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		// Store decider if present (monsters only, validated above)
 		if mi.Decider != nil {
 			e.deciders[mi.ID] = mi.Decider
+		}
+
+		// The author's knowledge links, seeded as the holdings they are
+		// (design P1). SETUP ONLY — Load replays the journal instead, so
+		// intel somebody already looted is not handed back to the body.
+		if err = e.holdings.seedIntel(mi.ID, mi.Knows); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 	}
 
@@ -1223,22 +1277,30 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 // client following the stream never heard the run end.
 //
 // Returns a DEEP COPY (mutation-proof), like every projection.
-func (e *Encounter) closeWith(key string, at uint64) (*Outcome, error) {
+func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Outcome, error) {
 	e.outcome = &Outcome{
 		Ending:  key,
 		At:      at,
 		Members: e.buildMemberOutcomes(),
 	}
 
-	// tableBeat, no subjects: nothing has removed anyone from e.members by
-	// this point, so a fresh call here already matches "everyone".
+	// tableBeat. Callers that close mid-verb pass the audience they captured
+	// BEFORE the verb changed the roster; everyone else passes none and a
+	// fresh e.rosterIDs() is already "everyone".
+	//
+	// THE EXIT PATH IS WHY THIS IS A PARAMETER (rpg-project#368). A
+	// TriggerExitedHolding ending fires after the departing member has been
+	// removed from e.members, so a fresh roster read here would leave the
+	// carrier out of the beat announcing the run they just won. Every other
+	// close still runs with nobody removed, and for those the two are the
+	// same list.
 	beatBytes, _ := json.Marshal(map[string]interface{}{
 		"beat":   "ended",
 		"ending": key,
 	})
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       at,
-		Audience: e.audienceFor(tableBeat),
+		Audience: e.audienceFor(tableBeat, audience...),
 		Tags:     map[string]string{"tag": "scene"},
 		Payload:  beatBytes,
 	}); err != nil {
@@ -1977,9 +2039,23 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
+
+	// WHERE THEY STOOD ON THE WAY OUT is already recorded (finalCell above),
+	// and it is the whole of the exit-cell check: an authored exit compiled
+	// to one absolute cell, compared by equality, exactly as a
+	// ReachedPosition ending is (rpg-project#368, design §6).
+	leftThrough := e.field.exitAt(finalCell)
+	carried := e.heldPropsOf(in.Member)
+
 	beatPayload := map[string]interface{}{
 		"beat":   "exited",
 		"member": string(in.Member),
+		// holding is what they walked out carrying, and exit is the authored
+		// way they left by — empty when they left from anywhere else, which
+		// is what a departure through the lobby looks like. Both always
+		// present so a reader never has to tell "absent" from "none".
+		"holding": carried,
+		"exit":    string(leftThrough),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
@@ -1995,6 +2071,24 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	seqNum := appendOut.Seq
 
+	// THE ENDING, AFTER THE DEPARTURE BEAT (design §6): the record reads
+	// "left through the front gate with the heirloom" and then "ended".
+	firedOutcome, err := e.firedExitedHolding(in.Member, leftThrough, carried, clockReadingForBeat, audience)
+	if err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
+	}
+
+	// R9 — THEY DROP IT. A departure that did not end the run leaves
+	// everything the member was carrying on the cell they stood on, as
+	// holdable props anybody can pick up again. Otherwise a carrier who
+	// leaves through the lobby — or simply disconnects — takes the only win
+	// out of a run that is still going.
+	if firedOutcome == nil {
+		if err := e.dropCarried(in.Member, carried, finalCell, clockReadingForBeat, audience); err != nil {
+			return nil, fmt.Errorf("exit: %w", err)
+		}
+	}
+
 	// refreshSight for REMAINING members only (the exiter's holdings remain in intel archive)
 	if len(memberIDs) > 0 {
 		refreshDeltas, _, err := e.refreshSight(memberIDs)
@@ -2005,7 +2099,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	}
 
 	// Check if we need to auto-close (last member exited and no ending has fired)
-	var closedOutcome *Outcome
+	closedOutcome := firedOutcome
 	if len(e.members) == 0 && e.outcome == nil {
 		e.outcome = &Outcome{
 			Ending:  "abandoned",

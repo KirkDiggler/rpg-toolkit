@@ -114,6 +114,25 @@ type field struct {
 	// its region, its lighting and its archetype, and nobody's feet go on it.
 	sealedCells map[spatial.Position]bool
 
+	// exits is the authored ways out, deep-copied, in the AUTHORED frame —
+	// what ToData writes back out beside the regions and the props.
+	exits []FieldExit
+
+	// exitCells is every authored exit's ID to the ABSOLUTE cell somebody
+	// stands on to leave through it — converted once, at construction,
+	// through the same [HexCellAt] the regions went through. An ending is
+	// compared to a departing member's live cell by EQUALITY, so a second
+	// projection anywhere else would land the exit somewhere nobody can
+	// stand and the run would simply never end — [compileEndings]' own
+	// argument, one noun over.
+	exitCells map[ExitID]spatial.Position
+
+	// holdable is every prop id the author declared holdable, to its index
+	// in props. Built here because "is this a thing that can be picked up"
+	// is a question about the FIELD, asked by [Encounter.Hold] and by the
+	// ending validation, and neither should walk the prop list to answer it.
+	holdable map[PropID]int
+
 	// width and height are the span of the one hex grid that holds the
 	// floor's bounding box (W6).
 	width, height int
@@ -187,6 +206,11 @@ func compileField(in FieldInput) (*field, error) {
 		return nil, err
 	}
 	if err := f.compileSegments(in.Segments); err != nil {
+		return nil, err
+	}
+	// EXITS LAST, because standable is the question they ask and the sealed
+	// cells above are half its answer.
+	if err := f.compileExits(in.Exits); err != nil {
 		return nil, err
 	}
 
@@ -315,7 +339,9 @@ func (f *field) compileScenery(scenery []spatial.Position) error {
 // on a floor cell of its own.
 func (f *field) compileProps(props []PropInput) error {
 	f.props = make([]PropInput, len(props))
+	f.holdable = map[PropID]int{}
 	seen := make(map[spatial.Position]bool, len(props))
+	seenID := make(map[PropID]int, len(props))
 
 	for i, p := range props {
 		if p.Ref == "" {
@@ -347,18 +373,90 @@ func (f *field) compileProps(props []PropInput) error {
 		}
 		seen[cell] = true
 
+		// An id is optional; a DUPLICATE one is not, because every verb that
+		// names a prop by id would then have two answers (rpg-project#368).
+		if p.ID != "" {
+			if prev, dup := seenID[p.ID]; dup {
+				return fmt.Errorf("props[%d] and props[%d] share the id %q: %w", prev, i, p.ID, ErrNoField)
+			}
+			seenID[p.ID] = i
+			if p.Holdable {
+				f.holdable[p.ID] = i
+			}
+		} else if p.Holdable {
+			// A TAKEABLE PROP MUST BE NAMEABLE. Without an id, every atlas
+			// would advertise a thing anybody can pick up and no [HoldInput]
+			// could ever name it — an offer with nothing behind it, which is
+			// the shape of lie [PropInput]'s two blocking flags are pointers
+			// to avoid. dungeonspec refuses this at the file; refused here
+			// too, so a host assembling a field by hand cannot produce it
+			// either (Copilot, PR #1497 review).
+			return fmt.Errorf("prop %q at [%g,%g] is holdable and has no id: %w",
+				p.Ref, p.At.X, p.At.Y, ErrNoField)
+		}
+
 		// Fresh pointers: a caller flipping a bool after construction must
 		// not change what ToData writes (the T6 defect one indirection down).
 		// Facing and Offset need no such copy — a string and a value array
 		// are already immune to the aliasing the two flags guard against.
 		blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
 		f.props[i] = PropInput{
+			ID: p.ID, Holdable: p.Holdable,
 			Ref: p.Ref, At: p.At, BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksSight,
 			Facing: p.Facing, Offset: p.Offset,
 		}
 	}
 
 	return nil
+}
+
+// compileExits checks every authored way out names itself, names itself
+// once, and stands somewhere a member's feet can actually be — then converts
+// each cell once, through the field's one conversion.
+//
+// STANDABLE, NOT MERELY FLOOR. An exit on scenery or on a cell a wall has
+// left no room in is an exit nobody can leave through, which is
+// [ErrNoEnding]'s liveness argument about an unreachable trigger cell asked
+// about the cell the trigger is about. Refused here rather than at the
+// ending, because it is true of the exit whether or not any ending names it.
+func (f *field) compileExits(exits []FieldExit) error {
+	f.exits = append([]FieldExit(nil), exits...)
+	f.exitCells = make(map[ExitID]spatial.Position, len(exits))
+
+	for i, ex := range exits {
+		if ex.ID == "" {
+			return fmt.Errorf("exits[%d] has no id: %w", i, ErrNoExit)
+		}
+		if _, dup := f.exitCells[ex.ID]; dup {
+			return fmt.Errorf("duplicate exit %q: %w", ex.ID, ErrNoExit)
+		}
+		if !isAuthoredCell(ex.At) {
+			return fmt.Errorf("exit %q at (%g,%g) is not a representable integral cell: %w",
+				ex.ID, ex.At.X, ex.At.Y, ErrNoExit)
+		}
+		cell := f.cellAt(ex.At)
+		if !f.isStandable(cell) {
+			return fmt.Errorf("exit %q at [%g,%g] %s: %w", ex.ID, ex.At.X, ex.At.Y, f.notStandable(cell), ErrNoExit)
+		}
+		f.exitCells[ex.ID] = cell
+	}
+	return nil
+}
+
+// propIndexOf is the index of the prop with this id, or -1. Linear over a
+// list of props, deliberately: the holdable index above answers the hot
+// question, and this one exists only for the probe law's "does anything at
+// all have that id", asked once per refused Hold.
+func (f *field) propIndexOf(id PropID) int {
+	if id == "" {
+		return -1
+	}
+	for i, p := range f.props {
+		if p.ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // compileWalls checks every wall is an edge between two adjacent floor cells

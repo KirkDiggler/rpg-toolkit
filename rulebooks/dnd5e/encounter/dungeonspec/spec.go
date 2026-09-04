@@ -127,6 +127,53 @@ type Spec struct {
 	// Place is everything standing on the floor — props, monsters, and the
 	// boss alike, routed by the ref's type segment — at ABSOLUTE cells.
 	Place []PlaceSpec `yaml:"place"`
+
+	// Exits are the ways out of this dungeon: an id and a floor cell each
+	// (rpg-project#368, design §3.1). Optional; omitted means none.
+	//
+	// STRUCTURE, NOT SCENARIO. A dungeon has ways out whatever the party is
+	// there for, so an exit is authored beside `start` and the two have the
+	// same shape. `start` is NOT implicitly an exit: nothing is defaulted
+	// (rpg-toolkit#1033), and a dungeon whose entrance is also its way out
+	// says so in one line.
+	Exits []ExitSpec `yaml:"exits,omitempty"`
+
+	// Scenarios binds this dungeon to the scenarios it is authored for: a
+	// map from scenario id to that scenario's bindings, each binding a field
+	// key to the id of something in this file (rpg-project#368, design §3.1).
+	// Optional; omitted means none.
+	//
+	// CARRIED OPAQUELY, AND VALIDATED ONLY AS REFERENCES. This package checks
+	// exactly one thing about a binding: that its value names a placement id
+	// or an exit id that exists in this file. What the keys mean, which are
+	// required, and whether the thing named is the right KIND of thing are
+	// the scenario package's own refusals — asked at its `New(cfg)`, in
+	// form-filler words. Design law C1 is the reason: this package never
+	// resolves content, and a scenario is content.
+	//
+	// A dungeon may bind SEVERAL scenarios, and the run ends when any bound
+	// ending fires (design R8).
+	Scenarios map[string]map[string]string `yaml:"scenarios,omitempty"`
+}
+
+// ExitSpec is one authored way out: an id and the floor cell a member stands
+// on to leave through it.
+//
+//	exits:
+//	  - { id: entrance, at: [1, 3] }
+//
+// The shape `start` already has, deliberately (design §3.1) — a way out is
+// the same kind of authored fact as a way in.
+type ExitSpec struct {
+	// ID names the exit within this dungeon, and is what a scenario binding
+	// names. REQUIRED non-empty and unique — a binding that named an
+	// ambiguous exit would have no answer.
+	ID string `yaml:"id"`
+
+	// At is the absolute cell, offset [col,row]. Must be STANDABLE floor:
+	// an exit nobody can reach is a liveness hole, which is
+	// [encounter.ErrNoEnding]'s own reason applied one layer out.
+	At [2]int `yaml:"at"`
 }
 
 // Version is the one dialect this build speaks.
@@ -477,6 +524,18 @@ type ApproachSpec struct {
 
 // PlaceSpec is one authored placement at an ABSOLUTE cell.
 type PlaceSpec struct {
+	// ID is the author's name for this placement — the third id in this
+	// file after a region's and a door's (rpg-project#368, design P2).
+	// Optional: a placement nothing binds to needs no name.
+	//
+	// REQUIRED BY WHATEVER BINDS TO IT, and by nothing else. A knowledge
+	// link's SUBJECT needs none — `knows` names doors, and a monster that
+	// knows one is just a monster. A scenario binding needs one, and a
+	// holdable prop needs one because both the binding and the `held` beat
+	// have to be able to say WHICH thing. Refused on collision, naming both
+	// lines.
+	ID string `yaml:"id,omitempty"`
+
 	// Ref is content's identifier, "module:type:id". Its TYPE segment routes
 	// the placement: "props" becomes a prop, "monsters" becomes a member.
 	// Nothing else about it is read.
@@ -534,5 +593,41 @@ type PlaceSpec struct {
 
 	// Boss marks the monster whose death ends things. Monsters only, and at
 	// most one per region.
+	//
+	// UNTOUCHED BY THIS SLICE and deliberately so (design R8): endings come
+	// from scenarios, and the named follow-up converts the reference tomb to
+	// the kill-the-captain scenario and deletes this flag then. A dungeon
+	// that binds a scenario AND flags a boss has two endings; that is the
+	// author's business and it is visible on the form.
 	Boss bool `yaml:"boss,omitempty"`
+
+	// Knows is the doors this monster carries the way to — a knowledge link
+	// (rpg-project#368, design P1), by door id. Optional; MONSTERS ONLY.
+	//
+	// THE INTEL BELONGS TO THE THING, WHEREVER THE AUTHOR PUTS IT, exactly
+	// as `concealed:` belongs to the door: the captain is not a role, it is
+	// a monster who knows a door, and nothing in the game needs the word
+	// captain. Refused by name when the door does not exist; refused on a
+	// prop, for BlocksMovement's reason inverted — a prop holds nothing.
+	//
+	// LEGAL ON AN ORDINARY DOOR, and inert there: knowing where an unconcealed
+	// door is tells you nothing you could not already see. Inert is not an
+	// error, and refusing it would make the author's file depend on a fact
+	// about a DIFFERENT declaration.
+	Knows []string `yaml:"knows,omitempty"`
+
+	// Holdable is whether a member can pick this prop up (design §5).
+	// Optional; PROPS ONLY, and refused on a monster.
+	//
+	// A POINTER, for [PlaceSpec.BlocksMovement]'s reason one type over: an
+	// omitted `holdable` and an authored `holdable: false` are the same fact
+	// here — a thing nobody declared holdable stays scenery — but the
+	// pointer is what lets the refusal below distinguish "said nothing" from
+	// "said false" on a monster, so a monster that wrote `holdable: false`
+	// is told it cannot declare that at all rather than silently accepted.
+	//
+	// A TAKEABLE PROP MUST HAVE AN ID, refused otherwise: the scenario
+	// binding names it and the `held` beat names it, and neither can name a
+	// thing with no name.
+	Holdable *bool `yaml:"holdable,omitempty"`
 }

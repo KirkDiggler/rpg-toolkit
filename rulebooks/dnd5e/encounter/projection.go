@@ -91,12 +91,17 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 
 	out := Atlas{
 		Orientation: full.Orientation,
-		Cells:       make([]spatial.Position, 0, len(full.Cells)),
-		Regions:     make([]AtlasRegion, 0, len(full.Regions)),
-		Props:       make([]AtlasProp, 0, len(full.Props)),
-		Boundaries:  make([]AtlasBoundary, 0, len(full.Boundaries)),
-		Doorways:    make([]AtlasDoorway, 0, len(full.Doorways)),
-		Segments:    make([]AtlasSegment, 0, len(full.Segments)),
+		// Carried through UNFILTERED: a way out is structure on the truth
+		// grain, the same for every member (rpg-project#368). Every other
+		// list below is rebuilt because concealment withholds part of it;
+		// this one has nothing to withhold.
+		Exits:      full.Exits,
+		Cells:      make([]spatial.Position, 0, len(full.Cells)),
+		Regions:    make([]AtlasRegion, 0, len(full.Regions)),
+		Props:      make([]AtlasProp, 0, len(full.Props)),
+		Boundaries: make([]AtlasBoundary, 0, len(full.Boundaries)),
+		Doorways:   make([]AtlasDoorway, 0, len(full.Doorways)),
+		Segments:   make([]AtlasSegment, 0, len(full.Segments)),
 	}
 
 	// C18: a wall wholly inside hidden space is withheld with the room, and
