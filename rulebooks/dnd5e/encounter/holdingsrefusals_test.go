@@ -623,3 +623,40 @@ func (s *HoldingsSuite) TestLoadRefusesCorruptedHoldings() {
 			fmt.Sprintf("dropped:%s@%g,%g", chalice, cell.X, cell.Y), string(raider))))
 	})
 }
+
+// TestJoinRefusesAnUnauthoredKnowledgeLink mirrors construction's own
+// refusal at the seam monsters actually arrive through: a link to a door
+// that does not exist is a secret the author thinks they placed and did not.
+func (s *HoldingsSuite) TestJoinRefusesAnUnauthoredKnowledgeLink() {
+	enc := s.open(false)
+
+	s.Run("a door this field does not declare", func() {
+		_, err := enc.Join(&encounter.JoinInput{
+			Member: "latecomer", Kind: encounter.KindMonster,
+			Cell:  cellAt(int(sentryCell.X), int(sentryCell.Y)),
+			Knows: []encounter.DoorID{"cellar-hatch"},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoDoor)
+		s.Require().Contains(err.Error(), "cellar-hatch")
+	})
+
+	s.Run("and the refusal happened before anything was placed", func() {
+		// Join mutates a LIVE encounter, so a refusal after PlaceEntity
+		// would have to roll a placement back. The member must simply not
+		// exist.
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		for _, m := range members {
+			s.Require().NotEqual(encounter.MemberID("latecomer"), m.ID)
+		}
+	})
+
+	s.Run("a real door is accepted, concealed or not", func() {
+		_, err := enc.Join(&encounter.JoinInput{
+			Member: "latecomer", Kind: encounter.KindMonster,
+			Cell:  cellAt(int(sentryCell.X), int(sentryCell.Y)),
+			Knows: []encounter.DoorID{tombVault},
+		})
+		s.Require().NoError(err)
+	})
+}

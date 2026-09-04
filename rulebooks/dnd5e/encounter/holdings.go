@@ -140,8 +140,17 @@ func newHoldings() *holdings { return &holdings{log: journal.New()} }
 
 // seedIntel writes the author's knowledge links as the holdings they are
 // (design P1): the monster carries the way to each door it was declared to
-// know. Construction only — see [MemberInput.Knows] on why Load replays the
-// journal instead of re-seeding.
+// know.
+//
+// Called when a member ENTERS THE WORLD, and only then — at construction
+// ([MemberInput.Knows]) or on arrival ([JoinInput.Knows]), which are the two
+// doors in. NEVER AT LOAD: see [MemberInput.Knows] on why Load replays this
+// journal instead of re-seeding it, which would hand a looted captain back
+// the intel somebody already took off them.
+//
+// This comment said "construction only" until Join became the second caller,
+// which is the kind of stale guarantee a reader trusts (caught on
+// toolkit-wave1c's probe/join-knows, e82da54).
 //
 // Audience is EMPTY, not the holder: a holding is not a thing that happened
 // to anybody, and [journal.Journal] is incurious about who witnessed what.
