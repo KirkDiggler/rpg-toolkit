@@ -1213,6 +1213,36 @@ type JoinInput struct {
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.
 	BlocksMovement bool
+
+	// Knows is the doors this member carries the way to, by door ID
+	// (rpg-project#368, design §3.1) — [MemberInput.Knows] for a member who
+	// arrives mid-scene instead of being authored into the roster.
+	// Optional; omitted means they carry nothing.
+	//
+	// # Why this field has to exist
+	//
+	// THE AUTHORED ROSTER IS NOT HOW MONSTERS GET INTO A RUN. The host
+	// builds the world empty of members and spawns each one through the
+	// seam, which lands here — so a knowledge link authored on a placement
+	// reached [MemberInput.Knows], which construction reads, and never
+	// reached the captain who was spawned. The dungeon said the captain
+	// knows the vault door and the captain did not, which makes design R2's
+	// second way to win unwalkable: loot the body and learn nothing.
+	//
+	// # It is the same seed, not a second one
+	//
+	// Written through the SAME path [MemberInput.Knows] uses — one holdings
+	// fact per door on the member — so there is one way intel enters a run
+	// and one place it is read (design P5). A door this field does not
+	// declare is refused (ErrNoDoor), and a door that exists but is not
+	// concealed is legal and inert, both exactly as at construction.
+	//
+	// NEVER PROJECTED, ANYWHERE (design P3): no atlas, no percept, no beat
+	// and no output says who carries intel, and the join beat is
+	// byte-identical whether a joiner knows every secret in the dungeon or
+	// none. Loot is offered on every body, so a body with nothing to give
+	// has to be indistinguishable from the one that has everything.
+	Knows []DoorID
 }
 
 // JoinOutput reports the results of a successful join.

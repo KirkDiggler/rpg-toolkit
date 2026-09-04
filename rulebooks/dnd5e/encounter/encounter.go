@@ -1855,6 +1855,18 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	// A knowledge link must name a door this field declares — the SAME
+	// refusal NewEncounter makes, and asked here for the reason the line
+	// above is: Join mutates a live encounter, so every refusal happens
+	// before the first mutation rather than needing to be rolled back.
+	// Whether the door is CONCEALED is deliberately not asked
+	// ([JoinInput.Knows]).
+	for _, id := range in.Knows {
+		if _, declared := e.doorsByID[id]; !declared {
+			return nil, fmt.Errorf("join: member %q knows door %q: %w", in.Member, id, ErrNoDoor)
+		}
+	}
+
 	// Hex fields require integral axial cells (interim tools/spatial#926
 	// enforcement — see isIntegralHexCell). Asked first, for the reason
 	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
@@ -1906,6 +1918,15 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// Store decider if present (monsters only, validated above)
 	if in.Decider != nil {
 		e.deciders[in.Member] = in.Decider
+	}
+
+	// The joiner's knowledge links, seeded as the holdings they are — the
+	// SAME call NewEncounter makes for an authored member, so intel enters a
+	// run one way (design P5). Before the beat below, because a holding is
+	// state the join establishes rather than something the join narrates:
+	// nothing about it is ever narrated (design P3).
+	if err := e.holdings.seedIntel(in.Member, in.Knows); err != nil {
+		return nil, fmt.Errorf("join: %w", err)
 	}
 
 	// Audience for both the join beat and the sight refresh: the joiner sees
