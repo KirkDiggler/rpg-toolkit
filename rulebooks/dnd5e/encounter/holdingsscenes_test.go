@@ -1329,3 +1329,87 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 		s.Require().ElementsMatch([]any{tombVault, hallGate}, learned)
 	})
 }
+
+// TestTwoRecordsRevealingOneDoorRevealItOnce is the shipped heirloom tomb's
+// own shape, pinned.
+//
+// That dungeon declares TWO records pointing at the SAME door — `vault-map`
+// on the captain and `hall-notes` on the hall scroll — so a party can learn
+// the way in without a fight (design R6) or by killing the captain, and
+// EITHER ORDER is a real walk. A party that does both applies the same
+// `reveals` twice, by two different routes: Hold on a prop, then Loot on a
+// body.
+//
+// The guard that makes the second one silent is keyed by DOOR, not by
+// record ([Encounter.applyReveals] asks `knowsDoor`), which is what makes
+// this work at all — two records are two things to carry and one thing to
+// learn. Nothing pinned that until this scene: the existing coverage is one
+// record reaching somebody twice, which the same guard happens to handle.
+func (s *HoldingsSuite) TestTwoRecordsRevealingOneDoorRevealItOnce() {
+	// walk runs the identical sequence — read the scroll, kill the captain,
+	// loot the body — and varies ONE thing: whether the captain carried a
+	// record revealing a door the scroll already taught.
+	//
+	// Each call starts from a fresh SetupTest, because the suite's standing
+	// stub is shared: a run that dropped the captain would otherwise leave
+	// the next encounter's captain down from frame one, and the `down` beat
+	// would move. That is not a difference about intel, and a scene
+	// comparing whole stories has to be sure the only difference is the one
+	// it varies.
+	walk := func(captainCarries bool) (reveals int, story, atlas, bystander string, data encounter.EncounterData) {
+		s.SetupTest()
+		enc := s.open(captainCarries)
+
+		s.walkTo(enc, raider, scrollCell)
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: scroll})
+		s.Require().NoError(err)
+
+		s.drop(enc)
+		s.walkTo(enc, raider, captainCell)
+		_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
+		s.Require().NoError(err)
+
+		return len(s.beatsOfKind(enc, raider, "door_revealed")),
+			s.storyBytes(enc, raider), s.atlasBytes(enc, raider),
+			s.storyBytes(enc, partner), enc.ToData()
+	}
+
+	twiceReveals, twiceStory, twiceAtlas, twiceBystander, twiceData := walk(true)
+	onceReveals, onceStory, onceAtlas, onceBystander, _ := walk(false)
+
+	s.Run("the scroll teaches its two doors", func() {
+		s.Require().Equal(2, onceReveals)
+	})
+
+	s.Run("and the captain's record, naming a door already known, narrates nothing", func() {
+		s.Require().Equal(onceReveals, twiceReveals,
+			"they already knew that door; being told again is a beat that did not happen")
+	})
+
+	s.Run("no second knowledge fact is written", func() {
+		// The journal is append-only and folded, so a duplicate would not
+		// change what anybody KNOWS — it would grow the blob on every
+		// redundant loot and put a second, untrue account of how they
+		// learned it into the record.
+		s.Require().NotNil(twiceData.World)
+		var learned int
+		for _, f := range twiceData.World.Facts {
+			if f.Kind == "known:door:"+tombVault && f.Actor == string(raider) {
+				learned++
+			}
+		}
+		s.Require().Equal(1, learned, "one door learned once, however many records said so")
+	})
+
+	s.Run("the whole run is what it would be if the captain had carried nothing", func() {
+		// The strongest form, and the one design P3 actually makes: applying
+		// a record somebody has already learned from is indistinguishable
+		// from applying nothing. Not "identical to a single reveal" — the
+		// loot still happened and the `looted` beat still says so — but
+		// identical to the run where the body had nothing to give.
+		s.Require().Equal(onceStory, twiceStory)
+		s.Require().Equal(onceAtlas, twiceAtlas)
+		s.Require().Equal(onceBystander, twiceBystander,
+			"and the bystander cannot tell the two runs apart either")
+	})
+}
