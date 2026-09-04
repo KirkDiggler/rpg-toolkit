@@ -105,7 +105,7 @@ type Scenario interface {
 // the geometry: it binds ids, and the two questions it asks about them are
 // here. The caller builds this from a [dungeonspec.Compiled] in one place.
 type DungeonFacts struct {
-	// Props is every placed prop's id to whether it is takeable. A prop with
+	// Props is every placed prop's id to whether it is holdable. A prop with
 	// no id is not in here — a scenario cannot bind a thing with no name.
 	Props map[encounter.PropID]bool
 
@@ -123,7 +123,7 @@ func FactsFrom(field encounter.FieldInput) *DungeonFacts {
 	}
 	for _, p := range field.Props {
 		if p.ID != "" {
-			facts.Props[p.ID] = p.Takeable
+			facts.Props[p.ID] = p.Holdable
 		}
 	}
 	for _, ex := range field.Exits {

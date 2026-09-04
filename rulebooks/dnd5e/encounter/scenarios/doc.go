@@ -29,7 +29,7 @@
 //
 // NO CONTENT RESOLUTION. This package never learns what
 // "dnd5e:props:reliquary" is; it works in placement ids and asks
-// [dungeonspec.Compiled] whether the thing that id names is takeable. Design
+// [dungeonspec.Compiled] whether the thing that id names is holdable. Design
 // law C1, one layer out.
 //
 // NO ENDING MECHANISM. The encounter owns "the run is over" and always has.

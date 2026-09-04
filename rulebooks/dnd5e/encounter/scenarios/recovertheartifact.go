@@ -76,12 +76,12 @@ func (recoverTheArtifact) Fields() []Field {
 // Refusals, each in the words the form itself uses:
 //
 //   - no artifact named, or one that names nothing this dungeon places;
-//   - an artifact that is not takeable — a thing nobody can pick up can
+//   - an artifact that is not holdable — a thing nobody can pick up can
 //     never be carried out, so an ending waiting for it is an ending that
 //     can never fire;
 //   - no exit named, or one this dungeon does not declare.
 //
-// NOTHING IS DEFAULTED. There is no "the first takeable prop" and no "the
+// NOTHING IS DEFAULTED. There is no "the first holdable prop" and no "the
 // party's start" — a scenario the author did not finish filling in is a
 // scenario that does not run (rpg-toolkit#1033).
 func (recoverTheArtifact) New(cfg map[string]string, facts *DungeonFacts) (Declared, error) {
@@ -93,14 +93,14 @@ func (recoverTheArtifact) New(cfg map[string]string, facts *DungeonFacts) (Decla
 	if artifact == "" {
 		return Declared{}, fmt.Errorf("%s: %s", FieldArtifact, artifactGuidance)
 	}
-	takeable, placed := facts.Props[artifact]
+	holdable, placed := facts.Props[artifact]
 	if !placed {
 		return Declared{}, fmt.Errorf("%s: %q is not a thing this dungeon places — %s",
 			FieldArtifact, artifact, artifactGuidance)
 	}
-	if !takeable {
+	if !holdable {
 		return Declared{}, fmt.Errorf(
-			"%s: %q is scenery — nobody can pick it up, so nobody can carry it out. Mark it takeable, or %s",
+			"%s: %q is scenery — nobody can pick it up, so nobody can carry it out. Mark it holdable, or %s",
 			FieldArtifact, artifact, artifactGuidance)
 	}
 

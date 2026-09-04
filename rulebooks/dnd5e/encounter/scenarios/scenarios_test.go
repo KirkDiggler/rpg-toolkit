@@ -124,7 +124,7 @@ func completeConfig(t *testing.T, s scenarios.Scenario) map[string]string {
 	for _, f := range s.Fields() {
 		switch {
 		case f.Type == scenarios.FieldEntityRef && f.Kind == "prop":
-			cfg[f.Key] = takeableID
+			cfg[f.Key] = holdableID
 		case f.Type == scenarios.FieldEntityRef && f.Kind == "exit":
 			cfg[f.Key] = exitID
 		default:
@@ -136,18 +136,18 @@ func completeConfig(t *testing.T, s scenarios.Scenario) map[string]string {
 }
 
 const (
-	takeableID = "heirloom"
+	holdableID = "heirloom"
 	sceneryID  = "pillar"
 	exitID     = "front-gate"
 )
 
 // fullDungeon is a dungeon with one of everything a scenario can bind to,
-// plus a prop that is NOT takeable so the wrong-kind refusals have something
+// plus a prop that is NOT holdable so the wrong-kind refusals have something
 // real to be about.
 func fullDungeon() *scenarios.DungeonFacts {
 	return scenarios.FactsFrom(encounter.FieldInput{
 		Props: []encounter.PropInput{
-			{ID: takeableID, Takeable: true, Ref: "dnd5e:props:reliquary"},
+			{ID: holdableID, Holdable: true, Ref: "dnd5e:props:reliquary"},
 			{ID: sceneryID, Ref: "dnd5e:props:pillar"},
 			// A prop the author never named: not bindable, and not in the
 			// facts at all.
@@ -162,7 +162,7 @@ func fullDungeon() *scenarios.DungeonFacts {
 func TestFactsFromNarrowsToIdsAndTakeability(t *testing.T) {
 	facts := fullDungeon()
 
-	require.True(t, facts.Props[takeableID])
+	require.True(t, facts.Props[holdableID])
 	require.False(t, facts.Props[sceneryID])
 	require.Len(t, facts.Props, 2, "a prop the author never named cannot be bound to")
 	require.True(t, facts.Exits[exitID])
@@ -177,7 +177,7 @@ func TestRecoverTheArtifactRefusals(t *testing.T) {
 	require.True(t, ok)
 
 	good := map[string]string{
-		scenarios.FieldArtifact: takeableID,
+		scenarios.FieldArtifact: holdableID,
 		scenarios.FieldExitKey:  exitID,
 	}
 
@@ -187,9 +187,9 @@ func TestRecoverTheArtifactRefusals(t *testing.T) {
 		require.Len(t, declared.Endings, 1)
 		require.Equal(t, scenarios.RecoverTheArtifactID, declared.Endings[0].Key)
 		require.Equal(t,
-			encounter.TriggerExitedHolding{Exit: exitID, Item: takeableID},
+			encounter.TriggerExitedHolding{Exit: exitID, Item: holdableID},
 			declared.Endings[0].Trigger)
-		require.Equal(t, takeableID, declared.Artifact)
+		require.Equal(t, holdableID, declared.Artifact)
 		require.Equal(t, exitID, declared.Exit)
 	})
 
@@ -202,7 +202,7 @@ func TestRecoverTheArtifactRefusals(t *testing.T) {
 	t.Run("an artifact that is scenery", func(t *testing.T) {
 		_, err := s.New(with(good, scenarios.FieldArtifact, sceneryID), facts)
 		require.ErrorContains(t, err, "scenery")
-		require.ErrorContains(t, err, "Mark it takeable",
+		require.ErrorContains(t, err, "Mark it holdable",
 			"the refusal says what to do about it, not just what is wrong")
 	})
 
