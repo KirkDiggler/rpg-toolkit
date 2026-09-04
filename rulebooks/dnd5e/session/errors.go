@@ -235,6 +235,43 @@ var (
 	// actor's current sight — the host-seam twin of encounter.ErrNotVisible.
 	ErrNotVisible = errors.New("target not visible")
 
+	// ErrNotDown is Loot's refusal for a body that is still standing — the
+	// host-seam twin of encounter.ErrNotDown (rpg-project#368 §4.2).
+	//
+	// AN ORDINARY REFUSAL, deliberately: a body is visible, and whether it is
+	// down is not a secret. That is the opposite of the four prop refusals
+	// below, and the difference is exactly whether the asker could have
+	// learned the answer by looking.
+	ErrNotDown = errors.New("member is not down")
+
+	// ErrNoProp is a prop this dungeon does not have, named by Hold — the
+	// host-seam twin of encounter.ErrNoProp.
+	//
+	// A PROBE ANSWERS NOTHING (the law slice 1 set for doors). For a prop
+	// standing in space the member cannot see, EVERY refusal is this one:
+	// "no such prop", "not holdable", "already held" and "out of range" all
+	// arrive here, byte-identical to the answer for an id that names nothing
+	// at all, so a guessed id cannot map a room nobody has found. The
+	// composition hoists that gate above its whole validation order and this
+	// seam inherits it — translate is what keeps the bytes identical, since
+	// a sentinel carries no inner text.
+	//
+	// A prop the member CAN see refuses by name with one of the three below:
+	// there is no secret in a pillar.
+	ErrNoProp = errors.New("no such prop")
+
+	// ErrNotHoldable is a prop nobody declared holdable, reached by Hold —
+	// the host-seam twin of encounter.ErrNotHoldable. A thing nobody said
+	// could be picked up stays scenery. Reachable only for a prop the member
+	// can see; see ErrNoProp.
+	ErrNotHoldable = errors.New("prop is not holdable")
+
+	// ErrAlreadyHeld is a prop that has already left the floor — somebody is
+	// carrying it, or carried it out. The host-seam twin of
+	// encounter.ErrAlreadyHeld. Reachable only for a prop the member can see;
+	// see ErrNoProp.
+	ErrAlreadyHeld = errors.New("prop is already held")
+
 	// ErrNoSessionID is returned when a verb is given an empty session ID.
 	ErrNoSessionID = errors.New("empty session id")
 

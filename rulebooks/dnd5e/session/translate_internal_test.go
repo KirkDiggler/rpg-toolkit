@@ -62,6 +62,16 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// blob that cannot be reconstituted carries.
 		{"defective field", encounter.ErrNoField, ErrInvalidWorld},
 		{"unreadable blob", encounter.ErrInvalidData, ErrInvalidWorld},
+		// The holdings verbs' four refusals (rpg-project#368). ErrNotDown is
+		// ordinary — a body is visible and being on the floor is not a
+		// secret. The three prop refusals say what they mean only for a prop
+		// the member can SEE; for one they cannot, the composition already
+		// answers all of them with ErrNoProp, which is the probe law and is
+		// pinned as bytes in holdings_test.go rather than here.
+		{"body still standing", encounter.ErrNotDown, ErrNotDown},
+		{"no such prop", encounter.ErrNoProp, ErrNoProp},
+		{"prop is scenery", encounter.ErrNotHoldable, ErrNotHoldable},
+		{"prop already carried", encounter.ErrAlreadyHeld, ErrAlreadyHeld},
 	}
 
 	for _, tc := range cases {

@@ -97,10 +97,19 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 // instead of passing review.
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
-		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Segments", "Sealed", "Regions"},
+		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Segments",
+			"Sealed", "Regions", "Exits"},
 		fieldsOf(session.Atlas{}),
 		"the map is a grid, which way its hexes point, its cells, the things standing on it, "+
-			"its walls as crossings and as lines, its doorways, which cells nobody stands on, and its regions",
+			"its walls as crossings and as lines, its doorways, which cells nobody stands on, "+
+			"its regions, and the authored ways out",
+	)
+	s.Equal(
+		[]string{"ID", "At"},
+		fieldsOf(session.AtlasExit{}),
+		"an exit is a name and a cell — WHAT IT MEANS is a scenario's business, and a client "+
+			"that could read 'this is the winning one' off the map would be reading the "+
+			"scenario off the geometry (rpg-project#368 §5)",
 	)
 	s.Equal(
 		[]string{"ID", "Name", "Cells", "Archetype", "Lighting"},
@@ -111,6 +120,14 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 		[]string{"Door", "From", "To"},
 		fieldsOf(session.AtlasDoorway{}),
 		"a doorway is a door's identity and two cells",
+	)
+	s.Equal(
+		[]string{"ID", "Holdable", "Ref", "At", "BlocksMovement", "BlocksLineOfSight",
+			"Facing", "Offset"},
+		fieldsOf(session.AtlasProp{}),
+		"a prop is the author's name for it, whether it can be picked up, what it is, where "+
+			"it stands, what it stops, and how it is drawn — and there is NO `held` flag, "+
+			"because a prop that left the floor is absent from every member's map",
 	)
 	s.Equal(
 		[]string{"From", "To", "BlocksMovement", "BlocksLineOfSight", "Height"},
