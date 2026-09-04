@@ -181,10 +181,25 @@ type Atlas struct {
 	// composition carries it unfiltered through its own per-member
 	// projection and this seam does no more than copy it across.
 	//
-	// NIL RATHER THAN A ZERO VALUE, because the zero would lie: a start at
-	// [0,0] facing nowhere is a real dungeon somebody could author, so a
-	// world that declares none has to be distinguishable from one that
-	// declares that.
+	// THREE CASES, NOT TWO, and a pointer is what makes the first two
+	// distinguishable:
+	//
+	//   nil                              nobody authored a way in
+	//   &{At: cell, Facing: ""}          a cell, and no direction stated
+	//   &{At: cell, Facing: "e"}         a cell and a direction
+	//
+	// The zero value would collapse the first into the second by claiming
+	// the party arrives at [0,0] looking nowhere — which is a real dungeon
+	// somebody could author, not the absence of one. The composition spends
+	// a pointer for exactly this reason and this seam keeps it, so a HOST
+	// OMITS THE WIRE MESSAGE ENTIRELY when it is nil rather than sending a
+	// start it invented (rpg-api-protos#292). Every encounter stored before
+	// the field existed is the first case.
+	//
+	// The middle case is what the authoring dialect's bare `start: [c, r]`
+	// produces, and it must not become the third on the way here: a client
+	// told "n" for a dungeon whose author never chose a direction would open
+	// the camera on a decision nobody made.
 	Start *AtlasStart `json:"start,omitempty"`
 }
 

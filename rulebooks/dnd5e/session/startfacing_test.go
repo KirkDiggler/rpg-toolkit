@@ -130,6 +130,38 @@ func (s *StartFacingSuite) TestAWorldFromBeforeStartsExistedProjectsNone() {
 	s.Nil(s.atlasOf("bob").Start)
 }
 
+// TestTheThreeCasesAreDistinguishable is the contract a host reads to decide
+// whether to send the wire message at all (rpg-api-protos#292), and it is a
+// claim no single scene above makes: that the three answers differ from each
+// other, not merely that each is what it is.
+//
+//	nil                     nobody authored a way in
+//	{cell, ""}              a cell, and no direction stated
+//	{cell, "e"}             a cell and a direction
+//
+// The middle case is the one a collapse would eat. A pointer is what keeps it
+// separate from the first, and carrying the facing verbatim is what keeps it
+// separate from the third.
+func (s *StartFacingSuite) TestTheThreeCasesAreDistinguishable() {
+	read := func(start *encounter.FieldStart) *session.AtlasStart {
+		s.start(startWorld(s.T(), start))
+		return s.atlasOf("alice").Start
+	}
+
+	none := read(nil)
+	bare := read(&encounter.FieldStart{At: cell(1, 1)})
+	faced := read(&encounter.FieldStart{At: cell(1, 1), Facing: "e"})
+
+	s.Nil(none, "nobody authored a way in — a host sends no start message at all")
+	s.Require().NotNil(bare, "a cell WAS authored, so this is not the first case")
+	s.Require().NotNil(faced)
+
+	s.Empty(bare.Facing)
+	s.Equal("e", faced.Facing)
+	s.Equal(bare.At, faced.At, "the two authored cases differ ONLY in the direction")
+	s.NotEqual(*bare, *faced)
+}
+
 // TestTheStartWireNamesMatchTheContract pins the JSON names, for
 // wirecontract_test.go's own stated reason: a tag regression is invisible to
 // every other test here — the Go field keeps its name and every scene passes
