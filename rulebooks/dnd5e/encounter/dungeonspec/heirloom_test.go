@@ -238,7 +238,7 @@ func TestHoldableRefusals(t *testing.T) {
 
 	t.Run("holdable on a monster is refused", func(t *testing.T) {
 		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], holdable: true }", 1)
-		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be taken")
+		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be held")
 	})
 
 	t.Run("holdable FALSE on a monster is refused too", func(t *testing.T) {
@@ -246,7 +246,7 @@ func TestHoldableRefusals(t *testing.T) {
 		// an omitted key are the same fact for a prop, and a monster that
 		// wrote either has still declared something it cannot declare.
 		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], holdable: false }", 1)
-		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be taken")
+		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be held")
 	})
 
 	t.Run("a prop with an id and no holdable is ordinary scenery", func(t *testing.T) {

@@ -409,7 +409,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			return fmt.Errorf("ending %q names no member: %w", ei.Key, ErrNoEnding)
 		}
 		// An ExitedHolding ending must name an exit this field declares and
-		// a prop it declares TAKEABLE. Either one missing is an ending that
+		// a prop it declares HOLDABLE. Either one missing is an ending that
 		// can never fire — the same liveness hole an unreachable trigger
 		// cell is, and refused here for the same reason
 		// ([TriggerExitedHolding]).

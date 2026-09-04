@@ -173,11 +173,11 @@ func (s *HoldingsSuite) TestHoldRemovesThePropForEveryoneAndTheHolderHasIt() {
 
 	s.Run("the held beat reaches everyone present", func() {
 		for _, member := range []core.EntityID{raider, partner} {
-			taken := s.beatsOfKind(enc, member, "held")
-			s.Require().Len(taken, 1, "%s did not hear it", member)
+			held := s.beatsOfKind(enc, member, "held")
+			s.Require().Len(held, 1, "%s did not hear it", member)
 			s.Require().Equal(map[string]any{
 				"beat": "held", "holder": string(raider), "prop": chalice,
-			}, taken[0])
+			}, held[0])
 		}
 	})
 
@@ -406,7 +406,7 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 	})
 	s.Require().NoError(err)
 
-	s.Run("the taken prop is still gone", func() {
+	s.Run("the prop that was picked up is still gone", func() {
 		atlas, err := reloaded.Atlas()
 		s.Require().NoError(err)
 		_, present := propInAtlas(atlas, heirloom)
@@ -455,7 +455,7 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 }
 
 // TestAPlainDungeonWritesNoHoldings is the byte-identity claim: an encounter
-// where nobody was authored knowing anything and nobody has taken anything
+// where nobody was authored knowing anything and nobody has picked anything up
 // carries no holdings key at all.
 func (s *HoldingsSuite) TestAPlainDungeonWritesNoHoldings() {
 	enc := s.open(false)

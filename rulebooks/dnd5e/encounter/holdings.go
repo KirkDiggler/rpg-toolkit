@@ -18,7 +18,7 @@ import (
 // mechanism for who has what").
 //
 // One noun answers it: a HOLDING. The captain holds the way to a door; a
-// member who took the artifact holds the artifact; a fallen holder's body
+// member who picked the artifact up holds the artifact; a fallen holder's body
 // holds it still, and [Encounter.Loot] takes it back. The parchment shelf
 // (design §9) is this same noun with an item in it, which is why it is a
 // noun rather than two special cases.
