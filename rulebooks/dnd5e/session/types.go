@@ -166,6 +166,60 @@ type Atlas struct {
 	// offered wherever the client likes and the server decides what a
 	// departure means (design §5's wire paragraph).
 	Exits []AtlasExit `json:"exits,omitempty"`
+
+	// Start is where the party came in and which way they were looking, or
+	// nil when the dungeon declares none (rpg-project#374).
+	//
+	// PRESENTATION, AND IT GATES NOTHING. Kirk, walking a dungeon: "we
+	// always start looking the wrong way." It exists so a client can open
+	// the camera the way the author meant, and no rule anywhere reads it.
+	// Where members ACTUALLY are is View's answer and always was; this is
+	// where the dungeon says it begins.
+	//
+	// STRUCTURE ON THE TRUTH GRAIN, like [Atlas.Exits] beside it: a way in
+	// is a fact about the building, identical for every member, so the
+	// composition carries it unfiltered through its own per-member
+	// projection and this seam does no more than copy it across.
+	//
+	// THREE CASES, NOT TWO, and a pointer is what makes the first two
+	// distinguishable:
+	//
+	//   nil                              nobody authored a way in
+	//   &{At: cell, Facing: ""}          a cell, and no direction stated
+	//   &{At: cell, Facing: "e"}         a cell and a direction
+	//
+	// The zero value would collapse the first into the second by claiming
+	// the party arrives at [0,0] looking nowhere — which is a real dungeon
+	// somebody could author, not the absence of one. The composition spends
+	// a pointer for exactly this reason and this seam keeps it, so a HOST
+	// OMITS THE WIRE MESSAGE ENTIRELY when it is nil rather than sending a
+	// start it invented (rpg-api-protos#292). Every encounter stored before
+	// the field existed is the first case.
+	//
+	// The middle case is what the authoring dialect's bare `start: [c, r]`
+	// produces, and it must not become the third on the way here: a client
+	// told "n" for a dungeon whose author never chose a direction would open
+	// the camera on a decision nobody made.
+	Start *AtlasStart `json:"start,omitempty"`
+}
+
+// AtlasStart is the authored way in: a cell, and the direction the party is
+// looking when they arrive.
+type AtlasStart struct {
+	// At is the cell, in dungeon-absolute space.
+	At spatial.Position `json:"at"`
+
+	// Facing is one of the eight true-compass names — n|ne|e|se|s|sw|w|nw
+	// (rpg-project#272, the same eight [AtlasProp.Facing] speaks) — or empty
+	// when the author stated none.
+	//
+	// Carried verbatim: the wire names the fact, and turning a name into an
+	// angle is the client's own calibrated table, never this seam's
+	// arithmetic. Empty is a FACT, not a gap — it means open the camera
+	// however it opened before — so it is omitempty rather than spelled out,
+	// unlike a blocking flag whose false would otherwise be indistinguishable
+	// from an older server.
+	Facing string `json:"facing,omitempty"`
 }
 
 // AtlasExit is one authored way out: its id, and the cell somebody stands on

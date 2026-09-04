@@ -98,11 +98,17 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
 		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Segments",
-			"Sealed", "Regions", "Exits"},
+			"Sealed", "Regions", "Exits", "Start"},
 		fieldsOf(session.Atlas{}),
 		"the map is a grid, which way its hexes point, its cells, the things standing on it, "+
 			"its walls as crossings and as lines, its doorways, which cells nobody stands on, "+
-			"its regions, and the authored ways out",
+			"its regions, the authored ways out, and the authored way in",
+	)
+	s.Equal(
+		[]string{"At", "Facing"},
+		fieldsOf(session.AtlasStart{}),
+		"a start is a cell and a direction — PRESENTATION, so a client can open the camera "+
+			"the way the author meant, and nothing reads it to decide a rule (rpg-project#374)",
 	)
 	s.Equal(
 		[]string{"ID", "At"},
