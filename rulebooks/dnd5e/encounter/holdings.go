@@ -25,7 +25,7 @@ import (
 //
 // # An append-only journal, folded on every question
 //
-// Three fact kinds, and present state is what they fold to — never a second
+// Four fact kinds, and present state is what they fold to — never a second
 // copy of the answer stored beside them:
 //
 //   - holds:prop:<id>     — Actor now carries that prop.

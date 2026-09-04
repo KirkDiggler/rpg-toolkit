@@ -210,12 +210,14 @@ type PropInput struct {
 	// to and nobody can pick up needs no name, and the empty string carries
 	// forward to [AtlasProp.ID] as the fact that it has none.
 	//
-	// REQUIRED IN PRACTICE BY WHAT NAMES IT, which is two things and both of
-	// them say the id out loud: a scenario binds an artifact by id, and the
-	// `taken` beat says which thing was taken. dungeonspec refuses a
-	// takeable prop with no id for exactly that reason; here the id is
-	// carried, and a Takeable prop without one is simply a prop no verb can
-	// ever name.
+	// REQUIRED WHEN Takeable, refused at construction otherwise (ErrNoField).
+	// Two things name a prop by id and both say it out loud: a scenario
+	// binds an artifact by id, and the `taken` beat says which thing was
+	// taken. A takeable prop with no id would be advertised to every client
+	// as something anybody can pick up while no [TakeInput] could ever name
+	// it — an offer with nothing behind it. dungeonspec refuses it at the
+	// file and [compileField] refuses it again here, so a host assembling a
+	// field by hand cannot produce one either.
 	ID PropID
 
 	// Takeable is whether a member can pick this prop up (design §5).

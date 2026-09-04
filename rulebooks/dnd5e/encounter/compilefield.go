@@ -383,6 +383,16 @@ func (f *field) compileProps(props []PropInput) error {
 			if p.Takeable {
 				f.takeable[p.ID] = i
 			}
+		} else if p.Takeable {
+			// A TAKEABLE PROP MUST BE NAMEABLE. Without an id, every atlas
+			// would advertise a thing anybody can pick up and no [TakeInput]
+			// could ever name it — an offer with nothing behind it, which is
+			// the shape of lie [PropInput]'s two blocking flags are pointers
+			// to avoid. dungeonspec refuses this at the file; refused here
+			// too, so a host assembling a field by hand cannot produce it
+			// either (Copilot, PR #1497 review).
+			return fmt.Errorf("prop %q at [%g,%g] is takeable and has no id: %w",
+				p.Ref, p.At.X, p.At.Y, ErrNoField)
 		}
 
 		// Fresh pointers: a caller flipping a bool after construction must

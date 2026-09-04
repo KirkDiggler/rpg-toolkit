@@ -370,6 +370,34 @@ func (s *HoldingsSuite) TestConstructionRefusesADeadEndingAndABadExit() {
 		s.Require().ErrorIs(err, encounter.ErrNoExit)
 	})
 
+	s.Run("a takeable prop with no id", func() {
+		// Without an id every atlas would advertise a thing anybody can
+		// pick up while no TakeInput could ever name it. dungeonspec
+		// refuses this at the file; the composition refuses it again, so a
+		// host assembling a field by hand cannot produce one either
+		// (Copilot, PR #1497 review).
+		err := setup(func(in *encounter.SetupInput) {
+			field := in.Field
+			nameless := takeableProp("", "dnd5e:props:decoy", partnerCell)
+			field.Props = append(append([]encounter.PropInput(nil), field.Props...), nameless)
+			in.Field = field
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoField)
+		s.Require().Contains(err.Error(), "takeable and has no id")
+	})
+
+	s.Run("an UNtakeable prop with no id is ordinary scenery", func() {
+		s.Require().NoError(setup(func(in *encounter.SetupInput) {
+			field := in.Field
+			plain := encounter.PropInput{
+				Ref: "dnd5e:props:candles", At: partnerCell,
+				BlocksMovement: no(), BlocksLineOfSight: no(),
+			}
+			field.Props = append(append([]encounter.PropInput(nil), field.Props...), plain)
+			in.Field = field
+		}), "an id is optional for everything nobody can pick up")
+	})
+
 	s.Run("two props sharing an id", func() {
 		err := setup(func(in *encounter.SetupInput) {
 			field := in.Field
