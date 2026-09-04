@@ -128,6 +128,26 @@ type Spec struct {
 	// boss alike, routed by the ref's type segment — at ABSOLUTE cells.
 	Place []PlaceSpec `yaml:"place"`
 
+	// Intel is the knowledge this dungeon has authored, as records that can
+	// be placed in a holder (rpg-project#372, design §2). Optional; omitted
+	// means none.
+	//
+	// A RECORD IS A THING IN THE FILE, like a door. It has an id and it says
+	// what it reveals, and it is placed by NAME on whatever carries it
+	// ([PlaceSpec.Holds]) — the same shape a door has, declared once and
+	// referred to from wherever it is used. That is what makes intel a
+	// general builder capability rather than scenario machinery (R3): a
+	// scenario binds the nouns its quest needs and never learns the word
+	// intel, and a DM may author a record for anything at any time.
+	//
+	// This replaces `knows`, which named a door directly on a monster.
+	// Kirk (R1): "if we don't have a use case for it then it goes. when a
+	// use case does arrive for it it will define the shape without any
+	// baggage." A record is one indirection and it is the one that buys
+	// everything else — a second holder, a second kind of target, a body to
+	// read — without a second spelling of knowledge.
+	Intel []IntelSpec `yaml:"intel,omitempty"`
+
 	// Exits are the ways out of this dungeon: an id and a floor cell each
 	// (rpg-project#368, design §3.1). Optional; omitted means none.
 	//
@@ -154,6 +174,47 @@ type Spec struct {
 	// A dungeon may bind SEVERAL scenarios, and the run ends when any bound
 	// ending fires (design R8).
 	Scenarios map[string]map[string]string `yaml:"scenarios,omitempty"`
+}
+
+// IntelSpec is one authored piece of knowledge: an id, and what knowing it
+// reveals.
+//
+//	intel:
+//	  - id: vault-map
+//	    reveals: { door: vault }
+//
+// The record is what a monster HOLDS ([PlaceSpec.Holds]) and what Loot moves
+// off a body. What it reveals is read when it changes hands, not when it is
+// placed, which is why the same record can grow a second kind of target
+// without anything that carries it changing.
+type IntelSpec struct {
+	// ID names the record within this dungeon, and is what a holder names.
+	// REQUIRED non-empty and unique — refused on collision naming both
+	// lines, the same rule a door id and a placement id follow.
+	ID string `yaml:"id"`
+
+	// Reveals is what learning this record tells you. REQUIRED, and exactly
+	// one target in this cut. See [RevealsSpec].
+	Reveals RevealsSpec `yaml:"reveals"`
+}
+
+// RevealsSpec is what an intel record tells whoever learns it.
+//
+// ONE KEY PER USE CASE, and exactly one key set. Today the only one is a
+// door, because the only use case anybody has is the way into the vault. A
+// region, a location, a lock's approach, a camp's disposition — each is a
+// field here, and each arrives WITH the use case that wants it and never
+// ahead of it (R5). That is why this is a struct of optional targets rather
+// than an open map: a target this build does not understand is a record
+// nothing can apply, and it is refused rather than carried hopefully.
+type RevealsSpec struct {
+	// Door is the id of the door this record reveals the way to. Refused
+	// when no door in this dungeon has that id.
+	//
+	// A DECLARED BUT UNCONCEALED DOOR IS LEGAL AND INERT: revealing the way
+	// to a door anyone can already see tells nobody anything, and refusing
+	// it would make this declaration depend on a fact about a different one.
+	Door string `yaml:"door,omitempty"`
 }
 
 // ExitSpec is one authored way out: an id and the floor cell a member stands
@@ -486,6 +547,42 @@ func (d *DoorSpec) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// knowsRefusal is the deleted `knows` key's sentence, pointing at what
+// replaced it (R1). The same shape [pairFormRefusal] takes for the deleted
+// wall pair form: a key this build once understood is refused BY NAME with
+// the migration in the message, never as a bare unknown field, because the
+// author who wrote it had a meaning and deserves to be told where it went.
+const knowsRefusal = "`knows` is gone: a monster holds an intel RECORD now — declare it under " +
+	"`intel:` with an id and what it reveals, then put its id in this placement's `holds:`"
+
+// UnmarshalYAML reads a placement, refusing the deleted `knows` key by name
+// (R1) and every unknown key, for [WallSpec.UnmarshalYAML]'s reason.
+func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: a placement is { ref, at } plus what it declares", value.Line)
+	}
+	for i := 0; i < len(value.Content); i += 2 {
+		switch key := value.Content[i].Value; key {
+		case "knows":
+			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
+		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
+			"offset", "targeting", "boss", "holds", "holdable":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
+				value.Content[i].Line, key)
+		}
+	}
+	// A plain alias so decoding the body does not re-enter this method.
+	type placeBody PlaceSpec
+	var obj placeBody
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	*pl = PlaceSpec(obj)
+
+	return nil
+}
+
 // CheckSpec is one authored check: the accepted approaches through it, AT
 // LEAST ONE, success by any listed one (ruled on rpg-project#350 — a locked
 // door is forced with Strength or picked with Dexterity and tools; a
@@ -601,20 +698,20 @@ type PlaceSpec struct {
 	// author's business and it is visible on the form.
 	Boss bool `yaml:"boss,omitempty"`
 
-	// Knows is the doors this monster carries the way to — a knowledge link
-	// (rpg-project#368, design P1), by door id. Optional; MONSTERS ONLY.
+	// Holds is the intel records this monster carries, by record id
+	// (rpg-project#372, design §2). Optional; MONSTERS ONLY, refused on a
+	// prop for [PlaceSpec.BlocksMovement]'s reason inverted — a prop holds
+	// nothing, until a use case says a chest does.
 	//
-	// THE INTEL BELONGS TO THE THING, WHEREVER THE AUTHOR PUTS IT, exactly
-	// as `concealed:` belongs to the door: the captain is not a role, it is
-	// a monster who knows a door, and nothing in the game needs the word
-	// captain. Refused by name when the door does not exist; refused on a
-	// prop, for BlocksMovement's reason inverted — a prop holds nothing.
+	// THE MONSTER CARRIES IT FROM SPAWN. The captain is not a role: it is a
+	// monster holding a record, and nothing in the game needs the word
+	// captain. Refused by name when no record has that id.
 	//
-	// LEGAL ON AN ORDINARY DOOR, and inert there: knowing where an unconcealed
-	// door is tells you nothing you could not already see. Inert is not an
-	// error, and refusing it would make the author's file depend on a fact
-	// about a DIFFERENT declaration.
-	Knows []string `yaml:"knows,omitempty"`
+	// THE SAME RECORD MAY BE HELD BY SEVERAL MONSTERS, because intel copies
+	// rather than moving (holdings.go): two guards may both know the way in,
+	// and looting either teaches it. That is the difference between a record
+	// and a physical thing, and it is why this is not refused as a duplicate.
+	Holds []string `yaml:"holds,omitempty"`
 
 	// Holdable is whether a member can pick this prop up (design §5).
 	// Optional; PROPS ONLY, and refused on a monster.

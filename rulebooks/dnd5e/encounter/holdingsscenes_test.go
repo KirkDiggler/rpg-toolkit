@@ -451,7 +451,7 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 	})
 
 	s.Run("the journal is REPLAYED, never re-seeded", func() {
-		// A load that re-ran MemberInput.Knows would append the author's
+		// A load that re-ran MemberInput.Holds would append the author's
 		// links a second time, and a third on the next load, growing the
 		// blob without bound. The fact count is what catches that.
 		fresh, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
@@ -561,9 +561,9 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
 			{ID: captain, Kind: encounter.KindMonster, Position: captainCell,
-				Knows: []encounter.DoorID{tombVault}},
+				Holds: []encounter.IntelID{vaultMap}},
 			{ID: sentry, Kind: encounter.KindMonster, Position: sentryCell,
-				Knows: []encounter.DoorID{tombVault}},
+				Holds: []encounter.IntelID{vaultMap}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -601,9 +601,11 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 }
 
 // TestLootingIntelForAnOrdinaryDoorRevealsNothing: knowing an unconcealed
-// door is inert ([MemberInput.Knows]), and inert means no beat — even in a
+// door is inert ([MemberInput.Holds]), and inert means no beat — even in a
 // dungeon that DOES carry concealment elsewhere, which is the case the
 // world-is-nil short-circuit does not cover.
+const gateMap = "gate-map"
+
 func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 	// The fixture, with a SECOND opening in the hall|tomb seam at row 1 and
 	// an ordinary door standing in it. Rebuilt rather than appended to: the
@@ -615,6 +617,11 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 		seamWallExcept(7, 8, vaultSeamRow)...)
 	field.Doors = append(append([]encounter.DoorInput(nil), field.Doors...), encounter.DoorInput{
 		ID: "hall-tomb-gate", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
+	})
+	// A record revealing the ORDINARY gate, beside the one revealing the
+	// concealed vault door.
+	field.Intel = append(append([]encounter.IntelRecord(nil), field.Intel...), encounter.IntelRecord{
+		ID: gateMap, Reveals: encounter.RevealTargets{Door: "hall-tomb-gate"},
 	})
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -629,7 +636,7 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 			// only thing standing between this loot and a spurious reveal is
 			// the concealed check itself.
 			{ID: captain, Kind: encounter.KindMonster, Position: partnerCell,
-				Knows: []encounter.DoorID{"hall-tomb-gate"}},
+				Holds: []encounter.IntelID{gateMap}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -768,7 +775,7 @@ func (s *HoldingsSuite) TestTheAtlasSaysWhatCanBePickedUp() {
 //
 // THE AUTHORED ROSTER IS NOT HOW MONSTERS GET INTO A RUN. The host builds
 // the world empty of members and spawns each one through the seam, which
-// lands in [Encounter.Join] — so before [JoinInput.Knows] existed, a captain
+// lands in [Encounter.Join] — so before [JoinInput.Holds] existed, a captain
 // the dungeon authored as knowing the vault door arrived knowing nothing,
 // and looting the body taught the party nothing. The fixture said one thing
 // and the run did another.
@@ -794,7 +801,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 	_, err = enc.Join(&encounter.JoinInput{
 		Member: captain, Kind: encounter.KindMonster,
 		Cell:  cellAt(int(captainCell.X), int(captainCell.Y)),
-		Knows: []encounter.DoorID{tombVault},
+		Holds: []encounter.IntelID{vaultMap},
 	})
 	s.Require().NoError(err)
 
@@ -841,7 +848,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 // join seam: spawning a monster that knows a door and one that knows nothing
 // must produce the same bytes for everybody until somebody loots.
 func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
-	spawn := func(knows []encounter.DoorID) (string, string) {
+	spawn := func(holds []encounter.IntelID) (string, string) {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
@@ -857,13 +864,13 @@ func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
 		_, err = enc.Join(&encounter.JoinInput{
 			Member: captain, Kind: encounter.KindMonster,
 			Cell:  cellAt(int(captainCell.X), int(captainCell.Y)),
-			Knows: knows,
+			Holds: holds,
 		})
 		s.Require().NoError(err)
 		return s.storyBytes(enc, raider), s.atlasBytes(enc, raider)
 	}
 
-	richStory, richAtlas := spawn([]encounter.DoorID{tombVault})
+	richStory, richAtlas := spawn([]encounter.IntelID{vaultMap})
 	s.SetupTest()
 	poorStory, poorAtlas := spawn(nil)
 
@@ -1003,4 +1010,124 @@ func (s *HoldingsSuite) TestACarrierWalksOutWithEVERYTHINGTheyHold() {
 			s.Require().False(present, "%q came back", id)
 		}
 	})
+}
+
+// TestTwoMonstersHoldingOneRecord is design §7 row 3, and the row the record
+// indirection exists for.
+//
+// Intel COPIES. Two guards may both hold the vault map — the file allows the
+// same record id in two `holds:` lists precisely because knowledge is not an
+// object — so looting either teaches the way in, and looting both teaches it
+// once. A second reveal for knowledge already held would be the composition
+// narrating something that did not happen.
+func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+		Field: heirloomField(),
+		Members: []encounter.MemberInput{
+			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
+			{ID: partner, Kind: encounter.KindPlayer, Position: partnerCell},
+			{ID: captain, Kind: encounter.KindMonster, Position: captainCell,
+				Holds: []encounter.IntelID{vaultMap}},
+			{ID: sentry, Kind: encounter.KindMonster, Position: sentryCell,
+				Holds: []encounter.IntelID{vaultMap}},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+
+	s.standing.down = []encounter.MemberID{captain, sentry}
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.walkTo(enc, raider, captainCell)
+
+	s.Run("looting the first teaches the way in", func() {
+		_, lerr := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
+		s.Require().NoError(lerr)
+		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+		doors, derr := enc.DoorsFor(raider)
+		s.Require().NoError(derr)
+		s.Require().True(doorsListed(doors, tombVault))
+	})
+
+	s.Run("looting the second teaches it again, and narrates nothing", func() {
+		// The body genuinely still holds the record — this is not the
+		// empty-body case — so the guard being exercised is "the receiver
+		// already knows", not "there was nothing to give".
+		_, lerr := enc.Loot(&encounter.LootInput{Member: raider, Target: sentry, Range: 2})
+		s.Require().NoError(lerr)
+		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1,
+			"a second arrival of knowledge already held is not a second reveal")
+		s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 2, "and both loots happened")
+	})
+
+	s.Run("the first body still holds it — intel copies, never moves", func() {
+		s.walkTo(enc, partner, captainCell)
+		_, lerr := enc.Loot(&encounter.LootInput{Member: partner, Target: captain})
+		s.Require().NoError(lerr)
+		doors, derr := enc.DoorsFor(partner)
+		s.Require().NoError(derr)
+		s.Require().True(doorsListed(doors, tombVault),
+			"the captain was looted once already and can still teach the next player")
+	})
+}
+
+// TestTheRecordIsResolvedAtTransferNotAtPlacement is what the indirection
+// buys, stated as a test rather than only as a doc comment.
+//
+// The stored fact names the RECORD. What it reveals is read from the field's
+// intel table when it changes hands — so two encounters over the same
+// persisted holdings, whose fields declare the record pointing at different
+// doors, reveal different doors. That is the property that lets a later
+// `reveals` target arrive without migrating anybody's saves.
+func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
+	// A field with TWO concealed doors and one record, pointed at the second.
+	field := heirloomField()
+	field.Walls = append(
+		seamWallExcept(3, 8, hallGapRow, 1),
+		seamWallExcept(7, 8, vaultSeamRow)...)
+	field.Doors = append(append([]encounter.DoorInput(nil), field.Doors...), encounter.DoorInput{
+		ID: "hall-gate", Edges: doorEdgesAcross(3, 1),
+		State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
+	})
+	field.Intel = []encounter.IntelRecord{
+		{ID: vaultMap, Reveals: encounter.RevealTargets{Door: "hall-gate"}},
+	}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+		Field: field,
+		Members: []encounter.MemberInput{
+			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
+			{ID: captain, Kind: encounter.KindMonster, Position: captainCell,
+				Holds: []encounter.IntelID{vaultMap}},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+
+	s.standing.down = []encounter.MemberID{captain}
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.walkTo(enc, raider, captainCell)
+	_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
+	s.Require().NoError(err)
+
+	// The SAME holding — `holds:intel:vault-map` — revealed a different door,
+	// because the field said so. Nothing about the fact changed.
+	reveals := s.beatsOfKind(enc, raider, "door_revealed")
+	s.Require().Len(reveals, 1)
+	s.Require().Equal("hall-gate", reveals[0]["door"],
+		"the record is read at transfer, so the field decides what it means")
+
+	doors, err := enc.DoorsFor(raider)
+	s.Require().NoError(err)
+	s.Require().False(doorsListed(doors, tombVault),
+		"and the door the record does NOT name stays a wall")
 }

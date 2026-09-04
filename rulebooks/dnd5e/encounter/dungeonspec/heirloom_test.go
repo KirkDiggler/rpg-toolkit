@@ -89,7 +89,7 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 		require.Equal(t, "dnd5e:props:reliquary", found[0].Ref)
 	})
 
-	t.Run("the captain knows the vault door and carries no boss flag", func(t *testing.T) {
+	t.Run("the captain holds the vault map and carries no boss flag", func(t *testing.T) {
 		var captain dungeonspec.MonsterPlacement
 		for _, m := range compiled.Monsters {
 			if m.ID == "captain" {
@@ -99,11 +99,11 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 		require.Equal(t, "captain", captain.ID, "the fixture names its captain")
 		require.False(t, captain.Boss,
 			"design R8: this dungeon ends because a scenario says so, not because a monster has a flag")
-		// THE COMPILED DOOR ID, not the author's. Every other id on this
-		// half is the author's own word; a knowledge link is the exception,
-		// because doorsOf mints <key>/<id> and a link carrying the raw
-		// authored id would name a door the composition does not have.
-		require.Equal(t, []string{"reference-tomb-heirloom/vault"}, captain.Knows)
+		// THE COMPILED RECORD ID, not the author's. Every other id on this
+		// half is the author's own word; a holder is the exception, because
+		// intelOf mints <key>/<id> and a holder carrying the raw authored id
+		// would name a record the composition does not have.
+		require.Equal(t, []string{"reference-tomb-heirloom/vault-map"}, captain.Holds)
 	})
 
 	t.Run("the exit is the cell the party starts on, named", func(t *testing.T) {
@@ -196,35 +196,89 @@ func TestPlacementIDRefusals(t *testing.T) {
 
 	t.Run("an id is optional", func(t *testing.T) {
 		edited := strings.Replace(source, "  - { id: captain, ref:", "  - { ref:", 1)
-		edited = strings.Replace(edited, "    knows: [vault] }", "    knows: [vault] }", 1)
 		require.Empty(t, defectsIn(t, edited), "a monster nothing binds to needs no name")
 	})
 }
 
-// TestKnowsRefusals covers the knowledge link's rules (design §3.3).
-func TestKnowsRefusals(t *testing.T) {
+// TestIntelRefusals covers the intel record's own rules (design §2).
+func TestIntelRefusals(t *testing.T) {
 	source := heirloomSource(t)
 
-	t.Run("a door that does not exist is refused by name", func(t *testing.T) {
-		edited := strings.Replace(source, "knows: [vault] }", "knows: [cellar] }", 1)
-		requireDefect(t, defectsIn(t, edited), ".knows[0]", `knows door "cellar"`, "no door in this dungeon")
+	t.Run("a record revealing a door that does not exist is refused by name", func(t *testing.T) {
+		edited := strings.Replace(source, "reveals: { door: vault }", "reveals: { door: cellar }", 1)
+		requireDefect(t, defectsIn(t, edited), "intel[0].reveals.door", `reveals door "cellar"`, "has that id")
 	})
 
-	t.Run("knows on a prop is refused", func(t *testing.T) {
+	t.Run("a record that reveals nothing is refused", func(t *testing.T) {
+		// Nothing is defaulted: there is no "reveals the nearest door".
+		edited := strings.Replace(source, "    reveals: { door: vault }", "    reveals: {}", 1)
+		requireDefect(t, defectsIn(t, edited), "intel[0].reveals", "does not say what it reveals")
+	})
+
+	t.Run("a record with no id is refused", func(t *testing.T) {
+		edited := strings.Replace(source,
+			"  - id: vault-map\n    reveals: { door: vault }",
+			`  - id: ""`+"\n    reveals: { door: vault }", 1)
+		requireDefect(t, defectsIn(t, edited), "intel[0].id", "the intel record has no id")
+	})
+
+	t.Run("a duplicate record id is refused, naming the earlier line", func(t *testing.T) {
+		edited := strings.Replace(source,
+			"intel:\n  - id: vault-map\n    reveals: { door: vault }",
+			"intel:\n  - id: vault-map\n    reveals: { door: vault }\n"+
+				"  - id: vault-map\n    reveals: { door: hall-tomb }", 1)
+		requireDefect(t, defectsIn(t, edited), "intel[1].id", `intel "vault-map" is already declared at intel[0]`)
+	})
+
+	t.Run("revealing an ORDINARY door is legal and inert", func(t *testing.T) {
+		// Not an error, deliberately: refusing it would make this record's
+		// legality depend on a fact about a different declaration.
+		edited := strings.Replace(source, "reveals: { door: vault }", "reveals: { door: hall-tomb }", 1)
+		require.Empty(t, defectsIn(t, edited))
+	})
+}
+
+// TestHoldsRefusals covers what a placement may carry (design §2).
+func TestHoldsRefusals(t *testing.T) {
+	source := heirloomSource(t)
+
+	t.Run("a record that does not exist is refused by name", func(t *testing.T) {
+		edited := strings.Replace(source, "holds: [vault-map] }", "holds: [cellar-map] }", 1)
+		requireDefect(t, defectsIn(t, edited), ".holds[0]",
+			`holds intel "cellar-map"`, "no record in this dungeon")
+	})
+
+	t.Run("holds on a prop is refused", func(t *testing.T) {
 		edited := strings.Replace(source,
 			`  - { ref: "dnd5e:props:candles", at: [26,5], blocks_movement: false, blocks_los: false }`,
 			`  - { ref: "dnd5e:props:candles", at: [26,5], blocks_movement: false, blocks_los: false,`+
-				"\n      knows: [vault] }", 1)
-		requireDefect(t, defectsIn(t, edited), ".knows", "is not a monster and holds nothing to know")
+				"\n      holds: [vault-map] }", 1)
+		requireDefect(t, defectsIn(t, edited), ".holds", "is not a monster and holds nothing")
 	})
 
-	t.Run("knowing an ORDINARY door is legal and inert", func(t *testing.T) {
-		// Not an error, deliberately: refusing it would make this
-		// declaration depend on a fact about a different one — whether the
-		// door happens to be concealed.
-		edited := strings.Replace(source, "knows: [vault] }", "knows: [vault, hall-tomb] }", 1)
-		require.Empty(t, defectsIn(t, edited))
+	t.Run("the SAME record may be held by two monsters — intel copies", func(t *testing.T) {
+		edited := strings.Replace(source,
+			`  - { ref: "dnd5e:monsters:skeleton", at: [11,3], targeting: lowest-health }`,
+			`  - { ref: "dnd5e:monsters:skeleton", at: [11,3], targeting: lowest-health,`+
+				"\n      holds: [vault-map] }", 1)
+		require.Empty(t, defectsIn(t, edited),
+			"two guards may both know the way in; looting either teaches it")
 	})
+}
+
+// TestKnowsIsGone is R1: the deleted key is refused BY NAME, pointing at what
+// replaced it — never as a bare unknown field, because the author who wrote
+// it had a meaning and deserves to be told where it went.
+func TestKnowsIsGone(t *testing.T) {
+	source := heirloomSource(t)
+	edited := strings.Replace(source, "holds: [vault-map] }", "knows: [vault] }", 1)
+
+	_, err := dungeonspec.Decode([]byte(edited))
+	require.Error(t, err)
+	require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
+	require.Contains(t, err.Error(), "`knows` is gone")
+	require.Contains(t, err.Error(), "intel:", "the refusal names the replacement")
+	require.Contains(t, err.Error(), "holds:")
 }
 
 // TestHoldableRefusals covers design §5's authoring rules.
@@ -237,7 +291,7 @@ func TestHoldableRefusals(t *testing.T) {
 	})
 
 	t.Run("holdable on a monster is refused", func(t *testing.T) {
-		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], holdable: true }", 1)
+		edited := strings.Replace(source, "    holds: [vault-map] }", "    holds: [vault-map], holdable: true }", 1)
 		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be held")
 	})
 
@@ -245,7 +299,7 @@ func TestHoldableRefusals(t *testing.T) {
 		// The pointer is what makes this reachable: an authored `false` and
 		// an omitted key are the same fact for a prop, and a monster that
 		// wrote either has still declared something it cannot declare.
-		edited := strings.Replace(source, "    knows: [vault] }", "    knows: [vault], holdable: false }", 1)
+		edited := strings.Replace(source, "    holds: [vault-map] }", "    holds: [vault-map], holdable: false }", 1)
 		requireDefect(t, defectsIn(t, edited), ".holdable", "is not a prop and cannot be held")
 	})
 
@@ -312,7 +366,7 @@ func TestTheUnchangedTombIsUnchanged(t *testing.T) {
 	}
 	for _, m := range compiled.Monsters {
 		require.Empty(t, m.ID)
-		require.Empty(t, m.Knows)
+		require.Empty(t, m.Holds)
 	}
 
 	var bosses int

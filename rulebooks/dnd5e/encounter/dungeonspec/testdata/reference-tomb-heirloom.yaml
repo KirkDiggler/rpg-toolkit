@@ -8,9 +8,12 @@
 #     concealed, reachable only through a concealed door in the tomb's east
 #     wall;
 #   - the HEIRLOOM: a holdable prop with an id, standing in the vault;
-#   - the CAPTAIN: the same skeleton captain, now carrying `knows: [vault]`
-#     and carrying NO boss flag — this dungeon ends because a scenario says
-#     so, not because a monster has a flag on it (design R8);
+#   - the VAULT MAP: an intel record declaring what it reveals, held by the
+#     captain — knowledge is a thing you author and place, not a property you
+#     type on a monster (rpg-project#372, R1/R2);
+#   - the CAPTAIN: the same skeleton captain, now holding that record and
+#     carrying NO boss flag — this dungeon ends because a scenario says so,
+#     not because a monster has a flag on it (design R8);
 #   - an EXIT at the cell the party starts on, named `entrance`;
 #   - the SCENARIO binding: recover-the-artifact, artifact + exit.
 #
@@ -122,6 +125,16 @@ doors:
       - { ability: perception, dc: 15 }
       - { ability: investigation, dc: 13 }
 
+# The knowledge this dungeon has authored. A record is a thing in the file,
+# like a door: it has an id and it says what it reveals, and whoever carries
+# it names it in their `holds:`. That indirection is what makes intel a
+# general builder tool rather than a property of a monster — the same record
+# could later be held by a second guard, grow a body to read, or reveal
+# something that is not a door, and none of that touches the captain.
+intel:
+  - id: vault-map
+    reveals: { door: vault }
+
 # Everything standing on the floor, at absolute cells. Every prop says what it
 # blocks; every monster says how it targets; the boss is a monster with a flag.
 place:
@@ -143,7 +156,7 @@ place:
   - { ref: "dnd5e:props:brazier", at: [19,6], blocks_movement: true, blocks_los: false }
   - { ref: "dnd5e:props:candles", at: [26,5], blocks_movement: false, blocks_los: false }
   - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
-      knows: [vault] }
+      holds: [vault-map] }
   - { id: heirloom, ref: "dnd5e:props:reliquary", at: [29,3],
       blocks_movement: false, blocks_los: false, holdable: true }
 

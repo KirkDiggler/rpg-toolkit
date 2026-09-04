@@ -161,12 +161,14 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 //
 // Each kind moves by what that kind means:
 //
-//   - INTEL is COPIED to the receiver: learnDoor for them, cause "loot", plus
-//     their own DOOR_REVEALED beat — the reveal path search already owns
-//     (P4), reused rather than duplicated. The body keeps knowing too, so
-//     the second player to loot the captain learns the way in exactly as the
-//     first did. Knowledge is not an object; see holdings.go on why, and on
-//     which shelf turns it into one.
+//   - AN INTEL RECORD is COPIED to the receiver, and then APPLIED: the
+//     record is looked up in the field's intel table and what it reveals is
+//     given to them — a door becomes learnDoor plus their own DOOR_REVEALED
+//     beat, the reveal path search already owns (P4), reused rather than
+//     duplicated. The body keeps holding it too, so the second player to
+//     loot the captain learns the way in exactly as the first did.
+//     Knowledge is not an object; see holdings.go on why, and on which shelf
+//     turns it into one.
 //   - A PROP is MOVED to the receiver. Where it physically is does not
 //     change: it is already off the floor (`held`), and passing it from one
 //     pair of hands to another moves nothing anybody can see. One of it
@@ -175,37 +177,24 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 // A body with nothing transfers nothing and appends nothing — the empty case
 // is not a special case, it is the loop running zero times.
 //
-// INERT INTEL IS INERT, NOT AN ERROR ([MemberInput.Knows]): a door that is
-// not concealed, or one the receiver already knows, writes the holding and
-// causes no reveal, because there is nothing to reveal. A field with no
-// concealment at all has no world, and the same holds for the same reason.
+// # The record is resolved HERE, not when it was placed
+//
+// A holding names a record; what the record reveals is read at this moment
+// (rpg-project#372, design §3). That is the indirection's whole payoff: the
+// stored fact never changes shape, and a second kind of target is a second
+// arm of the switch below rather than a migration of everybody's saves.
+//
+// A record the field does not declare is unreachable here — construction and
+// Load both refuse one — so it is skipped rather than guarded, and the load
+// trust boundary is where that is enforced.
 func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64) error {
 	for _, item := range e.holdings.holdingsOf(from) {
 		switch {
-		case item.door != "":
-			if err := e.holdings.holdIntelDoor(to, item.door, cause); err != nil {
-				return fmt.Errorf("transfer intel door %q: %w", item.door, err)
+		case item.record != "":
+			if err := e.holdings.holdIntel(to, item.record, cause); err != nil {
+				return fmt.Errorf("transfer intel %q: %w", item.record, err)
 			}
-			// Nothing to reveal when: the door is not this field's, the
-			// field carries no concealment at all, the door is not
-			// concealed, or the receiver already knows it.
-			//
-			// THE THIRD CLAUSE IS REDUNDANT AND KEPT ON PURPOSE. knowsDoor
-			// folds a graph that declares only CONCEALED entities, and
-			// graph.State.Visible answers true for anything it was never
-			// told about — so an unconcealed door is "already known" to
-			// everybody and the fourth clause alone would decide this case.
-			// A mutation pass proves it: dropping `d.concealed == nil`
-			// kills no test. It stays because removing it would make this
-			// rule — "an unconcealed door has nothing to reveal" — true
-			// only by an undocumented default of a package one layer down,
-			// and the next person to read the graph's contract differently
-			// would silently start narrating reveals for open doorways.
-			d, ok := e.doorsByID[item.door]
-			if !ok || e.world == nil || d.concealed == nil || e.world.knowsDoor(to, d.id) {
-				continue
-			}
-			if err := e.revealDoorTo(to, d, "looted the way to it", at); err != nil {
+			if err := e.applyReveals(to, item.record, at); err != nil {
 				return err
 			}
 		case item.prop != "":
@@ -214,6 +203,62 @@ func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64)
 			}
 		}
 	}
+	return nil
+}
+
+// applyReveals gives one member what an intel record reveals.
+//
+// ONE ARM PER TARGET, and each arm is a call into the mechanism that already
+// owns that kind of knowledge rather than a second copy of it. A door is
+// [Encounter.revealDoorTo] — the same path a search's find takes, so there
+// is one reveal shape in this composition and Loot is a second WRITER of it
+// rather than a second mechanism (design P4).
+//
+// A record the field does not declare reveals nothing. THIS IS UNREACHABLE
+// TODAY and said out loud rather than left for the next reader to work out:
+// [NewEncounter] refuses a seeded holder naming an undeclared record,
+// [Encounter.Join] refuses one arriving, and [validateHoldingsFacts] refuses
+// one in a loaded blob — three doors, all shut. So no test kills a mutant
+// that makes this branch resolve to some other record instead, and a
+// mutation pass says so.
+//
+// It stays because the alternative is indexing a map and using the zero
+// value: a record that is not there would silently become one that reveals
+// nothing at all, which looks exactly like a working record whose door is
+// already known. Returning early keeps "not declared" and "nothing to
+// reveal" distinguishable in a debugger even though no caller can tell them
+// apart.
+func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
+	rec, declared := e.field.intelByID[id]
+	if !declared {
+		return nil
+	}
+
+	if rec.Reveals.Door != "" {
+		// Nothing to reveal when: the door is not this field's, the field
+		// carries no concealment at all, the door is not concealed, or the
+		// receiver already knows it.
+		//
+		// THE THIRD CLAUSE IS REDUNDANT AND KEPT ON PURPOSE. knowsDoor folds
+		// a graph that declares only CONCEALED entities, and
+		// graph.State.Visible answers true for anything it was never told
+		// about — so an unconcealed door is "already known" to everybody and
+		// the fourth clause alone would decide this case. A mutation pass
+		// proves it: dropping `d.concealed == nil` kills no test. It stays
+		// because removing it would make this rule — "an unconcealed door
+		// has nothing to reveal" — true only by an undocumented default of a
+		// package one layer down, and the next person to read the graph's
+		// contract differently would silently start narrating reveals for
+		// open doorways.
+		d, ok := e.doorsByID[rec.Reveals.Door]
+		if !ok || e.world == nil || d.concealed == nil || e.world.knowsDoor(to, d.id) {
+			return nil
+		}
+		if err := e.revealDoorTo(to, d, "looted the way to it", at); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

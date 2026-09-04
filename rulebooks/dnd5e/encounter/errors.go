@@ -412,6 +412,13 @@ var (
 	// leave, which is ErrNoEnding's liveness hole reached from the outside.
 	ErrNoExit = errors.New("no such exit")
 
+	// ErrNoIntel is an intel record this field does not declare, or one it
+	// declares badly: no id, an id twice, or a record that says nothing it
+	// reveals (rpg-project#372). Also the refusal for a member seeded
+	// holding a record that does not exist — knowledge the author thinks
+	// they placed and did not.
+	ErrNoIntel = errors.New("no such intel record")
+
 	// ErrNoProp is a prop this field does not have, named by a verb that
 	// needs one — [Encounter.Hold]'s target, or an ending's item.
 	//

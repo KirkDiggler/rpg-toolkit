@@ -46,6 +46,16 @@ type Compiled struct {
 	// them. The half that still needs a sheet.
 	Monsters []MonsterPlacement
 
+	// Intel is every authored knowledge record, in authored order, with its
+	// id COMPILED (`<key>/<id>`) exactly as a door's is — see
+	// [MonsterPlacement.Holds]. Nil when the file declares none.
+	//
+	// Also carried on [Compiled.Field] as the composition's intel table,
+	// which is what reads a record's reveals when it changes hands. This is
+	// the same list, surfaced here for a host that wants to show an author
+	// what their dungeon declares without reaching into the field.
+	Intel []encounter.IntelRecord
+
 	// Scenarios is the dungeon's scenario bindings, carried through exactly
 	// as authored: scenario id to field key to the id it names
 	// (rpg-project#368, design §3.1). Nil when the file binds none.
@@ -96,17 +106,16 @@ type MonsterPlacement struct {
 	// none ([PlaceSpec.ID]).
 	ID string
 
-	// Knows is the doors this monster carries the way to, by door id
-	// ([PlaceSpec.Knows]) — the author's knowledge links, for a host to hand
-	// to [encounter.MemberInput.Knows] when it spawns the sheet. Nil when
-	// the monster knows nothing.
+	// Holds is the intel records this monster carries, by record id
+	// ([PlaceSpec.Holds]) — for a host to hand to
+	// [encounter.MemberInput.Holds] when it spawns the sheet. Nil when the
+	// monster holds nothing.
 	//
-	// COMPILED DOOR IDS, not the author's. Every other id in this half is
-	// the author's own word, and this one is not: [doorsOf] mints
-	// `<key>/<id>` so two dungeons in one process cannot collide, and a link
-	// carrying the raw authored id would name a door the composition does
-	// not have.
-	Knows []string
+	// COMPILED RECORD IDS, not the author's, for the reason the compiled
+	// door ids this replaced were: [intelOf] mints `<key>/<id>` so two
+	// dungeons in one process cannot collide, and a holder carrying the raw
+	// authored id would name a record the composition does not have.
+	Holds []string
 }
 
 // Load decodes, validates and compiles a dungeon in one call.
@@ -170,6 +179,7 @@ func Compile(spec *Spec) (Compiled, error) {
 		Sealed:   sealedOf(spec, orientation, derived),
 		Doors:    doorsOf(spec, orientation),
 		Exits:    exitsOf(spec),
+		Intel:    intelOf(spec),
 	}
 
 	start, err := seatsOf(spec, orientation)
@@ -182,7 +192,24 @@ func Compile(spec *Spec) (Compiled, error) {
 		PartyStart: start,
 		Monsters:   monstersOf(spec, orientation),
 		Scenarios:  scenariosOf(spec),
+		Intel:      field.Intel,
 	}, nil
+}
+
+// intelOf carries the authored records through, with ids compiled the way a
+// door's is (`<key>/<id>`) so two dungeons in one process cannot collide —
+// and with the door a record reveals compiled the same way, because that is
+// the id the composition's own door table is keyed by.
+func intelOf(spec *Spec) []encounter.IntelRecord {
+	var out []encounter.IntelRecord
+	for _, rec := range spec.Intel {
+		r := encounter.IntelRecord{ID: encounter.IntelID(spec.Key + "/" + rec.ID)}
+		if rec.Reveals.Door != "" {
+			r.Reveals.Door = encounter.DoorID(spec.Key + "/" + rec.Reveals.Door)
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // exitsOf carries the authored ways out through as they were written — an id
@@ -528,14 +555,14 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		if p.Targeting != nil {
 			targeting = *p.Targeting
 		}
-		var knows []string
-		for _, id := range p.Knows {
-			knows = append(knows, spec.Key+"/"+id)
+		var holds []string
+		for _, id := range p.Holds {
+			holds = append(holds, spec.Key+"/"+id)
 		}
 		out = append(out, MonsterPlacement{
 			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
 			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
-			ID: p.ID, Knows: knows,
+			ID: p.ID, Holds: holds,
 		})
 	}
 	return out

@@ -48,6 +48,7 @@ const (
 	vaultSeamRow = 2
 	hallGapRow   = 5
 	tombVault    = "tomb-vault-door"
+	vaultMap     = "vault-map"
 	heirloom     = "heirloom"
 	chalice      = "chalice"
 	relic        = "relic"
@@ -115,6 +116,12 @@ func heirloomField() encounter.FieldInput {
 			ID: tombVault, Edges: doorEdgesAcross(7, vaultSeamRow),
 			State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
 		}},
+		// The knowledge this field declares: one record, revealing the way
+		// into the vault. What the captain HOLDS is the record id; what it
+		// means is read from here when it changes hands.
+		Intel: []encounter.IntelRecord{
+			{ID: vaultMap, Reveals: encounter.RevealTargets{Door: tombVault}},
+		},
 		Props: []encounter.PropInput{
 			holdableProp(heirloom, "dnd5e:props:reliquary", heirloomCell),
 			holdableProp(chalice, "dnd5e:props:chalice", chaliceCell),
@@ -207,21 +214,21 @@ func (s *HoldingsSuite) SetupTest() {
 	s.standing = &nobodyIsInContact{}
 }
 
-// captainKnows is the cast: raider and partner in the hall, and the captain
-// in the tomb carrying the way to the vault when knows is true.
-func (s *HoldingsSuite) cast(knows bool) []encounter.MemberInput {
-	var carried []encounter.DoorID
-	if knows {
-		carried = []encounter.DoorID{tombVault}
+// cast is: raider and partner in the hall, and the captain in the tomb
+// holding the vault map when holds is true.
+func (s *HoldingsSuite) cast(holds bool) []encounter.MemberInput {
+	var carried []encounter.IntelID
+	if holds {
+		carried = []encounter.IntelID{vaultMap}
 	}
 	return []encounter.MemberInput{
 		{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
 		{ID: partner, Kind: encounter.KindPlayer, Position: partnerCell},
-		{ID: captain, Kind: encounter.KindMonster, Position: captainCell, Knows: carried},
+		{ID: captain, Kind: encounter.KindMonster, Position: captainCell, Holds: carried},
 	}
 }
 
-func (s *HoldingsSuite) open(knows bool, endings ...encounter.EndingInput) *encounter.Encounter {
+func (s *HoldingsSuite) open(holds bool, endings ...encounter.EndingInput) *encounter.Encounter {
 	if len(endings) == 0 {
 		endings = []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
 	}
@@ -230,7 +237,7 @@ func (s *HoldingsSuite) open(knows bool, endings ...encounter.EndingInput) *enco
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field:     heirloomField(),
-		Members:   s.cast(knows),
+		Members:   s.cast(holds),
 		Endings:   endings,
 		Retention: encounter.RetentionUnbounded,
 	})

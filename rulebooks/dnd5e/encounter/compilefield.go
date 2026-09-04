@@ -114,6 +114,15 @@ type field struct {
 	// its region, its lighting and its archetype, and nobody's feet go on it.
 	sealedCells map[spatial.Position]bool
 
+	// intel is the authored knowledge records, deep-copied, in authored
+	// order — construction truth, what ToData writes back out.
+	intel []IntelRecord
+
+	// intelByID indexes the records by id. The read [Encounter.Loot] makes
+	// when a holding changes hands: a holding names a RECORD, and this is
+	// where the record says what it reveals.
+	intelByID map[IntelID]IntelRecord
+
 	// exits is the authored ways out, deep-copied, in the AUTHORED frame —
 	// what ToData writes back out beside the regions and the props.
 	exits []FieldExit
@@ -211,6 +220,12 @@ func compileField(in FieldInput) (*field, error) {
 	// EXITS LAST, because standable is the question they ask and the sealed
 	// cells above are half its answer.
 	if err := f.compileExits(in.Exits); err != nil {
+		return nil, err
+	}
+	// INTEL after the doors are known to the caller — what a record reveals
+	// is checked against them by [validateIntelTargets], which the two
+	// construction seams run once they hold the door list.
+	if err := f.compileIntel(in.Intel); err != nil {
 		return nil, err
 	}
 
@@ -457,6 +472,37 @@ func (f *field) propIndexOf(id PropID) int {
 		}
 	}
 	return -1
+}
+
+// compileIntel checks every authored record names itself, names itself once,
+// and says something it reveals — then indexes them for the one read that
+// matters, which is [Encounter.transferHoldings] asking what a record means.
+//
+// WHAT A RECORD REVEALS IS NOT CHECKED HERE. The doors are the caller's to
+// know at this point ([validateIntelTargets] runs once they are built), and
+// splitting it that way keeps this function about the records themselves —
+// the same split compileField already makes for a door's edges.
+func (f *field) compileIntel(records []IntelRecord) error {
+	f.intel = append([]IntelRecord(nil), records...)
+	f.intelByID = make(map[IntelID]IntelRecord, len(records))
+
+	for i, rec := range records {
+		if rec.ID == "" {
+			return fmt.Errorf("intel[%d] has no id: %w", i, ErrNoIntel)
+		}
+		if _, dup := f.intelByID[rec.ID]; dup {
+			return fmt.Errorf("duplicate intel record %q: %w", rec.ID, ErrNoIntel)
+		}
+		// A RECORD THAT REVEALS NOTHING is one an author started and did not
+		// finish. Refused rather than carried as a holding that does nothing
+		// — nothing is defaulted, and there is no "reveals the nearest door"
+		// (rpg-toolkit#1033).
+		if rec.Reveals == (RevealTargets{}) {
+			return fmt.Errorf("intel record %q does not say what it reveals: %w", rec.ID, ErrNoIntel)
+		}
+		f.intelByID[rec.ID] = rec
+	}
+	return nil
 }
 
 // compileWalls checks every wall is an edge between two adjacent floor cells

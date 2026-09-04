@@ -88,6 +88,10 @@ func Validate(spec *Spec) []FieldError {
 		v.walls()
 		v.doors()
 		v.start()
+		// INTEL BEFORE PLACE, because a placement's `holds` names a record
+		// and place() asks whether it exists — the same ordering reason
+		// scenery runs before the walls that stand on it.
+		v.intel()
 		v.place()
 		v.exits()
 		v.scenarios()
@@ -149,6 +153,11 @@ type validation struct {
 	// exitIDs is every authored exit id to the index that declared it, the
 	// other half of what a binding may name.
 	exitIDs map[string]int
+
+	// intelIDs is every authored intel record id to the index that declared
+	// it — built by intel(), read by place() to answer "does this holder
+	// name a record that exists".
+	intelIDs map[string]int
 }
 
 func (v *validation) fail(path, format string, args ...any) {
@@ -564,12 +573,6 @@ func (v *validation) place() {
 	occupied := map[[2]int]int{}
 	bosses := map[int]int{} // region index -> place index of its boss
 	v.placeIDs = map[string]int{}
-	doorIDs := map[string]int{}
-	for i, d := range s.Doors {
-		if _, dup := doorIDs[d.ID]; d.ID != "" && !dup {
-			doorIDs[d.ID] = i
-		}
-	}
 	for i, pl := range s.Place {
 		p := fmt.Sprintf("place[%d]", i)
 		kind, err := refKind(pl.Ref)
@@ -616,13 +619,13 @@ func (v *validation) place() {
 
 		switch kind {
 		case typeMonsters:
-			// A knowledge link names a door in this file. Refused by name
-			// when it does not exist — a link to nothing is a secret the
-			// author thinks they placed and did not.
-			for j, id := range pl.Knows {
-				if _, ok := doorIDs[id]; !ok {
-					v.fail(fmt.Sprintf("%s.knows[%d]", p, j),
-						"%q knows door %q, and no door in this dungeon has that id", pl.Ref, id)
+			// A holder names a record in this file. Refused by name when it
+			// does not exist — a monster holding nothing the author declared
+			// is a secret they think they placed and did not.
+			for j, id := range pl.Holds {
+				if _, ok := v.intelIDs[id]; !ok {
+					v.fail(fmt.Sprintf("%s.holds[%d]", p, j),
+						"%q holds intel %q, and no record in this dungeon has that id", pl.Ref, id)
 				}
 			}
 			if pl.Holdable != nil {
@@ -651,8 +654,8 @@ func (v *validation) place() {
 				}
 			}
 		case typeProps:
-			if len(pl.Knows) > 0 {
-				v.fail(p+".knows", "%q is not a monster and holds nothing to know", pl.Ref)
+			if len(pl.Holds) > 0 {
+				v.fail(p+".holds", "%q is not a monster and holds nothing", pl.Ref)
 			}
 			// A holdable prop must be nameable: the scenario binding names it
 			// and so does the `held` beat.
@@ -726,6 +729,46 @@ func (v *validation) exits() {
 		if wall, sealed := v.derived.Sealed[at]; sealed {
 			v.fail(p+".at", "exit %q is at [%d,%d], where %s leaves no room to stand",
 				ex.ID, ex.At[0], ex.At[1], v.wallLabel(wall))
+		}
+	}
+}
+
+// intel validates the authored knowledge records (design §2): each has an
+// id, no two share one, and each says exactly one thing it reveals that this
+// dungeon actually has.
+//
+// RUN BEFORE place(), which asks whether a holder names a record that
+// exists — the same ordering reason scenery runs before walls.
+func (v *validation) intel() {
+	s := v.spec
+	v.intelIDs = map[string]int{}
+	doorIDs := map[string]bool{}
+	for _, d := range s.Doors {
+		if d.ID != "" {
+			doorIDs[d.ID] = true
+		}
+	}
+
+	for i, rec := range s.Intel {
+		p := fmt.Sprintf("intel[%d]", i)
+		if rec.ID == "" {
+			v.fail(p+".id", "the intel record has no id")
+		} else if prev, dup := v.intelIDs[rec.ID]; dup {
+			v.fail(p+".id", "intel %q is already declared at intel[%d]", rec.ID, prev)
+		} else {
+			v.intelIDs[rec.ID] = i
+		}
+
+		// EXACTLY ONE TARGET, and a record that reveals nothing is the one
+		// an author wrote and did not finish. Nothing is defaulted: there is
+		// no "reveals the nearest door".
+		switch {
+		case rec.Reveals.Door == "":
+			v.fail(p+".reveals",
+				"intel %q does not say what it reveals — today that is `door: <door id>`", rec.ID)
+		case !doorIDs[rec.Reveals.Door]:
+			v.fail(p+".reveals.door",
+				"intel %q reveals door %q, and no door in this dungeon has that id", rec.ID, rec.Reveals.Door)
 		}
 	}
 }
