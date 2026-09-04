@@ -12,6 +12,7 @@ package encounter_test
 // all.
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -514,4 +515,98 @@ func (s *HoldingsSuite) TestAHeldPropIsGoneForABlindMemberToo() {
 		_, present := propInAtlas(atlas, chalice)
 		s.Require().False(present, "%s still sees a prop nobody is standing next to", member)
 	}
+}
+
+// TestLoadRefusesCorruptedHoldings is the trust boundary for the holdings
+// journal (Copilot, PR #1497 review). The concealment world validated its
+// facts and this one did not, which left two silent corruptions reachable
+// from a tampered or stale blob: a drop into the void, and the run's
+// artifact held by a ghost.
+func (s *HoldingsSuite) TestLoadRefusesCorruptedHoldings() {
+	enc := s.open(true, recoverEnding())
+	s.walkTo(enc, raider, heirloomCell)
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
+	s.Require().NoError(err)
+
+	base := enc.ToData()
+	s.Require().NotNil(base.Holdings)
+	s.Require().NotEmpty(base.Holdings.Facts)
+
+	load := func(mutate func(*encounter.EncounterData)) error {
+		blob := enc.ToData()
+		mutate(&blob)
+		_, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Data:  blob,
+			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			CheckResolver: findsNothing{}, Witness: s.witness,
+		})
+		return lerr
+	}
+
+	// The unmutated blob is the control: every refusal below has to be
+	// about the one thing the scene changed.
+	s.Require().NoError(load(func(*encounter.EncounterData) {}))
+
+	appendFact := func(kind, actor string) func(*encounter.EncounterData) {
+		return func(d *encounter.EncounterData) {
+			d.Holdings.Facts = append(append([]encounter.FactData(nil), d.Holdings.Facts...),
+				encounter.FactData{Kind: kind, Actor: actor, Audience: []string{}})
+		}
+	}
+
+	s.Run("a kind this build does not mint", func() {
+		err := load(appendFact("borrowed:heirloom", string(raider)))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "does not mint")
+	})
+
+	s.Run("an actor this encounter never had", func() {
+		err := load(appendFact("holds:prop:"+heirloom, "nobody"))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "no member this encounter has ever had")
+	})
+
+	s.Run("holding a prop this field does not place", func() {
+		err := load(appendFact("holds:prop:crown", string(raider)))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "crown")
+	})
+
+	s.Run("carrying the way to a door this field does not declare", func() {
+		err := load(appendFact("holds:intel:door:cellar-hatch", string(captain)))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "cellar-hatch")
+	})
+
+	s.Run("picking up a prop this field does not place", func() {
+		err := load(appendFact("held:crown", string(raider)))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a drop into the void", func() {
+		// The corruption that would otherwise be silent: the prop appears in
+		// every atlas at a cell nobody can reach.
+		err := load(appendFact("dropped:"+heirloom+"@999,999", string(raider)))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "not floor")
+	})
+
+	s.Run("a drop whose cell will not parse", func() {
+		// The MESSAGE is the assertion, not just the sentinel. A malformed
+		// kind parses to an empty prop id, which the prop check below would
+		// also refuse — so a scene that only asserted ErrInvalidData would
+		// pass with the parse check deleted, and the author would be told
+		// their prop is named "" rather than that their kind is malformed
+		// (found by a mutation pass).
+		err := load(appendFact("dropped:"+heirloom+"@nowhere", string(raider)))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "not a drop this build writes")
+	})
+
+	s.Run("a drop onto scenery is LEGAL — a prop may sit on any floor", func() {
+		cell := cellAt(int(pillarCell.X), int(pillarCell.Y))
+		s.Require().NoError(load(appendFact(
+			fmt.Sprintf("dropped:%s@%g,%g", chalice, cell.X, cell.Y), string(raider))))
+	})
 }

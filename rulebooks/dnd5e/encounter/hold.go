@@ -137,7 +137,11 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 	// Not shown this member: the SAME refusal as an id that names nothing,
 	// so no guess can tell the two apart. Everything below is about a prop
 	// the member can see, and says what it means.
-	if !e.showsCellTo(in.Member, cell) {
+	shown, err := e.showsCellTo(in.Member, cell)
+	if err != nil {
+		return nil, fmt.Errorf("hold: %w", err)
+	}
+	if !shown {
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
 	}
 
@@ -194,15 +198,31 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 // A field with no concealment shows every member the whole floor, so this is
 // true for any floor cell there, which is exactly right: nothing is hidden,
 // so nothing needs hiding behind an evasive refusal.
-func (e *Encounter) showsCellTo(member MemberID, cell spatial.Position) bool {
+//
+// THE ERROR IS RETURNED, NEVER FOLDED INTO "NOT SHOWN" (Copilot, PR #1497
+// review). Swallowing it would answer a wiring fault — an atlas that could
+// not be built at all — with ErrNoProp, which is the one refusal in this
+// verb designed to be indistinguishable from three others. A caller
+// debugging why a prop they can see refuses would have nothing to go on. The
+// probe law is about what a PLAYER may infer from a refusal; it is not a
+// reason to lie to the operator.
+//
+// UNREACHABLE TODAY, and said out loud rather than left for the next reader
+// to work out: [Encounter.Atlas] has one return and it is nil, and
+// [Encounter.AtlasFor]'s only other failure is ErrNotMember, which
+// [Encounter.Hold] has already refused before it gets here. So no test kills
+// a mutant that swallows this error, and a mutation pass says so. It stays
+// because the alternative is discarding an error return — which is the
+// habit that makes the next failure silent, whenever Atlas grows one.
+func (e *Encounter) showsCellTo(member MemberID, cell spatial.Position) (bool, error) {
 	atlas, err := e.AtlasFor(member)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("atlas for %q: %w", member, err)
 	}
 	for _, c := range atlas.Cells {
 		if c == cell {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
