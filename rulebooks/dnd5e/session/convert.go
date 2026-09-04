@@ -68,6 +68,27 @@ func projectLayout(o encounter.Orientation) HexLayout {
 // What remains is the translation S2 exists for: the composition's types
 // become this package's, so a host never recompiles when the inner module
 // changes shape. convert_test.go holds this honest field by field.
+// doorIDs converts the seam's plain door ids to the composition's own type.
+//
+// A CONVERSION, not a cast at the call site: a []string and a []DoorID differ
+// only in a name Go will not bridge for a slice, and doing it here keeps the
+// one place this package spells the inner type out where every other
+// conversion already lives.
+//
+// nil in, nil out — a member that knows nothing hands the composition
+// nothing, rather than an empty slice that would read as "asked and answered
+// none".
+func doorIDs(in []string) []encounter.DoorID {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]encounter.DoorID, 0, len(in))
+	for _, id := range in {
+		out = append(out, encounter.DoorID(id))
+	}
+	return out
+}
+
 func projectAtlas(in encounter.Atlas) Atlas {
 	out := Atlas{
 		// Hex is the field's only family as of rpg-project#256; the
