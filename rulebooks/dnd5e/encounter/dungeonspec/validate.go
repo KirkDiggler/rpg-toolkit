@@ -626,7 +626,7 @@ func (v *validation) place() {
 				}
 			}
 			if pl.Holdable != nil {
-				v.fail(p+".holdable", "%q is not a prop and cannot be taken", pl.Ref)
+				v.fail(p+".holdable", "%q is not a prop and cannot be held", pl.Ref)
 			}
 			if pl.BlocksMovement != nil {
 				v.fail(p+".blocks_movement", "%q is not a prop and cannot declare what it blocks", pl.Ref)
@@ -655,7 +655,7 @@ func (v *validation) place() {
 				v.fail(p+".knows", "%q is not a monster and holds nothing to know", pl.Ref)
 			}
 			// A holdable prop must be nameable: the scenario binding names it
-			// and so does the `taken` beat.
+			// and so does the `held` beat.
 			if pl.Holdable != nil && *pl.Holdable && pl.ID == "" {
 				v.fail(p+".id", "%q is holdable and has no id, and a thing that can be picked up has to be nameable", pl.Ref)
 			}

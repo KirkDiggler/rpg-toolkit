@@ -290,7 +290,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	// WHERE A THING PHYSICALLY IS FOLDS HERE, not in the per-member
 	// projection: it is truth-grain state, one answer for every member
 	// (ruled 2026-09-01), unlike knowledge — which is audience-scoped and
-	// belongs in AtlasFor. A prop somebody took is gone from everybody's
+	// belongs in AtlasFor. A prop somebody picked up is gone from everybody's
 	// atlas; a prop somebody dropped stands where they dropped it. Putting
 	// this in Atlas rather than in AtlasFor is also what makes the rule
 	// total: AtlasFor short-circuits to this answer for a field with no

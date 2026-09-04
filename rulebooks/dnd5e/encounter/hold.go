@@ -66,7 +66,7 @@ import (
 
 // HoldInput declares picking up one holdable prop.
 type HoldInput struct {
-	// Member is who takes.
+	// Member is who picks it up.
 	Member MemberID
 
 	// Target is the placement, by its author-given id ([PropInput.ID]).
@@ -77,7 +77,7 @@ type HoldInput struct {
 	Range int
 }
 
-// HoldOutput acknowledges that the take happened, and deliberately nothing
+// HoldOutput acknowledges that the hold happened, and deliberately nothing
 // more — [LootOutput]'s shape and for its reason.
 type HoldOutput struct{}
 
@@ -152,14 +152,14 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrAlreadyHeld)
 	}
 
-	if err := e.refuseOffTurn("take", in.Member); err != nil {
+	if err := e.refuseOffTurn("hold", in.Member); err != nil {
 		return nil, err
 	}
 	from, placed := e.canvas.GetEntityPosition(string(in.Member))
 	if !placed {
 		return nil, fmt.Errorf("hold: member %q: %w", in.Member, ErrBadPlacement)
 	}
-	if err := e.refuseOutOfReachCell("take", from, cell, in.Range, string(in.Target)); err != nil {
+	if err := e.refuseOutOfReachCell("hold", from, cell, in.Range, string(in.Target)); err != nil {
 		return nil, err
 	}
 
