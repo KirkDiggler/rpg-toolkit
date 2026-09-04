@@ -168,7 +168,7 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 //     first did. Knowledge is not an object; see holdings.go on why, and on
 //     which shelf turns it into one.
 //   - A PROP is MOVED to the receiver. Where it physically is does not
-//     change: it is already off the floor (`taken`), and passing it from one
+//     change: it is already off the floor (`held`), and passing it from one
 //     pair of hands to another moves nothing anybody can see. One of it
 //     exists, so the body no longer has it.
 //

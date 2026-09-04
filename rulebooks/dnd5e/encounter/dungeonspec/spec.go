@@ -626,7 +626,7 @@ type PlaceSpec struct {
 	// "said false" on a monster, so a monster that wrote `holdable: false`
 	// is told it cannot declare that at all rather than silently accepted.
 	//
-	// A TAKEABLE PROP MUST HAVE AN ID, refused otherwise: the scenario
+	// A HOLDABLE PROP MUST HAVE AN ID, refused otherwise: the scenario
 	// binding names it and the `held` beat names it, and neither can name a
 	// thing with no name.
 	Holdable *bool `yaml:"holdable,omitempty"`

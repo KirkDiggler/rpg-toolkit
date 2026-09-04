@@ -133,6 +133,11 @@ func (s *HoldingsSuite) TestHoldRefusesInOrder() {
 	s.Run("out of range", func() {
 		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrOutOfRange)
+		// The reach helper is shared with Loot and takes the verb as a
+		// string, so this refusal is the second place a rename can leave the
+		// wrong word in front of a caller. Pinned for refuseOffTurn's reason.
+		s.Require().Contains(err.Error(), "hold:")
+		s.Require().NotContains(err.Error(), "take")
 	})
 	s.Run("already taken", func() {
 		s.walkTo(enc, raider, chaliceCell)
@@ -244,6 +249,13 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 		_, err := enc.Hold(&encounter.HoldInput{Member: waiting, Target: otherTarget})
 		s.Require().ErrorIs(err, encounter.ErrNotActive,
 			"this mirrors Step's turn gate exactly (ADR-0044)")
+		// THE VERB NAMES ITSELF. refuseOffTurn is shared with Loot and takes
+		// the verb as a string, so the one thing a copy-paste gets wrong
+		// here is silent: the refusal comes back saying a verb the caller
+		// never invoked. It said "take" for a while after the R10 rename and
+		// no test noticed.
+		s.Require().Contains(err.Error(), "hold:")
+		s.Require().NotContains(err.Error(), "take")
 	})
 
 	s.Run("and may not loot either", func() {
@@ -264,6 +276,7 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 
 		_, err = enc.Loot(&encounter.LootInput{Member: stillWaiting, Target: captain, Range: 9})
 		s.Require().ErrorIs(err, encounter.ErrNotActive)
+		s.Require().Contains(err.Error(), "loot:", "and Loot names itself too")
 	})
 }
 
