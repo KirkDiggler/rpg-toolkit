@@ -77,16 +77,43 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("the artifact is a holdable prop with an id", func(t *testing.T) {
-		var found []encounter.PropInput
+		var artifact encounter.PropInput
+		named := map[encounter.PropID]bool{}
 		for _, p := range compiled.Field.Props {
 			if p.ID != "" {
-				found = append(found, p)
+				named[p.ID] = true
+			}
+			if p.ID == "heirloom" {
+				artifact = p
 			}
 		}
-		require.Len(t, found, 1, "one named prop in this dungeon")
-		require.Equal(t, "heirloom", found[0].ID)
-		require.True(t, found[0].Holdable)
-		require.Equal(t, "dnd5e:props:reliquary", found[0].Ref)
+		// Two named props now: the artifact the scenario binds, and the
+		// scroll that carries the second record (R6).
+		require.Equal(t, map[encounter.PropID]bool{"heirloom": true, "hall-scroll": true}, named)
+		require.Equal(t, "heirloom", artifact.ID)
+		require.True(t, artifact.Holdable)
+		require.Equal(t, "dnd5e:props:reliquary", artifact.Ref)
+		require.Empty(t, artifact.Holds, "the artifact is the prize, not a source of intel")
+	})
+
+	t.Run("the hall scroll carries the second record (R6)", func(t *testing.T) {
+		var scroll encounter.PropInput
+		for _, p := range compiled.Field.Props {
+			if p.ID == "hall-scroll" {
+				scroll = p
+			}
+		}
+		require.Equal(t, "hall-scroll", scroll.ID, "the fixture ships a scroll")
+		require.True(t, scroll.Holdable, "you have to be able to pick it up to read it")
+		require.Equal(t, []encounter.IntelID{"reference-tomb-heirloom/hall-notes"}, scroll.Holds)
+	})
+
+	t.Run("two records may reveal one door", func(t *testing.T) {
+		require.Len(t, compiled.Intel, 2)
+		for _, rec := range compiled.Intel {
+			require.Equal(t, encounter.DoorID("reference-tomb-heirloom/vault"), rec.Reveals.Door,
+				"knowledge is not scarce: the captain knows the way and so does the scroll")
+		}
 	})
 
 	t.Run("the captain holds the vault map and carries no boss flag", func(t *testing.T) {
@@ -248,12 +275,21 @@ func TestHoldsRefusals(t *testing.T) {
 			`holds intel "cellar-map"`, "no record in this dungeon")
 	})
 
-	t.Run("holds on a prop is refused", func(t *testing.T) {
+	t.Run("holds on a PROP is legal (R6)", func(t *testing.T) {
+		// Kirk, walking: "tech could get intel by holding something too."
+		// A scroll on a table is the shape, and the shipped fixture uses it
+		// so the tool can be tested without a fight.
 		edited := strings.Replace(source,
 			`  - { ref: "dnd5e:props:candles", at: [26,5], blocks_movement: false, blocks_los: false }`,
 			`  - { ref: "dnd5e:props:candles", at: [26,5], blocks_movement: false, blocks_los: false,`+
 				"\n      holds: [vault-map] }", 1)
-		requireDefect(t, defectsIn(t, edited), ".holds", "is not a monster and holds nothing")
+		require.Empty(t, defectsIn(t, edited))
+	})
+
+	t.Run("a prop naming a record that does not exist is still refused", func(t *testing.T) {
+		edited := strings.Replace(source, "holds: [hall-notes] }", "holds: [no-such-record] }", 1)
+		requireDefect(t, defectsIn(t, edited), ".holds[0]",
+			`holds intel "no-such-record"`, "no record in this dungeon")
 	})
 
 	t.Run("the SAME record may be held by two monsters — intel copies", func(t *testing.T) {

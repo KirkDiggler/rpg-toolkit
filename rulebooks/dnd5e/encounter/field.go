@@ -220,6 +220,27 @@ type PropInput struct {
 	// field by hand cannot produce one either.
 	ID PropID
 
+	// Holds is the intel records this prop carries, by record id
+	// (rpg-project#372, design R6). Optional; omitted means it carries none.
+	//
+	// CONSTRUCTION TRUTH, and it STAYS WITH THE PROP. Picking the prop up
+	// applies its records to whoever holds it (copies, as intel always
+	// does), and the prop keeps them — so a scroll handed on, or dropped and
+	// picked up by somebody else, teaches the next holder too. That is the
+	// hold-out's letter with nothing added: the paper does not stop saying
+	// what it says because somebody read it.
+	//
+	// A prop with records is why intel does not need a fight to test (R6,
+	// Kirk walking): "if we want to test the intel we need to be able to
+	// place it on a few things — not the hardest monster to kill in the
+	// game."
+	//
+	// A record this field does not declare is refused at construction
+	// (ErrNoIntel). A prop that carries records need NOT be [Holdable] —
+	// authoring one that nobody can pick up is inert, not an error, the same
+	// call [RevealTargets.Door] makes about an unconcealed door.
+	Holds []IntelID
+
 	// Holdable is whether a member can pick this prop up (design §5).
 	// Optional, and FALSE IS THE HONEST ZERO VALUE here — unlike the two
 	// blocking flags below, which are pointers because all four of their

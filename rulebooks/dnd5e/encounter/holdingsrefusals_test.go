@@ -736,6 +736,35 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 		s.Require().Contains(err.Error(), "cellar-hatch")
 	})
 
+	s.Run("a PROP holding a record this field does not declare", func() {
+		// R6 made `holds` legal on props, so a dangling one is now
+		// reachable from a second kind of placement. dungeonspec refuses it
+		// at the file; the composition refuses it again, because a host
+		// assembling a FieldInput by hand does not go through dungeonspec.
+		err := setup(func(f *encounter.FieldInput) {
+			props := append([]encounter.PropInput(nil), f.Props...)
+			ghost := holdableProp("ghost-scroll", "dnd5e:props:scroll", partnerCell)
+			ghost.Holds = []encounter.IntelID{"no-such-record"}
+			f.Props = append(props, ghost)
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoIntel)
+		s.Require().Contains(err.Error(), "no-such-record")
+	})
+
+	s.Run("a prop holding a DECLARED record is legal, holdable or not", func() {
+		// A prop nobody can pick up carrying a record is inert, not an
+		// error — the same call the design makes about an unconcealed door.
+		s.Require().NoError(setup(func(f *encounter.FieldInput) {
+			props := append([]encounter.PropInput(nil), f.Props...)
+			plinth := encounter.PropInput{
+				ID: "plinth", Ref: "dnd5e:props:plinth", At: partnerCell,
+				BlocksMovement: no(), BlocksLineOfSight: no(),
+				Holds: []encounter.IntelID{vaultMap},
+			}
+			f.Props = append(props, plinth)
+		}))
+	})
+
 	s.Run("a record revealing an UNCONCEALED door is legal and inert", func() {
 		// Refusing it would make this record's legality depend on a fact
 		// about a different declaration.
@@ -743,7 +772,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 			f.Doors = append(append([]encounter.DoorInput(nil), f.Doors...), encounter.DoorInput{
 				ID: "open-arch", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsOpen(),
 			})
-			f.Walls = append(seamWallExcept(3, 8, hallGapRow, 1), seamWallExcept(7, 8, vaultSeamRow)...)
+			f.Walls = append(seamWallExcept(3, 8, hallGapRow, hallGateRow, 1), seamWallExcept(7, 8, vaultSeamRow)...)
 			f.Intel = append(f.Intel, encounter.IntelRecord{
 				ID: "arch-map", Reveals: encounter.RevealTargets{Door: "open-arch"},
 			})
@@ -756,7 +785,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 	enc := s.open(true)
 	data := enc.ToData()
-	s.Require().Len(data.Field.Intel, 1, "the field's records persist as structure")
+	s.Require().Len(data.Field.Intel, 3, "the field's records persist as structure")
 	s.Require().Equal(vaultMap, data.Field.Intel[0].ID)
 	s.Require().Equal(tombVault, data.Field.Intel[0].Door)
 
@@ -785,7 +814,9 @@ func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 	})
 
 	s.Run("a holding naming a record the field no longer declares", func() {
-		err := load(func(d *encounter.EncounterData) { d.Field.Intel = nil })
+		// Drop only the captain's record; the scroll still needs its own or
+		// the field itself refuses first, which would be a different test.
+		err := load(func(d *encounter.EncounterData) { d.Field.Intel = d.Field.Intel[1:] })
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), vaultMap)
 	})

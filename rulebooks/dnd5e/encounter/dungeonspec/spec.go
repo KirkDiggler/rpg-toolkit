@@ -698,14 +698,23 @@ type PlaceSpec struct {
 	// author's business and it is visible on the form.
 	Boss bool `yaml:"boss,omitempty"`
 
-	// Holds is the intel records this monster carries, by record id
-	// (rpg-project#372, design §2). Optional; MONSTERS ONLY, refused on a
-	// prop for [PlaceSpec.BlocksMovement]'s reason inverted — a prop holds
-	// nothing, until a use case says a chest does.
+	// Holds is the intel records this placement carries, by record id
+	// (rpg-project#372, design §2). Optional; legal on MONSTERS AND PROPS
+	// (R6), refused only when the id names no record.
 	//
-	// THE MONSTER CARRIES IT FROM SPAWN. The captain is not a role: it is a
+	// A MONSTER CARRIES IT FROM SPAWN. The captain is not a role: it is a
 	// monster holding a record, and nothing in the game needs the word
-	// captain. Refused by name when no record has that id.
+	// captain.
+	//
+	// A PROP CARRIES IT UNTIL SOMEBODY PICKS IT UP. Kirk, walking the
+	// stack: "tech could get intel by holding something too. if we want to
+	// test the intel we need to be able to place it on a few things — not
+	// the hardest monster to kill in the game." A scroll on a table is the
+	// obvious shape, and it is also the whole hold-out's-letter idea with
+	// nothing extra: the record stays ON the prop, so whoever holds the prop
+	// next is taught in turn.
+	//
+	// Refused by name when no record has that id.
 	//
 	// THE SAME RECORD MAY BE HELD BY SEVERAL MONSTERS, because intel copies
 	// rather than moving (holdings.go): two guards may both know the way in,

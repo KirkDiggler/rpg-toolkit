@@ -611,6 +611,18 @@ func (v *validation) place() {
 					pl.Ref, pl.At[0], pl.At[1], v.wallLabel(wall))
 			}
 		}
+		// A holder names a record in this file, whatever KIND of thing it is
+		// (R6): a monster carries it from spawn, a prop carries it until
+		// somebody picks it up. Refused by name when it does not exist — a
+		// placement holding nothing the author declared is a secret they
+		// think they placed and did not.
+		for j, id := range pl.Holds {
+			if _, ok := v.intelIDs[id]; !ok {
+				v.fail(fmt.Sprintf("%s.holds[%d]", p, j),
+					"%q holds intel %q, and no record in this dungeon has that id", pl.Ref, id)
+			}
+		}
+
 		if prev, taken := occupied[pl.At]; taken {
 			v.fail(p+".at", "%q and %q (place[%d]) are on the same cell [%d,%d]", pl.Ref, s.Place[prev].Ref, prev, pl.At[0], pl.At[1])
 		} else {
@@ -619,15 +631,6 @@ func (v *validation) place() {
 
 		switch kind {
 		case typeMonsters:
-			// A holder names a record in this file. Refused by name when it
-			// does not exist — a monster holding nothing the author declared
-			// is a secret they think they placed and did not.
-			for j, id := range pl.Holds {
-				if _, ok := v.intelIDs[id]; !ok {
-					v.fail(fmt.Sprintf("%s.holds[%d]", p, j),
-						"%q holds intel %q, and no record in this dungeon has that id", pl.Ref, id)
-				}
-			}
 			if pl.Holdable != nil {
 				v.fail(p+".holdable", "%q is not a prop and cannot be held", pl.Ref)
 			}
@@ -654,9 +657,6 @@ func (v *validation) place() {
 				}
 			}
 		case typeProps:
-			if len(pl.Holds) > 0 {
-				v.fail(p+".holds", "%q is not a monster and holds nothing", pl.Ref)
-			}
 			// A holdable prop must be nameable: the scenario binding names it
 			// and so does the `held` beat.
 			if pl.Holdable != nil && *pl.Holdable && pl.ID == "" {

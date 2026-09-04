@@ -47,8 +47,16 @@ import (
 const (
 	vaultSeamRow = 2
 	hallGapRow   = 5
+	// hallGateRow is where the second concealed door stands. Row 7 rather
+	// than row 1, because three scenes author their own door at row 1 and
+	// two doors cannot share a crossing.
+	hallGateRow  = 7
 	tombVault    = "tomb-vault-door"
+	hallGate     = "hall-gate-door"
 	vaultMap     = "vault-map"
+	scrollNotes  = "scroll-notes"
+	scrollMargin = "scroll-margin"
+	scroll       = "hall-scroll"
 	heirloom     = "heirloom"
 	chalice      = "chalice"
 	relic        = "relic"
@@ -72,6 +80,7 @@ var (
 	chaliceCell  = spatial.Position{X: 6, Y: 4}
 	relicCell    = spatial.Position{X: 9, Y: 3}
 	pillarCell   = spatial.Position{X: 6, Y: 6}
+	scrollCell   = spatial.Position{X: 2, Y: 4}
 	sideDoorCell = spatial.Position{X: 2, Y: hallGapRow}
 
 	// hallSideOfGap and tombSideOfGap are the one open crossing between the
@@ -110,22 +119,42 @@ func heirloomField() encounter.FieldInput {
 			}(),
 		},
 		Walls: append(
-			seamWallExcept(3, 8, hallGapRow),
+			seamWallExcept(3, 8, hallGapRow, hallGateRow),
 			seamWallExcept(7, 8, vaultSeamRow)...),
-		Doors: []encounter.DoorInput{{
-			ID: tombVault, Edges: doorEdgesAcross(7, vaultSeamRow),
-			State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
-		}},
+		Doors: []encounter.DoorInput{
+			{
+				ID: tombVault, Edges: doorEdgesAcross(7, vaultSeamRow),
+				State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
+			},
+			// A second concealed door, so the scroll's second record has
+			// something of its own to reveal.
+			{
+				ID: hallGate, Edges: doorEdgesAcross(3, hallGateRow),
+				State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
+			},
+		},
 		// The knowledge this field declares: one record, revealing the way
 		// into the vault. What the captain HOLDS is the record id; what it
 		// means is read from here when it changes hands.
 		Intel: []encounter.IntelRecord{
 			{ID: vaultMap, Reveals: encounter.RevealTargets{Door: tombVault}},
+			// The scroll's own records — TWO of them, because a letter can
+			// say more than one thing and a prop that carries exactly one
+			// would let a loop that applies only the first pass unnoticed.
+			{ID: scrollNotes, Reveals: encounter.RevealTargets{Door: tombVault}},
+			{ID: scrollMargin, Reveals: encounter.RevealTargets{Door: hallGate}},
 		},
 		Props: []encounter.PropInput{
 			holdableProp(heirloom, "dnd5e:props:reliquary", heirloomCell),
 			holdableProp(chalice, "dnd5e:props:chalice", chaliceCell),
 			holdableProp(relic, "dnd5e:props:relic", relicCell),
+			// A scroll in the HALL, where the players start — intel that
+			// needs no fight to reach (R6).
+			func() encounter.PropInput {
+				p := holdableProp(scroll, "dnd5e:props:scroll", scrollCell)
+				p.Holds = []encounter.IntelID{scrollNotes, scrollMargin}
+				return p
+			}(),
 			// A prop that said nothing about being holdable, which is every
 			// prop that existed before this slice.
 			{ID: pillar, Ref: "dnd5e:props:pillar", At: pillarCell,

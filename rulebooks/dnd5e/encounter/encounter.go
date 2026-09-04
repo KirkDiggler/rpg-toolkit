@@ -657,6 +657,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			}
 		}
 	}
+	// A PROP may hold records too (R6), and a dangling one is the same
+	// mistake wherever it is written.
+	for _, prop := range f.props {
+		for _, id := range prop.Holds {
+			if _, declared := f.intelByID[id]; !declared {
+				return nil, fmt.Errorf("newencounter: prop %q holds intel %q: %w", prop.Ref, id, ErrNoIntel)
+			}
+		}
+	}
 
 	// A TriggerReachedPosition ending must name a reachable cell (#929 T3
 	// Opus round F5) — see validateEndingTriggers.

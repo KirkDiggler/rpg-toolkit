@@ -201,6 +201,14 @@ func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64)
 			if err := e.holdings.holdProp(to, item.prop, cause); err != nil {
 				return fmt.Errorf("transfer prop %q: %w", item.prop, err)
 			}
+			// A PROP CAN CARRY RECORDS (R6). Looting a body that was
+			// holding the scroll teaches what the scroll says, through the
+			// same path picking it up off the floor would — one rule about
+			// what holding a thing means, not one per way of coming to hold
+			// it.
+			if err := e.applyPropReveals(to, item.prop, at); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -259,6 +267,35 @@ func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
 		}
 	}
 
+	return nil
+}
+
+// applyPropReveals gives one member everything the records ON A PROP reveal
+// (rpg-project#372, R6).
+//
+// THE RECORDS STAY ON THE PROP. Intel copies rather than moving, so the
+// scroll still says what it says after somebody reads it — which is what
+// makes handing it on, or dropping it for the next person, work without a
+// second mechanism. The prop's records are construction truth
+// ([PropInput.Holds]); nothing here writes a holding for them, because a
+// member does not hold the SCROLL'S records, they hold the scroll.
+//
+// Called from the two ways a member comes to hold a prop — [Encounter.Hold]
+// off the floor and [Encounter.transferHoldings] off a body — so "holding
+// this teaches you that" is one rule rather than one per route.
+//
+// A prop this field does not have carries nothing, which is unreachable from
+// either caller: both resolve the prop before they get here.
+func (e *Encounter) applyPropReveals(to MemberID, prop PropID, at uint64) error {
+	index := e.field.propIndexOf(prop)
+	if index < 0 {
+		return nil
+	}
+	for _, id := range e.field.props[index].Holds {
+		if err := e.applyReveals(to, id, at); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -8,6 +8,8 @@ package encounter_test
 // in holdings_test.go beside it.
 
 import (
+	"encoding/json"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -613,7 +615,7 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 	// every crossing twice.
 	field := heirloomField()
 	field.Walls = append(
-		seamWallExcept(3, 8, hallGapRow, 1),
+		seamWallExcept(3, 8, hallGapRow, hallGateRow, 1),
 		seamWallExcept(7, 8, vaultSeamRow)...)
 	field.Doors = append(append([]encounter.DoorInput(nil), field.Doors...), encounter.DoorInput{
 		ID: "hall-tomb-gate", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
@@ -1087,14 +1089,21 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 	// A field with TWO concealed doors and one record, pointed at the second.
 	field := heirloomField()
 	field.Walls = append(
-		seamWallExcept(3, 8, hallGapRow, 1),
+		seamWallExcept(3, 8, hallGapRow, hallGateRow, 1),
 		seamWallExcept(7, 8, vaultSeamRow)...)
 	field.Doors = append(append([]encounter.DoorInput(nil), field.Doors...), encounter.DoorInput{
 		ID: "hall-gate", Edges: doorEdgesAcross(3, 1),
 		State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
 	})
+	// The captain's record now points at the OTHER concealed door; the
+	// scroll keeps its own so the field stays coherent.
 	field.Intel = []encounter.IntelRecord{
 		{ID: vaultMap, Reveals: encounter.RevealTargets{Door: "hall-gate"}},
+		// The scroll's records still have to be declared — a prop holding a
+		// record the field does not declare is refused at construction, and
+		// this scene is not about that.
+		{ID: scrollNotes, Reveals: encounter.RevealTargets{Door: tombVault}},
+		{ID: scrollMargin, Reveals: encounter.RevealTargets{Door: tombVault}},
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -1130,4 +1139,148 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 	s.Require().NoError(err)
 	s.Require().False(doorsListed(doors, tombVault),
 		"and the door the record does NOT name stays a wall")
+}
+
+// TestAScrollTeachesWhoeverHoldsIt is design R6, and the reason it exists:
+// Kirk, walking the stack — "tech could get intel by holding something too.
+// if we want to test the intel we need to be able to place it on a few
+// things — not the hardest monster to kill in the game."
+//
+// A scroll in the hall, four cells from where the party starts. No fight, no
+// body, no search: pick it up and the way into the vault is yours.
+func (s *HoldingsSuite) TestAScrollTeachesWhoeverHoldsIt() {
+	enc := s.open(false)
+	before := s.atlasBytes(enc, partner)
+
+	s.walkTo(enc, raider, scrollCell)
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: scroll})
+	s.Require().NoError(err)
+
+	s.Run("the holder alone learns EVERYTHING the scroll says", func() {
+		// Two records on one prop, and both are applied — a loop that
+		// stopped at the first would look right on a scroll that said one
+		// thing, which is why the fixture's says two.
+		var learned []any
+		for _, b := range s.beatsOfKind(enc, raider, "door_revealed") {
+			learned = append(learned, b["door"])
+		}
+		s.Require().ElementsMatch([]any{tombVault, hallGate}, learned)
+
+		doors, derr := enc.DoorsFor(raider)
+		s.Require().NoError(derr)
+		s.Require().True(doorsListed(doors, tombVault))
+		s.Require().True(doorsListed(doors, hallGate))
+	})
+
+	s.Run("the bystander sees a thing picked up and learns nothing", func() {
+		held := s.beatsOfKind(enc, partner, "held")
+		s.Require().Len(held, 1, "picking it up is public")
+		s.Require().Empty(s.beatsOfKind(enc, partner, "door_revealed"), "what it says is not")
+		doors, derr := enc.DoorsFor(partner)
+		s.Require().NoError(derr)
+		s.Require().False(doorsListed(doors, tombVault))
+	})
+
+	s.Run("the beat comes BEFORE what the scroll teaches", func() {
+		var heldAt, revealedAt = -1, -1
+		for i, b := range s.beats(enc, raider) {
+			switch b["beat"] {
+			case "held":
+				heldAt = i
+			case "door_revealed":
+				revealedAt = i
+			}
+		}
+		s.Require().Greater(heldAt, -1)
+		s.Require().Greater(revealedAt, heldAt, "the verb's beat precedes its consequences")
+	})
+
+	s.Run("the bystander's atlas moved by the scroll and by NOTHING else", func() {
+		// It does move: the scroll left the floor, and where a thing
+		// physically is folds on the truth grain for everybody. What must
+		// not move is anything about the secret it carried — asserted as a
+		// bound rather than as inequality, because "these differ" would pass
+		// for the vault leaking too.
+		s.Require().NotEqual(before, s.atlasBytes(enc, partner))
+
+		blind, err := enc.AtlasFor(partner)
+		s.Require().NoError(err)
+		_, present := propInAtlas(blind, scroll)
+		s.Require().False(present, "the scroll is off the floor for everyone")
+
+		s.Require().Empty(blind.Doorways, "and both concealed doors are still walls to them")
+		for _, r := range blind.Regions {
+			s.Require().NotEqual("vault", r.ID)
+		}
+	})
+}
+
+// TestTheScrollKeepsSayingWhatItSays: intel copies, so a record on a prop
+// stays on the prop. That is the hold-out's letter with nothing added — the
+// paper does not stop saying what it says because somebody read it — and it
+// is what makes handing one on, or dropping it for the next person, work
+// without a second mechanism.
+func (s *HoldingsSuite) TestTheScrollKeepsSayingWhatItSays() {
+	enc := s.open(false)
+	s.walkTo(enc, raider, scrollCell)
+	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: scroll})
+	s.Require().NoError(err)
+	s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 2)
+
+	s.Run("the carrier falls and is looted; the looter learns it too", func() {
+		s.standing.down = []encounter.MemberID{raider}
+		_, perr := enc.Pump(&encounter.PumpInput{})
+		s.Require().NoError(perr)
+
+		s.walkTo(enc, partner, scrollCell)
+		_, lerr := enc.Loot(&encounter.LootInput{Member: partner, Target: raider, Range: 2})
+		s.Require().NoError(lerr)
+
+		var learned []any
+		for _, b := range s.beatsOfKind(enc, partner, "door_revealed") {
+			learned = append(learned, b["door"])
+		}
+		s.Require().ElementsMatch([]any{tombVault, hallGate}, learned,
+			"looting a body that holds the scroll reads the whole scroll")
+	})
+
+	s.Run("and the first reader still knows it — nothing was taken away", func() {
+		doors, derr := enc.DoorsFor(raider)
+		s.Require().NoError(derr)
+		s.Require().True(doorsListed(doors, tombVault))
+		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 2,
+			"and they were not told a second time")
+	})
+}
+
+// TestAPropWithNoRecordsTeachesNothing is the negative that makes the two
+// scenes above claims about the RECORDS rather than about picking things up.
+//
+// Same verb, same prop shape, same observers — the one difference is whether
+// the prop carries anything — and the bytes are identical to everybody.
+func (s *HoldingsSuite) TestAPropWithNoRecordsTeachesNothing() {
+	enc := s.open(false)
+
+	s.Run("the chalice carries nothing and says nothing", func() {
+		s.walkTo(enc, raider, chaliceCell)
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
+		s.Require().NoError(err)
+		s.Require().Len(s.beatsOfKind(enc, raider, "held"), 1)
+		s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"))
+	})
+
+	s.Run("and the atlas never says which prop carries intel", func() {
+		// Design P3 at the projection: a client offering Hold must not be
+		// able to tell the scroll from the chalice. AtlasProp carries id,
+		// ref, holdable and the blocking flags — and deliberately no
+		// records.
+		atlas, err := enc.AtlasFor(raider)
+		s.Require().NoError(err)
+		raw, merr := json.Marshal(atlas)
+		s.Require().NoError(merr)
+		s.Require().NotContains(string(raw), scrollNotes,
+			"the map must not name what the scroll knows")
+		s.Require().NotContains(string(raw), scrollMargin)
+		s.Require().NotContains(string(raw), vaultMap)
+	})
 }

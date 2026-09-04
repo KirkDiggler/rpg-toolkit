@@ -416,7 +416,7 @@ func (f *field) compileProps(props []PropInput) error {
 		// are already immune to the aliasing the two flags guard against.
 		blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
 		f.props[i] = PropInput{
-			ID: p.ID, Holdable: p.Holdable,
+			ID: p.ID, Holdable: p.Holdable, Holds: append([]IntelID(nil), p.Holds...),
 			Ref: p.Ref, At: p.At, BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksSight,
 			Facing: p.Facing, Offset: p.Offset,
 		}

@@ -306,8 +306,12 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			continue
 		}
 		blocksMovement, blocksLoS := *p.BlocksMovement, *p.BlocksLoS
+		var holds []encounter.IntelID
+		for _, id := range p.Holds {
+			holds = append(holds, encounter.IntelID(spec.Key+"/"+id))
+		}
 		prop := encounter.PropInput{
-			ID: p.ID, Holdable: p.Holdable != nil && *p.Holdable,
+			ID: p.ID, Holdable: p.Holdable != nil && *p.Holdable, Holds: holds,
 			Ref: p.Ref, At: authored(p.At),
 			BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksLoS,
 			Facing: p.Facing,

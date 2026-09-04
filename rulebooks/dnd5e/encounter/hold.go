@@ -188,6 +188,15 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 		return nil, fmt.Errorf("hold: append beat: %w", err)
 	}
 
+	// WHAT THE THING SAYS, after the beat that says they picked it up (R6).
+	// A scroll on a table teaches whoever holds it, through the same routine
+	// looting one off a body uses — and any DOOR_REVEALED it causes follows
+	// the `held` beat, because the verb's own beat precedes its consequences
+	// ([Encounter.refreshSight]'s law).
+	if err := e.applyPropReveals(in.Member, in.Target, at); err != nil {
+		return nil, fmt.Errorf("hold: %w", err)
+	}
+
 	return &HoldOutput{}, nil
 }
 
