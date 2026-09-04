@@ -4,6 +4,8 @@
 package scenarios
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -127,7 +129,14 @@ func FactsFrom(field encounter.FieldInput) *DungeonFacts {
 		}
 	}
 	for _, ex := range field.Exits {
-		facts.Exits[ex.ID] = true
+		// An unnamed exit is not bindable, for the reason an unnamed prop is
+		// not: a scenario binds by id, and "" is not an id. compileExits
+		// already refuses one, so this is the narrowing staying consistent
+		// with the props branch above rather than a second guard against a
+		// state the composition can reach (Copilot, PR #1499 review).
+		if ex.ID != "" {
+			facts.Exits[ex.ID] = true
+		}
 	}
 	return facts
 }
@@ -137,7 +146,41 @@ var registry = map[string]Scenario{}
 
 // register adds a scenario to the registry. Called from each scenario's own
 // init, so adding a scenario is adding a file.
-func register(s Scenario) { registry[s.ID()] = s }
+//
+// PANICS ON AN EMPTY OR DUPLICATE ID, at package init, before anything can
+// run (Copilot, PR #1499 review). A map assignment would have silently
+// overwritten the first scenario with the second, and — the part that makes
+// it worth a panic — NO TEST COULD HAVE CAUGHT IT: [All] walks the map, so a
+// key collision means the loser never appears, and a uniqueness check over
+// All() is a check over the survivors. The scenario would simply not exist
+// at runtime, with nothing anywhere saying so.
+//
+// A panic rather than an error because there is no caller to hand one to: an
+// init function has nowhere to return, and a scenario package that cannot
+// register is a build that must not start.
+func register(s Scenario) {
+	if err := registerInto(registry, s); err != nil {
+		panic(fmt.Sprintf("scenarios: %v", err))
+	}
+}
+
+// registerInto is register's decision, separated from its panic so the rules
+// can be exercised by a test rather than asserted about a process that has
+// already died.
+func registerInto(into map[string]Scenario, s Scenario) error {
+	if s == nil {
+		return errors.New("a nil scenario cannot be registered")
+	}
+	id := s.ID()
+	if id == "" {
+		return errors.New("a scenario with no id cannot be registered")
+	}
+	if prev, dup := into[id]; dup {
+		return fmt.Errorf("scenario %q is already registered by %q — one id, one scenario", id, prev.Name())
+	}
+	into[id] = s
+	return nil
+}
 
 // All returns every scenario this build knows, sorted by id — what an
 // authoring service serves as ListScenarios, and what the pinning test runs

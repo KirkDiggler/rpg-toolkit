@@ -153,20 +153,28 @@ func fullDungeon() *scenarios.DungeonFacts {
 			// facts at all.
 			{Ref: "dnd5e:props:candles"},
 		},
-		Exits: []encounter.FieldExit{{ID: exitID}},
+		Exits: []encounter.FieldExit{
+			{ID: exitID},
+			// An exit the author never named, mirroring the unnamed prop
+			// above. compileExits refuses one, so this is here to prove the
+			// NARROWING is consistent: neither an unnamed prop nor an
+			// unnamed exit is ever bindable.
+			{},
+		},
 	})
 }
 
-// TestFactsFromNarrowsToIdsAndTakeability pins the one place a compiled
+// TestFactsFromNarrowsToIdsAndHoldability pins the one place a compiled
 // dungeon is narrowed to what a scenario may ask about.
-func TestFactsFromNarrowsToIdsAndTakeability(t *testing.T) {
+func TestFactsFromNarrowsToIdsAndHoldability(t *testing.T) {
 	facts := fullDungeon()
 
 	require.True(t, facts.Props[holdableID])
 	require.False(t, facts.Props[sceneryID])
 	require.Len(t, facts.Props, 2, "a prop the author never named cannot be bound to")
 	require.True(t, facts.Exits[exitID])
-	require.Len(t, facts.Exits, 1)
+	require.Len(t, facts.Exits, 1, "an exit the author never named cannot be bound to either")
+	require.False(t, facts.Exits[""], "and the empty string is not an id")
 }
 
 // TestRecoverTheArtifactRefusals is this scenario's own refusal set, each in
