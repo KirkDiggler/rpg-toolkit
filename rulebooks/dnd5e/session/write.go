@@ -95,6 +95,25 @@ type SpawnInput struct {
 	// Position is the cell to place it on, in dungeon-absolute space. See
 	// JoinInput.Position.
 	Position spatial.Position
+
+	// Knows is the doors this monster carries the way to, by door id — the
+	// author's knowledge links from the dungeon file's `place[].knows`
+	// (rpg-project#368 P1), forwarded to the composition untouched.
+	//
+	// THIS IS THE ONLY WAY AN AUTHORED LINK REACHES A LIVE MONSTER. A host
+	// that resolves monster content at runtime builds its world empty of
+	// members and brings every monster in through this verb, so a link that
+	// could only be read at construction was a link the game never saw: the
+	// captain who knows the vault door would be looted for nothing.
+	//
+	// COMPILED DOOR IDS, not the author's own. dungeonspec mints
+	// `<key>/<id>` so two dungeons in one process cannot collide, and its
+	// MonsterPlacement.Knows already carries the minted form. Passing the raw
+	// authored id names a door the composition does not have, and the spawn
+	// is refused by name rather than silently arriving ignorant.
+	//
+	// Empty is the ordinary case: most monsters know nothing.
+	Knows []string
 }
 
 // SpawnOutput reports the spawn and what it revealed.
@@ -383,7 +402,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	}
 
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false)
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -524,7 +543,8 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// baking a decision in here, at spawn time, would be the wrong place
 	// to make it.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
-		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions), sheet.Targeting.String(), false)
+		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
+		sheet.Targeting.String(), false, in.Knows)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -615,7 +635,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	// enforces the one real rule (no decider) itself; place() never sets
 	// one for either existing caller.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "", blocksMovement)
+		0, 0, nil, "", blocksMovement, nil)
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -656,6 +676,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
 	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
+	knows []string,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -700,6 +721,10 @@ func place(
 		Actions:        actions,
 		Targeting:      targeting,
 		BlocksMovement: blocksMovement,
+		// The author's knowledge links, converted at the boundary and
+		// nowhere else — a []string in, the composition's own DoorID out
+		// (S2: no inner type crosses this seam's exported surface).
+		Knows: doorIDs(knows),
 	})
 	if err != nil {
 		return nil, translate(err)
