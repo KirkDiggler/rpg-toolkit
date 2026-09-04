@@ -172,33 +172,48 @@ func (m *Manager) Interact(ctx context.Context, in *InteractInput) (*InteractOut
 // rather than returning a zero-value descriptor a caller could mistake for
 // a real, empty NPC.
 func worldNPCDescriptor(data *SessionData, targetID string) (WorldNPCDescriptor, error) {
-	for i := range data.WorldNPCs {
-		if data.WorldNPCs[i].MemberID != targetID {
-			continue
-		}
-		content := data.WorldNPCs[i].NPC
-		ref := ""
-		if content.Ref != nil {
-			ref = content.Ref.String()
-		}
-
-		var stock []npcs.StockEntryView
-		inventory, ok, err := npcs.VendorInventoryFromNPCData(&content)
-		if err != nil {
-			return WorldNPCDescriptor{}, fmt.Errorf("world npc %q inventory: %w: %w", targetID, ErrBadNPC, err)
-		}
-		if ok {
-			stock = inventory.View().Entries
-		}
-
-		return WorldNPCDescriptor{
-			TargetID:     targetID,
-			Ref:          ref,
-			DisplayName:  content.DisplayName,
-			Capabilities: slices.Clone(content.Capabilities),
-			CombatPolicy: content.CombatPolicy,
-			Inventory:    stock,
-		}, nil
+	idx, err := findWorldNPCIndex(data, targetID)
+	if err != nil {
+		return WorldNPCDescriptor{}, err
 	}
-	return WorldNPCDescriptor{}, fmt.Errorf("world npc %q: %w", targetID, ErrNoSheet)
+	content := data.WorldNPCs[idx].NPC
+	ref := ""
+	if content.Ref != nil {
+		ref = content.Ref.String()
+	}
+
+	var stock []npcs.StockEntryView
+	inventory, ok, err := npcs.VendorInventoryFromNPCData(&content)
+	if err != nil {
+		return WorldNPCDescriptor{}, fmt.Errorf("world npc %q inventory: %w: %w", targetID, ErrBadNPC, err)
+	}
+	if ok {
+		stock = inventory.View().Entries
+	}
+
+	return WorldNPCDescriptor{
+		TargetID:     targetID,
+		Ref:          ref,
+		DisplayName:  content.DisplayName,
+		Capabilities: slices.Clone(content.Capabilities),
+		CombatPolicy: content.CombatPolicy,
+		Inventory:    stock,
+	}, nil
+}
+
+// findWorldNPCIndex locates a placed world NPC's index in session's own
+// WorldNPCs store by member ID — factored out of worldNPCDescriptor so
+// trade.go can reach the same stored npc.Data to mutate it (decrementing
+// stock) rather than walking WorldNPCs a second, independent way.
+//
+// Returns ErrNoSheet on a miss, the same sentinel worldNPCDescriptor already
+// used for this defect: a confirmed KindWorld member with nothing recorded
+// here is an internal inconsistency, not a caller mistake.
+func findWorldNPCIndex(data *SessionData, targetID string) (int, error) {
+	for i := range data.WorldNPCs {
+		if data.WorldNPCs[i].MemberID == targetID {
+			return i, nil
+		}
+	}
+	return -1, fmt.Errorf("world npc %q: %w", targetID, ErrNoSheet)
 }

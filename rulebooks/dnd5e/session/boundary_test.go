@@ -115,6 +115,14 @@ var contractTypes = map[string]string{
 	// Its own fields already bottom out in strings and ints (shared.EquipmentType
 	// and npcs.StockMode are both string aliases).
 	"npcs.StockEntryView": "contract type: reachable from WorldNPCDescriptor, read-only display data npcs resolves and hands back",
+
+	// Reachable from TradeItem.Type (trade.go, rpg-project#369) — the same
+	// domain noun npcs.StockEntryView.Type already carries one hop further
+	// in, now named directly on a verb input because a caller CONSTRUCTS a
+	// TradeItem field-by-field rather than only reading one back. A plain
+	// string alias with no behaviour to replace, the same promise
+	// spatial.Position makes above.
+	"shared.EquipmentType": "contract type: reachable from TradeItem, a caller-constructed field naming what's being traded",
 }
 
 // persistenceShapes are bytes the host round-trips and never builds.
