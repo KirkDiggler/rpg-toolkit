@@ -22,14 +22,8 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.138.1 h1:pNcciu3FG90KpxFDS
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.138.1/go.mod h1:1BvFBmd7Da2en+6cM0zyZXTRtTxzLo2RvXDv8qzotBA=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0 h1:hH7lU5maz2NRPUCjumE7vhU3Kg/q0QEufX6+VMC5DNk=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0/go.mod h1:REskYInq0+iizpuvHXL7q6jibRIBBTbiiXOpX9xuYzQ=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.0 h1:iaxY0oHWRcSEmYQGGL6gAaImFNZCwozIFEKZeCSrZuM=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.0/go.mod h1:D3AcLs/nP93b/Y3iGZtSuHezeyKEgl4TAZbVlWx48Yc=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.3-0.20260904095240-7c7c54c29ed9 h1:qgeVLLIK9D9ILTxhtDW8olzOqWAoYijGma3+b0IUFHQ=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.3-0.20260904095240-7c7c54c29ed9/go.mod h1:D3AcLs/nP93b/Y3iGZtSuHezeyKEgl4TAZbVlWx48Yc=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.3-0.20260904103919-c687853f2844 h1:2AuRKJrQS0JOF8D8p5ardXY7KgobiyLee0bluNQYmPE=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.3-0.20260904103919-c687853f2844/go.mod h1:D3AcLs/nP93b/Y3iGZtSuHezeyKEgl4TAZbVlWx48Yc=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.3-0.20260904104401-8fb11951ada4 h1:vbY7UdtLKE1fyn/c+gmNmgZijtNV+oUZPV/TzXAlD5I=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.57.3-0.20260904104401-8fb11951ada4/go.mod h1:D3AcLs/nP93b/Y3iGZtSuHezeyKEgl4TAZbVlWx48Yc=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.58.0 h1:R06svQ4/+eHFAlnk+W56FelmGQbr+15drViEY51sobs=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.58.0/go.mod h1:D3AcLs/nP93b/Y3iGZtSuHezeyKEgl4TAZbVlWx48Yc=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.32.1 h1:6SOWvq+V1AqRAgqNzokxSnnhmfi1rub1/iolaJf55y4=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.32.1/go.mod h1:WP7rBiV3VXGcruNEEV0QA4lY3tb85VW7lsK2viyIjhc=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0 h1:FzCB2NbNS/BMRuKwEr8GRnadWJvdYermOs3smTd8Ss0=
