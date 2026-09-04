@@ -387,50 +387,42 @@ func (e *Encounter) heldPropsOf(member MemberID) []PropID {
 	return out
 }
 
-// firedExitedHolding evaluates every declared [TriggerExitedHolding] against
+// matchExitedHolding reports which declared [TriggerExitedHolding] fires for
 // one departure: the member stood on the ending's exit cell, and was holding
 // the ending's item. Declaration order decides when two could fire at once —
-// the same order every ending scan walks.
+// the same order every ending scan walks. Returns nil when none does.
 //
-// audience is the roster captured BEFORE the departing member was removed, so
-// the beat announcing the run's end reaches the person who ended it.
+// A PURE MATCH, deliberately, and this is the fix for rpg-toolkit#1507. It
+// used to close the encounter as well, which meant [Encounter.Exit] could
+// not know whether the departure carried anything out until after it had
+// already narrated that it had. Separating the decision from its consequence
+// lets the beat tell the truth and leaves design §6's beat order untouched:
+// the caller narrates the departure, then closes.
 //
-// Returns nil when nothing fired, and short-circuits on an already-closed
-// encounter exactly as [Encounter.firedReachedPosition] does: a close is
-// written once and narrated once.
-func (e *Encounter) firedExitedHolding(
-	member MemberID, through ExitID, carried []PropID, at uint64, audience []MemberID,
-) (*Outcome, error) {
-	// NO GUARDS BUT THE LOOP. Three were written here first and a mutation
-	// pass removed all three, because none of them decided anything:
-	//
-	//   - "they left from no exit" and "they carried nothing" both fall out
-	//     of the match below, since an ending names a real exit and a real
-	//     item and neither can match an empty answer;
-	//   - "the encounter is already closed" is unreachable — [Encounter.Exit]
-	//     refuses ErrClosed long before this, and nothing between the two can
-	//     close the scene (the sight refresh that can runs afterwards).
-	//
-	// [Encounter.firedReachedPosition] keeps that last guard and needs it:
-	// the sight refresh preceding ITS scan can close the encounter. This one
-	// has no such caller, and a branch nothing can reach is a branch nobody
-	// can be sure of. A second caller adds it back, with a scene.
+// NO GUARDS BUT THE LOOP. Three were written here first and a mutation pass
+// removed all three, because none of them decided anything: "they left from
+// no exit" and "they carried nothing" both fall out of the match below, since
+// an ending names a real exit and a real item and neither can match an empty
+// answer; and "the encounter is already closed" is unreachable, because
+// [Encounter.Exit] refuses ErrClosed long before this and nothing between the
+// two can close the scene.
+func (e *Encounter) matchExitedHolding(through ExitID, carried []PropID) *declaredEnding {
 	holding := make(map[PropID]bool, len(carried))
 	for _, id := range carried {
 		holding[id] = true
 	}
 
-	for _, de := range e.endings {
-		trigger, ok := de.trigger.(TriggerExitedHolding)
+	for i := range e.endings {
+		trigger, ok := e.endings[i].trigger.(TriggerExitedHolding)
 		if !ok {
 			continue
 		}
 		if trigger.Exit != through || !holding[trigger.Item] {
 			continue
 		}
-		return e.closeWith(de.key, at, audience...)
+		return &e.endings[i]
 	}
-	return nil, nil
+	return nil
 }
 
 // dropCarried puts everything a departing member was carrying back on the

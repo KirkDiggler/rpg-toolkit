@@ -181,13 +181,23 @@ func (s *HoldingsSuite) TestHoldRemovesThePropForEveryoneAndTheHolderHasIt() {
 		}
 	})
 
-	s.Run("the holder carries it out", func() {
+	s.Run("but nothing names the chalice, so leaving drops it", func() {
+		// This scene declares only the `withdrawn` ending, so no departure
+		// can carry anything out of the run — R9 drops it instead. The beat
+		// says so: `holding` is what LEFT THE RUN, and nothing did
+		// (rpg-toolkit#1507).
 		out, err := enc.Exit(&encounter.ExitInput{Member: raider})
 		s.Require().NoError(err)
+		s.Require().Nil(out.Closed, "no ending names the chalice, so nothing ended")
+
 		exited := s.beatsOfKind(enc, partner, "exited")
 		s.Require().Len(exited, 1)
-		s.Require().Equal([]any{chalice}, exited[0]["holding"])
-		s.Require().Nil(out.Closed, "no ending names the chalice, so nothing ended")
+		s.Require().Equal([]any{}, exited[0]["holding"],
+			"the departure beat must not claim a thing the very next beat drops")
+
+		dropped := s.beatsOfKind(enc, partner, "dropped")
+		s.Require().Len(dropped, 1)
+		s.Require().Equal(chalice, dropped[0]["prop"])
 	})
 
 	s.Run("the other props are untouched", func() {
@@ -652,7 +662,8 @@ func (s *HoldingsSuite) TestLeavingTheBoundExitWithTheWRONGThingDoesNotWin() {
 	exited := s.beatsOfKind(enc, partner, "exited")
 	s.Require().Len(exited, 1)
 	s.Require().Equal(frontGate, exited[0]["exit"], "they did leave by the bound exit")
-	s.Require().Equal([]any{chalice}, exited[0]["holding"])
+	s.Require().Equal([]any{}, exited[0]["holding"],
+		"nothing left the run: the ending names the heirloom, so the chalice drops here")
 
 	dropped := s.beatsOfKind(enc, partner, "dropped")
 	s.Require().Len(dropped, 1, "and the run goes on, so what they carried stays in it")
@@ -849,4 +860,119 @@ func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
 
 	s.Require().Equal(poorStory, richStory, "no beat says who carries intel")
 	s.Require().Equal(poorAtlas, richAtlas, "and no map does either")
+}
+
+// TestTheDepartureBeatSaysWhatActuallyLeft is rpg-toolkit#1507, pinned from
+// both sides.
+//
+// `Exited.holding` is what LEFT THE RUN with the member: the carried list
+// when an exited-holding ending fired on this departure, and empty when the
+// departure dropped it instead. A client patches its world from these beats,
+// so a departure that both claims a thing and drops it is two statements
+// about one event that cannot both be acted on.
+//
+// The bug was an ordering one — the beat was written before the drop was
+// decided — so the scenes below assert the ORDER as well as the contents.
+// Design §6's rule is untouched: the departure beat still precedes both
+// `dropped` and `ended`.
+func (s *HoldingsSuite) TestTheDepartureBeatSaysWhatActuallyLeft() {
+	withEndings := func() *encounter.Encounter {
+		return s.open(false, recoverEnding(), encounter.EndingInput{
+			Key: "withdrawn", Trigger: encounter.TriggerExternal{},
+		})
+	}
+
+	s.Run("leaving at the bound exit with the artifact: holding names it, nothing drops", func() {
+		enc := withEndings()
+		s.walkTo(enc, raider, heirloomCell)
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
+		s.Require().NoError(err)
+		s.walkTo(enc, raider, raiderCell)
+
+		out, err := enc.Exit(&encounter.ExitInput{Member: raider})
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Closed)
+
+		exited := s.beatsOfKind(enc, partner, "exited")
+		s.Require().Len(exited, 1)
+		s.Require().Equal([]any{heirloom}, exited[0]["holding"])
+		s.Require().Equal(frontGate, exited[0]["exit"])
+		s.Require().Empty(s.beatsOfKind(enc, partner, "dropped"),
+			"it left with them; there is nothing on the floor to narrate")
+
+		// Order: exited, then ended. Never the other way round.
+		var exitedAt, endedAt = -1, -1
+		for i, b := range s.beats(enc, partner) {
+			switch b["beat"] {
+			case "exited":
+				exitedAt = i
+			case "ended":
+				endedAt = i
+			}
+		}
+		s.Require().Greater(exitedAt, -1)
+		s.Require().Greater(endedAt, exitedAt, "design §6: the departure is narrated before the ending")
+	})
+
+	s.Run("leaving anywhere else while holding: holding is empty, and it drops", func() {
+		enc := withEndings()
+		s.walkTo(enc, raider, heirloomCell)
+		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
+		s.Require().NoError(err)
+
+		out, err := enc.Exit(&encounter.ExitInput{Member: raider})
+		s.Require().NoError(err)
+		s.Require().Nil(out.Closed)
+
+		exited := s.beatsOfKind(enc, partner, "exited")
+		s.Require().Len(exited, 1)
+		s.Require().Equal([]any{}, exited[0]["holding"],
+			"nothing left the run, so the beat claims nothing")
+		s.Require().Equal("", exited[0]["exit"])
+
+		dropped := s.beatsOfKind(enc, partner, "dropped")
+		s.Require().Len(dropped, 1)
+		s.Require().Equal(heirloom, dropped[0]["prop"])
+
+		// Order: exited, then dropped. The departure is still the cause.
+		var exitedAt, droppedAt = -1, -1
+		for i, b := range s.beats(enc, partner) {
+			switch b["beat"] {
+			case "exited":
+				exitedAt = i
+			case "dropped":
+				droppedAt = i
+			}
+		}
+		s.Require().Greater(exitedAt, -1)
+		s.Require().Greater(droppedAt, exitedAt, "the drop is a consequence of the departure")
+	})
+
+	s.Run("the two beats never disagree about one departure", func() {
+		// The defect in one sentence: whatever `holding` names must not
+		// also be dropped, on any departure, ever.
+		for _, walkToExit := range []bool{true, false} {
+			enc := withEndings()
+			s.walkTo(enc, raider, heirloomCell)
+			_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: heirloom})
+			s.Require().NoError(err)
+			if walkToExit {
+				s.walkTo(enc, raider, raiderCell)
+			}
+			_, err = enc.Exit(&encounter.ExitInput{Member: raider})
+			s.Require().NoError(err)
+
+			carriedOut := map[any]bool{}
+			for _, b := range s.beatsOfKind(enc, partner, "exited") {
+				for _, id := range b["holding"].([]any) {
+					carriedOut[id] = true
+				}
+			}
+			for _, b := range s.beatsOfKind(enc, partner, "dropped") {
+				s.Require().False(carriedOut[b["prop"]],
+					"%q is claimed as carried out AND dropped", b["prop"])
+			}
+			s.SetupTest()
+		}
+	})
 }
