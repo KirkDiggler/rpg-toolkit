@@ -126,6 +126,16 @@ type AtlasRegion struct {
 // it: what it is, where it stands in dungeon-absolute space, and what it does
 // to a step and to a sightline. See [PropInput] for the authoring side.
 type AtlasProp struct {
+	// ID is the author's name for this placement, or empty when they gave it
+	// none ([PropInput.ID]). Carried, never interpreted — a client renders it
+	// and a verb names a prop by it.
+	ID PropID
+
+	// Takeable is whether a member can pick this up ([PropInput.Takeable]).
+	// Carried so a client can offer the verb without asking a second
+	// question about a thing it is already drawing.
+	Takeable bool
+
 	// Ref is content's identifier for this thing, carried through the
 	// compile unchanged and never interpreted by this module.
 	Ref string
@@ -242,10 +252,33 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	}
 	sort.Slice(out.Regions, func(i, j int) bool { return out.Regions[i].ID < out.Regions[j].ID })
 
+	// WHERE A THING PHYSICALLY IS FOLDS HERE, not in the per-member
+	// projection: it is truth-grain state, one answer for every member
+	// (ruled 2026-09-01), unlike knowledge — which is audience-scoped and
+	// belongs in AtlasFor. A prop somebody took is gone from everybody's
+	// atlas; a prop somebody dropped stands where they dropped it. Putting
+	// this in Atlas rather than in AtlasFor is also what makes the rule
+	// total: AtlasFor short-circuits to this answer for a field with no
+	// concealment, so a filter added there would silently not apply to
+	// every plain dungeon (rpg-project#368).
+	//
+	// The atlas itself stays CONSTRUCTION TRUTH — nothing above mutates
+	// f.props — and this is a fold over the journal, computed fresh, the
+	// same move concealment already makes for doors.
+	placements := e.holdings.propPlacements()
 	for _, p := range f.props {
+		at := f.cellAt(p.At)
+		if placement, moved := placements[p.ID]; p.ID != "" && moved {
+			if placement.gone {
+				continue
+			}
+			at = placement.at
+		}
 		out.Props = append(out.Props, AtlasProp{
+			ID:                p.ID,
+			Takeable:          p.Takeable,
 			Ref:               p.Ref,
-			At:                f.cellAt(p.At),
+			At:                at,
 			BlocksMovement:    *p.BlocksMovement,
 			BlocksLineOfSight: *p.BlocksLineOfSight,
 			Facing:            p.Facing,

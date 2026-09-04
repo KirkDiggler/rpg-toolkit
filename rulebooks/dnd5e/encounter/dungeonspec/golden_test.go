@@ -160,6 +160,11 @@ func compiledAtlas(t *testing.T, path string) (dungeonspec.Compiled, encounter.A
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{},
+		// Required exactly when the field carries concealed structure, which
+		// the heirloom tomb does — supplied unconditionally here so one
+		// helper compiles every content file (encounter reads neither for a
+		// field with none).
+		CheckResolver: nothingIsEverFound{}, Witness: nobodyPerceivesAnything{},
 		Field:   compiled.Field,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})

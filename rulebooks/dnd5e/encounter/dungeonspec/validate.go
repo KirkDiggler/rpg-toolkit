@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -88,6 +89,8 @@ func Validate(spec *Spec) []FieldError {
 		v.doors()
 		v.start()
 		v.place()
+		v.exits()
+		v.scenarios()
 		v.concealment()
 	}
 	return v.errs
@@ -135,6 +138,17 @@ type validation struct {
 	// standing in it, for the coherence check's question: is this way in a
 	// door, and is that door concealed?
 	doorAt map[[2]spatial.Position]int
+
+	// placeIDs is every authored placement id to the index that declared it
+	// — built by place(), read by scenarios() to answer "does this binding
+	// name something that exists". A collision is refused at place() and the
+	// FIRST index stays here, so a later binding to a duplicated id is
+	// reported once, at the duplicate, rather than twice.
+	placeIDs map[string]int
+
+	// exitIDs is every authored exit id to the index that declared it, the
+	// other half of what a binding may name.
+	exitIDs map[string]int
 }
 
 func (v *validation) fail(path, format string, args ...any) {
@@ -549,11 +563,28 @@ func (v *validation) place() {
 	s := v.spec
 	occupied := map[[2]int]int{}
 	bosses := map[int]int{} // region index -> place index of its boss
+	v.placeIDs = map[string]int{}
+	doorIDs := map[string]int{}
+	for i, d := range s.Doors {
+		if _, dup := doorIDs[d.ID]; d.ID != "" && !dup {
+			doorIDs[d.ID] = i
+		}
+	}
 	for i, pl := range s.Place {
 		p := fmt.Sprintf("place[%d]", i)
 		kind, err := refKind(pl.Ref)
 		if err != nil {
 			v.fail(p+".ref", "%v", err)
+		}
+		// P2: an id is optional, and unique when written. The refusal names
+		// BOTH lines because the author has to look at the two of them to
+		// decide which one keeps the name.
+		if pl.ID != "" {
+			if prev, dup := v.placeIDs[pl.ID]; dup {
+				v.fail(p+".id", "id %q is already declared by %q (place[%d])", pl.ID, s.Place[prev].Ref, prev)
+			} else {
+				v.placeIDs[pl.ID] = i
+			}
 		}
 		at := v.cell(pl.At)
 		owner, owned := v.owner[at]
@@ -585,6 +616,18 @@ func (v *validation) place() {
 
 		switch kind {
 		case typeMonsters:
+			// A knowledge link names a door in this file. Refused by name
+			// when it does not exist — a link to nothing is a secret the
+			// author thinks they placed and did not.
+			for j, id := range pl.Knows {
+				if _, ok := doorIDs[id]; !ok {
+					v.fail(fmt.Sprintf("%s.knows[%d]", p, j),
+						"%q knows door %q, and no door in this dungeon has that id", pl.Ref, id)
+				}
+			}
+			if pl.Takeable != nil {
+				v.fail(p+".takeable", "%q is not a prop and cannot be taken", pl.Ref)
+			}
 			if pl.BlocksMovement != nil {
 				v.fail(p+".blocks_movement", "%q is not a prop and cannot declare what it blocks", pl.Ref)
 			}
@@ -608,6 +651,14 @@ func (v *validation) place() {
 				}
 			}
 		case typeProps:
+			if len(pl.Knows) > 0 {
+				v.fail(p+".knows", "%q is not a monster and holds nothing to know", pl.Ref)
+			}
+			// A takeable prop must be nameable: the scenario binding names it
+			// and so does the `taken` beat.
+			if pl.Takeable != nil && *pl.Takeable && pl.ID == "" {
+				v.fail(p+".id", "%q is takeable and has no id, and a thing that can be picked up has to be nameable", pl.Ref)
+			}
 			if pl.Targeting != nil {
 				v.fail(p+".targeting", "%q is not a monster and cannot have targeting", pl.Ref)
 			}
@@ -638,6 +689,98 @@ func (v *validation) place() {
 					}
 				}
 			}
+		}
+	}
+}
+
+// exits validates the ways out (design §3.1): each has an id, no two share
+// one, and each stands on floor somebody's feet can actually touch.
+//
+// STANDABLE, NOT MERELY FLOOR, and the refusals are [validation.start]'s
+// word for word — an exit is the same kind of authored cell a start is, and
+// the two answering differently about the same cell would be the bug. An
+// exit nobody can stand on is a run nobody can leave, which is
+// [encounter.ErrNoEnding]'s liveness hole reached from the outside.
+func (v *validation) exits() {
+	s := v.spec
+	v.exitIDs = map[string]int{}
+	for i, ex := range s.Exits {
+		p := fmt.Sprintf("exits[%d]", i)
+		if ex.ID == "" {
+			v.fail(p+".id", "the exit has no id")
+		} else if prev, dup := v.exitIDs[ex.ID]; dup {
+			v.fail(p+".id", "exit %q is already declared at exits[%d]", ex.ID, prev)
+		} else {
+			v.exitIDs[ex.ID] = i
+		}
+
+		at := v.cell(ex.At)
+		if v.sceneryAt[at] {
+			v.fail(p+".at", "exit %q is at [%d,%d], which is scenery: nobody can stand there", ex.ID, ex.At[0], ex.At[1])
+			continue
+		}
+		if _, floor := v.owner[at]; !floor {
+			v.fail(p+".at", "exit %q is at [%d,%d], which is not floor", ex.ID, ex.At[0], ex.At[1])
+			continue
+		}
+		if wall, sealed := v.derived.Sealed[at]; sealed {
+			v.fail(p+".at", "exit %q is at [%d,%d], where %s leaves no room to stand",
+				ex.ID, ex.At[0], ex.At[1], v.wallLabel(wall))
+		}
+	}
+}
+
+// scenarios validates the scenario bindings, and validates EXACTLY ONE THING
+// about them: that every binding's value names a placement id or an exit id
+// that exists in this file (design law C1, ruled 2026-09-01 — "the dungeon
+// spec stores {scenario_id, bindings} as pure references").
+//
+// WHAT IS DELIBERATELY NOT CHECKED HERE, and where it is checked instead:
+// whether the scenario id is one that exists, which keys it wants, which are
+// required, and whether the thing a key names is the right KIND of thing —
+// a prop where a prop is wanted, an exit where an exit is wanted, and
+// takeable when the scenario is about carrying something out. Every one of
+// those is a fact about a SCENARIO, and a scenario is content this package
+// may not resolve. They are the scenario package's own refusals, made at its
+// `New(cfg, compiled)` in form-filler words, where the author is looking at
+// the form that asked the question.
+//
+// So the refusal here is about the FILE: a binding that names nothing is a
+// dangling reference whatever scenario reads it, and this package is the one
+// layer that can see the whole file at once.
+//
+// Enumeration is sorted by scenario id and then by field key, because a Go
+// map range is not, and a refusal list whose order changes between runs is
+// one nobody can diff.
+func (v *validation) scenarios() {
+	s := v.spec
+	ids := make([]string, 0, len(s.Scenarios))
+	for id := range s.Scenarios {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		bindings := s.Scenarios[id]
+		keys := make([]string, 0, len(bindings))
+		for k := range bindings {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			named := bindings[k]
+			p := fmt.Sprintf("scenarios.%s.%s", id, k)
+			if named == "" {
+				v.fail(p, "scenario %q binds %s to nothing", id, k)
+				continue
+			}
+			if _, ok := v.placeIDs[named]; ok {
+				continue
+			}
+			if _, ok := v.exitIDs[named]; ok {
+				continue
+			}
+			v.fail(p, "scenario %q binds %s to %q, and nothing in this dungeon has that id",
+				id, k, named)
 		}
 	}
 }

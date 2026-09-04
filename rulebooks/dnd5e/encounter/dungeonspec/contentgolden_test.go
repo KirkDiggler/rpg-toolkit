@@ -58,6 +58,12 @@ type contentGolden struct {
 	Doorways    []encounter.AtlasDoorway       `json:"doorways"`
 	PartyStart  []dungeonspec.Seat             `json:"party_start"`
 	Monsters    []dungeonspec.MonsterPlacement `json:"monsters"`
+
+	// Exits and Scenarios are the two things this slice added that a host
+	// can observe and the atlas does not carry (rpg-project#368). Prop ids
+	// and takeability ride in Props, which is already here.
+	Exits     []encounter.FieldExit        `json:"exits"`
+	Scenarios map[string]map[string]string `json:"scenarios"`
 }
 
 func contentGoldenOf(t *testing.T, path string) contentGolden {
@@ -73,6 +79,8 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		Doorways:    atlas.Doorways,
 		PartyStart:  compiled.PartyStart,
 		Monsters:    compiled.Monsters,
+		Exits:       compiled.Field.Exits,
+		Scenarios:   compiled.Scenarios,
 	}
 }
 
@@ -86,7 +94,7 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 	files, err := filepath.Glob("testdata/*.yaml")
 	require.NoError(t, err)
-	require.Len(t, files, 3, "the three authored dungeons this package ships")
+	require.Len(t, files, 4, "the four authored dungeons this package ships")
 
 	for _, path := range files {
 		t.Run(filepath.Base(path), func(t *testing.T) {

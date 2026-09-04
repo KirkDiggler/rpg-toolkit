@@ -22,8 +22,15 @@ import (
 // come out the far end as the same strings that went in.
 type Compiled struct {
 	// Field is the compiled world: the regions as authored, the walls and
-	// props at their absolute cells, and the doors standing in their
-	// crossings. Ready for [encounter.NewEncounter].
+	// props at their absolute cells, the doors standing in their crossings,
+	// and the ways out. Ready for [encounter.NewEncounter].
+	//
+	// THE EXITS LIVE HERE, at Field.Exits, rather than as a second list on
+	// this struct. They are part of the world the composition runs — a
+	// TriggerExitedHolding is compared against one — so a copy beside Field
+	// would be a second thing to keep true, which is exactly what
+	// [Compiled]'s two halves exist to avoid. Prop ids and takeability ride
+	// along the same way, on Field.Props.
 	Field encounter.FieldInput
 
 	// PartyStart is where the party comes in, best seat first.
@@ -38,6 +45,19 @@ type Compiled struct {
 	// Monsters is every authored monster, in the order the author wrote
 	// them. The half that still needs a sheet.
 	Monsters []MonsterPlacement
+
+	// Scenarios is the dungeon's scenario bindings, carried through exactly
+	// as authored: scenario id to field key to the id it names
+	// (rpg-project#368, design §3.1). Nil when the file binds none.
+	//
+	// OPAQUE, AND VALIDATED ONLY AS REFERENCES (design law C1). This package
+	// checked that every value names something in the file and nothing else;
+	// what the keys mean and whether the thing named is the right KIND is
+	// the scenario package's own `New(cfg, compiled)`, in form-filler words.
+	//
+	// Deep-copied, so a caller mutating the map it gets cannot reach back
+	// into the spec it was compiled from.
+	Scenarios map[string]map[string]string
 }
 
 // Seat is one cell somebody can be placed in, named the way
@@ -71,6 +91,22 @@ type MonsterPlacement struct {
 
 	// Boss is whether this is the monster whose death ends things.
 	Boss bool
+
+	// ID is the author's name for this placement, or empty when they gave it
+	// none ([PlaceSpec.ID]).
+	ID string
+
+	// Knows is the doors this monster carries the way to, by door id
+	// ([PlaceSpec.Knows]) — the author's knowledge links, for a host to hand
+	// to [encounter.MemberInput.Knows] when it spawns the sheet. Nil when
+	// the monster knows nothing.
+	//
+	// COMPILED DOOR IDS, not the author's. Every other id in this half is
+	// the author's own word, and this one is not: [doorsOf] mints
+	// `<key>/<id>` so two dungeons in one process cannot collide, and a link
+	// carrying the raw authored id would name a door the composition does
+	// not have.
+	Knows []string
 }
 
 // Load decodes, validates and compiles a dungeon in one call.
@@ -133,6 +169,7 @@ func Compile(spec *Spec) (Compiled, error) {
 		Segments: segmentsOf(derived, names, doorEdges),
 		Sealed:   sealedOf(spec, orientation, derived),
 		Doors:    doorsOf(spec, orientation),
+		Exits:    exitsOf(spec),
 	}
 
 	start, err := seatsOf(spec, orientation)
@@ -140,7 +177,42 @@ func Compile(spec *Spec) (Compiled, error) {
 		return Compiled{}, err
 	}
 
-	return Compiled{Field: field, PartyStart: start, Monsters: monstersOf(spec, orientation)}, nil
+	return Compiled{
+		Field:      field,
+		PartyStart: start,
+		Monsters:   monstersOf(spec, orientation),
+		Scenarios:  scenariosOf(spec),
+	}, nil
+}
+
+// exitsOf carries the authored ways out through as they were written — an id
+// and a cell each, in authored order. Nothing is derived: `start` is not one
+// of these, by ruling (design §3.1).
+func exitsOf(spec *Spec) []encounter.FieldExit {
+	var out []encounter.FieldExit
+	for _, ex := range spec.Exits {
+		out = append(out, encounter.FieldExit{ID: ex.ID, At: authored(ex.At)})
+	}
+	return out
+}
+
+// scenariosOf deep-copies the scenario bindings so a caller cannot reach back
+// into the spec through the map it is handed. Nil in, nil out: a file that
+// binds no scenario compiles to a dungeon that carries none, rather than to
+// one carrying an empty map somebody has to tell apart from none.
+func scenariosOf(spec *Spec) map[string]map[string]string {
+	if len(spec.Scenarios) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]string, len(spec.Scenarios))
+	for id, bindings := range spec.Scenarios {
+		copied := make(map[string]string, len(bindings))
+		for k, v := range bindings {
+			copied[k] = v
+		}
+		out[id] = copied
+	}
+	return out
 }
 
 // voidOf turns the author's word into the declaration the canvas requires.
@@ -208,6 +280,7 @@ func propsOf(spec *Spec) []encounter.PropInput {
 		}
 		blocksMovement, blocksLoS := *p.BlocksMovement, *p.BlocksLoS
 		prop := encounter.PropInput{
+			ID: p.ID, Takeable: p.Takeable != nil && *p.Takeable,
 			Ref: p.Ref, At: authored(p.At),
 			BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksLoS,
 			Facing: p.Facing,
@@ -455,9 +528,14 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		if p.Targeting != nil {
 			targeting = *p.Targeting
 		}
+		var knows []string
+		for _, id := range p.Knows {
+			knows = append(knows, spec.Key+"/"+id)
+		}
 		out = append(out, MonsterPlacement{
 			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
 			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
+			ID: p.ID, Knows: knows,
 		})
 	}
 	return out
