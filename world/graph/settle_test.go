@@ -73,9 +73,14 @@ func (s *GraphSuite) TestSettleRefusesWhatItCannotFold() {
 			want:   graph.ErrUnknownEntity,
 		},
 		{
-			name:   "the zero value names nobody, and nobody is not an entity",
+			name:   "the zero value names nobody to watch",
 			change: func(p *graph.Settle) { p.Of = "" },
-			want:   graph.ErrUnknownEntity,
+			want:   graph.ErrNoKnower,
+		},
+		{
+			name:   "a pair with an empty side is no pair",
+			change: func(p *graph.Settle) { p.Between = [2]journal.EntityID{holdID, ""} },
+			want:   graph.ErrNoPair,
 		},
 		{
 			name:   "a pair of one is not a pair",
@@ -99,12 +104,25 @@ func (s *GraphSuite) TestSettleRefusesWhatItCannotFold() {
 		},
 	}
 
+	// A projection declared by pointer satisfies the interface too, so every
+	// refusal is asserted in both spellings: a &Settle{} that walked past
+	// New would delete membership itself, silently, once its flag went up.
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			settle := s.settle(alliedWith)
 			tc.change(&settle)
 			cfg := s.paired()
 			cfg.Projections = []graph.Projection{settle}
+
+			_, err := graph.New(cfg)
+			s.Require().ErrorIs(err, tc.want)
+		})
+
+		s.Run(tc.name+", declared by pointer", func() {
+			settle := s.settle(alliedWith)
+			tc.change(&settle)
+			cfg := s.paired()
+			cfg.Projections = []graph.Projection{&settle}
 
 			_, err := graph.New(cfg)
 			s.Require().ErrorIs(err, tc.want)
@@ -116,6 +134,18 @@ func (s *GraphSuite) TestSettleRefusesWhatItCannotFold() {
 		cfg.Projections = []graph.Projection{s.settle(alliedWith)}
 		_, err := graph.New(cfg)
 		s.Require().NoError(err)
+	})
+
+	s.Run("and declared by pointer it is accepted and folds the same", func() {
+		settle := s.settle(alliedWith)
+		cfg := s.paired()
+		cfg.Projections = []graph.Projection{&settle}
+		w := s.world(cfg)
+
+		s.learn(chiefID, chiefID)
+		state := w.StateFor(chiefID, s.log)
+		s.False(state.HasEdge(holdID, hostileTo, bandID))
+		s.True(state.HasEdge(bandID, alliedWith, holdID))
 	})
 }
 

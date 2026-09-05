@@ -32,9 +32,12 @@ import (
 //
 // Flags only ever go up, so there is no reducer that puts the pair back. The
 // way back is a different fact raising a different flag on a second Settle
-// declared after this one, exactly as [AdoptStance] is overruled. First use:
-// the hold-out — a goblin camp is hostile to the party until its chief comes
-// to know the party saved the Wiseman.
+// declared after this one, exactly as [AdoptStance] is overruled. That later
+// Settle must name in its Relations every relation the pair may carry by then
+// — this one's To included — or it adds its own stance beside the one this
+// left, and the pair holds both at once. First use: the hold-out — a goblin
+// camp is hostile to the party until its chief comes to know the party saved
+// the Wiseman.
 type Settle struct {
 	// OnFlag is the flag that settles the pair.
 	OnFlag Flag
@@ -71,6 +74,13 @@ func (p Settle) project(s *State) {
 	}
 }
 
+// ErrNoKnower reports a [Settle] with no Of — nobody whose knowledge could
+// settle the pair.
+var ErrNoKnower = errors.New("graph: this settle names no entity to watch — set Of to the mind that has to know")
+
+// ErrNoPair reports a [Settle] with an empty side to its pair.
+var ErrNoPair = errors.New("graph: this settle names no pair — set Between to the two sides whose stance changes")
+
 // ErrNoRelations reports a [Settle] that names no relations to replace — a
 // declaration that could never change anything.
 var ErrNoRelations = errors.New("graph: this settle names no relations to replace — say which stance edges change")
@@ -88,12 +98,24 @@ var ErrSettlesMembership = errors.New("graph: this settle names the membership r
 // adoptProjections validates the projections that carry references [New] can
 // check. Only [Settle] names entities today; the others name flags, roles,
 // and relations, none of which are declared anywhere to check against.
+//
+// A projection declared by pointer satisfies [Projection] exactly as one
+// declared by value does — a value receiver is in the pointer's method set —
+// so both spellings reach the one check. A type assertion on the value form
+// alone would let &Settle{} walk past every refusal.
 func (w *World) adoptProjections(projections []Projection) error {
 	for _, p := range projections {
-		if settle, ok := p.(Settle); ok {
-			if err := w.checkSettle(settle); err != nil {
-				return err
-			}
+		var settle Settle
+		switch v := p.(type) {
+		case Settle:
+			settle = v
+		case *Settle:
+			settle = *v
+		default:
+			continue
+		}
+		if err := w.checkSettle(settle); err != nil {
+			return err
 		}
 	}
 
@@ -101,6 +123,12 @@ func (w *World) adoptProjections(projections []Projection) error {
 }
 
 func (w *World) checkSettle(p Settle) error {
+	if p.Of == "" {
+		return fmt.Errorf("%w: settle on %q", ErrNoKnower, p.OnFlag)
+	}
+	if p.Between[0] == "" || p.Between[1] == "" {
+		return fmt.Errorf("%w: settle on %q", ErrNoPair, p.OnFlag)
+	}
 	if err := w.known(p.Of, p.Between[0], p.Between[1]); err != nil {
 		return fmt.Errorf("settle on %q: %w", p.OnFlag, err)
 	}
