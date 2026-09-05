@@ -118,7 +118,7 @@ func (s strikerSeam) Strike(
 		Participants: cast,
 		Initiative:   s.m.initiative,
 		Standing:     s.scope.standing,
-		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
+		Sight:        &sightSeam{members: worldMembers(world)},
 		TurnDriver:   s.m.turnDriver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:

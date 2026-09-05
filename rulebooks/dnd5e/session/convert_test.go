@@ -106,7 +106,15 @@ var omitted = map[string]string{
 	// asked for one (rpg-api-protos#267 defines no such field).
 	"encounter.AtlasRegion.Concealed": "knowledge is encoded by presence in the member's atlas, not by a flag",
 
-	"encounter.Member.Region":        "a region id; the seam reports the cell instead",
+	"encounter.Member.Region": "a region id; the seam reports the cell instead",
+	// The side a member fights on (rpg-project#375) is carried on the
+	// ROSTER row — PublicMember.Faction — the only per-member row on the
+	// wire (rpg-api-protos PublicMemberInfo.faction), where a client groups
+	// and colours by it. A placement answers a cell; who is on whose side is
+	// the roster's question, asked once, not a fact every Join, Spawn and
+	// Where has to repeat. The data is carried; this is a choice about WHICH
+	// projection carries it, the same choice SpeedFeet and friends made.
+	"encounter.Member.Faction":       "carried on the roster row, PublicMember.Faction; a placement answers a cell",
 	"encounter.MemberOutcome.Region": "a region id; the composition's own bookkeeping — Position already names the cell on the map",
 
 	// SpeedFeet, SightFeet, Actions and Targeting (rpg-project#254) are a

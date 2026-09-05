@@ -37,6 +37,11 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
 		{"closed encounter", encounter.ErrClosed, ErrClosed},
 		{"undeclared ending", encounter.ErrNoEnding, ErrNoEnding},
+		// A faction the dungeon does not declare, or a mind arriving outside
+		// its faction (rpg-project#375): a naming mistake in the host's
+		// forwarding, and its own sentinel so the host can tell it from a
+		// record it forgot to mint (ErrNoIntel) or a cell nobody owns.
+		{"no such faction", encounter.ErrNoFaction, ErrNoFaction},
 		// Doors are things with identity and state (the S4 slice), and since
 		// rpg-project#256 they are the only crossing with a name: a connection
 		// was a room-chain artefact, and its sentinel left with the rooms.
@@ -213,6 +218,7 @@ func TestCauseOfIsTotalOverTheCompositionsCauses(t *testing.T) {
 	}{
 		{"the party broke off", encounter.ByDecision(), DissolveByDecision},
 		{"a side stopped standing", encounter.ByDefeat(), DissolveByDefeat},
+		{"the sides stopped being sides", encounter.ByStance(), DissolveByStance},
 	}
 
 	for _, tc := range cases {

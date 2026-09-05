@@ -269,7 +269,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Participants: cast,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
-		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
+		Sight:        &sightSeam{members: worldMembers(world)},
 		TurnDriver:   m.turnDriver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:

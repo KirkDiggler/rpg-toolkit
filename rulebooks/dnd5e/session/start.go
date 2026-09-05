@@ -157,12 +157,12 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 	}
 	// Preserve the dual concrete capability while assigning it to encounter's
 	// compatibility-shaped Standing field.
-	standing := m.standingFor(ctx, nil, encounterDataKinds(world.Members))
+	standing := m.standingFor(ctx, nil, encounterDataKinds(worldMembers(*world)))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,
 		Standing:   standing,
-		Sight:      &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
+		Sight:      &sightSeam{members: worldMembers(*world)},
 		TurnDriver: m.turnDriver,
 		Striker:    encounter.RefusingStriker{},
 		// Authored worlds are loaded to be inspected and re-serialized, never

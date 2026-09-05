@@ -212,6 +212,17 @@ var (
 	// a caller looking at geometry for a naming problem.
 	ErrNoIntel = errors.New("no such intel record")
 
+	// ErrNoFaction is the translation of a composition-side refusal about a
+	// faction: a spawn naming a faction the dungeon does not declare, or
+	// the mind of a declared faction arriving in some other one
+	// (rpg-project#375).
+	//
+	// A CALLER'S MISTAKE, and the one worth making loud, for ErrNoIntel's
+	// reason one line up: a host forwarding a faction the file never
+	// declared gets this, rather than a monster that quietly arrives on the
+	// wrong side and a camp that can never turn.
+	ErrNoFaction = errors.New("no such faction")
+
 	// ErrNoConnection is the translation of a composition-side refusal to cross
 	// a doorway.
 	//

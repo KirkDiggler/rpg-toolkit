@@ -148,16 +148,24 @@ func TestRosterProjectsMixedRoster(t *testing.T) {
 					SecondaryColorSRGB: rosterPtr(uint32(0xFFFFFF)),
 				},
 			},
+			// THE DEFAULT SIDES, on a world that declares no faction
+			// (rpg-project#375, R4): a player is `party` and a monster
+			// `monsters`, resolved by the composition and carried here as
+			// the row's own answer. The world NPC is on no side and, as
+			// before, on no roster.
+			Faction: "party",
 		},
 		{
 			ID: "bob", Kind: session.KindPlayer, Name: "Fresh Bob",
 			ClassRef: "fighter", RaceRef: "human",
 			Customization: session.Customization{},
+			Faction:       "party",
 		},
 		{
 			ID: "skel-1", Kind: session.KindMonster, Name: "Skeleton",
 			MonsterRef:    "dnd5e:monsters:skeleton",
 			Customization: session.Customization{},
+			Faction:       "monsters",
 		},
 	}, out.Members)
 }
@@ -472,7 +480,10 @@ func TestRosterOutputHasNoPrivateSheetOrPlacementFields(t *testing.T) {
 		}
 	}
 	require.Equal(t,
-		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "Customization"},
+		// Faction (rpg-project#375) is the side a member fights on — public
+		// by the same argument as Kind: a client colours the whole table by
+		// it, and it says nothing about anyone's sheet or where they stand.
+		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "Customization", "Faction"},
 		rosterFieldNames(session.PublicMember{}),
 	)
 }

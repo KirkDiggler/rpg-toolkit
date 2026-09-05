@@ -788,6 +788,49 @@ const (
 	// side by side while narrating one exchange.
 	EventDowned EventKind = "downed"
 
+	// EventStanceChanged reports that the stance between two factions
+	// turned (rpg-project#375, the hold-out design §3.4–§3.5, §5): a
+	// disposition's `until` held — the faction's mind came to know the fact
+	// the author named — and the pair's stance folded to neutral.
+	//
+	// Every member of the encounter hears it. A stance is TRUTH GRAIN, like
+	// a door standing open: the same for everyone, however each of them came
+	// to be standing where they are. What is per-member is the KNOWLEDGE
+	// that led to it — which member carried what to whom — and that never
+	// rides this beat; it reaches its holders on their own streams as the
+	// reveals it always was.
+	//
+	// A fight formed between members of the two factions dissolves in the
+	// same pass, so an EventFightEnded carrying DissolveByStance follows
+	// this beat for everyone who could hear the fight; members of a third
+	// faction still hostile keep theirs. And a declared ending waiting on
+	// the stance — the hold-out scenario's own — fires after that, as
+	// EventEnded naming its key, exactly as any ending is named.
+	//
+	// The composition says "stance" and this seam says "stance_changed":
+	// the wire's word is the event, not the noun, matching FIGHT_ENDED and
+	// DOOR_REVEALED beside it (rpg-api-protos EVENT_KIND_STANCE_CHANGED).
+	EventStanceChanged EventKind = "stance_changed"
+
+	// EventArrived reports a reserved placement entering the run
+	// (rpg-project#375, the hold-out design §3.7, §5, R6): its `arrives`
+	// predicate held, and on the first verb after that the placement was put
+	// on the map — a monster out of reserve, or a prop appearing where the
+	// author drew it. Before this beat the placement had no cell, no turn
+	// and no row anywhere, for any member, the way a concealed door has
+	// none; this is the first any client hears of it.
+	//
+	// Everyone in the run hears it, the same law as EventHeld and
+	// EventDropped: physical state folds on the truth grain. The body says
+	// what arrived, which kind of thing it is — a client gives a monster a
+	// roster row and a prop none — and the cell it actually landed on, which
+	// is the authored one unless something stood there.
+	//
+	// The composition's word crosses unchanged, like "held" and "dropped":
+	// "arrived" is the statement of what happened, and the wire's
+	// EVENT_KIND_ARRIVED says the same.
+	EventArrived EventKind = "arrived"
+
 	// EventDoor reports a door changing — opened, closed, or an unlock
 	// attempt, beaten or not. A failed attempt is as much fiction as a
 	// beaten one, and the composition writes both through one path
@@ -920,7 +963,8 @@ type Event struct {
 // EventBody is the beat, typed — a sealed interface with one struct per
 // kind Event.Body carries: TurnEndedBody, DownedBody, DeathSaveBody,
 // StruckBody, MissedBody, ActivatedBody, ActivationResultBody, FightStartedBody,
-// FightEndedBody, MovedBody, JoinedBody, ExitedBody, EndedBody, DoorBody.
+// FightEndedBody, MovedBody, JoinedBody, ExitedBody, EndedBody, DoorBody,
+// StanceChangedBody, ArrivedBody.
 // Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
@@ -1254,6 +1298,35 @@ type FightEndedBody struct {
 
 func (FightEndedBody) isEventBody() {}
 
+// StanceChangedBody is EventStanceChanged's typed body: which pair of
+// factions, and the stance they now hold.
+//
+// Between is UNORDERED and exactly two: a disposition is one per pair and
+// has no direction (rpg-project#375, design §2), so [goblins, party] and
+// [party, goblins] name the same edge — carried as the composition wrote
+// it, in its own order. Stance is the dungeon file's closed vocabulary —
+// hostile, neutral or allied — carried as the author's word rather than an
+// enum, the way EndedBody.Ending carries the author's key: what a stance
+// MEANS to a client (which colour, which sentence) is content.
+type StanceChangedBody struct {
+	Between []string `json:"between"`
+	Stance  string   `json:"stance"`
+}
+
+func (StanceChangedBody) isEventBody() {}
+
+// ArrivedBody is EventArrived's typed body: what arrived, what kind of thing
+// it is, and where it landed. ID is a member id for a monster and a prop id
+// for a prop — the same words the roster and the atlas speak — and Cell is
+// dungeon-absolute like every position on this seam.
+type ArrivedBody struct {
+	ID   string           `json:"id"`
+	Kind PlacementKind    `json:"kind"`
+	Cell spatial.Position `json:"cell"`
+}
+
+func (ArrivedBody) isEventBody() {}
+
 // MovedBody is EventMoved's typed body: a member stepped to a new cell.
 // One body per step — a walk of four cells is four of these, each with its
 // own Event.Seq.
@@ -1584,6 +1657,24 @@ type PublicMember struct {
 	// Customization is the player's exact cosmetic selection, or an empty
 	// customization for monsters.
 	Customization Customization `json:"customization"`
+
+	// Faction is the side this member fights on (rpg-project#375, the
+	// hold-out design §5): the dungeon file's `factions[].id`, or one of
+	// the two the composition reserves and no author may declare — players
+	// are `party`, and a monster spawned with no faction is `monsters`.
+	//
+	// A FREE-FORM ID, never an enum. Factions are content, declared per
+	// dungeon, so a client groups or colours by the word without knowing
+	// what a goblin is. Who fights whom is NOT derived from it: the stance
+	// between two factions is the run's own fold, and a change in it
+	// reaches a client as EventStanceChanged.
+	//
+	// ON THE ROSTER because the roster is the only per-member row on the
+	// wire; a placement (Member) answers a cell and nothing about sides.
+	// Always written, never omitted: this row lists players and monsters
+	// only, and every one of them is on a side, so an empty value here is a
+	// defect upstream rather than a member in no faction.
+	Faction string `json:"faction"`
 }
 
 // StyleSelectionKind identifies whether a style slot selects a provider-owned

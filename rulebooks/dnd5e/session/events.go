@@ -295,6 +295,17 @@ func kindFor(beat string) EventKind {
 		return EventHeld
 	case "dropped":
 		return EventDropped
+	// THE WORD CHANGES HERE, like "down"/"downed" above: the composition
+	// names the noun ("stance", the thing that changed) and the wire names
+	// the event, beside "fight_ended" and "door_revealed". A stance turning
+	// is truth grain and goes to everyone (rpg-project#375, design §6).
+	case "stance":
+		return EventStanceChanged
+	// A reserved placement entering the run (rpg-project#375, R6): the
+	// composition's own word for what it did, crossing unchanged like
+	// "held" and "dropped".
+	case "arrived":
+		return EventArrived
 	default:
 		return EventUnknown
 	}
@@ -383,6 +394,36 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return FightEndedBody{Cause: DissolveKind(p.Cause)}
+	case EventStanceChanged:
+		var p struct {
+			Between []string `json:"between"`
+			Stance  string   `json:"stance"`
+		}
+		// A stance is between exactly two named factions and is a word: a
+		// beat naming one faction, three, an empty id, or no stance has no
+		// lawful reading, and is left untyped rather than narrated as a pair
+		// with a hole in it.
+		if json.Unmarshal(payload, &p) != nil || len(p.Between) != 2 ||
+			p.Between[0] == "" || p.Between[1] == "" || p.Stance == "" {
+			return nil
+		}
+		return StanceChangedBody{Between: p.Between, Stance: p.Stance}
+	case EventArrived:
+		var p struct {
+			ID   string           `json:"id"`
+			Kind string           `json:"kind"`
+			Cell spatial.Position `json:"cell"`
+		}
+		// An arrival names a thing and says which kind of thing it is; a
+		// kind outside the closed set is a composition newer than this build,
+		// and a client that cannot tell a monster from a prop cannot narrate
+		// it, so the body stays untyped rather than guessing. The cell is
+		// always a real cell and carries no absence to check for.
+		if json.Unmarshal(payload, &p) != nil || p.ID == "" ||
+			(p.Kind != string(PlacementMonster) && p.Kind != string(PlacementProp)) {
+			return nil
+		}
+		return ArrivedBody{ID: p.ID, Kind: PlacementKind(p.Kind), Cell: p.Cell}
 	case EventStruck:
 		return structBody(payload, true)
 	case EventMissed:

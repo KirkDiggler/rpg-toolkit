@@ -546,9 +546,11 @@ func (m *Manager) loadWorldWithBaseline(
 			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
 
-	sight.members = append(sight.members, world.Members...)
+	// Placed AND waiting (reserve.go): an arrival happens mid-verb, and its
+	// own sight refresh asks both seams about the newcomer at once.
+	sight.members = append(sight.members, worldMembers(*world)...)
 
-	standing := m.standingFor(ctx, data, encounterDataKinds(world.Members))
+	standing := m.standingFor(ctx, data, encounterDataKinds(worldMembers(*world)))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,
@@ -628,6 +630,11 @@ func translate(err error) error {
 		// lacks refuses with ErrNoIntel — two different mistakes, and the
 		// caller can only fix the one they made.
 		return fmt.Errorf("%w", ErrNoIntel)
+	case errors.Is(err, encounter.ErrNoFaction):
+		// A spawn naming a faction the field does not declare, or a mind
+		// arriving outside its faction (rpg-project#375) — a naming mistake
+		// in the host's forwarding, and it says so.
+		return fmt.Errorf("%w", ErrNoFaction)
 	case errors.Is(err, encounter.ErrNoDoor),
 		errors.Is(err, encounter.ErrBadDoor):
 		return fmt.Errorf("%w", ErrNoConnection)
@@ -706,8 +713,9 @@ func translate(err error) error {
 // causeOf translates the composition's account of why a fight ended into this
 // package's own sealed set.
 //
-// It exists because the answer must be DERIVED. A fight ends two ways now — a
-// party breaking off, and a side running out of people standing — so the cause
+// It exists because the answer must be DERIVED. A fight ends three ways now —
+// a party breaking off, a side running out of people standing, and two sides
+// ceasing to be sides (rpg-project#375) — so the cause
 // on a response has to come from what the world did rather than from what the
 // caller said it was doing. Echoing the input back is indistinguishable from
 // deriving it right up until the two can disagree, and as of rpg-toolkit#1078
@@ -732,6 +740,11 @@ func causeOf(cause encounter.DissolveCause) (DissolveCause, error) {
 		return ByDecision(), nil
 	case encounter.DissolveByDefeat:
 		return ByDefeat(), nil
+	case encounter.DissolveByStance:
+		// The third way a fight ends (rpg-project#375, R1): the stance
+		// between its two factions turned, and the world dissolved it in
+		// the pass that noticed. Like defeat, nothing a caller can hand in.
+		return ByStance(), nil
 	default:
 		return nil, fmt.Errorf("unknown dissolve cause %q: %w", cause.Kind(), ErrInvalidWorld)
 	}

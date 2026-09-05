@@ -139,6 +139,15 @@ func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
 		{"struck with no attack ref", EventStruck, `{"beat":"struck","actor":"alice","targets":["bob"]}`},
 		{"missed with no actor", EventMissed, `{"beat":"missed","targets":["bob"],"attack":{"ref":"longsword"}}`},
 		{"ended with no ending", EventEnded, `{"beat":"ended"}`},
+		{"stance with no stance", EventStanceChanged, `{"beat":"stance","between":["goblins","party"]}`},
+		{"stance between one faction", EventStanceChanged, `{"beat":"stance","between":["goblins"],"stance":"neutral"}`},
+		{"stance between three factions", EventStanceChanged,
+			`{"beat":"stance","between":["goblins","party","kobolds"],"stance":"neutral"}`},
+		{"stance with an unnamed faction", EventStanceChanged, `{"beat":"stance","between":["goblins",""],"stance":"neutral"}`},
+		{"arrived with no id", EventArrived, `{"beat":"arrived","kind":"monster","cell":{"x":1,"y":4}}`},
+		{"arrived with no kind", EventArrived, `{"beat":"arrived","id":"reinforcement-1","cell":{"x":1,"y":4}}`},
+		{"arrived with a kind this build cannot narrate", EventArrived,
+			`{"beat":"arrived","id":"trap-1","kind":"hazard","cell":{"x":1,"y":4}}`},
 		{"door with no door", EventDoor, `{"beat":"door","state":"open"}`},
 		{"door with no state", EventDoor, `{"beat":"door","door":"gate"}`},
 	}
@@ -907,6 +916,17 @@ func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
 			EventDoor, DoorBody{Door: "gate", State: "open", Actor: "erin"}},
 		{"door attempt", `{"beat":"door","door":"gate","state":"locked","actor":"erin","dc":12,"total":9,"beaten":false}`,
 			EventDoor, DoorBody{Door: "gate", State: "locked", Actor: "erin", DC: 12, Total: 9, Beaten: false}},
+		// rpg-project#375: a stance turning is narrated from the pair and
+		// the word, in the composition's own order, and the wire's word for
+		// the beat is the event ("stance_changed"), not the noun.
+		{"stance changed", `{"beat":"stance","between":["goblins","party"],"stance":"neutral"}`,
+			EventStanceChanged, StanceChangedBody{Between: []string{"goblins", "party"}, Stance: "neutral"}},
+		// rpg-project#375 step B: a reserved placement entering the run — a
+		// monster or a prop, and the cell it actually landed on.
+		{"a monster arrived", `{"beat":"arrived","id":"reinforcement-1","kind":"monster","cell":{"x":1,"y":4}}`,
+			EventArrived, ArrivedBody{ID: "reinforcement-1", Kind: PlacementMonster, Cell: spatial.Position{X: 1, Y: 4}}},
+		{"a prop arrived", `{"beat":"arrived","id":"letter","kind":"prop","cell":{"x":-1,"y":3}}`,
+			EventArrived, ArrivedBody{ID: "letter", Kind: PlacementProp, Cell: spatial.Position{X: -1, Y: 3}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

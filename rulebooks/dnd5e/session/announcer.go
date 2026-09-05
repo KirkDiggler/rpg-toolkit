@@ -80,7 +80,7 @@ func (a announcerSeam) Announce(
 		Participants: cast,
 		Initiative:   a.m.initiative,
 		Standing:     a.scope.standing,
-		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
+		Sight:        &sightSeam{members: worldMembers(world)},
 		TurnDriver:   a.m.turnDriver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:
