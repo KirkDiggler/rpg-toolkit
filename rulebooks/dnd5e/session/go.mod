@@ -8,9 +8,9 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.141.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.142.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.59.1
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.60.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.33.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467

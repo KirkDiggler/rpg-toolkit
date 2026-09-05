@@ -236,10 +236,10 @@ var sessionSentinels = map[string]error{
 	"ErrInvalidSession":    session.ErrInvalidSession,
 	"ErrSaveFailed":        session.ErrSaveFailed,
 	"ErrBadTurnOutcome":    session.ErrBadTurnOutcome,
-	"ErrGiveNotSupported":  session.ErrGiveNotSupported,
 	"ErrInvalidTradeOffer": session.ErrInvalidTradeOffer,
 	"ErrNotAVendor":        session.ErrNotAVendor,
 	"ErrOutOfStock":        session.ErrOutOfStock,
+	"ErrNotInInventory":    session.ErrNotInInventory,
 	"ErrWrongPrice":        session.ErrWrongPrice,
 	"ErrInsufficientFunds": session.ErrInsufficientFunds,
 }
