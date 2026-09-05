@@ -90,7 +90,7 @@ var All = map[PackID]Pack{
 			{ItemID: "crowbar", Quantity: 1},
 			{ItemID: "hammer", Quantity: 1},
 			{ItemID: "piton", Quantity: 10},
-			{ItemID: "hooded-lantern", Quantity: 1},
+			{ItemID: "lantern", Quantity: 1}, // items.Lantern's ID — was "hooded-lantern", which named no catalog entry
 			{ItemID: "oil", Quantity: 2},
 			{ItemID: "rations", Quantity: 5},
 			{ItemID: "tinderbox", Quantity: 1},

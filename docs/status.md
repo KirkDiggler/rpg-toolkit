@@ -11,6 +11,19 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**rpg-toolkit#1523 (rpg-project#376) — `equipment.PriceOf` + adventuring-gear
+catalog completeness (complete, 2026-09-05).** `equipment.PriceOf(id) (currency.Money,
+error)` wraps `ResolveEquipmentDetail` + `currency.ParseCost`. `items.All` now
+has all 14 of its declared adventuring-gear constants (Backpack through
+Waterskin) populated with real PHB/SRD cost and weight, cross-checked against
+two independent SRD sources — previously only the 5 spellcasting-focus items
+were populated, so `ResolveEquipmentDetail`/`PriceOf` returned nothing for
+any pack-granted gear. Found and fixed a real bug while verifying: `BurglarPack`'s
+`Contents` referenced `"hooded-lantern"`, which named no catalog entry
+anywhere — `items.Lantern`'s actual ID is `"lantern"` — so that pack's
+lantern could never have resolved a price (or an `equipment.GetByID` lookup
+at all) even after this wave's other fixes. Corrected in `packs.go`.
+
 **rpg-project#376 — `currency.Money`, D&D coinage arithmetic (complete,
 2026-09-05).** New `rulebooks/dnd5e/currency` package: `Money{Copper int}`,
 `From{Copper,Silver,Electrum,Gold,Platinum}` constructors, `ParseCost` for the

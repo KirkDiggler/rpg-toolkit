@@ -81,4 +81,25 @@ var All = map[ItemID]Item{
 	DruidicFocus:   {ID: DruidicFocus, Name: "Druidic Focus", Weight: 0, Cost: "1 gp"},
 	HolySymbol:     {ID: HolySymbol, Name: "Holy Symbol", Weight: 0, Cost: "5 gp"},
 	Spellbook:      {ID: Spellbook, Name: "Spellbook", Weight: 3, Cost: "50 gp"},
+
+	// Adventuring gear (PHB Chapter 5 equipment table / SRD 5.1, cross-checked
+	// against two independent SRD mirrors rather than transcribed from memory).
+	// Every one of these IDs is already the exact string a starting pack's
+	// Contents references (packs.go) — verified directly, not assumed — so
+	// populating this map is what makes ResolveEquipmentDetail (and the
+	// PriceOf built on top of it) actually resolve pack-granted gear.
+	Backpack:   {ID: Backpack, Name: "Backpack", Weight: 5, Cost: "2 gp"},
+	Bedroll:    {ID: Bedroll, Name: "Bedroll", Weight: 7, Cost: "1 gp"},
+	Blanket:    {ID: Blanket, Name: "Blanket", Weight: 3, Cost: "5 sp"},
+	Crowbar:    {ID: Crowbar, Name: "Crowbar", Weight: 5, Cost: "2 gp"},
+	Hammer:     {ID: Hammer, Name: "Hammer", Weight: 3, Cost: "1 gp"},
+	HempenRope: {ID: HempenRope, Name: "Hempen Rope (50 feet)", Weight: 10, Cost: "1 gp"},
+	Lantern:    {ID: Lantern, Name: "Lantern, Hooded", Weight: 2, Cost: "5 gp"},
+	Mess:       {ID: Mess, Name: "Mess Kit", Weight: 1, Cost: "2 sp"},
+	Oil:        {ID: Oil, Name: "Oil (Flask)", Weight: 1, Cost: "1 sp"},
+	Piton:      {ID: Piton, Name: "Piton", Weight: 0.25, Cost: "5 cp"},
+	Rations:    {ID: Rations, Name: "Rations (1 Day)", Weight: 2, Cost: "5 sp"},
+	Tinderbox:  {ID: Tinderbox, Name: "Tinderbox", Weight: 1, Cost: "5 sp"},
+	Torch:      {ID: Torch, Name: "Torch", Weight: 1, Cost: "1 cp"},
+	Waterskin:  {ID: Waterskin, Name: "Waterskin", Weight: 5, Cost: "2 sp"},
 }
