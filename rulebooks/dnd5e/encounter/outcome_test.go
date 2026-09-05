@@ -85,17 +85,17 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 	s.Equal(float64(9), beat["amount"])
 }
 
-// TestATradedItemReachesTheStoryAndRejectsMismatches is OutcomeTraded's half
+// TestABoughtItemReachesTheStoryAndRejectsMismatches is OutcomeBought's half
 // of Record, the same shape TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches
 // (participation_test.go) already pins for OutcomeDeathSave: the detail
 // round-trips through the beat verbatim, is required for its own kind, and
 // is refused on every other kind.
-func (s *OutcomeTestSuite) TestATradedItemReachesTheStoryAndRejectsMismatches() {
+func (s *OutcomeTestSuite) TestABoughtItemReachesTheStoryAndRejectsMismatches() {
 	enc := s.scene()
 	detail := &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1}
 
 	out, err := enc.Record(&encounter.RecordInput{
-		Kind: encounter.OutcomeTraded, Actor: alice, Targets: []encounter.MemberID{goblin}, Trade: detail,
+		Kind: encounter.OutcomeBought, Actor: alice, Targets: []encounter.MemberID{goblin}, Trade: detail,
 	})
 	s.Require().NoError(err)
 
@@ -107,7 +107,7 @@ func (s *OutcomeTestSuite) TestATradedItemReachesTheStoryAndRejectsMismatches() 
 
 	var beat map[string]any
 	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
-	s.Equal("traded", beat["beat"])
+	s.Equal("bought", beat["beat"])
 
 	raw, err := json.Marshal(beat["trade"])
 	s.Require().NoError(err)
@@ -118,13 +118,13 @@ func (s *OutcomeTestSuite) TestATradedItemReachesTheStoryAndRejectsMismatches() 
 		"closed detail has no caller prose field")
 
 	s.Run("missing detail", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{Kind: encounter.OutcomeTraded, Actor: alice})
+		_, err := s.scene().Record(&encounter.RecordInput{Kind: encounter.OutcomeBought, Actor: alice})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 
 	s.Run("empty item id", func() {
 		_, err := s.scene().Record(&encounter.RecordInput{
-			Kind: encounter.OutcomeTraded, Actor: alice,
+			Kind: encounter.OutcomeBought, Actor: alice,
 			Trade: &encounter.TradeDetail{ItemType: "weapon", Quantity: 1},
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -132,7 +132,7 @@ func (s *OutcomeTestSuite) TestATradedItemReachesTheStoryAndRejectsMismatches() 
 
 	s.Run("nonpositive quantity", func() {
 		_, err := s.scene().Record(&encounter.RecordInput{
-			Kind: encounter.OutcomeTraded, Actor: alice,
+			Kind: encounter.OutcomeBought, Actor: alice,
 			Trade: &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword"},
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -147,10 +147,10 @@ func (s *OutcomeTestSuite) TestATradedItemReachesTheStoryAndRejectsMismatches() 
 }
 
 // TestASoldItemReachesTheStoryAsItsOwnBeat is OutcomeSold's half of Record —
-// the mirror of TestATradedItemReachesTheStoryAndRejectsMismatches, pinning
-// that a sale gets its own "sold" beat rather than reusing "traded" with a
+// the mirror of TestABoughtItemReachesTheStoryAndRejectsMismatches, pinning
+// that a sale gets its own "sold" beat rather than reusing "bought" with a
 // flipped flag (rpg-toolkit#1537), while sharing the same TradeDetail
-// validation Record already applies to OutcomeTraded.
+// validation Record already applies to OutcomeBought.
 func (s *OutcomeTestSuite) TestASoldItemReachesTheStoryAsItsOwnBeat() {
 	enc := s.scene()
 	detail := &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1}

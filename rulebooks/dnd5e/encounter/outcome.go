@@ -55,23 +55,28 @@ const (
 	// claimed, and a kind here would be the only way to change that.
 	OutcomeDown OutcomeKind = "down"
 
-	// OutcomeTraded is one item changing hands between an actor and a
-	// counterparty — a vendor purchase, today (rpg-project#369's Trade
-	// verb). Carries TradeDetail the same way OutcomeDeathSave carries
-	// DeathSaveDetail: required primitives this composition preserves
-	// without interpreting.
-	OutcomeTraded OutcomeKind = "traded"
+	// OutcomeBought is one item changing hands from a vendor to an actor —
+	// a vendor purchase (rpg-project#369's Trade verb). Named for what the
+	// record will say (design.md's own law, already applied to Unpack):
+	// "Alice bought a longsword" is a truer statement than the generic
+	// "Alice traded for one," the same reasoning that gives OutcomeSold its
+	// own kind rather than a flipped flag on this one. Carries TradeDetail
+	// the same way OutcomeDeathSave carries DeathSaveDetail: required
+	// primitives this composition preserves without interpreting.
+	//
+	// Named OutcomeTraded through rpg-toolkit#1534; renamed once
+	// OutcomeSold's own mirror made the generic word's imprecision visible
+	// (rpg-toolkit#1537). OutcomeBartered is reserved — named here, not
+	// built — for whenever item-for-item barter lands: it is a third
+	// direction, not a fallback either of these two should absorb.
+	OutcomeBought OutcomeKind = "bought"
 
-	// OutcomeSold is the mirror of OutcomeTraded from the actor's own
+	// OutcomeSold is the mirror of OutcomeBought from the actor's own
 	// perspective — a player selling an item to a vendor (rpg-toolkit#1537's
 	// Sell, no new verb: Trade's existing Give/Receive shape, the other
-	// direction populated). A verb is named by what the record will say
-	// (design.md's own law, already applied to Unpack): "Alice sold a
-	// longsword" is a different statement from "Alice traded for one," so it
-	// gets its own kind rather than reusing OutcomeTraded with a flipped
-	// flag. Carries the same TradeDetail shape as OutcomeTraded — the data
-	// (item type/id/quantity) is identical between the two directions; only
-	// the kind differs.
+	// direction populated). Carries the same TradeDetail shape as
+	// OutcomeBought — the data (item type/id/quantity) is identical between
+	// the two directions; only the kind differs.
 	OutcomeSold OutcomeKind = "sold"
 )
 
@@ -155,7 +160,7 @@ type RecordInput struct {
 	// other kind; the encounter preserves it without interpreting thresholds.
 	DeathSave *DeathSaveDetail
 
-	// Trade carries the authoritative primitive facts for OutcomeTraded and
+	// Trade carries the authoritative primitive facts for OutcomeBought and
 	// OutcomeSold. It is required for either of those kinds and invalid for
 	// every other kind; the encounter preserves it without interpreting
 	// what the item does.
@@ -397,7 +402,7 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 
 	switch in.Kind {
-	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeTraded, OutcomeSold:
+	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeBought, OutcomeSold:
 	default:
 		return nil, fmt.Errorf("record: outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
@@ -417,7 +422,7 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	} else if in.DeathSave != nil {
 		return nil, fmt.Errorf("record: death save detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
-	if in.Kind == OutcomeTraded || in.Kind == OutcomeSold {
+	if in.Kind == OutcomeBought || in.Kind == OutcomeSold {
 		if in.Trade == nil {
 			return nil, fmt.Errorf("record: trade detail is required: %w", ErrInvalidData)
 		}
