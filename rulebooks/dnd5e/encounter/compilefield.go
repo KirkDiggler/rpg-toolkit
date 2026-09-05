@@ -147,6 +147,15 @@ type field struct {
 	// ending validation, and neither should walk the prop list to answer it.
 	holdable map[PropID]int
 
+	// factions and dispositions are the authored sides, deep-copied, in
+	// authored order — construction truth, what ToData writes back out
+	// (rpg-project#375). factionIndex and dispositionOf index them by id and
+	// by normalized pair; see disposition.go.
+	factions      []FactionInput
+	factionIndex  map[FactionID]int
+	dispositions  []DispositionInput
+	dispositionOf map[factionPair]int
+
 	// width and height are the span of the one hex grid that holds the
 	// floor's bounding box (W6).
 	width, height int
@@ -240,6 +249,13 @@ func compileField(in FieldInput) (*field, error) {
 	// is checked against them by [validateIntelTargets], which the two
 	// construction seams run once they hold the door list.
 	if err := f.compileIntel(in.Intel); err != nil {
+		return nil, err
+	}
+	// THE SIDES LAST (rpg-project#375): a disposition's predicate can name a
+	// member or a fact, neither of which this field checks against anything
+	// — members arrive later, facts are declared by mention — so the only
+	// thing the table depends on is itself.
+	if err := f.compileFactions(in.Factions, in.Dispositions); err != nil {
 		return nil, err
 	}
 
@@ -513,6 +529,14 @@ func (f *field) compileIntel(records []IntelRecord) error {
 		// (rpg-toolkit#1033).
 		if rec.Reveals == (RevealTargets{}) {
 			return fmt.Errorf("intel record %q does not say what it reveals: %w", rec.ID, ErrNoIntel)
+		}
+		// EXACTLY ONE TARGET (rpg-project#375, design §2): a record that
+		// reveals a door AND a fact is two records the author wrote as one,
+		// and which of the two a holder learns first is not a question this
+		// composition should answer for them.
+		if rec.Reveals.Door != "" && rec.Reveals.Fact != "" {
+			return fmt.Errorf("intel record %q reveals both door %q and fact %q, and a record reveals exactly one thing: %w",
+				rec.ID, rec.Reveals.Door, rec.Reveals.Fact, ErrNoIntel)
 		}
 		f.intelByID[rec.ID] = rec
 	}

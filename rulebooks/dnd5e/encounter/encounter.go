@@ -426,6 +426,15 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 					ei.Key, eh.Item, ErrNoEnding)
 			}
 		}
+		// The predicate grammar's own forms (rpg-project#375) — a round, a
+		// fact, a stance — through the one validator dispositions use, so an
+		// ending and an until refuse the same shapes in the same words.
+		switch ei.Trigger.(type) {
+		case TriggerRound, TriggerFact, TriggerStance:
+			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, nil, ErrNoEnding); err != nil {
+				return err
+			}
+		}
 		trigger, ok := ei.Trigger.(TriggerReachedPosition)
 		if !ok {
 			continue
@@ -667,6 +676,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
+	// A member's faction must be one this field has, and a faction's mind
+	// must be in that faction (rpg-project#375) — asked here, before
+	// anything is built (R5), and asked again by Join for the members that
+	// arrive later, which is how every monster actually enters a run.
+	for _, mi := range in.Members {
+		if err = f.validateMemberFaction(mi.ID, mi.Kind, mi.Faction); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
+		}
+	}
+
 	// A TriggerReachedPosition ending must name a reachable cell (#929 T3
 	// Opus round F5) — see validateEndingTriggers.
 	if err = validateEndingTriggers(f, in.Endings); err != nil {
@@ -757,6 +776,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Actions:        mi.Actions,
 			Targeting:      mi.Targeting,
 			BlocksMovement: mi.BlocksMovement,
+			Faction:        mi.Faction,
 		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
@@ -935,6 +955,7 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		Actions:        record.Actions,
 		Targeting:      record.Targeting,
 		BlocksMovement: record.BlocksMovement,
+		Faction:        factionOf(record),
 	}, nil
 }
 
@@ -1901,6 +1922,13 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		}
 	}
 
+	// The faction must be one this field has, and a member arriving under a
+	// faction's mind id must arrive in that faction — the SAME refusal
+	// NewEncounter makes, before the first mutation ([JoinInput.Faction]).
+	if err := e.field.validateMemberFaction(in.Member, in.Kind, in.Faction); err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
 	// Hex fields require integral axial cells (interim tools/spatial#926
 	// enforcement — see isIntegralHexCell). Asked first, for the reason
 	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
@@ -1938,6 +1966,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		Actions:        in.Actions,
 		Targeting:      in.Targeting,
 		BlocksMovement: in.BlocksMovement,
+		Faction:        in.Faction,
 	}
 	e.members[in.Member] = member
 	e.everMembers[in.Member] = true // Track in everMembers

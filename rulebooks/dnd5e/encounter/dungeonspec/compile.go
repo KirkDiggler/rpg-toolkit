@@ -70,6 +70,15 @@ type Compiled struct {
 	// what their dungeon declares without reaching into the field.
 	Intel []encounter.IntelRecord
 
+	// Factions and Dispositions are the sides this dungeon authored, in
+	// authored order, with the predicates compiled to the composition's
+	// triggers (rpg-project#375). Nil when the file declares none. Also
+	// carried on [Compiled.Field], which is the copy that survives a save;
+	// surfaced here for a host that wants to list what the dungeon declares
+	// without reaching into the field.
+	Factions     []encounter.FactionInput
+	Dispositions []encounter.DispositionInput
+
 	// Scenarios is the dungeon's scenario bindings, carried through exactly
 	// as authored: scenario id to field key to the id it names
 	// (rpg-project#368, design §3.1). Nil when the file binds none.
@@ -130,6 +139,16 @@ type MonsterPlacement struct {
 	// dungeons in one process cannot collide, and a holder carrying the raw
 	// authored id would name a record the composition does not have.
 	Holds []string
+
+	// Faction is the faction this monster was placed in, AS AUTHORED
+	// ([PlaceSpec.Faction]): empty when the author wrote none, which is the
+	// reserved `monsters` faction — for a host to hand to
+	// [encounter.MemberInput.Faction], whose empty means the same thing.
+	// Verbatim, not key-prefixed: a faction is a word a member shows on the
+	// roster and a scenario binds by name, like a region rather than a door.
+	// Omitted from the committed pictures when empty, so every dungeon
+	// authored before factions existed pictures byte-identically.
+	Faction string `json:"Faction,omitempty"`
 }
 
 // Load decodes, validates and compiles a dungeon in one call.
@@ -194,6 +213,11 @@ func Compile(spec *Spec) (Compiled, error) {
 		Doors:    doorsOf(spec, orientation),
 		Exits:    exitsOf(spec),
 		Intel:    intelOf(spec),
+		// The sides ride the FIELD too (rpg-project#375): the graph is seeded
+		// from them at every Setup and Load, so they have to be where the
+		// field is.
+		Factions:     factionsOf(spec),
+		Dispositions: dispositionsOf(spec),
 		// The way in rides the FIELD, so it survives being stored: a start
 		// kept only on Compiled would be lost the moment the dungeon was
 		// saved, and a live session's map could never answer for it
@@ -211,12 +235,14 @@ func Compile(spec *Spec) (Compiled, error) {
 	}
 
 	return Compiled{
-		Field:       field,
-		PartyStart:  start,
-		StartFacing: spec.Start.Facing,
-		Monsters:    monstersOf(spec, orientation),
-		Scenarios:   scenariosOf(spec),
-		Intel:       field.Intel,
+		Field:        field,
+		PartyStart:   start,
+		StartFacing:  spec.Start.Facing,
+		Monsters:     monstersOf(spec, orientation),
+		Scenarios:    scenariosOf(spec),
+		Intel:        field.Intel,
+		Factions:     field.Factions,
+		Dispositions: field.Dispositions,
 	}, nil
 }
 
@@ -224,6 +250,10 @@ func Compile(spec *Spec) (Compiled, error) {
 // door's is (`<key>/<id>`) so two dungeons in one process cannot collide —
 // and with the door a record reveals compiled the same way, because that is
 // the id the composition's own door table is keyed by.
+//
+// A FACT IS NOT PREFIXED. It is a word a disposition's `until` and a
+// record's `reveals` agree on within one file, and the composition matches
+// the two by that word; a fact belongs to the story, not to the door table.
 func intelOf(spec *Spec) []encounter.IntelRecord {
 	var out []encounter.IntelRecord
 	for _, rec := range spec.Intel {
@@ -231,9 +261,58 @@ func intelOf(spec *Spec) []encounter.IntelRecord {
 		if rec.Reveals.Door != "" {
 			r.Reveals.Door = encounter.DoorID(spec.Key + "/" + rec.Reveals.Door)
 		}
+		r.Reveals.Fact = rec.Reveals.Fact
 		out = append(out, r)
 	}
 	return out
+}
+
+// factionsOf carries the authored factions through verbatim (rpg-project#375):
+// the id as the author wrote it, and the mind as the PLACEMENT id the author
+// wrote — a member id at the composition's seam, which is what a host that
+// spawns the placement under that id makes it. Nil when none.
+func factionsOf(spec *Spec) []encounter.FactionInput {
+	var out []encounter.FactionInput
+	for _, fa := range spec.Factions {
+		out = append(out, encounter.FactionInput{ID: fa.ID, Mind: encounter.MemberID(fa.Mind)})
+	}
+	return out
+}
+
+// dispositionsOf carries the authored dispositions through, each until
+// compiled to the composition's own trigger by [predicateOf]. Nil when none.
+func dispositionsOf(spec *Spec) []encounter.DispositionInput {
+	var out []encounter.DispositionInput
+	for _, d := range spec.Dispositions {
+		di := encounter.DispositionInput{Between: d.Between, Stance: encounter.Stance(d.Stance)}
+		if d.Until != nil {
+			di.Until = predicateOf(d.Until)
+		}
+		out = append(out, di)
+	}
+	return out
+}
+
+// predicateOf is THE ONE PLACE the designer's spelling becomes the engine's
+// type (rpg-project#375, design §2): every form of the grammar compiles to
+// one of the composition's sealed triggers. A `{ down }` names a placement
+// id, carried as the member id the host spawns that placement under.
+//
+// The nil case is unreachable after Validate — a decoded predicate has
+// exactly one form — and returned rather than panicked for voidOf's reason.
+func predicateOf(p *PredicateSpec) encounter.Trigger {
+	switch p.Form() {
+	case predicateRound:
+		return encounter.TriggerRound{Round: *p.Round}
+	case predicateDown:
+		return encounter.TriggerMemberDown{Member: encounter.MemberID(p.Down)}
+	case predicateFact:
+		return encounter.TriggerFact{Fact: p.Fact}
+	case predicateStance:
+		return encounter.TriggerStance{Between: p.Stance.Between, Stance: encounter.Stance(p.Stance.Is)}
+	default:
+		return nil
+	}
 }
 
 // exitsOf carries the authored ways out through as they were written — an id
@@ -590,7 +669,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		out = append(out, MonsterPlacement{
 			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
 			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
-			ID: p.ID, Holds: holds,
+			ID: p.ID, Holds: holds, Faction: p.Faction,
 		})
 	}
 	return out

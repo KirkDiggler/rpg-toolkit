@@ -66,25 +66,33 @@ type contentGolden struct {
 	// holdability all ride in the atlas above, which is already here.
 	Intel     []encounter.IntelRecord      `json:"intel"`
 	Scenarios map[string]map[string]string `json:"scenarios"`
+
+	// Factions and Dispositions are the sides (rpg-project#375). Omitted
+	// when a file declares none, so the four dungeons authored before
+	// factions existed picture byte-identically.
+	Factions     []encounter.FactionInput     `json:"factions,omitempty"`
+	Dispositions []encounter.DispositionInput `json:"dispositions,omitempty"`
 }
 
 func contentGoldenOf(t *testing.T, path string) contentGolden {
 	t.Helper()
 	compiled, atlas := compiledAtlas(t, path)
 	return contentGolden{
-		Orientation: string(atlas.Orientation.Kind()),
-		Void:        string(compiled.Field.Canvas.Void.Kind()),
-		Cells:       atlas.Cells,
-		Regions:     atlas.Regions,
-		Props:       atlas.Props,
-		Boundaries:  atlas.Boundaries,
-		Doorways:    atlas.Doorways,
-		Exits:       atlas.Exits,
-		Start:       atlas.Start,
-		PartyStart:  compiled.PartyStart,
-		Monsters:    compiled.Monsters,
-		Intel:       compiled.Intel,
-		Scenarios:   compiled.Scenarios,
+		Orientation:  string(atlas.Orientation.Kind()),
+		Void:         string(compiled.Field.Canvas.Void.Kind()),
+		Cells:        atlas.Cells,
+		Regions:      atlas.Regions,
+		Props:        atlas.Props,
+		Boundaries:   atlas.Boundaries,
+		Doorways:     atlas.Doorways,
+		Exits:        atlas.Exits,
+		Start:        atlas.Start,
+		PartyStart:   compiled.PartyStart,
+		Monsters:     compiled.Monsters,
+		Intel:        compiled.Intel,
+		Scenarios:    compiled.Scenarios,
+		Factions:     compiled.Factions,
+		Dispositions: compiled.Dispositions,
 	}
 }
 
@@ -98,7 +106,7 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 	files, err := filepath.Glob("testdata/*.yaml")
 	require.NoError(t, err)
-	require.Len(t, files, 4, "the four authored dungeons this package ships")
+	require.Len(t, files, 5, "the five authored dungeons this package ships")
 
 	for _, path := range files {
 		t.Run(filepath.Base(path), func(t *testing.T) {

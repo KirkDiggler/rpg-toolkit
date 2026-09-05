@@ -149,6 +149,14 @@ type Spec struct {
 	// read — without a second spelling of knowledge.
 	Intel []IntelSpec `yaml:"intel,omitempty"`
 
+	// Factions are the sides this dungeon authored, and Dispositions how
+	// they stand to each other (rpg-project#375, the hold-out design §2).
+	// Both optional; omitted means the two reserved factions — `party` and
+	// `monsters` — and the one default hostility every dungeon had before
+	// factions existed. See [FactionSpec] and [DispositionSpec].
+	Factions     []FactionSpec     `yaml:"factions,omitempty"`
+	Dispositions []DispositionSpec `yaml:"dispositions,omitempty"`
+
 	// Exits are the ways out of this dungeon: an id and a floor cell each
 	// (rpg-project#368, design §3.1). Optional; omitted means none.
 	//
@@ -216,6 +224,65 @@ type RevealsSpec struct {
 	// to a door anyone can already see tells nobody anything, and refusing
 	// it would make this declaration depend on a fact about a different one.
 	Door string `yaml:"door,omitempty"`
+
+	// Fact is the id of the fact this record reveals (rpg-project#375, the
+	// hold-out design §2) — the second key, arrived with its use case: a
+	// letter that says the party saved the Wiseman.
+	//
+	// A PLAIN STRING, DECLARED BY MENTION. Nothing declares a fact; a
+	// disposition's `until: { fact: x }` and a record's `reveals: { fact: x }`
+	// simply agree on the word. A record may reveal a fact no disposition
+	// waits for, and a disposition may wait for a fact no record reveals —
+	// the dungeon allows both (pre-release: show the cost) and the SCENARIO
+	// refuses the second, because a hold-out nobody can win is its business
+	// (R8).
+	Fact string `yaml:"fact,omitempty"`
+}
+
+// FactionSpec is one faction the dungeon authored: a name members belong
+// to, and the member it knows through.
+//
+//	factions:
+//	  - { id: goblins, mind: chief }
+//
+// `party` is never declared — it is the players' side, reserved — and
+// `monsters` is where every monster with no `faction` already is. Declaring
+// `monsters` is legal, and is how the unauthored side is given a mind.
+type FactionSpec struct {
+	// ID names the faction, and is what a placement's `faction`, a
+	// disposition's `between` and a scenario's `convince` name. REQUIRED
+	// non-empty and unique; `party` is refused by name.
+	ID string `yaml:"id"`
+
+	// Mind is the placement the faction knows through — "the faction knows
+	// what its mind knows" (design R3). MUST name a MONSTER placement in
+	// this faction. Optional: a faction of one has its member as its mind,
+	// and a faction of many that waits for a fact and names no mind is
+	// refused ("name a mind, or the faction cannot learn").
+	Mind string `yaml:"mind,omitempty"`
+}
+
+// DispositionSpec is how two factions stand to each other, and what ends
+// it.
+//
+//	dispositions:
+//	  - { between: [goblins, party], stance: hostile, until: { fact: saved-wiseman } }
+//
+// One per unordered pair; a pair nobody declares has a default
+// ([encounter.DefaultStance]): `party` is hostile to every faction that did
+// not say otherwise, and every other pair is neutral.
+type DispositionSpec struct {
+	// Between is the pair, unordered. Both MUST exist: a declared faction,
+	// or `party` or `monsters`.
+	Between [2]string `yaml:"between"`
+
+	// Stance is one of hostile, neutral, allied. REQUIRED.
+	Stance string `yaml:"stance"`
+
+	// Until is the predicate that ends hostility; when it holds the stance
+	// becomes neutral (R2). LEGAL ONLY WITH `stance: hostile` — a neutral or
+	// allied pair has nothing to stop doing. Optional. See [PredicateSpec].
+	Until *PredicateSpec `yaml:"until,omitempty"`
 }
 
 // ExitSpec is one authored way out: an id and the floor cell a member stands
@@ -656,7 +723,7 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 		case "knows":
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
-			"offset", "targeting", "boss", "holds", "holdable":
+			"offset", "targeting", "boss", "holds", "holdable", "faction":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)
@@ -826,4 +893,12 @@ type PlaceSpec struct {
 	// binding names it and the `held` beat names it, and neither can name a
 	// thing with no name.
 	Holdable *bool `yaml:"holdable,omitempty"`
+
+	// Faction is the faction this monster belongs to (rpg-project#375, the
+	// hold-out design §2). MONSTERS ONLY, refused on a prop; MUST name a
+	// declared faction (or `monsters`, which it is anyway); absent means the
+	// reserved `monsters` faction. `party` is refused — that is the players'
+	// side. Carried to the host as [MonsterPlacement.Faction], which hands
+	// it to [encounter.MemberInput.Faction] when it spawns the sheet.
+	Faction string `yaml:"faction,omitempty"`
 }

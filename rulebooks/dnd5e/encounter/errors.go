@@ -419,6 +419,15 @@ var (
 	// they placed and did not.
 	ErrNoIntel = errors.New("no such intel record")
 
+	// ErrNoFaction is a faction this field does not declare, or one it
+	// declares badly (rpg-project#375): no id, an id twice, the reserved
+	// `party` declared, a disposition naming a faction that is not there or
+	// a pair of one, two dispositions for one pair, an until on a stance
+	// that is not hostile, an until that can never hold, or a member — at
+	// construction or on arrival — naming a faction that does not exist, or
+	// joining under a faction's mind id into some other faction.
+	ErrNoFaction = errors.New("no such faction")
+
 	// ErrNoProp is a prop this field does not have, named by a verb that
 	// needs one — [Encounter.Hold]'s target, or an ending's item.
 	//

@@ -178,6 +178,14 @@ type FieldData struct {
 	// what every stored field had.
 	Start *StartData `json:"start,omitempty"`
 
+	// Factions and Dispositions are the authored sides, in authored order
+	// (rpg-project#375). Scenery's omitempty rule: omitted and empty are the
+	// same fact, so a blob written before factions existed loads with none —
+	// the two reserved factions and the one default hostility, which is what
+	// every stored run meant.
+	Factions     []FactionData     `json:"factions,omitempty"`
+	Dispositions []DispositionData `json:"dispositions,omitempty"`
+
 	// Walls are the authored walls, in authored order, with endpoints in the
 	// AUTHORED offset frame.
 	Walls []BoundaryData `json:"walls,omitempty"`
@@ -307,6 +315,104 @@ type IntelData struct {
 	// a persisted record naming a target this build does not know is refused
 	// at load rather than carried.
 	Door DoorID `json:"door,omitempty"`
+
+	// Fact is what the record reveals, when that is a fact
+	// (rpg-project#375) — the second key, under the same rule.
+	Fact FactID `json:"fact,omitempty"`
+}
+
+// FactionData is the persistent representation of a [FactionInput]: field
+// STRUCTURE, like the record table — who belongs to it is each member's own
+// row, and what it knows is the journal's.
+type FactionData struct {
+	ID   FactionID `json:"id"`
+	Mind MemberID  `json:"mind,omitempty"`
+}
+
+// DispositionData is the persistent representation of a [DispositionInput].
+// Structure again: the DECLARED stance and the predicate that ends it. The
+// stance a pair holds right now is never here — it is derived on every load
+// from these and the journal's facts (design §3.4), so a saved run and a
+// fresh fold cannot disagree about who is fighting whom.
+type DispositionData struct {
+	Between []FactionID  `json:"between"`
+	Stance  string       `json:"stance"`
+	Until   *TriggerData `json:"until,omitempty"`
+}
+
+// TriggerData is the persistent representation of one [Trigger] — the
+// predicate grammar on the wire (rpg-project#375). Kind is one of
+// reached_position, external, member_down, exited_holding, round, fact and
+// stance, and the other fields are populated per kind exactly as
+// [EndingData]'s own are; a disposition's until persists as one of these,
+// and an ending is one of these plus its key.
+type TriggerData struct {
+	Kind    string        `json:"kind"`
+	At      *PositionData `json:"at,omitempty"`
+	Member  MemberID      `json:"member,omitempty"`
+	Exit    ExitID        `json:"exit,omitempty"`
+	Item    PropID        `json:"item,omitempty"`
+	Round   int           `json:"round,omitempty"`
+	Fact    FactID        `json:"fact,omitempty"`
+	Between []FactionID   `json:"between,omitempty"`
+	Stance  string        `json:"stance,omitempty"`
+}
+
+// triggerDataFrom renders a trigger for the blob — ONE switch for endings and
+// dispositions alike, so the two cannot spell a kind differently.
+func triggerDataFrom(t Trigger) TriggerData {
+	switch t := t.(type) {
+	case TriggerReachedPosition:
+		return TriggerData{
+			Kind: "reached_position", At: &PositionData{X: t.Position.X, Y: t.Position.Y}, Member: t.Member,
+		}
+	case TriggerExternal:
+		return TriggerData{Kind: "external"}
+	case TriggerMemberDown:
+		return TriggerData{Kind: "member_down", Member: t.Member}
+	case TriggerExitedHolding:
+		return TriggerData{Kind: "exited_holding", Exit: t.Exit, Item: t.Item}
+	case TriggerRound:
+		return TriggerData{Kind: "round", Round: t.Round}
+	case TriggerFact:
+		return TriggerData{Kind: "fact", Fact: t.Fact}
+	case TriggerStance:
+		return TriggerData{Kind: "stance", Between: []FactionID{t.Between[0], t.Between[1]}, Stance: string(t.Stance)}
+	}
+	return TriggerData{}
+}
+
+// triggerFromData resolves a persisted trigger back to the runtime one,
+// refusing a kind this build does not write, a positional trigger with no
+// cell, and a stance that does not name two factions — the trust boundary
+// for the predicate half of the blob, for endings and dispositions alike.
+func triggerFromData(td TriggerData) (Trigger, error) {
+	switch td.Kind {
+	case "reached_position":
+		if td.At == nil {
+			return nil, fmt.Errorf(
+				"reached_position has no at — a room-local target from before rpg-project#256, recreate the save: %w",
+				ErrNoEnding)
+		}
+		return TriggerReachedPosition{Position: spatial.Position{X: td.At.X, Y: td.At.Y}, Member: td.Member}, nil
+	case "external":
+		return TriggerExternal{}, nil
+	case "member_down":
+		return TriggerMemberDown{Member: td.Member}, nil
+	case "exited_holding":
+		return TriggerExitedHolding{Exit: td.Exit, Item: td.Item}, nil
+	case "round":
+		return TriggerRound{Round: td.Round}, nil
+	case "fact":
+		return TriggerFact{Fact: td.Fact}, nil
+	case "stance":
+		if len(td.Between) != 2 {
+			return nil, fmt.Errorf("stance names %d factions, and a stance is between two: %w", len(td.Between), ErrNoEnding)
+		}
+		return TriggerStance{Between: [2]FactionID{td.Between[0], td.Between[1]}, Stance: Stance(td.Stance)}, nil
+	default:
+		return nil, fmt.Errorf("unknown trigger kind %q: %w", td.Kind, ErrNoEnding)
+	}
 }
 
 // ExitData is the persistent representation of one authored way out —
@@ -820,6 +926,14 @@ type MemberData struct {
 	// unmarshals to false, which is exactly what every member's blocking
 	// answer already was.
 	BlocksMovement bool `json:"blocks_movement,omitempty"`
+
+	// Faction is the faction the caller NAMED for this member, or absent for
+	// the kind's default (rpg-project#375) — memberRecord.Faction as stored,
+	// never resolved: a member in the default faction writes no key, so a
+	// blob from before factions existed and one written today for the same
+	// roster are byte-identical, and both load into the same two-faction
+	// world.
+	Faction FactionID `json:"faction,omitempty"`
 }
 
 // ActionViewData is the persistent representation of an [ActionView] — a
@@ -856,6 +970,32 @@ type EndingData struct {
 	// [ErrNoEnding] exists for.
 	Exit ExitID `json:"exit,omitempty"`
 	Item PropID `json:"item,omitempty"`
+
+	// Round, Fact, Between and Stance carry the predicate grammar's three
+	// new forms (rpg-project#375): a [TriggerRound], a [TriggerFact], a
+	// [TriggerStance]. Written only for their kind, exactly as [TriggerData]
+	// writes them — an ending is one of those plus its key.
+	Round   int         `json:"round,omitempty"`
+	Fact    FactID      `json:"fact,omitempty"`
+	Between []FactionID `json:"between,omitempty"`
+	Stance  string      `json:"stance,omitempty"`
+}
+
+// triggerData is the ending's predicate half, as a [TriggerData].
+func (ed EndingData) triggerData() TriggerData {
+	return TriggerData{
+		Kind: ed.Kind, At: ed.At, Member: ed.Member, Exit: ed.Exit, Item: ed.Item,
+		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance,
+	}
+}
+
+// endingDataFrom is an ending as the blob carries it: its key, and its
+// trigger rendered by the one switch every trigger goes through.
+func endingDataFrom(key string, td TriggerData) EndingData {
+	return EndingData{
+		Key: key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
+		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance,
+	}
 }
 
 // ToData returns a persistent snapshot of this Encounter.
@@ -932,33 +1072,15 @@ func (e *Encounter) snapshot() EncounterData {
 			Actions:        actionViewDataFrom(m.Actions),
 			Targeting:      m.Targeting,
 			BlocksMovement: m.BlocksMovement,
+			Faction:        m.Faction,
 		})
 	}
 
-	// Deep-copy endings in declaration order
+	// Deep-copy endings in declaration order, each trigger through the one
+	// switch dispositions' untils go through too (triggerDataFrom).
 	endingsData := make([]EndingData, len(e.endings))
 	for i, de := range e.endings {
-		ed := EndingData{
-			Key: de.key,
-		}
-
-		switch t := de.trigger.(type) {
-		case TriggerReachedPosition:
-			ed.Kind = "reached_position"
-			ed.At = &PositionData{X: t.Position.X, Y: t.Position.Y}
-			ed.Member = t.Member
-		case TriggerExternal:
-			ed.Kind = "external"
-		case TriggerMemberDown:
-			ed.Kind = "member_down"
-			ed.Member = t.Member
-		case TriggerExitedHolding:
-			ed.Kind = "exited_holding"
-			ed.Exit = t.Exit
-			ed.Item = t.Item
-		}
-
-		endingsData[i] = ed
+		endingsData[i] = endingDataFrom(de.key, triggerDataFrom(de.trigger))
 	}
 
 	// Deep-copy everMembers in sorted order for determinism
@@ -1100,7 +1222,26 @@ func fieldDataFrom(f *field) FieldData {
 	if len(f.intel) > 0 {
 		out.Intel = make([]IntelData, len(f.intel))
 		for i, rec := range f.intel {
-			out.Intel[i] = IntelData{ID: rec.ID, Door: rec.Reveals.Door}
+			out.Intel[i] = IntelData{ID: rec.ID, Door: rec.Reveals.Door, Fact: rec.Reveals.Fact}
+		}
+	}
+
+	if len(f.factions) > 0 {
+		out.Factions = make([]FactionData, len(f.factions))
+		for i, fa := range f.factions {
+			out.Factions[i] = FactionData(fa)
+		}
+	}
+
+	if len(f.dispositions) > 0 {
+		out.Dispositions = make([]DispositionData, len(f.dispositions))
+		for i, d := range f.dispositions {
+			dd := DispositionData{Between: []FactionID{d.Between[0], d.Between[1]}, Stance: string(d.Stance)}
+			if d.Until != nil {
+				td := triggerDataFrom(d.Until)
+				dd.Until = &td
+			}
+			out.Dispositions[i] = dd
 		}
 	}
 
@@ -1376,9 +1517,19 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		seenEndingKeys[ed.Key] = true
 
-		if ed.Kind != "reached_position" && ed.Kind != "external" &&
-			ed.Kind != "member_down" && ed.Kind != "exited_holding" {
+		switch ed.Kind {
+		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance":
+		default:
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
+		}
+
+		// A stance ending names two factions or it is not a stance at all —
+		// the trust boundary refusing bytes that are not an ending, before
+		// validateEndingTriggers asks whether the pair can reach the stance.
+		if ed.Kind == "stance" && len(ed.Between) != 2 {
+			return nil, fmt.Errorf(
+				"load encounter: ending %q stance names %d factions, and a stance is between two: %w: %w",
+				ed.Key, len(ed.Between), ErrInvalidData, ErrNoEnding)
 		}
 
 		// A reached_position ending without a position would panic at
@@ -1522,6 +1673,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// lookup the live verbs use (rpg-toolkit#1108).
 		if !f.isStandable(cell) {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
+		}
+
+		// A faction this field does not have, or a mind in the wrong
+		// faction, is the SAME refusal Setup and Join make — a blob that
+		// names a side the dungeon never declared was edited.
+		if err := f.validateMemberFaction(m.ID, m.Kind, m.Faction); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 		}
 	}
 
@@ -1777,6 +1935,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Actions:        actionViewsFrom(m.Actions),
 			Targeting:      m.Targeting,
 			BlocksMovement: m.BlocksMovement,
+			Faction:        m.Faction,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
@@ -1878,26 +2037,19 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 // something to check) and the "Restore declared endings" construction
 // (which needs it again, once construction is safe to begin, R5) — ONE
 // conversion, not two copies of the same switch (#929 T3 Opus round F5).
-// ed.Kind is already guaranteed to be "reached_position", "external" or
-// "member_down" by
-// the key/kind checks earlier in LoadEncounter, and a "reached_position"
-// ed.At is already guaranteed non-nil there too — both preconditions
-// checked before this is ever called, so no error return is needed here.
+// ed.Kind is already guaranteed to be one of the kinds triggerFromData
+// resolves by the key/kind checks earlier in LoadEncounter, a
+// "reached_position" ed.At is already guaranteed non-nil there, and a
+// "stance" names two factions — every precondition checked before this is
+// ever called, so the error triggerFromData returns is structurally
+// unreachable here and a nil trigger is the honest answer to a caller that
+// skipped those checks.
 func endingTriggerFromData(ed EndingData) Trigger {
-	switch ed.Kind {
-	case "reached_position":
-		return TriggerReachedPosition{
-			Position: spatial.Position{X: ed.At.X, Y: ed.At.Y},
-			Member:   ed.Member,
-		}
-	case "external":
-		return TriggerExternal{}
-	case "member_down":
-		return TriggerMemberDown{Member: ed.Member}
-	case "exited_holding":
-		return TriggerExitedHolding{Exit: ed.Exit, Item: ed.Item}
+	t, err := triggerFromData(ed.triggerData())
+	if err != nil {
+		return nil
 	}
-	return nil
+	return t
 }
 
 // refuseRoomLocalSightings validates persisted sight testimony owned by this
@@ -2085,7 +2237,27 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	for _, rd := range fd.Intel {
-		in.Intel = append(in.Intel, IntelRecord{ID: rd.ID, Reveals: RevealTargets{Door: rd.Door}})
+		in.Intel = append(in.Intel, IntelRecord{ID: rd.ID, Reveals: RevealTargets{Door: rd.Door, Fact: rd.Fact}})
+	}
+
+	for _, fa := range fd.Factions {
+		in.Factions = append(in.Factions, FactionInput(fa))
+	}
+
+	for i, dd := range fd.Dispositions {
+		if len(dd.Between) != 2 {
+			return FieldInput{}, fmt.Errorf("dispositions[%d] names %d factions, and a disposition is between two: %w",
+				i, len(dd.Between), ErrNoFaction)
+		}
+		d := DispositionInput{Between: [2]FactionID{dd.Between[0], dd.Between[1]}, Stance: Stance(dd.Stance)}
+		if dd.Until != nil {
+			t, err := triggerFromData(*dd.Until)
+			if err != nil {
+				return FieldInput{}, fmt.Errorf("dispositions[%d] until: %w", i, err)
+			}
+			d.Until = t
+		}
+		in.Dispositions = append(in.Dispositions, d)
 	}
 
 	for _, wd := range fd.Walls {

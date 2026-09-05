@@ -92,8 +92,15 @@ func Validate(spec *Spec) []FieldError {
 		// and place() asks whether it exists — the same ordering reason
 		// scenery runs before the walls that stand on it.
 		v.intel()
+		// FACTIONS BEFORE PLACE, because a placement's `faction` names one
+		// and place() asks whether it exists; MINDS AND DISPOSITIONS AFTER,
+		// because a mind is a placement, a `{ down }` names one, and a
+		// faction of one is counted from them (rpg-project#375).
+		v.factions()
 		v.place()
+		v.minds()
 		v.exits()
+		v.dispositions()
 		v.scenarios()
 		v.concealment()
 	}
@@ -158,6 +165,18 @@ type validation struct {
 	// it — built by intel(), read by place() to answer "does this holder
 	// name a record that exists".
 	intelIDs map[string]int
+
+	// factionIDs is every declared faction id to the index that declared it
+	// — built by factions(), read by place(), dispositions() and scenarios().
+	// factionMembers is every faction, declared or reserved, to the monster
+	// placements in it — built by place(), read by minds() and
+	// dispositions() for the faction-of-one rule. mindValid is every faction
+	// whose declared mind passed minds(). dispositionAt is every normalized
+	// pair to the disposition that speaks for it (rpg-project#375).
+	factionIDs     map[string]int
+	factionMembers map[string][]int
+	mindValid      map[string]bool
+	dispositionAt  map[[2]string]int
 }
 
 func (v *validation) fail(path, format string, args ...any) {
@@ -642,6 +661,11 @@ func (v *validation) place() {
 			occupied[pl.At] = i
 		}
 
+		// Which side it is on (rpg-project#375): a monster's faction must
+		// exist, a prop has none, and either way the membership is counted
+		// for the faction-of-one rule.
+		v.placeFaction(p, i, pl, kind)
+
 		switch kind {
 		case typeMonsters:
 			if pl.Holdable != nil {
@@ -774,12 +798,16 @@ func (v *validation) intel() {
 
 		// EXACTLY ONE TARGET, and a record that reveals nothing is the one
 		// an author wrote and did not finish. Nothing is defaulted: there is
-		// no "reveals the nearest door".
+		// no "reveals the nearest door". Two targets is two records the
+		// author wrote as one (rpg-project#375).
 		switch {
-		case rec.Reveals.Door == "":
+		case rec.Reveals.Door == "" && rec.Reveals.Fact == "":
 			v.fail(p+".reveals",
-				"intel %q does not say what it reveals — today that is `door: <door id>`", rec.ID)
-		case !doorIDs[rec.Reveals.Door]:
+				"intel %q does not say what it reveals — `door: <door id>` or `fact: <id>`", rec.ID)
+		case rec.Reveals.Door != "" && rec.Reveals.Fact != "":
+			v.fail(p+".reveals",
+				"intel %q reveals both a door and a fact, and a record reveals exactly one thing", rec.ID)
+		case rec.Reveals.Door != "" && !doorIDs[rec.Reveals.Door]:
 			v.fail(p+".reveals.door",
 				"intel %q reveals door %q, and no door in this dungeon has that id", rec.ID, rec.Reveals.Door)
 		}
@@ -833,6 +861,12 @@ func (v *validation) scenarios() {
 				continue
 			}
 			if _, ok := v.exitIDs[named]; ok {
+				continue
+			}
+			// A faction is bindable too (rpg-project#375: `convince`),
+			// the reserved ones included — whether the scenario can do
+			// anything with `party` is the scenario's own refusal.
+			if v.factionExists(named) {
 				continue
 			}
 			v.fail(p, "scenario %q binds %s to %q, and nothing in this dungeon has that id",
