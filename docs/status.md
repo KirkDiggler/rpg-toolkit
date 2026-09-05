@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-04
+updated: 2026-09-05
 confidence: high — active #1366/#1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
 ---
 
@@ -10,6 +10,23 @@ confidence: high — active #1366/#1246 boundaries and gates are verified in the
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Current direction
+
+**rpg-project#376 — `currency.Money`, D&D coinage arithmetic (complete,
+2026-09-05).** New `rulebooks/dnd5e/currency` package: `Money{Copper int}`,
+`From{Copper,Silver,Electrum,Gold,Platinum}` constructors, `ParseCost` for the
+equipment catalog's `"<int> <denomination>"` cost strings, `Add`/`Sub`
+(`ErrInsufficientFunds` rather than a negative result)/`CanAfford`, and a
+`Breakdown` (largest denomination first, remainder carried down) for display.
+Zero consumers yet — standalone, same shape as `character.AddInventoryItem`
+before `Trade` existed to call it. While verifying `ParseCost` against every
+real Cost string, found the design doc's own "no compounds anywhere" claim
+was wrong (`ammunition.Arrows50`/`Bolts50` were `"2 gp 5 sp"`) and normalized
+those two entries to `"25 sp"` (an exact, lossless single-denomination
+equivalent) rather than teaching `ParseCost` a compound grammar for two data
+points. Also found `weapons.UnarmedStrike` carries an empty `Cost` (correctly
+excluded by name, not by a blanket rule, from the "every cost parses" test).
+Next: `equipment.PriceOf`, the ~14 missing adventuring-gear catalog entries,
+then `character.Data.Wallet` (rpg-project#377 design.md §5).
 
 **rpg-project#369 — `session.Trade`, the first real vendor purchase (complete,
 2026-09-04).** A player who has already reached a placed `KindWorld` vendor

@@ -17,8 +17,12 @@ var StandardAmmunition = map[ID]*Ammunition{
 		Name:     "Arrows (50)",
 		Type:     TypeArrows,
 		Quantity: 50,
-		Cost:     "2 gp 5 sp",
-		Weight:   2.5,
+		// 2 gp 5 sp normalized to a single denomination (250 cp = 25 sp
+		// exactly) — every other Cost in this catalog is one denomination
+		// only, and currency.ParseCost refuses a compound as a data defect
+		// rather than silently misparsing it.
+		Cost:   "25 sp",
+		Weight: 2.5,
 	},
 
 	// Crossbow bolt bundles
@@ -35,8 +39,10 @@ var StandardAmmunition = map[ID]*Ammunition{
 		Name:     "Crossbow bolts (50)",
 		Type:     TypeBolts,
 		Quantity: 50,
-		Cost:     "2 gp 5 sp",
-		Weight:   3.75,
+		// See Arrows50's comment: 2 gp 5 sp normalized to a single
+		// denomination (250 cp = 25 sp exactly).
+		Cost:   "25 sp",
+		Weight: 3.75,
 	},
 
 	// Blowgun needles
