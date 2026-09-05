@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -29,7 +30,8 @@ import (
 //
 // EVERYTHING IT INSTALLS IS DERIVED FROM WHAT THE INTERACTION ALREADY HOLDS.
 // The room is the canvas the composition compiled, the cast is the participants
-// attachAll loaded, and readiness is a function of the cast. Nothing here
+// attachAll loaded, the run is the composition itself as resolveOn reloaded it
+// from Input.World, and readiness is a function of the cast. Nothing here
 // reaches for a repository: a fact that needs one is a record the caller loads,
 // not a tenant of this function. A new tenant is a design decision, not a
 // pattern to follow — bring it to the design before writing it.
@@ -55,7 +57,7 @@ import (
 // reach one takes its context as `_`, so nothing is gated on that. It is still
 // the sharp edge nearest this function: a reader added to a typed handler would
 // fail closed and log nothing, which is rpg-toolkit#1251 said back to us.
-func installTruth(ctx context.Context, room spatial.Room, cast *Participants) context.Context {
+func installTruth(ctx context.Context, room spatial.Room, cast *Participants, run *encounter.Encounter) context.Context {
 	// INSTALL THE WORLD. One world, and it is installed every time.
 	//
 	// EVERY TIME is the half that bit. "Which room describes this interaction"
@@ -80,7 +82,15 @@ func installTruth(ctx context.Context, room spatial.Room, cast *Participants) co
 	// present is the defect; being always present is the fix, and
 	// TestNoCodePathProducesACastlessInteraction holds that structurally rather
 	// than by example.
-	ctx = gamectx.WithCast(ctx, &castView{cast: cast})
+	//
+	// The cast carries the run with it, because "who they are to each other"
+	// is the run's to answer: the encounter's graph folds the dungeon's
+	// factions and dispositions with the facts the run has learned, and the
+	// cast asks it rather than keeping a table of sides (rpg-project#375,
+	// design §4). The run is nil on the entries that have no world — the same
+	// entries that install no room — and there a side question is unknown,
+	// the absent value that says what the author meant.
+	ctx = gamectx.WithCast(ctx, &castView{cast: cast, run: run})
 
 	// The SIXTH registry in the family rpg-toolkit#1251 was about, installed
 	// zero times until it was wired here.

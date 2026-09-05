@@ -85,7 +85,7 @@ func longRestOn(
 
 	// The same truth door as every other resolution entry, with the honest
 	// answer for this record-only operation: a cast of one and no world.
-	ctx = installTruth(ctx, nil, cast)
+	ctx = installTruth(ctx, nil, cast, nil)
 
 	ch, ok := cast.Character(one.ID())
 	if !ok {

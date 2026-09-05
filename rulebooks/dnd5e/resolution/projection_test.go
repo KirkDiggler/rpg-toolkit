@@ -218,7 +218,7 @@ func (s *ProjectionTestSuite) TestTheProjectionInstallsNoWorld() {
 		characters: map[string]*character.Character{},
 		monsters:   map[string]*monster.Monster{},
 		order:      []string{},
-	})
+	}, nil)
 
 	room, ok := gamectx.Room(ctx)
 	s.Require().False(ok, "no world was installed, and the read says so")

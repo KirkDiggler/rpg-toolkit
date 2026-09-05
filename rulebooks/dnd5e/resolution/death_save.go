@@ -92,7 +92,7 @@ func deathSaveOn(
 
 	// The shared truth door, with the honest world answer for this record-only
 	// operation: no encounter exists, while the attached cast does.
-	ctx = installTruth(ctx, nil, cast)
+	ctx = installTruth(ctx, nil, cast, nil)
 
 	ch, ok := cast.Character(one.ID())
 	if !ok {
