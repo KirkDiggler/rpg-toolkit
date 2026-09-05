@@ -22,7 +22,9 @@ package encounter_test
 // where their events are noticed (§3.8), and the trust boundary at load.
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -780,6 +782,218 @@ func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 		s.Equal(encounter.ClockWorld, s.clockOf(enc, lone), "opposed to nobody, in no pair, in no fight")
 		s.Empty(s.beatsOfKind(enc, alice, "bubble-dissolved"))
 		s.Len(s.beatsOfKind(enc, alice, "stance"), 1)
+	})
+}
+
+// openWith is open() with the turn driver and the striker named — for the
+// scenes about what a driven monster does, which passDriver cannot say.
+func (s *HoldOutSuite) openWith(
+	field encounter.FieldInput, members []encounter.MemberInput,
+	driver encounter.TurnDriver, striker encounter.Striker, endings ...encounter.EndingInput,
+) *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: striker, Announcer: journalAnnouncer{j: s.heard},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+		Field:     field,
+		Members:   members,
+		Endings:   endings,
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// rosterReadingStriker is a striker that reads the roster before it swings —
+// what the session's own Striker does to build the cast it resolves against,
+// and the read that met a half-removed member on a player's Exit.
+type rosterReadingStriker struct {
+	inner encounter.Striker
+}
+
+func (r rosterReadingStriker) Strike(
+	ctx context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
+) error {
+	if _, err := enc.Members(); err != nil {
+		return fmt.Errorf("cast: %w", err)
+	}
+	return r.inner.Strike(ctx, enc, attacker, target, action)
+}
+
+// strikes is every strike the journal recorded — the striker's own trace,
+// before any Record it made.
+func (s *HoldOutSuite) strikes() []string {
+	var out []string
+	for _, e := range s.heard.entries {
+		if strings.HasPrefix(e, "strike:") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// yardAndHut is the two-room field the driven-turn scenes play on, open to
+// the sky so everyone sees everyone at first light: alice holds out in the
+// yard beside the letter, the chief starts in the hut, and his turn is
+// scripted to walk INTO the yard and then swing.
+//
+//	x: 0..5 yard | 6..11 hut     alice [4,1], scroll [3,1], chief [8,1]
+func (s *HoldOutSuite) yardAndHut() (encounter.FieldInput, []encounter.MemberInput) {
+	field := encounter.FieldInput{
+		Canvas:  openAir(),
+		Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 4), rectRegion("hut", 6, 0, 6, 4)},
+		Intel:   []encounter.IntelRecord{{ID: "letter", Reveals: encounter.RevealTargets{Fact: campFact}}},
+		Props: []encounter.PropInput{func() encounter.PropInput {
+			p := holdableProp("yard-scroll", "dnd5e:props:scroll", spatial.Position{X: 3, Y: 1})
+			p.Holds = []encounter.IntelID{"letter"}
+			return p
+		}()},
+		Factions: []encounter.FactionInput{{ID: campFaction, Mind: campChief}},
+		Dispositions: []encounter.DispositionInput{{
+			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
+			Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+		}},
+	}
+	members := []encounter.MemberInput{
+		{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 1}},
+		{
+			ID: campChief, Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 1}, Faction: campFaction,
+			SpeedFeet: 30,
+			Actions:   []encounter.ActionView{{Ref: testMeleeAction, Name: "Scimitar", RangeFeet: 5, Kind: "melee"}},
+		},
+	}
+	return field, members
+}
+
+// chiefChargesThenSwings is the chief's scripted turn: three cells west into
+// the yard, ending beside alice, then an attack on her.
+func chiefChargesThenSwings() *scriptedDriver {
+	return &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{cellAt(7, 1), cellAt(6, 1), cellAt(5, 1)}},
+		encounter.Attack{Target: "alice", Action: testMeleeAction},
+	}}
+}
+
+// TestADrivenTurnStopsWhenItsFightEndsUnderIt is the first defect from
+// Kirk's walk on the raider camp (2026-09-05): a driven turn is several
+// intents, and a MOVE can now end the fight it belongs to — the chief walks
+// into the yard, presence teaches him, the camp turns, the fight dissolves,
+// the hold-out ending closes the run — after which the driver's next intent,
+// a swing at alice, reached Record on a closed run and failed the caller's
+// EndTurn. Now the turn stops the moment its fight is gone.
+func (s *HoldOutSuite) TestADrivenTurnStopsWhenItsFightEndsUnderIt() {
+	field, members := s.yardAndHut()
+	turned := encounter.EndingInput{Key: "turned", Trigger: encounter.TriggerStance{
+		Between: [2]encounter.FactionID{campFaction, encounter.FactionParty}, Stance: encounter.StanceNeutral,
+	}}
+	enc := s.openWith(field, members, chiefChargesThenSwings(),
+		journalStriker{j: s.heard, inner: &scriptedStriker{kind: encounter.OutcomeStruck}}, withdrawn(), turned)
+
+	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, "alice"), "precondition: the fight formed at first light")
+	s.hold(enc, "alice", "yard-scroll")
+	s.Require().Equal(encounter.StanceHostile, s.stance(enc), "precondition: holding the letter in the yard teaches nobody in the hut")
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: "alice"})
+	s.Require().NoError(err, "the verb succeeds: %v", s.heard.entries)
+
+	s.Run("the chief walked in, learned, and never swung", func() {
+		s.Empty(s.strikes(), "no strike after the fight ended under the turn: %v", s.heard.entries)
+		s.Empty(s.beatsOfKind(enc, "alice", "struck"))
+		s.Equal(encounter.StanceNeutral, s.stance(enc))
+	})
+	s.Run("the story reads stance, fight ended by stance, ended", func() {
+		beats := s.beats(enc, "alice")
+		var stanceAt, dissolvedAt, endedAt = -1, -1, -1
+		for i, b := range beats {
+			switch b["beat"] {
+			case "stance":
+				stanceAt = i
+			case "bubble-dissolved":
+				dissolvedAt = i
+				s.Equal(string(encounter.DissolveByStance), b["cause"])
+			case "ended":
+				endedAt = i
+				s.Equal("turned", b["ending"])
+			}
+		}
+		s.Require().NotEqual(-1, stanceAt, "%v", beats)
+		s.Require().NotEqual(-1, dissolvedAt, "%v", beats)
+		s.Require().NotEqual(-1, endedAt, "%v", beats)
+		s.Less(stanceAt, dissolvedAt)
+		s.Less(dissolvedAt, endedAt)
+		status, err := enc.Status()
+		s.Require().NoError(err)
+		s.False(status.Open)
+	})
+}
+
+// TestADrivenTurnEndsCleanlyWhenTheFightDissolvesUnderIt is the same defect's
+// second face: with no ending bound the run stays open, and without the stop
+// the chief's swing LANDED on a run where he was opposed to nobody. Now the
+// turn ends on the world clock with no swing.
+func (s *HoldOutSuite) TestADrivenTurnEndsCleanlyWhenTheFightDissolvesUnderIt() {
+	field, members := s.yardAndHut()
+	enc := s.openWith(field, members, chiefChargesThenSwings(),
+		journalStriker{j: s.heard, inner: &scriptedStriker{kind: encounter.OutcomeStruck}}, withdrawn())
+	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, campChief), "precondition: the chief is in the fight")
+	s.hold(enc, "alice", "yard-scroll")
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: "alice"})
+	s.Require().NoError(err)
+
+	s.Empty(s.strikes(), "no strike on a fight that is gone: %v", s.heard.entries)
+	s.Empty(s.beatsOfKind(enc, "alice", "struck"))
+	s.Equal(encounter.StanceNeutral, s.stance(enc))
+	s.Equal(encounter.ClockWorld, s.clockOf(enc, campChief), "the chief's turn ended with his fight")
+	s.Equal(encounter.ClockWorld, s.clockOf(enc, "alice"))
+	s.Len(s.beatsOfKind(enc, "alice", "bubble-dissolved"), 1)
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.True(status.Open, "no ending was bound, so the run goes on")
+}
+
+// TestAnActivePlayerExitingMidFightLetsTheNextMonsterStrike is the second
+// defect from Kirk's walk, and pre-existing on main: Exit took the member
+// off the map, then left the clock — which drives the next monster, whose
+// strike reads the roster and met a member off the map and still on it
+// ("invalid encounter data" on a player's own Exit). The roster changes
+// before anything is driven now.
+func (s *HoldOutSuite) TestAnActivePlayerExitingMidFightLetsTheNextMonsterStrike() {
+	field := encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 6)}}
+	members := []encounter.MemberInput{
+		{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
+		{
+			ID: "beast", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1},
+			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Bite", RangeFeet: 5, Kind: "melee"}},
+		},
+		{ID: "carl", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
+	}
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{encounter.Attack{Target: "carl", Action: testMeleeAction}}}
+	enc := s.openWith(field, members, driver, rosterReadingStriker{
+		inner: journalStriker{j: s.heard, inner: &scriptedStriker{kind: encounter.OutcomeStruck}},
+	}, withdrawn())
+
+	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, clock.Kind, "precondition: the fight formed at first light")
+	s.Require().Equal(encounter.MemberID("alice"), clock.Active, "precondition: alice is active, the beast is next")
+
+	out, err := enc.Exit(&encounter.ExitInput{Member: "alice"})
+	s.Require().NoError(err, "the verb succeeds: %v", s.heard.entries)
+	s.Nil(out.Closed)
+
+	s.Run("the beast was driven and struck carl", func() {
+		s.Equal([]string{"strike:beast"}, s.strikes(), "%v", s.heard.entries)
+		struck := s.beatsOfKind(enc, "carl", "struck")
+		s.Require().Len(struck, 1)
+		s.Equal("beast", struck[0]["actor"])
+		s.Equal([]any{"carl"}, struck[0]["targets"])
+	})
+	s.Run("the roster is whole", func() {
+		roster, err := enc.Members()
+		s.Require().NoError(err)
+		s.Len(roster, 2)
+		s.Equal(encounter.ClockTurn, s.clockOf(enc, "carl"), "the fight goes on without alice")
 	})
 }
 

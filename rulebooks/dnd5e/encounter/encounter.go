@@ -2098,9 +2098,31 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit held_by: %w", err)
 	}
 
+	// The exit beat's audience, captured HERE, before the exiter is removed
+	// from e.members below: it is every member INCLUDING the exiter — they
+	// witness their own departure (and can re-read it via Story).
+	// audienceFor reads live membership, so calling it after the delete
+	// would leave the exiter out (tableBeat, no subjects — see its doc).
+	audience := e.audienceFor(tableBeat)
+
 	// Remove from the map
 	if err = e.canvas.RemoveEntity(string(in.Member)); err != nil {
 		return nil, fmt.Errorf("exit remove entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	// OFF THE ROSTER BEFORE OFF THE CLOCK. Leaving a bubble can hand the
+	// active slot to a monster, and that monster is driven at once
+	// (leaveAnyClock → driveIfStillRunning): its strike reads the roster,
+	// and a roster read mid-drive must never meet a member who is off the
+	// map and still on the list — placementOf refuses that as ErrNoField,
+	// which surfaced as "invalid encounter data" on a player's own Exit
+	// (Kirk's walk on the raider camp, 2026-09-05; pre-existing for any
+	// active player leaving a fight with a striking monster next). The
+	// roster changing is the graph's declaration changing too (world.go).
+	delete(e.members, in.Member)
+	delete(e.deciders, in.Member)
+	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
 	}
 
 	// Remove from whichever clock holds them — the world clock normally, a
@@ -2110,22 +2132,6 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit member %q clock: %w", in.Member, cerr)
 	}
 	intelDeltas := mergeIntelDeltas(nil, clockDeltas)
-
-	// The exit beat's audience, captured HERE, before the exiter is removed
-	// from e.members below: it is every member INCLUDING the exiter — they
-	// witness their own departure (and can re-read it via Story).
-	// audienceFor reads live membership, so calling it after the delete
-	// would leave the exiter out (tableBeat, no subjects — see its doc).
-	audience := e.audienceFor(tableBeat)
-
-	// Remove from member set (and deciders if present)
-	delete(e.members, in.Member)
-	delete(e.deciders, in.Member)
-
-	// The roster changed, so the graph's declaration did (world.go).
-	if err = e.buildWorld(); err != nil {
-		return nil, fmt.Errorf("exit: %w", err)
-	}
 
 	// Get remaining member IDs for story and refresh
 	memberIDs := make([]MemberID, 0, len(e.members))

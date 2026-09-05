@@ -222,6 +222,13 @@ func (e *Encounter) noticeRounds(ms []clock.Milestone) error {
 // A mind that is Down can no longer learn (design §3.9 — a consequence, not a
 // loss), so standing is asked, once, only when there is a candidate to ask
 // about: a sweep with nobody carrying anything consults nothing.
+//
+// PRESENCE IS SYMMETRIC BY CONSTRUCTION (R3: the same region, nothing about
+// who arrived). The mind walking INTO the carrier's region teaches him
+// exactly as the carrier walking in does — a chief who charges into the
+// yard after the letter's holder learns what the letter says and stands
+// down. Kirk saw this on the raider camp (2026-09-05); it is the rule's
+// own consequence, flagged as behaviour, not changed here.
 func (e *Encounter) sweepPresence(at uint64) error {
 	var down map[MemberID]bool
 	for _, holder := range e.rosterIDs() {

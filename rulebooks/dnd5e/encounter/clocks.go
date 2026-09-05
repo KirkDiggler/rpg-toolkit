@@ -486,6 +486,29 @@ func (e *Encounter) driveOneMonsterTurn(
 		if done {
 			break
 		}
+
+		// THE FIGHT THIS TURN BELONGS TO CAN END UNDER IT MID-INTENT, and
+		// not only on its last one. A Strike's killing blow always could
+		// (ByDefeat); since rpg-project#375 a MOVE can too — the chief steps
+		// into the yard where the letter's carrier stands, presence teaches
+		// him, the stance settles, and the fight dissolves (ByStance) or the
+		// run closes on a stance ending. The check below the loop knew this
+		// for the last intent; a driver with intents left would otherwise be
+		// asked again and swing at a member it is opposed to nobody with, on
+		// a fight that no longer exists — or on a closed run, which Record
+		// refuses and turns a caller's EndTurn into ErrClosed (Kirk's walk on
+		// the raider camp, 2026-09-05). No more intents once the fight the
+		// turn belongs to is gone.
+		if e.outcome != nil {
+			break
+		}
+		stillIn, cerr := bubble.Contains(&clock.ContainsInput{ID: active})
+		if cerr != nil {
+			return 0, false, nil, fmt.Errorf("contains: %w", cerr)
+		}
+		if !stillIn {
+			break
+		}
 	}
 
 	// A step just executed (almost always a Strike) can have ended the fight
