@@ -130,8 +130,8 @@ type DungeonFacts struct {
 // FactionFacts is what a scenario may ask about one faction.
 type FactionFacts struct {
 	// CanLearn reports whether the faction has a mind to come to know a
-	// fact through: a declared one, or a faction of one, whose sole member
-	// is its mind by rule. `party` never can.
+	// fact through — one its compiled declaration names. `party` and
+	// `monsters` never can.
 	CanLearn bool
 
 	// UntilFact is, per other faction, the fact whose knowledge ends this
@@ -144,13 +144,10 @@ type FactionFacts struct {
 // dungeon's field. The ONE place a Compiled is narrowed to what a scenario
 // sees, so no scenario can reach past it.
 //
-// memberFactions is the faction of each MONSTER placement, in any order —
-// the authored word, or "" for one the author put nowhere, which is
-// `monsters` (rpg-project#375). The field carries no placements, and the
-// faction-of-one rule needs to count them; a caller with none to report
-// leaves the list out and every faction is judged by its declared mind
-// alone.
-func FactsFrom(field encounter.FieldInput, memberFactions ...encounter.FactionID) *DungeonFacts {
+// A faction can learn when its compiled declaration names a mind — the
+// author's, or the one the authoring compiler declared for a faction of one
+// (rpg-project#375). The two reserved factions never have one.
+func FactsFrom(field encounter.FieldInput) *DungeonFacts {
 	facts := &DungeonFacts{
 		Props:    make(map[encounter.PropID]bool, len(field.Props)),
 		Exits:    make(map[encounter.ExitID]bool, len(field.Exits)),
@@ -158,13 +155,6 @@ func FactsFrom(field encounter.FieldInput, memberFactions ...encounter.FactionID
 		Reveals:  make(map[encounter.FactID]bool),
 	}
 
-	members := make(map[encounter.FactionID]int, len(memberFactions))
-	for _, f := range memberFactions {
-		if f == "" {
-			f = encounter.FactionMonsters
-		}
-		members[f]++
-	}
 	declaredMind := make(map[encounter.FactionID]bool, len(field.Factions))
 	for _, fa := range field.Factions {
 		declaredMind[fa.ID] = fa.Mind != ""
@@ -174,7 +164,7 @@ func FactsFrom(field encounter.FieldInput, memberFactions ...encounter.FactionID
 			return
 		}
 		facts.Factions[id] = FactionFacts{
-			CanLearn:  id != encounter.FactionParty && (declaredMind[id] || members[id] == 1),
+			CanLearn:  declaredMind[id],
 			UntilFact: make(map[encounter.FactionID]encounter.FactID),
 		}
 	}

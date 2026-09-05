@@ -432,7 +432,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 		// ending and an until refuse the same shapes in the same words.
 		switch ei.Trigger.(type) {
 		case TriggerRound, TriggerFact, TriggerStance:
-			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, nil, ErrNoEnding); err != nil {
+			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}
 		}

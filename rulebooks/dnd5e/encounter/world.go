@@ -46,7 +46,7 @@ import (
 // [EncounterData.World] and [EncounterData.Holdings] exactly as before, split
 // by kind at the storage boundary and replayed into the one log at load. A
 // pair's stance is therefore derived on every question from the declaration
-// plus the facts: nothing anywhere stores "the goblins turned".
+// plus the facts: nothing anywhere stores "the raiders turned".
 //
 // # Whose fold
 //
@@ -235,20 +235,19 @@ func (e *Encounter) buildWorld() error {
 		w.minds[id] = e.field.mindOf(id, byFaction[id])
 	}
 
-	// Knowledge: one Raise per fact id the run can mention, flagging the
-	// learner. Declared for every fact, waited on or not, so knowsFact is
-	// one fold whatever the fact is for.
-	for _, id := range e.mintedFactIDs() {
-		cfg.Reducers = append(cfg.Reducers, graph.Raise{On: factKnownKind(id), Flag: knowsFlag(id)})
-	}
-
-	// The flip: per disposition waiting on a fact, per mind of its pair, a
-	// Settle — while that mind knows, the pair holds no stance edge at all,
+	// The flip: per fact a disposition waits on, a Raise flagging the
+	// learner; per such disposition, per mind of its pair, a Settle — while
+	// that mind carries the flag, the pair holds no stance edge at all,
 	// which is what neutral means (R2).
+	raised := make(map[FactID]bool)
 	for _, d := range e.field.dispositions {
 		fact, ok := d.Until.(TriggerFact)
 		if !ok {
 			continue
+		}
+		if !raised[fact.Fact] {
+			raised[fact.Fact] = true
+			cfg.Reducers = append(cfg.Reducers, graph.Raise{On: factKnownKind(fact.Fact), Flag: knowsFlag(fact.Fact)})
 		}
 		pair := pairOf(d.Between[0], d.Between[1])
 		for _, id := range []FactionID{pair.a, pair.b} {
@@ -275,21 +274,21 @@ func (e *Encounter) buildWorld() error {
 	return nil
 }
 
-// mindOf is a faction's mind, given who is in it right now: the declared
-// mind while it is one of them, else the faction's sole member, else nobody.
-// A declared mind that left the run is nobody — the faction cannot learn
-// (design §3.9; succession is a shelf).
+// mindOf is a faction's mind, given who is in it right now: the DECLARED
+// mind while it is one of them, else nobody. A faction of one has its member
+// declared as its mind by the authoring compiler, never inferred here from
+// whoever happens to be standing in the faction — so a declared mind that
+// fell or left leaves the faction unable to learn (design §3.9, R7:
+// accidental succession is still succession, and succession is a shelf).
 func (f *field) mindOf(id FactionID, members []MemberID) MemberID {
-	if i, ok := f.factionIndex[id]; ok && f.factions[i].Mind != "" {
-		for _, m := range members {
-			if m == f.factions[i].Mind {
-				return m
-			}
-		}
+	i, ok := f.factionIndex[id]
+	if !ok || f.factions[i].Mind == "" {
 		return ""
 	}
-	if len(members) == 1 {
-		return members[0]
+	for _, m := range members {
+		if m == f.factions[i].Mind {
+			return m
+		}
 	}
 	return ""
 }
@@ -308,23 +307,8 @@ func (f *field) factionIDs() []FactionID {
 }
 
 // mintedFactIDs is every fact id this run can mention, sorted: what a record
-// reveals, what a disposition waits for, what an ending waits for. The kinds
-// the trust boundary accepts, and the reducers the graph declares.
-func (e *Encounter) mintedFactIDs() []FactID {
-	return mintedFactIDs(e.field, e.endingTriggers())
-}
-
-// endingTriggers is the declared endings' triggers, in declaration order.
-func (e *Encounter) endingTriggers() []Trigger {
-	out := make([]Trigger, 0, len(e.endings))
-	for _, de := range e.endings {
-		out = append(out, de.trigger)
-	}
-	return out
-}
-
-// mintedFactIDs is [Encounter.mintedFactIDs] over a field and a trigger list
-// — the form Load can ask before anything is built.
+// reveals, what a disposition waits for, what an ending waits for — the
+// `known:fact` kinds the trust boundary accepts at load.
 func mintedFactIDs(f *field, endings []Trigger) []FactID {
 	seen := make(map[FactID]bool)
 	for _, rec := range f.intel {
@@ -367,11 +351,19 @@ func (w *encounterWorld) knowsRegion(member MemberID, id RegionID) bool {
 	return w.knowledgeOf(member).Visible(regionEntityID(id))
 }
 
-// knowsFact reports whether a member's own fold carries the fact — the
-// `knows:<fact>` flag their own `known:fact:<fact>` raised (design §3.3: a
-// fold; no reader keeps a copy).
+// knowsFact is THE ONE FOLD FOR KNOWLEDGE OF A FACT (design §3.3; no reader
+// keeps a copy): a member knows a fact when the journal holds a
+// `known:fact:<id>` fact whose SUBJECT is that member — the same shape the
+// graph's Raise flags for a Settle, read directly so knowledge does not
+// depend on which facts a disposition happens to wait for.
 func (w *encounterWorld) knowsFact(member MemberID, id FactID) bool {
-	return w.knowledgeOf(member).Flagged(knowsFlag(id), journal.EntityID(member))
+	kind := factKnownKind(id)
+	for _, f := range w.log.All() {
+		if f.Kind == kind && f.Subject == journal.EntityID(member) {
+			return true
+		}
+	}
+	return false
 }
 
 // learnDoor writes the fact that pierces one door for one member alone.

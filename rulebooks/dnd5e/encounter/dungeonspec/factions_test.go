@@ -5,10 +5,10 @@ package dungeonspec_test
 
 // factions_test.go is the hold-out authoring slice, step A (rpg-project#375,
 // design §2): factions, minds, dispositions, the predicate grammar and the
-// fact a record reveals — what the goblin camp compiles to, and every way
+// fact a record reveals — what the raider camp compiles to, and every way
 // the file can get one of those lines wrong.
 //
-// Each refusal scene starts from the goblin camp, changes ONE line, and
+// Each refusal scene starts from the raider camp, changes ONE line, and
 // asserts the author is told about that line in words a form-filler can act
 // on — heirloom_test.go's discipline, one slice on.
 
@@ -23,12 +23,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
-const goblinCampPath = "testdata/reference-goblin-camp.yaml"
+const raiderCampPath = "testdata/reference-raider-camp.yaml"
 
 // campSource is the fixture's bytes, read once per scene.
 func campSource(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile(goblinCampPath)
+	raw, err := os.ReadFile(raiderCampPath)
 	require.NoError(t, err)
 	return string(raw)
 }
@@ -42,78 +42,79 @@ func edited(t *testing.T, old, replacement string) string {
 	return strings.Replace(source, old, replacement, 1)
 }
 
-// campLine constants: the lines the scenes below edit, spelled once.
+// The lines the scenes below edit, spelled once.
 const (
-	chiefLine   = `  - { id: chief,  ref: "dnd5e:monsters:goblin-boss", at: [12,4], faction: goblins }`
-	scoutLine   = `  - { id: scout,  ref: "dnd5e:monsters:goblin",      at: [4,2],  faction: goblins }`
-	factionLine = `  - { id: goblins, mind: chief }`
-	dispoLine   = `  - { between: [goblins, party], stance: hostile, until: { fact: saved-wiseman } }`
+	chiefLine   = `  - { id: chief,  ref: "dnd5e:monsters:skeleton-captain", at: [12,4], faction: raiders }`
+	scoutLine   = `  - { id: scout,  ref: "dnd5e:monsters:skeleton",         at: [4,2],  faction: raiders }`
+	factionLine = `  - { id: raiders, mind: chief }`
+	dispoLine   = `  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }`
 	intelLine   = `  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }`
 	letterHolds = `      holds: [wisemans-letter] }`
+	notBuilt    = "in this version a disposition turns only on a fact"
 )
 
-// TestTheGoblinCampCompiles is the fixture's own gate: the camp is a legal
+// TestTheRaiderCampCompiles is the fixture's own gate: the camp is a legal
 // dungeon, and it carries exactly what design §1 says it carries.
-func TestTheGoblinCampCompiles(t *testing.T) {
+func TestTheRaiderCampCompiles(t *testing.T) {
 	compiled, err := dungeonspec.Load([]byte(campSource(t)))
 	require.NoError(t, err)
 
 	t.Run("one faction, and the chief is its mind", func(t *testing.T) {
-		require.Equal(t, []encounter.FactionInput{{ID: "goblins", Mind: "chief"}}, compiled.Factions)
+		require.Equal(t, []encounter.FactionInput{{ID: "raiders", Mind: "chief"}}, compiled.Factions)
 		require.Equal(t, compiled.Factions, compiled.Field.Factions, "the field carries the same list")
 	})
 
 	t.Run("hostile to the party until the chief knows the fact", func(t *testing.T) {
 		require.Equal(t, []encounter.DispositionInput{{
-			Between: [2]encounter.FactionID{"goblins", "party"},
+			Between: [2]encounter.FactionID{"raiders", "party"},
 			Stance:  encounter.StanceHostile,
 			Until:   encounter.TriggerFact{Fact: "saved-wiseman"},
 		}}, compiled.Dispositions)
 		require.Equal(t, compiled.Dispositions, compiled.Field.Dispositions)
 	})
 
-	t.Run("both goblins are placed in the faction, by the author's word", func(t *testing.T) {
+	t.Run("both skeletons are placed in the faction, by the author's word", func(t *testing.T) {
 		require.Len(t, compiled.Monsters, 2)
 		for _, m := range compiled.Monsters {
-			require.Equal(t, "goblins", m.Faction, m.ID)
+			require.Equal(t, "raiders", m.Faction, m.ID)
 		}
 		require.Equal(t, "chief", compiled.Monsters[0].ID)
+		require.Equal(t, "dnd5e:monsters:skeleton-captain", compiled.Monsters[0].Ref)
 		require.Equal(t, "hut", compiled.Monsters[0].Region)
 		require.Equal(t, "scout", compiled.Monsters[1].ID)
+		require.Equal(t, "dnd5e:monsters:skeleton", compiled.Monsters[1].Ref)
 		require.Equal(t, "yard", compiled.Monsters[1].Region)
 	})
 
 	t.Run("the letter reveals the fact, and its id is compiled like a door's", func(t *testing.T) {
 		require.Equal(t, []encounter.IntelRecord{{
-			ID: "reference-goblin-camp/wisemans-letter", Reveals: encounter.RevealTargets{Fact: "saved-wiseman"},
+			ID: "reference-raider-camp/wisemans-letter", Reveals: encounter.RevealTargets{Fact: "saved-wiseman"},
 		}}, compiled.Intel)
-		var letter encounter.PropInput
-		for _, p := range compiled.Field.Props {
-			if p.ID == "letter" {
-				letter = p
-			}
-		}
+		letter := propByID(compiled.Field, "letter")
 		require.True(t, letter.Holdable, "the letter can be picked up")
-		require.Equal(t, []encounter.IntelID{"reference-goblin-camp/wisemans-letter"}, letter.Holds)
+		require.Equal(t, []encounter.IntelID{"reference-raider-camp/wisemans-letter"}, letter.Holds)
 	})
 
 	t.Run("the front gate stands where the letter lies, and the party faces the yard", func(t *testing.T) {
 		require.Len(t, compiled.Field.Exits, 1)
 		require.Equal(t, "front-gate", compiled.Field.Exits[0].ID)
-		var letterAt encounter.PropInput
-		for _, p := range compiled.Field.Props {
-			if p.ID == "letter" {
-				letterAt = p
-			}
-		}
-		require.Equal(t, letterAt.At, compiled.Field.Exits[0].At)
+		require.Equal(t, propByID(compiled.Field, "letter").At, compiled.Field.Exits[0].At)
 		require.Equal(t, "e", compiled.StartFacing)
 		require.Equal(t, "gate", compiled.PartyStart[0].Region)
 	})
 
 	t.Run("the scenario binds the faction", func(t *testing.T) {
-		require.Equal(t, map[string]map[string]string{"hold-out": {"convince": "goblins"}}, compiled.Scenarios)
+		require.Equal(t, map[string]map[string]string{"hold-out": {"convince": "raiders"}}, compiled.Scenarios)
 	})
+}
+
+func propByID(field encounter.FieldInput, id encounter.PropID) encounter.PropInput {
+	for _, p := range field.Props {
+		if p.ID == id {
+			return p
+		}
+	}
+	return encounter.PropInput{}
 }
 
 // TestTheCampRefusesEachWrongLine is design §2's refusal list, one scene per
@@ -125,32 +126,32 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 	}{
 		{
 			name: "an unknown faction on a placement",
-			old:  scoutLine, replacement: strings.Replace(scoutLine, "faction: goblins", "faction: kobolds", 1),
+			old:  scoutLine, replacement: strings.Replace(scoutLine, "faction: raiders", "faction: kobolds", 1),
 			want: []string{"place[1].faction", "no faction in this dungeon has that id"},
 		},
 		{
 			name: "party on a placement",
-			old:  scoutLine, replacement: strings.Replace(scoutLine, "faction: goblins", "faction: party", 1),
+			old:  scoutLine, replacement: strings.Replace(scoutLine, "faction: raiders", "faction: party", 1),
 			want: []string{"place[1].faction", "players' side"},
 		},
 		{
 			name: "a faction on a prop",
-			old:  letterHolds, replacement: `      holds: [wisemans-letter], faction: goblins }`,
+			old:  letterHolds, replacement: `      holds: [wisemans-letter], faction: raiders }`,
 			want: []string{"place[2].faction", "is not a monster"},
 		},
 		{
 			name: "a mind outside its faction",
-			old:  chiefLine, replacement: strings.Replace(chiefLine, "faction: goblins", "faction: monsters", 1),
+			old:  chiefLine, replacement: strings.Replace(chiefLine, "faction: raiders", "faction: monsters", 1),
 			want: []string{"factions[0].mind", "in its own faction"},
 		},
 		{
 			name: "a mind that is a prop",
-			old:  factionLine, replacement: `  - { id: goblins, mind: letter }`,
+			old:  factionLine, replacement: `  - { id: raiders, mind: letter }`,
 			want: []string{"factions[0].mind", "is a prop"},
 		},
 		{
 			name: "a mind that names nothing",
-			old:  factionLine, replacement: `  - { id: goblins, mind: nobody }`,
+			old:  factionLine, replacement: `  - { id: raiders, mind: nobody }`,
 			want: []string{"factions[0].mind", "no placement in this dungeon has that id"},
 		},
 		{
@@ -159,13 +160,18 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			want: []string{"factions[1].id", "never declared"},
 		},
 		{
+			name: "monsters declared",
+			old:  factionLine, replacement: factionLine + "\n  - { id: monsters }",
+			want: []string{"factions[1].id", "never declared"},
+		},
+		{
 			name: "a faction declared twice",
-			old:  factionLine, replacement: factionLine + "\n  - { id: goblins }",
+			old:  factionLine, replacement: factionLine + "\n  - { id: raiders }",
 			want: []string{"factions[1].id", "already declared at factions[0]"},
 		},
 		{
 			name: "two dispositions for one pair, in either order",
-			old:  dispoLine, replacement: dispoLine + "\n  - { between: [party, goblins], stance: neutral }",
+			old:  dispoLine, replacement: dispoLine + "\n  - { between: [party, raiders], stance: neutral }",
 			want: []string{"dispositions[1].between", "already have a disposition at dispositions[0]"},
 		},
 		{
@@ -175,13 +181,13 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 		},
 		{
 			name: "an unknown faction in a disposition",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "[goblins, party]", "[kobolds, party]", 1),
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "[raiders, party]", "[kobolds, party]", 1),
 			want: []string{"dispositions[0].between[0]", "not a faction in this dungeon"},
 		},
 		{
 			name: "a disposition between a faction and itself",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "[goblins, party]", "[goblins, goblins]", 1),
-			want: []string{"dispositions[0].between", "names \"goblins\" twice"},
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "[raiders, party]", "[raiders, raiders]", 1),
+			want: []string{"dispositions[0].between", "names \"raiders\" twice"},
 		},
 		{
 			name: "a stance outside the closed set",
@@ -189,23 +195,24 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			want: []string{"dispositions[0].stance", "not a stance"},
 		},
 		{
-			name: "an unknown placement in down",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ down: nobody }", 1),
-			want: []string{"dispositions[0].until.down", "not a placement in this dungeon"},
+			name: "an until on a fall is not built yet",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ down: chief }", 1),
+			want: []string{"dispositions[0].until", notBuilt},
 		},
 		{
-			name: "a prop in down",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ down: letter }", 1),
-			want: []string{"dispositions[0].until.down", "only a monster can be down"},
+			name: "an until on a round is not built yet",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ round: 6 }", 1),
+			want: []string{"dispositions[0].until", notBuilt},
 		},
 		{
-			name: "a round that never starts",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ round: 0 }", 1),
-			want: []string{"dispositions[0].until.round", "a round starts at 1"},
+			name: "an until on another stance is not built yet",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }",
+				"{ stance: { between: [monsters, party], is: neutral } }", 1),
+			want: []string{"dispositions[0].until", notBuilt},
 		},
 		{
 			name: "a faction of many waiting for a fact with no mind",
-			old:  factionLine, replacement: `  - { id: goblins }`,
+			old:  factionLine, replacement: `  - { id: raiders }`,
 			want: []string{"dispositions[0].until", "name a mind, or the faction cannot learn"},
 		},
 		{
@@ -218,31 +225,6 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			old:  intelLine, replacement: `  - { id: wisemans-letter, reveals: {} }`,
 			want: []string{"intel[0].reveals", "does not say what it reveals"},
 		},
-		{
-			name: "a stance a pair can never reach",
-			old:  dispoLine, replacement: dispoLine +
-				"\n  - { between: [monsters, party], stance: hostile, until: { stance: { between: [goblins, party], is: allied } } }",
-			want: []string{"dispositions[1].until.stance", "can never be allied"},
-		},
-		{
-			name: "a stance a pair holds from the start",
-			old:  dispoLine, replacement: dispoLine +
-				"\n  - { between: [monsters, party], stance: hostile, until: { stance: { between: [goblins, party], is: hostile } } }",
-			want: []string{"dispositions[1].until.stance", "from the start"},
-		},
-		{
-			name: "a disposition waiting on its own stance",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }",
-				"{ stance: { between: [party, goblins], is: neutral } }", 1),
-			want: []string{"dispositions[0].until.stance", "its own stance"},
-		},
-		{
-			name: "dispositions waiting on each other in a ring",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }",
-				"{ stance: { between: [monsters, party], is: neutral } }", 1) +
-				"\n  - { between: [monsters, party], stance: hostile, until: { stance: { between: [goblins, party], is: neutral } } }",
-			want: []string{"dispositions[0].until.stance", "in a ring"},
-		},
 	}
 	for _, sc := range scenes {
 		t.Run(sc.name, func(t *testing.T) {
@@ -254,23 +236,21 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 // TestTheCampAllowsWhatTheDesignAllows is the other half of §2: the lines
 // that look like refusals and are not.
 func TestTheCampAllowsWhatTheDesignAllows(t *testing.T) {
-	t.Run("a faction of one needs no mind — its member is the mind", func(t *testing.T) {
-		source := edited(t, factionLine, `  - { id: goblins }`)
-		source = strings.Replace(source, scoutLine, strings.Replace(scoutLine, "faction: goblins", "faction: monsters", 1), 1)
+	t.Run("a faction of one needs no mind — the compiler declares its member", func(t *testing.T) {
+		source := edited(t, factionLine, `  - { id: raiders }`)
+		source = strings.Replace(source, scoutLine, strings.Replace(scoutLine, "faction: raiders", "faction: monsters", 1), 1)
 		require.Empty(t, defectsIn(t, source))
+		compiled, err := dungeonspec.Load([]byte(source))
+		require.NoError(t, err)
+		require.Equal(t, []encounter.FactionInput{{ID: "raiders", Mind: "chief"}}, compiled.Factions,
+			"the singleton default is declared at compile, never inferred by the run")
 	})
 	t.Run("an until fact no record reveals — the dungeon allows, the scenario refuses", func(t *testing.T) {
 		source := edited(t, intelLine, `  - { id: wisemans-letter, reveals: { door: gate-yard } }`)
 		require.Empty(t, defectsIn(t, source))
 	})
-	t.Run("monsters may be declared, which is how the unauthored side gets a mind", func(t *testing.T) {
-		source := edited(t, factionLine, factionLine+"\n  - { id: monsters, mind: scout }")
-		source = strings.Replace(source, scoutLine, strings.Replace(scoutLine, "faction: goblins", "faction: monsters", 1), 1)
-		require.Empty(t, defectsIn(t, source))
-	})
-	t.Run("a stance predicate on a pair that can reach it", func(t *testing.T) {
-		source := edited(t, dispoLine, dispoLine+
-			"\n  - { between: [monsters, party], stance: hostile, until: { stance: { between: [goblins, party], is: neutral } } }")
+	t.Run("monsters and party may be named in a disposition", func(t *testing.T) {
+		source := edited(t, dispoLine, dispoLine+"\n  - { between: [monsters, party], stance: neutral }")
 		require.Empty(t, defectsIn(t, source))
 	})
 	t.Run("a scenario may bind a faction", func(t *testing.T) {
@@ -289,9 +269,9 @@ func TestThePredicateDecodesStrictly(t *testing.T) {
 		{"an empty form", "{ fact: }", "`fact` says nothing"},
 		{"an unknown key", "{ facts: saved-wiseman }", "field facts not found in type dungeonspec.PredicateSpec"},
 		{"is outside the stance form", "{ fact: saved-wiseman, is: neutral }", "field is not found"},
-		{"a stance with no is", "{ stance: { between: [goblins, party] } }", "does not say which stance"},
+		{"a stance with no is", "{ stance: { between: [raiders, party] } }", "does not say which stance"},
 		{"a stance with no between", "{ stance: { is: neutral } }", "does not say which pair"},
-		{"a stance with an unknown key", "{ stance: { between: [goblins, party], is: neutral, was: hostile } }",
+		{"a stance with an unknown key", "{ stance: { between: [raiders, party], is: neutral, was: hostile } }",
 			"field was not found in type dungeonspec.StancePredicateSpec"},
 		{"a scalar", "round", "a predicate is exactly one of"},
 	}
@@ -304,4 +284,21 @@ func TestThePredicateDecodesStrictly(t *testing.T) {
 			require.Contains(t, err.Error(), sc.want)
 		})
 	}
+}
+
+// TestThePredicateFormsAreCheckedAtTheirPath is the per-form check the
+// grammar keeps for the consumers step B adds (arrives, endings): a round is
+// counted from 1, a fall names a monster placement. Reached through the
+// validator directly, since no step-A field accepts these forms on an until.
+func TestThePredicateFormsAreCheckedAtTheirPath(t *testing.T) {
+	zero := 0
+	t.Run("round", func(t *testing.T) {
+		p := &dungeonspec.PredicateSpec{Round: &zero}
+		require.Equal(t, "round", p.Form())
+		require.Equal(t, "{ round: 0 }", p.String())
+	})
+	t.Run("stance renders as the one nested key", func(t *testing.T) {
+		p := &dungeonspec.PredicateSpec{Stance: &dungeonspec.StancePredicateSpec{Between: [2]string{"raiders", "party"}, Is: "neutral"}}
+		require.Equal(t, "{ stance: { between: [raiders, party], is: neutral } }", p.String())
+	})
 }

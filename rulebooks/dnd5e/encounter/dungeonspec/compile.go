@@ -267,16 +267,46 @@ func intelOf(spec *Spec) []encounter.IntelRecord {
 	return out
 }
 
-// factionsOf carries the authored factions through verbatim (rpg-project#375):
-// the id as the author wrote it, and the mind as the PLACEMENT id the author
-// wrote — a member id at the composition's seam, which is what a host that
-// spawns the placement under that id makes it. Nil when none.
+// factionsOf carries the authored factions through (rpg-project#375): the id
+// as the author wrote it, and the mind as the PLACEMENT id — a member id at
+// the composition's seam, which is what a host that spawns the placement
+// under that id makes it. Nil when none.
+//
+// THE SINGLETON DEFAULT IS DECLARED HERE. A faction of one has its member as
+// its mind (design §2), and it is the COMPILER that says so, once, at
+// declaration: the run never infers a mind from whoever happens to be
+// standing in a faction, so a declared mind that falls or leaves is a
+// faction that cannot learn (R7 — accidental succession is still
+// succession). See [singletonMind].
 func factionsOf(spec *Spec) []encounter.FactionInput {
 	var out []encounter.FactionInput
 	for _, fa := range spec.Factions {
-		out = append(out, encounter.FactionInput{ID: fa.ID, Mind: encounter.MemberID(fa.Mind)})
+		mind := fa.Mind
+		if mind == "" {
+			mind = singletonMind(spec, fa.ID)
+		}
+		out = append(out, encounter.FactionInput{ID: fa.ID, Mind: encounter.MemberID(mind)})
 	}
 	return out
+}
+
+// singletonMind is the id of a faction's one monster placement, or "" when
+// the faction has none, several, or one with no id to name.
+func singletonMind(spec *Spec, faction string) string {
+	var only *PlaceSpec
+	n := 0
+	for i := range spec.Place {
+		pl := &spec.Place[i]
+		if kind, _ := refKind(pl.Ref); kind != typeMonsters || placementFaction(*pl) != faction {
+			continue
+		}
+		only = pl
+		n++
+	}
+	if n != 1 {
+		return ""
+	}
+	return only.ID
 }
 
 // dispositionsOf carries the authored dispositions through, each until

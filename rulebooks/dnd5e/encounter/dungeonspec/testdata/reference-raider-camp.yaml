@@ -1,29 +1,30 @@
-# The goblin camp (rpg-project#375, the hold-out design §1) — the fixture the
+# The raider camp (rpg-project#375, the hold-out design §1) — the fixture the
 # hold-out scenario is authored against, STEP A: sides and knowledge.
 #
 # A small camp in three rooms, west to east:
 #
 #   - the GATE, where the party comes in facing the yard, where the front
 #     gate exit stands, and where the Wiseman's letter lies on the ground;
-#   - the YARD, with a goblin scout in it;
-#   - the HUT, with the chief in it.
+#   - the YARD, with a skeleton scout in it;
+#   - the HUT, with the skeleton captain — the chief — in it.
 #
-# The camp is one faction, `goblins`, and the chief is its MIND: the faction
-# knows what its mind knows (R3). The goblins are hostile to the party UNTIL
+# The camp is one faction, `raiders`, and the chief is its MIND: the faction
+# knows what its mind knows (R3). The raiders are hostile to the party UNTIL
 # the chief comes to know `saved-wiseman` — the fact the letter reveals. Carry
 # the letter into the hut and the camp turns; the scout reading it flips
 # nothing, because a scout is not the camp's mind.
 #
-# Step B adds `arrives` to the letter (it appears at round 6) and the three
-# reinforcements at the gate when the chief falls. Nothing else in this file
-# changes then; the hold-out is already authored.
+# Step B adds `arrives` to the letter (it appears at round 6) and three
+# zombie reinforcements at the gate when the chief falls. Nothing else in this
+# file changes then; the hold-out is already authored.
 #
-# The refs are the design's own: a goblin-boss for the chief. The camp is
-# dressed as a crypt because that is the one shell the client draws today —
-# an archetype is presentation and never a mechanic.
+# The raiders are undead because those are the stat blocks and models the
+# game has (Kirk: "make do with skeles, zombies and the skele captain for the
+# leader"); the camp is dressed as a crypt because that is the one shell the
+# client draws today — an archetype is presentation and never a mechanic.
 version: 2
-key: reference-goblin-camp
-name: The Goblin Camp
+key: reference-raider-camp
+name: The Raider Camp
 orientation: pointy
 void: opaque
 
@@ -90,11 +91,11 @@ doors:
 
 # The camp is one faction, and the chief is its mind.
 factions:
-  - { id: goblins, mind: chief }
+  - { id: raiders, mind: chief }
 
 # Hostile to the party until the chief knows the party saved the Wiseman.
 dispositions:
-  - { between: [goblins, party], stance: hostile, until: { fact: saved-wiseman } }
+  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
 
 # The letter says so. A fact is a word this record and the disposition agree
 # on; nothing declares it.
@@ -102,8 +103,8 @@ intel:
   - { id: wisemans-letter, reveals: { fact: saved-wiseman } }
 
 place:
-  - { id: chief,  ref: "dnd5e:monsters:goblin-boss", at: [12,4], faction: goblins }
-  - { id: scout,  ref: "dnd5e:monsters:goblin",      at: [4,2],  faction: goblins }
+  - { id: chief,  ref: "dnd5e:monsters:skeleton-captain", at: [12,4], faction: raiders }
+  - { id: scout,  ref: "dnd5e:monsters:skeleton",         at: [4,2],  faction: raiders }
   - { id: letter, ref: "dnd5e:props:scroll", at: [1,3], holdable: true,
       blocks_movement: false, blocks_los: false,
       holds: [wisemans-letter] }
@@ -112,4 +113,4 @@ exits:
   - { id: front-gate, at: [1,3] }
 
 scenarios:
-  hold-out: { convince: goblins }
+  hold-out: { convince: raiders }

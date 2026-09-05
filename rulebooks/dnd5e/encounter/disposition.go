@@ -5,7 +5,6 @@ package encounter
 
 import (
 	"fmt"
-	"strings"
 )
 
 // disposition.go is WHO FIGHTS WHOM, AS DECLARED (rpg-project#375, the
@@ -29,7 +28,7 @@ import (
 //   - `party` and `monsters` are mutually hostile — the whole table this
 //     composition ran on before factions existed;
 //   - a declared faction with no disposition toward `party` is hostile to
-//     it — an authored goblin camp is a camp, not a neutral crowd;
+//     it — an authored raider camp is a camp, not a neutral crowd;
 //   - declared factions are neutral to each other and to `monsters`.
 //
 // A dungeon that declares nothing therefore has exactly two factions and one
@@ -81,9 +80,9 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 		if fa.ID == "" {
 			return fmt.Errorf("factions[%d] has no id: %w", i, ErrNoFaction)
 		}
-		if fa.ID == FactionParty {
-			return fmt.Errorf("factions[%d] declares %q, which is the players' side and is never declared: %w",
-				i, FactionParty, ErrNoFaction)
+		if fa.ID == FactionParty || fa.ID == FactionMonsters {
+			return fmt.Errorf("factions[%d] declares %q, which is reserved and is never declared: %w",
+				i, fa.ID, ErrNoFaction)
 		}
 		if prev, dup := f.factionIndex[fa.ID]; dup {
 			return fmt.Errorf("factions[%d] and factions[%d] share the id %q: %w", prev, i, fa.ID, ErrNoFaction)
@@ -122,58 +121,32 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 		f.dispositionOf[pair] = i
 	}
 
-	// The predicates, against the whole table: an until that waits on
-	// another pair's stance needs every pair indexed before it can be
-	// judged.
+	// The predicates. ONLY A FACT TURNS A PAIR IN THIS VERSION
+	// (rpg-project#375, R11): the graph settles a pair on a flag a journal
+	// fact raised, and rounds, falls and other pairs' stances are not
+	// journal facts yet. The file refuses the other three forms at the line
+	// (dungeonspec), and the run refuses them again here — a producer is
+	// never trusted — rather than carrying a hostility that never turns.
 	for i, d := range dispositions {
 		if d.Until == nil {
 			continue
 		}
-		pair := pairOf(d.Between[0], d.Between[1])
 		what := fmt.Sprintf("dispositions[%d]'s until", i)
-		if err := f.validatePredicate(what, d.Until, &pair, ErrNoFaction); err != nil {
+		if _, ok := d.Until.(TriggerFact); !ok {
+			return fmt.Errorf("%s: %s: %w", what, untilNotBuilt, ErrNoFaction)
+		}
+		if err := f.validatePredicate(what, d.Until, ErrNoFaction); err != nil {
 			return err
 		}
-		// ONLY A FACT CAN TURN A PAIR IN THIS SLICE (rpg-project#375, R11).
-		// The graph settles a pair on a flag a fact raised, and a fact is
-		// the one form of the grammar that is a journal fact: rounds are the
-		// clock's, Standing stays outside the journal this slice, and a
-		// stance-until would need a projection keyed on another pair's edge.
-		// The file accepts all four forms; the run refuses the three it
-		// cannot yet keep, out loud, rather than carrying a hostility that
-		// never turns.
-		if _, ok := d.Until.(TriggerFact); !ok {
-			return fmt.Errorf(
-				"%s waits on a %s, and this build turns a pair on a fact alone — write { fact: <id> }, "+
-					"or wait for the world's next primitive: %w",
-				what, triggerWord(d.Until), ErrNoFaction)
-		}
 	}
 
-	return f.refuseUntilRings()
+	return nil
 }
 
-// triggerWord is the grammar's own word for a trigger, for a refusal.
-func triggerWord(t Trigger) string {
-	switch t.(type) {
-	case TriggerRound:
-		return "round"
-	case TriggerMemberDown:
-		return "down"
-	case TriggerFact:
-		return "fact"
-	case TriggerStance:
-		return "stance"
-	case TriggerReachedPosition:
-		return "reached position"
-	case TriggerExitedHolding:
-		return "exited holding"
-	case TriggerExternal:
-		return "external ending"
-	default:
-		return fmt.Sprintf("%T", t)
-	}
-}
+// untilNotBuilt is the one sentence a round, a fall or a stance on an until
+// gets, in the file and in the run alike (rpg-project#375, R11).
+const untilNotBuilt = "in this version a disposition turns only on a fact; " +
+	"`until` on a round, a fall, or another stance is not built yet"
 
 // validateMemberFaction refuses a member naming a faction this field does
 // not have, and a member arriving under a faction's mind id into some other
@@ -257,18 +230,16 @@ func (f *field) stanceReachable(pair factionPair, s Stance) (now, ever bool) {
 // never hold — the liveness argument [ErrNoEnding] makes for an unreachable
 // trigger cell, applied to every form of the grammar (design §3.8). what is
 // the caller's noun for the refusal ("ending \"turned\"", "dispositions[0]'s
-// until"); self is the pair an until belongs to, so it cannot wait on
-// itself; sentinel is the caller's own.
+// until"); sentinel is the caller's own.
 //
 // The three forms that already have endings — a cell, a member down, an
 // exit held — keep their checks where they were (validateEndingTriggers);
-// this is the four forms the grammar adds, and the refusal for a trigger
-// that is not a predicate at all on a field that asked for one.
-func (f *field) validatePredicate(what string, t Trigger, self *factionPair, sentinel error) error {
+// this is the forms the grammar adds.
+func (f *field) validatePredicate(what string, t Trigger, sentinel error) error {
 	switch p := t.(type) {
 	case TriggerRound:
 		if p.Round < 1 {
-			return fmt.Errorf("%s waits for round %d, and a round starts at 1: %w", what, p.Round, sentinel)
+			return fmt.Errorf("%s waits for round %d, and a round is counted from 1: %w", what, p.Round, sentinel)
 		}
 	case TriggerFact:
 		if p.Fact == "" {
@@ -292,9 +263,6 @@ func (f *field) validatePredicate(what string, t Trigger, self *factionPair, sen
 				what, p.Stance, sentinel)
 		}
 		pair := pairOf(p.Between[0], p.Between[1])
-		if self != nil && *self == pair {
-			return fmt.Errorf("%s waits on its own stance: %w", what, sentinel)
-		}
 		now, ever := f.stanceReachable(pair, p.Stance)
 		if !ever {
 			return fmt.Errorf("%s waits for %s to be %s, which they can never be: %w", what, pair, p.Stance, sentinel)
@@ -302,57 +270,6 @@ func (f *field) validatePredicate(what string, t Trigger, self *factionPair, sen
 		if now {
 			return fmt.Errorf("%s waits for %s to be %s, which they are from the start, so nothing can fire it: %w",
 				what, pair, p.Stance, sentinel)
-		}
-	default:
-		if self != nil {
-			return fmt.Errorf("%s is a %T, which is not a predicate — write round, down, fact or stance: %w",
-				what, t, sentinel)
-		}
-	}
-	return nil
-}
-
-// refuseUntilRings refuses dispositions that wait on each other's stance: a
-// ring of untils resolves to nothing, which is an until that can never hold
-// — the liveness hole an unreachable ending is (design §3.8). A self-loop is
-// [field.validatePredicate]'s; this is the ring of two or more.
-func (f *field) refuseUntilRings() error {
-	const (
-		unseen = iota
-		onTrail
-		done
-	)
-	state := make(map[factionPair]int, len(f.dispositions))
-
-	var visit func(pair factionPair, trail []factionPair) error
-	visit = func(pair factionPair, trail []factionPair) error {
-		switch state[pair] {
-		case done:
-			return nil
-		case onTrail:
-			names := make([]string, 0, len(trail)+1)
-			for _, p := range trail {
-				names = append(names, p.String())
-			}
-			names = append(names, pair.String())
-			return fmt.Errorf("dispositions wait on each other's stance in a ring (%s), so none of them can ever turn: %w",
-				strings.Join(names, " -> "), ErrNoFaction)
-		}
-		state[pair] = onTrail
-		if _, until := f.declaredStance(pair); until != nil {
-			if ts, ok := until.(TriggerStance); ok {
-				if err := visit(pairOf(ts.Between[0], ts.Between[1]), append(trail, pair)); err != nil {
-					return err
-				}
-			}
-		}
-		state[pair] = done
-		return nil
-	}
-
-	for _, d := range f.dispositions {
-		if err := visit(pairOf(d.Between[0], d.Between[1]), nil); err != nil {
-			return err
 		}
 	}
 	return nil

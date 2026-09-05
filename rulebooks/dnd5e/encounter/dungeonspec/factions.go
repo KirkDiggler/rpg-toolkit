@@ -46,6 +46,9 @@ func (v *validation) factions() {
 			v.fail(p+".id", "the faction has no id")
 		case encounter.FactionParty:
 			v.fail(p+".id", "`party` is the players' side and is never declared — name the faction the monsters are in")
+		case encounter.FactionMonsters:
+			v.fail(p+".id", "`monsters` is where every monster with no faction already is and is never declared — "+
+				"give these monsters a faction of their own")
 		default:
 			if prev, dup := v.factionIDs[fa.ID]; dup {
 				v.fail(p+".id", "faction %q is already declared at factions[%d]", fa.ID, prev)
@@ -130,7 +133,9 @@ func (v *validation) minds() {
 
 // cannotLearn reports why a faction cannot come to know a fact, or "" when
 // it can: it has a valid mind, or it is a faction of one — whose sole
-// member is its mind by rule. `party` never learns.
+// member the compiler declares as its mind ([singletonMind]). `party` never
+// learns, and neither does `monsters`, which is never declared and so never
+// has a mind.
 func (v *validation) cannotLearn(id string) string {
 	if id == encounter.FactionParty {
 		return "`party` is the players' side and has no mind"
@@ -138,13 +143,19 @@ func (v *validation) cannotLearn(id string) string {
 	if v.mindValid[id] {
 		return ""
 	}
-	switch n := len(v.factionMembers[id]); n {
+	switch members := v.factionMembers[id]; len(members) {
 	case 1:
+		if v.spec.Place[members[0]].ID == "" {
+			return fmt.Sprintf("faction %q's one monster has no id to be its mind", id)
+		}
+		if id == encounter.FactionMonsters {
+			return "`monsters` is never declared, so it never has a mind"
+		}
 		return ""
 	case 0:
 		return fmt.Sprintf("faction %q has nobody in it", id)
 	default:
-		return fmt.Sprintf("faction %q has %d monsters and no mind", id, n)
+		return fmt.Sprintf("faction %q has %d monsters and no mind", id, len(members))
 	}
 }
 
@@ -220,14 +231,23 @@ func (v *validation) dispositions() {
 			continue // a pair that failed above has nothing to wait on
 		}
 		p := fmt.Sprintf("dispositions[%d].until", i)
-		v.predicate(p, d.Until, &key)
-		if d.Until.Fact != "" {
-			v.requireALearner(p, key)
+		// ONLY A FACT TURNS A PAIR IN THIS VERSION (rpg-project#375, R11):
+		// the run settles a pair on a journal fact, and rounds, falls and
+		// other pairs' stances are not journal facts yet. Refused here, at
+		// the line, and again by the run at construction.
+		if d.Until.Fact == "" {
+			v.fail(p, "%s", untilNotBuilt)
+			continue
 		}
+		v.predicate(p, d.Until, &key)
+		v.requireALearner(p, key)
 	}
-
-	v.untilRings()
 }
+
+// untilNotBuilt is the one sentence a round, a fall or a stance on an until
+// gets, in the file and in the run alike.
+const untilNotBuilt = "in this version a disposition turns only on a fact; " +
+	"`until` on a round, a fall, or another stance is not built yet"
 
 // requireALearner is the mind rule (design §2): a fact-until between two
 // factions needs one of them able to come to know the fact — a valid mind,
@@ -255,7 +275,7 @@ func (v *validation) predicate(path string, p *PredicateSpec, self *[2]string) {
 		v.fail(path, "this predicate says nothing — %s", predicateForms)
 	case predicateRound:
 		if *p.Round < 1 {
-			v.fail(path+".round", "round %d: a round starts at 1", *p.Round)
+			v.fail(path+".round", "round %d: a round is counted from 1", *p.Round)
 		}
 	case predicateDown:
 		idx, ok := v.placeIDs[p.Down]
@@ -316,57 +336,5 @@ func (v *validation) stancePredicate(path string, s *StancePredicateSpec, self *
 		// Reachable: the pair turns neutral when its until holds.
 	default:
 		v.fail(path, "%s and %s can never be %s: they are %s, and nothing turns them", key[0], key[1], s.Is, declared)
-	}
-}
-
-// untilRings refuses dispositions that wait on each other's stance: a ring
-// of untils resolves to nothing, so none of them can ever turn. A self-loop
-// is stancePredicate's; this is the ring of two or more.
-func (v *validation) untilRings() {
-	const (
-		unseen = iota
-		onTrail
-		done
-	)
-	state := map[[2]string]int{}
-
-	var visit func(pair [2]string, trail [][2]string) bool
-	visit = func(pair [2]string, trail [][2]string) bool {
-		switch state[pair] {
-		case done:
-			return false
-		case onTrail:
-			names := make([]string, 0, len(trail)+1)
-			for _, t := range trail {
-				names = append(names, t[0]+"~"+t[1])
-			}
-			names = append(names, pair[0]+"~"+pair[1])
-			idx := v.dispositionAt[trail[0]]
-			v.fail(fmt.Sprintf("dispositions[%d].until.stance", idx),
-				"these dispositions wait on each other's stance in a ring (%s), so none of them can ever turn",
-				strings.Join(names, " -> "))
-			return true
-		}
-		state[pair] = onTrail
-		if _, until := v.declaredStance(pair); until != nil && until.Stance != nil {
-			next := normalizedPair(until.Stance.Between[0], until.Stance.Between[1])
-			if next != pair && v.factionExists(next[0]) && v.factionExists(next[1]) {
-				if visit(next, append(trail, pair)) {
-					return true
-				}
-			}
-		}
-		state[pair] = done
-		return false
-	}
-
-	for i, d := range v.spec.Dispositions {
-		key := normalizedPair(d.Between[0], d.Between[1])
-		if idx, ok := v.dispositionAt[key]; !ok || idx != i {
-			continue
-		}
-		if visit(key, nil) {
-			return
-		}
 	}
 }

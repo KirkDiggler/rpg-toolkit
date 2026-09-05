@@ -17,8 +17,8 @@ import (
 // to convince; the run ends when that faction's stance toward the party
 // folds to neutral — which is exactly the disposition's own `until`
 // holding, so this scenario declares nothing the file did not already say.
-// `convince: goblins` is sugar for an ending on
-// `{ stance: { between: [goblins, party], is: neutral } }` (R10), and once
+// `convince: raiders` is sugar for an ending on
+// `{ stance: { between: [raiders, party], is: neutral } }` (R10), and once
 // endings are authorable in the file this package has nothing left to do —
 // the north star's own test.
 //

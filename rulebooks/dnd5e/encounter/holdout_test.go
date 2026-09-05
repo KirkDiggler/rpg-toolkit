@@ -5,7 +5,7 @@ package encounter_test
 
 // holdout_test.go is the hold-out, STEP A — sides and knowledge
 // (rpg-project#375, design §9): the acceptance rows this module proves,
-// played on the goblin camp fixture itself, through the scenario package
+// played on the raider camp fixture itself, through the scenario package
 // itself, so what a walk will meet is what these scenes met.
 //
 //   A1  the camp is hostile until a fact; nobody knows; a fight forms on sight
@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -37,9 +38,9 @@ import (
 )
 
 const (
-	campPath    = "dungeonspec/testdata/reference-goblin-camp.yaml"
-	campKey     = "reference-goblin-camp"
-	campFaction = "goblins"
+	campPath    = "dungeonspec/testdata/reference-raider-camp.yaml"
+	campKey     = "reference-raider-camp"
+	campFaction = "raiders"
 	campFact    = "saved-wiseman"
 	campLetter  = "letter"
 	campRecord  = campKey + "/wisemans-letter"
@@ -99,11 +100,7 @@ func (s *HoldOutSuite) cast(withScout bool) []encounter.MemberInput {
 func (s *HoldOutSuite) holdOutEnding() encounter.EndingInput {
 	scenario, ok := scenarios.Lookup(scenarios.HoldOutID)
 	s.Require().True(ok)
-	factions := make([]encounter.FactionID, 0, len(s.compiled.Monsters))
-	for _, m := range s.compiled.Monsters {
-		factions = append(factions, m.Faction)
-	}
-	declared, err := scenario.New(s.compiled.Scenarios[scenarios.HoldOutID], scenarios.FactsFrom(s.compiled.Field, factions...))
+	declared, err := scenario.New(s.compiled.Scenarios[scenarios.HoldOutID], scenarios.FactsFrom(s.compiled.Field))
 	s.Require().NoError(err)
 	s.Require().Equal(campFaction, declared.Convince)
 	s.Require().Len(declared.Endings, 1)
@@ -223,7 +220,7 @@ func (s *HoldOutSuite) clockOf(enc *encounter.Encounter, member core.EntityID) e
 }
 
 // TestACampHostileUntilAFactFormsAFightOnSight is A1: nobody knows the fact,
-// so the goblins are hostile, and a player walking into the yard starts a
+// so the raiders are hostile, and a player walking into the yard starts a
 // fight with the scout — by faction, not by kind.
 func (s *HoldOutSuite) TestACampHostileUntilAFactFormsAFightOnSight() {
 	enc := s.camp()
@@ -262,7 +259,7 @@ func (s *HoldOutSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp() {
 		s.Equal(encounter.StanceNeutral, s.stance(enc))
 		hostile, known := enc.IsHostile(raider, campScout)
 		s.True(known)
-		s.False(hostile, "a goblin is no longer an enemy")
+		s.False(hostile, "a raider is no longer an enemy")
 		s.Require().NotNil(out.Outcome, "the hold-out ended the run")
 		s.Equal(scenarios.HoldOutID, out.Outcome.Ending)
 	})
@@ -274,7 +271,7 @@ func (s *HoldOutSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp() {
 			switch b["beat"] {
 			case "stance":
 				stanceAt = i
-				s.Equal([]any{campFaction, encounter.FactionParty}, b["between"])
+				s.Equal([]any{encounter.FactionParty, campFaction}, b["between"], "the pair, in its one normalized order")
 				s.Equal(string(encounter.StanceNeutral), b["stance"])
 			case "bubble-dissolved":
 				dissolvedAt = i
@@ -367,17 +364,43 @@ func (s *HoldOutSuite) TestADeadMindCannotLearn() {
 }
 
 // TestAFactionOfOneHasItsMemberAsMind is design §2's rule: no mind declared,
-// one goblin in the camp — the letter carried to it turns the camp.
+// one skeleton in the camp — the COMPILER declares it the mind, and the
+// letter carried to it turns the camp. The run itself never infers a mind
+// (R7): the same field with the mind blanked by hand is a faction that
+// cannot learn.
 func (s *HoldOutSuite) TestAFactionOfOneHasItsMemberAsMind() {
-	field := s.compiled.Field
-	field.Factions = []encounter.FactionInput{{ID: campFaction}}
-	enc := s.open(field, s.cast(false), withdrawn())
-	s.hold(enc, raider, campLetter)
-	s.intoTheYard(enc, raider)
-	s.intoTheHut(enc, raider)
+	raw, err := os.ReadFile(campPath)
+	s.Require().NoError(err)
+	source := strings.Replace(string(raw), "  - { id: raiders, mind: chief }", "  - { id: raiders }", 1)
+	scoutLine := `  - { id: scout,  ref: "dnd5e:monsters:skeleton",         at: [4,2],  faction: raiders }` + "\n"
+	s.Require().Contains(source, scoutLine)
+	source = strings.Replace(source, scoutLine, "", 1)
 
-	s.Equal(encounter.StanceNeutral, s.stance(enc))
-	s.Len(s.beatsOfKind(enc, partner, "stance"), 1)
+	s.Run("the compiler declares the sole member as the mind", func() {
+		compiled, err := dungeonspec.Load([]byte(source))
+		s.Require().NoError(err)
+		s.Require().Equal([]encounter.FactionInput{{ID: campFaction, Mind: campChief}}, compiled.Factions)
+
+		s.compiled = compiled
+		enc := s.open(compiled.Field, s.cast(true), withdrawn())
+		s.hold(enc, raider, campLetter)
+		s.intoTheYard(enc, raider)
+		s.intoTheHut(enc, raider)
+		s.Equal(encounter.StanceNeutral, s.stance(enc))
+		s.Len(s.beatsOfKind(enc, partner, "stance"), 1)
+	})
+
+	s.Run("the run infers nothing: a faction with no declared mind cannot learn", func() {
+		s.SetupTest()
+		field := s.compiled.Field
+		field.Factions = []encounter.FactionInput{{ID: campFaction}}
+		enc := s.open(field, s.cast(false), withdrawn())
+		s.hold(enc, raider, campLetter)
+		s.intoTheYard(enc, raider)
+		s.intoTheHut(enc, raider)
+		s.Equal(encounter.StanceHostile, s.stance(enc))
+		s.Empty(s.beatsOfKind(enc, partner, "stance"))
+	})
 }
 
 // TestTheStanceIsDerivedNotStored is A9: save after the flip, load: still
@@ -507,7 +530,7 @@ func (s *HoldOutSuite) TestARoundEndingFiresWhereTheRoundStarts() {
 }
 
 // TestMonstersSpawnedThroughJoinCarryTheirFaction is the host's own path
-// (design §3 Spawn): the world is built empty and each goblin arrives through
+// (design §3 Spawn): the world is built empty and each skeleton arrives through
 // Join with its faction hand-carried — and the mind must arrive in its own
 // faction.
 func (s *HoldOutSuite) TestMonstersSpawnedThroughJoinCarryTheirFaction() {
@@ -546,7 +569,7 @@ func (s *HoldOutSuite) TestMonstersSpawnedThroughJoinCarryTheirFaction() {
 	}
 
 	out := s.intoTheYard(enc, raider)
-	s.NotNil(out.Formed, "the joined goblins are the camp")
+	s.NotNil(out.Formed, "the joined skeletons are the camp")
 }
 
 // TestLoadRefusesKnowledgeThisFieldCannotMint is the trust boundary for the
@@ -662,7 +685,7 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 	s.Run("an until on a member down cannot be settled by the graph yet", func() {
 		err := open(withUntil(encounter.TriggerMemberDown{Member: campChief}))
 		s.Require().ErrorIs(err, encounter.ErrNoFaction)
-		s.Contains(err.Error(), "turns a pair on a fact alone")
+		s.Contains(err.Error(), "turns only on a fact")
 	})
 	s.Run("a stance ending on a pair that can never reach it", func() {
 		err := open(s.compiled.Field, encounter.EndingInput{Key: "peace", Trigger: encounter.TriggerStance{
@@ -692,14 +715,14 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 }
 
 // TestAThirdFactionStillHostileKeepsItsFight is design §3.5's second
-// sentence, on a hand-built yard: goblins and kobolds both hostile to the
-// party, the goblins hostile until the fact. The letter turns the goblins;
-// the kobold keeps fighting; the goblin, opposed to nobody, steps out of the
-// fight.
+// sentence, on a hand-built yard: raiders and kobolds both hostile to the
+// party, the raiders hostile until the fact. The letter turns the raiders;
+// the kobold keeps fighting; the lone raider, opposed to nobody, steps out
+// of the fight.
 func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 	const (
 		alice  = core.EntityID("alice")
-		goblin = core.EntityID("lone-goblin")
+		lone   = core.EntityID("lone-raider")
 		kobold = core.EntityID("kobold")
 		scroll = "yard-scroll"
 	)
@@ -712,7 +735,7 @@ func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 			p.Holds = []encounter.IntelID{"letter"}
 			return p
 		}()},
-		Factions: []encounter.FactionInput{{ID: campFaction}, {ID: "kobolds"}},
+		Factions: []encounter.FactionInput{{ID: campFaction, Mind: lone}, {ID: "kobolds"}},
 		Dispositions: []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
 			Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
@@ -720,20 +743,20 @@ func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 	}
 	enc := s.open(field, []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
-		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 1}, Faction: campFaction},
+		{ID: lone, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 1}, Faction: campFaction},
 		{ID: kobold, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 4}, Faction: "kobolds"},
 	}, withdrawn())
 
 	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, alice), "precondition: everyone saw everyone at first light")
-	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, goblin))
+	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, lone))
 	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, kobold))
 
 	// alice acts first (sorted order); the scroll is beside her, in the one
-	// region the lone goblin — the camp's mind, being all of the camp — stands
-	// in. Holding it is the presence that teaches him.
+	// region the lone raider — the camp's declared mind — stands in. Holding
+	// it is the presence that teaches him.
 	s.hold(enc, alice, scroll)
 
-	s.Run("the goblins turned; the kobolds did not", func() {
+	s.Run("the raiders turned; the kobolds did not", func() {
 		stance, err := enc.Stance(campFaction, encounter.FactionParty)
 		s.Require().NoError(err)
 		s.Equal(encounter.StanceNeutral, stance)
@@ -741,10 +764,10 @@ func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 		s.Require().NoError(err)
 		s.Equal(encounter.StanceHostile, stance)
 	})
-	s.Run("the fight goes on without the goblin", func() {
+	s.Run("the fight goes on without the raider", func() {
 		s.Equal(encounter.ClockTurn, s.clockOf(enc, alice))
 		s.Equal(encounter.ClockTurn, s.clockOf(enc, kobold))
-		s.Equal(encounter.ClockWorld, s.clockOf(enc, goblin), "opposed to nobody, in no pair, in no fight")
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, lone), "opposed to nobody, in no pair, in no fight")
 		s.Empty(s.beatsOfKind(enc, alice, "bubble-dissolved"))
 		s.Len(s.beatsOfKind(enc, alice, "stance"), 1)
 	})

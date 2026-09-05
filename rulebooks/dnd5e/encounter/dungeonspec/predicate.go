@@ -25,7 +25,7 @@ import (
 //	until:   { round: 6 }
 //	until:   { down: chief }
 //	until:   { fact: saved-wiseman }
-//	when:    { stance: { between: [goblins, party], is: neutral } }
+//	when:    { stance: { between: [raiders, party], is: neutral } }
 //
 // # Exactly one key
 //

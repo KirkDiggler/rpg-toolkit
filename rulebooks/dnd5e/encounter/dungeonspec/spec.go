@@ -243,7 +243,7 @@ type RevealsSpec struct {
 // to, and the member it knows through.
 //
 //	factions:
-//	  - { id: goblins, mind: chief }
+//	  - { id: raiders, mind: chief }
 //
 // `party` is never declared — it is the players' side, reserved — and
 // `monsters` is where every monster with no `faction` already is. Declaring
@@ -266,7 +266,7 @@ type FactionSpec struct {
 // it.
 //
 //	dispositions:
-//	  - { between: [goblins, party], stance: hostile, until: { fact: saved-wiseman } }
+//	  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
 //
 // One per unordered pair; a pair nobody declares has a default
 // ([encounter.DefaultStance]): `party` is hostile to every faction that did

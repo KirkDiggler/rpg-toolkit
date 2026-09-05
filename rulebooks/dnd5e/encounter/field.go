@@ -116,7 +116,7 @@ type FactionInput struct {
 // DispositionInput declares how two factions stand to each other, and the
 // predicate that changes it (design §2).
 type DispositionInput struct {
-	// Between is the pair, UNORDERED: {goblins, party} and {party, goblins}
+	// Between is the pair, UNORDERED: {raiders, party} and {party, raiders}
 	// are one disposition, and declaring both is refused (ErrNoFaction).
 	// Each must be a declared faction or one of the two reserved ones.
 	Between [2]FactionID
@@ -1071,8 +1071,8 @@ func (t TriggerFact) isTrigger() {}
 // TriggerStance fires when a pair's stance folds to a value
 // (rpg-project#375, design §2 — `{ stance: [a, b], is: neutral }`).
 //
-// This is what a hold-out's win IS: `scenarios.hold-out.convince: goblins`
-// is sugar for an ending on `{ stance: [goblins, party], is: neutral }`.
+// This is what a hold-out's win IS: `scenarios.hold-out.convince: raiders`
+// is sugar for an ending on `{ stance: { between: [raiders, party], is: neutral } }`.
 // Evaluated in the fold after a flip — the one place a stance changes —
 // and refused at construction when the pair can never reach that stance
 // (ErrNoEnding): an allied pair never turns neutral, a static hostile pair

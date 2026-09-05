@@ -19,7 +19,7 @@ import (
 // campFacts is the goblin camp's field, narrowed — with the mind declared,
 // the disposition hostile until the fact, and a record that reveals it —
 // then edited one fact at a time by the scenes below.
-func campFacts(edit func(*encounter.FieldInput), monsters ...encounter.FactionID) *scenarios.DungeonFacts {
+func campFacts(edit func(*encounter.FieldInput)) *scenarios.DungeonFacts {
 	field := encounter.FieldInput{
 		Factions: []encounter.FactionInput{{ID: factionID, Mind: "chief"}},
 		Dispositions: []encounter.DispositionInput{{
@@ -32,14 +32,14 @@ func campFacts(edit func(*encounter.FieldInput), monsters ...encounter.FactionID
 	if edit != nil {
 		edit(&field)
 	}
-	return scenarios.FactsFrom(field, monsters...)
+	return scenarios.FactsFrom(field)
 }
 
 func TestTheHoldOutDeclaresAStanceEnding(t *testing.T) {
 	s, ok := scenarios.Lookup(scenarios.HoldOutID)
 	require.True(t, ok)
 
-	declared, err := s.New(map[string]string{scenarios.FieldConvince: factionID}, campFacts(nil, factionID, factionID))
+	declared, err := s.New(map[string]string{scenarios.FieldConvince: factionID}, campFacts(nil))
 	require.NoError(t, err)
 	require.Equal(t, encounter.FactionID(factionID), declared.Convince)
 	require.Equal(t, []encounter.EndingInput{{
@@ -74,7 +74,7 @@ func TestTheHoldOutRefusesAHoldOutNobodyCanWin(t *testing.T) {
 			cfg:  bind(factionID),
 			facts: campFacts(func(f *encounter.FieldInput) {
 				f.Factions = []encounter.FactionInput{{ID: factionID}}
-			}, factionID, factionID),
+			}),
 			want: "has no mind",
 		},
 		{
@@ -108,11 +108,4 @@ func TestTheHoldOutRefusesAHoldOutNobodyCanWin(t *testing.T) {
 		})
 	}
 
-	t.Run("a faction of one needs no declared mind", func(t *testing.T) {
-		facts := campFacts(func(f *encounter.FieldInput) {
-			f.Factions = []encounter.FactionInput{{ID: factionID}}
-		}, factionID)
-		_, err := s.New(bind(factionID), facts)
-		require.NoError(t, err)
-	})
 }

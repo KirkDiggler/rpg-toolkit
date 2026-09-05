@@ -144,7 +144,9 @@ func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) erro
 
 // appendStanceBeat records that a pair's stance turned, to everyone: a stance
 // is truth grain, like a door's state — the same for every member (design §6:
-// STANCE_CHANGED goes to everyone in the run).
+// STANCE_CHANGED goes to everyone in the run). The pair is UNORDERED and is
+// written in its one normalized order, so two flips of one pair read the
+// same whichever way the file spelled it.
 func (e *Encounter) appendStanceBeat(pair factionPair, to Stance, at uint64) error {
 	payload, err := json.Marshal(map[string]interface{}{
 		"beat":    "stance",
