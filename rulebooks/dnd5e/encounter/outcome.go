@@ -61,6 +61,18 @@ const (
 	// DeathSaveDetail: required primitives this composition preserves
 	// without interpreting.
 	OutcomeTraded OutcomeKind = "traded"
+
+	// OutcomeSold is the mirror of OutcomeTraded from the actor's own
+	// perspective — a player selling an item to a vendor (rpg-toolkit#1537's
+	// Sell, no new verb: Trade's existing Give/Receive shape, the other
+	// direction populated). A verb is named by what the record will say
+	// (design.md's own law, already applied to Unpack): "Alice sold a
+	// longsword" is a different statement from "Alice traded for one," so it
+	// gets its own kind rather than reusing OutcomeTraded with a flipped
+	// flag. Carries the same TradeDetail shape as OutcomeTraded — the data
+	// (item type/id/quantity) is identical between the two directions; only
+	// the kind differs.
+	OutcomeSold OutcomeKind = "sold"
 )
 
 // OutcomeValue names one number a rulebook outcome carries.
@@ -143,9 +155,10 @@ type RecordInput struct {
 	// other kind; the encounter preserves it without interpreting thresholds.
 	DeathSave *DeathSaveDetail
 
-	// Trade carries the authoritative primitive facts for OutcomeTraded. It
-	// is required for that kind and invalid for every other kind; the
-	// encounter preserves it without interpreting what the item does.
+	// Trade carries the authoritative primitive facts for OutcomeTraded and
+	// OutcomeSold. It is required for either of those kinds and invalid for
+	// every other kind; the encounter preserves it without interpreting
+	// what the item does.
 	Trade *TradeDetail
 }
 
@@ -384,7 +397,7 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 
 	switch in.Kind {
-	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeTraded:
+	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeTraded, OutcomeSold:
 	default:
 		return nil, fmt.Errorf("record: outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
@@ -404,7 +417,7 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	} else if in.DeathSave != nil {
 		return nil, fmt.Errorf("record: death save detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
-	if in.Kind == OutcomeTraded {
+	if in.Kind == OutcomeTraded || in.Kind == OutcomeSold {
 		if in.Trade == nil {
 			return nil, fmt.Errorf("record: trade detail is required: %w", ErrInvalidData)
 		}

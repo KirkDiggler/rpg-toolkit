@@ -146,6 +146,49 @@ func (s *OutcomeTestSuite) TestATradedItemReachesTheStoryAndRejectsMismatches() 
 	})
 }
 
+// TestASoldItemReachesTheStoryAsItsOwnBeat is OutcomeSold's half of Record —
+// the mirror of TestATradedItemReachesTheStoryAndRejectsMismatches, pinning
+// that a sale gets its own "sold" beat rather than reusing "traded" with a
+// flipped flag (rpg-toolkit#1537), while sharing the same TradeDetail
+// validation Record already applies to OutcomeTraded.
+func (s *OutcomeTestSuite) TestASoldItemReachesTheStoryAsItsOwnBeat() {
+	enc := s.scene()
+	detail := &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1}
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeSold, Actor: alice, Targets: []encounter.MemberID{goblin}, Trade: detail,
+	})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq)
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("sold", beat["beat"])
+
+	raw, err := json.Marshal(beat["trade"])
+	s.Require().NoError(err)
+	var got encounter.TradeDetail
+	s.Require().NoError(json.Unmarshal(raw, &got))
+	s.Equal(*detail, got)
+
+	s.Run("missing detail", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{Kind: encounter.OutcomeSold, Actor: alice})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("detail on a mismatched kind", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeMissed, Actor: alice, Trade: detail,
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
 // TestARecordedStrikeCarriesWhatWasSwung pins rpg-toolkit#866/#941's half of
 // Record: Critical and Attack are carried into the beat's payload exactly as
 // the numeric Values already are, so a witness who was not the one swinging
