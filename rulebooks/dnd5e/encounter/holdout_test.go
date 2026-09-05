@@ -315,10 +315,20 @@ func (s *HoldOutSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp() {
 	})
 }
 
-// TestTheLetterCarriedToTheScoutFlipsNothing is A3, twice over: a scout who
-// reads the letter from spawn knows the fact and nothing turns, and the
-// letter carried into the scout's own region teaches nobody — a scout is
-// not the camp's mind.
+// TestTheLetterCarriedToTheScoutFlipsNothing is A3, twice over: a scout
+// authored holding the letter's record turns nothing, and the letter carried
+// into the scout's own region teaches nobody — a scout is not the camp's
+// mind, and presence teaches minds alone.
+//
+// HOLDING IS NOT KNOWING. The authored scout carries the record and has not
+// learned the fact (no `known:fact` is written at seed, exactly as a monster
+// authored with a door's record does not "know" the door), so no scene here
+// has a scout who KNOWS and still turns nothing. That variant — a non-mind
+// coming to know a fact, and the flip staying with the mind — waits on the
+// word-spreads shelf (design §11), where members learn by presence or by
+// witnessing the handover and the mind learns N turns later. Until then the
+// graph's own shape pins it: the Settle reads the mind's flag and nobody
+// else's (world/graph settle_test).
 func (s *HoldOutSuite) TestTheLetterCarriedToTheScoutFlipsNothing() {
 	s.Run("a scout authored knowing the fact turns nothing", func() {
 		members := s.cast(true)

@@ -80,9 +80,9 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 		if fa.ID == "" {
 			return fmt.Errorf("factions[%d] has no id: %w", i, ErrNoFaction)
 		}
-		if fa.ID == FactionParty || fa.ID == FactionMonsters {
-			return fmt.Errorf("factions[%d] declares %q, which is reserved and is never declared: %w",
-				i, fa.ID, ErrNoFaction)
+		if fa.ID == FactionParty {
+			return fmt.Errorf("factions[%d] declares %q, which is the players' side and is never declared: %w",
+				i, FactionParty, ErrNoFaction)
 		}
 		if prev, dup := f.factionIndex[fa.ID]; dup {
 			return fmt.Errorf("factions[%d] and factions[%d] share the id %q: %w", prev, i, fa.ID, ErrNoFaction)

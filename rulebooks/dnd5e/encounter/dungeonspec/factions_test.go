@@ -160,11 +160,6 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			want: []string{"factions[1].id", "never declared"},
 		},
 		{
-			name: "monsters declared",
-			old:  factionLine, replacement: factionLine + "\n  - { id: monsters }",
-			want: []string{"factions[1].id", "never declared"},
-		},
-		{
 			name: "a faction declared twice",
 			old:  factionLine, replacement: factionLine + "\n  - { id: raiders }",
 			want: []string{"factions[1].id", "already declared at factions[0]"},
@@ -252,6 +247,19 @@ func TestTheCampAllowsWhatTheDesignAllows(t *testing.T) {
 	t.Run("monsters and party may be named in a disposition", func(t *testing.T) {
 		source := edited(t, dispoLine, dispoLine+"\n  - { between: [monsters, party], stance: neutral }")
 		require.Empty(t, defectsIn(t, source))
+	})
+	t.Run("monsters may be declared, which is how the unauthored side gets a mind", func(t *testing.T) {
+		source := edited(t, factionLine, factionLine+"\n  - { id: monsters, mind: scout }")
+		source = strings.Replace(source, scoutLine, strings.Replace(scoutLine, "faction: raiders", "faction: monsters", 1), 1)
+		require.Empty(t, defectsIn(t, source))
+		compiled, err := dungeonspec.Load([]byte(source))
+		require.NoError(t, err)
+		require.Equal(t, []encounter.FactionInput{{ID: "raiders", Mind: "chief"}, {ID: "monsters", Mind: "scout"}}, compiled.Factions)
+	})
+	t.Run("the undeclared monsters side cannot be waited on for a fact", func(t *testing.T) {
+		source := edited(t, dispoLine, dispoLine+
+			"\n  - { between: [monsters, party], stance: hostile, until: { fact: saved-wiseman } }")
+		requireDefect(t, defectsIn(t, source), "dispositions[1].until", "is not declared, so it has no mind")
 	})
 	t.Run("a scenario may bind a faction", func(t *testing.T) {
 		require.Empty(t, defectsIn(t, campSource(t)))

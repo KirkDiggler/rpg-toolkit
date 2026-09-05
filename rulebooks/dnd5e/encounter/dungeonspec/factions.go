@@ -46,9 +46,6 @@ func (v *validation) factions() {
 			v.fail(p+".id", "the faction has no id")
 		case encounter.FactionParty:
 			v.fail(p+".id", "`party` is the players' side and is never declared — name the faction the monsters are in")
-		case encounter.FactionMonsters:
-			v.fail(p+".id", "`monsters` is where every monster with no faction already is and is never declared — "+
-				"give these monsters a faction of their own")
 		default:
 			if prev, dup := v.factionIDs[fa.ID]; dup {
 				v.fail(p+".id", "faction %q is already declared at factions[%d]", fa.ID, prev)
@@ -132,10 +129,10 @@ func (v *validation) minds() {
 }
 
 // cannotLearn reports why a faction cannot come to know a fact, or "" when
-// it can: it has a valid mind, or it is a faction of one — whose sole
-// member the compiler declares as its mind ([singletonMind]). `party` never
-// learns, and neither does `monsters`, which is never declared and so never
-// has a mind.
+// it can: it has a valid mind, or it is a DECLARED faction of one — whose
+// sole member the compiler declares as its mind ([singletonMind]). `party`
+// never learns; `monsters` learns only once declared, which is how the
+// unauthored side is given a mind (design §2, R4).
 func (v *validation) cannotLearn(id string) string {
 	if id == encounter.FactionParty {
 		return "`party` is the players' side and has no mind"
@@ -143,13 +140,13 @@ func (v *validation) cannotLearn(id string) string {
 	if v.mindValid[id] {
 		return ""
 	}
+	if _, declared := v.factionIDs[id]; !declared {
+		return fmt.Sprintf("faction %q is not declared, so it has no mind — declare it under `factions:` to give it one", id)
+	}
 	switch members := v.factionMembers[id]; len(members) {
 	case 1:
 		if v.spec.Place[members[0]].ID == "" {
 			return fmt.Sprintf("faction %q's one monster has no id to be its mind", id)
-		}
-		if id == encounter.FactionMonsters {
-			return "`monsters` is never declared, so it never has a mind"
 		}
 		return ""
 	case 0:

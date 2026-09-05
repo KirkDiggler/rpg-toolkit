@@ -130,8 +130,8 @@ type DungeonFacts struct {
 // FactionFacts is what a scenario may ask about one faction.
 type FactionFacts struct {
 	// CanLearn reports whether the faction has a mind to come to know a
-	// fact through — one its compiled declaration names. `party` and
-	// `monsters` never can.
+	// fact through — one its compiled declaration names. `party` never can;
+	// `monsters` can once it is declared with one.
 	CanLearn bool
 
 	// UntilFact is, per other faction, the fact whose knowledge ends this
@@ -146,7 +146,8 @@ type FactionFacts struct {
 //
 // A faction can learn when its compiled declaration names a mind — the
 // author's, or the one the authoring compiler declared for a faction of one
-// (rpg-project#375). The two reserved factions never have one.
+// (rpg-project#375). `party` never has one; `monsters` has one only once it
+// is declared.
 func FactsFrom(field encounter.FieldInput) *DungeonFacts {
 	facts := &DungeonFacts{
 		Props:    make(map[encounter.PropID]bool, len(field.Props)),
