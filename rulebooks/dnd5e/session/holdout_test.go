@@ -38,11 +38,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/scenarios"
@@ -152,16 +154,38 @@ func TestHoldOutSessionSuite(t *testing.T) { suite.Run(t, new(HoldOutSessionSuit
 
 func (s *HoldOutSessionSuite) SetupSuite() { s.compiled = campFixture(s.T()) }
 
+// campOptions is how a scene opens the camp: whether the hold-out ending is
+// bound, who drives the monsters, who the party is, and which authored
+// placements are spawned at the start (nil means all of them).
+type campOptions struct {
+	withEnding bool
+	driver     session.TurnDriver
+	cast       []*character.Data
+	spawn      []string
+}
+
 // start wires a fresh manager around the camp and spawns it: the letter on
-// the ground, nobody knowing anything, the stream cleared so a scene reads
-// only what its own verbs caused.
+// the ground, nobody knowing anything, the monsters passing their turns, the
+// stream cleared so a scene reads only what its own verbs caused.
 func (s *HoldOutSessionSuite) start(withEnding bool) {
+	s.startWith(campOptions{withEnding: withEnding})
+}
+
+// startWith is start with the scene's own choices; every zero value is the
+// default start makes.
+func (s *HoldOutSessionSuite) startWith(opts campOptions) {
+	if opts.driver == nil {
+		opts.driver = session.Pass{}
+	}
+	if opts.cast == nil {
+		opts.cast = []*character.Data{sharpEyed("alice"), dullEyed("bob")}
+	}
 	s.stream = &fakeStream{}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
+	s.characters = newFakeCharacters(opts.cast...)
 
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{},
+		Dice: testDice{}, TurnDriver: opts.driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -169,14 +193,28 @@ func (s *HoldOutSessionSuite) start(withEnding bool) {
 	s.mgr = mgr
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: campSession, Encounter: campWorldID, World: campWorld(s.T(), s.compiled, withEnding),
+		Session: campSession, Encounter: campWorldID, World: campWorld(s.T(), s.compiled, opts.withEnding),
 	})
 	s.Require().NoError(err)
 
 	for _, m := range s.compiled.Monsters {
-		s.spawn(m)
+		if opts.spawn == nil || slices.Contains(opts.spawn, m.ID) {
+			s.spawn(m)
+		}
 	}
 	s.stream.published = nil
+}
+
+// placement is one authored placement by id.
+func (s *HoldOutSessionSuite) placement(id string) dungeonspec.MonsterPlacement {
+	s.T().Helper()
+	for _, m := range s.compiled.Monsters {
+		if m.ID == id {
+			return m
+		}
+	}
+	s.Require().Failf("no placement", "%q is not placed in the camp", id)
+	return dungeonspec.MonsterPlacement{}
 }
 
 // spawn brings one authored placement into the run through the host's verb:
@@ -291,7 +329,7 @@ func (s *HoldOutSessionSuite) pathTo(member string, to spatial.Position) []spati
 	for _, c := range atlas.Cells {
 		floor[c] = true
 	}
-	for _, other := range []string{"alice", "bob", campChief, campScout} {
+	for other := range s.roster() {
 		if other != member {
 			delete(floor, s.where(other))
 		}
