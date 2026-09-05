@@ -69,6 +69,59 @@ func AddInventoryItem(data *Data, item InventoryItemData) error {
 	return nil
 }
 
+// RemoveInventoryItem removes quantity units of an item from a character's
+// stored inventory, decrementing an existing stack or removing it entirely
+// once exhausted — the inverse of AddInventoryItem, and Sell's underlying
+// primitive (rpg-toolkit#1537).
+//
+// A stack decremented to exactly zero is REMOVED from Inventory rather than
+// left at Quantity: 0 — a zero-or-negative persisted quantity is not a value
+// this package's own loadInventory accepts (load.go's strict-mode rejection,
+// lenient-mode drop-and-warn), the same invariant npcs.DecrementVendorStock
+// learned to protect the hard way (rpg-toolkit#1508). Leaving one behind
+// here would write data this same package's next load could not accept.
+//
+// item.Quantity must be strictly positive, the same "reject, don't silently
+// reinterpret" rule AddInventoryItem applies — a negative quantity here
+// would otherwise ADD to the stack instead of removing from it.
+//
+// Returns rpgerr.CodeNotFound if the character does not own at least
+// quantity units of Type/ID — covering both "never had it" and "has fewer
+// than requested" with the one meaning that matters to a seller: you don't
+// have that to sell.
+func RemoveInventoryItem(data *Data, item InventoryItemData) error {
+	if data == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "character data is required")
+	}
+	if item.ID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "item id is required")
+	}
+	if item.Quantity <= 0 {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument, "item quantity must be positive, got %d", item.Quantity)
+	}
+
+	for i := range data.Inventory {
+		if data.Inventory[i].Type != item.Type || data.Inventory[i].ID != item.ID {
+			continue
+		}
+		if data.Inventory[i].Quantity < item.Quantity {
+			return rpgerr.Newf(rpgerr.CodeNotFound,
+				"insufficient quantity of %q owned: have %d, need %d",
+				item.ID, data.Inventory[i].Quantity, item.Quantity)
+		}
+
+		remaining := data.Inventory[i].Quantity - item.Quantity
+		if remaining == 0 {
+			data.Inventory = append(data.Inventory[:i:i], data.Inventory[i+1:]...)
+		} else {
+			data.Inventory[i].Quantity = remaining
+		}
+		return nil
+	}
+
+	return rpgerr.Newf(rpgerr.CodeNotFound, "item %q not in inventory", item.ID)
+}
+
 // InventorySlot represents where an item can be equipped
 type InventorySlot string
 

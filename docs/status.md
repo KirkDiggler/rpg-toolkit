@@ -11,6 +11,21 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**rpg-toolkit#1537 (rpg-project#384) — Sell's inventory/vendor primitives
+(in progress, PR 1 of 3, 2026-09-05).** `character.RemoveInventoryItem`
+(mirror of `AddInventoryItem`, applying #1508's exact-then-remove fix
+proactively this time), `npcs.AddToVendorStock` (mirror of
+`DecrementVendorStock`, tags a brand-new row `PlayerSold: true`, leaves an
+incremented existing row's tag untouched), and a vendor's own optional
+`Wallet *currency.Money` (nil = unlimited, every current vendor; set =
+enforced via `CanAfford`/`Sub`) via `npcs.DebitVendorWallet` — deliberately
+placed on `npcs.VendorInventoryData`, not `npc.Data`: `npc` is a separate,
+dependency-free module, and this is D&D-specific content `npcs` already
+owns and structures inside `npc.Data`'s opaque `Inventory` bytes, the same
+way `Entries` itself does. `session.Trade`'s sell-direction wiring is a
+separate PR (module-isolated, same 3-PR pattern as the original `Trade`
+build), waiting on this plus a new `encounter.OutcomeSold`.
+
 **rpg-toolkit#1534 (rpg-project#376) — `session.Trade` learns to charge
 (complete, 2026-09-05).** `TradeOffer` gains `Currency currency.Money`.
 `Give.Items` still refused; a nonzero `Give.Currency` is now the payment for
