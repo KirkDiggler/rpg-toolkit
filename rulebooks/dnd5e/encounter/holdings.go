@@ -68,17 +68,17 @@ import (
 // collision closed by construction, so no id needs a shape rule to make the
 // fold safe.
 //
-// # A separate journal from the concealment world's, on purpose
+// # One journal with the knowledge facts (rpg-project#375)
 //
-// [encounterWorld] exists ONLY when the field carries concealed structure —
-// "a field with none builds no world machinery at all, which is what keeps a
-// plain dungeon byte-identical to what it was before that file existed"
-// (conceal.go). Holdings are not about concealment: a dungeon with no secret
-// anywhere can still have a holdable idol on a plinth. So this journal is
-// always present and independently persisted, and an encounter where nobody
-// holds anything writes NO holdings at all — `holdings` is omitempty, so a
-// plain dungeon's blob is byte-identical to what it was before this file
-// existed too.
+// These facts live in THE ONE WORLD's journal (world.go), beside the
+// `known:*` facts concealment and factions write — the run has one record of
+// what happened, and readers fold the kinds they are about. Every `holds:`
+// fact is audienced to its holder, so "who knows what" and "who has what"
+// fold the same way. At the storage boundary the one journal is split by
+// kind into the two keys the blob always had: this file's kinds on
+// [EncounterData.Holdings], the knowledge kinds on [EncounterData.World], and
+// an encounter where nobody holds anything still writes no holdings key at
+// all — a plain dungeon's blob is byte-identical to what it was before.
 //
 // # Nothing here is ever projected
 //
@@ -136,14 +136,16 @@ const (
 	droppedPrefix    = "dropped:"
 )
 
-// holdings is the run's answer to who has what: the append-only journal and
-// nothing else. Present state is folded from it on every question.
+// holdings is the run's answer to who has what: a READER over the one
+// journal, and nothing else. Present state is folded from it on every
+// question; the facts it writes land in the same log the world's knowledge
+// does.
 type holdings struct {
 	log *journal.Journal
 }
 
-// newHoldings returns an empty holdings journal.
-func newHoldings() *holdings { return &holdings{log: journal.New()} }
+// newHoldings returns the holdings reader over the one journal.
+func newHoldings(log *journal.Journal) *holdings { return &holdings{log: log} }
 
 // seedIntel writes the author's knowledge links as the holdings they are
 // (design P1): the monster carries the way to each door it was declared to
@@ -159,16 +161,18 @@ func newHoldings() *holdings { return &holdings{log: journal.New()} }
 // which is the kind of stale guarantee a reader trusts (caught on
 // toolkit-wave1c's probe/join-knows, e82da54).
 //
-// Audience is EMPTY, not the holder: a holding is not a thing that happened
-// to anybody, and [journal.Journal] is incurious about who witnessed what.
-// Nothing folds these by audience, because nothing but this file reads them.
+// Audience is THE HOLDER (rpg-project#375, design §3.3): a holding is
+// something that happened to the one holding it, and in the one journal it
+// folds beside the knowledge facts that are audienced the same way. Nothing
+// else witnessed it — what a member carries is never projected (P3).
 func (h *holdings) seedIntel(member MemberID, records []IntelID) error {
 	for _, id := range records {
 		if _, err := h.log.Append(journal.Fact{
-			Kind:    holdsIntelKind(id),
-			Actor:   journal.EntityID(member),
-			Subject: journal.EntityID("intel:" + id),
-			Outcome: journal.Outcome{Detail: "authored"},
+			Kind:     holdsIntelKind(id),
+			Actor:    journal.EntityID(member),
+			Subject:  journal.EntityID("intel:" + id),
+			Audience: journal.Audience{journal.EntityID(member)},
+			Outcome:  journal.Outcome{Detail: "authored"},
 		}); err != nil {
 			return fmt.Errorf("seed intel %q for %q: %w", id, member, err)
 		}
@@ -179,10 +183,11 @@ func (h *holdings) seedIntel(member MemberID, records []IntelID) error {
 // holdProp records that member now carries the prop.
 func (h *holdings) holdProp(member MemberID, id PropID, cause string) error {
 	_, err := h.log.Append(journal.Fact{
-		Kind:    holdsPropKind(id),
-		Actor:   journal.EntityID(member),
-		Subject: journal.EntityID("prop:" + id),
-		Outcome: journal.Outcome{Detail: cause},
+		Kind:     holdsPropKind(id),
+		Actor:    journal.EntityID(member),
+		Subject:  journal.EntityID("prop:" + id),
+		Audience: journal.Audience{journal.EntityID(member)},
+		Outcome:  journal.Outcome{Detail: cause},
 	})
 	return err
 }
@@ -190,12 +195,30 @@ func (h *holdings) holdProp(member MemberID, id PropID, cause string) error {
 // holdIntel records that member now carries the intel record.
 func (h *holdings) holdIntel(member MemberID, id IntelID, cause string) error {
 	_, err := h.log.Append(journal.Fact{
-		Kind:    holdsIntelKind(id),
-		Actor:   journal.EntityID(member),
-		Subject: journal.EntityID("intel:" + id),
-		Outcome: journal.Outcome{Detail: cause},
+		Kind:     holdsIntelKind(id),
+		Actor:    journal.EntityID(member),
+		Subject:  journal.EntityID("intel:" + id),
+		Audience: journal.Audience{journal.EntityID(member)},
+		Outcome:  journal.Outcome{Detail: cause},
 	})
 	return err
+}
+
+// holdsRecord reports whether a member currently holds an intel record — the
+// idempotence check presence transfer makes before copying one.
+func (h *holdings) holdsRecord(member MemberID, id IntelID) bool {
+	_, records := h.fold()
+	return records[id][member]
+}
+
+// isHoldingsKind reports whether a fact kind is one this file mints — the
+// split the storage boundary makes over the one journal. An arrival
+// (reserve.go) is of this family: where a thing physically is, on the truth
+// grain, beside `held:` and `dropped:`.
+func isHoldingsKind(kind string) bool {
+	return strings.HasPrefix(kind, holdsIntelPrefix) || strings.HasPrefix(kind, holdsPropPrefix) ||
+		strings.HasPrefix(kind, heldPrefix) || strings.HasPrefix(kind, droppedPrefix) ||
+		strings.HasPrefix(kind, arrivedPrefix)
 }
 
 // markHeld records that the prop has left the floor.
@@ -304,29 +327,70 @@ type propPlacement struct {
 	// is meaningless.
 	gone bool
 
-	// at is where a dropped prop now lies. Meaningful only when moved.
+	// at is where a dropped prop now lies, or where an arrived one landed.
+	// Meaningful only when moved.
 	at spatial.Position
 
-	// moved is whether the prop has been dropped somewhere other than where
-	// the author placed it.
+	// moved is whether the prop stands somewhere other than where the author
+	// placed it — dropped there, or arrived there (reserve.go: an arrival
+	// lands on the authored cell only when it is free).
 	moved bool
+
+	// arrived is whether a prop authored with an arrival predicate has
+	// entered the run. STICKY: a later hold or drop does not unsay it — the
+	// thing came, and then somebody carried it. False for every prop with no
+	// predicate, which Atlas never asks about; false for one still in reserve,
+	// which Atlas withholds (reserve.go).
+	arrived bool
+
+	// arrivedAt is the cell it arrived on — the cell its canvas entity stands
+	// at for the rest of the run, as an unreserved prop's stands at its
+	// authored cell — kept apart from at, which a later drop moves.
+	arrivedAt spatial.Position
 }
 
-// propPlacements folds where every prop physically is: picked up off the floor,
-// dropped at a cell, or exactly where the author put it (absent from the
-// map). The LAST fact about a prop wins, so a thing picked up, dropped and
-// picked up again is gone.
+// propPlacements folds where every prop physically is: arrived at a cell,
+// picked up off the floor, dropped at a cell, or exactly where the author put
+// it (absent from the map). The LAST fact about a prop wins, so a thing picked
+// up, dropped and picked up again is gone; arrival alone is sticky, because a
+// prop that came and was then carried has still come.
+//
+// An arrived fact is read by its SUBJECT as well as its kind: a member and a
+// prop may share a bare id at this seam, and only the `prop:` subject is a
+// prop's arrival.
 func (h *holdings) propPlacements() map[PropID]propPlacement {
 	out := map[PropID]propPlacement{}
 	for _, f := range h.log.All() {
 		kind := string(f.Kind)
 		switch {
+		case strings.HasPrefix(kind, arrivedPrefix):
+			id, at, ok := parseArrived(kind)
+			if !ok || f.Subject != propSubject(id) {
+				continue
+			}
+			out[id] = propPlacement{at: at, moved: true, arrived: true, arrivedAt: at}
 		case strings.HasPrefix(kind, heldPrefix):
-			out[strings.TrimPrefix(kind, heldPrefix)] = propPlacement{gone: true}
+			id := strings.TrimPrefix(kind, heldPrefix)
+			prev := out[id]
+			out[id] = propPlacement{gone: true, arrived: prev.arrived, arrivedAt: prev.arrivedAt}
 		case strings.HasPrefix(kind, droppedPrefix):
 			if id, at, ok := parseDropped(kind); ok {
-				out[id] = propPlacement{at: at, moved: true}
+				prev := out[id]
+				out[id] = propPlacement{at: at, moved: true, arrived: prev.arrived, arrivedAt: prev.arrivedAt}
 			}
+		}
+	}
+	return out
+}
+
+// arrivedProps is every prop that has entered the run from reserve, to the
+// cell it arrived on — what a reloaded canvas places (compileCanvas), folded
+// from the same facts every atlas folds.
+func (h *holdings) arrivedProps() map[PropID]spatial.Position {
+	out := map[PropID]spatial.Position{}
+	for id, p := range h.propPlacements() {
+		if p.arrived {
+			out[id] = p.arrivedAt
 		}
 	}
 	return out

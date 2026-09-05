@@ -18,6 +18,10 @@ const (
 
 	// DissolveByDefeat is a fight that ran out of a side.
 	DissolveByDefeat DissolveKind = "defeat"
+
+	// DissolveByStance is a fight whose sides stopped being sides: the
+	// stance between their factions turned (rpg-project#375, R1).
+	DissolveByStance DissolveKind = "stance"
 )
 
 // DissolveCause is why a fight ended: a closed set, sealed the way
@@ -94,6 +98,23 @@ type byDefeat struct{}
 
 func (byDefeat) Kind() DissolveKind { return DissolveByDefeat }
 func (byDefeat) isDissolveCause()   {}
+
+// ByStance is a fight whose two sides stopped being sides: the stance between
+// their factions turned — the camp's chief came to know the party saved the
+// Wiseman — and a fight between members who are opposed to nobody is not a
+// fight (rpg-project#375, design §3.5, R1). The third case, earned by its
+// caller the way ByDefeat was.
+//
+// Unreachable from outside this package, for ByDefeat's reason: a stance
+// turning is something the world FOLDS at [Encounter.settleStances], never
+// something a caller declares — a caller who could hand this in would be a
+// second system deciding a fact the graph owns.
+func ByStance() DissolveCause { return byStance{} }
+
+type byStance struct{}
+
+func (byStance) Kind() DissolveKind { return DissolveByStance }
+func (byStance) isDissolveCause()   {}
 
 // DissolveInput names a member of the fight being ended. The bubble is
 // reached through a member — never addressed by name — which R6 makes a

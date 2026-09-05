@@ -44,6 +44,101 @@ const (
 // MemberID is an alias for core.EntityID used for clarity in member contexts.
 type MemberID = core.EntityID
 
+// FactionID names a faction — WHO FIGHTS WHOM (rpg-project#375, the hold-out
+// design §2). An author's word, carried verbatim like a region id: the wire
+// shows it on the roster, and a scenario binds it by name.
+//
+// An alias rather than a defined type, matching [RegionID] and [PropID]: an
+// id at this seam is a string the author wrote, and the composition carries
+// it without interpreting it.
+type FactionID = string
+
+// The two RESERVED factions (design R4). Neither is ever declared in a file:
+// `party` is the players' side, and `monsters` is where every monster the
+// author did not put anywhere else already is. Between them, and only between
+// them, this composition still means exactly what it meant before factions
+// existed — see [FieldInput.Dispositions] for the defaults that keep every
+// existing dungeon unchanged.
+const (
+	// FactionParty is the players' side. A player member with no
+	// [MemberInput.Faction] is in it.
+	FactionParty FactionID = "party"
+
+	// FactionMonsters is the unauthored monsters' side. A monster member
+	// with no [MemberInput.Faction] is in it.
+	FactionMonsters FactionID = "monsters"
+)
+
+// Stance is one faction's posture toward another: the closed set a
+// disposition may declare, and the value a pair's stance folds to.
+type Stance string
+
+const (
+	// StanceHostile means the two factions fight on sight.
+	StanceHostile Stance = "hostile"
+
+	// StanceNeutral means neither fights the other — "not hostile", which
+	// is also what a hostile pair becomes once its `until` holds (design
+	// R2).
+	StanceNeutral Stance = "neutral"
+
+	// StanceAllied means the two stand together. Authorable only as a
+	// static stance; no predicate turns a pair allied (R2).
+	StanceAllied Stance = "allied"
+)
+
+// FactionInput declares one faction the dungeon authored (design §2).
+//
+// A faction is a name members belong to and dispositions are declared
+// between. It carries one optional fact of its own: the MIND, the member the
+// faction knows through — "the faction knows what its mind knows" (R3, Kirk
+// 2026-09-05: "at a faction level it makes sense").
+type FactionInput struct {
+	// ID names the faction. REQUIRED non-empty and unique; the reserved
+	// [FactionParty] is refused (ErrNoFaction) — the players' side is not
+	// something an author declares. [FactionMonsters] MAY be declared, which
+	// is how the unauthored monsters' side is given a mind.
+	ID FactionID
+
+	// Mind is the member whose knowledge is the faction's — the hub word
+	// spreads through. Optional: a faction of one has its sole member as its
+	// mind, and a faction with no mind cannot learn, so an `until` naming a
+	// fact never holds for it (design §3.9 — a consequence, not a loss).
+	//
+	// A MEMBER ID, validated when that member ENTERS THE RUN rather than at
+	// construction, because the authored roster is not how monsters get in:
+	// the host spawns each one through [Encounter.Join], so the mind may not
+	// exist yet when the field is compiled. A member joining under a mind's
+	// id must join that faction (ErrNoFaction otherwise).
+	Mind MemberID
+}
+
+// DispositionInput declares how two factions stand to each other, and the
+// predicate that changes it (design §2).
+type DispositionInput struct {
+	// Between is the pair, UNORDERED: {raiders, party} and {party, raiders}
+	// are one disposition, and declaring both is refused (ErrNoFaction).
+	// Each must be a declared faction or one of the two reserved ones.
+	Between [2]FactionID
+
+	// Stance is the declared posture, one of the closed [Stance] set.
+	Stance Stance
+
+	// Until is the predicate that ends hostility: when it holds, the pair's
+	// stance is [StanceNeutral] (R2). LEGAL ONLY WITH [StanceHostile] — a
+	// neutral or allied pair has nothing to stop doing — and refused
+	// otherwise (ErrNoFaction). Nil means the stance is static.
+	//
+	// A [Trigger], because a predicate IS the sealed set endings already
+	// use: `{ fact: x }` is a [TriggerFact], `{ down: chief }` a
+	// [TriggerMemberDown], `{ round: 6 }` a [TriggerRound], and
+	// `{ stance: [a, b], is: neutral }` a [TriggerStance]. On an `until`,
+	// a fact predicate is judged on the AUDIENCE grain — the faction's mind
+	// knows it — where the same predicate on an ending is judged on the
+	// truth grain, anyone in the run knows it (design R5).
+	Until Trigger
+}
+
 // Lighting is a region's light level, carried through the composition unread
 // (rpg-project#256).
 //
@@ -296,6 +391,36 @@ type PropInput struct {
 	// field never reaches Sight, Standing, or the turn loop, the same law
 	// Facing follows.
 	Offset [3]float64
+
+	// Arrives is the predicate that brings this prop into the run
+	// (rpg-project#375, the hold-out design §3.7, R6). Nil — the zero value,
+	// and every prop authored before arrivals existed — means the prop is on
+	// the floor from the first frame, exactly as it always was.
+	//
+	// A PROP WITH A PREDICATE IS IN RESERVE. It is field STRUCTURE — the
+	// author placed it, At is where it will stand — and until the predicate
+	// holds it is nowhere: not on the canvas, so it blocks nothing; in no
+	// atlas, for any member; not [Holdable], however it was authored, and
+	// [Encounter.Hold] refuses it exactly as it refuses an id that names
+	// nothing (the probe law — a refusal that said "not yet" would confirm a
+	// thing nobody can see). The never-authored yardstick governs: a run with
+	// this prop in reserve projects byte-identically to one where it was never
+	// written, until it arrives.
+	//
+	// When the predicate holds it is placed at At — or at the nearest free
+	// cell of At's region when something stands there — with an
+	// `arrived:<id>@<cell>` fact and an `arrived` beat to everyone; from then
+	// on it is an ordinary prop, held and dropped like any other. The fact is
+	// the whole record of its arrival: nothing stores "arrived" beside it, and
+	// a reload folds the same answer from the same fact.
+	//
+	// A [Trigger], the predicate grammar endings and dispositions already
+	// speak: `{ round: 6 }` is a [TriggerRound], `{ down: chief }` a
+	// [TriggerMemberDown], `{ fact: x }` a [TriggerFact] (TRUTH grain here —
+	// anyone in the run knows it), `{ stance: ... }` a [TriggerStance].
+	// Refused at construction when it can never hold (ErrNoField), by the
+	// same liveness rule an ending meets.
+	Arrives Trigger
 }
 
 // WallInput is one authored wall: the crossing it blocks, plus the
@@ -509,6 +634,21 @@ type FieldInput struct {
 	// party arrives at [0,0] looking nowhere, which is a fact about a
 	// dungeon rather than the absence of one. See [FieldStart].
 	Start *FieldStart
+
+	// Factions are the factions this dungeon authored (rpg-project#375).
+	// Optional; omitted means none — every member is in one of the two
+	// reserved factions, which is exactly what every dungeon was before
+	// factions existed. See [FactionInput].
+	Factions []FactionInput
+
+	// Dispositions are the declared stances between factions, one per
+	// unordered pair. Optional. Every pair the author did NOT declare has a
+	// DEFAULT, and the defaults are what keep today's dungeons unchanged
+	// (design §2): `party` and `monsters` are mutually hostile; every faction
+	// is allied with itself; a declared faction with no disposition toward
+	// `party` is hostile to it; declared factions are neutral to each other
+	// and to `monsters`. See [DispositionInput].
+	Dispositions []DispositionInput
 }
 
 // IntelID is the author's name for one intel record — [IntelRecord.ID].
@@ -562,7 +702,27 @@ type RevealTargets struct {
 	// already see tells nobody anything, and refusing it would make this
 	// declaration depend on a fact about a different one.
 	Door DoorID
+
+	// Fact is the fact this record reveals, or empty (rpg-project#375, the
+	// hold-out design §2) — the second key, arrived with its use case: a
+	// letter that says the party saved the Wiseman.
+	//
+	// A PLAIN STRING, DECLARED BY MENTION. A fact has no structure of its
+	// own: it is a token a disposition's `until` and a record's `reveals`
+	// agree on, and learning it writes `known:fact:<id>` for the learner.
+	// A record may reveal a fact no disposition waits for — the dungeon
+	// allows it and the scenario refuses it (R8) — so nothing here checks
+	// that anybody cares.
+	//
+	// The json tag is for dungeonspec's committed pictures only, which
+	// marshal this struct as it stands: omitted when empty, so every record
+	// authored before facts existed pictures byte-identically.
+	Fact FactID `json:"Fact,omitempty"`
 }
+
+// FactID names a fact — a plain string, declared by mention (see
+// [RevealTargets.Fact]).
+type FactID = string
 
 // FieldExit is one authored way out: an id and the cell a member has to be
 // standing on for [Encounter.Exit] to count as leaving through it.
@@ -737,6 +897,50 @@ type MemberInput struct {
 	// when the holding changes hands, which is the whole reason a holding
 	// names a record rather than a door ([IntelRecord]).
 	Holds []IntelID
+
+	// Faction is the faction this member belongs to (rpg-project#375).
+	// Optional: EMPTY MEANS THE DEFAULT FOR THE KIND — a player is in
+	// [FactionParty], a monster in [FactionMonsters], and a world NPC in no
+	// faction at all (it is never a side; rpg-toolkit#1404). Hand-carried
+	// by the host the way Holds is, from the placement's own `faction`.
+	//
+	// Must name a declared faction or a reserved one; refused otherwise
+	// (ErrNoFaction). What belonging MEANS is the graph's business: a
+	// `belongs-to` edge from this member to the faction, folded by every
+	// side reader (design §3.1).
+	Faction FactionID
+
+	// Arrives is the predicate that brings this member into the run
+	// (rpg-project#375, the hold-out design §3.7, R6). Nil — the zero value —
+	// means the member is placed at Position from the first frame, exactly as
+	// every member always was. Hand-carried by the host the way Faction and
+	// Holds are, from the placement's own `arrives`.
+	//
+	// A MEMBER WITH A PREDICATE IS IN RESERVE, not on the roster: no cell, no
+	// clock, no turn, in no pair, in no fight, in no beat's audience, absent
+	// from every projection for every member — [Encounter.Members],
+	// [Encounter.AtlasFor], [Encounter.Story], [Encounter.ClockOf] all answer
+	// as though it were never authored (the never-authored yardstick). Its
+	// facts — Name, Speed, Sight, Actions, Targeting, BlocksMovement, Faction,
+	// Holds, Decider — are kept for the day it arrives, and Position is where
+	// it arrives: it must be standable, refused otherwise (ErrBadPlacement),
+	// exactly as a seat is.
+	//
+	// When the predicate holds the member enters the run the way a joiner
+	// does — placed at Position, or at the nearest free standable cell of
+	// Position's region when something stands there; on the world clock; its
+	// records seeded; the graph redeclared — with an `arrived:<id>@<cell>`
+	// fact and an `arrived` beat to everyone, and the same verb's sight
+	// refresh forms or joins a fight as for anyone walking into view. From
+	// then on it is an ordinary member and this predicate is spent: nothing
+	// stores "arrived" beside the fact.
+	//
+	// MONSTERS ONLY. A player has no reserve to wait in and a world NPC is
+	// placed by its own lane; either with a predicate is refused
+	// (ErrNoMember). Refused too when the predicate can never hold
+	// (ErrNoMember) — a round counted from 0, a fact with no name, a stance
+	// the pair can never reach, or this member waiting for its own fall.
+	Arrives Trigger
 }
 
 // ActionView is a static fact about one action a member can take — an
@@ -890,6 +1094,63 @@ type TriggerExitedHolding struct {
 
 // isTrigger marks TriggerExitedHolding as a Trigger.
 func (t TriggerExitedHolding) isTrigger() {}
+
+// TriggerRound fires when any fight in the run starts round N
+// (rpg-project#375, the hold-out design §2 — `{ round: N }`).
+//
+// THE FIGHT'S OWN CLOCK, never the world's (R9): rounds exist only inside a
+// bubble, so outside any fight this never holds, and it is evaluated at the
+// one place a round is noticed — the RoundStarted milestone a turn ending
+// crosses. A fight that formed and reached round N fires it; a run with no
+// fight never does. The world clock stays postponed.
+type TriggerRound struct {
+	// Round is the round to reach, at least 1 — refused at construction
+	// otherwise (ErrNoEnding): a predicate on round 0 is one nothing can
+	// start.
+	Round int
+}
+
+// isTrigger marks TriggerRound as a Trigger.
+func (t TriggerRound) isTrigger() {}
+
+// TriggerFact fires when a fact is known (rpg-project#375, design §2 —
+// `{ fact: <id> }`).
+//
+// TWO GRAINS, ONE SPELLING (R5). On an ending or an arrival the question is
+// the TRUTH grain — the fact exists in the run's journal, learned by anyone —
+// and it is evaluated at the fact append. On a disposition's `until` the
+// same predicate is judged on the AUDIENCE grain: the faction's MIND knows
+// it, and nobody else's knowledge counts (R3 — a scout who reads the letter
+// flips nothing).
+type TriggerFact struct {
+	// Fact is the fact id. REQUIRED non-empty (ErrNoEnding).
+	Fact FactID
+}
+
+// isTrigger marks TriggerFact as a Trigger.
+func (t TriggerFact) isTrigger() {}
+
+// TriggerStance fires when a pair's stance folds to a value
+// (rpg-project#375, design §2 — `{ stance: [a, b], is: neutral }`).
+//
+// This is what a hold-out's win IS: `scenarios.hold-out.convince: raiders`
+// is sugar for an ending on `{ stance: { between: [raiders, party], is: neutral } }`.
+// Evaluated in the fold after a flip — the one place a stance changes —
+// and refused at construction when the pair can never reach that stance
+// (ErrNoEnding): an allied pair never turns neutral, a static hostile pair
+// never turns, and a stance the pair already holds from the start is one
+// no change can fire.
+type TriggerStance struct {
+	// Between is the pair, unordered. Both must be declared or reserved
+	// factions.
+	Between [2]FactionID
+
+	// Stance is the value the pair's stance must fold to.
+	Stance Stance
+}
+
+// isTrigger marks TriggerStance as a Trigger.
+func (t TriggerStance) isTrigger() {}
 
 // EndingInput describes a declared encounter ending.
 type EndingInput struct {
@@ -1076,6 +1337,12 @@ type Member struct {
 	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
 	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
 	BlocksMovement bool
+
+	// Faction is the faction this member belongs to, RESOLVED: the one the
+	// caller named, or the kind's default when they named none
+	// ([MemberInput.Faction]). Empty only for a world NPC, which is in no
+	// faction. The roster row a host shows.
+	Faction FactionID
 }
 
 // memberRecord is what the composition stores about a member: identity,
@@ -1105,6 +1372,29 @@ type memberRecord struct {
 	Actions        []ActionView
 	Targeting      string
 	BlocksMovement bool
+
+	// Faction is the faction the caller NAMED, or empty for the kind's
+	// default — stored as given, never resolved here, so a member in the
+	// default faction persists byte-identically to one from before factions
+	// existed. [Encounter.factionOf] resolves it on every read.
+	Faction FactionID
+}
+
+// factionOf resolves a member's faction: the one named, or the kind's default
+// (design R4) — [FactionParty] for a player, [FactionMonsters] for a monster,
+// and none for a world NPC, which is never a side.
+func factionOf(m *memberRecord) FactionID {
+	if m.Faction != "" {
+		return m.Faction
+	}
+	switch m.Kind {
+	case KindPlayer:
+		return FactionParty
+	case KindMonster:
+		return FactionMonsters
+	default:
+		return ""
+	}
 }
 
 // Status represents the encounter's open/closed state.
@@ -1364,12 +1654,46 @@ type JoinInput struct {
 	// byte-identical whether a joiner holds every record in the dungeon or
 	// none.
 	Holds []IntelID
+
+	// Faction is the faction the joiner belongs to — [MemberInput.Faction]
+	// for a member who arrives mid-scene, which is how every monster
+	// actually enters a run (see Holds above). Optional: empty means the
+	// kind's default. Refused before any mutation when it names no faction
+	// this field declares (ErrNoFaction).
+	Faction FactionID
+
+	// Arrives is the predicate that brings this member into the run —
+	// [MemberInput.Arrives] for a member who is spawned mid-scene, which is
+	// how every monster actually enters a run (see Holds above). Optional:
+	// nil means the joiner is placed at Cell now, as every joiner always was.
+	//
+	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design
+	// §3 Spawn: "Content for a reserved monster resolves at launch; the
+	// encounter holds the member in reserve"). Cell is where it will arrive,
+	// validated standable now; nothing is placed, no clock is joined, no
+	// beat is written — a `joined` beat would tell everyone a thing the
+	// yardstick says nobody can know — and [JoinOutput.Reserved] says so.
+	// Monsters only, refused otherwise (ErrNoMember), as at construction.
+	Arrives Trigger
 }
 
 // JoinOutput reports the results of a successful join.
 type JoinOutput struct {
 	// Member is the joined member's read-side data.
+	//
+	// For a joiner that went into RESERVE (Reserved below) this carries the
+	// member's facts and, as Position and Region, the cell it will arrive at
+	// — the authored placement, not a place anybody stands. Nothing else
+	// about the run says this member exists until it arrives.
 	Member Member
+
+	// Reserved is true when the joiner carried an Arrives predicate and went
+	// into reserve rather than onto the map (rpg-project#375, design §3.7):
+	// Formed and IntelDeltas are nil, Seq is 0 — no beat was written — and
+	// the member is absent from every roster, atlas and story until its
+	// predicate holds. A host reads this to withhold the member from what it
+	// shows, exactly as the encounter does.
+	Reserved bool
 
 	// Formed is set when arriving in sight of the other side started a fight.
 	// A joiner walks into a scene like anybody else.

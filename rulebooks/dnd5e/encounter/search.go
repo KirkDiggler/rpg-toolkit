@@ -94,10 +94,6 @@ func (e *Encounter) Search(in *SearchInput) (*SearchOutput, error) {
 		return nil, fmt.Errorf("search: member %q does not stand in region %q: %w", in.Member, in.Region, ErrElsewhere)
 	}
 
-	if e.world == nil {
-		return &SearchOutput{}, nil
-	}
-
 	at := uint64(e.clock.ToData().HighWater)
 	for _, doorID := range e.world.concealedDoors {
 		d := e.doorsByID[doorID]

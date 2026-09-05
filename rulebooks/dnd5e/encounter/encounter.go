@@ -110,6 +110,13 @@ type Encounter struct {
 	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
 	deciders    map[MemberID]Decider
 
+	// reserve is every member held back by an arrival predicate
+	// (rpg-project#375, reserve.go): not on the roster, on no clock, in no
+	// projection — its facts wait here and nowhere else until its predicate
+	// holds, when it joins members through the one arrival path. Persisted
+	// on EncounterData.Reserve; nil for a run with nothing waiting.
+	reserve map[MemberID]*reservedMember
+
 	// initiative rolls the order a bubble forms with. Nil until Setup is given
 	// one; trigger detection refuses to start a fight without it rather than
 	// dropping the fight silently.
@@ -145,19 +152,20 @@ type Encounter struct {
 	// return value.
 	announcer Announcer
 
-	// world is the run's concealment knowledge — seeded from the field's
-	// concealed structure at construction, its facts persisted on
-	// EncounterData.World (rpg-toolkit#1371). NIL FOR A FIELD WITH NO
-	// CONCEALMENT, deliberately: a plain dungeon builds no world machinery
-	// at all, which is what makes zero-behavior-change structural rather
-	// than promised.
+	// world is THE ONE WORLD (rpg-project#375, world.go): the one journal
+	// every fact of the run lands in — knowledge, holdings — and the one
+	// graph folded over it, rebuilt from the field and the roster at every
+	// construction and roster change, its facts persisted on
+	// EncounterData.World and EncounterData.Holdings. ALWAYS PRESENT: a
+	// plain dungeon has sides and knowledge too, and what it skips is the
+	// concealment capabilities and the sweep's work, which keeps its blob
+	// byte-identical to what it was before.
 	world *encounterWorld
 
-	// holdings is WHO HAS WHAT: the run's append-only journal of holdings,
-	// takings and drops (rpg-project#368, design §5). ALWAYS PRESENT, unlike
-	// world above — holdings are not about concealment, and a dungeon with
-	// no secret anywhere can still have a holdable idol on a plinth. An
-	// encounter where nobody holds anything writes no facts and no bytes.
+	// holdings is WHO HAS WHAT: a reader over the world's journal for the
+	// holdings, takings and drops (rpg-project#368, design §5). An
+	// encounter where nobody holds anything writes no such facts and no
+	// bytes.
 	holdings *holdings
 
 	// checkResolver rolls a find check when a member searches. Required at
@@ -426,6 +434,15 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 					ei.Key, eh.Item, ErrNoEnding)
 			}
 		}
+		// The predicate grammar's own forms (rpg-project#375) — a round, a
+		// fact, a stance — through the one validator dispositions use, so an
+		// ending and an until refuse the same shapes in the same words.
+		switch ei.Trigger.(type) {
+		case TriggerRound, TriggerFact, TriggerStance:
+			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
+				return err
+			}
+		}
 		trigger, ok := ei.Trigger.(TriggerReachedPosition)
 		if !ok {
 			continue
@@ -667,6 +684,24 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
+	// A member's faction must be one this field has, and a faction's mind
+	// must be in that faction (rpg-project#375) — asked here, before
+	// anything is built (R5), and asked again by Join for the members that
+	// arrive later, which is how every monster actually enters a run.
+	for _, mi := range in.Members {
+		if err = f.validateMemberFaction(mi.ID, mi.Kind, mi.Faction); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
+		}
+		// And a member held in reserve must be one that can wait there and
+		// one whose predicate can hold (reserve.go) — the same refusal Join
+		// makes, at the same point: before the first mutation.
+		if mi.Arrives != nil {
+			if err = f.validateArrival(mi.ID, mi.Kind, mi.Arrives); err != nil {
+				return nil, fmt.Errorf("newencounter: %w", err)
+			}
+		}
+	}
+
 	// A TriggerReachedPosition ending must name a reachable cell (#929 T3
 	// Opus round F5) — see validateEndingTriggers.
 	if err = validateEndingTriggers(f, in.Endings); err != nil {
@@ -691,21 +726,20 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
-	// The holdings journal, always. It starts empty and stays empty for a
-	// field nobody carries anything in, which is what keeps such a field's
-	// blob byte-identical to what it was before holdings existed.
-	e.holdings = newHoldings()
+	// THE ONE WORLD (rpg-project#375, world.go): its journal now, empty, so
+	// the seeds below have somewhere to land; its graph once the endings are
+	// known, because the facts they wait for are part of its declaration.
+	// Holdings are a reader over the same journal. Both start empty and stay
+	// empty for a field nobody learns or carries anything in, which is what
+	// keeps such a field's blob byte-identical to what it was before.
+	e.world = newEncounterWorld()
+	e.holdings = newHoldings(e.world.log)
 
-	// The world, seeded from the concealed structure — and only then: a
-	// field with none leaves e.world nil and every concealment path a
-	// no-op (rpg-toolkit#1371).
+	// The two concealment capabilities, held exactly when the field carries
+	// concealed structure (rpg-toolkit#1371); the world exists either way.
 	if fieldHasConcealment(in.Field.Regions, in.Field.Doors) {
 		e.checkResolver = in.CheckResolver
 		e.witness = in.Witness
-		e.world, err = newEncounterWorld(f, e.doors)
-		if err != nil {
-			return nil, fmt.Errorf("newencounter: %w", err)
-		}
 	}
 
 	// Build clock and intel
@@ -724,8 +758,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter story: %w", err)
 	}
 
-	// Compile the field into the one canvas this encounter runs on.
-	e.canvas, err = f.compileCanvas(e.doors)
+	// Compile the field into the one canvas this encounter runs on. Nothing
+	// has arrived yet: a prop with a predicate stays off the canvas
+	// (reserve.go).
+	e.canvas, err = f.compileCanvas(e.doors, nil)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
@@ -733,6 +769,29 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Place members and collect them
 	memberIDs := make([]MemberID, 0, len(in.Members))
 	for _, mi := range in.Members {
+		member := &memberRecord{
+			ID:             mi.ID,
+			Kind:           mi.Kind,
+			Name:           mi.Name,
+			SpeedFeet:      mi.SpeedFeet,
+			SightFeet:      mi.SightFeet,
+			Actions:        mi.Actions,
+			Targeting:      mi.Targeting,
+			BlocksMovement: mi.BlocksMovement,
+			Faction:        mi.Faction,
+		}
+
+		// A MEMBER WITH A PREDICATE WAITS IN RESERVE (rpg-project#375,
+		// reserve.go): its facts are kept and nothing else happens — no
+		// cell, no clock, no seed, no percept, not in the scene-opened
+		// audience. Everything below is for the members who are here.
+		if mi.Arrives != nil {
+			e.reserveMember(&reservedMember{
+				record: *member, at: f.cellAt(mi.Position), holds: mi.Holds,
+				decider: mi.Decider, arrives: mi.Arrives,
+			})
+			continue
+		}
 		memberIDs = append(memberIDs, mi.ID)
 
 		entity := &memberEntity{
@@ -748,16 +807,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter member placement: %w: %w", ErrBadPlacement, err)
 		}
 
-		member := &memberRecord{
-			ID:             mi.ID,
-			Kind:           mi.Kind,
-			Name:           mi.Name,
-			SpeedFeet:      mi.SpeedFeet,
-			SightFeet:      mi.SightFeet,
-			Actions:        mi.Actions,
-			Targeting:      mi.Targeting,
-			BlocksMovement: mi.BlocksMovement,
-		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
 
@@ -783,6 +832,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Store endings in declaration order (deterministic evaluation, C8), each
 	// positional one compiled to the canvas cell it fires on.
 	e.endings = compileEndings(in.Endings, f)
+
+	// The graph, declared from the field, the roster and the endings — the
+	// sides, the belonging, the knowledge reducers, the flips (world.go).
+	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
 
 	// First light: build sight percepts for each member using refreshSight
 	firstLight, err := e.rebuildPercepts(memberIDs)
@@ -935,6 +990,7 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		Actions:        record.Actions,
 		Targeting:      record.Targeting,
 		BlocksMovement: record.BlocksMovement,
+		Faction:        factionOf(record),
 	}, nil
 }
 
@@ -1093,9 +1149,6 @@ func (e *Encounter) rosterIDs() []MemberID {
 // the ONE movement-beat writer, so a player's walk and a monster's pump
 // step are scoped by the same line.
 func (e *Encounter) frontierAudience(action executedAction, audience []MemberID) []MemberID {
-	if e.world == nil {
-		return audience
-	}
 	region, owned := e.field.regionOf(action.to)
 	if !owned || !e.world.concealedRegions[region] {
 		return audience
@@ -1216,10 +1269,8 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		// move itself stays narrated for everyone, doors or no doors.
 		ids := make([]string, 0, len(action.doors))
 		for _, d := range action.doors {
-			if e.world != nil {
-				if rec, ok := e.doorsByID[d.ID]; ok && rec.concealed != nil {
-					continue
-				}
+			if rec, ok := e.doorsByID[d.ID]; ok && rec.concealed != nil {
+				continue
 			}
 			ids = append(ids, d.ID)
 		}
@@ -1864,8 +1915,11 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: %w", ErrNoMember)
 	}
 
-	// Check if already a member
-	if _, exists := e.members[in.Member]; exists {
+	// Check if already a member — on the roster, or waiting in reserve
+	// (reserve.go): a reserved member is absent from every projection, but
+	// it is in the encounter, and a second joiner under its id would arrive
+	// twice.
+	if _, exists := e.members[in.Member]; exists || e.inReserve(in.Member) {
 		return nil, fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrNoMember)
 	}
 
@@ -1901,6 +1955,22 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		}
 	}
 
+	// The faction must be one this field has, and a member arriving under a
+	// faction's mind id must arrive in that faction — the SAME refusal
+	// NewEncounter makes, before the first mutation ([JoinInput.Faction]).
+	if err := e.field.validateMemberFaction(in.Member, in.Kind, in.Faction); err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
+	// A joiner held in reserve must be one that can wait there and one whose
+	// predicate can hold — the SAME refusal NewEncounter makes (reserve.go),
+	// before the first mutation.
+	if in.Arrives != nil {
+		if err := e.field.validateArrival(in.Member, in.Kind, in.Arrives); err != nil {
+			return nil, fmt.Errorf("join: %w", err)
+		}
+	}
+
 	// Hex fields require integral axial cells (interim tools/spatial#926
 	// enforcement — see isIntegralHexCell). Asked first, for the reason
 	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
@@ -1918,6 +1988,38 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: cell %v %s: %w", in.Cell, e.field.notStandable(in.Cell), ErrBadPlacement)
 	}
 
+	member := &memberRecord{
+		ID:             in.Member,
+		Kind:           in.Kind,
+		Name:           in.Name,
+		SpeedFeet:      in.SpeedFeet,
+		SightFeet:      in.SightFeet,
+		Actions:        in.Actions,
+		Targeting:      in.Targeting,
+		BlocksMovement: in.BlocksMovement,
+		Faction:        in.Faction,
+	}
+
+	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design §3
+	// Spawn; reserve.go): validated like any joiner, then held — no
+	// placement, no clock, no seed, no beat, no refresh. The output says so,
+	// and names the cell it will arrive at as its placement; nothing else in
+	// the run does.
+	if in.Arrives != nil {
+		e.reserveMember(&reservedMember{
+			record: *member, at: in.Cell, holds: in.Holds, decider: in.Decider, arrives: in.Arrives,
+		})
+		region, _ := e.RegionAt(in.Cell)
+		return &JoinOutput{
+			Reserved: true,
+			Member: Member{
+				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
+				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting,
+				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
+			},
+		}, nil
+	}
+
 	entity := &memberEntity{
 		id:             string(in.Member),
 		kind:           in.Kind,
@@ -1929,16 +2031,6 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	// Register the member
-	member := &memberRecord{
-		ID:             in.Member,
-		Kind:           in.Kind,
-		Name:           in.Name,
-		SpeedFeet:      in.SpeedFeet,
-		SightFeet:      in.SightFeet,
-		Actions:        in.Actions,
-		Targeting:      in.Targeting,
-		BlocksMovement: in.BlocksMovement,
-	}
 	e.members[in.Member] = member
 	e.everMembers[in.Member] = true // Track in everMembers
 
@@ -1960,6 +2052,13 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// state the join establishes rather than something the join narrates:
 	// nothing about it is ever narrated (design P3).
 	if err := e.holdings.seedIntel(in.Member, in.Holds); err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
+	// A member is an entity in the graph, and the mind of a faction of one
+	// is whoever is in it — so the declaration is rebuilt on arrival
+	// (world.go).
+	if err := e.buildWorld(); err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
@@ -2061,9 +2160,31 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit held_by: %w", err)
 	}
 
+	// The exit beat's audience, captured HERE, before the exiter is removed
+	// from e.members below: it is every member INCLUDING the exiter — they
+	// witness their own departure (and can re-read it via Story).
+	// audienceFor reads live membership, so calling it after the delete
+	// would leave the exiter out (tableBeat, no subjects — see its doc).
+	audience := e.audienceFor(tableBeat)
+
 	// Remove from the map
 	if err = e.canvas.RemoveEntity(string(in.Member)); err != nil {
 		return nil, fmt.Errorf("exit remove entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	// OFF THE ROSTER BEFORE OFF THE CLOCK. Leaving a bubble can hand the
+	// active slot to a monster, and that monster is driven at once
+	// (leaveAnyClock → driveIfStillRunning): its strike reads the roster,
+	// and a roster read mid-drive must never meet a member who is off the
+	// map and still on the list — placementOf refuses that as ErrNoField,
+	// which surfaced as "invalid encounter data" on a player's own Exit
+	// (Kirk's walk on the raider camp, 2026-09-05; pre-existing for any
+	// active player leaving a fight with a striking monster next). The
+	// roster changing is the graph's declaration changing too (world.go).
+	delete(e.members, in.Member)
+	delete(e.deciders, in.Member)
+	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
 	}
 
 	// Remove from whichever clock holds them — the world clock normally, a
@@ -2073,17 +2194,6 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit member %q clock: %w", in.Member, cerr)
 	}
 	intelDeltas := mergeIntelDeltas(nil, clockDeltas)
-
-	// The exit beat's audience, captured HERE, before the exiter is removed
-	// from e.members below: it is every member INCLUDING the exiter — they
-	// witness their own departure (and can re-read it via Story).
-	// audienceFor reads live membership, so calling it after the delete
-	// would leave the exiter out (tableBeat, no subjects — see its doc).
-	audience := e.audienceFor(tableBeat)
-
-	// Remove from member set (and deciders if present)
-	delete(e.members, in.Member)
-	delete(e.deciders, in.Member)
 
 	// Get remaining member IDs for story and refresh
 	memberIDs := make([]MemberID, 0, len(e.members))

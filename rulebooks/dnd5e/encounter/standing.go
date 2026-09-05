@@ -233,6 +233,18 @@ func (e *Encounter) noticeDown(
 		intelDeltas = mergeIntelDeltas(intelDeltas, drivenDeltas)
 	}
 
+	// A fall is the first of the four arrival sites (rpg-project#375, design
+	// §3.8; reserve.go): every reserved placement waiting on one of these
+	// falls arrives now — BEFORE the endings below, so an `ended` this same
+	// fall fires stays the story's last word. A member arriving refreshes
+	// sight for the roster inside this call, and the fight forms or is
+	// joined there.
+	if e.outcome == nil && len(down) > 0 {
+		if err := e.arrivals(onFall(down), uint64(e.clock.ToData().HighWater)); err != nil {
+			return nil, nil, fmt.Errorf("participation arrivals: %w", err)
+		}
+	}
+
 	// Preserve declared MemberDown endings. They still key off Down, but no
 	// initiative consequence does.
 	if e.outcome == nil && len(down) > 0 {
@@ -267,20 +279,23 @@ func (e *Encounter) firedMemberDown(down map[MemberID]bool) error {
 }
 
 // fightIsDecided reports whether the complete supplied removal set leaves this
-// bubble without a Contact side. It is reached before any one member transfers,
-// so every TurnParticipationRemove member is excluded regardless of Contact:
-// the census describes the post-removal bubble rather than its current order.
-// Remove+Contact is rejected at capability ingress; the exclusion here remains
-// defense in depth over this consequence boundary. Down is not consulted;
-// retained dying and stabilized slots remain eligible exactly according to
-// their independent Contact answers.
+// bubble without an opposed pair — no two Contact members left in it whose
+// factions the graph holds hostile (rpg-project#375, design §3.2; under the
+// default dispositions that is "no Contact side left", which is exactly what
+// this counted before factions existed). It is reached before any one member
+// transfers, so every TurnParticipationRemove member is excluded regardless
+// of Contact: the census describes the post-removal bubble rather than its
+// current order. Remove+Contact is rejected at capability ingress; the
+// exclusion here remains defense in depth over this consequence boundary.
+// Down is not consulted; retained dying and stabilized slots remain eligible
+// exactly according to their independent Contact answers.
 func (e *Encounter) fightIsDecided(bubble *clock.Turn, participation *participationState) (bool, error) {
 	order, err := bubble.Order()
 	if err != nil {
 		return false, err
 	}
 
-	var players, monsters int
+	eligible := make([]MemberID, 0, len(order))
 	for _, id := range order {
 		member, ok := e.members[id]
 		if !ok {
@@ -302,15 +317,18 @@ func (e *Encounter) fightIsDecided(bubble *clock.Turn, participation *participat
 		if memberParticipation.Turn == TurnParticipationRemove || !memberParticipation.Contact {
 			continue
 		}
-		switch member.Kind {
-		case KindPlayer:
-			players++
-		case KindMonster:
-			monsters++
+		eligible = append(eligible, member.ID)
+	}
+
+	for i, a := range eligible {
+		for _, b := range eligible[i+1:] {
+			if e.opposed(a, b) {
+				return false, nil
+			}
 		}
 	}
 
-	return players == 0 || monsters == 0, nil
+	return true, nil
 }
 
 // storyToldDown reads back which members the RETAINED story already reports

@@ -47,19 +47,26 @@ type EncounterData struct {
 	// ordinary field where every opening is a gap nobody can shut, which is
 	// exactly what those encounters meant.
 	Doors []DoorData `json:"doors,omitempty"`
-	// World is the run's concealment knowledge: the journal facts recording
-	// who has found which concealed door and perceived which concealed
-	// region (rpg-toolkit#1371). PRESENT EXACTLY WHEN THE FIELD CARRIES
-	// CONCEALED STRUCTURE — a plain dungeon writes no key at all, the exact
-	// bytes every pre-concealment blob already has, and a blob carrying a
-	// world for a field with nothing concealed is refused at load (its two
-	// halves disagree). Absent on a concealed field is legal and means
-	// nobody has learned anything yet — which is every blob written between
-	// v0.41.0's carried concealment and this field existing (an occupant of
-	// a concealed region in such a blob is pierced at load, so presence
-	// holds from frame one for reloads too). The graph the
-	// facts fold against is NOT stored: it is construction truth, reseeded
-	// from the field at every load, so it cannot drift from the dungeon.
+	// World is the run's KNOWLEDGE: the journal facts recording who has
+	// found which concealed door, perceived which concealed region
+	// (rpg-toolkit#1371), and come to know which fact (rpg-project#375).
+	// PRESENT WHEN THE FIELD CARRIES CONCEALED STRUCTURE, OR WHEN ANYBODY
+	// HAS LEARNED A FACT — a plain dungeon nobody learned anything in writes
+	// no key at all, the exact bytes every pre-concealment blob already has,
+	// and a blob carrying an empty world for a field with nothing concealed
+	// is refused at load (a shape this build never writes). Absent on a
+	// concealed field is legal and means nobody has learned anything yet —
+	// which is every blob written between v0.41.0's carried concealment and
+	// this field existing (an occupant of a concealed region in such a blob
+	// is pierced at load, so presence holds from frame one for reloads too).
+	// The graph the facts fold against is NOT stored: it is construction
+	// truth, reseeded from the field and the roster at every load, so it
+	// cannot drift from the dungeon — and neither is any stance: a pair's
+	// posture is derived from these facts on every question.
+	//
+	// One half of ONE journal: the holdings facts beside it in Holdings are
+	// the other half, split by kind at the storage boundary and rejoined at
+	// load (world.go).
 	World *WorldData `json:"world,omitempty"`
 
 	// Holdings is the run's answer to who has what: the journal facts
@@ -76,6 +83,16 @@ type EncounterData struct {
 	// at load would hand a looted captain back the intel somebody already
 	// took off them.
 	Holdings *HoldingsData `json:"holdings,omitempty"`
+
+	// Reserve is every member held back by an arrival predicate
+	// (rpg-project#375, design §3.7; reserve.go): its facts, the cell it
+	// will arrive at, and the predicate. PRESENT EXACTLY WHEN SOMETHING IS
+	// WAITING — a run with nothing in reserve writes no key at all, the
+	// exact bytes every earlier blob has, and a run whose last reserved
+	// member has arrived writes none either: the member is on Members from
+	// then on, and the `arrived:` fact in Holdings is the only trace of how
+	// it got there. Nothing here says "arrived"; nothing needs to.
+	Reserve []ReserveData `json:"reserve,omitempty"`
 
 	Endings     []EndingData `json:"endings"`
 	EverMembers []MemberID   `json:"ever_members"`
@@ -177,6 +194,14 @@ type FieldData struct {
 	// written before starts were carried loads with none, which is exactly
 	// what every stored field had.
 	Start *StartData `json:"start,omitempty"`
+
+	// Factions and Dispositions are the authored sides, in authored order
+	// (rpg-project#375). Scenery's omitempty rule: omitted and empty are the
+	// same fact, so a blob written before factions existed loads with none —
+	// the two reserved factions and the one default hostility, which is what
+	// every stored run meant.
+	Factions     []FactionData     `json:"factions,omitempty"`
+	Dispositions []DispositionData `json:"dispositions,omitempty"`
 
 	// Walls are the authored walls, in authored order, with endpoints in the
 	// AUTHORED offset frame.
@@ -294,6 +319,40 @@ type PropData struct {
 	// absent — an old blob simply unmarshals both to their zero values.
 	Facing string     `json:"facing,omitempty"`
 	Offset [3]float64 `json:"offset"`
+
+	// Arrives is the predicate that brings this prop into the run
+	// ([PropInput.Arrives], rpg-project#375). Field STRUCTURE: the author
+	// wrote it, and whether the prop has come is the holdings journal's
+	// `arrived:` fact, never a flag here. Omitted when the prop stands there
+	// from the first frame, so every blob from before arrivals existed reads
+	// exactly as it did.
+	Arrives *TriggerData `json:"arrives,omitempty"`
+}
+
+// ReserveData is the persistent representation of one [reservedMember]: a
+// member's facts, held for the day it arrives (rpg-project#375, reserve.go).
+//
+// Every field mirrors [MemberData]'s, with two differences that are the
+// point. Cell is where the member WILL arrive — its authored seat or its
+// joiner's cell, dungeon-absolute, standable — not a place anybody stands.
+// And Holds is here where MemberData deliberately has none: a roster member's
+// records live in the journal, seeded when it entered the run, but a reserved
+// member has not entered it yet, so the author's placement is still a fact
+// about the member and not yet a fact about the run. Arrives is the predicate,
+// REQUIRED — a reserve entry with none would be a member waiting for nothing.
+type ReserveData struct {
+	ID             MemberID         `json:"id"`
+	Kind           MemberKind       `json:"kind"`
+	Name           string           `json:"name,omitempty"`
+	Cell           PositionData     `json:"cell"`
+	SpeedFeet      int              `json:"speed_feet,omitempty"`
+	SightFeet      int              `json:"sight_feet,omitempty"`
+	Actions        []ActionViewData `json:"actions,omitempty"`
+	Targeting      string           `json:"targeting,omitempty"`
+	BlocksMovement bool             `json:"blocks_movement,omitempty"`
+	Faction        FactionID        `json:"faction,omitempty"`
+	Holds          []IntelID        `json:"holds,omitempty"`
+	Arrives        TriggerData      `json:"arrives"`
 }
 
 // IntelData is the persistent representation of one authored knowledge
@@ -307,6 +366,104 @@ type IntelData struct {
 	// a persisted record naming a target this build does not know is refused
 	// at load rather than carried.
 	Door DoorID `json:"door,omitempty"`
+
+	// Fact is what the record reveals, when that is a fact
+	// (rpg-project#375) — the second key, under the same rule.
+	Fact FactID `json:"fact,omitempty"`
+}
+
+// FactionData is the persistent representation of a [FactionInput]: field
+// STRUCTURE, like the record table — who belongs to it is each member's own
+// row, and what it knows is the journal's.
+type FactionData struct {
+	ID   FactionID `json:"id"`
+	Mind MemberID  `json:"mind,omitempty"`
+}
+
+// DispositionData is the persistent representation of a [DispositionInput].
+// Structure again: the DECLARED stance and the predicate that ends it. The
+// stance a pair holds right now is never here — it is derived on every load
+// from these and the journal's facts (design §3.4), so a saved run and a
+// fresh fold cannot disagree about who is fighting whom.
+type DispositionData struct {
+	Between []FactionID  `json:"between"`
+	Stance  string       `json:"stance"`
+	Until   *TriggerData `json:"until,omitempty"`
+}
+
+// TriggerData is the persistent representation of one [Trigger] — the
+// predicate grammar on the wire (rpg-project#375). Kind is one of
+// reached_position, external, member_down, exited_holding, round, fact and
+// stance, and the other fields are populated per kind exactly as
+// [EndingData]'s own are; a disposition's until persists as one of these,
+// and an ending is one of these plus its key.
+type TriggerData struct {
+	Kind    string        `json:"kind"`
+	At      *PositionData `json:"at,omitempty"`
+	Member  MemberID      `json:"member,omitempty"`
+	Exit    ExitID        `json:"exit,omitempty"`
+	Item    PropID        `json:"item,omitempty"`
+	Round   int           `json:"round,omitempty"`
+	Fact    FactID        `json:"fact,omitempty"`
+	Between []FactionID   `json:"between,omitempty"`
+	Stance  string        `json:"stance,omitempty"`
+}
+
+// triggerDataFrom renders a trigger for the blob — ONE switch for endings and
+// dispositions alike, so the two cannot spell a kind differently.
+func triggerDataFrom(t Trigger) TriggerData {
+	switch t := t.(type) {
+	case TriggerReachedPosition:
+		return TriggerData{
+			Kind: "reached_position", At: &PositionData{X: t.Position.X, Y: t.Position.Y}, Member: t.Member,
+		}
+	case TriggerExternal:
+		return TriggerData{Kind: "external"}
+	case TriggerMemberDown:
+		return TriggerData{Kind: "member_down", Member: t.Member}
+	case TriggerExitedHolding:
+		return TriggerData{Kind: "exited_holding", Exit: t.Exit, Item: t.Item}
+	case TriggerRound:
+		return TriggerData{Kind: "round", Round: t.Round}
+	case TriggerFact:
+		return TriggerData{Kind: "fact", Fact: t.Fact}
+	case TriggerStance:
+		return TriggerData{Kind: "stance", Between: []FactionID{t.Between[0], t.Between[1]}, Stance: string(t.Stance)}
+	}
+	return TriggerData{}
+}
+
+// triggerFromData resolves a persisted trigger back to the runtime one,
+// refusing a kind this build does not write, a positional trigger with no
+// cell, and a stance that does not name two factions — the trust boundary
+// for the predicate half of the blob, for endings and dispositions alike.
+func triggerFromData(td TriggerData) (Trigger, error) {
+	switch td.Kind {
+	case "reached_position":
+		if td.At == nil {
+			return nil, fmt.Errorf(
+				"reached_position has no at — a room-local target from before rpg-project#256, recreate the save: %w",
+				ErrNoEnding)
+		}
+		return TriggerReachedPosition{Position: spatial.Position{X: td.At.X, Y: td.At.Y}, Member: td.Member}, nil
+	case "external":
+		return TriggerExternal{}, nil
+	case "member_down":
+		return TriggerMemberDown{Member: td.Member}, nil
+	case "exited_holding":
+		return TriggerExitedHolding{Exit: td.Exit, Item: td.Item}, nil
+	case "round":
+		return TriggerRound{Round: td.Round}, nil
+	case "fact":
+		return TriggerFact{Fact: td.Fact}, nil
+	case "stance":
+		if len(td.Between) != 2 {
+			return nil, fmt.Errorf("stance names %d factions, and a stance is between two: %w", len(td.Between), ErrNoEnding)
+		}
+		return TriggerStance{Between: [2]FactionID{td.Between[0], td.Between[1]}, Stance: Stance(td.Stance)}, nil
+	default:
+		return nil, fmt.Errorf("unknown trigger kind %q: %w", td.Kind, ErrNoEnding)
+	}
 }
 
 // ExitData is the persistent representation of one authored way out —
@@ -456,21 +613,33 @@ type HoldingsData struct {
 // holdingsDataFrom renders the holdings journal for the blob, or nil when
 // nothing has happened.
 func holdingsDataFrom(h *holdings) *HoldingsData {
-	facts := h.log.All()
-	if len(facts) == 0 {
-		return nil
-	}
-	out := &HoldingsData{Facts: make([]FactData, 0, len(facts))}
-	for _, f := range facts {
-		out.Facts = append(out.Facts, FactData{
-			Kind:     string(f.Kind),
-			Actor:    string(f.Actor),
-			Subject:  string(f.Subject),
-			Audience: []string{},
-			Detail:   f.Outcome.Detail,
-		})
+	var out *HoldingsData
+	for _, f := range h.log.All() {
+		if !isHoldingsKind(string(f.Kind)) {
+			continue
+		}
+		if out == nil {
+			out = &HoldingsData{Facts: []FactData{}}
+		}
+		out.Facts = append(out.Facts, factDataFrom(f))
 	}
 	return out
+}
+
+// factDataFrom renders one journal fact for the blob, the audience always a
+// list — an absent key and an empty list are different facts to a reader.
+func factDataFrom(f journal.Fact) FactData {
+	audience := make([]string, 0, len(f.Audience))
+	for _, id := range f.Audience {
+		audience = append(audience, string(id))
+	}
+	return FactData{
+		Kind:     string(f.Kind),
+		Actor:    string(f.Actor),
+		Subject:  string(f.Subject),
+		Audience: audience,
+		Detail:   f.Outcome.Detail,
+	}
 }
 
 // validateHoldingsFacts is THE TRUST BOUNDARY for the holdings journal —
@@ -500,10 +669,69 @@ func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID)
 		members[string(id)] = true
 	}
 
+	arrivals := make(map[PropID]bool, len(f.props))
+	for _, p := range f.props {
+		if p.ID != "" && p.Arrives != nil {
+			arrivals[p.ID] = true
+		}
+	}
+
 	for i, fd := range data.Facts {
+		// AN ARRIVAL IS ITS OWN SHAPE (rpg-project#375, reserve.go): the
+		// actor is the thing that arrived — a prop, which is no member, or a
+		// member the run has since had — the subject says which, and the
+		// cell is floor of the kind that thing can stand on. Checked before
+		// the member rule below, which is about holders.
+		if strings.HasPrefix(fd.Kind, arrivedPrefix) {
+			id, at, ok := parseArrived(fd.Kind)
+			if !ok {
+				return fmt.Errorf("holdings fact %d names kind %q, which is not an arrival this build writes: %w",
+					i, fd.Kind, ErrInvalidData)
+			}
+			if fd.Actor != id {
+				return fmt.Errorf("holdings fact %d is the arrival of %q and names actor %q: %w", i, id, fd.Actor, ErrInvalidData)
+			}
+			if len(fd.Audience) > 0 {
+				return fmt.Errorf("holdings fact %d is an arrival with an audience — this module writes arrivals on the truth grain: %w",
+					i, ErrInvalidData)
+			}
+			switch journal.EntityID(fd.Subject) {
+			case propSubject(id):
+				if !arrivals[id] {
+					return fmt.Errorf("holdings fact %d is the arrival of prop %q, which this field does not place with a predicate: %w",
+						i, id, ErrInvalidData)
+				}
+				if !f.isFloor(at) {
+					return fmt.Errorf("holdings fact %d lands prop %q at [%g,%g], which is not floor: %w",
+						i, id, at.X, at.Y, ErrInvalidData)
+				}
+			case memberSubject(MemberID(id)):
+				if !members[id] {
+					return fmt.Errorf("holdings fact %d is the arrival of member %q, who is no member this encounter has ever had: %w",
+						i, id, ErrInvalidData)
+				}
+				if !f.isStandable(at) {
+					return fmt.Errorf("holdings fact %d lands member %q at [%g,%g], where nobody can stand: %w",
+						i, id, at.X, at.Y, ErrInvalidData)
+				}
+			default:
+				return fmt.Errorf("holdings fact %d is an arrival whose subject %q is neither a prop nor a member: %w",
+					i, fd.Subject, ErrInvalidData)
+			}
+			continue
+		}
+
 		if fd.Actor == "" || !members[fd.Actor] {
 			return fmt.Errorf("holdings fact %d actor %q is no member this encounter has ever had: %w",
 				i, fd.Actor, ErrInvalidData)
+		}
+		// Audienced to the holder alone since rpg-project#375, and to nobody
+		// in a blob from before — both are this module's own shapes; any
+		// other audience is an edited blob.
+		if len(fd.Audience) > 0 && (len(fd.Audience) != 1 || fd.Audience[0] != fd.Actor) {
+			return fmt.Errorf(
+				"holdings fact %d is audienced to somebody other than its actor — this module never writes that shape: %w",
+				i, ErrInvalidData)
 		}
 
 		kind := fd.Kind
@@ -559,11 +787,16 @@ func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID)
 // stored order.
 func replayHoldingsFacts(h *holdings, data *HoldingsData) error {
 	for _, fd := range data.Facts {
+		audience := make(journal.Audience, 0, len(fd.Audience))
+		for _, id := range fd.Audience {
+			audience = append(audience, journal.EntityID(id))
+		}
 		if _, err := h.log.Append(journal.Fact{
-			Kind:    journal.Kind(fd.Kind),
-			Actor:   journal.EntityID(fd.Actor),
-			Subject: journal.EntityID(fd.Subject),
-			Outcome: journal.Outcome{Detail: fd.Detail},
+			Kind:     journal.Kind(fd.Kind),
+			Actor:    journal.EntityID(fd.Actor),
+			Subject:  journal.EntityID(fd.Subject),
+			Audience: audience,
+			Outcome:  journal.Outcome{Detail: fd.Detail},
 		}); err != nil {
 			return fmt.Errorf("replay holdings fact %q: %w: %w", fd.Kind, ErrInvalidData, err)
 		}
@@ -585,22 +818,13 @@ type FactData struct {
 	Detail   string   `json:"detail,omitempty"`
 }
 
-// worldDataFrom renders the world's journal for the blob.
+// worldDataFrom renders the knowledge half of the one journal for the blob
+// — every `known:*` fact, in append order.
 func worldDataFrom(w *encounterWorld) *WorldData {
-	facts := w.log.All()
+	facts := w.knowledgeFacts()
 	out := &WorldData{Facts: make([]FactData, 0, len(facts))}
 	for _, f := range facts {
-		audience := make([]string, 0, len(f.Audience))
-		for _, id := range f.Audience {
-			audience = append(audience, string(id))
-		}
-		out.Facts = append(out.Facts, FactData{
-			Kind:     string(f.Kind),
-			Actor:    string(f.Actor),
-			Subject:  string(f.Subject),
-			Audience: audience,
-			Detail:   f.Outcome.Detail,
-		})
+		out.Facts = append(out.Facts, factDataFrom(f))
 	}
 	return out
 }
@@ -608,13 +832,20 @@ func worldDataFrom(w *encounterWorld) *WorldData {
 // validateWorldFacts rejects persisted knowledge facts this field cannot
 // have produced, before any construction begins (R5). The check is exact,
 // not permissive: this composition writes ONE fact shape — a minted
-// knowledge kind, its entity as subject, a member this encounter has ever
-// had as actor, audienced to that actor alone — so any other shape means
-// the blob was edited, and it is refused by name rather than loaded as
-// knowledge nobody here ever minted (the idle-bubble precedent in this
-// file, applied to the world; PR #1373 review, Minor 2).
-func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInput, everMembers []MemberID) error {
-	// kind -> the subject that kind's writer always records.
+// knowledge kind, its entity as subject (the learner, for a fact), a member
+// this encounter has ever had as actor, audienced to that actor alone — so
+// any other shape means the blob was edited, and it is refused by name
+// rather than loaded as knowledge nobody here ever minted (the idle-bubble
+// precedent in this file, applied to the world; PR #1373 review, Minor 2).
+//
+// facts is every fact id the field can mention ([mintedFactIDs]): a
+// `known:fact:<id>` naming another dungeon's fact is refused exactly as a
+// door of another dungeon is.
+func validateWorldFacts(
+	data *WorldData, regions []RegionInput, doors []DoorInput, facts []FactID, everMembers []MemberID,
+) error {
+	// kind -> the subject that kind's writer always records; "" for a fact
+	// kind, whose subject is its own actor.
 	minted := make(map[string]string)
 	for _, r := range regions {
 		if r.Concealed {
@@ -626,6 +857,9 @@ func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInpu
 			minted[string(doorKnownKind(d.ID))] = string(doorEntityID(d.ID))
 		}
 	}
+	for _, id := range facts {
+		minted[string(factKnownKind(id))] = ""
+	}
 	members := make(map[string]bool, len(everMembers))
 	for _, id := range everMembers {
 		members[string(id)] = true
@@ -634,8 +868,11 @@ func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInpu
 	for i, f := range data.Facts {
 		subject, mints := minted[f.Kind]
 		if f.Kind == "" || !mints {
-			return fmt.Errorf("world fact %d names kind %q, which this field's concealed structure does not mint: %w",
+			return fmt.Errorf("world fact %d names kind %q, which this field's structure does not mint: %w",
 				i, f.Kind, ErrInvalidData)
+		}
+		if subject == "" {
+			subject = f.Actor
 		}
 		if f.Subject != subject {
 			return fmt.Errorf("world fact %d subject %q does not match its kind (want %q): %w",
@@ -820,6 +1057,14 @@ type MemberData struct {
 	// unmarshals to false, which is exactly what every member's blocking
 	// answer already was.
 	BlocksMovement bool `json:"blocks_movement,omitempty"`
+
+	// Faction is the faction the caller NAMED for this member, or absent for
+	// the kind's default (rpg-project#375) — memberRecord.Faction as stored,
+	// never resolved: a member in the default faction writes no key, so a
+	// blob from before factions existed and one written today for the same
+	// roster are byte-identical, and both load into the same two-faction
+	// world.
+	Faction FactionID `json:"faction,omitempty"`
 }
 
 // ActionViewData is the persistent representation of an [ActionView] — a
@@ -856,6 +1101,32 @@ type EndingData struct {
 	// [ErrNoEnding] exists for.
 	Exit ExitID `json:"exit,omitempty"`
 	Item PropID `json:"item,omitempty"`
+
+	// Round, Fact, Between and Stance carry the predicate grammar's three
+	// new forms (rpg-project#375): a [TriggerRound], a [TriggerFact], a
+	// [TriggerStance]. Written only for their kind, exactly as [TriggerData]
+	// writes them — an ending is one of those plus its key.
+	Round   int         `json:"round,omitempty"`
+	Fact    FactID      `json:"fact,omitempty"`
+	Between []FactionID `json:"between,omitempty"`
+	Stance  string      `json:"stance,omitempty"`
+}
+
+// triggerData is the ending's predicate half, as a [TriggerData].
+func (ed EndingData) triggerData() TriggerData {
+	return TriggerData{
+		Kind: ed.Kind, At: ed.At, Member: ed.Member, Exit: ed.Exit, Item: ed.Item,
+		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance,
+	}
+}
+
+// endingDataFrom is an ending as the blob carries it: its key, and its
+// trigger rendered by the one switch every trigger goes through.
+func endingDataFrom(key string, td TriggerData) EndingData {
+	return EndingData{
+		Key: key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
+		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance,
+	}
 }
 
 // ToData returns a persistent snapshot of this Encounter.
@@ -932,33 +1203,15 @@ func (e *Encounter) snapshot() EncounterData {
 			Actions:        actionViewDataFrom(m.Actions),
 			Targeting:      m.Targeting,
 			BlocksMovement: m.BlocksMovement,
+			Faction:        m.Faction,
 		})
 	}
 
-	// Deep-copy endings in declaration order
+	// Deep-copy endings in declaration order, each trigger through the one
+	// switch dispositions' untils go through too (triggerDataFrom).
 	endingsData := make([]EndingData, len(e.endings))
 	for i, de := range e.endings {
-		ed := EndingData{
-			Key: de.key,
-		}
-
-		switch t := de.trigger.(type) {
-		case TriggerReachedPosition:
-			ed.Kind = "reached_position"
-			ed.At = &PositionData{X: t.Position.X, Y: t.Position.Y}
-			ed.Member = t.Member
-		case TriggerExternal:
-			ed.Kind = "external"
-		case TriggerMemberDown:
-			ed.Kind = "member_down"
-			ed.Member = t.Member
-		case TriggerExitedHolding:
-			ed.Kind = "exited_holding"
-			ed.Exit = t.Exit
-			ed.Item = t.Item
-		}
-
-		endingsData[i] = ed
+		endingsData[i] = endingDataFrom(de.key, triggerDataFrom(de.trigger))
 	}
 
 	// Deep-copy everMembers in sorted order for determinism
@@ -1016,16 +1269,37 @@ func (e *Encounter) snapshot() EncounterData {
 		}
 	}
 
-	// The world's journal, present exactly when the world is — see
-	// EncounterData.World.
+	// The knowledge half of the journal, present when the field conceals
+	// anything or anybody has learned anything — see EncounterData.World.
 	var worldData *WorldData
-	if e.world != nil {
+	if e.world.conceals() || len(e.world.knowledgeFacts()) > 0 {
 		worldData = worldDataFrom(e.world)
 	}
 
 	// The holdings journal, present exactly when it holds anything — see
 	// EncounterData.Holdings.
 	holdingsData := holdingsDataFrom(e.holdings)
+
+	// The reserve, in ID order, present exactly when something is waiting —
+	// see EncounterData.Reserve.
+	var reserveData []ReserveData
+	for _, id := range e.reservedIDs() {
+		rm := e.reserve[id]
+		reserveData = append(reserveData, ReserveData{
+			ID:             rm.record.ID,
+			Kind:           rm.record.Kind,
+			Name:           rm.record.Name,
+			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
+			SpeedFeet:      rm.record.SpeedFeet,
+			SightFeet:      rm.record.SightFeet,
+			Actions:        actionViewDataFrom(rm.record.Actions),
+			Targeting:      rm.record.Targeting,
+			BlocksMovement: rm.record.BlocksMovement,
+			Faction:        rm.record.Faction,
+			Holds:          append([]IntelID(nil), rm.holds...),
+			Arrives:        triggerDataFrom(rm.arrives),
+		})
+	}
 
 	return EncounterData{
 		Outcome:     outcomeData,
@@ -1038,6 +1312,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Doors:       doorData,
 		World:       worldData,
 		Holdings:    holdingsData,
+		Reserve:     reserveData,
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
 		Retention:   e.retention,
@@ -1083,7 +1358,7 @@ func fieldDataFrom(f *field) FieldData {
 			// Fresh pointers, never the input's own: two ToData calls must
 			// not alias one bool.
 			blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
-			out.Props[i] = PropData{
+			pd := PropData{
 				ID:                p.ID,
 				Holdable:          p.Holdable,
 				Holds:             append([]IntelID(nil), p.Holds...),
@@ -1094,13 +1369,37 @@ func fieldDataFrom(f *field) FieldData {
 				Facing:            p.Facing,
 				Offset:            p.Offset,
 			}
+			if p.Arrives != nil {
+				td := triggerDataFrom(p.Arrives)
+				pd.Arrives = &td
+			}
+			out.Props[i] = pd
 		}
 	}
 
 	if len(f.intel) > 0 {
 		out.Intel = make([]IntelData, len(f.intel))
 		for i, rec := range f.intel {
-			out.Intel[i] = IntelData{ID: rec.ID, Door: rec.Reveals.Door}
+			out.Intel[i] = IntelData{ID: rec.ID, Door: rec.Reveals.Door, Fact: rec.Reveals.Fact}
+		}
+	}
+
+	if len(f.factions) > 0 {
+		out.Factions = make([]FactionData, len(f.factions))
+		for i, fa := range f.factions {
+			out.Factions[i] = FactionData(fa)
+		}
+	}
+
+	if len(f.dispositions) > 0 {
+		out.Dispositions = make([]DispositionData, len(f.dispositions))
+		for i, d := range f.dispositions {
+			dd := DispositionData{Between: []FactionID{d.Between[0], d.Between[1]}, Stance: string(d.Stance)}
+			if d.Until != nil {
+				td := triggerDataFrom(d.Until)
+				dd.Until = &td
+			}
+			out.Dispositions[i] = dd
 		}
 	}
 
@@ -1376,9 +1675,19 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		seenEndingKeys[ed.Key] = true
 
-		if ed.Kind != "reached_position" && ed.Kind != "external" &&
-			ed.Kind != "member_down" && ed.Kind != "exited_holding" {
+		switch ed.Kind {
+		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance":
+		default:
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
+		}
+
+		// A stance ending names two factions or it is not a stance at all —
+		// the trust boundary refusing bytes that are not an ending, before
+		// validateEndingTriggers asks whether the pair can reach the stance.
+		if ed.Kind == "stance" && len(ed.Between) != 2 {
+			return nil, fmt.Errorf(
+				"load encounter: ending %q stance names %d factions, and a stance is between two: %w: %w",
+				ed.Key, len(ed.Between), ErrInvalidData, ErrNoEnding)
 		}
 
 		// A reached_position ending without a position would panic at
@@ -1472,16 +1781,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: %w", ErrNoWitness)
 		}
 	}
-	if data.World != nil {
-		if !fieldConcealed {
-			return nil, fmt.Errorf(
-				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
-		}
-		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, data.EverMembers); err != nil {
-			return nil, fmt.Errorf("load encounter: %w", err)
-		}
-	}
-
 	// Validate members: no duplicates, cells present, integral and floor
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range data.Members {
@@ -1523,6 +1822,58 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if !f.isStandable(cell) {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
+
+		// A faction this field does not have, or a mind in the wrong
+		// faction, is the SAME refusal Setup and Join make — a blob that
+		// names a side the dungeon never declared was edited.
+		if err := f.validateMemberFaction(m.ID, m.Kind, m.Faction); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
+	}
+
+	// The reserve (rpg-project#375, reserve.go): every entry is a member the
+	// run could hold — an id nobody else on the roster or in the reserve
+	// has, a monster, a standable cell to arrive at, a faction this field
+	// has, records it declares, and a predicate that can hold — the SAME
+	// refusals Setup and Join make for a member with an Arrives.
+	reserveTriggers := make([]Trigger, len(data.Reserve))
+	for i, r := range data.Reserve {
+		if r.ID == "" {
+			return nil, fmt.Errorf("load encounter: reserve %d has no id: %w: %w", i, ErrInvalidData, ErrNoMember)
+		}
+		if seenIDs[r.ID] {
+			return nil, fmt.Errorf("load encounter: reserve %q is also a member, or reserved twice: %w: %w",
+				r.ID, ErrInvalidData, ErrNoMember)
+		}
+		seenIDs[r.ID] = true
+		cell := spatial.Position{X: r.Cell.X, Y: r.Cell.Y}
+		if !isIntegralHexCell(cell) {
+			return nil, fmt.Errorf("load encounter: reserve %q cell is not an integral axial cell: %w: %w",
+				r.ID, ErrInvalidData, ErrBadPlacement)
+		}
+		if !f.isStandable(cell) {
+			return nil, fmt.Errorf("load encounter: reserve %q cell %s: %w: %w",
+				r.ID, f.notStandable(cell), ErrInvalidData, ErrBadPlacement)
+		}
+		if err := validateMemberFacts(r.ID, r.SpeedFeet, r.SightFeet, actionViewsFrom(r.Actions)); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
+		}
+		if err := f.validateMemberFaction(r.ID, r.Kind, r.Faction); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
+		}
+		for _, id := range r.Holds {
+			if _, declared := f.intelByID[id]; !declared {
+				return nil, fmt.Errorf("load encounter: reserve %q holds intel %q: %w: %w", r.ID, id, ErrInvalidData, ErrNoIntel)
+			}
+		}
+		t, err := triggerFromData(r.Arrives)
+		if err != nil {
+			return nil, fmt.Errorf("load encounter: reserve %q arrives: %w: %w", r.ID, ErrInvalidData, err)
+		}
+		if err := f.validateArrival(r.ID, r.Kind, t); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
+		}
+		reserveTriggers[i] = t
 	}
 
 	// A TriggerReachedPosition ending must name a reachable cell — the SAME
@@ -1537,6 +1888,21 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 	if err := validateEndingTriggers(f, endingInputsForValidation); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
+	// The persisted knowledge must be knowledge this field can mint: a
+	// concealed door or region it has, or a fact it mentions. A world key on
+	// a field with nothing concealed and nothing learned is a shape this
+	// build never writes — an edited blob, refused by name.
+	if data.World != nil {
+		if !fieldConcealed && len(data.World.Facts) == 0 {
+			return nil, fmt.Errorf(
+				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
+		}
+		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation))
+		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, mintable, data.EverMembers); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
+		}
 	}
 
 	// Outcome members must reference rooms that exist with in-bounds
@@ -1677,7 +2043,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter log: %w: %w", ErrInvalidData, err)
 	}
 
-	// All validated; now reconstruct via the same path Setup uses
+	// All validated; now reconstruct via the same path Setup uses. THE ONE
+	// WORLD's journal is built with the struct, not later: the percept
+	// rebuild below reaches Atlas, which folds it, so a nil here would be a
+	// panic on the load path rather than an empty answer.
+	world := newEncounterWorld()
 	e := &Encounter{
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
@@ -1693,10 +2063,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		retention:     normalizeRetention(data.Retention),
 		logFloor:      logFloorOf(data.Log),
 		field:         f,
-		// Built with the struct, not later: the percept rebuild below
-		// reaches Atlas, which folds this journal, so a nil here would be a
-		// panic on the load path rather than an empty answer.
-		holdings: newHoldings(),
+		world:         world,
+		holdings:      newHoldings(world.log),
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas
@@ -1706,21 +2074,23 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// construction).
 	e.doors, e.doorsByID = doorRecordsFrom(doorInputs)
 
-	// Reseed the world from the field (construction truth) and replay the
-	// persisted facts into it (world state) — load-act-save, no migration:
-	// an absent world key on a concealed field is a run where nobody has
-	// learned anything yet, which is what every pre-#1371 blob meant.
+	// The concealment capabilities, held exactly when the field carries
+	// concealed structure; the world exists either way (world.go).
 	if fieldConcealed {
 		e.checkResolver = input.CheckResolver
 		e.witness = input.Witness
-		e.world, err = newEncounterWorld(f, e.doors)
-		if err != nil {
-			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-		}
-		if data.World != nil {
-			if err = replayWorldFacts(e.world, data.World); err != nil {
-				return nil, fmt.Errorf("load encounter: %w", err)
-			}
+	}
+
+	// Replay the persisted facts into the one journal — knowledge first,
+	// then holdings, each in its stored order — and reseed the graph from
+	// the field (construction truth) once the roster and endings are known
+	// below. Load-act-save, no migration: an absent world key on a concealed
+	// field is a run where nobody has learned anything yet, which is what
+	// every pre-#1371 blob meant. No fold reads across the two lists' order,
+	// so splitting them at save and rejoining them here is byte-stable.
+	if data.World != nil {
+		if err = replayWorldFacts(e.world, data.World); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}
 
@@ -1745,7 +2115,28 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	e.canvas, err = f.compileCanvas(e.doors)
+	// The reserve's two halves must agree (reserve.go): a member the blob
+	// still holds in reserve cannot also have arrived — the journal would say
+	// it came and the reserve would say it is waiting, and a fold cannot
+	// serve both.
+	if data.Holdings != nil {
+		for _, fd := range data.Holdings.Facts {
+			id, _, ok := parseArrived(fd.Kind)
+			if !ok || journal.EntityID(fd.Subject) != memberSubject(MemberID(id)) {
+				continue
+			}
+			for _, r := range data.Reserve {
+				if r.ID == MemberID(id) {
+					return nil, fmt.Errorf("load encounter: reserve %q has already arrived (%s): %w", id, fd.Kind, ErrInvalidData)
+				}
+			}
+		}
+	}
+
+	// The canvas, with every prop that has arrived from reserve standing
+	// where it landed — folded from the facts just replayed — and every prop
+	// still waiting kept off it (reserve.go).
+	e.canvas, err = f.compileCanvas(e.doors, e.holdings.arrivedProps())
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
@@ -1777,6 +2168,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Actions:        actionViewsFrom(m.Actions),
 			Targeting:      m.Targeting,
 			BlocksMovement: m.BlocksMovement,
+			Faction:        m.Faction,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
@@ -1821,11 +2213,43 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		e.everMembers[em] = true
 	}
 
+	// Restore the reserve exactly as it was — facts kept, nothing placed,
+	// deciders re-attached from the same map the roster's come from
+	// (reserve.go). Validated above, before construction began (R5).
+	for i, r := range data.Reserve {
+		rm := &reservedMember{
+			record: memberRecord{
+				ID:             r.ID,
+				Kind:           r.Kind,
+				Name:           r.Name,
+				SpeedFeet:      r.SpeedFeet,
+				SightFeet:      r.SightFeet,
+				Actions:        actionViewsFrom(r.Actions),
+				Targeting:      r.Targeting,
+				BlocksMovement: r.BlocksMovement,
+				Faction:        r.Faction,
+			},
+			at:      spatial.Position{X: r.Cell.X, Y: r.Cell.Y},
+			holds:   append([]IntelID(nil), r.Holds...),
+			arrives: reserveTriggers[i],
+		}
+		if d, ok := deciders[r.ID]; ok && d != nil {
+			rm.decider = d
+		}
+		e.reserveMember(rm)
+	}
+
 	// Restore declared endings — endingTriggerFromData is the SAME conversion
 	// the ending-trigger validation above already ran, and compileEndings is
 	// the SAME projection Setup runs, so a reloaded encounter's endings fire on
 	// the cells the original's did.
 	e.endings = compileEndings(endingInputsForValidation, f)
+
+	// The graph, declared from the field, the restored roster and the
+	// endings (world.go) — the same declaration Setup makes.
+	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
 
 	// Restore outcome if present
 	if data.Outcome != nil {
@@ -1871,6 +2295,15 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	return e, nil
 }
 
+// triggersOf is the triggers of a list of ending inputs, in order.
+func triggersOf(endings []EndingInput) []Trigger {
+	out := make([]Trigger, 0, len(endings))
+	for _, ei := range endings {
+		out = append(out, ei.Trigger)
+	}
+	return out
+}
+
 // endingTriggerFromData converts one persisted ending's Kind/At/Member into
 // its runtime Trigger. Shared by two call sites in
 // LoadEncounter above — the ending-trigger validation (which needs it
@@ -1878,26 +2311,19 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 // something to check) and the "Restore declared endings" construction
 // (which needs it again, once construction is safe to begin, R5) — ONE
 // conversion, not two copies of the same switch (#929 T3 Opus round F5).
-// ed.Kind is already guaranteed to be "reached_position", "external" or
-// "member_down" by
-// the key/kind checks earlier in LoadEncounter, and a "reached_position"
-// ed.At is already guaranteed non-nil there too — both preconditions
-// checked before this is ever called, so no error return is needed here.
+// ed.Kind is already guaranteed to be one of the kinds triggerFromData
+// resolves by the key/kind checks earlier in LoadEncounter, a
+// "reached_position" ed.At is already guaranteed non-nil there, and a
+// "stance" names two factions — every precondition checked before this is
+// ever called, so the error triggerFromData returns is structurally
+// unreachable here and a nil trigger is the honest answer to a caller that
+// skipped those checks.
 func endingTriggerFromData(ed EndingData) Trigger {
-	switch ed.Kind {
-	case "reached_position":
-		return TriggerReachedPosition{
-			Position: spatial.Position{X: ed.At.X, Y: ed.At.Y},
-			Member:   ed.Member,
-		}
-	case "external":
-		return TriggerExternal{}
-	case "member_down":
-		return TriggerMemberDown{Member: ed.Member}
-	case "exited_holding":
-		return TriggerExitedHolding{Exit: ed.Exit, Item: ed.Item}
+	t, err := triggerFromData(ed.triggerData())
+	if err != nil {
+		return nil
 	}
-	return nil
+	return t
 }
 
 // refuseRoomLocalSightings validates persisted sight testimony owned by this
@@ -2060,7 +2486,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			return FieldInput{}, fmt.Errorf("prop %q does not say whether it blocks_line_of_sight: %w", pd.Ref, ErrNoField)
 		}
 		blocksMovement, blocksSight := *pd.BlocksMovement, *pd.BlocksLineOfSight
-		in.Props = append(in.Props, PropInput{
+		prop := PropInput{
 			ID:                pd.ID,
 			Holdable:          pd.Holdable,
 			Holds:             append([]IntelID(nil), pd.Holds...),
@@ -2070,7 +2496,15 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			BlocksLineOfSight: &blocksSight,
 			Facing:            pd.Facing,
 			Offset:            pd.Offset,
-		})
+		}
+		if pd.Arrives != nil {
+			t, err := triggerFromData(*pd.Arrives)
+			if err != nil {
+				return FieldInput{}, fmt.Errorf("prop %q arrives: %w", pd.Ref, err)
+			}
+			prop.Arrives = t
+		}
+		in.Props = append(in.Props, prop)
 	}
 
 	for _, ed := range fd.Exits {
@@ -2085,7 +2519,27 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	for _, rd := range fd.Intel {
-		in.Intel = append(in.Intel, IntelRecord{ID: rd.ID, Reveals: RevealTargets{Door: rd.Door}})
+		in.Intel = append(in.Intel, IntelRecord{ID: rd.ID, Reveals: RevealTargets{Door: rd.Door, Fact: rd.Fact}})
+	}
+
+	for _, fa := range fd.Factions {
+		in.Factions = append(in.Factions, FactionInput(fa))
+	}
+
+	for i, dd := range fd.Dispositions {
+		if len(dd.Between) != 2 {
+			return FieldInput{}, fmt.Errorf("dispositions[%d] names %d factions, and a disposition is between two: %w",
+				i, len(dd.Between), ErrNoFaction)
+		}
+		d := DispositionInput{Between: [2]FactionID{dd.Between[0], dd.Between[1]}, Stance: Stance(dd.Stance)}
+		if dd.Until != nil {
+			t, err := triggerFromData(*dd.Until)
+			if err != nil {
+				return FieldInput{}, fmt.Errorf("dispositions[%d] until: %w", i, err)
+			}
+			d.Until = t
+		}
+		in.Dispositions = append(in.Dispositions, d)
 	}
 
 	for _, wd := range fd.Walls {

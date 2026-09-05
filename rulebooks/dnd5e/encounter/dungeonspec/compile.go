@@ -70,6 +70,15 @@ type Compiled struct {
 	// what their dungeon declares without reaching into the field.
 	Intel []encounter.IntelRecord
 
+	// Factions and Dispositions are the sides this dungeon authored, in
+	// authored order, with the predicates compiled to the composition's
+	// triggers (rpg-project#375). Nil when the file declares none. Also
+	// carried on [Compiled.Field], which is the copy that survives a save;
+	// surfaced here for a host that wants to list what the dungeon declares
+	// without reaching into the field.
+	Factions     []encounter.FactionInput
+	Dispositions []encounter.DispositionInput
+
 	// Scenarios is the dungeon's scenario bindings, carried through exactly
 	// as authored: scenario id to field key to the id it names
 	// (rpg-project#368, design §3.1). Nil when the file binds none.
@@ -82,6 +91,17 @@ type Compiled struct {
 	// Deep-copied, so a caller mutating the map it gets cannot reach back
 	// into the spec it was compiled from.
 	Scenarios map[string]map[string]string
+
+	// Endings are the endings this dungeon authored in the file itself
+	// (rpg-project#375, R10), in authored order, each predicate compiled to
+	// the composition's own trigger by [predicateOf] — ready to be declared
+	// on [encounter.SetupInput.Endings] beside whatever the bound scenarios
+	// declare. Nil when the file authors none.
+	//
+	// NOT ON THE FIELD, because an ending is not a fact about the building:
+	// the composition takes its endings beside its field, and the run
+	// persists them beside it too ([encounter.EncounterData.Endings]).
+	Endings []encounter.EndingInput
 }
 
 // Seat is one cell somebody can be placed in, named the way
@@ -130,6 +150,25 @@ type MonsterPlacement struct {
 	// dungeons in one process cannot collide, and a holder carrying the raw
 	// authored id would name a record the composition does not have.
 	Holds []string
+
+	// Faction is the faction this monster was placed in, AS AUTHORED
+	// ([PlaceSpec.Faction]): empty when the author wrote none, which is the
+	// reserved `monsters` faction — for a host to hand to
+	// [encounter.MemberInput.Faction], whose empty means the same thing.
+	// Verbatim, not key-prefixed: a faction is a word a member shows on the
+	// roster and a scenario binds by name, like a region rather than a door.
+	// Omitted from the committed pictures when empty, so every dungeon
+	// authored before factions existed pictures byte-identically.
+	Faction string `json:"Faction,omitempty"`
+
+	// Arrives is the predicate that brings this monster into the run
+	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
+	// [predicateOf] — for a host to hand to [encounter.MemberInput.Arrives]
+	// when it spawns the sheet. Nil when the monster stands there from the
+	// first frame, and omitted from the committed pictures then, for
+	// Faction's reason. A `{ down }` names the placement id, which is the
+	// member id the host spawns that placement under.
+	Arrives encounter.Trigger `json:"Arrives,omitempty"`
 }
 
 // Load decodes, validates and compiles a dungeon in one call.
@@ -194,6 +233,11 @@ func Compile(spec *Spec) (Compiled, error) {
 		Doors:    doorsOf(spec, orientation),
 		Exits:    exitsOf(spec),
 		Intel:    intelOf(spec),
+		// The sides ride the FIELD too (rpg-project#375): the graph is seeded
+		// from them at every Setup and Load, so they have to be where the
+		// field is.
+		Factions:     factionsOf(spec),
+		Dispositions: dispositionsOf(spec),
 		// The way in rides the FIELD, so it survives being stored: a start
 		// kept only on Compiled would be lost the moment the dungeon was
 		// saved, and a live session's map could never answer for it
@@ -211,19 +255,37 @@ func Compile(spec *Spec) (Compiled, error) {
 	}
 
 	return Compiled{
-		Field:       field,
-		PartyStart:  start,
-		StartFacing: spec.Start.Facing,
-		Monsters:    monstersOf(spec, orientation),
-		Scenarios:   scenariosOf(spec),
-		Intel:       field.Intel,
+		Field:        field,
+		PartyStart:   start,
+		StartFacing:  spec.Start.Facing,
+		Monsters:     monstersOf(spec, orientation),
+		Scenarios:    scenariosOf(spec),
+		Endings:      endingsOf(spec),
+		Intel:        field.Intel,
+		Factions:     field.Factions,
+		Dispositions: field.Dispositions,
 	}, nil
+}
+
+// endingsOf carries the authored endings through, each `when` compiled to
+// the composition's own trigger by [predicateOf] (rpg-project#375, R10). Nil
+// when none.
+func endingsOf(spec *Spec) []encounter.EndingInput {
+	var out []encounter.EndingInput
+	for _, e := range spec.Endings {
+		out = append(out, encounter.EndingInput{Key: e.ID, Trigger: predicateOf(e.When)})
+	}
+	return out
 }
 
 // intelOf carries the authored records through, with ids compiled the way a
 // door's is (`<key>/<id>`) so two dungeons in one process cannot collide —
 // and with the door a record reveals compiled the same way, because that is
 // the id the composition's own door table is keyed by.
+//
+// A FACT IS NOT PREFIXED. It is a word a disposition's `until` and a
+// record's `reveals` agree on within one file, and the composition matches
+// the two by that word; a fact belongs to the story, not to the door table.
 func intelOf(spec *Spec) []encounter.IntelRecord {
 	var out []encounter.IntelRecord
 	for _, rec := range spec.Intel {
@@ -231,9 +293,92 @@ func intelOf(spec *Spec) []encounter.IntelRecord {
 		if rec.Reveals.Door != "" {
 			r.Reveals.Door = encounter.DoorID(spec.Key + "/" + rec.Reveals.Door)
 		}
+		r.Reveals.Fact = rec.Reveals.Fact
 		out = append(out, r)
 	}
 	return out
+}
+
+// factionsOf carries the authored factions through (rpg-project#375): the id
+// as the author wrote it, and the mind as the PLACEMENT id — a member id at
+// the composition's seam, which is what a host that spawns the placement
+// under that id makes it. Nil when none.
+//
+// THE SINGLETON DEFAULT IS DECLARED HERE. A faction of one has its member as
+// its mind (design §2), and it is the COMPILER that says so, once, at
+// declaration: the run never infers a mind from whoever happens to be
+// standing in a faction, so a declared mind that falls or leaves is a
+// faction that cannot learn (R7 — accidental succession is still
+// succession). See [singletonMind].
+func factionsOf(spec *Spec) []encounter.FactionInput {
+	var out []encounter.FactionInput
+	for _, fa := range spec.Factions {
+		mind := fa.Mind
+		if mind == "" {
+			mind = singletonMind(spec, fa.ID)
+		}
+		out = append(out, encounter.FactionInput{ID: fa.ID, Mind: encounter.MemberID(mind)})
+	}
+	return out
+}
+
+// singletonMind is the id of a faction's one monster placement, or "" when
+// the faction has none, several, or one with no id to name.
+func singletonMind(spec *Spec, faction string) string {
+	var only *PlaceSpec
+	n := 0
+	for i := range spec.Place {
+		pl := &spec.Place[i]
+		if kind, _ := refKind(pl.Ref); kind != typeMonsters || placementFaction(*pl) != faction {
+			continue
+		}
+		only = pl
+		n++
+	}
+	if n != 1 {
+		return ""
+	}
+	return only.ID
+}
+
+// dispositionsOf carries the authored dispositions through, each until
+// compiled to the composition's own trigger by [predicateOf]. Nil when none.
+func dispositionsOf(spec *Spec) []encounter.DispositionInput {
+	var out []encounter.DispositionInput
+	for _, d := range spec.Dispositions {
+		di := encounter.DispositionInput{Between: d.Between, Stance: encounter.Stance(d.Stance)}
+		if d.Until != nil {
+			di.Until = predicateOf(d.Until)
+		}
+		out = append(out, di)
+	}
+	return out
+}
+
+// predicateOf is THE ONE PLACE the designer's spelling becomes the engine's
+// type (rpg-project#375, design §2): every form of the grammar compiles to
+// one of the composition's sealed triggers, for an `until`, an `arrives` and
+// an ending's `when` alike. A `{ down }` names a placement id, carried as the
+// member id the host spawns that placement under.
+//
+// The nil case is unreachable after Validate — a decoded predicate has
+// exactly one form — and returned rather than panicked for voidOf's reason.
+func predicateOf(p *PredicateSpec) encounter.Trigger {
+	if p == nil {
+		return nil
+	}
+	switch p.Form() {
+	case predicateRound:
+		return encounter.TriggerRound{Round: *p.Round}
+	case predicateDown:
+		return encounter.TriggerMemberDown{Member: encounter.MemberID(p.Down)}
+	case predicateFact:
+		return encounter.TriggerFact{Fact: p.Fact}
+	case predicateStance:
+		return encounter.TriggerStance{Between: p.Stance.Between, Stance: encounter.Stance(p.Stance.Is)}
+	default:
+		return nil
+	}
 }
 
 // exitsOf carries the authored ways out through as they were written — an id
@@ -339,6 +484,10 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			Ref: p.Ref, At: authored(p.At),
 			BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksLoS,
 			Facing: p.Facing,
+			// The predicate that brings it in, compiled like an until's
+			// (rpg-project#375, R6); nil for a prop on the floor from the
+			// first frame.
+			Arrives: predicateOf(p.Arrives),
 		}
 		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
 		// time Compile runs; anything else is unreachable here. A missing
@@ -590,7 +739,8 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		out = append(out, MonsterPlacement{
 			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
 			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
-			ID: p.ID, Holds: holds,
+			ID: p.ID, Holds: holds, Faction: p.Faction,
+			Arrives: predicateOf(p.Arrives),
 		})
 	}
 	return out

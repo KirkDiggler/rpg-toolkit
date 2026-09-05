@@ -302,9 +302,10 @@ func (s *CombatEndTestSuite) TestEveryPathThatEndsAFightAnnouncesIt() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	s.Equal([]string{"Dissolve", "noticeDown"}, names,
-		"a third way to end a fight needs a third test above; these two are covered by "+
-			"TestADecidedEndingReachesEveryMemberOfTheFight and TestAnEndingNobodyAskedForIsAnnouncedToo")
+	s.Equal([]string{"Dissolve", "noticeDown", "settleStances"}, names,
+		"a fourth way to end a fight needs a fourth test; these three are covered by "+
+			"TestADecidedEndingReachesEveryMemberOfTheFight, TestAnEndingNobodyAskedForIsAnnouncedToo and "+
+			"HoldOutSuite.TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp (holdout_test.go)")
 
 	// A guard on the guard: if the walk above found nothing at all it would
 	// pass an empty comparison against an empty expectation and prove nothing.

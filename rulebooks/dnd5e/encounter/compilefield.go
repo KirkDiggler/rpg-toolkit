@@ -147,6 +147,15 @@ type field struct {
 	// ending validation, and neither should walk the prop list to answer it.
 	holdable map[PropID]int
 
+	// factions and dispositions are the authored sides, deep-copied, in
+	// authored order — construction truth, what ToData writes back out
+	// (rpg-project#375). factionIndex and dispositionOf index them by id and
+	// by normalized pair; see disposition.go.
+	factions      []FactionInput
+	factionIndex  map[FactionID]int
+	dispositions  []DispositionInput
+	dispositionOf map[factionPair]int
+
 	// width and height are the span of the one hex grid that holds the
 	// floor's bounding box (W6).
 	width, height int
@@ -240,6 +249,18 @@ func compileField(in FieldInput) (*field, error) {
 	// is checked against them by [validateIntelTargets], which the two
 	// construction seams run once they hold the door list.
 	if err := f.compileIntel(in.Intel); err != nil {
+		return nil, err
+	}
+	// THE SIDES LAST (rpg-project#375): a disposition's predicate can name a
+	// member or a fact, neither of which this field checks against anything
+	// — members arrive later, facts are declared by mention — so the only
+	// thing the table depends on is itself.
+	if err := f.compileFactions(in.Factions, in.Dispositions); err != nil {
+		return nil, err
+	}
+	// A prop's arrival predicate LAST OF ALL, because a `{ stance }` is judged
+	// against the compiled sides (rpg-project#375, reserve.go).
+	if err := f.validatePropArrivals(); err != nil {
 		return nil, err
 	}
 
@@ -422,6 +443,13 @@ func (f *field) compileProps(props []PropInput) error {
 			// either (Copilot, PR #1497 review).
 			return fmt.Errorf("prop %q at [%g,%g] is holdable and has no id: %w",
 				p.Ref, p.At.X, p.At.Y, ErrNoField)
+		} else if p.Arrives != nil {
+			// AND SO MUST A PROP THAT ARRIVES (rpg-project#375, reserve.go):
+			// its arrival is a fact keyed by its id, and every later map
+			// folds its presence from that fact. Nameless, it could never be
+			// recorded as having come.
+			return fmt.Errorf("prop %q at [%g,%g] arrives on a predicate and has no id: %w",
+				p.Ref, p.At.X, p.At.Y, ErrNoField)
 		}
 
 		// Fresh pointers: a caller flipping a bool after construction must
@@ -432,7 +460,7 @@ func (f *field) compileProps(props []PropInput) error {
 		f.props[i] = PropInput{
 			ID: p.ID, Holdable: p.Holdable, Holds: append([]IntelID(nil), p.Holds...),
 			Ref: p.Ref, At: p.At, BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksSight,
-			Facing: p.Facing, Offset: p.Offset,
+			Facing: p.Facing, Offset: p.Offset, Arrives: p.Arrives,
 		}
 	}
 
@@ -513,6 +541,14 @@ func (f *field) compileIntel(records []IntelRecord) error {
 		// (rpg-toolkit#1033).
 		if rec.Reveals == (RevealTargets{}) {
 			return fmt.Errorf("intel record %q does not say what it reveals: %w", rec.ID, ErrNoIntel)
+		}
+		// EXACTLY ONE TARGET (rpg-project#375, design §2): a record that
+		// reveals a door AND a fact is two records the author wrote as one,
+		// and which of the two a holder learns first is not a question this
+		// composition should answer for them.
+		if rec.Reveals.Door != "" && rec.Reveals.Fact != "" {
+			return fmt.Errorf("intel record %q reveals both door %q and fact %q, and a record reveals exactly one thing: %w",
+				rec.ID, rec.Reveals.Door, rec.Reveals.Fact, ErrNoIntel)
 		}
 		f.intelByID[rec.ID] = rec
 	}
@@ -742,7 +778,13 @@ func (f *field) hasVoid() bool {
 // compileCanvas builds the one spatial room the encounter runs on: a grid
 // spanning the floor's bounding box, with every prop placed and every wall
 // and door registered on it in absolute cells.
-func (f *field) compileCanvas(doors []*doorRecord) (*canvasRoom, error) {
+//
+// arrived is where each prop that entered the run from reserve now stands,
+// folded from the journal (holdings.go arrivedProps) — nil at Setup, where
+// nothing has arrived yet. A prop with an arrival predicate and no entry here
+// is IN RESERVE and stays off the canvas: it blocks nothing and is seen by
+// nobody, exactly as if it were never authored (reserve.go).
+func (f *field) compileCanvas(doors []*doorRecord, arrived map[PropID]spatial.Position) (*canvasRoom, error) {
 	canvas := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 		ID:   "canvas",
 		Type: "encounter",
@@ -755,13 +797,15 @@ func (f *field) compileCanvas(doors []*doorRecord) (*canvasRoom, error) {
 	// pillars in a hall), and a coordinate-derived key is a collision
 	// waiting to happen. An index cannot collide on any input.
 	for i, p := range f.props {
-		prop := &propEntity{
-			id:                fmt.Sprintf("prop-%d", i),
-			ref:               p.Ref,
-			blocksMovement:    *p.BlocksMovement,
-			blocksLineOfSight: *p.BlocksLineOfSight,
+		cell := f.cellAt(p.At)
+		if p.Arrives != nil {
+			at, has := arrived[p.ID]
+			if !has {
+				continue
+			}
+			cell = at
 		}
-		if err := canvas.PlaceEntity(prop, f.cellAt(p.At)); err != nil {
+		if err := canvas.PlaceEntity(propEntityOf(i, p), cell); err != nil {
 			return nil, fmt.Errorf("prop placement: %w: %w", ErrBadPlacement, err)
 		}
 	}

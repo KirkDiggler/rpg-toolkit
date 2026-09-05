@@ -82,7 +82,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	if err != nil {
 		return Atlas{}, err
 	}
-	if e.world == nil {
+	if !e.world.conceals() {
 		return full, nil
 	}
 
@@ -261,7 +261,7 @@ func (e *Encounter) DoorsFor(member MemberID) ([]Door, error) {
 	}
 
 	all := e.Doors()
-	if e.world == nil {
+	if !e.world.conceals() {
 		return all, nil
 	}
 

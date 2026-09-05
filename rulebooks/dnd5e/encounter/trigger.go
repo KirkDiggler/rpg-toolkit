@@ -216,6 +216,15 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, contact map[Member
 
 	for _, player := range players {
 		for _, monster := range monsters {
+			// THE GRAPH SAYS WHO IS OPPOSED (rpg-project#375, design §3.2):
+			// a pair is a pair only while a hostile-to edge stands between
+			// their factions. Under the default dispositions that is every
+			// player and every monster, which is the whole table this loop
+			// ran on before factions existed; a camp that has turned is a
+			// monster in sight of a player and no fight.
+			if !e.opposed(player, monster) {
+				continue
+			}
 			switch contactBetween(sawFirst(player, monster), sawFirst(monster, player)) {
 			case contactMutual, contactSpotted:
 				// mutual or spotted — the bubble forms either way, and which
@@ -337,7 +346,10 @@ func (e *Encounter) unawareOfOpposition(id MemberID, contact map[MemberID]bool) 
 		if !contact[other.ID] {
 			continue
 		}
-		if other.Kind != member.Kind {
+		// And the graph decides whether they are OPPOSITION at all: a
+		// hostile-to edge between their factions (rpg-project#375), which
+		// under the default dispositions is exactly "the other kind".
+		if e.opposed(member.ID, other.ID) {
 			return false, nil
 		}
 	}

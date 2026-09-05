@@ -1,0 +1,122 @@
+# The raider camp (rpg-project#375, the hold-out design §1) — the fixture the
+# hold-out scenario is authored against: sides, knowledge, and arrivals.
+#
+# A small camp in three rooms, west to east:
+#
+#   - the GATE, where the party comes in facing the yard, where the front
+#     gate exit stands, and where the Wiseman's letter will be found;
+#   - the YARD, with a skeleton scout in it;
+#   - the HUT, with the skeleton captain — the chief — in it.
+#
+# The camp is one faction, `raiders`, and the chief is its MIND: the faction
+# knows what its mind knows (R3). The raiders are hostile to the party UNTIL
+# the chief comes to know `saved-wiseman` — the fact the letter reveals. Carry
+# the letter into the hut and the camp turns; the scout reading it flips
+# nothing, because a scout is not the camp's mind.
+#
+# Two things ARRIVE (R6). The letter is not on the ground when the party comes
+# in: a messenger drops it at the gate when round 6 of a fight starts — hold
+# out that long and the way to turn the camp appears. And if the chief falls
+# instead, three zombie reinforcements come through the gate: `arrives` on
+# each names his fall. Until its predicate holds a placement is nowhere — on
+# no map, in no roster — exactly as if it had never been written.
+#
+# The raiders are undead because those are the stat blocks and models the
+# game has (Kirk: "make do with skeles, zombies and the skele captain for the
+# leader"); the camp is dressed as a crypt because that is the one shell the
+# client draws today — an archetype is presentation and never a mechanic.
+version: 2
+key: reference-raider-camp
+name: The Raider Camp
+orientation: pointy
+void: opaque
+
+regions:
+  - id: gate
+    name: The Gate
+    archetype: crypt
+    lighting: { intensity: 0.6 }
+    cells:
+      - [[0,0],[1,0],[2,0]]
+      - [[0,1],[1,1],[2,1]]
+      - [[0,2],[1,2],[2,2]]
+      - [[0,3],[1,3],[2,3]]
+      - [[0,4],[1,4],[2,4]]
+      - [[0,5],[1,5],[2,5]]
+      - [[0,6],[1,6],[2,6]]
+      - [[0,7],[1,7],[2,7]]
+  - id: yard
+    name: The Yard
+    archetype: crypt
+    lighting: { intensity: 0.8 }
+    cells:
+      - [[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0]]
+      - [[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1]]
+      - [[3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[9,2]]
+      - [[3,3],[4,3],[5,3],[6,3],[7,3],[8,3],[9,3]]
+      - [[3,4],[4,4],[5,4],[6,4],[7,4],[8,4],[9,4]]
+      - [[3,5],[4,5],[5,5],[6,5],[7,5],[8,5],[9,5]]
+      - [[3,6],[4,6],[5,6],[6,6],[7,6],[8,6],[9,6]]
+      - [[3,7],[4,7],[5,7],[6,7],[7,7],[8,7],[9,7]]
+  - id: hut
+    name: The Chief's Hut
+    archetype: crypt
+    lighting: { intensity: 0.4 }
+    cells:
+      - [[10,0],[11,0],[12,0],[13,0]]
+      - [[10,1],[11,1],[12,1],[13,1]]
+      - [[10,2],[11,2],[12,2],[13,2]]
+      - [[10,3],[11,3],[12,3],[13,3]]
+      - [[10,4],[11,4],[12,4],[13,4]]
+      - [[10,5],[11,5],[12,5],[13,5]]
+      - [[10,6],[11,6],[12,6],[13,6]]
+      - [[10,7],[11,7],[12,7],[13,7]]
+
+# The party comes in at the gate, looking east into the yard.
+start: { at: [0,3], facing: e }
+
+# Two seams, one line each: the palisade between the gate and the yard, and
+# the hut's wall between the yard and the hut. Quarter lines, like the tomb's.
+walls:
+  - start: { cell: [2,7], offset: [0.25, 0.375] }
+    end:   { cell: [3,0], offset: [-0.25, -0.375] }
+    name: the palisade
+  - start: { cell: [9,7], offset: [0.25, 0.375] }
+    end:   { cell: [10,0], offset: [-0.25, -0.375] }
+    name: the hut wall
+
+# An open doorway through each seam.
+doors:
+  - id: gate-yard
+    at: { cell: [3,4], offset: [-0.25, -0.375] }
+  - id: yard-hut
+    at: { cell: [10,4], offset: [-0.25, 0.375] }
+
+# The camp is one faction, and the chief is its mind.
+factions:
+  - { id: raiders, mind: chief }
+
+# Hostile to the party until the chief knows the party saved the Wiseman.
+dispositions:
+  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
+
+# The letter says so. A fact is a word this record and the disposition agree
+# on; nothing declares it.
+intel:
+  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }
+
+place:
+  - { id: chief,  ref: "dnd5e:monsters:skeleton-captain", at: [12,4], faction: raiders }
+  - { id: scout,  ref: "dnd5e:monsters:skeleton",         at: [4,2],  faction: raiders }
+  - { id: letter, ref: "dnd5e:props:scroll", at: [1,3], holdable: true,
+      blocks_movement: false, blocks_los: false,
+      holds: [wisemans-letter], arrives: { round: 6 } }
+  - { id: reinforcement-1, ref: "dnd5e:monsters:zombie", at: [1,4], faction: raiders, arrives: { down: chief } }
+  - { id: reinforcement-2, ref: "dnd5e:monsters:zombie", at: [2,4], faction: raiders, arrives: { down: chief } }
+  - { id: reinforcement-3, ref: "dnd5e:monsters:zombie", at: [1,5], faction: raiders, arrives: { down: chief } }
+
+exits:
+  - { id: front-gate, at: [1,3] }
+
+scenarios:
+  hold-out: { convince: raiders }

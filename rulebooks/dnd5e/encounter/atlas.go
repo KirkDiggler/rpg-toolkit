@@ -343,6 +343,13 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	placements := e.holdings.propPlacements()
 	for _, p := range f.props {
 		at := f.cellAt(p.At)
+		// A PROP IN RESERVE IS NOT ON ANY MAP (rpg-project#375, reserve.go):
+		// authored with a predicate and not yet arrived, it is withheld here,
+		// on the truth grain, for every member alike — the never-authored
+		// yardstick, folded from the one fact that would say it came.
+		if p.Arrives != nil && !placements[p.ID].arrived {
+			continue
+		}
 		if placement, moved := placements[p.ID]; p.ID != "" && moved {
 			if placement.gone {
 				continue
