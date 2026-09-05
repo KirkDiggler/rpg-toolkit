@@ -24,16 +24,13 @@ package session_test
 //
 // # The fixture
 //
-// The goblin camp itself — the file the encounter suite plays, read from the
+// The raider camp itself — the file the encounter suite plays, read from the
 // PINNED encounter module rather than a local checkout or a fourth copy
 // (the plan keeps three, byte-identical by test). The party sits at the gate
 // with the Wiseman's letter on the ground beside it; the scout stands in the
 // yard and the chief, the camp's MIND, in the hut. The camp is spawned
-// through Spawn, id, cell, faction and holdings straight off the compiled
-// placements, the way rpg-api spawns it. The stat blocks are the ones this
-// build's catalog has (Kirk 2026-09-05: "make do with skeles, zombies and
-// the skele captain for the leader"); a ref is content, and nothing here is
-// about what a goblin is.
+// through Spawn — id, ref, cell, faction and holdings straight off the
+// compiled placements, the way rpg-api spawns it.
 
 import (
 	"context"
@@ -58,9 +55,9 @@ const (
 	campSession = "camp"
 	campWorldID = "camp-world"
 	campModule  = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	campFile    = "dungeonspec/testdata/reference-goblin-camp.yaml"
-	campKey     = "reference-goblin-camp"
-	campFaction = "goblins"
+	campFile    = "dungeonspec/testdata/reference-raider-camp.yaml"
+	campKey     = "reference-raider-camp"
+	campFaction = "raiders"
 	campLetter  = "letter"
 	campChief   = "chief"
 	campScout   = "scout"
@@ -70,14 +67,6 @@ const (
 	// feetPerCell is the composition's own scale, spelled once for the walk.
 	feetPerCell = 5
 )
-
-// campRefs is the stat block each placement spawns as — see the file's doc.
-// A placement this table does not know fails the scene rather than being
-// guessed at.
-var campRefs = map[string]string{
-	campChief: refs.Monsters.SkeletonCaptain().String(),
-	campScout: refs.Monsters.Skeleton().String(),
-}
 
 // campFixture reads and compiles the camp from the pinned encounter module,
 // resolved from go.mod by go list (the precedent rpg-api set for reading a
@@ -117,12 +106,7 @@ func campWorld(t *testing.T, compiled dungeonspec.Compiled, withEnding bool) *en
 		if !ok {
 			t.Fatalf("no %s scenario", scenarios.HoldOutID)
 		}
-		factions := make([]encounter.FactionID, 0, len(compiled.Monsters))
-		for _, m := range compiled.Monsters {
-			factions = append(factions, m.Faction)
-		}
-		declared, err := scenario.New(compiled.Scenarios[scenarios.HoldOutID],
-			scenarios.FactsFrom(compiled.Field, factions...))
+		declared, err := scenario.New(compiled.Scenarios[scenarios.HoldOutID], scenarios.FactsFrom(compiled.Field))
 		if err != nil {
 			t.Fatalf("binding the hold-out: %v", err)
 		}
@@ -196,14 +180,11 @@ func (s *HoldOutSessionSuite) start(withEnding bool) {
 }
 
 // spawn brings one authored placement into the run through the host's verb:
-// id, cell, faction and holdings off the compiled placement, the stat block
-// off this build's catalog.
+// id, ref, cell, faction and holdings straight off the compiled placement.
 func (s *HoldOutSessionSuite) spawn(m dungeonspec.MonsterPlacement) *session.SpawnOutput {
 	s.T().Helper()
-	ref, ok := campRefs[m.ID]
-	s.Require().True(ok, "no stat block for placement %q", m.ID)
 	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: campSession, ID: m.ID, Ref: ref, Position: absolute(m.At),
+		Session: campSession, ID: m.ID, Ref: m.Ref, Position: absolute(m.At),
 		Holds: m.Holds, Faction: m.Faction,
 	})
 	s.Require().NoError(err, "spawning %s", m.ID)
@@ -527,11 +508,15 @@ func (s *HoldOutSessionSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp
 		s.Equal(scenarios.HoldOutID, status.Outcome.Ending)
 	})
 
-	turned := session.StanceChangedBody{Between: []string{campFaction, encounter.FactionParty}, Stance: "neutral"}
 	for _, who := range []string{"alice", "bob"} {
 		s.Run(who+" reads the flip, the fight ending by stance, and the run ending, in that order", func() {
-			s.Equal(turned, s.bodyOf(who, session.EventStanceChanged),
-				"the pair and the word, in the composition's own order")
+			// The pair is a SET: a disposition has no direction, and the
+			// composition writes it in its own normalized order. A reader
+			// matches the two ids, never a first and a second.
+			turned, ok := s.bodyOf(who, session.EventStanceChanged).(session.StanceChangedBody)
+			s.Require().True(ok, "the flip crosses as its typed body")
+			s.ElementsMatch([]string{campFaction, encounter.FactionParty}, turned.Between)
+			s.Equal(string(encounter.StanceNeutral), turned.Stance, "the author's word for what the pair now is")
 			s.Equal(session.FightEndedBody{Cause: session.DissolveByStance}, s.bodyOf(who, session.EventFightEnded),
 				"the fight lost its sides — not a decision, not a defeat")
 			s.Equal(session.EndedBody{Ending: scenarios.HoldOutID}, s.bodyOf(who, session.EventEnded),
@@ -575,7 +560,7 @@ func (s *HoldOutSessionSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp
 // TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField is A9 through the seam.
 // The session reloads the stored world on every verb, so the verb AFTER the
 // flip is the load: bob walks into the scout's sight and no fight forms; the
-// roster still says goblins; and nothing in the stored world but the story's
+// roster still says raiders; and nothing in the stored world but the story's
 // own beat says "neutral" — the declared disposition still reads hostile.
 func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField() {
 	s.start(false) // no ending bound: the run stays open once the camp turns
@@ -606,7 +591,7 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 		// Beside the scout, in the yard, in plain sight of it.
 		scout := s.where(campScout)
 		out := s.walk("bob", spatial.Position{X: scout.X + 1, Y: scout.Y})
-		s.Nil(out.Formed, "a goblin in sight of a player, and no fight")
+		s.Nil(out.Formed, "a raider in sight of a player, and no fight")
 		s.Equal(session.ClockWorld, s.turn("bob").Clock)
 		s.Equal(session.ClockWorld, s.turn(campScout).Clock)
 		s.NotContains(s.kinds("alice"), session.EventFightStarted)
