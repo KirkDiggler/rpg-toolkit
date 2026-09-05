@@ -11,6 +11,25 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**rpg-toolkit#1534 (rpg-project#376) — `session.Trade` learns to charge
+(complete, 2026-09-05).** `TradeOffer` gains `Currency currency.Money`.
+`Give.Items` still refused; a nonzero `Give.Currency` is now the payment for
+`Receive`. **Server-side price validation, no exceptions**: `Trade` computes
+the required price itself via `equipment.PriceOf(item.ID) * item.Quantity`
+and refuses (`ErrWrongPrice`) unless the offered `Give.Currency` matches
+EXACTLY — a client-supplied amount is read for display/pre-population only,
+never trusted as correct (Kirk, 2026-09-05: "we need price validation on
+both sides, absolutely... none of this shit where the client hacks in their
+prices" — flagged before writing the charge logic rather than guessing,
+since the design doc's literal wording ("check `Wallet.CanAfford`,
+`Wallet.Sub`") didn't itself specify validating the offered amount against
+anything). Insufficient funds is a separate refusal (`ErrInsufficientFunds`,
+wraps `currency.ErrInsufficientFunds`) from a wrong price, so a host can
+tell a player "that's not the price" from "you can't afford that." Wallet
+visibility to the client is tracked separately, rpg-api-protos#294 — zero
+overlap, different proto file/service (`v1alpha1/session` vs
+`v1alpha2/encounter`).
+
 **rpg-toolkit#1532 (rpg-project#376) — `character.Data.Wallet` (complete,
 2026-09-05).** `Wallet currency.Money`, beside `Inventory` on `Data`/`Character`,
 not embedded in it. Round-trips exactly through `Load`/`ToData`; zero value
