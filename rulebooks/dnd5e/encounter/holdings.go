@@ -212,10 +212,13 @@ func (h *holdings) holdsRecord(member MemberID, id IntelID) bool {
 }
 
 // isHoldingsKind reports whether a fact kind is one this file mints — the
-// split the storage boundary makes over the one journal.
+// split the storage boundary makes over the one journal. An arrival
+// (reserve.go) is of this family: where a thing physically is, on the truth
+// grain, beside `held:` and `dropped:`.
 func isHoldingsKind(kind string) bool {
 	return strings.HasPrefix(kind, holdsIntelPrefix) || strings.HasPrefix(kind, holdsPropPrefix) ||
-		strings.HasPrefix(kind, heldPrefix) || strings.HasPrefix(kind, droppedPrefix)
+		strings.HasPrefix(kind, heldPrefix) || strings.HasPrefix(kind, droppedPrefix) ||
+		strings.HasPrefix(kind, arrivedPrefix)
 }
 
 // markHeld records that the prop has left the floor.
@@ -324,29 +327,70 @@ type propPlacement struct {
 	// is meaningless.
 	gone bool
 
-	// at is where a dropped prop now lies. Meaningful only when moved.
+	// at is where a dropped prop now lies, or where an arrived one landed.
+	// Meaningful only when moved.
 	at spatial.Position
 
-	// moved is whether the prop has been dropped somewhere other than where
-	// the author placed it.
+	// moved is whether the prop stands somewhere other than where the author
+	// placed it — dropped there, or arrived there (reserve.go: an arrival
+	// lands on the authored cell only when it is free).
 	moved bool
+
+	// arrived is whether a prop authored with an arrival predicate has
+	// entered the run. STICKY: a later hold or drop does not unsay it — the
+	// thing came, and then somebody carried it. False for every prop with no
+	// predicate, which Atlas never asks about; false for one still in reserve,
+	// which Atlas withholds (reserve.go).
+	arrived bool
+
+	// arrivedAt is the cell it arrived on — the cell its canvas entity stands
+	// at for the rest of the run, as an unreserved prop's stands at its
+	// authored cell — kept apart from at, which a later drop moves.
+	arrivedAt spatial.Position
 }
 
-// propPlacements folds where every prop physically is: picked up off the floor,
-// dropped at a cell, or exactly where the author put it (absent from the
-// map). The LAST fact about a prop wins, so a thing picked up, dropped and
-// picked up again is gone.
+// propPlacements folds where every prop physically is: arrived at a cell,
+// picked up off the floor, dropped at a cell, or exactly where the author put
+// it (absent from the map). The LAST fact about a prop wins, so a thing picked
+// up, dropped and picked up again is gone; arrival alone is sticky, because a
+// prop that came and was then carried has still come.
+//
+// An arrived fact is read by its SUBJECT as well as its kind: a member and a
+// prop may share a bare id at this seam, and only the `prop:` subject is a
+// prop's arrival.
 func (h *holdings) propPlacements() map[PropID]propPlacement {
 	out := map[PropID]propPlacement{}
 	for _, f := range h.log.All() {
 		kind := string(f.Kind)
 		switch {
+		case strings.HasPrefix(kind, arrivedPrefix):
+			id, at, ok := parseArrived(kind)
+			if !ok || f.Subject != propSubject(id) {
+				continue
+			}
+			out[id] = propPlacement{at: at, moved: true, arrived: true, arrivedAt: at}
 		case strings.HasPrefix(kind, heldPrefix):
-			out[strings.TrimPrefix(kind, heldPrefix)] = propPlacement{gone: true}
+			id := strings.TrimPrefix(kind, heldPrefix)
+			prev := out[id]
+			out[id] = propPlacement{gone: true, arrived: prev.arrived, arrivedAt: prev.arrivedAt}
 		case strings.HasPrefix(kind, droppedPrefix):
 			if id, at, ok := parseDropped(kind); ok {
-				out[id] = propPlacement{at: at, moved: true}
+				prev := out[id]
+				out[id] = propPlacement{at: at, moved: true, arrived: prev.arrived, arrivedAt: prev.arrivedAt}
 			}
+		}
+	}
+	return out
+}
+
+// arrivedProps is every prop that has entered the run from reserve, to the
+// cell it arrived on — what a reloaded canvas places (compileCanvas), folded
+// from the same facts every atlas folds.
+func (h *holdings) arrivedProps() map[PropID]spatial.Position {
+	out := map[PropID]spatial.Position{}
+	for id, p := range h.propPlacements() {
+		if p.arrived {
+			out[id] = p.arrivedAt
 		}
 	}
 	return out

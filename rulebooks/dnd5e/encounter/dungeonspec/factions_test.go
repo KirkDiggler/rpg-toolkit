@@ -13,6 +13,7 @@ package dungeonspec_test
 // on — heirloom_test.go's discipline, one slice on.
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 const raiderCampPath = "testdata/reference-raider-camp.yaml"
@@ -49,7 +51,7 @@ const (
 	factionLine = `  - { id: raiders, mind: chief }`
 	dispoLine   = `  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }`
 	intelLine   = `  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }`
-	letterHolds = `      holds: [wisemans-letter] }`
+	letterHolds = `      holds: [wisemans-letter], arrives: { round: 6 } }`
 	notBuilt    = "in this version a disposition turns only on a fact"
 )
 
@@ -73,26 +75,46 @@ func TestTheRaiderCampCompiles(t *testing.T) {
 		require.Equal(t, compiled.Dispositions, compiled.Field.Dispositions)
 	})
 
-	t.Run("both skeletons are placed in the faction, by the author's word", func(t *testing.T) {
-		require.Len(t, compiled.Monsters, 2)
+	t.Run("every monster is placed in the faction, by the author's word", func(t *testing.T) {
+		require.Len(t, compiled.Monsters, 5)
 		for _, m := range compiled.Monsters {
 			require.Equal(t, "raiders", m.Faction, m.ID)
 		}
 		require.Equal(t, "chief", compiled.Monsters[0].ID)
 		require.Equal(t, "dnd5e:monsters:skeleton-captain", compiled.Monsters[0].Ref)
 		require.Equal(t, "hut", compiled.Monsters[0].Region)
+		require.Nil(t, compiled.Monsters[0].Arrives, "the chief stands there from the start")
 		require.Equal(t, "scout", compiled.Monsters[1].ID)
 		require.Equal(t, "dnd5e:monsters:skeleton", compiled.Monsters[1].Ref)
 		require.Equal(t, "yard", compiled.Monsters[1].Region)
+		require.Nil(t, compiled.Monsters[1].Arrives)
 	})
 
-	t.Run("the letter reveals the fact, and its id is compiled like a door's", func(t *testing.T) {
+	t.Run("three zombies wait at the gate on the chief's fall (step B, R6)", func(t *testing.T) {
+		for i, m := range compiled.Monsters[2:] {
+			require.Equal(t, fmt.Sprintf("reinforcement-%d", i+1), m.ID)
+			require.Equal(t, "dnd5e:monsters:zombie", m.Ref)
+			require.Equal(t, "gate", m.Region)
+			require.Equal(t, encounter.TriggerMemberDown{Member: "chief"}, m.Arrives,
+				"the placement id is the member id the host spawns it under")
+		}
+		require.Equal(t, spatial.Position{X: 1, Y: 4}, compiled.Monsters[2].At)
+		require.Equal(t, spatial.Position{X: 2, Y: 4}, compiled.Monsters[3].At)
+		require.Equal(t, spatial.Position{X: 1, Y: 5}, compiled.Monsters[4].At)
+	})
+
+	t.Run("the letter reveals the fact, its id is compiled like a door's, and it arrives at round 6", func(t *testing.T) {
 		require.Equal(t, []encounter.IntelRecord{{
 			ID: "reference-raider-camp/wisemans-letter", Reveals: encounter.RevealTargets{Fact: "saved-wiseman"},
 		}}, compiled.Intel)
 		letter := propByID(compiled.Field, "letter")
 		require.True(t, letter.Holdable, "the letter can be picked up")
 		require.Equal(t, []encounter.IntelID{"reference-raider-camp/wisemans-letter"}, letter.Holds)
+		require.Equal(t, encounter.TriggerRound{Round: 6}, letter.Arrives, "the letter is in reserve until round 6 of a fight")
+	})
+
+	t.Run("the file authors no ending of its own: the hold-out's convince is the ending", func(t *testing.T) {
+		require.Nil(t, compiled.Endings)
 	})
 
 	t.Run("the front gate stands where the letter lies, and the party faces the yard", func(t *testing.T) {
@@ -234,6 +256,10 @@ func TestTheCampAllowsWhatTheDesignAllows(t *testing.T) {
 	t.Run("a faction of one needs no mind — the compiler declares its member", func(t *testing.T) {
 		source := edited(t, factionLine, `  - { id: raiders }`)
 		source = strings.Replace(source, scoutLine, strings.Replace(scoutLine, "faction: raiders", "faction: monsters", 1), 1)
+		// The reinforcements too (step B), or the raiders are a faction of
+		// four with no mind.
+		require.Equal(t, 3, strings.Count(source, "faction: raiders, arrives: { down: chief }"))
+		source = strings.ReplaceAll(source, "faction: raiders, arrives: { down: chief }", "faction: monsters, arrives: { down: chief }")
 		require.Empty(t, defectsIn(t, source))
 		compiled, err := dungeonspec.Load([]byte(source))
 		require.NoError(t, err)

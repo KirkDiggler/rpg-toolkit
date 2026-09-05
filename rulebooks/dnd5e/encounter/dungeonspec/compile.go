@@ -91,6 +91,17 @@ type Compiled struct {
 	// Deep-copied, so a caller mutating the map it gets cannot reach back
 	// into the spec it was compiled from.
 	Scenarios map[string]map[string]string
+
+	// Endings are the endings this dungeon authored in the file itself
+	// (rpg-project#375, R10), in authored order, each predicate compiled to
+	// the composition's own trigger by [predicateOf] — ready to be declared
+	// on [encounter.SetupInput.Endings] beside whatever the bound scenarios
+	// declare. Nil when the file authors none.
+	//
+	// NOT ON THE FIELD, because an ending is not a fact about the building:
+	// the composition takes its endings beside its field, and the run
+	// persists them beside it too ([encounter.EncounterData.Endings]).
+	Endings []encounter.EndingInput
 }
 
 // Seat is one cell somebody can be placed in, named the way
@@ -149,6 +160,15 @@ type MonsterPlacement struct {
 	// Omitted from the committed pictures when empty, so every dungeon
 	// authored before factions existed pictures byte-identically.
 	Faction string `json:"Faction,omitempty"`
+
+	// Arrives is the predicate that brings this monster into the run
+	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
+	// [predicateOf] — for a host to hand to [encounter.MemberInput.Arrives]
+	// when it spawns the sheet. Nil when the monster stands there from the
+	// first frame, and omitted from the committed pictures then, for
+	// Faction's reason. A `{ down }` names the placement id, which is the
+	// member id the host spawns that placement under.
+	Arrives encounter.Trigger `json:"Arrives,omitempty"`
 }
 
 // Load decodes, validates and compiles a dungeon in one call.
@@ -240,10 +260,22 @@ func Compile(spec *Spec) (Compiled, error) {
 		StartFacing:  spec.Start.Facing,
 		Monsters:     monstersOf(spec, orientation),
 		Scenarios:    scenariosOf(spec),
+		Endings:      endingsOf(spec),
 		Intel:        field.Intel,
 		Factions:     field.Factions,
 		Dispositions: field.Dispositions,
 	}, nil
+}
+
+// endingsOf carries the authored endings through, each `when` compiled to
+// the composition's own trigger by [predicateOf] (rpg-project#375, R10). Nil
+// when none.
+func endingsOf(spec *Spec) []encounter.EndingInput {
+	var out []encounter.EndingInput
+	for _, e := range spec.Endings {
+		out = append(out, encounter.EndingInput{Key: e.ID, Trigger: predicateOf(e.When)})
+	}
+	return out
 }
 
 // intelOf carries the authored records through, with ids compiled the way a
@@ -325,12 +357,16 @@ func dispositionsOf(spec *Spec) []encounter.DispositionInput {
 
 // predicateOf is THE ONE PLACE the designer's spelling becomes the engine's
 // type (rpg-project#375, design §2): every form of the grammar compiles to
-// one of the composition's sealed triggers. A `{ down }` names a placement
-// id, carried as the member id the host spawns that placement under.
+// one of the composition's sealed triggers, for an `until`, an `arrives` and
+// an ending's `when` alike. A `{ down }` names a placement id, carried as the
+// member id the host spawns that placement under.
 //
 // The nil case is unreachable after Validate — a decoded predicate has
 // exactly one form — and returned rather than panicked for voidOf's reason.
 func predicateOf(p *PredicateSpec) encounter.Trigger {
+	if p == nil {
+		return nil
+	}
 	switch p.Form() {
 	case predicateRound:
 		return encounter.TriggerRound{Round: *p.Round}
@@ -448,6 +484,10 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			Ref: p.Ref, At: authored(p.At),
 			BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksLoS,
 			Facing: p.Facing,
+			// The predicate that brings it in, compiled like an until's
+			// (rpg-project#375, R6); nil for a prop on the floor from the
+			// first frame.
+			Arrives: predicateOf(p.Arrives),
 		}
 		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
 		// time Compile runs; anything else is unreachable here. A missing
@@ -700,6 +740,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
 			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
 			ID: p.ID, Holds: holds, Faction: p.Faction,
+			Arrives: predicateOf(p.Arrives),
 		})
 	}
 	return out

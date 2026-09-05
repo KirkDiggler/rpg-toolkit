@@ -57,6 +57,12 @@ func (e *Encounter) learnFact(member MemberID, id FactID, cause string, at uint6
 	if err := e.settleStances(before, at); err != nil {
 		return err
 	}
+	// The fact site (design §3.8), on the TRUTH grain (R5): whatever waited
+	// for this fact to exist in the run's journal arrives now — after the
+	// flip it may have caused has settled, before the endings it may fire.
+	if err := e.arrivals(onFact(id), at); err != nil {
+		return fmt.Errorf("fact %q arrivals: %w", id, err)
+	}
 	return e.firedFact(id, at)
 }
 
@@ -119,6 +125,13 @@ func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) erro
 				return fmt.Errorf("settle stances: %q leaves the fight: %w", id, err)
 			}
 		}
+	}
+
+	// The stance site (design §3.8; reserve.go): whatever waited for one of
+	// the turned pairs to fold to this stance arrives now, before the endings
+	// below.
+	if err := e.arrivals(onStance(before, after), at); err != nil {
+		return fmt.Errorf("stance arrivals: %w", err)
 	}
 
 	// The stance endings, in the fold after the flip — declaration order,
@@ -195,6 +208,16 @@ func (e *Encounter) firedFact(id FactID, at uint64) error {
 func (e *Encounter) noticeRounds(ms []clock.Milestone) error {
 	for _, m := range ms {
 		if m.Kind != clock.RoundStarted || e.outcome != nil {
+			continue
+		}
+		// The round site (design §3.8, R9; reserve.go): whatever waited for
+		// this round of a fight arrives now, before the endings below. A
+		// member arriving refreshes sight inside this call and joins the
+		// fight whose round this is, as a straggler walking into view would.
+		if err := e.arrivals(onRound(m.Round), uint64(e.clock.ToData().HighWater)); err != nil {
+			return fmt.Errorf("round %d arrivals: %w", m.Round, err)
+		}
+		if e.outcome != nil {
 			continue
 		}
 		for _, de := range e.endings {

@@ -391,6 +391,36 @@ type PropInput struct {
 	// field never reaches Sight, Standing, or the turn loop, the same law
 	// Facing follows.
 	Offset [3]float64
+
+	// Arrives is the predicate that brings this prop into the run
+	// (rpg-project#375, the hold-out design §3.7, R6). Nil — the zero value,
+	// and every prop authored before arrivals existed — means the prop is on
+	// the floor from the first frame, exactly as it always was.
+	//
+	// A PROP WITH A PREDICATE IS IN RESERVE. It is field STRUCTURE — the
+	// author placed it, At is where it will stand — and until the predicate
+	// holds it is nowhere: not on the canvas, so it blocks nothing; in no
+	// atlas, for any member; not [Holdable], however it was authored, and
+	// [Encounter.Hold] refuses it exactly as it refuses an id that names
+	// nothing (the probe law — a refusal that said "not yet" would confirm a
+	// thing nobody can see). The never-authored yardstick governs: a run with
+	// this prop in reserve projects byte-identically to one where it was never
+	// written, until it arrives.
+	//
+	// When the predicate holds it is placed at At — or at the nearest free
+	// cell of At's region when something stands there — with an
+	// `arrived:<id>@<cell>` fact and an `arrived` beat to everyone; from then
+	// on it is an ordinary prop, held and dropped like any other. The fact is
+	// the whole record of its arrival: nothing stores "arrived" beside it, and
+	// a reload folds the same answer from the same fact.
+	//
+	// A [Trigger], the predicate grammar endings and dispositions already
+	// speak: `{ round: 6 }` is a [TriggerRound], `{ down: chief }` a
+	// [TriggerMemberDown], `{ fact: x }` a [TriggerFact] (TRUTH grain here —
+	// anyone in the run knows it), `{ stance: ... }` a [TriggerStance].
+	// Refused at construction when it can never hold (ErrNoField), by the
+	// same liveness rule an ending meets.
+	Arrives Trigger
 }
 
 // WallInput is one authored wall: the crossing it blocks, plus the
@@ -879,6 +909,38 @@ type MemberInput struct {
 	// `belongs-to` edge from this member to the faction, folded by every
 	// side reader (design §3.1).
 	Faction FactionID
+
+	// Arrives is the predicate that brings this member into the run
+	// (rpg-project#375, the hold-out design §3.7, R6). Nil — the zero value —
+	// means the member is placed at Position from the first frame, exactly as
+	// every member always was. Hand-carried by the host the way Faction and
+	// Holds are, from the placement's own `arrives`.
+	//
+	// A MEMBER WITH A PREDICATE IS IN RESERVE, not on the roster: no cell, no
+	// clock, no turn, in no pair, in no fight, in no beat's audience, absent
+	// from every projection for every member — [Encounter.Members],
+	// [Encounter.AtlasFor], [Encounter.Story], [Encounter.ClockOf] all answer
+	// as though it were never authored (the never-authored yardstick). Its
+	// facts — Name, Speed, Sight, Actions, Targeting, BlocksMovement, Faction,
+	// Holds, Decider — are kept for the day it arrives, and Position is where
+	// it arrives: it must be standable, refused otherwise (ErrBadPlacement),
+	// exactly as a seat is.
+	//
+	// When the predicate holds the member enters the run the way a joiner
+	// does — placed at Position, or at the nearest free standable cell of
+	// Position's region when something stands there; on the world clock; its
+	// records seeded; the graph redeclared — with an `arrived:<id>@<cell>`
+	// fact and an `arrived` beat to everyone, and the same verb's sight
+	// refresh forms or joins a fight as for anyone walking into view. From
+	// then on it is an ordinary member and this predicate is spent: nothing
+	// stores "arrived" beside the fact.
+	//
+	// MONSTERS ONLY. A player has no reserve to wait in and a world NPC is
+	// placed by its own lane; either with a predicate is refused
+	// (ErrNoMember). Refused too when the predicate can never hold
+	// (ErrNoMember) — a round counted from 0, a fact with no name, a stance
+	// the pair can never reach, or this member waiting for its own fall.
+	Arrives Trigger
 }
 
 // ActionView is a static fact about one action a member can take — an
@@ -1599,12 +1661,39 @@ type JoinInput struct {
 	// kind's default. Refused before any mutation when it names no faction
 	// this field declares (ErrNoFaction).
 	Faction FactionID
+
+	// Arrives is the predicate that brings this member into the run —
+	// [MemberInput.Arrives] for a member who is spawned mid-scene, which is
+	// how every monster actually enters a run (see Holds above). Optional:
+	// nil means the joiner is placed at Cell now, as every joiner always was.
+	//
+	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design
+	// §3 Spawn: "Content for a reserved monster resolves at launch; the
+	// encounter holds the member in reserve"). Cell is where it will arrive,
+	// validated standable now; nothing is placed, no clock is joined, no
+	// beat is written — a `joined` beat would tell everyone a thing the
+	// yardstick says nobody can know — and [JoinOutput.Reserved] says so.
+	// Monsters only, refused otherwise (ErrNoMember), as at construction.
+	Arrives Trigger
 }
 
 // JoinOutput reports the results of a successful join.
 type JoinOutput struct {
 	// Member is the joined member's read-side data.
+	//
+	// For a joiner that went into RESERVE (Reserved below) this carries the
+	// member's facts and, as Position and Region, the cell it will arrive at
+	// — the authored placement, not a place anybody stands. Nothing else
+	// about the run says this member exists until it arrives.
 	Member Member
+
+	// Reserved is true when the joiner carried an Arrives predicate and went
+	// into reserve rather than onto the map (rpg-project#375, design §3.7):
+	// Formed and IntelDeltas are nil, Seq is 0 — no beat was written — and
+	// the member is absent from every roster, atlas and story until its
+	// predicate holds. A host reads this to withhold the member from what it
+	// shows, exactly as the encounter does.
+	Reserved bool
 
 	// Formed is set when arriving in sight of the other side started a fight.
 	// A joiner walks into a scene like anybody else.

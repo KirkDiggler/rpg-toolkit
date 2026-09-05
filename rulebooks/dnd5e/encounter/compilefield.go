@@ -258,6 +258,11 @@ func compileField(in FieldInput) (*field, error) {
 	if err := f.compileFactions(in.Factions, in.Dispositions); err != nil {
 		return nil, err
 	}
+	// A prop's arrival predicate LAST OF ALL, because a `{ stance }` is judged
+	// against the compiled sides (rpg-project#375, reserve.go).
+	if err := f.validatePropArrivals(); err != nil {
+		return nil, err
+	}
 
 	// W6 — the field is one canvas: an origin-centred hex span wide enough to
 	// hold the floor's bounding box. A hex grid always fits (negative axial
@@ -438,6 +443,13 @@ func (f *field) compileProps(props []PropInput) error {
 			// either (Copilot, PR #1497 review).
 			return fmt.Errorf("prop %q at [%g,%g] is holdable and has no id: %w",
 				p.Ref, p.At.X, p.At.Y, ErrNoField)
+		} else if p.Arrives != nil {
+			// AND SO MUST A PROP THAT ARRIVES (rpg-project#375, reserve.go):
+			// its arrival is a fact keyed by its id, and every later map
+			// folds its presence from that fact. Nameless, it could never be
+			// recorded as having come.
+			return fmt.Errorf("prop %q at [%g,%g] arrives on a predicate and has no id: %w",
+				p.Ref, p.At.X, p.At.Y, ErrNoField)
 		}
 
 		// Fresh pointers: a caller flipping a bool after construction must
@@ -448,7 +460,7 @@ func (f *field) compileProps(props []PropInput) error {
 		f.props[i] = PropInput{
 			ID: p.ID, Holdable: p.Holdable, Holds: append([]IntelID(nil), p.Holds...),
 			Ref: p.Ref, At: p.At, BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksSight,
-			Facing: p.Facing, Offset: p.Offset,
+			Facing: p.Facing, Offset: p.Offset, Arrives: p.Arrives,
 		}
 	}
 
@@ -766,7 +778,13 @@ func (f *field) hasVoid() bool {
 // compileCanvas builds the one spatial room the encounter runs on: a grid
 // spanning the floor's bounding box, with every prop placed and every wall
 // and door registered on it in absolute cells.
-func (f *field) compileCanvas(doors []*doorRecord) (*canvasRoom, error) {
+//
+// arrived is where each prop that entered the run from reserve now stands,
+// folded from the journal (holdings.go arrivedProps) — nil at Setup, where
+// nothing has arrived yet. A prop with an arrival predicate and no entry here
+// is IN RESERVE and stays off the canvas: it blocks nothing and is seen by
+// nobody, exactly as if it were never authored (reserve.go).
+func (f *field) compileCanvas(doors []*doorRecord, arrived map[PropID]spatial.Position) (*canvasRoom, error) {
 	canvas := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 		ID:   "canvas",
 		Type: "encounter",
@@ -779,13 +797,15 @@ func (f *field) compileCanvas(doors []*doorRecord) (*canvasRoom, error) {
 	// pillars in a hall), and a coordinate-derived key is a collision
 	// waiting to happen. An index cannot collide on any input.
 	for i, p := range f.props {
-		prop := &propEntity{
-			id:                fmt.Sprintf("prop-%d", i),
-			ref:               p.Ref,
-			blocksMovement:    *p.BlocksMovement,
-			blocksLineOfSight: *p.BlocksLineOfSight,
+		cell := f.cellAt(p.At)
+		if p.Arrives != nil {
+			at, has := arrived[p.ID]
+			if !has {
+				continue
+			}
+			cell = at
 		}
-		if err := canvas.PlaceEntity(prop, f.cellAt(p.At)); err != nil {
+		if err := canvas.PlaceEntity(propEntityOf(i, p), cell); err != nil {
 			return nil, fmt.Errorf("prop placement: %w: %w", ErrBadPlacement, err)
 		}
 	}

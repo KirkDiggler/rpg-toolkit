@@ -127,6 +127,13 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 	prop := e.field.props[index]
 	cell := e.field.cellAt(prop.At)
 	placement, moved := e.holdings.propPlacements()[in.Target]
+
+	// IN RESERVE IS NOT HERE (rpg-project#375, reserve.go). A prop waiting on
+	// its predicate is refused exactly as an id that names nothing — the
+	// probe law again: "not yet" would confirm a thing no map shows.
+	if prop.Arrives != nil && !placement.arrived {
+		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
+	}
 	if moved && !placement.gone {
 		// A dropped prop is picked up from where it now lies, not from where
 		// the author drew it — and it is that cell the member must be

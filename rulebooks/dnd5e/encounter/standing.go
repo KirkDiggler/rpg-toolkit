@@ -233,6 +233,18 @@ func (e *Encounter) noticeDown(
 		intelDeltas = mergeIntelDeltas(intelDeltas, drivenDeltas)
 	}
 
+	// A fall is the first of the four arrival sites (rpg-project#375, design
+	// §3.8; reserve.go): every reserved placement waiting on one of these
+	// falls arrives now — BEFORE the endings below, so an `ended` this same
+	// fall fires stays the story's last word. A member arriving refreshes
+	// sight for the roster inside this call, and the fight forms or is
+	// joined there.
+	if e.outcome == nil && len(down) > 0 {
+		if err := e.arrivals(onFall(down), uint64(e.clock.ToData().HighWater)); err != nil {
+			return nil, nil, fmt.Errorf("participation arrivals: %w", err)
+		}
+	}
+
 	// Preserve declared MemberDown endings. They still key off Down, but no
 	// initiative consequence does.
 	if e.outcome == nil && len(down) > 0 {

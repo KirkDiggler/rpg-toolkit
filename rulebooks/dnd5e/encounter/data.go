@@ -84,6 +84,16 @@ type EncounterData struct {
 	// took off them.
 	Holdings *HoldingsData `json:"holdings,omitempty"`
 
+	// Reserve is every member held back by an arrival predicate
+	// (rpg-project#375, design §3.7; reserve.go): its facts, the cell it
+	// will arrive at, and the predicate. PRESENT EXACTLY WHEN SOMETHING IS
+	// WAITING — a run with nothing in reserve writes no key at all, the
+	// exact bytes every earlier blob has, and a run whose last reserved
+	// member has arrived writes none either: the member is on Members from
+	// then on, and the `arrived:` fact in Holdings is the only trace of how
+	// it got there. Nothing here says "arrived"; nothing needs to.
+	Reserve []ReserveData `json:"reserve,omitempty"`
+
 	Endings     []EndingData `json:"endings"`
 	EverMembers []MemberID   `json:"ever_members"`
 	// Retention is the story-beat window this encounter was built with (see
@@ -309,6 +319,40 @@ type PropData struct {
 	// absent — an old blob simply unmarshals both to their zero values.
 	Facing string     `json:"facing,omitempty"`
 	Offset [3]float64 `json:"offset"`
+
+	// Arrives is the predicate that brings this prop into the run
+	// ([PropInput.Arrives], rpg-project#375). Field STRUCTURE: the author
+	// wrote it, and whether the prop has come is the holdings journal's
+	// `arrived:` fact, never a flag here. Omitted when the prop stands there
+	// from the first frame, so every blob from before arrivals existed reads
+	// exactly as it did.
+	Arrives *TriggerData `json:"arrives,omitempty"`
+}
+
+// ReserveData is the persistent representation of one [reservedMember]: a
+// member's facts, held for the day it arrives (rpg-project#375, reserve.go).
+//
+// Every field mirrors [MemberData]'s, with two differences that are the
+// point. Cell is where the member WILL arrive — its authored seat or its
+// joiner's cell, dungeon-absolute, standable — not a place anybody stands.
+// And Holds is here where MemberData deliberately has none: a roster member's
+// records live in the journal, seeded when it entered the run, but a reserved
+// member has not entered it yet, so the author's placement is still a fact
+// about the member and not yet a fact about the run. Arrives is the predicate,
+// REQUIRED — a reserve entry with none would be a member waiting for nothing.
+type ReserveData struct {
+	ID             MemberID         `json:"id"`
+	Kind           MemberKind       `json:"kind"`
+	Name           string           `json:"name,omitempty"`
+	Cell           PositionData     `json:"cell"`
+	SpeedFeet      int              `json:"speed_feet,omitempty"`
+	SightFeet      int              `json:"sight_feet,omitempty"`
+	Actions        []ActionViewData `json:"actions,omitempty"`
+	Targeting      string           `json:"targeting,omitempty"`
+	BlocksMovement bool             `json:"blocks_movement,omitempty"`
+	Faction        FactionID        `json:"faction,omitempty"`
+	Holds          []IntelID        `json:"holds,omitempty"`
+	Arrives        TriggerData      `json:"arrives"`
 }
 
 // IntelData is the persistent representation of one authored knowledge
@@ -625,7 +669,58 @@ func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID)
 		members[string(id)] = true
 	}
 
+	arrivals := make(map[PropID]bool, len(f.props))
+	for _, p := range f.props {
+		if p.ID != "" && p.Arrives != nil {
+			arrivals[p.ID] = true
+		}
+	}
+
 	for i, fd := range data.Facts {
+		// AN ARRIVAL IS ITS OWN SHAPE (rpg-project#375, reserve.go): the
+		// actor is the thing that arrived — a prop, which is no member, or a
+		// member the run has since had — the subject says which, and the
+		// cell is floor of the kind that thing can stand on. Checked before
+		// the member rule below, which is about holders.
+		if strings.HasPrefix(fd.Kind, arrivedPrefix) {
+			id, at, ok := parseArrived(fd.Kind)
+			if !ok {
+				return fmt.Errorf("holdings fact %d names kind %q, which is not an arrival this build writes: %w",
+					i, fd.Kind, ErrInvalidData)
+			}
+			if fd.Actor != id {
+				return fmt.Errorf("holdings fact %d is the arrival of %q and names actor %q: %w", i, id, fd.Actor, ErrInvalidData)
+			}
+			if len(fd.Audience) > 0 {
+				return fmt.Errorf("holdings fact %d is an arrival with an audience — this module writes arrivals on the truth grain: %w",
+					i, ErrInvalidData)
+			}
+			switch journal.EntityID(fd.Subject) {
+			case propSubject(id):
+				if !arrivals[id] {
+					return fmt.Errorf("holdings fact %d is the arrival of prop %q, which this field does not place with a predicate: %w",
+						i, id, ErrInvalidData)
+				}
+				if !f.isFloor(at) {
+					return fmt.Errorf("holdings fact %d lands prop %q at [%g,%g], which is not floor: %w",
+						i, id, at.X, at.Y, ErrInvalidData)
+				}
+			case memberSubject(MemberID(id)):
+				if !members[id] {
+					return fmt.Errorf("holdings fact %d is the arrival of member %q, who is no member this encounter has ever had: %w",
+						i, id, ErrInvalidData)
+				}
+				if !f.isStandable(at) {
+					return fmt.Errorf("holdings fact %d lands member %q at [%g,%g], where nobody can stand: %w",
+						i, id, at.X, at.Y, ErrInvalidData)
+				}
+			default:
+				return fmt.Errorf("holdings fact %d is an arrival whose subject %q is neither a prop nor a member: %w",
+					i, fd.Subject, ErrInvalidData)
+			}
+			continue
+		}
+
 		if fd.Actor == "" || !members[fd.Actor] {
 			return fmt.Errorf("holdings fact %d actor %q is no member this encounter has ever had: %w",
 				i, fd.Actor, ErrInvalidData)
@@ -1185,6 +1280,27 @@ func (e *Encounter) snapshot() EncounterData {
 	// EncounterData.Holdings.
 	holdingsData := holdingsDataFrom(e.holdings)
 
+	// The reserve, in ID order, present exactly when something is waiting —
+	// see EncounterData.Reserve.
+	var reserveData []ReserveData
+	for _, id := range e.reservedIDs() {
+		rm := e.reserve[id]
+		reserveData = append(reserveData, ReserveData{
+			ID:             rm.record.ID,
+			Kind:           rm.record.Kind,
+			Name:           rm.record.Name,
+			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
+			SpeedFeet:      rm.record.SpeedFeet,
+			SightFeet:      rm.record.SightFeet,
+			Actions:        actionViewDataFrom(rm.record.Actions),
+			Targeting:      rm.record.Targeting,
+			BlocksMovement: rm.record.BlocksMovement,
+			Faction:        rm.record.Faction,
+			Holds:          append([]IntelID(nil), rm.holds...),
+			Arrives:        triggerDataFrom(rm.arrives),
+		})
+	}
+
 	return EncounterData{
 		Outcome:     outcomeData,
 		Clock:       e.clock.ToData(),
@@ -1196,6 +1312,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Doors:       doorData,
 		World:       worldData,
 		Holdings:    holdingsData,
+		Reserve:     reserveData,
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
 		Retention:   e.retention,
@@ -1241,7 +1358,7 @@ func fieldDataFrom(f *field) FieldData {
 			// Fresh pointers, never the input's own: two ToData calls must
 			// not alias one bool.
 			blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
-			out.Props[i] = PropData{
+			pd := PropData{
 				ID:                p.ID,
 				Holdable:          p.Holdable,
 				Holds:             append([]IntelID(nil), p.Holds...),
@@ -1252,6 +1369,11 @@ func fieldDataFrom(f *field) FieldData {
 				Facing:            p.Facing,
 				Offset:            p.Offset,
 			}
+			if p.Arrives != nil {
+				td := triggerDataFrom(p.Arrives)
+				pd.Arrives = &td
+			}
+			out.Props[i] = pd
 		}
 	}
 
@@ -1709,6 +1831,51 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
+	// The reserve (rpg-project#375, reserve.go): every entry is a member the
+	// run could hold — an id nobody else on the roster or in the reserve
+	// has, a monster, a standable cell to arrive at, a faction this field
+	// has, records it declares, and a predicate that can hold — the SAME
+	// refusals Setup and Join make for a member with an Arrives.
+	reserveTriggers := make([]Trigger, len(data.Reserve))
+	for i, r := range data.Reserve {
+		if r.ID == "" {
+			return nil, fmt.Errorf("load encounter: reserve %d has no id: %w: %w", i, ErrInvalidData, ErrNoMember)
+		}
+		if seenIDs[r.ID] {
+			return nil, fmt.Errorf("load encounter: reserve %q is also a member, or reserved twice: %w: %w",
+				r.ID, ErrInvalidData, ErrNoMember)
+		}
+		seenIDs[r.ID] = true
+		cell := spatial.Position{X: r.Cell.X, Y: r.Cell.Y}
+		if !isIntegralHexCell(cell) {
+			return nil, fmt.Errorf("load encounter: reserve %q cell is not an integral axial cell: %w: %w",
+				r.ID, ErrInvalidData, ErrBadPlacement)
+		}
+		if !f.isStandable(cell) {
+			return nil, fmt.Errorf("load encounter: reserve %q cell %s: %w: %w",
+				r.ID, f.notStandable(cell), ErrInvalidData, ErrBadPlacement)
+		}
+		if err := validateMemberFacts(r.ID, r.SpeedFeet, r.SightFeet, actionViewsFrom(r.Actions)); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
+		}
+		if err := f.validateMemberFaction(r.ID, r.Kind, r.Faction); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
+		}
+		for _, id := range r.Holds {
+			if _, declared := f.intelByID[id]; !declared {
+				return nil, fmt.Errorf("load encounter: reserve %q holds intel %q: %w: %w", r.ID, id, ErrInvalidData, ErrNoIntel)
+			}
+		}
+		t, err := triggerFromData(r.Arrives)
+		if err != nil {
+			return nil, fmt.Errorf("load encounter: reserve %q arrives: %w: %w", r.ID, ErrInvalidData, err)
+		}
+		if err := f.validateArrival(r.ID, r.Kind, t); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
+		}
+		reserveTriggers[i] = t
+	}
+
 	// A TriggerReachedPosition ending must name a reachable cell — the SAME
 	// shared validator Setup uses (#929 T3 Opus round F5;
 	// validateEndingTriggers' doc comment), fed the wire endings resolved to
@@ -1948,7 +2115,28 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	e.canvas, err = f.compileCanvas(e.doors)
+	// The reserve's two halves must agree (reserve.go): a member the blob
+	// still holds in reserve cannot also have arrived — the journal would say
+	// it came and the reserve would say it is waiting, and a fold cannot
+	// serve both.
+	if data.Holdings != nil {
+		for _, fd := range data.Holdings.Facts {
+			id, _, ok := parseArrived(fd.Kind)
+			if !ok || journal.EntityID(fd.Subject) != memberSubject(MemberID(id)) {
+				continue
+			}
+			for _, r := range data.Reserve {
+				if r.ID == MemberID(id) {
+					return nil, fmt.Errorf("load encounter: reserve %q has already arrived (%s): %w", id, fd.Kind, ErrInvalidData)
+				}
+			}
+		}
+	}
+
+	// The canvas, with every prop that has arrived from reserve standing
+	// where it landed — folded from the facts just replayed — and every prop
+	// still waiting kept off it (reserve.go).
+	e.canvas, err = f.compileCanvas(e.doors, e.holdings.arrivedProps())
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
@@ -2023,6 +2211,32 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// Restore the full ever-members set (exited members keep Story access)
 	for _, em := range data.EverMembers {
 		e.everMembers[em] = true
+	}
+
+	// Restore the reserve exactly as it was — facts kept, nothing placed,
+	// deciders re-attached from the same map the roster's come from
+	// (reserve.go). Validated above, before construction began (R5).
+	for i, r := range data.Reserve {
+		rm := &reservedMember{
+			record: memberRecord{
+				ID:             r.ID,
+				Kind:           r.Kind,
+				Name:           r.Name,
+				SpeedFeet:      r.SpeedFeet,
+				SightFeet:      r.SightFeet,
+				Actions:        actionViewsFrom(r.Actions),
+				Targeting:      r.Targeting,
+				BlocksMovement: r.BlocksMovement,
+				Faction:        r.Faction,
+			},
+			at:      spatial.Position{X: r.Cell.X, Y: r.Cell.Y},
+			holds:   append([]IntelID(nil), r.Holds...),
+			arrives: reserveTriggers[i],
+		}
+		if d, ok := deciders[r.ID]; ok && d != nil {
+			rm.decider = d
+		}
+		e.reserveMember(rm)
 	}
 
 	// Restore declared endings — endingTriggerFromData is the SAME conversion
@@ -2272,7 +2486,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			return FieldInput{}, fmt.Errorf("prop %q does not say whether it blocks_line_of_sight: %w", pd.Ref, ErrNoField)
 		}
 		blocksMovement, blocksSight := *pd.BlocksMovement, *pd.BlocksLineOfSight
-		in.Props = append(in.Props, PropInput{
+		prop := PropInput{
 			ID:                pd.ID,
 			Holdable:          pd.Holdable,
 			Holds:             append([]IntelID(nil), pd.Holds...),
@@ -2282,7 +2496,15 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			BlocksLineOfSight: &blocksSight,
 			Facing:            pd.Facing,
 			Offset:            pd.Offset,
-		})
+		}
+		if pd.Arrives != nil {
+			t, err := triggerFromData(*pd.Arrives)
+			if err != nil {
+				return FieldInput{}, fmt.Errorf("prop %q arrives: %w", pd.Ref, err)
+			}
+			prop.Arrives = t
+		}
+		in.Props = append(in.Props, prop)
 	}
 
 	for _, ed := range fd.Exits {

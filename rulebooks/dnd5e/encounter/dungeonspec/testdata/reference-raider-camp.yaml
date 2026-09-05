@@ -1,10 +1,10 @@
 # The raider camp (rpg-project#375, the hold-out design §1) — the fixture the
-# hold-out scenario is authored against, STEP A: sides and knowledge.
+# hold-out scenario is authored against: sides, knowledge, and arrivals.
 #
 # A small camp in three rooms, west to east:
 #
 #   - the GATE, where the party comes in facing the yard, where the front
-#     gate exit stands, and where the Wiseman's letter lies on the ground;
+#     gate exit stands, and where the Wiseman's letter will be found;
 #   - the YARD, with a skeleton scout in it;
 #   - the HUT, with the skeleton captain — the chief — in it.
 #
@@ -14,9 +14,12 @@
 # the letter into the hut and the camp turns; the scout reading it flips
 # nothing, because a scout is not the camp's mind.
 #
-# Step B adds `arrives` to the letter (it appears at round 6) and three
-# zombie reinforcements at the gate when the chief falls. Nothing else in this
-# file changes then; the hold-out is already authored.
+# Two things ARRIVE (R6). The letter is not on the ground when the party comes
+# in: a messenger drops it at the gate when round 6 of a fight starts — hold
+# out that long and the way to turn the camp appears. And if the chief falls
+# instead, three zombie reinforcements come through the gate: `arrives` on
+# each names his fall. Until its predicate holds a placement is nowhere — on
+# no map, in no roster — exactly as if it had never been written.
 #
 # The raiders are undead because those are the stat blocks and models the
 # game has (Kirk: "make do with skeles, zombies and the skele captain for the
@@ -107,7 +110,10 @@ place:
   - { id: scout,  ref: "dnd5e:monsters:skeleton",         at: [4,2],  faction: raiders }
   - { id: letter, ref: "dnd5e:props:scroll", at: [1,3], holdable: true,
       blocks_movement: false, blocks_los: false,
-      holds: [wisemans-letter] }
+      holds: [wisemans-letter], arrives: { round: 6 } }
+  - { id: reinforcement-1, ref: "dnd5e:monsters:zombie", at: [1,4], faction: raiders, arrives: { down: chief } }
+  - { id: reinforcement-2, ref: "dnd5e:monsters:zombie", at: [2,4], faction: raiders, arrives: { down: chief } }
+  - { id: reinforcement-3, ref: "dnd5e:monsters:zombie", at: [1,5], faction: raiders, arrives: { down: chief } }
 
 exits:
   - { id: front-gate, at: [1,3] }

@@ -110,6 +110,13 @@ type Encounter struct {
 	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
 	deciders    map[MemberID]Decider
 
+	// reserve is every member held back by an arrival predicate
+	// (rpg-project#375, reserve.go): not on the roster, on no clock, in no
+	// projection — its facts wait here and nowhere else until its predicate
+	// holds, when it joins members through the one arrival path. Persisted
+	// on EncounterData.Reserve; nil for a run with nothing waiting.
+	reserve map[MemberID]*reservedMember
+
 	// initiative rolls the order a bubble forms with. Nil until Setup is given
 	// one; trigger detection refuses to start a fight without it rather than
 	// dropping the fight silently.
@@ -685,6 +692,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if err = f.validateMemberFaction(mi.ID, mi.Kind, mi.Faction); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
+		// And a member held in reserve must be one that can wait there and
+		// one whose predicate can hold (reserve.go) — the same refusal Join
+		// makes, at the same point: before the first mutation.
+		if mi.Arrives != nil {
+			if err = f.validateArrival(mi.ID, mi.Kind, mi.Arrives); err != nil {
+				return nil, fmt.Errorf("newencounter: %w", err)
+			}
+		}
 	}
 
 	// A TriggerReachedPosition ending must name a reachable cell (#929 T3
@@ -743,8 +758,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter story: %w", err)
 	}
 
-	// Compile the field into the one canvas this encounter runs on.
-	e.canvas, err = f.compileCanvas(e.doors)
+	// Compile the field into the one canvas this encounter runs on. Nothing
+	// has arrived yet: a prop with a predicate stays off the canvas
+	// (reserve.go).
+	e.canvas, err = f.compileCanvas(e.doors, nil)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
@@ -752,6 +769,29 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Place members and collect them
 	memberIDs := make([]MemberID, 0, len(in.Members))
 	for _, mi := range in.Members {
+		member := &memberRecord{
+			ID:             mi.ID,
+			Kind:           mi.Kind,
+			Name:           mi.Name,
+			SpeedFeet:      mi.SpeedFeet,
+			SightFeet:      mi.SightFeet,
+			Actions:        mi.Actions,
+			Targeting:      mi.Targeting,
+			BlocksMovement: mi.BlocksMovement,
+			Faction:        mi.Faction,
+		}
+
+		// A MEMBER WITH A PREDICATE WAITS IN RESERVE (rpg-project#375,
+		// reserve.go): its facts are kept and nothing else happens — no
+		// cell, no clock, no seed, no percept, not in the scene-opened
+		// audience. Everything below is for the members who are here.
+		if mi.Arrives != nil {
+			e.reserveMember(&reservedMember{
+				record: *member, at: f.cellAt(mi.Position), holds: mi.Holds,
+				decider: mi.Decider, arrives: mi.Arrives,
+			})
+			continue
+		}
 		memberIDs = append(memberIDs, mi.ID)
 
 		entity := &memberEntity{
@@ -767,17 +807,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter member placement: %w: %w", ErrBadPlacement, err)
 		}
 
-		member := &memberRecord{
-			ID:             mi.ID,
-			Kind:           mi.Kind,
-			Name:           mi.Name,
-			SpeedFeet:      mi.SpeedFeet,
-			SightFeet:      mi.SightFeet,
-			Actions:        mi.Actions,
-			Targeting:      mi.Targeting,
-			BlocksMovement: mi.BlocksMovement,
-			Faction:        mi.Faction,
-		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
 
@@ -1886,8 +1915,11 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: %w", ErrNoMember)
 	}
 
-	// Check if already a member
-	if _, exists := e.members[in.Member]; exists {
+	// Check if already a member — on the roster, or waiting in reserve
+	// (reserve.go): a reserved member is absent from every projection, but
+	// it is in the encounter, and a second joiner under its id would arrive
+	// twice.
+	if _, exists := e.members[in.Member]; exists || e.inReserve(in.Member) {
 		return nil, fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrNoMember)
 	}
 
@@ -1930,6 +1962,15 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	// A joiner held in reserve must be one that can wait there and one whose
+	// predicate can hold — the SAME refusal NewEncounter makes (reserve.go),
+	// before the first mutation.
+	if in.Arrives != nil {
+		if err := e.field.validateArrival(in.Member, in.Kind, in.Arrives); err != nil {
+			return nil, fmt.Errorf("join: %w", err)
+		}
+	}
+
 	// Hex fields require integral axial cells (interim tools/spatial#926
 	// enforcement — see isIntegralHexCell). Asked first, for the reason
 	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
@@ -1947,17 +1988,6 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: cell %v %s: %w", in.Cell, e.field.notStandable(in.Cell), ErrBadPlacement)
 	}
 
-	entity := &memberEntity{
-		id:             string(in.Member),
-		kind:           in.Kind,
-		blocksMovement: in.BlocksMovement,
-	}
-
-	if err := e.canvas.PlaceEntity(entity, in.Cell); err != nil {
-		return nil, fmt.Errorf("join placement: %w: %w", ErrBadPlacement, err)
-	}
-
-	// Register the member
 	member := &memberRecord{
 		ID:             in.Member,
 		Kind:           in.Kind,
@@ -1969,6 +1999,38 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		BlocksMovement: in.BlocksMovement,
 		Faction:        in.Faction,
 	}
+
+	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design §3
+	// Spawn; reserve.go): validated like any joiner, then held — no
+	// placement, no clock, no seed, no beat, no refresh. The output says so,
+	// and names the cell it will arrive at as its placement; nothing else in
+	// the run does.
+	if in.Arrives != nil {
+		e.reserveMember(&reservedMember{
+			record: *member, at: in.Cell, holds: in.Holds, decider: in.Decider, arrives: in.Arrives,
+		})
+		region, _ := e.RegionAt(in.Cell)
+		return &JoinOutput{
+			Reserved: true,
+			Member: Member{
+				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
+				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting,
+				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
+			},
+		}, nil
+	}
+
+	entity := &memberEntity{
+		id:             string(in.Member),
+		kind:           in.Kind,
+		blocksMovement: in.BlocksMovement,
+	}
+
+	if err := e.canvas.PlaceEntity(entity, in.Cell); err != nil {
+		return nil, fmt.Errorf("join placement: %w: %w", ErrBadPlacement, err)
+	}
+
+	// Register the member
 	e.members[in.Member] = member
 	e.everMembers[in.Member] = true // Track in everMembers
 

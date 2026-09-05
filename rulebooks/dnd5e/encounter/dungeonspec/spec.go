@@ -183,6 +183,42 @@ type Spec struct {
 	// A dungeon may bind SEVERAL scenarios, and the run ends when any bound
 	// ending fires (design R8).
 	Scenarios map[string]map[string]string `yaml:"scenarios,omitempty"`
+
+	// Endings are the ways this dungeon's run can end, authored in the file
+	// itself (rpg-project#375, the hold-out design R10): an id and the
+	// predicate that fires it. Optional; omitted means none of its own — the
+	// scenarios it binds still declare theirs. Written after `exits` and
+	// before `scenarios`.
+	//
+	// THE PREDICATE GRAMMAR, THIRD CONSUMER. `until` ends a hostility,
+	// `arrives` brings a placement in, and `when` ends the run — one
+	// spelling, one type ([PredicateSpec]), one evaluator in the engine. A
+	// scenario's own field is sugar for one of these:
+	// `scenarios: { hold-out: { convince: raiders } }` declares exactly the
+	// ending `{ id: hold-out, when: { stance: { between: [raiders, party],
+	// is: neutral } } }` would, and the pinning test says so. A scenario
+	// package with nothing left to do is the north star's own test.
+	Endings []EndingSpec `yaml:"endings,omitempty"`
+}
+
+// EndingSpec is one authored way the run ends: a name, and when.
+//
+//	endings:
+//	  - { id: held-out, when: { round: 6 } }
+//	  - { id: turned,   when: { stance: { between: [raiders, party], is: neutral } } }
+//
+// The id is the ending's key in the run — what the `ended` beat names —
+// REQUIRED non-empty and unique among this file's endings. `when` is
+// REQUIRED: an ending that does not say when it fires is one nothing can
+// fire, and nothing is defaulted (rpg-toolkit#1033). Refused when it can
+// never hold — "an ending nobody can reach" — by the same liveness rule every
+// predicate in this file meets.
+type EndingSpec struct {
+	// ID names the ending. REQUIRED non-empty and unique.
+	ID string `yaml:"id"`
+
+	// When is the predicate that fires it. REQUIRED. See [PredicateSpec].
+	When *PredicateSpec `yaml:"when"`
 }
 
 // IntelSpec is one authored piece of knowledge: an id, and what knowing it
@@ -723,7 +759,7 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 		case "knows":
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
-			"offset", "targeting", "boss", "holds", "holdable", "faction":
+			"offset", "targeting", "boss", "holds", "holdable", "faction", "arrives":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)
@@ -901,4 +937,26 @@ type PlaceSpec struct {
 	// side. Carried to the host as [MonsterPlacement.Faction], which hands
 	// it to [encounter.MemberInput.Faction] when it spawns the sheet.
 	Faction string `yaml:"faction,omitempty"`
+
+	// Arrives is the predicate that brings this placement into the run
+	// (rpg-project#375, the hold-out design §2, §3.7, R6). MONSTERS AND
+	// PROPS. Optional: omitted means the thing is there from the first
+	// frame, as every placement always was.
+	//
+	// A PLACEMENT WITH A PREDICATE IS IN RESERVE until it holds — absent
+	// from every map and every roster, then placed at `at` (or the nearest
+	// free cell of its region when something stands there) with an `arrived`
+	// beat. `at` MUST be floor, and for a monster standable, exactly as for
+	// a placement that stands there from the start: the cell is where it
+	// will arrive. Refused when it can never hold — a round counted from 0,
+	// a `{ down }` naming no placement or a prop, a stance the pair can
+	// never reach, a placement waiting on its own fall, or a ring of
+	// placements each waiting on another's — by the liveness rule every
+	// predicate in this file meets. The dungeon ALLOWS a `{ fact }` no record
+	// reveals (R8, pre-release: show the cost).
+	//
+	// Carried to the host as [MonsterPlacement.Arrives] for a monster, which
+	// hands it to [encounter.MemberInput.Arrives] when it spawns the sheet;
+	// compiled straight onto [encounter.PropInput.Arrives] for a prop.
+	Arrives *PredicateSpec `yaml:"arrives,omitempty"`
 }

@@ -101,6 +101,11 @@ func Validate(spec *Spec) []FieldError {
 		v.minds()
 		v.exits()
 		v.dispositions()
+		// ARRIVALS AND ENDINGS AFTER THE DISPOSITIONS, because a `{ stance }`
+		// predicate is judged against the whole stance table, and after
+		// place() because a `{ down }` names a placement (rpg-project#375).
+		v.arrivals()
+		v.endings()
 		v.scenarios()
 		v.concealment()
 	}
@@ -699,6 +704,13 @@ func (v *validation) place() {
 			if pl.Holdable != nil && *pl.Holdable && pl.ID == "" {
 				v.fail(p+".id", "%q is holdable and has no id, and a thing that can be picked up has to be nameable", pl.Ref)
 			}
+			// And so must a prop that arrives (rpg-project#375, R6): its
+			// arrival is recorded under its id, and every map afterwards
+			// finds it by that record. A monster needs none — the host names
+			// the member it spawns.
+			if pl.Arrives != nil && pl.ID == "" {
+				v.fail(p+".id", "%q arrives on a predicate and has no id, and a thing that arrives has to be nameable", pl.Ref)
+			}
 			if pl.Targeting != nil {
 				v.fail(p+".targeting", "%q is not a monster and cannot have targeting", pl.Ref)
 			}
@@ -872,6 +884,106 @@ func (v *validation) scenarios() {
 			v.fail(p, "scenario %q binds %s to %q, and nothing in this dungeon has that id",
 				id, k, named)
 		}
+	}
+}
+
+// arrivals validates every placement's `arrives` (rpg-project#375, design
+// §2, R6): a predicate that is one, at `place[i].arrives` and the sub-path
+// of the form it takes; and one that can hold — a placement waiting on its
+// own fall never arrives, and neither does any member of a ring of reserved
+// placements each waiting on another's fall. `at` is not asked about again:
+// place() already refused a cell that is not floor, or not standable for a
+// monster, and the cell a thing arrives on obeys the same rule as the cell it
+// would have stood on from the start.
+//
+// RUN AFTER place() and dispositions(): a `{ down }` names a placement and a
+// `{ stance }` is judged against the whole table.
+func (v *validation) arrivals() {
+	s := v.spec
+	// waitsOn is, per reserved placement index, the index of the placement
+	// whose fall it waits for — the edges a ring is found on. Only a
+	// `{ down }` naming a placement that exists and is itself reserved is an
+	// edge: a fall the predicate check above already refused is not one, and
+	// a placement standing there from the start can fall like anybody.
+	waitsOn := map[int]int{}
+	for i, pl := range s.Place {
+		if pl.Arrives == nil {
+			continue
+		}
+		p := fmt.Sprintf("place[%d].arrives", i)
+		v.predicate(p, pl.Arrives, nil)
+		if pl.Arrives.Form() != predicateDown {
+			continue
+		}
+		if pl.ID != "" && pl.Arrives.Down == pl.ID {
+			v.fail(p+".down", "%q cannot wait for its own fall — it is not here to fall until it arrives", pl.ID)
+			continue
+		}
+		if j, ok := v.placeIDs[pl.Arrives.Down]; ok && s.Place[j].Arrives != nil {
+			waitsOn[i] = j
+		}
+	}
+
+	// A RING NEVER ARRIVES: each waits for a fall that cannot happen until
+	// it has arrived itself. Walked from every reserved placement in file
+	// order, so the refusal lands at each member of the ring, in the words of
+	// the placement the author is looking at.
+	for i := range s.Place {
+		if _, waits := waitsOn[i]; !waits {
+			continue
+		}
+		seen := map[int]bool{i: true}
+		for j := waitsOn[i]; ; {
+			next, ok := waitsOn[j]
+			if !ok {
+				break
+			}
+			if next == i {
+				v.fail(fmt.Sprintf("place[%d].arrives.down", i),
+					"%q waits for %q to fall, and %q is waiting to arrive on a fall of its own that leads back here — "+
+						"none of them can ever arrive", v.placeLabel(i), s.Place[j].ID, s.Place[j].ID)
+				break
+			}
+			if seen[next] {
+				break // a ring this placement leads to but is not in; its own members report it
+			}
+			seen[next] = true
+			j = next
+		}
+	}
+}
+
+// placeLabel names a placement the way a refusal about it should: its id
+// when it has one, its ref when it does not.
+func (v *validation) placeLabel(i int) string {
+	if id := v.spec.Place[i].ID; id != "" {
+		return id
+	}
+	return v.spec.Place[i].Ref
+}
+
+// endings validates the authored endings (rpg-project#375, R10): an id, no
+// two alike, and a predicate that is one and can hold — "an ending nobody can
+// reach" is refused here in the file's own path exactly as the run refuses it
+// at construction (ErrNoEnding).
+//
+// RUN AFTER dispositions(), for arrivals()' reason.
+func (v *validation) endings() {
+	ids := map[string]int{}
+	for i, e := range v.spec.Endings {
+		p := fmt.Sprintf("endings[%d]", i)
+		if e.ID == "" {
+			v.fail(p+".id", "the ending has no id")
+		} else if prev, dup := ids[e.ID]; dup {
+			v.fail(p+".id", "ending %q is already declared at endings[%d]", e.ID, prev)
+		} else {
+			ids[e.ID] = i
+		}
+		if e.When == nil {
+			v.fail(p+".when", "the ending does not say when it fires — %s", predicateForms)
+			continue
+		}
+		v.predicate(p+".when", e.When, nil)
 	}
 }
 

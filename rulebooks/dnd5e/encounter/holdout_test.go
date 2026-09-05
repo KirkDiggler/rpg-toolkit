@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -58,9 +59,16 @@ var (
 type HoldOutSuite struct {
 	suite.Suite
 
-	compiled dungeonspec.Compiled
-	standing *downList
-	heard    *journal
+	// compiled is the camp AS STEP A HAD IT — the shipped file with every
+	// `arrives` stripped (stepASource): the letter on the ground at the gate,
+	// no reinforcements. The step-A scenes in this file play on it unchanged,
+	// which is what keeps them honest about what they pinned. The shipped
+	// file itself, arrivals and all, is canonical — the step-B scenes in
+	// reserve_test.go play on that one.
+	compiled  dungeonspec.Compiled
+	canonical dungeonspec.Compiled
+	standing  *downList
+	heard     *journal
 }
 
 func TestHoldOutSuite(t *testing.T) {
@@ -70,28 +78,59 @@ func TestHoldOutSuite(t *testing.T) {
 func (s *HoldOutSuite) SetupTest() {
 	raw, err := os.ReadFile(campPath)
 	s.Require().NoError(err)
-	s.compiled, err = dungeonspec.Load(raw)
+	s.canonical, err = dungeonspec.Load(raw)
 	s.Require().NoError(err, "the fixture compiles")
+	s.compiled, err = dungeonspec.Load([]byte(stepASource(s.T(), string(raw))))
+	s.Require().NoError(err, "the step-A variant compiles")
 	s.standing = &downList{}
 	s.heard = &journal{}
 }
 
+// The step-B lines of the shipped fixture, spelled once: the letter's
+// predicate and the three reinforcements.
+const (
+	letterArrives     = `, arrives: { round: 6 } }`
+	reinforcementLine = `  - { id: reinforcement-%d, ref: "dnd5e:monsters:zombie", at: %s, faction: raiders, arrives: { down: chief } }` + "\n"
+)
+
+var reinforcementCells = []string{"[1,4]", "[2,4]", "[1,5]"}
+
+// stepASource is the shipped camp with step B taken back out — the letter
+// lying at the gate from the first frame and no reinforcements — refused
+// when a line to remove is not there exactly once, so an edit to the fixture
+// cannot silently turn this into the unstripped file.
+func stepASource(t *testing.T, source string) string {
+	t.Helper()
+	require.Equal(t, 1, strings.Count(source, letterArrives), "the letter's arrives appears once")
+	source = strings.Replace(source, letterArrives, " }", 1)
+	for i, at := range reinforcementCells {
+		line := fmt.Sprintf(reinforcementLine, i+1, at)
+		require.Equal(t, 1, strings.Count(source, line), "reinforcement %d appears once", i+1)
+		source = strings.Replace(source, line, "", 1)
+	}
+	return source
+}
+
 // cast is the party at the gate and the camp's monsters as the file placed
-// them — id, faction and holdings straight off the compiled placements, the
-// way a host spawns them.
+// them — id, faction, holdings and arrival straight off the compiled
+// placements, the way a host spawns them.
 func (s *HoldOutSuite) cast(withScout bool) []encounter.MemberInput {
-	seats := s.compiled.PartyStart
+	return castOf(s.compiled, withScout)
+}
+
+func castOf(compiled dungeonspec.Compiled, withScout bool) []encounter.MemberInput {
+	seats := compiled.PartyStart
 	members := []encounter.MemberInput{
 		{ID: raider, Kind: encounter.KindPlayer, Position: seats[0].At},
 		{ID: partner, Kind: encounter.KindPlayer, Position: seats[1].At},
 	}
-	for _, m := range s.compiled.Monsters {
+	for _, m := range compiled.Monsters {
 		if !withScout && m.ID == string(campScout) {
 			continue
 		}
 		members = append(members, encounter.MemberInput{
 			ID: core.EntityID(m.ID), Kind: encounter.KindMonster, Position: m.At,
-			Faction: m.Faction, Holds: m.Holds,
+			Faction: m.Faction, Holds: m.Holds, Arrives: m.Arrives,
 		})
 	}
 	return members
@@ -383,7 +422,9 @@ func (s *HoldOutSuite) TestADeadMindCannotLearn() {
 func (s *HoldOutSuite) TestAFactionOfOneHasItsMemberAsMind() {
 	raw, err := os.ReadFile(campPath)
 	s.Require().NoError(err)
-	source := strings.Replace(string(raw), "  - { id: raiders, mind: chief }", "  - { id: raiders }", 1)
+	// The step-A camp: with the reinforcements in the file the raiders are a
+	// faction of five, and the rule below is about a faction of one.
+	source := strings.Replace(stepASource(s.T(), string(raw)), "  - { id: raiders, mind: chief }", "  - { id: raiders }", 1)
 	scoutLine := `  - { id: scout,  ref: "dnd5e:monsters:skeleton",         at: [4,2],  faction: raiders }` + "\n"
 	s.Require().Contains(source, scoutLine)
 	source = strings.Replace(source, scoutLine, "", 1)
