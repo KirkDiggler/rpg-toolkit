@@ -286,6 +286,7 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		hitPoints:           d.HitPoints,
 		maxHitPoints:        d.MaxHitPoints,
 		armorClass:          d.ArmorClass,
+		wallet:              d.Wallet,
 		deathSaveState:      cloneDeathSaveState(d.DeathSaveState),
 		skills:              d.Skills,
 		savingThrows:        d.SavingThrows,

@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -77,6 +78,7 @@ type Character struct {
 
 	// Equipment and resources
 	inventory      []InventoryItem
+	wallet         currency.Money
 	equipmentSlots EquipmentSlots
 	spellSlots     map[int]SpellSlotData
 	classResources map[shared.ClassResourceType]ResourceData
@@ -991,6 +993,7 @@ func (c *Character) ToData() *Data {
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,
 		ArmorClass:          c.armorClass,
+		Wallet:              c.wallet,
 		DeathSaveState:      cloneDeathSaveState(c.deathSaveState),
 		Skills:              maps.Clone(c.skills),
 		SavingThrows:        maps.Clone(c.savingThrows),
