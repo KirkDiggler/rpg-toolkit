@@ -11,20 +11,32 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
-**rpg-toolkit#1537 (rpg-project#384) — Sell's inventory/vendor primitives
-(in progress, PR 1 of 3, 2026-09-05).** `character.RemoveInventoryItem`
-(mirror of `AddInventoryItem`, applying #1508's exact-then-remove fix
-proactively this time), `npcs.AddToVendorStock` (mirror of
-`DecrementVendorStock`, tags a brand-new row `PlayerSold: true`, leaves an
-incremented existing row's tag untouched), and a vendor's own optional
-`Wallet *currency.Money` (nil = unlimited, every current vendor; set =
-enforced via `CanAfford`/`Sub`) via `npcs.DebitVendorWallet` — deliberately
-placed on `npcs.VendorInventoryData`, not `npc.Data`: `npc` is a separate,
+**rpg-toolkit#1537 (rpg-project#384) — Sell, the mirror of Buy (complete,
+2026-09-05).** `session.Trade` now reads direction from the input's own
+shape: `Receive.Items` populated is a buy (unchanged), `Give.Items`
+populated is a sell — never both (barter, not this wave) or neither
+(nothing to trade), both refused as `ErrInvalidTradeOffer`. Selling removes
+the item from the actor's inventory (`character.RemoveInventoryItem`,
+mirror of `AddInventoryItem`, applying #1508's exact-then-remove fix
+proactively), credits the actor's `Wallet`, debits the vendor's own
+optional `Wallet` first if one is set (`npcs.DebitVendorWallet`; nil is
+unlimited and never checked — every vendor authored so far), and adds the
+item to the vendor's stock (`npcs.AddToVendorStock`, mirror of
+`DecrementVendorStock` — increments an existing row untagged, or appends a
+new one tagged `PlayerSold: true`, immediately buyable back through the
+ordinary buy path with no special-casing). New sentinel
+`ErrNotInInventory` (selling more than owned); `ErrGiveNotSupported`
+retired — no code path can return it once giving items has a legal
+meaning. Records a distinct `sold` beat (`encounter.OutcomeSold`) rather
+than reusing the buy beat, which was itself renamed `OutcomeTraded` →
+`OutcomeBought` in the same wave (`OutcomeBartered` reserved for whenever
+item-for-item barter lands). Vendor `Wallet` lives on
+`npcs.VendorInventoryData`, not `npc.Data`: `npc` is a separate,
 dependency-free module, and this is D&D-specific content `npcs` already
 owns and structures inside `npc.Data`'s opaque `Inventory` bytes, the same
-way `Entries` itself does. `session.Trade`'s sell-direction wiring is a
-separate PR (module-isolated, same 3-PR pattern as the original `Trade`
-build), waiting on this plus a new `encounter.OutcomeSold`.
+way `Entries` itself does. Three PRs, same module-isolation pattern as the
+original `Trade` build (#1538 `rulebooks/dnd5e`, #1539
+`rulebooks/dnd5e/encounter`, then `session`).
 
 **rpg-toolkit#1534 (rpg-project#376) — `session.Trade` learns to charge
 (complete, 2026-09-05).** `TradeOffer` gains `Currency currency.Money`.

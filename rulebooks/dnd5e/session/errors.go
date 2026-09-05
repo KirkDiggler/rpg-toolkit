@@ -541,19 +541,24 @@ var (
 	// silently treating the new outcome as Pass.
 	ErrBadTurnOutcome = errors.New("turn driver returned an unrecognised outcome")
 
-	// ErrGiveNotSupported is returned when Trade names a non-empty Give —
-	// this wave only supports one direction (a vendor purchase, Receive
-	// only). Accepting arbitrary items into a vendor's stock raises
-	// unresolved questions (does an unlisted item create a new stock row?)
-	// that belong to a later sell/barter wave, not this one.
-	ErrGiveNotSupported = errors.New("give is not supported yet")
-
-	// ErrInvalidTradeOffer is returned when Trade's Receive does not name
-	// exactly one item, or that item has an empty ID or a nonpositive
-	// quantity. One sentinel covers all three shapes: each is a caller
+	// ErrInvalidTradeOffer is returned when Trade's input does not match
+	// exactly one of its two known shapes: neither Give.Items nor
+	// Receive.Items populated (nothing to trade), both populated (barter,
+	// not this wave), the populated side is not exactly one entry, that
+	// entry has an empty ID or a nonpositive quantity, or the side that
+	// must stay empty of currency (Receive on a buy, Give on a sell)
+	// carries some. One sentinel covers all of these: each is a caller
 	// defect in the request's shape, not a smaller-but-legal input — the
 	// same convention encounter.Interact already applies to a negative
 	// Range.
+	//
+	// ErrGiveNotSupported lived here through rpg-toolkit#1534: giving items
+	// was unconditionally refused before Sell existed to give it a legal
+	// meaning. Retired rather than left dead once no code path could
+	// return it any more (rpg-toolkit#1537) — this pre-v1.0 workspace's own
+	// rule (docs CLAUDE.md, "How We Ship"): APIs change freely, the
+	// per-module version pin is the compatibility mechanism, not a
+	// permanently unreachable sentinel.
 	ErrInvalidTradeOffer = errors.New("invalid trade offer")
 
 	// ErrNotAVendor is returned when Trade's target has no
@@ -570,6 +575,14 @@ var (
 	// the inner npcs error rides along for anyone who already depends on
 	// that package too.
 	ErrOutOfStock = errors.New("vendor cannot fulfill this trade")
+
+	// ErrNotInInventory is returned when Trade's selling actor does not own
+	// at least as many units of the item as Give names. Wraps the
+	// character package's own rpgerr.CodeNotFound with %v rather than %w —
+	// that package uses rpgerr codes rather than package-level sentinels
+	// (AddInventoryItem's own convention), so there is no inner sentinel to
+	// chain, only a message worth keeping.
+	ErrNotInInventory = errors.New("actor does not own enough of this item to sell")
 
 	// ErrWrongPrice is returned when Trade's Give.Currency does not exactly
 	// equal the server-computed price of what Receive names.

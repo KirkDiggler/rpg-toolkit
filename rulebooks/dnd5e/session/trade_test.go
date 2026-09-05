@@ -5,12 +5,15 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/npcs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -71,6 +74,46 @@ func (s *TradeTestSuite) placeVendor(at spatial.Position) {
 // balance for any test that expects a purchase to actually succeed.
 func (s *TradeTestSuite) fund(amount currency.Money) {
 	s.characters.byID["alice"].Wallet = amount
+}
+
+// own gives alice quantity units of id directly, bypassing Trade — the
+// fixture character starts with no inventory, and Sell requires the actor
+// to already own what it's selling.
+func (s *TradeTestSuite) own(itemType shared.EquipmentType, id string, quantity int) {
+	s.characters.byID["alice"].Inventory = append(s.characters.byID["alice"].Inventory,
+		character.InventoryItemData{Type: itemType, ID: id, Quantity: quantity})
+}
+
+// placeVendorWithWallet is placeVendor plus a set (enforced) vendor Wallet —
+// design.md §3's "not a decorative field" bar requires exercising this
+// branch directly, since npcs.NewMerchant's demo stock has none.
+func (s *TradeTestSuite) placeVendorWithWallet(at spatial.Position, wallet currency.Money) {
+	vendor, err := npcs.NewVendor(npcs.VendorConfig{
+		NPC: npc.Config{
+			Ref: refs.NPCs.Merchant(), DisplayName: "Wealth-Limited Merchant",
+			Capabilities: []npc.Capability{npc.CapabilityVendor},
+		},
+		Inventory: npcs.VendorInventoryConfig{
+			Entries: []npcs.StockEntryData{{
+				Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longbow),
+				Availability: npcs.Availability{Mode: npcs.StockModeLimited, Quantity: 1},
+			}},
+		},
+	})
+	s.Require().NoError(err)
+	data := vendor.NPC().ToData()
+
+	var inventory npcs.VendorInventoryData
+	s.Require().NoError(json.Unmarshal(data.Inventory, &inventory))
+	inventory.Wallet = &wallet
+	marshaled, err := json.Marshal(inventory)
+	s.Require().NoError(err)
+	data.Inventory = marshaled
+
+	_, err = s.mgr.PlaceNPC(context.Background(), &session.PlaceNPCInput{
+		Session: "sess", Member: "vendor", Position: at, NPC: data,
+	})
+	s.Require().NoError(err)
 }
 
 // TestTradeBuysTheListedItem is the headline: the longsword lands in
@@ -216,7 +259,11 @@ func (s *TradeTestSuite) TestInsufficientFundsIsRefused() {
 	s.True(found, "the longsword row must still be there, not consumed by the failed purchase")
 }
 
-func (s *TradeTestSuite) TestGiveItemsIsRefused() {
+// TestBarterIsRefused pins that both sides naming items (rpg-toolkit#1537
+// gave Give.Items a legal meaning — sell — but never together with
+// Receive.Items) is still refused, now under ErrInvalidTradeOffer rather
+// than the retired ErrGiveNotSupported.
+func (s *TradeTestSuite) TestBarterIsRefused() {
 	s.placeVendor(spatial.Position{X: 1, Y: 0})
 
 	_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
@@ -229,7 +276,7 @@ func (s *TradeTestSuite) TestGiveItemsIsRefused() {
 		}},
 	})
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrGiveNotSupported)
+	s.ErrorIs(err, session.ErrInvalidTradeOffer)
 }
 
 func (s *TradeTestSuite) TestReceiveShapeViolationsAreRefused() {
@@ -349,4 +396,221 @@ func (s *TradeTestSuite) TestNilInputRejected() {
 	_, err := s.mgr.Trade(context.Background(), nil)
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrNilInput)
+}
+
+// TestTradeSellsAnOwnedItem is Sell's headline (rpg-toolkit#1537): alice
+// sells a longsword she owns to a vendor that already stocks longswords —
+// the item leaves her inventory, her wallet is credited exactly the price,
+// and the vendor's EXISTING row is incremented (not retagged PlayerSold,
+// since it was already authored stock).
+func (s *TradeTestSuite) TestTradeSellsAnOwnedItem() {
+	s.placeVendor(spatial.Position{X: 1, Y: 0}) // demo stock already has 1 longsword
+	s.own(shared.EquipmentTypeWeapon, string(weapons.Longsword), 1)
+	price := currency.FromGold(15)
+
+	out, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Items: []session.TradeItem{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
+		}},
+		Receive: session.TradeOffer{Currency: price},
+	})
+	s.Require().NoError(err)
+	s.NotZero(out.Seq)
+
+	saved := s.characters.byID["alice"]
+	s.Empty(saved.Inventory, "the sold item must leave alice's inventory")
+	s.Equal(price, saved.Wallet, "credited exactly the server-computed price")
+
+	found := false
+	for _, entry := range out.Descriptor.Inventory {
+		if entry.ID == string(weapons.Longsword) {
+			found = true
+			s.Equal(2, entry.Quantity, "the vendor's existing row is incremented, not replaced")
+			s.False(entry.PlayerSold, "an already-authored row must not be retagged")
+		}
+	}
+	s.True(found)
+}
+
+// TestSellAppendsANewPlayerSoldRow covers the other branch of
+// AddToVendorStock: an item the vendor never stocked becomes a brand-new
+// row, tagged PlayerSold, and immediately buyable back through the
+// ordinary buy path — design.md §1's "buyback is free" claim, exercised
+// end to end rather than just at the npcs-package level.
+func (s *TradeTestSuite) TestSellAppendsANewPlayerSoldRowAndItIsBuyableBack() {
+	s.placeVendor(spatial.Position{X: 1, Y: 0}) // no dagger in the demo stock
+	s.own(shared.EquipmentTypeWeapon, string(weapons.Dagger), 1)
+	price, err := currencyPriceOf(weapons.Dagger)
+	s.Require().NoError(err)
+
+	out, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Items: []session.TradeItem{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Dagger), Quantity: 1},
+		}},
+		Receive: session.TradeOffer{Currency: price},
+	})
+	s.Require().NoError(err)
+
+	found := false
+	for _, entry := range out.Descriptor.Inventory {
+		if entry.ID == string(weapons.Dagger) {
+			found = true
+			s.Equal(1, entry.Quantity)
+			s.True(entry.PlayerSold)
+		}
+	}
+	s.True(found)
+
+	// Buyback: the same item, bought back through the ordinary buy path,
+	// no special-casing.
+	s.fund(price)
+	_, err = s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Currency: price},
+		Receive: session.TradeOffer{Items: []session.TradeItem{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Dagger), Quantity: 1},
+		}},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(s.characters.byID["alice"].Inventory, 1)
+	s.Equal(string(weapons.Dagger), s.characters.byID["alice"].Inventory[0].ID)
+}
+
+func (s *TradeTestSuite) TestSellWrongPriceIsRefused() {
+	s.placeVendor(spatial.Position{X: 1, Y: 0})
+	s.own(shared.EquipmentTypeWeapon, string(weapons.Longsword), 1)
+
+	_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Items: []session.TradeItem{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
+		}},
+		Receive: session.TradeOffer{Currency: currency.FromGold(16)}, // real price is 15gp
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrWrongPrice)
+
+	// Refused atomically: the item never left alice's inventory.
+	s.Require().Len(s.characters.byID["alice"].Inventory, 1)
+}
+
+func (s *TradeTestSuite) TestSellNotOwnedIsRefused() {
+	s.placeVendor(spatial.Position{X: 1, Y: 0})
+	// alice owns nothing.
+
+	_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Items: []session.TradeItem{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
+		}},
+		Receive: session.TradeOffer{Currency: currency.FromGold(15)},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrNotInInventory)
+}
+
+func (s *TradeTestSuite) TestSellInsufficientQuantityOwnedIsRefused() {
+	s.placeVendor(spatial.Position{X: 1, Y: 0})
+	s.own(shared.EquipmentTypeWeapon, string(weapons.Longsword), 1)
+
+	_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Items: []session.TradeItem{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 2},
+		}},
+		Receive: session.TradeOffer{Currency: currency.FromGold(30)},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrNotInInventory)
+
+	// Refused atomically: alice's one longsword is still there.
+	s.Require().Len(s.characters.byID["alice"].Inventory, 1)
+	s.Equal(1, s.characters.byID["alice"].Inventory[0].Quantity)
+}
+
+// TestSellVendorInsufficientFundsIsRefused is design.md §3's real
+// enforcement case: a vendor with a set, exhausted Wallet correctly
+// refuses a sell it can't afford, even though every vendor
+// npcs.NewMerchant(nil) authors is nil (unlimited, never reachable here).
+func (s *TradeTestSuite) TestSellVendorInsufficientFundsIsRefused() {
+	s.placeVendorWithWallet(spatial.Position{X: 1, Y: 0}, currency.FromGold(10))
+	s.own(shared.EquipmentTypeWeapon, string(weapons.Longsword), 1)
+
+	_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Items: []session.TradeItem{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
+		}},
+		Receive: session.TradeOffer{Currency: currency.FromGold(15)}, // exceeds the vendor's 10gp
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrInsufficientFunds)
+
+	// Refused atomically: alice still has the item and no payout landed.
+	s.Require().Len(s.characters.byID["alice"].Inventory, 1)
+	s.Equal(currency.Money{}, s.characters.byID["alice"].Wallet)
+}
+
+func (s *TradeTestSuite) TestSellShapeViolationsAreRefused() {
+	s.placeVendor(spatial.Position{X: 1, Y: 0})
+	s.own(shared.EquipmentTypeWeapon, string(weapons.Longsword), 1)
+	s.own(shared.EquipmentTypeWeapon, string(weapons.Longbow), 1)
+
+	s.Run("two distinct items", func() {
+		_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+			Session: "sess", Actor: "alice", Target: "vendor",
+			Give: session.TradeOffer{Items: []session.TradeItem{
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longbow), Quantity: 1},
+			}},
+			Receive: session.TradeOffer{Currency: currency.FromGold(45)},
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrInvalidTradeOffer)
+	})
+
+	s.Run("give currency must be empty on a sell", func() {
+		_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+			Session: "sess", Actor: "alice", Target: "vendor",
+			Give: session.TradeOffer{
+				Items:    []session.TradeItem{{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1}},
+				Currency: currency.FromCopper(1),
+			},
+			Receive: session.TradeOffer{Currency: currency.FromGold(15)},
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrInvalidTradeOffer)
+	})
+}
+
+// TestBuyReceiveCurrencyMustBeEmpty is the buy-side mirror: naming a
+// Receive.Currency on a buy makes no sense (buy's payment is Give.Currency)
+// and is refused as a shape defect.
+func (s *TradeTestSuite) TestBuyReceiveCurrencyMustBeEmpty() {
+	s.placeVendor(spatial.Position{X: 1, Y: 0})
+	s.fund(currency.FromGold(15))
+
+	_, err := s.mgr.Trade(context.Background(), &session.TradeInput{
+		Session: "sess", Actor: "alice", Target: "vendor",
+		Give: session.TradeOffer{Currency: currency.FromGold(15)},
+		Receive: session.TradeOffer{
+			Items:    []session.TradeItem{{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1}},
+			Currency: currency.FromCopper(1),
+		},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrInvalidTradeOffer)
+}
+
+// currencyPriceOf resolves a weapon's real catalog price via the same
+// ParseCost path equipment.PriceOf uses, so a test can assert against it
+// without hand-transcribing the number a second time.
+func currencyPriceOf(id weapons.WeaponID) (currency.Money, error) {
+	w, ok := weapons.All[id]
+	if !ok {
+		return currency.Money{}, fmt.Errorf("no such weapon %q", id)
+	}
+	return currency.ParseCost(w.Cost)
 }
