@@ -162,7 +162,6 @@ var refSentinels = map[string]error{
 	"core.ErrInvalidFormat":     core.ErrInvalidFormat,
 	"core.ErrEmptyComponent":    core.ErrEmptyComponent,
 	"core.ErrInvalidCharacters": core.ErrInvalidCharacters,
-	"core.ErrTooManySegments":   core.ErrTooManySegments,
 	"core.ErrTooFewSegments":    core.ErrTooFewSegments,
 }
 

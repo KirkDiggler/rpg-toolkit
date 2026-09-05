@@ -11,4 +11,7 @@ const (
 	testModuleCombat   = "combat"
 	testTypeEvent      = "event"
 	testErrInvalidChar = "invalid characters"
+	// testIDPart2 is what a refusal calls the SECOND part of an id, which
+	// is the part a trailing separator leaves empty.
+	testIDPart2 = "id part 2"
 )

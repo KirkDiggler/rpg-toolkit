@@ -23,7 +23,9 @@ type Type = string
 const (
 	// separatorChar is the character used to separate identifier parts
 	separatorChar = ":"
-	// expectedParts is the number of parts in a valid identifier string
+	// expectedParts is the number of segments a ref string splits into:
+	// module, type, and the id. The id is everything after the second
+	// separator, so it may carry separators of its own.
 	expectedParts = 3
 )
 
@@ -72,32 +74,42 @@ type Ref struct {
 	// Type categorizes the identifier ("features", "conditions", "classes", etc.)
 	Type Type `json:"type"`
 
-	// ID is the unique identifier within the module namespace
+	// ID is the unique identifier within the module namespace. It is
+	// everything after the second separator, so it may itself carry
+	// separator-joined parts: the id of "dnd5e:props:plushie:skeleton-dog"
+	// is "plushie:skeleton-dog". The grammar requires only that every part
+	// is well-formed; what the parts MEAN belongs to whoever owns the
+	// content.
 	ID ID `json:"id"`
 }
 
-// String returns the full identifier as module:type:id
+// String returns the full identifier as module:type:id. It is the exact
+// inverse of ParseString at any id depth, since the id is rejoined verbatim.
 func (id *Ref) String() string {
 	return fmt.Sprintf("%s:%s:%s", id.Module, id.Type, id.ID)
 }
 
-// ParseString parses the string format with detailed error reporting
+// ParseString parses module:type:id with detailed error reporting.
+//
+// Module and type are single identifier parts. The id is EVERYTHING after the
+// second separator: one or more parts joined by it, every part non-empty and
+// drawn from the identifier charset. So "dnd5e:props:plushie:skeleton-dog"
+// parses, with id "plushie:skeleton-dog", and five parts read the same way as
+// four. The grammar does not count the id's parts, because their structure
+// belongs to the content that mints them, not to core.
 func ParseString(s string) (*Ref, error) {
 	if s == "" {
 		return nil, NewParseError(s, "", 0, ErrEmptyString)
 	}
 
-	segments := strings.Split(s, separatorChar)
+	segments := strings.SplitN(s, separatorChar, expectedParts)
 	segmentCount := len(segments)
 
-	// Validate we have exactly the right number of segments
+	// Two separators are the whole shape requirement: what follows the
+	// second one is the id, however many parts it carries.
 	if segmentCount < expectedParts {
 		return nil, NewParseError(s, "", 0,
 			fmt.Errorf("%w: expected %d segments, got %d", ErrTooFewSegments, expectedParts, segmentCount))
-	}
-	if segmentCount > expectedParts {
-		return nil, NewParseError(s, "", 0,
-			fmt.Errorf("%w: expected %d segments, got %d", ErrTooManySegments, expectedParts, segmentCount))
 	}
 
 	// Create the Ref with segments
@@ -154,9 +166,6 @@ func (id *Ref) validate() error {
 	if id.Type == "" {
 		return NewValidationError("type", id.Type, "cannot be empty", ErrEmptyComponent)
 	}
-	if id.ID == "" {
-		return NewValidationError("id", id.ID, "cannot be empty", ErrEmptyComponent)
-	}
 
 	// Validate characters in each component
 	if !isValidIdentifierPart(id.Module) {
@@ -169,10 +178,40 @@ func (id *Ref) validate() error {
 			"contains invalid characters (only letters, digits, underscore, and dash allowed)",
 			ErrInvalidCharacters)
 	}
-	if !isValidIdentifierPart(id.ID) {
-		return NewValidationError("id", id.ID,
-			"contains invalid characters (only letters, digits, underscore, and dash allowed)",
-			ErrInvalidCharacters)
+	if err := validateIDParts(id.ID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateIDParts holds every part of an id to the identifier charset.
+//
+// The id may carry separator-joined parts, and a refusal has to say WHICH one
+// broke the rule — "dnd5e:props::skeleton-dog" and "dnd5e:props:plushie:" are
+// different mistakes, and an author who is told only "id" has to find the gap
+// themselves. A single-part id keeps the plain "id" field name it has always
+// had, so the common refusal reads exactly as before.
+func validateIDParts(id ID) error {
+	if id == "" {
+		return NewValidationError("id", id, "cannot be empty", ErrEmptyComponent)
+	}
+
+	parts := strings.Split(id, separatorChar)
+	for i, part := range parts {
+		field := "id"
+		if len(parts) > 1 {
+			field = fmt.Sprintf("id part %d", i+1)
+		}
+
+		if part == "" {
+			return NewValidationError(field, id, "cannot be empty", ErrEmptyComponent)
+		}
+		if !isValidIdentifierPart(part) {
+			return NewValidationError(field, id,
+				"contains invalid characters (only letters, digits, underscore, and dash allowed)",
+				ErrInvalidCharacters)
+		}
 	}
 
 	return nil

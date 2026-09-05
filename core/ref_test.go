@@ -184,10 +184,36 @@ func TestParseString(t *testing.T) {
 			checkErrType: true,
 		},
 		{
-			name:         "too many parts",
-			input:        "core:feature:rage:extra",
-			wantErr:      core.ErrTooManySegments,
-			wantErrMsg:   "expected 3 segments, got 4",
+			name:  "an id with two parts",
+			input: "dnd5e:props:plushie:skeleton-dog",
+			want: core.MustNewRef(core.RefInput{
+				Module: "dnd5e", Type: "props", ID: "plushie:skeleton-dog"}),
+		},
+		{
+			name:  "an id with three parts",
+			input: "dnd5e:props:plushie:skeleton-dog:chewed",
+			want: core.MustNewRef(core.RefInput{
+				Module: "dnd5e", Type: "props", ID: "plushie:skeleton-dog:chewed"}),
+		},
+		{
+			name:         "an id that is only a separator",
+			input:        "a:b::c",
+			wantErr:      core.ErrEmptyComponent,
+			wantErrMsg:   "id part 1",
+			checkErrType: true,
+		},
+		{
+			name:         "an id ending in a separator",
+			input:        "a:b:c:",
+			wantErr:      core.ErrEmptyComponent,
+			wantErrMsg:   testIDPart2,
+			checkErrType: true,
+		},
+		{
+			name:         "a later id part with invalid characters",
+			input:        "dnd5e:props:plushie:skeleton dog",
+			wantErr:      core.ErrInvalidCharacters,
+			wantErrMsg:   testIDPart2,
 			checkErrType: true,
 		},
 		{
@@ -207,6 +233,13 @@ func TestParseString(t *testing.T) {
 		{
 			name:         "empty id",
 			input:        "core:feature:",
+			wantErr:      core.ErrEmptyComponent,
+			wantErrMsg:   "id",
+			checkErrType: true,
+		},
+		{
+			name:         "empty id, the issue's own spelling",
+			input:        "a:b:",
 			wantErr:      core.ErrEmptyComponent,
 			wantErrMsg:   "id",
 			checkErrType: true,
@@ -268,6 +301,69 @@ func TestParseString(t *testing.T) {
 				require.NotNil(t, got)
 				assert.True(t, got.Equals(tt.want), "parsed Ref should equal expected")
 			}
+		})
+	}
+}
+
+// TestParseString_IDParts is the grammar rule stated on its own: the id is
+// everything after the second separator, and String puts it back verbatim.
+//
+// The round trip is what makes the rule safe to adopt. A ref with a two-part
+// id crosses the wire as a string, is parsed by whoever receives it, and is
+// printed again on the way out; if any of those steps counted parts or
+// re-joined them differently, the ref that came back would not be the ref that
+// went in. Depth is the thing being varied, because depth is what the old
+// grammar refused.
+func TestParseString_IDParts(t *testing.T) {
+	depths := []struct {
+		name string
+		ref  string
+		id   string
+	}{
+		{"three parts", "dnd5e:props:brazier", "brazier"},
+		{"four parts", "dnd5e:props:plushie:skeleton-dog", "plushie:skeleton-dog"},
+		{"five parts", "dnd5e:props:plushie:skeleton-dog:chewed", "plushie:skeleton-dog:chewed"},
+	}
+
+	for _, d := range depths {
+		t.Run(d.name, func(t *testing.T) {
+			parsed, err := core.ParseString(d.ref)
+			require.NoError(t, err)
+
+			assert.Equal(t, "dnd5e", parsed.Module)
+			assert.Equal(t, "props", parsed.Type)
+			assert.Equal(t, d.id, parsed.ID,
+				"the id is everything after the second separator, joined as authored")
+			assert.Equal(t, d.ref, parsed.String(),
+				"and printing it gives back exactly the ref that was parsed")
+		})
+	}
+}
+
+// TestParseString_NamesTheEmptyPart — a refusal has to say WHICH part was
+// empty. These three strings are three different author mistakes, and telling
+// them apart is the whole reason the id's parts are validated one at a time
+// instead of as one string.
+func TestParseString_NamesTheEmptyPart(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		names string
+	}{
+		{"nothing after the second separator", "a:b:", "id"},
+		{"a gap at the front of the id", "a:b::c", "id part 1"},
+		{"a gap at the end of the id", "a:b:c:", testIDPart2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := core.ParseString(tt.input)
+
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorIs(t, err, core.ErrEmptyComponent)
+			assert.Contains(t, err.Error(), tt.names,
+				"the refusal names the part the author has to go fix")
 		})
 	}
 }
