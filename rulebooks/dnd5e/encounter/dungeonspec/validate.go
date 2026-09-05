@@ -1335,12 +1335,20 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 //
 // Parsed here rather than through the rulebook's own ref parser for the reason
 // this package exists: importing one would break design law C1. The check is
-// deliberately shallow — three non-empty segments — because "is this a ref that
-// resolves to real content" is a question only the layer that owns content can
-// answer.
+// deliberately shallow — a module, a type, and an id, none of them empty —
+// because "is this a ref that resolves to real content" is a question only the
+// layer that owns content can answer.
+//
+// The id is EVERYTHING after the second colon, so it may carry colon-separated
+// parts of its own: "dnd5e:props:plushie:skeleton-dog" is a props placement
+// whose id is "plushie:skeleton-dog", and the split stops at three for that
+// reason. Counting an id's parts would be this compiler imposing structure on
+// something content owns, which is what refusing that placement was. Refusing
+// an EMPTY part is not the same thing: a gap is a typo, and the author has to
+// see it here, on the canvas, rather than when the run will not start.
 func refKind(ref string) (string, error) {
-	parts := strings.Split(ref, ":")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+	parts := strings.SplitN(ref, ":", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || hasEmptyIDPart(parts[2]) {
 		return "", fmt.Errorf("ref %q is not module:type:id", ref)
 	}
 	switch parts[1] {
@@ -1349,4 +1357,18 @@ func refKind(ref string) (string, error) {
 	default:
 		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parts[1])
 	}
+}
+
+// hasEmptyIDPart reports whether an id has a gap in it — a missing leading,
+// inner, or trailing part. An id with no colons is one part, and an empty id
+// splits into one empty part, so "no id at all" answers true through the same
+// loop rather than needing a case of its own.
+func hasEmptyIDPart(id string) bool {
+	for _, part := range strings.Split(id, ":") {
+		if part == "" {
+			return true
+		}
+	}
+
+	return false
 }
