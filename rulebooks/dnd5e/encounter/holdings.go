@@ -68,17 +68,17 @@ import (
 // collision closed by construction, so no id needs a shape rule to make the
 // fold safe.
 //
-// # A separate journal from the concealment world's, on purpose
+// # One journal with the knowledge facts (rpg-project#375)
 //
-// [encounterWorld] exists ONLY when the field carries concealed structure —
-// "a field with none builds no world machinery at all, which is what keeps a
-// plain dungeon byte-identical to what it was before that file existed"
-// (conceal.go). Holdings are not about concealment: a dungeon with no secret
-// anywhere can still have a holdable idol on a plinth. So this journal is
-// always present and independently persisted, and an encounter where nobody
-// holds anything writes NO holdings at all — `holdings` is omitempty, so a
-// plain dungeon's blob is byte-identical to what it was before this file
-// existed too.
+// These facts live in THE ONE WORLD's journal (world.go), beside the
+// `known:*` facts concealment and factions write — the run has one record of
+// what happened, and readers fold the kinds they are about. Every `holds:`
+// fact is audienced to its holder, so "who knows what" and "who has what"
+// fold the same way. At the storage boundary the one journal is split by
+// kind into the two keys the blob always had: this file's kinds on
+// [EncounterData.Holdings], the knowledge kinds on [EncounterData.World], and
+// an encounter where nobody holds anything still writes no holdings key at
+// all — a plain dungeon's blob is byte-identical to what it was before.
 //
 // # Nothing here is ever projected
 //
@@ -136,14 +136,16 @@ const (
 	droppedPrefix    = "dropped:"
 )
 
-// holdings is the run's answer to who has what: the append-only journal and
-// nothing else. Present state is folded from it on every question.
+// holdings is the run's answer to who has what: a READER over the one
+// journal, and nothing else. Present state is folded from it on every
+// question; the facts it writes land in the same log the world's knowledge
+// does.
 type holdings struct {
 	log *journal.Journal
 }
 
-// newHoldings returns an empty holdings journal.
-func newHoldings() *holdings { return &holdings{log: journal.New()} }
+// newHoldings returns the holdings reader over the one journal.
+func newHoldings(log *journal.Journal) *holdings { return &holdings{log: log} }
 
 // seedIntel writes the author's knowledge links as the holdings they are
 // (design P1): the monster carries the way to each door it was declared to
@@ -159,16 +161,18 @@ func newHoldings() *holdings { return &holdings{log: journal.New()} }
 // which is the kind of stale guarantee a reader trusts (caught on
 // toolkit-wave1c's probe/join-knows, e82da54).
 //
-// Audience is EMPTY, not the holder: a holding is not a thing that happened
-// to anybody, and [journal.Journal] is incurious about who witnessed what.
-// Nothing folds these by audience, because nothing but this file reads them.
+// Audience is THE HOLDER (rpg-project#375, design §3.3): a holding is
+// something that happened to the one holding it, and in the one journal it
+// folds beside the knowledge facts that are audienced the same way. Nothing
+// else witnessed it — what a member carries is never projected (P3).
 func (h *holdings) seedIntel(member MemberID, records []IntelID) error {
 	for _, id := range records {
 		if _, err := h.log.Append(journal.Fact{
-			Kind:    holdsIntelKind(id),
-			Actor:   journal.EntityID(member),
-			Subject: journal.EntityID("intel:" + id),
-			Outcome: journal.Outcome{Detail: "authored"},
+			Kind:     holdsIntelKind(id),
+			Actor:    journal.EntityID(member),
+			Subject:  journal.EntityID("intel:" + id),
+			Audience: journal.Audience{journal.EntityID(member)},
+			Outcome:  journal.Outcome{Detail: "authored"},
 		}); err != nil {
 			return fmt.Errorf("seed intel %q for %q: %w", id, member, err)
 		}
@@ -179,10 +183,11 @@ func (h *holdings) seedIntel(member MemberID, records []IntelID) error {
 // holdProp records that member now carries the prop.
 func (h *holdings) holdProp(member MemberID, id PropID, cause string) error {
 	_, err := h.log.Append(journal.Fact{
-		Kind:    holdsPropKind(id),
-		Actor:   journal.EntityID(member),
-		Subject: journal.EntityID("prop:" + id),
-		Outcome: journal.Outcome{Detail: cause},
+		Kind:     holdsPropKind(id),
+		Actor:    journal.EntityID(member),
+		Subject:  journal.EntityID("prop:" + id),
+		Audience: journal.Audience{journal.EntityID(member)},
+		Outcome:  journal.Outcome{Detail: cause},
 	})
 	return err
 }
@@ -190,12 +195,27 @@ func (h *holdings) holdProp(member MemberID, id PropID, cause string) error {
 // holdIntel records that member now carries the intel record.
 func (h *holdings) holdIntel(member MemberID, id IntelID, cause string) error {
 	_, err := h.log.Append(journal.Fact{
-		Kind:    holdsIntelKind(id),
-		Actor:   journal.EntityID(member),
-		Subject: journal.EntityID("intel:" + id),
-		Outcome: journal.Outcome{Detail: cause},
+		Kind:     holdsIntelKind(id),
+		Actor:    journal.EntityID(member),
+		Subject:  journal.EntityID("intel:" + id),
+		Audience: journal.Audience{journal.EntityID(member)},
+		Outcome:  journal.Outcome{Detail: cause},
 	})
 	return err
+}
+
+// holdsRecord reports whether a member currently holds an intel record — the
+// idempotence check presence transfer makes before copying one.
+func (h *holdings) holdsRecord(member MemberID, id IntelID) bool {
+	_, records := h.fold()
+	return records[id][member]
+}
+
+// isHoldingsKind reports whether a fact kind is one this file mints — the
+// split the storage boundary makes over the one journal.
+func isHoldingsKind(kind string) bool {
+	return strings.HasPrefix(kind, holdsIntelPrefix) || strings.HasPrefix(kind, holdsPropPrefix) ||
+		strings.HasPrefix(kind, heldPrefix) || strings.HasPrefix(kind, droppedPrefix)
 }
 
 // markHeld records that the prop has left the floor.

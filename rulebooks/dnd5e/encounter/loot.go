@@ -152,6 +152,12 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 		return nil, fmt.Errorf("loot: %w", err)
 	}
 
+	// And presence, for [Encounter.Hold]'s reason: a record looted in the
+	// chief's own hut is a record standing in the chief's presence now.
+	if err := e.sweepPresence(at); err != nil {
+		return nil, fmt.Errorf("loot: %w", err)
+	}
+
 	return &LootOutput{}, nil
 }
 
@@ -243,15 +249,14 @@ func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
 	}
 
 	if rec.Reveals.Door != "" {
-		// Nothing to reveal when: the door is not this field's, the field
-		// carries no concealment at all, the door is not concealed, or the
-		// receiver already knows it.
+		// Nothing to reveal when: the door is not this field's, the door is
+		// not concealed, or the receiver already knows it.
 		//
-		// THE THIRD CLAUSE IS REDUNDANT AND KEPT ON PURPOSE. knowsDoor folds
-		// a graph that declares only CONCEALED entities, and
+		// THE SECOND CLAUSE IS REDUNDANT AND KEPT ON PURPOSE. knowsDoor folds
+		// a graph that declares only CONCEALED doors as entities, and
 		// graph.State.Visible answers true for anything it was never told
 		// about — so an unconcealed door is "already known" to everybody and
-		// the fourth clause alone would decide this case. A mutation pass
+		// the third clause alone would decide this case. A mutation pass
 		// proves it: dropping `d.concealed == nil` kills no test. It stays
 		// because removing it would make this rule — "an unconcealed door
 		// has nothing to reveal" — true only by an undocumented default of a
@@ -259,10 +264,19 @@ func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
 		// contract differently would silently start narrating reveals for
 		// open doorways.
 		d, ok := e.doorsByID[rec.Reveals.Door]
-		if !ok || e.world == nil || d.concealed == nil || e.world.knowsDoor(to, d.id) {
+		if !ok || d.concealed == nil || e.world.knowsDoor(to, d.id) {
 			return nil
 		}
 		if err := e.revealDoorTo(to, d, "looted the way to it", at); err != nil {
+			return err
+		}
+	}
+
+	// A FACT (rpg-project#375, design §3.3): the second kind of thing a
+	// record can say, through the one writer of `known:fact` facts — which
+	// also notices what the fact turned (flip.go).
+	if rec.Reveals.Fact != "" {
+		if err := e.learnFact(to, rec.Reveals.Fact, "learned it from record "+id, at); err != nil {
 			return err
 		}
 	}

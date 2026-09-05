@@ -145,19 +145,20 @@ type Encounter struct {
 	// return value.
 	announcer Announcer
 
-	// world is the run's concealment knowledge — seeded from the field's
-	// concealed structure at construction, its facts persisted on
-	// EncounterData.World (rpg-toolkit#1371). NIL FOR A FIELD WITH NO
-	// CONCEALMENT, deliberately: a plain dungeon builds no world machinery
-	// at all, which is what makes zero-behavior-change structural rather
-	// than promised.
+	// world is THE ONE WORLD (rpg-project#375, world.go): the one journal
+	// every fact of the run lands in — knowledge, holdings — and the one
+	// graph folded over it, rebuilt from the field and the roster at every
+	// construction and roster change, its facts persisted on
+	// EncounterData.World and EncounterData.Holdings. ALWAYS PRESENT: a
+	// plain dungeon has sides and knowledge too, and what it skips is the
+	// concealment capabilities and the sweep's work, which keeps its blob
+	// byte-identical to what it was before.
 	world *encounterWorld
 
-	// holdings is WHO HAS WHAT: the run's append-only journal of holdings,
-	// takings and drops (rpg-project#368, design §5). ALWAYS PRESENT, unlike
-	// world above — holdings are not about concealment, and a dungeon with
-	// no secret anywhere can still have a holdable idol on a plinth. An
-	// encounter where nobody holds anything writes no facts and no bytes.
+	// holdings is WHO HAS WHAT: a reader over the world's journal for the
+	// holdings, takings and drops (rpg-project#368, design §5). An
+	// encounter where nobody holds anything writes no such facts and no
+	// bytes.
 	holdings *holdings
 
 	// checkResolver rolls a find check when a member searches. Required at
@@ -710,21 +711,20 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
-	// The holdings journal, always. It starts empty and stays empty for a
-	// field nobody carries anything in, which is what keeps such a field's
-	// blob byte-identical to what it was before holdings existed.
-	e.holdings = newHoldings()
+	// THE ONE WORLD (rpg-project#375, world.go): its journal now, empty, so
+	// the seeds below have somewhere to land; its graph once the endings are
+	// known, because the facts they wait for are part of its declaration.
+	// Holdings are a reader over the same journal. Both start empty and stay
+	// empty for a field nobody learns or carries anything in, which is what
+	// keeps such a field's blob byte-identical to what it was before.
+	e.world = newEncounterWorld()
+	e.holdings = newHoldings(e.world.log)
 
-	// The world, seeded from the concealed structure — and only then: a
-	// field with none leaves e.world nil and every concealment path a
-	// no-op (rpg-toolkit#1371).
+	// The two concealment capabilities, held exactly when the field carries
+	// concealed structure (rpg-toolkit#1371); the world exists either way.
 	if fieldHasConcealment(in.Field.Regions, in.Field.Doors) {
 		e.checkResolver = in.CheckResolver
 		e.witness = in.Witness
-		e.world, err = newEncounterWorld(f, e.doors)
-		if err != nil {
-			return nil, fmt.Errorf("newencounter: %w", err)
-		}
 	}
 
 	// Build clock and intel
@@ -803,6 +803,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Store endings in declaration order (deterministic evaluation, C8), each
 	// positional one compiled to the canvas cell it fires on.
 	e.endings = compileEndings(in.Endings, f)
+
+	// The graph, declared from the field, the roster and the endings — the
+	// sides, the belonging, the knowledge reducers, the flips (world.go).
+	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
 
 	// First light: build sight percepts for each member using refreshSight
 	firstLight, err := e.rebuildPercepts(memberIDs)
@@ -1114,9 +1120,6 @@ func (e *Encounter) rosterIDs() []MemberID {
 // the ONE movement-beat writer, so a player's walk and a monster's pump
 // step are scoped by the same line.
 func (e *Encounter) frontierAudience(action executedAction, audience []MemberID) []MemberID {
-	if e.world == nil {
-		return audience
-	}
 	region, owned := e.field.regionOf(action.to)
 	if !owned || !e.world.concealedRegions[region] {
 		return audience
@@ -1237,10 +1240,8 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		// move itself stays narrated for everyone, doors or no doors.
 		ids := make([]string, 0, len(action.doors))
 		for _, d := range action.doors {
-			if e.world != nil {
-				if rec, ok := e.doorsByID[d.ID]; ok && rec.concealed != nil {
-					continue
-				}
+			if rec, ok := e.doorsByID[d.ID]; ok && rec.concealed != nil {
+				continue
 			}
 			ids = append(ids, d.ID)
 		}
@@ -1992,6 +1993,13 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	// A member is an entity in the graph, and the mind of a faction of one
+	// is whoever is in it — so the declaration is rebuilt on arrival
+	// (world.go).
+	if err := e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
 	// Audience for both the join beat and the sight refresh: the joiner sees
 	// incumbents, incumbents see the joiner. subjectBeat, subject is the
 	// joiner — v1 still sends everyone (audienceFor's doc); rpg-toolkit#940
@@ -2113,6 +2121,11 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// Remove from member set (and deciders if present)
 	delete(e.members, in.Member)
 	delete(e.deciders, in.Member)
+
+	// The roster changed, so the graph's declaration did (world.go).
+	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
+	}
 
 	// Get remaining member IDs for story and refresh
 	memberIDs := make([]MemberID, 0, len(e.members))

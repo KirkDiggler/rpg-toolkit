@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/KirkDiggler/rpg-toolkit/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
@@ -62,8 +60,11 @@ import (
 // means is the rulebook's, and how far perception reaches is the host's
 // light-and-sight truth. Both are REQUIRED at Setup and Load exactly when
 // the field carries concealed structure, refused at the door — and a field
-// with none builds no world machinery at all, which is what keeps a plain
-// dungeon byte-identical to what it was before this file existed.
+// with none requires neither. The world itself — one journal, one graph — is
+// built for every field since rpg-project#375 (world.go); what a plain
+// dungeon skips is the two capabilities and the concealment sweep's work,
+// which keeps its blob byte-identical to what it was before this file
+// existed.
 
 // CheckResolver resolves an authored check for one member: it applies the
 // member's best listed approach — the choice is the resolver's, per the
@@ -141,32 +142,6 @@ type PerceiversInput struct {
 	Edges []DoorEdge
 }
 
-// encounterWorld is the run's concealment knowledge: the seeded graph
-// declaration (construction truth, rebuilt from the field at every Setup and
-// Load) and the journal of knowledge facts (world state, persisted on
-// [EncounterData.World] — load-act-save, like every other leaf).
-type encounterWorld struct {
-	structure *graph.World
-	log       *journal.Journal
-
-	// concealedDoors is every concealed door's ID, sorted (C8 — the sweep
-	// walks it, and beat order is observable).
-	concealedDoors []DoorID
-
-	// concealedRegions is every region authored as hidden space.
-	concealedRegions map[RegionID]bool
-
-	// doorRegions maps each concealed door to the concealed regions its
-	// edges touch, sorted — the regions perceiving it OPEN reveals.
-	doorRegions map[DoorID][]RegionID
-}
-
-// worldMembership is the membership relation the seeded graph declares —
-// required by the kernel ([graph.Config.Membership]), and deliberately never
-// used in an edge: this composition audiences every knowledge fact to
-// individual members, so there are no groups for the fold to follow.
-const worldMembership graph.Relation = "member-of"
-
 // doorEntityID mints the graph entity ID for a door. Doors and regions are
 // both named by plain strings at this seam, so each gets its own prefix
 // rather than trusting the two namespaces never to collide.
@@ -184,8 +159,10 @@ func doorKnownKind(id DoorID) journal.Kind { return journal.Kind("known:door:" +
 func regionKnownKind(id RegionID) journal.Kind { return journal.Kind("known:region:" + id) }
 
 // fieldHasConcealment reports whether authored inputs carry any concealed
-// structure — the question that decides whether the world machinery is
-// built and whether the two concealment capabilities are required.
+// structure — the question that decides whether the two concealment
+// capabilities are required. The world itself is built either way
+// (rpg-project#375, world.go): a field with no secret still has sides and
+// knowledge.
 func fieldHasConcealment(regions []RegionInput, doors []DoorInput) bool {
 	for _, r := range regions {
 		if r.Concealed {
@@ -200,110 +177,6 @@ func fieldHasConcealment(regions []RegionInput, doors []DoorInput) bool {
 	return false
 }
 
-// newEncounterWorld seeds the world from the compiled field: every concealed
-// door and region as a concealed graph declaration, pierced by its own
-// minted fact kind. The journal starts empty; Load replays persisted facts
-// into it afterwards.
-func newEncounterWorld(f *field, doors []*doorRecord) (*encounterWorld, error) {
-	w := &encounterWorld{
-		log:              journal.New(),
-		concealedRegions: make(map[RegionID]bool),
-		doorRegions:      make(map[DoorID][]RegionID),
-	}
-
-	cfg := graph.Config{Membership: worldMembership}
-
-	for _, r := range f.regions {
-		if !r.Concealed {
-			continue
-		}
-		w.concealedRegions[r.ID] = true
-		cfg.Entities = append(cfg.Entities, graph.Entity{ID: regionEntityID(r.ID), Kind: "region", Concealed: true})
-		cfg.Pierces = append(cfg.Pierces, graph.Pierce{
-			On:       regionKnownKind(r.ID),
-			Entities: []journal.EntityID{regionEntityID(r.ID)},
-		})
-	}
-
-	for _, d := range doors {
-		if d.concealed == nil {
-			continue
-		}
-		w.concealedDoors = append(w.concealedDoors, d.id)
-		cfg.Entities = append(cfg.Entities, graph.Entity{ID: doorEntityID(d.id), Kind: "door", Concealed: true})
-		cfg.Pierces = append(cfg.Pierces, graph.Pierce{
-			On:       doorKnownKind(d.id),
-			Entities: []journal.EntityID{doorEntityID(d.id)},
-		})
-
-		// The concealed regions this door guards: the regions its edge
-		// endpoints stand in, deduplicated and sorted. Perceiving the door
-		// OPEN reveals exactly these.
-		seen := make(map[RegionID]bool)
-		for _, e := range d.edges {
-			for _, cell := range []spatial.Position{e.From, e.To} {
-				if r, owned := f.regionOf(cell); owned && w.concealedRegions[r] && !seen[r] {
-					seen[r] = true
-					w.doorRegions[d.id] = append(w.doorRegions[d.id], r)
-				}
-			}
-		}
-		sort.Strings(w.doorRegions[d.id])
-	}
-	sort.Strings(w.concealedDoors)
-
-	structure, err := graph.New(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("seed world: %w", err)
-	}
-	w.structure = structure
-
-	return w, nil
-}
-
-// knowledgeOf folds one member's present: what the journal's facts, filtered
-// to what this member witnessed, let them see. Computed fresh per question —
-// nothing present is stored (the kernel's own law).
-func (w *encounterWorld) knowledgeOf(member MemberID) *graph.State {
-	return w.structure.StateFor(journal.EntityID(member), w.log)
-}
-
-// knowsDoor reports whether a member's own fold shows the door.
-func (w *encounterWorld) knowsDoor(member MemberID, id DoorID) bool {
-	return w.knowledgeOf(member).Visible(doorEntityID(id))
-}
-
-// knowsRegion reports whether a member's own fold shows the region.
-func (w *encounterWorld) knowsRegion(member MemberID, id RegionID) bool {
-	return w.knowledgeOf(member).Visible(regionEntityID(id))
-}
-
-// learnDoor writes the fact that pierces one door for one member alone.
-// cause is a human-readable trace ([journal.Outcome.Detail]) — the causes
-// are exemplary, and the journal records which one it was.
-func (w *encounterWorld) learnDoor(member MemberID, id DoorID, cause string) error {
-	_, err := w.log.Append(journal.Fact{
-		Kind:     doorKnownKind(id),
-		Actor:    journal.EntityID(member),
-		Subject:  doorEntityID(id),
-		Audience: journal.Audience{journal.EntityID(member)},
-		Outcome:  journal.Outcome{Detail: cause},
-	})
-	return err
-}
-
-// learnRegion writes the fact that pierces one region for one member alone.
-func (w *encounterWorld) learnRegion(member MemberID, id RegionID, cause string) error {
-	_, err := w.log.Append(journal.Fact{
-		Kind:     regionKnownKind(id),
-		Actor:    journal.EntityID(member),
-		Subject:  regionEntityID(id),
-		Audience: journal.Audience{journal.EntityID(member)},
-		Outcome:  journal.Outcome{Detail: cause},
-	})
-	return err
-}
-
 // sweepConcealment is concealment's trigger detection: it notices knowledge
 // that present state forces — occupancy of hidden space, and perception of a
 // concealed door standing OPEN — writes the facts, and appends the reveal
@@ -316,9 +189,6 @@ func (w *encounterWorld) learnRegion(member MemberID, id RegionID, cause string)
 // Deterministic (C8): members in sorted-ID order, doors in sorted-ID order,
 // witness answers sorted before use.
 func (e *Encounter) sweepConcealment() error {
-	if e.world == nil {
-		return nil
-	}
 	at := uint64(e.clock.ToData().HighWater)
 
 	if err := e.sweepOccupancy(at); err != nil {
@@ -361,19 +231,22 @@ func (e *Encounter) sweepConcealment() error {
 	return nil
 }
 
-// sweepOccupancy is the presence-pierce half of the sweep, on its own so
-// LOAD can run it too (rpg-project#351): a member standing in a concealed
-// region perceives it, from the first frame — you cannot occupy a secret
-// you do not know exists. LoadEncounter calls this directly for the one
-// window the rule would otherwise miss: a blob saved between v0.41.0's
-// carried concealment and the world existing holds an occupant with no
-// occupancy fact, and their own atlas may not withhold the floor under
-// their feet until some verb happens to refresh sight (PR #1373 review,
-// Minor 4). Idempotent — knowledge already held is never re-written.
+// sweepOccupancy is the PRESENCE half of the sweep, on its own so LOAD can
+// run it too (rpg-project#351): a member standing in a concealed region
+// perceives it, from the first frame — you cannot occupy a secret you do not
+// know exists. LoadEncounter calls this directly for the one window the rule
+// would otherwise miss: a blob saved between v0.41.0's carried concealment
+// and the world existing holds an occupant with no occupancy fact, and their
+// own atlas may not withhold the floor under their feet until some verb
+// happens to refresh sight (PR #1373 review, Minor 4). Idempotent —
+// knowledge already held is never re-written.
+//
+// PRESENCE TRANSFER RIDES IT TOO (rpg-project#375, design §3.6 and R3): a
+// member holding a record that reveals a fact, standing in the region of a
+// faction's mind, teaches the mind — the second thing standing somewhere
+// makes true, folded by the same sweep, for the same reason. See
+// [Encounter.sweepPresence].
 func (e *Encounter) sweepOccupancy(at uint64) error {
-	if e.world == nil {
-		return nil
-	}
 	for _, id := range e.rosterIDs() {
 		cell, placed := e.canvas.GetEntityPosition(string(id))
 		if !placed {
@@ -387,7 +260,7 @@ func (e *Encounter) sweepOccupancy(at uint64) error {
 			return err
 		}
 	}
-	return nil
+	return e.sweepPresence(at)
 }
 
 // sortedPresentMembers filters an answer from the witness down to current
@@ -412,9 +285,6 @@ func (e *Encounter) sortedPresentMembers(ids []MemberID) []MemberID {
 // would have said, and an open concealed door crossed is an open concealed
 // door perceived — so the regions it guards arrive with it.
 func (e *Encounter) learnCrossedDoors(member MemberID, crossed []CrossedDoor, at uint64) error {
-	if e.world == nil {
-		return nil
-	}
 	for _, c := range crossed {
 		d, ok := e.doorsByID[c.ID]
 		if !ok || d.concealed == nil {

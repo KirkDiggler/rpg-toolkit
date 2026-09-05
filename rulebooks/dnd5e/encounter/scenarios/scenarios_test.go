@@ -127,6 +127,8 @@ func completeConfig(t *testing.T, s scenarios.Scenario) map[string]string {
 			cfg[f.Key] = holdableID
 		case f.Type == scenarios.FieldEntityRef && f.Kind == "exit":
 			cfg[f.Key] = exitID
+		case f.Type == scenarios.FieldEntityRef && f.Kind == "faction":
+			cfg[f.Key] = factionID
 		default:
 			t.Fatalf("scenario %q declares a field this test cannot fill: %+v — "+
 				"add the case here when the scenario that needs it lands", s.ID(), f)
@@ -139,13 +141,23 @@ const (
 	holdableID = "heirloom"
 	sceneryID  = "pillar"
 	exitID     = "front-gate"
+	factionID  = "goblins"
+	factID     = "saved-wiseman"
 )
 
 // fullDungeon is a dungeon with one of everything a scenario can bind to,
 // plus a prop that is NOT holdable so the wrong-kind refusals have something
-// real to be about.
+// real to be about — and, since rpg-project#375, a faction with a mind that
+// holds out against the party until a fact a record reveals.
 func fullDungeon() *scenarios.DungeonFacts {
 	return scenarios.FactsFrom(encounter.FieldInput{
+		Factions: []encounter.FactionInput{{ID: factionID, Mind: "chief"}},
+		Dispositions: []encounter.DispositionInput{{
+			Between: [2]encounter.FactionID{factionID, encounter.FactionParty},
+			Stance:  encounter.StanceHostile,
+			Until:   encounter.TriggerFact{Fact: factID},
+		}},
+		Intel: []encounter.IntelRecord{{ID: "letter", Reveals: encounter.RevealTargets{Fact: factID}}},
 		Props: []encounter.PropInput{
 			{ID: holdableID, Holdable: true, Ref: "dnd5e:props:reliquary"},
 			{ID: sceneryID, Ref: "dnd5e:props:pillar"},

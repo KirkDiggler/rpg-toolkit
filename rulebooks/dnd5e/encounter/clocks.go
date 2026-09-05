@@ -582,8 +582,13 @@ func boundariesFrom(ms []clock.Milestone) []Boundary {
 }
 
 // announce hands one clock advance's boundaries to the Announcer capability,
-// at the moment they were crossed.
+// at the moment they were crossed — after the composition has noticed what
+// the advance itself started: a round a declared ending waits for
+// (rpg-project#375, design §3.8; [Encounter.noticeRounds]).
 func (e *Encounter) announce(ms []clock.Milestone) error {
+	if err := e.noticeRounds(ms); err != nil {
+		return err
+	}
 	return e.announceBoundaries(boundariesFrom(ms))
 }
 

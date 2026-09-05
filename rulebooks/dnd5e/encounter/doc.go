@@ -113,9 +113,31 @@
 //     strangers again, while every member who ever perceived it keeps a
 //     visible shut door, and a mapped room stays mapped, forever.
 //
-// A field with no concealment builds NONE of this — no world, no capability
-// requirement, byte-identical blobs — which keeps every existing dungeon
-// exactly as it was.
+// A field with no concealment requires neither capability and sweeps
+// nothing, which keeps every existing dungeon's blob exactly as it was.
+//
+// # Sides: the run composes ONE world (rpg-project#375)
+//
+// One journal and one graph exist from Setup and from Load, whether or not
+// anything is concealed (world.go). The graph declares every faction — the
+// reserved `party` and `monsters`, and the ones the field authors — every
+// member belonging to its faction, and a hostile-to or allied-with edge per
+// direction between every pair from the declared and default dispositions
+// (disposition.go). [MemberKind] stays a kind; WHO IS OPPOSED is the graph's
+// answer: formation, fightIsDecided and surprise ask whether a hostile-to
+// edge stands between two members' factions, and under the defaults that is
+// exactly "a player and a monster", the whole table this module ran on
+// before factions existed. Knowledge is facts with audiences in the same
+// journal — `known:door:`, `known:region:`, `holds:`, and `known:fact:` —
+// each folded per member; a record may reveal a FACT, a disposition may be
+// hostile UNTIL a fact is known by the faction's MIND (a faction knows what
+// its mind knows), and the flip is the graph's own: a Raise on the fact and
+// a pair-settling projection, folded as the mind, so a scout who reads the
+// letter changes nothing. A fight whose two sides stopped being sides ends
+// with [ByStance]; a member holding the letter standing in the chief's
+// region teaches the chief (presence transfer, on the same sweep occupancy
+// pierces by). Nothing stores a stance: it is derived on every question and
+// every load from the declaration plus the facts.
 //
 // # Atomicity, and what R5 does and does not promise
 //

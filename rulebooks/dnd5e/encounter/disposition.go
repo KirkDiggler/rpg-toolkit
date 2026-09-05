@@ -134,9 +134,45 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 		if err := f.validatePredicate(what, d.Until, &pair, ErrNoFaction); err != nil {
 			return err
 		}
+		// ONLY A FACT CAN TURN A PAIR IN THIS SLICE (rpg-project#375, R11).
+		// The graph settles a pair on a flag a fact raised, and a fact is
+		// the one form of the grammar that is a journal fact: rounds are the
+		// clock's, Standing stays outside the journal this slice, and a
+		// stance-until would need a projection keyed on another pair's edge.
+		// The file accepts all four forms; the run refuses the three it
+		// cannot yet keep, out loud, rather than carrying a hostility that
+		// never turns.
+		if _, ok := d.Until.(TriggerFact); !ok {
+			return fmt.Errorf(
+				"%s waits on a %s, and this build turns a pair on a fact alone — write { fact: <id> }, "+
+					"or wait for the world's next primitive: %w",
+				what, triggerWord(d.Until), ErrNoFaction)
+		}
 	}
 
 	return f.refuseUntilRings()
+}
+
+// triggerWord is the grammar's own word for a trigger, for a refusal.
+func triggerWord(t Trigger) string {
+	switch t.(type) {
+	case TriggerRound:
+		return "round"
+	case TriggerMemberDown:
+		return "down"
+	case TriggerFact:
+		return "fact"
+	case TriggerStance:
+		return "stance"
+	case TriggerReachedPosition:
+		return "reached position"
+	case TriggerExitedHolding:
+		return "exited holding"
+	case TriggerExternal:
+		return "external ending"
+	default:
+		return fmt.Sprintf("%T", t)
+	}
 }
 
 // validateMemberFaction refuses a member naming a faction this field does

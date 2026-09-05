@@ -197,6 +197,14 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 		return nil, fmt.Errorf("hold: %w", err)
 	}
 
+	// AND WHO IS STANDING WITH THEM (rpg-project#375, design §3.6): picking
+	// the letter up in the chief's own hut is the presence the sweep folds
+	// on, true from this moment rather than from the next verb that
+	// happens to refresh sight.
+	if err := e.sweepPresence(at); err != nil {
+		return nil, fmt.Errorf("hold: %w", err)
+	}
+
 	return &HoldOutput{}, nil
 }
 

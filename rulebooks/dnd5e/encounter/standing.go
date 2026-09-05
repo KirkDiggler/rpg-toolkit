@@ -267,20 +267,23 @@ func (e *Encounter) firedMemberDown(down map[MemberID]bool) error {
 }
 
 // fightIsDecided reports whether the complete supplied removal set leaves this
-// bubble without a Contact side. It is reached before any one member transfers,
-// so every TurnParticipationRemove member is excluded regardless of Contact:
-// the census describes the post-removal bubble rather than its current order.
-// Remove+Contact is rejected at capability ingress; the exclusion here remains
-// defense in depth over this consequence boundary. Down is not consulted;
-// retained dying and stabilized slots remain eligible exactly according to
-// their independent Contact answers.
+// bubble without an opposed pair — no two Contact members left in it whose
+// factions the graph holds hostile (rpg-project#375, design §3.2; under the
+// default dispositions that is "no Contact side left", which is exactly what
+// this counted before factions existed). It is reached before any one member
+// transfers, so every TurnParticipationRemove member is excluded regardless
+// of Contact: the census describes the post-removal bubble rather than its
+// current order. Remove+Contact is rejected at capability ingress; the
+// exclusion here remains defense in depth over this consequence boundary.
+// Down is not consulted; retained dying and stabilized slots remain eligible
+// exactly according to their independent Contact answers.
 func (e *Encounter) fightIsDecided(bubble *clock.Turn, participation *participationState) (bool, error) {
 	order, err := bubble.Order()
 	if err != nil {
 		return false, err
 	}
 
-	var players, monsters int
+	eligible := make([]MemberID, 0, len(order))
 	for _, id := range order {
 		member, ok := e.members[id]
 		if !ok {
@@ -302,15 +305,18 @@ func (e *Encounter) fightIsDecided(bubble *clock.Turn, participation *participat
 		if memberParticipation.Turn == TurnParticipationRemove || !memberParticipation.Contact {
 			continue
 		}
-		switch member.Kind {
-		case KindPlayer:
-			players++
-		case KindMonster:
-			monsters++
+		eligible = append(eligible, member.ID)
+	}
+
+	for i, a := range eligible {
+		for _, b := range eligible[i+1:] {
+			if e.opposed(a, b) {
+				return false, nil
+			}
 		}
 	}
 
-	return players == 0 || monsters == 0, nil
+	return true, nil
 }
 
 // storyToldDown reads back which members the RETAINED story already reports

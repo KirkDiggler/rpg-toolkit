@@ -47,19 +47,26 @@ type EncounterData struct {
 	// ordinary field where every opening is a gap nobody can shut, which is
 	// exactly what those encounters meant.
 	Doors []DoorData `json:"doors,omitempty"`
-	// World is the run's concealment knowledge: the journal facts recording
-	// who has found which concealed door and perceived which concealed
-	// region (rpg-toolkit#1371). PRESENT EXACTLY WHEN THE FIELD CARRIES
-	// CONCEALED STRUCTURE — a plain dungeon writes no key at all, the exact
-	// bytes every pre-concealment blob already has, and a blob carrying a
-	// world for a field with nothing concealed is refused at load (its two
-	// halves disagree). Absent on a concealed field is legal and means
-	// nobody has learned anything yet — which is every blob written between
-	// v0.41.0's carried concealment and this field existing (an occupant of
-	// a concealed region in such a blob is pierced at load, so presence
-	// holds from frame one for reloads too). The graph the
-	// facts fold against is NOT stored: it is construction truth, reseeded
-	// from the field at every load, so it cannot drift from the dungeon.
+	// World is the run's KNOWLEDGE: the journal facts recording who has
+	// found which concealed door, perceived which concealed region
+	// (rpg-toolkit#1371), and come to know which fact (rpg-project#375).
+	// PRESENT WHEN THE FIELD CARRIES CONCEALED STRUCTURE, OR WHEN ANYBODY
+	// HAS LEARNED A FACT — a plain dungeon nobody learned anything in writes
+	// no key at all, the exact bytes every pre-concealment blob already has,
+	// and a blob carrying an empty world for a field with nothing concealed
+	// is refused at load (a shape this build never writes). Absent on a
+	// concealed field is legal and means nobody has learned anything yet —
+	// which is every blob written between v0.41.0's carried concealment and
+	// this field existing (an occupant of a concealed region in such a blob
+	// is pierced at load, so presence holds from frame one for reloads too).
+	// The graph the facts fold against is NOT stored: it is construction
+	// truth, reseeded from the field and the roster at every load, so it
+	// cannot drift from the dungeon — and neither is any stance: a pair's
+	// posture is derived from these facts on every question.
+	//
+	// One half of ONE journal: the holdings facts beside it in Holdings are
+	// the other half, split by kind at the storage boundary and rejoined at
+	// load (world.go).
 	World *WorldData `json:"world,omitempty"`
 
 	// Holdings is the run's answer to who has what: the journal facts
@@ -562,21 +569,33 @@ type HoldingsData struct {
 // holdingsDataFrom renders the holdings journal for the blob, or nil when
 // nothing has happened.
 func holdingsDataFrom(h *holdings) *HoldingsData {
-	facts := h.log.All()
-	if len(facts) == 0 {
-		return nil
-	}
-	out := &HoldingsData{Facts: make([]FactData, 0, len(facts))}
-	for _, f := range facts {
-		out.Facts = append(out.Facts, FactData{
-			Kind:     string(f.Kind),
-			Actor:    string(f.Actor),
-			Subject:  string(f.Subject),
-			Audience: []string{},
-			Detail:   f.Outcome.Detail,
-		})
+	var out *HoldingsData
+	for _, f := range h.log.All() {
+		if !isHoldingsKind(string(f.Kind)) {
+			continue
+		}
+		if out == nil {
+			out = &HoldingsData{Facts: []FactData{}}
+		}
+		out.Facts = append(out.Facts, factDataFrom(f))
 	}
 	return out
+}
+
+// factDataFrom renders one journal fact for the blob, the audience always a
+// list — an absent key and an empty list are different facts to a reader.
+func factDataFrom(f journal.Fact) FactData {
+	audience := make([]string, 0, len(f.Audience))
+	for _, id := range f.Audience {
+		audience = append(audience, string(id))
+	}
+	return FactData{
+		Kind:     string(f.Kind),
+		Actor:    string(f.Actor),
+		Subject:  string(f.Subject),
+		Audience: audience,
+		Detail:   f.Outcome.Detail,
+	}
 }
 
 // validateHoldingsFacts is THE TRUST BOUNDARY for the holdings journal —
@@ -610,6 +629,14 @@ func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID)
 		if fd.Actor == "" || !members[fd.Actor] {
 			return fmt.Errorf("holdings fact %d actor %q is no member this encounter has ever had: %w",
 				i, fd.Actor, ErrInvalidData)
+		}
+		// Audienced to the holder alone since rpg-project#375, and to nobody
+		// in a blob from before — both are this module's own shapes; any
+		// other audience is an edited blob.
+		if len(fd.Audience) > 0 && (len(fd.Audience) != 1 || fd.Audience[0] != fd.Actor) {
+			return fmt.Errorf(
+				"holdings fact %d is audienced to somebody other than its actor — this module never writes that shape: %w",
+				i, ErrInvalidData)
 		}
 
 		kind := fd.Kind
@@ -665,11 +692,16 @@ func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID)
 // stored order.
 func replayHoldingsFacts(h *holdings, data *HoldingsData) error {
 	for _, fd := range data.Facts {
+		audience := make(journal.Audience, 0, len(fd.Audience))
+		for _, id := range fd.Audience {
+			audience = append(audience, journal.EntityID(id))
+		}
 		if _, err := h.log.Append(journal.Fact{
-			Kind:    journal.Kind(fd.Kind),
-			Actor:   journal.EntityID(fd.Actor),
-			Subject: journal.EntityID(fd.Subject),
-			Outcome: journal.Outcome{Detail: fd.Detail},
+			Kind:     journal.Kind(fd.Kind),
+			Actor:    journal.EntityID(fd.Actor),
+			Subject:  journal.EntityID(fd.Subject),
+			Audience: audience,
+			Outcome:  journal.Outcome{Detail: fd.Detail},
 		}); err != nil {
 			return fmt.Errorf("replay holdings fact %q: %w: %w", fd.Kind, ErrInvalidData, err)
 		}
@@ -691,22 +723,13 @@ type FactData struct {
 	Detail   string   `json:"detail,omitempty"`
 }
 
-// worldDataFrom renders the world's journal for the blob.
+// worldDataFrom renders the knowledge half of the one journal for the blob
+// — every `known:*` fact, in append order.
 func worldDataFrom(w *encounterWorld) *WorldData {
-	facts := w.log.All()
+	facts := w.knowledgeFacts()
 	out := &WorldData{Facts: make([]FactData, 0, len(facts))}
 	for _, f := range facts {
-		audience := make([]string, 0, len(f.Audience))
-		for _, id := range f.Audience {
-			audience = append(audience, string(id))
-		}
-		out.Facts = append(out.Facts, FactData{
-			Kind:     string(f.Kind),
-			Actor:    string(f.Actor),
-			Subject:  string(f.Subject),
-			Audience: audience,
-			Detail:   f.Outcome.Detail,
-		})
+		out.Facts = append(out.Facts, factDataFrom(f))
 	}
 	return out
 }
@@ -714,13 +737,20 @@ func worldDataFrom(w *encounterWorld) *WorldData {
 // validateWorldFacts rejects persisted knowledge facts this field cannot
 // have produced, before any construction begins (R5). The check is exact,
 // not permissive: this composition writes ONE fact shape — a minted
-// knowledge kind, its entity as subject, a member this encounter has ever
-// had as actor, audienced to that actor alone — so any other shape means
-// the blob was edited, and it is refused by name rather than loaded as
-// knowledge nobody here ever minted (the idle-bubble precedent in this
-// file, applied to the world; PR #1373 review, Minor 2).
-func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInput, everMembers []MemberID) error {
-	// kind -> the subject that kind's writer always records.
+// knowledge kind, its entity as subject (the learner, for a fact), a member
+// this encounter has ever had as actor, audienced to that actor alone — so
+// any other shape means the blob was edited, and it is refused by name
+// rather than loaded as knowledge nobody here ever minted (the idle-bubble
+// precedent in this file, applied to the world; PR #1373 review, Minor 2).
+//
+// facts is every fact id the field can mention ([mintedFactIDs]): a
+// `known:fact:<id>` naming another dungeon's fact is refused exactly as a
+// door of another dungeon is.
+func validateWorldFacts(
+	data *WorldData, regions []RegionInput, doors []DoorInput, facts []FactID, everMembers []MemberID,
+) error {
+	// kind -> the subject that kind's writer always records; "" for a fact
+	// kind, whose subject is its own actor.
 	minted := make(map[string]string)
 	for _, r := range regions {
 		if r.Concealed {
@@ -732,6 +762,9 @@ func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInpu
 			minted[string(doorKnownKind(d.ID))] = string(doorEntityID(d.ID))
 		}
 	}
+	for _, id := range facts {
+		minted[string(factKnownKind(id))] = ""
+	}
 	members := make(map[string]bool, len(everMembers))
 	for _, id := range everMembers {
 		members[string(id)] = true
@@ -740,8 +773,11 @@ func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInpu
 	for i, f := range data.Facts {
 		subject, mints := minted[f.Kind]
 		if f.Kind == "" || !mints {
-			return fmt.Errorf("world fact %d names kind %q, which this field's concealed structure does not mint: %w",
+			return fmt.Errorf("world fact %d names kind %q, which this field's structure does not mint: %w",
 				i, f.Kind, ErrInvalidData)
+		}
+		if subject == "" {
+			subject = f.Actor
 		}
 		if f.Subject != subject {
 			return fmt.Errorf("world fact %d subject %q does not match its kind (want %q): %w",
@@ -1138,10 +1174,10 @@ func (e *Encounter) snapshot() EncounterData {
 		}
 	}
 
-	// The world's journal, present exactly when the world is — see
-	// EncounterData.World.
+	// The knowledge half of the journal, present when the field conceals
+	// anything or anybody has learned anything — see EncounterData.World.
 	var worldData *WorldData
-	if e.world != nil {
+	if e.world.conceals() || len(e.world.knowledgeFacts()) > 0 {
 		worldData = worldDataFrom(e.world)
 	}
 
@@ -1623,16 +1659,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: %w", ErrNoWitness)
 		}
 	}
-	if data.World != nil {
-		if !fieldConcealed {
-			return nil, fmt.Errorf(
-				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
-		}
-		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, data.EverMembers); err != nil {
-			return nil, fmt.Errorf("load encounter: %w", err)
-		}
-	}
-
 	// Validate members: no duplicates, cells present, integral and floor
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range data.Members {
@@ -1695,6 +1721,21 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 	if err := validateEndingTriggers(f, endingInputsForValidation); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
+	// The persisted knowledge must be knowledge this field can mint: a
+	// concealed door or region it has, or a fact it mentions. A world key on
+	// a field with nothing concealed and nothing learned is a shape this
+	// build never writes — an edited blob, refused by name.
+	if data.World != nil {
+		if !fieldConcealed && len(data.World.Facts) == 0 {
+			return nil, fmt.Errorf(
+				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
+		}
+		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation))
+		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, mintable, data.EverMembers); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
+		}
 	}
 
 	// Outcome members must reference rooms that exist with in-bounds
@@ -1835,7 +1876,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter log: %w: %w", ErrInvalidData, err)
 	}
 
-	// All validated; now reconstruct via the same path Setup uses
+	// All validated; now reconstruct via the same path Setup uses. THE ONE
+	// WORLD's journal is built with the struct, not later: the percept
+	// rebuild below reaches Atlas, which folds it, so a nil here would be a
+	// panic on the load path rather than an empty answer.
+	world := newEncounterWorld()
 	e := &Encounter{
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
@@ -1851,10 +1896,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		retention:     normalizeRetention(data.Retention),
 		logFloor:      logFloorOf(data.Log),
 		field:         f,
-		// Built with the struct, not later: the percept rebuild below
-		// reaches Atlas, which folds this journal, so a nil here would be a
-		// panic on the load path rather than an empty answer.
-		holdings: newHoldings(),
+		world:         world,
+		holdings:      newHoldings(world.log),
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas
@@ -1864,21 +1907,23 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// construction).
 	e.doors, e.doorsByID = doorRecordsFrom(doorInputs)
 
-	// Reseed the world from the field (construction truth) and replay the
-	// persisted facts into it (world state) — load-act-save, no migration:
-	// an absent world key on a concealed field is a run where nobody has
-	// learned anything yet, which is what every pre-#1371 blob meant.
+	// The concealment capabilities, held exactly when the field carries
+	// concealed structure; the world exists either way (world.go).
 	if fieldConcealed {
 		e.checkResolver = input.CheckResolver
 		e.witness = input.Witness
-		e.world, err = newEncounterWorld(f, e.doors)
-		if err != nil {
-			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-		}
-		if data.World != nil {
-			if err = replayWorldFacts(e.world, data.World); err != nil {
-				return nil, fmt.Errorf("load encounter: %w", err)
-			}
+	}
+
+	// Replay the persisted facts into the one journal — knowledge first,
+	// then holdings, each in its stored order — and reseed the graph from
+	// the field (construction truth) once the roster and endings are known
+	// below. Load-act-save, no migration: an absent world key on a concealed
+	// field is a run where nobody has learned anything yet, which is what
+	// every pre-#1371 blob meant. No fold reads across the two lists' order,
+	// so splitting them at save and rejoining them here is byte-stable.
+	if data.World != nil {
+		if err = replayWorldFacts(e.world, data.World); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}
 
@@ -1986,6 +2031,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// the cells the original's did.
 	e.endings = compileEndings(endingInputsForValidation, f)
 
+	// The graph, declared from the field, the restored roster and the
+	// endings (world.go) — the same declaration Setup makes.
+	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
 	// Restore outcome if present
 	if data.Outcome != nil {
 		outcome := &Outcome{
@@ -2028,6 +2079,15 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 
 	return e, nil
+}
+
+// triggersOf is the triggers of a list of ending inputs, in order.
+func triggersOf(endings []EndingInput) []Trigger {
+	out := make([]Trigger, 0, len(endings))
+	for _, ei := range endings {
+		out = append(out, ei.Trigger)
+	}
+	return out
 }
 
 // endingTriggerFromData converts one persisted ending's Kind/At/Member into

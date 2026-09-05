@@ -74,6 +74,10 @@ type Declared struct {
 	// Exit is the way out that counts as escaping, when this scenario binds
 	// one. Empty otherwise.
 	Exit encounter.ExitID
+
+	// Convince is the faction the party is there to turn, when this
+	// scenario binds one (rpg-project#375). Empty otherwise.
+	Convince encounter.FactionID
 }
 
 // Scenario is one thing a dungeon can be for.
@@ -113,15 +117,88 @@ type DungeonFacts struct {
 
 	// Exits is every authored exit's id.
 	Exits map[encounter.ExitID]bool
+
+	// Factions is every faction this dungeon has — the two reserved ones and
+	// the declared — to what a scenario may ask of it (rpg-project#375).
+	Factions map[encounter.FactionID]FactionFacts
+
+	// Reveals is every fact some placed record reveals — the other half of
+	// "a hold-out nobody can win".
+	Reveals map[encounter.FactID]bool
+}
+
+// FactionFacts is what a scenario may ask about one faction.
+type FactionFacts struct {
+	// CanLearn reports whether the faction has a mind to come to know a
+	// fact through: a declared one, or a faction of one, whose sole member
+	// is its mind by rule. `party` never can.
+	CanLearn bool
+
+	// UntilFact is, per other faction, the fact whose knowledge ends this
+	// faction's hostility to it — every disposition declared hostile with an
+	// `until: { fact }` that names this faction.
+	UntilFact map[encounter.FactionID]encounter.FactID
 }
 
 // FactsFrom builds the facts a scenario may ask about, from a compiled
 // dungeon's field. The ONE place a Compiled is narrowed to what a scenario
 // sees, so no scenario can reach past it.
-func FactsFrom(field encounter.FieldInput) *DungeonFacts {
+//
+// memberFactions is the faction of each MONSTER placement, in any order —
+// the authored word, or "" for one the author put nowhere, which is
+// `monsters` (rpg-project#375). The field carries no placements, and the
+// faction-of-one rule needs to count them; a caller with none to report
+// leaves the list out and every faction is judged by its declared mind
+// alone.
+func FactsFrom(field encounter.FieldInput, memberFactions ...encounter.FactionID) *DungeonFacts {
 	facts := &DungeonFacts{
-		Props: make(map[encounter.PropID]bool, len(field.Props)),
-		Exits: make(map[encounter.ExitID]bool, len(field.Exits)),
+		Props:    make(map[encounter.PropID]bool, len(field.Props)),
+		Exits:    make(map[encounter.ExitID]bool, len(field.Exits)),
+		Factions: make(map[encounter.FactionID]FactionFacts, 2+len(field.Factions)),
+		Reveals:  make(map[encounter.FactID]bool),
+	}
+
+	members := make(map[encounter.FactionID]int, len(memberFactions))
+	for _, f := range memberFactions {
+		if f == "" {
+			f = encounter.FactionMonsters
+		}
+		members[f]++
+	}
+	declaredMind := make(map[encounter.FactionID]bool, len(field.Factions))
+	for _, fa := range field.Factions {
+		declaredMind[fa.ID] = fa.Mind != ""
+	}
+	consider := func(id encounter.FactionID) {
+		if _, seen := facts.Factions[id]; seen {
+			return
+		}
+		facts.Factions[id] = FactionFacts{
+			CanLearn:  id != encounter.FactionParty && (declaredMind[id] || members[id] == 1),
+			UntilFact: make(map[encounter.FactionID]encounter.FactID),
+		}
+	}
+	consider(encounter.FactionParty)
+	consider(encounter.FactionMonsters)
+	for _, fa := range field.Factions {
+		consider(fa.ID)
+	}
+	for _, d := range field.Dispositions {
+		t, ok := d.Until.(encounter.TriggerFact)
+		if !ok || d.Stance != encounter.StanceHostile {
+			continue
+		}
+		for i, id := range d.Between {
+			other := d.Between[1-i]
+			if ff, has := facts.Factions[id]; has {
+				ff.UntilFact[other] = t.Fact
+			}
+		}
+	}
+	for _, rec := range field.Intel {
+		if rec.Reveals.Fact != "" {
+			facts.Reveals[rec.Reveals.Fact] = true
+		}
 	}
 	for _, p := range field.Props {
 		if p.ID != "" {
