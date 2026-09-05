@@ -92,7 +92,7 @@ func participationOn(
 		return nil, err
 	}
 
-	ctx = installTruth(ctx, nil, cast)
+	ctx = installTruth(ctx, nil, cast, nil)
 
 	members := make([]ParticipantParticipation, 0, len(in.Participants))
 	for _, participant := range in.Participants {

@@ -179,7 +179,7 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 	// THE SAME DOOR, with a cast of one and no world. Not a second installer
 	// and not a lighter one — there is exactly one function that may do this,
 	// and this is a caller of it.
-	ctx = installTruth(ctx, nil, cast)
+	ctx = installTruth(ctx, nil, cast, nil)
 
 	ch, ok := cast.Character(one.ID())
 	if !ok {

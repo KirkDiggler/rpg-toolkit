@@ -4,17 +4,13 @@
 package resolution
 
 import (
-	"fmt"
-	"sync"
-
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
-	"github.com/KirkDiggler/rpg-toolkit/world/graph"
-	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
 // castView answers [gamectx.Cast] over the participants this interaction
-// loaded.
+// loaded, in the run it loaded them into.
 //
 // This is the only implementation there is, and this is the only package that
 // could hold it: an effect's questions are about the OTHER participants, and
@@ -29,8 +25,27 @@ import (
 // interaction opened. That matters for the questions worth asking — "is my
 // target still up", eventually "is my target still poisoned" — and it costs
 // nothing, because both die with the call.
+//
+// # Two sources, one view
+//
+// WHO IS HERE comes from the cast: the sheets attachAll loaded. WHO THEY ARE
+// TO EACH OTHER comes from the run: the encounter resolveOn reloaded from
+// Input.World, whose graph folds the factions the dungeon declared, the
+// disposition between each pair, and the facts the run has learned since
+// (rpg-project#375, the hold-out design §4). This view keeps no table of its
+// own. The law that slice adopted is that the run's world is the only state
+// and no reader keeps a copy, and the fixed two-side table that used to live
+// in this file — character and monster, mutually hostile, declared once and
+// shared by every interaction (rpg-toolkit#1352) — was the copy it named and
+// deleted.
 type castView struct {
 	cast *Participants
+
+	// run is the encounter this interaction is happening in, or nil on the
+	// entries that have no world — a join, a check, a rest, a death save, a
+	// participation refresh. A side question with no run to fold over is
+	// unknown, never a guess from the kind of sheet somebody carries.
+	run *encounter.Encounter
 }
 
 var _ gamectx.Cast = (*castView)(nil)
@@ -79,156 +94,45 @@ func (v *castView) Members() []string {
 	return v.cast.IDs()
 }
 
-// IsHostile answers whether b is an enemy of a.
+// IsHostile answers whether b is an enemy of a: a hostile-to edge between
+// their factions in the run's graph, right now.
 //
-// This body reads a relation table now — [castRelations] — instead of
-// computing a guess. v1's TABLE still only has two sides, mutually hostile
-// and each self-allied, so the ANSWER is unchanged: "one of you is a
-// character and the other is a monster." What changed is the SHAPE. Allegiance
-// is a directed relation between factions that quest events can change
-// mid-run — the design case is a dungeon holding two monster factions hostile
-// to each other and to the party, and a party that can shift one of them by
-// returning something it wants (rpg-project#286,
-// ideas/session-combat/effect-context/brainstorm.md) — and a relation table
-// is what has room for that; a two-valued guess never did.
+// One call, and the run owns the answer. Until rpg-project#375 this body read
+// a table of two sides declared in this package, so what it said depended on
+// KIND — character or monster — and on nothing the run had done. Now a
+// dungeon declares factions, a member belongs to one, a hostile disposition
+// can end on a fact the faction's mind comes to know, and the encounter folds
+// all of that in one place ([encounter.Encounter.IsHostile]). The raider
+// beside you is your enemy until the chief reads the letter, and Sneak Attack
+// asks the question it always asked and gets the run's answer.
 //
-// conditions/sneak_attack.go used to make the same guess for itself, inline,
-// and was wrong in both directions the moment a third faction existed. That
-// this body can now change without touching sneak_attack.go at all is the
-// whole reason [gamectx.Cast] exposes questions instead of fields.
+// known is false when there is no run to ask, or when either id is not a
+// member of it: an effect asking about somebody who is not here has to be
+// able to tell that apart from an answer, or it invents a rule out of missing
+// data — the distinction conditions/prone.go draws between "not within reach"
+// and "nobody knows where these two are standing". A prop standing beside the
+// target is unknown, not "not hostile".
 func (v *castView) IsHostile(a, b string) (hostile, known bool) {
-	sideA, ok := v.side(a)
-	if !ok {
-		return false, false
-	}
-	sideB, ok := v.side(b)
-	if !ok {
+	if v.run == nil {
 		return false, false
 	}
 
-	return castRelations().HasEdge(sideEntity(sideA), hostileTo, sideEntity(sideB)), true
+	return v.run.IsHostile(encounter.MemberID(a), encounter.MemberID(b))
 }
 
-// IsAllied answers whether b is on a's side.
+// IsAllied answers whether b is on a's side: an allied-with edge between
+// their factions, which every faction has with itself and which a
+// disposition can declare between two.
 //
-// Not the negation of [castView.IsHostile] — read literally from the table,
-// not derived from it. Today the two sides are declared BOTH mutually hostile
-// and each self-allied, so the numbers still agree; the moment a third side
-// is declared merely hostile-to the other two, without an allied-with edge of
-// its own, the agreement ends on its own, in data, with no rule to update.
-// Pack Tactics wants allies, Sneak Attack wants the target's enemies, and each
-// asks the table for what it means.
+// Not the negation of [castView.IsHostile], and now visibly so. A pair a fact
+// has turned is NEUTRAL — neither edge stands — so once the camp turns, a
+// raider is no longer an enemy for Sneak Attack and still not an ally for
+// Pack Tactics, while two raiders stay each other's allies before and after.
+// Each rule asks for what it means and the graph answers each literally.
 func (v *castView) IsAllied(a, b string) (allied, known bool) {
-	sideA, ok := v.side(a)
-	if !ok {
-		return false, false
-	}
-	sideB, ok := v.side(b)
-	if !ok {
+	if v.run == nil {
 		return false, false
 	}
 
-	return castRelations().HasEdge(sideEntity(sideA), alliedWith, sideEntity(sideB)), true
+	return v.run.IsAllied(encounter.MemberID(a), encounter.MemberID(b))
 }
-
-// castSide is v1's stand-in for allegiance: which map a participant loaded
-// into.
-type castSide int
-
-const (
-	sideCharacter castSide = iota
-	sideMonster
-)
-
-// side reports which side a participant is on, and whether it is in this
-// interaction at all.
-//
-// Not-in-the-cast is the "cannot answer" case rather than a default side. An
-// effect asking about somebody who is not here has to be able to tell that
-// apart from an answer, or it invents a rule out of missing data — the
-// distinction conditions/prone.go draws between "not within reach" and "nobody
-// knows where these two are standing".
-func (v *castView) side(id string) (castSide, bool) {
-	if _, ok := v.cast.Character(id); ok {
-		return sideCharacter, true
-	}
-	if _, ok := v.cast.Monster(id); ok {
-		return sideMonster, true
-	}
-
-	return 0, false
-}
-
-// The relation table's two entities, and the two relations declared over
-// them. Not participant ids — those never enter the table at all, because
-// what the table answers depends on KIND, not on who happens to be standing
-// here today. See [castRelations] for why that is v1's honest shape rather
-// than a shortcut.
-const (
-	characterSide journal.EntityID = "resolution:cast-side:character"
-	monsterSide   journal.EntityID = "resolution:cast-side:monster"
-
-	// membershipRelation satisfies graph.Config.Membership, which every
-	// declaration must name one of (graph.ErrNoMembership). Nothing in this
-	// table ever uses it — two sides with no sub-groups have nothing to
-	// belong to — so it is declared and never spent, the same as a scenario
-	// with no slots still names a Role type.
-	membershipRelation graph.Relation = "belongs-to"
-
-	hostileTo  graph.Relation = "hostile-to"
-	alliedWith graph.Relation = "allied-with"
-)
-
-// sideEntity names the relation-table entity a [castSide] stands for.
-func sideEntity(s castSide) journal.EntityID {
-	if s == sideMonster {
-		return monsterSide
-	}
-
-	return characterSide
-}
-
-// castRelations is v1's relation table: two sides, mutually hostile, each
-// self-allied — exactly today's guess, read as data instead of computed.
-//
-// It is a fixed, cast-independent declaration on purpose. What [IsHostile]
-// and [IsAllied] answer today depends only on KIND — character or monster —
-// never on which specific participants are in this interaction's cast, so a
-// table built once and shared by every castView is the honest shape for that:
-// rebuilding it per interaction would suggest the cast changes what it says,
-// and it does not, yet. Rung 2 (rpg-project's living-world integration study)
-// is where a stance WRITER — a quest event, a betrayal — earns a table that
-// does depend on the specific cast; nothing about that rung requires this
-// one's shape to change first.
-//
-// Built once, lazily, and memoized: every castView reads the same table
-// rather than each paying to build it. The declaration is fixed and
-// hand-verified valid — see TestCastRelationsBuilds — so a [graph.New] error
-// here is not a caller mistake to recover from; it would mean this literal
-// declaration is wrong, which panics loudly rather than silently answering
-// every question "unknown" for the rest of the process. See doc.go's own
-// stance on ambient dependencies that fail without being loud about it.
-var castRelations = sync.OnceValue(func() *graph.State {
-	w, err := graph.New(graph.Config{
-		Membership: membershipRelation,
-		Entities: []graph.Entity{
-			{ID: characterSide, Kind: "cast-side"},
-			{ID: monsterSide, Kind: "cast-side"},
-		},
-		Edges: []graph.Edge{
-			{From: characterSide, Rel: hostileTo, To: monsterSide},
-			{From: monsterSide, Rel: hostileTo, To: characterSide},
-			{From: characterSide, Rel: alliedWith, To: characterSide},
-			{From: monsterSide, Rel: alliedWith, To: monsterSide},
-		},
-	})
-	if err != nil {
-		panic(fmt.Sprintf("resolution: the cast relation table's own declaration is invalid: %v", err))
-	}
-
-	// No facts exist yet — rung 1 is a read with nothing written. Truth over
-	// an empty journal is exactly the declared table, unconditionally, for
-	// every observer; that stops being true only once rung 2 gives some fact
-	// a reason to be witnessed unevenly, which is a question for that rung.
-	return w.Truth(journal.New())
-})

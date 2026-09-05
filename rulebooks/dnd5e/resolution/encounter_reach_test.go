@@ -20,11 +20,15 @@ const encounterPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encoun
 
 // encounterReach is every method this package may call on a loaded Encounter.
 //
-// TWO, and the shortness is the property. LoadEncounter builds the world — a
-// constructor rather than a method, so it is not in this list — and then Canvas
-// hands out the room to install and ToData reads the world back. Load, look,
-// serialise. Nothing here advances a clock, ends a turn, or pumps a pass.
-var encounterReach = []string{"Canvas", "ToData"}
+// FOUR, and the shortness is still the property. LoadEncounter builds the
+// world — a constructor rather than a method, so it is not in this list — and
+// then Canvas hands out the room to install, ToData reads the world back, and
+// IsHostile and IsAllied are the two side questions the cast asks the run on
+// an effect's behalf (rpg-project#375, design §4). Load, look, ask who is
+// whose enemy, serialise. Nothing here advances a clock, ends a turn, or
+// pumps a pass: the two side reads fold the run's own graph and consult no
+// capability — checked on the way in, as the failure message below asks.
+var encounterReach = []string{"Canvas", "IsAllied", "IsHostile", "ToData"}
 
 // TestResolveTouchesTheEncounterThroughTwoMethods is the half of the reentrancy
 // invariant that only this package can hold.
@@ -52,11 +56,13 @@ var encounterReach = []string{"Canvas", "ToData"}
 // # What it cannot say
 //
 // It reads the reach at the call site, so a method invoked through a value of
-// interface type, or through a helper that took the encounter as a parameter,
-// is outside what it sees. That is worth stating plainly rather than leaving a
-// reader to assume a completeness the walk does not have: this is a fence
-// around the direct calls, which is where the reach has always been, not a
-// proof that no indirection exists.
+// interface type is outside what it sees. It does follow the handle where this
+// package carries it — into a parameter or a struct field declared as
+// *encounter.Encounter, which is how the cast came to hold the run — but a
+// handle laundered through an interface or an `any` would slip past. That is
+// worth stating plainly rather than leaving a reader to assume a completeness
+// the walk does not have: this is a fence around the direct calls, which is
+// where the reach has always been, not a proof that no indirection exists.
 func TestResolveTouchesTheEncounterThroughTwoMethods(t *testing.T) {
 	reached := encounterMethodsCalled(t)
 
@@ -70,12 +76,13 @@ func TestResolveTouchesTheEncounterThroughTwoMethods(t *testing.T) {
 }
 
 // encounterMethodsCalled returns the sorted, deduplicated set of methods this
-// package calls on values returned by encounter.LoadEncounter.
+// package calls on a loaded Encounter.
 //
-// It finds the local name of the encounter import, then the variables assigned
-// from that package's LoadEncounter, then every method selected on one of them.
-// Tracking the VARIABLE rather than a name spelled "enc" is what makes it
-// survive a rename.
+// It finds the local name of the encounter import, then every name this file
+// holds an Encounter under — the variables assigned from that package's
+// LoadEncounter, and the parameters and struct fields declared as a pointer
+// to its Encounter — then every method selected on one of them. Tracking the
+// HOLDER rather than a name spelled "enc" is what makes it survive a rename.
 func encounterMethodsCalled(t *testing.T) []string {
 	t.Helper()
 
@@ -133,28 +140,39 @@ func localNameFor(file *ast.File, path string) string {
 	return ""
 }
 
-// encounterHolders returns the identifiers assigned from LoadEncounter.
+// encounterHolders returns the names this file holds a loaded Encounter under:
+// the identifiers assigned from LoadEncounter, and every parameter or struct
+// field declared as *encounter.Encounter. The second kind is how the handle
+// travels — resolveOn hands it to the door, the door parks it on the cast —
+// and a fence that stopped at the assignment would have let the cast's calls
+// through unseen.
 func encounterHolders(file *ast.File, local string) []string {
 	var holders []string
 	ast.Inspect(file, func(n ast.Node) bool {
-		assign, ok := n.(*ast.AssignStmt)
-		if !ok {
-			return true
-		}
-		for _, rhs := range assign.Rhs {
-			call, ok := rhs.(*ast.CallExpr)
-			if !ok {
-				continue
+		switch node := n.(type) {
+		case *ast.AssignStmt:
+			for _, rhs := range node.Rhs {
+				call, ok := rhs.(*ast.CallExpr)
+				if !ok {
+					continue
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "LoadEncounter" {
+					continue
+				}
+				if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != local {
+					continue
+				}
+				if ident, ok := node.Lhs[0].(*ast.Ident); ok {
+					holders = append(holders, ident.Name)
+				}
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "LoadEncounter" {
-				continue
-			}
-			if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != local {
-				continue
-			}
-			if ident, ok := assign.Lhs[0].(*ast.Ident); ok {
-				holders = append(holders, ident.Name)
+		case *ast.Field:
+			// One node type for both a parameter and a struct field.
+			if isEncounterPointer(node.Type, local) {
+				for _, name := range node.Names {
+					holders = append(holders, name.Name)
+				}
 			}
 		}
 
@@ -164,7 +182,27 @@ func encounterHolders(file *ast.File, local string) []string {
 	return holders
 }
 
-// methodsOn returns every method selected on the named identifier.
+// isEncounterPointer reports whether a type expression spells
+// *<local>.Encounter.
+func isEncounterPointer(expr ast.Expr, local string) bool {
+	star, ok := expr.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := star.X.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Encounter" {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+
+	return ok && pkg.Name == local
+}
+
+// methodsOn returns every method selected on the named holder, whether it is
+// reached as a bare identifier (enc.Canvas) or as a field of something
+// (v.run.IsHostile). A field name shared with an unrelated struct would count
+// that struct's calls too, which can only ADD to the reach and fail loudly —
+// the honest direction for a fence to err in.
 func methodsOn(file *ast.File, holder string) []string {
 	var methods []string
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -176,8 +214,15 @@ func methodsOn(file *ast.File, holder string) []string {
 		if !ok {
 			return true
 		}
-		if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == holder {
-			methods = append(methods, sel.Sel.Name)
+		switch x := sel.X.(type) {
+		case *ast.Ident:
+			if x.Name == holder {
+				methods = append(methods, sel.Sel.Name)
+			}
+		case *ast.SelectorExpr:
+			if x.Sel.Name == holder {
+				methods = append(methods, sel.Sel.Name)
+			}
 		}
 
 		return true

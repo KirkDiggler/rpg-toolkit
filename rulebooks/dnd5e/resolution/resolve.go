@@ -386,7 +386,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	// and the readiness derived from that cast. What goes in, why each of them is
 	// unconditional, and why the order reads the way it does are all in
 	// installTruth — this line's job is to be the only place it is called from.
-	ctx = installTruth(ctx, room, cast)
+	ctx = installTruth(ctx, room, cast, enc)
 
 	// Start is pure preflight and runs before payment. Invalid participant,
 	// delivery, or condition declarations therefore consume nothing.
