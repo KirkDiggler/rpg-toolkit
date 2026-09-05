@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -273,4 +274,83 @@ func (s *HoldOutSessionSuite) TestASpawnCannotWaitOnAPredicateNothingCouldFire()
 	}
 	s.Len(s.encounters.byID[campWorldID].Reserve, 3, "the shipped reserve alone")
 	s.Empty(s.stream.published, "and told nobody")
+}
+
+// weakenTheChief leaves the chief one blow from the floor and easy to hit, on
+// his stored sheet — the session's own truth about a monster's hit points.
+func (s *HoldOutSessionSuite) weakenTheChief() {
+	s.T().Helper()
+	stored := s.sessions.byID[campSession]
+	for i := range stored.NPCs {
+		if stored.NPCs[i].ID == campChief {
+			stored.NPCs[i].HitPoints, stored.NPCs[i].ArmorClass = 1, 5
+			return
+		}
+	}
+	s.Require().Fail("the chief has no sheet")
+}
+
+// TestTheBlowThatFellsTheChiefBringsTheReinforcements is Kirk's walk 4
+// (2026-09-05): the reinforcements wait on the chief's fall, and the fall
+// comes from a PLAYER'S OWN SWING — the arrivals happen inside the Attack
+// verb's record, on the world the resolution handed back. The swing lands,
+// the chief is down, three zombies stand at the gate, and the attacker's
+// action was spent on a blow that was told.
+func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcements() {
+	s.startWith(campOptions{shipped: true, spawn: campReinforcements,
+		cast: []*character.Data{stout("alice"), stout("bob")}})
+	s.Require().Len(s.encounters.byID[campWorldID].Reserve, 3, "the zombies wait on the chief")
+
+	// alice walks into the hut and stands beside the chief's own cell; the
+	// chief spawns there and the fight forms with the two of them in reach.
+	chief := s.placement(campChief)
+	at := absolute(chief.At)
+	s.Require().Nil(s.walk("alice", spatial.Position{X: at.X - 1, Y: at.Y}).Formed)
+	formed := s.spawn(chief)
+	s.Require().NotNil(formed.Formed, "the chief arrives in alice's face")
+	s.weakenTheChief()
+	s.stream.published = nil
+	s.Require().Equal("alice", s.turn("alice").Active)
+
+	out, err := s.mgr.Attack(context.Background(), &session.AttackInput{
+		Session: campSession, Attacker: "alice", Target: campChief,
+		DeclarationID: currentAttackID(s.T(), s.mgr, campSession, "alice"),
+	})
+	s.Require().NoError(err, "the blow that fells the chief is told, not refused")
+	s.Require().NotNil(out)
+
+	s.Run("the chief is down and the zombies stand at the gate", func() {
+		s.Contains(s.kinds("alice"), session.EventStruck)
+		s.Contains(s.kinds("alice"), session.EventDowned)
+		rows := s.roster()
+		for _, id := range campReinforcements {
+			s.Require().Contains(rows, id)
+			s.Equal(campFaction, rows[id].Faction)
+		}
+		s.Nil(s.encounters.byID[campWorldID].Reserve)
+	})
+
+	s.Run("the arrivals are narrated to everyone who was there, after the fall", func() {
+		for _, who := range []string{"alice", "bob"} {
+			arrivals := s.arrivalsOn(who)
+			s.Require().Len(arrivals, 3, "%s heard %v", who, s.kinds(who))
+			s.assertDense(who)
+		}
+		kinds := s.kinds("alice")
+		downAt, arrivedAt := -1, -1
+		for i, k := range kinds {
+			switch {
+			case k == session.EventDowned && downAt < 0:
+				downAt = i
+			case k == session.EventArrived && arrivedAt < 0:
+				arrivedAt = i
+			}
+		}
+		s.Less(downAt, arrivedAt, "the fall is the cause")
+	})
+
+	s.Run("the writes were one commit, not a split", func() {
+		s.Equal([]string{"character:alice", "encounter:" + campWorldID, "session:" + campSession}, out.Saved.Written)
+		s.Empty(out.Saved.Failed)
+	})
 }

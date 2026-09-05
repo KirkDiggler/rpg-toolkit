@@ -1077,11 +1077,20 @@ func (s *writeScope) deliveredSeq(member string, seq uint64) uint64 {
 // next verb that resolves through data reuses this instead of hand-rolling the
 // swap, and so the novelty has exactly one home to document.
 func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error {
-	scope.sight = &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)}
+	// PLACED AND WAITING (reserve.go, worldMembers): the roster snapshot
+	// resolution returned, and the reserve behind it. The outcome recorded on
+	// this encounter a moment later may be the blow that fells the member the
+	// reserve waits on, and the arrivals happen INSIDE that record — the
+	// newcomers are assessed and sighted before this verb returns. Seams
+	// seeded from the placed roster alone refused the first zombie by name
+	// (Kirk's walk 4, 2026-09-05: "participation member reinforcement-1 has
+	// no roster kind"), and the character's readied sheet was already
+	// written, so the fighter's action was spent on a blow nobody was told.
+	scope.sight = &sightSeam{members: worldMembers(world)}
 	// Resolution returned this authoritative roster snapshot with the world.
 	// Replace kinds before constructing its encounter so every assessment made
 	// during load sees exactly that one snapshot.
-	scope.standing.kinds = encounterDataKinds(world.Members)
+	scope.standing.kinds = encounterDataKinds(worldMembers(world))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       world,
 		Initiative: m.initiative,

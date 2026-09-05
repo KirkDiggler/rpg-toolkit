@@ -27,11 +27,13 @@ import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 // A reserved member ARRIVES INSIDE SOME LATER VERB — the participation pass
 // that notices the chief down, the round that starts, the fact that lands —
 // and the arrival's own sight refresh asks the Sight and Standing seams about
-// the newcomer at once. Both seams are seeded at load from the stored world,
-// so they must be seeded from what WAITS as well as from what stands
-// ([worldMembers]); a seam that knew only the placed roster would refuse the
-// zombie the moment it stepped onto the map, and the verb that brought it
-// would fail.
+// the newcomer at once. Both seams are seeded from the stored world at load
+// AND again when a verb adopts the world a resolution handed back
+// ([Manager.adopt]: the swing that fells the chief is recorded on that
+// world, and the zombies arrive inside the record), so they must be seeded
+// from what WAITS as well as from what stands ([worldMembers]); a seam that
+// knew only the placed roster refused the zombie the moment it stepped onto
+// the map, and the verb that brought it failed.
 
 // Arrival is the predicate a spawned monster waits in reserve on: exactly one
 // of the forms below, nil when the monster is placed at once. See the file's
