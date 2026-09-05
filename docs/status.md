@@ -11,6 +11,22 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**rpg-toolkit#1532 (rpg-project#376) — `character.Data.Wallet` (complete,
+2026-09-05).** `Wallet currency.Money`, beside `Inventory` on `Data`/`Character`,
+not embedded in it. Round-trips exactly through `Load`/`ToData`; zero value
+(`Money{}`) is legal and means broke, no separate presence flag. No
+consumers yet (no verb reads or writes it) — persistence only, per the
+design doc's own deliberately-open question on player visibility. Frank's
+read on that question, for whoever picks up visibility next: yes eventually,
+but likely UI-grouped under the inventory display on the client side while
+staying its own field server-side — same split this wave already built.
+Concretely, nothing currently projects it to a client: `session.PublicMember`
+(the only existing client-facing character projection) explicitly documents
+excluding inventory/private-sheet facts, and there is no self-only
+"read my own sheet" verb of any kind yet (not for Wallet, not for HP, not for
+Inventory) — so visibility is new surface to design, not a field to add to
+an existing one.
+
 **rpg-toolkit#1523 (rpg-project#376) — `equipment.PriceOf` + adventuring-gear
 catalog completeness (complete, 2026-09-05).** `equipment.PriceOf(id) (currency.Money,
 error)` wraps `ResolveEquipmentDetail` + `currency.ParseCost`. `items.All` now

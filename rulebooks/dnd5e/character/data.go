@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
@@ -65,7 +66,16 @@ type Data struct {
 	ToolProficiencies   []proficiencies.Tool                          `json:"tool_proficiencies"`
 
 	// Equipment and resources
-	Inventory      []InventoryItemData                                   `json:"inventory"`
+	Inventory []InventoryItemData `json:"inventory"`
+
+	// Wallet is the character's coin purse — a field beside Inventory, not
+	// embedded in it (rpg-toolkit#1275: "gold should not be modeled as a
+	// regular inventory item for purchasing power"). Zero value (Money{}) is
+	// legal and means broke, not "never had a wallet" — there is no separate
+	// presence flag to distinguish the two, matching every other zero-value
+	// numeric field on this struct.
+	Wallet currency.Money `json:"wallet"`
+
 	EquipmentSlots EquipmentSlots                                        `json:"equipment_slots,omitempty"`
 	SpellSlots     map[int]SpellSlotData                                 `json:"spell_slots,omitempty"`
 	ClassResources map[shared.ClassResourceType]ResourceData             `json:"class_resources,omitempty"`
