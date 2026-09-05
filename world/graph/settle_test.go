@@ -78,6 +78,11 @@ func (s *GraphSuite) TestSettleRefusesWhatItCannotFold() {
 			want:   graph.ErrUnknownEntity,
 		},
 		{
+			name:   "a pair of one is not a pair",
+			change: func(p *graph.Settle) { p.Between = [2]journal.EntityID{holdID, holdID} },
+			want:   graph.ErrPairOfOne,
+		},
+		{
 			name:   "a settle that replaces no relations could never change anything",
 			change: func(p *graph.Settle) { p.Relations = nil },
 			want:   graph.ErrNoRelations,

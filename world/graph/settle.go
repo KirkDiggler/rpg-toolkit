@@ -44,6 +44,8 @@ type Settle struct {
 	Of journal.EntityID
 
 	// Between is the pair. Order does not matter: both directions change.
+	// The two must differ — a pair of one is not a pair, and [New] refuses
+	// it rather than folding a silent no-op over an authoring slip.
 	Between [2]journal.EntityID
 
 	// Relations are the edges replaced, in both directions. Membership must
@@ -73,6 +75,11 @@ func (p Settle) project(s *State) {
 // declaration that could never change anything.
 var ErrNoRelations = errors.New("graph: this settle names no relations to replace — say which stance edges change")
 
+// ErrPairOfOne reports a [Settle] whose pair names the same entity twice. A
+// settle over such a pair would fold to nothing and say nothing, which is how
+// a typo in a declaration goes unnoticed.
+var ErrPairOfOne = errors.New("graph: this settle names one entity as both sides of its pair — a pair is two")
+
 // ErrSettlesMembership reports a [Settle] that would rewrite the membership
 // relation. Belonging is not a stance: a camp does not join the party because
 // it stopped fighting them.
@@ -96,6 +103,9 @@ func (w *World) adoptProjections(projections []Projection) error {
 func (w *World) checkSettle(p Settle) error {
 	if err := w.known(p.Of, p.Between[0], p.Between[1]); err != nil {
 		return fmt.Errorf("settle on %q: %w", p.OnFlag, err)
+	}
+	if p.Between[0] == p.Between[1] {
+		return fmt.Errorf("%w: settle on %q names %q twice", ErrPairOfOne, p.OnFlag, p.Between[0])
 	}
 	if len(p.Relations) == 0 {
 		return fmt.Errorf("%w: settle on %q", ErrNoRelations, p.OnFlag)

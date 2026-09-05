@@ -157,8 +157,8 @@ type World struct {
 //
 // Returns [ErrNoMembership], [ErrDuplicateEntity], [ErrDuplicateSlot],
 // [ErrUnknownEntity], [ErrUnknownConcealedEntity], [ErrUnknownConcealedEdge],
-// [ErrNoRelations], or [ErrSettlesMembership], each wrapped with what was
-// wrong. Validation is strict on purpose: an edge
+// [ErrPairOfOne], [ErrNoRelations], or [ErrSettlesMembership], each wrapped
+// with what was wrong. Validation is strict on purpose: an edge
 // pointing at an entity nobody declared would fold into derived state that
 // silently mentions a thing that does not exist.
 func New(cfg Config) (*World, error) {
