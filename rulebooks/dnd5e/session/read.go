@@ -546,9 +546,11 @@ func (m *Manager) loadWorldWithBaseline(
 			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
 
-	sight.members = append(sight.members, world.Members...)
+	// Placed AND waiting (reserve.go): an arrival happens mid-verb, and its
+	// own sight refresh asks both seams about the newcomer at once.
+	sight.members = append(sight.members, worldMembers(*world)...)
 
-	standing := m.standingFor(ctx, data, encounterDataKinds(world.Members))
+	standing := m.standingFor(ctx, data, encounterDataKinds(worldMembers(*world)))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,

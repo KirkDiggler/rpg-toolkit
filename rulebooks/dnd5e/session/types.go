@@ -812,6 +812,25 @@ const (
 	// DOOR_REVEALED beside it (rpg-api-protos EVENT_KIND_STANCE_CHANGED).
 	EventStanceChanged EventKind = "stance_changed"
 
+	// EventArrived reports a reserved placement entering the run
+	// (rpg-project#375, the hold-out design §3.7, §5, R6): its `arrives`
+	// predicate held, and on the first verb after that the placement was put
+	// on the map — a monster out of reserve, or a prop appearing where the
+	// author drew it. Before this beat the placement had no cell, no turn
+	// and no row anywhere, for any member, the way a concealed door has
+	// none; this is the first any client hears of it.
+	//
+	// Everyone in the run hears it, the same law as EventHeld and
+	// EventDropped: physical state folds on the truth grain. The body says
+	// what arrived, which kind of thing it is — a client gives a monster a
+	// roster row and a prop none — and the cell it actually landed on, which
+	// is the authored one unless something stood there.
+	//
+	// The composition's word crosses unchanged, like "held" and "dropped":
+	// "arrived" is the statement of what happened, and the wire's
+	// EVENT_KIND_ARRIVED says the same.
+	EventArrived EventKind = "arrived"
+
 	// EventDoor reports a door changing — opened, closed, or an unlock
 	// attempt, beaten or not. A failed attempt is as much fiction as a
 	// beaten one, and the composition writes both through one path
@@ -945,7 +964,7 @@ type Event struct {
 // kind Event.Body carries: TurnEndedBody, DownedBody, DeathSaveBody,
 // StruckBody, MissedBody, ActivatedBody, ActivationResultBody, FightStartedBody,
 // FightEndedBody, MovedBody, JoinedBody, ExitedBody, EndedBody, DoorBody,
-// StanceChangedBody.
+// StanceChangedBody, ArrivedBody.
 // Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
@@ -1295,6 +1314,18 @@ type StanceChangedBody struct {
 }
 
 func (StanceChangedBody) isEventBody() {}
+
+// ArrivedBody is EventArrived's typed body: what arrived, what kind of thing
+// it is, and where it landed. ID is a member id for a monster and a prop id
+// for a prop — the same words the roster and the atlas speak — and Cell is
+// dungeon-absolute like every position on this seam.
+type ArrivedBody struct {
+	ID   string           `json:"id"`
+	Kind PlacementKind    `json:"kind"`
+	Cell spatial.Position `json:"cell"`
+}
+
+func (ArrivedBody) isEventBody() {}
 
 // MovedBody is EventMoved's typed body: a member stepped to a new cell.
 // One body per step — a walk of four cells is four of these, each with its

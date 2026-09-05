@@ -147,12 +147,42 @@ type SpawnInput struct {
 	// its members come to know, and a change reaches a client as
 	// EventStanceChanged.
 	Faction string
+
+	// Arrives is the predicate this monster waits in reserve on — the
+	// author's `place[].arrives` (rpg-project#375, the hold-out design §3.7,
+	// R6), hand-carried to the composition exactly as Holds and Faction are.
+	// Nil is the ordinary case: placed at once.
+	//
+	// WITH ONE, THE MONSTER IS NOT PLACED. It waits in reserve — no cell, no
+	// turn, no roster row, absent from every member's map and story, as if
+	// never written — and is placed on the first verb after its predicate
+	// holds, with an EventArrived to everyone. The response says so
+	// (SpawnOutput.Reserved). Its sheet is recorded now, like any spawned
+	// monster's: content resolves at launch, the run holds the member back.
+	//
+	// In this package's own words ([Arrival], reserve.go): a host holding
+	// the compiled placement's predicate spells it as one of the four forms.
+	// A predicate nothing could fire — a round counted from 0, a member
+	// waiting for its own fall, a stance the pair already holds — is refused
+	// by name (ErrNoMember) rather than reserving a monster forever.
+	Arrives Arrival
 }
 
 // SpawnOutput reports the spawn and what it revealed.
 type SpawnOutput struct {
-	// Member is the new member's placement.
+	// Member is the new member's placement — or, when Reserved, the placement
+	// it WILL take: Position is the authored cell it arrives at (or the
+	// nearest free one, if that is taken when the time comes), not a cell it
+	// stands on now. See Reserved.
 	Member Member
+
+	// Reserved reports that the monster went into reserve rather than onto
+	// the map (SpawnInput.Arrives): nothing was placed, no beat was written,
+	// no fight formed, nobody perceived anything — Seq is 0, Formed and
+	// Discovered are empty, and the roster and every atlas omit it until it
+	// arrives. A reader that treats Member.Position as "where it stands"
+	// must read this first.
+	Reserved bool `json:"reserved"`
 
 	// NPC is the instantiated sheet's state.
 	NPC *MonsterState
@@ -438,7 +468,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// composition's own rule (rpg-project#375, R4), and nothing about the
 	// players' side is authorable — see SpawnInput.Faction.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil, "")
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -580,7 +610,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// to make it.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
-		sheet.Targeting.String(), false, in.Holds, in.Faction)
+		sheet.Targeting.String(), false, in.Holds, in.Faction, in.Arrives)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -597,6 +627,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 
 	return &SpawnOutput{
 		Member:     projectMember(placed.Member),
+		Reserved:   placed.Reserved,
 		NPC:        projectMonster(sheet),
 		Discovered: projectDiscoveries(placed.IntelDeltas, down),
 		Corrected:  projectIntelCorrections(placed.IntelDeltas),
@@ -673,7 +704,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	// No faction: a world NPC is never a side (rpg-toolkit#1404), and the
 	// composition puts a member of this kind in no faction at all.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "", blocksMovement, nil, "")
+		0, 0, nil, "", blocksMovement, nil, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -714,7 +745,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
 	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
-	holds []string, faction string,
+	holds []string, faction string, arrives Arrival,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -769,6 +800,10 @@ func place(
 		// faction reaches Join empty, and Join alone decides what that
 		// means for this kind of member.
 		Faction: faction,
+		// The author's predicate, converted at the boundary and nowhere else
+		// (reserve.go): a session Arrival in, the composition's own Trigger
+		// out, nil staying nil.
+		Arrives: triggerOf(arrives),
 	})
 	if err != nil {
 		return nil, translate(err)

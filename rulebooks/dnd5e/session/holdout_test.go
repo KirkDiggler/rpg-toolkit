@@ -35,6 +35,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,11 +71,11 @@ const (
 	feetPerCell = 5
 )
 
-// campFixture reads and compiles the camp from the pinned encounter module,
-// resolved from go.mod by go list (the precedent rpg-api set for reading a
-// pinned module's own files): what these scenes meet is exactly the file the
+// campSource reads the shipped camp from the pinned encounter module, resolved
+// from go.mod by go list (the precedent rpg-api set for reading a pinned
+// module's own files): what these scenes meet is exactly the file the
 // composition this build runs against compiled and pictured.
-func campFixture(t *testing.T) dungeonspec.Compiled {
+func campSource(t *testing.T) string {
 	t.Helper()
 	out, err := exec.CommandContext(t.Context(), "go", "list", "-m", "-f", "{{.Dir}}", campModule).Output()
 	if err != nil {
@@ -84,11 +85,68 @@ func campFixture(t *testing.T) dungeonspec.Compiled {
 	if err != nil {
 		t.Fatalf("read the camp fixture: %v", err)
 	}
-	compiled, err := dungeonspec.Load(raw)
+	return string(raw)
+}
+
+// compileCamp compiles one source of the camp.
+func compileCamp(t *testing.T, source string) dungeonspec.Compiled {
+	t.Helper()
+	compiled, err := dungeonspec.Load([]byte(source))
 	if err != nil {
-		t.Fatalf("the camp fixture compiles: %v", err)
+		t.Fatalf("the camp compiles: %v", err)
 	}
 	return compiled
+}
+
+// The step-B lines of the shipped fixture, spelled once: the letter's
+// predicate and the three reinforcements — the encounter suite's own split.
+const (
+	letterArrives     = `, arrives: { round: 6 } }`
+	reinforcementLine = `  - { id: reinforcement-%d, ref: "dnd5e:monsters:zombie", at: %s, faction: raiders, arrives: { down: chief } }` + "\n"
+)
+
+var reinforcementCells = []string{"[1,4]", "[2,4]", "[1,5]"}
+
+// stepASource is the shipped camp with step B taken back out — the letter
+// lying at the gate from the first frame and no reinforcements — refused
+// when a line to remove is not there exactly once, so an edit to the fixture
+// cannot silently turn this into the unstripped file.
+func stepASource(t *testing.T, source string) string {
+	t.Helper()
+	if n := strings.Count(source, letterArrives); n != 1 {
+		t.Fatalf("the letter's arrives appears %d times, not once", n)
+	}
+	source = strings.Replace(source, letterArrives, " }", 1)
+	for i, at := range reinforcementCells {
+		line := fmt.Sprintf(reinforcementLine, i+1, at)
+		if n := strings.Count(source, line); n != 1 {
+			t.Fatalf("reinforcement %d appears %d times, not once", i+1, n)
+		}
+		source = strings.Replace(source, line, "", 1)
+	}
+	return source
+}
+
+// arrivalOf spells a compiled placement's predicate in this package's own
+// words — the switch a host writes to hand the composition's Trigger to
+// Spawn, one arm per form of the grammar. Nil stays nil.
+func arrivalOf(t *testing.T, trigger encounter.Trigger) session.Arrival {
+	t.Helper()
+	switch p := trigger.(type) {
+	case nil:
+		return nil
+	case encounter.TriggerRound:
+		return session.ArrivesAtRound{Round: p.Round}
+	case encounter.TriggerMemberDown:
+		return session.ArrivesOnFall{Member: string(p.Member)}
+	case encounter.TriggerFact:
+		return session.ArrivesOnFact{Fact: p.Fact}
+	case encounter.TriggerStance:
+		return session.ArrivesOnStance{Between: [2]string{p.Between[0], p.Between[1]}, Stance: string(p.Stance)}
+	default:
+		t.Fatalf("no arrival form for %T", trigger)
+		return nil
+	}
 }
 
 // campWorld is the authored world a session starts in: the compiled field,
@@ -141,7 +199,15 @@ func campWorld(t *testing.T, compiled dungeonspec.Compiled, withEnding bool) *en
 type HoldOutSessionSuite struct {
 	suite.Suite
 
-	compiled dungeonspec.Compiled
+	// compiled is the camp AS STEP A HAD IT — the shipped file with every
+	// `arrives` stripped (stepASource): the letter on the ground at the gate,
+	// no reinforcements. The step-A scenes play on it unchanged. canonical is
+	// the shipped file itself, arrivals and all; the step-B scenes in
+	// holdout_reserve_test.go play on that one. camp is whichever the running
+	// scene opened.
+	compiled  dungeonspec.Compiled
+	canonical dungeonspec.Compiled
+	camp      dungeonspec.Compiled
 
 	stream     *fakeStream
 	sessions   *fakeSessions
@@ -152,12 +218,18 @@ type HoldOutSessionSuite struct {
 
 func TestHoldOutSessionSuite(t *testing.T) { suite.Run(t, new(HoldOutSessionSuite)) }
 
-func (s *HoldOutSessionSuite) SetupSuite() { s.compiled = campFixture(s.T()) }
+func (s *HoldOutSessionSuite) SetupSuite() {
+	source := campSource(s.T())
+	s.canonical = compileCamp(s.T(), source)
+	s.compiled = compileCamp(s.T(), stepASource(s.T(), source))
+}
 
-// campOptions is how a scene opens the camp: whether the hold-out ending is
-// bound, who drives the monsters, who the party is, and which authored
-// placements are spawned at the start (nil means all of them).
+// campOptions is how a scene opens the camp: the shipped file or the step-A
+// variant, whether the hold-out ending is bound, who drives the monsters, who
+// the party is, and which authored placements are spawned at the start (nil
+// means all of them).
 type campOptions struct {
+	shipped    bool
 	withEnding bool
 	driver     session.TurnDriver
 	cast       []*character.Data
@@ -180,6 +252,10 @@ func (s *HoldOutSessionSuite) startWith(opts campOptions) {
 	if opts.cast == nil {
 		opts.cast = []*character.Data{sharpEyed("alice"), dullEyed("bob")}
 	}
+	s.camp = s.compiled
+	if opts.shipped {
+		s.camp = s.canonical
+	}
 	s.stream = &fakeStream{}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(opts.cast...)
@@ -193,11 +269,11 @@ func (s *HoldOutSessionSuite) startWith(opts campOptions) {
 	s.mgr = mgr
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: campSession, Encounter: campWorldID, World: campWorld(s.T(), s.compiled, opts.withEnding),
+		Session: campSession, Encounter: campWorldID, World: campWorld(s.T(), s.camp, opts.withEnding),
 	})
 	s.Require().NoError(err)
 
-	for _, m := range s.compiled.Monsters {
+	for _, m := range s.camp.Monsters {
 		if opts.spawn == nil || slices.Contains(opts.spawn, m.ID) {
 			s.spawn(m)
 		}
@@ -208,7 +284,7 @@ func (s *HoldOutSessionSuite) startWith(opts campOptions) {
 // placement is one authored placement by id.
 func (s *HoldOutSessionSuite) placement(id string) dungeonspec.MonsterPlacement {
 	s.T().Helper()
-	for _, m := range s.compiled.Monsters {
+	for _, m := range s.camp.Monsters {
 		if m.ID == id {
 			return m
 		}
@@ -218,12 +294,13 @@ func (s *HoldOutSessionSuite) placement(id string) dungeonspec.MonsterPlacement 
 }
 
 // spawn brings one authored placement into the run through the host's verb:
-// id, ref, cell, faction and holdings straight off the compiled placement.
+// id, ref, cell, faction, holdings and arrival straight off the compiled
+// placement.
 func (s *HoldOutSessionSuite) spawn(m dungeonspec.MonsterPlacement) *session.SpawnOutput {
 	s.T().Helper()
 	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
 		Session: campSession, ID: m.ID, Ref: m.Ref, Position: absolute(m.At),
-		Holds: m.Holds, Faction: m.Faction,
+		Holds: m.Holds, Faction: m.Faction, Arrives: arrivalOf(s.T(), m.Arrives),
 	})
 	s.Require().NoError(err, "spawning %s", m.ID)
 	return out
@@ -366,6 +443,31 @@ func (s *HoldOutSessionSuite) pathTo(member string, to spatial.Position) []spati
 		path = append([]spatial.Position{at}, path...)
 	}
 	return path
+}
+
+// freeNeighbour is a cell beside a member they can step onto: an axial
+// neighbour in their own region that nobody stands on — for the scenes that
+// need "a step, anywhere" as the verb that loads the world back.
+func (s *HoldOutSessionSuite) freeNeighbour(member string) spatial.Position {
+	s.T().Helper()
+	atlas := s.atlas(member)
+	from := s.where(member)
+	taken := map[spatial.Position]bool{}
+	for other := range s.roster() {
+		taken[s.where(other)] = true
+	}
+	floor := map[spatial.Position]bool{}
+	for _, c := range atlas.Cells {
+		floor[c] = true
+	}
+	for _, d := range []spatial.Position{{X: 1, Y: 0}, {X: -1, Y: 0}, {X: 0, Y: 1}, {X: 0, Y: -1}, {X: 1, Y: -1}, {X: -1, Y: 1}} {
+		next := spatial.Position{X: from.X + d.X, Y: from.Y + d.Y}
+		if floor[next] && !taken[next] && regionOf(atlas, next) == regionOf(atlas, from) {
+			return next
+		}
+	}
+	s.Require().Failf("no free neighbour", "%s at %v has nowhere to step", member, from)
+	return spatial.Position{}
 }
 
 // walk moves a member to a cell on whichever clock they are on. On the world
