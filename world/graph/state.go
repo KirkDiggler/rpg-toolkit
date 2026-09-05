@@ -262,6 +262,14 @@ func (s *State) removeEdge(e Edge) {
 	s.edges = slices.DeleteFunc(s.edges, func(have Edge) bool { return have == e })
 }
 
+// dropEdgesBetween removes every edge from one entity to another in any of the
+// given relations — one direction only; the caller says which.
+func (s *State) dropEdgesBetween(from, to journal.EntityID, rels []Relation) {
+	s.edges = slices.DeleteFunc(s.edges, func(e Edge) bool {
+		return e.From == from && e.To == to && slices.Contains(rels, e.Rel)
+	})
+}
+
 // dropEdgesFrom removes every edge leaving from in any of the given relations.
 func (s *State) dropEdgesFrom(from journal.EntityID, rels []Relation) {
 	s.edges = slices.DeleteFunc(s.edges, func(e Edge) bool {

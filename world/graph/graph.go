@@ -156,8 +156,9 @@ type World struct {
 // New validates a declaration and returns the world it describes.
 //
 // Returns [ErrNoMembership], [ErrDuplicateEntity], [ErrDuplicateSlot],
-// [ErrUnknownEntity], [ErrUnknownConcealedEntity], or [ErrUnknownConcealedEdge],
-// each wrapped with what was wrong. Validation is strict on purpose: an edge
+// [ErrUnknownEntity], [ErrUnknownConcealedEntity], [ErrUnknownConcealedEdge],
+// [ErrNoKnower], [ErrNoPair], [ErrPairOfOne], [ErrNoRelations], or
+// [ErrSettlesMembership], each wrapped with what was wrong. Validation is strict on purpose: an edge
 // pointing at an entity nobody declared would fold into derived state that
 // silently mentions a thing that does not exist.
 func New(cfg Config) (*World, error) {
@@ -187,6 +188,9 @@ func New(cfg Config) (*World, error) {
 		return nil, err
 	}
 	if err := w.adoptConceal(cfg.Reveals, cfg.Pierces); err != nil {
+		return nil, err
+	}
+	if err := w.adoptProjections(cfg.Projections); err != nil {
 		return nil, err
 	}
 

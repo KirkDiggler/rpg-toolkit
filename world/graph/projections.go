@@ -13,7 +13,10 @@ import (
 // Projections run in declared order and each sees what the ones before it left.
 // The order is the author's statement about precedence, not an implementation
 // detail: put [FollowSlot] before [Threshold] and a puppet leader's allegiance
-// settles before goodwill is weighed against it.
+// settles before goodwill is weighed against it. That is the only precedence
+// rule there is, and it holds when two declarations touch the same edge — an
+// [AdoptStance] on one endpoint and a [Settle] on the pair: the later
+// declaration wins, because it overwrites what the earlier one left.
 //
 // Sealed for the same reason [Reducer] is.
 type Projection interface {
