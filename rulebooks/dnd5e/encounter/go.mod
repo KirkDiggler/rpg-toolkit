@@ -9,7 +9,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
-	github.com/KirkDiggler/rpg-toolkit/world v0.3.1-0.20260905041048-e9da06e96f70
+	github.com/KirkDiggler/rpg-toolkit/world v0.4.0
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 )
