@@ -7,7 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.137.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.59.1-0.20260905045016-5263f0989f15
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.59.1-0.20260905105629-7bac1908f10a
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -19,7 +19,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1 // indirect
-	github.com/KirkDiggler/rpg-toolkit/world v0.3.1-0.20260905041048-e9da06e96f70 // indirect
+	github.com/KirkDiggler/rpg-toolkit/world v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
