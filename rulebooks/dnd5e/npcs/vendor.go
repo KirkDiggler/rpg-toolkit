@@ -231,14 +231,20 @@ type StockEntryView struct {
 	Name     string               `json:"name"`
 	Mode     StockMode            `json:"mode"`
 	Quantity int                  `json:"quantity,omitempty"`
+
+	// PlayerSold marks a row a player's sale created or added to, rather
+	// than one the vendor was authored with. Carried through faithfully;
+	// display treatment (badge, color, pip) is the client's call.
+	PlayerSold bool `json:"player_sold,omitempty"`
 }
 
 func stockEntryView(entry StockEntry) StockEntryView {
 	view := StockEntryView{
-		Type: entry.equipment.EquipmentType(),
-		ID:   entry.equipment.EquipmentID(),
-		Name: entry.equipment.EquipmentName(),
-		Mode: entry.availability.Mode,
+		Type:       entry.equipment.EquipmentType(),
+		ID:         entry.equipment.EquipmentID(),
+		Name:       entry.equipment.EquipmentName(),
+		Mode:       entry.availability.Mode,
+		PlayerSold: entry.playerSold,
 	}
 	if entry.availability.Mode == StockModeLimited {
 		view.Quantity = entry.availability.Quantity
