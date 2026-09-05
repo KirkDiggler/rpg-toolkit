@@ -295,6 +295,12 @@ func kindFor(beat string) EventKind {
 		return EventHeld
 	case "dropped":
 		return EventDropped
+	// THE WORD CHANGES HERE, like "down"/"downed" above: the composition
+	// names the noun ("stance", the thing that changed) and the wire names
+	// the event, beside "fight_ended" and "door_revealed". A stance turning
+	// is truth grain and goes to everyone (rpg-project#375, design §6).
+	case "stance":
+		return EventStanceChanged
 	default:
 		return EventUnknown
 	}
@@ -383,6 +389,20 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return FightEndedBody{Cause: DissolveKind(p.Cause)}
+	case EventStanceChanged:
+		var p struct {
+			Between []string `json:"between"`
+			Stance  string   `json:"stance"`
+		}
+		// A stance is between exactly two named factions and is a word: a
+		// beat naming one faction, three, an empty id, or no stance has no
+		// lawful reading, and is left untyped rather than narrated as a pair
+		// with a hole in it.
+		if json.Unmarshal(payload, &p) != nil || len(p.Between) != 2 ||
+			p.Between[0] == "" || p.Between[1] == "" || p.Stance == "" {
+			return nil
+		}
+		return StanceChangedBody{Between: p.Between, Stance: p.Stance}
 	case EventStruck:
 		return structBody(payload, true)
 	case EventMissed:

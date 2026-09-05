@@ -283,6 +283,11 @@ func projectRosterCharacter(member encounter.Member, data *character.Data, loade
 		ClassRef:      string(data.ClassID),
 		RaceRef:       string(data.RaceID),
 		Customization: projectCustomization(loaded.Appearance()),
+		// The side, RESOLVED by the composition: `party` for a player who
+		// named none (rpg-project#375, R4). Read off the placement rather
+		// than the sheet — a faction is a fact about the run, not the
+		// character.
+		Faction: member.Faction,
 	}
 }
 
@@ -316,6 +321,9 @@ func projectRosterMonster(member encounter.Member, npcs map[string]*monster.Data
 		Name:          stored.Name,
 		MonsterRef:    stored.Ref.String(),
 		Customization: Customization{},
+		// The side it was spawned with, or `monsters` when none was named
+		// — the composition's own default, never re-derived here.
+		Faction: member.Faction,
 	}, nil
 }
 

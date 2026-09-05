@@ -120,6 +120,33 @@ type SpawnInput struct {
 	//
 	// Empty is the ordinary case: most monsters hold nothing.
 	Holds []string
+
+	// Faction is the side this monster fights on — the author's placement
+	// from the dungeon file's `place[].faction` (rpg-project#375, the
+	// hold-out design §3 "Spawn"), forwarded to the composition untouched,
+	// exactly as Holds is and for the same reason: a host that resolves
+	// monster content at runtime brings every monster in through this verb,
+	// so a faction that could only be read at construction was a side the
+	// game never saw — the camp's chief would arrive in `monsters`, and the
+	// composition would refuse the mind of `goblins` joining anywhere else.
+	//
+	// A FREE-FORM ID, never an enum: factions are content, declared per
+	// dungeon, and the composition carries the word without interpreting
+	// it. It must name a faction the dungeon declares; the spawn is refused
+	// by name otherwise (ErrNoFaction) rather than silently arriving on the
+	// wrong side.
+	//
+	// EMPTY IS THE DEFAULT FOR THE KIND, decided in ONE place — the
+	// composition's own rule (design R4): a monster placed with no faction
+	// line is in the reserved `monsters`, hostile to the party as every
+	// monster always was. Nothing here defaults it a second time.
+	//
+	// WHAT A FACTION MEANS — who fights whom, and what turns it — is not
+	// this seam's business. It forwards a name; the run's world folds the
+	// stance between factions from the dungeon's dispositions and the facts
+	// its members come to know, and a change reaches a client as
+	// EventStanceChanged.
+	Faction string
 }
 
 // SpawnOutput reports the spawn and what it revealed.
@@ -407,8 +434,11 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
+	// No faction named: a player is in the reserved `party` by the
+	// composition's own rule (rpg-project#375, R4), and nothing about the
+	// players' side is authorable — see SpawnInput.Faction.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil)
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -550,7 +580,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// to make it.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
-		sheet.Targeting.String(), false, in.Holds)
+		sheet.Targeting.String(), false, in.Holds, in.Faction)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -640,8 +670,10 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	// N4): zero speed/sight, no actions, no targeting strategy. encounter
 	// enforces the one real rule (no decider) itself; place() never sets
 	// one for either existing caller.
+	// No faction: a world NPC is never a side (rpg-toolkit#1404), and the
+	// composition puts a member of this kind in no faction at all.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "", blocksMovement, nil)
+		0, 0, nil, "", blocksMovement, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -682,7 +714,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
 	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
-	holds []string,
+	holds []string, faction string,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -731,6 +763,12 @@ func place(
 		// else — a []string in, the composition's own IntelID out (S2: no
 		// inner type crosses this seam's exported surface).
 		Holds: intelIDs(holds),
+		// The author's side, forwarded as the word it was written
+		// (rpg-project#375): a FactionID is a string at the composition's
+		// seam too, so nothing converts and nothing defaults — an empty
+		// faction reaches Join empty, and Join alone decides what that
+		// means for this kind of member.
+		Faction: faction,
 	})
 	if err != nil {
 		return nil, translate(err)

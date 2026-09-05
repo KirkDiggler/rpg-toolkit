@@ -20,6 +20,10 @@ const DissolveByDecision DissolveKind = "decision"
 // is downed.
 const DissolveByDefeat DissolveKind = "defeat"
 
+// DissolveByStance is a fight whose sides stopped being sides: the stance
+// between their factions turned (rpg-project#375, R1).
+const DissolveByStance DissolveKind = "stance"
+
 // DissolveCause is why a fight ended: a closed set, sealed the way
 // [saves.DCSource] is and for the same reason.
 //
@@ -88,6 +92,35 @@ type byDefeat struct{}
 
 func (byDefeat) Kind() DissolveKind { return DissolveByDefeat }
 func (byDefeat) isDissolveCause()   {}
+
+// ByStance is a fight that ended because its two sides stopped being sides:
+// the stance between their factions turned — the camp's chief came to know
+// the party saved the Wiseman — and a fight between members who are opposed
+// to nobody is not a fight (rpg-project#375, the hold-out design §3.5, R1).
+//
+// THE THIRD CASE, and it arrived the way ByDefeat did: as another CALLER of
+// this shape, never a second mechanism. Nobody declares it. The run's world
+// folds the stance between two factions from the dispositions the dungeon
+// declared and the facts its members come to know, and in the pass that
+// notices a pair turn neutral it dissolves the fight between them with this
+// cause — a stance is a fact the world notices, like a side running out of
+// people standing. It is the translation of the composition's own
+// [encounter.ByStance], through causeOf, for ByDefeat's reason.
+//
+// Only the PAIR's bubble ends. Members of a third faction still hostile
+// keep their fight, whoever in it is opposed to nobody any more steps back
+// to the world clock, and the encounter stays open unless a declared ending
+// was waiting on exactly this stance — which is what the hold-out scenario
+// declares.
+//
+// The wire mirrors it as DISSOLVE_KIND_BY_STANCE on FightEnded.cause; the
+// host maps this kind to that value.
+func ByStance() DissolveCause { return byStance{} }
+
+type byStance struct{}
+
+func (byStance) Kind() DissolveKind { return DissolveByStance }
+func (byStance) isDissolveCause()   {}
 
 // DissolveInput ends the fight a member is in.
 type DissolveInput struct {
