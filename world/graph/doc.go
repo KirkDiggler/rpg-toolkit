@@ -55,9 +55,11 @@
 // Reducers run first, once per witnessed fact in Seq order: [Occupy] and
 // [Vacate] move slot occupancy, [Count] moves a counter, [Raise] sets a flag.
 // Projections run second, over the folded state in declared order: [FollowSlot]
-// makes a group's stance follow whoever holds its slot, [Threshold] turns a
-// counter crossing into an edge change, [Retire] strips edges from an entity
-// carrying a flag, and [Label] names a derived posture.
+// makes a group's stance follow whoever holds its slot, [AdoptStance] moves a
+// flagged entity to another's stance, [Threshold] turns a counter crossing into
+// an edge change, [Retire] strips edges from an entity carrying a flag,
+// [Settle] rewrites both directions of a pair while one of them carries a
+// flag, and [Label] names a derived posture.
 //
 // The split is what lets belief work. A reducer only knows what it witnessed;
 // a projection only knows the folded result. Neither can consult the truth.
