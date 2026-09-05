@@ -123,6 +123,13 @@ var contractTypes = map[string]string{
 	// string alias with no behaviour to replace, the same promise
 	// spatial.Position makes above.
 	"shared.EquipmentType": "contract type: reachable from TradeItem, a caller-constructed field naming what's being traded",
+
+	// Reachable from TradeOffer.Currency (trade.go, rpg-toolkit#1534, Wave
+	// 4). A caller CONSTRUCTS this value (it is the payment offered on
+	// Give, checked against a server-computed price) rather than only
+	// reading one back — same promise as shared.EquipmentType above. A
+	// single-field struct wrapping an int, no behaviour to replace.
+	"currency.Money": "contract type: reachable from TradeOffer.Currency, a caller-constructed payment amount",
 }
 
 // persistenceShapes are bytes the host round-trips and never builds.

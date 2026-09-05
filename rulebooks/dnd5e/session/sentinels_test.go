@@ -240,6 +240,8 @@ var sessionSentinels = map[string]error{
 	"ErrInvalidTradeOffer": session.ErrInvalidTradeOffer,
 	"ErrNotAVendor":        session.ErrNotAVendor,
 	"ErrOutOfStock":        session.ErrOutOfStock,
+	"ErrWrongPrice":        session.ErrWrongPrice,
+	"ErrInsufficientFunds": session.ErrInsufficientFunds,
 }
 
 // TestExportedSentinelAllowListIsComplete makes sessionSentinels an actual

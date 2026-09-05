@@ -570,4 +570,23 @@ var (
 	// the inner npcs error rides along for anyone who already depends on
 	// that package too.
 	ErrOutOfStock = errors.New("vendor cannot fulfill this trade")
+
+	// ErrWrongPrice is returned when Trade's Give.Currency does not exactly
+	// equal the server-computed price of what Receive names.
+	//
+	// Distinct from ErrInsufficientFunds on purpose: this is a caller
+	// offering the wrong AMOUNT (whether by client bug or by a client
+	// attempting to name its own price), not a caller who named the right
+	// amount and simply cannot cover it. A host matching on the two
+	// separately can tell a player "that's not the price" from "you can't
+	// afford that" — the price is never trusted from the caller, only
+	// checked against it (Kirk, 2026-09-05: server-side price validation,
+	// no exceptions).
+	ErrWrongPrice = errors.New("offered price does not match the required price")
+
+	// ErrInsufficientFunds is returned when Trade's actor cannot afford the
+	// (already price-verified) cost. Wraps currency.ErrInsufficientFunds,
+	// the same double-wrap convention ErrOutOfStock already applies for
+	// npcs.ErrOutOfStock.
+	ErrInsufficientFunds = errors.New("actor cannot afford this trade")
 )
