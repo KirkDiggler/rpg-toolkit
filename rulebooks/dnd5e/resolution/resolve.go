@@ -335,16 +335,6 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		// was never built for; RefusingStriker names that loudly rather
 		// than fabricating a hit.
 		Striker: encounter.RefusingStriker{},
-		// A construction-only Mover, by the Striker's own argument one line
-		// up. This package announces a step through its OWN machine
-		// ([NewMovement]) on the bus it just made; the encounter it
-		// reconstitutes here is a snapshot to read rules off, and nothing
-		// inside a resolution ever asks it to walk anybody. A driven walk
-		// reaching this Mover would mean this reconstruction is being asked to
-		// do something it was never built for, and RefusingMover names that
-		// loudly rather than silently swallowing the announcement — which is
-		// exactly the unobservable walk the capability exists to end.
-		Mover: encounter.RefusingMover{},
 		// And a construction-only Announcer, for the same reason and by the
 		// same argument. It READS like recursion — an Announcer's job is to
 		// call this package, and here this package is handing one over — and

@@ -52,7 +52,7 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 	t.Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{},
 		Sight:         everyoneSeesTheWholeMap{},
 		CheckResolver: neverResolves{},
 		Witness:       neverWitnesses{},

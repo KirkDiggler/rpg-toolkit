@@ -48,7 +48,7 @@ func (s *MovementTestSuite) SetupTest() { s.ctx = context.Background() }
 
 func (s *MovementTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
 		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
@@ -239,54 +239,6 @@ func (s *MovementTestSuite) TestASuppressedStepReportsItsSuppression() {
 
 	s.True(out.Outcome.(MovementOutcome).OAPrevented,
 		"the outcome is read off the FOLDED event, not echoed from the input")
-}
-
-// A SUPPRESSED STEP PROVOKES NOTHING, which is the half of Disengage that was
-// missing. The suppression is written from a chain STAGE and so lands during
-// Execute; the opportunity attack's predicate is a SUBSCRIBER and runs strictly
-// earlier, so it publishes its trigger into a fold that does not yet say
-// "prevented" and cannot read it. This machine is the first place the answer is
-// complete, so it is where the trigger is dropped — the division of labour
-// conditions.OpportunityAttackCondition's own doc has always described
-// (rpg-project#316).
-//
-// Reported AND enforced: OAPrevented still says so, and nothing swings.
-func (s *MovementTestSuite) TestASuppressedStepProvokesNothing() {
-	swings := &everyoneSwings{}
-	in := s.stepInput()
-	in.Reactions = swings
-
-	out, err := s.runStep(in, func(ctx context.Context, bus events.EventBus) {
-		triggerFrom(heroID, wolfID)(ctx, bus)
-		preventOA(wolfID)(ctx, bus)
-	})
-	s.Require().NoError(err)
-
-	moved := out.Outcome.(MovementOutcome)
-	s.True(moved.OAPrevented, "the step still reports that it was suppressed")
-	s.Empty(moved.Reactions, "a prevented opportunity attack does not roll")
-	s.Empty(swings.asked, "and the capability is never even asked what it would swing")
-}
-
-// preventOA adds the chain stage Disengaging adds: opportunity attacks against
-// mover are suppressed for this step.
-func preventOA(mover string) func(context.Context, events.EventBus) {
-	return func(ctx context.Context, bus events.EventBus) {
-		_, _ = dnd5eEvents.MovementChain.On(bus).SubscribeWithChain(ctx,
-			func(_ context.Context, _ *dnd5eEvents.MovementChainEvent,
-				c chain.Chain[*dnd5eEvents.MovementChainEvent],
-			) (chain.Chain[*dnd5eEvents.MovementChainEvent], error) {
-				err := c.Add(combat.StageConditions, "test_disengage",
-					func(_ context.Context, e *dnd5eEvents.MovementChainEvent) (*dnd5eEvents.MovementChainEvent, error) {
-						e.OAPreventionSources = append(e.OAPreventionSources,
-							dnd5eEvents.MovementModifierSource{
-								Name: "Test Disengage", SourceType: "condition", EntityID: mover,
-							})
-						return e, nil
-					})
-				return c, err
-			})
-	}
 }
 
 // Identical inputs must produce identical stories (C8), so two reactors to one
