@@ -24,7 +24,7 @@ type Clock interface {
 	Now() time.Time
 }
 
-// Goal is one thing a guild is trying to make true about a region, and the
+// Goal is one thing a world is trying to make true about a region, and the
 // moment it has to be true by.
 type Goal struct {
 	// ID names the goal.
@@ -149,7 +149,7 @@ type TrackerConfig struct {
 	// Clock is what the deadlines are checked against.
 	Clock Clock
 
-	// Goals are what the guild is trying to do.
+	// Goals are what the world is trying to do.
 	Goals []Goal
 }
 
@@ -168,7 +168,7 @@ type Tracker struct {
 // NewTracker validates the goals and returns the tracker that watches them.
 //
 // Everything is checked up front rather than at the first observation, so a
-// guild that has half-written a goal is told before anybody plays. Returns
+// world that has half-written a goal is told before anybody plays. Returns
 // [ErrNoClock], [ErrNoGoalID], [ErrNoDeadline], [ErrNoConditions], or
 // [ErrDuplicateGoal].
 func NewTracker(cfg TrackerConfig) (*Tracker, error) {

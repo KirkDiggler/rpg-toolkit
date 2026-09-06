@@ -31,7 +31,7 @@ type Reading struct {
 
 // View returns the present as one observer holds it.
 //
-// Pass the empty id for the truth view, which is usually right for a guild
+// Pass the empty id for the truth view, which is usually right for a world
 // goal: a region is not a creature and does not act on beliefs.
 func (r Reading) View(observer journal.EntityID) *graph.State {
 	if observer == "" {
@@ -55,7 +55,7 @@ func (r Reading) Census(job string) (quest.Tally, bool) {
 // Condition is one thing that has to be true of the region.
 //
 // Open, like [quest.Predicate] and for the same reason: a condition only reads,
-// so a guild with a question this package does not have may ask its own. It
+// so a world with a question this package does not have may ask its own. It
 // cannot write, cannot act, and is handed no way to find out who is
 // responsible for anything.
 type Condition interface {
@@ -72,7 +72,7 @@ type Condition interface {
 // Leave Observer empty for the truth view.
 //
 // The predicate is a [quest.Predicate], reused deliberately — the question
-// "is this camp still hostile" does not change shape because a guild is asking
+// "is this camp still hostile" does not change shape because a world is asking
 // it rather than a contract. A goal has no subject, though, so a predicate that
 // names [quest.InstanceSubject] has nothing to resolve to; see the package
 // findings.
