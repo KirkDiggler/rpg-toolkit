@@ -102,6 +102,20 @@ type EncounterData struct {
 	// Absent in blobs written before #937, which load as zero and therefore take
 	// DefaultRetention.
 	Retention int `json:"retention,omitempty"`
+
+	// PausedTurn is the one driven turn stopped mid-walk because a reactor
+	// is being asked about a step (rpg-project#316 rung 3; pause.go).
+	// PRESENT EXACTLY WHILE A FIGHT IS WAITING ON AN ANSWER — which is a
+	// rare and short-lived state, so an encounter that is not waiting writes
+	// no key at all, the exact bytes every earlier blob has. Absent means
+	// nothing is paused, which is what every blob written before this field
+	// existed meant.
+	//
+	// THIS IS WHAT MAKES A RESTART BETWEEN THE QUESTION AND THE ANSWER A
+	// NON-EVENT. The host's own ledger holds the windows; this holds the
+	// turn they interrupted, and the two are written in the order this
+	// module's consumers already write them.
+	PausedTurn *PausedTurnData `json:"paused_turn,omitempty"`
 }
 
 // OutcomeData is the persistent representation of an Outcome.
@@ -1316,6 +1330,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
 		Retention:   e.retention,
+		PausedTurn:  pausedTurnDataFrom(e.pausedTurn),
 	}
 }
 
@@ -2019,12 +2034,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		onAClock[id] = struct{}{}
 	}
+	inBubble := make(map[core.EntityID]struct{})
 	for i, b := range loadedBubbles {
 		order, oerr := b.Order()
 		if oerr != nil {
 			return nil, fmt.Errorf("load encounter bubble %d order: %w: %w", i, ErrInvalidData, oerr)
 		}
 		for _, id := range order {
+			inBubble[id] = struct{}{}
 			if _, ok := isMember[id]; !ok {
 				return nil, fmt.Errorf(
 					"load encounter bubble %d: %q is in the order but is not a member: %w",
@@ -2037,6 +2054,20 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			}
 			onAClock[id] = struct{}{}
 		}
+	}
+
+	// The paused turn, validated before anything is constructed (R5) and
+	// against the indexes just built: a paused turn names a member, and that
+	// member is in a fight, because a paused turn IS a fight's turn. Reject,
+	// never crash — this is the trust boundary for bytes no version of this
+	// module may have written.
+	if err = validatePausedTurn(data.PausedTurn, isMember, inBubble); err != nil {
+		return nil, err
+	}
+	if data.PausedTurn != nil && data.Outcome != nil {
+		return nil, fmt.Errorf(
+			"load encounter paused turn %q: the encounter is already closed: %w",
+			data.PausedTurn.Member, ErrInvalidData)
 	}
 
 	if err = refuseRoomLocalSightings(data.Intel); err != nil {
@@ -2261,6 +2292,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err = e.buildWorld(); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
+
+	// The paused turn, restored exactly as it was stored — validated above,
+	// before construction began (R5). The bubble and the member record it
+	// needs are re-derived on resume from the roster this load has just
+	// rebuilt, which is why neither is in the blob.
+	e.pausedTurn = pausedTurnFrom(data.PausedTurn)
 
 	// Restore outcome if present
 	if data.Outcome != nil {

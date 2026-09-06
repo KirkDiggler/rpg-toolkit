@@ -204,6 +204,20 @@ type Encounter struct {
 	// driveMonsterTurns's own doc for the check itself.
 	driving bool
 
+	// pausedTurn is the one driven turn stopped mid-walk because a reactor
+	// is being asked about a step (rpg-project#316 rung 3, ruling R2). Nil
+	// whenever the fight is not waiting on anybody, which is almost always.
+	//
+	// PERSISTED, unlike driving above, and that is the difference between
+	// them: driving is a fact about a Go call stack, which a reload does not
+	// have; a pause is a fact about the FIGHT, which survives rpg-api being
+	// restarted between the question and the answer. It travels in the blob
+	// as EncounterData.PausedTurn.
+	//
+	// While it is set, every drive entry is a no-op — there is exactly one
+	// way forward and it is [Encounter.ResumeTurn].
+	pausedTurn *pausedTurn
+
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Step, Join) declaration order is
@@ -2340,6 +2354,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		Seq:         seqNum,
 		Closed:      closedOutcome,
 		IntelDeltas: intelDeltas,
+		Paused:      e.Paused(),
 	}, nil
 }
 
