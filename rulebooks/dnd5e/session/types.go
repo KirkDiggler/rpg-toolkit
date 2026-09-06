@@ -888,6 +888,21 @@ const (
 	// the erasure of the hold.
 	EventDropped EventKind = "dropped"
 
+	// EventWindowOpened reports a step stopping to ask somebody whether they
+	// react: a monster walked out of a player's reach and, instead of the
+	// player's sword answering for them, the fight paused on the question
+	// (rpg-project#316 rung 3).
+	//
+	// EVERYONE HEARS IT, which is the pre-v1 full-data rule the composition
+	// applies to every other beat and not a claim that a window is public
+	// business. The table seeing "the fight is waiting on Ana" is the
+	// difference between a pause and a hang; per-recipient beats arrive for
+	// all of them at once (rpg-toolkit#940) and this becomes one of them.
+	//
+	// The composition's own word crosses unchanged, like "held" and
+	// "arrived": "window_opened" is the statement of what happened.
+	EventWindowOpened EventKind = "window_opened"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret
@@ -964,7 +979,7 @@ type Event struct {
 // kind Event.Body carries: TurnEndedBody, DownedBody, DeathSaveBody,
 // StruckBody, MissedBody, ActivatedBody, ActivationResultBody, FightStartedBody,
 // FightEndedBody, MovedBody, JoinedBody, ExitedBody, EndedBody, DoorBody,
-// StanceChangedBody, ArrivedBody.
+// StanceChangedBody, ArrivedBody, WindowOpenedBody.
 // Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
@@ -1184,6 +1199,16 @@ type StruckBody struct {
 	// AdvantageSources and DisadvantageSources preserve the fold's attribution.
 	AdvantageSources    []AttackModifierSource `json:"advantage_sources,omitempty"`
 	DisadvantageSources []AttackModifierSource `json:"disadvantage_sources,omitempty"`
+
+	// Reaction names what this swing was taken AS, when it was taken as a
+	// reaction — an opportunity attack, today. Absent for an ordinary
+	// declared swing, which is the common case and says so by being nil.
+	//
+	// THE FIELD THAT EXPLAINS AN OUT-OF-TURN BLOW. Without it a fighter
+	// dealing damage during a skeleton's turn reads as a bug in the client's
+	// turn tracking. The composition has carried the identity on the beat
+	// since rung 2 and nothing decoded it; this is where it lands.
+	Reaction *ReactionRef `json:"reaction,omitempty"`
 }
 
 func (StruckBody) isEventBody() {}
@@ -1199,6 +1224,12 @@ type MissedBody struct {
 	Total    int       `json:"total"`
 	Against  int       `json:"against"`
 	Attack   AttackRef `json:"attack"`
+
+	// Reaction names what this swing was taken AS — see [StruckBody.Reaction].
+	// A reaction that missed is still a reaction, and a client that labelled
+	// only the hits would drop the label exactly when the player most wants
+	// to know why the roll happened at all.
+	Reaction *ReactionRef `json:"reaction,omitempty"`
 }
 
 func (MissedBody) isEventBody() {}
@@ -1314,6 +1345,36 @@ type StanceChangedBody struct {
 }
 
 func (StanceChangedBody) isEventBody() {}
+
+// WindowOpenedBody is [EventWindowOpened]'s typed body: whose step paused, the
+// cells it paused between, who is being asked, and what they are being asked
+// to react with.
+//
+// AUDIENCE IS A LIST, REACTION IS NOT, and the asymmetry is honest rather than
+// convenient. One step can ask every player reactor at once (ruling R3), so
+// there are as many questions as there are names here; every one of them is
+// the same reaction, because exactly one reaction can reach a movement fold
+// today. The day a second can, this field becomes per-entry and the wire
+// changes with it.
+type WindowOpenedBody struct {
+	// Mover is whose step stopped, and From/To the step it stopped between.
+	// The mover is still standing on From: the step is announced and NOT
+	// taken, which is the whole reason a reaction can be checked for reach
+	// against them at all.
+	Mover string           `json:"mover"`
+	From  spatial.Position `json:"from"`
+	To    spatial.Position `json:"to"`
+
+	// Audience is every member being asked, in pose order. Never empty on a
+	// beat this package writes.
+	Audience []string `json:"audience"`
+
+	// Reaction is what they are being asked to react with — the same
+	// identity the resulting struck or missed beat carries if they say yes.
+	Reaction ReactionRef `json:"reaction"`
+}
+
+func (WindowOpenedBody) isEventBody() {}
 
 // ArrivedBody is EventArrived's typed body: what arrived, what kind of thing
 // it is, and where it landed. ID is a member id for a monster and a prop id
@@ -1917,6 +1978,26 @@ type AttackRef struct {
 	DamageType DamageType `json:"damage_type"`
 }
 
+// ReactionRef identifies WHAT a beat was taken as, when it was taken as a
+// reaction rather than as a declared action — the seam's own word for the
+// composition's ReactionIdentity.
+//
+// It answers the only question a struck beat on somebody else's turn raises:
+// why did the fighter deal damage while the skeleton was walking. Carried on a
+// REACT [Declaration], on [StruckBody] and [MissedBody], and on
+// [WindowOpenedBody], so the offer, the swing and the story all name the same
+// thing.
+type ReactionRef struct {
+	// Ref is the full ref of the condition or feature that reacted —
+	// "dnd5e:conditions:opportunity_attack". An OPEN set, so a string, for
+	// [AttackRef.Ref]'s reason.
+	Ref string `json:"ref"`
+
+	// Name is the display name for Ref — "Opportunity Attack". Authored
+	// beside the ref, never derived from it by a reader.
+	Name string `json:"name"`
+}
+
 // ShortfallReason names WHY a declaration is unaffordable, as a value a UI
 // can act on rather than prose it can only repeat. Lands with
 // rpg-toolkit#1010 (reach) and the structured Shortfall it carries.
@@ -1963,6 +2044,21 @@ const (
 	// answer remains ShortfallNoTargetInReach when no candidate is in reach
 	// at all (rpg-toolkit#1010, rpg-project#249 §6).
 	ShortfallTargetOutOfReach ShortfallReason = "target_out_of_reach"
+
+	// ShortfallWindowOpen is the freeze: somebody at this table is being
+	// asked whether they react, and until they answer nothing else may
+	// change the world (rpg-project#316 rung 3). The verbs refuse it as
+	// ErrWindowOpen.
+	//
+	// NOT A BUDGET AND NOT A TURN. Nothing ran out and it is still this
+	// member's turn — or still is not, and that is not why they are blocked.
+	// A client greys the panel and says who the table is waiting for, which
+	// it cannot do from either of the reasons this would otherwise be
+	// collapsed into.
+	//
+	// It is also the one shortfall that can appear on a member whose turn it
+	// IS NOT, because the freeze is not about whose turn it is.
+	ShortfallWindowOpen ShortfallReason = "window_open"
 
 	// ShortfallUnavailable is the ability's own precondition refusing: already
 	// raging, already at full hit points. NOT a budget — nothing ran out,

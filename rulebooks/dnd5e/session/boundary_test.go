@@ -154,15 +154,22 @@ var persistenceShapes = map[string]string{
 	// matter, and is what this list exists to keep out.
 	"encounter.EncounterData": "persistence shape the host already holds (S3)",
 
-	// interrupt.LedgerData was admitted here — SessionData carried a ledger of
-	// open windows, and the host round-tripped those bytes without reading
-	// them. Nothing in this package opens a window any more (rpg-toolkit#964
-	// slice 2), so the field went and the exception went with it.
+	// The ledger of open interrupt windows, inside SessionData.
 	//
-	// The list SHRINKING is the note worth leaving. An allow-list only ever
-	// grows if nobody checks whether an entry is still earning its place, and
-	// an exception outliving the thing it excepted is how one turns into
-	// decoration.
+	// It was admitted here once, retired with its producer (rpg-toolkit#964
+	// slice 2), and is back with a real one: a monster's step now poses a
+	// player a question, and the host round-trips those bytes without ever
+	// reading them (rpg-project#316 rung 3). The note the shrinking list
+	// carried is worth keeping in its new form — the entry left when the
+	// thing it excepted did, which is why re-admitting it is a line in a diff
+	// rather than a discovery.
+	//
+	// The test from the header: would the host have to build one field by
+	// field? No. It is minted by Pose and read by Answer, both inside this
+	// module; the host stores the blob. The window ids, options and audiences
+	// the host DOES see arrive as strings on Declaration and on
+	// [session.WindowOpenError], never as interrupt types.
+	"interrupt.LedgerData": "persistence shape: open interrupt windows the host stores but never builds",
 
 	// A spawned NPC's sheet, inside SessionData.
 	//

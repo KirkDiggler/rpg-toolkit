@@ -104,7 +104,7 @@ func (m *Manager) Hold(ctx context.Context, in *HoldInput) (*HoldOutput, error) 
 		return nil, fmt.Errorf("hold: %w", ErrNoProp)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("hold: %w", err)
 	}

@@ -389,9 +389,9 @@ func TestCompiledOfferCollisionDuplicateIDFailClosed(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, leftID, rightID, "RFC8785 canonical selectors are equal")
-		leftVariant, err := selectorVariant(VerbAttack, &left, "")
+		leftVariant, err := selectorVariant(VerbAttack, &left, "", "")
 		require.NoError(t, err)
-		rightVariant, err := selectorVariant(VerbAttack, &right, "")
+		rightVariant, err := selectorVariant(VerbAttack, &right, "", "")
 		require.NoError(t, err)
 		require.NotEqual(t, string(leftVariant), string(rightVariant),
 			"the fixture must reach equality with different raw object order")
@@ -459,3 +459,57 @@ func newInjectedIDError() error { return &injectedIDError{msg: "injected id fail
 type injectedIDError struct{ msg string }
 
 func (e *injectedIDError) Error() string { return e.msg }
+
+// TestReactDeclarationIDGolden pins the REACT selector, whose variant is one
+// open window's id.
+//
+// ADDING A VERB DID NOT NEED A SELECTOR-VERSION BUMP, and the four goldens
+// above are the proof: none of them moved. The rule this file's own header
+// states is about existing selectors changing meaning, and a new value in a
+// closed enum leaves every existing document byte-identical. A change to the
+// react VARIANT — its prefix, or how a window id is rendered — would be a
+// different matter, which is what this golden is here to catch.
+func TestReactDeclarationIDGolden(t *testing.T) {
+	got, err := declarationID(declarationIDInput{
+		Session: "session-1", Member: "fighter-1",
+		Verb: VerbReact, Slot: SlotReaction, Window: "7",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "v2.GynzlRs2pGlXBFw81xhbkY84pou3GYk2YcpI4L6Y9A0", got)
+}
+
+// TestReactDeclarationIDIsPerWindow: two windows posed to one member in one
+// step must not share a selector, or answering the first would answer the
+// second. The window id is the whole variant, so this is what makes them
+// differ.
+func TestReactDeclarationIDIsPerWindow(t *testing.T) {
+	first, err := declarationID(declarationIDInput{
+		Session: "session-1", Member: "fighter-1",
+		Verb: VerbReact, Slot: SlotReaction, Window: "7",
+	})
+	require.NoError(t, err)
+	second, err := declarationID(declarationIDInput{
+		Session: "session-1", Member: "fighter-1",
+		Verb: VerbReact, Slot: SlotReaction, Window: "8",
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, first, second)
+}
+
+// TestCrossVerbMaterialIsRefused covers the window byte the way the existing
+// guards cover attack definitions and ability refs: a verb carrying the other
+// verb's material is a producer defect, and a selector that silently dropped
+// it would hash to something that looks legitimate.
+func TestCrossVerbMaterialIsRefused(t *testing.T) {
+	_, err := declarationID(declarationIDInput{
+		Session: "session-1", Member: "fighter-1",
+		Verb: VerbMove, Slot: SlotNone, Window: "7",
+	})
+	require.Error(t, err, "a move declaration must not carry a window id")
+
+	_, err = declarationID(declarationIDInput{
+		Session: "session-1", Member: "fighter-1",
+		Verb: VerbReact, Slot: SlotReaction,
+	})
+	require.Error(t, err, "a react declaration without a window names no question")
+}

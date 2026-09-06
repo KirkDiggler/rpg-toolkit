@@ -245,6 +245,10 @@ var sessionSentinels = map[string]error{
 	"ErrInvalidUnpackRequest": session.ErrInvalidUnpackRequest,
 	"ErrNotAPack":             session.ErrNotAPack,
 	"ErrBadPackContents":      session.ErrBadPackContents,
+	"ErrWindowOpen":           session.ErrWindowOpen,
+	"ErrNoWindow":             session.ErrNoWindow,
+	"ErrNotAudience":          session.ErrNotAudience,
+	"ErrNotOffered":           session.ErrNotOffered,
 }
 
 // TestExportedSentinelAllowListIsComplete makes sessionSentinels an actual

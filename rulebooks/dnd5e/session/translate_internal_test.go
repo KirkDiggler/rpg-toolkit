@@ -58,6 +58,11 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// carried `ErrNoCrossing` for the sourceless version of this case;
 		// #1135 is what gave the distinction a source again.)
 		{"shut door", encounter.ErrDoorShut, ErrDoorShut},
+		// A turn stopped mid-walk waiting on an answer. The composition and
+		// this seam name the same fact from either side of the boundary, and
+		// the arm exists for the half-failed save that is the only way to
+		// reach it — see translate's own note.
+		{"turn paused", encounter.ErrTurnPaused, ErrWindowOpen},
 		{"bad placement", encounter.ErrBadPlacement, ErrBadPosition},
 		{"already in a fight", encounter.ErrInBubble, ErrInBubble},
 		{"not in a fight", encounter.ErrNoBubble, ErrNotInFight},

@@ -478,7 +478,7 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 	}
 
 	attackRef := attackRefFor(definition)
-	id, variant, err := selectorIDFor(input.SessionID, input.Member, VerbAttack, slot, &definition, "")
+	id, variant, err := selectorIDFor(input.SessionID, input.Member, VerbAttack, slot, &definition, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -543,7 +543,7 @@ func (m *Manager) loadActorSheet(ctx context.Context, member string) actorSheet 
 // unreadable character do not reach it — it carries no sheet, no candidates,
 // and no currency.
 func (m *Manager) buildEndTurnOffer(session, member string) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbEndTurn, SlotNone, nil, "")
+	id, variant, err := selectorIDFor(session, member, VerbEndTurn, SlotNone, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -567,7 +567,7 @@ func (m *Manager) buildEndTurnOffer(session, member string) (compiledOffer, erro
 func (m *Manager) buildDeathSaveOffer(
 	session, member string, sheet *character.Character,
 ) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbDeathSave, SlotNone, nil, "")
+	id, variant, err := selectorIDFor(session, member, VerbDeathSave, SlotNone, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -586,7 +586,7 @@ func (m *Manager) buildDeathSaveOffer(
 // whether ANY step at all is still possible — one cell, five feet, the
 // smallest unit this grid has — and Remaining is the actual feet left.
 func buildMoveOffer(session, member string, sheet *character.Character) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbMove, SlotNone, nil, "")
+	id, variant, err := selectorIDFor(session, member, VerbMove, SlotNone, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -796,9 +796,9 @@ func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiled
 // a sealed string; for Attack it is the marshaled, validated definition.
 func selectorIDFor(
 	session, member string, verb Verb, slot Slot,
-	attack *combatActions.Definition, ability string,
+	attack *combatActions.Definition, ability, window string,
 ) (id string, variant json.RawMessage, err error) {
-	variant, err = selectorVariant(verb, attack, ability)
+	variant, err = selectorVariant(verb, attack, ability, window)
 	if err != nil {
 		return "", nil, err
 	}
@@ -813,6 +813,7 @@ func selectorIDFor(
 		Slot:    slot,
 		Attack:  attack,
 		Ability: ability,
+		Window:  window,
 	})
 	if err != nil {
 		return "", nil, err
@@ -878,8 +879,14 @@ func verbRank(v Verb) int {
 		return 3
 	case VerbEndTurn:
 		return 4
-	default:
+	// REACT IS LAST, and it is the only row that can appear on a turn that is
+	// not the member's own. A panel draws the turn's controls first and the
+	// question underneath them, because the question is the thing that is
+	// about to change and the controls are the thing that is greyed out.
+	case VerbReact:
 		return 5
+	default:
+		return 6
 	}
 }
 

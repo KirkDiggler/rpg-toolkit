@@ -271,7 +271,7 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 		return nil, fmt.Errorf("endturn: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("endturn: %w", err)
 	}

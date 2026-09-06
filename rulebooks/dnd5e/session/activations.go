@@ -72,7 +72,7 @@ func (m *Manager) buildActivationOffers(
 		slot := slotOfEconomySlot(ability.EconomySlot)
 		ref := ability.Ref.String()
 
-		id, variant, err := selectorIDFor(session, member, VerbActivate, slot, nil, ref)
+		id, variant, err := selectorIDFor(session, member, VerbActivate, slot, nil, ref, "")
 		if err != nil {
 			return nil, err
 		}
