@@ -83,8 +83,19 @@ var All = map[PackID]Pack{
 		Weight: 46.5,
 		Contents: []PackItem{
 			{ItemID: "backpack", Quantity: 1},
-			{ItemID: "ball-bearings", Quantity: 1000},
-			{ItemID: "string", Quantity: 10}, // 10 feet
+			// "a bag of 1,000 ball bearings" is ONE catalog unit
+			// (items.BallBearings prices the whole bag, matching the
+			// official "Ball bearings (1,000)" listing) -- was Quantity:
+			// 1000, which would have meant 1,000 BAGS. Same class of bug
+			// items.go's own Wave 1 fix (ammunition.Arrows50's compound
+			// cost) already caught once; caught here by Unpack's own
+			// verification pass (rpg-toolkit#1544) rather than a second
+			// time in production.
+			{ItemID: "ball-bearings", Quantity: 1},
+			// "10 feet of string" is ONE catalog unit (items.String prices
+			// the whole coil) -- was Quantity: 10, the same
+			// unit-vs-catalog-count confusion as ball-bearings above.
+			{ItemID: "string", Quantity: 1},
 			{ItemID: "bell", Quantity: 1},
 			{ItemID: "candle", Quantity: 5},
 			{ItemID: "crowbar", Quantity: 1},
@@ -95,7 +106,12 @@ var All = map[PackID]Pack{
 			{ItemID: "rations", Quantity: 5},
 			{ItemID: "tinderbox", Quantity: 1},
 			{ItemID: "waterskin", Quantity: 1},
-			{ItemID: "hempen-rope", Quantity: 50}, // 50 feet
+			// "50 feet of hempen rope" is ONE catalog unit
+			// (items.HempenRope prices the whole 50-foot coil) -- was
+			// Quantity: 50, which would have meant 50 COILS (2,500 feet).
+			// Same bug repeats in DungeoneerPack and ExplorerPack below;
+			// fixed in all three together.
+			{ItemID: "hempen-rope", Quantity: 1},
 		},
 		Description: "Equipment for breaking and entering",
 	},
@@ -133,7 +149,7 @@ var All = map[PackID]Pack{
 			{ItemID: "tinderbox", Quantity: 1},
 			{ItemID: "rations", Quantity: 10},
 			{ItemID: "waterskin", Quantity: 1},
-			{ItemID: "hempen-rope", Quantity: 50}, // 50 feet
+			{ItemID: "hempen-rope", Quantity: 1}, // one 50-foot coil -- see BurglarPack's own comment
 		},
 		Description: "Equipment for dungeon exploration",
 	},
@@ -166,7 +182,7 @@ var All = map[PackID]Pack{
 			{ItemID: "torch", Quantity: 10},
 			{ItemID: "rations", Quantity: 10},
 			{ItemID: "waterskin", Quantity: 1},
-			{ItemID: "hempen-rope", Quantity: 50}, // 50 feet
+			{ItemID: "hempen-rope", Quantity: 1}, // one 50-foot coil -- see BurglarPack's own comment
 		},
 		Description: "Equipment for wilderness exploration",
 	},

@@ -1104,7 +1104,41 @@ func (d *Draft) inventoryItemsFromGrant(grant classes.Grant) []InventoryItem {
 		if err != nil {
 			panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
 		}
-		items = append(items, InventoryItem{Equipment: equip, Quantity: item.Quantity})
+		items = append(items, materializeItem(equip, item.Quantity)...)
+	}
+	return items
+}
+
+// materializeItem returns the inventory lines one resolved equipment
+// grant or choice actually produces. A pack decomposes into its own
+// Contents (equipment.ResolvePackContents), scaled by quantity — the same
+// resolution session.Unpack uses, so a starting pack and a bought-then-
+// unpacked one produce identical inventory shapes (rpg-toolkit#1544).
+// Every other equipment type materializes as itself, unchanged.
+//
+// Panics on an unresolvable pack content, matching every other resolve
+// failure in this file's own convention: a class/background grant is
+// supposed to only ever name real IDs, and equipment/pack_contents_test.go
+// already proves every pack in the current catalog resolves cleanly — this
+// is the same "can't happen, and tested that it can't" shape as the
+// panics beside it, not a new risk introduced by decomposing packs here.
+func materializeItem(equip equipment.Equipment, quantity int) []InventoryItem {
+	if equip.EquipmentType() != shared.EquipmentTypePack {
+		return []InventoryItem{{Equipment: equip, Quantity: quantity}}
+	}
+
+	contents, _, err := equipment.ResolvePackContents(shared.EquipmentID(equip.EquipmentID()))
+	if err != nil {
+		panic(fmt.Sprintf("BUG: pack %q contents do not resolve against the catalog: %v", equip.EquipmentID(), err))
+	}
+
+	items := make([]InventoryItem, 0, len(contents))
+	for _, content := range contents {
+		contentEquip, err := equipment.GetByID(shared.SelectionID(content.ID))
+		if err != nil {
+			panic(fmt.Sprintf("BUG: pack %q content %q does not resolve via GetByID: %v", equip.EquipmentID(), content.ID, err))
+		}
+		items = append(items, InventoryItem{Equipment: contentEquip, Quantity: content.Quantity * quantity})
 	}
 	return items
 }
@@ -1136,7 +1170,7 @@ func (d *Draft) materializeEquipmentOption(
 		if err != nil {
 			panic(fmt.Sprintf("BUG: Invalid equipment ID '%s' in class requirements", item.ID))
 		}
-		items = append(items, InventoryItem{Equipment: equip, Quantity: item.Quantity})
+		items = append(items, materializeItem(equip, item.Quantity)...)
 	}
 
 	for _, equipID := range selected[fixedCount:] {
@@ -1144,7 +1178,7 @@ func (d *Draft) materializeEquipmentOption(
 		if err != nil {
 			panic(fmt.Sprintf("BUG: Invalid equipment ID in draft choices: %s - %v", equipID, err))
 		}
-		items = append(items, InventoryItem{Equipment: equip, Quantity: 1})
+		items = append(items, materializeItem(equip, 1)...)
 	}
 
 	return items
