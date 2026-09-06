@@ -8,8 +8,8 @@ import (
 	"math"
 	"regexp"
 	"sort"
-	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -1331,22 +1331,34 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 	}
 }
 
-// refKind returns a ref's type segment, which is what routes a placement.
+// refKind returns a ref's type, which is what routes a placement.
 //
-// Parsed here rather than through the rulebook's own ref parser for the reason
-// this package exists: importing one would break design law C1. The check is
-// deliberately shallow — three non-empty segments — because "is this a ref that
-// resolves to real content" is a question only the layer that owns content can
-// answer.
+// Parsed through core, which owns the ref grammar. Design law C1 says this
+// package may not know what a ref RESOLVES TO — that a sheet exists behind
+// "dnd5e:monsters:skeleton" is the content layer's knowledge, which is why
+// refs come out the far end as the strings that went in. It says nothing
+// about a ref's SHAPE, and shape is all this needs: which of two types the
+// author named.
+//
+// Read with a second parser, the grammar lived in two places. Every change to
+// core cascaded here, this package's tests re-asserted core's own counts, and
+// the two could drift into a ref the canvas accepted and the run refused. One
+// grammar, in the package that owns it.
+//
+// So a malformed ref is refused in core's words, under the ref the author
+// wrote. What stays here is the ROUTING, which is this compiler's own
+// question: props and monsters are what it can place, and anything else is
+// refused by name.
 func refKind(ref string) (string, error) {
-	parts := strings.Split(ref, ":")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", fmt.Errorf("ref %q is not module:type:id", ref)
+	parsed, err := core.ParseString(ref)
+	if err != nil {
+		return "", fmt.Errorf("ref %q: %w", ref, err)
 	}
-	switch parts[1] {
+
+	switch parsed.Type {
 	case typeProps, typeMonsters:
-		return parts[1], nil
+		return parsed.Type, nil
 	default:
-		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parts[1])
+		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parsed.Type)
 	}
 }

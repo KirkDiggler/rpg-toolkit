@@ -266,9 +266,13 @@ func TestRollCalculationValidation(t *testing.T) {
 			},
 		},
 		{
+			// Five, because four is a ref now: core caps a ref at four
+			// segments and "dnd5e:weapons:greatsword:v2" is one
+			// (rpg-toolkit#1536). What this case is about is the cap
+			// still being there, so it moved up with it.
 			name: "component source ref has too many segments",
 			change: func(calc *encounter.RollCalculation) {
-				calc.Components[0].Source.Ref = "dnd5e:weapons:greatsword:v2"
+				calc.Components[0].Source.Ref = "dnd5e:weapons:greatsword:v2:blessed"
 			},
 		},
 		{
