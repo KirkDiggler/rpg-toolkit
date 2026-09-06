@@ -2034,14 +2034,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		onAClock[id] = struct{}{}
 	}
-	inBubble := make(map[core.EntityID]struct{})
 	for i, b := range loadedBubbles {
 		order, oerr := b.Order()
 		if oerr != nil {
 			return nil, fmt.Errorf("load encounter bubble %d order: %w: %w", i, ErrInvalidData, oerr)
 		}
 		for _, id := range order {
-			inBubble[id] = struct{}{}
 			if _, ok := isMember[id]; !ok {
 				return nil, fmt.Errorf(
 					"load encounter bubble %d: %q is in the order but is not a member: %w",
@@ -2057,11 +2055,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 
 	// The paused turn, validated before anything is constructed (R5) and
-	// against the indexes just built: a paused turn names a member, and that
-	// member is in a fight, because a paused turn IS a fight's turn. Reject,
-	// never crash — this is the trust boundary for bytes no version of this
-	// module may have written.
-	if err = validatePausedTurn(data.PausedTurn, isMember, inBubble); err != nil {
+	// against the roster just indexed. Reject, never crash — this is the
+	// trust boundary for bytes no version of this module may have written.
+	// Note what it deliberately does NOT check: see validatePausedTurn.
+	if err = validatePausedTurn(data.PausedTurn, isMember); err != nil {
 		return nil, err
 	}
 	if data.PausedTurn != nil && data.Outcome != nil {

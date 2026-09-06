@@ -227,10 +227,26 @@ func pausedTurnFrom(d *PausedTurnData) *pausedTurn {
 // never crash, and never resume onto a shape this build could not have
 // written.
 //
-// members and inBubble are the load's own already-built indexes — the paused
-// member must be a member, and must be in a fight, because a paused turn IS a
-// fight's turn.
-func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}, inBubble map[core.EntityID]struct{}) error {
+// members is the load's own already-built index: the paused member must be a
+// member, because there is nobody else the remainder could belong to.
+//
+// # A PAUSED MEMBER IN NO FIGHT IS LEGAL, and this is the check that is
+// deliberately NOT here
+//
+// It was here, and it was wrong. The window's whole purpose is to let a
+// player strike, and a strike that drops the LAST monster ends the fight:
+// noticeDown dissolves the bubble and splices the body out, all of it
+// recorded before anybody calls [Encounter.ResumeTurn]. The host then reloads
+// mid-verb and finds a paused turn whose member is on no clock — the ordinary
+// consequence of the answer it just wrote down, refused at the door as
+// corruption.
+//
+// So the two halves of this file have to agree, and ResumeTurn's is the
+// correct half: the turn is already over, ruling R6 already holds because the
+// announced step never happened, and resuming has nothing left to do but
+// clear the pause and let the rest of the run continue. A member who is down,
+// spliced out, or gone entirely reloads fine and resumes to a no-op.
+func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}) error {
 	if d == nil {
 		return nil
 	}
@@ -239,9 +255,6 @@ func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}, i
 	}
 	if _, ok := members[core.EntityID(d.Member)]; !ok {
 		return fmt.Errorf("load encounter paused turn: %q is not a member: %w", d.Member, ErrInvalidData)
-	}
-	if _, ok := inBubble[core.EntityID(d.Member)]; !ok {
-		return fmt.Errorf("load encounter paused turn: %q is in no fight: %w", d.Member, ErrInvalidData)
 	}
 	if len(d.Remaining) == 0 {
 		return fmt.Errorf("load encounter paused turn %q: nothing left to walk: %w", d.Member, ErrInvalidData)

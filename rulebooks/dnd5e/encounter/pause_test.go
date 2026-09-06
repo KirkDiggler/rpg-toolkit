@@ -456,6 +456,51 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	s.Require().ErrorIs(err, encounter.ErrInvalidData, "an intent outside the turn's bound is not resumable")
 }
 
+// TestTheLastMonsterDroppedInTheWindowReloadsAndResumesCleanly is the case
+// that had the two halves of pause.go disagreeing: the strike a player chose
+// through the window drops the LAST monster, so the fight dissolves and the
+// body is spliced out of its bubble — all of it recorded before anybody
+// resumes. The paused member is then on no clock, which is the ORDINARY
+// consequence of the answer, and both the load and the resume have to say so.
+func (s *PauseTestSuite) TestTheLastMonsterDroppedInTheWindowReloadsAndResumesCleanly() {
+	standing := &downList{}
+	mover := &pausingThenDroppingMover{
+		pausingMover: pausingMover{pauseAt: map[int]bool{1: true}},
+		standing:     standing,
+		dropAt:       1,
+	}
+	enc := s.walkingScene(mover, standing)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused())
+
+	data := enc.ToData()
+	s.Require().NotNil(data.PausedTurn)
+	s.Require().Empty(data.Bubbles,
+		"the last monster falling ended the fight while the window was open")
+
+	// The host's own mid-verb reload: this used to be refused as corruption.
+	loaded, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: &pausingMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+	})
+	s.Require().NoError(lerr, "a paused member in no fight is legal, not corruption")
+	s.Require().True(loaded.Paused())
+
+	out, rerr := loaded.ResumeTurn(context.Background())
+	s.Require().NoError(rerr)
+	s.False(out.Paused)
+	s.False(loaded.Paused(), "the resume cleared the pause")
+	s.Equal(cellAt(5, 2), s.positionOf(loaded, goblin),
+		"the body is still in the cell it was leaving: the announced step never happened")
+
+	after, aerr := loaded.ResumeTurn(context.Background())
+	s.Require().ErrorIs(aerr, encounter.ErrNotPaused, "and there is nothing left to resume")
+	s.Nil(after)
+}
+
 // TestAResumedWalkContinuesFromTheReloadedTurn walks the whole done-when
 // path through the storage boundary: pause, save, load, resume, finish.
 func (s *PauseTestSuite) TestAResumedWalkContinuesFromTheReloadedTurn() {
