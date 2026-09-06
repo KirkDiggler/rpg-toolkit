@@ -235,7 +235,28 @@ func (m *movementMachine) announce() Step {
 			// inputs produce identical stories (C8). Subscriber order is
 			// attach order today and that is already sorted — this does not
 			// depend on it staying that way.
-			m.triggers = append(m.triggers, *collected...)
+			// PREVENTION IS ENFORCED HERE, after the fold, because here is
+			// the first place the answer is complete. Disengaging writes its
+			// prevention from a chain STAGE, which runs during Execute; the
+			// opportunity attack's own predicate is a SUBSCRIBER, which runs
+			// strictly earlier, so it publishes into a fold whose prevention
+			// flag is not yet written and cannot read it (rpg-project#316,
+			// and the paragraph conditions.OpportunityAttackCondition's own
+			// doc has always carried about this exact division of labour).
+			//
+			// Dropped rather than resolved-and-discarded: a prevented reaction
+			// must not roll, must not deal damage, and must not appear in the
+			// outcome. What it HAS already done is spend its reactor's meter,
+			// during the fold, before this machine could say otherwise — a
+			// wart the condition's own comment names and this machine cannot
+			// unwind, since refunding another package's economy on a guess is
+			// worse than a reactor who held their swing.
+			for _, trigger := range *collected {
+				if folded.IsOAPrevented() && trigger.TriggerKind == dnd5eEvents.TriggerKindMovementOA {
+					continue
+				}
+				m.triggers = append(m.triggers, trigger)
+			}
 			sort.SliceStable(m.triggers, func(i, j int) bool {
 				if m.triggers[i].ReactorID != m.triggers[j].ReactorID {
 					return m.triggers[i].ReactorID < m.triggers[j].ReactorID
