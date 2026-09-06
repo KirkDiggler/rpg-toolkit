@@ -82,9 +82,13 @@ second colon**: one or more parts joined by `:`, every part non-empty and drawn
 from letters, digits, `_` and `-`. So `dnd5e:props:plushie:skeleton-dog` is a
 ref whose id is `plushie:skeleton-dog`, and a deeper id reads the same way.
 
-The grammar does not count the id's parts, because what they mean belongs to
-the content that mints them rather than to core. `String()` rejoins the id
-verbatim, so parsing and printing are exact inverses at any depth.
+The grammar does not decide what the id's parts mean — that belongs to the
+content that mints them rather than to core — but it does cap how many there
+are: **six segments in total**, module and type plus up to four id parts. An id
+that grows without bound is a bug rather than content, and a concatenation
+runaway is refused while the string is still short enough to read. `String()`
+rejoins the id verbatim, so parsing and printing are exact inverses at any
+depth within the cap.
 
 ### Error Handling
 
@@ -121,8 +125,9 @@ if core.IsParseError(err) {
 - `ErrInvalidFormat`: String doesn't match expected format
 - `ErrEmptyComponent`: One of the Ref components is empty
 - `ErrInvalidCharacters`: Component contains invalid characters
-- `ErrTooFewSegments`: Fewer than the two colons a ref needs. There is no
-  counterpart for "too many": everything after the second colon is the id
+- `ErrTooFewSegments`: Fewer than the two colons a ref needs
+- `ErrTooManySegments`: More than six segments — an id may carry parts, but
+  not without limit
 
 ## Testing
 

@@ -196,6 +196,13 @@ func TestParseString(t *testing.T) {
 				Module: "dnd5e", Type: "props", ID: "plushie:skeleton-dog:chewed"}),
 		},
 		{
+			name:         "one segment past the cap",
+			input:        "a:b:c:d:e:f:g",
+			wantErr:      core.ErrTooManySegments,
+			wantErrMsg:   "expected at most 6 segments, got 7",
+			checkErrType: true,
+		},
+		{
 			name:         "an id that is only a separator",
 			input:        "a:b::c",
 			wantErr:      core.ErrEmptyComponent,
@@ -323,6 +330,8 @@ func TestParseString_IDParts(t *testing.T) {
 		{"three parts", "dnd5e:props:brazier", "brazier"},
 		{"four parts", "dnd5e:props:plushie:skeleton-dog", "plushie:skeleton-dog"},
 		{"five parts", "dnd5e:props:plushie:skeleton-dog:chewed", "plushie:skeleton-dog:chewed"},
+		{"six parts, which is the cap", "dnd5e:props:plushie:skeleton-dog:chewed:left-ear",
+			"plushie:skeleton-dog:chewed:left-ear"},
 	}
 
 	for _, d := range depths {
@@ -384,4 +393,32 @@ func TestParseString_QuotesThePartItNames(t *testing.T) {
 		"the refusal quotes the part that broke the rule")
 	assert.NotContains(t, err.Error(), "plushie:skeleton dog",
 		"and not the whole id, which is a different string from the part it names")
+}
+
+// TestParseString_CapsTheSegments — an id may carry parts, but not without
+// limit.
+//
+// The cap is not about authors. It is about the runaway an author never
+// writes: a ref concatenated onto itself, or appended to in a loop, which
+// grows past anything a person would type. Refusing it here means the bad
+// string never becomes a Ref that something downstream stores, prints, or
+// uses as a map key.
+//
+// Both sides are pinned, because a cap is only interesting at its edge. Six
+// segments parse and round-trip; seven is refused, and the refusal says the
+// limit and the count so an author who somehow meant it knows what to cut.
+func TestParseString_CapsTheSegments(t *testing.T) {
+	atTheCap := "dnd5e:props:plushie:skeleton-dog:chewed:left-ear"
+
+	parsed, err := core.ParseString(atTheCap)
+	require.NoError(t, err, "six segments is a ref")
+	assert.Equal(t, "plushie:skeleton-dog:chewed:left-ear", parsed.ID)
+	assert.Equal(t, atTheCap, parsed.String(), "and it round-trips like any other")
+
+	overIt, err := core.ParseString(atTheCap + ":frayed")
+	require.Error(t, err)
+	assert.Nil(t, overIt)
+	assert.ErrorIs(t, err, core.ErrTooManySegments)
+	assert.Contains(t, err.Error(), "at most 6", "the refusal names the limit")
+	assert.Contains(t, err.Error(), "got 7", "and how far over the string went")
 }

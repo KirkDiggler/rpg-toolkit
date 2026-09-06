@@ -23,10 +23,24 @@ type Type = string
 const (
 	// separatorChar is the character used to separate identifier parts
 	separatorChar = ":"
-	// expectedParts is the number of segments a ref string splits into:
-	// module, type, and the id. The id is everything after the second
-	// separator, so it may carry separators of its own.
-	expectedParts = 3
+	// minSegments is the fewest segments a ref may carry: module, type, and
+	// an id. The id is everything after the second separator, so it may
+	// carry separators of its own and the parse stops splitting here.
+	minSegments = 3
+	// maxSegments is the most a ref may carry: module, type, and up to four
+	// id parts.
+	//
+	// A cap exists at all because an id that grows without bound is a bug
+	// rather than content. A ref concatenated onto itself jumps from four
+	// segments to eight, and six catches that on the FIRST step instead of
+	// after the string has doubled twice — the runaway is refused while it
+	// is still short enough to read in the error.
+	//
+	// Six because today's deepest real ref carries four, so a five-part ref
+	// can still be minted without anyone touching this file. Raise it when a
+	// real seven-part ref exists, and not before: a cap nothing can reach
+	// refuses nothing.
+	maxSegments = 6
 )
 
 // SourceCategory represents the category of an identifier
@@ -95,21 +109,32 @@ func (id *Ref) String() string {
 // second separator: one or more parts joined by it, every part non-empty and
 // drawn from the identifier charset. So "dnd5e:props:plushie:skeleton-dog"
 // parses, with id "plushie:skeleton-dog", and five parts read the same way as
-// four. The grammar does not count the id's parts, because their structure
+// four. The grammar does not decide what the id's parts MEAN, because that
 // belongs to the content that mints them, not to core.
+//
+// It does cap how many there are. Up to maxSegments in total, so a runaway id
+// — the kind a concatenation bug produces, not an author — is refused rather
+// than carried; see that constant for why the number is six.
 func ParseString(s string) (*Ref, error) {
 	if s == "" {
 		return nil, NewParseError(s, "", 0, ErrEmptyString)
 	}
 
-	segments := strings.SplitN(s, separatorChar, expectedParts)
-	segmentCount := len(segments)
+	segments := strings.SplitN(s, separatorChar, minSegments)
 
-	// Two separators are the whole shape requirement: what follows the
-	// second one is the id, however many parts it carries.
-	if segmentCount < expectedParts {
+	// Counted rather than measured off the split, because the split stops
+	// at three: what follows the second separator is the id, and its own
+	// parts are still in there.
+	segmentCount := strings.Count(s, separatorChar) + 1
+
+	if len(segments) < minSegments {
 		return nil, NewParseError(s, "", 0,
-			fmt.Errorf("%w: expected %d segments, got %d", ErrTooFewSegments, expectedParts, segmentCount))
+			fmt.Errorf("%w: expected %d segments, got %d", ErrTooFewSegments, minSegments, segmentCount))
+	}
+	if segmentCount > maxSegments {
+		return nil, NewParseError(s, "", 0,
+			fmt.Errorf("%w: expected at most %d segments, got %d",
+				ErrTooManySegments, maxSegments, segmentCount))
 	}
 
 	// Create the Ref with segments
