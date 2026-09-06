@@ -202,6 +202,102 @@ func triggerFrom(reactor, mover string) func(context.Context, events.EventBus) {
 	}
 }
 
+// THE BILL. The reaction is spent when it is TAKEN, and this event is what
+// says so — the machine publishes it once a strike has actually resolved, and
+// the reactor's condition spends on it.
+//
+// It has to come from here because only here is the answer complete. The
+// condition's trigger is published from a chain SUBSCRIBER, strictly before
+// the fold's prevention flag is written and before the ReactionAttacks
+// capability has been asked, so a condition that charged at publish time
+// charged for every reaction those two went on to decline. The next three
+// tests are exactly those declines (rpg-project#392 R1).
+func (s *MovementTestSuite) TestAReactionThatSwingsIsBilledOnce() {
+	var taken []dnd5eEvents.ReactionTakenEvent
+
+	out, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
+		watchTaken(&taken)(ctx, bus)
+		triggerFrom(heroID, wolfID)(ctx, bus)
+	})
+	s.Require().NoError(err)
+	s.Require().Len(out.Outcome.(MovementOutcome).Reactions, 1, "the swing is the thing being billed")
+
+	s.Require().Len(taken, 1, "one swing, one bill")
+	s.Equal(heroID, taken[0].ReactorID)
+	s.Equal(refs.Conditions.OpportunityAttack().String(), taken[0].ConditionRef,
+		"named by the same ref the offer went out under, or the condition cannot tell it was theirs")
+	s.Equal(dnd5eEvents.TriggerKindMovementOA, taken[0].TriggerKind)
+	s.Equal(wolfID, taken[0].SourceEntity)
+}
+
+// THE ALLY CASE, and the bug this ruling exists to fix. A reactor the caller
+// declines to swing for — an ally the mover is not hostile to, an unarmed
+// caster — is never billed, so a friend walking past a fighter no longer costs
+// the fighter their reaction.
+func (s *MovementTestSuite) TestARefusedReactorIsNeverBilled() {
+	var taken []dnd5eEvents.ReactionTakenEvent
+	empty := &nobodySwings{}
+	in := s.stepInput()
+	in.Reactions = empty
+
+	out, err := s.runStep(in, func(ctx context.Context, bus events.EventBus) {
+		watchTaken(&taken)(ctx, bus)
+		triggerFrom(heroID, wolfID)(ctx, bus)
+	})
+	s.Require().NoError(err)
+
+	s.Require().Equal([]string{heroID}, empty.asked, "the capability was asked and said no")
+	s.Empty(out.Outcome.(MovementOutcome).Reactions)
+	s.Empty(taken, "a reaction the capability refused costs its reactor nothing")
+}
+
+// Disengage is free for the reactors it silences. A prevented opportunity
+// attack is dropped before the capability is even asked, so there is nothing
+// to bill — which it also was not, back when the condition spent its meter
+// inside the fold and this machine could not unwind it.
+func (s *MovementTestSuite) TestASuppressedStepBillsNobody() {
+	var taken []dnd5eEvents.ReactionTakenEvent
+
+	_, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
+		watchTaken(&taken)(ctx, bus)
+		triggerFrom(heroID, wolfID)(ctx, bus)
+		preventOA(wolfID)(ctx, bus)
+	})
+	s.Require().NoError(err)
+
+	s.Empty(taken, "a suppressed reaction never happened, so nobody pays for it")
+}
+
+// Two reactors, two bills, each naming its own reactor. One bus carries every
+// combatant's conditions, so a bill that did not name its reactor would spend
+// the wrong member's reaction.
+func (s *MovementTestSuite) TestEachReactorIsBilledForTheirOwnSwing() {
+	var taken []dnd5eEvents.ReactionTakenEvent
+
+	_, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
+		watchTaken(&taken)(ctx, bus)
+		triggerFrom("zara", wolfID)(ctx, bus)
+		triggerFrom("alice", wolfID)(ctx, bus)
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(taken, 2)
+	s.Equal([]string{"alice", "zara"}, []string{taken[0].ReactorID, taken[1].ReactorID},
+		"billed in the same fixed order the reactions were answered in")
+}
+
+// watchTaken records the bills the machine published, which is the whole of
+// what a reaction condition subscribes to in order to spend its meter.
+func watchTaken(taken *[]dnd5eEvents.ReactionTakenEvent) func(context.Context, events.EventBus) {
+	return func(ctx context.Context, bus events.EventBus) {
+		_, _ = dnd5eEvents.ReactionTakenTopic.On(bus).Subscribe(ctx,
+			func(_ context.Context, e dnd5eEvents.ReactionTakenEvent) error {
+				*taken = append(*taken, e)
+				return nil
+			})
+	}
+}
+
 // A reactor with nothing to swing is an ANSWER, not a failure. The step still
 // completes and the walk still happened.
 func (s *MovementTestSuite) TestAReactorWithNoAttackIsSkippedNotFailed() {
