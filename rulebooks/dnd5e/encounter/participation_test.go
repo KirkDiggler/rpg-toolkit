@@ -92,9 +92,9 @@ func participationSetup(capability encounter.Standing, members ...encounter.Memb
 		Standing:   capability,
 		Sight:      everyoneSeesTheWholeMap{},
 		TurnDriver: passDriver{},
-		Striker:    passStriker{},
-		Announcer:  quietAnnouncer{},
-		Retention:  encounter.RetentionUnbounded,
+		Striker:    passStriker{}, Mover: quietMover{},
+		Announcer: quietAnnouncer{},
+		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
 			Canvas: openAir(),
 			Regions: []encounter.RegionInput{
@@ -154,7 +154,7 @@ func TestParticipationIsRequiredWithoutChangingTheStandingFieldShape(t *testing.
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: built.ToData(), Initiative: orderAsGiven{}, Standing: standingOnly{},
-		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.ErrorIs(t, err, encounter.ErrNoParticipation)
 }
@@ -479,7 +479,7 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
-		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
 	reloadedStatus, err := reloaded.Status()
@@ -669,7 +669,7 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
-		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
 	beats := storyBeats(t, reloaded, alice)
