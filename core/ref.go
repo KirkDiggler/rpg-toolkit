@@ -192,6 +192,11 @@ func (id *Ref) validate() error {
 // different mistakes, and an author who is told only "id" has to find the gap
 // themselves. A single-part id keeps the plain "id" field name it has always
 // had, so the common refusal reads exactly as before.
+//
+// The value quoted is the offending PART, not the whole id. That is what the
+// module and type refusals above do with their own component, and quoting the
+// whole id under a field naming one part of it made the two disagree: an
+// author sent to part 2 was handed both parts.
 func validateIDParts(id ID) error {
 	if id == "" {
 		return NewValidationError("id", id, "cannot be empty", ErrEmptyComponent)
@@ -205,10 +210,10 @@ func validateIDParts(id ID) error {
 		}
 
 		if part == "" {
-			return NewValidationError(field, id, "cannot be empty", ErrEmptyComponent)
+			return NewValidationError(field, part, "cannot be empty", ErrEmptyComponent)
 		}
 		if !isValidIdentifierPart(part) {
-			return NewValidationError(field, id,
+			return NewValidationError(field, part,
 				"contains invalid characters (only letters, digits, underscore, and dash allowed)",
 				ErrInvalidCharacters)
 		}

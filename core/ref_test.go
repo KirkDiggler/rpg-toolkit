@@ -367,3 +367,21 @@ func TestParseString_NamesTheEmptyPart(t *testing.T) {
 		})
 	}
 }
+
+// TestParseString_QuotesThePartItNames — the value a refusal prints is the
+// OFFENDING PART, not the whole id.
+//
+// Quoting the whole id under a field that already names one part of it made
+// the two disagree: an author sent to part 2 was handed both parts, and the
+// message read as though the id itself were the thing with a space in it. The
+// module and type refusals quote their own component, and this now matches.
+func TestParseString_QuotesThePartItNames(t *testing.T) {
+	_, err := core.ParseString("dnd5e:props:plushie:skeleton dog")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, core.ErrInvalidCharacters)
+	assert.Contains(t, err.Error(), `"skeleton dog"`,
+		"the refusal quotes the part that broke the rule")
+	assert.NotContains(t, err.Error(), "plushie:skeleton dog",
+		"and not the whole id, which is a different string from the part it names")
+}

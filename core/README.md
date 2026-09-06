@@ -70,12 +70,21 @@ feature := core.NewSourcedRef(Rage, "class:barbarian")
 
 #### Ref Structure
 
-A Ref consists of three parts:
+A Ref has three parts:
 - **Module**: Which module defined this (`"core"`, `"artificer"`, `"homebrew"`)
 - **Type**: Category of mechanic (`"feature"`, `"proficiency"`, `"skill"`, `"condition"`)
-- **Value**: The specific identifier (`"rage"`, `"sneak_attack"`)
+- **ID**: The specific identifier (`"rage"`, `"sneak_attack"`, `"plushie:skeleton-dog"`)
 
-String format: `module:type:value`
+String format: `module:type:id`
+
+Module and type are single identifier parts. **The id is everything after the
+second colon**: one or more parts joined by `:`, every part non-empty and drawn
+from letters, digits, `_` and `-`. So `dnd5e:props:plushie:skeleton-dog` is a
+ref whose id is `plushie:skeleton-dog`, and a deeper id reads the same way.
+
+The grammar does not count the id's parts, because what they mean belongs to
+the content that mints them rather than to core. `String()` rejoins the id
+verbatim, so parsing and printing are exact inverses at any depth.
 
 ### Error Handling
 
@@ -112,8 +121,8 @@ if core.IsParseError(err) {
 - `ErrInvalidFormat`: String doesn't match expected format
 - `ErrEmptyComponent`: One of the Ref components is empty
 - `ErrInvalidCharacters`: Component contains invalid characters
-- `ErrTooManySegments`: More than 3 segments in string
-- `ErrTooFewSegments`: Fewer than 3 segments in string
+- `ErrTooFewSegments`: Fewer than the two colons a ref needs. There is no
+  counterpart for "too many": everything after the second colon is the id
 
 ## Testing
 
