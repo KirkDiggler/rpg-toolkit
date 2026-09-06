@@ -193,6 +193,16 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 	}
 	o.subscriptionIDs = append(o.subscriptionIDs, restID)
 
+	// The meter is spent from HERE, not from the movement chain. See
+	// onReactionTaken.
+	taken := dnd5eEvents.ReactionTakenTopic.On(bus)
+	takenID, err := taken.Subscribe(ctx, o.onReactionTaken)
+	if err != nil {
+		_ = o.Remove(ctx, bus)
+		return rpgerr.Wrap(err, "failed to subscribe to reaction taken")
+	}
+	o.subscriptionIDs = append(o.subscriptionIDs, takenID)
+
 	return nil
 }
 
@@ -350,28 +360,64 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		return c, rpgerr.Wrap(pubErr, "failed to publish OA reaction trigger event")
 	}
 
-	// Spend AFTER the publish, never before: a trigger that failed to reach
-	// the orchestrator is a reaction that did not happen, and charging for it
-	// would leave the reactor unable to react to the next mover for a swing
-	// nobody made.
+	// AND STOP. The trigger is an offer, not a bill.
 	//
-	// The bill goes out unconditionally now, where it used to be guarded by
-	// whether a purse had been handed over. Nothing here decides who pays:
-	// a keeper holding an economy debits it, and a monster's keeper has no row
-	// for the topic at all, so the request truthfully passes it by. That is the
-	// same asymmetry, moved from a nil check in this condition to which
-	// subscriptions each sheet keeper's table holds.
+	// Publishing used to spend the reaction right here, on the reasoning that
+	// a trigger which reached the orchestrator was a reaction that happened.
+	// It is not. The machine that drains the triggers still asks its
+	// ReactionAttacks capability what this reactor swings, and "nothing" is a
+	// legal answer: an ally the mover is not hostile to, an unarmed caster
+	// with no melee attack, a prevented step, a player who is asked and holds.
+	// Every one of those was billed. A friend walking past a fighter cost the
+	// fighter their reaction for a swing nobody made.
+	//
+	// So the bill moved to where the swing is: the machine publishes
+	// [dnd5eEvents.ReactionTakenEvent] once the reaction has actually run, and
+	// onReactionTaken spends on that. A trigger nobody takes costs nothing.
+	return c, nil
+}
+
+// onReactionTaken spends the reaction the machine just ran.
+//
+// This is the other half of the offer/bill split onMovementChain's tail
+// describes: the trigger says a predicate matched, this event says a swing
+// happened, and only the second one costs anything.
+//
+// It answers only for THIS holder and THIS condition. One bus carries every
+// combatant's conditions, so a taken event names its reactor and its ref for
+// the same reason the trigger does, and a reactor's OA meter must not move
+// because somebody else swung or because the same member's Shield fired.
+//
+// Spending is idempotent by the meter. UsedThisTurn already gates the trigger,
+// so a second taken event for a reactor who has not had a turn since is a
+// duplicate rather than a second reaction, and billing it twice would charge
+// an economy for a swing that was never offered.
+func (o *OpportunityAttackCondition) onReactionTaken(
+	ctx context.Context, event dnd5eEvents.ReactionTakenEvent,
+) error {
+	if event.ReactorID != o.MemberID || event.ConditionRef != o.Ref().String() {
+		return nil
+	}
+	if o.UsedThisTurn {
+		return nil
+	}
+
+	// The bill goes out unconditionally. Nothing here decides who pays: a
+	// keeper holding an economy debits it, and a monster's keeper has no row
+	// for the topic at all, so the request truthfully passes it by. That is
+	// the character-pays asymmetry canReact describes, moved from a nil check
+	// in this condition to which subscriptions each sheet keeper's table holds.
 	o.UsedThisTurn = true
 	if err := publishSpendRequested(
 		ctx, o.bus, o.MemberID, coreCombat.ActionReaction, 1, o.Ref(),
 	); err != nil {
-		return c, rpgerr.Wrap(err, "failed to publish opportunity attack reaction spend")
+		return rpgerr.Wrap(err, "failed to publish opportunity attack reaction spend")
 	}
 	if err := o.stateChanged(ctx); err != nil {
-		return c, rpgerr.Wrap(err, "failed to publish opportunity attack meter change")
+		return rpgerr.Wrap(err, "failed to publish opportunity attack meter change")
 	}
 
-	return c, nil
+	return nil
 }
 
 // isLeavingMyThreatRange returns true if the moving entity (event.EntityID)
