@@ -41,7 +41,7 @@ type RetentionTestSuite struct {
 // with the ending at (4,4).
 func (s *RetentionTestSuite) walkingEncounter(retention int) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion("r1", 0, 0, 5, 5)}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -269,7 +269,7 @@ func (s *RetentionTestSuite) TestRetentionSurvivesReload() {
 	s.Equal(window, data.Retention, "retention is persisted, not inferred")
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 
 	// The reloaded encounter must still be trimming to the SAME window at its
@@ -295,7 +295,7 @@ func (s *RetentionTestSuite) TestFloorSurvivesReload() {
 	s.generateBeats(enc, 40)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: enc.ToData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	_, err = reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 33})
@@ -315,7 +315,7 @@ func (s *RetentionTestSuite) TestUntrimmedEncounterHasNoFloor() {
 	s.generateBeats(enc, 5)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: enc.ToData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	for seq := uint64(1); seq <= 6; seq++ {
@@ -338,7 +338,7 @@ func (s *RetentionTestSuite) TestUntrimmedEncounterHasNoFloor() {
 func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
 	patrol := &patrolDecider{positions: []spatial.Position{cellAt(5, 5), cellAt(3, 3)}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
@@ -388,7 +388,7 @@ func (s *RetentionTestSuite) TestBlobStaysBoundedAcrossSaveLoadCycles() {
 	s.Require().Len(data.Log.Entries, window, "first save: the blob holds the window, not the 41-beat history")
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 
 	// A big verb delta on the reloaded encounter: the live log grows to
@@ -401,7 +401,7 @@ func (s *RetentionTestSuite) TestBlobStaysBoundedAcrossSaveLoadCycles() {
 	s.Len(data2.Log.Entries, window, "the next save lands the blob back at the window")
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data2})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data2})
 	s.Require().NoError(err, "and that bounded blob round-trips")
 }
 

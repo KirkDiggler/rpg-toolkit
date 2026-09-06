@@ -68,7 +68,7 @@ func theGap() encounter.FieldInput {
 func (s *ScenerySuite) open(field encounter.FieldInput, members ...encounter.MemberInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:   field,
 		Members: members,
@@ -191,7 +191,7 @@ func (s *ScenerySuite) TestC2_AWallStandsOnScenery() {
 	intoVoid.Walls = []encounter.WallInput{wall(6, 0, 7, 0)}
 	_, err = encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   intoVoid,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -221,7 +221,7 @@ func (s *ScenerySuite) TestA4_APropStandsOnSceneryAndAMemberMayNot() {
 	}}
 	_, err = encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   seated,
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 0}}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -254,7 +254,7 @@ func (s *ScenerySuite) TestScenerySurvivesTheBlob() {
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
 	s.Require().NoError(err)

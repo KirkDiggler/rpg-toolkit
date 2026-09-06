@@ -156,7 +156,7 @@ func withdrawn() encounter.EndingInput {
 func (s *HoldOutSuite) open(field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: journalAnnouncer{j: s.heard},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
 		Members:   members,
@@ -176,7 +176,7 @@ func (s *HoldOutSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  enc.ToData(),
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: journalAnnouncer{j: s.heard},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
 	s.Require().NoError(err)
@@ -637,7 +637,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:  data,
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		})
 		return err
@@ -689,7 +689,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
@@ -720,7 +720,7 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 	open := func(field encounter.FieldInput, endings ...encounter.EndingInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 			Field: field, Members: s.cast(true), Endings: append([]encounter.EndingInput{withdrawn()}, endings...),
 		})
@@ -834,7 +834,7 @@ func (s *HoldOutSuite) openWith(
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Announcer: journalAnnouncer{j: s.heard},
+		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
 		Members:   members,

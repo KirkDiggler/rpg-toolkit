@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // passDriver is the TurnDriver capability these tests install by default.
@@ -55,5 +56,20 @@ func (passStriker) Strike(context.Context, *encounter.Encounter, encounter.Membe
 type quietAnnouncer struct{}
 
 func (quietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
+}
+
+// quietMover hears every step and does nothing with it.
+//
+// LIKE quietAnnouncer AND UNLIKE passStriker, this one really is called: every
+// fixture whose driver walks announces each cell through it before the step is
+// taken. Returning nil is the honest answer for these fixtures rather than a
+// stub — nothing in them carries a condition that reacts to movement, which is
+// exactly what "no reaction fired" looks like from this seam.
+type quietMover struct{}
+
+func (quietMover) Move(
+	context.Context, *encounter.Encounter, encounter.MemberID, spatial.Position, spatial.Position,
+) error {
 	return nil
 }

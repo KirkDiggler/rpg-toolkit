@@ -98,7 +98,7 @@ func (s *BoundaryTestSuite) fightWithMonsters(
 	}
 	return encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Announcer: announcer,
+		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: announcer,
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -248,7 +248,7 @@ func (s *BoundaryTestSuite) TestAnnouncerIsRequiredAtBothConstructors() {
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoAnnouncer,
 		"a blob that comes back without one is as unusable as a Setup without one")
@@ -279,7 +279,7 @@ func (s *BoundaryTestSuite) TestAnnouncerFailureAbortsTheVerb() {
 	// itself is not the thing under test.
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 		Announcer: journalAnnouncer{j: j, fail: boom},
 	})
 	s.Require().NoError(err)

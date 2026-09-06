@@ -31,7 +31,7 @@ func TestBlocksMovementSuite(t *testing.T) {
 func (s *BlocksMovementSuite) setup(members ...encounter.MemberInput) (*encounter.Encounter, error) {
 	return encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   worldField(),
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -112,7 +112,7 @@ func (s *BlocksMovementSuite) TestBlocksMovementSurvivesPersistenceAndStillBlock
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
 
@@ -145,7 +145,7 @@ func (s *BlocksMovementSuite) TestBlocksMovementSurvivesPersistenceWhenFalse() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // passDriver is the internal-package twin of encounter_test's own — see its
@@ -36,5 +37,13 @@ func (passStriker) Strike(context.Context, *Encounter, MemberID, MemberID, core.
 type quietAnnouncer struct{}
 
 func (quietAnnouncer) Announce(context.Context, *Encounter, []Boundary) error {
+	return nil
+}
+
+// quietMover is the internal-package twin of encounter_test's own — see its
+// doc.
+type quietMover struct{}
+
+func (quietMover) Move(context.Context, *Encounter, MemberID, spatial.Position, spatial.Position) error {
 	return nil
 }
