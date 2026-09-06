@@ -30,17 +30,9 @@ const (
 	// maxSegments is the most a ref may carry: module, type, and up to four
 	// id parts.
 	//
-	// A cap exists at all because an id that grows without bound is a bug
-	// rather than content. A ref concatenated onto itself jumps from four
-	// segments to eight, and six catches that on the FIRST step instead of
-	// after the string has doubled twice — the runaway is refused while it
-	// is still short enough to read in the error.
-	//
-	// Six because today's deepest real ref carries four, so a five-part ref
-	// can still be minted without anyone touching this file. Raise it when a
-	// real seven-part ref exists, and not before: a cap nothing can reach
-	// refuses nothing.
-	maxSegments = 6
+	// Our currect use case is to organize assets by group. Enabling 4 is what our use case is.
+	// If we find a need for more than that, we can come adjust it when we have a solid use case
+	maxSegments = 4
 )
 
 // SourceCategory represents the category of an identifier
@@ -114,7 +106,7 @@ func (id *Ref) String() string {
 //
 // It does cap how many there are. Up to maxSegments in total, so a runaway id
 // — the kind a concatenation bug produces, not an author — is refused rather
-// than carried; see that constant for why the number is six.
+// than carried;
 func ParseString(s string) (*Ref, error) {
 	if s == "" {
 		return nil, NewParseError(s, "", 0, ErrEmptyString)

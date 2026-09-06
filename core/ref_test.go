@@ -190,16 +190,10 @@ func TestParseString(t *testing.T) {
 				Module: "dnd5e", Type: "props", ID: "plushie:skeleton-dog"}),
 		},
 		{
-			name:  "an id with three parts",
-			input: "dnd5e:props:plushie:skeleton-dog:chewed",
-			want: core.MustNewRef(core.RefInput{
-				Module: "dnd5e", Type: "props", ID: "plushie:skeleton-dog:chewed"}),
-		},
-		{
 			name:         "one segment past the cap",
-			input:        "a:b:c:d:e:f:g",
+			input:        "a:b:c:d:e",
 			wantErr:      core.ErrTooManySegments,
-			wantErrMsg:   "expected at most 6 segments, got 7",
+			wantErrMsg:   "expected at most 4 segments, got 5",
 			checkErrType: true,
 		},
 		{
@@ -329,9 +323,6 @@ func TestParseString_IDParts(t *testing.T) {
 	}{
 		{"three parts", "dnd5e:props:brazier", "brazier"},
 		{"four parts", "dnd5e:props:plushie:skeleton-dog", "plushie:skeleton-dog"},
-		{"five parts", "dnd5e:props:plushie:skeleton-dog:chewed", "plushie:skeleton-dog:chewed"},
-		{"six parts, which is the cap", "dnd5e:props:plushie:skeleton-dog:chewed:left-ear",
-			"plushie:skeleton-dog:chewed:left-ear"},
 	}
 
 	for _, d := range depths {
@@ -404,21 +395,21 @@ func TestParseString_QuotesThePartItNames(t *testing.T) {
 // string never becomes a Ref that something downstream stores, prints, or
 // uses as a map key.
 //
-// Both sides are pinned, because a cap is only interesting at its edge. Six
+// Both sides are pinned, because a cap is only interesting at its edge. Four
 // segments parse and round-trip; seven is refused, and the refusal says the
 // limit and the count so an author who somehow meant it knows what to cut.
 func TestParseString_CapsTheSegments(t *testing.T) {
-	atTheCap := "dnd5e:props:plushie:skeleton-dog:chewed:left-ear"
+	atTheCap := "dnd5e:props:plushie:skeleton-dog"
 
 	parsed, err := core.ParseString(atTheCap)
-	require.NoError(t, err, "six segments is a ref")
-	assert.Equal(t, "plushie:skeleton-dog:chewed:left-ear", parsed.ID)
+	require.NoError(t, err, "four segments is a ref")
+	assert.Equal(t, "plushie:skeleton-dog", parsed.ID)
 	assert.Equal(t, atTheCap, parsed.String(), "and it round-trips like any other")
 
 	overIt, err := core.ParseString(atTheCap + ":frayed")
 	require.Error(t, err)
 	assert.Nil(t, overIt)
 	assert.ErrorIs(t, err, core.ErrTooManySegments)
-	assert.Contains(t, err.Error(), "at most 6", "the refusal names the limit")
-	assert.Contains(t, err.Error(), "got 7", "and how far over the string went")
+	assert.Contains(t, err.Error(), "at most 4", "the refusal names the limit")
+	assert.Contains(t, err.Error(), "got 5", "and how far over the string went")
 }
