@@ -1,6 +1,8 @@
 package equipment
 
 import (
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -88,6 +90,48 @@ func ResolveEquipmentDetail(id shared.EquipmentID) *EquipmentDetail {
 		}
 	}
 	return nil
+}
+
+// ResolvedPackItem is one content line of a pack, with its real
+// shared.EquipmentType resolved against the catalog — packs.PackItem
+// itself only carries a bare ID, not the type an inventory needs.
+type ResolvedPackItem struct {
+	Type     shared.EquipmentType
+	ID       string
+	Quantity int
+}
+
+// ResolvePackContents resolves a pack's Contents into typed lines a caller
+// can add straight to an inventory (character.AddInventoryItem) — the one
+// shared primitive both character/draft.go's compileInventory and
+// session.Unpack use, so pack decomposition has exactly one implementation
+// rather than two that could drift (rpg-toolkit#1544).
+//
+// Returns (nil, false, nil) when id does not name a pack — not an error,
+// the same convention npcs.VendorInventoryFromNPCData already uses to
+// distinguish "doesn't apply" from "is malformed." Returns (nil, true, err)
+// when id IS a pack but a content line's ID doesn't resolve against the
+// catalog — a content-authoring defect. Every pack in the current catalog
+// is verified clean (equipment's own pack_contents_test.go), so this arm
+// exists to fail a future authoring mistake in a test rather than let it
+// through silently.
+func ResolvePackContents(id shared.EquipmentID) ([]ResolvedPackItem, bool, error) {
+	pack, ok := packs.All[id]
+	if !ok {
+		return nil, false, nil
+	}
+
+	resolved := make([]ResolvedPackItem, 0, len(pack.Contents))
+	for _, content := range pack.Contents {
+		detail := ResolveEquipmentDetail(shared.EquipmentID(content.ItemID))
+		if detail == nil {
+			return nil, true, fmt.Errorf("pack %q content %q does not resolve against the catalog", id, content.ItemID)
+		}
+		resolved = append(resolved, ResolvedPackItem{
+			Type: detail.Type, ID: content.ItemID, Quantity: content.Quantity,
+		})
+	}
+	return resolved, true, nil
 }
 
 func resolveWeaponDetail(wep *weapons.Weapon) *EquipmentDetail {

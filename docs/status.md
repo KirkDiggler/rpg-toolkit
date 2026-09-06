@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-05
+updated: 2026-09-06
 confidence: high — active #1366/#1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
 ---
 
@@ -10,6 +10,29 @@ confidence: high — active #1366/#1246 boundaries and gates are verified in the
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Current direction
+
+**rpg-toolkit#1544 (rpg-project#376) — pack catalog completeness + real
+decomposition (in progress, PR 1 of 2, 2026-09-06).** Every one of the 7
+starting packs' `Contents` now resolves against the catalog — verified
+directly rather than assumed: only `explorer-pack`/`dungeoneer-pack`
+resolved before this, the other 5 referenced ~23 items (candles, ink, a
+chest, vestments, a disguise costume, etc.) that existed nowhere. ~16 have
+real PHB/SRD prices (two-source-verified, same discipline as #1523's 14);
+~7 have no official individual price at all — only pack flavor text — and
+are clearly-labeled estimates (`items.go`'s own doc marks the split).
+Cross-checking every pack's `Contents` against its official published
+description also caught a live bug, the same class as Arrows50's compound
+cost (#1522): `hempen-rope`/`ball-bearings` `PackItem.Quantity` encoded
+physical units ("50 feet," "1,000 bearings") instead of catalog-SKU counts
+— fixed in `packs.go` for all 3 affected packs, including the two
+previously "working" ones. New `equipment.ResolvePackContents` (mirrors
+`npcs.VendorInventoryFromNPCData`'s `(value, bool, error)` shape) is the one
+place a pack's `Contents` resolves into typed inventory lines; `character/draft.go`'s
+`materializeItem` now decomposes a pack into those lines instead of
+granting the pack itself — a real behavior change for new character
+creation (existing persisted characters unaffected). `session.Unpack`
+(applying the same primitive to an already-owned pack) is PR 2, not yet
+started.
 
 **rpg-toolkit#1537 (rpg-project#384) — Sell, the mirror of Buy (complete,
 2026-09-05).** `session.Trade` now reads direction from the input's own

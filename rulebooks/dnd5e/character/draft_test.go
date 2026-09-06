@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
@@ -381,7 +382,9 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	s.NotEmpty(inventory, "Monk should have inventory from equipment choices")
 	// Verify specific equipment from choices
 	s.assertInventoryContains(inventory, "shortsword", 1, "Should have shortsword from choice")
-	s.assertInventoryContains(inventory, packs.DungeoneerPack, 1, "Should have dungeoneer pack from choice")
+	// Packs decompose into their own Contents (rpg-toolkit#1544) rather than
+	// landing as one opaque pack item — check for a component instead.
+	s.assertInventoryContains(inventory, string(items.Backpack), 1, "Should have dungeoneer pack's backpack from choice")
 }
 
 // Test: Class grants only
@@ -596,10 +599,20 @@ func (s *DraftTestSuite) TestCompileInventory_DuplicateRetainsFirstOccurrenceOrd
 	// The grant's javelins precede the greataxe, then a later selected javelin
 	// folds back into that first row. This exact sequence kills sorting and
 	// keep-last folding regressions that would relocate the stack.
+	//
+	// The pack decomposes into its own Contents (rpg-toolkit#1544) in their
+	// authored order, rather than landing as one opaque "explorer-pack" row.
 	s.Require().Equal([]string{
 		weapons.Javelin,
 		weapons.Greataxe,
-		packs.ExplorerPack,
+		string(items.Backpack),
+		string(items.Bedroll),
+		string(items.Mess),
+		string(items.Tinderbox),
+		string(items.Torch),
+		string(items.Rations),
+		string(items.Waterskin),
+		string(items.HempenRope),
 	}, inventoryIDs)
 	s.Equal(5, inventory[0].Quantity)
 }
@@ -766,8 +779,10 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
-		// Should have the pack (not expanded)
-		s.assertInventoryContains(inventory, packs.ExplorerPack, 1, "Fighter chose explorer's pack")
+		// Packs decompose into their own Contents (rpg-toolkit#1544) rather
+		// than landing as one opaque pack item — mess-kit is unique to
+		// Explorer's Pack among the packs these tests otherwise use.
+		s.assertInventoryContains(inventory, string(items.Mess), 1, "Fighter chose explorer's pack")
 	})
 }
 
@@ -1094,9 +1109,10 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 	// Should have items from all sources
 	s.NotEmpty(inventory, "Complete character should have inventory")
 
-	// Should have chosen items
+	// Should have chosen items. Packs decompose into their own Contents
+	// (rpg-toolkit#1544) rather than landing as one opaque pack item.
 	s.assertInventoryContains(inventory, "shield", 1, "Should have shield from weapon option")
-	s.assertInventoryContains(inventory, packs.DungeoneerPack, 1, "Should have chosen dungeoneer pack")
+	s.assertInventoryContains(inventory, string(items.Crowbar), 1, "Should have chosen dungeoneer pack's crowbar")
 
 	// Verify we have items from multiple sources
 	s.True(len(inventory) >= 2, "Should have multiple items from different sources")
@@ -1194,19 +1210,21 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 	s.Require().NoError(err)
 	fighterInventory := char.ToData().Inventory
 
-	// Fighter should have shield and dungeoneer pack
+	// Fighter should have shield and the dungeoneer pack's contents (packs
+	// decompose rather than land as one opaque item, rpg-toolkit#1544) —
+	// crowbar is unique to Dungeoneer's Pack among the packs used below.
 	fighterHasShield := false
 	fighterHasDungeoneerPack := false
 	for _, item := range fighterInventory {
 		if item.ID == "shield" {
 			fighterHasShield = true
 		}
-		if item.ID == packs.DungeoneerPack {
+		if item.ID == string(items.Crowbar) {
 			fighterHasDungeoneerPack = true
 		}
 	}
 	s.Assert().True(fighterHasShield, "Fighter should have shield from equipment choice")
-	s.Assert().True(fighterHasDungeoneerPack, "Fighter should have dungeoneer pack")
+	s.Assert().True(fighterHasDungeoneerPack, "Fighter should have dungeoneer pack's crowbar")
 
 	// Now change to Barbarian with different equipment choices
 	err = s.baseDraft.SetClass(&character.SetClassInput{
@@ -1231,11 +1249,13 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 	for _, item := range barbarianInventory {
 		s.Assert().NotEqual("shield", item.ID,
 			"Barbarian should NOT have Fighter's shield after class change")
-		s.Assert().NotEqual(packs.DungeoneerPack, item.ID,
-			"Barbarian should NOT have Fighter's dungeoneer pack after class change")
+		s.Assert().NotEqual(string(items.Crowbar), item.ID,
+			"Barbarian should NOT have Fighter's dungeoneer pack's crowbar after class change")
 	}
 
-	// Barbarian SHOULD have their own equipment
+	// Barbarian SHOULD have their own equipment — mess-kit is unique to
+	// Explorer's Pack among the packs used above (rpg-toolkit#1544 packs
+	// decompose rather than land as one opaque item).
 	hasGreataxe := false
 	hasHandaxes := false
 	hasExplorerPack := false
@@ -1246,7 +1266,7 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 		if item.ID == weapons.Handaxe {
 			hasHandaxes = true
 		}
-		if item.ID == packs.ExplorerPack {
+		if item.ID == string(items.Mess) {
 			hasExplorerPack = true
 		}
 	}
@@ -1525,19 +1545,21 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 		s.Assert().NotEqual(weapons.Greataxe, item.ID, "Should NOT have Barbarian's greataxe")
 	}
 
-	// SHOULD have Rogue equipment
+	// SHOULD have Rogue equipment — bell is unique to Burglar's Pack among
+	// the packs used in this test (rpg-toolkit#1544 packs decompose rather
+	// than land as one opaque item).
 	hasShortsword := false
 	hasBurglarPack := false
 	for _, item := range inventory {
 		if item.ID == weapons.Shortsword {
 			hasShortsword = true
 		}
-		if item.ID == packs.BurglarPack {
+		if item.ID == string(items.Bell) {
 			hasBurglarPack = true
 		}
 	}
 	s.Assert().True(hasShortsword, "Should have Rogue's shortsword")
-	s.Assert().True(hasBurglarPack, "Should have Rogue's burglar pack")
+	s.Assert().True(hasBurglarPack, "Should have Rogue's burglar pack's bell")
 }
 
 // TestClassChangeTestSuite runs the class change test suite
