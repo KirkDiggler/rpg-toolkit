@@ -1351,6 +1351,11 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // true thing to say about "dnd5e:props:plushie:" and a useless one: the author
 // wrote a ref that looks right and has to count colons to find what is wrong
 // with it. The refusal is drawn on the canvas, so it points at the part.
+//
+// The depth is capped, and the cap is the one core enforces: an id may carry
+// parts, but a string that grows without bound is a concatenation bug rather
+// than content. Refused HERE as well as there, because a file the author can
+// still edit is the better place to hear it.
 func refKind(ref string) (string, error) {
 	parts := strings.SplitN(ref, ":", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
@@ -1359,6 +1364,9 @@ func refKind(ref string) (string, error) {
 	if gap := emptyIDPart(parts[2]); gap != "" {
 		return "", fmt.Errorf("ref %q has %s", ref, gap)
 	}
+	if n := strings.Count(ref, ":") + 1; n > maxRefSegments {
+		return "", fmt.Errorf("ref %q has %d segments; at most %d", ref, n, maxRefSegments)
+	}
 	switch parts[1] {
 	case typeProps, typeMonsters:
 		return parts[1], nil
@@ -1366,6 +1374,19 @@ func refKind(ref string) (string, error) {
 		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parts[1])
 	}
 }
+
+// maxRefSegments is the most segments a placement ref may carry: module, type,
+// and up to four id parts.
+//
+// core.maxSegments is the source of truth for this number and the place its
+// rationale is written; design law C1 keeps this package from importing core,
+// so it is restated rather than referenced. Two copies of a constant is the
+// price of the law, and the copy is worth having: a runaway ref caught in the
+// file is caught where the author can still fix it.
+//
+// If the two ever disagree, core wins — a ref this compiler accepts and core
+// refuses is a run that will not start.
+const maxRefSegments = 6
 
 // emptyIDPart names the first gap in an id — the phrase that finishes
 // `ref %q has ...` — or "" when the id has no gap in it.

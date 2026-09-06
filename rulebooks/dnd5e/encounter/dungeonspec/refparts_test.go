@@ -50,6 +50,7 @@ func TestAPlacementRefWithPartsInItsID(t *testing.T) {
 		{"the three-part ref that always worked", "dnd5e:props:brazier"},
 		{"an exact-ref prop", "dnd5e:props:plushie:skeleton-dog"},
 		{"one part deeper still", "dnd5e:props:plushie:skeleton-dog:chewed"},
+		{"six segments, which is the cap", "dnd5e:props:plushie:skeleton-dog:chewed:left-ear"},
 	}
 
 	for _, r := range refs {
@@ -123,6 +124,31 @@ func TestAPlacementRefWithAGapInIt(t *testing.T) {
 // TestARefThisCompilerCannotPlace — routing still reads the TYPE and only the
 // type, and a deep id does not smuggle a placement past it. This is the pair to
 // the test above: the grammar loosened, the routing did not.
+// TestARefTooDeepToBeContent — the depth is capped, and the canvas says so.
+//
+// Six segments compile; seven are refused at the ref with the count and the
+// limit. The cap is core's (see maxRefSegments on why it is restated rather
+// than imported), and it is enforced here as well so a concatenation runaway
+// is caught in the file the author can still edit rather than when the run
+// will not start.
+func TestARefTooDeepToBeContent(t *testing.T) {
+	atTheCap := "dnd5e:props:plushie:skeleton-dog:chewed:left-ear"
+
+	spec, err := dungeonspec.Decode([]byte(aStripPlacing(atTheCap)))
+	require.NoError(t, err)
+	require.Empty(t, dungeonspec.Validate(spec), "six segments is a ref this compiler places")
+
+	spec, err = dungeonspec.Decode([]byte(aStripPlacing(atTheCap + ":frayed")))
+	require.NoError(t, err)
+
+	errs := dungeonspec.Validate(spec)
+	require.NotEmpty(t, errs)
+	require.Equal(t, "place[0].ref", errs[0].Path)
+	assert.Equal(t,
+		`ref "dnd5e:props:plushie:skeleton-dog:chewed:left-ear:frayed" has 7 segments; at most 6`,
+		errs[0].Message)
+}
+
 func TestARefThisCompilerCannotPlace(t *testing.T) {
 	spec, err := dungeonspec.Decode([]byte(aStripPlacing("dnd5e:traps:pit:spiked")))
 	require.NoError(t, err)
