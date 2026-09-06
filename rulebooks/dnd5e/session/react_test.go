@@ -515,15 +515,10 @@ func (s *ReactWindowSuite) TestOneStepAsksEveryPlayerReactorAtOnce() {
 // LEAVING, which is ruling R6 arriving through the pause.
 func (s *ReactWindowSuite) TestAStrikeThatDropsTheMoverHoldsTheRestOfTheWindows() {
 	// A SECOND SKELETON, standing far off and doing nothing, so the fight
-	// SURVIVES the death of the one that is walking.
-	//
-	// It is load-bearing, and not for a reason this package can fix. Dropping
-	// the LAST monster dissolves the fight, which splices the mover out of its
-	// bubble — and the composition's own load refuses a stored paused turn
-	// whose member is in no fight, which its dissolve announcement then trips
-	// over mid-verb. encounter.ResumeTurn documents that exact case as legal
-	// ("the mover may have left the fight while the window was open"), so the
-	// two halves of that module disagree; the fix belongs there, not here.
+	// SURVIVES the death of the one that is walking. That is what separates
+	// this scene from the one below it: here the turn ends and the fight
+	// carries on, there the fight itself ends underneath the question, and
+	// the two took different paths through the composition's resume.
 	mgr := s.twoFightersOneSkeleton("skel-2")
 	s.frail("skel-1")
 
@@ -640,4 +635,66 @@ func (s *ReactWindowSuite) TestAnOrdinarySwingCarriesNoReaction() {
 		}
 	}
 	s.True(seen, "the swing reached the stream at all")
+}
+
+// TestAStrikeThatEndsTheFightHoldsTheRestAndCarriesOn is the scene above with
+// the one skeleton that was left removed: the blow drops the LAST monster, so
+// the fight itself ends underneath the question.
+//
+// IT IS THE ORDINARY CONSEQUENCE OF THE ANSWER, and for one commit it was
+// refused as corruption. Dropping the last monster dissolves the bubble and
+// splices the mover out of it, all recorded before anything resumes — so a
+// mid-verb reload found a paused turn whose member was on no clock and called
+// the blob invalid. encounter b0e8689d settled it the right way round: a
+// paused member in no fight is legal, the turn is already over, and resuming
+// clears the pause and lets the run continue.
+//
+// So this test's real subject is that nothing special happens. No error, no
+// stranded question, and the players are free to walk again.
+func (s *ReactWindowSuite) TestAStrikeThatEndsTheFightHoldsTheRestAndCarriesOn() {
+	ctx := context.Background()
+	mgr := s.twoFightersOneSkeleton()
+	s.frail("skel-1")
+
+	s.react(mgr, "fighter", session.ReactStrike)
+
+	// BOTH QUESTIONS ARE CLOSED. The one that was answered, and the one that
+	// was held on its audience's behalf because there was no longer a walk to
+	// react to.
+	s.Empty(s.reactRow(mgr, "fighter").ID)
+	s.Empty(s.reactRow(mgr, "second").ID, "the other question is closed, not stranded by the dissolve")
+	for _, beat := range s.reactionBeats(mgr, "second") {
+		s.NotEqual("second", beat.Actor, "and nobody swung at a body")
+	}
+
+	// The second fighter's economy is GONE rather than down by one, because
+	// the fight it belonged to ended in this same call — exitDissolvedCombatants
+	// puts the light out for every player whose fight dissolved. Asserting a
+	// reaction still in hand here would be asserting that the fight is still
+	// running, which is the opposite of what this scene is about.
+	stored, err := s.characters.GetCharacter(ctx, "second")
+	s.Require().NoError(err)
+	s.Nil(stored.ActionEconomy, "the fight ended, so the turn economy was put out")
+
+	s.Equal(hexCell(3, 0), s.where(mgr, "skel-1"),
+		"it falls in the cell it was leaving; the announced step never happened")
+
+	beats := s.reactionBeats(mgr, "fighter")
+	s.Require().Len(beats, 1)
+	s.Equal("fighter", beats[0].Actor)
+	s.Equal([]string{"skel-1"}, beats[0].Targets)
+	s.Equal(oaRef(), beats[0].Reaction.Ref)
+
+	// THE FIGHT IS OVER AND THE RUN IS NOT. Both players are back on the world
+	// clock, and a free-roam walk — a change verb, so it passes through the
+	// freeze that is no longer there — is accepted.
+	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Equal(session.ClockWorld, turn.Clock, "the last monster is down, so the fight dissolved")
+
+	out, err := mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "fighter", Path: []spatial.Position{hexCell(1, 0)},
+	})
+	s.Require().NoError(err, "nothing is frozen any more")
+	s.Require().Len(out.Steps, 1)
 }
