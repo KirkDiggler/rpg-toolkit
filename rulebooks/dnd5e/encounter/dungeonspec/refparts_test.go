@@ -3,27 +3,29 @@
 
 package dungeonspec_test
 
-// refparts_test.go is rpg-toolkit#1536 at the compiler: a placement's ref is
-// module:type:id, and the ID IS EVERYTHING AFTER THE SECOND COLON.
+// refparts_test.go is what this compiler owns about a placement's ref
+// (rpg-project#367, rpg-toolkit#1536): its TYPE, which is what routes it.
 //
-// The exact-ref props of rpg-project#367 mint four-part refs, and the compiler
-// refused them — "place[19].ref \"dnd5e:props:plushie:skeleton-dog\" is not
-// module:type:id" — because it counted colons and expected two. Counting was
-// the compiler imposing structure on an id whose inner shape belongs to the
-// content that mints it. What routes a placement is the TYPE, and the type is
-// where it always was.
+// The grammar is core's and so are its tests. A ref is module:type:id, the id
+// is everything after the second colon, and how many parts it may carry is
+// core's rule to state and core's rule to pin. This package used to mirror
+// that check, and the mirror is what these tests were mostly about — counts,
+// gaps, a cap — which meant every change to core cascaded into a second set of
+// assertions about the same thing, and the two could drift into a ref the
+// canvas accepted and the run refused.
 //
-// What survives the change is the refusal for a GAP. An empty part is a typo
-// rather than a structure the compiler does not own, and the author has to see
-// it on the canvas — not when the run refuses to start.
+// What is left is the seam and the routing: a well-formed ref of a placeable
+// type compiles and carries its ref through unchanged, a type this compiler
+// cannot place is refused by name, and a ref core refuses is refused HERE, in
+// core's words, at the path the builder draws on.
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -35,8 +37,13 @@ func aStripPlacing(ref string) string {
 `
 }
 
-// TestAPlacementRefWithPartsInItsID — the four-part props ref compiles, routes
-// as props, and reaches the field carrying the ref the author wrote.
+// TestAPlacementRefWithPartsInItsID — an exact-ref prop routes as props and
+// reaches the field carrying the ref the author wrote.
+//
+// The four-part ref is here because it is the one that used to be refused:
+// the compiler counted colons and expected two, and "place[19].ref
+// \"dnd5e:props:plushie:skeleton-dog\" is not module:type:id" is what Kirk's
+// walk hit. Routing reads the type, and the type is where it always was.
 //
 // The last assertion is the one worth having. Routing on the type while
 // TRIMMING the id would satisfy "it compiles" and still hand the run a prop
@@ -48,7 +55,7 @@ func TestAPlacementRefWithPartsInItsID(t *testing.T) {
 		ref  string
 	}{
 		{"the three-part ref that always worked", "dnd5e:props:brazier"},
-		{"an exact-ref prop, which is four and the cap", "dnd5e:props:plushie:skeleton-dog"},
+		{"an exact-ref prop", "dnd5e:props:plushie:skeleton-dog"},
 	}
 
 	for _, r := range refs {
@@ -69,113 +76,51 @@ func TestAPlacementRefWithPartsInItsID(t *testing.T) {
 	}
 }
 
-// TestAPlacementRefWithAGapInIt — an empty part is still refused, at the ref,
-// with the ref quoted, and the refusal SAYS WHICH PART IS MISSING.
+// TestARefThisCompilerCannotPlace — routing reads the TYPE and only the type,
+// and a deeper id does not smuggle a placement past it.
 //
-// The message is pinned in full because it is the whole value of this refusal.
-// "is not module:type:id" is true of every string below and useless for all of
-// them: the author wrote a ref that looks right, and finding the gap means
-// counting colons. Naming the part is what makes the defect drawn on the
-// canvas point at something (rpg-project#367's audience: streamers, not
-// engineers).
-//
-// A missing type keeps the shape refusal, and that is the boundary being
-// pinned: module and type are the SHAPE of a ref, so getting one wrong is not
-// a gap in an id.
-//
-// There is no "gap in the MIDDLE of the id" case, and that is the cap talking
-// rather than an omission: a middle needs an id of three parts, and four
-// segments allow two. A ref deep enough to have one is refused for its depth
-// first — see TestARefThatIsBothTooDeepAndGappy.
-func TestAPlacementRefWithAGapInIt(t *testing.T) {
-	gaps := []struct {
-		name string
-		ref  string
-		says string
-	}{
-		{"no id at all", "dnd5e:props:", `ref "dnd5e:props:" has no id`},
-		{"a gap at the front of the id", "dnd5e:props::skeleton-dog",
-			`ref "dnd5e:props::skeleton-dog" has an empty id part 1`},
-		{"a gap at the end of the id", "dnd5e:props:plushie:",
-			`ref "dnd5e:props:plushie:" has an empty id part 2`},
-		{"no type is a shape refusal, not a gap", "dnd5e::plushie:skeleton-dog",
-			`ref "dnd5e::plushie:skeleton-dog" is not module:type:id`},
-	}
-
-	for _, g := range gaps {
-		t.Run(g.name, func(t *testing.T) {
-			spec, err := dungeonspec.Decode([]byte(aStripPlacing(g.ref)))
-			require.NoError(t, err)
-
-			errs := dungeonspec.Validate(spec)
-			require.NotEmpty(t, errs, "a gap in a ref is still a defect")
-
-			var found bool
-			for _, e := range errs {
-				if e.Path == "place[0].ref" && strings.Contains(e.Message, g.ref) {
-					found = true
-					assert.Equal(t, g.says, e.Message)
-				}
-			}
-			assert.True(t, found, "refused at place[0].ref, got %v", errs)
-		})
-	}
-}
-
-// TestARefThisCompilerCannotPlace — routing still reads the TYPE and only the
-// type, and a deep id does not smuggle a placement past it. This is the pair to
-// the test above: the grammar loosened, the routing did not.
-// TestARefTooDeepToBeContent — the depth is capped, and the canvas says so.
-//
-// Four segments compile; five are refused at the ref with the count and the
-// limit. The cap is core's (see maxRefSegments on why it is restated rather
-// than imported), and it is enforced here as well so the refusal lands in the
-// file the author can still edit rather than when the run will not start.
-//
-// The two layers agreeing is the point. A canvas that accepted five while core
-// refused it would be the exact drift maxRefSegments promises does not happen.
-func TestARefTooDeepToBeContent(t *testing.T) {
-	atTheCap := "dnd5e:props:plushie:skeleton-dog"
-
-	spec, err := dungeonspec.Decode([]byte(aStripPlacing(atTheCap)))
-	require.NoError(t, err)
-	require.Empty(t, dungeonspec.Validate(spec), "four segments is a ref this compiler places")
-
-	spec, err = dungeonspec.Decode([]byte(aStripPlacing(atTheCap + ":chewed")))
-	require.NoError(t, err)
-
-	errs := dungeonspec.Validate(spec)
-	require.NotEmpty(t, errs)
-	require.Equal(t, "place[0].ref", errs[0].Path)
-	assert.Equal(t,
-		`ref "dnd5e:props:plushie:skeleton-dog:chewed" has 5 segments; at most 4`,
-		errs[0].Message)
-}
-
-// TestARefThatIsBothTooDeepAndGappy — a ref can break two rules at once, and
-// the two layers have to pick the SAME one.
-//
-// core asks the cap before it walks the id's parts, so this compiler does too.
-// Without that, "dnd5e:props:a:b:" is a gap on the canvas and too many
-// segments when the run starts: two layers, two reasons, one string, and an
-// author sent to fix the wrong end of it.
-func TestARefThatIsBothTooDeepAndGappy(t *testing.T) {
-	spec, err := dungeonspec.Decode([]byte(aStripPlacing("dnd5e:props:a:b:")))
-	require.NoError(t, err)
-
-	errs := dungeonspec.Validate(spec)
-	require.NotEmpty(t, errs)
-	require.Equal(t, "place[0].ref", errs[0].Path)
-	assert.Equal(t, `ref "dnd5e:props:a:b:" has 5 segments; at most 4`, errs[0].Message,
-		"the depth is the reason, because it is the reason core would give")
-}
-
+// This is the question that is genuinely this package's: props and monsters
+// are what it knows how to put on a field, and a trap is refused by name
+// rather than dropped. Whether "dnd5e:traps:pit:spiked" RESOLVES to anything
+// is a different question, and design law C1 says this package does not get
+// to ask it.
 func TestARefThisCompilerCannotPlace(t *testing.T) {
 	spec, err := dungeonspec.Decode([]byte(aStripPlacing("dnd5e:traps:pit:spiked")))
 	require.NoError(t, err)
 
 	errs := dungeonspec.Validate(spec)
 	require.NotEmpty(t, errs)
+	assert.Equal(t, "place[0].ref", errs[0].Path)
 	assert.Contains(t, errs[0].Message, "cannot place")
 	assert.Contains(t, errs[0].Message, `names type "traps"`)
+}
+
+// TestARefCoreRefusesIsRefusedOnTheCanvas is the seam, and the only thing this
+// file has to say about the grammar.
+//
+// A ref core will not parse has to become a defect the builder can draw, at
+// the placement's own path, in core's words. Nothing here re-states what makes
+// a ref malformed — core's tests own that, and duplicating them is what this
+// file stopped doing.
+//
+// The expected text is asked of core rather than written out, so a reworded
+// refusal upstream travels through instead of failing here. What is pinned is
+// that the words ARRIVE, under the ref the author wrote, at place[0].ref.
+func TestARefCoreRefusesIsRefusedOnTheCanvas(t *testing.T) {
+	const bad = "dnd5e:props:plushie:"
+
+	_, coreErr := core.ParseString(bad)
+	require.Error(t, coreErr, "the fixture has to be a ref core actually refuses")
+
+	spec, err := dungeonspec.Decode([]byte(aStripPlacing(bad)))
+	require.NoError(t, err)
+
+	errs := dungeonspec.Validate(spec)
+	require.NotEmpty(t, errs, "a ref core refuses is a defect in the file")
+	assert.Equal(t, "place[0].ref", errs[0].Path,
+		"drawn on the placement the author wrote, not on the file")
+	assert.Contains(t, errs[0].Message, bad,
+		"the refusal quotes the ref")
+	assert.Contains(t, errs[0].Message, coreErr.Error(),
+		"and carries core's own words, whatever they are")
 }

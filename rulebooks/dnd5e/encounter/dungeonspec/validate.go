@@ -8,8 +8,8 @@ import (
 	"math"
 	"regexp"
 	"sort"
-	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -1331,88 +1331,34 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 	}
 }
 
-// refKind returns a ref's type segment, which is what routes a placement.
+// refKind returns a ref's type, which is what routes a placement.
 //
-// Parsed here rather than through the rulebook's own ref parser for the reason
-// this package exists: importing one would break design law C1. The check is
-// deliberately shallow — a module, a type, and an id, none of them empty —
-// because "is this a ref that resolves to real content" is a question only the
-// layer that owns content can answer.
+// Parsed through core, which owns the ref grammar. Design law C1 says this
+// package may not know what a ref RESOLVES TO — that a sheet exists behind
+// "dnd5e:monsters:skeleton" is the content layer's knowledge, which is why
+// refs come out the far end as the strings that went in. It says nothing
+// about a ref's SHAPE, and shape is all this needs: which of two types the
+// author named.
 //
-// The id is EVERYTHING after the second colon, so it may carry colon-separated
-// parts of its own: "dnd5e:props:plushie:skeleton-dog" is a props placement
-// whose id is "plushie:skeleton-dog", and the split stops at three for that
-// reason. Counting an id's parts would be this compiler imposing structure on
-// something content owns, which is what refusing that placement was. Refusing
-// an EMPTY part is not the same thing: a gap is a typo, and the author has to
-// see it here, on the canvas, rather than when the run will not start.
+// Read with a second parser, the grammar lived in two places. Every change to
+// core cascaded here, this package's tests re-asserted core's own counts, and
+// the two could drift into a ref the canvas accepted and the run refused. One
+// grammar, in the package that owns it.
 //
-// A gap gets its OWN refusal, naming the part. "is not module:type:id" is a
-// true thing to say about "dnd5e:props:plushie:" and a useless one: the author
-// wrote a ref that looks right and has to count colons to find what is wrong
-// with it. The refusal is drawn on the canvas, so it points at the part.
-//
-// The depth is capped, and the cap is the one core enforces: an id may carry
-// parts, but only as many as the use case has asked for. Refused HERE as well
-// as there, because a file the author can still edit is the better place to
-// hear it.
+// So a malformed ref is refused in core's words, under the ref the author
+// wrote. What stays here is the ROUTING, which is this compiler's own
+// question: props and monsters are what it can place, and anything else is
+// refused by name.
 func refKind(ref string) (string, error) {
-	parts := strings.SplitN(ref, ":", 3)
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("ref %q is not module:type:id", ref)
+	parsed, err := core.ParseString(ref)
+	if err != nil {
+		return "", fmt.Errorf("ref %q: %w", ref, err)
 	}
-	// The cap is asked BEFORE the gap, because core asks it first and a ref
-	// can be both. "dnd5e:props:a:b:" is too long AND has an empty part, and
-	// two layers naming two different reasons for one string sends the author
-	// to fix the wrong end of it.
-	if n := strings.Count(ref, ":") + 1; n > maxRefSegments {
-		return "", fmt.Errorf("ref %q has %d segments; at most %d", ref, n, maxRefSegments)
-	}
-	if gap := emptyIDPart(parts[2]); gap != "" {
-		return "", fmt.Errorf("ref %q has %s", ref, gap)
-	}
-	switch parts[1] {
+
+	switch parsed.Type {
 	case typeProps, typeMonsters:
-		return parts[1], nil
+		return parsed.Type, nil
 	default:
-		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parts[1])
+		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parsed.Type)
 	}
-}
-
-// maxRefSegments is the most segments a placement ref may carry: module, type,
-// and up to two id parts. The use case is organizing assets by group, and four
-// is what that takes; more than that waits for a solid use case.
-//
-// core.maxSegments is the source of truth for this number and the place the
-// reason is written; design law C1 keeps this package from importing core, so
-// it is restated rather than referenced. Two copies of a constant is the price
-// of the law, and the copy is worth having: a ref refused in the file is
-// refused where the author can still fix it.
-//
-// If the two ever disagree, core wins — a ref this compiler accepts and core
-// refuses is a run that will not start.
-const maxRefSegments = 4
-
-// emptyIDPart names the first gap in an id — the phrase that finishes
-// `ref %q has ...` — or "" when the id has no gap in it.
-//
-// Two phrasings, because they are two different mistakes. Nothing at all after
-// the second colon is a ref with no id; a missing leading, inner, or trailing
-// part of a longer id is one part gone, and the author needs the index to find
-// it. This is core's rule at this layer, reached without importing core: a
-// single-part id is called "the id", several parts are numbered from one.
-func emptyIDPart(id string) string {
-	parts := strings.Split(id, ":")
-	for i, part := range parts {
-		if part != "" {
-			continue
-		}
-		if len(parts) == 1 {
-			return "no id"
-		}
-
-		return fmt.Sprintf("an empty id part %d", i+1)
-	}
-
-	return ""
 }
