@@ -104,7 +104,7 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 func rosterWorld(t *testing.T) *encounter.EncounterData {
 	t.Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{

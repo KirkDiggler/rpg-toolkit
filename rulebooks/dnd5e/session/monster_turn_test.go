@@ -193,7 +193,7 @@ func (s *MonsterTurnTestSuite) SetupTest() {
 // in — everything these tests need except (b), which adds its own wall.
 func tombRoom(width, height int) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, width, height)},
@@ -375,7 +375,7 @@ func (s *MonsterTurnTestSuite) TestBlindSkeletonBehindAWallNeverJoinsTheFight() 
 	mgr := s.tombManager(session.Behavior(), testDice{})
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
@@ -1006,7 +1006,7 @@ func doubleDoorWorld(t *testing.T, withDavid bool) *encounter.EncounterData {
 		}})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),

@@ -49,7 +49,7 @@ func sidesCast() *Participants {
 func sidesRun(t *testing.T) *encounter.Encounter {
 	t.Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
 		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),

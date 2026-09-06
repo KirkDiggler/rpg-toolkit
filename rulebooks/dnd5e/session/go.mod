@@ -3,14 +3,14 @@ module github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session
 go 1.24.1
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
+	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.143.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.60.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.61.1-0.20260906111755-18c612c304da
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.33.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
@@ -29,3 +29,5 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution => ../resolution

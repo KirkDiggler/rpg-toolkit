@@ -77,7 +77,7 @@ func armedBarbarian(id string) *character.Data {
 // everywhere else.
 func twoPlayerTomb(t fataler, width, height, atX int) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, width, height)},
