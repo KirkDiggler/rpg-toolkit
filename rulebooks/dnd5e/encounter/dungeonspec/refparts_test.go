@@ -48,9 +48,7 @@ func TestAPlacementRefWithPartsInItsID(t *testing.T) {
 		ref  string
 	}{
 		{"the three-part ref that always worked", "dnd5e:props:brazier"},
-		{"an exact-ref prop", "dnd5e:props:plushie:skeleton-dog"},
-		{"one part deeper still", "dnd5e:props:plushie:skeleton-dog:chewed"},
-		{"six segments, which is the cap", "dnd5e:props:plushie:skeleton-dog:chewed:left-ear"},
+		{"an exact-ref prop, which is four and the cap", "dnd5e:props:plushie:skeleton-dog"},
 	}
 
 	for _, r := range refs {
@@ -84,6 +82,11 @@ func TestAPlacementRefWithPartsInItsID(t *testing.T) {
 // A missing type keeps the shape refusal, and that is the boundary being
 // pinned: module and type are the SHAPE of a ref, so getting one wrong is not
 // a gap in an id.
+//
+// There is no "gap in the MIDDLE of the id" case, and that is the cap talking
+// rather than an omission: a middle needs an id of three parts, and four
+// segments allow two. A ref deep enough to have one is refused for its depth
+// first — see TestARefThatIsBothTooDeepAndGappy.
 func TestAPlacementRefWithAGapInIt(t *testing.T) {
 	gaps := []struct {
 		name string
@@ -93,8 +96,6 @@ func TestAPlacementRefWithAGapInIt(t *testing.T) {
 		{"no id at all", "dnd5e:props:", `ref "dnd5e:props:" has no id`},
 		{"a gap at the front of the id", "dnd5e:props::skeleton-dog",
 			`ref "dnd5e:props::skeleton-dog" has an empty id part 1`},
-		{"a gap in the middle of the id", "dnd5e:props:plushie::skeleton-dog",
-			`ref "dnd5e:props:plushie::skeleton-dog" has an empty id part 2`},
 		{"a gap at the end of the id", "dnd5e:props:plushie:",
 			`ref "dnd5e:props:plushie:" has an empty id part 2`},
 		{"no type is a shape refusal, not a gap", "dnd5e::plushie:skeleton-dog",
@@ -126,26 +127,28 @@ func TestAPlacementRefWithAGapInIt(t *testing.T) {
 // the test above: the grammar loosened, the routing did not.
 // TestARefTooDeepToBeContent — the depth is capped, and the canvas says so.
 //
-// Six segments compile; seven are refused at the ref with the count and the
+// Four segments compile; five are refused at the ref with the count and the
 // limit. The cap is core's (see maxRefSegments on why it is restated rather
-// than imported), and it is enforced here as well so a concatenation runaway
-// is caught in the file the author can still edit rather than when the run
-// will not start.
+// than imported), and it is enforced here as well so the refusal lands in the
+// file the author can still edit rather than when the run will not start.
+//
+// The two layers agreeing is the point. A canvas that accepted five while core
+// refused it would be the exact drift maxRefSegments promises does not happen.
 func TestARefTooDeepToBeContent(t *testing.T) {
-	atTheCap := "dnd5e:props:plushie:skeleton-dog:chewed:left-ear"
+	atTheCap := "dnd5e:props:plushie:skeleton-dog"
 
 	spec, err := dungeonspec.Decode([]byte(aStripPlacing(atTheCap)))
 	require.NoError(t, err)
-	require.Empty(t, dungeonspec.Validate(spec), "six segments is a ref this compiler places")
+	require.Empty(t, dungeonspec.Validate(spec), "four segments is a ref this compiler places")
 
-	spec, err = dungeonspec.Decode([]byte(aStripPlacing(atTheCap + ":frayed")))
+	spec, err = dungeonspec.Decode([]byte(aStripPlacing(atTheCap + ":chewed")))
 	require.NoError(t, err)
 
 	errs := dungeonspec.Validate(spec)
 	require.NotEmpty(t, errs)
 	require.Equal(t, "place[0].ref", errs[0].Path)
 	assert.Equal(t,
-		`ref "dnd5e:props:plushie:skeleton-dog:chewed:left-ear:frayed" has 7 segments; at most 6`,
+		`ref "dnd5e:props:plushie:skeleton-dog:chewed" has 5 segments; at most 4`,
 		errs[0].Message)
 }
 
@@ -153,17 +156,17 @@ func TestARefTooDeepToBeContent(t *testing.T) {
 // the two layers have to pick the SAME one.
 //
 // core asks the cap before it walks the id's parts, so this compiler does too.
-// Without that, "dnd5e:props:a:b:c::" is a gap on the canvas and too many
+// Without that, "dnd5e:props:a:b:" is a gap on the canvas and too many
 // segments when the run starts: two layers, two reasons, one string, and an
 // author sent to fix the wrong end of it.
 func TestARefThatIsBothTooDeepAndGappy(t *testing.T) {
-	spec, err := dungeonspec.Decode([]byte(aStripPlacing("dnd5e:props:a:b:c::")))
+	spec, err := dungeonspec.Decode([]byte(aStripPlacing("dnd5e:props:a:b:")))
 	require.NoError(t, err)
 
 	errs := dungeonspec.Validate(spec)
 	require.NotEmpty(t, errs)
 	require.Equal(t, "place[0].ref", errs[0].Path)
-	assert.Equal(t, `ref "dnd5e:props:a:b:c::" has 7 segments; at most 6`, errs[0].Message,
+	assert.Equal(t, `ref "dnd5e:props:a:b:" has 5 segments; at most 4`, errs[0].Message,
 		"the depth is the reason, because it is the reason core would give")
 }
 

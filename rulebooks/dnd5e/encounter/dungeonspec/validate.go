@@ -1353,16 +1353,16 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // with it. The refusal is drawn on the canvas, so it points at the part.
 //
 // The depth is capped, and the cap is the one core enforces: an id may carry
-// parts, but a string that grows without bound is a concatenation bug rather
-// than content. Refused HERE as well as there, because a file the author can
-// still edit is the better place to hear it.
+// parts, but only as many as the use case has asked for. Refused HERE as well
+// as there, because a file the author can still edit is the better place to
+// hear it.
 func refKind(ref string) (string, error) {
 	parts := strings.SplitN(ref, ":", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
 		return "", fmt.Errorf("ref %q is not module:type:id", ref)
 	}
 	// The cap is asked BEFORE the gap, because core asks it first and a ref
-	// can be both. "dnd5e:props:a:b:c::" is too long AND has empty parts, and
+	// can be both. "dnd5e:props:a:b:" is too long AND has an empty part, and
 	// two layers naming two different reasons for one string sends the author
 	// to fix the wrong end of it.
 	if n := strings.Count(ref, ":") + 1; n > maxRefSegments {
@@ -1380,17 +1380,18 @@ func refKind(ref string) (string, error) {
 }
 
 // maxRefSegments is the most segments a placement ref may carry: module, type,
-// and up to four id parts.
+// and up to two id parts. The use case is organizing assets by group, and four
+// is what that takes; more than that waits for a solid use case.
 //
-// core.maxSegments is the source of truth for this number and the place its
-// rationale is written; design law C1 keeps this package from importing core,
-// so it is restated rather than referenced. Two copies of a constant is the
-// price of the law, and the copy is worth having: a runaway ref caught in the
-// file is caught where the author can still fix it.
+// core.maxSegments is the source of truth for this number and the place the
+// reason is written; design law C1 keeps this package from importing core, so
+// it is restated rather than referenced. Two copies of a constant is the price
+// of the law, and the copy is worth having: a ref refused in the file is
+// refused where the author can still fix it.
 //
 // If the two ever disagree, core wins — a ref this compiler accepts and core
 // refuses is a run that will not start.
-const maxRefSegments = 6
+const maxRefSegments = 4
 
 // emptyIDPart names the first gap in an id — the phrase that finishes
 // `ref %q has ...` — or "" when the id has no gap in it.
