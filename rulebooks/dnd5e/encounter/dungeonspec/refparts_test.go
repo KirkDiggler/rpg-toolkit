@@ -71,17 +71,33 @@ func TestAPlacementRefWithPartsInItsID(t *testing.T) {
 }
 
 // TestAPlacementRefWithAGapInIt — an empty part is still refused, at the ref,
-// with the ref quoted, whether the gap is at the front, the middle, or the end.
+// with the ref quoted, and the refusal SAYS WHICH PART IS MISSING.
+//
+// The message is pinned in full because it is the whole value of this refusal.
+// "is not module:type:id" is true of every string below and useless for all of
+// them: the author wrote a ref that looks right, and finding the gap means
+// counting colons. Naming the part is what makes the defect drawn on the
+// canvas point at something (rpg-project#367's audience: streamers, not
+// engineers).
+//
+// A missing type keeps the shape refusal, and that is the boundary being
+// pinned: module and type are the SHAPE of a ref, so getting one wrong is not
+// a gap in an id.
 func TestAPlacementRefWithAGapInIt(t *testing.T) {
 	gaps := []struct {
 		name string
 		ref  string
+		says string
 	}{
-		{"no id at all", "dnd5e:props:"},
-		{"a gap at the front of the id", "dnd5e:props::skeleton-dog"},
-		{"a gap in the middle of the id", "dnd5e:props:plushie::skeleton-dog"},
-		{"a gap at the end of the id", "dnd5e:props:plushie:"},
-		{"no type", "dnd5e::plushie:skeleton-dog"},
+		{"no id at all", "dnd5e:props:", `ref "dnd5e:props:" has no id`},
+		{"a gap at the front of the id", "dnd5e:props::skeleton-dog",
+			`ref "dnd5e:props::skeleton-dog" has an empty id part 1`},
+		{"a gap in the middle of the id", "dnd5e:props:plushie::skeleton-dog",
+			`ref "dnd5e:props:plushie::skeleton-dog" has an empty id part 2`},
+		{"a gap at the end of the id", "dnd5e:props:plushie:",
+			`ref "dnd5e:props:plushie:" has an empty id part 2`},
+		{"no type is a shape refusal, not a gap", "dnd5e::plushie:skeleton-dog",
+			`ref "dnd5e::plushie:skeleton-dog" is not module:type:id`},
 	}
 
 	for _, g := range gaps {
@@ -94,9 +110,9 @@ func TestAPlacementRefWithAGapInIt(t *testing.T) {
 
 			var found bool
 			for _, e := range errs {
-				if e.Path == "place[0].ref" && strings.Contains(e.Message, "is not module:type:id") {
+				if e.Path == "place[0].ref" && strings.Contains(e.Message, g.ref) {
 					found = true
-					assert.Contains(t, e.Message, g.ref, "and the refusal quotes the ref the author wrote")
+					assert.Equal(t, g.says, e.Message)
 				}
 			}
 			assert.True(t, found, "refused at place[0].ref, got %v", errs)

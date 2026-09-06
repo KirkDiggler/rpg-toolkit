@@ -1346,10 +1346,18 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // something content owns, which is what refusing that placement was. Refusing
 // an EMPTY part is not the same thing: a gap is a typo, and the author has to
 // see it here, on the canvas, rather than when the run will not start.
+//
+// A gap gets its OWN refusal, naming the part. "is not module:type:id" is a
+// true thing to say about "dnd5e:props:plushie:" and a useless one: the author
+// wrote a ref that looks right and has to count colons to find what is wrong
+// with it. The refusal is drawn on the canvas, so it points at the part.
 func refKind(ref string) (string, error) {
 	parts := strings.SplitN(ref, ":", 3)
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || hasEmptyIDPart(parts[2]) {
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
 		return "", fmt.Errorf("ref %q is not module:type:id", ref)
+	}
+	if gap := emptyIDPart(parts[2]); gap != "" {
+		return "", fmt.Errorf("ref %q has %s", ref, gap)
 	}
 	switch parts[1] {
 	case typeProps, typeMonsters:
@@ -1359,16 +1367,26 @@ func refKind(ref string) (string, error) {
 	}
 }
 
-// hasEmptyIDPart reports whether an id has a gap in it — a missing leading,
-// inner, or trailing part. An id with no colons is one part, and an empty id
-// splits into one empty part, so "no id at all" answers true through the same
-// loop rather than needing a case of its own.
-func hasEmptyIDPart(id string) bool {
-	for _, part := range strings.Split(id, ":") {
-		if part == "" {
-			return true
+// emptyIDPart names the first gap in an id — the phrase that finishes
+// `ref %q has ...` — or "" when the id has no gap in it.
+//
+// Two phrasings, because they are two different mistakes. Nothing at all after
+// the second colon is a ref with no id; a missing leading, inner, or trailing
+// part of a longer id is one part gone, and the author needs the index to find
+// it. This is core's rule at this layer, reached without importing core: a
+// single-part id is called "the id", several parts are numbered from one.
+func emptyIDPart(id string) string {
+	parts := strings.Split(id, ":")
+	for i, part := range parts {
+		if part != "" {
+			continue
 		}
+		if len(parts) == 1 {
+			return "no id"
+		}
+
+		return fmt.Sprintf("an empty id part %d", i+1)
 	}
 
-	return false
+	return ""
 }
