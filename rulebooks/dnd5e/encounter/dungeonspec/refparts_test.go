@@ -149,6 +149,24 @@ func TestARefTooDeepToBeContent(t *testing.T) {
 		errs[0].Message)
 }
 
+// TestARefThatIsBothTooDeepAndGappy — a ref can break two rules at once, and
+// the two layers have to pick the SAME one.
+//
+// core asks the cap before it walks the id's parts, so this compiler does too.
+// Without that, "dnd5e:props:a:b:c::" is a gap on the canvas and too many
+// segments when the run starts: two layers, two reasons, one string, and an
+// author sent to fix the wrong end of it.
+func TestARefThatIsBothTooDeepAndGappy(t *testing.T) {
+	spec, err := dungeonspec.Decode([]byte(aStripPlacing("dnd5e:props:a:b:c::")))
+	require.NoError(t, err)
+
+	errs := dungeonspec.Validate(spec)
+	require.NotEmpty(t, errs)
+	require.Equal(t, "place[0].ref", errs[0].Path)
+	assert.Equal(t, `ref "dnd5e:props:a:b:c::" has 7 segments; at most 6`, errs[0].Message,
+		"the depth is the reason, because it is the reason core would give")
+}
+
 func TestARefThisCompilerCannotPlace(t *testing.T) {
 	spec, err := dungeonspec.Decode([]byte(aStripPlacing("dnd5e:traps:pit:spiked")))
 	require.NoError(t, err)

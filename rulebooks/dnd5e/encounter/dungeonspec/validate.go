@@ -1361,11 +1361,15 @@ func refKind(ref string) (string, error) {
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
 		return "", fmt.Errorf("ref %q is not module:type:id", ref)
 	}
-	if gap := emptyIDPart(parts[2]); gap != "" {
-		return "", fmt.Errorf("ref %q has %s", ref, gap)
-	}
+	// The cap is asked BEFORE the gap, because core asks it first and a ref
+	// can be both. "dnd5e:props:a:b:c::" is too long AND has empty parts, and
+	// two layers naming two different reasons for one string sends the author
+	// to fix the wrong end of it.
 	if n := strings.Count(ref, ":") + 1; n > maxRefSegments {
 		return "", fmt.Errorf("ref %q has %d segments; at most %d", ref, n, maxRefSegments)
+	}
+	if gap := emptyIDPart(parts[2]); gap != "" {
+		return "", fmt.Errorf("ref %q has %s", ref, gap)
 	}
 	switch parts[1] {
 	case typeProps, typeMonsters:
