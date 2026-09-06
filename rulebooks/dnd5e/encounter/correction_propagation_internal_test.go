@@ -86,7 +86,7 @@ func newCorrectionPropagationEncounter(
 
 	base, err := NewEncounter(&SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
 			Regions: []RegionInput{rectRegion("propagation-field", 0, 0, 10, 10)},
@@ -136,7 +136,7 @@ func newCorrectionPropagationEncounter(
 	}}
 	enc, err := LoadEncounter(&LoadEncounterInput{
 		Data: data, Sight: propagationSight{}, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
 

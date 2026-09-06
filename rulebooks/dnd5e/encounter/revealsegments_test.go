@@ -135,7 +135,7 @@ func (s *RevealSegmentsSuite) open(resolver encounter.CheckResolver) *encounter.
 	s.T().Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: resolver, Witness: s.witness,
 		Field: s.vaultField(),
 		Members: []encounter.MemberInput{

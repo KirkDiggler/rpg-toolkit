@@ -437,7 +437,7 @@ func (s *HoldOutSuite) TestReloadMidReserveKeepsTheReserve() {
 		_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:  edited,
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -651,7 +651,7 @@ func (s *HoldOutSuite) TestTheRunRefusesAReserveItCannotKeep() {
 	open := func(field encounter.FieldInput, members []encounter.MemberInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 			Field: field, Members: members, Endings: []encounter.EndingInput{withdrawn()},
 		})

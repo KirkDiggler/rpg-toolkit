@@ -38,7 +38,7 @@ func (s *ConcealLawSuite) SetupTest() {
 func (s *ConcealLawSuite) open(resolver encounter.CheckResolver, inVault bool) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: resolver, Witness: s.witness,
 		Field:   concealField(),
 		Members: partyMembers(inVault),
@@ -53,7 +53,7 @@ func (s *ConcealLawSuite) open(resolver encounter.CheckResolver, inVault bool) *
 func (s *ConcealLawSuite) openTwin() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   twinField(),
 		Members: partyMembers(false),
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -232,7 +232,7 @@ func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdi
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
 		Members: []encounter.MemberInput{
@@ -353,7 +353,7 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
 		Members: []encounter.MemberInput{
@@ -464,7 +464,7 @@ func (s *ConcealLawSuite) TestUnlockCarriesTheAppliedRoute() {
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: doorField(3, encounter.DoorIsLocked(encounter.Lock{Approaches: routes}), "two-way-lock", 1),
 		Members: []encounter.MemberInput{
 			{ID: nessa, Kind: encounter.KindPlayer, Position: nessaCell},

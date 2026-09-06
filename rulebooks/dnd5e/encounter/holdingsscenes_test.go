@@ -422,7 +422,7 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})
 	s.Require().NoError(err)
@@ -459,7 +459,7 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 		fresh, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:  data,
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
 		s.Require().NoError(err)
@@ -557,7 +557,7 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 	// whatever the guard did.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
@@ -628,7 +628,7 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
 		Members: []encounter.MemberInput{
@@ -726,7 +726,7 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOut() {
 		}
 		bare, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field:   plain,
 			Members: []encounter.MemberInput{{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell}},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -786,7 +786,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 	// actually builds.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
@@ -853,7 +853,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
 	spawn := func(holds []encounter.IntelID) (string, string) {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field: heirloomField(),
 			Members: []encounter.MemberInput{
@@ -1025,7 +1025,7 @@ func (s *HoldingsSuite) TestACarrierWalksOutWithEVERYTHINGTheyHold() {
 func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
@@ -1108,7 +1108,7 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
 		Members: []encounter.MemberInput{
@@ -1312,7 +1312,7 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})
 	s.Require().NoError(err)

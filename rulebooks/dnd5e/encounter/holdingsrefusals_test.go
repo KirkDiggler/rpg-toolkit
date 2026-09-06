@@ -205,7 +205,7 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 	fight := &downList{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: fight, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
@@ -287,7 +287,7 @@ func (s *HoldingsSuite) TestConstructionRefusesAnUnauthoredKnowledgeLink() {
 	setup := func(holds []encounter.IntelID) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field: heirloomField(),
 			Members: []encounter.MemberInput{
@@ -311,7 +311,7 @@ func (s *HoldingsSuite) TestConstructionRefusesADeadEndingAndABadExit() {
 	setup := func(mutate func(*encounter.SetupInput)) error {
 		in := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field:   heirloomField(),
 			Members: s.cast(false),
@@ -441,7 +441,7 @@ func (s *HoldingsSuite) TestLoadRefusesABrokenExitedHoldingEnding() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:  blob,
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
 		return err
@@ -475,7 +475,7 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: plain,
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
@@ -514,7 +514,7 @@ func (s *HoldingsSuite) TestAHeldPropIsGoneForABlindMemberToo() {
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: plain,
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
@@ -556,7 +556,7 @@ func (s *HoldingsSuite) TestLoadRefusesCorruptedHoldings() {
 		_, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:  blob,
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
 		return lerr
@@ -684,7 +684,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 		mutate(&field)
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field:   field,
 			Members: []encounter.MemberInput{{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell}},
@@ -795,7 +795,7 @@ func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:  blob,
 			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
 		return err
