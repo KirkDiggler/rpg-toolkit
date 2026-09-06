@@ -5,6 +5,7 @@ package session
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/npc"
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
@@ -40,12 +41,27 @@ type SessionData struct {
 	// Encounter is the ID of the encounter this session plays in.
 	Encounter string `json:"encounter"`
 
-	// There was a "windows" key here, holding a ledger of open interrupt
-	// windows and the frozen resolution waiting on each. Nothing opens a window
-	// any more (rpg-toolkit#964 slice 2), so the field retired with its
-	// producer. A stored session that still carries the key unmarshals with it
-	// ignored, which is why removing it needs no migration — the same property
-	// that let it arrive without one.
+	// Windows is the ledger of open interrupt windows — who has been asked
+	// something and what they may answer (play/interrupt).
+	//
+	// IT IS BACK, AND THIS TIME IT HAS A PRODUCER. The key retired with the
+	// walk's perception pose (rpg-toolkit#964 slice 2) because nothing in
+	// this package opened a window any more, and a ledger nothing writes is
+	// a persisted empty. Wave 5 gives it the first honest one: a monster
+	// walking out of a player's reach poses that player a window rather
+	// than swinging for them (rpg-project#316 rung 3). See [Manager.React].
+	//
+	// It needs no migration in either direction. A stored session written
+	// while the key was gone unmarshals with a zero LedgerData, which loads
+	// as an empty ledger — the same thing "nothing is open" has always
+	// meant — and a session written now unmarshals against an older build
+	// with the key ignored.
+	//
+	// THE OTHER HALF OF A PAUSE IS NOT HERE. The interrupted turn itself —
+	// which cells are left to walk, what the budget has left — belongs to
+	// the encounter and travels in its blob (encounter.EncounterData's
+	// PausedTurn, ruling R2). This aggregate holds only the questions.
+	Windows interrupt.LedgerData `json:"windows,omitempty"`
 
 	// NPCs are the sheets of members that were instantiated from code rather
 	// than loaded from a host repository — monsters, today.

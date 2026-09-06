@@ -691,6 +691,24 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrAlreadyHeld)
 	case errors.Is(err, encounter.ErrNotVisible):
 		return fmt.Errorf("%w", ErrNotVisible)
+	case errors.Is(err, encounter.ErrTurnPaused):
+		// The composition refusing a verb because a driven turn is stopped
+		// mid-walk waiting on an answer. This seam's own word for that is
+		// ErrWindowOpen, and the two are the same fact seen from either side
+		// of the boundary: a window is open, so the fight is waiting.
+		//
+		// Reachable only when the two aggregates disagree — a half-failed save
+		// that landed the encounter's pause and not the session's questions —
+		// because openForChange refuses every change verb one layer earlier.
+		// That is exactly the case an arm exists for: rare, real, and a leak
+		// of the composition's vocabulary if it had none.
+		//
+		// It arrives as the bare sentinel, without the WindowOpenError detail,
+		// because in this state there are no windows to name. encounter's
+		// ErrNotPaused deliberately has NO ARM: nothing at this seam calls
+		// ResumeTurn without first asking Paused, so an arm for it would be a
+		// claim about a path this file cannot back.
+		return fmt.Errorf("%w", ErrWindowOpen)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):
 		// Both mean the stored world cannot answer: a field that is defective
 		// or does not hold the room somebody stands in, and a blob that cannot

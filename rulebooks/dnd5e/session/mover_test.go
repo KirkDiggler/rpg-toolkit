@@ -158,28 +158,51 @@ func (s *MoverSeamSuite) duel(mgr *session.Manager, fighterAt, skeletonAt spatia
 	s.Require().NotNil(spawned.Formed, "adjacent and in sight starts the fight")
 }
 
-// TestAMonsterLeavingTheFightersReachTakesTheBlow is the design's first
-// done-when: a monster walks out of a player's reach on its OWN turn and the
-// player's longsword answers, with nobody declaring anything.
-func (s *MoverSeamSuite) TestAMonsterLeavingTheFightersReachTakesTheBlow() {
+// TestAMonsterLeavingTheFightersReachAsksTheFighter is rung 2's first
+// done-when as rung 3 left it. The monster's step still reaches the fighter's
+// opportunity attack; what changed is who answers.
+//
+// THIS TEST USED TO ASSERT THE SWING and it was right to. The seam swung the
+// fighter's longsword for her automatically, which is what rung 2 shipped and
+// walked. Rung 3 makes the same step a QUESTION (rpg-project#316, ruling R4):
+// a monster mover with a player reactor poses rather than resolving, and the
+// answer is the fighter's. The swing itself, and the beat it records, moved to
+// ReactWindowSuite, which drives the whole question-and-answer.
+//
+// What is asserted here is that nothing else moved: the trigger still fires,
+// the reactor is still this fighter, and the step is still announced from the
+// cell the monster has not yet left.
+func (s *MoverSeamSuite) TestAMonsterLeavingTheFightersReachAsksTheFighter() {
 	ctx := context.Background()
 	mgr := s.managerWith(&retreatWalker{path: []spatial.Position{hexCell(3, 0), hexCell(4, 0)}})
 	s.duel(mgr, hexCell(1, 0), hexCell(2, 0), 1)
 
-	// The fighter passes; the skeleton's whole turn drives inside this one
-	// call, and its first cell leaves the fighter's reach.
+	// The fighter passes; the skeleton's turn begins inside this one call, and
+	// its first cell leaves the fighter's reach.
 	_, err := mgr.EndTurn(ctx, &session.EndTurnInput{
 		Session: "sess", Member: "fighter",
 		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
 	})
-	s.Require().NoError(err)
+	s.Require().NoError(err, "a step that stops to ask is news, not a failure")
 
-	beats := s.reactionBeats(mgr, "fighter")
-	s.Require().Len(beats, 1, "one opportunity attack, on the one cell that left reach")
-	s.Equal("fighter", beats[0].Actor, "the reactor swings; the mover is struck")
-	s.Equal([]string{"skel-1"}, beats[0].Targets)
-	s.Equal(oaRef(), beats[0].Reaction.Ref)
-	s.Equal("Opportunity Attack", beats[0].Reaction.Name)
+	s.Empty(s.reactionBeats(mgr, "fighter"), "nothing swung on the fighter's behalf")
+
+	afford, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	var asked *session.Declaration
+	for i := range afford.Declarations {
+		if afford.Declarations[i].Verb == session.VerbReact {
+			asked = &afford.Declarations[i]
+		}
+	}
+	s.Require().NotNil(asked, "the fighter is asked whether she swings")
+	s.Require().NotNil(asked.Reaction)
+	s.Equal(oaRef(), asked.Reaction.Ref)
+	s.Equal([]session.TargetCandidate{{Member: "skel-1", Available: true}}, asked.Candidates)
+
+	where, err := mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "skel-1"})
+	s.Require().NoError(err)
+	s.Equal(hexCell(2, 0), where.Position, "the announced step is not taken until she answers")
 }
 
 // TestTheFighterLeavingAMonstersReachTakesTheBite is the same rule read from
@@ -253,6 +276,17 @@ func (s *MoverSeamSuite) TestAnAlliedReactorDoesNotSwing() {
 
 	s.Empty(s.reactionBeats(mgr, "fighter"), "a friend does not swing at a friend walking away")
 	s.Empty(s.reactionBeats(mgr, "ally"))
+
+	// AND IT COST THE ALLY NOTHING. This is ruling R1 read from the seam: the
+	// condition used to bill the reactor's economy the instant its trigger
+	// published, so a friend walking past spent the ally's reaction for a
+	// swing this gate had already refused. The offer is free now, and the
+	// proof is a reaction still in hand.
+	stored, err := s.characters.GetCharacter(ctx, "ally")
+	s.Require().NoError(err)
+	s.Require().NotNil(stored.ActionEconomy)
+	s.Equal(1, stored.ActionEconomy.ReactionsRemaining,
+		"a trigger nobody took must not bill the reactor")
 }
 
 // TestAReactorWithNoReactionLeftDoesNotSwing is TestAMonsterLeaving... with one

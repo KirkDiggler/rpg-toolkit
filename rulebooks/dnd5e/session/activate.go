@@ -138,7 +138,7 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		return nil, fmt.Errorf("activate: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", err)
 	}

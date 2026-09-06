@@ -177,7 +177,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", ErrEmptyPath)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}

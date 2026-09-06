@@ -161,7 +161,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}

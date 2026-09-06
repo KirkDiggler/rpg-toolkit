@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -72,6 +74,50 @@ func (s moverSeam) Move(
 		return fmt.Errorf("move: %w", translate(err))
 	}
 
+	// THE ONE PLACE A PLAYER IS ASKED INSTEAD OF SWUNG FOR. A monster walking
+	// out of a player's reach is the case Kirk named (rpg-project#316 rung 3):
+	// the player might want to save the swing for the second skeleton. Every
+	// other combination stays automatic — a player's own walk provokes the
+	// monsters around them, and a monster reactor answers instantly, because
+	// there is nobody to ask.
+	//
+	// A WORLD NPC'S WALK IS NOT A MONSTER'S TURN. Ruling R4 scopes the window
+	// to a driven monster turn, and a wandering placement is neither driven
+	// nor in a fight, so it keeps rung 2's behaviour rather than freezing the
+	// table on a stroll.
+	reactions := &reactionAttacks{askPlayers: moverKind(roster, mover) == string(KindMonster)}
+
+	if err := s.offerStep(ctx, enc, mover, from, to, roster, reactions); err != nil {
+		return err
+	}
+
+	// EVERY PLAYER REACTOR OF THIS STEP IS ASKED AT ONCE (ruling R3), and the
+	// step is NOT taken. Posed after the monsters' own reactions were recorded
+	// above, because those happened: a skeleton that bit during the same step
+	// bit whether or not the fighter is still deciding, and losing that beat
+	// to the pause would be a swing nobody can account for.
+	if len(reactions.asked) > 0 {
+		return s.pose(from, to, mover, reactions.asked)
+	}
+	return nil
+}
+
+// offerStep offers one announced step to the rules and records whatever reacted
+// to it. It is the body [moverSeam.Move] and [Manager.React] share.
+//
+// TWO CALLERS, ONE MACHINE, and that is the point of the split rather than a
+// convenience. An answered window resolves THE SAME STEP a second time — same
+// mover, same two cells, same fold — with only the ReactionAttacks capability
+// differing, and a second hand-written copy of this would be a second answer to
+// what a step means.
+//
+// The capability is the caller's to build: Move's asks players, React's answers
+// for exactly one of them. Everything else here — the cast, the machine, the
+// beats, the save order — is identical either way.
+func (s moverSeam) offerStep(
+	ctx context.Context, enc *encounter.Encounter, mover encounter.MemberID,
+	from, to spatial.Position, roster []encounter.Member, reactions *reactionAttacks,
+) error {
 	// THE WALKER'S OWN READIED SHEET, when this walk has one. A player's walk
 	// is charged for before the first cell ([Manager.Move]), and a reaction to
 	// one of its steps strikes that same member — so the blow must land on the
@@ -80,17 +126,15 @@ func (s moverSeam) Move(
 	// roam: neither spends anything, so there is no earlier edit to carry.
 	//
 	// The reaction's OWN price is not this seam's business either way. It is
-	// charged on the reactor's ledger during the fold, by the condition that
-	// decided to react.
+	// charged on the reactor's ledger by the condition that offered it, when
+	// the movement machine reports the reaction TAKEN (ruling R1).
 	cast := s.m.walkCast(ctx, s.scope, roster)
 
-	reactions := &reactionAttacks{
-		ctx:      ctx,
-		enc:      enc,
-		mover:    mover,
-		sheets:   sheetsByID(cast),
-		answered: map[string]combatActions.Definition{},
-	}
+	reactions.ctx = ctx
+	reactions.enc = enc
+	reactions.mover = mover
+	reactions.sheets = sheetsByID(cast)
+	reactions.answered = map[string]combatActions.Definition{}
 
 	machine, err := resolution.NewMovement(&resolution.MovementInput{
 		Mover:     mover,
@@ -120,8 +164,7 @@ func (s moverSeam) Move(
 		CheckResolver: checkSeam(s),
 		Witness:       witnessSeam{scope: s.scope},
 		// NO COST. A step is not a declared action with a profile, and the
-		// reaction's own price was already charged on the reactor's ledger
-		// during the fold.
+		// reaction's own price is charged on the reactor's own ledger.
 		Machine: machine,
 		Roller:  &diceSeam{roller: s.m.dice},
 	})
@@ -152,7 +195,7 @@ func (s moverSeam) Move(
 		)
 		// What the beat was taken AS. The numbers already crossed as an
 		// ordinary strike; this is the only thing that explains why a fighter
-		// dealt damage on a wolf's turn (encounter.ReactionIdentity).
+		// dealt damage on a skeleton's turn (encounter.ReactionIdentity).
 		beat.Reaction = &encounter.ReactionIdentity{Ref: reaction.ConditionRef, Name: name}
 		recorded = append(recorded, beat)
 	}
@@ -172,6 +215,64 @@ func (s moverSeam) Move(
 		}
 	}
 	return nil
+}
+
+// pose opens one window per player reactor of this step and reports the pause.
+//
+// THE RETURN IS THE POINT. resolution.ReactionAttacks has no channel for
+// "suspend" — its one method answers a definition or false, with no error at
+// all — so the decision to ask is remembered during Resolve and acted on here,
+// where this seam still has an error to return. [encounter.StepPausedError] is
+// what the composition reads as a checkpoint rather than a malfunction: it
+// leaves the mover standing on from, stores the rest of the turn, and narrates
+// the beat.
+//
+// The ledger is written into the session aggregate HERE rather than at commit,
+// so a verb that poses nothing writes nothing — the freeze costs exactly the
+// walks that actually stop.
+func (s moverSeam) pose(
+	from, to spatial.Position, mover encounter.MemberID, asked []askedReactor,
+) error {
+	reaction, err := poseableReaction()
+	if err != nil {
+		return fmt.Errorf("move: %w", err)
+	}
+
+	windows := make([]encounter.PausedWindow, 0, len(asked))
+	for _, ask := range asked {
+		payload, perr := marshalWindowPayload(windowPayload{
+			Mover:      string(mover),
+			From:       from,
+			To:         to,
+			Reactor:    ask.reactor,
+			Reaction:   reaction.Ref,
+			Definition: ask.definition,
+		})
+		if perr != nil {
+			return fmt.Errorf("move: %w: %v", ErrInvalidSession, perr)
+		}
+		if _, oerr := s.scope.ledger.Pose(&interrupt.PoseInput{
+			Audience: core.EntityID(ask.reactor),
+			Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
+			Payload:  payload,
+			// The sequence this verb started from, which is the only story
+			// coordinate this seam holds: the window_opened beat the
+			// composition appends for these windows lands after it, so a
+			// reader holding the story can still order the two.
+			At: s.scope.baseline,
+		}); oerr != nil {
+			return fmt.Errorf("move: %w: %v", ErrInvalidSession, oerr)
+		}
+		windows = append(windows, encounter.PausedWindow{
+			Audience: encounter.MemberID(ask.reactor),
+			Reaction: encounter.ReactionIdentity{Ref: reaction.Ref, Name: reaction.Name},
+		})
+	}
+
+	s.scope.data.Windows = s.scope.ledger.ToData()
+	s.scope.touched = true
+
+	return &encounter.StepPausedError{Windows: windows}
 }
 
 // walkCast gathers every member a step can be noticed by.
@@ -305,6 +406,42 @@ type reactionAttacks struct {
 	// carries the numbers and not the definition, and re-compiling one to
 	// record it would be a second answer to a question already settled.
 	answered map[string]combatActions.Definition
+
+	// askPlayers turns a player reactor's swing into a QUESTION. When it is
+	// set, a character who passes every gate below is not handed a weapon —
+	// they are remembered in asked, and [moverSeam.pose] opens them a window
+	// after Resolve returns.
+	//
+	// It is not a readiness or a hostility question and does not replace one:
+	// every gate still runs, and a reactor who would not have swung is not
+	// asked either. The only thing it changes is WHO decides, and the answer
+	// is only ever "the player" when the mover is a monster (ruling R4).
+	askPlayers bool
+
+	// only, when non-empty, is the single reactor this capability will answer
+	// for — [Manager.React]'s second pass, where the swing being resolved is
+	// one specific player's accepted offer and every other reactor of the same
+	// step either already swung or is still deciding.
+	only string
+
+	// definition is the attack `only` was OFFERED, replayed rather than
+	// recompiled. The offer a player accepted is the offer that was made: a
+	// sheet edited between the question and the answer must not silently
+	// change what they swing with.
+	definition combatActions.Definition
+
+	// asked is every player reactor this step must ask, in the order the
+	// machine reached them. Read by [moverSeam.pose] after Resolve returns.
+	asked []askedReactor
+}
+
+// askedReactor is one player who was offered a swing and has not answered.
+type askedReactor struct {
+	// reactor is the member being asked, and definition the melee attack
+	// they were offered — both frozen into the window's payload so the
+	// answer resolves the same swing the question described.
+	reactor    string
+	definition combatActions.Definition
 }
 
 var _ resolution.ReactionAttacks = (*reactionAttacks)(nil)
@@ -323,6 +460,20 @@ func (r *reactionAttacks) AttackFor(reactorID string) (combatActions.Definition,
 		return combatActions.Definition{}, false
 	}
 
+	// AN ANSWERED WINDOW SWINGS FOR ITS OWN AUDIENCE AND NOBODY ELSE. On
+	// React's replay the same step is offered to the rules a second time, so
+	// every reactor's condition triggers again — including the monsters that
+	// already bit during the first pass and the players still deciding. Only
+	// the member who said yes gets a weapon, and they get the one they were
+	// offered rather than a freshly compiled twin.
+	if r.only != "" {
+		if reactorID != r.only {
+			return combatActions.Definition{}, false
+		}
+		r.answered[reactorID] = r.definition
+		return r.definition, true
+	}
+
 	// HOSTILE, AND KNOWN TO BE. A pair the run cannot answer for is not a
 	// licence to swing: "unknown" is the absent value that says the fold has
 	// nothing on this pair, and refusing there is what keeps a wandering NPC
@@ -334,6 +485,20 @@ func (r *reactionAttacks) AttackFor(reactorID string) (combatActions.Definition,
 
 	definition, ok := r.meleeAttackFor(reactorID, sheets)
 	if !ok {
+		return combatActions.Definition{}, false
+	}
+
+	// THE PLAYER IS ASKED, LAST, AFTER EVERY OTHER GATE. Asked before them, a
+	// window would open for an ally, for a friend of the run, or for a caster
+	// with nothing to swing — three questions with one answer, put to a person
+	// who has to read them. Every gate above has to say yes before the pause
+	// is worth anybody's turn.
+	//
+	// FALSE HERE COSTS THE REACTOR NOTHING. The condition bills only when the
+	// machine reports a reaction TAKEN (ruling R1), and declining is not
+	// taking — which is exactly what makes `hold` free.
+	if r.askPlayers && sheets.character != nil {
+		r.asked = append(r.asked, askedReactor{reactor: reactorID, definition: definition})
 		return combatActions.Definition{}, false
 	}
 

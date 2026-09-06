@@ -29,6 +29,11 @@ const (
 	// ref can never collide with a sealed string, however the ref catalog
 	// grows.
 	variantActivatePrefix = "session:activate:v2:"
+	// variantReactPrefix namespaces one open window's id, so the REACT rows
+	// of two windows posed to the same member in the same step do not
+	// collide — and so a window id can never be mistaken for a sealed
+	// string however the ledger numbers them.
+	variantReactPrefix = "session:react:v2:"
 )
 
 // errDeclarationIDCollision is returned internally when two non-identical
@@ -73,6 +78,22 @@ type declarationIDInput struct {
 	// ActionType mid-turn, and Afford regenerates the offer before execution
 	// either way (rpg-project#301 §4).
 	Ability string
+
+	// Window is the open interrupt window this declaration answers, for
+	// [VerbReact]. Non-empty for [VerbReact] and empty for every other verb.
+	//
+	// IT IS THE WHOLE VARIANT, like Ability's — and for a sharper reason. A
+	// window id is monotonic within an encounter and never reused
+	// (play/interrupt), so a selector for a window that has been answered
+	// can never be minted again: an id echoed after somebody else's answer
+	// resumed the turn matches nothing open, and [Manager.React] refuses it
+	// as stale rather than resolving a swing twice.
+	//
+	// It travels as a string because interrupt.WindowID may not cross this
+	// package's exported surface (law S2) — and because nothing outside ever
+	// parses it back out: React matches a declaration id by REGENERATING
+	// every open window's selector, never by decoding one.
+	Window string
 }
 
 // selectorDocument is the canonical JSON value a declaration ID is derived
@@ -109,7 +130,7 @@ func declarationID(input declarationIDInput) (string, error) {
 		return "", err
 	}
 
-	variant, err := selectorVariant(input.Verb, input.Attack, input.Ability)
+	variant, err := selectorVariant(input.Verb, input.Attack, input.Ability, input.Window)
 	if err != nil {
 		return "", err
 	}
@@ -162,7 +183,7 @@ func canonicalSelectorVariant(raw json.RawMessage) (json.RawMessage, error) {
 // under the current version without an explicit bump.
 func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 	switch verb {
-	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbDeathSave:
+	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbDeathSave, VerbReact:
 	default:
 		return fmt.Errorf("unsupported declaration verb %q", verb)
 	}
@@ -178,7 +199,7 @@ func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 // use sealed strings, Activate a namespaced ability ref, and Attack serializes
 // the complete validated definition.
 func selectorVariant(
-	verb Verb, attack *combatActions.Definition, ability string,
+	verb Verb, attack *combatActions.Definition, ability, window string,
 ) (json.RawMessage, error) {
 	// Cross-verb material is refused rather than ignored. A verb carrying the
 	// other verb's material is a producer defect, and a selector that silently
@@ -189,6 +210,9 @@ func selectorVariant(
 	if verb != VerbActivate && ability != "" {
 		return nil, fmt.Errorf("%s declaration must not carry an ability ref", verb)
 	}
+	if verb != VerbReact && window != "" {
+		return nil, fmt.Errorf("%s declaration must not carry a window id", verb)
+	}
 
 	switch verb {
 	case VerbMove:
@@ -197,6 +221,15 @@ func selectorVariant(
 		return json.RawMessage(`"` + variantDeathSaveSealed + `"`), nil
 	case VerbEndTurn:
 		return json.RawMessage(`"` + variantEndTurnSealed + `"`), nil
+	case VerbReact:
+		if window == "" {
+			return nil, fmt.Errorf("react declaration requires a window id")
+		}
+		raw, err := json.Marshal(variantReactPrefix + window)
+		if err != nil {
+			return nil, fmt.Errorf("window id marshal: %w", err)
+		}
+		return json.RawMessage(raw), nil
 	case VerbActivate:
 		if ability == "" {
 			return nil, fmt.Errorf("activate declaration requires an ability ref")

@@ -183,37 +183,48 @@
 // a thing in a character's inventory; a holding is run-scoped and writes no
 // sheet.
 //
-// # The suspension spine, and where it went
+// # The suspension spine, and what brought it back
 //
 // S5 and S7 were laws here through v0.2.0: Pending was the one suspension
 // vocabulary, a frozen resolution was data, and an open window froze every
-// change verb until it was answered. They are gone, because their only
-// producer was the rule above. Nothing opened a window once the walk stopped
-// posing one, and a spine with no producer is a shape no caller can reach:
-// Pending always empty, Answer always refusing, a freeze branch no test can
-// enter.
+// change verb until it was answered. They went, because their only producer
+// was the SDK deciding when a fight starts — and a spine with no producer is
+// a shape no caller can reach: Pending always empty, Answer always refusing,
+// a freeze branch no test can enter.
 //
-// NOTHING ABOUT THE CUSTODY DESIGN WAS LOST. It lives in play/interrupt, which
-// this wave did not touch by a single byte and whose own suite is that design's
-// home: pose, audience, options, one-answer-per-window, and the ledger's
-// persisted shape are all tested there, against the module that owns them.
-// What retired was this package's ADAPTER to it — roughly 250 lines of walk-
-// shaped plumbing.
+// NOTHING ABOUT THE CUSTODY DESIGN WAS LOST while it was gone. It lives in
+// play/interrupt, whose own suite is that design's home: pose, audience,
+// options, one-answer-per-window, and the ledger's persisted shape are all
+// tested there, against the module that owns them. What retired was this
+// package's ADAPTER to it.
 //
-// Wave 5 brings the first honest producer (a reaction: a real checkpoint that
-// is not a perception rule) and re-creates four things, each of which existed
-// and worked. The reference implementation is this module's git history at the
-// rpg-toolkit#964 slice-2 commit, where all four are readable in full:
+// Wave 5 landed the first honest producer (rpg-project#316 rung 3). A monster
+// walking out of a player's reach used to swing the player's sword for them;
+// now it asks. The four things doc.go promised would come back are back, and
+// the reference implementation was this module's own history at the
+// rpg-toolkit#964 slice-2 commit:
 //
-//   - the ledger load in openForWrite, and its reject-never-crash handling of a
-//     stored ledger no version of this module wrote;
-//   - the verb classification for the freeze — which verbs are refused while a
-//     window is open and which are not, with reads deliberately exempt;
-//   - restart survival: the frozen value written to the session aggregate, the
-//     encounter-then-session write order, and the partial-save report;
-//   - an Answer path, which will NOT be the old one — a reaction's window has a
-//     different audience, different options and a different payload, so the
-//     resume half was going to be rewritten whichever way this went.
+//   - the ledger load in openForWrite, and its reject-never-crash handling of
+//     a stored ledger no version of this module wrote;
+//   - the verb classification for the freeze — [Manager.openForChange] refuses
+//     every change verb with [ErrWindowOpen] while a window is open,
+//     [Manager.React] uses openForWrite because a frozen session is exactly
+//     the state it exists to operate on, and reads are exempt;
+//   - restart survival: SessionData.Windows holds the questions, the
+//     encounter's own blob holds the interrupted turn, and the two are written
+//     encounter-then-session as every verb writes them;
+//   - an answer path, which is NOT the old one, exactly as predicted. A
+//     reaction's window has a third-party audience, two different options and
+//     a payload that freezes somebody ELSE's step, so [Manager.React] shares
+//     nothing with the walk's old Answer but the ledger underneath it.
+//
+// Three things are deliberately NOT here, and each is a ruling rather than an
+// omission (rpg-project#392): only a monster's step asks, because players are
+// never hostile to each other in any shipped dungeon; a window has no timer,
+// because in playtest a visible freeze costs nobody anything; and every player
+// reactor of one step is asked at once rather than serially, because the
+// ledger already holds several windows and serial asking would need a memory
+// of who had already held.
 //
 // # Laws
 //

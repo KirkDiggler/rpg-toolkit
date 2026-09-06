@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/npc"
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -393,7 +394,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -544,7 +545,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -677,7 +678,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 		return nil, fmt.Errorf("place npc: %w: %w", ErrBadNPC, err)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -880,7 +881,7 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
@@ -926,7 +927,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: %w", ErrNilInput)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
@@ -952,11 +953,12 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 // keeps a read from carrying a value it cannot act on, and keeps the "which ID
 // do I save under" question answered in exactly one place.
 //
-// It used to have a twin, openForChange, that additionally refused a verb while
-// an interrupt window was open. Nothing in this module opens a window any more
-// (rpg-toolkit#964 slice 2), so a freeze that could never be entered was a
-// branch no test could reach — see doc.go on what retired with the walk's rule
-// and what wave 5 re-creates.
+// IT DOES NOT FREEZE, and that is the whole point of its twin. [Manager.React]
+// must reach a session with an open window — it is the only thing that can
+// close one — so the freeze lives in [Manager.openForChange] instead, and
+// every other write verb picks it up by picking that opener. Forgetting the
+// freeze therefore requires choosing the one React uses rather than merely
+// omitting a line (rpg-project#316 rung 3, restoring the #964 slice-2 split).
 func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeScope, error) {
 	if sessionID == "" {
 		return nil, ErrNoSessionID
@@ -964,6 +966,15 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	data, err := m.loadSessionData(ctx, sessionID)
 	if err != nil {
 		return nil, err
+	}
+
+	// REJECT, NEVER CRASH. A stored ledger LoadLedger refuses is a blob no
+	// version of this module wrote, so the honest answer is that the session
+	// record is unreadable — not to repair it into something plausible and
+	// then resume a turn against questions that were never asked.
+	ledger, err := interrupt.LoadLedger(data.Windows)
+	if err != nil {
+		return nil, fmt.Errorf("session %q: %w: %v", sessionID, ErrInvalidSession, err)
 	}
 
 	// scope is allocated here, with its Session/Encounter/Data half filled,
@@ -978,6 +989,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		session:   sessionID,
 		encounter: data.Encounter,
 		data:      data,
+		ledger:    ledger,
 		sight:     &sightSeam{},
 	}
 	enc, baseline, standing, err := m.loadWorldWithBaseline(
@@ -993,6 +1005,57 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	return scope, nil
 }
 
+// openForChange is openForWrite plus the freeze: a verb that would change the
+// world is refused while an interrupt window is open.
+//
+// THE SPLIT IS STRUCTURAL ON PURPOSE. [Manager.React] must reach a frozen
+// session — it is the only thing that can unfreeze one — so the check cannot
+// live inside openForWrite. Putting it in a differently named opener means a
+// new verb picks its policy by picking its opener, and the failure mode
+// becomes "chose the wrong one", which a reviewer can see, rather than
+// "omitted a line", which nobody can.
+//
+// READS ARE EXEMPT and use m.open / m.loadWorld. Looking at a fight nobody may
+// change is exactly what a player waiting on somebody else's answer does, and
+// refusing it would blank the screen of every member at the table for the one
+// who has to decide.
+func (m *Manager) openForChange(ctx context.Context, sessionID string) (*writeScope, error) {
+	scope, err := m.openForWrite(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := scope.frozen(); err != nil {
+		return nil, err
+	}
+	return scope, nil
+}
+
+// frozen reports every open window as a [WindowOpenError], or nil while the
+// world is running.
+//
+// EVERY window rather than the oldest one, which is where this differs from
+// the value it replaces. One step can ask several players at once (ruling R3)
+// and the freeze lifts only when the LAST of them answers, so naming one would
+// tell a refused caller the fight is one answer away when it is three.
+func (s *writeScope) frozen() error {
+	open, err := s.ledger.Open()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	if len(open) == 0 {
+		return nil
+	}
+	detail := &WindowOpenError{
+		Windows:   make([]string, 0, len(open)),
+		Audiences: make([]string, 0, len(open)),
+	}
+	for _, w := range open {
+		detail.Windows = append(detail.Windows, windowIDString(w.ID))
+		detail.Audiences = append(detail.Audiences, string(w.Audience))
+	}
+	return detail
+}
+
 // writeScope is everything a write verb needs to act, save, and fan out: the
 // live encounter, the session record, the IDs to save and address them under,
 // and the sequence boundary separating what was already recorded from what this
@@ -1003,6 +1066,15 @@ type writeScope struct {
 	data      *SessionData
 	enc       *encounter.Encounter
 	baseline  uint64
+
+	// ledger is the session's open interrupt windows, loaded beside data
+	// because it IS part of the session record (SessionData.Windows) and a
+	// verb that poses or answers one has to read and write it in the same
+	// breath as the aggregate it travels in.
+	//
+	// Never nil: LoadLedger on a zero LedgerData is an empty ledger, which
+	// is what "nothing is open" has always meant.
+	ledger *interrupt.Ledger
 
 	// standing is who-is-down, answered from the sheets this call holds.
 	//

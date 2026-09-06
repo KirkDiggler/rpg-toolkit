@@ -90,7 +90,7 @@ func (m *Manager) Search(ctx context.Context, in *SearchInput) (*SearchOutput, e
 		return nil, fmt.Errorf("search: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}

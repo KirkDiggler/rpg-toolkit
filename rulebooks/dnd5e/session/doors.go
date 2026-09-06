@@ -131,7 +131,7 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 		return nil, fmt.Errorf("opendoor: %w", ErrNoConnection)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("opendoor: %w", err)
 	}
@@ -245,7 +245,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		return nil, fmt.Errorf("unlock: %w", ErrNoConnection)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w", err)
 	}

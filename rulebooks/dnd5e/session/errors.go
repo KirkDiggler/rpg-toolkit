@@ -3,7 +3,11 @@
 
 package session
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 var (
 	// ErrNilInput is returned when a verb is called with a nil input struct.
@@ -508,11 +512,51 @@ var (
 	// rather than in sentinels_test.go for exactly that reason.
 	ErrBadCost = errors.New("cost cannot be charged")
 
-	// ErrFrozen, ErrNoWindow, ErrNotAudience, ErrNotOffered and ErrNoWindowID
-	// lived here. Every one of them described an open interrupt window, and
-	// nothing in this module opens one (rpg-toolkit#964 slice 2) — a sentinel
-	// no code path can return reads as a condition a caller should handle, and
-	// is worse than an absence. See doc.go for what wave 5 re-creates.
+	// ErrWindowOpen refuses a change verb while somebody is being asked
+	// something. It is the freeze: a monster's walk stopped mid-step to ask
+	// a player whether they react, and until that answer arrives the world
+	// must not move underneath the question (rpg-project#316 rung 3).
+	//
+	// IT IS THE SUCCESSOR TO ErrFrozen, renamed rather than restored. The
+	// old one described a walker's own suspended resolution; this one
+	// describes a THIRD PARTY being asked about somebody else's step, which
+	// is a different fact with a different audience.
+	//
+	// [Manager.React] is the one verb that reaches a frozen session, and it
+	// picks that policy by picking its opener rather than by omitting a
+	// line — see openForChange. Reads are exempt: looking at a fight nobody
+	// may change is exactly what a player waiting on somebody else does.
+	//
+	// It arrives as a [WindowOpenError], which names the open windows and
+	// who each is waiting on, so a host can say WHO the table is waiting
+	// for rather than only that it is waiting.
+	ErrWindowOpen = errors.New("an interrupt window is open")
+
+	// ErrNoWindow is returned when a declaration id names no open window —
+	// it was answered already, it belongs to a fight that has moved on, or
+	// it was never a window declaration at all.
+	//
+	// A STALE ANSWER, not a malformed one. The id is opaque and a client
+	// echoes it back verbatim, so the honest reading of one that matches
+	// nothing open is "you are answering a question that is no longer
+	// being asked" — which is what a second click on a REACT button after
+	// somebody else's answer resumed the turn produces.
+	ErrNoWindow = errors.New("no such open window")
+
+	// ErrNotAudience is returned when a member answers a window that was
+	// posed to somebody else. Two fighters can be asked about one step
+	// (ruling R3), and each may answer only their own.
+	//
+	// DISTINCT FROM ErrNoWindow on purpose: the window exists and is open,
+	// and the caller is simply not the one being asked. A host maps this to
+	// a permission refusal and the other to a stale one.
+	ErrNotAudience = errors.New("member is not this window's audience")
+
+	// ErrNotOffered is returned when the choice named is not one this
+	// window offers. A reaction window offers exactly [ReactStrike] and
+	// [ReactHold]; anything else is a client sending a value this build
+	// never posed.
+	ErrNotOffered = errors.New("choice is not offered by this window")
 
 	// ErrInvalidSession is returned when stored session state is not a state
 	// this module could have written — a hand-edited or corrupted blob.
@@ -623,3 +667,34 @@ var (
 	// pack_contents_test.go); reachable only if a future pack ships broken.
 	ErrBadPackContents = errors.New("pack contents do not resolve against the catalog")
 )
+
+// WindowOpenError is [ErrWindowOpen]'s detail: which windows are open and who
+// each of them is waiting on.
+//
+// A LIST, NOT THE OLDEST ONE. The old FrozenError named a single window
+// because the walk posed one at a time; a step can now ask every player
+// reactor at once (ruling R3), and telling a refused caller about one of
+// three would make the freeze look like it was about to lift twice before it
+// did. Ordered by window id, which is pose order and is persisted, so a
+// caller who asks twice is told the same thing twice.
+type WindowOpenError struct {
+	// Windows are the open windows' ids, in pose order. Same ids the REACT
+	// declarations encode; a host may match them up.
+	Windows []string
+
+	// Audiences are who is being asked, one per entry of Windows and in the
+	// same order. Kept parallel rather than paired into a struct because
+	// this is a refusal a host renders, not a shape it acts on.
+	Audiences []string
+}
+
+// Error names the freeze and who it is waiting on.
+func (e *WindowOpenError) Error() string {
+	if len(e.Audiences) == 0 {
+		return "an interrupt window is open"
+	}
+	return fmt.Sprintf("an interrupt window is open: waiting on %s", strings.Join(e.Audiences, ", "))
+}
+
+// Unwrap makes errors.Is(err, ErrWindowOpen) true for this detail type.
+func (e *WindowOpenError) Unwrap() error { return ErrWindowOpen }

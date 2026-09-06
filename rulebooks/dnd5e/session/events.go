@@ -306,6 +306,14 @@ func kindFor(beat string) EventKind {
 	// "held" and "dropped".
 	case "arrived":
 		return EventArrived
+	// A step stopping to ask somebody (rpg-project#316 rung 3). The
+	// composition's word crosses unchanged, and unlike every other case here
+	// the string is not a literal on either side: the composition exports it
+	// as encounter.BeatWindowOpened precisely because a decoder was being
+	// written against it in the same wave, so a rename fails to compile here
+	// instead of quietly producing a beat nobody renders.
+	case encounter.BeatWindowOpened:
+		return EventWindowOpened
 	default:
 		return EventUnknown
 	}
@@ -424,6 +432,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return ArrivedBody{ID: p.ID, Kind: PlacementKind(p.Kind), Cell: p.Cell}
+	case EventWindowOpened:
+		return windowOpenedBody(payload)
 	case EventStruck:
 		return structBody(payload, true)
 	case EventMissed:
@@ -1174,6 +1184,74 @@ func (a beatAttack) toRef() AttackRef {
 	return AttackRef{Ref: a.Ref, Name: a.Name, DamageType: DamageType(a.DamageType)}
 }
 
+// beatReaction is the wire shape the composition writes a reaction identity
+// as (encounter's Record) — the key that has been on every reaction beat since
+// rung 2 and that nothing read.
+type beatReaction struct {
+	Ref  string `json:"ref"`
+	Name string `json:"name"`
+}
+
+// toRef converts a decoded reaction identity, reporting false for a present
+// but incomplete one. Nil converts to nil and true: an ordinary swing carries
+// no reaction and that is an answer, not a defect.
+func (r *beatReaction) toRef() (*ReactionRef, bool) {
+	if r == nil {
+		return nil, true
+	}
+	if r.Ref == "" || r.Name == "" {
+		return nil, false
+	}
+	return &ReactionRef{Ref: r.Ref, Name: r.Name}, true
+}
+
+// windowOpenedBody decodes the composition's window_opened beat.
+//
+// The beat carries one entry per member asked, each with its own reaction
+// identity; this seam's body carries the names as a list and the reaction
+// once, because exactly one reaction can reach a movement fold today
+// ([WindowOpenedBody]'s own doc). A beat whose entries disagree about the
+// reaction is one this build cannot flatten honestly, so it does not: it
+// declines to type, and the event is still delivered as a sequence its
+// recipient can count.
+func windowOpenedBody(payload []byte) EventBody {
+	var p struct {
+		Member  string           `json:"member"`
+		From    spatial.Position `json:"from"`
+		To      spatial.Position `json:"to"`
+		Windows []struct {
+			Audience string        `json:"audience"`
+			Reaction *beatReaction `json:"reaction"`
+		} `json:"windows"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Member == "" || len(p.Windows) == 0 {
+		return nil
+	}
+
+	body := WindowOpenedBody{
+		Mover:    p.Member,
+		From:     p.From,
+		To:       p.To,
+		Audience: make([]string, 0, len(p.Windows)),
+	}
+	for i, w := range p.Windows {
+		if w.Audience == "" {
+			return nil
+		}
+		reaction, named := w.Reaction.toRef()
+		if !named || reaction == nil {
+			return nil
+		}
+		if i == 0 {
+			body.Reaction = *reaction
+		} else if *reaction != body.Reaction {
+			return nil
+		}
+		body.Audience = append(body.Audience, w.Audience)
+	}
+	return body
+}
+
 // structBody decodes a struck or missed outcome beat's shared fields.
 // wantAmount distinguishes the two: a struck beat carries Amount and
 // Critical, a missed one carries neither, matching StruckBody/MissedBody's
@@ -1195,7 +1273,7 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 	for key, value := range outer {
 		switch key {
 		case "beat", "actor", "targets", "roll", "total", "against", "amount", "critical",
-			"attack", "damage_components", "advantage_sources", "disadvantage_sources":
+			"attack", "reaction", "damage_components", "advantage_sources", "disadvantage_sources":
 			if isJSONNull(value) {
 				return nil
 			}
@@ -1211,6 +1289,7 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		Amount              int                    `json:"amount"`
 		Critical            bool                   `json:"critical"`
 		Attack              beatAttack             `json:"attack"`
+		Reaction            *beatReaction          `json:"reaction"`
 		AdvantageSources    []AttackModifierSource `json:"advantage_sources"`
 		DisadvantageSources []AttackModifierSource `json:"disadvantage_sources"`
 	}
@@ -1236,6 +1315,14 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 	if !ok {
 		return nil
 	}
+	// The reaction identity, present only when the composition recorded the
+	// beat AS one (encounter.ReactionIdentity). Absent is the common case and
+	// stays nil; a present-but-nameless one is a payload this decoder does not
+	// recognise, since Record refuses to write a half-empty identity.
+	reaction, named := p.Reaction.toRef()
+	if !named {
+		return nil
+	}
 	if wantAmount {
 		return StruckBody{
 			Attacker: p.Actor, Target: p.Targets[0],
@@ -1243,11 +1330,13 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 			Attack: p.Attack.toRef(), Critical: p.Critical,
 			DamageComponents: components,
 			AdvantageSources: p.AdvantageSources, DisadvantageSources: p.DisadvantageSources,
+			Reaction: reaction,
 		}
 	}
 	return MissedBody{
 		Attacker: p.Actor, Target: p.Targets[0],
 		Roll: p.Roll, Total: p.Total, Against: p.Against, Attack: p.Attack.toRef(),
+		Reaction: reaction,
 	}
 }
 

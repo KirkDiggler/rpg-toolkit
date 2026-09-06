@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -66,6 +67,26 @@ const (
 	// Spelled here so the declaration selector's verb byte is owned by the seam
 	// that prices it, not borrowed from the rulebook's action vocabulary.
 	VerbEndTurn Verb = "end_turn"
+
+	// VerbReact is [Manager.React]: answering an open interrupt window —
+	// striking, or holding the reaction (rpg-project#316 rung 3).
+	//
+	// THE ONE VERB THAT IS NOT ABOUT THIS MEMBER'S TURN. Every other row
+	// here is compiled for the active member and gated on the clock saying
+	// so; a REACT row exists precisely because it is somebody ELSE's turn —
+	// a skeleton is mid-walk and this member is being asked whether they
+	// swing at it. So it bypasses the not-your-turn gate rather than passing
+	// it, which is the one exception [Manager.Afford]'s early returns carry.
+	//
+	// One row per open window whose audience is this member: a step can ask
+	// several people (ruling R3), and one person can be asked about several
+	// steps in a row. Its selector variant is the window's own id.
+	//
+	// The two answers are NOT on the row. The verb implies strike-or-hold
+	// until a second reaction needs a third option, at which point the option
+	// list becomes wire material; today a client draws two buttons from the
+	// verb itself.
+	VerbReact Verb = "react"
 )
 
 // Slot names which of a turn's three economy shapes a [Declaration] draws
@@ -196,6 +217,15 @@ type Declaration struct {
 	// DeathSave is present only on a compiled Death Save declaration.
 	DeathSave *DeathSaveRef `json:"death_save,omitempty"`
 
+	// Reaction is the sole public reaction identity, present on every
+	// compiled [VerbReact] declaration and absent from every other row —
+	// the same presence law [Declaration.Attack] keeps.
+	//
+	// It names WHAT the member is being asked to react with, so a dock can
+	// say "Opportunity Attack" rather than "React", and so the button and
+	// the struck beat that follows it name the same thing.
+	Reaction *ReactionRef `json:"reaction,omitempty"`
+
 	// TargetKind follows the fixed mapping Attack -> TargetMember, Move ->
 	// TargetPath, DeathSave -> TargetNone, and EndTurn -> TargetNone. Activate
 	// is ability-defined: Help uses TargetMember and every other currently
@@ -315,6 +345,18 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return nil, fmt.Errorf("afford: %w", err)
 	}
 
+	// The ledger, read the same way every write verb reads it and with the
+	// same trust boundary: a stored ledger this build could not have written
+	// is a refusal, not a repair.
+	ledger, err := interrupt.LoadLedger(data.Windows)
+	if err != nil {
+		return nil, fmt.Errorf("afford: session %q: %w: %v", in.Session, ErrInvalidSession, err)
+	}
+	open, err := ledger.Open()
+	if err != nil {
+		return nil, fmt.Errorf("afford: %w: %v", ErrInvalidSession, err)
+	}
+
 	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", translate(err))
@@ -324,6 +366,26 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		// "[]", never "null" — the same reason above applies to the wire
 		// shape as much as the tag.
 		return &AffordOutput{Clock: ClockWorld, Declarations: []Declaration{}}, nil
+	}
+
+	// A WINDOW IS OPEN, checked BEFORE the not-your-turn gate and answered
+	// instead of it. That order is the whole point of the REACT row: it is
+	// somebody ELSE's turn by construction — a skeleton is mid-walk — so the
+	// gate below would refuse the one declaration this member most needs to
+	// see, and would refuse it with the wrong reason.
+	//
+	// While the freeze holds, EVERY other verb for EVERY member is
+	// unavailable with [ShortfallWindowOpen], because every other verb is
+	// refused with ErrWindowOpen at its own door. Announcing the refusal
+	// before the click is what Afford is for; a panel that stayed lit here
+	// would offer buttons the seam has already decided to reject.
+	//
+	// A member on the WORLD clock is untouched by all of this and returned
+	// above: the economy does not apply to them, they have no declarations to
+	// mark unavailable, and no window can be posed to them because a window is
+	// posed inside a fight.
+	if len(open) > 0 {
+		return affordWhileFrozen(in.Session, in.Member, open)
 	}
 
 	// NOT YOUR TURN, checked FIRST and cheaply — clock.Active is already in
@@ -473,4 +535,71 @@ func slotOf(p *combat.SpendProfile) Slot {
 	default:
 		return SlotNone
 	}
+}
+
+// affordWhileFrozen is the whole answer for one member while an interrupt
+// window is open anywhere in the fight: their own REACT rows, and every other
+// verb marked unavailable for the reason it will actually be refused with.
+//
+// ONE ACTIVATE ROW, NOT SEVEN, and one blocked row per other verb — the same
+// shape the not-your-turn path emits, for the same reason: the reason is
+// identical for every one of them, so seven copies of "the table is waiting"
+// would be a panel that looks like it has choices.
+func affordWhileFrozen(session, member string, open []interrupt.Window) (*AffordOutput, error) {
+	frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
+	declarations := []Declaration{
+		blockedDeclaration(VerbAttack, TargetMember, frozen),
+		blockedDeclaration(VerbMove, TargetPath, frozen),
+		blockedDeclaration(VerbActivate, TargetNone, frozen),
+		blockedDeclaration(VerbEndTurn, TargetNone, frozen),
+	}
+
+	for _, window := range open {
+		if string(window.Audience) != member {
+			continue
+		}
+		row, err := reactDeclaration(session, member, window)
+		if err != nil {
+			return nil, fmt.Errorf("afford: %w", err)
+		}
+		declarations = append(declarations, row)
+	}
+
+	sortDeclarations(declarations)
+	return &AffordOutput{Clock: ClockTurn, Declarations: declarations}, nil
+}
+
+// reactDeclaration compiles one open window into the row its audience sees.
+//
+// AVAILABLE IS ALWAYS TRUE. Every gate a reaction has was passed before the
+// window was posed — hostility, reach, a weapon to swing, a reaction still in
+// hand — which is exactly why the question was worth asking. A REACT row that
+// could be unavailable would be a question nobody should have been asked.
+//
+// The candidate is the mover, singular: this is a swing at the member who is
+// walking away, and the ledger's payload is where that name comes from rather
+// than from a fresh look at the world, so the offer and the answer describe the
+// same step.
+func reactDeclaration(session, member string, window interrupt.Window) (Declaration, error) {
+	payload, err := thawWindowPayload(window.Payload, string(window.Audience))
+	if err != nil {
+		return Declaration{}, err
+	}
+	name, known := reactionName[payload.Reaction]
+	if !known {
+		return Declaration{}, fmt.Errorf("%w: no display name for reaction %q", ErrInvalidWorld, payload.Reaction)
+	}
+	id, err := reactDeclarationID(session, member, window.ID)
+	if err != nil {
+		return Declaration{}, err
+	}
+	return Declaration{
+		Verb:       VerbReact,
+		Slot:       SlotReaction,
+		Available:  true,
+		ID:         id,
+		Reaction:   &ReactionRef{Ref: payload.Reaction, Name: name},
+		TargetKind: TargetMember,
+		Candidates: []TargetCandidate{{Member: payload.Mover, Available: true}},
+	}, nil
 }
