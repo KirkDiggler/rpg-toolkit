@@ -11,8 +11,25 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**rpg-toolkit#1544 (rpg-project#376) — `session.Unpack` (complete,
+2026-09-06).** New verb: removes `Quantity` units of a pack the actor
+already owns and adds each of its `Contents` lines in their place (scaled
+by `Quantity`), sharing `equipment.ResolvePackContents` and
+`character.{Add,Remove}InventoryItem` with the rest of the currency/Sell
+work rather than a second implementation. The first session verb with no
+`scope.enc` call at all — verified rather than assumed: its target is
+something the actor already owns, no reach/visibility check, no story
+beat, and no existing verb was purely self-targeted before this one.
+`openForWrite`/`commit` still load and resave the encounter aggregate
+(every write verb does), this file just never reads or writes it. Covers
+both a pack a character started with (now decomposed at creation,
+`#1545`) and one bought later via `Trade` (which does NOT auto-decompose a
+bought pack — `Unpack` is the one generic mechanism for both, per
+design.md). Round-trip tested end to end: unpack a pack, sell one of its
+contents to a vendor, no special-casing needed.
+
 **rpg-toolkit#1544 (rpg-project#376) — pack catalog completeness + real
-decomposition (in progress, PR 1 of 2, 2026-09-06).** Every one of the 7
+decomposition (complete, PR 1 of 2, 2026-09-06).** Every one of the 7
 starting packs' `Contents` now resolves against the catalog — verified
 directly rather than assumed: only `explorer-pack`/`dungeoneer-pack`
 resolved before this, the other 5 referenced ~23 items (candles, ink, a

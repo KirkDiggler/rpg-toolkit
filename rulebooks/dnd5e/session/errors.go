@@ -576,13 +576,15 @@ var (
 	// that package too.
 	ErrOutOfStock = errors.New("vendor cannot fulfill this trade")
 
-	// ErrNotInInventory is returned when Trade's selling actor does not own
-	// at least as many units of the item as Give names. Wraps the
-	// character package's own rpgerr.CodeNotFound with %v rather than %w —
-	// that package uses rpgerr codes rather than package-level sentinels
-	// (AddInventoryItem's own convention), so there is no inner sentinel to
-	// chain, only a message worth keeping.
-	ErrNotInInventory = errors.New("actor does not own enough of this item to sell")
+	// ErrNotInInventory is returned when an actor does not own at least as
+	// many units of an item as a verb needs to remove — Trade's selling
+	// actor against Give, or Unpack's actor against the pack it names
+	// (rpg-toolkit#1544). Wraps the character package's own
+	// rpgerr.CodeNotFound with %v rather than %w — that package uses
+	// rpgerr codes rather than package-level sentinels (AddInventoryItem's
+	// own convention), so there is no inner sentinel to chain, only a
+	// message worth keeping.
+	ErrNotInInventory = errors.New("actor does not own enough of this item")
 
 	// ErrWrongPrice is returned when Trade's Give.Currency does not exactly
 	// equal the server-computed price of what Receive names.
@@ -602,4 +604,22 @@ var (
 	// the same double-wrap convention ErrOutOfStock already applies for
 	// npcs.ErrOutOfStock.
 	ErrInsufficientFunds = errors.New("actor cannot afford this trade")
+
+	// ErrInvalidUnpackRequest is returned when Unpack's ItemID is empty or
+	// its Quantity is nonpositive — a caller defect in the request's shape,
+	// the same convention ErrInvalidTradeOffer already applies to Trade.
+	ErrInvalidUnpackRequest = errors.New("invalid unpack request")
+
+	// ErrNotAPack is returned when Unpack's ItemID does not name a pack.
+	// Wraps equipment.ResolvePackContents' own (value, false, nil) —
+	// "doesn't apply," not an error there, the same npcs.VendorInventoryFromNPCData
+	// convention — into this seam's own sentinel.
+	ErrNotAPack = errors.New("item is not a pack")
+
+	// ErrBadPackContents is returned when Unpack's target IS a pack but one
+	// of its own Contents lines does not resolve against the catalog — a
+	// content-authoring defect rather than a caller mistake. Every pack in
+	// the current catalog is verified clean (equipment's own
+	// pack_contents_test.go); reachable only if a future pack ships broken.
+	ErrBadPackContents = errors.New("pack contents do not resolve against the catalog")
 )
