@@ -767,6 +767,14 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		if err := m.saveCharacterRecord(ctx, scope, data); err != nil {
 			return err
 		}
+		// The walker's own sheet follows what the interaction did to it, so
+		// the NEXT step of the same walk resolves over the damage this one
+		// dealt rather than over the sheet the walk started with. See
+		// [writeScope.walker].
+		if scope.walker != nil && scope.walker.ID == data.ID {
+			scope.walker = data
+			scope.walkerDirtied = true
+		}
 	}
 
 	for _, dirty := range out.DirtyMonsters {

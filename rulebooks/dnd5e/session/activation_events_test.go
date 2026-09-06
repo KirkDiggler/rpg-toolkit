@@ -50,7 +50,7 @@ func newActivationEventScene(
 	scene.mgr = mgr
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
@@ -329,7 +329,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	require.NoError(t, err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{

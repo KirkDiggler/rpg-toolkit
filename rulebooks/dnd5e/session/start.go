@@ -165,6 +165,9 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 		Sight:      &sightSeam{members: worldMembers(*world)},
 		TurnDriver: m.turnDriver,
 		Striker:    encounter.RefusingStriker{},
+		// An authored world is walked by nobody: it is loaded to be inspected
+		// and re-serialized. Same reasoning as the Striker above.
+		Mover: encounter.RefusingMover{},
 		// Authored worlds are loaded to be inspected and re-serialized, never
 		// driven — no clock advances here. Same reasoning as the Striker above.
 		Announcer: encounter.RefusingAnnouncer{},

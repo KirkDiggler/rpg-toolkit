@@ -981,7 +981,8 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		sight:     &sightSeam{},
 	}
 	enc, baseline, standing, err := m.loadWorldWithBaseline(
-		ctx, data, strikerSeam{m: m, scope: scope}, announcerSeam{m: m, scope: scope}, scope.sight,
+		ctx, data, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
+		announcerSeam{m: m, scope: scope}, scope.sight,
 		checkSeam{m: m, scope: scope}, witnessSeam{scope: scope})
 	if err != nil {
 		return nil, err
@@ -1033,6 +1034,27 @@ type writeScope struct {
 	// before the save and read afterwards by event projection and by the
 	// verb's own output fields (stream.go). Nil until commit runs.
 	numbers *streamNumbers
+
+	// walker is the walking member's OWN readied sheet, put here by
+	// [Manager.Move] before the walk and kept current by [Manager.saveDirty]
+	// for as long as the walk runs.
+	//
+	// IT EXISTS BECAUSE A WALK CAN NOW HURT ITS WALKER. Every step is offered
+	// to the rules ([moverSeam]), a reaction can strike the mover, and the
+	// sheet that strike lands on must be the one this verb already charged for
+	// the walk — otherwise the walk's movement spend and the reaction's damage
+	// are two edits to two copies of one character, and whichever is written
+	// second silently erases the other.
+	//
+	// Nil for every verb but Move, and nil for a free-roam walk, which spends
+	// nothing and so has no earlier edit to preserve.
+	walker *character.Data
+
+	// walkerDirtied reports that an interaction during this verb changed
+	// [writeScope.walker] and saveDirty wrote it. Move reads it to know that
+	// the walker's sheet is already durable in a NEWER state than the one it
+	// holds, and that saving its own copy afterwards would undo a blow.
+	walkerDirtied bool
 
 	// written names what this verb made durable BEFORE reaching persist —
 	// character sheets, today, which are the only aggregate a verb writes on
@@ -1101,6 +1123,11 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		// strikerSeam only ever reads scope.enc from inside a later Strike
 		// call, well after this assignment lands (rpg-project#254).
 		Striker: strikerSeam{m: m, scope: scope},
+		// The real Mover, bound to the same scope and rebound here for
+		// adopt's own reason: this replaces scope.enc, and the composition
+		// walks from inside its own verbs, so the seam the new encounter
+		// carries must be the one that reads this scope.
+		Mover: moverSeam{m: m, scope: scope},
 		// Bound to the same scope for the same reason, and rebound here for
 		// a sharper one: adopt REPLACES scope.enc, and the composition
 		// announces from inside its own verbs, so the seam the new

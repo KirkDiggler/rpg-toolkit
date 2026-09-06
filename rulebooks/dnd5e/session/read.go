@@ -500,8 +500,8 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 // at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
 	enc, _, _, err := m.loadWorldWithBaseline(
-		ctx, data, encounter.RefusingStriker{}, encounter.RefusingAnnouncer{}, &sightSeam{},
-		refusingCheckResolver{}, refusingWitness{})
+		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{}, encounter.RefusingAnnouncer{},
+		&sightSeam{}, refusingCheckResolver{}, refusingWitness{})
 	return enc, err
 }
 
@@ -529,7 +529,7 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 // throwaway that nothing reaches again.
 func (m *Manager) loadWorldWithBaseline(
 	ctx context.Context, data *SessionData,
-	striker encounter.Striker, announcer encounter.Announcer, sight *sightSeam,
+	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer, sight *sightSeam,
 	resolver encounter.CheckResolver, witness encounter.Witness,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
 	encID := data.Encounter
@@ -561,6 +561,11 @@ func (m *Manager) loadWorldWithBaseline(
 		// scope, or RefusingStriker{} for a read that must never drive a
 		// turn. See [Manager.loadWorld] and [Manager.openForWrite].
 		Striker: striker,
+		// And the same, one capability over again: a real moverSeam bound to
+		// a write verb's scope, or RefusingMover{} for a read that can never
+		// walk anybody. A step is not inert — something may be waiting to
+		// react to it — so this is supplied, never defaulted (encounter.Mover).
+		Mover: mover,
 		// And the same, one capability over. A read verb cannot advance a
 		// clock, so a boundary announced on a read path is a bug rather
 		// than an event — RefusingAnnouncer says so at the point of

@@ -119,7 +119,7 @@ func veilFind() []encounter.CheckApproach {
 //	                 ^ (5,0)-(6,0), closed, find: veilFind()
 func concealedWorld(t fataler, doorState encounter.DoorState) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:      encEveryoneStanding{},
 		CheckResolver: encNeverResolves{},
@@ -164,7 +164,7 @@ func concealRegion(r encounter.RegionInput) encounter.RegionInput {
 // move law's comparison world.
 func walledTwinWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
@@ -195,7 +195,7 @@ func walledTwinWorld(t fataler) *encounter.EncounterData {
 // nothing concealed in them.
 func plainHallWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
@@ -673,7 +673,7 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 
 	world := func() *encounter.EncounterData {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+			Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 			Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 			Standing:      encEveryoneStanding{},
 			CheckResolver: encNeverResolves{},
@@ -736,7 +736,7 @@ func (s *ConcealSuite) TestUnlockPicksTheRouteAndReportsItsDC() {
 
 	world := func() *encounter.EncounterData {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+			Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 			Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 			Standing: encEveryoneStanding{},
 			Field: encounter.FieldInput{Canvas: pointyCanvas(),

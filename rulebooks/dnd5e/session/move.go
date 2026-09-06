@@ -72,9 +72,12 @@ type Step struct {
 type MoveOutput struct {
 	// Steps is what actually happened, in order.
 	//
-	// Shorter than the requested Path means the walk stopped early, and the
-	// reason is in Outcome. This is deliberately not an error: the walk did
-	// what it could, and where it got to is the answer.
+	// Shorter than the requested Path means the walk stopped early. The
+	// reason is in Outcome for an ending underfoot, in Formed for a fight
+	// starting, and in the story for the third case: a reaction to one of
+	// these very steps felled the walker, who stops in the cell they were
+	// leaving. This is deliberately not an error: the walk did what it could,
+	// and where it got to is the answer.
 	Steps []Step `json:"steps,omitempty"`
 
 	// Discovered is what changed in each observer's perception across the whole
@@ -265,20 +268,19 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 			left := cost.sheet.CapacityLeft(combat.CapacityMovement)
 			return nil, fmt.Errorf("move: %w: %s", ErrCannotAfford, movementShortfall(cost.feet, left))
 		}
+		// On the SCOPE, snapshotted after the charge: the walk is about to be
+		// offered to the rules and a reaction may strike this very member, so
+		// the blow must land on the sheet that has already paid for the walk
+		// rather than on a second copy fetched behind its back. See
+		// [writeScope.walker].
+		scope.walker = cost.sheet.ToData()
 	}
 
-	// Standing, batched once for the whole walk (rpg-toolkit#1137) and only
-	// NOW — after every gate that must refuse without touching a sheet has
-	// already passed (Copilot's own precedence finding on #1171, pinned by
-	// TestNotActiveWinsOverAffordability): a Move cannot down or revive
-	// anyone, so the answer is stable across every step's own Discovery, and
-	// asking once here beats asking once per step.
-	down, err := discoveryStanding(scope)
-	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
-	}
-
-	res, err := m.runWalk(scope, in.Member, in.Path, down)
+	// Standing used to be asked once here for the whole walk
+	// (rpg-toolkit#1137), because a Move could not down or revive anyone.
+	// Announcing each step to the rules is exactly what made that false, so
+	// runWalk asks per cell instead and this verb asks not at all.
+	res, err := m.runWalk(ctx, scope, in.Member, in.Path)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -288,7 +290,12 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	// stopped early on an Outcome or a Formed bubble (see runWalk) — v1 does
 	// not refund an interrupted walk's unused cells, the same way a paid-for
 	// swing is not refunded for missing.
-	if cost.sheet != nil {
+	//
+	// NOT WHEN A REACTION ALREADY WROTE THIS SHEET. That write carried the
+	// spend as well as the blow — the reaction resolved over this walk's own
+	// readied sheet ([writeScope.walker]) — so writing the copy held here
+	// afterwards would restore the hit points the walker just lost.
+	if cost.sheet != nil && !scope.walkerDirtied {
 		if err := m.saveWalker(ctx, scope, cost.sheet); err != nil {
 			return nil, fmt.Errorf("move: %w", err)
 		}
@@ -414,11 +421,62 @@ type walkResult struct {
 // the next step with ErrInBubble — so stopping is a fact about the world rather
 // than a policy about perception.
 func (m *Manager) runWalk(
-	scope *writeScope, member string, path []spatial.Position, down map[string]bool,
+	ctx context.Context, scope *writeScope, member string, path []spatial.Position,
 ) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
+	// Where the walker STILL stands, advanced from each step's own answer
+	// rather than from the cell that was asked for — the same reason the loop
+	// below reads stepped.Stepped.To instead of cell.
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return nil, translate(err)
+	}
+	from, placed := rosterPositions(roster)[member]
+	if !placed {
+		return nil, fmt.Errorf("member %q is not placed: %w", member, ErrNoMember)
+	}
+
 	for i, cell := range path {
+		// ANNOUNCED BEFORE IT IS TAKEN, which is [encounter.Mover]'s contract
+		// and the reason an opportunity attack can fire at all: a reactor's
+		// swing is checked for reach against where the walker IS, and a walk
+		// that stepped first would hand the reaction a departed target.
+		//
+		// TWO CALLERS, ONE RULE. The composition's own monster loop announces
+		// each cell of a driven walk exactly this way (encounter/clocks.go);
+		// this is the player's half of the same rule, and a walk that skipped
+		// it would mean a fighter takes the bite while a wolf never does.
+		if err := (moverSeam{m: m, scope: scope}).Move(
+			ctx, scope.enc, encounter.MemberID(member), from, cell,
+		); err != nil {
+			return nil, fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, len(path), cell.X, cell.Y, err)
+		}
+
+		// A REACTION THAT DROPPED THE WALKER STOPS THE WALK, and the walker
+		// falls in the cell they were LEAVING rather than the one they were
+		// entering (rpg-project#316, ruling R6) — the same answer the
+		// composition's driven walk gives, for the same reason: the swing was
+		// checked against the cell the walker still stands on, so stepping
+		// them afterwards would move a body out of the square it fell in.
+		//
+		// ASKED PER CELL, and the batched once-per-walk answer this loop was
+		// handed no longer covers it. That batching rested on a move being
+		// unable to down anyone; announcing steps is precisely what made that
+		// false, so the answer is refreshed here and the fresh one carries
+		// into the discoveries the remaining steps produce.
+		down, standingErr := discoveryStanding(scope)
+		if standingErr != nil {
+			return nil, standingErr
+		}
+		if down[member] {
+			// A STOP, NOT A FAILURE, reported the way every other early stop
+			// is: the cells already walked are in res.steps, the ones after
+			// this are not, and the blow that felled the walker is in the
+			// story with its reaction named.
+			return res, nil
+		}
+
 		stepped, err := scope.enc.Step(&encounter.StepInput{
 			Member: encounter.MemberID(member),
 			To:     cell,
@@ -447,6 +505,7 @@ func (m *Manager) runWalk(
 			Position: stepped.Stepped.To,
 			Seq:      stepped.Seq,
 		})
+		from = stepped.Stepped.To
 		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas, down))
 		res.corrected = append(res.corrected, projectIntelCorrections(stepped.IntelDeltas)...)
 
