@@ -27,10 +27,10 @@ const (
 	// an id. The id is everything after the second separator, so it may
 	// carry separators of its own and the parse stops splitting here.
 	minSegments = 3
-	// maxSegments is the most a ref may carry: module, type, and up to four
+	// maxSegments is the most a ref may carry: module, type, and up to two
 	// id parts.
 	//
-	// Our currect use case is to organize assets by group. Enabling 4 is what our use case is.
+	// Our current use case is to organize assets by group. Enabling 4 is what our use case is.
 	// If we find a need for more than that, we can come adjust it when we have a solid use case
 	maxSegments = 4
 )
@@ -106,7 +106,7 @@ func (id *Ref) String() string {
 //
 // It does cap how many there are. Up to maxSegments in total, so a runaway id
 // — the kind a concatenation bug produces, not an author — is refused rather
-// than carried;
+// than carried. See that constant for what the number is for.
 func ParseString(s string) (*Ref, error) {
 	if s == "" {
 		return nil, NewParseError(s, "", 0, ErrEmptyString)

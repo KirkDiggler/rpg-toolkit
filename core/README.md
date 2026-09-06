@@ -80,15 +80,15 @@ String format: `module:type:id`
 Module and type are single identifier parts. **The id is everything after the
 second colon**: one or more parts joined by `:`, every part non-empty and drawn
 from letters, digits, `_` and `-`. So `dnd5e:props:plushie:skeleton-dog` is a
-ref whose id is `plushie:skeleton-dog`, and a deeper id reads the same way.
+ref whose id is `plushie:skeleton-dog`, which is as deep as a ref goes today.
 
 The grammar does not decide what the id's parts mean — that belongs to the
 content that mints them rather than to core — but it does cap how many there
-are: **six segments in total**, module and type plus up to four id parts. An id
-that grows without bound is a bug rather than content, and a concatenation
-runaway is refused while the string is still short enough to read. `String()`
-rejoins the id verbatim, so parsing and printing are exact inverses at any
-depth within the cap.
+are: **four segments in total**, module and type plus up to two id parts. The
+current use case is organizing assets by group, and four is what that takes.
+If a need for more turns up, raise the cap then, on a solid use case rather
+than in advance. `String()` rejoins the id verbatim, so parsing and printing
+are exact inverses at any depth within the cap.
 
 ### Error Handling
 
@@ -126,7 +126,7 @@ if core.IsParseError(err) {
 - `ErrEmptyComponent`: One of the Ref components is empty
 - `ErrInvalidCharacters`: Component contains invalid characters
 - `ErrTooFewSegments`: Fewer than the two colons a ref needs
-- `ErrTooManySegments`: More than six segments — an id may carry parts, but
+- `ErrTooManySegments`: More than four segments — an id may carry parts, but
   not without limit
 
 ## Testing

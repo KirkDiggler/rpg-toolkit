@@ -185,7 +185,7 @@ func TestParseString(t *testing.T) {
 		},
 		{
 			name:  "an id with two parts",
-			input: "dnd5e:props:plushie:skeleton-dog",
+			input: testPlushieRef,
 			want: core.MustNewRef(core.RefInput{
 				Module: "dnd5e", Type: "props", ID: "plushie:skeleton-dog"}),
 		},
@@ -322,7 +322,7 @@ func TestParseString_IDParts(t *testing.T) {
 		id   string
 	}{
 		{"three parts", "dnd5e:props:brazier", "brazier"},
-		{"four parts", "dnd5e:props:plushie:skeleton-dog", "plushie:skeleton-dog"},
+		{"four parts", testPlushieRef, "plushie:skeleton-dog"},
 	}
 
 	for _, d := range depths {
@@ -396,10 +396,10 @@ func TestParseString_QuotesThePartItNames(t *testing.T) {
 // uses as a map key.
 //
 // Both sides are pinned, because a cap is only interesting at its edge. Four
-// segments parse and round-trip; seven is refused, and the refusal says the
+// segments parse and round-trip; five is refused, and the refusal says the
 // limit and the count so an author who somehow meant it knows what to cut.
 func TestParseString_CapsTheSegments(t *testing.T) {
-	atTheCap := "dnd5e:props:plushie:skeleton-dog"
+	atTheCap := testPlushieRef
 
 	parsed, err := core.ParseString(atTheCap)
 	require.NoError(t, err, "four segments is a ref")
