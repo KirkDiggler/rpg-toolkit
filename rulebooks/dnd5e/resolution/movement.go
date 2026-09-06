@@ -245,12 +245,11 @@ func (m *movementMachine) announce() Step {
 			// doc has always carried about this exact division of labour).
 			//
 			// Dropped rather than resolved-and-discarded: a prevented reaction
-			// must not roll, must not deal damage, and must not appear in the
-			// outcome. What it HAS already done is spend its reactor's meter,
-			// during the fold, before this machine could say otherwise — a
-			// wart the condition's own comment names and this machine cannot
-			// unwind, since refunding another package's economy on a guess is
-			// worse than a reactor who held their swing.
+			// must not roll, must not deal damage, must not appear in the
+			// outcome, and — since the reaction is billed only when it is
+			// taken — does not cost its reactor anything either. Disengage is
+			// free for the reactors it silences, which it was not while the
+			// condition spent its meter inside the fold.
 			for _, trigger := range *collected {
 				if folded.IsOAPrevented() && trigger.TriggerKind == dnd5eEvents.TriggerKindMovementOA {
 					continue
@@ -300,11 +299,13 @@ func (m *movementMachine) react(i int) Step {
 		trigger := m.triggers[i]
 		definition, ok := m.in.Reactions.AttackFor(trigger.ReactorID)
 		if !ok {
-			// No attack to swing is an ANSWER. The reactor's condition already
-			// spent its meter deciding to react, and that is not refunded here:
-			// this machine does not know why the capability declined, and
-			// unwinding another package's economy on a guess is worse than a
-			// reactor who swung at nothing.
+			// No attack to swing is an ANSWER, and it costs the reactor
+			// NOTHING. There is nothing to refund because nothing was charged:
+			// the trigger is an offer, and the bill goes out from [bill] only
+			// once a swing has actually resolved. This used to leave a reactor
+			// paid-up for a reaction the capability had just declined — an
+			// ally the mover was not hostile to, an unarmed caster — and the
+			// machine could not unwind it.
 			continue
 		}
 
@@ -329,12 +330,48 @@ func (m *movementMachine) react(i int) Step {
 					Struck:       struck,
 				})
 
-				return m.react(i + 1), nil
+				return m.bill(trigger, i), nil
 			},
 		}
 	}
 
 	return Done{Outcome: m.outcome()}
+}
+
+// bill publishes the reaction that just ran, so the condition which offered it
+// can spend its holder's reaction, and then continues with the next trigger.
+//
+// # Why the machine bills and the condition does not
+//
+// Because only the machine knows whether the reaction HAPPENED. The condition
+// publishes a trigger when its predicate matches, which is strictly earlier
+// than the two answers that decide the swing: the fold's prevention flag, read
+// above, and the ReactionAttacks capability, read in [movementMachine.react].
+// A condition that charged at publish time charged for every reaction those
+// two declined — and it could not learn otherwise, because a trigger has no
+// return value. So the offer is free and this is the bill.
+//
+// A Gather rather than a bare publish, for the reason every other publish in
+// this package is one: the bus belongs to the driver, and the interaction's own
+// bus is where the reactor's condition is attached. Reaching for a bus captured
+// out of an earlier step would publish onto whatever bus that step happened to
+// run on, which is the same rule-in-the-wiring this machine exists to avoid.
+func (m *movementMachine) bill(trigger dnd5eEvents.ReactionTriggerEvent, i int) Gather {
+	return Gather{
+		name: fmt.Sprintf("%s took %s", trigger.ReactorID, trigger.ConditionRef),
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			if err := dnd5eEvents.ReactionTakenTopic.On(bus).Publish(ctx, dnd5eEvents.ReactionTakenEvent{
+				ReactorID:    trigger.ReactorID,
+				ConditionRef: trigger.ConditionRef,
+				TriggerKind:  trigger.TriggerKind,
+				SourceEntity: trigger.SourceEntity,
+			}); err != nil {
+				return nil, fmt.Errorf("publish reaction taken by %q: %w", trigger.ReactorID, err)
+			}
+
+			return m.react(i + 1), nil
+		},
+	}
 }
 
 // outcome reads the step's result off the FOLDED event rather than the input,
