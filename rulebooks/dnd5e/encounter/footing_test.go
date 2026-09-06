@@ -139,7 +139,7 @@ func (s *FootingSuite) open(
 	s.T().Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: resolver, Witness: s.witness,
 		Field:   field,
 		Members: members,
@@ -368,7 +368,7 @@ func (s *FootingSuite) TestASealedCellKeepsItsRoomAndLosesItsFeet() {
 	// And a seat on it is refused at construction, for the same reason.
 	_, err = encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field:   field,
 		Members: []encounter.MemberInput{{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}}},
@@ -384,7 +384,7 @@ func (s *FootingSuite) TestASealedCellKeepsItsRoomAndLosesItsFeet() {
 	orphan.Sealed = []spatial.Position{{X: 40, Y: 40}}
 	_, err = encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field:   orphan,
 		Members: []encounter.MemberInput{{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}}},
@@ -420,7 +420,7 @@ func (s *FootingSuite) TestSegmentsAndSealedRideThePersistence() {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})
 	s.Require().NoError(err)
