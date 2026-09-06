@@ -295,6 +295,14 @@ func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
 }
 
 func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, deltas map[MemberID]*IntelDelta, err error) {
+	// THE PAUSE GUARD, at the outer door as well as the inner one. A fight
+	// waiting on a player's answer has exactly one way forward
+	// ([Encounter.ResumeTurn]), and reassessing participation for a clock
+	// whose active member is mid-step is work whose answer nobody may act
+	// on.
+	if e.Paused() {
+		return false, 0, nil, nil
+	}
 	participation, err := e.participationNow()
 	if err != nil {
 		return false, 0, nil, fmt.Errorf("drive monster turns: %w", err)
@@ -312,6 +320,16 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 func (e *Encounter) driveTurnsWithParticipation(
 	bubble *clock.Turn, participation *participationState,
 ) (wrapped bool, lastSeq uint64, deltas map[MemberID]*IntelDelta, err error) {
+	// THE PAUSE GUARD (rpg-project#316 rung 3). A turn stopped mid-walk still
+	// HOLDS the active slot — the clock has not moved and will not until the
+	// answer arrives — so driving from here would ask the driver for a fresh
+	// turn for a member who is mid-step. A no-op rather than an error: every
+	// one of the five entries reaches this incidentally, on its own ordinary
+	// business, and none of them is doing anything wrong.
+	if e.Paused() {
+		return false, 0, nil, nil
+	}
+
 	// RE-ENTRANCY GUARD (rpg-toolkit#1207). A driven member's own Strike can
 	// cause a nested participation pass. The outer call still owns this clock
 	// and will finish it; the nested scheduler is therefore a no-op.
@@ -451,15 +469,12 @@ func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, b
 func (e *Encounter) driveOneMonsterTurn(
 	bubble *clock.Turn, active core.EntityID, m *memberRecord,
 ) (seq uint64, roundWrapped bool, deltas map[MemberID]*IntelDelta, err error) {
-	activeID := MemberID(active)
-
 	round, rerr := bubble.Round()
 	if rerr != nil {
 		return 0, false, nil, fmt.Errorf("round: %w", rerr)
 	}
 
 	budget := TurnBudget{AttacksLeft: 1, MovementFeet: m.SpeedFeet}
-	var turnDeltas map[MemberID]*IntelDelta
 
 	// See the function doc: bounded so a misbehaving driver cannot spin the
 	// caller. +2 covers one attack and the terminating Pass a well-behaved
@@ -467,8 +482,30 @@ func (e *Encounter) driveOneMonsterTurn(
 	// cells this member could ever afford to ask for one at a time.
 	innerBound := 2 + CellsFromFeet(budget.MovementFeet)
 
-	for j := 0; j < innerBound; j++ {
-		view, verr := e.buildMonsterView(m, budget, round)
+	return e.runTurnIntents(bubble, active, m, round, &budget, 0, innerBound)
+}
+
+// runTurnIntents runs intents [startJ, bound) of one driven member's turn and
+// then ends the turn — the body of [Encounter.driveOneMonsterTurn], split out
+// so a turn PAUSED mid-walk can be finished from where it stopped
+// ([Encounter.ResumeTurn]) rather than restarted.
+//
+// startJ and bound are the anti-spin coordinates driveOneMonsterTurn's own
+// doc explains. A resume passes the stored pair, so however many windows one
+// turn opens, the driver is still asked at most `bound` times in total.
+//
+// budget is a POINTER for the reason executeTurnIntent's own doc gives: what
+// an intent spends must be visible to the next view, and a resume must charge
+// the same one the pause was stored with.
+func (e *Encounter) runTurnIntents(
+	bubble *clock.Turn, active core.EntityID, m *memberRecord,
+	round int, budget *TurnBudget, startJ, bound int,
+) (seq uint64, roundWrapped bool, deltas map[MemberID]*IntelDelta, err error) {
+	activeID := MemberID(active)
+	var turnDeltas map[MemberID]*IntelDelta
+
+	for j := startJ; j < bound; j++ {
+		view, verr := e.buildMonsterView(m, *budget, round)
 		if verr != nil {
 			return 0, false, nil, fmt.Errorf("view: %w", verr)
 		}
@@ -478,11 +515,22 @@ func (e *Encounter) driveOneMonsterTurn(
 			return 0, false, nil, fmt.Errorf("act: %w", derr)
 		}
 
-		done, intentDeltas, dexecerr := e.executeTurnIntent(activeID, m, view, intent, &budget)
+		done, intentDeltas, dexecerr := e.executeTurnIntent(
+			activeID, m, view, intent, budget, turnCoords{Round: round, Intent: j, Bound: bound})
 		if dexecerr != nil {
 			return 0, false, nil, fmt.Errorf("execute: %w", dexecerr)
 		}
 		turnDeltas = mergeIntelDeltas(turnDeltas, intentDeltas)
+
+		// A WINDOW OPENED MID-WALK. The turn is not over — it is waiting on
+		// a player, and everything needed to finish it is stored on the
+		// encounter. Returning here without ending the turn is the whole
+		// point: the clock still says it is this member's turn, because it
+		// still is.
+		if e.pausedTurn != nil {
+			return e.lastRecordedSeq(), false, turnDeltas, nil
+		}
+
 		if done {
 			break
 		}
@@ -511,6 +559,22 @@ func (e *Encounter) driveOneMonsterTurn(
 		}
 	}
 
+	seq, roundWrapped, eerr := e.endDrivenTurn(bubble, active)
+	if eerr != nil {
+		return 0, false, nil, eerr
+	}
+	return seq, roundWrapped, turnDeltas, nil
+}
+
+// endDrivenTurn closes one driven member's turn: the clock end, the
+// "turn-ended" beat, and the boundary announcement.
+//
+// SHARED BY THE TWO WAYS A DRIVEN TURN ENDS — the ordinary loop above, and a
+// paused turn finished by [Encounter.ResumeTurn]. One body, so a resumed turn
+// cannot end differently from an uninterrupted one.
+func (e *Encounter) endDrivenTurn(bubble *clock.Turn, active core.EntityID) (uint64, bool, error) {
+	activeID := MemberID(active)
+
 	// A step just executed (almost always a Strike) can have ended the fight
 	// out from under this very turn: [Encounter.noticeDown], reached through
 	// Record, dissolves a bubble that has run out of a side the instant it
@@ -526,20 +590,20 @@ func (e *Encounter) driveOneMonsterTurn(
 	// verb (rpg-project#254's live walk, round 4) until this check existed.
 	stillRunning, cerr := bubble.Contains(&clock.ContainsInput{ID: active})
 	if cerr != nil {
-		return 0, false, nil, fmt.Errorf("contains: %w", cerr)
+		return 0, false, fmt.Errorf("contains: %w", cerr)
 	}
 	if !stillRunning {
-		return e.lastRecordedSeq(), false, turnDeltas, nil
+		return e.lastRecordedSeq(), false, nil
 	}
 
 	out, eerr := bubble.End(&clock.EndInput{Actor: active})
 	if eerr != nil {
-		return 0, false, nil, fmt.Errorf("end: %w", eerr)
+		return 0, false, fmt.Errorf("end: %w", eerr)
 	}
 
 	order, oerr := bubble.Order()
 	if oerr != nil {
-		return 0, false, nil, fmt.Errorf("order: %w", oerr)
+		return 0, false, fmt.Errorf("order: %w", oerr)
 	}
 
 	seq, berr := e.appendClockBeat(map[string]interface{}{
@@ -548,7 +612,7 @@ func (e *Encounter) driveOneMonsterTurn(
 		"next":   out.Next,
 	}, order...)
 	if berr != nil {
-		return 0, false, nil, fmt.Errorf("append beat: %w", berr)
+		return 0, false, fmt.Errorf("append beat: %w", berr)
 	}
 
 	// ANNOUNCE HERE, not from the caller once the whole drive is done. This
@@ -558,9 +622,9 @@ func (e *Encounter) driveOneMonsterTurn(
 	// turn-start after the next one had already swung — the exact ordering
 	// [Announcer]'s own doc exists to explain.
 	if aerr := e.announce(out.Milestones); aerr != nil {
-		return 0, false, nil, fmt.Errorf("announce: %w", aerr)
+		return 0, false, fmt.Errorf("announce: %w", aerr)
 	}
-	return seq, out.RoundWrapped, turnDeltas, nil
+	return seq, out.RoundWrapped, nil
 }
 
 // boundariesFrom translates the leaf's milestones into this composition's own
@@ -686,8 +750,13 @@ func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, 
 // return value the caller has to remember to feed back in is exactly the
 // kind of two-truths bug this composition's own field.go doc warns against
 // elsewhere.
+//
+// coords locates this call inside its member's turn, and is carried for one
+// reason: a [Move] that pauses has to store where to pick the TURN up, not
+// just where to pick the WALK up. See [pausedTurn].
 func (e *Encounter) executeTurnIntent(
 	activeID MemberID, m *memberRecord, view MonsterView, intent TurnIntent, budget *TurnBudget,
+	coords turnCoords,
 ) (done bool, deltas map[MemberID]*IntelDelta, err error) {
 	switch it := intent.(type) {
 	case Pass:
@@ -727,107 +796,52 @@ func (e *Encounter) executeTurnIntent(
 
 		at := uint64(e.clock.ToData().HighWater)
 		audience := e.audienceFor(subjectBeat, activeID)
-		moved := 0
-		dropped := false
-		for _, cell := range it.Path {
-			// Where this member STILL stands, announced before the step is
-			// taken. The order is [Mover]'s contract: a reactor's swing is
-			// checked for reach against where the mover is, so announcing
-			// after the step would hand the reaction a departed target and
-			// the swing would refuse as out of range.
-			//
-			// A member the canvas cannot place has no cell to step FROM,
-			// which is not a step at all. It ends the walk exactly as any
-			// other refusal does rather than being announced from a
-			// fabricated position — and the walk ending here rather than at
-			// stepTo costs nothing, because stepTo refuses an unplaced member
-			// too.
-			from, placed := e.canvas.GetEntityPosition(string(activeID))
-			if !placed {
-				break
-			}
 
-			// context.Background() for the reason the Attack case above
-			// gives at length, and it is the same reason: no verb on this
-			// composition accepts a caller context today.
-			if merr := e.mover.Move(context.Background(), e, activeID, from, cell); merr != nil {
-				return false, nil, fmt.Errorf("move: %w", merr)
-			}
-
-			// A REACTION THAT DROPPED THE MOVER STOPS THE WALK, and the mover
-			// falls in the cell they were LEAVING rather than the one they
-			// were entering (rpg-project#316, ruling R6).
-			//
-			// That is the rules picture the announcement above creates. An
-			// opportunity attack fires BECAUSE its target is leaving reach, so
-			// the strike was checked against the cell the mover still stands
-			// on — and stepping them afterwards would be moving a body out of
-			// the square it fell in.
-			//
-			// ASKED PER CELL, because the answer changes mid-walk, which is
-			// precisely what a reaction does to it. The batched
-			// once-per-walk answer elsewhere in this rulebook rests on a move
-			// being unable to down anyone; announcing steps is what made that
-			// false.
-			//
-			// session's runWalk must give the SAME answer on the player's
-			// path — resolve the movement fold, then stop before Step if the
-			// mover went down. Two paths, one rule: a walk that continued on
-			// one of them would be the asymmetry [Mover] exists to prevent.
-			down, derr := e.standingNow()
-			if derr != nil {
-				return false, nil, fmt.Errorf("move standing: %w", derr)
-			}
-			if down[activeID] {
-				dropped = true
-				break
-			}
-
-			action, stepped := e.stepTo(m, cell)
-			if !stepped {
-				// The same silent-refusal contract stepTo already has for
-				// the pump: a wall stops the WALK, not the turn — whatever
-				// cells succeeded before it are kept (rpg-project#254,
-				// "the same refusals a player's walk meets").
-				break
-			}
-			if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
-				return false, nil, fmt.Errorf("move beat: %w", berr)
-			}
-			moved++
+		res, werr := e.walkCells(context.Background(), activeID, m, it.Path, audience, at)
+		if werr != nil {
+			return false, nil, werr
 		}
-		budget.MovementFeet -= moved * FeetPerCell
 
-		var intelDeltas map[MemberID]*IntelDelta
-		if moved > 0 {
-			// Refreshed once for the whole intent, not per cell — the same
-			// batching Pump uses for its own multi-member tick, and what
-			// makes the NEXT buildMonsterView call in this same turn see
-			// where this member actually ended up. A straggler this move
-			// brings into contact JOINS the running bubble rather than
-			// starting a second one (trigger.go's classify: "a fight
-			// already running is joined, not started again") — the one-
-			// bubble policy is not at risk here.
-			var serr error
-			intelDeltas, _, serr = e.refreshSight(audience)
-			if serr != nil {
-				return false, nil, fmt.Errorf("refresh sight: %w", serr)
+		// CHARGED HERE, once, for whatever the walk actually took — and a
+		// walk that paused is charged for its own half NOW rather than on
+		// resume, so the stored budget is already true and a reload cannot
+		// find a turn that owes movement to a loop that is no longer
+		// running.
+		budget.MovementFeet -= res.moved * FeetPerCell
+
+		intelDeltas, serr := e.settleWalk(activeID, audience, res.moved)
+		if serr != nil {
+			return false, nil, serr
+		}
+
+		// A REACTOR IS BEING ASKED. The step is announced and not taken; the
+		// mover still stands where the announcement said. Everything needed
+		// to finish this turn goes onto the encounter, the story gets a beat
+		// saying so, and the turn is reported NOT over.
+		if res.paused != nil {
+			e.pausedTurn = &pausedTurn{
+				member:    activeID,
+				round:     coords.Round,
+				from:      res.from,
+				to:        res.to,
+				remaining: res.pending,
+				moved:     res.moved,
+				budget:    *budget,
+				intent:    coords.Intent,
+				bound:     coords.Bound,
+				at:        at,
+				audience:  audience,
 			}
-			corrected, cerr := e.correctArrivedLocations(activeID, uint64(e.clock.ToData().HighWater), intelDeltas[activeID])
-			if cerr != nil {
-				return false, nil, fmt.Errorf("correct arrived locations: %w", cerr)
+			if _, berr := e.appendWindowOpenedBeat(e.pausedTurn, res.paused.Windows); berr != nil {
+				return false, intelDeltas, fmt.Errorf("window beat: %w", berr)
 			}
-			if len(corrected) > 0 {
-				intelDeltas = mergeIntelDeltas(intelDeltas, map[MemberID]*IntelDelta{
-					activeID: &IntelDelta{Corrected: corrected},
-				})
-			}
+			return false, intelDeltas, nil
 		}
 
 		// A body takes no further intent. The turn ends whatever progress the
 		// walk made first, rather than reporting "still going" and asking a
 		// downed member what it would like to do next.
-		if dropped {
+		if res.dropped {
 			// Whatever the successful cells changed about who can see whom is
 			// still true — the walk stopped, it did not un-happen — so the
 			// deltas the refresh above produced travel with the ended turn.
@@ -838,11 +852,187 @@ func (e *Encounter) executeTurnIntent(
 		// even start from here. Ending the turn rather than re-asking
 		// avoids spinning on a request that will not succeed differently
 		// next time this same view is built.
-		return moved == 0, intelDeltas, nil
+		return res.moved == 0, intelDeltas, nil
 
 	default:
 		return false, nil, fmt.Errorf("driver returned %T: %w", intent, ErrBadTurnOutcome)
 	}
+}
+
+// turnCoords locates one Act call inside its member's turn: which round, and
+// which of the bounded run of intents this is.
+//
+// It exists because a pause is not a fact about a walk alone. The walk knows
+// which cells are left; only the turn knows how many more times its driver may
+// be asked, and a resume that lost the second number would hand a misbehaving
+// driver a fresh allowance of intents for every window it opened
+// (rpg-project#316 rung 3, finding 4).
+type turnCoords struct {
+	// Round is the bubble's round, rebuilt into the monster view on resume.
+	Round int
+
+	// Intent is the inner loop's counter for THIS call, and Bound its limit.
+	Intent int
+	Bound  int
+}
+
+// walkResult reports what one Move intent's cell loop did.
+//
+// Three outcomes, and they are exclusive: the walk finished (or a wall
+// stopped it), a reaction dropped the mover, or a reactor is being asked.
+type walkResult struct {
+	// moved is how many cells were actually stepped.
+	moved int
+
+	// dropped is true when a reaction put the mover down mid-walk. The
+	// mover stands in the cell they were LEAVING (ruling R6).
+	dropped bool
+
+	// paused carries the reactors being asked, when a [Mover] returned
+	// [ErrStepPaused]. Nil in the ordinary case.
+	paused *StepPausedError
+
+	// from and to are the announced-but-untaken step, and pending is the
+	// rest of the walk with that cell FIRST. Meaningful only when paused is
+	// non-nil.
+	from, to spatial.Position
+	pending  []spatial.Position
+}
+
+// walkCells announces and takes each cell of a path in turn — the body of a
+// Move intent's walk, and the body of a resumed one.
+//
+// ANNOUNCE, THEN STEP, per cell. That order is [Mover]'s contract and the
+// reason a reaction can be checked for reach against a mover who is still
+// standing where the reaction fired.
+func (e *Encounter) walkCells(
+	ctx context.Context, activeID MemberID, m *memberRecord,
+	path []spatial.Position, audience []MemberID, at uint64,
+) (walkResult, error) {
+	var res walkResult
+
+	for i, cell := range path {
+		// Where this member STILL stands, announced before the step is
+		// taken. The order is [Mover]'s contract: a reactor's swing is
+		// checked for reach against where the mover is, so announcing
+		// after the step would hand the reaction a departed target and
+		// the swing would refuse as out of range.
+		//
+		// A member the canvas cannot place has no cell to step FROM,
+		// which is not a step at all. It ends the walk exactly as any
+		// other refusal does rather than being announced from a
+		// fabricated position — and the walk ending here rather than at
+		// stepTo costs nothing, because stepTo refuses an unplaced member
+		// too.
+		from, placed := e.canvas.GetEntityPosition(string(activeID))
+		if !placed {
+			break
+		}
+
+		if merr := e.mover.Move(ctx, e, activeID, from, cell); merr != nil {
+			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
+			// about this step; it is announced and not taken, and the rest
+			// of the path — this cell first — waits with them. Every other
+			// error out of a Mover still aborts the caller's whole verb.
+			var paused *StepPausedError
+			if errors.As(merr, &paused) {
+				res.paused = paused
+				res.from, res.to = from, cell
+				res.pending = append([]spatial.Position(nil), path[i:]...)
+				return res, nil
+			}
+			if errors.Is(merr, ErrStepPaused) {
+				// The sentinel without its detail: a Mover said "paused"
+				// and named nobody. Pause anyway — the composition cannot
+				// tell whose window it is (C1) and refusing here would
+				// take the step the Mover explicitly said not to take.
+				res.paused = &StepPausedError{}
+				res.from, res.to = from, cell
+				res.pending = append([]spatial.Position(nil), path[i:]...)
+				return res, nil
+			}
+			return res, fmt.Errorf("move: %w", merr)
+		}
+
+		// A REACTION THAT DROPPED THE MOVER STOPS THE WALK, and the mover
+		// falls in the cell they were LEAVING rather than the one they
+		// were entering (rpg-project#316, ruling R6).
+		//
+		// That is the rules picture the announcement above creates. An
+		// opportunity attack fires BECAUSE its target is leaving reach, so
+		// the strike was checked against the cell the mover still stands
+		// on — and stepping them afterwards would be moving a body out of
+		// the square it fell in.
+		//
+		// ASKED PER CELL, because the answer changes mid-walk, which is
+		// precisely what a reaction does to it. The batched
+		// once-per-walk answer elsewhere in this rulebook rests on a move
+		// being unable to down anyone; announcing steps is what made that
+		// false.
+		//
+		// session's runWalk must give the SAME answer on the player's
+		// path — resolve the movement fold, then stop before Step if the
+		// mover went down. Two paths, one rule: a walk that continued on
+		// one of them would be the asymmetry [Mover] exists to prevent.
+		down, derr := e.standingNow()
+		if derr != nil {
+			return res, fmt.Errorf("move standing: %w", derr)
+		}
+		if down[activeID] {
+			res.dropped = true
+			break
+		}
+
+		action, stepped := e.stepTo(m, cell)
+		if !stepped {
+			// The same silent-refusal contract stepTo already has for
+			// the pump: a wall stops the WALK, not the turn — whatever
+			// cells succeeded before it are kept (rpg-project#254,
+			// "the same refusals a player's walk meets").
+			break
+		}
+		if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
+			return res, fmt.Errorf("move beat: %w", berr)
+		}
+		res.moved++
+	}
+
+	return res, nil
+}
+
+// settleWalk refreshes what a completed walk changed about who can see whom.
+//
+// ONCE FOR THE WHOLE INTENT, not per cell — the same batching Pump uses for
+// its own multi-member tick, and what makes the NEXT buildMonsterView call in
+// this same turn see where this member actually ended up. A straggler this
+// move brings into contact JOINS the running bubble rather than starting a
+// second one (trigger.go's classify: "a fight already running is joined, not
+// started again") — the one-bubble policy is not at risk here.
+//
+// RUN AT A PAUSE TOO, for the cells walked before it. The cells happened;
+// what they revealed is true whether or not the rest of the walk ever
+// happens, and holding the refresh back until the resume would mean a fight
+// frozen on a window shows the party a map from before the monster moved.
+// The resume runs it again for its own cells, which is the ordinary
+// incremental answer rather than a second copy of the first one.
+func (e *Encounter) settleWalk(activeID MemberID, audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
+	if moved == 0 {
+		return nil, nil
+	}
+	intelDeltas, _, serr := e.refreshSight(audience)
+	if serr != nil {
+		return nil, fmt.Errorf("refresh sight: %w", serr)
+	}
+	corrected, cerr := e.correctArrivedLocations(activeID, uint64(e.clock.ToData().HighWater), intelDeltas[activeID])
+	if cerr != nil {
+		return nil, fmt.Errorf("correct arrived locations: %w", cerr)
+	}
+	if len(corrected) > 0 {
+		intelDeltas = mergeIntelDeltas(intelDeltas, map[MemberID]*IntelDelta{
+			activeID: {Corrected: corrected},
+		})
+	}
+	return intelDeltas, nil
 }
 
 // attackIsInReach reports whether intent's target is a currently Seen,
@@ -1120,6 +1310,11 @@ func (e *Encounter) bfsShortestPath(from spatial.Position, goal func(spatial.Pos
 // driveMonsterTurns, so there remains exactly one place that decides what an
 // unplayed member does.
 func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) (map[MemberID]*IntelDelta, error) {
+	// The pause guard, as above: a fight waiting on an answer advances only
+	// through ResumeTurn.
+	if e.Paused() {
+		return nil, nil
+	}
 	order, err := bubble.Order()
 	if err != nil {
 		return nil, fmt.Errorf("drive if still running: %w", err)
@@ -1170,6 +1365,13 @@ type FormOutput struct {
 
 	// Seq is the story sequence of the formation beat.
 	Seq uint64
+
+	// Paused is true when a driven monster's walk stopped mid-step to ask a
+	// player whether they react (rpg-project#316 rung 3). The fight is
+	// waiting: Next has NOT advanced past the paused member, no further turn
+	// will be driven, and the way forward is [Encounter.ResumeTurn] once the
+	// answer is in. The story's [BeatWindowOpened] beat says who was asked.
+	Paused bool
 }
 
 // Form starts a fight: the named members leave the world clock together and
@@ -1307,7 +1509,7 @@ func (e *Encounter) formWithParticipation(
 		return nil, fmt.Errorf("form: %w", derr)
 	}
 
-	return &FormOutput{IntelDeltas: intelDeltas, Seq: seq}, nil
+	return &FormOutput{IntelDeltas: intelDeltas, Seq: seq, Paused: e.Paused()}, nil
 }
 
 // TransferInput moves one member between the world clock and the running
@@ -1336,6 +1538,13 @@ type TransferOutput struct {
 
 	// Seq is the story sequence of the transfer beat.
 	Seq uint64
+
+	// Paused is true when a driven monster's walk stopped mid-step to ask a
+	// player whether they react (rpg-project#316 rung 3). The fight is
+	// waiting: Next has NOT advanced past the paused member, no further turn
+	// will be driven, and the way forward is [Encounter.ResumeTurn] once the
+	// answer is in. The story's [BeatWindowOpened] beat says who was asked.
+	Paused bool
 }
 
 // Transfer moves a member between the world clock and the running bubble —
@@ -1483,7 +1692,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 	if err != nil {
 		return nil, fmt.Errorf("transfer append beat: %w", err)
 	}
-	return &TransferOutput{IntelDeltas: intelDeltas, Seq: seq}, nil
+	return &TransferOutput{IntelDeltas: intelDeltas, Seq: seq, Paused: e.Paused()}, nil
 }
 
 // EndTurnInput names the member ending their own turn in the fight they are
@@ -1526,6 +1735,13 @@ type EndTurnOutput struct {
 	// IntelDeltas maps member IDs to their updated percepts after any driven
 	// monster turns this end advanced through.
 	IntelDeltas map[MemberID]*IntelDelta
+
+	// Paused is true when a driven monster's walk stopped mid-step to ask a
+	// player whether they react (rpg-project#316 rung 3). The fight is
+	// waiting: Next has NOT advanced past the paused member, no further turn
+	// will be driven, and the way forward is [Encounter.ResumeTurn] once the
+	// answer is in. The story's [BeatWindowOpened] beat says who was asked.
+	Paused bool
 }
 
 // EndTurn advances the fight past the member's turn — and past every
@@ -1550,6 +1766,13 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	}
 	if e.outcome != nil {
 		return nil, fmt.Errorf("end turn: %w", ErrClosed)
+	}
+	// A TURN IS PAUSED MID-WALK. The clock still says it is the paused
+	// member's turn, because it still is — ending anybody's turn from here
+	// would either refuse as not-active or, for the paused member, advance
+	// past a walk this composition is still holding half of.
+	if e.Paused() {
+		return nil, fmt.Errorf("end turn: %w", ErrTurnPaused)
 	}
 	if in.Member == "" {
 		return nil, fmt.Errorf("end turn: %w", ErrNoMember)
@@ -1638,5 +1861,6 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		RoundWrapped: wrapped,
 		Seq:          lastSeq,
 		IntelDeltas:  intelDeltas,
+		Paused:       e.Paused(),
 	}, nil
 }

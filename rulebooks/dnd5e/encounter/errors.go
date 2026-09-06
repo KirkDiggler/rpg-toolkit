@@ -517,4 +517,34 @@ var (
 	// identically to one never seen at all, the same "current, not held"
 	// rule contactBetween and unawareOfOpposition already apply.
 	ErrNotVisible = errors.New("encounter: target not visible")
+
+	// ErrStepPaused is what a [Mover] returns from Move to say a PLAYER is
+	// being asked about this step and it must not be taken yet. See
+	// [StepPausedError] for the detail type that carries who was asked, and
+	// [Encounter.ResumeTurn] for how the paused turn continues.
+	//
+	// NOT A MALFUNCTION. Every other error out of Move aborts the caller's
+	// whole verb (see [Mover.Move]); this one is news — the composition
+	// stores the rest of the turn, appends a [BeatWindowOpened] beat, and
+	// returns having changed nothing it cannot resume from.
+	ErrStepPaused = errors.New("encounter: step paused: a reactor is being asked")
+
+	// ErrTurnPaused refuses a verb that cannot run while a turn is paused
+	// mid-walk: [Encounter.EndTurn] for anybody, and [Encounter.Step] for
+	// the paused member. The fight's clock is mid-step and the answer to
+	// "whose turn is it" is not yet settled, so advancing it would strand
+	// the stored remainder.
+	//
+	// DELIBERATELY MINIMAL. This composition does not police its own whole
+	// verb surface while paused — the host's own freeze does that, and a
+	// second, partial copy of that policy here would be a second thing to
+	// keep true. These two are the ones that would corrupt the remainder
+	// rather than merely race it.
+	ErrTurnPaused = errors.New("encounter: a turn is paused mid-walk")
+
+	// ErrNotPaused is what [Encounter.ResumeTurn] returns when no turn is
+	// paused. Resuming nothing is a caller defect, not a no-op: a host that
+	// reaches it has lost track of which half of the pose/answer pair it is
+	// in, and a silent success would hide that.
+	ErrNotPaused = errors.New("encounter: no turn is paused")
 )

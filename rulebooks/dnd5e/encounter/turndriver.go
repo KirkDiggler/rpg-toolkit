@@ -520,5 +520,21 @@ type Mover interface {
 	// error does. A reaction that simply did not fire is not an error — it is
 	// the ordinary case, and says so by returning nil having recorded
 	// nothing.
+	//
+	// # One error is news instead: ErrStepPaused
+	//
+	// A reactor may be a PLAYER, who has to be asked. Returning a
+	// [StepPausedError] (which wraps [ErrStepPaused]) says "somebody is being
+	// asked about this step; do not take it yet". The composition then stops
+	// the walk with the mover still standing on from, stores the rest of the
+	// turn, narrates a [BeatWindowOpened] beat, and reports the turn as
+	// paused rather than over — see [Encounter.ResumeTurn], which is the only
+	// thing that starts it again.
+	//
+	// A Mover returning it must have recorded nothing for that step. It is
+	// the one error that does not abort the caller's verb, and the reason it
+	// travels as an error at all is that this interface has no other channel:
+	// widening it would make every implementation and every construction site
+	// carry a second return they never use.
 	Move(ctx context.Context, enc *Encounter, mover MemberID, from, to spatial.Position) error
 }

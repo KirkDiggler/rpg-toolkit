@@ -85,6 +85,19 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step: %w", ErrNotMember)
 	}
 
+	// THE PAUSED MEMBER CANNOT STEP (rpg-project#316 rung 3). Their walk is
+	// half-taken and its remainder is held on the encounter; a step from
+	// here would move them off the cell the pending window was announced
+	// from, and the reaction that window exists for would then be checked
+	// for reach against a body that is no longer there.
+	//
+	// ONLY THEM. Everybody else's step is somebody else's business, and the
+	// host's own freeze — not a second, partial copy of it here — decides
+	// whether the rest of the table may act while a window is open.
+	if e.PausedMember() == in.Member {
+		return nil, fmt.Errorf("step %q: %w", in.Member, ErrTurnPaused)
+	}
+
 	// The turn gate (rpg-toolkit#1169, ADR-0044). A member on the world
 	// clock has no bubble and reaches the step below unconditionally, same
 	// as always. A member IN a bubble moves through their OWN turn now
