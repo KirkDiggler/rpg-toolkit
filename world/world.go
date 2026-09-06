@@ -60,7 +60,7 @@ type Scenario struct {
 // The split is the boundary. Content declares who exists and what may be tried;
 // the host injects the rulebook that judges an attempt and the clock that
 // deadlines are checked against. Goals sit on the host's side too, and that is
-// a statement rather than a convenience: a guild goal spans whatever content
+// a statement rather than a convenience: a world goal spans whatever content
 // the region was composed from, so no single piece of content is in a position
 // to declare one.
 type Config struct {
@@ -75,7 +75,7 @@ type Config struct {
 	// exactly as much this kernel's business to guess at as dice are.
 	Witness Witness
 
-	// Goals are what the guild is trying to make true of the whole region.
+	// Goals are what the world is trying to make true of the whole region.
 	Goals []goal.Goal
 
 	// Clock is what their deadlines are checked against. Required whenever
@@ -100,7 +100,7 @@ type Result struct {
 	// Quests is what the jobs made of it.
 	Quests quest.LedgerReport
 
-	// Goals is what the guild's needles made of it. Empty when the world was
+	// Goals is what the world's needles made of it. Empty when the world was
 	// built without any.
 	Goals goal.Report
 }
@@ -268,7 +268,7 @@ func (w *World) Observe() quest.LedgerReport {
 	return w.ledger.Observe(w.graph, w.log)
 }
 
-// ObserveGoals asks the guild's needles where they stand, and settles whatever
+// ObserveGoals asks the world's needles where they stand, and settles whatever
 // the clock says is settled.
 //
 // [World.Act] calls it after every act, so an unlock fires on the act that

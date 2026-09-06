@@ -99,7 +99,7 @@ func adopt(
 }
 
 // Ties is content that adds nothing of its own but connects what is already
-// there — the edges that make three companies parts of one guild, say.
+// there — the edges that make three companies parts of one world, say.
 //
 // It is a [Scenario] because that is what the composer takes, and stating the
 // membership relation is not ceremony: ties are edges, and an edge whose

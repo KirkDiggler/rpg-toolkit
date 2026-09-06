@@ -7,7 +7,7 @@
 // # Objectives are predicates, and predicates do not know about methods
 //
 // An objective is a [Predicate] over derived state, and that is the whole of
-// it. "The camp is no longer hostile to the guild" is [NoEdge]. It is satisfied
+// it. "The camp is no longer hostile to the world" is [NoEdge]. It is satisfied
 // by storming the camp, by talking it round, by replacing its leader with
 // somebody wearing his face, and by whatever the fourth thing turns out to be —
 // because none of those appear in the predicate. Nothing in this package can

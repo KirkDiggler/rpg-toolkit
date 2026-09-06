@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package goal is the guild's needle: one condition over a whole region, with a
+// Package goal is the world's needle: one condition over a whole region, with a
 // clock on it.
 //
 // A quest is somebody's job. Somebody takes it, it is about a person or a
