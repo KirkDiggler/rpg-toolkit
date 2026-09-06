@@ -20,10 +20,13 @@ var (
 	// ErrInvalidCharacters indicates a component contains invalid characters
 	ErrInvalidCharacters = errors.New("identifier contains invalid characters")
 
-	// ErrTooManySegments indicates more segments than expected
+	// ErrTooManySegments indicates the string carried more segments than a
+	// ref may have. The id may carry parts of its own, but not without
+	// limit: see maxSegments.
 	ErrTooManySegments = errors.New("too many segments in identifier")
 
-	// ErrTooFewSegments indicates fewer segments than expected
+	// ErrTooFewSegments indicates the string carried fewer than the two
+	// separators a ref needs.
 	ErrTooFewSegments = errors.New("too few segments in identifier")
 )
 

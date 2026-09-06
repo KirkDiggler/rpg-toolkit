@@ -184,10 +184,37 @@ func TestParseString(t *testing.T) {
 			checkErrType: true,
 		},
 		{
-			name:         "too many parts",
-			input:        "core:feature:rage:extra",
+			name:  "an id with two parts",
+			input: testPlushieRef,
+			want: core.MustNewRef(core.RefInput{
+				Module: "dnd5e", Type: "props", ID: "plushie:skeleton-dog"}),
+		},
+		{
+			name:         "one segment past the cap",
+			input:        "a:b:c:d:e",
 			wantErr:      core.ErrTooManySegments,
-			wantErrMsg:   "expected 3 segments, got 4",
+			wantErrMsg:   "expected at most 4 segments, got 5",
+			checkErrType: true,
+		},
+		{
+			name:         "an id that is only a separator",
+			input:        "a:b::c",
+			wantErr:      core.ErrEmptyComponent,
+			wantErrMsg:   "id part 1",
+			checkErrType: true,
+		},
+		{
+			name:         "an id ending in a separator",
+			input:        "a:b:c:",
+			wantErr:      core.ErrEmptyComponent,
+			wantErrMsg:   testIDPart2,
+			checkErrType: true,
+		},
+		{
+			name:         "a later id part with invalid characters",
+			input:        "dnd5e:props:plushie:skeleton dog",
+			wantErr:      core.ErrInvalidCharacters,
+			wantErrMsg:   testIDPart2,
 			checkErrType: true,
 		},
 		{
@@ -207,6 +234,13 @@ func TestParseString(t *testing.T) {
 		{
 			name:         "empty id",
 			input:        "core:feature:",
+			wantErr:      core.ErrEmptyComponent,
+			wantErrMsg:   "id",
+			checkErrType: true,
+		},
+		{
+			name:         "empty id, the issue's own spelling",
+			input:        "a:b:",
 			wantErr:      core.ErrEmptyComponent,
 			wantErrMsg:   "id",
 			checkErrType: true,
@@ -270,4 +304,112 @@ func TestParseString(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestParseString_IDParts is the grammar rule stated on its own: the id is
+// everything after the second separator, and String puts it back verbatim.
+//
+// The round trip is what makes the rule safe to adopt. A ref with a two-part
+// id crosses the wire as a string, is parsed by whoever receives it, and is
+// printed again on the way out; if any of those steps counted parts or
+// re-joined them differently, the ref that came back would not be the ref that
+// went in. Depth is the thing being varied, because depth is what the old
+// grammar refused.
+func TestParseString_IDParts(t *testing.T) {
+	depths := []struct {
+		name string
+		ref  string
+		id   string
+	}{
+		{"three parts", "dnd5e:props:brazier", "brazier"},
+		{"four parts", testPlushieRef, "plushie:skeleton-dog"},
+	}
+
+	for _, d := range depths {
+		t.Run(d.name, func(t *testing.T) {
+			parsed, err := core.ParseString(d.ref)
+			require.NoError(t, err)
+
+			assert.Equal(t, "dnd5e", parsed.Module)
+			assert.Equal(t, "props", parsed.Type)
+			assert.Equal(t, d.id, parsed.ID,
+				"the id is everything after the second separator, joined as authored")
+			assert.Equal(t, d.ref, parsed.String(),
+				"and printing it gives back exactly the ref that was parsed")
+		})
+	}
+}
+
+// TestParseString_NamesTheEmptyPart — a refusal has to say WHICH part was
+// empty. These three strings are three different author mistakes, and telling
+// them apart is the whole reason the id's parts are validated one at a time
+// instead of as one string.
+func TestParseString_NamesTheEmptyPart(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		names string
+	}{
+		{"nothing after the second separator", "a:b:", "id"},
+		{"a gap at the front of the id", "a:b::c", "id part 1"},
+		{"a gap at the end of the id", "a:b:c:", testIDPart2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := core.ParseString(tt.input)
+
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorIs(t, err, core.ErrEmptyComponent)
+			assert.Contains(t, err.Error(), tt.names,
+				"the refusal names the part the author has to go fix")
+		})
+	}
+}
+
+// TestParseString_QuotesThePartItNames — the value a refusal prints is the
+// OFFENDING PART, not the whole id.
+//
+// Quoting the whole id under a field that already names one part of it made
+// the two disagree: an author sent to part 2 was handed both parts, and the
+// message read as though the id itself were the thing with a space in it. The
+// module and type refusals quote their own component, and this now matches.
+func TestParseString_QuotesThePartItNames(t *testing.T) {
+	_, err := core.ParseString("dnd5e:props:plushie:skeleton dog")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, core.ErrInvalidCharacters)
+	assert.Contains(t, err.Error(), `"skeleton dog"`,
+		"the refusal quotes the part that broke the rule")
+	assert.NotContains(t, err.Error(), "plushie:skeleton dog",
+		"and not the whole id, which is a different string from the part it names")
+}
+
+// TestParseString_CapsTheSegments — an id may carry parts, but not without
+// limit.
+//
+// The cap is not about authors. It is about the runaway an author never
+// writes: a ref concatenated onto itself, or appended to in a loop, which
+// grows past anything a person would type. Refusing it here means the bad
+// string never becomes a Ref that something downstream stores, prints, or
+// uses as a map key.
+//
+// Both sides are pinned, because a cap is only interesting at its edge. Four
+// segments parse and round-trip; five is refused, and the refusal says the
+// limit and the count so an author who somehow meant it knows what to cut.
+func TestParseString_CapsTheSegments(t *testing.T) {
+	atTheCap := testPlushieRef
+
+	parsed, err := core.ParseString(atTheCap)
+	require.NoError(t, err, "four segments is a ref")
+	assert.Equal(t, "plushie:skeleton-dog", parsed.ID)
+	assert.Equal(t, atTheCap, parsed.String(), "and it round-trips like any other")
+
+	overIt, err := core.ParseString(atTheCap + ":frayed")
+	require.Error(t, err)
+	assert.Nil(t, overIt)
+	assert.ErrorIs(t, err, core.ErrTooManySegments)
+	assert.Contains(t, err.Error(), "at most 4", "the refusal names the limit")
+	assert.Contains(t, err.Error(), "got 5", "and how far over the string went")
 }
