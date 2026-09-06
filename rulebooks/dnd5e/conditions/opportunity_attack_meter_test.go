@@ -156,6 +156,20 @@ func (s *OpportunityAttackMeterSuite) walkAway(ctx context.Context, mover string
 	s.Require().NoError(err)
 }
 
+// taken publishes what the movement machine publishes once a reaction has
+// actually RUN. The trigger is an offer and costs nothing; this is the bill.
+// Every scene below that expects a spent reaction has to take one, because
+// that is now the only thing that spends it.
+func (s *OpportunityAttackMeterSuite) taken(ctx context.Context, reactor, against string) {
+	s.Require().NoError(dnd5eEvents.ReactionTakenTopic.On(s.bus).Publish(ctx,
+		dnd5eEvents.ReactionTakenEvent{
+			ReactorID:    reactor,
+			ConditionRef: refs.Conditions.OpportunityAttack().String(),
+			TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
+			SourceEntity: against,
+		}))
+}
+
 // A reaction is once per round. Before this the condition had no memory at
 // all, so every enemy that fled past a fighter in one round drew its own
 // swing — the whole party's worth of free attacks.
@@ -172,6 +186,7 @@ func (s *OpportunityAttackMeterSuite) TestASecondEnemyFleeingTheSameTurnGetsAway
 	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
 
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+	s.taken(ctx, "fighter-1", "wolf-1")
 	s.walkAway(ctx, "wolf-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
 
 	s.Require().Len(*collected, 1, "the second fleeing enemy must not draw a second reaction")
@@ -196,6 +211,7 @@ func (s *OpportunityAttackMeterSuite) TestTheReactionRefreshesAtTheReactorsOwnTu
 
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().Len(*collected, 1)
+	s.taken(ctx, "fighter-1", "wolf-1")
 	s.Require().True(oa.UsedThisTurn)
 
 	dirtiedBefore := keeper.dirtied
@@ -233,6 +249,7 @@ func (s *OpportunityAttackMeterSuite) TestAnotherMembersTurnStartDoesNotRefreshI
 
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().Len(*collected, 1)
+	s.taken(ctx, "fighter-1", "wolf-1")
 
 	s.Require().NoError(dnd5eEvents.TurnStartTopic.On(s.bus).Publish(
 		ctx, dnd5eEvents.TurnStartEvent{SubjectID: "wolf-2", Round: 1}))
@@ -251,10 +268,13 @@ func (s *OpportunityAttackMeterSuite) TestACharacterPaysTheReactionSlot() {
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	s.walkAway(castOf(s.readyCtx("fighter-1"), keeper.sheet), "wolf-1",
-		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
+	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 
 	s.Require().Len(*collected, 1)
+	s.Require().Empty(keeper.spent, "the OFFER is free; only a swing is billed")
+	s.taken(ctx, "fighter-1", "wolf-1")
+
 	s.Equal(0, keeper.sheet.reactions, "the reaction slot is spent, not merely flagged")
 	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
 }
@@ -296,11 +316,122 @@ func (s *OpportunityAttackMeterSuite) TestAMonsterReactsWithNoPurseAndIsStillMet
 
 	s.walkAway(ctx, "rogue-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().Len(*collected, 1, "a monster with no economy still gets its reaction")
+	s.taken(ctx, "wolf-1", "rogue-1")
 
 	s.walkAway(ctx, "rogue-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
 	s.Len(*collected, 1, "and is still held to one per turn by the flag alone")
 	s.Empty(keeper.spent, "the bill went out and its keeper has no row to pay it")
 	s.Positive(keeper.dirtied, "but the meter it DOES keep is still written down")
+}
+
+// THE OFFER IS FREE. This is R1 (rpg-project#392): the condition used to set
+// its meter and bill the economy the instant the trigger published, before
+// anything had decided whether a swing happened at all. So a friend walking
+// past a fighter cost the fighter their reaction — the movement machine's
+// hostility gate answers too late — and a player who is asked and holds paid
+// for a swing they refused.
+//
+// The proof is the second enemy: the fighter's reaction is still there for
+// them, because the first one was never taken.
+func (s *OpportunityAttackMeterSuite) TestATriggerNobodyTakesCostsNothing() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("ally-1", "character", 5, 6)
+	s.place("wolf-1", "monster", 4, 5)
+
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+
+	collected := s.triggers()
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
+
+	s.walkAway(ctx, "ally-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+
+	s.Require().Len(*collected, 1, "the offer still goes out; who may take it is not this condition's call")
+	s.False(oa.UsedThisTurn, "a trigger nobody took must not burn the flag")
+	s.Empty(keeper.spent, "and must not bill the economy")
+	s.Equal(1, keeper.sheet.reactions, "the reaction is still in hand")
+
+	s.walkAway(ctx, "wolf-1", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
+	s.Len(*collected, 2, "so the next mover is still offered a swing")
+}
+
+// Taken spends, and spends ONCE. UsedThisTurn already gates the trigger, so a
+// second taken event for a reactor who has had no turn since is a duplicate
+// rather than a second reaction — billing it twice would charge an economy for
+// a swing that was never offered.
+func (s *OpportunityAttackMeterSuite) TestATakenReactionSpendsExactlyOnce() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("wolf-1", "monster", 5, 6)
+
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+
+	collected := s.triggers()
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
+	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+	s.Require().Len(*collected, 1)
+
+	s.taken(ctx, "fighter-1", "wolf-1")
+	s.taken(ctx, "fighter-1", "wolf-1")
+
+	s.True(oa.UsedThisTurn)
+	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent,
+		"the reaction is billed once, not once per event")
+	s.Equal(0, keeper.sheet.reactions)
+}
+
+// One bus carries every combatant's conditions, so a taken event names its
+// reactor and its ref for the same reason the trigger does. Somebody else's
+// swing, and this member's OTHER reaction, must both leave this meter alone.
+func (s *OpportunityAttackMeterSuite) TestATakenReactionThatIsNotMineSpendsNothing() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("wolf-1", "monster", 5, 6)
+
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
+	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+
+	// Another member's opportunity attack.
+	s.taken(ctx, "fighter-2", "wolf-1")
+	s.False(oa.UsedThisTurn, "another reactor's swing is not this reactor's bill")
+	s.Empty(keeper.spent)
+
+	// This member, a different reaction.
+	s.Require().NoError(dnd5eEvents.ReactionTakenTopic.On(s.bus).Publish(ctx,
+		dnd5eEvents.ReactionTakenEvent{
+			ReactorID:    "fighter-1",
+			ConditionRef: refs.Spells.Shield().String(),
+			TriggerKind:  dnd5eEvents.TriggerKindPostHit,
+			SourceEntity: "wolf-1",
+		}))
+	s.False(oa.UsedThisTurn, "another condition's reaction must not move the OA meter")
+	s.Empty(keeper.spent)
+	s.Equal(1, keeper.sheet.reactions)
+}
+
+// A removed condition no longer hears the bill, the same way it no longer
+// hears rests. An orphaned handler that kept spending would debit a member
+// whose condition is gone.
+func (s *OpportunityAttackMeterSuite) TestARemovedConditionIsNotBilled() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("wolf-1", "monster", 5, 6)
+
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
+	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+
+	s.Require().NoError(oa.Remove(s.ctx, s.bus))
+	s.taken(ctx, "fighter-1", "wolf-1")
+
+	s.False(oa.UsedThisTurn, "a removed condition must no longer hear the bill")
+	s.Empty(keeper.spent)
 }
 
 // A reactor nobody can look up does not react at all, and this is a fold with
@@ -337,8 +468,9 @@ func (s *OpportunityAttackMeterSuite) TestTheMeterSurvivesTheJSONRoundTrip() {
 	keeper := s.character("fighter-1", 1)
 	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
-	s.walkAway(castOf(s.readyCtx("fighter-1"), keeper.sheet), "wolf-1",
-		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
+	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+	s.taken(ctx, "fighter-1", "wolf-1")
 	s.Require().True(oa.UsedThisTurn)
 
 	raw, err := oa.ToJSON()
