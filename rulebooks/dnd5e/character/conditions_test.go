@@ -391,7 +391,7 @@ func (s *CharacterConditionsTestSuite) TestMonkReceivesMartialArtsCondition() {
 				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
 				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
 			},
-			Tools: []shared.SelectionID{"brewers-supplies"},
+			Tools: []shared.SelectionID{"brewer-supplies"},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{

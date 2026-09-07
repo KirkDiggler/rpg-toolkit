@@ -255,7 +255,7 @@ func (s *ProficienciesSuite) TestMonkProficiencies() {
 				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
 				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackExplorer},
 			},
-			Tools: []shared.SelectionID{"brewers-supplies"},
+			Tools: []shared.SelectionID{"brewer-supplies"},
 		},
 	}))
 
@@ -298,9 +298,14 @@ func (s *ProficienciesSuite) TestMonkProficiencies() {
 		"Monk should have simple weapons and shortsword proficiency",
 	)
 
-	// Monks get artisan's tools OR musical instrument - not tested here as it's a choice
-	// For now, verify tool proficiencies is empty (choice system not exercised)
-	s.Empty(data.ToolProficiencies, "Monk should have no tool proficiencies (choice not made)")
+	// Monks get artisan's tools OR musical instrument as a choice (brewer's
+	// supplies, chosen above) — must actually reach the compiled character,
+	// not just pass validation (rpg-toolkit#1555).
+	s.Equal(
+		[]proficiencies.Tool{proficiencies.ToolBrewer},
+		data.ToolProficiencies,
+		"Monk's chosen tool proficiency must be compiled onto the character",
+	)
 }
 
 // TestProficienciesRoundTrip verifies proficiencies survive serialization/deserialization

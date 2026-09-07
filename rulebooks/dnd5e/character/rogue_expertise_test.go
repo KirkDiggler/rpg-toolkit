@@ -239,6 +239,13 @@ func (s *RogueExpertiseSuite) TestRogueExpertiseMustBeFromProficientSkills() {
 	// Try to set expertise in a skill the Rogue is NOT proficient in
 	// Rogue chooses Stealth, Perception, Sleight of Hand, Deception
 	// But tries to get expertise in Athletics (not chosen)
+	//
+	// Expertise validity is checked against the final compiled proficiency
+	// set at ToCharacter time, not at SetClass time (rpg-toolkit#1555) — a
+	// point-in-time check here would depend on what race/background state
+	// existed when SetClass was called, rather than the character's actual
+	// final proficiencies. SetClass itself is expected to succeed; the
+	// invalid expertise pick surfaces at finalization.
 	err = draft.SetClass(&SetClassInput{
 		ClassID: classes.Rogue,
 		Choices: ClassChoices{
@@ -259,5 +266,158 @@ func (s *RogueExpertiseSuite) TestRogueExpertiseMustBeFromProficientSkills() {
 			},
 		},
 	})
-	s.Error(err, "Setting expertise in a non-proficient skill should fail")
+	s.Require().NoError(err, "SetClass itself succeeds; expertise validity is checked at finalization")
+
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Criminal,
+	}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 16,
+			abilities.CON: 12,
+			abilities.INT: 14,
+			abilities.WIS: 10,
+			abilities.CHA: 14,
+		},
+		Method: "standard",
+	}))
+
+	ctx := context.Background()
+	_, err = draft.ToCharacter(ctx, "char-rogue-invalid-expertise", s.eventBus)
+	s.Error(err, "Finalizing with expertise in a non-proficient skill should fail")
+}
+
+// TestExpertiseValidAfterRaceSetLater confirms expertise validity is
+// checked against the final compiled proficiency set, not against
+// whatever race/background state existed when the expertise was
+// submitted. Arcana isn't in Rogue's own skill list, so class-then-race
+// ordering would have wrongly rejected this expertise pick under the old
+// SetClass-time check (rpg-toolkit#1555) — it only becomes valid once
+// Half-Elf's free skill choice (made afterward) grants it.
+func (s *RogueExpertiseSuite) TestExpertiseValidAfterRaceSetLater() {
+	ctx := context.Background()
+
+	draft, err := NewDraft(&DraftConfig{
+		ID:       "test-rogue-expertise-order",
+		PlayerID: "player-1",
+	})
+	s.Require().NoError(err)
+	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Late Bloomer"}))
+
+	// Class set first, expertise names a skill Rogue doesn't grant itself.
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Rogue,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{
+				skills.Stealth,
+				skills.Perception,
+				skills.SleightOfHand,
+				skills.Deception,
+			},
+			Expertise: []skills.Skill{
+				skills.Stealth,
+				skills.Arcana, // not in Rogue's SkillList — race must supply it
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponRapier},
+				{ChoiceID: choices.RogueWeaponsSecondary, OptionID: choices.RogueSecondaryShortbow},
+				{ChoiceID: choices.RoguePack, OptionID: choices.RoguePackBurglar},
+			},
+		},
+	}))
+
+	// Race set afterward, granting the skill expertise already named.
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID: races.HalfElf,
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+			Skills:    []skills.Skill{skills.Arcana, skills.Persuasion},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Criminal,
+	}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 16,
+			abilities.CON: 12,
+			abilities.INT: 14,
+			abilities.WIS: 10,
+			abilities.CHA: 14,
+		},
+		Method: "standard",
+	}))
+
+	_, err = draft.ToCharacter(ctx, "char-rogue-expertise-order", s.eventBus)
+	s.NoError(err, "expertise must be checked against the final proficiency set, not selection-time state")
+}
+
+// TestExpertiseInvalidatedByLaterRaceChange is the other half: an
+// expertise pick that was valid when race granted the skill must be
+// re-checked, and rejected, if the race changes afterward and no longer
+// grants it.
+func (s *RogueExpertiseSuite) TestExpertiseInvalidatedByLaterRaceChange() {
+	ctx := context.Background()
+
+	draft, err := NewDraft(&DraftConfig{
+		ID:       "test-rogue-expertise-race-change",
+		PlayerID: "player-1",
+	})
+	s.Require().NoError(err)
+	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Fickle"}))
+
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID: races.HalfElf,
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+			Skills:    []skills.Skill{skills.Arcana, skills.Persuasion},
+		},
+	}))
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Rogue,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{
+				skills.Stealth,
+				skills.Perception,
+				skills.SleightOfHand,
+				skills.Deception,
+			},
+			Expertise: []skills.Skill{
+				skills.Stealth,
+				skills.Arcana,
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponRapier},
+				{ChoiceID: choices.RogueWeaponsSecondary, OptionID: choices.RogueSecondaryShortbow},
+				{ChoiceID: choices.RoguePack, OptionID: choices.RoguePackBurglar},
+			},
+		},
+	}))
+
+	// Race changes away from Half-Elf — Arcana is no longer granted anywhere.
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID: races.Human,
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Criminal,
+	}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 16,
+			abilities.CON: 12,
+			abilities.INT: 14,
+			abilities.WIS: 10,
+			abilities.CHA: 14,
+		},
+		Method: "standard",
+	}))
+
+	_, err = draft.ToCharacter(ctx, "char-rogue-expertise-race-change", s.eventBus)
+	s.Error(err, "expertise must be re-checked against the final race, not the race that was set when it was chosen")
 }

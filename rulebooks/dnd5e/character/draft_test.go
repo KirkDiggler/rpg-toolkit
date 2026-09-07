@@ -368,7 +368,7 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
 				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
 			},
-			Tools: []shared.SelectionID{"brewers-supplies"},
+			Tools: []shared.SelectionID{"brewer-supplies"},
 		},
 	})
 	s.Require().NoError(err)
@@ -433,7 +433,7 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 					{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
 					{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
 				},
-				Tools: []shared.SelectionID{"brewers-supplies"},
+				Tools: []shared.SelectionID{"brewer-supplies"},
 			},
 		})
 		s.Require().NoError(err)
@@ -1622,7 +1622,7 @@ func (s *MonkToolProficiencyTestSuite) TestMonkToolProficiencyChoice() {
 		ClassID: classes.Monk,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
-			Tools:  []shared.SelectionID{"brewers-supplies"}, // Monk chooses 1 artisan tool or instrument
+			Tools:  []shared.SelectionID{"brewer-supplies"}, // Monk chooses 1 artisan tool or instrument
 			Equipment: []character.EquipmentChoiceSelection{
 				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
 				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
@@ -1638,7 +1638,7 @@ func (s *MonkToolProficiencyTestSuite) TestMonkToolProficiencyChoice() {
 		if choice.Category == shared.ChoiceToolProficiency {
 			foundToolChoice = true
 			s.Require().Len(choice.ToolSelection, 1, "Should have 1 tool selected")
-			s.Equal("brewers-supplies", string(choice.ToolSelection[0]))
+			s.Equal("brewer-supplies", string(choice.ToolSelection[0]))
 		}
 	}
 	s.True(foundToolChoice, "Should have tool proficiency choice recorded")
@@ -1646,6 +1646,113 @@ func (s *MonkToolProficiencyTestSuite) TestMonkToolProficiencyChoice() {
 	// Validate that the draft is complete with tool choice
 	err = draft.ValidateChoices()
 	s.NoError(err, "ValidateChoices should pass with tool proficiency")
+
+	// A validly-recorded choice must actually reach the compiled character,
+	// not just pass validation (rpg-toolkit#1555).
+	char, err := draft.ToCharacter(s.ctx, "monk-tool-char", s.bus)
+	s.Require().NoError(err)
+	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolBrewer,
+		"Monk's chosen tool proficiency must be compiled onto the character")
+}
+
+// TestDwarfToolProficiencyChoiceCompiles is the race-side equivalent of
+// TestMonkToolProficiencyChoice — a Dwarf's chosen artisan's tool must
+// reach the compiled character, not just pass validation.
+func (s *MonkToolProficiencyTestSuite) TestDwarfToolProficiencyChoiceCompiles() {
+	draft := character.LoadDraftFromData(&character.DraftData{
+		ID:       "dwarf-tool-test",
+		PlayerID: "player-001",
+	})
+
+	s.Require().NoError(draft.SetName(&character.SetNameInput{Name: "Test Dwarf"}))
+	s.Require().NoError(draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 14, abilities.DEX: 10, abilities.CON: 16,
+			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
+		},
+	}))
+	s.Require().NoError(draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Dwarf,
+		Choices: character.RaceChoices{
+			Tools: []shared.SelectionID{"smith-tools"},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+	}))
+	s.Require().NoError(draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills:        []skills.Skill{skills.Athletics, skills.Perception},
+			FightingStyle: fightingstyles.Defense,
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+		},
+	}))
+
+	char, err := draft.ToCharacter(s.ctx, "dwarf-tool-char", s.bus)
+	s.Require().NoError(err)
+	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolSmith,
+		"Dwarf's chosen artisan's tool must be compiled onto the character")
+}
+
+// TestRaceAndClassToolChoicesBothValidateAndCompile is the collision case:
+// a Dwarf (race Tools requirement) paired with a Monk (class Tools
+// requirement) — two independent Tools requirements on the same
+// character. Under the old merge-then-validate-once design, the two
+// requirements were folded into one Requirements.Tools, keeping only the
+// first source's ID/Options while summing both Counts — this test would
+// have silently validated the wrong requirement. Per-source validation
+// (rpg-toolkit#1555) must check each independently and compile both.
+func (s *MonkToolProficiencyTestSuite) TestRaceAndClassToolChoicesBothValidateAndCompile() {
+	draft := character.LoadDraftFromData(&character.DraftData{
+		ID:       "dwarf-monk-collision-test",
+		PlayerID: "player-001",
+	})
+
+	s.Require().NoError(draft.SetName(&character.SetNameInput{Name: "Test Dwarf Monk"}))
+	s.Require().NoError(draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10, abilities.DEX: 16, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
+		},
+	}))
+	s.Require().NoError(draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Dwarf,
+		Choices: character.RaceChoices{
+			Tools: []shared.SelectionID{"smith-tools"},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Hermit,
+	}))
+	s.Require().NoError(draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Monk,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+			Tools:  []shared.SelectionID{"brewer-supplies"},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+			},
+		},
+	}))
+
+	err := draft.ValidateChoices()
+	s.Require().NoError(err, "both the race's and the class's independent tool choices must validate")
+
+	char, err := draft.ToCharacter(s.ctx, "dwarf-monk-collision-char", s.bus)
+	s.Require().NoError(err)
+	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolSmith, "race's tool choice must compile")
+	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolBrewer, "class's tool choice must compile")
 }
 
 // Test #439: Monk without tool choice fails validation
