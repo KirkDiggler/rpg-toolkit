@@ -471,7 +471,8 @@ func sceneryOf(spec *Spec) []spatial.Position {
 func propsOf(spec *Spec) []encounter.PropInput {
 	var out []encounter.PropInput
 	for _, p := range spec.Place {
-		if kind, _ := refKind(p.Ref); kind != typeProps {
+		kind, _ := refKind(p.Ref)
+		if !isSceneryRefType(kind) {
 			continue
 		}
 		blocksMovement, blocksLoS := *p.BlocksMovement, *p.BlocksLoS
