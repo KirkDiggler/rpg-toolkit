@@ -903,6 +903,21 @@ const (
 	// "arrived": "window_opened" is the statement of what happened.
 	EventWindowOpened EventKind = "window_opened"
 
+	// EventRollWindowOpened reports a ROLL stopping to ask: a d20 has been
+	// rolled, the member who rolled it holds something they may spend on it,
+	// and the fight is waiting on their answer (rpg-project#398 R7).
+	//
+	// A separate kind from [EventWindowOpened] because the two are different
+	// shapes, not two flavours of one. That one is movement — a mover and two
+	// cells, all load-bearing — and this one has neither; carrying both on one
+	// kind would mean three fields whose zero values lie on every beat of the
+	// other sort.
+	//
+	// EVERYONE HEARS IT, the same pre-v1 full-data rule, and for the same
+	// reason: the table seeing "the fight is waiting on Ana" is the difference
+	// between a pause and a hang.
+	EventRollWindowOpened EventKind = "roll_window_opened"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret
@@ -979,7 +994,7 @@ type Event struct {
 // kind Event.Body carries: TurnEndedBody, DownedBody, DeathSaveBody,
 // StruckBody, MissedBody, ActivatedBody, ActivationResultBody, FightStartedBody,
 // FightEndedBody, MovedBody, JoinedBody, ExitedBody, EndedBody, DoorBody,
-// StanceChangedBody, ArrivedBody, WindowOpenedBody.
+// StanceChangedBody, ArrivedBody, WindowOpenedBody, RollWindowOpenedBody.
 // Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
@@ -1396,6 +1411,31 @@ type WindowOpenedBody struct {
 }
 
 func (WindowOpenedBody) isEventBody() {}
+
+// RollWindowOpenedBody is [EventRollWindowOpened]'s typed body: who is being
+// asked, what they hold, and the two numbers they are deciding with.
+//
+// THE TARGET'S AC IS DELIBERATELY ABSENT and there is no field for it. The
+// client learns an AC when the server shows it on the struck or missed beat,
+// AFTER the answer. A window that carried it would tell the player whether
+// their swing already lands before they choose whether to improve it, which is
+// the whole decision.
+type RollWindowOpenedBody struct {
+	// Audience is the member being asked — always the one whose d20 was
+	// rolled, in this build.
+	Audience string `json:"audience"`
+
+	// Offer is what they hold: the ref a client keys an icon to, and the name
+	// the button is labelled with. Authored by the server, like every other
+	// name on this seam.
+	Offer ReactionRef `json:"offer"`
+
+	// Roll is the d20 as rolled and Total the number the offer would join.
+	Roll  int `json:"roll"`
+	Total int `json:"total"`
+}
+
+func (RollWindowOpenedBody) isEventBody() {}
 
 // ArrivedBody is EventArrived's typed body: what arrived, what kind of thing
 // it is, and where it landed. ID is a member id for a monster and a prop id

@@ -581,6 +581,14 @@ func affordWhileFrozen(session, member string, open []interrupt.Window) (*Afford
 // than from a fresh look at the world, so the offer and the answer describe the
 // same step.
 func reactDeclaration(session, member string, window interrupt.Window) (Declaration, error) {
+	kind, err := windowKindOf(window.Payload)
+	if err != nil {
+		return Declaration{}, err
+	}
+	if kind == windowKindPostRoll {
+		return postRollDeclaration(session, member, window)
+	}
+
 	payload, err := thawWindowPayload(window.Payload, string(window.Audience))
 	if err != nil {
 		return Declaration{}, err
