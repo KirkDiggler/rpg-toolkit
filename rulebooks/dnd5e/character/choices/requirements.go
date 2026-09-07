@@ -402,19 +402,21 @@ func getBardRequirements() *Requirements {
 		Tools: &ToolRequirement{
 			ID:    BardInstruments,
 			Count: 3,
-			Options: []shared.SelectionID{
-				shared.SelectionID("bagpipes"),
-				shared.SelectionID("drum"),
-				shared.SelectionID("dulcimer"),
-				shared.SelectionID("flute"),
-				shared.SelectionID("lute"),
-				shared.SelectionID("lyre"),
-				shared.SelectionID("horn"),
-				shared.SelectionID("pan-flute"),
-				shared.SelectionID("shawm"),
-				shared.SelectionID("viol"),
-			},
-			Label: "Choose 3 musical instruments",
+			// THE SHARED LIST, not a second copy of it. These ten were written
+			// out here as bare strings while musicalInstrumentToolOptions()
+			// already built the same ten from the proficiencies constants for
+			// the Outlander background — two lists of one thing, and only one
+			// of them tied to the constants.
+			//
+			// The drift is silent in the worst direction. A consumer maps each
+			// option to its own vocabulary and DROPS what it cannot map; drop
+			// them all and the choice disappears rather than erroring, so a
+			// bard would simply have no instruments to pick and nothing would
+			// say why. (The monk's requirement still hand-writes the same ten
+			// after a list of artisan's tools; it needs the two halves
+			// concatenated and is left for whoever splits that.)
+			Options: musicalInstrumentToolOptions(),
+			Label:   "Choose 3 musical instruments",
 		},
 		Cantrips: &CantripRequirement{
 			ID:    BardCantrips1,
