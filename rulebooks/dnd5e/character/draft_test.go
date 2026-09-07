@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -460,11 +461,14 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 }
 
 // Test: Background grants
+// TestCompileInventory_BackgroundGrants pins that a background's fixed
+// grants — skills, tools, equipment, and starting gold — all actually
+// reach the compiled character (rpg-toolkit#1554), not just equipment as
+// the name might suggest. Soldier grants each of the four kinds, so one
+// background covers the whole shape.
 func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
-	// Get a fresh fighter draft to modify
 	draft := s.createFighterDraft()
 
-	// Add Soldier background
 	err := draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
 		Choices:      character.BackgroundChoices{},
@@ -473,21 +477,13 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 
 	char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
-	inventory := char.ToData().Inventory
+	data := char.ToData()
 
-	// Check for background equipment
-	// Note: backgrounds don't currently have starting equipment
-	expectedItems := 0
-
-	// Should have items from both class and background
-	grants := classes.GetGrantsForLevel(classes.Fighter, 1)
-	for _, grant := range grants {
-		expectedItems += len(grant.Equipment)
-	}
-
-	if expectedItems > 0 {
-		s.NotEmpty(inventory, "Should have equipment from class and background")
-	}
+	s.Equal(shared.Proficient, data.Skills[skills.Athletics], "Soldier grants Athletics")
+	s.Equal(shared.Proficient, data.Skills[skills.Intimidation], "Soldier grants Intimidation")
+	s.Contains(data.ToolProficiencies, proficiencies.ToolVehicleLand, "Soldier grants land vehicle proficiency")
+	s.assertInventoryStack(data.Inventory, string(items.ClothesCommon), 1, "Soldier grants common clothes")
+	s.Equal(currency.FromGold(10), data.Wallet, "Soldier grants 10 gp starting gold")
 }
 
 func (s *DraftTestSuite) TestCompileInventory_FixedClassGrants() {
@@ -602,8 +598,13 @@ func (s *DraftTestSuite) TestCompileInventory_DuplicateRetainsFirstOccurrenceOrd
 	//
 	// The pack decomposes into its own Contents (rpg-toolkit#1544) in their
 	// authored order, rather than landing as one opaque "explorer-pack" row.
+	//
+	// Soldier's fixed background equipment (common clothes) lands between
+	// the class's fixed grants and the player's own equipment choices,
+	// matching compileInventory's grant-then-choices order.
 	s.Require().Equal([]string{
 		weapons.Javelin,
+		string(items.ClothesCommon),
 		weapons.Greataxe,
 		string(items.Backpack),
 		string(items.Bedroll),
@@ -1518,11 +1519,14 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 	// Check skills - should only have Rogue skills
 	rogueSkills := char.ToData().Skills
 
-	// Should NOT have Fighter or Barbarian skills
+	// Should NOT have Barbarian's skills. Intimidation is NOT cleared by
+	// the class changes away from Fighter — createBaseDraft's Soldier
+	// background grants it independently, regardless of which class (if
+	// any) also chose it (rpg-toolkit#1554).
 	_, hasIntimidation := rogueSkills[skills.Intimidation]
 	_, hasNature := rogueSkills[skills.Nature]
 	_, hasSurvival := rogueSkills[skills.Survival]
-	s.Assert().False(hasIntimidation, "Should NOT have Fighter's Intimidation")
+	s.Assert().True(hasIntimidation, "Should still have Intimidation from the Soldier background")
 	s.Assert().False(hasNature, "Should NOT have Barbarian's Nature")
 	s.Assert().False(hasSurvival, "Should NOT have Barbarian's Survival")
 
