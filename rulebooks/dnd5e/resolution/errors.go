@@ -70,6 +70,18 @@ var (
 	// no case for. Sealed vocabularies are only sealed if the driver says so.
 	ErrBadStep = errors.New("resolution: unrecognized step")
 
+	// ErrBadFrozen indicates a suspended machine's stored state cannot be
+	// trusted: a blob this build did not write, a d20 outside 1-20, or a total
+	// that is not the roll plus the bonus. Refused before the world is loaded
+	// and before anything is charged — repairing it would resolve an attack
+	// nobody rolled.
+	ErrBadFrozen = errors.New("resolution: frozen machine state is unusable")
+
+	// ErrNotOffered indicates an offer this build cannot pose or an answer it
+	// did not pose. Both are the shelf being named: one window, to the member
+	// whose d20 was just rolled, and the two answers it carries.
+	ErrNotOffered = errors.New("resolution: offer cannot be posed or answered")
+
 	// ErrNoSaver indicates a saving throw naming a participant that was not
 	// passed in. Silently rolling without the saver's modifier would be a
 	// wrong answer wearing a right one's clothes.

@@ -100,6 +100,14 @@ func (StrikeOutcome) isOutcome() {}
 // what the reaction windows of ADR-0027 will need, and why they can be added
 // without rebuilding this. They are not here: reactions are wave 5.
 func NewStrike(in *StrikeInput) Machine {
+	return newStrikeMachine(in)
+}
+
+// newStrikeMachine builds the machine with the production damage seam
+// installed. Both entries — a fresh strike and a resumed one — come through
+// here, which is what keeps combat.Combatant named in this file alone
+// (TestOnlyStrikeNamesTheKeeperSurface).
+func newStrikeMachine(in *StrikeInput) *strikeMachine {
 	return &strikeMachine{
 		in: in,
 		applyDamage: func(
@@ -131,21 +139,49 @@ type strikeMachine struct {
 	offHandWeaponRef *core.Ref
 	prepared         []preparedCondition
 
+	// target and longRange are what preflight found, kept because the first
+	// step is built after it rather than inside it.
+	target    combat.Combatant
+	longRange bool
+
+	// resume is the answer to a pose this machine already made, or nil for a
+	// fresh strike. See [NewStrikeResumed].
+	resume *strikeResume
+
 	// outcome accumulates across phases. It is the machine's whole state, and
 	// the reason a suspension between any two phases would need nothing else.
 	outcome StrikeOutcome
 }
 
 // Start validates the profile and produces the first post-payment resolution step.
+//
+// A RESUMED machine takes the same preflight and a different first step: the
+// attack chain has already been folded and the d20 has already been rolled, so
+// re-folding would be a second fold with side effects — a subscriber that
+// records an attempt would record two — and re-rolling would throw away the
+// number the player was asked about.
 func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
+	if err := m.preflight(ctx, cast); err != nil {
+		return nil, err
+	}
+	if m.resume != nil {
+		return m.resumeStep(), nil
+	}
+	return m.effectiveACStep(m.target, m.longRange), nil
+}
+
+// preflight is everything both a fresh and a resumed strike need before
+// anything is published: the profile read off the definition, both combatants
+// found in the cast, and the on-hit riders prepared.
+func (m *strikeMachine) preflight(ctx context.Context, cast *Participants) error {
 	if m.in == nil {
-		return nil, ErrNilInput
+		return ErrNilInput
 	}
 	if m.in.AttackerID == "" || m.in.TargetID == "" {
-		return nil, fmt.Errorf("%w: a strike needs an attacker and a target", ErrNilInput)
+		return fmt.Errorf("%w: a strike needs an attacker and a target", ErrNilInput)
 	}
 	if err := m.in.Definition.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrBadAction, err)
+		return fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
 
 	m.cast = cast
@@ -170,33 +206,40 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 	}
 
 	if _, err := combatantFor(cast, m.in.AttackerID); err != nil {
-		return nil, err
+		return err
 	}
 
 	target, err := combatantFor(cast, m.in.TargetID)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	m.target = target
 
+	// Asked on a resume too, and deliberately: the reach that was true when
+	// the question was posed is the reach the answer is resolved at, and the
+	// freeze upstream is what makes those the same. A target who somehow moved
+	// out of range during the pause is refused here rather than swung at.
 	longRange, err := deliveryRangeState(ctx, m.in.AttackerID, m.in.TargetID, m.attack.Delivery)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	m.longRange = longRange
+
 	m.prepared = make([]preparedCondition, len(m.attack.OnHit))
 	for index, application := range m.attack.OnHit {
 		if application.Save != nil {
 			if gateErr := validateConditionGate(application.Save); gateErr != nil {
-				return nil, fmt.Errorf("validate on-hit condition %s: %w", application.Ref.String(), gateErr)
+				return fmt.Errorf("validate on-hit condition %s: %w", application.Ref.String(), gateErr)
 			}
 		}
 		prepared, prepareErr := prepareCondition(application, m.in.TargetID, m.in.Definition.Ref.String())
 		if prepareErr != nil {
-			return nil, prepareErr
+			return prepareErr
 		}
 		m.prepared[index] = prepared
 	}
 
-	return m.effectiveACStep(target, longRange), nil
+	return nil
 }
 
 // effectiveACStep performs the first event-backed work only after the door has
@@ -290,10 +333,7 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 		return Done{Outcome: m.outcome}, nil
 	}
 
-	roller := m.in.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
+	roller := m.rollerOrDefault()
 
 	hasAdvantage := len(folded.AdvantageSources) > 0
 	hasDisadvantage := len(folded.DisadvantageSources) > 0
@@ -329,8 +369,57 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	default:
 		m.outcome.Hit = m.outcome.Total >= folded.TargetAC
 	}
-	m.outcome.Critical = m.outcome.Hit && roll >= folded.CriticalThreshold
+	m.settleHit(roll, folded)
 
+	// THE OFFER BOUNDARY, and it is here rather than after the post-roll chain
+	// on purpose (rpg-project#398 R2). Shield subscribes to
+	// PostAttackRollChain and reads WouldHit; a window opened after that chain
+	// would let Shield react to a total an offered die had not yet joined, and
+	// WouldHit would be answered twice with two different answers.
+	//
+	// A roll nobody offers anything on folds an empty chain and continues
+	// exactly as it did before this existed.
+	offerEvent := &dnd5eEvents.PostRollOfferEvent{
+		AttackerID:  m.outcome.AttackerID,
+		TargetID:    m.outcome.TargetID,
+		Roll:        roll,
+		AttackBonus: folded.AttackBonus,
+		Total:       m.outcome.Total,
+	}
+	return gatherPostRollOffers(offerEvent, func(_ context.Context, offers []dnd5eEvents.Offer) (Step, error) {
+		if len(offers) == 0 {
+			return m.afterOffers(folded, roll, hasAdvantage, hasDisadvantage), nil
+		}
+		return m.pose(folded, roll, offers)
+	}), nil
+}
+
+// settleHit decides whether the blow lands, from a d20 and the fold it was
+// rolled under.
+//
+// Extracted because a RESUMED strike has to answer the same question against a
+// total the offered die joined, and answering it twice in two places is how
+// the natural 1 and the natural 20 would eventually disagree with themselves.
+// The crit range is not a hit range: an effect that widens CriticalThreshold
+// to 19-20 widens which HITS crit, never which rolls hit.
+func (m *strikeMachine) settleHit(roll int, folded dnd5eEvents.AttackChainEvent) {
+	switch roll {
+	case 20:
+		m.outcome.Hit = true
+	case 1:
+		m.outcome.Hit = false
+	default:
+		m.outcome.Hit = m.outcome.Total >= folded.TargetAC
+	}
+	m.outcome.Critical = m.outcome.Hit && roll >= folded.CriticalThreshold
+}
+
+// afterOffers is the rest of the strike once the offer question is settled —
+// nobody offered anything, or somebody answered. It publishes the post-roll
+// chain ONCE, whichever of those two happened.
+func (m *strikeMachine) afterOffers(
+	folded dnd5eEvents.AttackChainEvent, roll int, hasAdvantage, hasDisadvantage bool,
+) Step {
 	// PostAttackRollChain is the reaction boundary for both hits and misses.
 	// Shield and rage-attempt subscribers need the actual d20 result before
 	// phase two can decide damage, so publish it before the miss short-circuit.
@@ -358,8 +447,18 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 			return Done{Outcome: m.outcome}, nil
 		}
 
-		return m.rollDamage(nextCtx, roller)
-	}), nil
+		return m.rollDamage(nextCtx, m.rollerOrDefault())
+	})
+}
+
+// rollerOrDefault is the machine's own roller, or the package default when the
+// caller supplied none. Resolve refuses a nil Input.Roller; StrikeInput's is
+// still optional, which is the older shape and not this slice's to change.
+func (m *strikeMachine) rollerOrDefault() dice.Roller {
+	if m.in.Roller != nil {
+		return m.in.Roller
+	}
+	return dice.NewRoller()
 }
 
 // attackModifierRefs projects the richer attack-chain source records onto the
