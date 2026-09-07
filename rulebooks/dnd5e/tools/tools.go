@@ -100,6 +100,22 @@ func (t *Tool) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypeTool
 }
 
+// EquipmentCategories reports the shared.EquipmentCategory tags a category
+// choice can query this tool by — a translation from this package's own
+// internal ToolCategory classification, not a re-export of it: gaming sets
+// and "other" tools (disguise kit, herbalism kit, etc.) currently have no
+// public category to be selected by, so they report none.
+func (t *Tool) EquipmentCategories() []shared.EquipmentCategory {
+	switch t.Category {
+	case CategoryMusical:
+		return []shared.EquipmentCategory{shared.CategoryMusicalInstruments}
+	case CategoryArtisan:
+		return []shared.EquipmentCategory{shared.CategoryArtisanTools}
+	default:
+		return nil
+	}
+}
+
 // EquipmentName returns the name of the tool
 func (t *Tool) EquipmentName() string {
 	return t.Name
@@ -484,13 +500,34 @@ func GetByID(id ToolID) (Tool, error) {
 	return tool, nil
 }
 
-// GetByCategory returns all tools in a category in registry order.
+// GetByCategory returns all tools in this package's own internal
+// ToolCategory classification, in registry order.
 func GetByCategory(cat ToolCategory) []Tool {
 	var result []Tool
 	for _, id := range toolOrder {
 		t := All[id]
 		if t.Category == cat {
 			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// EligibleForCategory returns every tool tagged with the given
+// shared.EquipmentCategory (the public vocabulary equipment.GetByCategory
+// callers use), in registry order. This package owns the translation from
+// its own internal ToolCategory to that public vocabulary (see
+// Tool.EquipmentCategories) — equipment.GetByCategory calls this rather
+// than reimplementing the mapping itself.
+func EligibleForCategory(cat shared.EquipmentCategory) []Tool {
+	var result []Tool
+	for _, id := range toolOrder {
+		t := All[id]
+		for _, c := range t.EquipmentCategories() {
+			if c == cat {
+				result = append(result, t)
+				break
+			}
 		}
 	}
 	return result

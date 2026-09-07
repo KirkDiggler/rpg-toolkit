@@ -81,6 +81,14 @@ func (a *Armor) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypeArmor
 }
 
+// EquipmentCategories reports this armor's category (e.g. medium) as the
+// single shared.EquipmentCategory a category choice can query it by.
+// ArmorCategory is already an alias of shared.EquipmentCategory, so this
+// is a direct report, not a translation.
+func (a *Armor) EquipmentCategories() []shared.EquipmentCategory {
+	return []shared.EquipmentCategory{a.Category}
+}
+
 // EquipmentName returns the name of the armor
 func (a *Armor) EquipmentName() string {
 	return a.Name
