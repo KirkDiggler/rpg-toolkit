@@ -145,7 +145,10 @@ func (s strikerSeam) Strike(
 	}
 
 	in := &AttackInput{Attacker: string(attacker), Target: string(target)}
-	if _, err := enc.Record(recordFor(in, struck, definition)); err != nil {
+	// NO PRESENTATION TOKEN: nobody declared this roll. A monster's swing is
+	// resolved by the driver, no client simulated its die, and there is
+	// therefore no throw for a witness to correlate against — see recordFor.
+	if _, err := enc.Record(recordFor(in, struck, definition, "")); err != nil {
 		return fmt.Errorf("strike: %w", translate(err))
 	}
 	return nil

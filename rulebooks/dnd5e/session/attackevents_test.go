@@ -5,10 +5,13 @@ package session_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
@@ -32,13 +35,31 @@ func TestAttackEventsSuite(t *testing.T) {
 	suite.Run(t, new(AttackEventsTestSuite))
 }
 
+// countingPresentationIDs mints a fresh token every time it is asked, so a
+// test can tell one roll from the next the way a client has to.
+type countingPresentationIDs struct{ minted int }
+
+func (g *countingPresentationIDs) Generate() string {
+	g.minted++
+	return fmt.Sprintf("roll-%d", g.minted)
+}
+
 // duelWithStream is AttackTestSuite's duel wired to a stream that records.
 func (s *AttackEventsTestSuite) duelWithStream(dice session.Roller) *session.Manager {
+	return s.duelWithStreamAndIDs(dice, testPresentationIDs{}, armedFighter("alice"))
+}
+
+// duelWithStreamAndIDs is duelWithStream with the correlation entropy and the
+// attacker's own sheet named — for the cases that ask what a SECOND roll was
+// given, which needs an attacker who gets a second swing.
+func (s *AttackEventsTestSuite) duelWithStreamAndIDs(
+	dice session.Roller, ids session.PresentationIDGenerator, alice *character.Data,
+) *session.Manager {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: ids,
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -54,9 +75,14 @@ func (s *AttackEventsTestSuite) duelWithStream(dice session.Roller) *session.Man
 
 // swing runs alice at bob and returns what the caller was told.
 func (s *AttackEventsTestSuite) swing(mgr *session.Manager) *session.AttackOutput {
+	return s.swingBy(mgr, "alice", "bob")
+}
+
+// swingBy is swing with both ends named, for the turn that is not alice's.
+func (s *AttackEventsTestSuite) swingBy(mgr *session.Manager, attacker, target string) *session.AttackOutput {
 	out, err := mgr.Attack(context.Background(), &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "bob",
-		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
+		Session: "sess", Attacker: attacker, Target: target,
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", attacker),
 	})
 	s.Require().NoError(err)
 	return out
@@ -198,4 +224,119 @@ func (s *AttackEventsTestSuite) TestAMissCarriesATypedBody() {
 	s.Equal(out.Total, body.Total)
 	s.Equal(out.Against, body.Against)
 	s.Equal(out.Attack, body.Attack)
+}
+
+// TestAHitCarriesTheTokenTheAttackerWasGiven is the load-bearing property of
+// shared dice: the attacker and every witness hold the SAME string for one
+// roll.
+//
+// The client that rolls an attack simulates the d20 falling through the room
+// and publishes that throw so everybody watches the same die bounce off the
+// same wall. That only works if the roller and the witnesses can agree on
+// WHICH roll a throw belongs to, and the story sequence cannot say: sequence
+// numbers are recipient-local (rpg-toolkit#1377), so the attacker's number and
+// a witness's number for one beat are different numbers.
+//
+// So the assertion is equality, not presence. Two non-empty tokens that
+// disagree is exactly the bug this exists to prevent, and a test that only
+// checked both were populated would pass while the feature stayed broken.
+func (s *AttackEventsTestSuite) TestAHitCarriesTheTokenTheAttackerWasGiven() {
+	mgr := s.duelWithStream(&sequenceDice{rolls: []int{15, 5}})
+
+	out := s.swing(mgr)
+	s.Require().True(out.Hit, "15 + 3 STR + 2 proficiency clears AC 12")
+	s.Require().NotEmpty(out.PresentationID, "the attacker is told which roll this was")
+
+	bodies := s.bodiesAtSeq(out.Seq)
+	for _, recipient := range []string{"alice", "bob"} {
+		body, ok := bodies[recipient].(session.StruckBody)
+		s.Require().True(ok, "%s's event carries a StruckBody, got %T", recipient, bodies[recipient])
+		s.Equal(out.PresentationID, body.PresentationID,
+			"%s reads the SAME token the attacker was handed", recipient)
+	}
+}
+
+// TestAMissCarriesTheTokenTheAttackerWasGiven is the whiff's own half.
+//
+// Worth its own case for the reason MissedBody is its own type: a miss is a
+// different animation and a different sentence, and it is the one a client is
+// most likely to want the shared throw for — the die that clatters and comes
+// up short is the whole drama of the roll.
+func (s *AttackEventsTestSuite) TestAMissCarriesTheTokenTheAttackerWasGiven() {
+	mgr := s.duelWithStream(&sequenceDice{rolls: []int{2, 5}})
+
+	out := s.swing(mgr)
+	s.Require().False(out.Hit, "2 + 5 is under AC 12")
+	s.Require().NotEmpty(out.PresentationID)
+
+	bodies := s.bodiesAtSeq(out.Seq)
+	for _, recipient := range []string{"alice", "bob"} {
+		body, ok := bodies[recipient].(session.MissedBody)
+		s.Require().True(ok, "%s's event carries a MissedBody, got %T", recipient, bodies[recipient])
+		s.Equal(out.PresentationID, body.PresentationID,
+			"%s reads the SAME token the attacker was handed", recipient)
+	}
+}
+
+// TestTwoSwingsAreTwoDifferentRolls pins the other half of correlation: the
+// token identifies ONE roll, so the next roll must not answer to it.
+//
+// A generator whose value never changed would satisfy every equality above and
+// still be useless — every throw in the fight would replay as the first
+// throw. Extra Attack is what makes this two DECLARED swings inside one turn
+// rather than two fixtures compared side by side: a level-5 fighter banks two
+// attacks from one Attack action, and each is its own roll a client simulates
+// on its own.
+func (s *AttackEventsTestSuite) TestTwoSwingsAreTwoDifferentRolls() {
+	alice := armedFighter("alice")
+	alice.Level = 5
+	mgr := s.duelWithStreamAndIDs(&sequenceDice{rolls: []int{2, 2}}, &countingPresentationIDs{}, alice)
+
+	first := s.swing(mgr)
+	second := s.swing(mgr)
+
+	s.Require().False(first.Hit, "both swings whiff, so each costs one die")
+	s.Require().False(second.Hit)
+	s.Require().NotEmpty(first.PresentationID)
+	s.Require().NotEmpty(second.PresentationID)
+	s.NotEqual(first.PresentationID, second.PresentationID, "one token, one roll")
+
+	s.NotEqual(first.Seq, second.Seq, "and they really are two beats")
+	firstBody, ok := s.bodiesAtSeq(first.Seq)["bob"].(session.MissedBody)
+	s.Require().True(ok)
+	secondBody, ok := s.bodiesAtSeq(second.Seq)["bob"].(session.MissedBody)
+	s.Require().True(ok)
+	s.Equal(first.PresentationID, firstBody.PresentationID)
+	s.Equal(second.PresentationID, secondBody.PresentationID)
+}
+
+// TestAnUnusableTokenRefusesTheSwingBeforeItRolls is the write side's fail-closed
+// half, and the reason it is checked at all: correlation is only worth
+// anything if it is ALWAYS there on a declared swing.
+//
+// A host whose generator hands back an empty or non-wire-safe string has a
+// defect, not a swing without shared dice, and the honest answer is to refuse
+// the command rather than record a beat nobody can correlate. It is refused
+// BEFORE the dice, so a rejected swing rolls nothing, damages nobody, and
+// writes nothing at all — the same discipline the payment door keeps, and the
+// same one DeathSave already applies to its own token.
+func (s *AttackEventsTestSuite) TestAnUnusableTokenRefusesTheSwingBeforeItRolls() {
+	for _, token := range []string{"", "not/wire-safe", strings.Repeat("a", 129)} {
+		s.Run(token, func() {
+			rolls := 0
+			mgr := s.duelWithStreamAndIDs(
+				testDice{calls: &rolls}, literalPresentationIDs{value: token}, armedFighter("alice"))
+			declaration := currentAttackID(s.T(), mgr, "sess", "alice")
+			rollsBefore, savesBefore := rolls, s.characters.saves
+
+			out, err := mgr.Attack(context.Background(), &session.AttackInput{
+				Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: declaration,
+			})
+			s.Require().Nil(out)
+			s.Require().Error(err)
+			s.Equal(rollsBefore, rolls, "a swing with no usable token rolls nothing")
+			s.Equal(savesBefore, s.characters.saves, "and writes nothing")
+			s.Empty(s.stream.published, "and tells nobody")
+		})
+	}
 }
