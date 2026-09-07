@@ -251,9 +251,14 @@ func (d *Draft) SetRace(input *SetRaceInput) error {
 
 	// Record skill choices (for Half-Elf, etc.)
 	if len(input.Choices.Skills) > 0 {
+		var choiceID choices.ChoiceID
+		if d.race == races.HalfElf {
+			choiceID = choices.HalfElfSkills
+		}
 		d.recordChoice(choices.ChoiceData{
 			Category:       shared.ChoiceSkills,
 			Source:         shared.SourceRace,
+			ChoiceID:       choiceID,
 			SkillSelection: input.Choices.Skills,
 		})
 	}
@@ -420,44 +425,14 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 		})
 	}
 
-	// Record expertise choices (for Rogue L1/L6, Bard L3/L10)
+	// Record expertise choices (for Rogue L1/L6, Bard L3/L10). Validity
+	// (every chosen skill actually being proficient) is checked once,
+	// against the final combined race+class+background proficiency set,
+	// at ToCharacter time (validateExpertiseSelections) — not here. A
+	// point-in-time check at selection would depend on the order class,
+	// race, and background were set in, and would never see a source set
+	// afterward or changed later.
 	if len(input.Choices.Expertise) > 0 {
-		// Validate expertise skills are from ANY proficient skill source (class, race, background)
-		proficientSkills := make(map[skills.Skill]bool)
-
-		// Add class skills from this input
-		for _, skill := range input.Choices.Skills {
-			proficientSkills[skill] = true
-		}
-
-		// Add racial skill proficiencies
-		if d.race != "" {
-			raceData := races.GetData(d.race)
-			if raceData != nil {
-				for _, skill := range raceData.Skills {
-					proficientSkills[skill] = true
-				}
-			}
-		}
-
-		// Add skills from previous race choices (e.g., Half-Elf skill choices)
-		for _, choice := range d.choices {
-			if choice.Source == shared.SourceRace && choice.Category == shared.ChoiceSkills {
-				for _, skill := range choice.SkillSelection {
-					proficientSkills[skill] = true
-				}
-			}
-		}
-
-		// TODO: Add background skills when background data is implemented
-
-		for _, expertiseSkill := range input.Choices.Expertise {
-			if !proficientSkills[expertiseSkill] {
-				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
-					"expertise skill %s must be from a proficient skill (class, race, or background)", expertiseSkill)
-			}
-		}
-
 		var choiceID choices.ChoiceID
 		if requirements.Expertise != nil {
 			choiceID = requirements.Expertise.ID
@@ -620,6 +595,9 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 
 	// Build proficiencies
 	skillProfs := d.compileSkills(raceData)
+	if err := validateExpertiseSelections(d.choices, skillProfs); err != nil {
+		return nil, err
+	}
 	savingThrows := d.compileSavingThrows(classData)
 	armorProfs, weaponProfs, toolProfs := d.compileProficiencies()
 
@@ -986,6 +964,31 @@ func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.Prof
 	return skillMap
 }
 
+// validateExpertiseSelections confirms every recorded expertise choice
+// names a skill the final compiled proficiency set actually contains.
+// Checked here, against the fully-compiled skill map (race + class +
+// background), rather than at selection time against whatever state
+// existed when the expertise choice was submitted — order of selection no
+// longer matters, and a background/race set or changed afterward is
+// still checked correctly.
+func validateExpertiseSelections(
+	recorded []choices.ChoiceData,
+	skillProfs map[skills.Skill]shared.ProficiencyLevel,
+) error {
+	for _, choice := range recorded {
+		if choice.Category != shared.ChoiceExpertise {
+			continue
+		}
+		for _, skill := range choice.ExpertiseSelection {
+			if _, proficient := skillProfs[skill]; !proficient {
+				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+					"expertise skill %s must be from a proficient skill (class, race, or background)", skill)
+			}
+		}
+	}
+	return nil
+}
+
 // compileSavingThrows builds the saving throw proficiency map
 func (d *Draft) compileSavingThrows(classData *classes.Data) map[abilities.Ability]shared.ProficiencyLevel {
 	saves := make(map[abilities.Ability]shared.ProficiencyLevel)
@@ -1024,7 +1027,37 @@ func (d *Draft) compileProficiencies() ([]proficiencies.Armor, []proficiencies.W
 
 	// TODO: Collect from background grants when implemented
 
-	return armorProfs, weaponProfs, toolProfs
+	// Chosen tool proficiencies (Monk's tools-or-instrument, Dwarf's
+	// artisan's tools, and any future source) are recorded as choices
+	// during SetClass/SetRace/SetBackground and validated by
+	// choices.Validator.validateTools, but only reach the compiled
+	// character here — this loop was previously missing entirely, so a
+	// validly-chosen tool proficiency never appeared on the finished
+	// character (rpg-toolkit#1555).
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceToolProficiency {
+			toolProfs = append(toolProfs, choice.ToolSelection...)
+		}
+	}
+
+	return armorProfs, weaponProfs, dedupeToolProficiencies(toolProfs)
+}
+
+// dedupeToolProficiencies removes duplicate entries from a compiled tool
+// proficiency list. Two sources can legitimately grant the same tool
+// proficiency (e.g. a Rogue class grant and a Criminal background grant
+// both naming thieves' tools) — that's allowed, not an error, but the
+// compiled list shouldn't show the same proficiency twice.
+func dedupeToolProficiencies(toolProfs []proficiencies.Tool) []proficiencies.Tool {
+	seen := make(map[proficiencies.Tool]bool, len(toolProfs))
+	deduped := make([]proficiencies.Tool, 0, len(toolProfs))
+	for _, tool := range toolProfs {
+		if !seen[tool] {
+			seen[tool] = true
+			deduped = append(deduped, tool)
+		}
+	}
+	return deduped
 }
 
 // compileLanguages builds the language list

@@ -1273,7 +1273,7 @@ func (s *ClassComprehensiveSuite) createMonkValidBase() *choices.Submissions {
 		Source:   shared.SourceClass,
 		ChoiceID: choices.MonkTools,
 		Values: []shared.SelectionID{
-			"brewers-supplies", // One artisan tool
+			"brewer-supplies", // One artisan tool
 		},
 	})
 

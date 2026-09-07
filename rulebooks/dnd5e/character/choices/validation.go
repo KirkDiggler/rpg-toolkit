@@ -136,21 +136,43 @@ func (v *Validator) Validate(requirements *Requirements, submissions *Submission
 	return result
 }
 
-// ValidateCharacterCreation validates all choices for character creation
+// ValidateCharacterCreation validates all choices for character creation.
+//
+// Validates each source's Requirements against that source's own
+// submissions independently, rather than merging them into a single
+// Requirements struct first. A merge is lossy for fields like Tools: two
+// sources can each carry their own ToolRequirement (different ID,
+// different Options), and merging them into one struct can only keep one
+// source's ID/Options while summing both sources' Count — silently
+// validating against the wrong requirement. Per-source ChoiceIDs are
+// unique by construction, so validating each source's Requirements
+// against the shared Submissions pool naturally isolates that source's
+// own choices without needing to merge anything.
 func (v *Validator) ValidateCharacterCreation(
 	classID classes.Class,
 	raceID races.Race,
 	submissions *Submissions,
 ) *ValidationResult {
-	// Get requirements
-	classReqs := GetClassRequirements(classID)
-	raceReqs := GetRaceRequirements(raceID)
+	return v.validatePerSource(submissions, GetClassRequirements(classID), GetRaceRequirements(raceID))
+}
 
-	// Merge requirements
-	merged := mergeRequirements(classReqs, raceReqs)
+// validatePerSource validates each of reqs independently against the same
+// Submissions pool and combines the results. nil entries are skipped.
+func (v *Validator) validatePerSource(submissions *Submissions, reqs ...*Requirements) *ValidationResult {
+	result := &ValidationResult{Valid: true, Errors: []ValidationError{}}
 
-	// Validate against merged requirements
-	return v.Validate(merged, submissions)
+	for _, req := range reqs {
+		if req == nil {
+			continue
+		}
+		sub := v.Validate(req, submissions)
+		if !sub.Valid {
+			result.Valid = false
+			result.Errors = append(result.Errors, sub.Errors...)
+		}
+	}
+
+	return result
 }
 
 func (v *Validator) validateSkills(req *SkillRequirement, submissions *Submissions) *ValidationError {
@@ -358,25 +380,64 @@ func (v *Validator) validateLanguages(req *LanguageRequirement, submissions *Sub
 }
 
 func (v *Validator) validateTools(req *ToolRequirement, submissions *Submissions) *ValidationError {
-	// Find tool submissions
+	// Find tool submissions for THIS specific requirement — a shared
+	// Submissions pool can carry another source's ChoiceToolProficiency
+	// entries too (e.g. a race and a background each with their own tool
+	// choice), so filtering by req.ID matters here exactly as it already
+	// does in validateSkills.
 	toolSubs := submissions.GetByCategory(shared.ChoiceToolProficiency)
-	if len(toolSubs) == 0 {
-		return &ValidationError{
-			Category: shared.ChoiceToolProficiency,
-			Message:  fmt.Sprintf("Must choose %d tools", req.Count),
+
+	totalChosen := 0
+	chosenTools := make(map[shared.SelectionID]bool)
+	found := false
+
+	for _, sub := range toolSubs {
+		if sub.ChoiceID == req.ID {
+			found = true
+			totalChosen += len(sub.Values)
+			for _, toolID := range sub.Values {
+				chosenTools[toolID] = true
+			}
 		}
 	}
 
-	// Count total tools chosen
-	totalChosen := 0
-	for _, sub := range toolSubs {
-		totalChosen += len(sub.Values)
+	if !found {
+		return &ValidationError{
+			Category: shared.ChoiceToolProficiency,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose %d tools", req.Label, req.Count),
+		}
 	}
 
 	if totalChosen != req.Count {
 		return &ValidationError{
 			Category: shared.ChoiceToolProficiency,
-			Message:  fmt.Sprintf("Must choose exactly %d tools, got %d", req.Count, totalChosen),
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose exactly %d tools, got %d", req.Label, req.Count, totalChosen),
+		}
+	}
+
+	if len(chosenTools) != totalChosen {
+		return &ValidationError{
+			Category: shared.ChoiceToolProficiency,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: tool selections must be unique", req.Label),
+		}
+	}
+
+	if len(req.Options) > 0 {
+		allowed := make(map[shared.SelectionID]bool, len(req.Options))
+		for _, option := range req.Options {
+			allowed[option] = true
+		}
+		for toolID := range chosenTools {
+			if !allowed[toolID] {
+				return &ValidationError{
+					Category: shared.ChoiceToolProficiency,
+					ChoiceID: req.ID,
+					Message:  fmt.Sprintf("Tool '%s' is not in the allowed options", toolID),
+				}
+			}
 		}
 	}
 
@@ -567,61 +628,6 @@ func (v *Validator) validateSpellbook(req *SpellbookRequirement, submissions *Su
 	}
 
 	return nil
-}
-
-// mergeRequirements merges multiple requirement sets
-func mergeRequirements(reqs ...*Requirements) *Requirements {
-	merged := &Requirements{}
-
-	for _, req := range reqs {
-		if req == nil {
-			continue
-		}
-
-		// Merge skills (take the one with more choices)
-		if req.Skills != nil {
-			if merged.Skills == nil || req.Skills.Count > merged.Skills.Count {
-				merged.Skills = req.Skills
-			}
-		}
-
-		// Merge equipment (append all)
-		merged.Equipment = append(merged.Equipment, req.Equipment...)
-
-		// Merge equipment categories (append all)
-		merged.EquipmentCategories = append(merged.EquipmentCategories, req.EquipmentCategories...)
-
-		// Merge languages (append all)
-		if req.Languages != nil {
-			merged.Languages = append(merged.Languages, req.Languages...)
-		}
-
-		// Merge tools
-		if req.Tools != nil {
-			if merged.Tools == nil {
-				merged.Tools = req.Tools
-			} else {
-				merged.Tools.Count += req.Tools.Count
-			}
-		}
-
-		// Take first fighting style requirement
-		if req.FightingStyle != nil && merged.FightingStyle == nil {
-			merged.FightingStyle = req.FightingStyle
-		}
-
-		// Take first expertise requirement
-		if req.Expertise != nil && merged.Expertise == nil {
-			merged.Expertise = req.Expertise
-		}
-
-		// Take first subclass requirement
-		if req.Subclass != nil && merged.Subclass == nil {
-			merged.Subclass = req.Subclass
-		}
-	}
-
-	return merged
 }
 
 // ValidateChoice validates a single choice is valid

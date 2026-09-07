@@ -89,7 +89,7 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 					{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
 					{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
 				},
-				Tools: []shared.SelectionID{"brewers-supplies"},
+				Tools: []shared.SelectionID{"brewer-supplies"},
 			},
 			background: backgrounds.Hermit,
 			scores: shared.AbilityScores{
