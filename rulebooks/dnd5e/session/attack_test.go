@@ -448,7 +448,8 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 			`"damage_components":[`+
 			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
 			`"dice":{"notation":"d8","die_size":8,"original_rolls":[5],"final_rolls":[5],"subtotal":5}},"damage_type":"slashing"},`+
-			`{"source":"ability","roll":{"source":{"ref":"dnd5e:abilities:str","name":"Strength"},"modifier":3},"damage_type":"slashing"}]}`,
+			`{"source":"ability","roll":{"source":{"ref":"dnd5e:abilities:str","name":"Strength"},"modifier":3},"damage_type":"slashing"}],`+
+			`"presentation_id":"presentation-test-id"}`,
 		string(last.Payload))
 	s.Equal(session.AttackRef{Ref: "dnd5e:weapons:longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }
@@ -467,7 +468,8 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 	s.Require().NoError(err)
 	s.JSONEq(
 		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
-			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"}}`,
+			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
+			`"presentation_id":"presentation-test-id"}`,
 		string(story[len(story)-1].Payload))
 }
 

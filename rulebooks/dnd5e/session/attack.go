@@ -73,6 +73,23 @@ type AttackOutput struct {
 	// crossed the seam from the first swing and the weapon that produced
 	// them did not, until now (rpg-toolkit#866).
 	Attack AttackRef `json:"attack"`
+
+	// PresentationID is the opaque token the attacker and every witness share
+	// for THIS one roll. The client echoes it and never parses it.
+	//
+	// It is what lets a table watch one die. The player who rolls simulates
+	// the d20 falling through the room and publishes that throw; everybody
+	// else replays it locally, and the only way a witness can tell which roll
+	// a throw belongs to is a token minted once and copied onto every copy of
+	// the beat. The story sequence cannot answer that question — a recipient's
+	// sequence is recipient-local (rpg-toolkit#1377), so the attacker's number
+	// and a witness's number for one swing are different numbers.
+	//
+	// Always present on an accepted swing: the same token reaches
+	// [StruckBody.PresentationID] and [MissedBody.PresentationID], and a
+	// generator that cannot produce a usable one refuses the command rather
+	// than recording a roll nobody can correlate.
+	PresentationID string `json:"presentation_id"`
 }
 
 // Attack swings one member's weapon at another and records what happened.
@@ -243,6 +260,16 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
 	}
 
+	// The token this roll will be known by, minted BEFORE the dice for the
+	// reason the payment door is charged before them: a host whose generator
+	// cannot produce a usable one has a defect, and a refusal that arrives
+	// after the swing resolved would have already damaged somebody. Same
+	// discipline, same place in the order, as [Manager.DeathSave]'s own.
+	presentationID := m.presentationIDs.Generate()
+	if err := validatePresentationID(presentationID); err != nil {
+		return nil, fmt.Errorf("attack: generated presentation id: %w", err)
+	}
+
 	definition := *selected.attack
 	price := selected.price
 	cost := price.cost
@@ -313,7 +340,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 
 	// And now the beat, on a world whose sheets say what the swing did — see the
 	// godoc for why this is not the other way round.
-	recorded, err := scope.enc.Record(recordFor(in, struck, definition))
+	recorded, err := scope.enc.Record(recordFor(in, struck, definition, presentationID))
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
 	}
@@ -334,6 +361,8 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Saved:    report,
 		Delivery: delivery,
 		Attack:   attackRefFor(definition),
+
+		PresentationID: presentationID,
 	}, nil
 }
 
@@ -427,8 +456,17 @@ func translateResolution(err error) error {
 // recordFor turns a strike into the outcome the composition will stamp.
 // It copies resolution-owned facts once; replay decodes this record rather
 // than reconstructing damage or modifier attribution later.
+//
+// presentationID is the opaque token the declaring client will correlate its
+// own simulated throw against, and it is EMPTY for a swing nobody declared —
+// a monster's strike, an opportunity attack the server took on a reactor's
+// behalf. That is not a gap: no client pre-simulated those dice, so there is
+// no throw to correlate with, and an empty token says exactly that. Only
+// [Manager.Attack] mints one, because only [Manager.Attack] is a roll a
+// player asked for.
 func recordFor(
 	in *AttackInput, struck resolution.StrikeOutcome, definition combatActions.Definition,
+	presentationID string,
 ) *encounter.RecordInput {
 	values := map[encounter.OutcomeValue]int{
 		encounter.ValueRoll:    struck.Roll,
@@ -449,6 +487,8 @@ func recordFor(
 		Values:   values,
 		Critical: struck.Critical,
 		Attack:   &encounter.AttackIdentity{Ref: ref.Ref, Name: ref.Name, DamageType: string(ref.DamageType)},
+
+		PresentationID: presentationID,
 	}
 	if struck.Hit {
 		recorded.DamageComponents = recordDamageComponents(struck.DamageComponents)

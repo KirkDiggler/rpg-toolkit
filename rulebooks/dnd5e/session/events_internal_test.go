@@ -1028,3 +1028,82 @@ func TestDeathSaveBodyPreservesAuthoritativeTypedFacts(t *testing.T) {
 	require.Equal(t, EventDeathSave, kind)
 	require.Nil(t, body, "missing opaque correlation is not a complete typed body")
 }
+
+// TestAnAttackBeatCarriesItsPresentationToken pins the decode half of shared
+// dice: the token session wrote onto the beat comes back on the typed body
+// every witness reads, for both arms of the swing.
+func TestAnAttackBeatCarriesItsPresentationToken(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"presentation_id":"roll-abc"}`))
+	require.Equal(t, EventStruck, kind)
+	struck, ok := body.(StruckBody)
+	require.True(t, ok, "struck payload produces StruckBody, got %T", body)
+	require.Equal(t, "roll-abc", struck.PresentationID)
+
+	kind, body = decodeBeat([]byte(
+		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":3,"total":8,"against":12,` +
+			`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"presentation_id":"roll-abc"}`))
+	require.Equal(t, EventMissed, kind)
+	missed, ok := body.(MissedBody)
+	require.True(t, ok, "missed payload produces MissedBody, got %T", body)
+	require.Equal(t, "roll-abc", missed.PresentationID)
+
+	require.Nil(t, decodeBeatBody(t, `{"beat":"struck","actor":"alice","targets":["bob"],`+
+		`"attack":{"ref":"longsword","name":"Longsword"},"presentation_id":null}`),
+		"a null token is not a shape this decoder recognises")
+}
+
+// TestAnAttackBeatWithoutAPresentationTokenStillDecodes is the compatibility
+// half, and it is deliberately NOT the death save's rule.
+//
+// The death-save decoder can demand a non-empty token because the field
+// shipped with the feature: every death-save beat in every story was written
+// by code that minted one. Attack beats were not. Real fights are already
+// persisted with struck and missed beats from before shared dice existed, and
+// a decoder that refused them would leave those events untyped — the story log
+// would quietly lose history that actually happened.
+//
+// An empty token is therefore a true answer rather than a missing one: "this
+// roll has no shared presentation", which is exactly what a monster's strike
+// and an undeclared reaction also mean. The client already falls back to
+// rolling its own die for that case.
+func TestAnAttackBeatWithoutAPresentationTokenStillDecodes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		json string
+	}{
+		{"key absent, as every beat written before shared dice", `{"beat":"struck","actor":"alice",` +
+			`"targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,"critical":false,` +
+			`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`},
+		{"key present and empty", `{"beat":"struck","actor":"alice",` +
+			`"targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,"critical":false,` +
+			`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"presentation_id":""}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+			require.Equal(t, EventStruck, kind)
+			struck, ok := body.(StruckBody)
+			require.True(t, ok, "the beat still types, got %T", body)
+			require.Empty(t, struck.PresentationID, "no shared roll, said honestly")
+			require.Equal(t, 8, struck.Damage, "and every other fact survives")
+		})
+	}
+
+	kind, body := decodeBeat([]byte(`{"beat":"missed","actor":"alice","targets":["bob"],` +
+		`"roll":3,"total":8,"against":12,"attack":{"ref":"longsword","name":"Longsword"}}`))
+	require.Equal(t, EventMissed, kind)
+	missed, ok := body.(MissedBody)
+	require.True(t, ok, "a miss written before shared dice types too, got %T", body)
+	require.Empty(t, missed.PresentationID)
+}
+
+// decodeBeatBody is decodeBeat when only the body is under test.
+func decodeBeatBody(t *testing.T, payload string) EventBody {
+	t.Helper()
+	_, body := decodeBeat([]byte(payload))
+	return body
+}

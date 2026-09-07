@@ -1273,7 +1273,8 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 	for key, value := range outer {
 		switch key {
 		case "beat", "actor", "targets", "roll", "total", "against", "amount", "critical",
-			"attack", "reaction", "damage_components", "advantage_sources", "disadvantage_sources":
+			"attack", "reaction", "damage_components", "advantage_sources", "disadvantage_sources",
+			"presentation_id":
 			if isJSONNull(value) {
 				return nil
 			}
@@ -1292,6 +1293,18 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		Reaction            *beatReaction          `json:"reaction"`
 		AdvantageSources    []AttackModifierSource `json:"advantage_sources"`
 		DisadvantageSources []AttackModifierSource `json:"disadvantage_sources"`
+		// PresentationID is REQUIRED TO BE NOTHING, unlike the death save's
+		// own token, and the difference is history rather than taste. That
+		// field shipped with the feature that writes it, so every death-save
+		// beat in every story has one and demanding it costs nothing. Attack
+		// beats predate it: real fights are already persisted with struck and
+		// missed beats written before shared dice existed. Refusing those on
+		// read would leave them untyped and quietly delete history that
+		// actually happened from the story log. An empty token is a true
+		// answer — "this roll has no shared presentation" — and it is the
+		// same answer a monster's strike and an undeclared reaction give,
+		// which the client already has a fallback for.
+		PresentationID string `json:"presentation_id"`
 	}
 	if json.Unmarshal(payload, &p) != nil ||
 		p.Actor == "" || len(p.Targets) != 1 || p.Attack.Ref == "" {
@@ -1330,13 +1343,13 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 			Attack: p.Attack.toRef(), Critical: p.Critical,
 			DamageComponents: components,
 			AdvantageSources: p.AdvantageSources, DisadvantageSources: p.DisadvantageSources,
-			Reaction: reaction,
+			Reaction: reaction, PresentationID: p.PresentationID,
 		}
 	}
 	return MissedBody{
 		Attacker: p.Actor, Target: p.Targets[0],
 		Roll: p.Roll, Total: p.Total, Against: p.Against, Attack: p.Attack.toRef(),
-		Reaction: reaction,
+		Reaction: reaction, PresentationID: p.PresentationID,
 	}
 }
 
