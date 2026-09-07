@@ -170,6 +170,29 @@ type RecordInput struct {
 	// every other kind; the encounter preserves it without interpreting
 	// what the item does.
 	Trade *TradeDetail
+
+	// PresentationID is the rulebook's opaque token for the ONE roll this
+	// beat describes, carried verbatim so the actor who declared it and
+	// every witness reading the same beat hold the same string for it.
+	//
+	// IT EXISTS BECAUSE THE SEQUENCE CANNOT DO THIS JOB. A story sequence is
+	// recipient-local (rpg-toolkit#1377) — two members receiving one beat
+	// count different numbers for it — so anything correlating a roller with
+	// a witness has to be minted once and copied, which is exactly what this
+	// is.
+	//
+	// Valid for OutcomeStruck and OutcomeMissed, and refused on every other
+	// kind: OutcomeDeathSave carries its own inside [DeathSaveDetail], and a
+	// second copy beside it would put a key on that beat its decoder does not
+	// read. Empty is legal on an attack and means nobody declared this swing
+	// — a monster's strike, an undeclared reaction, or a beat written before
+	// this field existed — and the key is then omitted rather than written
+	// empty, so those beats keep the shape they have always had.
+	//
+	// CHECKED FOR PRESENCE, NOT FOR MEANING, the same as [AttackIdentity]:
+	// this composition cannot know a rulebook's token alphabet, and the
+	// rulebook that mints one validates it before handing it over.
+	PresentationID string
 }
 
 // DeathSaveDetail is the closed, rulebook-neutral story shape for one death
@@ -471,6 +494,9 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	} else if in.Trade != nil {
 		return nil, fmt.Errorf("record: trade detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
+	if in.PresentationID != "" && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
+		return nil, fmt.Errorf("record: presentation id does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
 
 	if in.Actor == "" {
 		return nil, fmt.Errorf("record: actor: %w", ErrNoMember)
@@ -551,6 +577,13 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 	if in.Trade != nil {
 		payload["trade"] = in.Trade
+	}
+	// Omitted when empty, unlike critical's unconditional false: absent and
+	// "" say the identical thing here — this swing has no shared roll to
+	// correlate — so writing the key would change nothing but the bytes of
+	// every beat that predates it.
+	if in.PresentationID != "" {
+		payload["presentation_id"] = in.PresentationID
 	}
 	if in.Attack != nil {
 		if in.Attack.Ref == "" {
