@@ -630,10 +630,19 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // a reader sees a fighter deal damage in the middle of a wolf's turn with
 // nothing in the beat to explain it. That reads as a bug in the log rather
 // than as the rule working.
+//
+// PRESENTATION ID IS THE EASIEST ARGUMENT OF ALL, because nothing about it is
+// sayable. It is a token the rulebook MINTS rather than composes — an opaque
+// correlation string a client echoes and never parses, held to the same
+// presence-not-meaning floor as the identities above — and the one thing a
+// transcript reader can do with it is match two copies of the same roll. A
+// caller writing a sentence into it would be writing it into a field no
+// renderer displays.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
 		"DamageComponents", "AdvantageSources", "DisadvantageSources", "DeathSave", "Trade",
+		"PresentationID",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")
@@ -876,4 +885,93 @@ func (s *OutcomeTestSuite) TestTheOutcomeLandsAfterTheVerbThatCausedIt() {
 	}
 	s.Equal([]string{"scene-opened", "moved", "missed"}, kinds,
 		"recording appends exactly one beat and nothing before it")
+}
+
+// TestAStrikeCarriesTheRollsPresentationToken pins the correlation half of an
+// attack beat.
+//
+// The token is minted by the rulebook once per roll and copied here verbatim,
+// so the actor who declared the swing and every witness reading the same beat
+// hold the SAME string for it. Nothing else on the beat can do that job: the
+// story sequence a recipient reads is recipient-local (rpg-toolkit#1377), so
+// two members watching one swing count different numbers for it.
+//
+// Absent is legal and means the swing had no declaring roller to correlate
+// with — a monster's strike, a reaction nobody declared, or a beat written
+// before this field existed. The key is omitted rather than written empty, so
+// those beats keep exactly the shape they have always had.
+func (s *OutcomeTestSuite) TestAStrikeCarriesTheRollsPresentationToken() {
+	s.Run("a hit carries it", func() {
+		enc := s.scene()
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack:         &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+			PresentationID: "roll-abc",
+		})
+		s.Require().NoError(err)
+		s.Equal("roll-abc", s.lastBeat(enc)["presentation_id"])
+	})
+
+	s.Run("a miss carries it too", func() {
+		enc := s.scene()
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack:         &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+			PresentationID: "roll-def",
+		})
+		s.Require().NoError(err)
+		s.Equal("roll-def", s.lastBeat(enc)["presentation_id"])
+	})
+
+	s.Run("a swing nobody declared writes no key", func() {
+		enc := s.scene()
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+		})
+		s.Require().NoError(err)
+		_, present := s.lastBeat(enc)["presentation_id"]
+		s.False(present, "absent, not an empty string")
+	})
+}
+
+// TestAPresentationTokenOnAKindThatCarriesItsOwnIsRefused keeps the one-place
+// law visible rather than silent.
+//
+// A death save already carries its token INSIDE its own detail, and its
+// decoder reads a closed set of outer keys — so a second copy beside it would
+// not merely be redundant, it would make the whole beat undecodable. Refusing
+// the input is the same shape Record already uses for a detail that does not
+// match its kind: fail closed, at the door, before anything is appended.
+func (s *OutcomeTestSuite) TestAPresentationTokenOnAKindThatCarriesItsOwnIsRefused() {
+	s.Run("death save", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeDeathSave, Actor: alice,
+			DeathSave: &encounter.DeathSaveDetail{
+				Outcome: "success", Continuation: "end_turn", PresentationID: "roll-abc",
+			},
+			PresentationID: "roll-abc",
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a trade rolls nothing", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeBought, Actor: alice,
+			Trade:          &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1},
+			PresentationID: "roll-abc",
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
+// lastBeat decodes the most recent beat the goblin can read as a bare map, so
+// a test can ask which keys the payload actually carries.
+func (s *OutcomeTestSuite) lastBeat(enc *encounter.Encounter) map[string]any {
+	story, err := enc.Story(&encounter.StoryInput{Audience: goblin})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	return beat
 }
