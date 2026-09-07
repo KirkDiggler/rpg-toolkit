@@ -76,9 +76,12 @@ func GetGrants(bg Background) *Grant {
 				skills.Deception,
 				skills.Stealth,
 			},
+			// Gaming set proficiency is a choice (one type of gaming set),
+			// not fixed — previously hardcoded to ToolPlayingCardSet here,
+			// which was simply wrong per PHB ("one type of gaming set").
+			// See choices.GetBackgroundRequirements' CriminalGamingSet.
 			ToolProficiencies: []proficiencies.Tool{
-				proficiencies.ToolPlayingCardSet, // Gaming set proficiency
-				proficiencies.ToolThieves,        // Thieves' tools
+				proficiencies.ToolThieves, // Thieves' tools
 			},
 			Equipment: []EquipmentItem{
 				{ID: items.Crowbar, Quantity: 1},

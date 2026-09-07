@@ -447,7 +447,7 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 	}
 
 	// Record equipment choices
-	if err := d.recordEquipmentChoices(input.Choices.Equipment, requirements); err != nil {
+	if err := d.recordEquipmentChoices(input.Choices.Equipment, requirements, shared.SourceClass); err != nil {
 		return err
 	}
 
@@ -467,12 +467,16 @@ func (d *Draft) SetBackground(input *SetBackgroundInput) error {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
 	}
 
+	if backgrounds.GetGrants(input.BackgroundID) == nil {
+		return rpgerr.Newf(rpgerr.CodeNotFound, "unknown background: %s", input.BackgroundID)
+	}
+
 	// Clear all existing background choices before recording new ones
 	// This prevents accumulation when changing backgrounds
 	d.clearChoicesBySource(shared.SourceBackground)
 
-	// TODO: Validate background when we have internal background data
 	d.background = input.BackgroundID
+	requirements := choices.GetBackgroundRequirements(d.background)
 
 	// Record language choices
 	if len(input.Choices.Languages) > 0 {
@@ -481,6 +485,31 @@ func (d *Draft) SetBackground(input *SetBackgroundInput) error {
 			Source:            shared.SourceBackground,
 			LanguageSelection: input.Choices.Languages,
 		})
+	}
+
+	// Record tool proficiency choices (Outlander, Noble/Knight,
+	// Criminal/Spy, Soldier's proficiency choice)
+	if len(input.Choices.Tools) > 0 {
+		var choiceID choices.ChoiceID
+		if requirements.Tools != nil {
+			choiceID = requirements.Tools.ID
+		}
+		toolSelection := make([]proficiencies.Tool, len(input.Choices.Tools))
+		for i, t := range input.Choices.Tools {
+			toolSelection[i] = proficiencies.Tool(t)
+		}
+		d.recordChoice(choices.ChoiceData{
+			Category:      shared.ChoiceToolProficiency,
+			Source:        shared.SourceBackground,
+			ChoiceID:      choiceID,
+			ToolSelection: toolSelection,
+		})
+	}
+
+	// Record equipment choices (Entertainer, Folk Hero, Guild
+	// Artisan/Merchant, Soldier's item choice, Charlatan)
+	if err := d.recordEquipmentChoices(input.Choices.Equipment, requirements, shared.SourceBackground); err != nil {
+		return err
 	}
 
 	d.updatedAt = time.Now()
@@ -702,6 +731,7 @@ func (d *Draft) ValidateChoices() error {
 	// Convert draft choices to submissions
 	submissions := choices.NewSubmissions()
 	requirements := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
+	backgroundRequirements := choices.GetBackgroundRequirements(d.background)
 
 	// Process stored choices into submissions
 	for _, choice := range d.choices {
@@ -719,7 +749,11 @@ func (d *Draft) ValidateChoices() error {
 			}
 		case shared.ChoiceEquipment:
 			if len(choice.EquipmentSelection) > 0 {
-				if err := d.validatePersistedCategoryEquipmentChoice(choice, requirements); err != nil {
+				choiceRequirements := requirements
+				if choice.Source == shared.SourceBackground {
+					choiceRequirements = backgroundRequirements
+				}
+				if err := d.validatePersistedCategoryEquipmentChoice(choice, choiceRequirements); err != nil {
 					return err
 				}
 
@@ -795,7 +829,7 @@ func (d *Draft) ValidateChoices() error {
 	}
 
 	// Validate choices
-	result := validator.ValidateCharacterCreation(d.class, d.race, submissions)
+	result := validator.ValidateCharacterCreation(d.class, d.race, d.background, submissions)
 
 	if !result.Valid {
 		// Return first error as rpgerr
@@ -1060,6 +1094,23 @@ func (d *Draft) compileProficiencies(
 		}
 	}
 
+	// Entertainer/Folk Hero/Guild Artisan's tool proficiency is derived
+	// from their equipment choice rather than asked as a second choice
+	// (see choices.GetBackgroundRequirements' doc comment for why) — the
+	// selected instrument/tool ID and its matching proficiency constant
+	// are the identical string.
+	for _, choice := range d.choices {
+		if choice.Category != shared.ChoiceEquipment || choice.Source != shared.SourceBackground {
+			continue
+		}
+		switch choice.ChoiceID {
+		case choices.EntertainerInstrument, choices.FolkHeroArtisanTools, choices.GuildArtisanTools:
+			for _, id := range choice.EquipmentSelection {
+				toolProfs = append(toolProfs, proficiencies.Tool(id))
+			}
+		}
+	}
+
 	return armorProfs, weaponProfs, dedupeToolProficiencies(toolProfs)
 }
 
@@ -1136,12 +1187,18 @@ func (d *Draft) compileInventory(bgGrant *backgrounds.Grant) []InventoryItem {
 
 	// Add equipment from choices (user selections)
 	reqs := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
+	bgReqs := choices.GetBackgroundRequirements(d.background)
 	for _, choice := range d.choices {
 		if choice.Category != shared.ChoiceEquipment {
 			continue
 		}
 
 		req := d.equipmentRequirementFor(choice.ChoiceID, reqs)
+		if req == nil {
+			// Choice IDs are unique across sources, so trying background
+			// requirements when the class lookup misses is safe.
+			req = d.equipmentRequirementFor(choice.ChoiceID, bgReqs)
+		}
 		if req == nil {
 			continue
 		}
@@ -1432,9 +1489,20 @@ func (d *Draft) IsBackgroundComplete() bool {
 		return false
 	}
 
-	// TODO: Get background requirements when we have background data
-	// For now, just check that background is set
-	return true
+	// Get background requirements
+	reqs := choices.GetBackgroundRequirements(d.background)
+	if reqs == nil {
+		return true // No choices required
+	}
+
+	// Create submissions from draft choices
+	subs := d.getBackgroundSubmissions()
+
+	// Validate
+	validator := choices.NewValidator()
+	result := validator.Validate(reqs, subs)
+
+	return result.Valid
 }
 
 // Helper to check if class needs subclass at level 1
@@ -1512,6 +1580,51 @@ func (d *Draft) getRaceSubmissions() *choices.Submissions {
 					Values:   toolValues,
 				})
 			}
+		}
+	}
+
+	return subs
+}
+
+// getBackgroundSubmissions extracts background-related submissions from
+// draft choices. Unlike getRaceSubmissions, this uses choice.ChoiceID
+// directly rather than rebuilding it from a switch on d.background —
+// SetBackground always stores the correct ChoiceID from
+// GetBackgroundRequirements at recording time, same as getClassSubmissions
+// already relies on SetClass doing.
+func (d *Draft) getBackgroundSubmissions() *choices.Submissions {
+	subs := choices.NewSubmissions()
+
+	for _, choice := range d.choices {
+		if choice.Source != shared.SourceBackground {
+			continue
+		}
+
+		if len(choice.EquipmentSelection) > 0 {
+			values := choice.EquipmentSelection
+			if choice.OptionID != "" {
+				values = []shared.SelectionID{choice.OptionID}
+			}
+			subs.Add(choices.Submission{
+				Category: shared.ChoiceEquipment,
+				Source:   shared.SourceBackground,
+				ChoiceID: choice.ChoiceID,
+				OptionID: choice.OptionID,
+				Values:   values,
+			})
+		}
+
+		if len(choice.ToolSelection) > 0 {
+			toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
+			for i, t := range choice.ToolSelection {
+				toolValues[i] = shared.SelectionID(t)
+			}
+			subs.Add(choices.Submission{
+				Category: shared.ChoiceToolProficiency,
+				Source:   shared.SourceBackground,
+				ChoiceID: choice.ChoiceID,
+				Values:   toolValues,
+			})
 		}
 	}
 
@@ -1605,9 +1718,10 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 func (d *Draft) recordEquipmentChoices(
 	selections []EquipmentChoiceSelection,
 	requirements *choices.Requirements,
+	source shared.ChoiceSource,
 ) error {
 	for _, selection := range selections {
-		if err := d.recordEquipmentChoice(selection, requirements); err != nil {
+		if err := d.recordEquipmentChoice(selection, requirements, source); err != nil {
 			return err
 		}
 	}
@@ -1618,15 +1732,16 @@ func (d *Draft) recordEquipmentChoices(
 func (d *Draft) recordEquipmentChoice(
 	selection EquipmentChoiceSelection,
 	requirements *choices.Requirements,
+	source shared.ChoiceSource,
 ) error {
 	// Try to find as a bundle requirement
 	if req := d.findEquipmentRequirement(selection.ChoiceID, requirements); req != nil {
-		return d.recordBundleEquipment(selection, req)
+		return d.recordBundleEquipment(selection, req, source)
 	}
 
 	// Try to find as a category requirement
 	if catReq := d.findCategoryRequirement(selection.ChoiceID, requirements); catReq != nil {
-		return d.recordCategoryEquipment(selection)
+		return d.recordCategoryEquipment(selection, source)
 	}
 
 	return rpgerr.Newf(rpgerr.CodeNotFound, "unknown equipment choice '%s'", selection.ChoiceID)
@@ -1662,6 +1777,7 @@ func (d *Draft) findCategoryRequirement(
 func (d *Draft) recordBundleEquipment(
 	selection EquipmentChoiceSelection,
 	req *choices.EquipmentRequirement,
+	source shared.ChoiceSource,
 ) error {
 	// Find the selected option
 	selectedOption := d.findEquipmentOption(selection.OptionID, req)
@@ -1679,7 +1795,7 @@ func (d *Draft) recordBundleEquipment(
 
 	d.recordChoice(choices.ChoiceData{
 		Category:           shared.ChoiceEquipment,
-		Source:             shared.SourceClass,
+		Source:             source,
 		ChoiceID:           selection.ChoiceID,
 		OptionID:           selectedOption.ID,
 		EquipmentSelection: equipmentIDs,
@@ -1780,7 +1896,7 @@ func (d *Draft) validateCategorySelections(
 }
 
 // recordCategoryEquipment processes a top-level category equipment choice
-func (d *Draft) recordCategoryEquipment(selection EquipmentChoiceSelection) error {
+func (d *Draft) recordCategoryEquipment(selection EquipmentChoiceSelection, source shared.ChoiceSource) error {
 	if len(selection.CategorySelections) == 0 {
 		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
 			"category choice '%s' requires category selections", selection.ChoiceID)
@@ -1795,7 +1911,7 @@ func (d *Draft) recordCategoryEquipment(selection EquipmentChoiceSelection) erro
 
 	d.recordChoice(choices.ChoiceData{
 		Category:           shared.ChoiceEquipment,
-		Source:             shared.SourceClass,
+		Source:             source,
 		ChoiceID:           selection.ChoiceID,
 		EquipmentSelection: selection.CategorySelections,
 	})

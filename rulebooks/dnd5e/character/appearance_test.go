@@ -117,7 +117,7 @@ func completeDraft(t *testing.T, appearance *customization.Appearance) *characte
 	}))
 	require.NoError(t, draft.SetClass(validRogueClassInput()))
 	require.NoError(t, draft.SetBackground(&character.SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	}))
 	require.NoError(t, draft.SetAppearance(&character.SetAppearanceInput{
 		Appearance: appearance,

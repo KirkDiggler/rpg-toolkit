@@ -95,7 +95,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      BackgroundChoices{},
 	}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
@@ -180,7 +180,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      BackgroundChoices{},
 	}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
@@ -254,7 +254,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      BackgroundChoices{},
 	}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
@@ -331,7 +331,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      BackgroundChoices{},
 	}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -151,9 +152,11 @@ func (v *Validator) Validate(requirements *Requirements, submissions *Submission
 func (v *Validator) ValidateCharacterCreation(
 	classID classes.Class,
 	raceID races.Race,
+	backgroundID backgrounds.Background,
 	submissions *Submissions,
 ) *ValidationResult {
-	return v.validatePerSource(submissions, GetClassRequirements(classID), GetRaceRequirements(raceID))
+	return v.validatePerSource(submissions,
+		GetClassRequirements(classID), GetRaceRequirements(raceID), GetBackgroundRequirements(backgroundID))
 }
 
 // validatePerSource validates each of reqs independently against the same

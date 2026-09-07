@@ -140,7 +140,12 @@ func (s *DraftTestSuite) createFighterDraft() *character.Draft {
 	// Set background (required for ToCharacter)
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
-		Choices:      character.BackgroundChoices{},
+		Choices: character.BackgroundChoices{
+			Tools: []shared.SelectionID{"dice-set"},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.SoldierGamingSetItem, OptionID: choices.SoldierGamingSetDice},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -209,7 +214,7 @@ func (s *DraftTestSuite) createRogueDraft() *character.Draft {
 	// Set background (required for ToCharacter)
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Criminal,
-		Choices:      character.BackgroundChoices{},
+		Choices:      character.BackgroundChoices{Tools: []shared.SelectionID{"dice-set"}},
 	})
 	s.Require().NoError(err)
 
@@ -244,7 +249,12 @@ func (s *DraftTestSuite) createBarbarianDraft() *character.Draft {
 
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
-		Choices:      character.BackgroundChoices{},
+		Choices: character.BackgroundChoices{
+			Tools: []shared.SelectionID{"dice-set"},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.SoldierGamingSetItem, OptionID: choices.SoldierGamingSetDice},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -352,9 +362,12 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	})
 	s.Require().NoError(err)
 
-	// Set background (no equipment grants)
+	// Set background. Hermit — every background grants some fixed
+	// equipment now (rpg-toolkit#1554), so "no equipment grants" is no
+	// longer possible; this test only cares about equipment from class
+	// choices, and Hermit needs no background choice of its own.
 	err = draft.SetBackground(&character.SetBackgroundInput{
-		BackgroundID: backgrounds.Noble,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      character.BackgroundChoices{},
 	})
 	s.Require().NoError(err)
@@ -471,7 +484,12 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 
 	err := draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
-		Choices:      character.BackgroundChoices{},
+		Choices: character.BackgroundChoices{
+			Tools: []shared.SelectionID{"dice-set"},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.SoldierGamingSetItem, OptionID: choices.SoldierGamingSetDice},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -601,10 +619,13 @@ func (s *DraftTestSuite) TestCompileInventory_DuplicateRetainsFirstOccurrenceOrd
 	//
 	// Soldier's fixed background equipment (common clothes) lands between
 	// the class's fixed grants and the player's own equipment choices,
-	// matching compileInventory's grant-then-choices order.
+	// matching compileInventory's grant-then-choices order. Soldier's own
+	// equipment choice (bone dice, chosen for this draft's background
+	// setup) is itself a choice, so it lands with the other choices.
 	s.Require().Equal([]string{
 		weapons.Javelin,
 		string(items.ClothesCommon),
+		string(tools.DiceSet),
 		weapons.Greataxe,
 		string(items.Backpack),
 		string(items.Bedroll),
@@ -868,7 +889,12 @@ func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentValidation() {
 	s.Require().NoError(err)
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
-		Choices:      character.BackgroundChoices{},
+		Choices: character.BackgroundChoices{
+			Tools: []shared.SelectionID{"dice-set"},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.SoldierGamingSetItem, OptionID: choices.SoldierGamingSetDice},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -1078,7 +1104,12 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 	// Set background
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
-		Choices:      character.BackgroundChoices{},
+		Choices: character.BackgroundChoices{
+			Tools: []shared.SelectionID{"dice-set"},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.SoldierGamingSetItem, OptionID: choices.SoldierGamingSetDice},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -1176,6 +1207,12 @@ func (s *ClassChangeTestSuite) createBaseDraft() *character.Draft {
 	// Set background
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
+		Choices: character.BackgroundChoices{
+			Tools: []shared.SelectionID{"dice-set"},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.SoldierGamingSetItem, OptionID: choices.SoldierGamingSetDice},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -1682,7 +1719,7 @@ func (s *MonkToolProficiencyTestSuite) TestDwarfToolProficiencyChoiceCompiles() 
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&character.SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	}))
 	s.Require().NoError(draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,

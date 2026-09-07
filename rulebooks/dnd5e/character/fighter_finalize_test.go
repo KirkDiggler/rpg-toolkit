@@ -93,7 +93,7 @@ func (s *FighterFinalizeSuite) TestFighterWithArcheryFightingStyle() {
 
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	})
 	s.Require().NoError(err)
 
@@ -178,7 +178,7 @@ func (s *FighterFinalizeSuite) TestFighterWithGWFFightingStyle() {
 
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	})
 	s.Require().NoError(err)
 
@@ -259,7 +259,7 @@ func (s *FighterFinalizeSuite) TestFighterWithoutFightingStyle() {
 
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	})
 	s.Require().NoError(err)
 
@@ -336,7 +336,7 @@ func (s *FighterFinalizeSuite) TestFighterWithInvalidStyleFails() {
 
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	})
 	s.Require().NoError(err)
 

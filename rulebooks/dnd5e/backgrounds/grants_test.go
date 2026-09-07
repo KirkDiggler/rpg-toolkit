@@ -59,7 +59,7 @@ func (s *GrantsSuite) TestGrants() {
 			name:   "Criminal",
 			bg:     backgrounds.Criminal,
 			skills: []skills.Skill{skills.Deception, skills.Stealth},
-			tools:  []proficiencies.Tool{proficiencies.ToolPlayingCardSet, proficiencies.ToolThieves},
+			tools:  []proficiencies.Tool{proficiencies.ToolThieves},
 			equipment: []backgrounds.EquipmentItem{
 				{ID: items.Crowbar, Quantity: 1},
 				{ID: items.ClothesCommon, Quantity: 1},
@@ -70,7 +70,7 @@ func (s *GrantsSuite) TestGrants() {
 			name:   "Spy shares Criminal's case",
 			bg:     backgrounds.Spy,
 			skills: []skills.Skill{skills.Deception, skills.Stealth},
-			tools:  []proficiencies.Tool{proficiencies.ToolPlayingCardSet, proficiencies.ToolThieves},
+			tools:  []proficiencies.Tool{proficiencies.ToolThieves},
 			equipment: []backgrounds.EquipmentItem{
 				{ID: items.Crowbar, Quantity: 1},
 				{ID: items.ClothesCommon, Quantity: 1},

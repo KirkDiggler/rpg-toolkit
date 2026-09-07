@@ -54,7 +54,7 @@ func (s *LanguagesSuite) TestHumanWithLanguageChoice() {
 			},
 		},
 	}))
-	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 15,
@@ -96,7 +96,7 @@ func (s *LanguagesSuite) TestElfDefaultLanguages() {
 			},
 		},
 	}))
-	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 14, abilities.DEX: 16, abilities.CON: 14,
@@ -141,7 +141,7 @@ func (s *LanguagesSuite) TestDwarfDefaultLanguages() {
 			},
 		},
 	}))
-	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 16,
@@ -186,7 +186,7 @@ func (s *LanguagesSuite) TestLanguageRoundTrip() {
 			},
 		},
 	}))
-	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 15,
@@ -247,7 +247,7 @@ func (s *LanguagesSuite) TestHalfElfLanguages() {
 			},
 		},
 	}))
-	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 14, abilities.DEX: 14, abilities.CON: 14,

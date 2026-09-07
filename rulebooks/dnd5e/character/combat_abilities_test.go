@@ -75,7 +75,7 @@ func (s *CombatAbilitiesTestSuite) createFighterDraft() *character.Draft {
 
 	// Set background
 	err = draft.SetBackground(&character.SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      character.BackgroundChoices{},
 	})
 	s.Require().NoError(err)

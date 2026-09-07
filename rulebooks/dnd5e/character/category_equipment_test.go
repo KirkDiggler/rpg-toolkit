@@ -66,7 +66,7 @@ func (s *CategoryBasedEquipmentTestSuite) SetupTest() {
 	s.Require().NoError(err)
 
 	err = s.draft.SetBackground(&character.SetBackgroundInput{
-		BackgroundID: backgrounds.Outlander,
+		BackgroundID: backgrounds.Hermit,
 	})
 	s.Require().NoError(err)
 }

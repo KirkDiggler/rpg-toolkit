@@ -184,18 +184,56 @@ const (
 	WarlockSpells1    ChoiceID = "warlock-spells-1"
 )
 
-// BackgroundData choice IDs
+// BackgroundData language choice IDs. Background language-count
+// enforcement is explicitly deferred (rpg-toolkit#1554) — language is
+// inert everywhere else in the toolkit today, nothing consumes it — so
+// these are not yet referenced by any Requirements. Kept for that future
+// work rather than removed.
 const (
 	AcolyteLanguages     ChoiceID = "acolyte-languages"
-	CriminalTools        ChoiceID = "criminal-tools"
-	EntertainerTools     ChoiceID = "entertainer-tools"
-	FolkHeroTools        ChoiceID = "folk-hero-tools"
 	GuildArtisanLanguage ChoiceID = "guild-artisan-language"
 	HermitLanguage       ChoiceID = "hermit-language"
 	NobleLanguage        ChoiceID = "noble-language"
 	OutlanderLanguage    ChoiceID = "outlander-language"
 	SageLanguages        ChoiceID = "sage-languages"
-	SoldierTools         ChoiceID = "soldier-tools"
+)
+
+// Background equipment/tool-proficiency choice IDs (rpg-toolkit#1554).
+// Criminal/Spy, Noble/Knight, and Outlander are proficiency-only (Tools
+// requirement, no physical item — same shape race's Dwarf choice already
+// uses). Entertainer, Folk Hero, and Guild Artisan/Merchant are a single
+// Equipment requirement; the tied tool proficiency is derived from the
+// selected item, not asked as a second choice (see
+// GetBackgroundRequirements' doc comment). Soldier alone needs both,
+// independently: its physical-item choice (2 fixed options) and its
+// proficiency choice (4 gaming-set types) are different selection spaces
+// by RAW. Charlatan is a plain 4-option Equipment requirement with no
+// tied proficiency.
+// GuildArtisanTools (equipment item choice) already exists in the "Tool
+// proficiency choice IDs" block above — previously declared but unused,
+// same as everything else this wave wires in for the first time.
+const (
+	CriminalGamingSet           ChoiceID = "criminal-gaming-set"
+	NobleGamingSet              ChoiceID = "noble-gaming-set"
+	OutlanderInstrument         ChoiceID = "outlander-instrument"
+	EntertainerInstrument       ChoiceID = "entertainer-instrument"
+	FolkHeroArtisanTools        ChoiceID = "folk-hero-artisan-tools"
+	SoldierGamingSetItem        ChoiceID = "soldier-gaming-set-item"
+	SoldierGamingSetProficiency ChoiceID = "soldier-gaming-set-proficiency"
+	CharlatanToolsOfTheCon      ChoiceID = "charlatan-tools-of-the-con"
+)
+
+// Background equipment option IDs.
+const (
+	EntertainerInstrumentChoice OptionID = "entertainer-instrument-a"
+	FolkHeroToolsChoice         OptionID = "folk-hero-tools-a"
+	GuildArtisanToolsChoice     OptionID = "guild-artisan-tools-a"
+	SoldierGamingSetDice        OptionID = "soldier-gaming-set-a"
+	SoldierGamingSetCards       OptionID = "soldier-gaming-set-b"
+	CharlatanConBottles         OptionID = "charlatan-con-a"
+	CharlatanConDice            OptionID = "charlatan-con-b"
+	CharlatanConCards           OptionID = "charlatan-con-c"
+	CharlatanConSignetRing      OptionID = "charlatan-con-d"
 )
 
 // Equipment option IDs - Fighter

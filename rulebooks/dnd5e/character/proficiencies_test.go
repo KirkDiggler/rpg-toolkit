@@ -75,6 +75,12 @@ func (s *ProficienciesSuite) TestFighterProficiencies() {
 	// Set background
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
+		Choices: BackgroundChoices{
+			Tools: []shared.SelectionID{"dice-set"},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.SoldierGamingSetItem, OptionID: choices.SoldierGamingSetDice},
+			},
+		},
 	}))
 
 	// Set ability scores
@@ -121,11 +127,12 @@ func (s *ProficienciesSuite) TestFighterProficiencies() {
 	)
 
 	// Fighters have no tool proficiencies of their own, but this draft's
-	// Soldier background grants land vehicle proficiency automatically.
-	s.Equal(
-		[]proficiencies.Tool{proficiencies.ToolVehicleLand},
+	// Soldier background grants land vehicle proficiency automatically,
+	// and its gaming-set proficiency choice (dice, chosen above) adds one more.
+	s.ElementsMatch(
+		[]proficiencies.Tool{proficiencies.ToolVehicleLand, proficiencies.ToolDiceSet},
 		data.ToolProficiencies,
-		"Fighter has no class tool proficiencies; Soldier grants land vehicles",
+		"Fighter has no class tool proficiencies; Soldier grants land vehicles and the chosen gaming set",
 	)
 }
 
@@ -173,9 +180,11 @@ func (s *ProficienciesSuite) TestBarbarianProficiencies() {
 		},
 	}))
 
-	// Set background
+	// Set background. Sage (not Outlander) deliberately — this test
+	// asserts zero tool proficiencies below, and Sage grants none, no
+	// choice required either.
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Outlander,
+		BackgroundID: backgrounds.Sage,
 	}))
 
 	// Set ability scores
@@ -347,7 +356,7 @@ func (s *ProficienciesSuite) TestProficienciesRoundTrip() {
 			FightingStyle: fightingstyles.Defense,
 		},
 	}))
-	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 15, abilities.DEX: 14, abilities.CON: 13,
