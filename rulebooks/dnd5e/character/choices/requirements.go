@@ -7,16 +7,19 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/tools"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -820,6 +823,239 @@ func GetRaceRequirements(raceID races.Race) *Requirements {
 		}
 	default:
 		return &Requirements{}
+	}
+}
+
+// GetBackgroundRequirements returns the real player choices a background
+// requires — the seven backgrounds flagged by "// Note: ... is a choice"
+// comments in backgrounds/grants.go, whose fixed (non-choice) grants are
+// already wired via backgrounds.GetGrants (rpg-toolkit#1554).
+//
+// Outlander, Noble/Knight, and Criminal/Spy are proficiency-only: a Tools
+// requirement, same shape as race's Dwarf choice — no physical item
+// appears in that background's equipment list for the instrument/gaming
+// set.
+//
+// Entertainer, Folk Hero, and Guild Artisan/Merchant grant one physical
+// item (an Equipment requirement, category-based, same shape as Bard's
+// BardInstrument) — no separate Tools requirement for these three. The
+// tied tool proficiency is derived from the selected item elsewhere
+// (character/draft.go's compileProficiencies), not asked as a second
+// choice. This is a design default, not a cited 2014 RAW rule: the PHB
+// states the equipment grant ("a musical instrument, one of your choice")
+// and the tool-proficiency grant ("one type of musical instrument")
+// separately, with nothing in the 2014 text linking them — the 2024 PHB
+// revision adds an explicit "(same as above)" to the equipment line for
+// this exact case, real evidence the 2014 text left it ambiguous rather
+// than settled. Deriving one from the other is the sensible reading (why
+// carry an instrument you have no training with), and it guarantees the
+// two can't disagree, but a future reader should know it's a choice this
+// codebase made, not a rule it found.
+//
+// Soldier is the one case needing both, independently: its physical-item
+// choice (bone dice or a deck of cards, 2 fixed options) and its
+// proficiency choice (any of 4 gaming-set types) are different selection
+// spaces by RAW — you can carry dice but be proficient with a different
+// gaming set.
+//
+// Charlatan is a plain 4-named-option Equipment requirement with no tied
+// proficiency (its fixed disguise-kit proficiency is unrelated) — reduced
+// to 3 options here: "ten stopped bottles filled with colored liquid" has
+// no official PHB/SRD price and no catalog entry, consistent with every
+// other unpriced narrative item this wave leaves unmodeled.
+func GetBackgroundRequirements(bg backgrounds.Background) *Requirements {
+	switch bg {
+	case backgrounds.Outlander:
+		return &Requirements{
+			Tools: &ToolRequirement{
+				ID:      OutlanderInstrument,
+				Count:   1,
+				Options: musicalInstrumentToolOptions(),
+				Label:   "Choose a musical instrument proficiency",
+			},
+		}
+
+	case backgrounds.Noble, backgrounds.Knight:
+		return &Requirements{
+			Tools: &ToolRequirement{
+				ID:      NobleGamingSet,
+				Count:   1,
+				Options: gamingSetToolOptions(),
+				Label:   "Choose a gaming set proficiency",
+			},
+		}
+
+	case backgrounds.Criminal, backgrounds.Spy:
+		return &Requirements{
+			Tools: &ToolRequirement{
+				ID:      CriminalGamingSet,
+				Count:   1,
+				Options: gamingSetToolOptions(),
+				Label:   "Choose a gaming set proficiency",
+			},
+		}
+
+	case backgrounds.Entertainer:
+		return &Requirements{
+			Equipment: enrichEquipmentRequirements([]*EquipmentRequirement{
+				musicalInstrumentEquipmentRequirement(EntertainerInstrument, EntertainerInstrumentChoice),
+			}),
+		}
+
+	case backgrounds.FolkHero:
+		return &Requirements{
+			Equipment: enrichEquipmentRequirements([]*EquipmentRequirement{
+				artisanToolsEquipmentRequirement(FolkHeroArtisanTools, FolkHeroToolsChoice),
+			}),
+		}
+
+	case backgrounds.GuildArtisan, backgrounds.GuildMerchant:
+		return &Requirements{
+			Equipment: enrichEquipmentRequirements([]*EquipmentRequirement{
+				artisanToolsEquipmentRequirement(GuildArtisanTools, GuildArtisanToolsChoice),
+			}),
+		}
+
+	case backgrounds.Soldier:
+		return &Requirements{
+			Equipment: enrichEquipmentRequirements([]*EquipmentRequirement{
+				{
+					ID:     SoldierGamingSetItem,
+					Choose: 1,
+					Options: []EquipmentOption{
+						{
+							ID:    SoldierGamingSetDice,
+							Label: "Set of bone dice",
+							Items: []EquipmentItem{{ID: tools.DiceSet, Quantity: 1}},
+						},
+						{
+							ID:    SoldierGamingSetCards,
+							Label: "Deck of playing cards",
+							Items: []EquipmentItem{{ID: tools.PlayingCardSet, Quantity: 1}},
+						},
+					},
+					Label: "Choose bone dice or a deck of cards",
+				},
+			}),
+			Tools: &ToolRequirement{
+				ID:      SoldierGamingSetProficiency,
+				Count:   1,
+				Options: gamingSetToolOptions(),
+				Label:   "Choose a gaming set proficiency",
+			},
+		}
+
+	case backgrounds.Charlatan:
+		return &Requirements{
+			Equipment: enrichEquipmentRequirements([]*EquipmentRequirement{
+				{
+					ID:     CharlatanToolsOfTheCon,
+					Choose: 1,
+					Options: []EquipmentOption{
+						{
+							ID:    CharlatanConDice,
+							Label: "Set of weighted dice",
+							Items: []EquipmentItem{{ID: tools.DiceSet, Quantity: 1}},
+						},
+						{
+							ID:    CharlatanConCards,
+							Label: "Deck of marked cards",
+							Items: []EquipmentItem{{ID: tools.PlayingCardSet, Quantity: 1}},
+						},
+						{
+							ID:    CharlatanConSignetRing,
+							Label: "Signet ring of an imaginary duke",
+							Items: []EquipmentItem{{ID: items.SignetRing, Quantity: 1}},
+						},
+					},
+					Label: "Choose your tools of the con",
+				},
+			}),
+		}
+
+	default:
+		return &Requirements{}
+	}
+}
+
+// musicalInstrumentToolOptions returns every musical instrument as a
+// ToolRequirement option — the proficiency-only shape (Outlander).
+func musicalInstrumentToolOptions() []shared.SelectionID {
+	return []shared.SelectionID{
+		shared.SelectionID(proficiencies.ToolBagpipes),
+		shared.SelectionID(proficiencies.ToolDrum),
+		shared.SelectionID(proficiencies.ToolDulcimer),
+		shared.SelectionID(proficiencies.ToolFlute),
+		shared.SelectionID(proficiencies.ToolLute),
+		shared.SelectionID(proficiencies.ToolLyre),
+		shared.SelectionID(proficiencies.ToolHorn),
+		shared.SelectionID(proficiencies.ToolPanFlute),
+		shared.SelectionID(proficiencies.ToolShawm),
+		shared.SelectionID(proficiencies.ToolViol),
+	}
+}
+
+// gamingSetToolOptions returns every gaming set type as a ToolRequirement
+// option — the proficiency-only shape (Noble/Knight, Criminal/Spy,
+// Soldier's proficiency choice).
+func gamingSetToolOptions() []shared.SelectionID {
+	return []shared.SelectionID{
+		shared.SelectionID(proficiencies.ToolDiceSet),
+		shared.SelectionID(proficiencies.ToolPlayingCardSet),
+		shared.SelectionID(proficiencies.ToolDragonchessSet),
+		shared.SelectionID(proficiencies.ToolThreeDragonAnte),
+	}
+}
+
+// musicalInstrumentEquipmentRequirement builds a single-option, category-
+// based Equipment requirement for "a musical instrument, one of your
+// choice" — same shape as Bard's BardInstrument, minus the named Lute
+// alternative (no PHB text singles out one instrument as the default
+// here).
+func musicalInstrumentEquipmentRequirement(reqID ChoiceID, optionID OptionID) *EquipmentRequirement {
+	return &EquipmentRequirement{
+		ID:     reqID,
+		Choose: 1,
+		Options: []EquipmentOption{
+			{
+				ID:    optionID,
+				Label: "A musical instrument of your choice",
+				CategoryChoices: []EquipmentCategoryChoice{
+					{
+						Choose:     1,
+						Type:       shared.EquipmentTypeTool,
+						Categories: []shared.EquipmentCategory{equipment.CategoryMusicalInstruments},
+						Label:      "Choose a musical instrument",
+					},
+				},
+			},
+		},
+		Label: "Choose your musical instrument",
+	}
+}
+
+// artisanToolsEquipmentRequirement builds a single-option, category-based
+// Equipment requirement for "a set of artisan's tools, one of your
+// choice" (Folk Hero, Guild Artisan/Merchant).
+func artisanToolsEquipmentRequirement(reqID ChoiceID, optionID OptionID) *EquipmentRequirement {
+	return &EquipmentRequirement{
+		ID:     reqID,
+		Choose: 1,
+		Options: []EquipmentOption{
+			{
+				ID:    optionID,
+				Label: "A set of artisan's tools of your choice",
+				CategoryChoices: []EquipmentCategoryChoice{
+					{
+						Choose:     1,
+						Type:       shared.EquipmentTypeTool,
+						Categories: []shared.EquipmentCategory{equipment.CategoryArtisanTools},
+						Label:      "Choose a set of artisan's tools",
+					},
+				},
+			},
+		},
+		Label: "Choose your artisan's tools",
 	}
 }
 

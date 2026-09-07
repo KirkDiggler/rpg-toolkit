@@ -534,7 +534,7 @@ func newFighterDraft(t *testing.T) *Draft {
 			FightingStyle: fightingstyles.Defense,
 		},
 	}))
-	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	require.NoError(t, draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 15, abilities.DEX: 14, abilities.CON: 13,
@@ -567,7 +567,7 @@ func newBarbarianDraft(t *testing.T) *Draft {
 			},
 		},
 	}))
-	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Soldier}))
+	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	require.NoError(t, draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 15,
@@ -622,7 +622,7 @@ func newRogueDraft(t *testing.T) *Draft {
 		RaceID:  races.Human,
 		Choices: RaceChoices{Languages: []languages.Language{languages.Common}},
 	}))
-	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Criminal}))
+	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	require.NoError(t, draft.SetClass(&SetClassInput{
 		ClassID: classes.Rogue,
 		Choices: ClassChoices{

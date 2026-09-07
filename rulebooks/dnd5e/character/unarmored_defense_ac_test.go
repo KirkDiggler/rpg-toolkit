@@ -68,7 +68,7 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 					{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
 				},
 			},
-			background: backgrounds.Soldier,
+			background: backgrounds.Hermit,
 			scores: shared.AbilityScores{
 				abilities.STR: 15,
 				abilities.DEX: 14, // +2 modifier
@@ -120,7 +120,7 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 				},
 				FightingStyle: fightingstyles.Defense,
 			},
-			background: backgrounds.Soldier,
+			background: backgrounds.Hermit,
 			scores: shared.AbilityScores{
 				abilities.STR: 16,
 				abilities.DEX: 14, // +2 modifier

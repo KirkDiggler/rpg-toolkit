@@ -83,6 +83,7 @@ func (s *RogueExpertiseSuite) TestRogueExpertiseDoublesSkillBonus() {
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
 		BackgroundID: backgrounds.Criminal,
+		Choices:      BackgroundChoices{Tools: []shared.SelectionID{"dice-set"}},
 	})
 	s.Require().NoError(err)
 
@@ -182,6 +183,7 @@ func (s *RogueExpertiseSuite) TestRogueExpertiseCanUseRacialSkill() {
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
 		BackgroundID: backgrounds.Criminal,
+		Choices:      BackgroundChoices{Tools: []shared.SelectionID{"dice-set"}},
 	})
 	s.Require().NoError(err)
 
@@ -270,6 +272,7 @@ func (s *RogueExpertiseSuite) TestRogueExpertiseMustBeFromProficientSkills() {
 
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
 		BackgroundID: backgrounds.Criminal,
+		Choices:      BackgroundChoices{Tools: []shared.SelectionID{"dice-set"}},
 	}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
@@ -337,6 +340,7 @@ func (s *RogueExpertiseSuite) TestExpertiseValidAfterRaceSetLater() {
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
 		BackgroundID: backgrounds.Criminal,
+		Choices:      BackgroundChoices{Tools: []shared.SelectionID{"dice-set"}},
 	}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{
@@ -405,6 +409,7 @@ func (s *RogueExpertiseSuite) TestExpertiseInvalidatedByLaterRaceChange() {
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
 		BackgroundID: backgrounds.Criminal,
+		Choices:      BackgroundChoices{Tools: []shared.SelectionID{"dice-set"}},
 	}))
 	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
 		Scores: shared.AbilityScores{

@@ -89,7 +89,7 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	})
 	s.Require().NoError(err)
 	s.T().Logf("After SetBackground: progress = %d (0x%X)", draft.Progress(), draft.Progress())
@@ -137,7 +137,7 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 	s.Equal("Grog the Rager", data.Name)
 	s.Equal(races.Human, data.RaceID)
 	s.Equal(classes.Barbarian, data.ClassID)
-	s.Equal(backgrounds.Soldier, data.BackgroundID)
+	s.Equal(backgrounds.Hermit, data.BackgroundID)
 	s.Equal(1, data.Level)
 
 	// Verify class resources were initialized
@@ -180,7 +180,7 @@ func (s *BarbarianFinalizeSuite) TestFinalizedCharacterPreservesMetadata() {
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,
@@ -198,7 +198,7 @@ func (s *BarbarianFinalizeSuite) TestFinalizedCharacterPreservesMetadata() {
 	s.Require().NoError(err)
 
 	data := finalized.ToData()
-	s.Equal(backgrounds.Soldier, data.BackgroundID)
+	s.Equal(backgrounds.Hermit, data.BackgroundID)
 	s.Equal(expectedCreatedAt, data.CreatedAt)
 }
 

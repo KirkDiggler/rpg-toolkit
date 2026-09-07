@@ -72,7 +72,7 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      BackgroundChoices{},
 	})
 	s.Require().NoError(err)
@@ -157,7 +157,7 @@ func (s *FeaturesTestSuite) TestFighterGetsSecondWindFeature() {
 
 	// Set background
 	err = draft.SetBackground(&SetBackgroundInput{
-		BackgroundID: backgrounds.Soldier,
+		BackgroundID: backgrounds.Hermit,
 		Choices:      BackgroundChoices{},
 	})
 	s.Require().NoError(err)

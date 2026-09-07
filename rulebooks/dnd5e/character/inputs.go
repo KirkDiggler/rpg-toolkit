@@ -75,6 +75,16 @@ type SetBackgroundInput struct {
 // BackgroundChoices contains optional choices when selecting a background
 type BackgroundChoices struct {
 	Languages []languages.Language `json:"languages,omitempty"`
+
+	// Equipment records a background's physical-item choice (e.g. Folk
+	// Hero's artisan's tools, Soldier's dice-or-cards), same shape as
+	// ClassChoices.Equipment.
+	Equipment []EquipmentChoiceSelection `json:"equipment,omitempty"`
+
+	// Tools records a background's proficiency-only choice (e.g.
+	// Outlander's instrument, Noble's gaming set), same shape as
+	// ClassChoices.Tools.
+	Tools []shared.SelectionID `json:"tools,omitempty"`
 }
 
 // SetAbilityScoresInput contains the input for setting ability scores
