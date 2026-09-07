@@ -21,13 +21,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// KnownSpellsSuite pins what a level-1 bard's spell CHOICES leave behind: two
-// cantrips and four first-level spells, as content refs on the finished sheet.
+// KnownSpellsSuite covers the sheet's known-spell fields, which in slice one
+// are GROUNDWORK: the shape a known/prepared list will have
+// (rpg-project#391 §5.2), carried and round-tripped, with nothing yet putting
+// anything in it.
 //
-// There is no Cast verb and no slot pool in this slice, so these are a record
-// of what was chosen rather than a capability. That is exactly why they need a
-// test: nothing else reads them yet, so nothing else would notice them going
-// missing.
+// A level-1 bard knows none, and that is the ruling rather than a gap — slice
+// one is Bardic Inspiration alone, so the cantrip and spell questions are not
+// asked at creation and come back with the cast door. What is tested here is
+// therefore the machinery around an empty list, plus the two paths that WILL
+// fill it: the compiler that turns a chosen id into a ref, and the loader that
+// reads one back.
 type KnownSpellsSuite struct {
 	suite.Suite
 	bus events.EventBus
@@ -39,8 +43,9 @@ func TestKnownSpellsSuite(t *testing.T) {
 
 func (s *KnownSpellsSuite) SetupTest() { s.bus = events.NewEventBus() }
 
-// bardDraft builds a level-1 bard draft with the given spell choices.
-func (s *KnownSpellsSuite) bardDraft(cantrips, spellList []spells.Spell) *Draft {
+// bardDraft builds a level-1 bard draft — skills, instruments and equipment,
+// and no spell choices at all.
+func (s *KnownSpellsSuite) bardDraft() *Draft {
 	draft, err := NewDraft(&DraftConfig{ID: "draft-1", PlayerID: "player-1"})
 	s.Require().NoError(err)
 
@@ -52,10 +57,8 @@ func (s *KnownSpellsSuite) bardDraft(cantrips, spellList []spells.Spell) *Draft 
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Bard,
 		Choices: ClassChoices{
-			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
-			Tools:    []shared.SelectionID{"lute", "flute", "drum"},
-			Cantrips: cantrips,
-			Spells:   spellList,
+			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
+			Tools:  []shared.SelectionID{"lute", "flute", "drum"},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
@@ -74,12 +77,6 @@ func (s *KnownSpellsSuite) bardDraft(cantrips, spellList []spells.Spell) *Draft 
 	return draft
 }
 
-// theBardsChoices is the selection every scene here starts from.
-func theBardsChoices() ([]spells.Spell, []spells.Spell) {
-	return []spells.Spell{spells.ViciousMockery, spells.MinorIllusion},
-		[]spells.Spell{spells.CharmPerson, spells.CureWounds, spells.HealingWord, spells.Thunderwave}
-}
-
 // spellRefsAsStrings renders a known-spell list for comparison.
 func spellRefsAsStrings(refList []*core.Ref) []string {
 	out := make([]string, 0, len(refList))
@@ -89,146 +86,33 @@ func spellRefsAsStrings(refList []*core.Ref) []string {
 	return out
 }
 
-// TestABardFinalizesCarryingWhatTheyChose is Kirk's walk blocker, from the
-// other end: the draft completes, and the spells are on the sheet.
-func (s *KnownSpellsSuite) TestABardFinalizesCarryingWhatTheyChose() {
-	cantrips, spellList := theBardsChoices()
+// TestALevelOneBardFinalizesWithoutBeingAskedForSpells is the walk blocker,
+// fixed at the source. The draft completes on skills, instruments and
+// equipment, and the sheet says the bard knows no spells because the bard was
+// never asked for any.
+func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithoutBeingAskedForSpells() {
+	draft := s.bardDraft()
 
-	char, err := s.bardDraft(cantrips, spellList).ToCharacter(context.Background(), "bard-1", s.bus)
+	s.Require().NoError(draft.ValidateChoices(), "nothing further is required of a slice-one bard")
 
-	s.Require().NoError(err, "a bard who made every choice finalizes")
-	s.Equal([]string{
-		refs.Spells.ViciousMockery().String(),
-		refs.Spells.MinorIllusion().String(),
-	}, spellRefsAsStrings(char.KnownCantrips()))
-	s.Equal([]string{
-		refs.Spells.CharmPerson().String(),
-		refs.Spells.CureWounds().String(),
-		refs.Spells.HealingWord().String(),
-		refs.Spells.Thunderwave().String(),
-	}, spellRefsAsStrings(char.KnownSpells()))
-}
-
-// TestTheyAreRefsRatherThanNames — the sheet holds an identity for content it
-// does not carry a copy of.
-func (s *KnownSpellsSuite) TestTheyAreRefsRatherThanNames() {
-	cantrips, spellList := theBardsChoices()
-	char, err := s.bardDraft(cantrips, spellList).ToCharacter(context.Background(), "bard-1", s.bus)
+	char, err := draft.ToCharacter(context.Background(), "bard-1", s.bus)
 	s.Require().NoError(err)
 
-	for _, ref := range append(char.KnownCantrips(), char.KnownSpells()...) {
-		s.Equal(refs.Module, ref.Module)
-		s.Equal(refs.TypeSpells, ref.Type)
-		s.Require().NoError(ref.IsValid())
-	}
+	s.Empty(char.KnownCantrips())
+	s.Empty(char.KnownSpells())
+	s.Empty(char.ToData().SpellSlots, "and no slot pool either")
 }
 
-// TestNoSlotsCameWithThem is #397's R6 holding after the ruling change: the
-// CHOICES land, the casting does not.
-func (s *KnownSpellsSuite) TestNoSlotsCameWithThem() {
-	cantrips, spellList := theBardsChoices()
-	char, err := s.bardDraft(cantrips, spellList).ToCharacter(context.Background(), "bard-1", s.bus)
-	s.Require().NoError(err)
+// TestTheBardIsAskedNothingAboutSpells pins the ruling itself: slice one asks
+// for Bardic Inspiration and nothing that only casting could use.
+func (s *KnownSpellsSuite) TestTheBardIsAskedNothingAboutSpells() {
+	requirements := choices.GetClassRequirements(classes.Bard)
 
-	s.Empty(char.ToData().SpellSlots, "no slot pool in this slice")
-}
-
-// TestTheySurviveARoundTrip — written by ToData and read back by Load, which
-// is the only way anything downstream ever sees them.
-func (s *KnownSpellsSuite) TestTheySurviveARoundTrip() {
-	cantrips, spellList := theBardsChoices()
-	char, err := s.bardDraft(cantrips, spellList).ToCharacter(context.Background(), "bard-1", s.bus)
-	s.Require().NoError(err)
-
-	data := char.ToData()
-	s.Len(data.KnownCantrips, 2)
-	s.Len(data.KnownSpells, 4)
-	s.Equal(refs.Spells.ViciousMockery().String(), data.KnownCantrips[0])
-
-	reloaded, err := Load(context.Background(), data)
-	s.Require().NoError(err)
-	s.Equal(spellRefsAsStrings(char.KnownCantrips()), spellRefsAsStrings(reloaded.KnownCantrips()))
-	s.Equal(spellRefsAsStrings(char.KnownSpells()), spellRefsAsStrings(reloaded.KnownSpells()))
-}
-
-// TestTheListIsCopiedOut — core.Ref is a mutable struct, and a caller must not
-// be able to rewrite what a character knows from the outside.
-func (s *KnownSpellsSuite) TestTheListIsCopiedOut() {
-	cantrips, spellList := theBardsChoices()
-	char, err := s.bardDraft(cantrips, spellList).ToCharacter(context.Background(), "bard-1", s.bus)
-	s.Require().NoError(err)
-
-	handed := char.KnownCantrips()
-	handed[0].ID = "fireball"
-
-	s.Equal(refs.Spells.ViciousMockery().String(), char.KnownCantrips()[0].String())
-}
-
-// TestTheWrongNumberOfCantripsIsRefused — the count is a rule, and the draft
-// is where it is enforced.
-func (s *KnownSpellsSuite) TestTheWrongNumberOfCantripsIsRefused() {
-	_, spellList := theBardsChoices()
-
-	one := s.bardDraft([]spells.Spell{spells.ViciousMockery}, spellList)
-	s.Require().ErrorContains(one.ValidateChoices(), "2 cantrips")
-
-	three := s.bardDraft([]spells.Spell{
-		spells.ViciousMockery, spells.MinorIllusion, spells.Light,
-	}, spellList)
-	s.Require().ErrorContains(three.ValidateChoices(), "2 cantrips")
-}
-
-// TestTheWrongNumberOfSpellsIsRefused, from both sides.
-func (s *KnownSpellsSuite) TestTheWrongNumberOfSpellsIsRefused() {
-	cantrips, spellList := theBardsChoices()
-
-	three := s.bardDraft(cantrips, spellList[:3])
-	s.Require().ErrorContains(three.ValidateChoices(), "4 1st-level spells")
-
-	five := s.bardDraft(cantrips, append(append([]spells.Spell{}, spellList...), spells.Sleep))
-	s.Require().ErrorContains(five.ValidateChoices(), "4 1st-level spells")
-}
-
-// TestChoosingNoneIsRefused — an absent choice is not a satisfied one, which
-// is the failure Kirk actually hit.
-func (s *KnownSpellsSuite) TestChoosingNoneIsRefused() {
-	_, spellList := theBardsChoices()
-	s.Require().ErrorContains(s.bardDraft(nil, spellList).ValidateChoices(), "cantrips")
-
-	cantrips, _ := theBardsChoices()
-	s.Require().ErrorContains(s.bardDraft(cantrips, nil).ValidateChoices(), "spells")
-}
-
-// TestSomethingOffTheBardListIsRefused — the option list is the gate the
-// compiler relies on, so it has to actually hold.
-func (s *KnownSpellsSuite) TestSomethingOffTheBardListIsRefused() {
-	_, spellList := theBardsChoices()
-
-	draft := s.bardDraft([]spells.Spell{spells.ViciousMockery, spells.FireBolt}, spellList)
-
-	s.Require().ErrorContains(draft.ValidateChoices(), "fire-bolt")
-}
-
-// TestASpellThisBuildHasNoRefForIsRefused pins the catalog gate. The option
-// list is checked by the validator; this is the check that catches an id the
-// requirement admitted but the ref catalog has never heard of, which is what
-// would otherwise put a ref pointing at nothing onto a sheet.
-func (s *KnownSpellsSuite) TestASpellThisBuildHasNoRefForIsRefused() {
-	cantrips, spellList := theBardsChoices()
-	draft := s.bardDraft(cantrips, spellList)
-
-	// Reach past the validator by rewriting the recorded choice, because the
-	// requirement's option list would never offer this in the first place.
-	draft.recordChoice(choices.ChoiceData{
-		Category:       shared.ChoiceCantrips,
-		Source:         shared.SourceClass,
-		ChoiceID:       choices.BardCantrips1,
-		SpellSelection: []spells.Spell{"song-of-nothing"},
-	})
-
-	_, err := draft.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
-
-	s.Require().ErrorContains(err, "song-of-nothing")
+	s.Require().NotNil(requirements)
+	s.Nil(requirements.Cantrips, "no cantrip question until there is something to cast")
+	s.Nil(requirements.Spellbook, "and no spell question either")
+	s.NotNil(requirements.Skills, "the questions slice one does ask")
+	s.NotNil(requirements.Tools)
 }
 
 // TestAFighterKnowsNothing — the fields are absent rather than empty on a
@@ -278,19 +162,132 @@ func (s *KnownSpellsSuite) TestAFighterKnowsNothing() {
 	s.Nil(data.KnownSpells)
 }
 
-// TestASheetNamingSomethingUnreadableIsRefused — fail closed. A character who
-// quietly forgot a spell is a bug nobody could see.
-func (s *KnownSpellsSuite) TestASheetNamingSomethingUnreadableIsRefused() {
-	cantrips, spellList := theBardsChoices()
-	char, err := s.bardDraft(cantrips, spellList).ToCharacter(context.Background(), "bard-1", s.bus)
+// TestTheCompilerTurnsAChosenIdIntoARef exercises the path rung 2 will use,
+// without a requirement offering anything: the recorded choice is compiled
+// straight, which is what the finalize step does with it.
+func (s *KnownSpellsSuite) TestTheCompilerTurnsAChosenIdIntoARef() {
+	draft := s.bardDraft()
+	draft.recordChoice(choices.ChoiceData{
+		Category:       shared.ChoiceCantrips,
+		Source:         shared.SourceClass,
+		SpellSelection: []spells.Spell{spells.ViciousMockery, spells.MinorIllusion},
+	})
+
+	known, err := draft.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+
+	s.Require().NoError(err)
+	s.Equal([]string{
+		refs.Spells.ViciousMockery().String(),
+		refs.Spells.MinorIllusion().String(),
+	}, spellRefsAsStrings(known))
+}
+
+// TestTheCompiledRefIsNotTheCatalogsOwn — the catalog hands back shared
+// singletons, and a sheet that aliased one would let a caller reading its
+// known spells rewrite the catalog for everybody.
+func (s *KnownSpellsSuite) TestTheCompiledRefIsNotTheCatalogsOwn() {
+	draft := s.bardDraft()
+	draft.recordChoice(choices.ChoiceData{
+		Category:       shared.ChoiceCantrips,
+		Source:         shared.SourceClass,
+		SpellSelection: []spells.Spell{spells.ViciousMockery},
+	})
+
+	known, err := draft.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+	s.Require().NoError(err)
+	s.Require().Len(known, 1)
+
+	s.NotSame(refs.Spells.ViciousMockery(), known[0])
+	known[0].ID = "fireball"
+	s.Equal("vicious-mockery", refs.Spells.ViciousMockery().ID)
+}
+
+// TestASpellThisBuildHasNoRefForIsRefused pins the catalog gate. Composing
+// "dnd5e:spells:<id>" out of a chosen string would always succeed, which is
+// the problem: a typo would become a ref pointing at nothing, persisted, and
+// read back later by whatever mints Cast declarations.
+func (s *KnownSpellsSuite) TestASpellThisBuildHasNoRefForIsRefused() {
+	draft := s.bardDraft()
+	draft.recordChoice(choices.ChoiceData{
+		Category:       shared.ChoiceCantrips,
+		Source:         shared.SourceClass,
+		SpellSelection: []spells.Spell{"song-of-nothing"},
+	})
+
+	_, err := draft.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+
+	s.Require().ErrorContains(err, "song-of-nothing")
+}
+
+// knownSheet is a stored sheet carrying known spells directly — the shape a
+// caster's sheet will have, built here without a draft because nothing in
+// slice one produces one.
+func (s *KnownSpellsSuite) knownSheet() *Data {
+	char, err := s.bardDraft().ToCharacter(context.Background(), "bard-1", s.bus)
 	s.Require().NoError(err)
 
 	data := char.ToData()
+	data.KnownCantrips = []string{
+		refs.Spells.ViciousMockery().String(), refs.Spells.MinorIllusion().String(),
+	}
+	data.KnownSpells = []string{
+		refs.Spells.CharmPerson().String(), refs.Spells.HealingWord().String(),
+	}
+	return data
+}
+
+// TestTheySurviveARoundTrip — written by ToData and read back by Load, which
+// is the only way anything downstream will ever see them.
+func (s *KnownSpellsSuite) TestTheySurviveARoundTrip() {
+	loaded, err := Load(context.Background(), s.knownSheet())
+	s.Require().NoError(err)
+
+	s.Equal([]string{
+		refs.Spells.ViciousMockery().String(), refs.Spells.MinorIllusion().String(),
+	}, spellRefsAsStrings(loaded.KnownCantrips()))
+	s.Equal([]string{
+		refs.Spells.CharmPerson().String(), refs.Spells.HealingWord().String(),
+	}, spellRefsAsStrings(loaded.KnownSpells()))
+
+	back := loaded.ToData()
+	s.Equal(s.knownSheet().KnownCantrips, back.KnownCantrips)
+	s.Equal(s.knownSheet().KnownSpells, back.KnownSpells)
+}
+
+// TestTheyAreRefsRatherThanNames — the sheet holds an identity for content it
+// does not carry a copy of.
+func (s *KnownSpellsSuite) TestTheyAreRefsRatherThanNames() {
+	loaded, err := Load(context.Background(), s.knownSheet())
+	s.Require().NoError(err)
+
+	for _, ref := range append(loaded.KnownCantrips(), loaded.KnownSpells()...) {
+		s.Equal(refs.Module, ref.Module)
+		s.Equal(refs.TypeSpells, ref.Type)
+		s.Require().NoError(ref.IsValid())
+	}
+}
+
+// TestTheListIsCopiedOut — core.Ref is a mutable struct, and a caller must not
+// be able to rewrite what a character knows from the outside.
+func (s *KnownSpellsSuite) TestTheListIsCopiedOut() {
+	loaded, err := Load(context.Background(), s.knownSheet())
+	s.Require().NoError(err)
+
+	handed := loaded.KnownCantrips()
+	handed[0].ID = "fireball"
+
+	s.Equal(refs.Spells.ViciousMockery().String(), loaded.KnownCantrips()[0].String())
+}
+
+// TestASheetNamingSomethingUnreadableIsRefused — fail closed. A character who
+// quietly forgot a spell is a bug nobody could see.
+func (s *KnownSpellsSuite) TestASheetNamingSomethingUnreadableIsRefused() {
+	data := s.knownSheet()
 	data.KnownCantrips = []string{"not a ref at all"}
-	_, err = Load(context.Background(), data)
+	_, err := Load(context.Background(), data)
 	s.Require().Error(err)
 
-	data = char.ToData()
+	data = s.knownSheet()
 	data.KnownSpells = []string{refs.Conditions.Inspired().String()}
 	_, err = Load(context.Background(), data)
 	s.Require().ErrorContains(err, "not a spell ref")
