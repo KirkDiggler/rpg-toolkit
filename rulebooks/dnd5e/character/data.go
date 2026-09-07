@@ -76,8 +76,27 @@ type Data struct {
 	// numeric field on this struct.
 	Wallet currency.Money `json:"wallet"`
 
-	EquipmentSlots EquipmentSlots                                        `json:"equipment_slots,omitempty"`
-	SpellSlots     map[int]SpellSlotData                                 `json:"spell_slots,omitempty"`
+	EquipmentSlots EquipmentSlots        `json:"equipment_slots,omitempty"`
+	SpellSlots     map[int]SpellSlotData `json:"spell_slots,omitempty"`
+
+	// KnownCantrips and KnownSpells are what this character knows, as
+	// canonical content refs ("dnd5e:spells:vicious-mockery"), written by the
+	// choice pipeline at creation.
+	//
+	// REFS RATHER THAN NAMES OR ENUM VALUES, because a known spell is content
+	// and this sheet holds an identity for it rather than a copy of it
+	// (rpg-project#391 §5.2). Nothing in this slice reads them: there is no
+	// Cast verb and no slot pool, so they are a record of what was chosen and
+	// not yet a capability. The compiler that mints Cast declarations is what
+	// reads them, and it arrives with casting.
+	//
+	// Two fields rather than one keyed by level, because the two are chosen
+	// separately, counted separately by every class table, and refilled by
+	// different rules — a cantrip is never forgotten and a known spell can be
+	// swapped on level-up. One list would need a level beside every entry to
+	// answer a question the split already answers.
+	KnownCantrips  []string                                              `json:"known_cantrips,omitempty"`
+	KnownSpells    []string                                              `json:"known_spells,omitempty"`
 	ClassResources map[shared.ClassResourceType]ResourceData             `json:"class_resources,omitempty"`
 	Resources      map[coreResources.ResourceKey]RecoverableResourceData `json:"resources,omitempty"`
 

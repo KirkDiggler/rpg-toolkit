@@ -81,6 +81,12 @@ type Character struct {
 	wallet         currency.Money
 	equipmentSlots EquipmentSlots
 	spellSlots     map[int]SpellSlotData
+
+	// knownCantrips and knownSpells are the content refs this character knows.
+	// Parsed at load and kept as refs so a reader gets an identity rather than
+	// a string it has to parse again. See [Data.KnownCantrips].
+	knownCantrips  []*core.Ref
+	knownSpells    []*core.Ref
 	classResources map[shared.ClassResourceType]ResourceData
 	resources      map[coreResources.ResourceKey]*combat.RecoverableResource
 
@@ -1019,6 +1025,9 @@ func (c *Character) ToData() *Data {
 	// Copy spell slots map directly since SpellSlotData is already the data type
 	data.SpellSlots = maps.Clone(c.spellSlots)
 
+	data.KnownCantrips = spellRefStrings(c.knownCantrips)
+	data.KnownSpells = spellRefStrings(c.knownSpells)
+
 	// Copy class resources map directly since ResourceData is already the data type
 	data.ClassResources = maps.Clone(c.classResources)
 
@@ -1540,4 +1549,48 @@ func (c *Character) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error
 	}
 
 	return finalEvent.Breakdown, nil
+}
+
+// KnownCantrips returns the cantrips this character knows, as content refs.
+//
+// A COPY, refs included. The sheet hands out identities rather than its own
+// pointers: a caller that mutated one would rewrite what this character knows
+// from the outside, and core.Ref is a mutable struct.
+func (c *Character) KnownCantrips() []*core.Ref { return cloneSpellRefs(c.knownCantrips) }
+
+// KnownSpells returns the leveled spells this character knows, as content
+// refs, under [Character.KnownCantrips]'s copying rule.
+func (c *Character) KnownSpells() []*core.Ref { return cloneSpellRefs(c.knownSpells) }
+
+// cloneSpellRefs deep-copies a known-spell list.
+func cloneSpellRefs(refList []*core.Ref) []*core.Ref {
+	if refList == nil {
+		return nil
+	}
+	out := make([]*core.Ref, 0, len(refList))
+	for _, ref := range refList {
+		if ref == nil {
+			continue
+		}
+		clone := *ref
+		out = append(out, &clone)
+	}
+	return out
+}
+
+// spellRefStrings renders a known-spell list as the canonical strings the
+// sheet persists. Nil stays nil, so "knows nothing" and "was never asked" are
+// the same absent field rather than an empty list that reads as a decision.
+func spellRefStrings(refList []*core.Ref) []string {
+	if len(refList) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(refList))
+	for _, ref := range refList {
+		if ref == nil {
+			continue
+		}
+		out = append(out, ref.String())
+	}
+	return out
 }

@@ -310,6 +310,22 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		policy:          policy,
 	}
 
+	// The known-spell lists, parsed back into identities. Refused rather than
+	// dropped: a sheet naming a spell this build cannot read is a corrupted
+	// record, and a character who quietly forgot one would be a bug nobody
+	// could see. Nothing writes these but our own compiler, so a bad one means
+	// the bytes are wrong rather than the content.
+	knownCantrips, err := parseSpellRefs(d.KnownCantrips, "known cantrip")
+	if err != nil {
+		return nil, err
+	}
+	knownSpells, err := parseSpellRefs(d.KnownSpells, "known spell")
+	if err != nil {
+		return nil, err
+	}
+	char.knownCantrips = knownCantrips
+	char.knownSpells = knownSpells
+
 	// Deep-copy action economy state to avoid aliasing mutable Granted map.
 	// Granted is tagged json:"granted,omitempty", so a freshly-StartTurn-seeded
 	// EMPTY map is omitted from the serialized JSON and comes back nil after a
@@ -689,4 +705,29 @@ func warnDropped(characterID, kind string, ref core.Ref, reason error, extra ...
 	}
 
 	slog.Warn("dnd5e/character: lenient load dropped a persisted entry", attrs...)
+}
+
+// parseSpellRefs turns persisted known-spell strings back into content refs.
+//
+// It refuses anything that is not a spell ref of this module: a malformed
+// string, or a ref pointing at some other kind of content. Both mean the sheet
+// says something this build cannot act on, and the honest answer is to say so
+// rather than to hand back a shorter list nobody asked for.
+func parseSpellRefs(stored []string, role string) ([]*core.Ref, error) {
+	if len(stored) == 0 {
+		return nil, nil
+	}
+	out := make([]*core.Ref, 0, len(stored))
+	for _, raw := range stored {
+		ref, err := core.ParseString(raw)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "unreadable %s %q", role, raw)
+		}
+		if ref.Module != refs.Module || ref.Type != refs.TypeSpells {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"%s %q is not a spell ref", role, raw)
+		}
+		out = append(out, ref)
+	}
+	return out, nil
 }

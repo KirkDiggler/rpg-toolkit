@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -24,6 +25,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -641,6 +643,20 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		return nil, rpgerr.Wrapf(err, "failed to compile features")
 	}
 
+	// The spells chosen at creation, as content refs on the sheet
+	// (rpg-project#391 §5.2). Compiled BEFORE the character is built, because
+	// a choice naming something this build cannot turn into a ref is a content
+	// defect and should stop finalization rather than produce a sheet that is
+	// quietly missing a spell.
+	knownCantrips, err := d.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+	if err != nil {
+		return nil, err
+	}
+	knownSpells, err := d.compileKnownSpells(shared.ChoiceSpells, "spell")
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the character
 	char := &Character{
 		id:                  characterID,
@@ -669,6 +685,8 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		inventory:           d.compileInventory(bgGrant),
 		wallet:              compileWallet(bgGrant),
 		spellSlots:          d.compileSpellSlots(classData),
+		knownCantrips:       knownCantrips,
+		knownSpells:         knownSpells,
 		classResources:      make(map[shared.ClassResourceType]ResourceData),
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 		features:            charFeatures,
@@ -1167,6 +1185,41 @@ func compileWallet(bgGrant *backgrounds.Grant) currency.Money {
 		return currency.Money{}
 	}
 	return bgGrant.StartingGold
+}
+
+// compileKnownSpells turns one category of recorded spell choices into content
+// refs for the sheet.
+//
+// # Through the catalog, never composed
+//
+// The id a choice carries is the ref's id, so building "dnd5e:spells:<id>"
+// out of it would always succeed — which is the problem. A typo, a renamed
+// constant, or a spell this build has no content for would become a ref
+// pointing at nothing, persisted, and read back later by whatever mints Cast
+// declarations. So this ASKS the ref catalog and refuses what it does not
+// know. The validator has already gated the id against the class's option
+// list; this is the second half of the same question, and the one that can
+// answer "this build has no such spell".
+func (d *Draft) compileKnownSpells(category shared.ChoiceCategory, role string) ([]*core.Ref, error) {
+	var known []*core.Ref
+	for _, choice := range d.choices {
+		if choice.Category != category {
+			continue
+		}
+		for _, selection := range choice.SpellSelection {
+			ref := refs.Spells.ByID(string(selection))
+			if ref == nil {
+				return nil, rpgerr.Newf(rpgerr.CodeNotFound,
+					"chosen %s %q is not a spell this build knows", role, selection)
+			}
+			// Cloned: the catalog hands back shared singletons, and a sheet
+			// that aliased one would let a caller reading its known spells
+			// rewrite the catalog for everybody.
+			clone := *ref
+			known = append(known, &clone)
+		}
+	}
+	return known, nil
 }
 
 // compileLanguages builds the language list
