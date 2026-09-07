@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -35,6 +36,15 @@ func (s *BardFinalizeSuite) SetupTest() { s.bus = events.NewEventBus() }
 
 // finalize builds a level-1 bard with the given Charisma.
 func (s *BardFinalizeSuite) finalize(charisma int) *Character {
+	draft := s.bardDraft(charisma, []shared.SelectionID{"lute", "flute", "drum"})
+	char, err := draft.ToCharacter(context.Background(), "bard-1", s.bus)
+	s.Require().NoError(err)
+	return char
+}
+
+// bardDraft is the draft behind finalize, with the instrument selection left
+// to the caller so a scene can supply the wrong number of them.
+func (s *BardFinalizeSuite) bardDraft(charisma int, instruments []shared.SelectionID) *Draft {
 	draft, err := NewDraft(&DraftConfig{ID: "bard-draft", PlayerID: "player-1"})
 	s.Require().NoError(err)
 
@@ -47,7 +57,7 @@ func (s *BardFinalizeSuite) finalize(charisma int) *Character {
 		ClassID: classes.Bard,
 		Choices: ClassChoices{
 			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
-			Tools:    []shared.SelectionID{"lute", "flute", "drum"},
+			Tools:    instruments,
 			Cantrips: []spells.Spell{spells.ViciousMockery, spells.MinorIllusion},
 			Spells: []spells.Spell{
 				spells.CharmPerson, spells.CureWounds, spells.HealingWord, spells.Thunderwave,
@@ -68,9 +78,7 @@ func (s *BardFinalizeSuite) finalize(charisma int) *Character {
 		Method: "standard-array",
 	}))
 
-	char, err := draft.ToCharacter(context.Background(), "bard-1", s.bus)
-	s.Require().NoError(err)
-	return char
+	return draft
 }
 
 // TestPoolIsTheCharismaModifier — max(1, CHA mod), and full on a fresh sheet.
@@ -141,6 +149,28 @@ func (s *BardFinalizeSuite) TestLongRestRestoresTheUses() {
 func (s *BardFinalizeSuite) TestPoolIsALongRestResource() {
 	char := s.finalize(16)
 	s.Equal(coreResources.ResetLongRest, char.GetResource(resources.Inspiration).ResetType)
+}
+
+// TestTheChosenInstrumentsBecomeProficiencies is the whole point of choosing
+// them: three instruments picked at creation are on the finished sheet.
+func (s *BardFinalizeSuite) TestTheChosenInstrumentsBecomeProficiencies() {
+	char := s.finalize(16)
+
+	s.Subset(char.ToData().ToolProficiencies, []proficiencies.Tool{
+		proficiencies.ToolLute, proficiencies.ToolFlute, proficiencies.ToolDrum,
+	}, "a bard who chose three instruments is proficient with three instruments")
+}
+
+// TestADraftWithTwoInstrumentsIsRefused — the requirement is enforced at the
+// draft, not merely advertised. A bard who picked two must be told, rather
+// than finalized with a hole in the sheet.
+func (s *BardFinalizeSuite) TestADraftWithTwoInstrumentsIsRefused() {
+	draft := s.bardDraft(16, []shared.SelectionID{"lute", "flute"})
+
+	err := draft.ValidateChoices()
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "3 musical instruments")
 }
 
 // newBardicInspirationForTest is the feature as the factory builds it.
