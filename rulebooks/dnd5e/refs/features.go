@@ -25,6 +25,9 @@ var (
 
 	// Paladin
 	featureDivineSmite = &core.Ref{Module: Module, Type: TypeFeatures, ID: "divine_smite"}
+
+	// Bard
+	featureBardicInspiration = &core.Ref{Module: Module, Type: TypeFeatures, ID: "bardic_inspiration"}
 )
 
 // Features provides type-safe, discoverable references to D&D 5e features.
@@ -54,3 +57,9 @@ func (n featuresNS) SneakAttack() *core.Ref { return featureSneakAttack }
 
 // Paladin
 func (n featuresNS) DivineSmite() *core.Ref { return featureDivineSmite }
+
+// Bard
+
+// BardicInspiration returns the ref for the bard's level-1 feature: a bonus
+// action that hands an ally a die they spend on a roll of their own.
+func (n featuresNS) BardicInspiration() *core.Ref { return featureBardicInspiration }

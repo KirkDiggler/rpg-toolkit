@@ -220,6 +220,18 @@ var longRestCases = map[string]longRestCase{
 		outcome:       longRestRemove,
 		removalReason: "long rest",
 	},
+	refs.Conditions.Inspired().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"inspired"},
+			"member_id":"member-1","source_id":"bard-1","die":"1d6"
+		}`),
+		ownerID:     "member-1",
+		expectedRef: refs.Conditions.Inspired(),
+		outcome:     longRestRemove,
+		// "rest", not "long rest": the die ends on ANY rest, so the handler
+		// that removes it does not discriminate and its reason says so.
+		removalReason: "rest",
+	},
 	refs.Conditions.Unconscious().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},

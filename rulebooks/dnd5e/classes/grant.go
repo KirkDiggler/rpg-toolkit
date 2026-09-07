@@ -84,6 +84,8 @@ func GetGrants(classID Class) []Grant {
 		return getMonkGrants()
 	case Rogue:
 		return getRogueGrants()
+	case Bard:
+		return getBardGrants()
 	default:
 		// Unmigrated classes return nil - add them explicitly above
 		return nil
@@ -185,6 +187,34 @@ func getMonkGrants() []Grant {
 					Ref:    refs.Conditions.MartialArts().String(),
 					Config: json.RawMessage(`{"monk_level": 1}`),
 				},
+			},
+		},
+	}
+}
+
+// getBardGrants returns all grants for the Bard class.
+//
+// One feature at level 1 and nothing else that needs a level table: hit dice
+// and saving throws are intrinsic and live in classes.Data, the instruments
+// are a CHOICE nothing consumes yet, and the inspired condition is granted in
+// play by the feature rather than at creation — a bard starts with a die to
+// give, not with one in hand.
+func getBardGrants() []Grant {
+	return []Grant{
+		{
+			Level: 1,
+			ArmorProficiencies: []proficiencies.Armor{
+				proficiencies.ArmorLight,
+			},
+			WeaponProficiencies: []proficiencies.Weapon{
+				proficiencies.WeaponSimple,
+				proficiencies.WeaponHandCrossbow,
+				proficiencies.WeaponLongsword,
+				proficiencies.WeaponRapier,
+				proficiencies.WeaponShortsword,
+			},
+			Features: []FeatureRef{
+				{Ref: refs.Features.BardicInspiration().String()},
 			},
 		},
 	}

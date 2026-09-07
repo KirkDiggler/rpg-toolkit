@@ -366,10 +366,37 @@ func getRogueRequirements() *Requirements {
 func getBardRequirements() *Requirements {
 	return &Requirements{
 		Skills: &SkillRequirement{
-			ID:      BardSkills,
-			Count:   3,
-			Options: nil, // Bards can choose ANY 3 skills
-			Label:   "Choose 3 skills",
+			ID:    BardSkills,
+			Count: 3,
+			// ENUMERATED, NOT NIL. A bard chooses any three skills, and this
+			// used to say so by leaving Options empty — a sentinel with two
+			// readings. Validation reads empty as "no list to check against"
+			// and lets anything through; every consumer that BUILDS a choice
+			// out of a requirement reads empty as "nothing to offer" and
+			// builds none, so the bard was offered no skill choice at all.
+			// "Any" is not a concept this stack needs for one class, so the
+			// eighteen are written out and both readings agree.
+			Options: []skills.Skill{
+				skills.Acrobatics,
+				skills.AnimalHandling,
+				skills.Arcana,
+				skills.Athletics,
+				skills.Deception,
+				skills.History,
+				skills.Insight,
+				skills.Intimidation,
+				skills.Investigation,
+				skills.Medicine,
+				skills.Nature,
+				skills.Perception,
+				skills.Performance,
+				skills.Persuasion,
+				skills.Religion,
+				skills.SleightOfHand,
+				skills.Stealth,
+				skills.Survival,
+			},
+			Label: "Choose 3 skills",
 		},
 		Equipment: enrichEquipmentRequirements(getBardEquipmentRequirements()),
 		Tools: &ToolRequirement{

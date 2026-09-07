@@ -43,6 +43,9 @@ var (
 	conditionHidden = &core.Ref{Module: Module, Type: TypeConditions, ID: "hidden"}
 	conditionHelped = &core.Ref{Module: Module, Type: TypeConditions, ID: "helped"}
 
+	// Bard (rpg-project#397): the die an ally holds until they spend it.
+	conditionInspired = &core.Ref{Module: Module, Type: TypeConditions, ID: "inspired"}
+
 	// Reaction conditions (Wave 2.11d) — universal-by-default reactions that
 	// subscribe to the appropriate chain and publish ReactionTriggerEvents
 	// when their predicate matches AND gamectx.IsReactionReady returns true.
@@ -129,3 +132,7 @@ func (n conditionsNS) Restrained() *core.Ref    { return conditionRestrained }
 func (n conditionsNS) Stunned() *core.Ref       { return conditionStunned }
 func (n conditionsNS) Unconscious() *core.Ref   { return conditionUnconscious }
 func (n conditionsNS) Exhaustion() *core.Ref    { return conditionExhaustion }
+
+// Inspired returns the ref for the InspiredCondition, applied to the ally a
+// bard grants a Bardic Inspiration die to.
+func (n conditionsNS) Inspired() *core.Ref { return conditionInspired }

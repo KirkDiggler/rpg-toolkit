@@ -792,6 +792,34 @@ func (d *Draft) ValidateChoices() error {
 					Values:   langValues,
 				})
 			}
+		// Cantrips and spells are RECORDED by SetClass and were never
+		// converted here, so every spellcaster failed its own requirement no
+		// matter what the player chose ("Choose 2 cantrips required" on a
+		// draft carrying two cantrips). That is why only the four martial
+		// classes could be finalized. The recorder and the validator now read
+		// the same choice.
+		case shared.ChoiceCantrips:
+			if len(choice.SpellSelection) > 0 {
+				cantripValues := make([]shared.SelectionID, 0, len(choice.SpellSelection))
+				cantripValues = append(cantripValues, choice.SpellSelection...)
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceCantrips,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   cantripValues,
+				})
+			}
+		case shared.ChoiceSpells:
+			if len(choice.SpellSelection) > 0 {
+				spellValues := make([]shared.SelectionID, 0, len(choice.SpellSelection))
+				spellValues = append(spellValues, choice.SpellSelection...)
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceSpells,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   spellValues,
+				})
+			}
 		case shared.ChoiceToolProficiency:
 			if len(choice.ToolSelection) > 0 {
 				toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
@@ -1330,7 +1358,13 @@ func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData
 
 	// Level 1 spell slots based on class
 	switch d.class {
-	case classes.Wizard, classes.Sorcerer, classes.Cleric, classes.Druid, classes.Bard:
+	// The bard is deliberately absent, and its absence is a deletion rather
+	// than an oversight (rpg-project#397 R6). Nothing in this stack casts a
+	// spell or spends a slot yet, so two slots on a level-1 bard's sheet were
+	// a zero value that lied: a number a client could render and nothing
+	// could reach. Spellcasting arrives as pools with the Cast door, and the
+	// bard's slots come back with it.
+	case classes.Wizard, classes.Sorcerer, classes.Cleric, classes.Druid:
 		slots[1] = SpellSlotData{Max: 2, Used: 0}
 	case classes.Warlock:
 		slots[1] = SpellSlotData{Max: 1, Used: 0}
@@ -1959,6 +1993,21 @@ func (d *Draft) initializeClassResources(char *Character) {
 			})
 			char.resources[resources.RageCharges] = rageResource
 		}
+
+	case classes.Bard:
+		// Bardic Inspiration uses - Charisma modifier, minimum one, recovered
+		// on long rest. The minimum is RAW and is what keeps a bard with a
+		// Charisma of 10 from carrying a pool nothing can ever spend.
+		maxUses := char.abilityScores.Modifier(abilities.CHA)
+		if maxUses < 1 {
+			maxUses = 1
+		}
+		char.resources[resources.Inspiration] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.Inspiration),
+			Maximum:     maxUses,
+			CharacterID: char.id,
+			ResetType:   coreResources.ResetLongRest,
+		})
 
 	case classes.Monk:
 		// Ki points - equal to monk level, recovered on short or long rest.

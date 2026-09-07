@@ -91,6 +91,11 @@ const (
 	// ability. Grants advantage on the ally's next attack roll; removed
 	// when consumed or at the helper's next turn if unused.
 	ConditionHelped ConditionType = "helped"
+	// ConditionInspired is applied to the ally a bard grants a Bardic
+	// Inspiration die to. It OFFERS the die on a roll already made
+	// ([PostRollOfferChain]) rather than adding to one being made, and
+	// consumes itself when the offer is taken.
+	ConditionInspired ConditionType = "inspired"
 )
 
 // ConditionSource identifies where a condition originated
