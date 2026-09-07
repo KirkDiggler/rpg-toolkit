@@ -954,16 +954,17 @@ func (s *ClassComprehensiveSuite) createClericWarDomainVariation() *choices.Subm
 
 func (s *ClassComprehensiveSuite) createBardTestData() *ClassTestData {
 	data := &ClassTestData{
-		Class:        classes.Bard,
-		Name:         "bard",
-		HitDie:       8,
-		SkillCount:   3,
-		HasCantrips:  true,
-		CantripCount: 2,
-		HasSpells:    true,
-		SpellCount:   4,
-		HasTools:     true,
-		ToolCount:    3,
+		Class:      classes.Bard,
+		Name:       "bard",
+		HitDie:     8,
+		SkillCount: 3,
+		// NOT AT LEVEL 1 IN SLICE ONE. The bard's cantrip and spell questions
+		// are not asked at creation while nothing can cast; they return with
+		// the cast door (rung 2). See getBardRequirements.
+		HasCantrips: false,
+		HasSpells:   false,
+		HasTools:    true,
+		ToolCount:   3,
 		// Bards can choose ANY 3 skills (no restricted list)
 		SkillList: []shared.SelectionID{
 			skills.Acrobatics, skills.AnimalHandling, skills.Arcana, skills.Athletics,
@@ -1012,29 +1013,8 @@ func (s *ClassComprehensiveSuite) createBardValidBase() *choices.Submissions {
 		},
 	})
 
-	// Cantrips - 2 bard cantrips
-	subs.Add(choices.Submission{
-		Category: shared.ChoiceCantrips,
-		Source:   shared.SourceClass,
-		ChoiceID: choices.BardCantrips1,
-		Values: []shared.SelectionID{
-			spells.ViciousMockery,
-			spells.MinorIllusion,
-		},
-	})
-
-	// Spells - 4 level 1 spells
-	subs.Add(choices.Submission{
-		Category: shared.ChoiceSpells,
-		Source:   shared.SourceClass,
-		ChoiceID: choices.BardSpells1,
-		Values: []shared.SelectionID{
-			spells.CharmPerson,
-			spells.CureWounds,
-			spells.HealingWord,
-			spells.Thunderwave,
-		},
-	})
+	// No cantrips and no spells: slice one does not ask a level-1 bard for
+	// either, so submitting them here would describe a choice nothing offers.
 
 	// Weapon choice - rapier
 	subs.Add(choices.Submission{

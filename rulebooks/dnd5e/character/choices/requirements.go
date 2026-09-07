@@ -418,52 +418,19 @@ func getBardRequirements() *Requirements {
 			Options: musicalInstrumentToolOptions(),
 			Label:   "Choose 3 musical instruments",
 		},
-		Cantrips: &CantripRequirement{
-			ID:    BardCantrips1,
-			Count: 2,
-			Options: []spells.Spell{
-				spells.BladeWard,
-				spells.DancingLights,
-				spells.Friends,
-				spells.Light,
-				spells.MageHand,
-				spells.Mending,
-				spells.Message,
-				spells.MinorIllusion,
-				spells.Prestidigitation,
-				spells.TrueStrike,
-				spells.ViciousMockery,
-			},
-			Label: "Choose 2 cantrips",
-		},
-		Spellbook: &SpellbookRequirement{
-			ID:         BardSpells1,
-			Count:      4,
-			SpellLevel: 1,
-			Options: []spells.Spell{
-				spells.AnimalFriendship,
-				spells.Bane,
-				spells.CharmPerson,
-				spells.ComprehendLanguages,
-				spells.CureWounds,
-				spells.DetectMagic,
-				spells.DisguiseSelf,
-				spells.FaerieFire,
-				spells.FeatherFall,
-				spells.HealingWord,
-				spells.Heroism,
-				spells.HideousLaughter,
-				spells.Identify,
-				spells.IllusoryScript,
-				spells.Longstrider,
-				spells.SilentImage,
-				spells.Sleep,
-				spells.SpeakWithAnimals,
-				spells.Thunderwave,
-				spells.UnseenServant,
-			},
-			Label: "Choose 4 1st-level spells",
-		},
+		// NO CANTRIPS AND NO SPELLS AT LEVEL 1, and their absence is this
+		// slice's ruling rather than an oversight (Kirk, slice one). A
+		// requirement is a gate a draft cannot pass without answering, and
+		// answering these bought nothing: there is no Cast verb, no slot pool,
+		// and nothing anywhere that could spend what was chosen. A bard was
+		// therefore blocked at creation by two questions whose answers the
+		// game had no use for.
+		//
+		// They come back with the cast door (rung 2), where the answers become
+		// reachable in the same slice that asks for them. The sheet keeps its
+		// KnownCantrips and KnownSpells fields meanwhile: a slice-one bard
+		// knows none, and an empty list is the truth rather than a placeholder.
+		//
 		// Bards get expertise at level 3, not level 1
 	}
 }

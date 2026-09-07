@@ -21,7 +21,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // BardFinalizeSuite is rpg-project#397's "a bard finalizes" done-when: the
@@ -56,12 +55,8 @@ func (s *BardFinalizeSuite) bardDraft(charisma int, instruments []shared.Selecti
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Bard,
 		Choices: ClassChoices{
-			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
-			Tools:    instruments,
-			Cantrips: []spells.Spell{spells.ViciousMockery, spells.MinorIllusion},
-			Spells: []spells.Spell{
-				spells.CharmPerson, spells.CureWounds, spells.HealingWord, spells.Thunderwave,
-			},
+			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
+			Tools:  instruments,
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
