@@ -120,8 +120,13 @@ func (s *ProficienciesSuite) TestFighterProficiencies() {
 		"Fighter should have simple and martial weapon proficiencies",
 	)
 
-	// Fighters have no tool proficiencies by default
-	s.Empty(data.ToolProficiencies, "Fighter should have no tool proficiencies")
+	// Fighters have no tool proficiencies of their own, but this draft's
+	// Soldier background grants land vehicle proficiency automatically.
+	s.Equal(
+		[]proficiencies.Tool{proficiencies.ToolVehicleLand},
+		data.ToolProficiencies,
+		"Fighter has no class tool proficiencies; Soldier grants land vehicles",
+	)
 }
 
 // TestBarbarianProficiencies verifies Barbarian gets light/medium/shields armor
@@ -300,11 +305,12 @@ func (s *ProficienciesSuite) TestMonkProficiencies() {
 
 	// Monks get artisan's tools OR musical instrument as a choice (brewer's
 	// supplies, chosen above) — must actually reach the compiled character,
-	// not just pass validation (rpg-toolkit#1555).
-	s.Equal(
-		[]proficiencies.Tool{proficiencies.ToolBrewer},
+	// not just pass validation (rpg-toolkit#1555). This draft's Hermit
+	// background also grants herbalism kit proficiency automatically.
+	s.ElementsMatch(
+		[]proficiencies.Tool{proficiencies.ToolHerbalism, proficiencies.ToolBrewer},
 		data.ToolProficiencies,
-		"Monk's chosen tool proficiency must be compiled onto the character",
+		"Monk's chosen tool proficiency and Hermit's herbalism kit must both be compiled",
 	)
 }
 

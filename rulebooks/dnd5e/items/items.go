@@ -28,11 +28,14 @@ const (
 	Hammer          ItemID = "hammer"
 	HempenRope      ItemID = "hempen-rope"
 	HuntingTrap     ItemID = "hunting-trap"
+	IronPot         ItemID = "iron-pot"
 	Lantern         ItemID = "lantern"
 	Mess            ItemID = "mess-kit"
 	Oil             ItemID = "oil"
 	Piton           ItemID = "piton"
 	Rations         ItemID = "rations"
+	Shovel          ItemID = "shovel"
+	SignetRing      ItemID = "signet-ring"
 	SilkRope        ItemID = "silk-rope"
 	Tinderbox       ItemID = "tinderbox"
 	Torch           ItemID = "torch"
@@ -163,11 +166,14 @@ var All = map[ItemID]Item{
 	Hammer:          {ID: Hammer, Name: "Hammer", Weight: 3, Cost: "1 gp"},
 	HempenRope:      {ID: HempenRope, Name: "Hempen Rope (50 feet)", Weight: 10, Cost: "1 gp"},
 	HuntingTrap:     {ID: HuntingTrap, Name: "Hunting Trap", Weight: 25, Cost: "5 gp"},
+	IronPot:         {ID: IronPot, Name: "Pot, Iron", Weight: 10, Cost: "2 gp"},
 	Lantern:         {ID: Lantern, Name: "Lantern, Hooded", Weight: 2, Cost: "5 gp"},
 	Mess:            {ID: Mess, Name: "Mess Kit", Weight: 1, Cost: "2 sp"},
 	Oil:             {ID: Oil, Name: "Oil (Flask)", Weight: 1, Cost: "1 sp"},
 	Piton:           {ID: Piton, Name: "Piton", Weight: 0.25, Cost: "5 cp"},
 	Rations:         {ID: Rations, Name: "Rations (1 Day)", Weight: 2, Cost: "5 sp"},
+	Shovel:          {ID: Shovel, Name: "Shovel", Weight: 5, Cost: "2 gp"},
+	SignetRing:      {ID: SignetRing, Name: "Signet Ring", Weight: 0, Cost: "5 gp"},
 	SilkRope:        {ID: SilkRope, Name: "Rope, Silk (50 feet)", Weight: 5, Cost: "10 gp"},
 	Tinderbox:       {ID: Tinderbox, Name: "Tinderbox", Weight: 1, Cost: "5 sp"},
 	Torch:           {ID: Torch, Name: "Torch", Weight: 1, Cost: "1 cp"},

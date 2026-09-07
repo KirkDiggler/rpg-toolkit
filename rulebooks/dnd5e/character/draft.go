@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -593,13 +594,17 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	// Calculate starting HP
 	maxHP := classData.HitDice + finalScores.Modifier(abilities.CON)
 
+	// Fetched once and threaded through every compile* function that needs
+	// it, same pattern raceData/classData already use.
+	bgGrant := backgrounds.GetGrants(d.background)
+
 	// Build proficiencies
-	skillProfs := d.compileSkills(raceData)
+	skillProfs := d.compileSkills(raceData, bgGrant)
 	if err := validateExpertiseSelections(d.choices, skillProfs); err != nil {
 		return nil, err
 	}
 	savingThrows := d.compileSavingThrows(classData)
-	armorProfs, weaponProfs, toolProfs := d.compileProficiencies()
+	armorProfs, weaponProfs, toolProfs := d.compileProficiencies(bgGrant)
 
 	// Compile features (can fail)
 	charFeatures, err := d.compileFeatures(characterID)
@@ -632,7 +637,8 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		weaponProficiencies: weaponProfs,
 		toolProficiencies:   toolProfs,
 		languages:           d.compileLanguages(raceData),
-		inventory:           d.compileInventory(),
+		inventory:           d.compileInventory(bgGrant),
+		wallet:              compileWallet(bgGrant),
 		spellSlots:          d.compileSpellSlots(classData),
 		classResources:      make(map[shared.ClassResourceType]ResourceData),
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
@@ -930,7 +936,7 @@ func (d *Draft) recordChoice(choice choices.ChoiceData) {
 
 // TODO: check if class can grant skills or all they all chosen
 // compileSkills builds the skill proficiency map
-func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.ProficiencyLevel {
+func (d *Draft) compileSkills(raceData *races.Data, bgGrant *backgrounds.Grant) map[skills.Skill]shared.ProficiencyLevel {
 	skillMap := make(map[skills.Skill]shared.ProficiencyLevel)
 
 	// Add racial skill proficiencies
@@ -947,6 +953,16 @@ func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.Prof
 		}
 	}
 
+	// Add background skill proficiencies. Must happen before the expertise
+	// upgrade pass below — a background-granted skill needs to already be
+	// in skillMap for an expertise pick naming it to actually upgrade to
+	// Expert, not just pass validation (rpg-toolkit#1554).
+	if bgGrant != nil {
+		for _, skill := range bgGrant.SkillProficiencies {
+			skillMap[skill] = shared.Proficient
+		}
+	}
+
 	// Apply expertise - upgrade proficient skills to expert
 	for _, choice := range d.choices {
 		if choice.Category == shared.ChoiceExpertise {
@@ -958,8 +974,6 @@ func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.Prof
 			}
 		}
 	}
-
-	// TODO: Add background skills when we have internal background data
 
 	return skillMap
 }
@@ -1000,8 +1014,10 @@ func (d *Draft) compileSavingThrows(classData *classes.Data) map[abilities.Abili
 	return saves
 }
 
-// compileProficiencies collects armor, weapon, and tool proficiencies from class and race grants
-func (d *Draft) compileProficiencies() ([]proficiencies.Armor, []proficiencies.Weapon, []proficiencies.Tool) {
+// compileProficiencies collects armor, weapon, and tool proficiencies from class, race, and background grants
+func (d *Draft) compileProficiencies(
+	bgGrant *backgrounds.Grant,
+) ([]proficiencies.Armor, []proficiencies.Weapon, []proficiencies.Tool) {
 	armorProfs := make([]proficiencies.Armor, 0)
 	weaponProfs := make([]proficiencies.Weapon, 0)
 	toolProfs := make([]proficiencies.Tool, 0)
@@ -1025,7 +1041,11 @@ func (d *Draft) compileProficiencies() ([]proficiencies.Armor, []proficiencies.W
 		}
 	}
 
-	// TODO: Collect from background grants when implemented
+	// Collect from background grants. Backgrounds never grant armor/weapon
+	// proficiencies in RAW, only tools.
+	if bgGrant != nil {
+		toolProfs = append(toolProfs, bgGrant.ToolProficiencies...)
+	}
 
 	// Chosen tool proficiencies (Monk's tools-or-instrument, Dwarf's
 	// artisan's tools, and any future source) are recorded as choices
@@ -1060,6 +1080,16 @@ func dedupeToolProficiencies(toolProfs []proficiencies.Tool) []proficiencies.Too
 	return deduped
 }
 
+// compileWallet returns a character's starting gold, granted by
+// background. Every finalized character previously had a zero Wallet
+// regardless of background, since nothing ever set this field.
+func compileWallet(bgGrant *backgrounds.Grant) currency.Money {
+	if bgGrant == nil {
+		return currency.Money{}
+	}
+	return bgGrant.StartingGold
+}
+
 // compileLanguages builds the language list
 func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
 	langs := make([]languages.Language, 0)
@@ -1078,7 +1108,7 @@ func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
 }
 
 // compileInventory builds the inventory from equipment choices and grants
-func (d *Draft) compileInventory() []InventoryItem {
+func (d *Draft) compileInventory(bgGrant *backgrounds.Grant) []InventoryItem {
 	inventory := make([]InventoryItem, 0)
 
 	// Add starting equipment from class grants (new Grant system)
@@ -1086,6 +1116,21 @@ func (d *Draft) compileInventory() []InventoryItem {
 		grants := classes.GetGrantsForLevel(d.class, 1)
 		for _, grant := range grants {
 			inventory = append(inventory, d.inventoryItemsFromGrant(grant)...)
+		}
+	}
+
+	// Add starting equipment from background grants. Same resolution as
+	// class equipment (materializeItem), so a background-granted pack
+	// would decompose into its Contents the same way (rpg-toolkit#1544) --
+	// none currently do.
+	if bgGrant != nil {
+		for _, item := range bgGrant.Equipment {
+			equip, err := equipment.GetByID(item.ID)
+			if err != nil {
+				panic(fmt.Sprintf("BUG: Invalid equipment ID in background grants for %s: %s - %v",
+					d.background, item.ID, err))
+			}
+			inventory = append(inventory, materializeItem(equip, item.Quantity)...)
 		}
 	}
 
