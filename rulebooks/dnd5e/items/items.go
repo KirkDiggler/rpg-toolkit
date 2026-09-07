@@ -19,20 +19,24 @@ const (
 
 // Adventuring gear
 const (
-	Backpack   ItemID = "backpack"
-	Bedroll    ItemID = "bedroll"
-	Blanket    ItemID = "blanket"
-	Crowbar    ItemID = "crowbar"
-	Hammer     ItemID = "hammer"
-	HempenRope ItemID = "hempen-rope"
-	Lantern    ItemID = "lantern"
-	Mess       ItemID = "mess-kit"
-	Oil        ItemID = "oil"
-	Piton      ItemID = "piton"
-	Rations    ItemID = "rations"
-	Tinderbox  ItemID = "tinderbox"
-	Torch      ItemID = "torch"
-	Waterskin  ItemID = "waterskin"
+	Backpack        ItemID = "backpack"
+	Bedroll         ItemID = "bedroll"
+	Blanket         ItemID = "blanket"
+	ClothesCommon   ItemID = "clothes-common"
+	ClothesTraveler ItemID = "clothes-traveler"
+	Crowbar         ItemID = "crowbar"
+	Hammer          ItemID = "hammer"
+	HempenRope      ItemID = "hempen-rope"
+	HuntingTrap     ItemID = "hunting-trap"
+	Lantern         ItemID = "lantern"
+	Mess            ItemID = "mess-kit"
+	Oil             ItemID = "oil"
+	Piton           ItemID = "piton"
+	Rations         ItemID = "rations"
+	SilkRope        ItemID = "silk-rope"
+	Tinderbox       ItemID = "tinderbox"
+	Torch           ItemID = "torch"
+	Waterskin       ItemID = "waterskin"
 )
 
 // Pack sundries with an official PHB/SRD price (Adventuring Gear table),
@@ -96,6 +100,25 @@ func (i *Item) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypeItem
 }
 
+// EquipmentCategories reports the shared.EquipmentCategory tags a category
+// choice can query this item by. Only the three focus/symbol items are
+// tagged — each is really "always this one specific item," not a category
+// with multiple members, but expressing it as a category keeps a Cleric's
+// or Druid's equipment choice the same shape as every other category
+// choice rather than needing a distinct "always this fixed item" case.
+func (i *Item) EquipmentCategories() []shared.EquipmentCategory {
+	switch i.ID {
+	case DruidicFocus:
+		return []shared.EquipmentCategory{shared.CategoryDruidicFoci}
+	case HolySymbol:
+		return []shared.EquipmentCategory{shared.CategoryHolySymbols}
+	case ArcaneFocus:
+		return []shared.EquipmentCategory{shared.CategoryArcaneFoci}
+	default:
+		return nil
+	}
+}
+
 // EquipmentName returns the display name of the item.
 func (i *Item) EquipmentName() string {
 	return i.Name
@@ -131,20 +154,24 @@ var All = map[ItemID]Item{
 	// Contents references (packs.go) — verified directly, not assumed — so
 	// populating this map is what makes ResolveEquipmentDetail (and the
 	// PriceOf built on top of it) actually resolve pack-granted gear.
-	Backpack:   {ID: Backpack, Name: "Backpack", Weight: 5, Cost: "2 gp"},
-	Bedroll:    {ID: Bedroll, Name: "Bedroll", Weight: 7, Cost: "1 gp"},
-	Blanket:    {ID: Blanket, Name: "Blanket", Weight: 3, Cost: "5 sp"},
-	Crowbar:    {ID: Crowbar, Name: "Crowbar", Weight: 5, Cost: "2 gp"},
-	Hammer:     {ID: Hammer, Name: "Hammer", Weight: 3, Cost: "1 gp"},
-	HempenRope: {ID: HempenRope, Name: "Hempen Rope (50 feet)", Weight: 10, Cost: "1 gp"},
-	Lantern:    {ID: Lantern, Name: "Lantern, Hooded", Weight: 2, Cost: "5 gp"},
-	Mess:       {ID: Mess, Name: "Mess Kit", Weight: 1, Cost: "2 sp"},
-	Oil:        {ID: Oil, Name: "Oil (Flask)", Weight: 1, Cost: "1 sp"},
-	Piton:      {ID: Piton, Name: "Piton", Weight: 0.25, Cost: "5 cp"},
-	Rations:    {ID: Rations, Name: "Rations (1 Day)", Weight: 2, Cost: "5 sp"},
-	Tinderbox:  {ID: Tinderbox, Name: "Tinderbox", Weight: 1, Cost: "5 sp"},
-	Torch:      {ID: Torch, Name: "Torch", Weight: 1, Cost: "1 cp"},
-	Waterskin:  {ID: Waterskin, Name: "Waterskin", Weight: 5, Cost: "2 sp"},
+	Backpack:        {ID: Backpack, Name: "Backpack", Weight: 5, Cost: "2 gp"},
+	Bedroll:         {ID: Bedroll, Name: "Bedroll", Weight: 7, Cost: "1 gp"},
+	Blanket:         {ID: Blanket, Name: "Blanket", Weight: 3, Cost: "5 sp"},
+	ClothesCommon:   {ID: ClothesCommon, Name: "Clothes, Common", Weight: 3, Cost: "5 sp"},
+	ClothesTraveler: {ID: ClothesTraveler, Name: "Clothes, Traveler's", Weight: 4, Cost: "2 gp"},
+	Crowbar:         {ID: Crowbar, Name: "Crowbar", Weight: 5, Cost: "2 gp"},
+	Hammer:          {ID: Hammer, Name: "Hammer", Weight: 3, Cost: "1 gp"},
+	HempenRope:      {ID: HempenRope, Name: "Hempen Rope (50 feet)", Weight: 10, Cost: "1 gp"},
+	HuntingTrap:     {ID: HuntingTrap, Name: "Hunting Trap", Weight: 25, Cost: "5 gp"},
+	Lantern:         {ID: Lantern, Name: "Lantern, Hooded", Weight: 2, Cost: "5 gp"},
+	Mess:            {ID: Mess, Name: "Mess Kit", Weight: 1, Cost: "2 sp"},
+	Oil:             {ID: Oil, Name: "Oil (Flask)", Weight: 1, Cost: "1 sp"},
+	Piton:           {ID: Piton, Name: "Piton", Weight: 0.25, Cost: "5 cp"},
+	Rations:         {ID: Rations, Name: "Rations (1 Day)", Weight: 2, Cost: "5 sp"},
+	SilkRope:        {ID: SilkRope, Name: "Rope, Silk (50 feet)", Weight: 5, Cost: "10 gp"},
+	Tinderbox:       {ID: Tinderbox, Name: "Tinderbox", Weight: 1, Cost: "5 sp"},
+	Torch:           {ID: Torch, Name: "Torch", Weight: 1, Cost: "1 cp"},
+	Waterskin:       {ID: Waterskin, Name: "Waterskin", Weight: 5, Cost: "2 sp"},
 
 	// Pack sundries, official PHB/SRD price (Adventuring Gear table), same
 	// two-source cross-check as the adventuring gear above.
@@ -176,4 +203,29 @@ var All = map[ItemID]Item{
 	SmallKnife: {ID: SmallKnife, Name: "Small Knife", Weight: 0, Cost: "2 gp"},
 	String:     {ID: String, Name: "String (10 Feet)", Weight: 0, Cost: "1 cp"},
 	Vestments:  {ID: Vestments, Name: "Vestments", Weight: 6, Cost: "15 gp"},
+}
+
+// categorizedItems lists, in declaration order, the items that carry an
+// EquipmentCategories() tag. Most items never do; this package has no
+// full registry-order slice the way tools/weapons/armor do, so this stays
+// a short explicit list rather than iterating all of All for the rare
+// case a category actually applies.
+var categorizedItems = []ItemID{ArcaneFocus, DruidicFocus, HolySymbol}
+
+// EligibleForCategory returns every item tagged with the given
+// shared.EquipmentCategory (the public vocabulary equipment.GetByCategory
+// callers use). Checks membership via Item.EquipmentCategories rather than
+// hardcoding which category maps to which item here.
+func EligibleForCategory(cat shared.EquipmentCategory) []Item {
+	var result []Item
+	for _, id := range categorizedItems {
+		item := All[id]
+		for _, c := range item.EquipmentCategories() {
+			if c == cat {
+				result = append(result, item)
+				break
+			}
+		}
+	}
+	return result
 }

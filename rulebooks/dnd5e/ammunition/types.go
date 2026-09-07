@@ -57,6 +57,12 @@ func (a *Ammunition) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypeAmmunition
 }
 
+// EquipmentCategories reports no categories — no category choice currently
+// selects ammunition by category.
+func (a *Ammunition) EquipmentCategories() []shared.EquipmentCategory {
+	return nil
+}
+
 // EquipmentName returns the display name
 func (a *Ammunition) EquipmentName() string {
 	return a.Name

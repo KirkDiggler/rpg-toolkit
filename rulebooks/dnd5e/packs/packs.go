@@ -48,6 +48,12 @@ func (p *Pack) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypePack
 }
 
+// EquipmentCategories reports no categories — no category choice currently
+// selects a pack by category.
+func (p *Pack) EquipmentCategories() []shared.EquipmentCategory {
+	return nil
+}
+
 // EquipmentName returns the name of the pack
 func (p *Pack) EquipmentName() string {
 	return p.Name

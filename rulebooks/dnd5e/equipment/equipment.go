@@ -12,15 +12,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+// Category constants re-exported from shared, which is the single source
+// of truth (see shared.EquipmentCategory's doc comment) — kept here too so
+// existing callers referencing equipment.CategoryX don't need to change.
 const (
-	// CategoryMusicalInstruments selects all musical instruments.
-	CategoryMusicalInstruments shared.EquipmentCategory = "musical-instruments"
-	// CategoryDruidicFoci selects druidic focuses.
-	CategoryDruidicFoci shared.EquipmentCategory = "druidic-foci"
-	// CategoryHolySymbols selects holy symbols.
-	CategoryHolySymbols shared.EquipmentCategory = "holy-symbols"
-	// CategoryArcaneFoci selects arcane focuses.
-	CategoryArcaneFoci shared.EquipmentCategory = "arcane-foci"
+	CategoryMusicalInstruments = shared.CategoryMusicalInstruments
+	CategoryDruidicFoci        = shared.CategoryDruidicFoci
+	CategoryHolySymbols        = shared.CategoryHolySymbols
+	CategoryArcaneFoci         = shared.CategoryArcaneFoci
+	// CategoryArtisanTools selects all artisan's tool kits.
+	CategoryArtisanTools = shared.CategoryArtisanTools
 )
 
 // Equipment represents any item that can be owned, carried, or equipped
@@ -30,6 +31,13 @@ type Equipment interface {
 
 	// EquipmentType returns the category of equipment
 	EquipmentType() shared.EquipmentType
+
+	// EquipmentCategories returns the shared.EquipmentCategory tags this
+	// item can be found by in a category choice (e.g. a longsword reports
+	// its weapon category, a lute reports CategoryMusicalInstruments). Most
+	// equipment reports none — only items that actually participate in a
+	// category choice today have any.
+	EquipmentCategories() []shared.EquipmentCategory
 
 	// EquipmentName returns the display name
 	EquipmentName() string
@@ -85,62 +93,34 @@ func GetByID(id shared.SelectionID) (Equipment, error) {
 	return nil, rpgerr.New(rpgerr.CodeNotFound, "equipment not found")
 }
 
-// GetByCategory returns all equipment matching the specified type and categories
+// GetByCategory returns all equipment matching any of the given
+// categories, one requested category at a time (each in its own
+// registry's deterministic order) so a caller requesting multiple
+// categories together (e.g. simple-melee and simple-ranged weapons) still
+// gets them grouped by category, matching how these lists are presented
+// to a player.
+//
+// equipType is accepted for backward compatibility with existing callers
+// but no longer filters results. Category values are inherently
+// type-specific already — no weapon category string collides with a tool
+// or item category string — so gating on equipType would only risk
+// silently dropping a real result, exactly as it would have for a holy
+// symbol (which reports EquipmentTypeItem, not EquipmentTypeTool) had the
+// previous switch-based dispatch's implicit exemption for it not existed.
 func GetByCategory(equipType shared.EquipmentType, categories []shared.EquipmentCategory) ([]Equipment, error) {
+	_ = equipType
 	if len(categories) == 0 {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no categories specified")
 	}
 
 	var result []Equipment
-
-	switch equipType {
-	case shared.EquipmentTypeWeapon:
-		// Get weapons for each category
-		for _, cat := range categories {
-			weaponList := weapons.GetByCategory(cat)
-			for _, w := range weaponList {
-				wCopy := w // Create a copy to avoid pointer issues
-				result = append(result, &wCopy)
-			}
-		}
-
-	case shared.EquipmentTypeArmor:
-		// Get armor for each category
-		for _, cat := range categories {
-			armorList := armor.GetByCategory(cat)
-			for _, a := range armorList {
-				aCopy := a // Create a copy to avoid pointer issues
-				result = append(result, &aCopy)
-			}
-		}
-
-	case shared.EquipmentTypeTool:
-		for _, cat := range categories {
-			switch cat {
-			case CategoryMusicalInstruments:
-				for _, tool := range tools.GetByCategory(tools.CategoryMusical) {
-					toolCopy := tool
-					result = append(result, &toolCopy)
-				}
-			case CategoryDruidicFoci:
-				item := items.All[items.DruidicFocus]
-				result = append(result, &item)
-			case CategoryHolySymbols:
-				item := items.All[items.HolySymbol]
-				result = append(result, &item)
-			case CategoryArcaneFoci:
-				item := items.All[items.ArcaneFocus]
-				result = append(result, &item)
-			}
-		}
-
-	default:
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "category queries not supported for this equipment type")
+	for _, cat := range categories {
+		result = append(result, matchCategory(cat)...)
 	}
 
-	// Each registry API supplies its explicit registry order. Retain the first
-	// occurrence while collapsing an ID that belongs to more than one requested
-	// category, so category choices preserve that order without duplicate options.
+	// Retain the first occurrence while collapsing an ID that belongs to
+	// more than one requested category, so category choices preserve
+	// their grouped order without duplicate options.
 	seen := make(map[string]struct{}, len(result))
 	unique := make([]Equipment, 0, len(result))
 	for _, item := range result {
@@ -152,4 +132,31 @@ func GetByCategory(equipType shared.EquipmentType, categories []shared.Equipment
 	}
 
 	return unique, nil
+}
+
+// matchCategory returns every equipped item tagged with cat, in each
+// registry's own deterministic order. Weapons and armor already classify
+// themselves using the shared vocabulary directly (WeaponCategory/
+// ArmorCategory are aliases of shared.EquipmentCategory), so their
+// existing GetByCategory is reused as-is; tools and items each own a
+// translation from their internal classification to the shared
+// vocabulary (EligibleForCategory), since neither's internal category
+// values match the public ones directly.
+func matchCategory(cat shared.EquipmentCategory) []Equipment {
+	var result []Equipment
+
+	for _, w := range weapons.GetByCategory(cat) {
+		result = append(result, &w)
+	}
+	for _, a := range armor.GetByCategory(cat) {
+		result = append(result, &a)
+	}
+	for _, t := range tools.EligibleForCategory(cat) {
+		result = append(result, &t)
+	}
+	for _, i := range items.EligibleForCategory(cat) {
+		result = append(result, &i)
+	}
+
+	return result
 }
