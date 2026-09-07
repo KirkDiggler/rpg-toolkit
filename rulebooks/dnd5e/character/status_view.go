@@ -89,9 +89,10 @@ type ResourceView struct {
 // level, hit points, base speed, features, conditions, and resources. It is
 // built from the live sheet and feature Status reports — never from
 // persistence JSON — and excludes spell slots and legacy class resources by
-// construction. Its resource catalog is closed to the current four builds:
+// construction. Its resource catalog is closed to the current five builds:
 // Barbarian (RageCharges/HitDice), Fighter (HitDice plus private Second Wind
-// and Action Surge), Monk (Ki/HitDice), and Rogue (HitDice).
+// and Action Surge), Monk (Ki/HitDice), Rogue (HitDice), and Bard
+// (Inspiration/HitDice).
 type StatusView struct {
 	// Level is the character's level.
 	Level int
@@ -394,7 +395,17 @@ func ownerResourceAllowed(class classes.Class, key coreResources.ResourceKey) bo
 		return key == resources.HitDice
 	case classes.Monk:
 		return key == resources.Ki || key == resources.HitDice
+	case classes.Bard:
+		return key == resources.Inspiration || key == resources.HitDice
 	default:
+		// A CLASS WITH NO ARM PROJECTS NO STATUS AT ALL, which is why a
+		// missing one is not a cosmetic gap: the whole view is refused, and
+		// the player sees no resources, no equipment and no conditions. That
+		// is what a level-1 bard hit — the feature reported the pool it owns
+		// and this catalog had never heard of the class. Fail closed is right
+		// here; what is wrong is arriving without the arm, so a new class
+		// lands with a row in both of this file's catalogs or it does not
+		// land.
 		return false
 	}
 }
@@ -443,6 +454,8 @@ func featureResourceCatalog(ref core.Ref) (classes.Class, coreResources.Resource
 		refs.Features.PatientDefense().String(),
 		refs.Features.StepOfTheWind().String():
 		return classes.Monk, resources.Ki, true
+	case refs.Features.BardicInspiration().String():
+		return classes.Bard, resources.Inspiration, true
 	default:
 		return "", "", false
 	}
