@@ -50,8 +50,20 @@ var (
 // default kind of thing to be.
 const (
 	typeProps    = "props"
+	typeItems    = "items"
+	typeWeapons  = "weapons"
+	typeEnv      = "env"
 	typeMonsters = "monsters"
 )
+
+func isSceneryRefType(kind string) bool {
+	switch kind {
+	case typeProps, typeItems, typeWeapons, typeEnv:
+		return true
+	default:
+		return false
+	}
+}
 
 // Validate reports every way a decoded spec is not a dungeon, each at the
 // YAML path of the thing that is wrong. An empty list means the spec
@@ -698,7 +710,7 @@ func (v *validation) place() {
 					bosses[owner] = i
 				}
 			}
-		case typeProps:
+		case typeProps, typeItems, typeWeapons, typeEnv:
 			// A holdable prop must be nameable: the scenario binding names it
 			// and so does the `held` beat.
 			if pl.Holdable != nil && *pl.Holdable && pl.ID == "" {
@@ -1337,8 +1349,8 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // package may not know what a ref RESOLVES TO — that a sheet exists behind
 // "dnd5e:monsters:skeleton" is the content layer's knowledge, which is why
 // refs come out the far end as the strings that went in. It says nothing
-// about a ref's SHAPE, and shape is all this needs: which of two types the
-// author named.
+// about a ref's SHAPE, and shape is all this needs: which supported placement
+// type the author named.
 //
 // Read with a second parser, the grammar lived in two places. Every change to
 // core cascaded here, this package's tests re-asserted core's own counts, and
@@ -1347,7 +1359,7 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 //
 // So a malformed ref is refused in core's words, under the ref the author
 // wrote. What stays here is the ROUTING, which is this compiler's own
-// question: props and monsters are what it can place, and anything else is
+// question: scenery and monsters are what it can place, and anything else is
 // refused by name.
 func refKind(ref string) (string, error) {
 	parsed, err := core.ParseString(ref)
@@ -1356,7 +1368,7 @@ func refKind(ref string) (string, error) {
 	}
 
 	switch parsed.Type {
-	case typeProps, typeMonsters:
+	case typeProps, typeItems, typeWeapons, typeEnv, typeMonsters:
 		return parsed.Type, nil
 	default:
 		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parsed.Type)
