@@ -27,10 +27,21 @@ func windowIDString(id interrupt.WindowID) string {
 	return strconv.FormatUint(uint64(id), 10)
 }
 
-// windowPayloadKind discriminates what a stored window payload froze. One
-// value today; it is written and checked so a payload from a build that poses
-// something else is REFUSED rather than read as a reaction.
-const windowPayloadKind = "reaction"
+// The kinds of thing a stored window payload can have frozen.
+//
+// WRITTEN AND CHECKED, so a payload from a build that poses something else is
+// REFUSED rather than read as the wrong question. There were two readings of
+// the single value this replaced — "the kind" and "the only kind" — and the
+// second stopped being true the moment a roll could pause.
+const (
+	// windowKindReaction is a step that stopped to offer a swing at the mover
+	// walking away (rpg-project#316 rung 3).
+	windowKindReaction = "reaction"
+
+	// windowKindPostRoll is a d20 that stopped to ask its roller whether they
+	// spend something they hold on it (rpg-project#398).
+	windowKindPostRoll = "post_roll"
+)
 
 // windowPayload is the frozen half of one posed reaction window: everything
 // [Manager.React] needs to run the swing that was offered, without asking the
@@ -67,9 +78,57 @@ type windowPayload struct {
 	Definition combatActions.Definition `json:"definition"`
 }
 
-// marshalWindowPayload renders one posed window's frozen half.
+// postRollWindowPayload is the frozen half of one posed post-roll window.
+//
+// # The machine's own bytes ride along untouched
+//
+// [postRollWindowPayload.Frozen] is resolution's, opaque here, and handed back
+// whole. This package stores the numbers BESIDE it — audience, offer, roll,
+// total, and what the resulting beat needs — rather than reaching into the
+// blob, because reading it would put this seam inside a rules machine's state.
+// The duplication is the seam: two modules each keep what they own.
+type postRollWindowPayload struct {
+	// Kind is [windowKindPostRoll]. See its doc.
+	Kind string `json:"kind"`
+
+	// Audience is who is being asked. Always the window's own audience, and
+	// always the member whose d20 was rolled — this slice poses to the roller
+	// and to nobody else. Carried inside the payload as well so a mis-paired
+	// payload and window is a refusal rather than an answer by the wrong
+	// member.
+	Audience string `json:"audience"`
+
+	// Target is who was being swung at, and Attack what was swung. Both are
+	// here for the struck/missed beat the ANSWER writes: the first call
+	// recorded no outcome beat at all, and the second has no compiled offer to
+	// read them off.
+	Target string    `json:"target"`
+	Attack AttackRef `json:"attack"`
+
+	// PresentationID is the token the declaring client is already correlating
+	// its own simulated throw against. It was minted before the dice and must
+	// survive the pause, or the throw the player watched belongs to nothing.
+	PresentationID string `json:"presentation_id"`
+
+	// Offer is what the audience holds, as the effect that offered it named
+	// itself — the ref the button is keyed to and the name it is labelled
+	// with.
+	Offer ReactionRef `json:"offer"`
+
+	// Roll and Total are the d20 and the number the offer would join, carried
+	// for the beat that asks. THE TARGET'S AC IS NOT HERE, and its absence is
+	// the design: a player who could see it would be deciding whether the die
+	// closes the gap rather than whether it is worth spending.
+	Roll  int `json:"roll"`
+	Total int `json:"total"`
+
+	// Frozen is resolution's own machine state, opaque to this package.
+	Frozen []byte `json:"frozen"`
+}
+
+// marshalWindowPayload renders one posed reaction window's frozen half.
 func marshalWindowPayload(p windowPayload) ([]byte, error) {
-	p.Kind = windowPayloadKind
+	p.Kind = windowKindReaction
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return nil, fmt.Errorf("marshal window payload: %w", err)
@@ -77,8 +136,41 @@ func marshalWindowPayload(p windowPayload) ([]byte, error) {
 	return raw, nil
 }
 
-// thawWindowPayload reads a stored window payload back, refusing anything this
-// build could not have written.
+// marshalPostRollPayload renders one posed post-roll window's frozen half.
+func marshalPostRollPayload(p postRollWindowPayload) ([]byte, error) {
+	p.Kind = windowKindPostRoll
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshal post-roll window payload: %w", err)
+	}
+	return raw, nil
+}
+
+// windowKindOf reads which question a stored payload froze, without decoding
+// the rest of it.
+//
+// A PEEK RATHER THAN A UNION. Every reader here already knows which kind it
+// can act on, so each asks for that kind by name and is refused if the payload
+// is the other one. A single struct carrying both halves would have a field
+// lying on every payload of the wrong kind.
+func windowKindOf(raw []byte) (string, error) {
+	var peek struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(raw, &peek); err != nil {
+		return "", fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
+	}
+	switch peek.Kind {
+	case windowKindReaction, windowKindPostRoll:
+		return peek.Kind, nil
+	default:
+		return "", fmt.Errorf(
+			"%w: window payload kind %q is not one this build poses", ErrInvalidSession, peek.Kind)
+	}
+}
+
+// thawWindowPayload reads a stored REACTION window payload back, refusing
+// anything this build could not have written.
 //
 // REJECT, NEVER GUESS — the same trust boundary the ledger load itself keeps.
 // A payload of another kind, or one naming nobody, is a session record this
@@ -89,9 +181,9 @@ func thawWindowPayload(raw []byte, audience string) (windowPayload, error) {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return windowPayload{}, fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
 	}
-	if p.Kind != windowPayloadKind {
+	if p.Kind != windowKindReaction {
 		return windowPayload{}, fmt.Errorf(
-			"%w: window payload kind %q is not one this build poses", ErrInvalidSession, p.Kind)
+			"%w: window payload kind %q is not a reaction window", ErrInvalidSession, p.Kind)
 	}
 	if p.Mover == "" || p.Reactor == "" || p.Reaction == "" {
 		return windowPayload{}, fmt.Errorf("%w: window payload names no mover, reactor or reaction", ErrInvalidSession)
@@ -99,6 +191,32 @@ func thawWindowPayload(raw []byte, audience string) (windowPayload, error) {
 	if p.Reactor != audience {
 		return windowPayload{}, fmt.Errorf(
 			"%w: window payload names reactor %q but is posed to %q", ErrInvalidSession, p.Reactor, audience)
+	}
+	return p, nil
+}
+
+// thawPostRollPayload reads a stored POST-ROLL window payload back, under
+// thawWindowPayload's rule and for the same reason.
+func thawPostRollPayload(raw []byte, audience string) (postRollWindowPayload, error) {
+	var p postRollWindowPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return postRollWindowPayload{}, fmt.Errorf("%w: post-roll window payload: %v", ErrInvalidSession, err)
+	}
+	if p.Kind != windowKindPostRoll {
+		return postRollWindowPayload{}, fmt.Errorf(
+			"%w: window payload kind %q is not a post-roll window", ErrInvalidSession, p.Kind)
+	}
+	if p.Audience == "" || p.Target == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
+		return postRollWindowPayload{}, fmt.Errorf(
+			"%w: post-roll window payload names no audience, target or offer", ErrInvalidSession)
+	}
+	if len(p.Frozen) == 0 {
+		return postRollWindowPayload{}, fmt.Errorf(
+			"%w: post-roll window payload froze no machine to resume", ErrInvalidSession)
+	}
+	if p.Audience != audience {
+		return postRollWindowPayload{}, fmt.Errorf(
+			"%w: post-roll window payload names %q but is posed to %q", ErrInvalidSession, p.Audience, audience)
 	}
 	return p, nil
 }
