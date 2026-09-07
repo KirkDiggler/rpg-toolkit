@@ -1209,6 +1209,22 @@ type StruckBody struct {
 	// turn tracking. The composition has carried the identity on the beat
 	// since rung 2 and nothing decoded it; this is where it lands.
 	Reaction *ReactionRef `json:"reaction,omitempty"`
+
+	// PresentationID is the opaque token this beat's witness shares with the
+	// attacker for the ONE roll it describes — the same string
+	// [AttackOutput.PresentationID] handed whoever swung.
+	//
+	// It is how a table watches one die. The roller simulates the d20 falling
+	// through the room and publishes that throw; a witness matches this token
+	// to replay it instead of inventing a second, disagreeing die. Nothing
+	// else on the event can match them: a recipient's Seq is recipient-local
+	// (rpg-toolkit#1377), so one swing counts differently for each member.
+	//
+	// EMPTY IS A REAL ANSWER, not a missing field: this roll has no shared
+	// presentation. A monster's strike, a reaction the server took on a
+	// player's behalf, and every attack beat recorded before shared dice
+	// existed all say it, and a client rolls its own die for them.
+	PresentationID string `json:"presentation_id,omitempty"`
 }
 
 func (StruckBody) isEventBody() {}
@@ -1230,6 +1246,11 @@ type MissedBody struct {
 	// only the hits would drop the label exactly when the player most wants
 	// to know why the roll happened at all.
 	Reaction *ReactionRef `json:"reaction,omitempty"`
+
+	// PresentationID is the shared token for this roll — see
+	// [StruckBody.PresentationID]. A whiff is the throw a table most wants to
+	// watch together: the die that clatters and comes up short is the drama.
+	PresentationID string `json:"presentation_id,omitempty"`
 }
 
 func (MissedBody) isEventBody() {}

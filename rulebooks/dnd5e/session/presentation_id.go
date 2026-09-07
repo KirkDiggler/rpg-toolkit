@@ -5,9 +5,12 @@ package session
 
 import "fmt"
 
-// PresentationIDGenerator supplies one host-owned opaque correlation token for
-// each accepted Death Save. Tokens are not story sequence numbers and session
-// never derives one from the other.
+// PresentationIDGenerator supplies one host-owned opaque correlation token per
+// accepted explicit roll — a Death Save, and a declared Attack. Tokens are not
+// story sequence numbers and session never derives one from the other: a
+// sequence is recipient-local (rpg-toolkit#1377), so the member who rolled and
+// the members watching count different numbers for one beat and nothing built
+// from a sequence can correlate them.
 type PresentationIDGenerator interface {
 	Generate() string
 }

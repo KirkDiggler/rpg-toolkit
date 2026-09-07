@@ -117,6 +117,12 @@
 // PresentationID or rolling. It saves the returned character first, records the
 // same typed result second, and exposes only the actor's recipient-local Seq;
 // the pending global Story sequence remains an internal append-order assertion.
+// Attack mints its own PresentationID at the same point in its order — after
+// selection, before the dice — and carries it onto AttackOutput and onto the
+// struck/missed beat every witness reads, so one roll is one token at the
+// table. An undeclared swing (a monster's strike, a reaction) carries none,
+// and so does every attack beat recorded before the field existed; empty
+// reads as "no shared presentation" rather than as a defect.
 //
 // # Concealment, and the numbering that keeps it secret
 //

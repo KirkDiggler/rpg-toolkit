@@ -188,10 +188,15 @@ func (s moverSeam) offerStep(
 			return fmt.Errorf("move: reactor %q reacted with %q: %w: no display name",
 				reaction.ReactorID, reaction.ConditionRef, ErrInvalidWorld)
 		}
+		// NO PRESENTATION TOKEN, for the reason a monster's strike carries
+		// none: a reaction is a roll the server took on the reactor's behalf
+		// inside somebody else's Move, so no client simulated its die — see
+		// recordFor.
 		beat := recordFor(
 			&AttackInput{Attacker: reaction.ReactorID, Target: reaction.Against},
 			reaction.Struck,
 			reactions.answered[reaction.ReactorID],
+			"",
 		)
 		// What the beat was taken AS. The numbers already crossed as an
 		// ordinary strike; this is the only thing that explains why a fighter

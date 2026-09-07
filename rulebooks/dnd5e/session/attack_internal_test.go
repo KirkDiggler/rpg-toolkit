@@ -150,7 +150,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 
 	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
 	recorded, err := enc.Record(recordFor(
-		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition,
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "roll-abc",
 	))
 	require.NoError(t, err)
 	require.NotZero(t, recorded.Seq)
@@ -169,7 +169,8 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 			`"damage_type":"slashing"},`+
 			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}],`+
 			`"advantage_sources":[{"source_ref":"dnd5e:conditions:hidden","source_id":"alice"}],`+
-			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}]}`,
+			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}],`+
+			`"presentation_id":"roll-abc"}`,
 		payload,
 	)
 	for _, excluded := range []string{
@@ -234,8 +235,12 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	require.NoError(t, err)
 
 	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
+	// No token: a strike nobody declared, the shape striker and mover record
+	// (recordFor's own doc). The payload below carries no presentation_id key
+	// at all, which is what makes every beat written before shared dice still
+	// byte-identical to what this seam writes now.
 	_, err = enc.Record(recordFor(
-		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition,
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "",
 	))
 	require.NoError(t, err)
 
