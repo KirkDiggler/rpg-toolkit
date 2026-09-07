@@ -10,6 +10,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -21,6 +22,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // BardFinalizeSuite is rpg-project#397's "a bard finalizes" done-when: the
@@ -166,6 +168,33 @@ func (s *BardFinalizeSuite) TestADraftWithTwoInstrumentsIsRefused() {
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "3 musical instruments")
+}
+
+// TestTheBardWalksInWithArmourAndADagger is Kirk's "bard gets no armor?" at
+// the end that matters: the finished sheet, not the class table.
+func (s *BardFinalizeSuite) TestTheBardWalksInWithArmourAndADagger() {
+	char := s.finalize(16)
+
+	carried := map[string]int{}
+	for _, item := range char.ToData().Inventory {
+		carried[item.ID] += item.Quantity
+	}
+
+	s.Equal(1, carried[string(armor.Leather)], "the fixed half of the kit")
+	s.Equal(1, carried[string(weapons.Dagger)])
+	s.Equal(1, carried[string(weapons.Rapier)], "beside the weapon they chose")
+	s.NotZero(carried["lute"], "and the instrument")
+}
+
+// TestNothingIsEquippedAtCreation — a character walks in carrying their kit
+// and puts it on in play. Granting armour and wearing it are different verbs,
+// and finalize does only the first.
+func (s *BardFinalizeSuite) TestNothingIsEquippedAtCreation() {
+	char := s.finalize(16)
+
+	for slot, item := range char.ToData().EquipmentSlots {
+		s.Empty(item, "slot %q is filled at creation", slot)
+	}
 }
 
 // newBardicInspirationForTest is the feature as the factory builds it.

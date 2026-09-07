@@ -213,6 +213,22 @@ func getBardGrants() []Grant {
 				proficiencies.WeaponRapier,
 				proficiencies.WeaponShortsword,
 			},
+			// THE FIXED HALF OF THE KIT, which a bard was going to a dungeon
+			// without. PHB's bard starts with leather armour and a dagger
+			// outright; everything else it starts with — the weapon, the pack,
+			// the instrument — is a CHOICE, and those are compiled from the
+			// requirements instead.
+			//
+			// That split is the thing to get right, and it is why this row is
+			// not simply the API's starting_equipment list copied over. The
+			// barbarian's explorer's pack is fixed in that data and a CHOICE
+			// here (choices.BarbarianPack), so granting it as well would put
+			// two packs in one bag. What belongs in a grant is what no
+			// requirement offers.
+			Equipment: []EquipmentItem{
+				{ID: armor.Leather, Quantity: 1},
+				{ID: weapons.Dagger, Quantity: 1},
+			},
 			Features: []FeatureRef{
 				{Ref: refs.Features.BardicInspiration().String()},
 			},
