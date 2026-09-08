@@ -251,6 +251,26 @@ var longRestCases = map[string]longRestCase{
 		expectedRef: refs.Conditions.OpportunityAttack(),
 		outcome:     longRestReset,
 	},
+	refs.Conditions.TrueStrike().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"true_strike"},
+			"member_id":"member-1","target_id":"goblin-1","turn_ends_left":2
+		}`),
+		ownerID:       "member-1",
+		expectedRef:   refs.Conditions.TrueStrike(),
+		outcome:       longRestRemove,
+		removalReason: "long rest",
+	},
+	refs.Conditions.ViciousMockery().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"vicious_mockery"},
+			"member_id":"member-1","source_id":"bard-1"
+		}`),
+		ownerID:       "member-1",
+		expectedRef:   refs.Conditions.ViciousMockery(),
+		outcome:       longRestRemove,
+		removalReason: "long rest",
+	},
 	refs.Spells.Shield().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"spells","id":"shield"},

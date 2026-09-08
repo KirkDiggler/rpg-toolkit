@@ -1795,6 +1795,28 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 					Values:   expertiseValues,
 				})
 			}
+
+			// Handle cantrip and spell choices. BRANCHING ON THE CATEGORY,
+			// because both are carried in SpellSelection and the field alone
+			// cannot say which requirement a selection answers.
+			//
+			// This builder is what completeness reads, where [Draft.
+			// ValidateChoices] reads its own; the two disagreeing is how a
+			// bard came to pass validation and still be 80% complete, so
+			// FinalizeDraft refused a draft that had answered every question.
+			// A class requirement this builder cannot see is a requirement
+			// nothing can ever satisfy.
+			if len(choice.SpellSelection) > 0 &&
+				(choice.Category == shared.ChoiceCantrips || choice.Category == shared.ChoiceSpells) {
+				spellValues := make([]shared.SelectionID, 0, len(choice.SpellSelection))
+				spellValues = append(spellValues, choice.SpellSelection...)
+				subs.Add(choices.Submission{
+					Category: choice.Category,
+					Source:   shared.SourceClass,
+					ChoiceID: choice.ChoiceID,
+					Values:   spellValues,
+				})
+			}
 		}
 	}
 

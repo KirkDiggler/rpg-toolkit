@@ -46,6 +46,10 @@ var (
 	// Bard (rpg-project#397): the die an ally holds until they spend it.
 	conditionInspired = &core.Ref{Module: Module, Type: TypeConditions, ID: "inspired"}
 
+	// Bard cantrips (rpg-project#405): what the two cast cantrips deliver.
+	conditionTrueStrike     = &core.Ref{Module: Module, Type: TypeConditions, ID: "true_strike"}
+	conditionViciousMockery = &core.Ref{Module: Module, Type: TypeConditions, ID: "vicious_mockery"}
+
 	// Reaction conditions (Wave 2.11d) — universal-by-default reactions that
 	// subscribe to the appropriate chain and publish ReactionTriggerEvents
 	// when their predicate matches AND gamectx.IsReactionReady returns true.
@@ -136,3 +140,11 @@ func (n conditionsNS) Exhaustion() *core.Ref    { return conditionExhaustion }
 // Inspired returns the ref for the InspiredCondition, applied to the ally a
 // bard grants a Bardic Inspiration die to.
 func (n conditionsNS) Inspired() *core.Ref { return conditionInspired }
+
+// TrueStrike returns the ref for the TrueStrikeCondition, applied to the
+// CASTER of True Strike and keyed to the creature it was pointed at.
+func (n conditionsNS) TrueStrike() *core.Ref { return conditionTrueStrike }
+
+// ViciousMockery returns the ref for the ViciousMockeryCondition, applied to
+// the creature that failed its save against Vicious Mockery.
+func (n conditionsNS) ViciousMockery() *core.Ref { return conditionViciousMockery }

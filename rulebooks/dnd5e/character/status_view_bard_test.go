@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // newLevel1Bard finalizes a level-1 bard with Charisma 16, so the inspiration
@@ -36,8 +37,9 @@ func newLevel1Bard(t *testing.T) *Character {
 	require.NoError(t, draft.SetClass(&SetClassInput{
 		ClassID: classes.Bard,
 		Choices: ClassChoices{
-			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
-			Tools:  []shared.SelectionID{"lute", "flute", "drum"},
+			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
+			Tools:    []shared.SelectionID{"lute", "flute", "drum"},
+			Cantrips: []shared.SelectionID{spells.TrueStrike, spells.ViciousMockery},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},

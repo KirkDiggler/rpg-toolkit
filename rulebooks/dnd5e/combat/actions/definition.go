@@ -11,11 +11,17 @@ import (
 
 // Definition identifies an action, its optional price, and the profile a
 // resolution machine interprets. Exactly one profile must be populated.
+//
+// The profile is how content chooses a sequence without naming one. A second
+// arm is not a second kind of definition: it is a second thing content can
+// declare, and the machine that reads it is chosen by which arm is populated
+// rather than by what the definition is called.
 type Definition struct {
 	Ref    core.Ref             `json:"ref"`
 	Name   string               `json:"name"`
 	Cost   *combat.SpendProfile `json:"cost,omitempty"`
 	Attack *AttackProfile       `json:"attack,omitempty"`
+	Cast   *CastProfile         `json:"cast,omitempty"`
 }
 
 // Validate reports whether the definition has complete identity, a valid
@@ -27,7 +33,14 @@ func (d Definition) Validate() error {
 	if strings.TrimSpace(d.Name) == "" {
 		return fmt.Errorf("action name must not be empty")
 	}
-	if d.Attack == nil {
+	populated := 0
+	if d.Attack != nil {
+		populated++
+	}
+	if d.Cast != nil {
+		populated++
+	}
+	if populated != 1 {
 		return fmt.Errorf("action must populate exactly one profile")
 	}
 	if d.Cost != nil {
@@ -35,8 +48,15 @@ func (d Definition) Validate() error {
 			return fmt.Errorf("action cost is invalid: %w", err)
 		}
 	}
-	if err := d.Attack.Validate(); err != nil {
-		return fmt.Errorf("attack profile is invalid: %w", err)
+	if d.Attack != nil {
+		if err := d.Attack.Validate(); err != nil {
+			return fmt.Errorf("attack profile is invalid: %w", err)
+		}
+	}
+	if d.Cast != nil {
+		if err := d.Cast.Validate(); err != nil {
+			return fmt.Errorf("cast profile is invalid: %w", err)
+		}
 	}
 
 	return nil
@@ -50,6 +70,10 @@ func (d Definition) Clone() Definition {
 	if d.Attack != nil {
 		attack := d.Attack.Clone()
 		clone.Attack = &attack
+	}
+	if d.Cast != nil {
+		cast := d.Cast.Clone()
+		clone.Cast = &cast
 	}
 	return clone
 }

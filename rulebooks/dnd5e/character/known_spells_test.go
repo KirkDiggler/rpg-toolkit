@@ -21,17 +21,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// KnownSpellsSuite covers the sheet's known-spell fields, which in slice one
-// are GROUNDWORK: the shape a known/prepared list will have
-// (rpg-project#391 §5.2), carried and round-tripped, with nothing yet putting
-// anything in it.
+// KnownSpellsSuite covers the sheet's known-spell fields (rpg-project#391
+// §5.2): carried, compiled from a choice, round-tripped, and read back.
 //
-// A level-1 bard knows none, and that is the ruling rather than a gap — slice
-// one is Bardic Inspiration alone, so the cantrip and spell questions are not
-// asked at creation and come back with the cast door. What is tested here is
-// therefore the machinery around an empty list, plus the two paths that WILL
-// fill it: the compiler that turns a chosen id into a ref, and the loader that
-// reads one back.
+// SLICE TWO FILLS THEM. Slice one asked a level-1 bard nothing about spells
+// because nothing could spend the answer; the cast door can, so the cantrip
+// question is back and a bard's two choices land on the sheet as refs. Levelled
+// spells stay unasked — slots are their own slice.
 type KnownSpellsSuite struct {
 	suite.Suite
 	bus events.EventBus
@@ -43,9 +39,21 @@ func TestKnownSpellsSuite(t *testing.T) {
 
 func (s *KnownSpellsSuite) SetupTest() { s.bus = events.NewEventBus() }
 
-// bardDraft builds a level-1 bard draft — skills, instruments and equipment,
-// and no spell choices at all.
+// bardDraft builds a level-1 bard draft, cantrips included.
 func (s *KnownSpellsSuite) bardDraft() *Draft {
+	draft := s.bardDraftWithoutCantrips()
+	draft.recordChoice(choices.ChoiceData{
+		Category:       shared.ChoiceCantrips,
+		Source:         shared.SourceClass,
+		ChoiceID:       choices.BardCantrips1,
+		SpellSelection: []spells.Spell{spells.TrueStrike, spells.ViciousMockery},
+	})
+	return draft
+}
+
+// bardDraftWithoutCantrips is the same draft with the cantrip question left
+// unanswered, so a scene can record its own selection or check the refusal.
+func (s *KnownSpellsSuite) bardDraftWithoutCantrips() *Draft {
 	draft, err := NewDraft(&DraftConfig{ID: "draft-1", PlayerID: "player-1"})
 	s.Require().NoError(err)
 
@@ -86,32 +94,36 @@ func spellRefsAsStrings(refList []*core.Ref) []string {
 	return out
 }
 
-// TestALevelOneBardFinalizesWithoutBeingAskedForSpells is the walk blocker,
-// fixed at the source. The draft completes on skills, instruments and
-// equipment, and the sheet says the bard knows no spells because the bard was
-// never asked for any.
-func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithoutBeingAskedForSpells() {
+// TestALevelOneBardFinalizesWithItsTwoCantrips — the answers reach the sheet
+// as refs, and no slot pool comes with them.
+func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithItsTwoCantrips() {
 	draft := s.bardDraft()
 
-	s.Require().NoError(draft.ValidateChoices(), "nothing further is required of a slice-one bard")
+	s.Require().NoError(draft.ValidateChoices(), "nothing further is required of a level-1 bard")
 
 	char, err := draft.ToCharacter(context.Background(), "bard-1", s.bus)
 	s.Require().NoError(err)
 
-	s.Empty(char.KnownCantrips())
-	s.Empty(char.KnownSpells())
+	s.Equal([]string{
+		refs.Spells.TrueStrike().String(), refs.Spells.ViciousMockery().String(),
+	}, spellRefsAsStrings(char.KnownCantrips()))
+	s.Empty(char.KnownSpells(), "no levelled spells until something can spend a slot")
 	s.Empty(char.ToData().SpellSlots, "and no slot pool either")
 }
 
-// TestTheBardIsAskedNothingAboutSpells pins the ruling itself: slice one asks
-// for Bardic Inspiration and nothing that only casting could use.
-func (s *KnownSpellsSuite) TestTheBardIsAskedNothingAboutSpells() {
+// TestTheBardIsAskedForCantripsAndNothingElse pins the ruling itself: two
+// cantrips, gated to what this build can cast, and no levelled-spell question.
+func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndNothingElse() {
 	requirements := choices.GetClassRequirements(classes.Bard)
 
 	s.Require().NotNil(requirements)
-	s.Nil(requirements.Cantrips, "no cantrip question until there is something to cast")
-	s.Nil(requirements.Spellbook, "and no spell question either")
-	s.NotNil(requirements.Skills, "the questions slice one does ask")
+	s.Require().NotNil(requirements.Cantrips, "the cast door asks for them")
+	s.Equal(choices.BardCantrips1, requirements.Cantrips.ID)
+	s.Equal(2, requirements.Cantrips.Count)
+	s.Equal([]spells.Spell{spells.TrueStrike, spells.ViciousMockery}, requirements.Cantrips.Options,
+		"gated to the cantrips this build can actually cast")
+	s.Nil(requirements.Spellbook, "no levelled-spell question")
+	s.NotNil(requirements.Skills)
 	s.NotNil(requirements.Tools)
 }
 
@@ -162,11 +174,11 @@ func (s *KnownSpellsSuite) TestAFighterKnowsNothing() {
 	s.Nil(data.KnownSpells)
 }
 
-// TestTheCompilerTurnsAChosenIdIntoARef exercises the path rung 2 will use,
-// without a requirement offering anything: the recorded choice is compiled
-// straight, which is what the finalize step does with it.
+// TestTheCompilerTurnsAChosenIdIntoARef exercises the compile step directly,
+// with ids the requirement does not offer, so the catalog lookup is what is
+// under test rather than the option gate.
 func (s *KnownSpellsSuite) TestTheCompilerTurnsAChosenIdIntoARef() {
-	draft := s.bardDraft()
+	draft := s.bardDraftWithoutCantrips()
 	draft.recordChoice(choices.ChoiceData{
 		Category:       shared.ChoiceCantrips,
 		Source:         shared.SourceClass,
@@ -186,7 +198,7 @@ func (s *KnownSpellsSuite) TestTheCompilerTurnsAChosenIdIntoARef() {
 // singletons, and a sheet that aliased one would let a caller reading its
 // known spells rewrite the catalog for everybody.
 func (s *KnownSpellsSuite) TestTheCompiledRefIsNotTheCatalogsOwn() {
-	draft := s.bardDraft()
+	draft := s.bardDraftWithoutCantrips()
 	draft.recordChoice(choices.ChoiceData{
 		Category:       shared.ChoiceCantrips,
 		Source:         shared.SourceClass,
@@ -207,7 +219,7 @@ func (s *KnownSpellsSuite) TestTheCompiledRefIsNotTheCatalogsOwn() {
 // the problem: a typo would become a ref pointing at nothing, persisted, and
 // read back later by whatever mints Cast declarations.
 func (s *KnownSpellsSuite) TestASpellThisBuildHasNoRefForIsRefused() {
-	draft := s.bardDraft()
+	draft := s.bardDraftWithoutCantrips()
 	draft.recordChoice(choices.ChoiceData{
 		Category:       shared.ChoiceCantrips,
 		Source:         shared.SourceClass,
@@ -219,9 +231,8 @@ func (s *KnownSpellsSuite) TestASpellThisBuildHasNoRefForIsRefused() {
 	s.Require().ErrorContains(err, "song-of-nothing")
 }
 
-// knownSheet is a stored sheet carrying known spells directly — the shape a
-// caster's sheet will have, built here without a draft because nothing in
-// slice one produces one.
+// knownSheet is a stored sheet carrying known spells directly, including the
+// levelled ones no requirement asks for yet.
 func (s *KnownSpellsSuite) knownSheet() *Data {
 	char, err := s.bardDraft().ToCharacter(context.Background(), "bard-1", s.bus)
 	s.Require().NoError(err)

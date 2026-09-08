@@ -96,6 +96,15 @@ const (
 	// ([PostRollOfferChain]) rather than adding to one being made, and
 	// consumes itself when the offer is taken.
 	ConditionInspired ConditionType = "inspired"
+
+	// ConditionTrueStrike is applied to the CASTER of True Strike, keyed to
+	// the creature they named: advantage on the caster's next attack against
+	// that creature, and nothing against anybody else.
+	ConditionTrueStrike ConditionType = "true_strike"
+	// ConditionViciousMockery is applied to a creature that failed its save
+	// against Vicious Mockery. Disadvantage on its next attack roll, then
+	// consumed.
+	ConditionViciousMockery ConditionType = "vicious_mockery"
 )
 
 // ConditionSource identifies where a condition originated
@@ -113,6 +122,17 @@ const (
 	// consequence of taking damage (e.g., Unconscious at 0 HP) rather than
 	// an actor's own ability activation.
 	ConditionSourceDamage ConditionSource = "damage"
+	// ConditionSourceSpell indicates a condition delivered by a cast: True
+	// Strike's advantage on the caster, Vicious Mockery's rider on whoever
+	// failed the save.
+	//
+	// A KIND, and the condition still names WHICH spell. Every arm here says
+	// what sort of thing applied the condition, and the spell that did it is
+	// carried by the condition's own source ref — the same split raging makes
+	// between "a feature applied this" and "the feature was Rage". Without
+	// this arm a cast either left the field unset or borrowed
+	// [ConditionSourceFeature], and a cantrip is not a feature activation.
+	ConditionSourceSpell ConditionSource = "spell"
 )
 
 // ConditionBehavior represents the behavior of an active condition.

@@ -169,6 +169,20 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return oa, nil
 	},
+	refs.Conditions.TrueStrike().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		ts := &TrueStrikeCondition{}
+		if err := ts.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load true strike condition")
+		}
+		return ts, nil
+	},
+	refs.Conditions.ViciousMockery().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		vm := &ViciousMockeryCondition{}
+		if err := vm.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load vicious mockery condition")
+		}
+		return vm, nil
+	},
 	refs.Spells.Shield().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		sh := &ShieldSpellCondition{}
 		if err := sh.loadJSON(data); err != nil {
