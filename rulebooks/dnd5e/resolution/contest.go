@@ -174,18 +174,41 @@ func publishPreparedCondition(
 			if err != nil {
 				return nil, err
 			}
-			err = dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
-				Target:    target,
-				Type:      dnd5eEvents.ConditionType(prepared.declaration.Ref.ID),
-				Source:    dnd5eEvents.ConditionSourceDamage,
-				Condition: prepared.behavior,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("apply %s to %q: %w", prepared.declaration.Ref.ID, targetID, err)
+			if err := publishCondition(
+				ctx, bus, prepared, target, dnd5eEvents.ConditionSourceDamage,
+			); err != nil {
+				return nil, err
 			}
 			return next()
 		},
 	}
+}
+
+// publishCondition is the one place a built condition reaches the bus.
+//
+// The publish is the whole application: an effect never attaches itself, it
+// publishes and the owning keeper applies. Two callers share this — the
+// contest's imposition and the gateless cast's delivery — so there is one
+// implementation of what "the condition landed" means rather than a copy per
+// door.
+//
+// The source is the caller's to state because the two mean different things by
+// it, and neither may guess for the other.
+func publishCondition(
+	ctx context.Context, bus events.EventBus, prepared preparedCondition,
+	target core.Entity, source dnd5eEvents.ConditionSource,
+) error {
+	err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    target,
+		Type:      dnd5eEvents.ConditionType(prepared.declaration.Ref.ID),
+		Source:    source,
+		Condition: prepared.behavior,
+	})
+	if err != nil {
+		return fmt.Errorf("apply %s to %q: %w", prepared.declaration.Ref.ID, target.GetID(), err)
+	}
+
+	return nil
 }
 
 // describeDamage names the declared pools the way a step log should read them:

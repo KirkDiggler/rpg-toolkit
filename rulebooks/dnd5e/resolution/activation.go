@@ -56,6 +56,40 @@ type ActivationInput struct {
 	// nil here would otherwise fall back to process-global randomness mid-
 	// interaction (rpg-toolkit#1427).
 	Roller dice.Roller
+
+	// cast is the CAST DOOR'S ARM, and the reason it is unexported is the
+	// reason [ContestInput.prepared] is: it is conditions already built, by
+	// the one caller in this package that can build them ([NewAction]), rather
+	// than a declaration an outside caller could hand over half-formed.
+	//
+	// A gateless cast has nothing to resolve — no roll, no policy, no ability
+	// to activate — so it is a DELIVERY, and this machine already is one: it
+	// opens the collector, does one thing on the interaction's bus, and hands
+	// back the effects. When this is set, Ability and Roller are not read and
+	// are not required; the machine publishes these instead of calling
+	// ActivateAbility.
+	cast *preparedCast
+}
+
+// preparedCast is one gateless cast's whole delivery: what ran, and the
+// conditions it puts on which parties.
+type preparedCast struct {
+	// source is the spell, echoed into the outcome so a caller learns what ran
+	// without parsing a declaration id.
+	source core.Ref
+
+	// conditions are built and bound before the door charges anybody.
+	conditions []preparedDelivery
+}
+
+// preparedDelivery is one built condition and the member it lands on.
+//
+// The recipient travels beside the condition rather than being derived from it
+// because a cast has two parties and either may receive: True Strike names a
+// creature and puts its condition on the CASTER.
+type preparedDelivery struct {
+	condition   preparedCondition
+	recipientID string
 }
 
 // ActivationEffectKind identifies one closed kind of fact produced while an
@@ -361,6 +395,12 @@ func (c *activationEffectCollector) Close(ctx context.Context) error {
 // "Free action" in Cost's own doc means "this package charges nothing", not
 // "this costs nothing".
 //
+// THE CAST ARM IS THE EXCEPTION, and for the reason the rule exists rather
+// than despite it. A cast has nothing underneath it: no ActivateAbility, no
+// feature-owned spend, no second currency. So the door charges once and the
+// machine is never told, which is the ignorance [Input.Cost] asks for — see
+// [ActivationInput.cast].
+//
 // Refuses a nil input, a member with no ID, a missing or invalid ability ref,
 // and a nil roller, all before the world is loaded.
 func NewActivation(in *ActivationInput) (Machine, error) {
@@ -369,6 +409,15 @@ func NewActivation(in *ActivationInput) (Machine, error) {
 	}
 	if in.MemberID == "" {
 		return nil, fmt.Errorf("%w: no member is activating", ErrBadActivation)
+	}
+	if in.cast != nil {
+		// Nothing below applies: the conditions are already built, so there is
+		// no ability to look up and no dice to roll.
+		return &activationMachine{
+			member:   in.MemberID,
+			targetID: in.TargetID,
+			cast:     in.cast,
+		}, nil
 	}
 	if in.Ability == nil {
 		return nil, fmt.Errorf("%w: member %q named no ability", ErrBadActivation, in.MemberID)
@@ -407,6 +456,10 @@ type activationMachine struct {
 	targetID  string
 	observers []int
 	roller    dice.Roller
+
+	// cast is set for a gateless cast and nil for every activation. It is the
+	// one branch this machine takes, and it is taken in Start.
+	cast *preparedCast
 }
 
 // Start is pure preflight and runs before payment: it finds the actor and the
@@ -419,6 +472,10 @@ type activationMachine struct {
 // interaction that cannot run. It is the same preflight [strikeMachine] does
 // for a combatant it was never handed.
 func (m *activationMachine) Start(_ context.Context, cast *Participants) (Step, error) {
+	if m.cast != nil {
+		return m.startCast(cast)
+	}
+
 	actor, ok := cast.Character(m.member)
 	if !ok {
 		// Named separately from "not in the cast at all" because a monster IS
@@ -583,4 +640,72 @@ func memberEntity(cast *Participants, id string) (core.Entity, error) {
 		return mon, nil
 	}
 	return nil, fmt.Errorf("%w: target %q is not a participant", ErrBadActivation, id)
+}
+
+// startCast is the gateless cast's preflight: every recipient is found in the
+// cast before anything is published or paid for, which is the same reason the
+// activation path looks its actor up here.
+func (m *activationMachine) startCast(cast *Participants) (Step, error) {
+	recipients := make([]core.Entity, len(m.cast.conditions))
+	for index, delivery := range m.cast.conditions {
+		recipient, err := cast.entity(delivery.recipientID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s delivers to %q: %w",
+				ErrBadActivation, m.cast.source.String(), delivery.recipientID, err)
+		}
+		recipients[index] = recipient
+	}
+
+	return m.deliverCast(recipients), nil
+}
+
+// deliverCast publishes what the cast delivers, inside the collector every
+// activation result already travels through.
+//
+// ONE Gather for the whole delivery, not one per condition, and the collector
+// is the reason: it is opened and closed around the publishes, so the effects
+// it captures are this cast's in publication order. A Gather per condition
+// would give each its own collector and split one cast's record across several.
+//
+// # The condition source is left unstated, deliberately
+//
+// [dnd5eEvents.ConditionSource] is a sealed enum with no arm for a spell —
+// class, feature, combat ability, damage — and a cantrip is none of them. An
+// unset source says "this package has no name for it", which is true; picking
+// the nearest wrong one would put a label in the record that a reader would
+// believe. The arm belongs in the root rulebook beside the others, and this
+// line is what should change when it lands.
+func (m *activationMachine) deliverCast(recipients []core.Entity) Step {
+	return Gather{
+		name: fmt.Sprintf("cast %s for %s", m.cast.source.String(), m.member),
+		run: func(ctx context.Context, bus events.EventBus) (next Step, err error) {
+			collector, collectErr := newActivationEffectCollector(ctx, bus)
+			if collectErr != nil {
+				return nil, fmt.Errorf("cast %s for %q: collect effects: %w",
+					m.cast.source.String(), m.member, collectErr)
+			}
+			defer func() {
+				if closeErr := collector.Close(ctx); closeErr != nil {
+					next = nil
+					err = errors.Join(err,
+						fmt.Errorf("cast %s for %q: close effect collector: %w",
+							m.cast.source.String(), m.member, closeErr))
+				}
+			}()
+
+			for index, delivery := range m.cast.conditions {
+				if publishErr := publishCondition(
+					ctx, bus, delivery.condition, recipients[index], "",
+				); publishErr != nil {
+					return nil, fmt.Errorf("cast %s for %q: %w",
+						m.cast.source.String(), m.member, publishErr)
+				}
+			}
+
+			return Done{Outcome: ActivationOutcome{
+				Ability: m.cast.source.String(),
+				Effects: collector.Effects(),
+			}}, nil
+		},
+	}
 }
