@@ -454,6 +454,18 @@ var (
 	// member the interaction never received. Content or wiring being wrong.
 	ErrBadActivation = errors.New("activation is invalid")
 
+	// ErrBadCast is returned when a cast nobody could run reaches this seam —
+	// a target named on a spell that takes none, a spell that takes one and
+	// was given none, or a compiled definition whose cast profile is missing.
+	// Content or wiring being wrong, and [ErrBadActivation]'s twin for the
+	// other verb.
+	//
+	// It is NOT what a target that has walked out of range comes back as: an
+	// offer that was true and is no longer is [ErrStaleDeclaration], because
+	// from a client's side that is the same event as any other offer the world
+	// moved out from under.
+	ErrBadCast = errors.New("cast is invalid")
+
 	// ErrBadAttack is returned when an attack cannot be compiled from the
 	// attacker's own sheet or shared persisted definition — an empty hand,
 	// malformed declared action, or a weapon the strike has no semantics for.

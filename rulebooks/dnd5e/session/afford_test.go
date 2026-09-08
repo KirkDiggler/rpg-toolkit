@@ -401,8 +401,9 @@ func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	s.Require().NoError(err)
 	s.Equal(session.ClockTurn, out.Clock)
 	// One blocker per VERB, all blocked the same way — Activate is one verb
-	// however many things it would compile on a turn that were hers.
-	s.Require().Len(out.Declarations, 4)
+	// however many things it would compile on a turn that were hers, and Cast
+	// is one row for the same reason.
+	s.Require().Len(out.Declarations, 5)
 	for _, d := range out.Declarations {
 		s.False(d.Available)
 		s.Empty(d.ID, "a blocker carries no selector ID")

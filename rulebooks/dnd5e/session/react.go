@@ -300,6 +300,6 @@ func (m *Manager) strikeForWindow(ctx context.Context, scope *writeScope, payloa
 // in exactly one place, so [Manager.Afford] and [Manager.React] cannot mint
 // two different ids for one window.
 func reactDeclarationID(session, member string, window interrupt.WindowID) (string, error) {
-	id, _, err := selectorIDFor(session, member, VerbReact, SlotReaction, nil, "", windowIDString(window))
+	id, _, err := selectorIDFor(session, member, VerbReact, SlotReaction, nil, nil, "", windowIDString(window))
 	return id, err
 }

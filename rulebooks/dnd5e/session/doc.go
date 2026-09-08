@@ -88,12 +88,15 @@
 // # Compiled declarations are the execution trust boundary
 //
 // Afford is the one current action surface on the turn clock. It compiles the
-// member's Attack variants, one Move and EndTurn offer, plus one Activate offer
-// per thing the member carries. An active Dying character additionally receives
-// one explicit Death Save offer before normal downed blockers. It projects only
-// seam-owned values and gives each compiled offer an opaque deterministic
-// selector. Attack, DeathSave, and EndTurn require that ID back; Move requires
-// it on the turn clock and requires it empty on the world clock, where Afford
+// member's Attack variants, one Move and EndTurn offer, one Activate offer per
+// thing the member carries, and one Cast offer per cantrip the member knows AND
+// this build can cast — a known spell with no cast content mints no row at all,
+// which is the one absence here that is not about the turn. An active Dying
+// character additionally receives one explicit Death Save offer before normal
+// downed blockers. It projects only seam-owned values and gives each compiled
+// offer an opaque deterministic selector. Attack, Cast, DeathSave, and EndTurn
+// require that ID back; Move requires it on the turn clock and requires it
+// empty on the world clock, where Afford
 // deliberately returns no declarations.
 //
 // A mutating verb reloads current state, regenerates only its own offer, and

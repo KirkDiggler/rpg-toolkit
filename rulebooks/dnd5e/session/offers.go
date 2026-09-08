@@ -41,6 +41,13 @@ type compiledOffer struct {
 	// attack is the complete validated action definition for VerbAttack.
 	// Non-nil for a compiled Attack, nil for Move/EndTurn and every blocker.
 	attack *combatActions.Definition
+	// spell is the complete validated, priced action definition for VerbCast
+	// — the cast profile with this caster's own save DC already written into
+	// its gate. Non-nil for a compiled Cast and nil for every other verb.
+	// Cast execution hands this exact definition to resolution rather than
+	// recompiling one, so the offer's numbers and the machine's are the same
+	// numbers.
+	spell *combatActions.Definition
 	// targets is the per-candidate reach verdict for VerbAttack, keyed by
 	// candidate member ID. Empty for Move/EndTurn and every blocker. Execution
 	// looks a chosen target up here to re-enforce reach before resolving.
@@ -153,6 +160,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
+			blockedCompiledOffer(VerbCast, TargetNone, why),
 			endTurn,
 		)
 	}
@@ -167,6 +175,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
+			blockedCompiledOffer(VerbCast, TargetNone, why),
 			endTurn,
 		)
 	}
@@ -200,6 +209,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
+			blockedCompiledOffer(VerbCast, TargetNone, why),
 			deathSave,
 			endTurn,
 		)
@@ -230,7 +240,7 @@ func (m *Manager) compileOffersFor(
 		positions map[string]spatial.Position
 		holdings  []intel.Holding
 	)
-	if requested[VerbAttack] || requested[VerbActivate] {
+	if requested[VerbAttack] || requested[VerbActivate] || requested[VerbCast] {
 		var err error
 		if roster, err = enc.Members(); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
@@ -253,6 +263,34 @@ func (m *Manager) compileOffersFor(
 		}
 	}
 
+	// ONE resolution cast, compiled at most once and shared by Attack and
+	// Cast. Both need the same participation verdict over the same
+	// participants — who may be targeted at all — and two compilations would
+	// be two repository reads free to disagree about who is still standing.
+	//
+	// The readied sheet is what goes in: compileOffersFor readied this turn's
+	// economy above, and a second read would hand resolution a ledger that had
+	// not been filled.
+	var (
+		resolutionCast     []resolution.Participant
+		dependencyFailures []resolutionDependencyFailure
+	)
+	if requested[VerbAttack] || requested[VerbCast] {
+		resolutionCast, dependencyFailures = m.compileResolutionCast(ctx, data, roster, sheet.ToData())
+	}
+
+	var casts []compiledOffer
+	if requested[VerbCast] {
+		var err error
+		casts, err = m.buildCastOffers(
+			ctx, enc, sessionID, member, sheet,
+			roster, positions, holdings, resolutionCast, dependencyFailures,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var move compiledOffer
 	if requested[VerbMove] {
 		var err error
@@ -263,7 +301,7 @@ func (m *Manager) compileOffersFor(
 	}
 	if !requested[VerbAttack] {
 		return finishRequestedOffers(requested,
-			append([]compiledOffer{move, deathSave, endTurn}, activations...)...)
+			append(append([]compiledOffer{move, deathSave, endTurn}, activations...), casts...)...)
 	}
 
 	// Price BEFORE assembly. The complete Definition is selector material, so
@@ -301,11 +339,10 @@ func (m *Manager) compileOffersFor(
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
 
-	// Compile the raw resolution cast once, then strictly exercise the same
-	// public character/monster load-and-attach APIs resolution uses. Every
+	// The raw resolution cast, compiled once above and shared with Cast. Every
 	// Attack variant reuses this exact participant snapshot; selection never
 	// triggers a second repository read.
-	cast, dependencyFailures := m.compileResolutionCast(ctx, data, roster, price.payer)
+	cast := resolutionCast
 
 	// A world NPC is never an attack candidate (design.md N4, rpg-toolkit#1404).
 	// buildTargetPreflight itself has no kind gate at all — visibility and
@@ -405,7 +442,8 @@ func (m *Manager) compileOffersFor(
 	}
 
 	offers := append(attacks, move, deathSave, endTurn)
-	return finishRequestedOffers(requested, append(offers, activations...)...)
+	offers = append(offers, activations...)
+	return finishRequestedOffers(requested, append(offers, casts...)...)
 }
 
 // compileAttackOfferInput carries one fully assembled and priced Attack
@@ -478,7 +516,7 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 	}
 
 	attackRef := attackRefFor(definition)
-	id, variant, err := selectorIDFor(input.SessionID, input.Member, VerbAttack, slot, &definition, "", "")
+	id, variant, err := selectorIDFor(input.SessionID, input.Member, VerbAttack, slot, &definition, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -543,7 +581,7 @@ func (m *Manager) loadActorSheet(ctx context.Context, member string) actorSheet 
 // unreadable character do not reach it — it carries no sheet, no candidates,
 // and no currency.
 func (m *Manager) buildEndTurnOffer(session, member string) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbEndTurn, SlotNone, nil, "", "")
+	id, variant, err := selectorIDFor(session, member, VerbEndTurn, SlotNone, nil, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -567,7 +605,7 @@ func (m *Manager) buildEndTurnOffer(session, member string) (compiledOffer, erro
 func (m *Manager) buildDeathSaveOffer(
 	session, member string, sheet *character.Character,
 ) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbDeathSave, SlotNone, nil, "", "")
+	id, variant, err := selectorIDFor(session, member, VerbDeathSave, SlotNone, nil, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -586,7 +624,7 @@ func (m *Manager) buildDeathSaveOffer(
 // whether ANY step at all is still possible — one cell, five feet, the
 // smallest unit this grid has — and Remaining is the actual feet left.
 func buildMoveOffer(session, member string, sheet *character.Character) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbMove, SlotNone, nil, "", "")
+	id, variant, err := selectorIDFor(session, member, VerbMove, SlotNone, nil, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -796,9 +834,9 @@ func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiled
 // a sealed string; for Attack it is the marshaled, validated definition.
 func selectorIDFor(
 	session, member string, verb Verb, slot Slot,
-	attack *combatActions.Definition, ability, window string,
+	attack, cast *combatActions.Definition, ability, window string,
 ) (id string, variant json.RawMessage, err error) {
-	variant, err = selectorVariant(verb, attack, ability, window)
+	variant, err = selectorVariant(verb, attack, cast, ability, window)
 	if err != nil {
 		return "", nil, err
 	}
@@ -812,6 +850,7 @@ func selectorIDFor(
 		Verb:    verb,
 		Slot:    slot,
 		Attack:  attack,
+		Cast:    cast,
 		Ability: ability,
 		Window:  window,
 	})
@@ -864,7 +903,7 @@ func offerSelectorEqual(a, b compiledOffer) bool {
 }
 
 // verbRank orders declarations in the deterministic output order the seam
-// promises: Attack, Move, Activate, Death Save, then EndTurn — the order a turn
+// promises: Attack, Move, Activate, Cast, Death Save, then EndTurn — the order a turn
 // panel renders its controls. Assertions may rely on
 // this order; it never depends on candidate state.
 func verbRank(v Verb) int {
@@ -875,18 +914,23 @@ func verbRank(v Verb) int {
 		return 1
 	case VerbActivate:
 		return 2
-	case VerbDeathSave:
+	// CAST SITS BESIDE ACTIVATE, after it, because a panel draws the things
+	// the character carries before the things they know: both are lists of
+	// named rows a player scans, and the swing and the walk come first.
+	case VerbCast:
 		return 3
-	case VerbEndTurn:
+	case VerbDeathSave:
 		return 4
+	case VerbEndTurn:
+		return 5
 	// REACT IS LAST, and it is the only row that can appear on a turn that is
 	// not the member's own. A panel draws the turn's controls first and the
 	// question underneath them, because the question is the thing that is
 	// about to change and the controls are the thing that is greyed out.
 	case VerbReact:
-		return 5
-	default:
 		return 6
+	default:
+		return 7
 	}
 }
 
@@ -907,6 +951,13 @@ func sortDeclarations(decls []Declaration) {
 		// Activate rows sort by the ability ref the character carries.
 		if decls[i].Ability != nil && decls[j].Ability != nil {
 			return decls[i].Ability.Ref < decls[j].Ability.Ref
+		}
+		// Cast rows sort by the spell ref, the same within-verb tiebreak and
+		// for the same reason: one verb, several rows, and the panel's order
+		// should be a fact about the character rather than about the order
+		// two slices happened to be concatenated in.
+		if decls[i].Spell != nil && decls[j].Spell != nil {
+			return decls[i].Spell.Ref < decls[j].Spell.Ref
 		}
 		return false
 	})

@@ -57,6 +57,26 @@ const (
 	// string: one verb, seven offers, and the ref is what tells them apart.
 	VerbActivate Verb = "activate"
 
+	// VerbCast is [Manager.Cast]: casting a spell the character knows.
+	//
+	// One offer per KNOWN cantrip this build can actually cast — the sheet's
+	// own known list, intersected with the content that carries a cast
+	// profile. A known ref with no profile mints NO ROW rather than a row
+	// that would resolve to nothing (design R9, fail closed): a bard who
+	// chose Mage Hand and Light is offered no Cast at all, and that is the
+	// answer rather than a shorter way of asking again.
+	//
+	// Its selector variant is the compiled definition, like Attack's and
+	// unlike Activate's, because a cast's price and its save DC are both
+	// compiled into that definition: a bard whose DC changed between the read
+	// and the click has a stale offer, and the selector is what catches it.
+	//
+	// THE FIRST VERB THAT IS REALLY PAID AT THE DOOR. A cantrip's whole price
+	// is one action — no pool, no slot, no charge on any feature — so
+	// [Manager.Cast] hands resolution a non-nil Cost, which [Manager.Activate]
+	// deliberately does not (design R10).
+	VerbCast Verb = "cast"
+
 	// VerbDeathSave is [Manager.DeathSave]: the explicit saving throw offered
 	// only to the active Dying character with this turn's capacity remaining.
 	VerbDeathSave Verb = "death_save"
@@ -225,6 +245,17 @@ type Declaration struct {
 	// say "Opportunity Attack" rather than "React", and so the button and
 	// the struck beat that follows it name the same thing.
 	Reaction *ReactionRef `json:"reaction,omitempty"`
+
+	// Spell is the sole public cast identity, present on every compiled
+	// [VerbCast] declaration — including one disabled by budget or target
+	// gates, which still carries its compiled ref — and absent from every
+	// other row. The same presence law [Declaration.Attack] keeps.
+	//
+	// It names WHICH CANTRIP this row casts, so a dock can say "Vicious
+	// Mockery" rather than "Cast": one verb compiles one offer per castable
+	// cantrip, exactly as Activate compiles one per carried ability, and the
+	// verb alone cannot tell them apart.
+	Spell *SpellRef `json:"spell,omitempty"`
 
 	// TargetKind follows the fixed mapping Attack -> TargetMember, Move ->
 	// TargetPath, DeathSave -> TargetNone, and EndTurn -> TargetNone. Activate
@@ -407,6 +438,10 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 			// every one — so seven rows would be seven copies of "not your
 			// turn" and a panel that looks like it has choices.
 			blockedDeclaration(VerbActivate, TargetNone, notYourTurn),
+			// ONE Cast row for the same reason there is one Activate row: a
+			// member whose turn it is not can cast none of what they know,
+			// and the reason is identical for every cantrip.
+			blockedDeclaration(VerbCast, TargetNone, notYourTurn),
 			blockedDeclaration(VerbEndTurn, TargetNone, notYourTurn),
 		}}, nil
 	}
@@ -420,7 +455,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	actor := m.loadActorSheet(ctx, in.Member)
 	offers, err := m.compileOffersFor(
 		ctx, enc, data, in.Session, in.Member, clock, actor,
-		VerbAttack, VerbMove, VerbActivate, VerbDeathSave, VerbEndTurn,
+		VerbAttack, VerbMove, VerbActivate, VerbCast, VerbDeathSave, VerbEndTurn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
@@ -551,6 +586,7 @@ func affordWhileFrozen(session, member string, open []interrupt.Window) (*Afford
 		blockedDeclaration(VerbAttack, TargetMember, frozen),
 		blockedDeclaration(VerbMove, TargetPath, frozen),
 		blockedDeclaration(VerbActivate, TargetNone, frozen),
+		blockedDeclaration(VerbCast, TargetNone, frozen),
 		blockedDeclaration(VerbEndTurn, TargetNone, frozen),
 	}
 

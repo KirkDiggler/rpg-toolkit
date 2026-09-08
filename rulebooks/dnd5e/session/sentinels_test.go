@@ -224,6 +224,7 @@ var sessionSentinels = map[string]error{
 	"ErrBadAttack":            session.ErrBadAttack,
 	"ErrCannotActivate":       session.ErrCannotActivate,
 	"ErrBadActivation":        session.ErrBadActivation,
+	"ErrBadCast":              session.ErrBadCast,
 	"ErrOutOfReach":           session.ErrOutOfReach,
 	"ErrOutOfRange":           session.ErrOutOfRange,
 	"ErrNotVisible":           session.ErrNotVisible,
