@@ -84,6 +84,7 @@ func TestFixedKitsMatchTheApiSnapshotExceptWhereItIsAChoice(t *testing.T) {
 		{class: Bard, file: "bard", idAliases: map[string]string{"leather-armor": "leather"}},
 		{class: Rogue, file: "rogue", idAliases: map[string]string{"leather-armor": "leather"}},
 		{class: Monk, file: "monk"},
+		{class: Cleric, file: "cleric"},
 		{class: Fighter, file: "fighter"},
 		{class: Barbarian, file: "barbarian", offeredAsChoice: []string{"explorers-pack"}},
 	} {
@@ -112,16 +113,16 @@ func TestAClassWithNoFixedKitGrantsNoEquipment(t *testing.T) {
 	require.Empty(t, grantedEquipment(Fighter))
 }
 
-// TestUnmigratedClassesGrantNothingAtAll pins the state of the other seven, so
+// TestUnmigratedClassesGrantNothingAtAll pins the state of the other six, so
 // their absence stays a deliberate gap rather than becoming a surprise.
 //
 // They return NO grants — not an empty kit, no grants at all — which means no
-// proficiencies and no features either. Giving one an equipment-only row would
-// read as migrated while leaving it broken in every other way, so they wait
-// for the slice that migrates them properly.
+// proficiencies and no features either. Cleric now supplies creation grants
+// (proficiencies and fixed kit), but still has no executable spellcasting or
+// domain features; its presence in GetGrants is not a playable-class claim.
 func TestUnmigratedClassesGrantNothingAtAll(t *testing.T) {
 	for _, class := range []Class{
-		Cleric, Druid, Paladin, Ranger, Sorcerer, Warlock, Wizard,
+		Druid, Paladin, Ranger, Sorcerer, Warlock, Wizard,
 	} {
 		require.Nil(t, GetGrants(class), "%s is not migrated to the grant system", class)
 	}

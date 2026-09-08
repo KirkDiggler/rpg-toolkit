@@ -11,6 +11,15 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**Cleric creation (rpg-project#406, first contribution, 2026-09-08).**
+Cleric base proficiencies and fixed shield compile; Life's heavy-armor grant
+and selected domain reach the finalized sheet. Draft validation uses subclass
+requirements and rejects duplicate skill/cantrip choices. Focused creation and
+JSON persistence regressions pass. This is creation data only: domain spells,
+spellcasting, preparation, and Life healing remain outside this contribution. See the
+[creation results](ideas/cleric/implementation.md) for evidence and the portable
+appearance timestamp regression fix.
+
 **rpg-toolkit#1544 (rpg-project#376) — `session.Unpack` (complete,
 2026-09-06).** New verb: removes `Quantity` units of a pack the actor
 already owns and adds each of its `Contents` lines in their place (scaled
