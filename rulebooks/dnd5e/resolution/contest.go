@@ -71,6 +71,12 @@ type ImposedEffect struct {
 	Ref         *core.Ref
 	Description string
 
+	// RecipientID is who it landed on. Always the saver for a contest, and for
+	// a cast either party — True Strike's condition goes on the CASTER — which
+	// is why it travels with the effect rather than being inferred by whoever
+	// reads it.
+	RecipientID string
+
 	// Amount is the damage that actually landed, after the saver's own
 	// resistances. Zero on a condition, and zero on the AT-STAKE effect of a
 	// contest whose dice have not been rolled yet.
@@ -155,20 +161,28 @@ func prepareCondition(
 	return preparedCondition{declaration: application.Clone(), behavior: built.Condition}, nil
 }
 
-func (p preparedCondition) atStake() ImposedEffect {
+func (p preparedCondition) atStake(recipientID string) ImposedEffect {
 	ref := p.declaration.Ref
 	return ImposedEffect{
 		Kind:        ImposedCondition,
 		Ref:         &ref,
-		Description: fmt.Sprintf("the %s condition", ref.ID),
+		Description: conditionDescription(ref),
+		RecipientID: recipientID,
 	}
+}
+
+// conditionDescription is how a delivered condition reads in a step log and in
+// a record. One spelling, so the contest's imposition and a cast's delivery
+// describe the same condition the same way.
+func conditionDescription(ref core.Ref) string {
+	return fmt.Sprintf("the %s condition", ref.ID)
 }
 
 func publishPreparedCondition(
 	prepared preparedCondition, cast *Participants, targetID string, next func() (Step, error),
 ) Gather {
 	return Gather{
-		name: "impose " + prepared.atStake().Description,
+		name: "impose " + conditionDescription(prepared.declaration.Ref),
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
 			target, err := cast.entity(targetID)
 			if err != nil {
@@ -277,6 +291,7 @@ func applyPreparedDamage(
 				Kind:        ImposedDamage,
 				Ref:         cloneCoreRef(cause.EffectRef),
 				Description: describeDamage(pools),
+				RecipientID: targetID,
 				Amount:      applied.TotalDamage,
 				Components:  cloneDamageComponents(components),
 			})
@@ -443,13 +458,14 @@ func (m *contestMachine) chooseAbility(cast *Participants) (abilities.Ability, e
 // was declared and the damage otherwise.
 func (m *contestMachine) atStake() ImposedEffect {
 	if m.hasCondition {
-		return m.prepared.atStake()
+		return m.prepared.atStake(m.in.SaverID)
 	}
 
 	return ImposedEffect{
 		Kind:        ImposedDamage,
 		Ref:         cloneCoreRef(m.in.Cause.EffectRef),
 		Description: describeDamage(m.in.Damage),
+		RecipientID: m.in.SaverID,
 	}
 }
 
@@ -477,7 +493,7 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		}
 
 		return publishPreparedCondition(m.prepared, m.cast, m.in.SaverID, func() (Step, error) {
-			outcome.Imposed = append(outcome.Imposed, m.prepared.atStake())
+			outcome.Imposed = append(outcome.Imposed, m.prepared.atStake(m.in.SaverID))
 			return Done{Outcome: outcome}, nil
 		}), nil
 	}

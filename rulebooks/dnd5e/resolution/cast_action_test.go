@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -97,6 +98,15 @@ func (s *CastActionTestSuite) castParams(data *character.Data, conditionRef stri
 	return nil
 }
 
+// castOutcome is what every scene here reads: ONE outcome type for both halves
+// of the door, which is what the session switches on.
+func (s *CastActionTestSuite) castOutcome(out *Output) CastOutcome {
+	outcome, ok := out.Outcome.(CastOutcome)
+	s.Require().True(ok, "a cast produces a CastOutcome, gated or not")
+
+	return outcome
+}
+
 // THE HEADLINE FOR THE GATED HALF. Vicious Mockery, compiled from content,
 // entered through the door at a price: the save fails, 1d4 psychic lands, and
 // the rider goes on the target carrying the bard who imposed it.
@@ -109,15 +119,25 @@ func (s *CastActionTestSuite) TestViciousMockeryLandsDamageAndItsRider() {
 	)
 	s.Require().NoError(err)
 
-	outcome := fixtures.outcome(out)
-	s.Require().False(outcome.Succeeded, "WIS +1 on a 3 is 4 against DC 13")
-	s.Require().Equal(spellSaveDC, outcome.DC)
-	s.Require().Len(outcome.Imposed, 2)
-	s.Require().Equal(ImposedDamage, outcome.Imposed[0].Kind)
-	s.Require().Equal(psychicFace, outcome.Imposed[0].Amount)
-	s.Require().Equal(damage.Psychic, outcome.Imposed[0].Components[0].DamageType)
-	s.Require().Equal(ImposedCondition, outcome.Imposed[1].Kind)
-	s.Require().Equal(refs.Conditions.ViciousMockery().String(), outcome.Imposed[1].Ref.String())
+	outcome := s.castOutcome(out)
+	s.Require().Equal(refs.Spells.ByID(string(spells.ViciousMockery)).String(), outcome.Spell.String())
+	s.Require().Equal(bardID, outcome.CasterID)
+	s.Require().Equal(heroID, outcome.TargetID)
+
+	s.Require().NotNil(outcome.Save, "a gated cast carries its whole contest")
+	s.Require().False(outcome.Save.Succeeded, "WIS +1 on a 3 is 4 against DC 13")
+	s.Require().Equal(spellSaveDC, outcome.Save.DC)
+	s.Require().Equal(abilities.WIS, outcome.Save.Ability)
+	s.Require().NotNil(outcome.Save.Save.Result, "and the roll the player must see")
+
+	s.Require().Len(outcome.Applied, 2)
+	s.Require().Equal(ImposedDamage, outcome.Applied[0].Kind)
+	s.Require().Equal(psychicFace, outcome.Applied[0].Amount)
+	s.Require().Equal(heroID, outcome.Applied[0].RecipientID)
+	s.Require().Equal(damage.Psychic, outcome.Applied[0].Components[0].DamageType)
+	s.Require().Equal(ImposedCondition, outcome.Applied[1].Kind)
+	s.Require().Equal(refs.Conditions.ViciousMockery().String(), outcome.Applied[1].Ref.String())
+	s.Require().Equal(heroID, outcome.Applied[1].RecipientID)
 
 	target := fixtures.sheet(out, heroID)
 	s.Require().Equal(11, target.HitPoints, "14 - 3 psychic")
@@ -139,10 +159,11 @@ func (s *CastActionTestSuite) TestAMadeSaveAgainstViciousMockeryDeliversNothing(
 	)
 	s.Require().NoError(err)
 
-	outcome := fixtures.outcome(out)
-	s.Require().True(outcome.Succeeded)
-	s.Require().Empty(outcome.Imposed, "no damage, no rider")
-	s.Require().Equal(spellSaveDC, outcome.DC, "and the save is still on the record")
+	outcome := s.castOutcome(out)
+	s.Require().NotNil(outcome.Save)
+	s.Require().True(outcome.Save.Succeeded)
+	s.Require().Empty(outcome.Applied, "no damage, no rider")
+	s.Require().Equal(spellSaveDC, outcome.Save.DC, "and the save is still on the record")
 
 	for _, sheet := range out.DirtyCharacters {
 		if sheet.ID == heroID {
@@ -168,14 +189,14 @@ func (s *CastActionTestSuite) TestTrueStrikeDeliversToTheCasterWithNoRoll() {
 	)
 	s.Require().NoError(err)
 
-	outcome, ok := out.Outcome.(ActivationOutcome)
-	s.Require().True(ok, "a gateless cast is a delivery, and delivery is the activation outcome")
-	s.Require().Equal(refs.Spells.ByID(string(spells.TrueStrike)).String(), outcome.Ability,
+	outcome := s.castOutcome(out)
+	s.Require().Equal(refs.Spells.ByID(string(spells.TrueStrike)).String(), outcome.Spell.String(),
 		"the outcome echoes the spell that ran")
-	s.Require().Len(outcome.Effects, 1, "one Gather, one condition, one effect")
-	s.Require().Equal(EffectConditionApplied, outcome.Effects[0].Kind)
-	s.Require().Equal(bardID, outcome.Effects[0].TargetID, "on the caster, not the creature named")
-	s.Require().Equal(refs.Conditions.TrueStrike().String(), outcome.Effects[0].Ref)
+	s.Require().Nil(outcome.Save, "no gate means no saved beat to write")
+	s.Require().Len(outcome.Applied, 1, "one Gather, one condition, one effect")
+	s.Require().Equal(ImposedCondition, outcome.Applied[0].Kind)
+	s.Require().Equal(bardID, outcome.Applied[0].RecipientID, "on the caster, not the creature named")
+	s.Require().Equal(refs.Conditions.TrueStrike().String(), outcome.Applied[0].Ref.String())
 
 	caster := fixtures.sheet(out, bardID)
 	params := s.castParams(caster, refs.Conditions.TrueStrike().String())
@@ -224,14 +245,17 @@ func (s *CastActionTestSuite) TestTheProfileArmPicksTheMachine() {
 		AttackerID: bardID, TargetID: heroID, Roller: facedRoller{d20: straightRoll, other: psychicFace},
 	})
 	s.Require().NoError(err)
-	s.Require().IsType(&contestMachine{}, gated, "a gate is a save, and a save is a contest")
+	s.Require().IsType(&castMachine{}, gated)
+	s.Require().IsType(&contestMachine{}, gated.(*castMachine).inner,
+		"a gate is a save, and a save is a contest")
 
 	gateless, err := NewAction(&ActionInput{
 		Definition: *spells.CastDefinition(spells.TrueStrike, spellSaveDC),
 		AttackerID: bardID, TargetID: heroID,
 	})
 	s.Require().NoError(err)
-	s.Require().IsType(&activationMachine{}, gateless, "no gate is a delivery")
+	s.Require().IsType(&castMachine{}, gateless)
+	s.Require().IsType(&activationMachine{}, gateless.(*castMachine).inner, "no gate is a delivery")
 }
 
 // Every refusal the cast branch makes, and each says what content got wrong.
@@ -345,4 +369,49 @@ func (s *CastActionTestSuite) TestTheCounterpartKeyIsWrittenWhereContentSaid() {
 		s.Require().Error(err)
 		s.Require().Contains(err.Error(), "the cast's other party")
 	})
+}
+
+// A self-targeted cast names no creature, and empty is the one spelling: the
+// caster repeated into TargetID would be a second way to say the same thing,
+// and content already refuses a counterpart binding it could never satisfy.
+func (s *CastActionTestSuite) TestASelfTargetedCastNamesNoCreature() {
+	definition := *spells.CastDefinition(spells.TrueStrike, spellSaveDC)
+	definition.Cast.Target = combatActions.CastTargetSelf
+	definition.Cast.Effects[0].CounterpartKey = ""
+	definition.Cast.Effects[0].Parameters = json.RawMessage(`{"target_id":"` + heroID + `"}`)
+	definition.Cost = oneAction()
+
+	machine, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID})
+	s.Require().NoError(err)
+
+	fixtures := s.fixtures()
+	out, err := fixtures.resolve(fixtures.saver(14), machine, castCost(), fixtures.bard(1))
+	s.Require().NoError(err)
+
+	outcome := s.castOutcome(out)
+	s.Require().Empty(outcome.TargetID, "nobody was named, and the outcome says so")
+	s.Require().Nil(outcome.Save)
+	s.Require().Len(outcome.Applied, 1)
+	s.Require().Equal(bardID, outcome.Applied[0].RecipientID)
+}
+
+// THE ORDERING THAT MATTERS. The cast's identity WRAPS the machine, and the
+// wrapper preflights it at its OWN Start rather than letting the driver do it
+// when the Request is reached — so a cast that cannot run is refused while
+// Resolve is still pure preflight, before the door charges anybody.
+//
+// Detectable rather than asserted: the payer here has no action left either,
+// so the two refusals are both available and only their ORDER decides which one
+// comes back. A wrapper that preflighted late would answer ErrCannotPay.
+func (s *CastActionTestSuite) TestACastIsPreflightedBeforeTheDoorCharges() {
+	fixtures := s.fixtures()
+
+	out, err := fixtures.resolve(
+		fixtures.saver(14), s.cast(spells.TrueStrike, "nobody", heroID, straightRoll),
+		castCost(), fixtures.bard(0),
+	)
+
+	s.Require().ErrorIs(err, ErrBadActivation, "the recipient is missing, and that is found first")
+	s.Require().NotErrorIs(err, ErrCannotPay, "the door was never reached")
+	s.Require().Nil(out, "and nothing comes back to be stored")
 }

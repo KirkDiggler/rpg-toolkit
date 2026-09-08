@@ -1,6 +1,7 @@
 package resolution
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -83,11 +84,191 @@ func newCast(in *ActionInput) (Machine, error) {
 		InstigatorID: casterID,
 	}
 
+	var inner Machine
+	var err error
 	if profile.Save != nil {
-		return newGatedCast(definition, casterID, targetID, cause, in.Roller)
+		inner, err = newGatedCast(definition, casterID, targetID, cause, in.Roller)
+	} else {
+		inner, err = newGatelessCast(definition, casterID, targetID)
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	return newGatelessCast(definition, casterID, targetID)
+	return &castMachine{
+		spell:    definition.Ref,
+		casterID: casterID,
+		targetID: targetID,
+		gated:    profile.Save != nil,
+		inner:    inner,
+	}, nil
+}
+
+// CastOutcome is what one cast produced, and it is ONE type for both halves of
+// the door.
+//
+// The session switches on [Output.Outcome] once per verb, and a cast that
+// answered with a contest here and an activation there would make Cast the only
+// verb needing two arms — while [ActivationOutcome] would additionally mean two
+// different things depending on which verb asked for it, which is exactly the
+// ambiguity a sealed outcome set exists to prevent.
+//
+// The deciding fact is downstream: a cast's DELIVERIES are one concept. The
+// encounter writes one result beat per delivered effect, and reading them off
+// two differently-shaped lists would fork every consumer of a cast — the record,
+// the wire, and the client — for a difference the player never sees.
+//
+// Nothing is lost by wrapping. The gated half's whole contest is [CastOutcome.Save],
+// intact.
+type CastOutcome struct {
+	// Spell is what was cast, echoed back so a caller learns what ran without
+	// parsing a declaration id.
+	Spell core.Ref
+
+	// CasterID and TargetID are the cast's two parties. TargetID is EMPTY for
+	// a self-targeted profile, which is the one spelling: a caster repeated
+	// into both fields would be a second way to say the same thing.
+	CasterID string
+	TargetID string
+
+	// Save is the contested save, whole, or NIL when the profile carried no
+	// gate. Nil is what says "there is no saved beat to write", and it says it
+	// without a second boolean that could disagree with it.
+	Save *ContestOutcome
+
+	// Applied is everything the cast delivered, in delivery order: damage
+	// first, then conditions, each naming its own recipient. EMPTY when a save
+	// was made — a made save against a cantrip negates every consequence.
+	Applied []ImposedEffect
+}
+
+func (CastOutcome) isOutcome() {}
+
+// castMachine is the cast's identity wrapped around the machine that does the
+// work. It adds no step of its own to the sequence and decides nothing: it runs
+// what [newCast] chose and shapes the answer.
+//
+// # Preflight still happens before the door
+//
+// Start runs the INNER machine's Start itself, rather than letting the driver
+// do it when the Request is reached. That ordering is the whole point: a cast
+// naming a recipient who is not in the interaction, or content that cannot be
+// delivered, must be refused while [Resolve] is still in pure preflight — after
+// the door, the bard has paid for a cast that cannot run.
+//
+// # A cast cannot pose, and is refused rather than dropped
+//
+// A requested machine that suspends strands its requester, which [drive]
+// refuses by name. No cast poses today — there is no attack roll to interrupt —
+// and the day one does, this is the line that has to change rather than a
+// silently discarded question.
+type castMachine struct {
+	spell    core.Ref
+	casterID string
+	targetID string
+	gated    bool
+	inner    Machine
+}
+
+func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
+	first, err := m.inner.Start(ctx, cast)
+	if err != nil {
+		return nil, err
+	}
+
+	return Request{
+		name:    "cast " + m.spell.String(),
+		machine: startedMachine{first: first},
+		next: func(_ context.Context, out Outcome) (Step, error) {
+			outcome, shapeErr := m.shape(out)
+			if shapeErr != nil {
+				return nil, shapeErr
+			}
+
+			return Done{Outcome: outcome}, nil
+		},
+	}, nil
+}
+
+// startedMachine hands back a step somebody else already preflighted.
+//
+// It exists so a composition can run its inner machine's Start at its OWN Start
+// — before payment — and still give the driver a [Machine] to run, which is
+// what [Request] takes. Nothing else implements Machine this way, and nothing
+// should: a machine that has already started is not a machine anybody may start
+// twice, and this one is unexported and constructed in exactly one place.
+type startedMachine struct{ first Step }
+
+func (m startedMachine) Start(context.Context, *Participants) (Step, error) { return m.first, nil }
+
+// shape turns the inner machine's answer into the cast's.
+//
+// Both arms are exhaustive and the default is a refusal rather than a zero
+// CastOutcome: an inner machine producing something unexpected is a defect in
+// this file, and an empty cast that reported success would hide it behind a
+// record saying the cantrip did nothing.
+func (m *castMachine) shape(out Outcome) (CastOutcome, error) {
+	outcome := CastOutcome{Spell: m.spell, CasterID: m.casterID, TargetID: m.targetID}
+
+	switch inner := out.(type) {
+	case ContestOutcome:
+		if !m.gated {
+			return CastOutcome{}, fmt.Errorf("%w: %s has no gate and contested a save",
+				ErrBadStep, m.spell.String())
+		}
+		contest := inner
+		outcome.Save = &contest
+		outcome.Applied = contest.Imposed
+
+		return outcome, nil
+
+	case ActivationOutcome:
+		if m.gated {
+			return CastOutcome{}, fmt.Errorf("%w: %s has a gate and delivered without contesting it",
+				ErrBadStep, m.spell.String())
+		}
+		applied, err := deliveredConditions(m.spell, inner.Effects)
+		if err != nil {
+			return CastOutcome{}, err
+		}
+		outcome.Applied = applied
+
+		return outcome, nil
+
+	default:
+		return CastOutcome{}, fmt.Errorf("%w: %s produced %T", ErrBadStep, m.spell.String(), out)
+	}
+}
+
+// deliveredConditions reads the gateless delivery's captured facts back as the
+// cast's applied effects.
+//
+// The collector is what validated each condition's identity against the display
+// catalog, so this re-parses a ref it already knows is good rather than trusting
+// an unchecked one. A kind other than a condition means the delivery published
+// something a gateless cast cannot deliver, and it is refused rather than
+// dropped from the record.
+func deliveredConditions(spell core.Ref, effects []ActivationEffect) ([]ImposedEffect, error) {
+	applied := make([]ImposedEffect, 0, len(effects))
+	for _, effect := range effects {
+		if effect.Kind != EffectConditionApplied {
+			return nil, fmt.Errorf("%w: %s delivered %q, and a gateless cast delivers conditions",
+				ErrBadStep, spell.String(), effect.Kind)
+		}
+		ref, err := core.ParseString(effect.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s delivered an unusable condition ref %q: %w",
+				ErrBadStep, spell.String(), effect.Ref, err)
+		}
+		applied = append(applied, ImposedEffect{
+			Kind:        ImposedCondition,
+			Ref:         ref,
+			Description: conditionDescription(*ref),
+			RecipientID: effect.TargetID,
+		})
+	}
+
+	return applied, nil
 }
 
 // checkCastTarget enforces what the profile's target rule promises. A rule the
