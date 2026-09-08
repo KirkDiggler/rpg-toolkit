@@ -30,6 +30,7 @@ type ConcentratingConditionSuite struct {
 	casterID string
 	spellRef string
 	removals []dnd5eEvents.ConditionRemovedEvent
+	ended    []dnd5eEvents.ConcentrationEndedEvent
 }
 
 func TestConcentratingConditionSuite(t *testing.T) {
@@ -42,10 +43,18 @@ func (s *ConcentratingConditionSuite) SetupTest() {
 	s.casterID = testCasterID
 	s.spellRef = refs.Spells.TrueStrike().String()
 	s.removals = nil
+	s.ended = nil
 
 	_, err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
 		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 			s.removals = append(s.removals, event)
+			return nil
+		})
+	s.Require().NoError(err)
+
+	_, err = dnd5eEvents.ConcentrationEndedTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConcentrationEndedEvent) error {
+			s.ended = append(s.ended, event)
 			return nil
 		})
 	s.Require().NoError(err)
@@ -335,4 +344,108 @@ func (s *ConcentratingConditionSuite) publishRemoval(address dnd5eEvents.ChildRe
 func (s *ConcentratingConditionSuite) endTurn(subjectID string) {
 	s.Require().NoError(dnd5eEvents.TurnEndTopic.On(s.bus).Publish(s.ctx,
 		dnd5eEvents.TurnEndEvent{SubjectID: subjectID, Round: 1}))
+}
+
+// EVERY end path publishes exactly one fact, and it is the only thing in the
+// train that says why.
+//
+// Six reasons, and each one happens somewhere different: a failed check inside
+// a strike, a recast inside the next cast, the clock and the fight on a
+// boundary, the last child leaving, the caster going down. Nothing outside this
+// condition can see all six, and a removal landing on a skeleton's sheet with
+// no beat near it reads as a random drop. Three of the six arrive here as a
+// removal somebody ELSE published, which is why this table covers both shapes.
+func (s *ConcentratingConditionSuite) TestEveryEndPathPublishesOneFact() {
+	skeleton := dnd5eEvents.ChildRef{MemberID: "skeleton-1", ConditionRef: refs.Conditions.Charmed().String()}
+
+	cases := []struct {
+		name   string
+		reason string
+		end    func(condition *ConcentratingCondition)
+	}{
+		{"the caster drops to 0", ConcentrationEndedCasterDown, func(*ConcentratingCondition) {
+			s.damage(testCasterID, 30, true)
+		}},
+		{"the clock runs out", ConcentrationEndedDuration, func(*ConcentratingCondition) {
+			s.endTurn(testCasterID)
+			s.endTurn(testCasterID)
+		}},
+		{"the fight ends", ConcentrationEndedCombatEnd, func(*ConcentratingCondition) {
+			s.Require().NoError(dnd5eEvents.CombatEndTopic.On(s.bus).Publish(s.ctx,
+				dnd5eEvents.CombatEndEvent{SubjectID: testCasterID}))
+		}},
+		{"a failed check strips it", ConcentrationEndedDamage, func(condition *ConcentratingCondition) {
+			// What the consequence's delivery does: the owner's address, then
+			// the children it named.
+			s.publishRemoval(dnd5eEvents.ChildRef{
+				MemberID:     condition.MemberID,
+				ConditionRef: condition.Ref().String(),
+			}, ConcentrationEndedDamage)
+		}},
+		{"another concentration cast displaces it", ConcentrationEndedRecast, func(condition *ConcentratingCondition) {
+			s.publishRemoval(dnd5eEvents.ChildRef{
+				MemberID:     condition.MemberID,
+				ConditionRef: condition.Ref().String(),
+			}, ConcentrationEndedRecast)
+		}},
+		{"a long rest takes it", "long rest", func(*ConcentratingCondition) {
+			s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
+				CharacterID: testCasterID,
+				RestType:    coreResources.ResetLongRest,
+			}))
+		}},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			condition := s.applied()
+			s.Require().NoError(condition.AddChild(s.ctx, skeleton))
+
+			tc.end(condition)
+
+			s.Require().Len(s.ended, 1, "one fact per end, never two and never none")
+			fact := s.ended[0]
+			s.Equal(testCasterID, fact.CasterID)
+			s.Equal(s.spellRef, fact.SpellRef)
+			s.Equal(TrueStrikeName, fact.SpellName)
+			s.Equal(tc.reason, fact.Reason)
+			s.Equal([]dnd5eEvents.ChildRef{s.child(), skeleton}, fact.Removed,
+				"and it names every address that came off with it")
+			s.False(condition.IsApplied())
+		})
+	}
+}
+
+// The sixth reason, which is the one nobody else can publish: the hold ending
+// because its last child ended on its own account.
+func (s *ConcentratingConditionSuite) TestTheLastChildLeavingPublishesSpellEnded() {
+	condition := s.applied()
+
+	s.publishRemoval(s.child(), "consumed")
+
+	s.Require().Len(s.ended, 1)
+	s.Equal(ConcentrationEndedSpellEnded, s.ended[0].Reason)
+	s.Empty(s.ended[0].Removed, "the child was already gone; the hold stripped nothing")
+	s.False(condition.IsApplied())
+}
+
+// A child that came off BECAUSE the hold ended is not the last child leaving.
+// Publishing the children first and the owner second must still produce one
+// fact reading `damage`, not a `spell_ended` followed by silence.
+func (s *ConcentratingConditionSuite) TestChildrenStrippedFirstStillEndWithTheRealReason() {
+	condition := s.applied()
+
+	s.publishRemoval(s.child(), ConcentrationEndedDamage)
+	s.Require().Empty(s.ended, "a child removed by the strip is not the spell ending on its own")
+	s.Require().True(condition.IsApplied())
+
+	s.publishRemoval(dnd5eEvents.ChildRef{
+		MemberID:     condition.MemberID,
+		ConditionRef: condition.Ref().String(),
+	}, ConcentrationEndedDamage)
+
+	s.Require().Len(s.ended, 1)
+	s.Equal(ConcentrationEndedDamage, s.ended[0].Reason)
+	s.False(condition.IsApplied())
 }

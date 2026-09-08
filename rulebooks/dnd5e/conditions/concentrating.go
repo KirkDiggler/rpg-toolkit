@@ -47,6 +47,24 @@ const (
 	ConcentrationEndedCasterDown = "caster_down"
 )
 
+// endsTheHold reports whether a removal carrying this reason is the hold
+// itself ending, rather than one child ending on its own.
+//
+// It is the difference between "my True Strike was consumed, so the spell is
+// over" and "the spell ended, so my True Strike came off". Both arrive as the
+// same fact with a different reason, and only the second must not be read as
+// the last child leaving — otherwise a strip would end the hold a second time
+// with the wrong reason attached.
+func endsTheHold(reason string) bool {
+	switch reason {
+	case ConcentrationEndedDamage, ConcentrationEndedRecast, ConcentrationEndedDuration,
+		ConcentrationEndedCombatEnd, ConcentrationEndedSpellEnded, ConcentrationEndedCasterDown:
+		return true
+	default:
+		return false
+	}
+}
+
 // ConcentrationDCFloor is the lowest a concentration check can ask for. RAW
 // 2014: DC 10 or half the damage taken, whichever is higher.
 const ConcentrationDCFloor = 10
@@ -371,18 +389,32 @@ func (c *ConcentratingCondition) onCombatEnd(ctx context.Context, event dnd5eEve
 	return c.end(ctx, ConcentrationEndedCombatEnd)
 }
 
-// onConditionRemoved drops a child that ended by any other route — consumed on
-// use, expired, dispelled — and ends the hold when the last one goes.
+// onConditionRemoved answers two different facts on one topic: a child of this
+// hold ending, and this hold itself being ended by somebody else.
 //
-// Without this, a bard whose True Strike was consumed by an attack still reads
-// as concentrating and still drops "nothing" on their next concentration cast.
+// The second is not hypothetical and it is not rare. Three of the six reasons
+// reach this condition as a removal published elsewhere — a failed check's
+// consequence, the recast drop, and the long-rest net — because the thing that
+// decided is the thing that publishes. So a removal addressed to this
+// condition is an END, honoured here with the reason it arrived carrying.
+//
+// A child leaving is the other half: dropped from the list, and when the last
+// one goes on its OWN account the spell is over ([ConcentrationEndedSpellEnded]).
+// Without that, a bard whose True Strike was consumed still reads as
+// concentrating and still drops "nothing" on the next concentration cast.
 func (c *ConcentratingCondition) onConditionRemoved(
 	ctx context.Context, event dnd5eEvents.ConditionRemovedEvent,
 ) error {
 	if c.ending {
-		// This is one of the removals we are publishing right now. The list is
-		// already spoken for.
+		// One of the removals we are publishing right now. The list is already
+		// spoken for.
 		return nil
+	}
+
+	if event.MemberID == c.MemberID && event.ConditionRef == c.Ref().String() {
+		// Somebody else ended this hold. They published the owner's fact, so
+		// this takes the children and the reason and does not republish it.
+		return c.endFromFact(ctx, event.Reason)
 	}
 
 	removed := dnd5eEvents.ChildRef{MemberID: event.MemberID, ConditionRef: event.ConditionRef}
@@ -398,18 +430,22 @@ func (c *ConcentratingCondition) onConditionRemoved(
 
 	hadChildren := len(c.Children) > 0
 	c.Children = kept
-	if len(c.Children) == 0 && hadChildren {
+	if len(c.Children) == 0 && hadChildren && !endsTheHold(event.Reason) {
 		return c.end(ctx, ConcentrationEndedSpellEnded)
 	}
 
 	return publishStateChanged(ctx, c.bus, c.MemberID, c.Ref())
 }
 
-// end publishes one removal per child address and then its own, and detaches.
+// end publishes one removal per child address, then the fact that says WHY,
+// then its own removal, and detaches.
 //
 // THE CHILDREN COME OFF FIRST, while their owner still names them: each
-// address is a fact on the bus for that member's own keeper to honour, and the
-// owner's removal last is what says the hold itself is over.
+// address is a fact on the bus for that member's own keeper to honour. The
+// reason rides [dnd5eEvents.ConcentrationEndedEvent] rather than the removals,
+// because a condition-removed landing on a skeleton's sheet with no cast beat
+// near it reads as a random drop. The owner's own removal goes last, which is
+// what says the hold itself is over.
 func (c *ConcentratingCondition) end(ctx context.Context, reason string) error {
 	if c.bus == nil || c.ending {
 		return nil
@@ -418,8 +454,54 @@ func (c *ConcentratingCondition) end(ctx context.Context, reason string) error {
 	c.ending = true
 	defer func() { c.ending = false }()
 
+	if err := c.strip(ctx, bus, reason); err != nil {
+		return err
+	}
+
+	if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
+		MemberID:     c.MemberID,
+		ConditionRef: c.Ref().String(),
+		Reason:       reason,
+	}); err != nil {
+		return rpgerr.Wrapf(err, "failed to publish concentration removal for member %s", c.MemberID)
+	}
+
+	return c.Remove(ctx, bus)
+}
+
+// endFromFact is [ConcentratingCondition.end] for a hold ended by somebody
+// else: the owner's removal is already on the bus, so this takes the children
+// and states the reason rather than republishing a fact that has been
+// published.
+//
+// The one ordering difference is forced rather than chosen. On this path the
+// owner's removal was published before this condition heard anything, so it
+// leads rather than trails — the publisher owns the order of its own facts,
+// and what this guarantees is the part it can: exactly one
+// [dnd5eEvents.ConcentrationEndedEvent], carrying the reason and every address
+// that came off.
+func (c *ConcentratingCondition) endFromFact(ctx context.Context, reason string) error {
+	if c.bus == nil || c.ending {
+		return nil
+	}
+	bus := c.bus
+	c.ending = true
+	defer func() { c.ending = false }()
+
+	if err := c.strip(ctx, bus, reason); err != nil {
+		return err
+	}
+
+	return c.Remove(ctx, bus)
+}
+
+// strip publishes one removal per child address and then the one fact that
+// says why the hold ended. Shared by both end paths so the fact cannot be
+// published twice, or forgotten on one of them.
+func (c *ConcentratingCondition) strip(ctx context.Context, bus events.EventBus, reason string) error {
 	removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
-	for _, child := range c.Children {
+	removed := c.Children
+	for _, child := range removed {
 		if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
 			MemberID:     child.MemberID,
 			ConditionRef: child.ConditionRef,
@@ -431,13 +513,16 @@ func (c *ConcentratingCondition) end(ctx context.Context, reason string) error {
 	}
 	c.Children = nil
 
-	if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     c.MemberID,
-		ConditionRef: c.Ref().String(),
-		Reason:       reason,
-	}); err != nil {
-		return rpgerr.Wrapf(err, "failed to publish concentration removal for member %s", c.MemberID)
+	if err := dnd5eEvents.ConcentrationEndedTopic.On(bus).Publish(ctx,
+		dnd5eEvents.ConcentrationEndedEvent{
+			CasterID:  c.MemberID,
+			SpellRef:  c.SpellRef,
+			SpellName: c.SpellName,
+			Reason:    reason,
+			Removed:   removed,
+		}); err != nil {
+		return rpgerr.Wrapf(err, "failed to publish concentration ended for member %s", c.MemberID)
 	}
 
-	return c.Remove(ctx, bus)
+	return nil
 }

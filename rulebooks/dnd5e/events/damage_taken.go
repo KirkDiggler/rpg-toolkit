@@ -129,3 +129,36 @@ type DamageTakenEvent struct {
 	// the publishing machine to run. See the type's godoc.
 	FollowUps []FollowUp
 }
+
+// ConcentrationEndedEvent says that one caster stopped holding one spell
+// together, and WHY.
+//
+// # A notification, and the only thing that carries the reason
+//
+// The removals this rides with are addresses and a bare string; they say what
+// came off which sheet, not what happened. Six things end a concentration and
+// each happens somewhere different — a failed check inside a strike, a recast
+// inside the next cast, the clock or the fight ending on a boundary, the last
+// child leaving, the caster going down. Nothing outside the condition can see
+// all six, so the condition is what publishes this.
+//
+// No return channel and nothing to append. A reader records it; it decides
+// nothing.
+type ConcentrationEndedEvent struct {
+	// CasterID is whose hold ended.
+	CasterID string
+
+	// SpellRef is what they were holding, as a ref string.
+	SpellRef string
+
+	// SpellName is what to call it, so a record never has to turn a ref back
+	// into English.
+	SpellName string
+
+	// Reason is why, from the rulebook's vocabulary of end reasons.
+	Reason string
+
+	// Removed are the child addresses that came off with it, in the order
+	// their removal facts were published. Empty when the hold had none left.
+	Removed []ChildRef
+}

@@ -1065,6 +1065,12 @@ var (
 	// [DamageTakenEvent].
 	DamageTakenTopic = events.DefineTypedTopic[*DamageTakenEvent]("dnd5e.combat.damage.taken")
 
+	// ConcentrationEndedTopic provides typed pub/sub for the fact that one
+	// caster stopped holding one spell together, and why. A notification: no
+	// return channel, unlike [DamageTakenTopic].
+	ConcentrationEndedTopic = events.DefineTypedTopic[ConcentrationEndedEvent](
+		"dnd5e.spell.concentration.ended")
+
 	// HealingReceivedTopic provides typed pub/sub for healing received events
 	HealingReceivedTopic = events.DefineTypedTopic[HealingReceivedEvent]("dnd5e.combat.healing.received")
 
