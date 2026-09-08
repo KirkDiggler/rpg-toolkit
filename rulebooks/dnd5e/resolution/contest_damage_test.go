@@ -124,6 +124,11 @@ func mockedCause() dnd5eEvents.SaveCause {
 
 const bardID = "bard"
 
+// mockeryName is what the player reads on the damage roll: the display name of
+// whatever the cause names, which content supplies and this package never
+// looks up.
+const mockeryName = "Vicious Mockery"
+
 // saver is the hero this suite mocks: WIS 12 (+1) and not proficient in Wisdom
 // saves, so DC 13 is beaten by an 18 and missed by a 3.
 func (s *ContestDamageTestSuite) saver(hp int, conds ...json.RawMessage) *character.Data {
@@ -226,6 +231,7 @@ func mock(pools []damage.Damage, application combatActions.ConditionApplication,
 		SaverID:     heroID,
 		Application: application,
 		Damage:      pools,
+		SourceName:  mockeryName,
 		Cause:       mockedCause(),
 		Roller:      facedRoller{d20: roll, other: psychicFace},
 	})
@@ -465,7 +471,8 @@ func (s *ContestDamageTestSuite) TestMalformedDamageIsRefusedBeforeThePriceIsCha
 // step log sees the two deliveries rather than one step doing both.
 func TestTheContestsDeliveryStepsSayWhatTheyDo(t *testing.T) {
 	deal := applyPreparedDamage(
-		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{}, nil, heroID,
+		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{},
+		mockeryName, nil, heroID,
 		func(ImposedEffect) (Step, error) { return nil, nil },
 	)
 	require.Equal(t, "deal 1d4 psychic damage", deal.Name())
@@ -474,4 +481,72 @@ func TestTheContestsDeliveryStepsSayWhatTheyDo(t *testing.T) {
 		{Dice: "1d4", Type: damage.Psychic},
 		{Dice: "1d6", Type: damage.Fire},
 	}))
+}
+
+// The record a damage delivery leaves is complete, and its arithmetic checks
+// out: the trace explains the number, and the hit points either side of the
+// application are the sheet's own.
+func (s *ContestDamageTestSuite) TestDeliveredDamageCarriesTheWholeRecord() {
+	out, err := s.resolve(s.saver(14), mock(psychic(), prone(), straightRoll), nil, nil)
+	s.Require().NoError(err)
+
+	landed := s.outcome(out).Imposed[0]
+	s.Require().Equal(ImposedDamage, landed.Kind)
+	s.Require().Equal(psychicFace, landed.Amount)
+	s.Require().Equal(psychicFace, landed.Requested, "nothing clamped it")
+	s.Require().Equal(14, landed.Before)
+	s.Require().Equal(11, landed.After)
+	s.Require().Equal(landed.Before-landed.Amount, landed.After)
+
+	s.Require().NotNil(landed.Calculation)
+	s.Require().Equal(landed.Requested, landed.Calculation.Total,
+		"the trace explains exactly the number that was asked for")
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(landed.Calculation),
+		"and it is the shape a record validates")
+	s.Require().Len(landed.Calculation.Components, 1)
+	s.Require().Equal(mockeryName, landed.Calculation.Components[0].Source.Name,
+		"named by content, because this package has no spell table to look it up in")
+	s.Require().Equal(psychicFace, landed.Calculation.Components[0].Dice.Subtotal)
+}
+
+// Requested and Amount are siblings that separate at the clamp: a hit bigger
+// than the saver had left still says how big it was.
+func (s *ContestDamageTestSuite) TestAClampedHitStillReportsWhatWasAsked() {
+	out, err := s.resolve(s.saver(1), mock(psychic(), prone(), straightRoll), nil, nil)
+	s.Require().NoError(err)
+
+	landed := s.outcome(out).Imposed[0]
+	s.Require().Equal(psychicFace, landed.Requested, "3 psychic was rolled")
+	s.Require().Equal(1, landed.Before)
+	s.Require().Zero(landed.After, "hit points stop at zero")
+	s.Require().Equal(psychicFace, landed.Amount,
+		"and the applied total is the damage, not the distance it moved the bar")
+}
+
+// A contest that deals damage without saying what dealt it is refused before
+// the dice, because the trace it would produce is one no record can validate.
+func (s *ContestDamageTestSuite) TestDamageWithNoProvenanceIsRefusedBeforeTheDice() {
+	forEach := []struct {
+		name  string
+		input *ContestInput
+	}{
+		{"no name", &ContestInput{
+			Gate: mockeryGate(), SaverID: heroID, Application: prone(),
+			Damage: psychic(), Cause: mockedCause(),
+			Roller: facedRoller{d20: straightRoll, other: psychicFace},
+		}},
+		{"no ref", &ContestInput{
+			Gate: mockeryGate(), SaverID: heroID, Application: prone(),
+			Damage: psychic(), SourceName: mockeryName,
+			Roller: facedRoller{d20: straightRoll, other: psychicFace},
+		}},
+	}
+
+	for _, tc := range forEach {
+		s.Run(tc.name, func() {
+			_, err := s.resolve(s.saver(14), NewContest(tc.input), nil, nil)
+			s.Require().ErrorIs(err, ErrBadAction)
+			s.Require().Contains(err.Error(), "the ref and name of what dealt it")
+		})
+	}
 }

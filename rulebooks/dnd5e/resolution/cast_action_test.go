@@ -138,6 +138,16 @@ func (s *CastActionTestSuite) TestViciousMockeryLandsDamageAndItsRider() {
 	s.Require().Equal(psychicFace, outcome.Applied[0].Amount)
 	s.Require().Equal(heroID, outcome.Applied[0].RecipientID)
 	s.Require().Equal(damage.Psychic, outcome.Applied[0].Components[0].DamageType)
+
+	// Everything a damage-applied beat needs, from the real content path.
+	s.Require().Equal(psychicFace, outcome.Applied[0].Requested)
+	s.Require().Equal(14, outcome.Applied[0].Before)
+	s.Require().Equal(11, outcome.Applied[0].After)
+	s.Require().NotNil(outcome.Applied[0].Calculation)
+	s.Require().Equal(outcome.Applied[0].Requested, outcome.Applied[0].Calculation.Total)
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(outcome.Applied[0].Calculation))
+	s.Require().Equal("Vicious Mockery", outcome.Applied[0].Calculation.Components[0].Source.Name,
+		"the compiled definition is the provenance pair, ref and name")
 	s.Require().Equal(ImposedCondition, outcome.Applied[1].Kind)
 	s.Require().Equal(refs.Conditions.ViciousMockery().String(), outcome.Applied[1].Ref.String())
 	s.Require().Equal(heroID, outcome.Applied[1].RecipientID)

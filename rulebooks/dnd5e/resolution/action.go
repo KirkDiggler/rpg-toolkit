@@ -338,8 +338,11 @@ func newGatedCast(
 		SaverID:     targetID,
 		Application: application,
 		Damage:      profile.Damage,
-		Cause:       cause,
-		Roller:      roller,
+		// The compiled definition is the provenance pair: its ref names the
+		// spell and its name is what the player reads on the roll.
+		SourceName: definition.Name,
+		Cause:      cause,
+		Roller:     roller,
 	}), nil
 }
 

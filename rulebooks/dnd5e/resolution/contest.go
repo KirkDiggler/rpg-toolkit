@@ -37,6 +37,18 @@ type ContestInput struct {
 	// contest with no damage declared deals none.
 	Damage []damage.Damage
 
+	// SourceName is the display name of whatever [ContestInput.Cause] names as
+	// the effect — "Vicious Mockery". REQUIRED whenever damage is declared, and
+	// unread otherwise.
+	//
+	// Supplied rather than looked up, because the lookup would be a spell table
+	// and this package does not have one and must not grow one (ADR-0045). It
+	// is the provenance PAIR a roll trace is built from — ref and name — and a
+	// trace missing either is refused by the rulebook rather than recorded
+	// half-named, so a contest that deals damage without one is refused here
+	// instead of producing a record nobody can validate.
+	SourceName string
+
 	Cause       dnd5eEvents.SaveCause
 	DamageTaken int
 	Roller      dice.Roller
@@ -77,14 +89,34 @@ type ImposedEffect struct {
 	// reads it.
 	RecipientID string
 
-	// Amount is the damage that actually landed, after the saver's own
-	// resistances. Zero on a condition, and zero on the AT-STAKE effect of a
-	// contest whose dice have not been rolled yet.
+	// Amount is the damage the SHEET applied. Zero on a condition, and zero on
+	// the AT-STAKE effect of a contest whose dice have not been rolled yet.
 	Amount int
 
-	// Components are the damage's roll facts, so a record can show the faces
-	// that produced Amount rather than only the total.
+	// Requested is what the dice and the multipliers settled on, before the
+	// sheet had a say. It equals [ImposedEffect.Calculation]'s total by
+	// construction, which is the rule a record validates against.
+	//
+	// It is Amount's sibling for the same reason healing has one: the two
+	// separate the moment somebody's hit points stop moving, and a record that
+	// carried only the applied number could not show a hit that was bigger than
+	// the target had left.
+	Requested int
+
+	// Before and After are the recipient's hit points either side of the
+	// application, as the sheet reported them.
+	Before int
+	After  int
+
+	// Components are the TYPED breakdown — how much of which damage type, with
+	// the pool's declared properties. Calculation cannot say this: a roll
+	// component carries faces and modifiers, not a damage type.
 	Components []dnd5eEvents.DamageComponent
+
+	// Calculation is the roll's authoritative arithmetic — every component's
+	// dice trace and modifier, and the total they come to. It is the
+	// representation a record replays, and its total is [ImposedEffect.Requested].
+	Calculation *dnd5eEvents.RollCalculation
 }
 
 // ContestOutcome records the requested save and what its failure delivered.
@@ -257,7 +289,7 @@ func describeDamage(pools []damage.Damage) string {
 // damage this slice. It is bought back when a cast carries a caster the fold
 // can name, not by inventing one here.
 func applyPreparedDamage(
-	pools []damage.Damage, roller dice.Roller, cause dnd5eEvents.SaveCause,
+	pools []damage.Damage, roller dice.Roller, cause dnd5eEvents.SaveCause, sourceName string,
 	cast *Participants, targetID string, next func(ImposedEffect) (Step, error),
 ) Gather {
 	return Gather{
@@ -267,12 +299,28 @@ func applyPreparedDamage(
 			if err != nil {
 				return nil, err
 			}
-			components, err := rollContestDamage(ctx, pools, roller, cause)
+			components, err := rollContestDamage(ctx, pools, roller, cause, sourceName)
 			if err != nil {
 				return nil, err
 			}
 
-			final, _ := combat.FinalDamage(components)
+			calculation, err := damageCalculation(components)
+			if err != nil {
+				return nil, err
+			}
+
+			final, total := combat.FinalDamage(components)
+			if total != calculation.Total {
+				// The trace no longer explains the number. It cannot happen
+				// while nothing folds this damage — every component here came
+				// from a declared pool and none carries a multiplier — and if
+				// something ever does, a record built from this would show
+				// faces that do not add up to the damage the player took.
+				return nil, fmt.Errorf(
+					"%w: %s dealt %d, and its roll trace explains %d",
+					ErrBadAction, describeDamage(pools), total, calculation.Total)
+			}
+
 			instances := make([]combat.DamageInstance, 0, len(final))
 			for _, instance := range final {
 				instances = append(instances, combat.DamageInstance{
@@ -292,10 +340,46 @@ func applyPreparedDamage(
 				Description: describeDamage(pools),
 				RecipientID: targetID,
 				Amount:      applied.TotalDamage,
+				Requested:   calculation.Total,
+				Before:      applied.PreviousHP,
+				After:       applied.CurrentHP,
 				Components:  cloneDamageComponents(components),
+				Calculation: calculation,
 			})
 		},
 	}
+}
+
+// damageCalculation is the roll behind the damage, in the one shape a record
+// replays: every component's own trace, and the total they come to.
+//
+// It is BUILT from the components rather than accumulated alongside them, so
+// the total and the faces cannot drift apart — and it is validated here, at the
+// only place that can still refuse, because the rulebook's validator is what a
+// record will run and failing it there would be a beat nobody can write.
+func damageCalculation(
+	components []dnd5eEvents.DamageComponent,
+) (*dnd5eEvents.RollCalculation, error) {
+	calculation := &dnd5eEvents.RollCalculation{
+		Components: make([]dnd5eEvents.RollComponent, 0, len(components)),
+	}
+	for _, component := range components {
+		calculation.Components = append(calculation.Components, component.Roll)
+		if component.Roll.Dice != nil {
+			calculation.Total += component.Roll.Dice.Subtotal
+		}
+		if component.Roll.Modifier != nil {
+			calculation.Total += *component.Roll.Modifier
+		}
+	}
+
+	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
+		return nil, fmt.Errorf("%w: damage roll trace: %w", ErrBadAction, err)
+	}
+
+	// Owned from here on: the components it was built from are the machine's,
+	// and an outcome handed outward must not alias them.
+	return dnd5eEvents.CloneRollCalculation(calculation), nil
 }
 
 // rollContestDamage rolls each declared pool into the component a record can
@@ -305,7 +389,8 @@ func applyPreparedDamage(
 // dealt the damage, and a cause that named none leaves the source ref nil
 // rather than borrowing the condition's.
 func rollContestDamage(
-	ctx context.Context, pools []damage.Damage, roller dice.Roller, cause dnd5eEvents.SaveCause,
+	ctx context.Context, pools []damage.Damage, roller dice.Roller,
+	cause dnd5eEvents.SaveCause, sourceName string,
 ) ([]dnd5eEvents.DamageComponent, error) {
 	components := make([]dnd5eEvents.DamageComponent, 0, len(pools))
 	for _, declared := range pools {
@@ -333,7 +418,7 @@ func rollContestDamage(
 		component := dnd5eEvents.DamageComponent{
 			Source: dnd5eEvents.DamageSourceSpell,
 			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(cause.EffectRef)},
+				Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(cause.EffectRef), Name: sourceName},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      dice.SimplePool(len(rolls), dieSize, 0).Notation(),
 					DieSize:       dieSize,
@@ -435,6 +520,13 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 		if err := damage.Validate(m.in.Damage); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrBadAction, err)
 		}
+		// A roll trace is a provenance PAIR, and the rulebook refuses a half-
+		// named one. Refusing here means a contest that could not be recorded
+		// never rolls, rather than dealing damage and failing to write it down.
+		if m.in.Cause.EffectRef == nil || strings.TrimSpace(m.in.SourceName) == "" {
+			return nil, fmt.Errorf(
+				"%w: contest damage needs the ref and name of what dealt it", ErrBadAction)
+		}
 	}
 
 	ability, err := m.chooseAbility(cast)
@@ -523,7 +615,7 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 	}
 
 	return applyPreparedDamage(
-		m.in.Damage, m.rollerOrDefault(), m.in.Cause, m.cast, m.in.SaverID,
+		m.in.Damage, m.rollerOrDefault(), m.in.Cause, m.in.SourceName, m.cast, m.in.SaverID,
 		func(applied ImposedEffect) (Step, error) {
 			outcome.Imposed = append(outcome.Imposed, applied)
 			return deliverCondition()
