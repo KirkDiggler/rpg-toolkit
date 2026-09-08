@@ -89,8 +89,16 @@ func concentratingAddress(casterID string) dnd5eEvents.ChildRef {
 // holding builds the two blobs a caster mid-True-Strike carries: the hold, and
 // the child it owns.
 func (s *ConcentrationTestSuite) holding(casterID, targetID string) []json.RawMessage {
+	return s.holdingFor(casterID, targetID, spells.TrueStrikeTurnEnds)
+}
+
+// holdingFor is [ConcentrationTestSuite.holding] with the spell's clock named,
+// so a scene can put the hold one turn end from running out.
+func (s *ConcentrationTestSuite) holdingFor(
+	casterID, targetID string, turnEnds int,
+) []json.RawMessage {
 	hold := conditions.NewConcentratingCondition(
-		casterID, refs.Spells.TrueStrike().String(), "True Strike", spells.TrueStrikeTurnEnds)
+		casterID, refs.Spells.TrueStrike().String(), "True Strike", turnEnds)
 	s.Require().NoError(hold.AddChild(s.ctx, trueStrikeAddress(casterID)))
 
 	holdJSON, err := hold.ToJSON()
@@ -595,4 +603,169 @@ func (s *ConcentrationTestSuite) TestACastRefusedAtTheDoorDropsNothing() {
 		s.castingBard(0, s.holding(bardID, heroID)...), s.trueStrike(), bus)
 	s.Require().Error(err)
 	s.Empty(*removals, "nothing was cast, so nothing was displaced")
+}
+
+// resolveBoundary runs one clock advance, which is the interaction the session
+// drives through announcerSeam.Announce for every turn end and every combat
+// end. Two of the six reasons a hold ends land here and nowhere else.
+func (s *ConcentrationTestSuite) resolveBoundary(
+	hero *character.Data, crossed []encounter.Boundary,
+) *Output {
+	fixtures := s.fixtures()
+	machine, err := NewBoundary(&BoundaryInput{Crossed: crossed})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: hero}, {Monster: fixtures.wolfData()}},
+		Machine:      machine,
+	}, newSurface(events.NewEventBus()))
+	s.Require().NoError(err)
+
+	return out
+}
+
+// onlyBreak is the one break a scene expects, with its shared assertions made
+// once: the caster, the spell, and the addresses that came off.
+func (s *ConcentrationTestSuite) onlyBreak(
+	out *Output, casterID, reason string,
+) encounter.ConcentrationBreak {
+	s.Require().Len(out.ConcentrationBreaks, 1)
+	broke := out.ConcentrationBreaks[0]
+	s.Equal(encounter.MemberID(casterID), broke.Caster)
+	s.Equal(refs.Spells.TrueStrike().String(), broke.Spell.Ref)
+	s.Equal("True Strike", broke.Spell.Name)
+	s.Equal(reason, broke.Reason)
+	s.Nil(broke.Save, "only a failed check carries a save beat")
+
+	return broke
+}
+
+// The spell's own clock runs out at the caster's turn end, inside the boundary
+// interaction the session already drives. Nothing about a clock advance knows
+// what concentration is; the hold hears the turn end and ends itself.
+func (s *ConcentrationTestSuite) TestTheSpellsOwnDurationEndsItAtATurnEnd() {
+	out := s.resolveBoundary(
+		s.fixtures().saver(40, s.holdingFor(heroID, wolfID, 1)...),
+		[]encounter.Boundary{{Kind: encounter.TurnEnded, Subject: heroID, Round: 1}},
+	)
+
+	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedDuration)
+	s.Require().Len(broke.Removed, 1)
+	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Target)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+
+	s.Empty(s.conditionRefs(out, heroID), "the hold and its child are both gone")
+}
+
+// A turn end with the clock still running ends nothing, so a boundary that
+// crossed a hold's turn is not itself a break.
+func (s *ConcentrationTestSuite) TestATurnEndWithTimeLeftEndsNothing() {
+	out := s.resolveBoundary(
+		s.fixtures().saver(40, s.holdingFor(heroID, wolfID, 2)...),
+		[]encounter.Boundary{{Kind: encounter.TurnEnded, Subject: heroID, Round: 1}},
+	)
+
+	s.Empty(out.ConcentrationBreaks)
+	s.Len(s.conditionRefs(out, heroID), 2, "the hold is still there, one turn shorter")
+}
+
+// The fight ending takes the hold with it, in the same boundary interaction.
+func (s *ConcentrationTestSuite) TestCombatEndingEndsTheHold() {
+	out := s.resolveBoundary(
+		s.fixtures().saver(40, s.holding(heroID, wolfID)...),
+		[]encounter.Boundary{{Kind: encounter.CombatEnded, Subject: heroID, Round: 3}},
+	)
+
+	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedCombatEnd)
+	s.Require().Len(broke.Removed, 1)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+	s.Empty(s.conditionRefs(out, heroID))
+}
+
+// The last child ending on its own account ends the spell: True Strike is
+// consumed by the attack it improved, and the hold has nothing left to hold.
+//
+// Without this a bard whose True Strike was spent still reads as concentrating
+// and still drops "nothing" on the next concentration cast — a visible lie.
+func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
+	fixtures := s.fixtures()
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: fixtures.world(),
+		Participants: []Participant{
+			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
+			{Monster: fixtures.wolfData()},
+		},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Definition: claw("1d6"),
+			// True Strike is ADVANTAGE, so the d20 comes out of the pair as
+			// two rolls and the damage die follows it. A scripted single here
+			// would go unused, which is the tell that the condition is doing
+			// its job.
+			Roller: &sequenceRoller{pair: []int{straightRoll, straightRoll, 6}},
+		}),
+	}, newSurface(events.NewEventBus()))
+	s.Require().NoError(err)
+
+	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedSpellEnded)
+	s.Empty(broke.Removed, "the child ended itself; the hold took nothing else off")
+	s.Empty(s.conditionRefs(out, heroID))
+}
+
+// The SECOND call site. A cast that deals damage reports it and runs what came
+// back, exactly as the strike does, because both call the same two steps.
+//
+// The check is asserted and the strip is not: a made check strips nothing, so
+// this scene pins the call site without depending on the keeper ordering the
+// two skipped scenes wait on.
+func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
+	fixtures := s.fixtures()
+
+	definition := spells.CastDefinition(spells.ViciousMockery, spellSaveDC)
+	s.Require().NotNil(definition)
+	definition.Cost = oneAction()
+	machine, err := NewAction(&ActionInput{
+		Definition: *definition, AttackerID: bardID, TargetID: heroID,
+		// singles: the cantrip's own save, which the hero fails, then the
+		// concentration check, which the hero makes. pair: the 1d4 psychic.
+		Roller: &sequenceRoller{singles: []int{straightRoll, 18}, pair: []int{3}},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: fixtures.world(),
+		Participants: []Participant{
+			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
+			{Monster: fixtures.wolfData()},
+			{Character: fixtures.bard(1)},
+		},
+		Machine: machine,
+		Cost:    castCost(),
+	}, newSurface(events.NewEventBus()))
+	s.Require().NoError(err)
+
+	outcome, ok := out.Outcome.(CastOutcome)
+	s.Require().True(ok)
+	s.Require().NotNil(outcome.Save)
+	s.False(outcome.Save.Succeeded, "the cantrip landed, so damage was applied")
+
+	s.Require().Len(outcome.FollowUps, 1, "the cast's damage asked for a check")
+	followUp := outcome.FollowUps[0]
+	s.Equal(heroID, followUp.SaverID)
+	s.Equal(abilities.CON, followUp.Ability)
+	s.Require().NotNil(followUp.Save.Result)
+	s.Equal(conditions.ConcentrationDCFloor, followUp.Save.Result.DC, "3 psychic asks for the floor")
+	s.True(followUp.Save.Result.Success)
+
+	s.Empty(out.ConcentrationBreaks, "a made check ends nothing")
+	s.Len(s.conditionRefs(out, heroID), 3, "the hold, its child, and the cantrip's rider")
 }
