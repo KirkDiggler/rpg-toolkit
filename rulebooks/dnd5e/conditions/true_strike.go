@@ -36,6 +36,7 @@ type TrueStrikeConditionData struct {
 	Ref          *core.Ref `json:"ref"`
 	MemberID     string    `json:"member_id"`
 	TargetID     string    `json:"target_id"`
+	SourceRef    string    `json:"source_ref"`
 	TurnEndsLeft int       `json:"turn_ends_left"`
 }
 
@@ -69,6 +70,12 @@ type TrueStrikeCondition struct {
 	// TargetID is the only creature the advantage is good against.
 	TargetID string
 
+	// SourceRef is what granted this, as a ref string — the spell, not the
+	// caster. Named apart from MemberID because "who holds it" and "what
+	// applied it" are different questions, and a display that wants to say
+	// "True Strike" reads this rather than inferring it.
+	SourceRef string
+
 	// TurnEndsLeft is how many of the caster's turn ends remain before this
 	// expires. See [TrueStrikeTurnEnds].
 	TurnEndsLeft int
@@ -86,10 +93,18 @@ func (t *TrueStrikeCondition) Ref() *core.Ref { return refs.Conditions.TrueStrik
 
 // NewTrueStrikeCondition creates the caster's advantage against one named
 // creature, good until it is used or the caster's next turn ends.
-func NewTrueStrikeCondition(casterID, targetID string) *TrueStrikeCondition {
+//
+// An empty sourceRef falls back to the True Strike spell, which is the only
+// thing in this rulebook that applies this condition. A condition that recorded
+// "" as what granted it would be a blank where the answer was never in doubt.
+func NewTrueStrikeCondition(casterID, targetID, sourceRef string) *TrueStrikeCondition {
+	if sourceRef == "" {
+		sourceRef = refs.Spells.TrueStrike().String()
+	}
 	return &TrueStrikeCondition{
 		MemberID:     casterID,
 		TargetID:     targetID,
+		SourceRef:    sourceRef,
 		TurnEndsLeft: TrueStrikeTurnEnds,
 	}
 }
@@ -172,6 +187,7 @@ func (t *TrueStrikeCondition) ToJSON() (json.RawMessage, error) {
 		Ref:          refs.Conditions.TrueStrike(),
 		MemberID:     t.MemberID,
 		TargetID:     t.TargetID,
+		SourceRef:    t.SourceRef,
 		TurnEndsLeft: t.TurnEndsLeft,
 	})
 }
@@ -184,6 +200,10 @@ func (t *TrueStrikeCondition) loadJSON(data json.RawMessage) error {
 	}
 	t.MemberID = stored.MemberID
 	t.TargetID = stored.TargetID
+	t.SourceRef = stored.SourceRef
+	if t.SourceRef == "" {
+		t.SourceRef = refs.Spells.TrueStrike().String()
+	}
 	t.TurnEndsLeft = stored.TurnEndsLeft
 	if t.TurnEndsLeft <= 0 {
 		// A blob written before the counter existed, or one whose count ran

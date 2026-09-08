@@ -40,7 +40,7 @@ func (s *TrueStrikeConditionSuite) SetupTest() {
 
 // applied returns a live condition on the bus.
 func (s *TrueStrikeConditionSuite) applied() *TrueStrikeCondition {
-	condition := NewTrueStrikeCondition(s.casterID, s.targetID)
+	condition := NewTrueStrikeCondition(s.casterID, s.targetID, "")
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	return condition
 }
@@ -145,7 +145,7 @@ func (s *TrueStrikeConditionSuite) TestItEndsWithTheFight() {
 }
 
 func (s *TrueStrikeConditionSuite) TestItRoundTripsThroughJSON() {
-	condition := NewTrueStrikeCondition(s.casterID, s.targetID)
+	condition := NewTrueStrikeCondition(s.casterID, s.targetID, "")
 	condition.TurnEndsLeft = 1
 
 	raw, err := condition.ToJSON()
@@ -159,7 +159,38 @@ func (s *TrueStrikeConditionSuite) TestItRoundTripsThroughJSON() {
 	s.Equal(s.casterID, back.MemberID)
 	s.Equal(s.targetID, back.TargetID)
 	s.Equal(1, back.TurnEndsLeft)
+	s.Equal(refs.Spells.TrueStrike().String(), back.SourceRef)
 	s.Equal(refs.Conditions.TrueStrike(), back.Ref())
+}
+
+func (s *TrueStrikeConditionSuite) TestItsSourceIsTheSpell() {
+	s.Run("named by the caller", func() {
+		out, err := CreateFromRef(&CreateFromRefInput{
+			Ref:       refs.Conditions.TrueStrike().String(),
+			MemberID:  s.casterID,
+			Config:    json.RawMessage(`{"target_id":"goblin-1"}`),
+			SourceRef: refs.Spells.TrueStrike().String(),
+		})
+		s.Require().NoError(err)
+
+		built, ok := out.Condition.(*TrueStrikeCondition)
+		s.Require().True(ok)
+		s.Equal(refs.Spells.TrueStrike().String(), built.SourceRef)
+	})
+
+	s.Run("and defaulted when nobody named one", func() {
+		s.Equal(refs.Spells.TrueStrike().String(),
+			NewTrueStrikeCondition(s.casterID, s.targetID, "").SourceRef,
+			"only True Strike applies this condition, so the blank is never the answer")
+	})
+
+	s.Run("even on a blob written before the field existed", func() {
+		condition := &TrueStrikeCondition{}
+		s.Require().NoError(condition.loadJSON(json.RawMessage(
+			`{"ref":{"module":"dnd5e","type":"conditions","id":"true_strike"},` +
+				`"member_id":"bard-1","target_id":"goblin-1","turn_ends_left":2}`)))
+		s.Equal(refs.Spells.TrueStrike().String(), condition.SourceRef)
+	})
 }
 
 func (s *TrueStrikeConditionSuite) TestAStoredCountOfZeroIsReadAsOneMoreTurn() {

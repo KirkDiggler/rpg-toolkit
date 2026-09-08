@@ -107,9 +107,9 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	case refs.Conditions.Inspired().ID:
 		condition, err = createInspired(input.Config, input.MemberID)
 	case refs.Conditions.TrueStrike().ID:
-		condition, err = createTrueStrike(input.Config, input.MemberID)
+		condition, err = createTrueStrike(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.ViciousMockery().ID:
-		condition, err = createViciousMockery(input.Config, input.MemberID)
+		condition, err = createViciousMockery(input.Config, input.MemberID, input.SourceRef)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -371,7 +371,7 @@ type trueStrikeConfig struct {
 // the CASTER — the advantage is theirs — so a missing target id is refused
 // rather than defaulted: a True Strike good against nobody in particular would
 // grant advantage on every attack.
-func createTrueStrike(config json.RawMessage, memberID string) (*TrueStrikeCondition, error) {
+func createTrueStrike(config json.RawMessage, memberID, sourceRef string) (*TrueStrikeCondition, error) {
 	var cfg trueStrikeConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -383,7 +383,7 @@ func createTrueStrike(config json.RawMessage, memberID string) (*TrueStrikeCondi
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "true strike config requires 'target_id' field")
 	}
 
-	return NewTrueStrikeCondition(memberID, cfg.TargetID), nil
+	return NewTrueStrikeCondition(memberID, cfg.TargetID, sourceRef), nil
 }
 
 // viciousMockeryConfig is the config structure for the vicious mockery
@@ -394,7 +394,9 @@ type viciousMockeryConfig struct {
 
 // createViciousMockery creates a vicious mockery condition from config. The
 // member is the mocked creature.
-func createViciousMockery(config json.RawMessage, memberID string) (*ViciousMockeryCondition, error) {
+func createViciousMockery(
+	config json.RawMessage, memberID, sourceRef string,
+) (*ViciousMockeryCondition, error) {
 	var cfg viciousMockeryConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -406,5 +408,5 @@ func createViciousMockery(config json.RawMessage, memberID string) (*ViciousMock
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "vicious mockery config requires 'source_id' field")
 	}
 
-	return NewViciousMockeryCondition(memberID, cfg.SourceID), nil
+	return NewViciousMockeryCondition(memberID, cfg.SourceID, sourceRef), nil
 }

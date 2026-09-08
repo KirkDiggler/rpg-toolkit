@@ -25,9 +25,10 @@ const ViciousMockeryName = "Vicious Mockery"
 // ViciousMockeryConditionData is the serializable form of the vicious mockery
 // condition, stored by the game server as an opaque JSON blob.
 type ViciousMockeryConditionData struct {
-	Ref      *core.Ref `json:"ref"`
-	MemberID string    `json:"member_id"`
-	SourceID string    `json:"source_id"`
+	Ref       *core.Ref `json:"ref"`
+	MemberID  string    `json:"member_id"`
+	SourceID  string    `json:"source_id"`
+	SourceRef string    `json:"source_ref"`
 }
 
 // ViciousMockeryCondition is the sting of an insult that landed.
@@ -53,6 +54,11 @@ type ViciousMockeryCondition struct {
 	// "whose mockery was that" has an answer.
 	SourceID string
 
+	// SourceRef is WHAT applied it, as a ref string — the spell, where
+	// SourceID is the caster. Two fields because they answer two questions
+	// and a single "source" would have to pick one of them to be a lie about.
+	SourceRef string
+
 	bus             events.EventBus
 	subscriptionIDs []string
 }
@@ -66,8 +72,14 @@ func (v *ViciousMockeryCondition) Ref() *core.Ref { return refs.Conditions.Vicio
 
 // NewViciousMockeryCondition creates the disadvantage one creature carries into
 // its next attack roll after failing its save.
-func NewViciousMockeryCondition(memberID, sourceID string) *ViciousMockeryCondition {
-	return &ViciousMockeryCondition{MemberID: memberID, SourceID: sourceID}
+//
+// An empty sourceRef falls back to the Vicious Mockery spell, which is the only
+// thing in this rulebook that applies this condition.
+func NewViciousMockeryCondition(memberID, sourceID, sourceRef string) *ViciousMockeryCondition {
+	if sourceRef == "" {
+		sourceRef = refs.Spells.ViciousMockery().String()
+	}
+	return &ViciousMockeryCondition{MemberID: memberID, SourceID: sourceID, SourceRef: sourceRef}
 }
 
 // IsApplied returns true if this condition is currently applied.
@@ -146,9 +158,10 @@ func (v *ViciousMockeryCondition) Remove(ctx context.Context, bus events.EventBu
 // ToJSON converts the condition to JSON for persistence.
 func (v *ViciousMockeryCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(ViciousMockeryConditionData{
-		Ref:      refs.Conditions.ViciousMockery(),
-		MemberID: v.MemberID,
-		SourceID: v.SourceID,
+		Ref:       refs.Conditions.ViciousMockery(),
+		MemberID:  v.MemberID,
+		SourceID:  v.SourceID,
+		SourceRef: v.SourceRef,
 	})
 }
 
@@ -160,6 +173,10 @@ func (v *ViciousMockeryCondition) loadJSON(data json.RawMessage) error {
 	}
 	v.MemberID = stored.MemberID
 	v.SourceID = stored.SourceID
+	v.SourceRef = stored.SourceRef
+	if v.SourceRef == "" {
+		v.SourceRef = refs.Spells.ViciousMockery().String()
+	}
 	return nil
 }
 

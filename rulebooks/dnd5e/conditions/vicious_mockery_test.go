@@ -40,7 +40,7 @@ func (s *ViciousMockeryConditionSuite) SetupTest() {
 
 // applied returns a live condition on the bus.
 func (s *ViciousMockeryConditionSuite) applied() *ViciousMockeryCondition {
-	condition := NewViciousMockeryCondition(s.mockedID, s.bardID)
+	condition := NewViciousMockeryCondition(s.mockedID, s.bardID, "")
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	return condition
 }
@@ -120,7 +120,7 @@ func (s *ViciousMockeryConditionSuite) TestItEndsWithTheFight() {
 }
 
 func (s *ViciousMockeryConditionSuite) TestItRoundTripsThroughJSON() {
-	raw, err := NewViciousMockeryCondition(s.mockedID, s.bardID).ToJSON()
+	raw, err := NewViciousMockeryCondition(s.mockedID, s.bardID, "").ToJSON()
 	s.Require().NoError(err)
 
 	loaded, err := LoadJSON(raw)
@@ -130,7 +130,34 @@ func (s *ViciousMockeryConditionSuite) TestItRoundTripsThroughJSON() {
 	s.Require().True(ok)
 	s.Equal(s.mockedID, back.MemberID)
 	s.Equal(s.bardID, back.SourceID)
+	s.Equal(refs.Spells.ViciousMockery().String(), back.SourceRef)
 	s.Equal(refs.Conditions.ViciousMockery(), back.Ref())
+}
+
+func (s *ViciousMockeryConditionSuite) TestItsSourceIsTheSpellAndItsSourceIDIsTheBard() {
+	out, err := CreateFromRef(&CreateFromRefInput{
+		Ref:       refs.Conditions.ViciousMockery().String(),
+		MemberID:  s.mockedID,
+		Config:    json.RawMessage(`{"source_id":"bard-1"}`),
+		SourceRef: refs.Spells.ViciousMockery().String(),
+	})
+	s.Require().NoError(err)
+
+	built, ok := out.Condition.(*ViciousMockeryCondition)
+	s.Require().True(ok)
+	s.Equal(refs.Spells.ViciousMockery().String(), built.SourceRef, "what applied it")
+	s.Equal(s.bardID, built.SourceID, "and who did")
+}
+
+func (s *ViciousMockeryConditionSuite) TestTheSourceSpellIsDefaultedRatherThanLeftBlank() {
+	s.Equal(refs.Spells.ViciousMockery().String(),
+		NewViciousMockeryCondition(s.mockedID, s.bardID, "").SourceRef)
+
+	condition := &ViciousMockeryCondition{}
+	s.Require().NoError(condition.loadJSON(json.RawMessage(
+		`{"ref":{"module":"dnd5e","type":"conditions","id":"vicious_mockery"},` +
+			`"member_id":"goblin-1","source_id":"bard-1"}`)))
+	s.Equal(refs.Spells.ViciousMockery().String(), condition.SourceRef)
 }
 
 func (s *ViciousMockeryConditionSuite) TestTheFactoryRefusesAnUnattributedInsult() {
