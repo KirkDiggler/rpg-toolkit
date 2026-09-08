@@ -484,15 +484,11 @@ func TestRosterOutputHasNoPrivateSheetOrPlacementFields(t *testing.T) {
 		// by the same argument as Kind: a client colours the whole table by
 		// it, and it says nothing about anyone's sheet or where they stand.
 		//
-		// Concentrating (design R11) joins them on the same argument and no
-		// wider one. It says a member is busy holding a spell together, which
-		// is what the rest of the table can see about somebody whose sheet
-		// they do not hold; it does NOT say which spell, how long is left, or
-		// what the spell is holding, all of which are the caster's own.
-		[]string{
-			"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "Customization", "Faction",
-			"Concentrating",
-		},
+		// CONCENTRATING IS NOT HERE, and the absence is the design. R11 puts
+		// it on the TURN lane beside Participant.Active, where the proto that
+		// carries it lives; this row is identity and side, and a per-turn
+		// state on it would be the second place a client could read one thing.
+		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "Customization", "Faction"},
 		rosterFieldNames(session.PublicMember{}),
 	)
 }

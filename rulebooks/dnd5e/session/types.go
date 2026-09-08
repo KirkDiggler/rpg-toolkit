@@ -1962,28 +1962,6 @@ type PublicMember struct {
 	// only, and every one of them is on a side, so an empty value here is a
 	// defect upstream rather than a member in no faction.
 	Faction string `json:"faction"`
-
-	// Concentrating is whether this member is holding a spell together right
-	// now (design R11).
-	//
-	// FOR THE PEOPLE WHO CANNOT SEE THE SHEET. A caster reads its own
-	// concentrating condition off its own status, and a creature carrying a
-	// spell's effect reads the caster and the spell off that effect's own
-	// blob. Neither needs this. What the rest of the table cannot otherwise
-	// learn is that a member they hold no sheet for is concentrating at all —
-	// and a break beat about a member whose concentration was never visible is
-	// a beat with no setup.
-	//
-	// ONE BOOL AND NOTHING MORE: no spell, no ref, no remaining duration.
-	// Which spell somebody is holding is a fact their own sheet answers, and a
-	// roster that named it would be publishing the caster's hand to the room.
-	//
-	// FALSE FOR MONSTERS, by construction rather than by rule: no monster
-	// casts in this build, and the value is read from a character sheet's own
-	// answer, which a monster row has none of. The day a monster concentrates
-	// it holds the same condition on the same field and this row fills from
-	// the same question.
-	Concentrating bool `json:"concentrating"`
 }
 
 // StyleSelectionKind identifies whether a style slot selects a provider-owned

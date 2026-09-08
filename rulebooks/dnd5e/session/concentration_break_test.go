@@ -284,13 +284,13 @@ func (s *ConcentrationBreakSuite) TestAMadeCheckIsARollTheTableSees() {
 	s.Equal(session.SpellRef{Ref: heldSpellRef.String(), Name: heldSpellName}, saved.Source,
 		"a made check still names what was at stake")
 
-	roster, err := s.mgr.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-bob",
+	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{
+		Session: "sess", Member: "bob",
 	})
 	s.Require().NoError(err)
-	for _, member := range roster.Members {
-		if member.ID == "bob" {
-			s.True(member.Concentrating, "and the spell is still being held together")
+	for _, row := range turn.Participants {
+		if row.Member == "bob" {
+			s.True(row.Concentrating, "and the spell is still being held together")
 		}
 	}
 }
