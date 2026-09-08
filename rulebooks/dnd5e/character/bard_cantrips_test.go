@@ -182,3 +182,35 @@ func (s *BardCantripsSuite) TestAFighterIsUnchanged() {
 	s.Nil(char.KnownCantrips())
 	s.Zero(char.SpellSaveDC(), "and a class with no spellcasting ability has no DC")
 }
+
+// TestClassCompletenessCountsTheCantripChoice is the rpg-api blocker, pinned
+// at the source. `getClassSubmissions` had no cantrip arm where
+// [Draft.ValidateChoices] did, so a bard whose choices all validated was still
+// 80% complete and FinalizeDraft refused it as "missing class choices".
+func (s *BardCantripsSuite) TestClassCompletenessCountsTheCantripChoice() {
+	draft := s.bardDraft(16, []shared.SelectionID{spells.TrueStrike, spells.ViciousMockery})
+
+	s.True(draft.IsClassComplete(), "every class question is answered")
+	s.True(draft.Progress().Has(ProgressClass))
+
+	s.Require().NoError(draft.ValidateChoices())
+	s.Equal(100, draft.Progress().PercentComplete())
+	s.True(draft.Progress().IsComplete())
+}
+
+func (s *BardCantripsSuite) TestClassCompletenessRefusesOneCantrip() {
+	draft := s.bardDraft(16, []shared.SelectionID{spells.ViciousMockery})
+
+	s.False(draft.IsClassComplete(), "the cantrip requirement is not satisfied")
+	s.False(draft.Progress().Has(ProgressClass))
+	s.Less(draft.Progress().PercentComplete(), 100)
+}
+
+func (s *BardCantripsSuite) TestAFightersCompletenessIsUnchanged() {
+	draft := s.fighterDraft()
+
+	s.True(draft.IsClassComplete())
+	s.True(draft.Progress().Has(ProgressClass))
+	s.Require().NoError(draft.ValidateChoices())
+	s.Equal(100, draft.Progress().PercentComplete())
+}
