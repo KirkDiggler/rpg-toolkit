@@ -61,8 +61,10 @@ func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
 				Current: 0, Maximum: 1, ResetType: coreResources.ResetLongRest,
 			},
 		},
-		Features:   []json.RawMessage{json.RawMessage(`{"feature":true}`)},
-		Conditions: []json.RawMessage{json.RawMessage(`{"condition":true}`)},
+		KnownCantrips: []string{"dnd5e:spell:vicious-mockery"},
+		KnownSpells:   []string{"dnd5e:spell:healing-word"},
+		Features:      []json.RawMessage{json.RawMessage(`{"feature":true}`)},
+		Conditions:    []json.RawMessage{json.RawMessage(`{"condition":true}`)},
 		ActionEconomy: &character.ActionEconomyData{
 			TurnNumber: 3,
 			Granted:    map[character.GrantedActionKey]int{character.GrantedAttacks: 2},

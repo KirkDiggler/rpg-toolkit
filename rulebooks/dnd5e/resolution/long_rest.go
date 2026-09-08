@@ -130,6 +130,8 @@ func cloneCharacterData(in *character.Data) *character.Data {
 	out.SpellSlots = maps.Clone(in.SpellSlots)
 	out.ClassResources = maps.Clone(in.ClassResources)
 	out.Resources = maps.Clone(in.Resources)
+	out.KnownCantrips = slices.Clone(in.KnownCantrips)
+	out.KnownSpells = slices.Clone(in.KnownSpells)
 	out.Features = cloneRawMessages(in.Features)
 	out.Conditions = cloneRawMessages(in.Conditions)
 	if in.ActionEconomy != nil {
