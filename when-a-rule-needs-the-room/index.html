@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>When a Rule Needs the Room</title>
+<meta name="description" content="How conditions learned to ask about the world without making every event carry it, and the missing path for writing changes back.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/when-a-rule-needs-the-room/">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="When a Rule Needs the Room">
+<meta property="og:description" content="How conditions learned to ask about the world without making every event carry it, and the missing path for writing changes back.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/when-a-rule-needs-the-room/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/when-a-rule-needs-the-room.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/when-a-rule-needs-the-room.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading When a Rule Needs the Room beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="When a Rule Needs the Room">
+<meta name="twitter:description" content="How conditions learned to ask about the world without making every event carry it, and the missing path for writing changes back.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/when-a-rule-needs-the-room.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading When a Rule Needs the Room beside a blue D20 wireframe.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+  :root{
+    --ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;
+    --rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--accent-strong:#8ea2e4;--accent-soft:#1b2236;
+    --pressure:#c96d62;--pressure-soft:#2b1e20;--life:#76a58c;--life-soft:#192922;--signal:#d2ad68;--signal-soft:#2b261a;
+  }
+  *{box-sizing:border-box}
+  html{overflow-x:clip;background:var(--ground);color-scheme:dark}
+  body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+  .page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+  header{padding:82px 72px 76px;border-bottom:1px solid var(--rule)}
+  .eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+  .eyebrow{color:var(--accent);font-size:.76rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase}
+  h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1;text-wrap:balance}
+  h1{max-width:950px;margin:.28em 0 .22em;font-size:clamp(4rem,9vw,7.2rem);letter-spacing:-.04em}
+  .dek{max-width:800px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+  .origin-links{display:flex;flex-wrap:wrap;gap:1.8rem;max-width:900px;margin-top:1.7rem}
+  .origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);color:inherit;text-decoration:none}
+  .origin-link span{color:var(--accent);font:600 .68rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+  .origin-link strong{color:var(--primary);font:600 1rem/1.2 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+  .origin-link:hover strong{color:var(--accent)}
+  .opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));max-width:900px;margin-top:36px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+  .opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+  .opening-proof b{display:block;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:1.04rem;font-weight:600}.opening-proof span{color:var(--muted);font-size:.86rem}
+  .legend{display:flex;gap:1.5rem;max-width:900px;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+  .legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{display:inline-block;width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+  .timeline{position:relative}.timeline::before{content:"";position:absolute;top:0;bottom:0;left:55px;width:1px;background:var(--rule-strong)}
+  .timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px;margin:0}.rail{position:relative;padding-top:47px;text-align:right}
+  .node{position:absolute;top:50px;right:-8px;z-index:2;display:grid;width:18px;height:18px;place-items:center;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}
+  .rail-number{display:block;padding-right:22px;color:var(--accent);font:600 1.25rem/1 "IBM Plex Mono",ui-monospace,monospace}.pressure-panel .rail-number{color:var(--pressure)}
+  .date-label{display:block;max-width:90px;margin:12px 16px 0 auto;color:var(--faint);font-size:.7rem;letter-spacing:.08em;line-height:1.35;text-transform:uppercase}
+  .panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule);background:transparent}
+  .question-label{margin-bottom:7px;color:var(--accent);font-size:.73rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase}.pressure-panel .question-label{color:var(--pressure)}
+  h2{max-width:880px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+  p{max-width:74ch;margin:.76em 0}.lead{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}code{color:var(--accent);font-size:.88em}
+  figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-top:1px solid var(--rule-strong);border-bottom:1px solid var(--rule-strong);background:transparent;scrollbar-color:var(--rule-strong) var(--ground)}
+  figure svg{display:block;width:100%;min-width:820px;height:auto;margin:0 auto}
+  figcaption{max-width:78ch;margin-top:12px;color:var(--faint);font:400 .82rem/1.55 "IBM Plex Mono",ui-monospace,monospace}
+  .law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",ui-monospace,monospace}.law b{color:var(--primary);font-weight:600}.pressure-law{border-left-color:var(--pressure)}
+  .end-question{max-width:880px;margin:34px 0 23px;padding-top:28px;border-top:1px solid var(--rule);font-size:clamp(1.8rem,3.6vw,2.65rem)}
+  footer{max-width:920px;margin:72px 0 0 136px;padding:28px 0 0;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.45rem;color:var(--primary);font-size:1.4rem}footer p{margin:.45rem 0;font-size:.86rem}footer code{color:var(--accent)}
+  svg{color:var(--primary)}svg text{fill:currentColor;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:15px}
+  svg .t-title{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px;font-weight:600}svg .t-big{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:25px;font-weight:600}
+  svg .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px}svg .small{fill:var(--muted);font-size:13px}svg .tiny{fill:var(--muted);font-size:12px}svg .label{fill:var(--muted);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;font-weight:600;letter-spacing:.8px}
+  svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.2}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.2;stroke-dasharray:7 6}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.3}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.3}svg .life{fill:var(--life-soft);stroke:var(--life);stroke-width:1.3}svg .signal{fill:var(--signal-soft);stroke:var(--signal);stroke-width:1.3}
+  svg .wire{fill:none;stroke:var(--primary);stroke-width:1.4}svg .wire-muted{fill:none;stroke:var(--rule-strong);stroke-width:1.3}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .wire-life{fill:none;stroke:var(--life);stroke-width:1.8}svg .dash{stroke-dasharray:6 5}
+  svg .blue{fill:var(--accent)}svg .rust{fill:var(--pressure)}svg .green{fill:var(--life)}svg .gold{fill:var(--signal)}
+  figure::before{display:none}
+  @media(max-width:760px){
+    figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);background:var(--ground);color:var(--accent);font:500 .7rem/1.3 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+    .page{padding:14px 14px 70px}header{padding:58px 14px 56px 42px}.origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{align-items:flex-start;flex-direction:column;gap:.55rem}.timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{padding-right:0;font-size:0}.date-label{position:absolute;top:62px;left:-5px;width:48px;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.64rem;white-space:nowrap}.panel-body{padding:40px 13px 48px}figure{margin-inline:0;padding:14px 0 10px}figure svg{min-width:900px}footer{margin:50px 0 0 42px}
+  }
+  @media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.55rem}}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header>
+    <div class="eyebrow">Layer 4 · Runtime context</div>
+    <h1>When a Rule Needs the Room</h1>
+    <p class="dek">Rage could explain its own <code>+2</code>. Dueling needed both hands. Sneak Attack needed an ally beside the target. Protection needed the room, a shield, and a reaction. The event could not carry the whole world.</p>
+    <div class="origin-links">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets &rarr;</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/rage-is-not-raging/"><span>Previous field note</span><strong>Rage Is Not Raging &rarr;</strong></a>
+    </div>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Start</b><span>each rule asks for a seam</span></div><div><b>Breakthrough</b><span>runtime context already exists</span></div><div><b>Overstep</b><span>reading becomes mutation</span></div></div>
+    <div class="legend" aria-label="Visual legend"><span><i></i>request-scoped knowledge</span><span><i></i>responsibility expands</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Six-panel runtime context timeline">
+    <section class="timeline-panel" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">01</span><span class="date-label">2025-11-26 → 12-06</span></div>
+      <div class="panel-body">
+        <div class="question-label">The pattern starts repeating</div>
+        <h2 id="panel-1-title">One real rule asks for the next seam</h2>
+        <p class="lead">Rage proved damage could compose. The next features revealed adjacent needs. Second Wind first published a healing event; <code>HealChain</code> followed five days later. Unarmored Defense exposed armor-class calculation; <code>ACChain</code> followed, although that condition would not join it until later.</p>
+        <figure>
+          <svg viewBox="0 0 1040 450" role="img" aria-label="Three rules reveal reusable seams: Rage points to damage composition, Second Wind points from healing events toward HealChain, and Unarmored Defense points from armor class calculation toward ACChain.">
+            <title>Real rules reveal reusable calculation seams</title>
+            <defs><marker id="l4p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <text x="29" y="29" class="label blue">RULE</text><text x="1010" y="29" text-anchor="end" class="label blue">REUSABLE SEAM</text>
+            <rect x="29" y="55" width="250" height="92" class="life"/><text x="54" y="88" class="label green">BARBARIAN</text><text x="54" y="122" class="t-title">Rage</text>
+            <line x1="279" y1="101" x2="405" y2="101" class="wire-blue" marker-end="url(#l4p1)"/><text x="342" y="83" text-anchor="middle" class="small">proves</text>
+            <rect x="407" y="55" width="604" height="92" class="soft"/><text x="435" y="88" class="label blue">DAMAGECHAIN</text><text x="435" y="122" class="mono">independent damage contributions</text>
+
+            <rect x="29" y="178" width="250" height="92" class="life"/><text x="54" y="211" class="label green">FIGHTER</text><text x="54" y="245" class="t-title">Second Wind</text>
+            <line x1="279" y1="224" x2="405" y2="224" class="wire-blue" marker-end="url(#l4p1)"/><text x="342" y="206" text-anchor="middle" class="small">exposes</text>
+            <rect x="407" y="178" width="604" height="92" class="soft"/><text x="435" y="211" class="label blue">HEALING FLOW</text><text x="435" y="245" class="mono">HealingReceivedTopic → HealChain follows</text>
+
+            <rect x="29" y="301" width="250" height="92" class="life"/><text x="54" y="334" class="label green">BARBARIAN</text><text x="54" y="368" class="t-title">Unarmored Defense</text>
+            <line x1="279" y1="347" x2="405" y2="347" class="wire-blue" marker-end="url(#l4p1)"/><text x="342" y="329" text-anchor="middle" class="small">exposes</text>
+            <rect x="407" y="301" width="604" height="92" class="soft"/><text x="435" y="334" class="label blue">ARMOR-CLASS CALCULATION</text><text x="435" y="368" class="mono">need identified → ACChain follows</text>
+            <text x="520" y="431" text-anchor="middle" class="label">IMPLEMENT THE RULE · DISCOVER THE REUSABLE MECHANISM</text>
+          </svg>
+          <figcaption>The architecture was becoming repeatable: use the next rule to discover the next shared seam rather than predicting every seam upfront.</figcaption>
+        </figure>
+        <div class="law"><b>The rhythm:</b> implement the rule, then make the missing mechanism reusable.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">02</span><span class="date-label">2025-12-04 → 12-16</span></div>
+      <div class="panel-body">
+        <div class="question-label">Calculation is no longer enough</div>
+        <h2 id="panel-2-title">Conditions work until they need the room</h2>
+        <p class="lead">Dueling needed to inspect both hands. Sneak Attack needed to know whether an ally stood beside the target. Protection combined distance, a shield, and an available reaction. These conditions needed facts beyond their own state and the event in front of them.</p>
+        <figure>
+          <svg viewBox="0 0 1040 500" role="img" aria-label="The knowledge radius expands from Dueling inspecting the character's hands, to Sneak Attack inspecting the target, nearby creatures, teams, and positions, to Protection combining a nearby ally, a shield, and reaction availability.">
+            <title>Real conditions need progressively wider runtime context</title>
+            <defs><marker id="l4p2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <text x="29" y="29" class="label blue">THE KNOWLEDGE RADIUS EXPANDS</text>
+            <circle cx="520" cy="252" r="58" fill="var(--life-soft)" stroke="var(--life)" stroke-width="1.5"/><text x="520" y="245" text-anchor="middle" class="label green">CONDITION</text><text x="520" y="272" text-anchor="middle" class="mono">what do I need?</text>
+
+            <rect x="43" y="65" width="275" height="145" class="soft"/><text x="69" y="98" class="label blue">DUELING · SELF</text><text x="69" y="135" class="t-title">What is in my hands?</text><text x="69" y="169" class="mono">main hand · off hand</text><text x="69" y="194" class="small">a shield is allowed</text>
+            <path d="M318 173 464 226" class="wire-blue" marker-end="url(#l4p2)"/>
+
+            <rect x="722" y="65" width="275" height="145" class="soft"/><text x="748" y="98" class="label blue">SNEAK ATTACK · WORLD</text><text x="748" y="135" class="t-title">Who is beside my target?</text><text x="748" y="169" class="mono">Room · Teams</text><text x="748" y="194" class="small">position + relationship</text>
+            <path d="M722 173 576 226" class="wire-blue" marker-end="url(#l4p2)"/>
+
+            <rect x="346" y="342" width="348" height="130" class="soft"/><text x="372" y="375" class="label blue">PROTECTION · COMPOSED VIEW</text><text x="372" y="411" class="t-title">Can I protect that ally?</text><text x="372" y="445" class="mono">Room · shield · reaction</text>
+            <path d="M520 310V340" class="wire-blue" marker-end="url(#l4p2)"/>
+
+            <text x="29" y="489" class="label">MY STATE → MY EQUIPMENT → ANOTHER PLAYER → THE ROOM</text>
+          </svg>
+          <figcaption>The event identifies the attack. It does not contain every fact each independent rule may need to interpret that attack.</figcaption>
+        </figure>
+        <div class="law"><b>The pressure:</b> Conditions work great until they need another player or the room.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">03</span><span class="date-label">The tempting answer</span></div>
+      <div class="panel-body">
+        <div class="question-label">Put everything on the event?</div>
+        <h2 id="panel-3-title">The event is not the world</h2>
+        <p class="lead">Adding the missing facts to <code>DamageChainEvent</code> solved each example locally. It also made every publisher responsible for equipment, armor, positions, teams, levels, and action economy whether the listening rule needed them or not.</p>
+        <figure>
+          <svg viewBox="0 0 1040 500" role="img" aria-label="A small DamageChainEvent with attacker ID and damage components accumulates weapons, armor, positions, teams, nearby allies, level, and action economy until it becomes a large Frankenstein event.">
+            <title>The focused damage event grows into a description of the world</title>
+            <defs><marker id="l4p3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <rect x="29" y="82" width="282" height="178" class="soft"/><text x="55" y="116" class="label blue">FOCUSED EVENT</text><text x="55" y="154" class="t-title">DamageChainEvent</text><text x="55" y="192" class="mono">AttackerID</text><text x="55" y="222" class="mono">DamageComponents</text><text x="55" y="247" class="small">what happened here</text>
+            <line x1="311" y1="171" x2="420" y2="171" class="wire-rust" marker-end="url(#l4p3)"/><text x="365" y="151" text-anchor="middle" class="label rust">JUST ADD</text>
+            <rect x="422" y="46" width="589" height="376" class="pressure"/><text x="452" y="82" class="label rust">FRANKENSTEIN EVENT</text><text x="452" y="122" class="t-title">DamageChainEvent</text>
+            <rect x="452" y="149" width="240" height="52" class="box"/><text x="572" y="181" text-anchor="middle" class="mono">AttackerWeapons</text>
+            <rect x="741" y="149" width="240" height="52" class="box"/><text x="861" y="181" text-anchor="middle" class="mono">AttackerArmor</text>
+            <rect x="452" y="214" width="240" height="52" class="box"/><text x="572" y="246" text-anchor="middle" class="mono">NearbyAllies</text>
+            <rect x="741" y="214" width="240" height="52" class="box"/><text x="861" y="246" text-anchor="middle" class="mono">Positions</text>
+            <rect x="452" y="279" width="240" height="52" class="box"/><text x="572" y="311" text-anchor="middle" class="mono">Teams</text>
+            <rect x="741" y="279" width="240" height="52" class="box"/><text x="861" y="311" text-anchor="middle" class="mono">AttackerLevel</text>
+            <rect x="452" y="344" width="529" height="52" class="box"/><text x="716" y="376" text-anchor="middle" class="mono">ActionEconomy · and whatever comes next</text>
+            <text x="520" y="470" text-anchor="middle" class="label rust">EVERY CONDITION MAKES EVERY PUBLISHER KNOW MORE</text>
+          </svg>
+          <figcaption>The event started as a message about damage. The convenient additions turned it into a partial, ever-growing copy of game state.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>The boundary:</b> Every new condition cannot make every publisher describe more of the world.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">04</span><span class="date-label">Four attempts</span></div>
+      <div class="panel-body">
+        <div class="question-label">Move the knowledge somewhere else</div>
+        <h2 id="panel-4-title">Four wrong homes for the same question</h2>
+        <p class="lead">The event was only the first candidate. Resolver functions made the chain depend on an absent game server. Conditions caching equipment could go stale. Registries on the bus made event routing responsible for state storage.</p>
+        <figure>
+          <svg viewBox="0 0 1040 510" role="img" aria-label="Four rejected homes surround the question Where does runtime knowledge live: every event becomes a kitchen sink, resolver functions require the game server, conditions cache stale state, and the event bus becomes storage.">
+            <title>Four plausible homes fail for different ownership reasons</title>
+            <text x="520" y="32" text-anchor="middle" class="label rust">WHERE DOES RUNTIME KNOWLEDGE LIVE?</text>
+            <rect x="368" y="62" width="304" height="100" class="signal"/><text x="520" y="101" text-anchor="middle" class="t-title">One publish needs an answer</text><text x="520" y="135" text-anchor="middle" class="mono">hands · room · teams · reaction</text>
+
+            <rect x="29" y="205" width="228" height="145" class="pressure"/><text x="53" y="238" class="label rust">01 · EVENT</text><text x="53" y="274" class="t-title">Carry everything</text><text x="53" y="309" class="small">becomes a kitchen sink</text>
+            <rect x="280" y="205" width="228" height="145" class="pressure"/><text x="304" y="238" class="label rust">02 · CHAIN</text><text x="304" y="274" class="t-title">Carry resolvers</text><text x="304" y="309" class="small">who provides the server?</text>
+            <rect x="531" y="205" width="228" height="145" class="pressure"/><text x="555" y="238" class="label rust">03 · CONDITION</text><text x="555" y="274" class="t-title">Cache the answer</text><text x="555" y="309" class="small">copied state becomes stale</text>
+            <rect x="782" y="205" width="228" height="145" class="pressure"/><text x="806" y="238" class="label rust">04 · BUS</text><text x="806" y="274" class="t-title">Store registries</text><text x="806" y="309" class="small">routing becomes storage</text>
+            <path d="M464 162 143 203M492 162 394 203M548 162 645 203M576 162 896 203" class="wire-rust dash"/>
+            <line x1="29" y1="401" x2="1010" y2="401" class="wire-muted dash"/>
+            <text x="520" y="445" text-anchor="middle" class="t-big">The question was not how to pass more data.</text>
+            <text x="520" y="478" text-anchor="middle" class="label rust">IT WAS WHERE REQUEST-SCOPED KNOWLEDGE BELONGED</text>
+          </svg>
+          <figcaption>Each option solved the immediate lookup by giving a second responsibility to something that already had one.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>The real question:</b> Where does knowledge for this one runtime call belong?</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="5" aria-labelledby="panel-5-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">05</span><span class="date-label">2025-12-04 → 12-16</span></div>
+      <div class="panel-body">
+        <div class="question-label">The thing Go already had</div>
+        <h2 id="panel-5-title">This is runtime context</h2>
+        <p class="lead">The game server had already loaded the characters and room for this call. It could expose narrow registries through Go's <code>context.Context</code>. The rulebook defined the questions; each condition asked only what it needed; core events remained generic.</p>
+        <figure>
+          <svg viewBox="0 0 1040 650" role="img" aria-label="RPG API loads real state and provides narrow registries through context.Context for one publish. The D and D rulebook defines questions. Dueling reads hands from CharacterRegistry, Sneak Attack reads nearby allies from Room and Teams, and Protection reads position, shield, and reaction state. Core events remain generic.">
+            <title>Request-scoped gamectx lets each rule query a narrow view of loaded state</title>
+            <defs><marker id="l4p5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <text x="29" y="29" class="label blue">ONE CALL · ONE RUNTIME VIEW</text>
+            <rect x="29" y="55" width="982" height="102" class="box"/><text x="57" y="88" class="label">RPG-API · HOST</text><text x="57" y="124" class="t-title">Load the characters and room</text><text x="982" y="106" text-anchor="end" class="mono">provide narrow registries</text>
+            <line x1="520" y1="157" x2="520" y2="207" class="wire-blue" marker-end="url(#l4p5)"/>
+            <rect x="285" y="209" width="470" height="112" class="soft"/><text x="520" y="246" text-anchor="middle" class="label blue">CONTEXT.CONTEXT</text><text x="520" y="283" text-anchor="middle" class="t-big">request-scoped runtime knowledge</text><text x="520" y="307" text-anchor="middle" class="small">travels through this publish · disappears with the call</text>
+            <line x1="520" y1="321" x2="520" y2="365" class="wire-blue" marker-end="url(#l4p5)"/>
+            <rect x="29" y="367" width="982" height="76" class="soft"/><text x="57" y="398" class="label blue">D&amp;D RULEBOOK</text><text x="57" y="427" class="t-title">Define the questions conditions are allowed to ask</text>
+
+            <rect x="29" y="485" width="303" height="126" class="life"/><text x="55" y="518" class="label green">DUELING</text><text x="55" y="553" class="t-title">CharacterRegistry</text><text x="55" y="583" class="mono">main hand · off hand</text>
+            <rect x="368" y="485" width="303" height="126" class="life"/><text x="394" y="518" class="label green">SNEAK ATTACK</text><text x="394" y="553" class="t-title">Room + Teams</text><text x="394" y="583" class="mono">position · nearby ally</text>
+            <rect x="707" y="485" width="304" height="126" class="life"/><text x="733" y="518" class="label green">PROTECTION</text><text x="733" y="553" class="t-title">Room + CharacterRegistry</text><text x="733" y="583" class="mono">distance · shield · reaction</text>
+            <path d="M200 443V483M520 443V483M840 443V483" class="wire-blue" marker-end="url(#l4p5)"/>
+            <text x="520" y="643" text-anchor="middle" class="label blue">EACH RULE ASKS ONLY THE QUESTION IT OWNS</text>
+          </svg>
+          <figcaption>The event stayed small. The host supplied the loaded world, and each condition received a temporary, purpose-shaped way to read it.</figcaption>
+        </figure>
+        <div class="law"><b>The breakthrough:</b> Events describe what happened. Context answers what is true right now.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="6" aria-labelledby="panel-6-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">06</span><span class="date-label">2025-12-25 → 2026-01-04</span></div>
+      <div class="panel-body">
+        <div class="question-label">The read model needs a write path</div>
+        <h2 id="panel-6-title">Reading worked. How do we write this back?</h2>
+        <p class="lead"><code>gamectx</code> gave conditions clean read access. It did not give them an owner-controlled write path. When damage needed to change HP, the design handed out live Combatants, called <code>ApplyDamage</code>, then marked changed objects dirty for the host to save later.</p>
+        <figure>
+          <svg viewBox="0 0 1040 580" role="img" aria-label="The read breakthrough flows from API loading live Combatants into runtime context and conditions querying them. Direct mutation calls ApplyDamage, changes HP, and marks the combatant dirty. The final diagram asks how a condition returns a desired change to the Character that owns the state.">
+            <title>Runtime context solves reads but leaves no owner-controlled write-back path</title>
+            <defs><marker id="l4p6b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="l4p6r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <text x="29" y="29" class="label blue">THE READ BREAKTHROUGH</text>
+            <rect x="29" y="54" width="250" height="95" class="soft"/><text x="54" y="86" class="label blue">RPG-API</text><text x="54" y="120" class="mono">load live Combatants</text>
+            <line x1="279" y1="102" x2="353" y2="102" class="wire-blue" marker-end="url(#l4p6b)"/>
+            <rect x="355" y="54" width="330" height="95" class="soft"/><text x="380" y="86" class="label blue">RUNTIME CONTEXT</text><text x="380" y="120" class="mono">provide a view of what is true</text>
+            <line x1="685" y1="102" x2="759" y2="102" class="wire-blue" marker-end="url(#l4p6b)"/>
+            <rect x="761" y="54" width="250" height="95" class="life"/><text x="786" y="86" class="label green">CONDITION</text><text x="786" y="120" class="mono">ask a narrow question</text>
+
+            <rect x="29" y="195" width="982" height="52" class="pressure"/><text x="520" y="228" text-anchor="middle" class="label rust">READ ACCESS BECOMES DIRECT MUTATION</text>
+
+            <rect x="29" y="299" width="196" height="92" class="box"/><text x="127" y="331" text-anchor="middle" class="label">TOOLKIT</text><text x="127" y="365" text-anchor="middle" class="mono">resolve damage</text>
+            <line x1="225" y1="345" x2="273" y2="345" class="wire-rust" marker-end="url(#l4p6r)"/>
+            <rect x="275" y="299" width="196" height="92" class="pressure"/><text x="373" y="331" text-anchor="middle" class="label rust">LIVE OBJECT</text><text x="373" y="365" text-anchor="middle" class="mono">ApplyDamage</text>
+            <line x1="471" y1="345" x2="519" y2="345" class="wire-rust" marker-end="url(#l4p6r)"/>
+            <rect x="521" y="299" width="196" height="92" class="pressure"/><text x="619" y="331" text-anchor="middle" class="label rust">MUTATION</text><text x="619" y="365" text-anchor="middle" class="mono">HP changes</text>
+            <line x1="717" y1="345" x2="765" y2="345" class="wire-rust" marker-end="url(#l4p6r)"/>
+            <rect x="767" y="299" width="244" height="92" class="pressure"/><text x="889" y="331" text-anchor="middle" class="label rust">PERSISTENCE SIGNAL</text><text x="889" y="365" text-anchor="middle" class="mono">IsDirty = true</text>
+
+            <path d="M889 391V422H520V436" class="wire-rust dash" marker-end="url(#l4p6r)"/>
+            <rect x="279" y="438" width="482" height="97" class="ghost"/>
+            <text x="520" y="468" text-anchor="middle" class="label rust">MISSING OWNER-CONTROLLED WRITE PATH</text>
+            <text x="310" y="505" class="mono">condition decides</text><text x="520" y="505" text-anchor="middle" class="t-big rust">?</text><text x="730" y="505" text-anchor="end" class="mono">Character owns state</text>
+            <text x="520" y="528" text-anchor="middle" class="small">how does the requested change get home?</text>
+            <text x="520" y="570" text-anchor="middle" class="label rust">READ ACCESS SOLVED · WRITE-BACK PATH MISSING</text>
+          </svg>
+          <figcaption><code>ApplyDamage</code> and dirty tracking shipped. The generic save sweep remained intended, and conditions still lacked a clean request path back to the state owner.</figcaption>
+        </figure>
+        <p class="end-question">A condition knew what should change. How could it ask the Character that owned the state to change it?</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>Journey 046 records the repeatable feature workflow. Second Wind is <code>24859b13</code>; <code>HealChain</code> follows in <code>0f3daeba</code>; and <code>ACChain</code> follows in <code>1d26b0c5</code>.</p>
+    <p>Journey 048 records the four rejected context designs and the Dueling breakthrough. Sneak Attack gains Room and Teams in <code>63b323d0</code>; Protection combines room, shield, and reaction state in <code>9369d362</code>. <code>ApplyDamage</code> arrives in <code>857773bc</code>, dirty tracking in <code>7c6af9d5</code>, and the January 4 API record preserves the incomplete save-loop caveat.</p>
+  </footer>
+</main>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
