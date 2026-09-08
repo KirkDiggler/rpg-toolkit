@@ -25,44 +25,42 @@ import (
 // a gate that was contested or was not, and the two beats this writes are what
 // call the whole of it a cast.
 //
-// # The outcome itself comes back too
+// # It says nothing about concentration
 //
-// A cast can end a concentration two ways that are neither a save nor a
-// delivery — one it displaced, and one its damage broke — and both are read
-// off the outcome rather than off these two return values. Handing the outcome
-// back rather than projecting the breaks here keeps this function about the
-// cast's own two halves and puts the break projection in the one place both
-// the strike and the cast reach it from.
+// A cast can end a hold two ways that are neither its gate nor its delivery —
+// displacing one by casting again, and breaking somebody else's with its
+// damage — and neither passes through here. Both arrive on the interaction's
+// own Output, already assembled, because a hold ends in whatever interaction
+// happened to be running rather than as one machine's answer.
 func castOutcome(
 	outcome resolution.Outcome, actor string, spell SpellRef,
-) (*encounter.CastSave, []encounter.ActivationResult, resolution.CastOutcome, error) {
+) (*encounter.CastSave, []encounter.ActivationResult, error) {
 	cast, ok := outcome.(resolution.CastOutcome)
 	if !ok {
-		return nil, nil, resolution.CastOutcome{},
-			fmt.Errorf("%w: cast by %q produced %T", ErrInvalidWorld, actor, outcome)
+		return nil, nil, fmt.Errorf("%w: cast by %q produced %T", ErrInvalidWorld, actor, outcome)
 	}
 
 	save, err := castSave(cast)
 	if err != nil {
-		return nil, nil, resolution.CastOutcome{}, err
+		return nil, nil, err
 	}
 
 	if len(cast.Applied) == 0 {
 		// A made save delivers nothing. Nil rather than an empty slice: the
 		// composition reads "no results" as a complete cast, and a save that
 		// negated both halves is exactly that.
-		return save, nil, cast, nil
+		return save, nil, nil
 	}
 
 	results := make([]encounter.ActivationResult, 0, len(cast.Applied))
 	for _, applied := range cast.Applied {
 		result, resultErr := imposedResult(applied, spell)
 		if resultErr != nil {
-			return nil, nil, resolution.CastOutcome{}, resultErr
+			return nil, nil, resultErr
 		}
 		results = append(results, result)
 	}
-	return save, results, cast, nil
+	return save, results, nil
 }
 
 // castSave reads the gate's saving throw, or nothing when there was no gate.

@@ -221,13 +221,16 @@ func (s *ConcentrationBreakSuite) TestTheCheckIsTheRulebooksArithmeticAndNotThis
 	}
 }
 
-// TestTheStrippedEffectIsNamedByTheSpellThatHeldIt reads the removal beat.
+// TestTheStrippedEffectIsNamedByTheRulebook reads the removal beat.
 //
-// The address the rulebook publishes is a member and a condition ref and
-// carries no display name — by the time anybody could look one up the
-// condition that knew it is gone. So the removal is named by the SPELL, which
-// is what a client says on the line beside it.
-func (s *ConcentrationBreakSuite) TestTheStrippedEffectIsNamedByTheSpellThatHeldIt() {
+// THE NAME IS RESOLUTION'S, and this seam neither supplies nor checks it. An
+// earlier draft of this suite asserted the SPELL'S name here, because the seam
+// was building the removal itself off an address that carries no display name.
+// It does not build it any more: the whole result arrives named, and what
+// arrives is the CONDITION'S own name, which is the more useful of the two —
+// a player watching an effect come off their sheet is owed the effect's name,
+// and the spell that held it is already on the break beat one line above.
+func (s *ConcentrationBreakSuite) TestTheStrippedEffectIsNamedByTheRulebook() {
 	childRef := refs.Conditions.Concentrating().String()
 	s.scene([]dnd5eEvents.ChildRef{{MemberID: "alice", ConditionRef: childRef}}, 18, 5, 3)
 
@@ -244,28 +247,42 @@ func (s *ConcentrationBreakSuite) TestTheStrippedEffectIsNamedByTheSpellThatHeld
 	s.Equal("alice", result.ConditionRemoved.Target,
 		"the effect came off the sheet it was sitting on, which is not the caster's")
 	s.Equal(childRef, result.ConditionRemoved.Ref)
-	s.Equal(heldSpellName, result.ConditionRemoved.Name)
+	s.NotEmpty(result.ConditionRemoved.Name,
+		"the rulebook named it, and a nameless removal is a line a client cannot write")
 	s.Equal(conditions.ConcentrationEndedDamage, result.ConditionRemoved.Reason,
 		"one cause for the whole event, so a reader never holds two")
 }
 
-// TestAMadeCheckLeavesTheSpellAndTheRecordAlone is the other half of the
-// answer, and it names a gap rather than claiming a virtue.
+// TestAMadeCheckIsARollTheTableSees is the other half of the answer.
 //
 // A 19 on the check reaches 21 and holds the spell. Nothing ends, so no break
-// beat is written — correct. NO SAVED BEAT IS WRITTEN EITHER, and that is the
-// gap: the composition's break carrier nests the check inside the break it
-// caused, so a check that broke nothing has nowhere to be recorded. The table
-// sees a blow and a spell that quietly survived. Asserted as it is rather than
-// as it should be, so the day the shape widens this test is what says so.
-func (s *ConcentrationBreakSuite) TestAMadeCheckLeavesTheSpellAndTheRecordAlone() {
+// beat — and the roll is still narrated, because a check nobody saw is a blow
+// that mysteriously did not cost anything. The saved beat rides the same train
+// as the strike, ahead of any break, which is why it can stand alone here.
+//
+// This test previously pinned the opposite, when a made check had nowhere in
+// the record to live. The shape it named as a gap now exists, and this is what
+// says so.
+func (s *ConcentrationBreakSuite) TestAMadeCheckIsARollTheTableSees() {
 	s.scene(nil, 18, 5, 19)
 
 	_, err := s.swing()
 	s.Require().NoError(err)
 
-	s.Equal([]session.EventKind{session.EventStruck}, s.kinds("alice"),
-		"the made check is invisible in the record — a gap, named on the slice's own thread")
+	s.Equal([]session.EventKind{session.EventStruck, session.EventSaved}, s.kinds("alice"),
+		"the blow and the check it forced — and nothing ended, so nothing more")
+
+	bodies := s.bodies("alice", session.EventSaved)
+	s.Require().Len(bodies, 1)
+	saved, ok := bodies[0].(session.SavedBody)
+	s.Require().True(ok)
+	s.Equal("bob", saved.Saver)
+	s.Equal(19, saved.Roll)
+	s.Equal(21, saved.Total, "19 on the die and 2 for CON 14")
+	s.Equal(10, saved.DC)
+	s.True(saved.Succeeded, "the spell was kept, and the beat says so")
+	s.Equal(session.SpellRef{Ref: heldSpellRef.String(), Name: heldSpellName}, saved.Source,
+		"a made check still names what was at stake")
 
 	roster, err := s.mgr.Roster(context.Background(), &session.RosterInput{
 		Session: "sess", Player: "player-bob",

@@ -319,7 +319,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", translateResolution(err))
 	}
 
-	save, results, cast, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
+	save, results, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -347,9 +347,13 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		},
 		Save:    save,
 		Results: results,
-		// Two ways a cast ends a concentration, in the order they happened:
-		// the one this cast displaced, then whatever its own damage broke.
-		ConcentrationBreaks: castConcentrationBreaks(cast),
+		// PASSED THROUGH, exactly as the strike passes them: resolution
+		// assembled both lists and this seam copies two slice headers. A cast
+		// ends a concentration two ways — displacing one by casting again, and
+		// breaking somebody else's with its damage — and resolution has
+		// already put them in the order they happened.
+		ConcentrationChecks: out.ConcentrationChecks,
+		ConcentrationBreaks: out.ConcentrationBreaks,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))

@@ -380,7 +380,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 
 	// And now the beat, on a world whose sheets say what the swing did — see the
 	// godoc for why this is not the other way round.
-	recorded, err := scope.enc.Record(recordFor(in, struck, definition, presentationID))
+	recorded, err := scope.enc.Record(recordFor(in, struck, definition, presentationID, out))
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
 	}
@@ -636,9 +636,10 @@ func deliveredSeqs(scope *writeScope, member string, seqs []uint64) []uint64 {
 
 func recordFor(
 	in *AttackInput, struck resolution.StrikeOutcome, definition combatActions.Definition,
-	presentationID string,
+	presentationID string, out *resolution.Output,
 ) *encounter.RecordInput {
-	return recordStrike(in.Attacker, in.Target, struck, attackRefFor(definition), presentationID)
+	return recordStrike(in.Attacker, in.Target, struck, attackRefFor(definition), presentationID,
+		out.ConcentrationChecks, out.ConcentrationBreaks)
 }
 
 // rollSourceFor projects the rulebook's sourced roll identity onto the

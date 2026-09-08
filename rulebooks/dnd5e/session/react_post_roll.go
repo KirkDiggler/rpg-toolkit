@@ -127,6 +127,7 @@ func (m *Manager) answerPostRoll(
 
 	if _, err := scope.enc.Record(recordStrike(
 		payload.Audience, payload.Target, struck, payload.Attack, payload.PresentationID,
+		out.ConcentrationChecks, out.ConcentrationBreaks,
 	)); err != nil {
 		return nil, fmt.Errorf("react: %w", reportUnrecorded(scope, translate(err)))
 	}
@@ -181,8 +182,27 @@ func postRollDeclaration(session, member string, window interrupt.Window) (Decla
 // before the pause — and reconstructing one to recover two strings would be a
 // second answer to what was swung. [recordFor] is this with an AttackInput and
 // a definition in front of it.
+// recordStrike builds the record one swing produces, including everything the
+// swing's concentration consequences ride in on.
+//
+// # The breaks and checks are PASSED THROUGH, not built here
+//
+// Resolution hands over [encounter.ConcentrationCheck] and
+// [encounter.ConcentrationBreak] already assembled — the rolls, the reasons,
+// the stripped addresses and the names they go out under. This seam copies two
+// slice headers onto the record and knows nothing about what is in them, which
+// is the whole of Kirk's ruling made structural: *"resolution is the place
+// that should resolve things. it shouldn't have to leak out."* An earlier draft
+// of this file projected those shapes here, and every line of it was this seam
+// having an opinion about a rule.
+//
+// They are supplied on EVERY strike path — a player's swing, a monster's, and
+// a resumed one — because they are written here rather than at the three call
+// sites. A path that assembled its own record would be a path where a
+// defender's concentration silently survives.
 func recordStrike(
 	attacker, target string, struck resolution.StrikeOutcome, ref AttackRef, presentationID string,
+	checks []encounter.ConcentrationCheck, breaks []encounter.ConcentrationBreak,
 ) *encounter.RecordInput {
 	values := map[encounter.OutcomeValue]int{
 		encounter.ValueRoll:    struck.Roll,
@@ -213,14 +233,10 @@ func recordStrike(
 		recorded.DisadvantageSources = recordAttackModifierSources(struck.Folded.DisadvantageSources)
 	}
 
-	// The break rides the blow, on EVERY strike path — a player's swing, a
-	// monster's, and a resumed one — because it is written here rather than at
-	// the three call sites. A path that assembled its own record would be a
-	// path where a defender's concentration silently survives.
-	//
-	// Set outside the Hit arm on purpose: whether a miss can end a
+	// Set outside the Hit arm on purpose: whether a miss can end or test a
 	// concentration is a rulebook fact, and resolution answers it by handing
-	// over an empty list. A guard here would be this seam deciding it.
-	recorded.ConcentrationBreaks = concentrationBreaks(struck.FollowUps)
+	// over empty lists. A guard here would be this seam deciding it.
+	recorded.ConcentrationChecks = checks
+	recorded.ConcentrationBreaks = breaks
 	return recorded
 }

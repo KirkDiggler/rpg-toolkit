@@ -151,6 +151,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
 	recorded, err := enc.Record(recordFor(
 		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "roll-abc",
+		&resolution.Output{},
 	))
 	require.NoError(t, err)
 	require.NotZero(t, recorded.Seq)
@@ -241,6 +242,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	// byte-identical to what this seam writes now.
 	_, err = enc.Record(recordFor(
 		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "",
+		&resolution.Output{},
 	))
 	require.NoError(t, err)
 
