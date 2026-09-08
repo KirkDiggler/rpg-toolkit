@@ -772,6 +772,34 @@ const (
 	// happened. What a save IS, is a roll, a DC and an answer.
 	EventSaved EventKind = "saved"
 
+	// EventConcentrationEnded reports that a member's concentration on a spell
+	// ended: who was holding it, what they lose, and why.
+	//
+	// IT ARRIVES INSIDE THE INTERACTION THAT ENDED IT, never on its own. The
+	// break rides the beat that caused it — a strike, or a second cast — so
+	// one call produces one train: struck, then the EventSaved of the check
+	// that was failed if there was one, then this, then one
+	// EventActivationResult per condition the ending spell stripped off the
+	// board. A reader scrolling their own log finds the whole break inside the
+	// blow.
+	//
+	// A KIND OF ITS OWN rather than something a client infers from the
+	// removals that follow it (design R10). Three of the six reasons — a
+	// duration running out, the fight ending, the spell's last child going —
+	// roll nothing and remove nothing the reader can attribute, and the
+	// removals land on OTHER members' sheets, where a client with no break
+	// beat in front of it sees conditions dropping off strangers for no stated
+	// cause.
+	//
+	// There is no "concentration started" kind, deliberately: EventCast
+	// already is one.
+	//
+	// NOTHING IN THIS PACKAGE DECIDES ONE. The check runs inside the
+	// interaction, in resolution, and this seam projects what the composition
+	// recorded — Kirk's ruling, and the property TestSessionConstructsNoCheck
+	// holds.
+	EventConcentrationEnded EventKind = "concentration_ended"
+
 	// EventDeathSave reports one explicit authoritative Death Save result.
 	// Its PresentationID is the same opaque token returned to the actor and to
 	// every other witness; Seq remains recipient-local.
@@ -1344,6 +1372,36 @@ type SavedBody struct {
 }
 
 func (SavedBody) isEventBody() {}
+
+// ConcentrationEndedBody is EventConcentrationEnded's typed body: who was
+// concentrating, the spell they lose, and why it ended.
+//
+// It carries NO SAVE and NO REMOVALS. Both already travel as beats of their
+// own in the same train — the check as EventSaved, each stripped condition as
+// an EventActivationResult carrying ConditionRemoved — and repeating them here
+// would give a client two places to read one fact and the freedom to disagree
+// with itself about which is true.
+type ConcentrationEndedBody struct {
+	// Caster is the member who was concentrating and now is not.
+	Caster string `json:"caster"`
+
+	// Spell is what they lose, copied from the composition's own beat: ref and
+	// display name together, so a client names the spell without deriving one
+	// from the other.
+	Spell SpellRef `json:"spell"`
+
+	// Reason is why it ended, in the rulebook's own words — "damage",
+	// "recast", "duration", "combat_end", "spell_ended", "caster_down".
+	//
+	// AN OPEN STRING AND NOT AN ENUM, the same C1 reading DamageType keeps at
+	// this seam: the vocabulary is a rulebook's, it grows with the rulebook,
+	// and a closed set here would have to be widened in three modules every
+	// time a spell ends a new way. Required — a break that cannot say why is
+	// the exact beat this event exists to prevent.
+	Reason string `json:"reason"`
+}
+
+func (ConcentrationEndedBody) isEventBody() {}
 
 // ActivationResultBody is EventActivationResult's typed body. Exactly one of
 // its result pointers is non-nil on a valid body, and effects remain in the

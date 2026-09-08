@@ -483,6 +483,11 @@ func TestRosterOutputHasNoPrivateSheetOrPlacementFields(t *testing.T) {
 		// Faction (rpg-project#375) is the side a member fights on — public
 		// by the same argument as Kind: a client colours the whole table by
 		// it, and it says nothing about anyone's sheet or where they stand.
+		//
+		// CONCENTRATING IS NOT HERE, and the absence is the design. R11 puts
+		// it on the TURN lane beside Participant.Active, where the proto that
+		// carries it lives; this row is identity and side, and a per-turn
+		// state on it would be the second place a client could read one thing.
 		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "Customization", "Faction"},
 		rosterFieldNames(session.PublicMember{}),
 	)

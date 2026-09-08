@@ -148,7 +148,7 @@ func (s strikerSeam) Strike(
 	// NO PRESENTATION TOKEN: nobody declared this roll. A monster's swing is
 	// resolved by the driver, no client simulated its die, and there is
 	// therefore no throw for a witness to correlate against — see recordFor.
-	if _, err := enc.Record(recordFor(in, struck, definition, "")); err != nil {
+	if _, err := enc.Record(recordFor(in, struck, definition, "", out)); err != nil {
 		return fmt.Errorf("strike: %w", translate(err))
 	}
 	return nil

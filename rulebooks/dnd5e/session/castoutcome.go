@@ -24,6 +24,14 @@ import (
 // The word "cast" lives at the door and nowhere below it. Resolution hands over
 // a gate that was contested or was not, and the two beats this writes are what
 // call the whole of it a cast.
+//
+// # It says nothing about concentration
+//
+// A cast can end a hold two ways that are neither its gate nor its delivery —
+// displacing one by casting again, and breaking somebody else's with its
+// damage — and neither passes through here. Both arrive on the interaction's
+// own Output, already assembled, because a hold ends in whatever interaction
+// happened to be running rather than as one machine's answer.
 func castOutcome(
 	outcome resolution.Outcome, actor string, spell SpellRef,
 ) (*encounter.CastSave, []encounter.ActivationResult, error) {

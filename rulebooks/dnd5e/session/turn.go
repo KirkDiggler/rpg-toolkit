@@ -5,8 +5,10 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -98,6 +100,30 @@ type Participant struct {
 	// turn clock — the same member TurnOutput.Active names — so a caller
 	// marks the active row without a lookup.
 	Active bool `json:"active"`
+
+	// Concentrating is whether this member is holding a spell together right
+	// now (design R11).
+	//
+	// BESIDE Active AND FOR THE SAME AUDIENCE. Both are per-turn state about
+	// somebody else in the fight, which is what this lane is for. A caster
+	// reads its own hold off its own status, and a creature carrying a spell's
+	// effect reads the caster and the spell off that effect's own blob;
+	// neither needs this row. What nobody else can otherwise learn is that a
+	// member whose sheet they do not hold is concentrating at all — and a
+	// break beat about a hold the table never saw is a beat with no setup.
+	//
+	// ONE BOOL AND NOTHING MORE: no spell, no ref, no remaining duration.
+	// Which spell somebody is holding is their own sheet's answer, and a row
+	// that named it would publish the caster's hand to the room.
+	//
+	// FALSE FOR MONSTERS, by construction rather than by rule: the value is a
+	// character sheet's own answer and a monster row has none. The day a
+	// monster concentrates it holds the same condition on the same field and
+	// this fills from the same question.
+	//
+	// NO OMITEMPTY: false is an answer, and the same false-vs-absent law
+	// Active keeps one field up.
+	Concentrating bool `json:"concentrating"`
 
 	// LifeState is the root rulebook's explicit provider-derived state.
 	// Consumers do not infer it from Standing or optional DeathSaves.
@@ -200,13 +226,67 @@ func (m *Manager) participantsFor(
 			st = StandingDowned
 		}
 		view := participation.views[key]
+
+		concentrating, err := m.concentrating(ctx, kinds[key], key)
+		if err != nil {
+			return nil, err
+		}
+
 		out = append(out, Participant{
 			Member: key, Name: names[key], Kind: MemberKind(kinds[key]),
 			Standing: st, Active: key == string(clock.Active),
 			LifeState: view.LifeState, DeathSaves: view.DeathSaves,
+			Concentrating: concentrating,
 		})
 	}
 	return out, nil
+}
+
+// concentrating asks one member's own sheet whether it is holding a spell
+// together (R11).
+//
+// # The caster answers, and this seam does not go looking
+//
+// It calls [character.Character.Concentration] rather than scanning a stored
+// condition list for a ref it recognises. A second reader of that list would be
+// free to disagree with the first about what counts as holding a spell, and the
+// sheet is the one that actually knows.
+//
+// # Only players are asked
+//
+// A monster row is false without a fetch. Nothing in this build casts a
+// concentration spell from a monster sheet, and a world member is not in a
+// fight's order at all.
+//
+// # An absent sheet is false, and a broken repository still fails
+//
+// The exact tolerance the standing consult beside this one already keeps and
+// this verb already propagates: authored content placed straight into a world
+// has no sheet until something spawns it, so ErrNoCharacter is an ordinary
+// state rather than a defect. Any other failure is a repository that has
+// violated its contract, and refusing is what this verb already does with one.
+func (m *Manager) concentrating(
+	ctx context.Context, kind encounter.MemberKind, member string,
+) (bool, error) {
+	if kind != encounter.MemberKind(KindPlayer) {
+		return false, nil
+	}
+
+	data, err := m.fetchCharacterData(ctx, "turn", member)
+	if err != nil {
+		if errors.Is(err, ErrNoCharacter) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	loaded, err := character.Load(ctx, data)
+	if err != nil {
+		return false, fmt.Errorf("turn: character %q: %w: %v", member, ErrBadCharacter, err)
+	}
+
+	_, holding := loaded.Concentration()
+	return holding, nil
 }
 
 // EndTurnInput ends one member's turn in the fight they are in.

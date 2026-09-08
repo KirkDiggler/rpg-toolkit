@@ -347,6 +347,13 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		},
 		Save:    save,
 		Results: results,
+		// PASSED THROUGH, exactly as the strike passes them: resolution
+		// assembled both lists and this seam copies two slice headers. A cast
+		// ends a concentration two ways — displacing one by casting again, and
+		// breaking somebody else's with its damage — and resolution has
+		// already put them in the order they happened.
+		ConcentrationChecks: out.ConcentrationChecks,
+		ConcentrationBreaks: out.ConcentrationBreaks,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))
