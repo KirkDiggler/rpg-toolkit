@@ -16,14 +16,43 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
-// CastContentSuite covers the cast table: the two cantrips that carry a
-// profile, the nine that carry none, and what each of the two declares.
+// CastContentSuite covers supported cast profiles and unsupported catalog entries.
 type CastContentSuite struct {
 	suite.Suite
 }
 
 func TestCastContentSuite(t *testing.T) {
 	suite.Run(t, new(CastContentSuite))
+}
+
+func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {
+	definition := spells.CastDefinition(spells.SacredFlame, 14)
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Equal(refs.Spells.SacredFlame().String(), definition.Ref.String())
+	s.Equal("Sacred Flame", definition.Name)
+	s.Nil(definition.Attack)
+	s.Nil(definition.Cost, "the existing cast door supplies payment")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(60, profile.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, profile.Target)
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.DEX}, profile.Save.Abilities)
+	s.Equal(14, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess)
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence)
+	s.Require().Len(profile.Damage, 1)
+	s.Equal("1d8", profile.Damage[0].Dice)
+	s.Equal(damage.Radiant, profile.Damage[0].Type)
+	s.Empty(profile.Effects, "Sacred Flame leaves no condition behind")
+	s.Nil(profile.Concentration)
+}
+
+func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantrips() {
+	s.Equal([]spells.Spell{spells.SacredFlame},
+		spells.Castable([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.Light}))
 }
 
 func (s *CastContentSuite) TestViciousMockeryCarriesItsSaveGateAndDamage() {

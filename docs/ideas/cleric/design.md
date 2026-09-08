@@ -1,14 +1,21 @@
 # Cleric level-one contribution assessment
 
-Status: proposed gameplay milestone; initial creation fix submitted for review.
-The assessment below is the pre-change snapshot against `feb8e2da`; the creation
-contribution is based on `e894540e`. Results are in [implementation.md](implementation.md).
+Status: creation merged in toolkit #1585 on 2026-09-08, released as D&D v0.150.0.
+The gameplay milestone remains open. The refreshed [plan.md](plan.md) is based
+on merged toolkit main `b2f3b88d` and supersedes the historical dependency
+assumptions below. Shared casting and concentration have now merged; Sacred
+Flame should extend that path. Results are in [implementation.md](implementation.md).
 No upstream adoption or live-play support is claimed. Acceptance checks are in
 [plan.md](plan.md); dated rules evidence is in [source-index.json](source-index.json).
 
 Proposal tracking: [rpg-project#406 — Play a Level-One Life Cleric (2014)](https://github.com/KirkDiggler/rpg-project/issues/406),
 opened at the user's request on 2026-09-08 as a proposed Shaping journey linked
 to #243. Opening the issue does not establish adoption or implementation ownership.
+
+## Original assessment (historical baseline: `feb8e2da`)
+
+The sections below retain the original assessment and source boundaries.
+Current implementation tasks and consumer release status are in [plan.md](plan.md).
 
 ## Recommendation
 

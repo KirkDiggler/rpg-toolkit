@@ -11,7 +11,7 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
-**Cleric creation (rpg-project#406, first contribution, 2026-09-08).**
+**Cleric creation (rpg-project#406, merged #1585, D&D v0.150.0, 2026-09-08).**
 Cleric base proficiencies and fixed shield compile; Life's heavy-armor grant
 and selected domain reach the finalized sheet. Draft validation uses subclass
 requirements and rejects duplicate skill/cantrip choices. Focused creation and
@@ -19,6 +19,16 @@ JSON persistence regressions pass. This is creation data only: domain spells,
 spellcasting, preparation, and Life healing remain outside this contribution. See the
 [creation results](ideas/cleric/implementation.md) for evidence and the portable
 appearance timestamp regression fix.
+
+Shared casting and concentration merged in #1573–#1576 and #1583/#1584/#1586/#1587.
+The [refreshed Cleric plan](ideas/cleric/plan.md) reuses those paths for Sacred
+Flame next; preparation/slots, healing and Bless-specific extensions remain.
+Consumer pin updates are deferred to a later integration pass and do not block
+the next toolkit contribution.
+
+Local next slice: Sacred Flame's level-one cast profile and Cleric DC/persistence
+tests are implemented. Session acceptance, cover semantics and shared damage
+correctness (#1582) remain open; this is not a live spell-support claim.
 
 **rpg-toolkit#1544 (rpg-project#376) — `session.Unpack` (complete,
 2026-09-06).** New verb: removes `Quantity` units of a pack the actor
