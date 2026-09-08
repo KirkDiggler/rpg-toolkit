@@ -546,13 +546,14 @@ func (s *RecordCastSuite) TestRecordCastClosedShapes() {
 		structFieldNames(encounter.CastSave{}),
 	)
 	s.Equal(
-		[]string{"Actor", "Target", "Spell", "Save", "Results", "ConcentrationBreaks"},
+		[]string{"Actor", "Target", "Spell", "Save", "Results", "ConcentrationBreaks", "ConcentrationChecks"},
 		structFieldNames(encounter.RecordCastInput{}),
 	)
 	s.Equal(
 		[]string{"Caster", "Spell", "Reason", "Save", "Removed"},
 		structFieldNames(encounter.ConcentrationBreak{}),
 	)
+	s.Equal([]string{"Spell", "Save"}, structFieldNames(encounter.ConcentrationCheck{}))
 	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordCastOutput{}))
 }
 

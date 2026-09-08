@@ -206,6 +206,12 @@ type RecordInput struct {
 	// list this composition refused on a kind it had guessed was harmless
 	// would be encoding a rule it does not own. Empty is the ordinary case.
 	ConcentrationBreaks []ConcentrationBreak
+
+	// ConcentrationChecks are the concentrations this outcome tested and did
+	// NOT break, in the order they were rolled. Their saved beats are appended
+	// before any break's, so one blow reports every check it asked for and not
+	// only the ones somebody lost.
+	ConcentrationChecks []ConcentrationCheck
 }
 
 // DeathSaveDetail is the closed, rulebook-neutral story shape for one death
@@ -382,8 +388,9 @@ type RecordOutput struct {
 	Seq uint64
 
 	// FollowUpSeqs are the sequences of the beats appended after the outcome
-	// for [RecordInput.ConcentrationBreaks], in append order. Empty when the
-	// outcome broke nobody's concentration.
+	// for [RecordInput.ConcentrationChecks] and then
+	// [RecordInput.ConcentrationBreaks], in append order. Empty when the
+	// outcome asked for no check and broke nobody's concentration.
 	//
 	// They are reported SEPARATELY from Seq rather than folded into it,
 	// because Seq answers a question the caller actually asked — where the
@@ -643,10 +650,15 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// other refusal above it: a break with an unknown caster or no stated
 	// reason must cost the rulebook nothing, and it would cost it a stranded
 	// struck beat if it were checked on the way out.
+	checkBeats, checkErr := e.prepareConcentrationChecks("record", in.Actor, in.ConcentrationChecks)
+	if checkErr != nil {
+		return nil, checkErr
+	}
 	breakBeats, breakErr := e.prepareConcentrationBreaks("record", in.Actor, in.ConcentrationBreaks)
 	if breakErr != nil {
 		return nil, breakErr
 	}
+	breakBeats = append(checkBeats, breakBeats...)
 
 	// subjectBeat, subjects are the actor and targets — v1 still sends
 	// everyone (audienceFor's doc).
@@ -661,9 +673,10 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		return nil, fmt.Errorf("record: %w", err)
 	}
 
-	// The break rides in behind the beat that caused it, at the same clock
-	// reading and through the same append, so the story holds the blow and
-	// everything it ended as one train from one call.
+	// The checks and the break ride in behind the beat that caused them, at
+	// the same clock reading and through the same append, so the story holds
+	// the blow, every roll it asked for and everything it ended as one train
+	// from one call.
 	followUpSeqs := make([]uint64, 0, len(breakBeats))
 	for i, beat := range breakBeats {
 		appendedFollowUp, followUpErr := e.appendBeat(&record.AppendInput{
@@ -673,7 +686,7 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 			Payload:  beat.payload,
 		})
 		if followUpErr != nil {
-			return nil, fmt.Errorf("record: concentration break beat %d: %w", i, followUpErr)
+			return nil, fmt.Errorf("record: concentration beat %d: %w", i, followUpErr)
 		}
 		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
 	}

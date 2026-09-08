@@ -98,6 +98,51 @@ type ConcentrationBreak struct {
 	Removed []ActivationResult
 }
 
+// ConcentrationCheck is a concentration the caster KEPT — the check they were
+// asked for and made, with nothing following it.
+//
+// IT EXISTS BECAUSE A ROLL THAT CHANGED NOTHING STILL HAPPENED. A bard hit for
+// 9 who makes the DC 10 rolled a d20 at the table, and a record that carried
+// only [ConcentrationBreak] would show the blow and no check at all — the
+// player rolled and their own log did not say so. That is the record failing
+// to tell the truth on the day it was written, and the failure is silent,
+// which is the worst kind: nothing is missing that anybody can point at.
+//
+// # It is a second shape rather than a Save field that sometimes breaks things
+//
+// The two are disjoint by construction and the refusal below enforces it. A
+// check that HELD is one of these; a check that FAILED rides the break it
+// caused, in [ConcentrationBreak.Save]. The alternative on offer — one list of
+// every check, with breaks following it — reads tidier and is worse, because
+// it separates a failed check from the break it explains. With two members
+// checking in one interaction the story would read save, save, ended,
+// removals, and a reader would have to work out which of the two rolls was the
+// one that lost the spell. Keeping the failed check ON its break is what makes
+// every break's beats contiguous, which is the whole reason these beats ride
+// the interaction at all.
+//
+// So the question "which list does this save go in" has exactly one answer for
+// any save, and it is not a matter of taste: did the spell survive.
+type ConcentrationCheck struct {
+	// Spell is the spell the caster kept. Required, the same as a break's:
+	// a check beat that cannot say what was at stake is not readable.
+	Spell SpellIdentity
+
+	// Save is the check, and its Saver is the concentrating caster.
+	//
+	// THERE IS NO SEPARATE CASTER FIELD, deliberately. The saver of a
+	// concentration check IS the caster — nobody else can roll to keep
+	// somebody's spell up — so a second field naming them would be a field
+	// that can disagree with this one, and a zero value that lies the day
+	// they do.
+	//
+	// Succeeded must be true. A failed concentration check ends the spell, so
+	// one recorded here as having changed nothing is either a rule that did
+	// not run or a break that lost its removals on the way, and both are
+	// worth failing loudly for rather than writing down.
+	Save CastSave
+}
+
 // SpellIdentity names the rulebook spell that was cast. Ref and Name are
 // required catalog facts carried as primitives; encounter validates their
 // presence without interpreting what they mean.
@@ -169,6 +214,11 @@ type RecordCastInput struct {
 	// casting a second concentration spell drops the first, and a cast that
 	// deals damage can break somebody else's. Empty is the ordinary case.
 	ConcentrationBreaks []ConcentrationBreak
+
+	// ConcentrationChecks are the concentrations this cast tested and did NOT
+	// break, in the order they were rolled. Their saved beats are appended
+	// before any break's, so a reader sees every check this cast asked for.
+	ConcentrationChecks []ConcentrationCheck
 }
 
 // RecordCastOutput reports where every transaction beat landed and any intel
@@ -357,6 +407,12 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		})
 	}
 
+	checkBeats, checkErr := e.prepareConcentrationChecks("record cast", in.Actor, in.ConcentrationChecks)
+	if checkErr != nil {
+		return nil, checkErr
+	}
+	prepared = append(prepared, checkBeats...)
+
 	breakBeats, breakErr := e.prepareConcentrationBreaks("record cast", in.Actor, in.ConcentrationBreaks)
 	if breakErr != nil {
 		return nil, breakErr
@@ -411,6 +467,54 @@ func (e *Encounter) prepareSaveBeat(
 		subjects = append(subjects, save.Saver)
 	}
 	return savedBytes, subjects, nil
+}
+
+// prepareConcentrationChecks validates and marshals one saved beat per check
+// that held. verb names the caller in every refusal.
+//
+// actor is the member whose interaction asked for the checks, and is a subject
+// of each beat for the same reason it is a subject of a break's: the roll
+// happened because of what they did.
+func (e *Encounter) prepareConcentrationChecks(
+	verb string, actor MemberID, checks []ConcentrationCheck,
+) ([]preparedActivationBeat, error) {
+	if len(checks) == 0 {
+		return nil, nil
+	}
+
+	prepared := make([]preparedActivationBeat, 0, len(checks))
+	for i, check := range checks {
+		if check.Spell.Ref == "" {
+			return nil, fmt.Errorf("%s: concentration check %d spell ref: %w", verb, i, ErrInvalidData)
+		}
+		if check.Spell.Name == "" {
+			return nil, fmt.Errorf("%s: concentration check %d spell name: %w", verb, i, ErrInvalidData)
+		}
+		// The one invariant that keeps the two lists disjoint. A failed
+		// concentration check ends the spell, so a failure recorded as having
+		// changed nothing is a break that went missing — and a missing break
+		// is exactly the silent wrong this shape exists to prevent.
+		if !check.Save.Succeeded {
+			return nil, fmt.Errorf(
+				"%s: concentration check %d did not succeed and so is a break, not a check: %w",
+				verb, i, ErrInvalidData,
+			)
+		}
+
+		spell := spellIdentityPayload{Ref: check.Spell.Ref, Name: check.Spell.Name}
+		savedBytes, savedSubjects, saveErr := e.prepareSaveBeat(
+			fmt.Sprintf("%s: concentration check %d", verb, i), actor, &checks[i].Save, spell,
+		)
+		if saveErr != nil {
+			return nil, saveErr
+		}
+		prepared = append(prepared, preparedActivationBeat{
+			payload:  savedBytes,
+			subjects: savedSubjects,
+		})
+	}
+
+	return prepared, nil
 }
 
 // prepareConcentrationBreaks validates and marshals every beat the supplied

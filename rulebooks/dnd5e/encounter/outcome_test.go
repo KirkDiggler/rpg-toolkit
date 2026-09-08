@@ -647,12 +647,13 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // since the save beat landed. What the break carries is not free either: its
 // removals are [encounter.ActivationResult] values under the closed result
 // kinds, refused unless they are condition-removed, so the one thing a caller
-// can put in a break is facts this module can check.
+// can put in a break is facts this module can check. A check that held carries
+// less still: a spell identity and the save itself.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
 		"DamageComponents", "AdvantageSources", "DisadvantageSources", "DeathSave", "Trade",
-		"PresentationID", "ConcentrationBreaks",
+		"PresentationID", "ConcentrationBreaks", "ConcentrationChecks",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")

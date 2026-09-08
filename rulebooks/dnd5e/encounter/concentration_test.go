@@ -304,3 +304,152 @@ func (s *RecordCastSuite) TestAnOutcomeWithNoBreakIsByteIdenticalToBefore() {
 		string(entries[0].Payload),
 	)
 }
+
+// theBardHeldOn is the check the bard makes: hit for 9, DC 10, and True Strike
+// survives it.
+func theBardHeldOn() encounter.ConcentrationCheck {
+	return encounter.ConcentrationCheck{
+		Spell: trueStrike,
+		Save: encounter.CastSave{
+			Saver: castBard, Ability: "constitution", Roll: 14, Total: 16, DC: 10, Succeeded: true,
+		},
+	}
+}
+
+// TestAMadeCheckIsOneSavedBeatAndNothingElse — the roll happened, so the log
+// says so, and nothing follows it because nothing ended.
+func (s *RecordCastSuite) TestAMadeCheckIsOneSavedBeatAndNothingElse() {
+	enc := s.scene(everyoneStanding{})
+
+	hit := theSkeletonHits()
+	hit.ConcentrationChecks = []encounter.ConcentrationCheck{theBardHeldOn()}
+	out, err := enc.Record(hit)
+	s.Require().NoError(err)
+	s.Require().Len(out.FollowUpSeqs, 1)
+
+	entries := s.storyEntries(enc, castBard, append([]uint64{out.Seq}, out.FollowUpSeqs...))
+	names := s.beatNames(entries)
+	s.Equal([]string{"struck", "saved"}, names)
+	s.NotContains(names, encounter.BeatConcentrationEnded)
+	s.NotContains(names, "condition-removed")
+	s.Equal(
+		`{"beat":"saved","saver":"bard","ability":"constitution","roll":14,"total":16,"dc":10,`+
+			`"succeeded":true,`+
+			`"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"}}`,
+		string(entries[1].Payload),
+	)
+}
+
+// TestOneTrainCoversBothAnswers — the same interaction can ask two members to
+// hold on and get different answers, and one seq train carries both: the check
+// that held, then the break, its own failed check still attached to it.
+func (s *RecordCastSuite) TestOneTrainCoversBothAnswers() {
+	enc := s.scene(everyoneStanding{})
+
+	held := theBardHeldOn()
+	held.Save.Saver = castFighter
+	held.Spell = viciousMockery
+
+	hit := theSkeletonHits(brokenByDamage())
+	hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
+	out, err := enc.Record(hit)
+	s.Require().NoError(err)
+
+	seqs := append([]uint64{out.Seq}, out.FollowUpSeqs...)
+	for i := 1; i < len(seqs); i++ {
+		s.Less(seqs[i-1], seqs[i], "beat %d precedes beat %d", i-1, i)
+	}
+	entries := s.storyEntries(enc, castBard, seqs)
+	s.Equal([]string{
+		"struck", "saved", "saved", "concentration_ended", "condition-removed", "condition-removed",
+	}, s.beatNames(entries))
+	s.Contains(string(entries[1].Payload), `"saver":"cast-fighter"`, "the check that held comes first")
+	s.Contains(string(entries[2].Payload), `"saver":"bard"`)
+	s.Contains(string(entries[2].Payload), `"succeeded":false`,
+		"the failed check stays next to the break it explains")
+}
+
+// TestAFailedCheckIsNotACheck — the invariant that keeps the two lists
+// disjoint. A check that changed nothing and did not succeed is a break whose
+// removals went missing, and this module will not write one down.
+func (s *RecordCastSuite) TestAFailedCheckIsNotACheck() {
+	enc := s.scene(everyoneStanding{})
+	before, err := enc.Story(&encounter.StoryInput{Audience: castBard})
+	s.Require().NoError(err)
+
+	held := theBardHeldOn()
+	held.Save.Succeeded = false
+
+	hit := theSkeletonHits()
+	hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
+	_, err = enc.Record(hit)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+
+	after, err := enc.Story(&encounter.StoryInput{Audience: castBard})
+	s.Require().NoError(err)
+	s.Len(after, len(before), "a refused check leaves no struck beat behind it")
+}
+
+// TestACheckSaysWhatWasAtStakeOrIsRefused, on both doors, with nothing landing.
+func (s *RecordCastSuite) TestACheckSaysWhatWasAtStakeOrIsRefused() {
+	cases := map[string]struct {
+		mangle func(*encounter.ConcentrationCheck)
+		target error
+	}{
+		"no spell ref":  {func(c *encounter.ConcentrationCheck) { c.Spell.Ref = "" }, encounter.ErrInvalidData},
+		"no spell name": {func(c *encounter.ConcentrationCheck) { c.Spell.Name = "" }, encounter.ErrInvalidData},
+		"no saver":      {func(c *encounter.ConcentrationCheck) { c.Save.Saver = "" }, encounter.ErrNoMember},
+		"unknown saver": {func(c *encounter.ConcentrationCheck) { c.Save.Saver = "nobody" }, encounter.ErrNoMember},
+		"no ability":    {func(c *encounter.ConcentrationCheck) { c.Save.Ability = "" }, encounter.ErrInvalidData},
+		"not a d20":     {func(c *encounter.ConcentrationCheck) { c.Save.Roll = 21 }, encounter.ErrInvalidData},
+		"no dc":         {func(c *encounter.ConcentrationCheck) { c.Save.DC = 0 }, encounter.ErrInvalidData},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			enc := s.scene(everyoneStanding{})
+			held := theBardHeldOn()
+			tc.mangle(&held)
+
+			hit := theSkeletonHits()
+			hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
+			_, err := enc.Record(hit)
+			s.Require().ErrorIs(err, tc.target)
+
+			_, err = enc.RecordCast(&encounter.RecordCastInput{
+				Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
+				ConcentrationChecks: []encounter.ConcentrationCheck{held},
+			})
+			s.Require().ErrorIs(err, tc.target, "the cast path refuses the same check")
+		})
+	}
+}
+
+// TestACastReportsTheChecksItAsked — the cast door carries checks too, after
+// everything the cast delivered and before any break.
+func (s *RecordCastSuite) TestACastReportsTheChecksItAsked() {
+	enc := s.scene(everyoneStanding{})
+
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
+		Results:             []encounter.ActivationResult{psychicDamage()},
+		ConcentrationChecks: []encounter.ConcentrationCheck{theBardHeldOn()},
+	})
+	s.Require().NoError(err)
+
+	s.Equal(
+		[]string{"cast", "saved", "damage-applied", "saved"},
+		s.beatNames(s.storyEntries(enc, castBard, out.Seqs)),
+	)
+}
+
+// TestAClosedEncounterRecordsNoCheck — the same door, for the same reason.
+func (s *RecordCastSuite) TestAClosedEncounterRecordsNoCheck() {
+	enc := s.scene(everyoneStanding{})
+	_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+	s.Require().NoError(err)
+
+	hit := theSkeletonHits()
+	hit.ConcentrationChecks = []encounter.ConcentrationCheck{theBardHeldOn()}
+	_, err = enc.Record(hit)
+	s.Require().ErrorIs(err, encounter.ErrClosed)
+}
