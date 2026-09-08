@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -16,13 +15,20 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
-// FollowUpOutcome is one check a damage fact came back with, and what failing
-// it cost.
+// FollowUpOutcome is one check a damage fact came back with.
 //
 // It rides [StrikeOutcome] and [CastOutcome] rather than [Output], because the
-// follow-up happened INSIDE the interaction that caused it and the record is
-// written from the interaction's own outcome. Nothing about it reaches the
-// session as a decision: the session reads what happened and writes it down.
+// check happened INSIDE the interaction that caused it and the record is
+// written from the interaction's own outcome.
+//
+// # It records the ROLL and not what the roll ended
+//
+// What a failed check ended arrives separately, as a fact the concentrating
+// condition publishes on every one of its end paths, collected for the whole
+// Resolve and handed back as [Output.ConcentrationBreaks]. A second copy here
+// would be the dual representation this repo names as a defect: damage is one
+// of seven ways a hold ends and the only one with a roll, so the roll is what
+// this type owns.
 type FollowUpOutcome struct {
 	// SaverID and Ability are who rolled and what they rolled, carried here
 	// because [SaveOutcome] holds the roll and not the question. A saved beat
@@ -32,56 +38,27 @@ type FollowUpOutcome struct {
 
 	// Save is the check, whole — roll, total, DC and success.
 	Save SaveOutcome
-
-	// Ended is what a failed check ended, and NIL on a success. Nil is what
-	// says "nothing came off", without a second boolean to disagree with it.
-	Ended *ConcentrationEnded
 }
 
-// ConcentrationEnded is one spell that stopped being held together, and why.
+// ConditionRemoval is a contest's THIRD consequence: the hold that ends when
+// the save fails.
 //
-// Named for its only customer rather than generically, because that is what it
-// is: this slice's one consequence kind is a concentration break, and a
-// "consequence outcome" with a reason string would be a vocabulary pretending
-// to be a type. The day a second consequence exists, this is what has to widen.
-type ConcentrationEnded struct {
-	// CasterID is who was holding it.
-	CasterID string
-
-	// Spell is what they were holding, as the follow-up's cause named it.
-	Spell *core.Ref
-
-	// SpellName is what to call it, read off the hold BEFORE the strip so the
-	// record can name a spell that no longer exists on any sheet.
-	//
-	// Carried rather than looked up downstream, because by the time anybody
-	// downstream reads this the condition that knew the name is gone. A ref is
-	// not a name, and turning one into English is the rulebook's job, not the
-	// record's.
-	SpellName string
-
-	// Reason is why it ended, in the rulebook's vocabulary.
-	Reason string
-
-	// Removed are the addresses that came off with it, in publication order.
-	Removed []dnd5eEvents.ChildRef
-}
-
-// ConditionRemoval is a contest's THIRD consequence: these conditions come off
-// those sheets, and the owner that asked for the check ends with them.
+// # It names the OWNER and nothing else
 //
-// Addresses rather than conditions, for the reason [dnd5eEvents.ChildRef]
-// exists: the delivery publishes one removal FACT per address and each
-// member's own keeper honours it. Nothing here reaches across to another
-// member's sheet, because nothing in the toolkit does.
+// The children are the owner's to strip. A concentrating condition hearing a
+// removal addressed to itself takes its own children off, with the reason that
+// arrived, and publishes ONE ended fact naming every address that came off. So
+// a delivery that published the children too would strip them before the owner
+// heard anything, and the fact would come out naming none of them — the record
+// would say a spell ended and took nothing with it.
+//
+// One publisher per fact, and the owner is the publisher of its own strip.
 type ConditionRemoval struct {
-	// Addresses are the children to strip.
-	Addresses []dnd5eEvents.ChildRef
-
-	// Owner is the condition that asked for the check.
+	// Owner is the condition that asked for the check and ends with a failure.
 	Owner dnd5eEvents.ChildRef
 
-	// Reason is why, carried onto every removal fact this delivers.
+	// Reason is why, carried onto the removal fact and through it onto
+	// everything the owner strips.
 	Reason string
 }
 
@@ -152,7 +129,7 @@ func reportDamage(
 // nothing serializes it — so the check is structurally automatic, which is
 // also what RAW 2014 says it is.
 func runFollowUps(
-	ctx context.Context, cast *Participants, ups []dnd5eEvents.FollowUp, i int, roller dice.Roller,
+	ctx context.Context, ups []dnd5eEvents.FollowUp, i int, roller dice.Roller,
 	record func(FollowUpOutcome), done func(context.Context) (Step, error),
 ) (Step, error) {
 	if i >= len(ups) {
@@ -165,27 +142,13 @@ func runFollowUps(
 		return nil, err
 	}
 
-	// The name is read NOW, while the hold is still on the sheet. A failed
-	// check strips it before the outcome is built, and a record that could not
-	// say which spell ended would be a beat nobody can read.
-	name := heldSpellName(cast, up.OnFailure.Owner.MemberID)
-
 	return requestContest(in, func(inner context.Context, contest ContestOutcome) (Step, error) {
-		record(followUpOutcome(up, name, contest))
+		record(FollowUpOutcome{
+			SaverID: up.SaverID, Ability: contest.Ability, Save: contest.Save,
+		})
 
-		return runFollowUps(inner, cast, ups, i+1, roller, record, done)
+		return runFollowUps(inner, ups, i+1, roller, record, done)
 	}), nil
-}
-
-// heldSpellName is what the owner calls the spell it is holding, or empty when
-// the owner is not a concentrating condition — which is what a second
-// consequence kind would look like the day one exists.
-func heldSpellName(cast *Participants, memberID string) string {
-	if held, holding := concentrationHeldBy(cast, memberID); holding {
-		return held.SpellName
-	}
-
-	return ""
 }
 
 // followUpContest turns a follow-up into the contest that answers it.
@@ -214,11 +177,7 @@ func followUpContest(up dnd5eEvents.FollowUp, roller dice.Roller) (*ContestInput
 		SaverID: up.SaverID,
 		Cause:   up.Cause,
 		Roller:  roller,
-		Removal: &ConditionRemoval{
-			Addresses: append([]dnd5eEvents.ChildRef(nil), up.OnFailure.Remove...),
-			Owner:     up.OnFailure.Owner,
-			Reason:    up.OnFailure.Reason,
-		},
+		Removal: &ConditionRemoval{Owner: up.OnFailure.Owner, Reason: up.OnFailure.Reason},
 	}
 	if err := refuseFollowUpDamage(in); err != nil {
 		return nil, err
@@ -246,27 +205,6 @@ func refuseFollowUpDamage(in *ContestInput) error {
 	}
 
 	return nil
-}
-
-// followUpOutcome reads the check back as the record's line for it.
-func followUpOutcome(
-	up dnd5eEvents.FollowUp, spellName string, contest ContestOutcome,
-) FollowUpOutcome {
-	out := FollowUpOutcome{SaverID: up.SaverID, Ability: contest.Ability, Save: contest.Save}
-	if contest.Succeeded {
-		// A made check removes nothing, and the roll is still the record.
-		return out
-	}
-
-	out.Ended = &ConcentrationEnded{
-		CasterID:  up.OnFailure.Owner.MemberID,
-		Spell:     cloneCoreRef(up.Cause.EffectRef),
-		SpellName: spellName,
-		Reason:    up.OnFailure.Reason,
-		Removed:   append([]dnd5eEvents.ChildRef(nil), up.OnFailure.Remove...),
-	}
-
-	return out
 }
 
 // primaryDamageType is what the fact calls a blow that landed as several typed

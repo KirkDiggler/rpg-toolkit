@@ -631,27 +631,27 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		return Done{Outcome: outcome}, nil
 	}
 
-	deliverRemovals := func() (Step, error) {
+	deliverRemoval := func() (Step, error) {
 		if m.in.Removal == nil {
 			return Done{Outcome: outcome}, nil
 		}
 
-		return publishRemovals(m.in.Removal, func(stripped []ImposedEffect) (Step, error) {
-			outcome.Imposed = append(outcome.Imposed, stripped...)
+		return publishRemoval(m.in.Removal, func(stripped ImposedEffect) (Step, error) {
+			outcome.Imposed = append(outcome.Imposed, stripped)
 			return Done{Outcome: outcome}, nil
 		}), nil
 	}
 
 	deliverCondition := func() (Step, error) {
 		if !m.hasCondition {
-			return deliverRemovals()
+			return deliverRemoval()
 		}
 
 		return publishPreparedCondition(
 			m.prepared, m.cast, m.in.SaverID, conditionSourceFor(m.in.Cause),
 			func() (Step, error) {
 				outcome.Imposed = append(outcome.Imposed, m.prepared.atStake(m.in.SaverID))
-				return deliverRemovals()
+				return deliverRemoval()
 			},
 		), nil
 	}
@@ -676,7 +676,7 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 				DroppedToZero: applied.Before > 0 && applied.After == 0,
 				Cause:         m.in.Cause,
 			}, func(ctx context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
-				return runFollowUps(ctx, m.cast, ups, 0, m.rollerOrDefault(),
+				return runFollowUps(ctx, ups, 0, m.rollerOrDefault(),
 					func(followUp FollowUpOutcome) {
 						outcome.FollowUps = append(outcome.FollowUps, followUp)
 					},
@@ -699,13 +699,6 @@ func validateRemoval(removal *ConditionRemoval) error {
 	if strings.TrimSpace(removal.Reason) == "" {
 		return fmt.Errorf("%w: a contest removal must say why", ErrBadAction)
 	}
-	for _, address := range removal.Addresses {
-		if address.MemberID == "" || address.ConditionRef == "" {
-			return fmt.Errorf("%w: a contest removal address needs a member and a condition ref",
-				ErrBadAction)
-		}
-	}
-
 	return nil
 }
 
@@ -721,52 +714,6 @@ func removalEffect(address dnd5eEvents.ChildRef, reason string) ImposedEffect {
 	}
 
 	return effect
-}
-
-// publishRemovals delivers a failed check's strip: the owner's removal first,
-// then one per child address.
-//
-// # The owner goes FIRST, and the order is measured rather than stylistic
-//
-// The design's chain reads "children, then the owner last", and that is the
-// order the owner itself publishes when it ends on its own clock. Here it
-// inverts, for a reason that only exists when somebody ELSE publishes the
-// strip: the owner is subscribed to ConditionRemovedTopic on this very bus and
-// drops each child from its list as it hears it, and when the list empties it
-// ENDS ITSELF with reason "spell_ended". Publishing the children first would
-// therefore produce two owner removals with two different reasons, the wrong
-// one first. Publishing the owner first lets its keeper detach it, and the
-// children then come off with nobody left to double-end.
-//
-// It is also the order the record wants: the break beat, then one
-// condition-removed per address.
-//
-// A Gather rather than a bare publish, for the reason every other publish in
-// this package is one: the bus belongs to the driver.
-func publishRemovals(removal *ConditionRemoval, next func([]ImposedEffect) (Step, error)) Gather {
-	return Gather{
-		name: fmt.Sprintf("end %s on %s (%s)",
-			removal.Owner.ConditionRef, removal.Owner.MemberID, removal.Reason),
-		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
-			addresses := append([]dnd5eEvents.ChildRef{removal.Owner}, removal.Addresses...)
-
-			stripped := make([]ImposedEffect, 0, len(addresses))
-			for _, address := range addresses {
-				if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-					MemberID:     address.MemberID,
-					ConditionRef: address.ConditionRef,
-					Reason:       removal.Reason,
-				}); err != nil {
-					return nil, fmt.Errorf("remove %s from %q: %w",
-						address.ConditionRef, address.MemberID, err)
-				}
-				stripped = append(stripped, removalEffect(address, removal.Reason))
-			}
-
-			return next(stripped)
-		},
-	}
 }
 
 func savingThrowModifier(cast *Participants, saverID string, ability abilities.Ability) (int, error) {

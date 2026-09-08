@@ -712,7 +712,7 @@ func (m *strikeMachine) afterDamageChain(
 		DroppedToZero: applied.PreviousHP > 0 && applied.CurrentHP == 0,
 		Cause:         m.damageCause(),
 	}, func(reported context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
-		return runFollowUps(reported, m.cast, ups, 0, m.in.Roller,
+		return runFollowUps(reported, ups, 0, m.in.Roller,
 			func(followUp FollowUpOutcome) {
 				m.outcome.FollowUps = append(m.outcome.FollowUps, followUp)
 			},

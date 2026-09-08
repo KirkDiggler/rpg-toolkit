@@ -148,16 +148,6 @@ type CastOutcome struct {
 	// FollowUps are the checks this cast's own damage came back with, in
 	// append order, read off the contest that ran them.
 	FollowUps []FollowUpOutcome
-
-	// Dropped is the concentration this cast DISPLACED, or nil when it
-	// displaced none. It is a break with no check: casting a second
-	// concentration spell ends the first outright, so there is no roll to
-	// record and nothing but the fact and its reason.
-	//
-	// Separate from FollowUps because it is not one: a follow-up is a question
-	// the damage asked, and this is the cast's own doing, decided before the
-	// spell resolved.
-	Dropped *ConcentrationEnded
 }
 
 func (CastOutcome) isOutcome() {}
@@ -195,10 +185,6 @@ type castMachine struct {
 	// cast is the sheets this interaction attached, kept because the steps
 	// after the first need them and a step's closure is handed only a bus.
 	cast *Participants
-
-	// dropped is the hold this cast displaced, recorded by the drop step for
-	// the outcome the shape step builds afterwards.
-	dropped *ConcentrationEnded
 }
 
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
@@ -217,7 +203,6 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 			if shapeErr != nil {
 				return nil, shapeErr
 			}
-			outcome.Dropped = m.dropped
 			if m.concentration == nil {
 				return Done{Outcome: outcome}, nil
 			}
@@ -247,46 +232,23 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 // drop ends the concentration the caster is already holding, in favour of the
 // one about to be cast.
 //
-// It publishes exactly what a break publishes — the owner's removal and one per
-// child address — through the same helper, so "recast" and "failed the check"
-// strip a board the same way.
+// It publishes exactly what a failed check publishes — the owner's removal, and
+// only that — through the same helper, so "recast" and "failed the check" end a
+// hold the same way and the hold strips its own board either way.
 func (m *castMachine) drop(held *conditions.ConcentratingCondition, next Step) Gather {
 	removal := &ConditionRemoval{
-		Addresses: append([]dnd5eEvents.ChildRef(nil), held.Children...),
 		Owner: dnd5eEvents.ChildRef{
 			MemberID:     m.casterID,
 			ConditionRef: held.Ref().String(),
 		},
 		Reason: conditions.ConcentrationEndedRecast,
 	}
-	m.dropped = &ConcentrationEnded{
-		CasterID:  m.casterID,
-		Spell:     cloneCoreRef(spellRefOf(held)),
-		SpellName: held.SpellName,
-		Reason:    conditions.ConcentrationEndedRecast,
-		Removed:   append([]dnd5eEvents.ChildRef(nil), held.Children...),
-	}
-	dropped := publishRemovals(removal, func([]ImposedEffect) (Step, error) { return next, nil })
+	dropped := publishRemoval(removal, func(ImposedEffect) (Step, error) { return next, nil })
 
 	return Gather{
 		name: "drop concentration on " + held.SpellName,
 		run:  dropped.run,
 	}
-}
-
-// spellRefOf parses the ref string a hold carries, or nil when it cannot.
-//
-// Nil rather than an error: the record loses the ref and keeps the name, which
-// is a worse beat and not a reason to refuse a cast that is otherwise legal.
-// The hold itself refuses an unparseable ref where it matters — building the
-// cause of a check nobody could read.
-func spellRefOf(held *conditions.ConcentratingCondition) *core.Ref {
-	ref, err := core.ParseString(held.SpellRef)
-	if err != nil {
-		return nil
-	}
-
-	return ref
 }
 
 // hold puts the concentrating condition on the caster and tells it what this
