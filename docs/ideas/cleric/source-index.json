@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "notes": "Assessment evidence only. Class/subclass records cover level one, not whole-class progression. Spell entries include their printed scaling but no higher-level implementation is proposed. Complete spell-list coverage and general casting, concentration, healing and targeting rules require separate review. No runtime support attested.",
+  "records": [
+    {
+      "id": "2014-basic-cleric-level-one",
+      "name": "Cleric (level one)",
+      "kind": "class",
+      "edition": "2014",
+      "book": "Basic Rules (2014)",
+      "source": {
+        "url": "https://www.dndbeyond.com/sources/dnd/basic-rules-2014/classes",
+        "section": "Cleric: level-one table row, class features, Spellcasting, Divine Domain",
+        "checkedAt": "2026-09-08",
+        "access": "full-entry"
+      },
+      "facts": {
+        "hitPoints": "8 + CON modifier; d8 Hit Die.",
+        "proficiencies": "Light/medium armor, shields, simple weapons; WIS/CHA saves; two skills from History, Insight, Medicine, Persuasion, Religion.",
+        "equipment": "Mace or proficient warhammer; scale/leather or proficient chain mail; light crossbow plus 20 bolts or simple weapon; priest/explorer pack; shield and holy symbol; background equipment additional.",
+        "casting": "Three cantrips; two level-one slots. Prepare max(1, WIS modifier + cleric level) class-list spells of available slot levels. Casting preserves preparation; long rest restores slots and permits changing preparation, requiring prayer of one minute per spell level.",
+        "ability": "WIS; save DC 8 + proficiency + WIS modifier; attack proficiency + WIS modifier.",
+        "ritual": "Requires a prepared cleric spell with ritual tag; holy symbol can serve as focus.",
+        "domain": "Chosen at level one; domain spells always prepared, outside preparation count; off-list domain spells are cleric spells."
+      },
+      "dependencies": [
+        "class-grants",
+        "choice-validation",
+        "preparation-state",
+        "slot-spending-recovery",
+        "focus-components",
+        "ritual-casting"
+      ],
+      "unresolved": [],
+      "review": {
+        "status": "reviewed",
+        "payloadHash": "36a483d751338e8d6d12f140b5dbc3b9e9f1d68605887a760798832839f913ad"
+      }
+    },
+    {
+      "id": "2014-basic-life-level-one",
+      "name": "Life Domain (level one)",
+      "kind": "subclass",
+      "edition": "2014",
+      "book": "Basic Rules (2014)",
+      "source": {
+        "url": "https://www.dndbeyond.com/sources/dnd/basic-rules-2014/classes",
+        "section": "Life Domain: level-one spell row, Bonus Proficiency, Disciple of Life",
+        "checkedAt": "2026-09-08",
+        "access": "full-entry"
+      },
+      "facts": {
+        "grants": "Heavy armor proficiency; Bless and Cure Wounds.",
+        "healing": "Disciple of Life adds 2 + spell level when a leveled spell restores a creature's HP."
+      },
+      "dependencies": [
+        "subclass-grant-compilation",
+        "domain-preparation",
+        "spell-healing-contribution"
+      ],
+      "unresolved": [],
+      "review": {
+        "status": "reviewed",
+        "payloadHash": "269838bf4a008089ce4430ffa91baf22174a2dbb1908437e7273f9bdf43a24fb"
+      }
+    },
+    {
+      "id": "2014-basic-sacred-flame",
+      "name": "Sacred Flame",
+      "kind": "spell",
+      "edition": "2014",
+      "book": "Basic Rules (2014)",
+      "source": {
+        "url": "https://www.dndbeyond.com/spells/2236-sacred-flame",
+        "section": "Entire spell entry before Comments; page 272",
+        "checkedAt": "2026-09-08",
+        "access": "full-entry"
+      },
+      "facts": {
+        "level": 0,
+        "school": "Evocation",
+        "castingTime": "1 action",
+        "range": "60 feet",
+        "components": [
+          "V",
+          "S"
+        ],
+        "duration": "Instantaneous",
+        "target": "One visible creature in range.",
+        "resolution": "Dexterity save; failure deals 1d8 radiant damage; success avoids it. Cover gives no benefit on this save.",
+        "scaling": "2d8 at character level 5, 3d8 at 11, 4d8 at 17."
+      },
+      "dependencies": [
+        "cast-declaration",
+        "save-damage-machine",
+        "visibility-range",
+        "component-validation"
+      ],
+      "unresolved": [],
+      "review": {
+        "status": "reviewed",
+        "payloadHash": "783946a2c78023c8780d13ea8799be030866dd0bb67c361655210e80003cb190"
+      }
+    },
+    {
+      "id": "2014-basic-cure-wounds",
+      "name": "Cure Wounds",
+      "kind": "spell",
+      "edition": "2014",
+      "book": "Basic Rules (2014)",
+      "source": {
+        "url": "https://www.dndbeyond.com/spells/2056-cure-wounds",
+        "section": "Entire spell entry before Comments; page 230",
+        "checkedAt": "2026-09-08",
+        "access": "full-entry"
+      },
+      "facts": {
+        "level": 1,
+        "school": "Evocation",
+        "castingTime": "1 action",
+        "range": "Touch",
+        "components": [
+          "V",
+          "S"
+        ],
+        "duration": "Instantaneous",
+        "resolution": "Touched creature recovers 1d8 + casting ability modifier HP. No effect on undead or constructs.",
+        "scaling": "Each slot level above first adds 1d8."
+      },
+      "dependencies": [
+        "slot-spending",
+        "healing-machine",
+        "creature-type",
+        "component-validation"
+      ],
+      "unresolved": [],
+      "review": {
+        "status": "reviewed",
+        "payloadHash": "83d774dd2fc0c57d97210334f68366e298dbd29b0119eb46670871c6f61e6064"
+      }
+    },
+    {
+      "id": "2014-basic-bless",
+      "name": "Bless",
+      "kind": "spell",
+      "edition": "2014",
+      "book": "Basic Rules (2014)",
+      "source": {
+        "url": "https://www.dndbeyond.com/spells/2016-bless",
+        "section": "Entire spell entry including material footnote before Comments; page 219",
+        "checkedAt": "2026-09-08",
+        "access": "full-entry"
+      },
+      "facts": {
+        "level": 1,
+        "school": "Enchantment",
+        "castingTime": "1 action",
+        "range": "30 feet",
+        "components": [
+          "V",
+          "S",
+          "M: sprinkling of holy water"
+        ],
+        "duration": "Concentration, up to 1 minute",
+        "resolution": "Choose up to three creatures in range. Each may add a rolled d4 to its attack rolls and saving throws while the spell lasts.",
+        "scaling": "Each slot level above first permits one extra target."
+      },
+      "dependencies": [
+        "slot-spending",
+        "target-effects",
+        "concentration-lifecycle",
+        "attack-save-contribution",
+        "focus-components"
+      ],
+      "unresolved": [],
+      "review": {
+        "status": "reviewed",
+        "payloadHash": "be0e61f7f891933d3380a3e26c937d3786865dd0f8b226326352b2d589a727cc"
+      }
+    }
+  ]
+}

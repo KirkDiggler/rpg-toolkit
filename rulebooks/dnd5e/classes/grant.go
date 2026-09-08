@@ -86,10 +86,27 @@ func GetGrants(classID Class) []Grant {
 		return getRogueGrants()
 	case Bard:
 		return getBardGrants()
+	case Cleric:
+		return getClericGrants()
 	default:
 		// Unmigrated classes return nil - add them explicitly above
 		return nil
 	}
+}
+
+// getClericGrants supplies the level-one creation grants. Spellcasting and
+// domain spell/feature execution remain unsupported; these rows do not claim
+// a playable caster. The holy symbol is already a choice, leaving only the
+// shield in the fixed equipment grant.
+func getClericGrants() []Grant {
+	return []Grant{{
+		Level: 1,
+		ArmorProficiencies: []proficiencies.Armor{
+			proficiencies.ArmorLight, proficiencies.ArmorMedium, proficiencies.ArmorShields,
+		},
+		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponSimple},
+		Equipment:           []EquipmentItem{{ID: armor.Shield, Quantity: 1}},
+	}}
 }
 
 // getFighterGrants returns all grants for the Fighter class.

@@ -213,6 +213,14 @@ func (v *Validator) validateSkills(req *SkillRequirement, submissions *Submissio
 		}
 	}
 
+	if len(chosenSkills) != totalChosen {
+		return &ValidationError{
+			Category: shared.ChoiceSkills,
+			ChoiceID: req.ID,
+			Message:  "Skill choices must be distinct",
+		}
+	}
+
 	// If options are specified, validate against them
 	if len(req.Options) > 0 {
 		// Build allowed set for O(1) lookup
@@ -480,6 +488,18 @@ func (v *Validator) validateChoice(input validateChoiceInput) *ValidationError {
 					ChoiceID: input.ChoiceID,
 					Message:  message,
 				}
+			}
+
+			seen := make(map[shared.SelectionID]bool, len(sub.Values))
+			for _, value := range sub.Values {
+				if seen[value] {
+					return &ValidationError{
+						Category: input.Category,
+						ChoiceID: input.ChoiceID,
+						Message:  fmt.Sprintf("Duplicate %s choice '%s'", input.ItemName, value),
+					}
+				}
+				seen[value] = true
 			}
 
 			// Validate all chosen options are allowed

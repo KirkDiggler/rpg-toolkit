@@ -350,7 +350,7 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 	d.subclass = input.SubclassID
 
 	// Get class requirements once for all choice recording
-	requirements := choices.GetClassRequirements(d.class)
+	requirements := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
 
 	// Record skill choices
 	if len(input.Choices.Skills) > 0 {
@@ -750,6 +750,7 @@ func (d *Draft) ValidateChoices() error {
 	submissions := choices.NewSubmissions()
 	requirements := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
 	backgroundRequirements := choices.GetBackgroundRequirements(d.background)
+	d.addSubclassSubmission(submissions)
 
 	// Process stored choices into submissions
 	for _, choice := range d.choices {
@@ -875,7 +876,15 @@ func (d *Draft) ValidateChoices() error {
 	}
 
 	// Validate choices
-	result := validator.ValidateCharacterCreation(d.class, d.race, d.background, submissions)
+	result := &choices.ValidationResult{Valid: true}
+	for _, req := range []*choices.Requirements{requirements, choices.GetRaceRequirements(d.race), backgroundRequirements} {
+		if req == nil {
+			continue
+		}
+		checked := validator.Validate(req, submissions)
+		result.Valid = result.Valid && checked.Valid
+		result.Errors = append(result.Errors, checked.Errors...)
+	}
 
 	if !result.Valid {
 		// Return first error as rpgerr
@@ -885,6 +894,10 @@ func (d *Draft) ValidateChoices() error {
 				rpgerr.WithMeta("category", string(err.Category)),
 				rpgerr.WithMeta("source", string(err.Source)))
 		}
+	}
+
+	if err := d.validateLifeEquipment(); err != nil {
+		return err
 	}
 
 	// If validation passed, update progress flags
@@ -1109,6 +1122,14 @@ func (d *Draft) compileProficiencies(
 			armorProfs = append(armorProfs, grant.ArmorProficiencies...)
 			weaponProfs = append(weaponProfs, grant.WeaponProficiencies...)
 			toolProfs = append(toolProfs, grant.ToolProficiencies...)
+		}
+	}
+
+	// Life's creation proficiency is authored in the existing subclass data.
+	// Other domain grants and spell/feature behavior remain a separate migration.
+	if d.class == classes.Cleric && d.subclass == classes.LifeDomain {
+		for _, category := range choices.GetSubclassModifications(d.subclass).GrantedProficiencies.Armor {
+			armorProfs = append(armorProfs, proficiencies.Armor(category))
 		}
 	}
 
@@ -1550,7 +1571,7 @@ func (d *Draft) IsClassComplete() bool {
 	}
 
 	// Get class requirements (includes subclass if needed at level 1)
-	reqs := choices.GetClassRequirements(d.class)
+	reqs := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
 	if reqs == nil {
 		return true // No choices required
 	}
@@ -1567,7 +1588,7 @@ func (d *Draft) IsClassComplete() bool {
 	validator := choices.NewValidator()
 	result := validator.Validate(reqs, subs)
 
-	return result.Valid
+	return result.Valid && d.validateLifeEquipment() == nil
 }
 
 // IsBackgroundComplete checks if background selection and choices are complete
@@ -1721,6 +1742,7 @@ func (d *Draft) getBackgroundSubmissions() *choices.Submissions {
 // getClassSubmissions extracts class-related submissions from draft choices
 func (d *Draft) getClassSubmissions() *choices.Submissions {
 	subs := choices.NewSubmissions()
+	d.addSubclassSubmission(subs)
 
 	for _, choice := range d.choices {
 		if choice.Source == shared.SourceClass {
@@ -1821,6 +1843,20 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 	}
 
 	return subs
+}
+
+// addSubclassSubmission projects the draft's single subclass field into the
+// validator's choice representation without persisting a second selection.
+func (d *Draft) addSubclassSubmission(subs *choices.Submissions) {
+	classData := classes.GetData(d.class)
+	if classData == nil || classData.SubclassLevel != 1 || d.subclass == "" {
+		return
+	}
+	subs.Add(choices.Submission{
+		Category: shared.ChoiceClass, Source: shared.SourceClass,
+		ChoiceID: choices.ChoiceID(classData.SubclassChoiceID),
+		Values:   []shared.SelectionID{d.subclass},
+	})
 }
 
 // recordEquipmentChoices processes and records equipment selections
