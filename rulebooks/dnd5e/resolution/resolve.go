@@ -273,6 +273,14 @@ type Output struct {
 	// effect attached what, and the proof that an effect attached nothing.
 	Hooks []Registration
 
+	// ConcentrationChecks are the checks a caster MADE during this interaction
+	// — the spell they kept, and the roll that kept it.
+	//
+	// Apart from ConcentrationBreaks because the record keeps them apart: a
+	// failed check rides the break it caused, and a made one has no break to
+	// ride. Empty is the ordinary case.
+	ConcentrationChecks []encounter.ConcentrationCheck
+
 	// ConcentrationBreaks are the holds that ended during this interaction, in
 	// the order the rulebook ended them, ready for the record verb the caller
 	// already makes.
@@ -472,6 +480,10 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	if err != nil {
 		return nil, err
 	}
+	kept, err := breaks.checks(cast, outcome)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Output{
 		World:               enc.ToData(),
@@ -480,6 +492,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Outcome:             outcome,
 		Posed:               posed,
 		Hooks:               surf.registrations(),
+		ConcentrationChecks: kept,
 		ConcentrationBreaks: ended,
 	}, nil
 }

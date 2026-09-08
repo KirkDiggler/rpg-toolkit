@@ -54,6 +54,77 @@ func collectConcentrationEnds(ctx context.Context, bus events.EventBus) (*concen
 	return collector, nil
 }
 
+// checks reads the checks that were MADE back in the shape the record takes.
+//
+// A made check and a break are the two halves of one question and they are
+// recorded apart, because encounter refuses a check that changed nothing to be
+// written as a break: a failed check carries its roll on the break it caused,
+// and a made one has no break to ride.
+//
+// # Where the spell's identity comes from
+//
+// The hold itself, read off the caster's sheet — because the check was MADE, so
+// the hold is still there. The fallback covers the one case where it is not:
+// a caster who kept the spell against the damage and then lost it later in the
+// same interaction, to the fight ending or its own clock, whose identity is on
+// the ended fact that break published. If neither has it, that is a rule that
+// did not run and it is refused rather than recorded half-named.
+func (c *concentrationCollector) checks(
+	cast *Participants, outcome Outcome,
+) ([]encounter.ConcentrationCheck, error) {
+	made := make([]encounter.ConcentrationCheck, 0)
+	for _, check := range followUpsOf(outcome) {
+		if check.Save.Result == nil || !check.Save.Result.Success {
+			continue
+		}
+		spell, err := c.spellHeldBy(cast, check.SaverID)
+		if err != nil {
+			return nil, err
+		}
+		made = append(made, encounter.ConcentrationCheck{
+			Spell: spell,
+			Save:  castSave(check),
+		})
+	}
+	if len(made) == 0 {
+		return nil, nil
+	}
+
+	return made, nil
+}
+
+// spellHeldBy names the spell a caster was holding when it rolled.
+func (c *concentrationCollector) spellHeldBy(
+	cast *Participants, casterID string,
+) (encounter.SpellIdentity, error) {
+	if held, holding := concentrationHeldBy(cast, casterID); holding {
+		return encounter.SpellIdentity{Ref: held.SpellRef, Name: held.SpellName}, nil
+	}
+	for _, fact := range c.facts {
+		if fact.CasterID == casterID {
+			return encounter.SpellIdentity{Ref: fact.SpellRef, Name: fact.SpellName}, nil
+		}
+	}
+
+	return encounter.SpellIdentity{}, fmt.Errorf(
+		"%w: %q made a concentration check while holding nothing this interaction can name",
+		ErrBadStep, casterID)
+}
+
+// castSave is one roll, in the shape both halves of the record take.
+func castSave(check FollowUpOutcome) encounter.CastSave {
+	result := check.Save.Result
+
+	return encounter.CastSave{
+		Saver:     encounter.MemberID(check.SaverID),
+		Ability:   string(check.Ability),
+		Roll:      result.Roll,
+		Total:     result.Total,
+		DC:        result.DC,
+		Succeeded: result.Success,
+	}
+}
+
 // breaks reads the collected facts back in the shape the record takes.
 //
 // The SAVE is matched rather than carried, because the two halves are produced
@@ -130,16 +201,9 @@ func checkFor(
 		if check.SaverID != fact.CasterID || check.Save.Result == nil {
 			continue
 		}
-		result := check.Save.Result
+		save := castSave(check)
 
-		return &encounter.CastSave{
-			Saver:     encounter.MemberID(check.SaverID),
-			Ability:   string(check.Ability),
-			Roll:      result.Roll,
-			Total:     result.Total,
-			DC:        result.DC,
-			Succeeded: result.Success,
-		}
+		return &save
 	}
 
 	return nil

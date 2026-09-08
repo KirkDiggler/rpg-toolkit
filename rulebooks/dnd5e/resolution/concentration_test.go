@@ -278,6 +278,19 @@ func (s *ConcentrationTestSuite) TestAMadeCheckRemovesNothing() {
 	s.Equal(conditions.ConcentrationDCFloor, struck.FollowUps[0].Save.Result.DC)
 	s.Empty(out.ConcentrationBreaks, "nothing ended")
 	s.Empty(*removals, "a made check publishes no removal")
+
+	// A check that HELD is a roll the record must show, and it rides its own
+	// list: it has no break to hang on.
+	s.Require().Len(out.ConcentrationChecks, 1)
+	kept := out.ConcentrationChecks[0]
+	s.Equal(refs.Spells.TrueStrike().String(), kept.Spell.Ref)
+	s.Equal("True Strike", kept.Spell.Name)
+	s.Equal(encounter.MemberID(heroID), kept.Save.Saver, "the saver IS the caster")
+	s.Equal(string(abilities.CON), kept.Save.Ability)
+	s.Equal(18, kept.Save.Roll)
+	s.Equal(20, kept.Save.Total)
+	s.Equal(conditions.ConcentrationDCFloor, kept.Save.DC)
+	s.True(kept.Save.Succeeded, "encounter refuses a check recorded as having changed nothing")
 	s.Len(s.conditionRefs(out, heroID), 2, "the hold and its child are both still there")
 }
 
@@ -316,6 +329,7 @@ func (s *ConcentrationTestSuite) TestADefenderHoldingNothingOwesNothing() {
 	s.Empty(s.struck(out).FollowUps)
 	s.Empty(*removals)
 	s.Empty(out.ConcentrationBreaks)
+	s.Empty(out.ConcentrationChecks)
 }
 
 // A caster dropped to 0 hit points loses the spell with NO check at all — not a
@@ -342,6 +356,7 @@ func (s *ConcentrationTestSuite) TestACasterDroppedToZeroLosesTheSpellWithNoRoll
 	struck := s.struck(out)
 	s.Require().Equal(6, struck.Damage)
 	s.Empty(struck.FollowUps, "a caster at 0 does not roll to keep a spell")
+	s.Empty(out.ConcentrationChecks, "no roll means no check beat")
 
 	s.Require().Len(out.ConcentrationBreaks, 1)
 	broke := out.ConcentrationBreaks[0]
@@ -400,7 +415,10 @@ func (s *ConcentrationTestSuite) TestTwoFollowUpsAreTwoNestedChecks() {
 		claw("1d6"),
 		&sequenceRoller{singles: []int{straightRoll, 18, 18}, pair: []int{6}},
 		bus,
-		Participant{Character: fixtures.bard(1)},
+		// The bard is holding a spell of its own, which is what makes the
+		// second follow-up nameable: a check the record cannot say the spell
+		// for is refused rather than written half-named.
+		Participant{Character: s.castingBard(1, s.holding(bardID, wolfID)...)},
 	)
 	s.Require().NoError(err)
 
@@ -414,6 +432,12 @@ func (s *ConcentrationTestSuite) TestTwoFollowUpsAreTwoNestedChecks() {
 	// enough and no ordering policy is needed.
 	s.Equal(bardID, struck.FollowUps[0].SaverID)
 	s.Equal(heroID, struck.FollowUps[1].SaverID)
+
+	// Both made theirs, so both are check beats and neither is a break.
+	s.Require().Len(out.ConcentrationChecks, 2)
+	s.Equal(encounter.MemberID(bardID), out.ConcentrationChecks[0].Save.Saver)
+	s.Equal(encounter.MemberID(heroID), out.ConcentrationChecks[1].Save.Saver)
+	s.Empty(out.ConcentrationBreaks)
 }
 
 // R2's recursion bound, stated rather than discovered: a contest built from a
@@ -767,5 +791,8 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 	s.True(followUp.Save.Result.Success)
 
 	s.Empty(out.ConcentrationBreaks, "a made check ends nothing")
+	s.Require().Len(out.ConcentrationChecks, 1, "and the roll that kept it is still the record")
+	s.Equal("True Strike", out.ConcentrationChecks[0].Spell.Name)
+	s.True(out.ConcentrationChecks[0].Save.Succeeded)
 	s.Len(s.conditionRefs(out, heroID), 3, "the hold, its child, and the cantrip's rider")
 }
