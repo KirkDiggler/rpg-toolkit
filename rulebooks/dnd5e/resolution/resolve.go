@@ -250,8 +250,23 @@ type Output struct {
 	DirtyCharacters []*character.Data
 	DirtyMonsters   []*monster.Data
 
-	// Outcome is what the machine produced.
+	// Outcome is what the machine produced, and it is NIL when [Output.Posed]
+	// is set.
+	//
+	// Nil rather than a zero value, because the zero value lies: a caller
+	// switching on a StrikeOutcome would read "missed for 0 damage" off a
+	// strike that has not finished being resolved. A nil is something the
+	// caller must handle.
 	Outcome Outcome
+
+	// Posed is the question the machine stopped on, or nil when it ran to
+	// completion. The world, the dirty sheets and the hooks above are all
+	// still true — everything up to the pose happened, and the cost was
+	// charged at the door before any of it.
+	//
+	// A caller that stores [Pose.Frozen], asks its audience, and later calls
+	// Resolve again with a resumed machine finishes what this one started.
+	Posed *Pose
 
 	// Hooks is every subscription resolution granted, in the order granted.
 	// It is the pre-execution picture of what was attached, the record of which
@@ -409,7 +424,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, errors.Join(payErr, surf.teardown(ctx))
 	}
 
-	outcome, runErr := driveStep(ctx, surf, first, cast)
+	outcome, posed, runErr := driveStep(ctx, surf, first, cast)
 
 	// R5: revoke everything granted, whether or not the machine succeeded.
 	tearErr := surf.teardown(ctx)
@@ -432,6 +447,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		DirtyCharacters: dirtyCharacters(cast),
 		DirtyMonsters:   dirtyMonsters(cast),
 		Outcome:         outcome,
+		Posed:           posed,
 		Hooks:           surf.registrations(),
 	}, nil
 }

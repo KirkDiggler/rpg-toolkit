@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // Machine is a rules package's contribution to an interaction: a sequence of
@@ -26,9 +27,10 @@ type Machine interface {
 // this package and nowhere else — because every yield point is also a legal
 // suspension point, and a case nobody drives is a case nobody can resume.
 //
-// Today the set is [Gather], [Request] and [Done]. ADR-0038 also names Pose,
-// which lands with the caller that forces it — the walk machine — rather than
-// now, when it would be an enumeration against a hypothetical.
+// The set is [Gather], [Request], [Pose] and [Done]. Pose was named by
+// ADR-0038 and deliberately unbuilt until the caller that forces it arrived;
+// the strike machine is that caller (rpg-project#398 R1), and the
+// hypothetical is over.
 type Step interface {
 	isStep()
 }
@@ -81,6 +83,62 @@ func (Request) isStep() {}
 // want to assert what a machine asked for without reaching into it.
 func (r Request) Name() string { return r.name }
 
+// Ask is what a posed machine wants answered: who is being asked, what they
+// hold that could join the roll, and the numbers they need to decide with.
+//
+// It is DATA and it is the whole question. A caller renders it, stores it,
+// restarts the process, and answers it later; nothing about the machine that
+// posed it survives except [Pose.Frozen].
+type Ask struct {
+	// Audience is the member being asked.
+	Audience string
+
+	// Offer is what they hold — ref, display name and die notation, exactly as
+	// the effect that offered it named itself.
+	Offer dnd5eEvents.Offer
+
+	// Options are the answers this pose accepts, as opaque strings the caller
+	// echoes back. The machine names them so a caller cannot answer a question
+	// that was not asked.
+	Options []string
+
+	// Roll is the d20 as rolled and Total the number the offer would join.
+	// TARGET AC IS DELIBERATELY ABSENT: a player who could see it would be
+	// deciding "does this close the gap" rather than "is this worth spending",
+	// which is a different question and a different game.
+	Roll  int
+	Total int
+}
+
+// Pose is a machine stopping mid-run to be answered from outside the process.
+//
+// It is the suspension every other step's doc has been pointing at. [Request]
+// runs its sub-machine to Done inline because the answer is available in the
+// same call; this one's answer is a person, so the machine's state leaves as
+// bytes and comes back as a new machine.
+//
+// # Frozen is opaque on purpose
+//
+// The bytes are authored by the machine and never read by this package.
+// Resolution drives steps over data and holds no rulebook, so a typed
+// frozen-strike field here would put the dnd5e attack inside the driver. What
+// a caller does with them is store them and hand them back.
+//
+// # One pose per run
+//
+// A machine that poses twice in one call is not designed here and is not
+// refused here: the driver returns the FIRST pose and stops, and the second
+// simply never happens because the run is over.
+type Pose struct {
+	// Ask is the question.
+	Ask Ask
+
+	// Frozen is the machine's own state, serialized by the machine.
+	Frozen []byte
+}
+
+func (Pose) isStep() {}
+
 // Done ends a machine and carries what the interaction produced.
 type Done struct {
 	Outcome Outcome
@@ -100,21 +158,47 @@ func start(ctx context.Context, machine Machine, cast *Participants) (Step, erro
 }
 
 // drive runs a machine to completion on the surface's bus.
+//
+// It is the SUB-MACHINE entry — [Request] is its only caller — and it returns
+// no pose, because a requested machine that suspended would strand the machine
+// that requested it: the requester's continuation is a Go closure on this
+// stack, and nothing serializes it. driveStep refuses that case by name rather
+// than dropping the pose.
 func drive(ctx context.Context, bus events.EventBus, machine Machine, cast *Participants) (Outcome, error) {
 	first, err := start(ctx, machine, cast)
 	if err != nil {
 		return nil, err
 	}
-	return driveStep(ctx, bus, first, cast)
+	outcome, posed, err := driveStep(ctx, bus, first, cast)
+	if err != nil {
+		return nil, err
+	}
+	if posed != nil {
+		return nil, fmt.Errorf("%w: a requested machine posed, and a requester cannot be suspended", ErrBadStep)
+	}
+	return outcome, nil
 }
 
 // driveStep continues from an already preflighted first step.
-func driveStep(ctx context.Context, bus events.EventBus, step Step, cast *Participants) (Outcome, error) {
+//
+// It returns EITHER an outcome or a pose, never both: a posed machine has not
+// finished, and a zero-valued outcome beside a pose would read as an
+// interaction that produced nothing rather than one that is waiting.
+func driveStep(
+	ctx context.Context, bus events.EventBus, step Step, cast *Participants,
+) (Outcome, *Pose, error) {
 	var err error
 	for {
 		switch s := step.(type) {
 		case Done:
-			return s.Outcome, nil
+			return s.Outcome, nil, nil
+
+		case Pose:
+			// Returned rather than looped on. The answer is not in this
+			// process, so there is nothing to continue with — the caller
+			// stores Frozen, asks somebody, and starts a resumed machine.
+			posed := s
+			return nil, &posed, nil
 
 		case Request:
 			if s.machine == nil || s.next == nil {
@@ -122,19 +206,19 @@ func driveStep(ctx context.Context, bus events.EventBus, step Step, cast *Partic
 				// constructors. Refusing beats running nothing and feeding the
 				// requester a nil outcome, which would look exactly like an
 				// interaction that produced nothing to say.
-				return nil, fmt.Errorf("%w: Request built outside this package", ErrBadStep)
+				return nil, nil, fmt.Errorf("%w: Request built outside this package", ErrBadStep)
 			}
 
 			// The same bus and the same cast: a requested interaction happens
 			// inside this one, not beside it.
 			out, runErr := drive(ctx, bus, s.machine, cast)
 			if runErr != nil {
-				return nil, fmt.Errorf("requested %s: %w", s.name, runErr)
+				return nil, nil, fmt.Errorf("requested %s: %w", s.name, runErr)
 			}
 
 			step, err = s.next(ctx, out)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 		case Gather:
@@ -143,12 +227,12 @@ func driveStep(ctx context.Context, bus events.EventBus, step Step, cast *Partic
 				// Refusing is better than folding nothing and calling it a
 				// result, which would look exactly like a chain no one
 				// subscribed to.
-				return nil, fmt.Errorf("%w: Gather built outside this package", ErrBadStep)
+				return nil, nil, fmt.Errorf("%w: Gather built outside this package", ErrBadStep)
 			}
 
 			step, err = s.run(ctx, bus)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 		default:
@@ -157,7 +241,7 @@ func driveStep(ctx context.Context, bus events.EventBus, step Step, cast *Partic
 			// (value receiver on isStep) but the vocabulary is the value
 			// forms, one spelling per case. %T turns that mistake from a
 			// riddle into a one-character diff.
-			return nil, fmt.Errorf("%w: %T", ErrBadStep, step)
+			return nil, nil, fmt.Errorf("%w: %T", ErrBadStep, step)
 		}
 	}
 }
