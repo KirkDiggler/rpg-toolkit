@@ -267,6 +267,13 @@ func kindFor(beat string) EventKind {
 		return EventCast
 	case "saved":
 		return EventSaved
+	// The break beat, and it crosses unchanged for the same reason the two
+	// above do: "concentration_ended" is the composition's own word for what
+	// it recorded. It rides in on whatever interaction ended the spell rather
+	// than arriving through a verb of its own, so there is no third string
+	// here to translate.
+	case "concentration_ended":
+		return EventConcentrationEnded
 	// The third outcome beat, and the one nobody pushed. "down" is an
 	// OutcomeKind like the two above, but no caller can hand it to Record —
 	// the composition refuses that deliberately (rpg-toolkit#1077) and writes
@@ -477,6 +484,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return castEventBody(payload)
 	case EventSaved:
 		return savedEventBody(payload)
+	case EventConcentrationEnded:
+		return concentrationEndedEventBody(payload)
 	case EventActivationResult:
 		return activationResultBody(payload)
 	case EventDowned:
@@ -641,6 +650,49 @@ func savedEventBody(payload []byte) EventBody {
 		Saver: p.Saver, Ability: p.Ability,
 		Roll: p.Roll, Total: p.Total, DC: p.DC, Succeeded: p.Succeeded,
 		Source: SpellRef{Ref: p.Source.Ref, Name: p.Source.Name},
+	}
+}
+
+// concentrationEndedEventBody reads the composition's break beat.
+//
+// EVERY KEY IS REQUIRED AND PRESENCE IS CHECKED RATHER THAN VALUE, the same
+// strictness savedEventBody keeps above. A break with no caster is a beat
+// about nobody, one with no spell cannot say what was lost, and one with no
+// reason is the exact thing a dedicated break kind exists to prevent — the
+// composition refuses all three on the way in, so a payload missing one is not
+// an older shape to read leniently but a beat this build did not write.
+//
+// NOTHING IS RECOMPUTED AND NOTHING IS INFERRED. The check that was failed and
+// the conditions that were stripped are their own beats in the same train, and
+// a decoder that reached for them here would be assembling a story the
+// composition already told in order.
+func concentrationEndedEventBody(payload []byte) EventBody {
+	outer, ok := strictJSONObject(payload)
+	if !ok {
+		return nil
+	}
+	for _, key := range []string{"caster", "spell", "reason"} {
+		if value, present := outer[key]; !present || isJSONNull(value) {
+			return nil
+		}
+	}
+
+	var p struct {
+		Caster string `json:"caster"`
+		Spell  struct {
+			Ref  string `json:"ref"`
+			Name string `json:"name"`
+		} `json:"spell"`
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(payload, &p) != nil ||
+		p.Caster == "" || p.Spell.Ref == "" || p.Spell.Name == "" || p.Reason == "" {
+		return nil
+	}
+	return ConcentrationEndedBody{
+		Caster: p.Caster,
+		Spell:  SpellRef{Ref: p.Spell.Ref, Name: p.Spell.Name},
+		Reason: p.Reason,
 	}
 }
 

@@ -212,5 +212,15 @@ func recordStrike(
 		recorded.AdvantageSources = recordAttackModifierSources(struck.Folded.AdvantageSources)
 		recorded.DisadvantageSources = recordAttackModifierSources(struck.Folded.DisadvantageSources)
 	}
+
+	// The break rides the blow, on EVERY strike path — a player's swing, a
+	// monster's, and a resumed one — because it is written here rather than at
+	// the three call sites. A path that assembled its own record would be a
+	// path where a defender's concentration silently survives.
+	//
+	// Set outside the Hit arm on purpose: whether a miss can end a
+	// concentration is a rulebook fact, and resolution answers it by handing
+	// over an empty list. A guard here would be this seam deciding it.
+	recorded.ConcentrationBreaks = concentrationBreaks(struck.FollowUps)
 	return recorded
 }

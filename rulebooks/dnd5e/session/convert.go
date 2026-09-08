@@ -276,6 +276,12 @@ func projectMember(in encounter.Member) Member {
 }
 
 func projectRosterCharacter(member encounter.Member, data *character.Data, loaded *character.Character) PublicMember {
+	// THE CASTER ANSWERS, and this seam does not go looking. Concentration is
+	// a fact the sheet holds about itself, so it is asked rather than derived
+	// from a scan of conditions here — the second reader of that list would be
+	// free to disagree with the first about what counts (design R11).
+	_, concentrating := loaded.Concentration()
+
 	return PublicMember{
 		ID:            string(member.ID),
 		Kind:          KindPlayer,
@@ -288,6 +294,11 @@ func projectRosterCharacter(member encounter.Member, data *character.Data, loade
 		// than the sheet — a faction is a fact about the run, not the
 		// character.
 		Faction: member.Faction,
+
+		// R11's one bool. The view it comes with — which spell, how many
+		// effects — stays behind: the roster answers what the table can see,
+		// not what the caster is holding.
+		Concentrating: concentrating,
 	}
 }
 

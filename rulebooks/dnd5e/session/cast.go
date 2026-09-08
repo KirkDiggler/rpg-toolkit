@@ -319,7 +319,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", translateResolution(err))
 	}
 
-	save, results, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
+	save, results, cast, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -347,6 +347,9 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		},
 		Save:    save,
 		Results: results,
+		// Two ways a cast ends a concentration, in the order they happened:
+		// the one this cast displaced, then whatever its own damage broke.
+		ConcentrationBreaks: castConcentrationBreaks(cast),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))
