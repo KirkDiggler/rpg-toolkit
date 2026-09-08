@@ -67,6 +67,34 @@ func (s *CastProfileSuite) TestAGatedCastValidates() {
 	s.Require().NoError(gatedProfile().Validate())
 }
 
+// A pointer rather than a bool beside a duration: nil is "no concentration",
+// and there is no state where a declared duration means nothing.
+func (s *CastProfileSuite) TestAConcentrationCastValidates() {
+	profile := gatelessProfile()
+	profile.Concentration = &actions.CastConcentration{TurnEnds: 2}
+
+	s.Require().NoError(profile.Validate())
+	s.Nil(gatelessProfile().Concentration, "and a profile that declares none carries nothing")
+}
+
+func (s *CastProfileSuite) TestItRefusesAConcentrationThatEndsBeforeItBegins() {
+	profile := gatelessProfile()
+	profile.Concentration = &actions.CastConcentration{}
+
+	s.Require().ErrorContains(profile.Validate(), "at least one turn end")
+}
+
+func (s *CastProfileSuite) TestCloningACastProfileCopiesItsConcentration() {
+	profile := gatelessProfile()
+	profile.Concentration = &actions.CastConcentration{TurnEnds: 2}
+
+	clone := profile.Clone()
+	clone.Concentration.TurnEnds = 99
+
+	s.Require().NotNil(profile.Concentration)
+	s.Equal(2, profile.Concentration.TurnEnds, "a clone that aliased the duration would rewrite the original")
+}
+
 func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 	s.Run("no range", func() {
 		profile := gatelessProfile()

@@ -83,6 +83,27 @@ type CastProfile struct {
 
 	// Effects are the conditions the cast delivers when it lands.
 	Effects []CastEffect `json:"effects,omitempty"`
+
+	// Concentration is how long the caster must hold this cast together, or
+	// nil for a cast that needs no concentration at all.
+	//
+	// A POINTER RATHER THAN A BOOL, because a bool beside a duration that
+	// means nothing when the bool is false is a zero value that lies. Nil is
+	// "no concentration"; non-nil is the whole answer.
+	Concentration *CastConcentration `json:"concentration,omitempty"`
+}
+
+// CastConcentration is what a concentration cast declares: how long the caster
+// holds it, if nothing takes it away first.
+//
+// ONE CLOCK, ON THE OWNER. The effects a concentration spell leaves behind do
+// not each count their own turn ends — the concentrating condition counts, and
+// they end when it does. Two clocks would be two answers to one question.
+type CastConcentration struct {
+	// TurnEnds is how many of the caster's turn ends the spell survives.
+	// Turn ends rather than minutes because turn end is the only duration
+	// boundary this stack has.
+	TurnEnds int `json:"turn_ends"`
 }
 
 // CastEffect declares one condition a cast delivers, and who receives it.
@@ -158,6 +179,14 @@ func (p CastProfile) Validate() error {
 		}
 	}
 
+	if p.Concentration != nil && p.Concentration.TurnEnds <= 0 {
+		// A declared concentration that expires before it begins is an
+		// affordance with nothing behind it: the caster would hold a spell
+		// the clock had already ended. Nil says "no concentration"; this
+		// field is only reached by a profile that said there is some.
+		return fmt.Errorf("cast concentration must last at least one turn end")
+	}
+
 	return nil
 }
 
@@ -182,6 +211,10 @@ func (p CastProfile) Clone() CastProfile {
 		for index, effect := range p.Effects {
 			clone.Effects[index] = effect.Clone()
 		}
+	}
+	if p.Concentration != nil {
+		concentration := *p.Concentration
+		clone.Concentration = &concentration
 	}
 	return clone
 }

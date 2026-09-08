@@ -1060,6 +1060,11 @@ var (
 	// DamageReceivedTopic provides typed pub/sub for damage received events
 	DamageReceivedTopic = events.DefineTypedTopic[DamageReceivedEvent]("dnd5e.combat.damage.received")
 
+	// DamageTakenTopic provides typed pub/sub for the post-apply damage fact
+	// and its follow-up return channel. Over a POINTER, deliberately: see
+	// [DamageTakenEvent].
+	DamageTakenTopic = events.DefineTypedTopic[*DamageTakenEvent]("dnd5e.combat.damage.taken")
+
 	// HealingReceivedTopic provides typed pub/sub for healing received events
 	HealingReceivedTopic = events.DefineTypedTopic[HealingReceivedEvent]("dnd5e.combat.healing.received")
 

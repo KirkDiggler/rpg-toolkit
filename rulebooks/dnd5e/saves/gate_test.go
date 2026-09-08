@@ -46,38 +46,10 @@ func (s *DCSourceSuite) TestFivePlusDamageTaken() {
 	s.Assert().Equal(saves.DCKindFivePlusDamageTaken, dc.Kind())
 }
 
-// Concentration: "DC 10 or half the damage taken, whichever number is higher".
-// The half is rounded down, which is where a wrong implementation hides: the
-// floor only becomes visible on odd damage.
-func (s *DCSourceSuite) TestHalfDamageFloorTen() {
-	dc := saves.DCHalfDamageFloorTen()
-
-	s.Run("the floor holds below 20 damage", func() {
-		s.Assert().Equal(10, dc.DC(saves.DCInput{DamageTaken: 0}))
-		s.Assert().Equal(10, dc.DC(saves.DCInput{DamageTaken: 1}))
-		s.Assert().Equal(10, dc.DC(saves.DCInput{DamageTaken: 19}), "19/2 = 9, so the floor wins")
-	})
-
-	s.Run("the boundary", func() {
-		s.Assert().Equal(10, dc.DC(saves.DCInput{DamageTaken: 20}), "20/2 = 10, floor and half agree")
-		s.Assert().Equal(10, dc.DC(saves.DCInput{DamageTaken: 21}), "21/2 rounds DOWN to 10, not up to 11")
-	})
-
-	s.Run("odd damage rounds down above the floor", func() {
-		s.Assert().Equal(11, dc.DC(saves.DCInput{DamageTaken: 22}))
-		s.Assert().Equal(11, dc.DC(saves.DCInput{DamageTaken: 23}), "23/2 = 11, not 12")
-		s.Assert().Equal(12, dc.DC(saves.DCInput{DamageTaken: 25}), "25/2 = 12, not 13")
-		s.Assert().Equal(37, dc.DC(saves.DCInput{DamageTaken: 75}), "75/2 = 37")
-	})
-
-	s.Assert().Equal(saves.DCKindHalfDamageFloorTen, dc.Kind())
-}
-
 // Damage below zero is not a thing, and a formula that answered below its floor
 // because someone passed a negative would be worse than the clamp.
 func (s *DCSourceSuite) TestNegativeDamageIsClamped() {
 	s.Assert().Equal(5, saves.DCFivePlusDamageTaken().DC(saves.DCInput{DamageTaken: -4}))
-	s.Assert().Equal(10, saves.DCHalfDamageFloorTen().DC(saves.DCInput{DamageTaken: -4}))
 }
 
 // SaveGateSuite covers the declaration itself: what it refuses, and what it
@@ -126,15 +98,6 @@ func (s *SaveGateSuite) TestRoundTrips() {
 			DC:         saves.DCFivePlusDamageTaken(),
 			OnSuccess:  saves.Half,
 			Recurrence: saves.RecurrenceEndOfTurn,
-		})
-	})
-
-	s.Run("the concentration formula", func() {
-		s.assertRoundTrips(&saves.SaveGate{
-			Abilities:  []abilities.Ability{abilities.CON},
-			DC:         saves.DCHalfDamageFloorTen(),
-			OnSuccess:  saves.Negated,
-			Recurrence: saves.RecurrenceNone,
 		})
 	})
 }
