@@ -314,6 +314,11 @@ func kindFor(beat string) EventKind {
 	// instead of quietly producing a beat nobody renders.
 	case encounter.BeatWindowOpened:
 		return EventWindowOpened
+	// A roll stopping to ask its own roller. The composition exports this one
+	// by name for the same reason it exports the other, so a rename fails to
+	// compile here rather than producing a beat nobody renders.
+	case encounter.BeatRollWindowOpened:
+		return EventRollWindowOpened
 	default:
 		return EventUnknown
 	}
@@ -434,6 +439,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return ArrivedBody{ID: p.ID, Kind: PlacementKind(p.Kind), Cell: p.Cell}
 	case EventWindowOpened:
 		return windowOpenedBody(payload)
+	case EventRollWindowOpened:
+		return rollWindowOpenedBody(payload)
 	case EventStruck:
 		return structBody(payload, true)
 	case EventMissed:
@@ -1250,6 +1257,33 @@ func windowOpenedBody(payload []byte) EventBody {
 		body.Audience = append(body.Audience, w.Audience)
 	}
 	return body
+}
+
+// rollWindowOpenedBody decodes the composition's roll_window_opened beat.
+//
+// It declines to type rather than guessing at any missing half: an audience,
+// an offer that names itself completely, and a d20 that reads 1-20. A beat
+// that fails any of those is still DELIVERED as a sequence its recipient can
+// count — the same rule every other body here keeps — it simply arrives
+// without a typed body rather than with an invented one.
+func rollWindowOpenedBody(payload []byte) EventBody {
+	var p struct {
+		Audience string        `json:"audience"`
+		Offer    *beatReaction `json:"offer"`
+		Roll     int           `json:"roll"`
+		Total    int           `json:"total"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Audience == "" {
+		return nil
+	}
+	offer, named := p.Offer.toRef()
+	if !named || offer == nil {
+		return nil
+	}
+	if p.Roll < 1 || p.Roll > 20 {
+		return nil
+	}
+	return RollWindowOpenedBody{Audience: p.Audience, Offer: *offer, Roll: p.Roll, Total: p.Total}
 }
 
 // structBody decodes a struck or missed outcome beat's shared fields.

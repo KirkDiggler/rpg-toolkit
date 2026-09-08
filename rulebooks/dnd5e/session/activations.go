@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -46,6 +47,7 @@ import (
 // about Dodge on the turns it could Dodge would have a menu that changes size
 // as the turn goes on.
 func (m *Manager) buildActivationOffers(
+	ctx context.Context,
 	enc *encounter.Encounter,
 	standing encounter.Standing,
 	session, member string,
@@ -91,12 +93,13 @@ func (m *Manager) buildActivationOffers(
 			declaration.Why = &why
 		}
 
-		// THE ONE THAT TAKES SOMEBODY. Help is the only level-1 activation
-		// with TargetMember, and a declaration that says it needs a target
-		// while carrying no candidate universe is a control nothing can
+		// THE ONES THAT TAKE SOMEBODY. A declaration that says it needs a
+		// target while carrying no candidate universe is a control nothing can
 		// drive — the client would arm targeting against an empty list.
 		if declaration.TargetKind == TargetMember {
-			allies, err := helpCandidates(enc, standing, roster, positions, holdings, member)
+			allies, err := m.allyCandidatesFor(
+				ctx, ability.Ref, enc, standing, roster, positions, holdings, member,
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -306,13 +309,33 @@ func helpCandidates(
 	holdings []intel.Holding,
 	member string,
 ) ([]targetPreflight, error) {
+	return allyCandidates(enc, standing, roster, positions, holdings, member, helpReachFeet, "help")
+}
+
+// allyCandidates is helpCandidates' body, over a reach the caller names.
+//
+// EXTRACTED RATHER THAN COPIED because everything above the reach is the same
+// rule — same holdings, same kind predicate, same standing consult, same
+// keep-the-row-with-a-reason answer — and two copies of it would be two places
+// for "who counts as an ally" to drift. The reach is the only thing an ability
+// gets to say for itself; the label is what its refusals are attributed to.
+func allyCandidates(
+	enc *encounter.Encounter,
+	standing encounter.Standing,
+	roster []encounter.Member,
+	positions map[string]spatial.Position,
+	holdings []intel.Holding,
+	member string,
+	reachFeet int,
+	label string,
+) ([]targetPreflight, error) {
 	kinds := make(map[string]encounter.MemberKind, len(roster))
 	for _, r := range roster {
 		kinds[string(r.ID)] = r.Kind
 	}
 	own, ok := kinds[member]
 	if !ok {
-		return nil, fmt.Errorf("help offers: actor %q is not in the roster", member)
+		return nil, fmt.Errorf("%s offers: actor %q is not in the roster", label, member)
 	}
 
 	from, ok := positions[member]
@@ -320,7 +343,7 @@ func helpCandidates(
 		// The same fail-closed law buildTargetPreflight keeps: an actor the
 		// encounter no longer places is an internal inconsistency, not a
 		// shorter candidate list.
-		return nil, fmt.Errorf("help offers: actor %q has no position in the roster", member)
+		return nil, fmt.Errorf("%s offers: actor %q has no position in the roster", label, member)
 	}
 
 	seen := make([]string, 0, len(holdings))
@@ -342,20 +365,20 @@ func helpCandidates(
 	}
 	down, err := standingSet(standing, ids)
 	if err != nil {
-		return nil, fmt.Errorf("help offers: %w", err)
+		return nil, fmt.Errorf("%s offers: %w", label, err)
 	}
 
 	out := make([]targetPreflight, 0, len(seen))
 	for _, id := range seen {
 		to, ok := positions[id]
 		if !ok {
-			return nil, fmt.Errorf("help offers: live candidate %q has no position in the roster", id)
+			return nil, fmt.Errorf("%s offers: live candidate %q has no position in the roster", label, id)
 		}
 		switch {
 		case down[id]:
 			why := Shortfall{Reason: ShortfallDowned, Text: "ally is down"}
 			out = append(out, targetPreflight{member: id, available: false, why: &why})
-		case inRange(enc, from, to, helpReachFeet):
+		case inRange(enc, from, to, reachFeet):
 			out = append(out, targetPreflight{member: id, available: true})
 		default:
 			why := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "ally out of reach"}

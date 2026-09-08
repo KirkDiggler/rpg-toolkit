@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -58,6 +60,17 @@ type AttackOutput struct {
 
 	// Damage is what was dealt. Zero on a miss.
 	Damage int `json:"damage,omitempty"`
+
+	// Paused reports that the swing STOPPED to ask the attacker something and
+	// has not landed yet. When it is true, Hit, Critical, Damage and Against
+	// are not answers — Against is zero because the AC has deliberately not
+	// been shown, and Hit is false because nothing has hit yet.
+	//
+	// Roll and Total are the two numbers that ARE true: the d20 as rolled and
+	// the total before whatever is being offered joins it. Answering the
+	// window with [Manager.React] finishes the attack and writes the beat
+	// this call did not.
+	Paused bool `json:"paused,omitempty"`
 
 	// Seq is the story sequence of the recorded beat.
 	Seq uint64 `json:"seq"`
@@ -324,6 +337,16 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", translated)
 	}
 
+	// THE SWING STOPPED TO ASK. Something the attacker holds could join the
+	// roll, and the machine posed rather than finishing. Everything up to the
+	// d20 happened — the cost was charged at the door, the chain folded, the
+	// die fell — so this commits that half, poses the window, and returns
+	// paused. No struck beat is written: there is no outcome yet, and a beat
+	// saying otherwise would be the story getting ahead of the fight.
+	if out.Posed != nil {
+		return m.poseAttackWindow(ctx, scope, in, out, definition, presentationID)
+	}
+
 	struck, ok := out.Outcome.(resolution.StrikeOutcome)
 	if !ok {
 		return nil, fmt.Errorf("attack: %w: strike produced %T", ErrInvalidWorld, out.Outcome)
@@ -362,6 +385,116 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Delivery: delivery,
 		Attack:   attackRefFor(definition),
 
+		PresentationID: presentationID,
+	}, nil
+}
+
+// poseAttackWindow commits the half of the swing that happened and asks the
+// attacker the question the machine stopped on.
+//
+// # It writes the same three things every write verb writes
+//
+// The adopted world, the dirty sheets, and a beat — in that order, exactly as
+// the finished path does. What is different is WHICH beat: a roll-window beat
+// carrying the d20 and the total, rather than a struck or missed one, because
+// the outcome is not decided yet.
+//
+// # The encounter is not paused, and must not be
+//
+// Its PausedTurn is a driven-turn remainder with a path in it, and a player's
+// own attack has neither. So this pause lives entirely in the interrupt ledger
+// this package already persists, [Encounter.Paused] stays false, and React's
+// shipped guard — resume the turn only when the encounter is paused — is what
+// makes that correct with no change.
+func (m *Manager) poseAttackWindow(
+	ctx context.Context, scope *writeScope, in *AttackInput, out *resolution.Output,
+	definition combatActions.Definition, presentationID string,
+) (*AttackOutput, error) {
+	ask := out.Posed.Ask
+	if ask.Audience != in.Attacker {
+		// R5, checked on this side of the seam too: this build poses to the
+		// roller and to nobody else, and a window posed to anyone else has no
+		// freeze designed for it. Refusing beats storing a question nothing
+		// can answer.
+		return nil, fmt.Errorf("attack: %w: the machine asked %q on %q's roll",
+			ErrInvalidWorld, ask.Audience, in.Attacker)
+	}
+	if ask.Offer.Ref == nil || ask.Offer.Name == "" {
+		return nil, fmt.Errorf("attack: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
+	}
+
+	if err := m.adopt(scope, out.World); err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+	if err := m.saveDirty(ctx, scope, out); err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+
+	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
+	payload, err := marshalPostRollPayload(postRollWindowPayload{
+		Audience:       ask.Audience,
+		Target:         in.Target,
+		Attack:         attackRefFor(definition),
+		PresentationID: presentationID,
+		Offer:          offer,
+		Roll:           ask.Roll,
+		Total:          ask.Total,
+		Frozen:         out.Posed.Frozen,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w: %v", ErrInvalidSession, err)
+	}
+
+	// THE TWO ANSWERS ARE THIS SEAM'S, and the machine's own words are
+	// checked against them rather than copied. Resolution asks "spend or
+	// keep"; this seam has said "strike or hold" since the first reaction
+	// window shipped, and a client that learned two vocabularies for take and
+	// decline would be a client with two ways to say one thing. A machine that
+	// posed a different number of answers is refused here rather than having
+	// one of them quietly dropped — that is the third reaction's design
+	// arriving, and it lands with the window owning its own option strings on
+	// the wire.
+	if len(ask.Options) != 2 {
+		return nil, fmt.Errorf("%w: the machine posed %d answers and this seam poses two",
+			ErrInvalidWorld, len(ask.Options))
+	}
+	if _, err := scope.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(ask.Audience),
+		Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
+		Payload:  payload,
+		At:       scope.baseline,
+	}); err != nil {
+		return nil, fmt.Errorf("attack: %w: %v", ErrInvalidSession, err)
+	}
+	scope.data.Windows = scope.ledger.ToData()
+	scope.touched = true
+
+	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
+		Audience: encounter.MemberID(ask.Audience),
+		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
+		Roll:     ask.Roll,
+		Total:    ask.Total,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
+	}
+
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+
+	// The numbers so far, and Paused to say they are not final. The attacker
+	// is the one member who learns this synchronously; everybody else reads
+	// the beat.
+	return &AttackOutput{
+		Paused:         true,
+		Roll:           ask.Roll,
+		Total:          ask.Total,
+		Seq:            scope.deliveredSeq(in.Attacker, recorded.Seq),
+		Saved:          report,
+		Delivery:       delivery,
+		Attack:         attackRefFor(definition),
 		PresentationID: presentationID,
 	}, nil
 }
@@ -468,34 +601,7 @@ func recordFor(
 	in *AttackInput, struck resolution.StrikeOutcome, definition combatActions.Definition,
 	presentationID string,
 ) *encounter.RecordInput {
-	values := map[encounter.OutcomeValue]int{
-		encounter.ValueRoll:    struck.Roll,
-		encounter.ValueTotal:   struck.Total,
-		encounter.ValueAgainst: struck.TargetAC,
-	}
-	kind := encounter.OutcomeMissed
-	if struck.Hit {
-		kind = encounter.OutcomeStruck
-		values[encounter.ValueAmount] = struck.Damage
-	}
-
-	ref := attackRefFor(definition)
-	recorded := &encounter.RecordInput{
-		Kind:     kind,
-		Actor:    encounter.MemberID(in.Attacker),
-		Targets:  []encounter.MemberID{encounter.MemberID(in.Target)},
-		Values:   values,
-		Critical: struck.Critical,
-		Attack:   &encounter.AttackIdentity{Ref: ref.Ref, Name: ref.Name, DamageType: string(ref.DamageType)},
-
-		PresentationID: presentationID,
-	}
-	if struck.Hit {
-		recorded.DamageComponents = recordDamageComponents(struck.DamageComponents)
-		recorded.AdvantageSources = recordAttackModifierSources(struck.Folded.AdvantageSources)
-		recorded.DisadvantageSources = recordAttackModifierSources(struck.Folded.DisadvantageSources)
-	}
-	return recorded
+	return recordStrike(in.Attacker, in.Target, struck, attackRefFor(definition), presentationID)
 }
 
 // rollSourceFor projects the rulebook's sourced roll identity onto the
