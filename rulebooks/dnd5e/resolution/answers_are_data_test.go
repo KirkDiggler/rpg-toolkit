@@ -94,6 +94,12 @@ var allowedInterfaceFields = map[string]string{
 	"DirtyMonsters.Actions.Attack.OnHit.Save.DC":   "sealed in saves; reached through a record, not an answer",
 	"DirtyCharacters.Actions.Attack.OnHit.Save.DC": "sealed in saves; reached through a record, not an answer",
 
+	// A cast's gate holds the same sealed DC, reached the same way: the cast
+	// profile is a second arm on the same Definition, so a definition sitting
+	// on a dirty sheet now reaches it through Cast as well as through Attack.
+	"DirtyMonsters.Actions.Cast.Save.DC":   "sealed in saves; reached through a record, not an answer",
+	"DirtyCharacters.Actions.Cast.Save.DC": "sealed in saves; reached through a record, not an answer",
+
 	// Resolve's outcome is a SEALED interface: isOutcome() is unexported, so
 	// only this package can implement it. That does not make it invisible, it
 	// makes it enumerable — every implementor is walked by
@@ -145,6 +151,7 @@ var outcomeTypes = []reflect.Type{
 	reflect.TypeOf(SaveOutcome{}),
 	reflect.TypeOf(ActivationOutcome{}),
 	reflect.TypeOf(BoundaryOutcome{}),
+	reflect.TypeOf(CastOutcome{}),
 	reflect.TypeOf(ContestOutcome{}),
 	reflect.TypeOf(StrikeOutcome{}),
 }

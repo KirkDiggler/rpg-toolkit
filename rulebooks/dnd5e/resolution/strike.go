@@ -741,12 +741,15 @@ func (m *strikeMachine) nextCondition(index int) (Step, error) {
 	prepared := m.prepared[index]
 	application := prepared.declaration
 	if application.Save == nil {
-		return publishPreparedCondition(prepared, m.cast, m.in.TargetID, func() (Step, error) {
-			m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
-				Ref: application.Ref, Applied: true,
-			})
-			return m.nextCondition(index + 1)
-		}), nil
+		return publishPreparedCondition(
+			prepared, m.cast, m.in.TargetID, dnd5eEvents.ConditionSourceDamage,
+			func() (Step, error) {
+				m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
+					Ref: application.Ref, Applied: true,
+				})
+				return m.nextCondition(index + 1)
+			},
+		), nil
 	}
 
 	return requestContest(&ContestInput{
