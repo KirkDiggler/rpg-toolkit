@@ -441,6 +441,9 @@ func (s *ContestDamageTestSuite) TestACastWithNoActionLeftIsRefusedAndChargesNot
 
 // A contest that would deliver nothing is refused rather than run: a save the
 // player rolls for no consequence would look exactly like one that worked.
+//
+// "Neither half" is now neither of three: a removal counts as a consequence,
+// which is the same widening this slice's damage made.
 func (s *ContestDamageTestSuite) TestAContestDeclaringNeitherHalfIsRefused() {
 	_, err := s.resolve(s.saver(14), NewContest(&ContestInput{
 		Gate:    mockeryGate(),
@@ -449,7 +452,7 @@ func (s *ContestDamageTestSuite) TestAContestDeclaringNeitherHalfIsRefused() {
 	}), nil, nil)
 
 	s.Require().ErrorIs(err, ErrBadAction)
-	s.Require().Contains(err.Error(), "condition, damage, or both")
+	s.Require().Contains(err.Error(), "condition, damage, or a removal")
 }
 
 // Malformed damage is refused during pure preflight, so a priced cast whose

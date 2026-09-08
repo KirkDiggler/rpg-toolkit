@@ -7,7 +7,9 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -96,11 +98,13 @@ func newCast(in *ActionInput) (Machine, error) {
 	}
 
 	return &castMachine{
-		spell:    definition.Ref,
-		casterID: casterID,
-		targetID: targetID,
-		gated:    profile.Save != nil,
-		inner:    inner,
+		spell:         definition.Ref,
+		spellName:     definition.Name,
+		casterID:      casterID,
+		targetID:      targetID,
+		gated:         profile.Save != nil,
+		concentration: profile.Concentration,
+		inner:         inner,
 	}, nil
 }
 
@@ -140,6 +144,10 @@ type CastOutcome struct {
 	// first, then conditions, each naming its own recipient. EMPTY when a save
 	// was made — a made save against a cantrip negates every consequence.
 	Applied []ImposedEffect
+
+	// FollowUps are the checks this cast's own damage came back with, in
+	// append order, read off the contest that ran them.
+	FollowUps []FollowUpOutcome
 }
 
 func (CastOutcome) isOutcome() {}
@@ -163,20 +171,31 @@ func (CastOutcome) isOutcome() {}
 // and the day one does, this is the line that has to change rather than a
 // silently discarded question.
 type castMachine struct {
-	spell    core.Ref
-	casterID string
-	targetID string
-	gated    bool
-	inner    Machine
+	spell     core.Ref
+	spellName string
+	casterID  string
+	targetID  string
+	gated     bool
+	inner     Machine
+
+	// concentration is the profile's declaration, or nil. It is what makes
+	// this cast displace an earlier one and hold what it leaves behind.
+	concentration *combatActions.CastConcentration
+
+	// cast is the sheets this interaction attached, kept because the steps
+	// after the first need them and a step's closure is handed only a bus.
+	cast *Participants
 }
 
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
+	m.cast = cast
+
 	first, err := m.inner.Start(ctx, cast)
 	if err != nil {
 		return nil, err
 	}
 
-	return Request{
+	resolve := Request{
 		name:    "cast " + m.spell.String(),
 		machine: startedMachine{first: first},
 		next: func(_ context.Context, out Outcome) (Step, error) {
@@ -184,10 +203,126 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 			if shapeErr != nil {
 				return nil, shapeErr
 			}
+			if m.concentration == nil {
+				return Done{Outcome: outcome}, nil
+			}
+
+			return m.hold(outcome), nil
+		},
+	}
+
+	if m.concentration == nil {
+		return resolve, nil
+	}
+	held, holding := concentrationHeldBy(cast, m.casterID)
+	if !holding {
+		return resolve, nil
+	}
+
+	// PREFLIGHT -> CHARGE -> DROP THE OLD SPELL -> RESOLVE THE NEW ONE, and
+	// the ordering IS the rule. The drop cannot go in Start's own body, which
+	// is pure preflight and mutates nothing, and it cannot go in the door,
+	// which knows only a SpendProfile and is explicitly not a predicate
+	// language. So it is the FIRST YIELDED STEP, which runs after the charge —
+	// and a cast refused at the door drops nothing, which is what RAW means by
+	// "when you cast another spell that requires concentration".
+	return m.drop(held, resolve), nil
+}
+
+// drop ends the concentration the caster is already holding, in favour of the
+// one about to be cast.
+//
+// It publishes exactly what a failed check publishes — the owner's removal, and
+// only that — through the same helper, so "recast" and "failed the check" end a
+// hold the same way and the hold strips its own board either way.
+func (m *castMachine) drop(held *conditions.ConcentratingCondition, next Step) Gather {
+	removal := &ConditionRemoval{
+		Owner: dnd5eEvents.ChildRef{
+			MemberID:     m.casterID,
+			ConditionRef: held.Ref().String(),
+		},
+		Reason: conditions.ConcentrationEndedRecast,
+	}
+	dropped := publishRemoval(removal, func(ImposedEffect) (Step, error) { return next, nil })
+
+	return Gather{
+		name: "drop concentration on " + held.SpellName,
+		run:  dropped.run,
+	}
+}
+
+// hold puts the concentrating condition on the caster and tells it what this
+// cast left on the board.
+//
+// The children are registered BEFORE the condition is applied, so the address
+// list is complete in the blob the sheet persists rather than arriving as a
+// state change the sheet has to notice.
+//
+// It is the last step rather than part of the delivery because a cast has two
+// halves and only one of them can deliver to its caster: a gated cast's
+// contest refuses a caster recipient by name. One step here covers both.
+func (m *castMachine) hold(outcome CastOutcome) Gather {
+	return Gather{
+		name: fmt.Sprintf("concentrate on %s for %s", m.spell.String(), m.casterID),
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			holding := conditions.NewConcentratingCondition(
+				m.casterID, m.spell.String(), m.spellName, m.concentration.TurnEnds)
+			for _, applied := range outcome.Applied {
+				if applied.Kind != ImposedCondition || applied.Ref == nil {
+					continue
+				}
+				if err := holding.AddChild(ctx, dnd5eEvents.ChildRef{
+					MemberID:     applied.RecipientID,
+					ConditionRef: applied.Ref.String(),
+				}); err != nil {
+					return nil, fmt.Errorf("concentrate on %s: %w", m.spell.String(), err)
+				}
+			}
+
+			caster, err := m.cast.entity(m.casterID)
+			if err != nil {
+				return nil, err
+			}
+			if err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(
+				ctx, dnd5eEvents.ConditionAppliedEvent{
+					Target:    caster,
+					Type:      dnd5eEvents.ConditionType(holding.Ref().ID),
+					Source:    dnd5eEvents.ConditionSourceSpell,
+					Condition: holding,
+				}); err != nil {
+				return nil, fmt.Errorf("concentrate on %s for %q: %w",
+					m.spell.String(), m.casterID, err)
+			}
 
 			return Done{Outcome: outcome}, nil
 		},
-	}, nil
+	}
+}
+
+// concentrationHeldBy finds the concentrating condition a member is already
+// carrying.
+//
+// It reads the CONDITION rather than Character.Concentration's view, and the
+// difference is the addresses: the view answers which spell and how many
+// effects, which is what a badge and a door check need, while a drop has to
+// publish one removal per child and only the condition holds those. The day the
+// view carries its children, this reads the view.
+func concentrationHeldBy(
+	cast *Participants, memberID string,
+) (*conditions.ConcentratingCondition, bool) {
+	var held []dnd5eEvents.ConditionBehavior
+	if character, ok := cast.Character(memberID); ok {
+		held = character.GetConditions()
+	} else if monster, ok := cast.Monster(memberID); ok {
+		held = monster.GetConditions()
+	}
+	for _, condition := range held {
+		if holding, ok := condition.(*conditions.ConcentratingCondition); ok {
+			return holding, true
+		}
+	}
+
+	return nil, false
 }
 
 // startedMachine hands back a step somebody else already preflighted.
@@ -219,6 +354,7 @@ func (m *castMachine) shape(out Outcome) (CastOutcome, error) {
 		contest := inner
 		outcome.Save = &contest
 		outcome.Applied = contest.Imposed
+		outcome.FollowUps = contest.FollowUps
 
 		return outcome, nil
 
