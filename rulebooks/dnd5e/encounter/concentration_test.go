@@ -341,32 +341,67 @@ func (s *RecordCastSuite) TestAMadeCheckIsOneSavedBeatAndNothingElse() {
 }
 
 // TestOneTrainCoversBothAnswers — the same interaction can ask two members to
-// hold on and get different answers, and one seq train carries both: the check
-// that held, then the break, its own failed check still attached to it.
+// hold on and get different answers, and one seq train carries both.
+//
+// THE ADJACENCY IS THE ASSERTION, and it is structural rather than sorted. A
+// failed check lives ON the break it caused, so the two are marshalled in the
+// same loop iteration and NOTHING can come between them: not another caster's
+// roll, not a reordering, not a later kind of follow-up nobody has written
+// yet. There is no ordering rule here to get wrong later, because there is no
+// ordering rule — the shape does not permit the beats to separate.
+//
+// Run both ways round for exactly that reason. If adjacency came from the
+// order the two lists happened to be emitted in, one of these two would fail.
 func (s *RecordCastSuite) TestOneTrainCoversBothAnswers() {
-	enc := s.scene(everyoneStanding{})
-
-	held := theBardHeldOn()
-	held.Save.Saver = castFighter
-	held.Spell = viciousMockery
-
-	hit := theSkeletonHits(brokenByDamage())
-	hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
-	out, err := enc.Record(hit)
-	s.Require().NoError(err)
-
-	seqs := append([]uint64{out.Seq}, out.FollowUpSeqs...)
-	for i := 1; i < len(seqs); i++ {
-		s.Less(seqs[i-1], seqs[i], "beat %d precedes beat %d", i-1, i)
+	cases := map[string]struct {
+		heldBy     encounter.MemberID
+		heldSpell  encounter.SpellIdentity
+		brokenSave *encounter.CastSave
+	}{
+		"the fighter holds on and the bard loses it": {castFighter, viciousMockery, concentrationCheck()},
+		"the bard holds on too and still loses":      {castFighter, trueStrike, concentrationCheck()},
 	}
-	entries := s.storyEntries(enc, castBard, seqs)
-	s.Equal([]string{
-		"struck", "saved", "saved", "concentration_ended", "condition-removed", "condition-removed",
-	}, s.beatNames(entries))
-	s.Contains(string(entries[1].Payload), `"saver":"cast-fighter"`, "the check that held comes first")
-	s.Contains(string(entries[2].Payload), `"saver":"bard"`)
-	s.Contains(string(entries[2].Payload), `"succeeded":false`,
-		"the failed check stays next to the break it explains")
+	for name, tc := range cases {
+		s.Run(name, func() {
+			enc := s.scene(everyoneStanding{})
+
+			held := theBardHeldOn()
+			held.Save.Saver = tc.heldBy
+			held.Spell = tc.heldSpell
+
+			broken := brokenByDamage()
+			broken.Save = tc.brokenSave
+
+			hit := theSkeletonHits(broken)
+			hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
+			out, err := enc.Record(hit)
+			s.Require().NoError(err)
+
+			seqs := append([]uint64{out.Seq}, out.FollowUpSeqs...)
+			for i := 1; i < len(seqs); i++ {
+				s.Less(seqs[i-1], seqs[i], "beat %d precedes beat %d", i-1, i)
+			}
+			entries := s.storyEntries(enc, castBard, seqs)
+			names := s.beatNames(entries)
+			s.Require().Equal([]string{
+				"struck", "saved", "saved",
+				"concentration_ended", "condition-removed", "condition-removed",
+			}, names)
+
+			// The made check is its own beat and nothing follows from it.
+			s.Contains(string(entries[1].Payload), `"saver":"`+string(tc.heldBy)+`"`)
+			s.Contains(string(entries[1].Payload), `"succeeded":true`)
+
+			// The failed check sits IMMEDIATELY ahead of the break it caused,
+			// with the ended beat naming the same member as the save.
+			s.Contains(string(entries[2].Payload), `"saver":"bard"`)
+			s.Contains(string(entries[2].Payload), `"succeeded":false`)
+			s.Equal("saved", names[2])
+			s.Equal(encounter.BeatConcentrationEnded, names[3],
+				"nothing may come between a failed check and the break it explains")
+			s.Contains(string(entries[3].Payload), `"caster":"bard"`)
+		})
+	}
 }
 
 // TestAFailedCheckIsNotACheck — the invariant that keeps the two lists
@@ -452,4 +487,42 @@ func (s *RecordCastSuite) TestAClosedEncounterRecordsNoCheck() {
 	hit.ConcentrationChecks = []encounter.ConcentrationCheck{theBardHeldOn()}
 	_, err = enc.Record(hit)
 	s.Require().ErrorIs(err, encounter.ErrClosed)
+}
+
+// TestTwoFailedChecksNeverPool is the mutation-proof for the adjacency above.
+//
+// With one failed check in the train, a shape that pooled every save ahead of
+// every break would be INDISTINGUISHABLE from this one — the single save would
+// land in the same place either way. Two failed checks tell them apart: pooled,
+// the story reads saved, saved, ended, ended; structural, it reads saved,
+// ended, saved, ended, and each roll stays with the spell it lost.
+func (s *RecordCastSuite) TestTwoFailedChecksNeverPool() {
+	enc := s.scene(everyoneStanding{})
+
+	fighterBreak := encounter.ConcentrationBreak{
+		Caster: castFighter,
+		Spell:  viciousMockery,
+		Reason: "damage",
+		Save: &encounter.CastSave{
+			Saver: castFighter, Ability: "constitution", Roll: 2, Total: 3, DC: 10, Succeeded: false,
+		},
+		Removed: []encounter.ActivationResult{{
+			Kind: encounter.ResultConditionRemoved, Target: castFighter,
+			Ref: "dnd5e:conditions:concentrating", Name: "Concentrating", Reason: "damage",
+		}},
+	}
+
+	out, err := enc.Record(theSkeletonHits(brokenByDamage(), fighterBreak))
+	s.Require().NoError(err)
+
+	entries := s.storyEntries(enc, castBard, out.FollowUpSeqs)
+	s.Require().Equal([]string{
+		"saved", "concentration_ended", "condition-removed", "condition-removed",
+		"saved", "concentration_ended", "condition-removed",
+	}, s.beatNames(entries), "the two rolls never pool ahead of the two breaks")
+
+	s.Contains(string(entries[0].Payload), `"saver":"bard"`)
+	s.Contains(string(entries[1].Payload), `"caster":"bard"`)
+	s.Contains(string(entries[4].Payload), `"saver":"cast-fighter"`)
+	s.Contains(string(entries[5].Payload), `"caster":"cast-fighter"`)
 }
