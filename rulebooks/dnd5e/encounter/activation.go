@@ -35,16 +35,30 @@ const (
 	// ResultCapacityGranted records rulebook-authored capacity granted to a
 	// member, such as additional movement.
 	ResultCapacityGranted ActivationResultKind = "capacity-granted"
+
+	// ResultDamageApplied records damage actually taken after the owning
+	// sheet has applied any rulebook clamp.
+	//
+	// It is SHAPED EXACTLY LIKE healing and validated by the same law, down
+	// to the required calculation whose Total equals Requested — a cantrip's
+	// 1d4 is the same kind of fact as a Second Wind's 1d10, and the player is
+	// owed the face either way. It lives with the other result kinds rather
+	// than in the cast's own file because a result is a result: a feature
+	// that deals damage records it through [Encounter.RecordActivation] and a
+	// spell that deals damage records it through [Encounter.RecordCast],
+	// through this one closed family.
+	ResultDamageApplied ActivationResultKind = "damage-applied"
 )
 
 // ActivationResult carries one result from a successful activation using only
 // primitives this composition can persist without importing the root D&D event
 // types that own the rule meaning.
 //
-// Every kind requires Target. Healing also requires Ref and Name, carries the
-// amount/requested/HP facts, and requires a non-nil [RollCalculation] whose
-// Total equals Requested — the roll trace IS the healing's roll record, so a
-// healing without one is not writable. Condition-applied requires Ref and
+// Every kind requires Target. Damage also requires DamageType, which every
+// other kind refuses. Healing and damage also require Ref and Name,
+// carry the amount/requested/HP facts, and require a non-nil
+// [RollCalculation] whose Total equals Requested — the roll trace IS the
+// roll record, so one without it is not writable. Condition-applied requires Ref and
 // Name. Condition-removed requires Ref, Name, and Reason. Capacity-granted
 // requires Description. Fields outside a kind's shape — including a
 // calculation on any non-healing kind — are refused rather than silently
@@ -66,10 +80,21 @@ type ActivationResult struct {
 	After     int
 
 	// Calculation carries the sourced dice, ordered rerolls, modifiers, and
-	// authoritative total behind a healing's roll. Required for
-	// ResultHealingApplied with Calculation.Total == Requested; forbidden on
-	// every other kind.
+	// authoritative total behind a healing's or a damage's roll. Required for
+	// ResultHealingApplied and ResultDamageApplied with Calculation.Total ==
+	// Requested; forbidden on every other kind.
 	Calculation *RollCalculation
+
+	// DamageType is the rulebook damage type carried as the rulebook's own
+	// primitive — "psychic" for Vicious Mockery. Required for
+	// ResultDamageApplied and forbidden on every other kind.
+	//
+	// ONE TYPE FOR THE WHOLE RESULT, not one per component. Every damage this
+	// stack deals today comes out of a single pool, and a per-component type
+	// would be a shape invented for a use case nobody has: future-proofing
+	// goes both ways, and the wrong guess is as expensive as no guess. A
+	// spell that deals two types deals them as two results.
+	DamageType string
 
 	Description string
 	Reason      string
@@ -125,6 +150,19 @@ type healingAppliedPayload struct {
 	Calculation *RollCalculation     `json:"calculation"`
 	Ref         string               `json:"ref"`
 	Name        string               `json:"name"`
+}
+
+type damageAppliedPayload struct {
+	Kind        ActivationResultKind `json:"kind"`
+	Target      MemberID             `json:"target"`
+	Amount      int                  `json:"amount"`
+	Requested   int                  `json:"requested"`
+	Before      int                  `json:"before"`
+	After       int                  `json:"after"`
+	Calculation *RollCalculation     `json:"calculation"`
+	Ref         string               `json:"ref"`
+	Name        string               `json:"name"`
+	DamageType  string               `json:"damage_type"`
 }
 
 type conditionAppliedPayload struct {
@@ -250,7 +288,7 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 	})
 
 	for i, result := range in.Results {
-		resultPayload, validationErr := e.prepareActivationResult(i, result)
+		resultPayload, validationErr := e.prepareActivationResult("record activation", i, result)
 		if validationErr != nil {
 			return nil, validationErr
 		}
@@ -271,48 +309,76 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 	return prepared, nil
 }
 
-func (e *Encounter) prepareActivationResult(index int, result ActivationResult) (interface{}, error) {
+// prepareActivationResult validates one result and returns the payload shape
+// its kind marshals as. verb names the caller in every refusal — "record
+// activation" or "record cast" — because a spell's damage refused under the
+// activation's name would send the reader to the wrong door.
+func (e *Encounter) prepareActivationResult(
+	verb string, index int, result ActivationResult,
+) (interface{}, error) {
 	switch result.Kind {
-	case ResultHealingApplied, ResultConditionApplied, ResultConditionRemoved, ResultCapacityGranted:
+	case ResultHealingApplied, ResultDamageApplied,
+		ResultConditionApplied, ResultConditionRemoved, ResultCapacityGranted:
 	default:
-		return nil, fmt.Errorf("record activation: result %d kind %q: %w", index, result.Kind, ErrInvalidData)
+		return nil, fmt.Errorf("%s: result %d kind %q: %w", verb, index, result.Kind, ErrInvalidData)
 	}
 
 	if result.Target == "" {
-		return nil, fmt.Errorf("record activation: result %d target: %w", index, ErrNoMember)
+		return nil, fmt.Errorf("%s: result %d target: %w", verb, index, ErrNoMember)
 	}
 	if _, ok := e.members[result.Target]; !ok {
-		return nil, fmt.Errorf("record activation: result %d target %q: %w", index, result.Target, ErrNoMember)
+		return nil, fmt.Errorf("%s: result %d target %q: %w", verb, index, result.Target, ErrNoMember)
+	}
+	// ONE GUARD RATHER THAN AN ARM APIECE. A damage type belongs to exactly
+	// one kind, so the refusal is stated once, before the switch, and a kind
+	// added later cannot quietly start accepting one by forgetting to say no.
+	if result.Kind != ResultDamageApplied && result.DamageType != "" {
+		return nil, forbiddenActivationResultField(verb, index, result.Kind, "damage type")
 	}
 
 	switch result.Kind {
-	case ResultHealingApplied:
-		if err := requireActivationIdentity(index, result); err != nil {
+	case ResultHealingApplied, ResultDamageApplied:
+		if err := requireActivationIdentity(verb, index, result); err != nil {
 			return nil, err
 		}
 		if result.Calculation == nil {
 			return nil, fmt.Errorf(
-				"record activation: result %d %s requires a calculation: %w",
-				index, result.Kind, ErrInvalidData,
+				"%s: result %d %s requires a calculation: %w",
+				verb, index, result.Kind, ErrInvalidData,
 			)
 		}
 		if calcErr := ValidateRollCalculation(result.Calculation); calcErr != nil {
 			return nil, fmt.Errorf(
-				"record activation: result %d %s calculation: %v: %w",
-				index, result.Kind, calcErr, ErrInvalidData,
+				"%s: result %d %s calculation: %v: %w",
+				verb, index, result.Kind, calcErr, ErrInvalidData,
 			)
 		}
 		if result.Calculation.Total != result.Requested {
 			return nil, fmt.Errorf(
-				"record activation: result %d %s calculation total %d does not equal requested healing %d: %w",
-				index, result.Kind, result.Calculation.Total, result.Requested, ErrInvalidData,
+				"%s: result %d %s calculation total %d does not equal the requested %d: %w",
+				verb, index, result.Kind, result.Calculation.Total, result.Requested, ErrInvalidData,
 			)
 		}
 		if result.Description != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "description")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "description")
 		}
 		if result.Reason != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "reason")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "reason")
+		}
+		if result.Kind == ResultDamageApplied {
+			if result.DamageType == "" {
+				return nil, fmt.Errorf(
+					"%s: result %d %s damage type: %w", verb, index, result.Kind, ErrInvalidData,
+				)
+			}
+			return damageAppliedPayload{
+				Kind: result.Kind, Target: result.Target,
+				Amount: result.Amount, Requested: result.Requested,
+				Before: result.Before, After: result.After,
+				Calculation: result.Calculation,
+				Ref:         result.Ref, Name: result.Name,
+				DamageType: result.DamageType,
+			}, nil
 		}
 		return healingAppliedPayload{
 			Kind: result.Kind, Target: result.Target,
@@ -323,34 +389,34 @@ func (e *Encounter) prepareActivationResult(index int, result ActivationResult) 
 		}, nil
 
 	case ResultConditionApplied:
-		if err := requireActivationIdentity(index, result); err != nil {
+		if err := requireActivationIdentity(verb, index, result); err != nil {
 			return nil, err
 		}
 		if field := rollFactsActivationResultField(result); field != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, field)
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, field)
 		}
 		if result.Description != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "description")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "description")
 		}
 		if result.Reason != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "reason")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "reason")
 		}
 		return conditionAppliedPayload{
 			Kind: result.Kind, Target: result.Target, Ref: result.Ref, Name: result.Name,
 		}, nil
 
 	case ResultConditionRemoved:
-		if err := requireActivationIdentity(index, result); err != nil {
+		if err := requireActivationIdentity(verb, index, result); err != nil {
 			return nil, err
 		}
 		if result.Reason == "" {
-			return nil, fmt.Errorf("record activation: result %d %s reason: %w", index, result.Kind, ErrInvalidData)
+			return nil, fmt.Errorf("%s: result %d %s reason: %w", verb, index, result.Kind, ErrInvalidData)
 		}
 		if field := rollFactsActivationResultField(result); field != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, field)
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, field)
 		}
 		if result.Description != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "description")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "description")
 		}
 		return conditionRemovedPayload{
 			Kind: result.Kind, Target: result.Target, Ref: result.Ref, Name: result.Name, Reason: result.Reason,
@@ -358,19 +424,19 @@ func (e *Encounter) prepareActivationResult(index int, result ActivationResult) 
 
 	case ResultCapacityGranted:
 		if result.Description == "" {
-			return nil, fmt.Errorf("record activation: result %d %s description: %w", index, result.Kind, ErrInvalidData)
+			return nil, fmt.Errorf("%s: result %d %s description: %w", verb, index, result.Kind, ErrInvalidData)
 		}
 		if result.Ref != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "ref")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "ref")
 		}
 		if result.Name != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "name")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "name")
 		}
 		if field := rollFactsActivationResultField(result); field != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, field)
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, field)
 		}
 		if result.Reason != "" {
-			return nil, forbiddenActivationResultField(index, result.Kind, "reason")
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "reason")
 		}
 		return capacityGrantedPayload{
 			Kind: result.Kind, Target: result.Target, Description: result.Description,
@@ -380,18 +446,18 @@ func (e *Encounter) prepareActivationResult(index int, result ActivationResult) 
 	panic("unreachable activation result kind")
 }
 
-func requireActivationIdentity(index int, result ActivationResult) error {
+func requireActivationIdentity(verb string, index int, result ActivationResult) error {
 	if result.Ref == "" {
-		return fmt.Errorf("record activation: result %d %s ref: %w", index, result.Kind, ErrInvalidData)
+		return fmt.Errorf("%s: result %d %s ref: %w", verb, index, result.Kind, ErrInvalidData)
 	}
 	if result.Name == "" {
-		return fmt.Errorf("record activation: result %d %s name: %w", index, result.Kind, ErrInvalidData)
+		return fmt.Errorf("%s: result %d %s name: %w", verb, index, result.Kind, ErrInvalidData)
 	}
 	return nil
 }
 
-// rollFactsActivationResultField names the first roll fact a non-healing
-// result may not carry: the calculation trace, then the healing's numeric
+// rollFactsActivationResultField names the first roll fact a result with no
+// roll behind it — every kind but healing and damage — may not carry: the calculation trace, then the healing's numeric
 // facts. Calculation is a pointer, so its PRESENCE is what is detected; the
 // numeric facts are plain ints, so what is detected (and refused) is a
 // NON-ZERO value — a zero is indistinguishable from an absent field here and
@@ -414,6 +480,6 @@ func rollFactsActivationResultField(result ActivationResult) string {
 	}
 }
 
-func forbiddenActivationResultField(index int, kind ActivationResultKind, field string) error {
-	return fmt.Errorf("record activation: result %d %s forbids %s: %w", index, kind, field, ErrInvalidData)
+func forbiddenActivationResultField(verb string, index int, kind ActivationResultKind, field string) error {
+	return fmt.Errorf("%s: result %d %s forbids %s: %w", verb, index, kind, field, ErrInvalidData)
 }
