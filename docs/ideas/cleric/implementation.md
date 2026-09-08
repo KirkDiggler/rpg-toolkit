@@ -1,7 +1,9 @@
 # Cleric creation implementation
 
 The first contribution to [rpg-project#406](https://github.com/KirkDiggler/rpg-project/issues/406)
-repairs level-one Cleric character creation on toolkit main `e894540e`.
+repairs level-one Cleric character creation. [PR #1585](https://github.com/KirkDiggler/rpg-toolkit/pull/1585)
+merged as `b2f3b88d` on 2026-09-08 and is released as D&D `v0.150.0`.
+The refreshed [plan.md](plan.md) records subsequent integration work.
 
 Clerics receive light/medium armor, shield and simple-weapon proficiencies,
 plus one fixed shield. Life's existing subclass data supplies heavy armor.
@@ -31,3 +33,17 @@ equipment prerequisites are not migrated here.
 
 The broader playable-Cleric journey remains open; these checks do not establish
 API, web or live-game support.
+
+## Next contribution: Sacred Flame content (2026-09-08)
+
+Added the level-one Sacred Flame profile to the existing cast table: 60 feet,
+one creature, Dexterity save against the supplied DC, 1d8 radiant on failure,
+negated on success, with no condition or concentration. Profile tests use the
+reviewed 2014 entry in `source-index.json`. A creation/reload regression proves
+a Cleric with Wisdom 16 supplies DC 13 and retains all three known cantrips,
+while only Sacred Flame among those choices has executable content.
+
+The full D&D module suite passes natively on Windows with no skips. Formatting
+and diff checks pass. No other module or repository pins changed. This content
+slice is submitted for review; session execution, cover semantics, higher-level scaling,
+and the shared damage-chain issue #1582 remain outside the validated claim.

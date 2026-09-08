@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -112,6 +113,30 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Equal(data.Resources, back.Resources)
 	s.Equal(stored.SpellSlots, back.SpellSlots, "loading does not recover spent slots")
 	s.Equal(4, back.HitPoints, "loading is not a rest")
+}
+
+func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReload() {
+	draft := s.draft(s.classInput())
+	char, err := draft.ToCharacter(context.Background(), "sacred-flame-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	loaded, err := LoadFromData(context.Background(), char.ToData(), events.NewEventBus())
+	s.Require().NoError(err)
+	s.Equal(13, loaded.SpellSaveDC(), "8 + level-one proficiency 2 + Wisdom 16 modifier 3")
+
+	var supported []string
+	for _, known := range loaded.KnownCantrips() {
+		definition := spells.CastDefinition(spells.Spell(known.ID), loaded.SpellSaveDC())
+		if definition == nil {
+			continue
+		}
+		supported = append(supported, definition.Ref.String())
+		s.Require().NoError(definition.Validate())
+		s.Require().NotNil(definition.Cast)
+		s.Require().NotNil(definition.Cast.Save)
+		s.Equal(13, definition.Cast.Save.DC.DC(saves.DCInput{}))
+	}
+	s.Equal([]string{refs.Spells.SacredFlame().String()}, supported)
+	s.Len(loaded.KnownCantrips(), 3, "unsupported choices remain known")
 }
 
 func (s *ClericFinalizeSuite) TestInvalidChoicesCannotFinalize() {

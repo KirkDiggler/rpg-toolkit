@@ -22,6 +22,13 @@ const ViciousMockeryRangeFeet = 60
 // Mockery takes at levels 1–4.
 const ViciousMockeryDamage = "1d4"
 
+// SacredFlameRangeFeet is Sacred Flame's range in the 2014 Basic Rules.
+const SacredFlameRangeFeet = 60
+
+// SacredFlameDamage is the radiant damage at character levels 1–4.
+// Higher-level scaling is outside this level-one cast-content slice.
+const SacredFlameDamage = "1d8"
+
 // TrueStrikeTargetParameter is the True Strike condition's parameter naming
 // the creature the advantage is good against.
 const TrueStrikeTargetParameter = "target_id"
@@ -70,6 +77,22 @@ type castProfileBuilder struct {
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
 var castContent = map[Spell]castProfileBuilder{
+	SacredFlame: {
+		name: "Sacred Flame",
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: SacredFlameRangeFeet,
+				Target:    actions.CastTargetOneCreature,
+				Save: &saves.SaveGate{
+					Abilities:  []abilities.Ability{abilities.DEX},
+					DC:         saves.DCStatic(spellSaveDC),
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage: []damage.Damage{{Dice: SacredFlameDamage, Type: damage.Radiant}},
+			}
+		},
+	},
 	TrueStrike: {
 		name: "True Strike",
 		build: func(_ int) actions.CastProfile {
