@@ -179,7 +179,8 @@ func conditionDescription(ref core.Ref) string {
 }
 
 func publishPreparedCondition(
-	prepared preparedCondition, cast *Participants, targetID string, next func() (Step, error),
+	prepared preparedCondition, cast *Participants, targetID string,
+	source dnd5eEvents.ConditionSource, next func() (Step, error),
 ) Gather {
 	return Gather{
 		name: "impose " + conditionDescription(prepared.declaration.Ref),
@@ -188,9 +189,7 @@ func publishPreparedCondition(
 			if err != nil {
 				return nil, err
 			}
-			if err := publishCondition(
-				ctx, bus, prepared, target, dnd5eEvents.ConditionSourceDamage,
-			); err != nil {
+			if err := publishCondition(ctx, bus, prepared, target, source); err != nil {
 				return nil, err
 			}
 			return next()
@@ -206,8 +205,8 @@ func publishPreparedCondition(
 // implementation of what "the condition landed" means rather than a copy per
 // door.
 //
-// The source is the caller's to state because the two mean different things by
-// it, and neither may guess for the other.
+// The source is the caller's to state because the callers mean different things
+// by it, and none may guess for another.
 func publishCondition(
 	ctx context.Context, bus events.EventBus, prepared preparedCondition,
 	target core.Entity, source dnd5eEvents.ConditionSource,
@@ -356,6 +355,24 @@ func rollContestDamage(
 	return components, nil
 }
 
+// conditionSourceFor answers WHAT SORT OF THING imposed a contested condition,
+// read off the cause the caller already stated rather than from a second field
+// that could disagree with it.
+//
+// A cast says so — its cause carries [dnd5eEvents.SaveTriggerSpell] and the
+// spell's own ref — and everything else keeps the answer this package has
+// always given. Damage is the honest default for the rest: the contest exists
+// because something landed on the saver, and the wolf's knockdown is exactly
+// that. The condition still names WHICH spell or weapon separately, through the
+// source ref it was built with.
+func conditionSourceFor(cause dnd5eEvents.SaveCause) dnd5eEvents.ConditionSource {
+	if cause.Trigger == dnd5eEvents.SaveTriggerSpell {
+		return dnd5eEvents.ConditionSourceSpell
+	}
+
+	return dnd5eEvents.ConditionSourceDamage
+}
+
 // NewContest returns the machine for one save-gated declaration: a condition,
 // damage, or both.
 func NewContest(in *ContestInput) Machine { return &contestMachine{in: in} }
@@ -492,10 +509,13 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 			return Done{Outcome: outcome}, nil
 		}
 
-		return publishPreparedCondition(m.prepared, m.cast, m.in.SaverID, func() (Step, error) {
-			outcome.Imposed = append(outcome.Imposed, m.prepared.atStake(m.in.SaverID))
-			return Done{Outcome: outcome}, nil
-		}), nil
+		return publishPreparedCondition(
+			m.prepared, m.cast, m.in.SaverID, conditionSourceFor(m.in.Cause),
+			func() (Step, error) {
+				outcome.Imposed = append(outcome.Imposed, m.prepared.atStake(m.in.SaverID))
+				return Done{Outcome: outcome}, nil
+			},
+		), nil
 	}
 
 	if len(m.in.Damage) == 0 {

@@ -667,14 +667,12 @@ func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 // it captures are this cast's in publication order. A Gather per condition
 // would give each its own collector and split one cast's record across several.
 //
-// # The condition source is left unstated, deliberately
+// # The source says a spell did it, and the condition says which one
 //
-// [dnd5eEvents.ConditionSource] is a sealed enum with no arm for a spell —
-// class, feature, combat ability, damage — and a cantrip is none of them. An
-// unset source says "this package has no name for it", which is true; picking
-// the nearest wrong one would put a label in the record that a reader would
-// believe. The arm belongs in the root rulebook beside the others, and this
-// line is what should change when it lands.
+// [dnd5eEvents.ConditionSourceSpell] is the KIND, and it is all the event
+// carries: WHICH spell travels with the condition itself, as the source ref it
+// was built with. That is the split raging already makes between "a feature
+// applied this" and "the feature was Rage".
 func (m *activationMachine) deliverCast(recipients []core.Entity) Step {
 	return Gather{
 		name: fmt.Sprintf("cast %s for %s", m.cast.source.String(), m.member),
@@ -695,7 +693,7 @@ func (m *activationMachine) deliverCast(recipients []core.Entity) Step {
 
 			for index, delivery := range m.cast.conditions {
 				if publishErr := publishCondition(
-					ctx, bus, delivery.condition, recipients[index], "",
+					ctx, bus, delivery.condition, recipients[index], dnd5eEvents.ConditionSourceSpell,
 				); publishErr != nil {
 					return nil, fmt.Errorf("cast %s for %q: %w",
 						m.cast.source.String(), m.member, publishErr)

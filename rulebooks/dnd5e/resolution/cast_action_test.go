@@ -11,11 +11,14 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
@@ -144,6 +147,8 @@ func (s *CastActionTestSuite) TestViciousMockeryLandsDamageAndItsRider() {
 	params := s.castParams(target, refs.Conditions.ViciousMockery().String())
 	s.Require().Equal(bardID, params[spells.ViciousMockeryCasterParameter],
 		"the counterpart the content named is the CASTER, written by resolution")
+	s.Require().Equal(refs.Spells.ByID(string(spells.ViciousMockery)).String(), params["source_ref"],
+		"and the condition itself names WHICH spell applied it")
 
 	payer := fixtures.sheet(out, bardID)
 	s.Require().Zero(payer.ActionEconomy.ActionsRemaining, "the action was charged at the door")
@@ -202,6 +207,8 @@ func (s *CastActionTestSuite) TestTrueStrikeDeliversToTheCasterWithNoRoll() {
 	params := s.castParams(caster, refs.Conditions.TrueStrike().String())
 	s.Require().Equal(heroID, params[spells.TrueStrikeTargetParameter],
 		"the counterpart the content named is the TARGET, written by resolution")
+	s.Require().Equal(refs.Spells.ByID(string(spells.TrueStrike)).String(), params["source_ref"],
+		"and the condition itself names WHICH spell applied it")
 	s.Require().Zero(caster.ActionEconomy.ActionsRemaining, "charged at the door like any cast")
 
 	for _, sheet := range out.DirtyCharacters {
@@ -414,4 +421,93 @@ func (s *CastActionTestSuite) TestACastIsPreflightedBeforeTheDoorCharges() {
 	s.Require().ErrorIs(err, ErrBadActivation, "the recipient is missing, and that is found first")
 	s.Require().NotErrorIs(err, ErrCannotPay, "the door was never reached")
 	s.Require().Nil(out, "and nothing comes back to be stored")
+}
+
+// sourcesSeen records the ConditionSource of every condition published on an
+// interaction's bus, keyed by the condition's type.
+//
+// The event is what a keeper and a record both read, so the assertion is made
+// against the published fact rather than against the argument that produced it.
+func (s *CastActionTestSuite) sourcesSeen(
+	bus events.EventBus,
+) map[dnd5eEvents.ConditionType]dnd5eEvents.ConditionSource {
+	seen := map[dnd5eEvents.ConditionType]dnd5eEvents.ConditionSource{}
+	_, err := dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			seen[event.Type] = event.Source
+			return nil
+		})
+	s.Require().NoError(err)
+
+	return seen
+}
+
+// resolveOnBus runs a cast on a bus the scene can listen to.
+func (s *CastActionTestSuite) resolveOnBus(
+	fixtures *ContestDamageTestSuite, machine Machine, bus events.EventBus,
+) *Output {
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: fixtures.world(),
+		Participants: []Participant{
+			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: fixtures.bard(1)},
+		},
+		Machine: machine,
+		Cost:    castCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	return out
+}
+
+// A cast's condition says a SPELL applied it, on both halves of the door. The
+// kind is all the event carries; which spell travels with the condition itself,
+// as the source ref it was built with.
+func (s *CastActionTestSuite) TestACastsConditionsCarryTheSpellAsTheirSource() {
+	s.Run("gateless", func() {
+		bus := events.NewEventBus()
+		seen := s.sourcesSeen(bus)
+
+		out := s.resolveOnBus(s.fixtures(), s.cast(spells.TrueStrike, bardID, heroID, straightRoll), bus)
+
+		s.Require().Len(s.castOutcome(out).Applied, 1)
+		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[dnd5eEvents.ConditionTrueStrike])
+	})
+
+	s.Run("gated", func() {
+		bus := events.NewEventBus()
+		seen := s.sourcesSeen(bus)
+
+		out := s.resolveOnBus(s.fixtures(), s.cast(spells.ViciousMockery, bardID, heroID, straightRoll), bus)
+
+		s.Require().Len(s.castOutcome(out).Applied, 2)
+		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[dnd5eEvents.ConditionViciousMockery],
+			"the contest reads the cause it was given, which says a spell raised the save")
+	})
+}
+
+// The control. A contest raised by something other than a cast keeps the answer
+// this package has always given, so the wolf's knockdown is unchanged.
+func (s *CastActionTestSuite) TestAContestWithNoSpellCauseStillSaysDamage() {
+	bus := events.NewEventBus()
+	seen := s.sourcesSeen(bus)
+	fixtures := s.fixtures()
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}},
+		Machine: NewContest(&ContestInput{
+			Gate:        mockeryGate(),
+			SaverID:     heroID,
+			Application: prone(),
+			Roller:      facedRoller{d20: straightRoll, other: psychicFace},
+		}),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+	s.Require().Len(out.Outcome.(ContestOutcome).Imposed, 1)
+
+	s.Require().Equal(dnd5eEvents.ConditionSourceDamage, seen[dnd5eEvents.ConditionProne])
 }
