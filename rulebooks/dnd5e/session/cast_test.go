@@ -517,6 +517,9 @@ func (s *CastSuite) TestAFailedSaveAgainstViciousMockeryDeliversBothHalves() {
 	s.Equal("skeleton", damage.DamageApplied.Target)
 	s.Equal(refs.Spells.ViciousMockery().String(), damage.DamageApplied.SourceRef,
 		"the spell is what dealt it")
+	s.Equal(session.DamagePsychic, damage.DamageApplied.DamageType,
+		"psychic reaches the client as itself — a client that had to infer it from "+
+			"the spell ref would be deriving a rule the record already holds")
 	s.Require().NotNil(damage.DamageApplied.Calculation,
 		"the 1d4 face reaches the client, not only its total")
 

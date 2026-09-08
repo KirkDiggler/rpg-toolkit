@@ -132,15 +132,29 @@ func imposedResult(
 			Name:   imposed.Description,
 		}, nil
 	case resolution.ImposedDamage:
+		if len(imposed.Components) == 0 {
+			// Damage with no components has no type to report, and the
+			// composition refuses a damage result without one. Failing closed
+			// here names the defect where it can be read rather than letting
+			// the record refuse a beat nobody can trace back.
+			return encounter.ActivationResult{}, fmt.Errorf(
+				"%w: cast delivered damage with no components", ErrInvalidWorld)
+		}
 		return encounter.ActivationResult{
-			Kind:      encounter.ResultDamageApplied,
-			Target:    encounter.MemberID(imposed.RecipientID),
-			Ref:       spell.Ref,
-			Name:      spell.Name,
-			Amount:    imposed.Amount,
-			Requested: imposed.Requested,
-			Before:    imposed.Before,
-			After:     imposed.After,
+			Kind:   encounter.ResultDamageApplied,
+			Target: encounter.MemberID(imposed.RecipientID),
+			Ref:    spell.Ref,
+			Name:   spell.Name,
+			// THE FIRST COMPONENT'S TYPE, which is the whole of it while a
+			// cantrip declares one damage pool. Kirk's ruling: the cap is the
+			// current use case. A spell that deals two types wants a
+			// per-component carrier rather than a wider guess here, and it
+			// arrives with that spell.
+			DamageType: string(imposed.Components[0].DamageType),
+			Amount:     imposed.Amount,
+			Requested:  imposed.Requested,
+			Before:     imposed.Before,
+			After:      imposed.After,
 			// Deep-cloned through rollCalculationFor so no captured trace
 			// aliases the provider's own graph — the same copy
 			// activationResults makes for a heal's.

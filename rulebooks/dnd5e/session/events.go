@@ -684,6 +684,8 @@ func activationResultBody(payload []byte) EventBody {
 
 		Description *string `json:"description"`
 		Reason      *string `json:"reason"`
+
+		DamageType *string `json:"damage_type"`
 	}
 	if json.Unmarshal(resultPayload, &result) != nil || result.Target == "" {
 		return nil
@@ -699,6 +701,7 @@ func activationResultBody(payload []byte) EventBody {
 	_, afterPresent := fields["after"]
 	_, descriptionPresent := fields["description"]
 	_, reasonPresent := fields["reason"]
+	_, damageTypePresent := fields["damage_type"]
 	calculationRaw, calculationPresent := fields["calculation"]
 
 	healingNumericsPresent := amountPresent && requestedPresent && beforePresent && afterPresent &&
@@ -710,6 +713,15 @@ func activationResultBody(payload []byte) EventBody {
 	// presence (the raw key was written).
 	numericPresent := amountPresent || requestedPresent || rollPresent ||
 		modifierPresent || beforePresent || afterPresent
+
+	// FORBIDDEN EVERYWHERE BUT DAMAGE, in one guard rather than an arm apiece —
+	// the same single check the composition makes before it writes the beat
+	// (encounter's prepareActivationResult). A healing or a condition carrying
+	// a damage type is a payload no build here produced, and reading it as
+	// though only the damage arm cared would let it through unnoticed.
+	if result.Kind != encounter.ResultDamageApplied && damageTypePresent {
+		return nil
+	}
 
 	body := ActivationResultBody{Actor: p.Actor}
 	switch result.Kind {
@@ -759,13 +771,23 @@ func activationResultBody(payload []byte) EventBody {
 		if !calculationPresent || rollPresent || modifierPresent {
 			return nil
 		}
+		// REQUIRED, and required by presence AND value: the composition
+		// refuses to write a damage beat without one, so a payload missing it
+		// is not an older shape to read leniently — it is a beat this build
+		// did not write. An empty string would reach a client as an
+		// unspecified type, which is the fail-silent the whole field exists to
+		// close.
+		if !damageTypePresent || result.DamageType == nil || *result.DamageType == "" {
+			return nil
+		}
 		calculation, ok := decodeRollCalculation(calculationRaw)
 		if !ok || calculation.Total != *result.Requested {
 			return nil
 		}
 		body.DamageApplied = &DamageAppliedBody{
 			Target: result.Target, Amount: *result.Amount, Requested: *result.Requested,
-			SourceRef: *result.Ref, SourceName: *result.Name,
+			DamageType: DamageType(*result.DamageType),
+			SourceRef:  *result.Ref, SourceName: *result.Name,
 			HPBefore: *result.Before, HPAfter: *result.After,
 			Calculation: calculation,
 		}

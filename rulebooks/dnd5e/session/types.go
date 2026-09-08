@@ -1406,6 +1406,20 @@ type DamageAppliedBody struct {
 	SourceRef  string `json:"source_ref"`
 	SourceName string `json:"source_name"`
 
+	// DamageType is what KIND of damage landed — "psychic" for Vicious
+	// Mockery. Closed set, see [DamageType].
+	//
+	// IT IS READ FROM THE RECORD RATHER THAN FROM CONTENT, and that is the
+	// whole reason the composition carries it. This body is decoded from a
+	// persisted beat with no definition in scope — the same function reads
+	// worlds written by older builds — so filling the type from a spell table
+	// here would assert a fact the record does not hold, and would keep
+	// asserting it after the content changed.
+	//
+	// [HealingAppliedBody] has no twin for it, and that asymmetry is honest:
+	// healing has no kind to report.
+	DamageType DamageType `json:"damage_type"`
+
 	// HPBefore and HPAfter are the target's hit points either side of it.
 	HPBefore int `json:"hp_before"`
 	HPAfter  int `json:"hp_after"`
