@@ -34,7 +34,7 @@ equipment prerequisites are not migrated here.
 The broader playable-Cleric journey remains open; these checks do not establish
 API, web or live-game support.
 
-## Next contribution: Sacred Flame content (2026-09-08)
+## Sacred Flame content (merged #1592, D&D v0.151.0, 2026-09-08)
 
 Added the level-one Sacred Flame profile to the existing cast table: 60 feet,
 one creature, Dexterity save against the supplied DC, 1d8 radiant on failure,
@@ -45,5 +45,34 @@ while only Sacred Flame among those choices has executable content.
 
 The full D&D module suite passes natively on Windows with no skips. Formatting
 and diff checks pass. No other module or repository pins changed. This content
-slice is submitted for review; session execution, cover semantics, higher-level scaling,
+slice is merged; cover semantics, higher-level scaling,
 and the shared damage-chain issue #1582 remain outside the validated claim.
+
+## Sacred Flame session acceptance (2026-09-08)
+
+The session module now adopts the published D&D `v0.151.0` content. No production
+casting changes or other-repository pin updates were needed. Session acceptance
+uses a level-one Cleric sheet with Wisdom 16, Charisma 8, three known cantrips,
+and both first-level slots already spent.
+
+The full session module suite passes on native Windows. New cases prove:
+
+- Only Sacred Flame has an executable offer among Sacred Flame, Guidance and Light.
+- The skeleton uses Dexterity +2 against the Cleric's Wisdom-based DC 13.
+  A total of 12 takes the scripted radiant damage; 13 negates it without a damage roll.
+- Both outcomes spend one action and preserve exhausted slots and known cantrips.
+- JSON round trips of all repository records and manager recreation preserve
+  the exact cast/save/damage story, target HP and spent action.
+- Forged selectors, unknown targets, removed spell ownership and repeated casts
+  are refused without dice, event publication or repository writes.
+- A target at 60 feet is offered; one at 65 feet is visibly out of range and refused.
+
+Formatting and module tidy checks pass. Local race/lint tooling remains unavailable;
+CI supplies those checks. Preparation and API/web adoption are not part of this slice.
+
+Cover assessment: session target preflight filters current intel holdings and
+range. The resolution save uses the sheet modifier and saving-throw chain, but
+does not receive geometric cover; the cast profile has no cover-exception flag.
+This establishes neither general cover bonuses nor Sacred Flame's explicit
+exception. Visibility/total-cover acceptance remains unverified here. Keep those
+rules, higher-level scaling and #1582 open before claiming full Sacred Flame support.
