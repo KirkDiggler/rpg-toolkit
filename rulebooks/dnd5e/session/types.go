@@ -752,6 +752,26 @@ const (
 	// successful activation. Its body carries exactly one result pointer.
 	EventActivationResult EventKind = "activation_result"
 
+	// EventCast reports the spell a member cast. It precedes the EventSaved
+	// its gate produced, if it had one, and every EventActivationResult the
+	// cast delivered.
+	//
+	// A SECOND EVENT RATHER THAN A WIDENING OF EventActivated, for the reason
+	// a spell is not a feature: the two carry different identities from
+	// different catalogs, and a player reading their own log is owed "you cast
+	// Vicious Mockery" rather than "you activated it".
+	EventCast EventKind = "cast"
+
+	// EventSaved reports one saving throw a cast's gate produced: who rolled,
+	// what they rolled with, the d20 and what it reached, the DC and whether
+	// they beat it.
+	//
+	// It is its own kind and not a reuse of EventDeathSave, whose every other
+	// field — stabilized, dead, hit points restored, the continuation — would
+	// read zero on an ordinary save and say something false about what
+	// happened. What a save IS, is a roll, a DC and an answer.
+	EventSaved EventKind = "saved"
+
 	// EventDeathSave reports one explicit authoritative Death Save result.
 	// Its PresentationID is the same opaque token returned to the actor and to
 	// every other witness; Seq remains recipient-local.
@@ -1281,12 +1301,57 @@ type ActivatedBody struct {
 
 func (ActivatedBody) isEventBody() {}
 
+// CastBody is EventCast's typed body. Spell is copied from the selected
+// server-authored declaration; Session does not derive its name from its ref.
+// Target is empty for a cast that names nobody.
+type CastBody struct {
+	Actor  string   `json:"actor"`
+	Spell  SpellRef `json:"spell"`
+	Target string   `json:"target,omitempty"`
+}
+
+func (CastBody) isEventBody() {}
+
+// SavedBody is EventSaved's typed body: the whole of one saving throw, plus
+// the spell that demanded it.
+//
+// SUCCEEDED IS A BOOL AND NOT AN OUTCOME WORD, because a save has exactly two
+// answers. Half-on-success, and every other partial, is a property of what the
+// spell then delivers — which the activation-result beats carry, not this one.
+type SavedBody struct {
+	// Saver is who rolled, and Ability the rulebook ability they rolled with
+	// ("wisdom"), carried as the rulebook's own primitive.
+	Saver   string `json:"saver"`
+	Ability string `json:"ability"`
+
+	// Roll is the d20 as rolled and Total what it reached after the saver's
+	// modifiers; DC is the number Total was against.
+	Roll  int `json:"roll"`
+	Total int `json:"total"`
+	DC    int `json:"dc"`
+
+	// Succeeded is whether the total beat the DC, recorded as the caster's
+	// ruling rather than recomputed by anyone downstream.
+	//
+	// NO OMITEMPTY: false is an ANSWER — a failed save is the whole reason
+	// anything followed — and the same false-vs-absent law every other bool
+	// at this seam keeps.
+	Succeeded bool `json:"succeeded"`
+
+	// Source is the spell whose gate demanded the roll, so a client can say
+	// what was resisted without holding the cast beat beside it.
+	Source SpellRef `json:"source"`
+}
+
+func (SavedBody) isEventBody() {}
+
 // ActivationResultBody is EventActivationResult's typed body. Exactly one of
 // its result pointers is non-nil on a valid body, and effects remain in the
 // order resolution published them.
 type ActivationResultBody struct {
 	Actor            string                `json:"actor"`
 	HealingApplied   *HealingAppliedBody   `json:"healing_applied,omitempty"`
+	DamageApplied    *DamageAppliedBody    `json:"damage_applied,omitempty"`
 	ConditionApplied *ConditionAppliedBody `json:"condition_applied,omitempty"`
 	ConditionRemoved *ConditionRemovedBody `json:"condition_removed,omitempty"`
 	CapacityGranted  *CapacityGrantedBody  `json:"capacity_granted,omitempty"`
@@ -1319,6 +1384,34 @@ type HealingAppliedBody struct {
 	HPAfter    int    `json:"hp_after"`
 
 	// Calculation is the sourced roll behind the requested heal.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+}
+
+// DamageAppliedBody carries authoritative post-resistance damage facts from
+// the rulebook, including the requested amount and the source that authored
+// it. It is [HealingAppliedBody]'s twin, field for field, minus the legacy
+// scalars a damage payload never had: nothing wrote damage results before roll
+// traces existed, so Calculation is the only representation and a payload
+// without one is refused rather than read as a rollless amount.
+type DamageAppliedBody struct {
+	Target string `json:"target"`
+
+	// Amount is what actually landed after the target's own resistances, and
+	// Requested what the dice asked for before them.
+	Amount    int `json:"amount"`
+	Requested int `json:"requested"`
+
+	// SourceRef and SourceName name whatever dealt it — the spell, for a
+	// cast — authored by the provider and never derived from the ref.
+	SourceRef  string `json:"source_ref"`
+	SourceName string `json:"source_name"`
+
+	// HPBefore and HPAfter are the target's hit points either side of it.
+	HPBefore int `json:"hp_before"`
+	HPAfter  int `json:"hp_after"`
+
+	// Calculation is the sourced roll behind the requested damage, so the 1d4
+	// face reaches the client rather than only its total.
 	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
@@ -2017,6 +2110,26 @@ type AbilityRef struct {
 
 	// Name is the ability's own display name — "Dodge", "Rage", "Second
 	// Wind". Authored by the ability, never derived from the ref by a reader.
+	Name string `json:"name"`
+}
+
+// SpellRef identifies WHICH SPELL a cast row offers and which spell a cast
+// beat narrates — the seam's own word for the composition's SpellIdentity.
+//
+// It is not [AbilityRef] with a different ref string, and the separation is the
+// same one the composition makes: a spell ref and an ability ref are different
+// catalog namespaces ("dnd5e:spells:vicious-mockery" against
+// "dnd5e:features:rage"), they reach a client as different bodies, and a
+// declaration that read Spell: &SpellRef{...} says what it is doing.
+type SpellRef struct {
+	// Ref is the spell's full core.Ref.String() —
+	// "dnd5e:spells:vicious-mockery". An OPEN set, so a string, for
+	// [AttackRef.Ref]'s reason: the catalog grows without this type changing.
+	Ref string `json:"ref"`
+
+	// Name is the spell's own display name — "Vicious Mockery", "True
+	// Strike". Authored by the content, never derived from the ref by a
+	// reader.
 	Name string `json:"name"`
 }
 

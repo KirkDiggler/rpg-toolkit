@@ -261,6 +261,12 @@ func kindFor(beat string) EventKind {
 		return EventActivated
 	case "activation-result":
 		return EventActivationResult
+	// The cast beats. "cast" and "saved" are the composition's own words for
+	// what it recorded (encounter's RecordCast), so they cross unchanged.
+	case "cast":
+		return EventCast
+	case "saved":
+		return EventSaved
 	// The third outcome beat, and the one nobody pushed. "down" is an
 	// OutcomeKind like the two above, but no caller can hand it to Record —
 	// the composition refuses that deliberately (rpg-toolkit#1077) and writes
@@ -467,6 +473,10 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			},
 			Target: p.Target,
 		}
+	case EventCast:
+		return castEventBody(payload)
+	case EventSaved:
+		return savedEventBody(payload)
 	case EventActivationResult:
 		return activationResultBody(payload)
 	case EventDowned:
@@ -567,6 +577,73 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 // payload carrying both the legacy scalars and a calculation, a calculation
 // whose arithmetic or pairing does not hold, or a forbidden null is refused
 // rather than guessed at.
+// castEventBody reads the composition's cast beat. Actor and the spell's own
+// ref and name are required; a target is not, because a self-targeted cast
+// names nobody. The mirror of EventActivated's arm above, over the other
+// catalog.
+func castEventBody(payload []byte) EventBody {
+	var p struct {
+		Actor string `json:"actor"`
+		Spell struct {
+			Ref  string `json:"ref"`
+			Name string `json:"name"`
+		} `json:"spell"`
+		Target string `json:"target"`
+	}
+	if json.Unmarshal(payload, &p) != nil ||
+		p.Actor == "" || p.Spell.Ref == "" || p.Spell.Name == "" {
+		return nil
+	}
+	return CastBody{
+		Actor:  p.Actor,
+		Spell:  SpellRef{Ref: p.Spell.Ref, Name: p.Spell.Name},
+		Target: p.Target,
+	}
+}
+
+// savedEventBody reads the composition's saved beat.
+//
+// EVERY KEY IS REQUIRED AND PRESENCE IS CHECKED RATHER THAN VALUE, the same
+// strictness the death save's own body keeps: a save whose "succeeded" key was
+// never written and one that was written false are different payloads, and a
+// decoder that read a missing key as false would narrate a failed save that
+// nobody rolled. The roll must be a real d20 for the same reason.
+func savedEventBody(payload []byte) EventBody {
+	outer, ok := strictJSONObject(payload)
+	if !ok {
+		return nil
+	}
+	for _, key := range []string{"saver", "ability", "roll", "total", "dc", "succeeded", "source"} {
+		if value, present := outer[key]; !present || isJSONNull(value) {
+			return nil
+		}
+	}
+
+	var p struct {
+		Saver     string `json:"saver"`
+		Ability   string `json:"ability"`
+		Roll      int    `json:"roll"`
+		Total     int    `json:"total"`
+		DC        int    `json:"dc"`
+		Succeeded bool   `json:"succeeded"`
+		Source    struct {
+			Ref  string `json:"ref"`
+			Name string `json:"name"`
+		} `json:"source"`
+	}
+	if json.Unmarshal(payload, &p) != nil ||
+		p.Saver == "" || p.Ability == "" ||
+		p.Roll < 1 || p.Roll > 20 ||
+		p.Source.Ref == "" || p.Source.Name == "" {
+		return nil
+	}
+	return SavedBody{
+		Saver: p.Saver, Ability: p.Ability,
+		Roll: p.Roll, Total: p.Total, DC: p.DC, Succeeded: p.Succeeded,
+		Source: SpellRef{Ref: p.Source.Ref, Name: p.Source.Name},
+	}
+}
+
 func activationResultBody(payload []byte) EventBody {
 	outer, ok := strictJSONObject(payload)
 	if !ok {
@@ -669,6 +746,28 @@ func activationResultBody(payload []byte) EventBody {
 			Roll: *result.Roll, Modifier: *result.Modifier,
 			SourceRef: *result.Ref, SourceName: *result.Name,
 			HPBefore: *result.Before, HPAfter: *result.After,
+		}
+		return body
+	case encounter.ResultDamageApplied:
+		// The healing arm's requirements, minus the legacy representation:
+		// nothing ever wrote a damage result without a roll trace, so a
+		// payload carrying the scalar roll/modifier pair is a shape this build
+		// does not read rather than an older one it should.
+		if !identityPresent || !healingNumericsPresent || descriptionPresent || reasonPresent {
+			return nil
+		}
+		if !calculationPresent || rollPresent || modifierPresent {
+			return nil
+		}
+		calculation, ok := decodeRollCalculation(calculationRaw)
+		if !ok || calculation.Total != *result.Requested {
+			return nil
+		}
+		body.DamageApplied = &DamageAppliedBody{
+			Target: result.Target, Amount: *result.Amount, Requested: *result.Requested,
+			SourceRef: *result.Ref, SourceName: *result.Name,
+			HPBefore: *result.Before, HPAfter: *result.After,
+			Calculation: calculation,
 		}
 		return body
 	case encounter.ResultConditionApplied:

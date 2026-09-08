@@ -359,10 +359,10 @@ func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, out.Clock)
-	// One blocker per verb. Activate is ONE verb however many things it could
-	// compile when the sheet is readable: a member who cannot act cannot
-	// activate any of them, and the reason is identical for every one.
-	require.Len(t, out.Declarations, 4)
+	// One blocker per verb. Activate and Cast are ONE verb each however many
+	// rows they could compile when the sheet is readable: a member who cannot
+	// act can do none of them, and the reason is identical for every one.
+	require.Len(t, out.Declarations, 5)
 
 	for _, d := range out.Declarations {
 		require.False(t, d.Available)
@@ -400,7 +400,7 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	require.Equal(t, session.ClockTurn, out.Clock)
 	// Normal verbs are blocked, while the provider offers the active Dying
 	// character one explicit Death Save and keeps End Turn independent.
-	require.Len(t, out.Declarations, 5)
+	require.Len(t, out.Declarations, 6)
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)
@@ -569,10 +569,10 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, out.Clock)
-	// One blocker per verb. Activate is ONE verb however many things it could
-	// compile when the sheet is readable: a member who cannot act cannot
-	// activate any of them, and the reason is identical for every one.
-	require.Len(t, out.Declarations, 4)
+	// One blocker per verb. Activate and Cast are ONE verb each however many
+	// rows they could compile when the sheet is readable: a member who cannot
+	// act can do none of them, and the reason is identical for every one.
+	require.Len(t, out.Declarations, 5)
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)

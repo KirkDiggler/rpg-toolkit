@@ -66,6 +66,18 @@ type declarationIDInput struct {
 	// instead.
 	Attack *combatActions.Definition
 
+	// Cast is the complete validated [combatActions.Definition] for
+	// [VerbCast]. Non-nil for [VerbCast] and nil for every other verb.
+	//
+	// IT SERIALIZES THE WHOLE DEFINITION, like Attack's and unlike Ability's,
+	// and the reason is what the definition holds: the compiled price AND the
+	// caster's own spell save DC, written into the gate at compile time. Both
+	// can change between the read and the click — a bard who lost the action,
+	// a bard whose proficiency or ability score moved — and a selector that
+	// named only the spell would still match, executing an offer whose numbers
+	// the player never saw.
+	Cast *combatActions.Definition
+
 	// Ability is the ref of the thing being activated, for [VerbActivate]. It
 	// must be non-empty for [VerbActivate] and empty for every other verb.
 	//
@@ -130,7 +142,7 @@ func declarationID(input declarationIDInput) (string, error) {
 		return "", err
 	}
 
-	variant, err := selectorVariant(input.Verb, input.Attack, input.Ability, input.Window)
+	variant, err := selectorVariant(input.Verb, input.Attack, input.Cast, input.Ability, input.Window)
 	if err != nil {
 		return "", err
 	}
@@ -183,7 +195,7 @@ func canonicalSelectorVariant(raw json.RawMessage) (json.RawMessage, error) {
 // under the current version without an explicit bump.
 func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 	switch verb {
-	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbDeathSave, VerbReact:
+	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbCast, VerbDeathSave, VerbReact:
 	default:
 		return fmt.Errorf("unsupported declaration verb %q", verb)
 	}
@@ -199,13 +211,16 @@ func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 // use sealed strings, Activate a namespaced ability ref, and Attack serializes
 // the complete validated definition.
 func selectorVariant(
-	verb Verb, attack *combatActions.Definition, ability, window string,
+	verb Verb, attack, cast *combatActions.Definition, ability, window string,
 ) (json.RawMessage, error) {
 	// Cross-verb material is refused rather than ignored. A verb carrying the
 	// other verb's material is a producer defect, and a selector that silently
 	// dropped it would hash to something that looks legitimate.
 	if verb != VerbAttack && attack != nil {
 		return nil, fmt.Errorf("%s declaration must not carry an attack definition", verb)
+	}
+	if verb != VerbCast && cast != nil {
+		return nil, fmt.Errorf("%s declaration must not carry a cast definition", verb)
 	}
 	if verb != VerbActivate && ability != "" {
 		return nil, fmt.Errorf("%s declaration must not carry an ability ref", verb)
@@ -239,32 +254,53 @@ func selectorVariant(
 			return nil, fmt.Errorf("activation ref marshal: %w", err)
 		}
 		return json.RawMessage(raw), nil
+	case VerbCast:
+		if cast == nil {
+			return nil, fmt.Errorf("cast declaration requires a cast definition")
+		}
+		return definitionVariant(cast, "cast")
 	case VerbAttack:
 		if attack == nil {
 			return nil, fmt.Errorf("attack declaration requires an attack definition")
 		}
-		// Validate the complete definition before serialization: this is the
-		// gate that rejects an unvalidated profile and malformed embedded raw
-		// JSON (condition parameters) upstream of canonicalization.
-		if err := attack.Validate(); err != nil {
-			return nil, fmt.Errorf("attack definition is invalid: %w", err)
-		}
-		raw, err := json.Marshal(attack)
-		if err != nil {
-			return nil, fmt.Errorf("attack definition marshal: %w", err)
-		}
-		// Defensive: encoding/json embeds [json.RawMessage] fields verbatim
-		// without parsing them, so a malformed embedded blob could slip past
-		// Validate into a malformed selector document. Reject it here rather
-		// than letting the canonicalizer be the only guard.
-		if !json.Valid(raw) {
-			return nil, fmt.Errorf("attack definition marshal produced malformed JSON")
-		}
-		return json.RawMessage(raw), nil
+		return definitionVariant(attack, "attack")
 	default:
 		// Unreachable after validateDeclarationVerbSlot; kept for completeness.
 		return nil, fmt.Errorf("unsupported declaration verb %q", verb)
 	}
+}
+
+// definitionVariant serializes one complete action definition as selector
+// material. Shared by the two verbs whose variant IS their definition, so a
+// cast and a swing cannot drift on what "the whole definition" means.
+//
+// Validate runs FIRST: it is the gate that rejects an unvalidated profile and
+// malformed embedded raw JSON (a condition's opaque parameters) upstream of
+// canonicalization. label names the verb in a refusal.
+//
+// IT TAKES A POINTER, and that is load-bearing rather than a style choice.
+// [core.Ref] carries MarshalJSON on its POINTER receiver, so a definition
+// marshaled as a value has a non-addressable Ref field and falls back to the
+// struct-tag encoding — the ref goes out as {"module":…,"type":…,"id":…}
+// instead of "dnd5e:weapons:longsword", every selector in the build changes,
+// and every declaration a client is holding turns stale at once. Pinned by
+// TestAttackDeclarationIDGolden, which is what caught it.
+func definitionVariant(definition *combatActions.Definition, label string) (json.RawMessage, error) {
+	if err := definition.Validate(); err != nil {
+		return nil, fmt.Errorf("%s definition is invalid: %w", label, err)
+	}
+	raw, err := json.Marshal(definition)
+	if err != nil {
+		return nil, fmt.Errorf("%s definition marshal: %w", label, err)
+	}
+	// Defensive: encoding/json embeds [json.RawMessage] fields verbatim
+	// without parsing them, so a malformed embedded blob could slip past
+	// Validate into a malformed selector document. Reject it here rather
+	// than letting the canonicalizer be the only guard.
+	if !json.Valid(raw) {
+		return nil, fmt.Errorf("%s definition marshal produced malformed JSON", label)
+	}
+	return json.RawMessage(raw), nil
 }
 
 // indexCompiledOffers is the collision guard offer compilation uses when projecting
