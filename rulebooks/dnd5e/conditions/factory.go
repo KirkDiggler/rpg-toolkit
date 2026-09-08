@@ -110,6 +110,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createTrueStrike(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.ViciousMockery().ID:
 		condition, err = createViciousMockery(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.Concentrating().ID:
+		condition, err = createConcentrating(input.Config, input.MemberID, input.SourceRef)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -409,4 +411,47 @@ func createViciousMockery(
 	}
 
 	return NewViciousMockeryCondition(memberID, cfg.SourceID, sourceRef), nil
+}
+
+// concentratingConfig is the config structure for the concentrating condition.
+// SpellRef and SpellName name what is being held together; TurnEnds is the
+// spell's own duration; Children are the addresses it already left behind,
+// present for a hold rebuilt rather than freshly cast.
+type concentratingConfig struct {
+	SpellRef  string                 `json:"spell_ref"`
+	SpellName string                 `json:"spell_name"`
+	TurnEnds  int                    `json:"turn_ends"`
+	Children  []dnd5eEvents.ChildRef `json:"children"`
+}
+
+// createConcentrating creates a concentrating condition from config. The member
+// is the CASTER — the hold is theirs.
+//
+// A missing spell falls back to the ref of whatever granted the condition,
+// which for a cast IS the spell. Both empty is refused rather than defaulted:
+// concentration on nothing is a badge with no spell behind it, and the check it
+// would provoke would have nothing at stake. A duration of zero is refused for
+// the same reason a profile's is — a hold whose clock already ran out.
+func createConcentrating(config json.RawMessage, memberID, sourceRef string) (*ConcentratingCondition, error) {
+	var cfg concentratingConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse concentrating config")
+		}
+	}
+
+	spellRef := cfg.SpellRef
+	if spellRef == "" {
+		spellRef = sourceRef
+	}
+	if spellRef == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "concentrating config requires 'spell_ref' field")
+	}
+	if cfg.TurnEnds <= 0 {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "concentrating config requires a positive 'turn_ends'")
+	}
+
+	condition := NewConcentratingCondition(memberID, spellRef, cfg.SpellName, cfg.TurnEnds)
+	condition.Children = cfg.Children
+	return condition, nil
 }

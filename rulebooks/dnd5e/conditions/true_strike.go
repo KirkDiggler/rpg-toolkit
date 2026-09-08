@@ -21,23 +21,13 @@ import (
 // TrueStrikeName is what a player is shown wherever this condition appears.
 const TrueStrikeName = "True Strike"
 
-// TrueStrikeTurnEnds is how many of the caster's turn ends the condition
-// survives: the end of the turn it was cast on, and the end of the next one.
-//
-// Two, and the first one is the reason. A cantrip costs an action, so True
-// Strike is always cast DURING the caster's turn — the very next turn end on
-// the bus is that same turn's. Ending there would mean the advantage was never
-// available on any attack, since the caster has already spent their action.
-const TrueStrikeTurnEnds = 2
-
 // TrueStrikeConditionData is the serializable form of the true strike
 // condition, stored by the game server as an opaque JSON blob.
 type TrueStrikeConditionData struct {
-	Ref          *core.Ref `json:"ref"`
-	MemberID     string    `json:"member_id"`
-	TargetID     string    `json:"target_id"`
-	SourceRef    string    `json:"source_ref"`
-	TurnEndsLeft int       `json:"turn_ends_left"`
+	Ref       *core.Ref `json:"ref"`
+	MemberID  string    `json:"member_id"`
+	TargetID  string    `json:"target_id"`
+	SourceRef string    `json:"source_ref"`
 }
 
 // TrueStrikeCondition is the caster's foreknowledge of one creature's defenses.
@@ -55,14 +45,17 @@ type TrueStrikeConditionData struct {
 // matching target as the extra test. An attack against anybody else passes
 // through untouched and leaves the condition in place.
 //
+// # It does not hold its own clock
+//
+// True Strike is a concentration cantrip, so the duration belongs to the
+// caster's [ConcentratingCondition] and this condition ends when that one does.
+// One spell, one duration, one answer: a count here beside the owner's would be
+// two clocks answering the same question.
+//
 // # Divergence from RAW, named rather than hidden
 //
-// RAW's True Strike is a concentration cantrip whose advantage applies on your
-// NEXT turn. Here the advantage applies to the caster's next attack against
-// that target, the condition ends at the end of the caster's next turn (see
-// [TrueStrikeTurnEnds]), and THERE IS NO CONCENTRATION. Concentration is the
-// largest shape this rulebook is missing, and it is not bought for one cantrip;
-// the day a levelled spell needs it is the day it has to exist.
+// RAW's True Strike grants its advantage on your NEXT turn. Here the advantage
+// applies to the caster's next attack against that target.
 type TrueStrikeCondition struct {
 	// MemberID is the caster who holds the advantage.
 	MemberID string
@@ -76,10 +69,6 @@ type TrueStrikeCondition struct {
 	// "True Strike" reads this rather than inferring it.
 	SourceRef string
 
-	// TurnEndsLeft is how many of the caster's turn ends remain before this
-	// expires. See [TrueStrikeTurnEnds].
-	TurnEndsLeft int
-
 	bus             events.EventBus
 	subscriptionIDs []string
 }
@@ -92,7 +81,7 @@ var _ dnd5eEvents.ConditionBehavior = (*TrueStrikeCondition)(nil)
 func (t *TrueStrikeCondition) Ref() *core.Ref { return refs.Conditions.TrueStrike() }
 
 // NewTrueStrikeCondition creates the caster's advantage against one named
-// creature, good until it is used or the caster's next turn ends.
+// creature, good until it is used or the caster's concentration ends.
 //
 // An empty sourceRef falls back to the True Strike spell, which is the only
 // thing in this rulebook that applies this condition. A condition that recorded
@@ -102,10 +91,9 @@ func NewTrueStrikeCondition(casterID, targetID, sourceRef string) *TrueStrikeCon
 		sourceRef = refs.Spells.TrueStrike().String()
 	}
 	return &TrueStrikeCondition{
-		MemberID:     casterID,
-		TargetID:     targetID,
-		SourceRef:    sourceRef,
-		TurnEndsLeft: TrueStrikeTurnEnds,
+		MemberID:  casterID,
+		TargetID:  targetID,
+		SourceRef: sourceRef,
 	}
 }
 
@@ -113,7 +101,8 @@ func NewTrueStrikeCondition(casterID, targetID, sourceRef string) *TrueStrikeCon
 func (t *TrueStrikeCondition) IsApplied() bool { return t.bus != nil }
 
 // Apply subscribes the advantage to the attack chain that spends it and to the
-// two boundaries that end it: the caster's turn ends and the end of the fight.
+// end of the fight. NOT to turn ends: the spell's duration is the caster's
+// concentration, and this condition ends when that one publishes its removal.
 func (t *TrueStrikeCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if t.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "true strike condition already applied")
@@ -128,14 +117,6 @@ func (t *TrueStrikeCondition) Apply(ctx context.Context, bus events.EventBus) er
 	}
 	t.subscriptionIDs = append(t.subscriptionIDs, attackSub)
 
-	turnEnds := dnd5eEvents.TurnEndTopic.On(bus)
-	turnSub, err := turnEnds.Subscribe(ctx, t.onTurnEnd)
-	if err != nil {
-		_ = t.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to turn end topic")
-	}
-	t.subscriptionIDs = append(t.subscriptionIDs, turnSub)
-
 	combatEnds := dnd5eEvents.CombatEndTopic.On(bus)
 	combatSub, err := combatEnds.Subscribe(ctx, t.onCombatEnd)
 	if err != nil {
@@ -144,7 +125,7 @@ func (t *TrueStrikeCondition) Apply(ctx context.Context, bus events.EventBus) er
 	}
 	t.subscriptionIDs = append(t.subscriptionIDs, combatSub)
 
-	// A rest is not one of this condition's own ends — its turn boundary and
+	// A rest is not one of this condition's own ends — its owner's clock and
 	// combat end both fire first in any ordinary fight — but a blob that
 	// survived to a long rest must not outlive it, which is the registry every
 	// combat-scoped condition here is in.
@@ -184,11 +165,10 @@ func (t *TrueStrikeCondition) Remove(ctx context.Context, bus events.EventBus) e
 // ToJSON converts the condition to JSON for persistence.
 func (t *TrueStrikeCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(TrueStrikeConditionData{
-		Ref:          refs.Conditions.TrueStrike(),
-		MemberID:     t.MemberID,
-		TargetID:     t.TargetID,
-		SourceRef:    t.SourceRef,
-		TurnEndsLeft: t.TurnEndsLeft,
+		Ref:       refs.Conditions.TrueStrike(),
+		MemberID:  t.MemberID,
+		TargetID:  t.TargetID,
+		SourceRef: t.SourceRef,
 	})
 }
 
@@ -203,14 +183,6 @@ func (t *TrueStrikeCondition) loadJSON(data json.RawMessage) error {
 	t.SourceRef = stored.SourceRef
 	if t.SourceRef == "" {
 		t.SourceRef = refs.Spells.TrueStrike().String()
-	}
-	t.TurnEndsLeft = stored.TurnEndsLeft
-	if t.TurnEndsLeft <= 0 {
-		// A blob written before the counter existed, or one whose count ran
-		// out without the removal landing. Either way the honest reading is
-		// "one more turn end", not "already expired": a condition that
-		// vanished on load would take its advantage with it silently.
-		t.TurnEndsLeft = 1
 	}
 	return nil
 }
@@ -243,22 +215,6 @@ func (t *TrueStrikeCondition) onAttackChain(
 	}
 
 	return c, t.end(ctx, "consumed")
-}
-
-// onTurnEnd counts down the caster's own turn ends and removes the condition
-// when the count runs out. See [TrueStrikeTurnEnds] for why the count starts
-// at two.
-func (t *TrueStrikeCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
-	if event.SubjectID != t.MemberID {
-		return nil
-	}
-
-	t.TurnEndsLeft--
-	if t.TurnEndsLeft > 0 {
-		return nil
-	}
-
-	return t.end(ctx, "expired")
 }
 
 // onCombatEnd ends the advantage with the fight.

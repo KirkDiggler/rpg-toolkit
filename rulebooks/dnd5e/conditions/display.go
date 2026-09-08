@@ -73,6 +73,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.Inspired().String():          {Name: InspiredName},
 	refs.Conditions.TrueStrike().String():        {Name: TrueStrikeName},
 	refs.Conditions.ViciousMockery().String():    {Name: ViciousMockeryName},
+	refs.Conditions.Concentrating().String():     {Name: ConcentratingName},
 	refs.Conditions.Prone().String():             {Name: "Prone"},
 	refs.Conditions.OpportunityAttack().String(): {Name: "Opportunity Attack"},
 

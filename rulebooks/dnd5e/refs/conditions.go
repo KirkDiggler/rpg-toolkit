@@ -50,6 +50,10 @@ var (
 	conditionTrueStrike     = &core.Ref{Module: Module, Type: TypeConditions, ID: "true_strike"}
 	conditionViciousMockery = &core.Ref{Module: Module, Type: TypeConditions, ID: "vicious_mockery"}
 
+	// Concentration (rpg-project#407): the owner on the caster's sheet that
+	// holds what its spell left behind.
+	conditionConcentrating = &core.Ref{Module: Module, Type: TypeConditions, ID: "concentrating"}
+
 	// Reaction conditions (Wave 2.11d) — universal-by-default reactions that
 	// subscribe to the appropriate chain and publish ReactionTriggerEvents
 	// when their predicate matches AND gamectx.IsReactionReady returns true.
@@ -148,3 +152,8 @@ func (n conditionsNS) TrueStrike() *core.Ref { return conditionTrueStrike }
 // ViciousMockery returns the ref for the ViciousMockeryCondition, applied to
 // the creature that failed its save against Vicious Mockery.
 func (n conditionsNS) ViciousMockery() *core.Ref { return conditionViciousMockery }
+
+// Concentrating returns the ref for the ConcentratingCondition, applied to the
+// CASTER of a concentration spell and holding the addresses of the effects
+// that spell left on the board.
+func (n conditionsNS) Concentrating() *core.Ref { return conditionConcentrating }

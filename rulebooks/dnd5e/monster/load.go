@@ -222,7 +222,10 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 				})
 		}},
 		{"condition removed", func() (string, error) {
-			return dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx, m.onConditionRemoved)
+			return dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx,
+				func(ctx context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+					return m.onConditionRemoved(ctx, bus, event)
+				})
 		}},
 		{"condition state changed", func() (string, error) {
 			return dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx, m.onConditionStateChanged)

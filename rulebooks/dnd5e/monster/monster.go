@@ -4,6 +4,7 @@ package monster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -550,15 +551,33 @@ func (m *Monster) onConditionApplied(
 // Dirty only when the list actually shrank, for the reason the character's
 // does: a removal event reaches every sheet on the bus, and flagging the ones
 // it was not about would persist every monster in the fight.
-func (m *Monster) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+//
+// bus is the one the sheet was attached to, handed down for the reason
+// [Monster.onConditionApplied] takes it: a condition detached on a different
+// bus than the one that delivered the event keeps every subscription it had.
+func (m *Monster) onConditionRemoved(
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.ConditionRemovedEvent,
+) error {
 	if event.MemberID != m.id {
 		return nil
 	}
 
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
+	var detachErrs []error
 	for _, condition := range m.conditions {
 		if condition.Ref().String() != event.ConditionRef {
 			filtered = append(filtered, condition)
+			continue
+		}
+
+		// AND UNSUBSCRIBE IT, for the reason the character keeper does: a
+		// condition dropped from this list but left on the bus keeps answering
+		// chains it is no longer part of. IsApplied guards the double call, so
+		// a condition that ended itself and already detached is untouched.
+		if condition.IsApplied() {
+			if err := condition.Remove(ctx, bus); err != nil {
+				detachErrs = append(detachErrs, err)
+			}
 		}
 	}
 
@@ -568,6 +587,12 @@ func (m *Monster) onConditionRemoved(_ context.Context, event dnd5eEvents.Condit
 		m.dirty = true
 	}
 	m.conditions = filtered
+
+	if len(detachErrs) > 0 {
+		return rpgerr.Wrapf(errors.Join(detachErrs...),
+			"failed to detach %d removed condition(s) %s from monster %s",
+			len(detachErrs), event.ConditionRef, m.id)
+	}
 
 	return nil
 }

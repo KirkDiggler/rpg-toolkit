@@ -26,6 +26,15 @@ const ViciousMockeryDamage = "1d4"
 // the creature the advantage is good against.
 const TrueStrikeTargetParameter = "target_id"
 
+// TrueStrikeTurnEnds is how many of the caster's turn ends the concentration
+// survives: the end of the turn it was cast on, and the end of the next one.
+//
+// Two, and the first one is the reason. A cantrip costs an action, so True
+// Strike is always cast DURING the caster's turn — the very next turn end on
+// the bus is that same turn's. Ending there would mean the advantage was never
+// available on any attack, since the caster has already spent their action.
+const TrueStrikeTurnEnds = 2
+
 // ViciousMockeryCasterParameter is the Vicious Mockery condition's parameter
 // naming the bard who imposed it.
 const ViciousMockeryCasterParameter = "source_id"
@@ -70,6 +79,11 @@ var castContent = map[Spell]castProfileBuilder{
 				// NO GATE. Nobody resists True Strike: it names a creature and
 				// grants the caster something. This is the whole gateless half
 				// of the cast door.
+				//
+				// RAW's True Strike is a concentration cantrip, and here it is
+				// one: the caster holds it for two turn ends and the advantage
+				// ends with the hold.
+				Concentration: &actions.CastConcentration{TurnEnds: TrueStrikeTurnEnds},
 				Effects: []actions.CastEffect{{
 					Recipient:      actions.CastRecipientCaster,
 					Ref:            *refs.Conditions.TrueStrike(),

@@ -272,6 +272,30 @@ type Output struct {
 	// It is the pre-execution picture of what was attached, the record of which
 	// effect attached what, and the proof that an effect attached nothing.
 	Hooks []Registration
+
+	// ConcentrationChecks are the checks a caster MADE during this interaction
+	// — the spell they kept, and the roll that kept it.
+	//
+	// Apart from ConcentrationBreaks because the record keeps them apart: a
+	// failed check rides the break it caused, and a made one has no break to
+	// ride. Empty is the ordinary case.
+	ConcentrationChecks []encounter.ConcentrationCheck
+
+	// ConcentrationBreaks are the holds that ended during this interaction, in
+	// the order the rulebook ended them, ready for the record verb the caller
+	// already makes.
+	//
+	// # Why this is on Output and not on an outcome
+	//
+	// Because it is not one machine's answer. A hold ends seven ways and only
+	// the failed check is a machine's doing; the other six are the condition's,
+	// and they land in whatever interaction happened to be running — a boundary
+	// that ended the fight, a rest, a blow that dropped the caster. An outcome
+	// field would be a field every machine had to carry and only two could ever
+	// fill.
+	//
+	// EMPTY IS THE ORDINARY CASE, and it is most interactions.
+	ConcentrationBreaks []encounter.ConcentrationBreak
 }
 
 // Participants is the loaded cast of an interaction: the sheets after they were
@@ -413,6 +437,16 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	// installTruth — this line's job is to be the only place it is called from.
 	ctx = installTruth(ctx, room, cast, enc)
 
+	// One collector for the whole interaction, opened before anything runs and
+	// closed with it. A concentration that ends does so wherever the rules end
+	// it — inside the blow, the recast, the boundary, the rest — and the
+	// interaction is the only scope that spans all of them. See
+	// [concentrationCollector].
+	breaks, err := collectConcentrationEnds(ctx, surf.inner)
+	if err != nil {
+		return nil, errors.Join(err, surf.teardown(ctx))
+	}
+
 	// Start is pure preflight and runs before payment. Invalid participant,
 	// delivery, or condition declarations therefore consume nothing.
 	first, startErr := start(ctx, in.Machine, cast)
@@ -427,7 +461,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	outcome, posed, runErr := driveStep(ctx, surf, first, cast)
 
 	// R5: revoke everything granted, whether or not the machine succeeded.
-	tearErr := surf.teardown(ctx)
+	tearErr := errors.Join(breaks.stop(ctx), surf.teardown(ctx))
 
 	if runErr != nil {
 		// The machine's error leads, but a teardown failure on this path is
@@ -442,13 +476,24 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("resolution: teardown: %w", tearErr)
 	}
 
+	ended, err := breaks.breaks(outcome)
+	if err != nil {
+		return nil, err
+	}
+	kept, err := breaks.checks(cast, outcome)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Output{
-		World:           enc.ToData(),
-		DirtyCharacters: dirtyCharacters(cast),
-		DirtyMonsters:   dirtyMonsters(cast),
-		Outcome:         outcome,
-		Posed:           posed,
-		Hooks:           surf.registrations(),
+		World:               enc.ToData(),
+		DirtyCharacters:     dirtyCharacters(cast),
+		DirtyMonsters:       dirtyMonsters(cast),
+		Outcome:             outcome,
+		Posed:               posed,
+		Hooks:               surf.registrations(),
+		ConcentrationChecks: kept,
+		ConcentrationBreaks: ended,
 	}, nil
 }
 
