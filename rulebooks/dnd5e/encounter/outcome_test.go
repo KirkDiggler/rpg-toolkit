@@ -638,11 +638,21 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // transcript reader can do with it is match two copies of the same roll. A
 // caller writing a sentence into it would be writing it into a field no
 // renderer displays.
+//
+// CONCENTRATION BREAKS MAKE THE ARGUMENT TWICE, once for themselves and once
+// for what they carry. The break's own three fields are a member ID this
+// composition validates against its own roster, a spell identity held to the
+// same presence-not-meaning floor as the attack above it, and a reason from a
+// vocabulary the rulebook owns — the same shape [CastSave.Ability] has carried
+// since the save beat landed. What the break carries is not free either: its
+// removals are [encounter.ActivationResult] values under the closed result
+// kinds, refused unless they are condition-removed, so the one thing a caller
+// can put in a break is facts this module can check.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
 		"DamageComponents", "AdvantageSources", "DisadvantageSources", "DeathSave", "Trade",
-		"PresentationID",
+		"PresentationID", "ConcentrationBreaks",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")

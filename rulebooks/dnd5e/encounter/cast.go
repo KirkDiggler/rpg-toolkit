@@ -29,6 +29,75 @@ const BeatCast = "cast"
 // DC and an answer.
 const BeatSaved = "saved"
 
+// BeatConcentrationEnded is the "beat" value of the story beat this
+// composition appends when a member's concentration on a spell ends.
+//
+// It is its own beat rather than an inference from the condition-removed
+// results that follow it, for two reasons the log makes obvious. Three of the
+// break's reasons — a duration running out, the fight ending, the spell's own
+// children being spent — produce no roll and no check, so there is nothing
+// else in the train that could be read as the break. And the removals land on
+// OTHER members' sheets, where a reader with no break beat in front of them
+// sees conditions dropping off strangers for no stated cause.
+//
+// There is no "concentration started" beat, deliberately: the cast beat
+// already is one.
+const BeatConcentrationEnded = "concentration_ended"
+
+// ConcentrationBreak is one concentration that ended as a consequence of the
+// interaction being recorded — the caster, the spell they lose, why it broke,
+// the check they failed if there was one, and the conditions stripped from the
+// board when it went.
+//
+// IT RIDES THE INTERACTION THAT CAUSED IT rather than arriving through a
+// record verb of its own. A concentration break is not something that happens
+// on its own account: it happens because somebody was hit, or cast again, or
+// the fight ended. Recording it separately would put the break in the story at
+// whatever clock reading the second call happened to reach, next to none of
+// the beats that explain it, and a reader scrolling their own log would find
+// "your spell ended" with the blow that ended it somewhere else entirely.
+// Carried here, one hit produces one train — struck, saved,
+// concentration_ended, and one condition-removed per address — in the order
+// the rulebook produced them, appended by the call the caller already makes.
+type ConcentrationBreak struct {
+	// Caster is the member who was concentrating and now is not. Must be a
+	// current member.
+	Caster MemberID
+
+	// Spell is the spell that ends. Required: a break beat that cannot say
+	// what was lost is not a beat anybody can read.
+	Spell SpellIdentity
+
+	// Reason is why it ended, in the rulebook's own words — "damage",
+	// "recast", "duration", "combat_end", "spell_ended", "caster_down".
+	//
+	// CHECKED FOR PRESENCE, NOT FOR MEANING, and a plain string rather than a
+	// closed enum here, for the same C1 reason [ActivationResult.DamageType]
+	// is one: the vocabulary belongs to the rulebook this module cannot
+	// import. Required, because a break with no stated cause is the exact
+	// thing this beat exists to prevent.
+	Reason string
+
+	// Save is the check the caster failed to keep the spell, or nil when the
+	// break was ungated.
+	//
+	// NIL IS THE HONEST ZERO, the same as [RecordCastInput.Save]. A caster
+	// dropped to zero hit points loses concentration with no roll at all, and
+	// so does one whose spell simply ran out of duration — a save beat reading
+	// 0 against DC 0 beside either would say a roll happened that never did.
+	Save *CastSave
+
+	// Removed are the conditions the ending spell took off the board, in the
+	// order the rulebook stripped them, one per address it was holding. Each
+	// must be a [ResultConditionRemoved] — they go out as the same
+	// activation-result beat every other removal in this module uses, because
+	// a condition removed by a broken concentration and a condition removed by
+	// anything else are the same fact in the story.
+	//
+	// Empty is legal and means the spell was holding nothing when it broke.
+	Removed []ActivationResult
+}
+
 // SpellIdentity names the rulebook spell that was cast. Ref and Name are
 // required catalog facts carried as primitives; encounter validates their
 // presence without interpreting what they mean.
@@ -91,6 +160,15 @@ type RecordCastInput struct {
 	// Results are the effects actually delivered, in order. A successful save
 	// against Vicious Mockery delivers none, and that is a complete cast.
 	Results []ActivationResult
+
+	// ConcentrationBreaks are the concentrations this cast ended, in the order
+	// the rulebook ended them. Their beats are appended after the cast's own,
+	// so the whole break reads inside the cast that caused it.
+	//
+	// A cast breaks concentration two ways and both arrive here: the caster
+	// casting a second concentration spell drops the first, and a cast that
+	// deals damage can break somebody else's. Empty is the ordinary case.
+	ConcentrationBreaks []ConcentrationBreak
 }
 
 // RecordCastOutput reports where every transaction beat landed and any intel
@@ -121,6 +199,13 @@ type savedPayload struct {
 	DC        int                  `json:"dc"`
 	Succeeded bool                 `json:"succeeded"`
 	Source    spellIdentityPayload `json:"source"`
+}
+
+type concentrationEndedPayload struct {
+	Beat   string               `json:"beat"`
+	Caster MemberID             `json:"caster"`
+	Spell  spellIdentityPayload `json:"spell"`
+	Reason string               `json:"reason"`
 }
 
 // RecordCast appends one cast beat, then the saved beat if the spell's gate
@@ -243,7 +328,7 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 	})
 
 	if in.Save != nil {
-		savedBytes, savedSubjects, saveErr := e.prepareCastSave(in.Actor, in.Save, spell)
+		savedBytes, savedSubjects, saveErr := e.prepareSaveBeat("record cast", in.Actor, in.Save, spell)
 		if saveErr != nil {
 			return nil, saveErr
 		}
@@ -272,29 +357,39 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		})
 	}
 
+	breakBeats, breakErr := e.prepareConcentrationBreaks("record cast", in.Actor, in.ConcentrationBreaks)
+	if breakErr != nil {
+		return nil, breakErr
+	}
+	prepared = append(prepared, breakBeats...)
+
 	return prepared, nil
 }
 
-func (e *Encounter) prepareCastSave(
-	actor MemberID, save *CastSave, spell spellIdentityPayload,
+// prepareSaveBeat validates one saving throw and marshals its beat. verb names
+// the caller in every refusal — "record cast" for a spell's own gate, "record"
+// for a concentration check ridden in on a strike — because a save refused
+// under the wrong verb's name sends the reader to the wrong door.
+func (e *Encounter) prepareSaveBeat(
+	verb string, actor MemberID, save *CastSave, spell spellIdentityPayload,
 ) ([]byte, []MemberID, error) {
 	if save.Saver == "" {
-		return nil, nil, fmt.Errorf("record cast: save saver: %w", ErrNoMember)
+		return nil, nil, fmt.Errorf("%s: save saver: %w", verb, ErrNoMember)
 	}
 	if _, ok := e.members[save.Saver]; !ok {
-		return nil, nil, fmt.Errorf("record cast: save saver %q: %w", save.Saver, ErrNoMember)
+		return nil, nil, fmt.Errorf("%s: save saver %q: %w", verb, save.Saver, ErrNoMember)
 	}
 	if save.Ability == "" {
-		return nil, nil, fmt.Errorf("record cast: save ability: %w", ErrInvalidData)
+		return nil, nil, fmt.Errorf("%s: save ability: %w", verb, ErrInvalidData)
 	}
 	if save.Roll < 1 || save.Roll > 20 {
 		// The beat exists so a player can read the save that was made. A d20
 		// that does not read 1-20 is not a save anybody rolled.
-		return nil, nil, fmt.Errorf("record cast: save roll %d is not a d20: %w", save.Roll, ErrInvalidData)
+		return nil, nil, fmt.Errorf("%s: save roll %d is not a d20: %w", verb, save.Roll, ErrInvalidData)
 	}
 	if save.DC < 1 {
 		// A DC of zero is not a difficulty; it is a field nobody filled in.
-		return nil, nil, fmt.Errorf("record cast: save dc %d: %w", save.DC, ErrInvalidData)
+		return nil, nil, fmt.Errorf("%s: save dc %d: %w", verb, save.DC, ErrInvalidData)
 	}
 
 	savedBytes, err := json.Marshal(savedPayload{
@@ -308,7 +403,7 @@ func (e *Encounter) prepareCastSave(
 		Source:    spell,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("record cast: saved payload: %w", err)
+		return nil, nil, fmt.Errorf("%s: saved payload: %w", verb, err)
 	}
 
 	subjects := []MemberID{actor}
@@ -316,4 +411,114 @@ func (e *Encounter) prepareCastSave(
 		subjects = append(subjects, save.Saver)
 	}
 	return savedBytes, subjects, nil
+}
+
+// prepareConcentrationBreaks validates and marshals every beat the supplied
+// breaks produce, in train order: the failed check if there was one, then the
+// break itself, then one condition-removed result per address the spell was
+// holding. verb names the caller in every refusal.
+//
+// It marshals and returns rather than appending, so a break refused for a
+// missing reason or an unknown caster costs the caller nothing — the whole
+// transaction is still validated before its first beat lands, which is the
+// property that keeps a rejected input from leaving half a story behind.
+//
+// actor is the member whose interaction caused the breaks — the striker, or
+// the caster of the spell being recorded — and NOT the concentrating member.
+// It is a subject of every beat here because the break is a consequence of
+// what they did, and a reader following their own log has to be able to see
+// what their blow ended.
+func (e *Encounter) prepareConcentrationBreaks(
+	verb string, actor MemberID, breaks []ConcentrationBreak,
+) ([]preparedActivationBeat, error) {
+	if len(breaks) == 0 {
+		return nil, nil
+	}
+
+	prepared := make([]preparedActivationBeat, 0, len(breaks)*2)
+	for i, broken := range breaks {
+		if broken.Caster == "" {
+			return nil, fmt.Errorf("%s: concentration break %d caster: %w", verb, i, ErrNoMember)
+		}
+		if _, ok := e.members[broken.Caster]; !ok {
+			return nil, fmt.Errorf(
+				"%s: concentration break %d caster %q: %w", verb, i, broken.Caster, ErrNoMember,
+			)
+		}
+		if broken.Spell.Ref == "" {
+			return nil, fmt.Errorf("%s: concentration break %d spell ref: %w", verb, i, ErrInvalidData)
+		}
+		if broken.Spell.Name == "" {
+			return nil, fmt.Errorf("%s: concentration break %d spell name: %w", verb, i, ErrInvalidData)
+		}
+		if broken.Reason == "" {
+			return nil, fmt.Errorf("%s: concentration break %d reason: %w", verb, i, ErrInvalidData)
+		}
+		spell := spellIdentityPayload{Ref: broken.Spell.Ref, Name: broken.Spell.Name}
+
+		if broken.Save != nil {
+			savedBytes, savedSubjects, saveErr := e.prepareSaveBeat(verb, actor, broken.Save, spell)
+			if saveErr != nil {
+				return nil, saveErr
+			}
+			prepared = append(prepared, preparedActivationBeat{
+				payload:  savedBytes,
+				subjects: savedSubjects,
+			})
+		}
+
+		endedBytes, marshalErr := json.Marshal(concentrationEndedPayload{
+			Beat:   BeatConcentrationEnded,
+			Caster: broken.Caster,
+			Spell:  spell,
+			Reason: broken.Reason,
+		})
+		if marshalErr != nil {
+			return nil, fmt.Errorf("%s: concentration break %d payload: %w", verb, i, marshalErr)
+		}
+		endedSubjects := []MemberID{actor}
+		if broken.Caster != actor {
+			endedSubjects = append(endedSubjects, broken.Caster)
+		}
+		prepared = append(prepared, preparedActivationBeat{
+			payload:  endedBytes,
+			subjects: endedSubjects,
+		})
+
+		for j, removed := range broken.Removed {
+			// ONE KIND ONLY. Every other result kind carries something a
+			// removal cannot mean — an amount, a description, a fresh
+			// condition — and a break that could smuggle one in would let a
+			// caller write damage into a beat whose whole claim is that
+			// nothing was rolled.
+			if removed.Kind != ResultConditionRemoved {
+				return nil, fmt.Errorf(
+					"%s: concentration break %d removed %d kind %q: %w",
+					verb, i, j, removed.Kind, ErrInvalidData,
+				)
+			}
+			resultPayload, validationErr := e.prepareActivationResult(
+				fmt.Sprintf("%s: concentration break %d", verb, i), j, removed,
+			)
+			if validationErr != nil {
+				return nil, validationErr
+			}
+			resultBytes, resultErr := json.Marshal(activationResultPayload{
+				Beat:   "activation-result",
+				Actor:  actor,
+				Result: resultPayload,
+			})
+			if resultErr != nil {
+				return nil, fmt.Errorf(
+					"%s: concentration break %d removed %d payload: %w", verb, i, j, resultErr,
+				)
+			}
+			prepared = append(prepared, preparedActivationBeat{
+				payload:  resultBytes,
+				subjects: []MemberID{actor, removed.Target},
+			})
+		}
+	}
+
+	return prepared, nil
 }

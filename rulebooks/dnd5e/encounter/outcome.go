@@ -193,6 +193,19 @@ type RecordInput struct {
 	// this composition cannot know a rulebook's token alphabet, and the
 	// rulebook that mints one validates it before handing it over.
 	PresentationID string
+
+	// ConcentrationBreaks are the concentrations this outcome ended, in the
+	// order the rulebook ended them. Their beats are appended AFTER this
+	// outcome's own, so one blow produces one train — struck, the failed
+	// check, the break, and the conditions it stripped — and a reader finds
+	// the whole break inside the hit that caused it.
+	//
+	// Legal on every kind rather than only [OutcomeStruck]. Which outcomes can
+	// break a concentration is a rulebook fact this module cannot import (C1),
+	// exactly the reason the standing consult below runs for every kind, and a
+	// list this composition refused on a kind it had guessed was harmless
+	// would be encoding a rule it does not own. Empty is the ordinary case.
+	ConcentrationBreaks []ConcentrationBreak
 }
 
 // DeathSaveDetail is the closed, rulebook-neutral story shape for one death
@@ -367,6 +380,16 @@ type RecordOutput struct {
 
 	// Seq is the story sequence of the recorded beat.
 	Seq uint64
+
+	// FollowUpSeqs are the sequences of the beats appended after the outcome
+	// for [RecordInput.ConcentrationBreaks], in append order. Empty when the
+	// outcome broke nobody's concentration.
+	//
+	// They are reported SEPARATELY from Seq rather than folded into it,
+	// because Seq answers a question the caller actually asked — where the
+	// thing I reported landed — and an outcome beat that moved depending on
+	// how many consequences followed it would answer a different one.
+	FollowUpSeqs []uint64
 }
 
 // Record puts one rulebook outcome into the encounter's story.
@@ -616,6 +639,15 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		return nil, fmt.Errorf("record: outcome payload: %w", err)
 	}
 
+	// Validated and marshalled BEFORE the outcome beat is appended, with every
+	// other refusal above it: a break with an unknown caster or no stated
+	// reason must cost the rulebook nothing, and it would cost it a stranded
+	// struck beat if it were checked on the way out.
+	breakBeats, breakErr := e.prepareConcentrationBreaks("record", in.Actor, in.ConcentrationBreaks)
+	if breakErr != nil {
+		return nil, breakErr
+	}
+
 	// subjectBeat, subjects are the actor and targets — v1 still sends
 	// everyone (audienceFor's doc).
 	subjects := append([]MemberID{in.Actor}, targets...)
@@ -627,6 +659,23 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("record: %w", err)
+	}
+
+	// The break rides in behind the beat that caused it, at the same clock
+	// reading and through the same append, so the story holds the blow and
+	// everything it ended as one train from one call.
+	followUpSeqs := make([]uint64, 0, len(breakBeats))
+	for i, beat := range breakBeats {
+		appendedFollowUp, followUpErr := e.appendBeat(&record.AppendInput{
+			At:       uint64(e.clock.ToData().HighWater),
+			Audience: e.audienceFor(subjectBeat, beat.subjects...),
+			Tags:     map[string]string{"tag": "outcome"},
+			Payload:  beat.payload,
+		})
+		if followUpErr != nil {
+			return nil, fmt.Errorf("record: concentration break beat %d: %w", i, followUpErr)
+		}
+		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
 	}
 
 	// And now the world finds out what that beat just changed. AFTER the append,
@@ -647,5 +696,5 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		return nil, fmt.Errorf("record: %w", nerr)
 	}
 
-	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq}, nil
+	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
 }
