@@ -171,3 +171,85 @@ func (s *ConcentrationKeeperSuite) damage(memberID string, amount int) *dnd5eEve
 	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, event))
 	return event
 }
+
+// THE REAL KEEPER, and the invariant it kept breaking: a condition hears a
+// fact addressed to it and acts on it BEFORE its keeper detaches it.
+//
+// Measured inside a real Resolve before it was fixed. Two order defects, both
+// invisible on a bare bus with the condition alone, which is why the
+// conditions-package tests passed:
+//
+//  1. The keeper subscribes to removals when the sheet attaches, and every
+//     condition subscribes later — at attach for a persisted one, and at
+//     ConditionAppliedTopic for one delivered mid-fight. So the keeper's
+//     handler always runs first and detached the hold before the hold could
+//     answer.
+//  2. Detaching publishes. That re-enters this same keeper handler, and a
+//     handler that assigned its pruned list AFTER detaching would overwrite
+//     the nested assignment and put the child back on the sheet.
+//
+// Neither is about concentration. Concentration is just the first thing that
+// answers a removal addressed to itself.
+func (s *ConcentrationKeeperSuite) TestAHoldEndedByAFactStripsItsChildren() {
+	for _, reason := range []string{
+		conditions.ConcentrationEndedRecast,
+		conditions.ConcentrationEndedDamage,
+	} {
+		s.Run(reason, func() {
+			s.SetupTest()
+
+			var ended []dnd5eEvents.ConcentrationEndedEvent
+			_, err := dnd5eEvents.ConcentrationEndedTopic.On(s.bus).Subscribe(s.ctx,
+				func(_ context.Context, event dnd5eEvents.ConcentrationEndedEvent) error {
+					ended = append(ended, event)
+					return nil
+				})
+			s.Require().NoError(err)
+
+			child := dnd5eEvents.ChildRef{
+				MemberID:     "bard-1",
+				ConditionRef: refs.Conditions.TrueStrike().String(),
+			}
+			hold := conditions.NewConcentratingCondition(
+				"bard-1", refs.Spells.TrueStrike().String(), conditions.TrueStrikeName, 2)
+			trueStrike := conditions.NewTrueStrikeCondition("bard-1", "goblin-1", "")
+			loaded, loadErr := Load(s.ctx, s.bardData(hold, trueStrike))
+			s.Require().NoError(loadErr)
+			s.Require().NoError(Attach(s.ctx, loaded, s.bus))
+
+			var live *conditions.ConcentratingCondition
+			for _, cond := range loaded.GetConditions() {
+				if hold, isHold := cond.(*conditions.ConcentratingCondition); isHold {
+					live = hold
+				}
+			}
+			s.Require().NotNil(live)
+			s.Require().NoError(live.AddChild(s.ctx, child))
+			// Both are on the sheet and both are live. NOT asserted with an
+			// attack: True Strike consumes itself on one, which would end the
+			// hold as "last child left" and test the wrong path entirely.
+			// TestASelfEndingConditionIsStillDroppedCleanly is where the
+			// advantage itself is pinned.
+			s.Require().Len(loaded.GetConditions(), 2)
+			s.Require().True(live.IsApplied())
+
+			// Exactly what resolution publishes: ONE removal, for the owner.
+			s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx,
+				dnd5eEvents.ConditionRemovedEvent{
+					MemberID:     "bard-1",
+					ConditionRef: refs.Conditions.Concentrating().String(),
+					Reason:       reason,
+				}))
+
+			s.Require().Len(ended, 1, "exactly one ended fact, carrying the reason")
+			s.Equal(reason, ended[0].Reason)
+			s.Equal([]dnd5eEvents.ChildRef{child}, ended[0].Removed)
+
+			s.Empty(loaded.GetConditions(),
+				"the hold AND its child are off the sheet — a nested publish must not resurrect the child")
+			s.Empty(s.attack("bard-1", "goblin-1").AdvantageSources,
+				"and the child is off the bus too")
+			s.False(live.IsApplied(), "the hold itself is unsubscribed")
+		})
+	}
+}

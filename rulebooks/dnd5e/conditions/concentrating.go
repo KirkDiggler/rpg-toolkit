@@ -210,6 +210,14 @@ func (c *ConcentratingCondition) IsApplied() bool { return c.bus != nil }
 // Apply subscribes the hold to the one thing that threatens it and the three
 // boundaries that end it: damage taken, the caster's turn ends, the end of the
 // fight, and its own children ending.
+//
+// EVERY HANDLER CLOSES OVER THE BUS IT WAS SUBSCRIBED WITH, the way both sheet
+// keepers hand their own handlers a bus rather than reading one off the sheet.
+// Here it is load-bearing rather than tidy: the bus snapshots its subscribers
+// before invoking them, so a handler still runs after something detached it
+// mid-dispatch — and a keeper pruning this hold does exactly that. A handler
+// that read c.bus would find nil and answer nothing, which is a rules decision
+// made by subscription order.
 func (c *ConcentratingCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if c.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "concentrating condition already applied")
@@ -217,7 +225,10 @@ func (c *ConcentratingCondition) Apply(ctx context.Context, bus events.EventBus)
 	c.bus = bus
 
 	damageTaken := dnd5eEvents.DamageTakenTopic.On(bus)
-	damageSub, err := damageTaken.Subscribe(ctx, c.onDamageTaken)
+	damageSub, err := damageTaken.Subscribe(ctx,
+		func(ctx context.Context, event *dnd5eEvents.DamageTakenEvent) error {
+			return c.onDamageTaken(ctx, bus, event)
+		})
 	if err != nil {
 		c.bus = nil
 		return rpgerr.Wrap(err, "failed to subscribe to damage taken topic")
@@ -225,7 +236,10 @@ func (c *ConcentratingCondition) Apply(ctx context.Context, bus events.EventBus)
 	c.subscriptionIDs = append(c.subscriptionIDs, damageSub)
 
 	turnEnds := dnd5eEvents.TurnEndTopic.On(bus)
-	turnSub, err := turnEnds.Subscribe(ctx, c.onTurnEnd)
+	turnSub, err := turnEnds.Subscribe(ctx,
+		func(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
+			return c.onTurnEnd(ctx, bus, event)
+		})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to turn end topic")
@@ -233,7 +247,10 @@ func (c *ConcentratingCondition) Apply(ctx context.Context, bus events.EventBus)
 	c.subscriptionIDs = append(c.subscriptionIDs, turnSub)
 
 	combatEnds := dnd5eEvents.CombatEndTopic.On(bus)
-	combatSub, err := combatEnds.Subscribe(ctx, c.onCombatEnd)
+	combatSub, err := combatEnds.Subscribe(ctx,
+		func(ctx context.Context, event dnd5eEvents.CombatEndEvent) error {
+			return c.onCombatEnd(ctx, bus, event)
+		})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to combat end topic")
@@ -241,7 +258,10 @@ func (c *ConcentratingCondition) Apply(ctx context.Context, bus events.EventBus)
 	c.subscriptionIDs = append(c.subscriptionIDs, combatSub)
 
 	conditionsRemoved := dnd5eEvents.ConditionRemovedTopic.On(bus)
-	removedSub, err := conditionsRemoved.Subscribe(ctx, c.onConditionRemoved)
+	removedSub, err := conditionsRemoved.Subscribe(ctx,
+		func(ctx context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			return c.onConditionRemoved(ctx, bus, event)
+		})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to condition removed topic")
@@ -324,7 +344,9 @@ func (c *ConcentratingCondition) loadJSON(data json.RawMessage) error {
 // IT APPENDS AND STOPS. The follow-up carries a settled DC and a consequence
 // and nothing that could produce a number; the machine that published the fact
 // is what runs it.
-func (c *ConcentratingCondition) onDamageTaken(ctx context.Context, event *dnd5eEvents.DamageTakenEvent) error {
+func (c *ConcentratingCondition) onDamageTaken(
+	ctx context.Context, bus events.EventBus, event *dnd5eEvents.DamageTakenEvent,
+) error {
 	if event == nil || event.MemberID != c.MemberID {
 		return nil
 	}
@@ -333,7 +355,7 @@ func (c *ConcentratingCondition) onDamageTaken(ctx context.Context, event *dnd5e
 		// A caster at 0 hit points does not roll to keep a spell, so this is
 		// not a check that auto-fails — it is no check at all, and no save
 		// beat in the record.
-		return c.end(ctx, ConcentrationEndedCasterDown)
+		return c.end(ctx, bus, ConcentrationEndedCasterDown)
 	}
 
 	spellRef, err := core.ParseString(c.SpellRef)
@@ -368,25 +390,29 @@ func (c *ConcentratingCondition) onDamageTaken(ctx context.Context, event *dnd5e
 
 // onTurnEnd counts down the spell's own duration and ends the hold when the
 // count runs out.
-func (c *ConcentratingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
+func (c *ConcentratingCondition) onTurnEnd(
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.TurnEndEvent,
+) error {
 	if event.SubjectID != c.MemberID || c.ending {
 		return nil
 	}
 
 	c.TurnEndsLeft--
 	if c.TurnEndsLeft > 0 {
-		return publishStateChanged(ctx, c.bus, c.MemberID, c.Ref())
+		return publishStateChanged(ctx, bus, c.MemberID, c.Ref())
 	}
 
-	return c.end(ctx, ConcentrationEndedDuration)
+	return c.end(ctx, bus, ConcentrationEndedDuration)
 }
 
 // onCombatEnd ends the hold with the fight.
-func (c *ConcentratingCondition) onCombatEnd(ctx context.Context, event dnd5eEvents.CombatEndEvent) error {
+func (c *ConcentratingCondition) onCombatEnd(
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.CombatEndEvent,
+) error {
 	if event.SubjectID != c.MemberID {
 		return nil
 	}
-	return c.end(ctx, ConcentrationEndedCombatEnd)
+	return c.end(ctx, bus, ConcentrationEndedCombatEnd)
 }
 
 // onConditionRemoved answers two different facts on one topic: a child of this
@@ -403,7 +429,7 @@ func (c *ConcentratingCondition) onCombatEnd(ctx context.Context, event dnd5eEve
 // Without that, a bard whose True Strike was consumed still reads as
 // concentrating and still drops "nothing" on the next concentration cast.
 func (c *ConcentratingCondition) onConditionRemoved(
-	ctx context.Context, event dnd5eEvents.ConditionRemovedEvent,
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.ConditionRemovedEvent,
 ) error {
 	if c.ending {
 		// One of the removals we are publishing right now. The list is already
@@ -414,7 +440,7 @@ func (c *ConcentratingCondition) onConditionRemoved(
 	if event.MemberID == c.MemberID && event.ConditionRef == c.Ref().String() {
 		// Somebody else ended this hold. They published the owner's fact, so
 		// this takes the children and the reason and does not republish it.
-		return c.endFromFact(ctx, event.Reason)
+		return c.endFromFact(ctx, bus, event.Reason)
 	}
 
 	removed := dnd5eEvents.ChildRef{MemberID: event.MemberID, ConditionRef: event.ConditionRef}
@@ -431,10 +457,10 @@ func (c *ConcentratingCondition) onConditionRemoved(
 	hadChildren := len(c.Children) > 0
 	c.Children = kept
 	if len(c.Children) == 0 && hadChildren && !endsTheHold(event.Reason) {
-		return c.end(ctx, ConcentrationEndedSpellEnded)
+		return c.end(ctx, bus, ConcentrationEndedSpellEnded)
 	}
 
-	return publishStateChanged(ctx, c.bus, c.MemberID, c.Ref())
+	return publishStateChanged(ctx, bus, c.MemberID, c.Ref())
 }
 
 // end publishes one removal per child address, then the fact that says WHY,
@@ -446,11 +472,10 @@ func (c *ConcentratingCondition) onConditionRemoved(
 // because a condition-removed landing on a skeleton's sheet with no cast beat
 // near it reads as a random drop. The owner's own removal goes last, which is
 // what says the hold itself is over.
-func (c *ConcentratingCondition) end(ctx context.Context, reason string) error {
-	if c.bus == nil || c.ending {
+func (c *ConcentratingCondition) end(ctx context.Context, bus events.EventBus, reason string) error {
+	if bus == nil || c.ending {
 		return nil
 	}
-	bus := c.bus
 	c.ending = true
 	defer func() { c.ending = false }()
 
@@ -480,11 +505,10 @@ func (c *ConcentratingCondition) end(ctx context.Context, reason string) error {
 // and what this guarantees is the part it can: exactly one
 // [dnd5eEvents.ConcentrationEndedEvent], carrying the reason and every address
 // that came off.
-func (c *ConcentratingCondition) endFromFact(ctx context.Context, reason string) error {
-	if c.bus == nil || c.ending {
+func (c *ConcentratingCondition) endFromFact(ctx context.Context, bus events.EventBus, reason string) error {
+	if bus == nil || c.ending {
 		return nil
 	}
-	bus := c.bus
 	c.ending = true
 	defer func() { c.ending = false }()
 
