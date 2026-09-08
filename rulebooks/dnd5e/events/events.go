@@ -1060,6 +1060,17 @@ var (
 	// DamageReceivedTopic provides typed pub/sub for damage received events
 	DamageReceivedTopic = events.DefineTypedTopic[DamageReceivedEvent]("dnd5e.combat.damage.received")
 
+	// DamageTakenTopic provides typed pub/sub for the post-apply damage fact
+	// and its follow-up return channel. Over a POINTER, deliberately: see
+	// [DamageTakenEvent].
+	DamageTakenTopic = events.DefineTypedTopic[*DamageTakenEvent]("dnd5e.combat.damage.taken")
+
+	// ConcentrationEndedTopic provides typed pub/sub for the fact that one
+	// caster stopped holding one spell together, and why. A notification: no
+	// return channel, unlike [DamageTakenTopic].
+	ConcentrationEndedTopic = events.DefineTypedTopic[ConcentrationEndedEvent](
+		"dnd5e.spell.concentration.ended")
+
 	// HealingReceivedTopic provides typed pub/sub for healing received events
 	HealingReceivedTopic = events.DefineTypedTopic[HealingReceivedEvent]("dnd5e.combat.healing.received")
 

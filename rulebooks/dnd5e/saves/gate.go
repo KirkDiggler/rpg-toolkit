@@ -47,9 +47,6 @@ const (
 
 	// DCKindFivePlusDamageTaken is Undead Fortitude's 5 + damage taken.
 	DCKindFivePlusDamageTaken DCKind = "five_plus_damage_taken"
-
-	// DCKindHalfDamageFloorTen is concentration's max(10, damage / 2).
-	DCKindHalfDamageFloorTen DCKind = "half_damage_floor_ten"
 )
 
 // DCInput is everything a derived DC formula is allowed to read: the damage of
@@ -110,12 +107,6 @@ func DCFivePlusDamageTaken() DCSource {
 	return fivePlusDamageTakenDC{}
 }
 
-// DCHalfDamageFloorTen is the concentration DC: max(10, damage taken / 2),
-// rounded down. 21 damage is DC 10, not DC 10.5; 25 is DC 12.
-func DCHalfDamageFloorTen() DCSource {
-	return halfDamageFloorTenDC{}
-}
-
 type staticDC struct {
 	n int
 }
@@ -131,19 +122,6 @@ func (fivePlusDamageTakenDC) DC(in DCInput) int {
 }
 func (fivePlusDamageTakenDC) Kind() DCKind { return DCKindFivePlusDamageTaken }
 func (fivePlusDamageTakenDC) isDCSource()  {}
-
-type halfDamageFloorTenDC struct{}
-
-func (halfDamageFloorTenDC) DC(in DCInput) int {
-	half := nonNegative(in.DamageTaken) / 2 // damage is never negative, so this floors
-	if half < 10 {
-		return 10
-	}
-
-	return half
-}
-func (halfDamageFloorTenDC) Kind() DCKind { return DCKindHalfDamageFloorTen }
-func (halfDamageFloorTenDC) isDCSource()  {}
 
 // nonNegative clamps damage at zero. Negative damage is not a thing 5e has, and
 // a formula that quietly produced a DC below its floor because someone passed
@@ -326,8 +304,6 @@ func dcSourceFromData(data dcSourceData) (DCSource, error) {
 		return DCStatic(data.N), nil
 	case DCKindFivePlusDamageTaken:
 		return DCFivePlusDamageTaken(), nil
-	case DCKindHalfDamageFloorTen:
-		return DCHalfDamageFloorTen(), nil
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
 			"unknown save DC kind %q: a new formula must cite a RAW rule (ADR-0039)", data.Kind)

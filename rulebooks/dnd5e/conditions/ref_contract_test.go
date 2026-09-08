@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,6 +43,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"helped":            NewHelpedCondition("m1", "helper-1"),
 		"inspired":          NewInspiredCondition("m1", "bard-1", InspiredDie),
 		"true_strike":       NewTrueStrikeCondition("m1", "goblin-1", ""),
+		"concentrating":     NewConcentratingCondition("m1", refs.Spells.TrueStrike().String(), TrueStrikeName, 2),
 		"vicious_mockery":   NewViciousMockeryCondition("m1", "bard-1", ""),
 		"unconscious":       NewUnconsciousCondition("m1", roller),
 		"opportunity":       NewOpportunityAttackCondition("m1"),

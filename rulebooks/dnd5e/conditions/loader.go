@@ -183,6 +183,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return vm, nil
 	},
+	refs.Conditions.Concentrating().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		cc := &ConcentratingCondition{}
+		if err := cc.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load concentrating condition")
+		}
+		return cc, nil
+	},
 	refs.Spells.Shield().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		sh := &ShieldSpellCondition{}
 		if err := sh.loadJSON(data); err != nil {
