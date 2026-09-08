@@ -181,24 +181,6 @@ func (s *ConcentrationTestSuite) conditionRefs(out *Output, id string) []string 
 // the hold and every child — all inside one Resolve, with no second
 // interaction started by anyone.
 func (s *ConcentrationTestSuite) TestAStrikeOnAConcentratingCasterRunsTheCheckInside() {
-	// BLOCKED ON ROOT, and skipped rather than weakened. Measured at root
-	// 5805c3a: a hold that hears the removal addressed to itself never strips
-	// its children and never publishes its ended fact, because
-	// SheetKeeper.Apply subscribes itself BEFORE it applies the sheet's
-	// conditions. The keeper's handler therefore runs first, calls
-	// cond.Remove on the pruned hold, and endFromFact returns on its own
-	// `c.bus == nil` guard. On a bare bus, with no keeper, the same publish
-	// produces the ended fact correctly.
-	//
-	// The four reasons the CONDITION initiates — duration, combat end, the
-	// last child ending, the caster dropping — are unaffected: there the hold
-	// publishes its own owner removal and the keeper detaches afterwards. Only
-	// the two resolution initiates, the failed check and the recast, are lost.
-	//
-	// The assertions below are what SHOULD hold and are left intact, so this
-	// flips green the moment the keeper lets the condition act first.
-	s.T().Skip("blocked on root: the keeper detaches a hold before it can honour its own removal")
-
 	bus := events.NewEventBus()
 	removals := s.removalLog(bus)
 
@@ -553,24 +535,6 @@ func (s *ConcentrationTestSuite) TestTheCastRegistersItsDeliveredChildOnTheOwner
 // The recast drop is the FIRST yielded step after the charge: the old spell is
 // gone before the new one delivers anything.
 func (s *ConcentrationTestSuite) TestASecondConcentrationCastDropsTheFirst() {
-	// BLOCKED ON ROOT, and skipped rather than weakened. Measured at root
-	// 5805c3a: a hold that hears the removal addressed to itself never strips
-	// its children and never publishes its ended fact, because
-	// SheetKeeper.Apply subscribes itself BEFORE it applies the sheet's
-	// conditions. The keeper's handler therefore runs first, calls
-	// cond.Remove on the pruned hold, and endFromFact returns on its own
-	// `c.bus == nil` guard. On a bare bus, with no keeper, the same publish
-	// produces the ended fact correctly.
-	//
-	// The four reasons the CONDITION initiates — duration, combat end, the
-	// last child ending, the caster dropping — are unaffected: there the hold
-	// publishes its own owner removal and the keeper detaches afterwards. Only
-	// the two resolution initiates, the failed check and the recast, are lost.
-	//
-	// The assertions below are what SHOULD hold and are left intact, so this
-	// flips green the moment the keeper lets the condition act first.
-	s.T().Skip("blocked on root: the keeper detaches a hold before it can honour its own removal")
-
 	bus := events.NewEventBus()
 
 	// One ordered log of both facts, because the ORDER is the ruling:
@@ -795,4 +759,57 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 	s.Equal("True Strike", out.ConcentrationChecks[0].Spell.Name)
 	s.True(out.ConcentrationChecks[0].Save.Succeeded)
 	s.Len(s.conditionRefs(out, heroID), 3, "the hold, its child, and the cantrip's rider")
+}
+
+// The cast call site's OTHER half: a cantrip's damage breaks the spell its
+// target was holding, inside the cast that dealt it.
+//
+// Liveness is read off the SHEET rather than from a follow-up attack, because
+// an attack would consume True Strike and end the hold as spell_ended — which
+// would prove the child was there by taking it away, and say nothing about the
+// break under test.
+func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
+	fixtures := s.fixtures()
+
+	definition := spells.CastDefinition(spells.ViciousMockery, spellSaveDC)
+	s.Require().NotNil(definition)
+	definition.Cost = oneAction()
+	machine, err := NewAction(&ActionInput{
+		Definition: *definition, AttackerID: bardID, TargetID: heroID,
+		// Both saves fail: the cantrip lands, and the hero cannot keep the
+		// spell against it.
+		Roller: &sequenceRoller{singles: []int{straightRoll, straightRoll}, pair: []int{3}},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: fixtures.world(),
+		Participants: []Participant{
+			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
+			{Monster: fixtures.wolfData()},
+			{Character: fixtures.bard(1)},
+		},
+		Machine: machine,
+		Cost:    castCost(),
+	}, newSurface(events.NewEventBus()))
+	s.Require().NoError(err)
+
+	s.Require().Len(out.ConcentrationBreaks, 1)
+	broke := out.ConcentrationBreaks[0]
+	s.Equal(encounter.MemberID(heroID), broke.Caster)
+	s.Equal("True Strike", broke.Spell.Name)
+	s.Equal(conditions.ConcentrationEndedDamage, broke.Reason)
+	s.Require().NotNil(broke.Save)
+	s.False(broke.Save.Succeeded)
+	s.Equal(conditions.ConcentrationDCFloor, broke.Save.DC)
+	s.Require().Len(broke.Removed, 1)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+
+	s.Empty(out.ConcentrationChecks, "a failed check rides its break, not the check list")
+
+	// The strip, on the sheet: the hold and its child are gone and only the
+	// cantrip's own rider is left.
+	s.Equal([]string{refs.Conditions.ViciousMockery().String()}, s.conditionRefs(out, heroID))
 }
