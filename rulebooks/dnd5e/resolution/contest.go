@@ -49,6 +49,14 @@ type ContestInput struct {
 	// instead of producing a record nobody can validate.
 	SourceName string
 
+	// Removal is the contest's THIRD consequence: conditions that come off
+	// sheets when the save fails, and the owner that ends with them.
+	//
+	// It is how a check produces a strip rather than an application, and it is
+	// the shape a concentration break takes. Nil is the common case and the
+	// whole of today's behaviour.
+	Removal *ConditionRemoval
+
 	Cause       dnd5eEvents.SaveCause
 	DamageTaken int
 	Roller      dice.Roller
@@ -68,6 +76,13 @@ const (
 
 	// ImposedDamage is damage the contest landed on the saver.
 	ImposedDamage ImposedEffectKind = "damage"
+
+	// ImposedConditionRemoved is a condition the contest took OFF somebody.
+	//
+	// A kind of its own rather than an application with an empty payload,
+	// because "this landed" and "this came off" are opposite facts and a reader
+	// that had to infer which from a nil field would be inferring a rule.
+	ImposedConditionRemoved ImposedEffectKind = "condition-removed"
 )
 
 // ImposedEffect names one consequence a contest delivered, or would have
@@ -132,6 +147,11 @@ type ContestOutcome struct {
 	Succeeded bool
 	AtStake   ImposedEffect
 	Imposed   []ImposedEffect
+
+	// FollowUps are the checks this contest's own damage came back with, in
+	// append order. Empty is the common case: only damage that landed on
+	// somebody holding an ongoing rule produces one.
+	FollowUps []FollowUpOutcome
 }
 
 func (ContestOutcome) isOutcome() {}
@@ -493,11 +513,21 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 	}
 
 	m.hasCondition = m.in.prepared != nil || m.in.Application.Ref != (core.Ref{})
-	if !m.hasCondition && len(m.in.Damage) == 0 {
+	if !m.hasCondition && len(m.in.Damage) == 0 && m.in.Removal == nil {
 		// Fail closed: a contest that would deliver nothing is a save the
 		// player is asked to roll for no reason, and it would look like it
 		// worked.
-		return nil, fmt.Errorf("%w: a contest must declare a condition, damage, or both", ErrBadAction)
+		//
+		// A removal counts, which is the same widening slice two made for
+		// damage: Application may be nil when the contest declares one of the
+		// other two consequences.
+		return nil, fmt.Errorf(
+			"%w: a contest must declare a condition, damage, or a removal", ErrBadAction)
+	}
+	if m.in.Removal != nil {
+		if err := validateRemoval(m.in.Removal); err != nil {
+			return nil, err
+		}
 	}
 
 	if m.in.prepared != nil {
@@ -569,6 +599,11 @@ func (m *contestMachine) atStake() ImposedEffect {
 	if m.hasCondition {
 		return m.prepared.atStake(m.in.SaverID)
 	}
+	if len(m.in.Damage) == 0 && m.in.Removal != nil {
+		// A removal-only contest is a check to KEEP something, so what is at
+		// stake is the owner the failure would end.
+		return removalEffect(m.in.Removal.Owner, m.in.Removal.Reason)
+	}
 
 	return ImposedEffect{
 		Kind:        ImposedDamage,
@@ -596,16 +631,27 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		return Done{Outcome: outcome}, nil
 	}
 
+	deliverRemovals := func() (Step, error) {
+		if m.in.Removal == nil {
+			return Done{Outcome: outcome}, nil
+		}
+
+		return publishRemovals(m.in.Removal, func(stripped []ImposedEffect) (Step, error) {
+			outcome.Imposed = append(outcome.Imposed, stripped...)
+			return Done{Outcome: outcome}, nil
+		}), nil
+	}
+
 	deliverCondition := func() (Step, error) {
 		if !m.hasCondition {
-			return Done{Outcome: outcome}, nil
+			return deliverRemovals()
 		}
 
 		return publishPreparedCondition(
 			m.prepared, m.cast, m.in.SaverID, conditionSourceFor(m.in.Cause),
 			func() (Step, error) {
 				outcome.Imposed = append(outcome.Imposed, m.prepared.atStake(m.in.SaverID))
-				return Done{Outcome: outcome}, nil
+				return deliverRemovals()
 			},
 		), nil
 	}
@@ -618,9 +664,109 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		m.in.Damage, m.rollerOrDefault(), m.in.Cause, m.in.SourceName, m.cast, m.in.SaverID,
 		func(applied ImposedEffect) (Step, error) {
 			outcome.Imposed = append(outcome.Imposed, applied)
-			return deliverCondition()
+
+			// Say what landed, then answer what came back — the same two steps
+			// the strike calls, in the same order, right after the apply. A
+			// third damage source gets concentration by calling them too, which
+			// is the whole reason they are named once.
+			return reportDamage(reportDamageInput{
+				MemberID:      m.in.SaverID,
+				Amount:        applied.Amount,
+				DamageType:    primaryComponentType(applied.Components),
+				DroppedToZero: applied.Before > 0 && applied.After == 0,
+				Cause:         m.in.Cause,
+			}, func(ctx context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
+				return runFollowUps(ctx, m.cast, ups, 0, m.rollerOrDefault(),
+					func(followUp FollowUpOutcome) {
+						outcome.FollowUps = append(outcome.FollowUps, followUp)
+					},
+					func(context.Context) (Step, error) { return deliverCondition() },
+				)
+			}), nil
 		},
 	), nil
+}
+
+// validateRemoval refuses a removal that names nothing to end.
+//
+// Fail closed: a contest whose failure strips an empty owner address would ask
+// somebody to roll and then quietly do nothing, which is exactly the
+// affordance-with-nothing-behind-it this stack keeps finding.
+func validateRemoval(removal *ConditionRemoval) error {
+	if removal.Owner.MemberID == "" || removal.Owner.ConditionRef == "" {
+		return fmt.Errorf("%w: a contest removal must name the owner it ends", ErrBadAction)
+	}
+	if strings.TrimSpace(removal.Reason) == "" {
+		return fmt.Errorf("%w: a contest removal must say why", ErrBadAction)
+	}
+	for _, address := range removal.Addresses {
+		if address.MemberID == "" || address.ConditionRef == "" {
+			return fmt.Errorf("%w: a contest removal address needs a member and a condition ref",
+				ErrBadAction)
+		}
+	}
+
+	return nil
+}
+
+// removalEffect is one stripped address, as the record reads it.
+func removalEffect(address dnd5eEvents.ChildRef, reason string) ImposedEffect {
+	effect := ImposedEffect{
+		Kind:        ImposedConditionRemoved,
+		Description: fmt.Sprintf("%s ended (%s)", address.ConditionRef, reason),
+		RecipientID: address.MemberID,
+	}
+	if ref, err := core.ParseString(address.ConditionRef); err == nil {
+		effect.Ref = ref
+	}
+
+	return effect
+}
+
+// publishRemovals delivers a failed check's strip: the owner's removal first,
+// then one per child address.
+//
+// # The owner goes FIRST, and the order is measured rather than stylistic
+//
+// The design's chain reads "children, then the owner last", and that is the
+// order the owner itself publishes when it ends on its own clock. Here it
+// inverts, for a reason that only exists when somebody ELSE publishes the
+// strip: the owner is subscribed to ConditionRemovedTopic on this very bus and
+// drops each child from its list as it hears it, and when the list empties it
+// ENDS ITSELF with reason "spell_ended". Publishing the children first would
+// therefore produce two owner removals with two different reasons, the wrong
+// one first. Publishing the owner first lets its keeper detach it, and the
+// children then come off with nobody left to double-end.
+//
+// It is also the order the record wants: the break beat, then one
+// condition-removed per address.
+//
+// A Gather rather than a bare publish, for the reason every other publish in
+// this package is one: the bus belongs to the driver.
+func publishRemovals(removal *ConditionRemoval, next func([]ImposedEffect) (Step, error)) Gather {
+	return Gather{
+		name: fmt.Sprintf("end %s on %s (%s)",
+			removal.Owner.ConditionRef, removal.Owner.MemberID, removal.Reason),
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
+			addresses := append([]dnd5eEvents.ChildRef{removal.Owner}, removal.Addresses...)
+
+			stripped := make([]ImposedEffect, 0, len(addresses))
+			for _, address := range addresses {
+				if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
+					MemberID:     address.MemberID,
+					ConditionRef: address.ConditionRef,
+					Reason:       removal.Reason,
+				}); err != nil {
+					return nil, fmt.Errorf("remove %s from %q: %w",
+						address.ConditionRef, address.MemberID, err)
+				}
+				stripped = append(stripped, removalEffect(address, removal.Reason))
+			}
+
+			return next(stripped)
+		},
+	}
 }
 
 func savingThrowModifier(cast *Participants, saverID string, ability abilities.Ability) (int, error) {

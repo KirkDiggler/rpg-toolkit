@@ -79,6 +79,11 @@ type StrikeOutcome struct {
 
 	// Conditions records each declared on-hit application in declaration order.
 	Conditions []ConditionOutcome
+
+	// FollowUps are the checks the damage came back with, in append order —
+	// a concentrating defender's Constitution check and what failing it ended.
+	// Empty on a miss and on a hit against nobody holding an ongoing rule.
+	FollowUps []FollowUpOutcome
 }
 
 // ConditionOutcome records whether one declared on-hit condition landed.
@@ -695,7 +700,49 @@ func (m *strikeMachine) afterDamageChain(
 	})
 	m.outcome.Damage = applied.TotalDamage
 
-	return m.afterDamage(ctx)
+	// Say what landed, then answer what came back. This is where afterDamage's
+	// notify would have gone and deliberately did not: DamageReceivedTopic
+	// means two things to two halves of the roster (see [strikeMachine.afterDamage]),
+	// so the fact this publishes is a NEW topic with one meaning and no
+	// subscriber that applies anything.
+	return reportDamage(reportDamageInput{
+		MemberID:      m.in.TargetID,
+		Amount:        applied.TotalDamage,
+		DamageType:    primaryDamageType(m.outcome.DamageInstances),
+		DroppedToZero: applied.PreviousHP > 0 && applied.CurrentHP == 0,
+		Cause:         m.damageCause(),
+	}, func(reported context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
+		return runFollowUps(reported, m.cast, ups, 0, m.in.Roller,
+			func(followUp FollowUpOutcome) {
+				m.outcome.FollowUps = append(m.outcome.FollowUps, followUp)
+			},
+			m.afterDamage,
+		)
+	}), nil
+}
+
+// damageCause says what dealt the damage and who swung it.
+//
+// TRIGGER IS DELIBERATELY EMPTY. The vocabulary is a SAVE trigger — spell,
+// trap, feature, environment — and a weapon swing is none of them: this fact
+// is not a save, it is what a save may be appended TO. Whoever appends a
+// follow-up states its own trigger, which is what the concentrating condition
+// does when it names SaveTriggerConcentration and its own spell. Naming one
+// here would be a rule written in the wrong place, and a wrong one.
+func (m *strikeMachine) damageCause() dnd5eEvents.SaveCause {
+	cause := dnd5eEvents.SaveCause{
+		EffectRef:    cloneCoreRef(m.sourceRef),
+		InstigatorID: m.in.AttackerID,
+	}
+	if m.cast != nil {
+		if _, ok := m.cast.Character(m.in.AttackerID); ok {
+			cause.InstigatorType = "character"
+		} else if _, ok := m.cast.Monster(m.in.AttackerID); ok {
+			cause.InstigatorType = "monster"
+		}
+	}
+
+	return cause
 }
 
 // afterDamage would be where ADR-0026's Notify goes, and deliberately is not.
