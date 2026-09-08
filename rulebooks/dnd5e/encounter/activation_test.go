@@ -657,7 +657,11 @@ func (s *RecordActivationSuite) TestRecordActivationNoticeDownFailure() {
 // primitive carrier rather than importing or embedding root D&D event types.
 func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 	s.Equal([]string{"Ref", "Name"}, structFieldNames(encounter.ActivationIdentity{}))
-	s.Equal([]string{"Kind", "Target", "Ref", "Name", "Amount", "Requested", "Before", "After", "Calculation", "Description", "Reason"}, structFieldNames(encounter.ActivationResult{}))
+	s.Equal([]string{
+		"Kind", "Target", "Ref", "Name",
+		"Amount", "Requested", "Before", "After", "Calculation",
+		"DamageType", "Description", "Reason",
+	}, structFieldNames(encounter.ActivationResult{}))
 	s.Equal([]string{"Actor", "Target", "Ability", "Results"}, structFieldNames(encounter.RecordActivationInput{}))
 	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordActivationOutput{}))
 }

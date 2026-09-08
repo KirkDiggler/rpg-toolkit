@@ -106,14 +106,15 @@ func (s *RecordCastSuite) beatNames(entries []record.Entry) []string {
 // 3, the requested damage is 3, and the sheet applied all of it.
 func psychicDamage() encounter.ActivationResult {
 	return encounter.ActivationResult{
-		Kind:      encounter.ResultDamageApplied,
-		Target:    castSkeleton,
-		Ref:       viciousMockery.Ref,
-		Name:      viciousMockery.Name,
-		Amount:    3,
-		Requested: 3,
-		Before:    7,
-		After:     4,
+		Kind:       encounter.ResultDamageApplied,
+		Target:     castSkeleton,
+		Ref:        viciousMockery.Ref,
+		Name:       viciousMockery.Name,
+		Amount:     3,
+		Requested:  3,
+		Before:     7,
+		After:      4,
+		DamageType: "psychic",
 		Calculation: &encounter.RollCalculation{
 			Components: []encounter.RollComponent{
 				{
@@ -219,7 +220,8 @@ func (s *RecordCastSuite) TestTheDamageCarriesItsAmountAndItsFace() {
 			`"calculation":{"components":[{"source":{"ref":"dnd5e:spells:vicious-mockery",`+
 			`"name":"Vicious Mockery"},"dice":{"notation":"1d4","die_size":4,`+
 			`"original_rolls":[3],"final_rolls":[3],"subtotal":3}}],"total":3},`+
-			`"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery"}}`,
+			`"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery",`+
+			`"damage_type":"psychic"}}`,
 		string(entries[2].Payload),
 	)
 }
@@ -271,6 +273,43 @@ func (s *RecordCastSuite) TestDamageIsHeldToHealingsLaw() {
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Contains(err.Error(), "calculation total 3 does not equal the requested 4")
+}
+
+// TestTheDamageTypeIsRequiredAndNobodyElseMayCarryOne — the type is what the
+// psychic 1d4 IS, so damage without one is not writable; and it belongs to
+// damage alone, so a condition carrying one is a field filled in by mistake.
+func (s *RecordCastSuite) TestTheDamageTypeIsRequiredAndNobodyElseMayCarryOne() {
+	enc := s.scene(everyoneStanding{})
+
+	untyped := psychicDamage()
+	untyped.DamageType = ""
+	_, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
+		Results: []encounter.ActivationResult{untyped},
+	})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Contains(err.Error(), "record cast: result 0 damage-applied damage type")
+
+	typedCondition := mockedCondition()
+	typedCondition.DamageType = "psychic"
+	_, err = enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
+		Results: []encounter.ActivationResult{typedCondition},
+	})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Contains(err.Error(), "condition-applied forbids damage type")
+
+	typedHealing := encounter.ActivationResult{
+		Kind: encounter.ResultHealingApplied, Target: castBard,
+		Ref: "dnd5e:spells:cure-wounds", Name: "Cure Wounds",
+		DamageType: "psychic",
+	}
+	_, err = enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: viciousMockery,
+		Results: []encounter.ActivationResult{typedHealing},
+	})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Contains(err.Error(), "healing-applied forbids damage type", "healing is damage's twin and still refuses one")
 }
 
 // TestAnUngatedCastAppendsNoSavedBeat is True Strike: no roll happened, so no
@@ -368,6 +407,13 @@ func (s *RecordCastSuite) TestTheCastSurvivesAReload() {
 
 	after := s.storyEntries(reloaded, castBard, out.Seqs)
 	s.Require().Len(after, len(before))
+	var damage struct {
+		Result struct {
+			DamageType string `json:"damage_type"`
+		} `json:"result"`
+	}
+	s.Require().NoError(json.Unmarshal(after[2].Payload, &damage))
+	s.Equal("psychic", damage.Result.DamageType, "the damage type survives the blob")
 	for i := range before {
 		s.Equal(string(before[i].Payload), string(after[i].Payload), "beat %d", i)
 		s.Equal(before[i].Tags["tag"], after[i].Tags["tag"], "beat %d tag", i)
@@ -489,6 +535,21 @@ func (s *RecordCastSuite) TestNothingLandsWhenAnythingIsRefused() {
 	storyAfter, err := enc.Story(&encounter.StoryInput{Audience: castBard})
 	s.Require().NoError(err)
 	s.Len(storyAfter, len(storyBefore), "a refused cast appends nothing at all")
+}
+
+// TestRecordCastClosedShapes keeps the cast's carriers limited to primitives,
+// as the activation's are, rather than importing or embedding root D&D types.
+func (s *RecordCastSuite) TestRecordCastClosedShapes() {
+	s.Equal([]string{"Ref", "Name"}, structFieldNames(encounter.SpellIdentity{}))
+	s.Equal(
+		[]string{"Saver", "Ability", "Roll", "Total", "DC", "Succeeded"},
+		structFieldNames(encounter.CastSave{}),
+	)
+	s.Equal(
+		[]string{"Actor", "Target", "Spell", "Save", "Results"},
+		structFieldNames(encounter.RecordCastInput{}),
+	)
+	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordCastOutput{}))
 }
 
 // TestAClosedEncounterRecordsNothing — the door every record verb keeps.

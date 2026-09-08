@@ -54,7 +54,8 @@ const (
 // primitives this composition can persist without importing the root D&D event
 // types that own the rule meaning.
 //
-// Every kind requires Target. Healing and damage also require Ref and Name,
+// Every kind requires Target. Damage also requires DamageType, which every
+// other kind refuses. Healing and damage also require Ref and Name,
 // carry the amount/requested/HP facts, and require a non-nil
 // [RollCalculation] whose Total equals Requested — the roll trace IS the
 // roll record, so one without it is not writable. Condition-applied requires Ref and
@@ -83,6 +84,17 @@ type ActivationResult struct {
 	// ResultHealingApplied and ResultDamageApplied with Calculation.Total ==
 	// Requested; forbidden on every other kind.
 	Calculation *RollCalculation
+
+	// DamageType is the rulebook damage type carried as the rulebook's own
+	// primitive — "psychic" for Vicious Mockery. Required for
+	// ResultDamageApplied and forbidden on every other kind.
+	//
+	// ONE TYPE FOR THE WHOLE RESULT, not one per component. Every damage this
+	// stack deals today comes out of a single pool, and a per-component type
+	// would be a shape invented for a use case nobody has: future-proofing
+	// goes both ways, and the wrong guess is as expensive as no guess. A
+	// spell that deals two types deals them as two results.
+	DamageType string
 
 	Description string
 	Reason      string
@@ -150,6 +162,7 @@ type damageAppliedPayload struct {
 	Calculation *RollCalculation     `json:"calculation"`
 	Ref         string               `json:"ref"`
 	Name        string               `json:"name"`
+	DamageType  string               `json:"damage_type"`
 }
 
 type conditionAppliedPayload struct {
@@ -316,6 +329,12 @@ func (e *Encounter) prepareActivationResult(
 	if _, ok := e.members[result.Target]; !ok {
 		return nil, fmt.Errorf("%s: result %d target %q: %w", verb, index, result.Target, ErrNoMember)
 	}
+	// ONE GUARD RATHER THAN AN ARM APIECE. A damage type belongs to exactly
+	// one kind, so the refusal is stated once, before the switch, and a kind
+	// added later cannot quietly start accepting one by forgetting to say no.
+	if result.Kind != ResultDamageApplied && result.DamageType != "" {
+		return nil, forbiddenActivationResultField(verb, index, result.Kind, "damage type")
+	}
 
 	switch result.Kind {
 	case ResultHealingApplied, ResultDamageApplied:
@@ -347,12 +366,18 @@ func (e *Encounter) prepareActivationResult(
 			return nil, forbiddenActivationResultField(verb, index, result.Kind, "reason")
 		}
 		if result.Kind == ResultDamageApplied {
+			if result.DamageType == "" {
+				return nil, fmt.Errorf(
+					"%s: result %d %s damage type: %w", verb, index, result.Kind, ErrInvalidData,
+				)
+			}
 			return damageAppliedPayload{
 				Kind: result.Kind, Target: result.Target,
 				Amount: result.Amount, Requested: result.Requested,
 				Before: result.Before, After: result.After,
 				Calculation: result.Calculation,
 				Ref:         result.Ref, Name: result.Name,
+				DamageType: result.DamageType,
 			}, nil
 		}
 		return healingAppliedPayload{
