@@ -1,0 +1,222 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package actions
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
+)
+
+// CastTargetRule names who a cast may be pointed at. Two rules, because two is
+// what the content has: a cast that needs no target at all and a cast that
+// names one creature.
+type CastTargetRule string
+
+const (
+	// CastTargetSelf is a cast with no target but the caster.
+	CastTargetSelf CastTargetRule = "self"
+
+	// CastTargetOneCreature is a cast that names one other creature within
+	// range.
+	CastTargetOneCreature CastTargetRule = "one_creature"
+)
+
+// CastRecipient names which of a cast's two parties one delivered condition
+// lands on.
+//
+// A cast has at most two parties and a condition lands on one of them. True
+// Strike names a creature and puts its condition on the CASTER; Vicious Mockery
+// names a creature and puts its condition on the TARGET. Without this field the
+// two are indistinguishable in content, and resolution would have to know which
+// spell it was holding — exactly the identity dispatch ADR-0045 forbids.
+type CastRecipient string
+
+const (
+	// CastRecipientCaster puts the condition on whoever cast.
+	CastRecipientCaster CastRecipient = "caster"
+
+	// CastRecipientTarget puts the condition on the creature the cast named.
+	CastRecipientTarget CastRecipient = "target"
+)
+
+// CastProfile declares everything a cast-resolution machine needs, and names no
+// spell.
+//
+// # Nothing here says which spell this is
+//
+// A warlock's Eldritch Blast, a monster's innate cast, and a bard's cantrip all
+// declare a profile rather than asking resolution for a case (ADR-0045). The
+// arm resolution reads is [CastProfile.Save]: a profile with a gate is a save
+// contested before anything is delivered, and a profile without one delivers
+// straight away.
+//
+// # The price is not here
+//
+// What a cast costs is [Definition.Cost], compiled by whoever mints the
+// declaration, because the same profile is free for a monster's innate cast and
+// an action for a player's.
+type CastProfile struct {
+	// RangeFeet is how far the cast reaches. A self-targeted cast still
+	// declares one, because the range is what a UI draws.
+	RangeFeet int `json:"range_feet"`
+
+	// Target is who may be named.
+	Target CastTargetRule `json:"target"`
+
+	// Save is the gate the target contests the whole cast with, or nil for a
+	// cast that lands without a roll. Negated-on-success only: a successful
+	// save against a cantrip negates every consequence, and half-on-success
+	// arrives with a spell that has one.
+	Save *saves.SaveGate `json:"save,omitempty"`
+
+	// Damage is what the cast deals when it lands. Never marked with
+	// [damage.AddsAttackAbilityModifier]: no attack roll happens here, so
+	// there is no attack ability to add.
+	Damage []damage.Damage `json:"damage,omitempty"`
+
+	// Effects are the conditions the cast delivers when it lands.
+	Effects []CastEffect `json:"effects,omitempty"`
+}
+
+// CastEffect declares one condition a cast delivers, and who receives it.
+type CastEffect struct {
+	// Recipient is which party the condition lands on.
+	Recipient CastRecipient `json:"recipient"`
+
+	// Ref names the condition to build. Always a dnd5e:conditions ref.
+	Ref core.Ref `json:"ref"`
+
+	// Parameters are the condition's own configuration, opaque here.
+	Parameters json.RawMessage `json:"parameters,omitempty"`
+
+	// CounterpartKey names the parameter whoever builds this condition must
+	// fill with the cast's OTHER party — the named target when the condition
+	// lands on the caster, the caster when it lands on the target. Empty when
+	// the condition needs no such binding.
+	//
+	// Declared rather than inferred because the two conditions this slice
+	// ships spell it differently and mean different things by it: True Strike
+	// is keyed to the target it grants advantage against ("target_id"),
+	// Vicious Mockery records the bard who imposed it ("source_id"). A
+	// convention that guessed one key would silently drop the other.
+	CounterpartKey string `json:"counterpart_key,omitempty"`
+}
+
+// Validate reports whether the profile declares a reachable range, a known
+// target rule, a contestable gate, and at least one consequence.
+//
+// A cast with no damage and no condition is refused rather than resolved into a
+// no-op: it would mint a row at the door that delivered nothing, which is the
+// affordance-with-nothing-behind-it this stack keeps finding.
+func (p CastProfile) Validate() error {
+	if p.RangeFeet <= 0 {
+		return fmt.Errorf("cast must declare a positive range")
+	}
+
+	switch p.Target {
+	case CastTargetSelf, CastTargetOneCreature:
+	default:
+		return fmt.Errorf("unknown cast target rule %q", p.Target)
+	}
+
+	if p.Save != nil {
+		if p.Save.OnSuccess != saves.Negated {
+			return fmt.Errorf("cast save must negate the cast on success")
+		}
+		if p.Save.Recurrence != saves.RecurrenceNone {
+			return fmt.Errorf("cast save must not recur")
+		}
+		if err := p.Save.Validate(); err != nil {
+			return fmt.Errorf("cast save is invalid: %w", err)
+		}
+	}
+
+	if len(p.Damage) == 0 && len(p.Effects) == 0 {
+		return fmt.Errorf("cast must declare damage or a delivered condition")
+	}
+	if len(p.Damage) > 0 {
+		if err := damage.Validate(p.Damage); err != nil {
+			return fmt.Errorf("cast damage declaration is invalid: %w", err)
+		}
+		for _, pool := range p.Damage {
+			if pool.HasProperty(damage.AddsAttackAbilityModifier) {
+				return fmt.Errorf("cast damage must not be marked with the attack ability modifier")
+			}
+		}
+	}
+
+	for index, effect := range p.Effects {
+		if err := effect.validate(p.Target); err != nil {
+			return fmt.Errorf("cast effect %d is invalid: %w", index, err)
+		}
+	}
+
+	return nil
+}
+
+// Clone returns a deep copy of the profile's mutable gate, damage, and effect
+// declarations.
+func (p CastProfile) Clone() CastProfile {
+	clone := p
+	if p.Save != nil {
+		save := *p.Save
+		save.Abilities = append([]abilities.Ability(nil), p.Save.Abilities...)
+		clone.Save = &save
+	}
+	if p.Damage != nil {
+		clone.Damage = make([]damage.Damage, len(p.Damage))
+		copy(clone.Damage, p.Damage)
+		for index := range p.Damage {
+			clone.Damage[index].Properties = append([]damage.Property(nil), p.Damage[index].Properties...)
+		}
+	}
+	if p.Effects != nil {
+		clone.Effects = make([]CastEffect, len(p.Effects))
+		for index, effect := range p.Effects {
+			clone.Effects[index] = effect.Clone()
+		}
+	}
+	return clone
+}
+
+// validate reports whether this effect names a D&D 5e condition, a known
+// recipient, and a binding the cast's target rule can actually satisfy.
+func (e CastEffect) validate(target CastTargetRule) error {
+	switch e.Recipient {
+	case CastRecipientCaster, CastRecipientTarget:
+	default:
+		return fmt.Errorf("unknown cast effect recipient %q", e.Recipient)
+	}
+	if target == CastTargetSelf {
+		if e.Recipient != CastRecipientCaster {
+			return fmt.Errorf("a self-targeted cast delivers only to the caster")
+		}
+		if e.CounterpartKey != "" {
+			return fmt.Errorf("a self-targeted cast has no counterpart to bind")
+		}
+	}
+	if err := e.Ref.IsValid(); err != nil {
+		return fmt.Errorf("condition ref is invalid: %w", err)
+	}
+	if e.Ref.Module != dnd5eModule || e.Ref.Type != conditionType {
+		return fmt.Errorf("condition ref must use %s:%s, got %s", dnd5eModule, conditionType, e.Ref.String())
+	}
+	if len(e.Parameters) > 0 && !json.Valid(e.Parameters) {
+		return fmt.Errorf("condition parameters must be valid JSON")
+	}
+	return nil
+}
+
+// Clone returns a deep copy of the effect's opaque parameters.
+func (e CastEffect) Clone() CastEffect {
+	clone := e
+	clone.Parameters = append(json.RawMessage(nil), e.Parameters...)
+	return clone
+}

@@ -958,13 +958,14 @@ func (s *ClassComprehensiveSuite) createBardTestData() *ClassTestData {
 		Name:       "bard",
 		HitDie:     8,
 		SkillCount: 3,
-		// NOT AT LEVEL 1 IN SLICE ONE. The bard's cantrip and spell questions
-		// are not asked at creation while nothing can cast; they return with
-		// the cast door (rung 2). See getBardRequirements.
-		HasCantrips: false,
-		HasSpells:   false,
-		HasTools:    true,
-		ToolCount:   3,
+		// CANTRIPS AT LEVEL 1, SPELLS NOT. The cast door can spend a cantrip
+		// so the question is asked; a slot cannot be spent by anything yet, so
+		// the levelled-spell question stays unasked. See getBardRequirements.
+		HasCantrips:  true,
+		CantripCount: 2,
+		HasSpells:    false,
+		HasTools:     true,
+		ToolCount:    3,
 		// Bards can choose ANY 3 skills (no restricted list)
 		SkillList: []shared.SelectionID{
 			skills.Acrobatics, skills.AnimalHandling, skills.Arcana, skills.Athletics,
@@ -1013,8 +1014,18 @@ func (s *ClassComprehensiveSuite) createBardValidBase() *choices.Submissions {
 		},
 	})
 
-	// No cantrips and no spells: slice one does not ask a level-1 bard for
-	// either, so submitting them here would describe a choice nothing offers.
+	// Cantrips - the two this build can cast. No levelled spells: nothing asks
+	// a level-1 bard for one, so submitting them would describe a choice
+	// nothing offers.
+	subs.Add(choices.Submission{
+		Category: shared.ChoiceCantrips,
+		Source:   shared.SourceClass,
+		ChoiceID: choices.BardCantrips1,
+		Values: []shared.SelectionID{
+			spells.TrueStrike,
+			spells.ViciousMockery,
+		},
+	})
 
 	// Weapon choice - rapier
 	subs.Add(choices.Submission{

@@ -418,19 +418,31 @@ func getBardRequirements() *Requirements {
 			Options: musicalInstrumentToolOptions(),
 			Label:   "Choose 3 musical instruments",
 		},
-		// NO CANTRIPS AND NO SPELLS AT LEVEL 1, and their absence is this
-		// slice's ruling rather than an oversight (Kirk, slice one). A
-		// requirement is a gate a draft cannot pass without answering, and
-		// answering these bought nothing: there is no Cast verb, no slot pool,
-		// and nothing anywhere that could spend what was chosen. A bard was
-		// therefore blocked at creation by two questions whose answers the
-		// game had no use for.
+		// CANTRIPS ARE BACK, and this is the cast door's half of slice one's
+		// ruling. They were removed because answering them bought nothing:
+		// there was no Cast verb and nothing that could spend what was chosen.
+		// Both now exist, so the question is asked in the same slice its
+		// answer becomes reachable.
 		//
-		// They come back with the cast door (rung 2), where the answers become
-		// reachable in the same slice that asks for them. The sheet keeps its
-		// KnownCantrips and KnownSpells fields meanwhile: a slice-one bard
-		// knows none, and an empty list is the truth rather than a placeholder.
+		// GATED TO WHAT THIS BUILD CAN CAST, which is Kirk's ruling. A bard's
+		// cantrips are all eleven — [spells.BardCantrips] still says so — but
+		// a known cantrip with no cast content mints no Cast row, so offering
+		// the other nine would be a menu of picks that produce nothing. That
+		// is the rule this stack already applies one level up, where a class
+		// is offered when it has behaviour. The cost is that "choose 2 of 2"
+		// is not a choice at level 1, which is honest about where the build is
+		// and disappears the moment a third cantrip gets a profile.
 		//
+		// NO LEVEL-1 SPELLS. Slots are their own shape and their own slice; a
+		// bard's two spells known stay unasked until something can spend a
+		// slot.
+		Cantrips: &CantripRequirement{
+			ID:      BardCantrips1,
+			Count:   2,
+			Options: spells.Castable(spells.BardCantrips),
+			Label:   "Choose 2 cantrips",
+		},
+
 		// Bards get expertise at level 3, not level 1
 	}
 }

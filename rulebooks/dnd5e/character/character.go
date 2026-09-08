@@ -33,6 +33,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
+// spellSaveDCBase is the 8 every spell save DC starts from (PHB p.205).
+const spellSaveDCBase = 8
+
 // Compile-time check that Character implements CombatAbilityHolder.
 var _ combatabilities.CombatAbilityHolder = (*Character)(nil)
 
@@ -1549,6 +1552,32 @@ func (c *Character) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error
 	}
 
 	return finalEvent.Breakdown, nil
+}
+
+// SpellSaveDC is the difficulty class of a saving throw against this
+// character's spells: 8 + proficiency bonus + spellcasting ability modifier.
+//
+// # The caster answers it, not a formula over an event
+//
+// Every other difficulty class in this rulebook is a [saves.DCSource] because
+// it derives at resolution time from the blow that triggered the save. A spell
+// save DC derives from nothing a machine sees — it is known before the door
+// opens — so it is a property of the sheet and travels to a gate as a static
+// number. That is also what the player must read: "DC 13", not "some number".
+//
+// # Zero means this class casts nothing
+//
+// A fighter has no spellcasting ability and gets 0, which is not a DC anybody
+// could roll against: [saves.SaveGate.Validate] refuses a static DC of zero or
+// less, so a gate built on this answer fails closed and loudly rather than
+// resolving into a silent auto-success.
+func (c *Character) SpellSaveDC() int {
+	classData := classes.ClassData[c.classID]
+	if classData == nil || classData.SpellcastingAbility == "" {
+		return 0
+	}
+
+	return spellSaveDCBase + c.proficiencyBonus + c.GetAbilityModifier(classData.SpellcastingAbility)
 }
 
 // KnownCantrips returns the cantrips this character knows, as content refs.

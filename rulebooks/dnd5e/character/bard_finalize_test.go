@@ -22,6 +22,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -57,8 +58,9 @@ func (s *BardFinalizeSuite) bardDraft(charisma int, instruments []shared.Selecti
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Bard,
 		Choices: ClassChoices{
-			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
-			Tools:  instruments,
+			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
+			Tools:    instruments,
+			Cantrips: []shared.SelectionID{spells.TrueStrike, spells.ViciousMockery},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
