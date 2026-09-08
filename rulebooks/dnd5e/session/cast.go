@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -145,7 +146,8 @@ type CastSaveReport struct {
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
 // ErrNoSession, ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNotYourTurn,
 // ErrDowned, ErrStaleDeclaration, ErrNoSheet, ErrNoCharacter, ErrBadCharacter,
-// ErrBadRepository, ErrBadCost, ErrCannotAfford, ErrBadCast, ErrInvalidWorld,
+// ErrBadRepository, ErrBadCost, ErrCannotAfford, ErrBadCast, ErrBadActivation,
+// ErrInvalidWorld,
 // ErrClosed, or ErrSaveFailed with a populated report. ErrWindowOpen refuses
 // the whole verb while an interrupt window is open anywhere in the fight, the
 // freeze every other declaring verb is refused by.
@@ -259,6 +261,21 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		Roller: &diceSeam{roller: m.dice},
 	})
 	if err != nil {
+		// ErrBadAction NAMED HERE rather than left to translateResolution,
+		// which Attack also uses and which would have to answer for two verbs
+		// with one sentinel. A definition resolution refuses to build a machine
+		// from is this verb's own ErrBadCast — and it must be A sentinel rather
+		// than resolution's own error travelling out, because no inner type
+		// crosses this boundary (S2).
+		//
+		// It is a BACKSTOP and not the path: castTarget above already refuses a
+		// target on a self-cast and a missing one on a cast that needs it, so
+		// this arm catches content or wiring the door could not have known was
+		// wrong. Reached before anything is charged either way.
+		if errors.Is(err, resolution.ErrBadAction) {
+			return nil, fmt.Errorf("cast: spell %q: %w: %v",
+				definition.Ref.String(), ErrBadCast, err)
+		}
 		return nil, fmt.Errorf("cast: %w", translateResolution(err))
 	}
 
