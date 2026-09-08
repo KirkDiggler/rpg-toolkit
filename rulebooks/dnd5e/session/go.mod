@@ -11,7 +11,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.149.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.67.1-0.20260908124234-28da615e3758
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.68.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.36.1-0.20260908124617-e93751859477
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
