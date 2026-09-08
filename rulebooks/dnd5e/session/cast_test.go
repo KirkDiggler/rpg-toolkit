@@ -34,9 +34,12 @@ type CastSuite struct {
 	suite.Suite
 
 	mgr        *session.Manager
+	member     string
 	sessions   *fakeSessions
+	encounters *fakeEncounters
 	characters *fakeCharacters
 	stream     *fakeStream
+	dice       *sequenceDice
 }
 
 func TestCastSuite(t *testing.T) {
@@ -94,12 +97,15 @@ func (s *CastSuite) scene(bard *character.Data, cells int, rolls ...int) {
 	scripted := append(make([]int, initiativeRolls), rolls...)
 
 	s.characters = newFakeCharacters(bard)
+	s.member = bard.ID
 	s.sessions = newFakeSessions()
+	s.encounters = newFakeEncounters()
 	s.stream = &fakeStream{}
+	s.dice = &sequenceDice{rolls: scripted}
 	mgr, err := session.NewManager(&session.Config{
-		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: scripted},
+		PresentationIDs: testPresentationIDs{}, Dice: s.dice,
 		TurnDriver: session.Pass{},
-		Sessions:   s.sessions, Encounters: newFakeEncounters(),
+		Sessions:   s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
@@ -163,7 +169,7 @@ func (s *CastSuite) holdInspiration(member string) {
 func (s *CastSuite) castRows() []session.Declaration {
 	s.T().Helper()
 	out, err := s.mgr.Afford(context.Background(), &session.AffordInput{
-		Session: "sess", Member: "bard",
+		Session: "sess", Member: s.member,
 	})
 	s.Require().NoError(err)
 	rows := make([]session.Declaration, 0, 2)
@@ -407,7 +413,7 @@ func (s *CastSuite) TestCastRefusesNoTargetForASpellThatNeedsOne() {
 func (s *CastSuite) cast(spell spells.Spell) (*session.CastOutput, error) {
 	s.T().Helper()
 	return s.mgr.Cast(context.Background(), &session.CastInput{
-		Session: "sess", Member: "bard", Target: "skeleton",
+		Session: "sess", Member: s.member, Target: "skeleton",
 		DeclarationID: s.castRow(spell).ID,
 	})
 }
@@ -444,7 +450,7 @@ func (s *CastSuite) beats(kinds ...session.EventKind) []session.Event {
 		wanted[kind] = true
 	}
 	out := make([]session.Event, 0, 4)
-	for _, event := range eventsFor(s.stream.published, "bard") {
+	for _, event := range eventsFor(s.stream.published, s.member) {
 		if wanted[event.Kind] {
 			out = append(out, event)
 		}

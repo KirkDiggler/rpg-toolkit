@@ -26,9 +26,10 @@ Flame next; preparation/slots, healing and Bless-specific extensions remain.
 Consumer pin updates are deferred to a later integration pass and do not block
 the next toolkit contribution.
 
-Local next slice: Sacred Flame's level-one cast profile and Cleric DC/persistence
-tests are implemented. Session acceptance, cover semantics and shared damage
-correctness (#1582) remain open; this is not a live spell-support claim.
+Sacred Flame content merged in #1592 (D&D v0.151.0). Session now adopts that
+release, with passing Cleric offer/save/damage, action/slot, range/refusal and
+JSON reload acceptance tests. Cover semantics, higher-level scaling and shared
+damage correctness (#1582) remain open; API/web adoption is still deferred.
 
 **rpg-toolkit#1544 (rpg-project#376) — `session.Unpack` (complete,
 2026-09-06).** New verb: removes `Quantity` units of a pack the actor

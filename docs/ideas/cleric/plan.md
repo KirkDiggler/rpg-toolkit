@@ -33,35 +33,39 @@ runs. See [implementation.md](implementation.md) for scope and verification.
 Other domains' automatic grants, dwarf weapon-training grants, and the wider
 spell catalog are not newly implemented by this creation contribution.
 
-## Next contribution: Sacred Flame on the existing cast path
+## Sacred Flame on the existing cast path
 
-The next bounded Cleric feature is a level-one Sacred Flame cast profile and
-its tests. The local content slice now adds Sacred Flame beside True Strike and
+The level-one Sacred Flame content merged in #1592 as D&D `v0.151.0`.
+It adds Sacred Flame beside True Strike and
 Vicious Mockery in `spells/cast.go`. `session/casts.go` offers known cantrips with a supported profile and
 uses `Character.SpellSaveDC()`, which already reads the class's casting ability.
 This supplies the path for a Wisdom-based Cleric without a Cleric-specific
 session verb. The existing cast profile supports a single-target save with
 negated-on-success damage, matching the basic shape of this candidate.
 
-Local content checkpoint: the profile declares 60-foot range, a Dexterity save,
+Content checkpoint: the profile declares 60-foot range, a Dexterity save,
 1d8 radiant damage on failure, no damage on success, and no condition or
 concentration. Tests validate the source-backed profile and prove that a
 created/reloaded Cleric with Wisdom 16 supplies DC 13 while Guidance and Light
-remain known but unsupported. This is not yet an end-to-end session casting
-proof. No resolution/session module dependencies or other-repository pins changed.
-The full D&D module suite passes on native Windows with no skips.
+remain known but unsupported. Session now adopts D&D `v0.151.0` and verifies
+the offer, both save outcomes, action payment, exhausted slots, range/refusals,
+and JSON-persisted story/HP after manager recreation. No other-repository pins
+changed. The full D&D content suite and session suite pass natively on Windows.
 
 Acceptance work:
 
 - [x] Add the source-backed level-one Sacred Flame content using the current
   profile (range, Dexterity save, radiant damage, no damage on success).
-- [ ] Prove the session offer's known-cantrip ownership, valid candidates,
+- [x] Prove the session offer's known-cantrip ownership, valid candidates,
   forged/stale declaration rejection, one action payment, and no spell-slot cost.
-- [ ] Verify the saved result and damaged target survive the session save/load path;
+- [x] Verify the saved result and damaged target survive the session save/load path;
   unsupported known cantrips must not acquire executable offers by accident.
-- [ ] Explicitly assess the cover exception against the current save/targeting
+- [x] Explicitly assess the cover exception against the current save/targeting
   implementation; absence of all cover handling is not proof of that exception.
   Review the remaining general casting rules before claiming full spell fidelity.
+  Result: current intel/range preflight has no geometric cover input to the save;
+  there is no cast-profile exception flag. Cover fidelity and visibility/total-cover
+  acceptance remain unverified; see [implementation.md](implementation.md).
 - [ ] Publish toolkit modules inside-out where more than one module changes.
   API/web adoption and pin updates are deferred to the later integration pass;
   inventory concrete missing fields before proposing any proto changes.
@@ -114,8 +118,10 @@ case needs an explicit design/proof before treating that address as sufficient
 for Bless. This is a remaining acceptance boundary, not a new bug claim from
 the earlier mixed-branch review.
 
-Sequence remains: completed creation -> Sacred Flame -> preparation/slots ->
-Cure Wounds with Life healing -> Bless. Shared damage correctness can proceed
+Agreed sequence: completed creation -> Sacred Flame session acceptance ->
+Cure Wounds with Life healing -> Bless. Use explicit spell-access fixtures while
+preparation is deferred; add live slot payment when leveled spells require it,
+reusing existing slot storage and long-rest recovery. Shared damage correctness can proceed
 alongside the content work. Concentration is now an adopted dependency rather
 than a reason to hold all Cleric development.
 
@@ -145,5 +151,5 @@ catalog, rituals, components/focus and remaining behaviors. Other domains,
 Channel Divinity, leveling, multiclassing and 2024 rules remain outside scope.
 
 The refresh used merged code, dependency pins, release tags and PR/issue records.
-The subsequent content slice ran profile and Cleric creation/persistence tests;
-it did not conduct a session acceptance run or live Cleric playtest.
+The subsequent slices ran profile, Cleric creation/persistence and session
+acceptance tests. They did not conduct an API/web or live Cleric playtest.
