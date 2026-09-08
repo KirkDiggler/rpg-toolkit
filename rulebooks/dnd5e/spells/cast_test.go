@@ -86,6 +86,26 @@ func (s *CastContentSuite) TestTrueStrikeCarriesNoSave() {
 	s.Equal(spells.TrueStrikeTargetParameter, profile.Effects[0].CounterpartKey)
 }
 
+// The retrofit (rpg-project#407 R8): True Strike IS a concentration cantrip,
+// and the two turn ends it used to count for itself now live on the profile,
+// which is where the owning condition reads them.
+func (s *CastContentSuite) TestTrueStrikeDeclaresConcentration() {
+	definition := spells.CastDefinition(spells.TrueStrike, 13)
+
+	s.Require().NotNil(definition)
+	s.Require().NotNil(definition.Cast.Concentration)
+	s.Equal(spells.TrueStrikeTurnEnds, definition.Cast.Concentration.TurnEnds)
+	s.Equal(2, spells.TrueStrikeTurnEnds,
+		"the end of the casting turn, then the end of the next one")
+}
+
+func (s *CastContentSuite) TestViciousMockeryDeclaresNone() {
+	definition := spells.CastDefinition(spells.ViciousMockery, 13)
+
+	s.Require().NotNil(definition)
+	s.Nil(definition.Cast.Concentration, "an insult that landed needs nobody to hold it")
+}
+
 func (s *CastContentSuite) TestACantripWithNoContentMintsNothing() {
 	for _, id := range []spells.Spell{spells.MageHand, spells.Light, spells.Prestidigitation} {
 		s.Nil(spells.CastDefinition(id, 13), "%s has no cast content in this build", id)

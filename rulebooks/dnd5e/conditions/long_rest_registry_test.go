@@ -251,10 +251,21 @@ var longRestCases = map[string]longRestCase{
 		expectedRef: refs.Conditions.OpportunityAttack(),
 		outcome:     longRestReset,
 	},
+	refs.Conditions.Concentrating().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"concentrating"},
+			"member_id":"member-1","spell_ref":"dnd5e:spells:true-strike",
+			"spell_name":"True Strike","turn_ends_left":2
+		}`),
+		ownerID:       "member-1",
+		expectedRef:   refs.Conditions.Concentrating(),
+		outcome:       longRestRemove,
+		removalReason: "long rest",
+	},
 	refs.Conditions.TrueStrike().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"true_strike"},
-			"member_id":"member-1","target_id":"goblin-1","turn_ends_left":2
+			"member_id":"member-1","target_id":"goblin-1"
 		}`),
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.TrueStrike(),

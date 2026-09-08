@@ -4,6 +4,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"maps"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
@@ -1192,17 +1194,42 @@ func requireNameable(condition dnd5eEvents.ConditionBehavior, sheetID string) er
 // through conditions.LoadJSON, every type of which is pinned to a non-nil ref
 // by TestEveryConditionRefMatchesItsToJSON. A guard here would run once per
 // condition per removal to re-establish what those two already settle.
-func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+//
+// bus is the one the sheet was attached to, handed down from the [SheetKeeper]
+// for the reason [Character.onConditionApplied] takes it: a condition detached
+// on a different bus than the one that delivered the event would leave its
+// subscriptions exactly where they were.
+func (c *Character) onConditionRemoved(
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.ConditionRemovedEvent,
+) error {
 	// Only process events for this member
 	if event.MemberID != c.id {
 		return nil
 	}
 
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
+	var detachErrs []error
 	for _, cond := range c.conditions {
 		// Keep condition if it doesn't match the removed ref
 		if cond.Ref().String() != event.ConditionRef {
 			filtered = append(filtered, cond)
+			continue
+		}
+
+		// AND UNSUBSCRIBE IT. Dropping the behavior from this slice is only
+		// half of honouring the fact: a condition that stays subscribed keeps
+		// answering chains from a list it is no longer in. Invisible while the
+		// only publishers were conditions ending THEMSELVES — they call their
+		// own Remove right after publishing — and the first thing to trip it
+		// is an owner ending somebody else's condition.
+		//
+		// IsApplied guards the double call, so the self-ending path is
+		// unchanged: a condition that already detached reports false and this
+		// does nothing.
+		if cond.IsApplied() {
+			if err := cond.Remove(ctx, bus); err != nil {
+				detachErrs = append(detachErrs, err)
+			}
 		}
 	}
 
@@ -1212,7 +1239,47 @@ func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.Cond
 	}
 	c.conditions = filtered
 
+	if len(detachErrs) > 0 {
+		return rpgerr.Wrapf(errors.Join(detachErrs...),
+			"failed to detach %d removed condition(s) %s from character %s",
+			len(detachErrs), event.ConditionRef, c.id)
+	}
+
 	return nil
+}
+
+// ConcentrationView is what a character answers about the spell it is holding
+// together: which spell, what to call it, and how many effects it owns.
+//
+// A VIEW RATHER THAN THE CONDITION, so no caller has to type-assert over
+// GetConditions to find out. The caster answers whether it is concentrating,
+// because the caster is where the answer lives.
+type ConcentrationView struct {
+	// SpellRef is what is being concentrated on, as a ref string.
+	SpellRef string
+
+	// SpellName is what to call it.
+	SpellName string
+
+	// ChildCount is how many effects the spell has left on the board.
+	ChildCount int
+}
+
+// Concentration reports the spell this character is holding together, and
+// false when it is holding none.
+func (c *Character) Concentration() (ConcentrationView, bool) {
+	for _, cond := range c.conditions {
+		holding, ok := cond.(*conditions.ConcentratingCondition)
+		if !ok {
+			continue
+		}
+		return ConcentrationView{
+			SpellRef:   holding.SpellRef,
+			SpellName:  holding.SpellName,
+			ChildCount: len(holding.Children),
+		}, true
+	}
+	return ConcentrationView{}, false
 }
 
 // onConditionStateChanged records that a condition hanging on this sheet

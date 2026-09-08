@@ -93,46 +93,38 @@ func (s *TrueStrikeConditionSuite) TestSomebodyElsesAttackIsUntouched() {
 	s.True(condition.IsApplied())
 }
 
-func (s *TrueStrikeConditionSuite) TestItSurvivesTheTurnItWasCastOn() {
+// The clock moved to the owner (rpg-project#407 R8): True Strike is a
+// concentration cantrip, and the concentrating condition counts the turn ends.
+// A count here as well would be two clocks answering one question, and the
+// caster's advantage would vanish under them at whichever came first.
+func (s *TrueStrikeConditionSuite) TestItCountsNoTurnEndsOfItsOwn() {
 	condition := s.applied()
 
-	s.endTurn(s.casterID, 1)
-
-	s.True(condition.IsApplied(),
-		"a cantrip costs an action, so the first turn end is the casting turn's")
-	s.Require().Len(s.attack(s.casterID, s.targetID).AdvantageSources, 1,
-		"and the advantage is there on the next turn, which is the whole point")
-}
-
-func (s *TrueStrikeConditionSuite) TestItIsGoneAfterTheCastersNextTurn() {
-	condition := s.applied()
-
-	var removed *dnd5eEvents.ConditionRemovedEvent
+	var removed []dnd5eEvents.ConditionRemovedEvent
 	_, err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
 		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-			removed = &event
+			removed = append(removed, event)
 			return nil
 		})
 	s.Require().NoError(err)
 
 	s.endTurn(s.casterID, 1)
 	s.endTurn(s.casterID, 2)
+	s.endTurn(s.casterID, 3)
 
-	s.False(condition.IsApplied())
-	s.Require().NotNil(removed)
-	s.Equal(s.casterID, removed.MemberID)
-	s.Equal("expired", removed.Reason)
-	s.Empty(s.attack(s.casterID, s.targetID).AdvantageSources)
+	s.True(condition.IsApplied(), "nothing but its owner or the fight ends this")
+	s.Empty(removed, "and it publishes no removal of its own on a turn end")
+	s.Require().Len(s.attack(s.casterID, s.targetID).AdvantageSources, 1,
+		"the advantage is still there, which is the whole point")
 }
 
-func (s *TrueStrikeConditionSuite) TestSomebodyElsesTurnEndDoesNotCountDown() {
+func (s *TrueStrikeConditionSuite) TestSomebodyElsesTurnEndDoesNothingEither() {
 	condition := s.applied()
 
 	s.endTurn(s.targetID, 1)
 	s.endTurn("fighter-2", 1)
 
 	s.True(condition.IsApplied())
-	s.Equal(TrueStrikeTurnEnds, condition.TurnEndsLeft)
 }
 
 func (s *TrueStrikeConditionSuite) TestItEndsWithTheFight() {
@@ -146,7 +138,6 @@ func (s *TrueStrikeConditionSuite) TestItEndsWithTheFight() {
 
 func (s *TrueStrikeConditionSuite) TestItRoundTripsThroughJSON() {
 	condition := NewTrueStrikeCondition(s.casterID, s.targetID, "")
-	condition.TurnEndsLeft = 1
 
 	raw, err := condition.ToJSON()
 	s.Require().NoError(err)
@@ -158,7 +149,6 @@ func (s *TrueStrikeConditionSuite) TestItRoundTripsThroughJSON() {
 	s.Require().True(ok)
 	s.Equal(s.casterID, back.MemberID)
 	s.Equal(s.targetID, back.TargetID)
-	s.Equal(1, back.TurnEndsLeft)
 	s.Equal(refs.Spells.TrueStrike().String(), back.SourceRef)
 	s.Equal(refs.Conditions.TrueStrike(), back.Ref())
 }
@@ -191,16 +181,6 @@ func (s *TrueStrikeConditionSuite) TestItsSourceIsTheSpell() {
 				`"member_id":"bard-1","target_id":"goblin-1","turn_ends_left":2}`)))
 		s.Equal(refs.Spells.TrueStrike().String(), condition.SourceRef)
 	})
-}
-
-func (s *TrueStrikeConditionSuite) TestAStoredCountOfZeroIsReadAsOneMoreTurn() {
-	condition := &TrueStrikeCondition{}
-	err := condition.loadJSON(json.RawMessage(
-		`{"ref":{"module":"dnd5e","type":"conditions","id":"true_strike"},` +
-			`"member_id":"bard-1","target_id":"goblin-1"}`))
-
-	s.Require().NoError(err)
-	s.Equal(1, condition.TurnEndsLeft, "a condition that vanished on load would be silent")
 }
 
 func (s *TrueStrikeConditionSuite) TestTheFactoryRefusesACastWithNoTarget() {
