@@ -84,6 +84,8 @@ func GetGrants(classID Class) []Grant {
 		return getMonkGrants()
 	case Rogue:
 		return getRogueGrants()
+	case Bard:
+		return getBardGrants()
 	default:
 		// Unmigrated classes return nil - add them explicitly above
 		return nil
@@ -185,6 +187,50 @@ func getMonkGrants() []Grant {
 					Ref:    refs.Conditions.MartialArts().String(),
 					Config: json.RawMessage(`{"monk_level": 1}`),
 				},
+			},
+		},
+	}
+}
+
+// getBardGrants returns all grants for the Bard class.
+//
+// One feature at level 1 and nothing else that needs a level table: hit dice
+// and saving throws are intrinsic and live in classes.Data, the instruments
+// are a CHOICE nothing consumes yet, and the inspired condition is granted in
+// play by the feature rather than at creation — a bard starts with a die to
+// give, not with one in hand.
+func getBardGrants() []Grant {
+	return []Grant{
+		{
+			Level: 1,
+			ArmorProficiencies: []proficiencies.Armor{
+				proficiencies.ArmorLight,
+			},
+			WeaponProficiencies: []proficiencies.Weapon{
+				proficiencies.WeaponSimple,
+				proficiencies.WeaponHandCrossbow,
+				proficiencies.WeaponLongsword,
+				proficiencies.WeaponRapier,
+				proficiencies.WeaponShortsword,
+			},
+			// THE FIXED HALF OF THE KIT, which a bard was going to a dungeon
+			// without. PHB's bard starts with leather armour and a dagger
+			// outright; everything else it starts with — the weapon, the pack,
+			// the instrument — is a CHOICE, and those are compiled from the
+			// requirements instead.
+			//
+			// That split is the thing to get right, and it is why this row is
+			// not simply the API's starting_equipment list copied over. The
+			// barbarian's explorer's pack is fixed in that data and a CHOICE
+			// here (choices.BarbarianPack), so granting it as well would put
+			// two packs in one bag. What belongs in a grant is what no
+			// requirement offers.
+			Equipment: []EquipmentItem{
+				{ID: armor.Leather, Quantity: 1},
+				{ID: weapons.Dagger, Quantity: 1},
+			},
+			Features: []FeatureRef{
+				{Ref: refs.Features.BardicInspiration().String()},
 			},
 		},
 	}

@@ -104,6 +104,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition = NewHiddenCondition(input.MemberID)
 	case refs.Conditions.Helped().ID:
 		condition, err = createHelped(input.Config, input.MemberID)
+	case refs.Conditions.Inspired().ID:
+		condition, err = createInspired(input.Config, input.MemberID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -328,4 +330,28 @@ func createHelped(config json.RawMessage, memberID string) (*HelpedCondition, er
 	}
 
 	return NewHelpedCondition(memberID, cfg.HelperID), nil
+}
+
+// inspiredConfig is the config structure for the inspired condition. SourceID
+// is the bard who granted the die; Die is its notation, defaulted rather than
+// required because level 1 is the only level this rulebook grants one at.
+type inspiredConfig struct {
+	SourceID string `json:"source_id"`
+	Die      string `json:"die"`
+}
+
+// createInspired creates an inspired condition from config.
+func createInspired(config json.RawMessage, memberID string) (*InspiredCondition, error) {
+	var cfg inspiredConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse inspired config")
+		}
+	}
+
+	if cfg.SourceID == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "inspired config requires 'source_id' field")
+	}
+
+	return NewInspiredCondition(memberID, cfg.SourceID, cfg.Die), nil
 }

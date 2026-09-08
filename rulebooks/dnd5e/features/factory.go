@@ -79,6 +79,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createRecklessAttack(input.Config, input.CharacterID)
 	case refs.Features.DeflectMissiles().ID:
 		feature, err = createDeflectMissiles(input.Config, input.CharacterID)
+	case refs.Features.BardicInspiration().ID:
+		feature = NewBardicInspiration()
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}

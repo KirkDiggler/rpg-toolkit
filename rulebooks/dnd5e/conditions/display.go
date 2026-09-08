@@ -70,6 +70,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.Disengaging().String():       {Name: "Disengaging"},
 	refs.Conditions.Hidden().String():            {Name: "Hidden"},
 	refs.Conditions.Helped().String():            {Name: "Helped"},
+	refs.Conditions.Inspired().String():          {Name: InspiredName},
 	refs.Conditions.Prone().String():             {Name: "Prone"},
 	refs.Conditions.OpportunityAttack().String(): {Name: "Opportunity Attack"},
 

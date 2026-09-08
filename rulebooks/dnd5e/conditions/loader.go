@@ -141,6 +141,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return hidden, nil
 	},
+	refs.Conditions.Inspired().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		inspired := &InspiredCondition{}
+		if err := inspired.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load inspired condition")
+		}
+		return inspired, nil
+	},
 	refs.Conditions.Helped().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		helped := &HelpedCondition{}
 		if err := helped.loadJSON(data); err != nil {

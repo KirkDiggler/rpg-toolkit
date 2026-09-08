@@ -366,75 +366,71 @@ func getRogueRequirements() *Requirements {
 func getBardRequirements() *Requirements {
 	return &Requirements{
 		Skills: &SkillRequirement{
-			ID:      BardSkills,
-			Count:   3,
-			Options: nil, // Bards can choose ANY 3 skills
-			Label:   "Choose 3 skills",
+			ID:    BardSkills,
+			Count: 3,
+			// ENUMERATED, NOT NIL. A bard chooses any three skills, and this
+			// used to say so by leaving Options empty — a sentinel with two
+			// readings. Validation reads empty as "no list to check against"
+			// and lets anything through; every consumer that BUILDS a choice
+			// out of a requirement reads empty as "nothing to offer" and
+			// builds none, so the bard was offered no skill choice at all.
+			// "Any" is not a concept this stack needs for one class, so the
+			// eighteen are written out and both readings agree.
+			Options: []skills.Skill{
+				skills.Acrobatics,
+				skills.AnimalHandling,
+				skills.Arcana,
+				skills.Athletics,
+				skills.Deception,
+				skills.History,
+				skills.Insight,
+				skills.Intimidation,
+				skills.Investigation,
+				skills.Medicine,
+				skills.Nature,
+				skills.Perception,
+				skills.Performance,
+				skills.Persuasion,
+				skills.Religion,
+				skills.SleightOfHand,
+				skills.Stealth,
+				skills.Survival,
+			},
+			Label: "Choose 3 skills",
 		},
 		Equipment: enrichEquipmentRequirements(getBardEquipmentRequirements()),
 		Tools: &ToolRequirement{
 			ID:    BardInstruments,
 			Count: 3,
-			Options: []shared.SelectionID{
-				shared.SelectionID("bagpipes"),
-				shared.SelectionID("drum"),
-				shared.SelectionID("dulcimer"),
-				shared.SelectionID("flute"),
-				shared.SelectionID("lute"),
-				shared.SelectionID("lyre"),
-				shared.SelectionID("horn"),
-				shared.SelectionID("pan-flute"),
-				shared.SelectionID("shawm"),
-				shared.SelectionID("viol"),
-			},
-			Label: "Choose 3 musical instruments",
+			// THE SHARED LIST, not a second copy of it. These ten were written
+			// out here as bare strings while musicalInstrumentToolOptions()
+			// already built the same ten from the proficiencies constants for
+			// the Outlander background — two lists of one thing, and only one
+			// of them tied to the constants.
+			//
+			// The drift is silent in the worst direction. A consumer maps each
+			// option to its own vocabulary and DROPS what it cannot map; drop
+			// them all and the choice disappears rather than erroring, so a
+			// bard would simply have no instruments to pick and nothing would
+			// say why. (The monk's requirement still hand-writes the same ten
+			// after a list of artisan's tools; it needs the two halves
+			// concatenated and is left for whoever splits that.)
+			Options: musicalInstrumentToolOptions(),
+			Label:   "Choose 3 musical instruments",
 		},
-		Cantrips: &CantripRequirement{
-			ID:    BardCantrips1,
-			Count: 2,
-			Options: []spells.Spell{
-				spells.BladeWard,
-				spells.DancingLights,
-				spells.Friends,
-				spells.Light,
-				spells.MageHand,
-				spells.Mending,
-				spells.Message,
-				spells.MinorIllusion,
-				spells.Prestidigitation,
-				spells.TrueStrike,
-				spells.ViciousMockery,
-			},
-			Label: "Choose 2 cantrips",
-		},
-		Spellbook: &SpellbookRequirement{
-			ID:         BardSpells1,
-			Count:      4,
-			SpellLevel: 1,
-			Options: []spells.Spell{
-				spells.AnimalFriendship,
-				spells.Bane,
-				spells.CharmPerson,
-				spells.ComprehendLanguages,
-				spells.CureWounds,
-				spells.DetectMagic,
-				spells.DisguiseSelf,
-				spells.FaerieFire,
-				spells.FeatherFall,
-				spells.HealingWord,
-				spells.Heroism,
-				spells.HideousLaughter,
-				spells.Identify,
-				spells.IllusoryScript,
-				spells.Longstrider,
-				spells.SilentImage,
-				spells.Sleep,
-				spells.SpeakWithAnimals,
-				spells.Thunderwave,
-				spells.UnseenServant,
-			},
-			Label: "Choose 4 1st-level spells",
-		},
+		// NO CANTRIPS AND NO SPELLS AT LEVEL 1, and their absence is this
+		// slice's ruling rather than an oversight (Kirk, slice one). A
+		// requirement is a gate a draft cannot pass without answering, and
+		// answering these bought nothing: there is no Cast verb, no slot pool,
+		// and nothing anywhere that could spend what was chosen. A bard was
+		// therefore blocked at creation by two questions whose answers the
+		// game had no use for.
+		//
+		// They come back with the cast door (rung 2), where the answers become
+		// reachable in the same slice that asks for them. The sheet keeps its
+		// KnownCantrips and KnownSpells fields meanwhile: a slice-one bard
+		// knows none, and an empty list is the truth rather than a placeholder.
+		//
 		// Bards get expertise at level 3, not level 1
 	}
 }

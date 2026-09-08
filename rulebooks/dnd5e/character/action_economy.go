@@ -298,6 +298,10 @@ func targetKindForRef(ref *core.Ref) TargetKind {
 	case refs.Features.Rage().ID,
 		refs.Features.SecondWind().ID:
 		return TargetKindSelf
+	// A feature that lands on somebody else. Help is the combat ability with
+	// this shape; Bardic Inspiration is the first FEATURE with it.
+	case refs.Features.BardicInspiration().ID:
+		return TargetKindSingleEntity
 	default:
 		return TargetKindUnspecified
 	}
@@ -408,7 +412,11 @@ func (c *Character) activateFeature(f features.Feature, input *ActivateAbilityIn
 		}, nil
 	}
 
-	featureInput := features.FeatureInput{Bus: c.bus, Roller: input.Roller}
+	// The target is carried through, for the one feature that grants across
+	// entities. Every other feature leaves it nil and never reads it, exactly
+	// as activateCombatAbility has carried Help's target since that path
+	// shipped.
+	featureInput := features.FeatureInput{Bus: c.bus, Roller: input.Roller, Target: input.Target}
 
 	ctx := context.Background()
 	if err := f.CanActivate(ctx, c, featureInput); err != nil {
@@ -629,6 +637,9 @@ func (c *Character) featureResourceInfo(f features.Feature) (current, max int) {
 		return 0, 0
 	case refs.Features.FlurryOfBlows().ID, refs.Features.PatientDefense().ID, refs.Features.StepOfTheWind().ID:
 		r := c.GetResource(resources.Ki)
+		return r.Current(), r.Maximum()
+	case refs.Features.BardicInspiration().ID:
+		r := c.GetResource(resources.Inspiration)
 		return r.Current(), r.Maximum()
 	}
 

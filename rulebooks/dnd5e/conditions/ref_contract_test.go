@@ -40,6 +40,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"prone":             NewProneCondition("m1"),
 		"hidden":            NewHiddenCondition("m1"),
 		"helped":            NewHelpedCondition("m1", "helper-1"),
+		"inspired":          NewInspiredCondition("m1", "bard-1", InspiredDie),
 		"unconscious":       NewUnconsciousCondition("m1", roller),
 		"opportunity":       NewOpportunityAttackCondition("m1"),
 		"shield_spell":      NewShieldSpellCondition("m1"),

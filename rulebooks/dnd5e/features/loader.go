@@ -36,6 +36,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 
 	// Route based on Ref ID
 	switch metadata.Ref.ID {
+	case refs.Features.BardicInspiration().ID:
+		bardic := &BardicInspiration{}
+		if err := bardic.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load bardic inspiration: %w", err)
+		}
+
+		return bardic, nil
 	case refs.Features.Rage().ID:
 		rage := &Rage{}
 		if err := rage.loadJSON(data); err != nil {

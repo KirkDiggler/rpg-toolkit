@@ -42,6 +42,11 @@ const (
 	// never has to serialize the feature's persistence JSON to read uses.
 	// Recovered on short rest. Used by: Action Surge.
 	ActionSurge coreResources.ResourceKey = "action_surge"
+
+	// Inspiration is the bard's Bardic Inspiration uses, equal to their
+	// Charisma modifier and never fewer than one. Recovered on long rest.
+	// Used by: Bardic Inspiration.
+	Inspiration coreResources.ResourceKey = "inspiration"
 )
 
 // DisplayName returns the rulebook-owned display name for a resource key and
@@ -60,6 +65,8 @@ func DisplayName(key coreResources.ResourceKey) (string, bool) {
 		return "Second Wind", true
 	case ActionSurge:
 		return "Action Surge", true
+	case Inspiration:
+		return "Bardic Inspiration", true
 	default:
 		return "", false
 	}
