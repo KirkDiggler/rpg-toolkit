@@ -140,6 +140,10 @@ func TestDraftSetAppearanceValidatesAtomicallyAndPreservesClassCarryover(t *test
 	mutateAppearance(returned)
 	require.Equal(t, expected, draft.Appearance())
 
+	// Loaded drafts start with a zero timestamp. Use that baseline so a
+	// successful update need not cross a clock tick to be distinguishable.
+	draft = character.LoadDraftFromData(draft.ToData())
+	require.True(t, draft.UpdatedAt().IsZero())
 	beforeProgress := draft.Progress()
 	beforeUpdatedAt := draft.UpdatedAt()
 	malformed := &customization.Appearance{Hair: &customization.HairCustomization{

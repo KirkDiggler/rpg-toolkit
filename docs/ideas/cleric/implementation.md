@@ -19,15 +19,15 @@ equipment prerequisites are not migrated here.
 
 ## Verification
 
-- The D&D module suite was run. Its existing appearance timestamp assertion
-  fails on Windows at `character/appearance_test.go:175`
-  (`TestDraftSetAppearanceValidatesAtomicallyAndPreservesClassCarryover`), as it
-  did before the Cleric changes.
-- After adopting main's completeness handling, the character, choices and class
-  package suites pass with only that known appearance test excluded.
+- The full D&D module suite passes on native Windows with no exclusions.
+- The existing appearance test assumed consecutive updates cross a clock tick.
+  It now uses a reloaded draft's zero timestamp as the baseline, retaining the
+  strict update assertion and invalid-input atomicity checks without sleeps or
+  production changes. That test passes 100 consecutive native Windows runs.
 - `go fmt ./...` and `go mod tidy` ran in the D&D module; no dependency changes.
 - Local `golangci-lint` is unavailable. Race testing requires cgo, disabled in
-  this environment. CI remains the source of lint and race validation.
+  this environment. The initial creation commit passed CI; CI also validates
+  the subsequent timestamp-test change.
 
 The broader playable-Cleric journey remains open; these checks do not establish
 API, web or live-game support.

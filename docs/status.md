@@ -17,8 +17,8 @@ and selected domain reach the finalized sheet. Draft validation uses subclass
 requirements and rejects duplicate skill/cantrip choices. Focused creation and
 JSON persistence regressions pass. This is creation data only: domain spells,
 spellcasting, preparation, and Life healing remain outside this contribution. See the
-[creation results](ideas/cleric/implementation.md) for evidence and the existing
-appearance timestamp failure.
+[creation results](ideas/cleric/implementation.md) for evidence and the portable
+appearance timestamp regression fix.
 
 **rpg-toolkit#1544 (rpg-project#376) — `session.Unpack` (complete,
 2026-09-06).** New verb: removes `Quantity` units of a pack the actor
