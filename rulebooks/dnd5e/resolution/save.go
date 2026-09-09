@@ -34,7 +34,10 @@ type SaveInput struct {
 	// decide whether they apply.
 	Cause dnd5eEvents.SaveCause
 
-	// Roller rolls the save. Nil takes the default roller.
+	// D20Source is the canonical rule or content source that caused this save.
+	D20Source dnd5eEvents.RollSource
+
+	// Roller rolls the save. It is required; resolution never substitutes hidden randomness.
 	Roller dice.Roller
 
 	// HasAdvantage and HasDisadvantage are advantage the *caller* already knows
@@ -85,6 +88,27 @@ type saveMachine struct {
 	in *SaveInput
 }
 
+func describeRollContributions(
+	cast *Participants, memberID string, kind dnd5eEvents.RollKind,
+) ([]dnd5eEvents.DiceContribution, error) {
+	var owner dnd5eEvents.RollConditionOwner
+	if character, ok := cast.Character(memberID); ok {
+		owner = character
+	} else if monster, ok := cast.Monster(memberID); ok {
+		owner = monster
+	} else {
+		return nil, fmt.Errorf("%w: %q", ErrNoSaver, memberID)
+	}
+	output, err := owner.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{Kind: kind})
+	if err != nil {
+		return nil, err
+	}
+	if output == nil {
+		return nil, fmt.Errorf("%w: %q returned no contribution description", ErrBadStep, memberID)
+	}
+	return append([]dnd5eEvents.DiceContribution(nil), output.Contributions...), nil
+}
+
 // Start reads the saver's own modifier off its sheet, then asks resolution to
 // run the saving throw on its bus.
 func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error) {
@@ -100,8 +124,14 @@ func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error)
 	} else {
 		return nil, fmt.Errorf("%w: %q", ErrNoSaver, m.in.SaverID)
 	}
+	if m.in.Roller == nil {
+		return nil, fmt.Errorf("%w: a saving throw rolls with no roller", ErrNoRoller)
+	}
+	if m.in.D20Source.Ref == nil {
+		return nil, fmt.Errorf("%w: a saving throw needs its d20 source", ErrBadAction)
+	}
 
-	return gatherSavingThrow(m.in, modifier), nil
+	return gatherSavingThrow(m.in, cast, modifier), nil
 }
 
 // gatherSavingThrow builds the Gather step that makes the saving throw.
@@ -111,18 +141,27 @@ func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error)
 // place the SavingThrowChain fires: advantage cancellation, natural 1s and
 // 20s, the totals, and the fold itself all stay where they live rather than
 // being reimplemented on this side of the seam.
-func gatherSavingThrow(in *SaveInput, modifier int) Gather {
+func gatherSavingThrow(in *SaveInput, cast *Participants, modifier int) Gather {
 	return Gather{
 		name: "saving throw",
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			contributions, err := describeRollContributions(cast, in.SaverID, dnd5eEvents.RollKindSavingThrow)
+			if err != nil {
+				return nil, fmt.Errorf("describe saving throw contributions: %w", err)
+			}
 			result, err := saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
-				Roller:          in.Roller,
-				EventBus:        bus,
-				SaverID:         in.SaverID,
-				Cause:           in.Cause,
-				Ability:         in.Ability,
-				DC:              in.DC,
-				Modifier:        modifier,
+				Roller:    in.Roller,
+				EventBus:  bus,
+				SaverID:   in.SaverID,
+				Cause:     in.Cause,
+				Ability:   in.Ability,
+				DC:        in.DC,
+				Modifier:  modifier,
+				D20Source: in.D20Source,
+				ModifierSource: dnd5eEvents.RollSource{
+					Ref: attackAbilityRef(in.Ability), Name: in.Ability.Display(),
+				},
+				Contributions:   contributions,
 				HasAdvantage:    in.HasAdvantage,
 				HasDisadvantage: in.HasDisadvantage,
 			})

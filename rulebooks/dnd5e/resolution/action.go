@@ -8,9 +8,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
 // ActionInput identifies a shared action definition and the participants it targets.
@@ -22,8 +25,12 @@ import (
 type ActionInput struct {
 	Definition combatActions.Definition
 	AttackerID string
-	TargetID   string
-	Roller     dice.Roller
+	// TargetID is the single target of an attack profile.
+	TargetID string
+
+	// TargetIDs is the canonical ordered target list of a cast profile.
+	TargetIDs []string
+	Roller    dice.Roller
 }
 
 // NewAction validates an inert definition and dispatches by populated profile arm.
@@ -69,42 +76,46 @@ func NewAction(in *ActionInput) (Machine, error) {
 func newCast(in *ActionInput) (Machine, error) {
 	definition := in.Definition.Clone()
 	profile := definition.Cast
-	casterID, targetID := in.AttackerID, in.TargetID
+	casterID := in.AttackerID
+	targetIDs := append([]string(nil), in.TargetIDs...)
 
 	if casterID == "" {
 		return nil, fmt.Errorf("%w: %s was cast by nobody", ErrBadAction, definition.Ref.String())
 	}
-	if err := checkCastTarget(profile.Target, definition.Ref, targetID); err != nil {
+	if in.TargetID != "" {
+		return nil, fmt.Errorf("%w: %s received singular TargetID; casts use TargetIDs", ErrBadAction, definition.Ref.String())
+	}
+	if err := checkCastTargets(profile, definition.Ref, targetIDs); err != nil {
 		return nil, err
 	}
 
-	// The cause is the spell, and it is what every downstream record reads to
-	// say WHAT was saved against and WHO cast it.
 	cause := dnd5eEvents.SaveCause{
 		Trigger:      dnd5eEvents.SaveTriggerSpell,
 		EffectRef:    &definition.Ref,
 		InstigatorID: casterID,
 	}
 
-	var inner Machine
-	var err error
-	if profile.Save != nil {
-		inner, err = newGatedCast(definition, casterID, targetID, cause, in.Roller)
-	} else {
-		inner, err = newGatelessCast(definition, casterID, targetID)
+	entries := make([]castTargetMachine, 0, len(targetIDs))
+	if profile.Target == combatActions.CastTargetSelf {
+		targetIDs = []string{""}
 	}
-	if err != nil {
-		return nil, err
+	for _, targetID := range targetIDs {
+		var inner Machine
+		var err error
+		if profile.Save != nil {
+			inner, err = newGatedCast(definition, casterID, targetID, cause, in.Roller)
+		} else {
+			inner, err = newGatelessCast(definition, casterID, targetID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, castTargetMachine{targetID: targetID, inner: inner})
 	}
 
 	return &castMachine{
-		spell:         definition.Ref,
-		spellName:     definition.Name,
-		casterID:      casterID,
-		targetID:      targetID,
-		gated:         profile.Save != nil,
-		concentration: profile.Concentration,
-		inner:         inner,
+		spell: definition.Ref, spellName: definition.Name, casterID: casterID,
+		profile: profile.Clone(), concentration: profile.Concentration, targets: entries,
 	}, nil
 }
 
@@ -122,44 +133,33 @@ func newCast(in *ActionInput) (Machine, error) {
 // two differently-shaped lists would fork every consumer of a cast — the record,
 // the wire, and the client — for a difference the player never sees.
 //
-// Nothing is lost by wrapping. The gated half's whole contest is [CastOutcome.Save],
-// intact.
-type CastOutcome struct {
-	// Spell is what was cast, echoed back so a caller learns what ran without
-	// parsing a declaration id.
-	Spell core.Ref
-
-	// CasterID and TargetID are the cast's two parties. TargetID is EMPTY for
-	// a self-targeted profile, which is the one spelling: a caster repeated
-	// into both fields would be a second way to say the same thing.
-	CasterID string
+// CastTargetOutcome is one target's save and delivered consequences. The
+// surrounding [CastOutcome.Targets] preserves caller order.
+type CastTargetOutcome struct {
 	TargetID string
+	Save     *ContestOutcome
+	Applied  []ImposedEffect
+}
 
-	// Save is the contested save, whole, or NIL when the profile carried no
-	// gate. Nil is what says "there is no saved beat to write", and it says it
-	// without a second boolean that could disagree with it.
-	Save *ContestOutcome
+// CastOutcome is one paid cast with every target outcome in caller order.
+type CastOutcome struct {
+	Spell    core.Ref
+	CasterID string
+	Targets  []CastTargetOutcome
 
-	// Applied is everything the cast delivered, in delivery order: damage
-	// first, then conditions, each naming its own recipient. EMPTY when a save
-	// was made — a made save against a cantrip negates every consequence.
-	Applied []ImposedEffect
-
-	// FollowUps are the checks this cast's own damage came back with, in
-	// append order, read off the contest that ran them.
+	// FollowUps preserves every target's damage follow-ups in target order.
 	FollowUps []FollowUpOutcome
 }
 
 func (CastOutcome) isOutcome() {}
 
-// castMachine is the cast's identity wrapped around the machine that does the
-// work. It adds no step of its own to the sequence and decides nothing: it runs
-// what [newCast] chose and shapes the answer.
+// castMachine is one cast wrapped around its ordered target machines. It
+// preflights the whole list, then runs each already-started machine in order.
 //
 // # Preflight still happens before the door
 //
-// Start runs the INNER machine's Start itself, rather than letting the driver
-// do it when the Request is reached. That ordering is the whole point: a cast
+// Start runs every inner machine's Start itself, rather than letting the driver
+// do it when each Request is reached. That ordering is the whole point: a cast
 // naming a recipient who is not in the interaction, or content that cannot be
 // delivered, must be refused while [Resolve] is still in pure preflight — after
 // the door, the bard has paid for a cast that cannot run.
@@ -170,63 +170,76 @@ func (CastOutcome) isOutcome() {}
 // refuses by name. No cast poses today — there is no attack roll to interrupt —
 // and the day one does, this is the line that has to change rather than a
 // silently discarded question.
+type castTargetMachine struct {
+	targetID string
+	inner    Machine
+	first    Step
+}
+
 type castMachine struct {
-	spell     core.Ref
-	spellName string
-	casterID  string
-	targetID  string
-	gated     bool
-	inner     Machine
-
-	// concentration is the profile's declaration, or nil. It is what makes
-	// this cast displace an earlier one and hold what it leaves behind.
+	spell         core.Ref
+	spellName     string
+	casterID      string
+	profile       combatActions.CastProfile
+	targets       []castTargetMachine
 	concentration *combatActions.CastConcentration
-
-	// cast is the sheets this interaction attached, kept because the steps
-	// after the first need them and a step's closure is handed only a bus.
-	cast *Participants
+	cast          *Participants
+	outcome       CastOutcome
 }
 
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	m.cast = cast
+	m.outcome = CastOutcome{Spell: m.spell, CasterID: m.casterID}
 
-	first, err := m.inner.Start(ctx, cast)
-	if err != nil {
-		return nil, err
+	// Preflight the complete list before returning any executable step. This is
+	// intentionally construction-only: no rolls, publishes, spends, or removals.
+	for i := range m.targets {
+		target := &m.targets[i]
+		first, err := target.inner.Start(ctx, cast)
+		if err != nil {
+			return nil, fmt.Errorf("target %d %q: %w", i, target.targetID, err)
+		}
+		if target.targetID != "" {
+			if err := validateCastTarget(ctx, cast, m.casterID, target.targetID, m.profile.RangeFeet); err != nil {
+				return nil, fmt.Errorf("target %d %q: %w", i, target.targetID, err)
+			}
+		}
+		target.first = first
 	}
 
-	resolve := Request{
-		name:    "cast " + m.spell.String(),
-		machine: startedMachine{first: first},
-		next: func(_ context.Context, out Outcome) (Step, error) {
-			outcome, shapeErr := m.shape(out)
-			if shapeErr != nil {
-				return nil, shapeErr
-			}
-			if m.concentration == nil {
-				return Done{Outcome: outcome}, nil
-			}
-
-			return m.hold(outcome), nil
-		},
-	}
-
+	resolve := m.resolveTarget(0)
 	if m.concentration == nil {
 		return resolve, nil
 	}
-	held, holding := concentrationHeldBy(cast, m.casterID)
-	if !holding {
-		return resolve, nil
+	if held, holding := concentrationHeldBy(cast, m.casterID); holding {
+		return m.drop(held, resolve), nil
 	}
+	return resolve, nil
+}
 
-	// PREFLIGHT -> CHARGE -> DROP THE OLD SPELL -> RESOLVE THE NEW ONE, and
-	// the ordering IS the rule. The drop cannot go in Start's own body, which
-	// is pure preflight and mutates nothing, and it cannot go in the door,
-	// which knows only a SpendProfile and is explicitly not a predicate
-	// language. So it is the FIRST YIELDED STEP, which runs after the charge —
-	// and a cast refused at the door drops nothing, which is what RAW means by
-	// "when you cast another spell that requires concentration".
-	return m.drop(held, resolve), nil
+func (m *castMachine) resolveTarget(index int) Step {
+	if index >= len(m.targets) {
+		if m.concentration != nil {
+			return m.hold(m.outcome)
+		}
+		return Done{Outcome: m.outcome}
+	}
+	target := m.targets[index]
+	return Request{
+		name:    "cast " + m.spell.String() + " on " + target.targetID,
+		machine: startedMachine{first: target.first},
+		next: func(_ context.Context, out Outcome) (Step, error) {
+			shaped, err := m.shapeTarget(target.targetID, out)
+			if err != nil {
+				return nil, err
+			}
+			m.outcome.Targets = append(m.outcome.Targets, shaped)
+			if shaped.Save != nil {
+				m.outcome.FollowUps = append(m.outcome.FollowUps, shaped.Save.FollowUps...)
+			}
+			return m.resolveTarget(index + 1), nil
+		},
+	}
 }
 
 // drop ends the concentration the caster is already holding, in favour of the
@@ -237,10 +250,7 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 // hold the same way and the hold strips its own board either way.
 func (m *castMachine) drop(held *conditions.ConcentratingCondition, next Step) Gather {
 	removal := &ConditionRemoval{
-		Owner: dnd5eEvents.ChildRef{
-			MemberID:     m.casterID,
-			ConditionRef: held.Ref().String(),
-		},
+		Owner:  held.ConditionAddress(),
 		Reason: conditions.ConcentrationEndedRecast,
 	}
 	dropped := publishRemoval(removal, func(ImposedEffect) (Step, error) { return next, nil })
@@ -265,17 +275,25 @@ func (m *castMachine) hold(outcome CastOutcome) Gather {
 	return Gather{
 		name: fmt.Sprintf("concentrate on %s for %s", m.spell.String(), m.casterID),
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			holding := conditions.NewConcentratingCondition(
-				m.casterID, m.spell.String(), m.spellName, m.concentration.TurnEnds)
-			for _, applied := range outcome.Applied {
-				if applied.Kind != ImposedCondition || applied.Ref == nil {
-					continue
-				}
-				if err := holding.AddChild(ctx, dnd5eEvents.ChildRef{
-					MemberID:     applied.RecipientID,
-					ConditionRef: applied.Ref.String(),
-				}); err != nil {
-					return nil, fmt.Errorf("concentrate on %s: %w", m.spell.String(), err)
+			holding := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
+				MemberID: m.casterID, SourceID: m.casterID, SpellRef: m.spell.String(),
+				SpellName: m.spellName, TurnEnds: m.concentration.TurnEnds,
+				SkipFirstTurnEnd: m.concentration.SkipFirstTurnEnd,
+			})
+			for _, target := range outcome.Targets {
+				for _, applied := range target.Applied {
+					if applied.Kind != ImposedCondition || applied.Ref == nil {
+						continue
+					}
+					address := applied.Address
+					if address.MemberID == "" {
+						address = dnd5eEvents.ConditionAddress{
+							MemberID: applied.RecipientID, ConditionRef: applied.Ref.String(),
+						}
+					}
+					if err := holding.AddChild(ctx, address); err != nil {
+						return nil, fmt.Errorf("concentrate on %s: %w", m.spell.String(), err)
+					}
 				}
 			}
 
@@ -336,43 +354,35 @@ type startedMachine struct{ first Step }
 
 func (m startedMachine) Start(context.Context, *Participants) (Step, error) { return m.first, nil }
 
-// shape turns the inner machine's answer into the cast's.
+// shapeTarget turns one inner machine's answer into its ordered target result.
 //
 // Both arms are exhaustive and the default is a refusal rather than a zero
-// CastOutcome: an inner machine producing something unexpected is a defect in
+// CastTargetOutcome: an inner machine producing something unexpected is a defect in
 // this file, and an empty cast that reported success would hide it behind a
 // record saying the cantrip did nothing.
-func (m *castMachine) shape(out Outcome) (CastOutcome, error) {
-	outcome := CastOutcome{Spell: m.spell, CasterID: m.casterID, TargetID: m.targetID}
-
+func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutcome, error) {
+	outcome := CastTargetOutcome{TargetID: targetID}
 	switch inner := out.(type) {
 	case ContestOutcome:
-		if !m.gated {
-			return CastOutcome{}, fmt.Errorf("%w: %s has no gate and contested a save",
-				ErrBadStep, m.spell.String())
+		if m.profile.Save == nil {
+			return CastTargetOutcome{}, fmt.Errorf("%w: %s has no gate and contested a save", ErrBadStep, m.spell.String())
 		}
 		contest := inner
 		outcome.Save = &contest
 		outcome.Applied = contest.Imposed
-		outcome.FollowUps = contest.FollowUps
-
 		return outcome, nil
-
 	case ActivationOutcome:
-		if m.gated {
-			return CastOutcome{}, fmt.Errorf("%w: %s has a gate and delivered without contesting it",
-				ErrBadStep, m.spell.String())
+		if m.profile.Save != nil {
+			return CastTargetOutcome{}, fmt.Errorf("%w: %s has a gate and delivered without contesting it", ErrBadStep, m.spell.String())
 		}
 		applied, err := deliveredConditions(m.spell, inner.Effects)
 		if err != nil {
-			return CastOutcome{}, err
+			return CastTargetOutcome{}, err
 		}
 		outcome.Applied = applied
-
 		return outcome, nil
-
 	default:
-		return CastOutcome{}, fmt.Errorf("%w: %s produced %T", ErrBadStep, m.spell.String(), out)
+		return CastTargetOutcome{}, fmt.Errorf("%w: %s produced %T", ErrBadStep, m.spell.String(), out)
 	}
 }
 
@@ -401,33 +411,69 @@ func deliveredConditions(spell core.Ref, effects []ActivationEffect) ([]ImposedE
 			Ref:         ref,
 			Description: conditionDescription(*ref),
 			RecipientID: effect.TargetID,
+			Address:     effect.Address,
 		})
 	}
 
 	return applied, nil
 }
 
-// checkCastTarget enforces what the profile's target rule promises. A rule the
-// call cannot satisfy is a caller defect: a self-targeted cast handed a target
-// is a client that believes it aimed something that aims at nobody, and a
-// one-creature cast handed none would resolve against an empty id.
-func checkCastTarget(rule combatActions.CastTargetRule, ref core.Ref, targetID string) error {
-	switch rule {
-	case combatActions.CastTargetSelf:
-		if targetID != "" {
-			return fmt.Errorf("%w: %s reaches only its caster, but %q was named",
-				ErrBadAction, ref.String(), targetID)
-		}
-	case combatActions.CastTargetOneCreature:
-		if targetID == "" {
-			return fmt.Errorf("%w: %s names one creature and none was named",
-				ErrBadAction, ref.String())
-		}
-	default:
-		return fmt.Errorf("%w: %s declares an unknown target rule %q",
-			ErrBadAction, ref.String(), rule)
+// validateCastTarget checks one preflighted participant's current eligibility
+// and range without mutating a sheet or consuming randomness.
+func validateCastTarget(
+	ctx context.Context, cast *Participants, casterID, targetID string, rangeFeet int,
+) error {
+	target, err := combatantFor(cast, targetID)
+	if err != nil {
+		return err
 	}
+	state := combat.ClassifyLifeState(combat.LifeStateInput{
+		Kind: combat.CombatantKindMonster, Down: combat.IsDown(target),
+	})
+	if character, ok := cast.Character(targetID); ok {
+		state = character.ParticipationView().LifeState
+	}
+	if !combat.ParticipationFor(state).AttackTarget {
+		return fmt.Errorf("%w: target is not currently eligible", ErrBadAction)
+	}
+	room, err := gamectx.RequireRoom(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrBadWorld, err)
+	}
+	casterPosition, ok := room.GetEntityPosition(casterID)
+	if !ok {
+		return fmt.Errorf("%w: caster %q has no position", ErrBadWorld, casterID)
+	}
+	targetPosition, ok := room.GetEntityPosition(targetID)
+	if !ok {
+		return fmt.Errorf("%w: target %q has no position", ErrBadWorld, targetID)
+	}
+	maximum := float64(encounter.CellsFromFeet(rangeFeet))
+	if distance := room.GetGrid().Distance(casterPosition, targetPosition); distance > maximum {
+		return fmt.Errorf("%w: distance %.0f cells exceeds maximum %.0f cells (%d feet)",
+			ErrOutOfRange, distance, maximum, rangeFeet)
+	}
+	return nil
+}
 
+func checkCastTargets(profile *combatActions.CastProfile, ref core.Ref, targetIDs []string) error {
+	if profile == nil {
+		return fmt.Errorf("%w: %s has no cast profile", ErrBadAction, ref.String())
+	}
+	if len(targetIDs) < profile.MinTargets || len(targetIDs) > profile.MaxTargets {
+		return fmt.Errorf("%w: %s requires %d..%d targets, got %d", ErrBadAction,
+			ref.String(), profile.MinTargets, profile.MaxTargets, len(targetIDs))
+	}
+	seen := make(map[string]struct{}, len(targetIDs))
+	for i, targetID := range targetIDs {
+		if targetID == "" {
+			return fmt.Errorf("%w: %s target %d is empty", ErrBadAction, ref.String(), i)
+		}
+		if _, exists := seen[targetID]; exists {
+			return fmt.Errorf("%w: %s target %q is duplicated", ErrBadAction, ref.String(), targetID)
+		}
+		seen[targetID] = struct{}{}
+	}
 	return nil
 }
 

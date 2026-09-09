@@ -2,6 +2,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -134,6 +136,103 @@ func resolveActionDefinitionAgainstMonster(
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	})
+}
+
+func TestAttackRequiresItsRollerDuringPurePreflight(t *testing.T) {
+	hero := actionHero()
+	hero.ActionEconomy = &character.ActionEconomyData{ActionsRemaining: 1}
+	machine := NewStrike(&StrikeInput{
+		Definition: validMeleeDefinition(), AttackerID: heroID, TargetID: wolfID,
+	})
+	bus := events.NewEventBus()
+	folds := 0
+	_, err := dnd5eEvents.AttackChain.On(bus).SubscribeWithChain(context.Background(),
+		func(_ context.Context, event dnd5eEvents.AttackChainEvent,
+			c chain.Chain[dnd5eEvents.AttackChainEvent],
+		) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+			folds++
+			return c, nil
+		})
+	require.NoError(t, err)
+	out, err := resolveOn(context.Background(), &Input{
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine:      machine,
+		Cost:         &Cost{PayerID: heroID, Profile: oneAction(), Turn: &Turn{Number: 1, Speed: 30}},
+		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+	}, newSurface(bus))
+	require.ErrorIs(t, err, ErrNoRoller)
+	require.Nil(t, out)
+	require.Zero(t, folds, "a missing operation roller is refused before payment or attack-chain work")
+	require.Equal(t, 1, hero.ActionEconomy.ActionsRemaining)
+}
+
+func TestBaneAttackUsesOneSelectedContributionAndRecordsCalculation(t *testing.T) {
+	baneA, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: wolfID, SourceID: "caster-a", SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	baneB, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: wolfID, SourceID: "caster-b", SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	baneAJSON, err := baneA.ToJSON()
+	require.NoError(t, err)
+	baneBJSON, err := baneB.ToJSON()
+	require.NoError(t, err)
+	attacker := monsters.NewWolf(wolfID).ToData()
+	attacker.Conditions = []json.RawMessage{baneAJSON, baneBJSON}
+	roller := &actionRoller{singles: []int{15}, damage: [][]int{{3}, {4}}}
+	machine, err := NewAction(&ActionInput{
+		Definition: validMeleeDefinition(), AttackerID: wolfID, TargetID: heroID, Roller: roller,
+	})
+	require.NoError(t, err)
+	out, err := Resolve(context.Background(), &Input{
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Monster: attacker}, {Character: actionHero()}},
+		Machine:      machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+	})
+	require.NoError(t, err)
+	outcome := out.Outcome.(StrikeOutcome)
+	require.NotNil(t, outcome.Calculation)
+	require.Equal(t, 16, outcome.Total)
+	require.Equal(t, 16, outcome.Calculation.Total)
+	require.Len(t, outcome.Calculation.Components, 3)
+	require.True(t, outcome.Calculation.Components[2].SubtractDice)
+	require.Equal(t, "caster-a", outcome.Calculation.Components[2].Source.SourceID)
+	require.Equal(t, []int{3}, outcome.Calculation.Components[2].Dice.FinalRolls)
+	require.Equal(t, 3, roller.calls, "one d20, one selected Bane d4, and one damage pool")
+}
+
+func TestBaneWithAdvantageRollsTwoD20FacesAndOneD4(t *testing.T) {
+	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: wolfID, SourceID: "caster-a", SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	baneJSON, err := bane.ToJSON()
+	require.NoError(t, err)
+	trueStrikeJSON, err := conditions.NewTrueStrikeCondition(wolfID, heroID, "").ToJSON()
+	require.NoError(t, err)
+	attacker := monsters.NewWolf(wolfID).ToData()
+	attacker.Conditions = []json.RawMessage{baneJSON, trueStrikeJSON}
+	roller := &actionRoller{pairs: [][]int{{10, 15}}, damage: [][]int{{3}, {4}}}
+	machine, err := NewAction(&ActionInput{
+		Definition: validMeleeDefinition(), AttackerID: wolfID, TargetID: heroID, Roller: roller,
+	})
+	require.NoError(t, err)
+	out, err := Resolve(context.Background(), &Input{
+		World: actionWorld(t, 2), Participants: []Participant{{Monster: attacker}, {Character: actionHero()}},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+	})
+	require.NoError(t, err)
+	calculation := out.Outcome.(StrikeOutcome).Calculation
+	require.Equal(t, []int{10, 15}, calculation.Components[0].Dice.OriginalRolls)
+	require.Equal(t, []int{1}, calculation.Components[0].Dice.KeptIndices)
+	require.Equal(t, []int{3}, calculation.Components[2].Dice.FinalRolls)
+	require.Equal(t, 3, roller.calls)
 }
 
 func TestUnknownContentRefResolvesByProfile(t *testing.T) {

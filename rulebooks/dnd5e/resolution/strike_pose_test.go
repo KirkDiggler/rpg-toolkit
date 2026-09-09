@@ -28,6 +28,19 @@ func inspiredHero(t *testing.T) *character.Data {
 	return hero
 }
 
+func banedInspiredHero(t *testing.T) *character.Data {
+	t.Helper()
+	hero := inspiredHero(t)
+	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: heroID, SourceID: "bane-caster", SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	stored, err := bane.ToJSON()
+	require.NoError(t, err)
+	hero.Conditions = append([]json.RawMessage{stored}, hero.Conditions...)
+	return hero
+}
+
 // heroSwings resolves one attack by the hero on the wolf, with the hero's
 // sheet supplied by the caller so a test can choose whether a die is offered.
 func heroSwings(t *testing.T, hero *character.Data, roller dice.Roller) (*Output, error) {
@@ -128,6 +141,45 @@ func poseThenAnswer(
 	require.NoError(t, err)
 	require.Nil(t, out.Posed, "a resumed strike finishes")
 	return out.Outcome.(StrikeOutcome)
+}
+
+func TestBaneCalculationIsFrozenAcrossInspirationAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		answer         OfferAnswer
+		resume         *actionRoller
+		wantComponents int
+	}{
+		{name: "keep reuses exact Bane", answer: OfferKeep, resume: &actionRoller{}, wantComponents: 3},
+		{name: "spend appends only Inspiration", answer: OfferSpend, resume: &actionRoller{singles: []int{4}, damage: [][]int{{3}}}, wantComponents: 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			posing := &actionRoller{singles: []int{8}, damage: [][]int{{3}}}
+			posed, err := heroSwings(t, banedInspiredHero(t), posing)
+			require.NoError(t, err)
+			require.NotNil(t, posed.Posed)
+			require.Equal(t, 2, posing.calls, "one d20 and one Bane d4 before the pose")
+
+			machine, err := NewStrikeResumed(&StrikeResumeInput{
+				Frozen: append([]byte(nil), posed.Posed.Frozen...), Answer: tc.answer, Roller: tc.resume,
+			})
+			require.NoError(t, err)
+			out, err := resolveHeroStrike(t, banedInspiredHero(t), machine)
+			require.NoError(t, err)
+			calculation := out.Outcome.(StrikeOutcome).Calculation
+			require.NotNil(t, calculation)
+			require.Len(t, calculation.Components, tc.wantComponents)
+			bane := calculation.Components[2]
+			require.Equal(t, "bane-caster", bane.Source.SourceID)
+			require.Equal(t, []int{3}, bane.Dice.FinalRolls)
+			require.True(t, bane.SubtractDice)
+			if tc.answer == OfferKeep {
+				require.Zero(t, tc.resume.calls, "keep neither rerolls nor appends")
+			} else {
+				require.Equal(t, refs.Conditions.Inspired().String(), calculation.Components[3].Source.Ref.String())
+			}
+		})
+	}
 }
 
 // TestSpendingAddsOneFaceAndCanTurnAMissIntoAHit is the walk's whole point.
@@ -306,9 +358,27 @@ func TestATamperedFrozenBlobIsRefused(t *testing.T) {
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 
+	t.Run("calculation bonus disagrees with folded attack", func(t *testing.T) {
+		bad := frozen
+		bad.Calculation = dnd5eEvents.CloneRollCalculation(frozen.Calculation)
+		*bad.Calculation.Components[1].Modifier++
+		bad.Calculation.Total++
+		bad.Total++
+		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+		require.ErrorIs(t, err, ErrBadFrozen)
+	})
+
 	t.Run("a kind this build did not write", func(t *testing.T) {
 		bad := frozen
 		bad.Kind = "walk.paused"
+		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+		require.ErrorIs(t, err, ErrBadFrozen)
+	})
+
+	t.Run("version one fails closed", func(t *testing.T) {
+		bad := frozen
+		bad.Version = 1
+		bad.Calculation = nil
 		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})

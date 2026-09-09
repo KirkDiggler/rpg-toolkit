@@ -252,6 +252,7 @@ func (s *ActivationTestSuite) TestRagingReachesTheSheetThatWouldBeSaved() {
 	s.Equal([]ActivationEffect{{
 		Kind: EffectConditionApplied, TargetID: heroID,
 		Ref: refs.Conditions.Raging().String(), Name: "Raging",
+		Address: dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Raging().String()},
 	}}, outcome.Effects)
 }
 
@@ -308,6 +309,7 @@ func (s *ActivationTestSuite) TestDodgeReachesTheSheetTheSameWay() {
 		{
 			Kind: EffectConditionApplied, TargetID: heroID,
 			Ref: refs.Conditions.Dodging().String(), Name: "Dodging",
+			Address: dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Dodging().String()},
 		},
 		{
 			Kind: EffectCapacityGranted, TargetID: heroID,
@@ -343,6 +345,7 @@ func (s *ActivationTestSuite) TestHelpCapturesTheSelectedAllyAsTheAffectedTarget
 	s.Equal([]ActivationEffect{{
 		Kind: EffectConditionApplied, TargetID: activationAllyID,
 		Ref: refs.Conditions.Helped().String(), Name: "Helped",
+		Address: dnd5eEvents.ConditionAddress{MemberID: activationAllyID, ConditionRef: refs.Conditions.Helped().String()},
 	}}, outcome.Effects)
 	s.Contains(conditionRefs(dirty(out, activationAllyID)), refs.Conditions.Helped().String())
 }
@@ -729,6 +732,7 @@ func (s *ActivationTestSuite) TestActivationCollectorCapturesConditionRemovedWit
 	s.Equal([]ActivationEffect{{
 		Kind: EffectConditionRemoved, TargetID: heroID,
 		Ref: refs.Conditions.Dodging().String(), Name: "Dodging", Reason: "turn started",
+		Address: dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Dodging().String()},
 	}}, collector.Effects())
 }
 
@@ -771,10 +775,12 @@ func (s *ActivationTestSuite) TestActivationCollectorPreservesBusOrderAndReturns
 		{
 			Kind: EffectConditionApplied, TargetID: activationAllyID,
 			Ref: refs.Conditions.Dodging().String(), Name: "Dodging",
+			Address: dnd5eEvents.ConditionAddress{MemberID: activationAllyID, ConditionRef: refs.Conditions.Dodging().String()},
 		},
 		{
 			Kind: EffectConditionRemoved, TargetID: activationAllyID,
 			Ref: refs.Conditions.Dodging().String(), Name: "Dodging", Reason: "turn started",
+			Address: dnd5eEvents.ConditionAddress{MemberID: activationAllyID, ConditionRef: refs.Conditions.Dodging().String()},
 		},
 	}, got)
 

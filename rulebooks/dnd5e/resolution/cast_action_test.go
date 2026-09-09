@@ -6,11 +6,14 @@ package resolution
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -18,9 +21,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // CastActionTestSuite drives the cast door end to end: content compiles to a
@@ -70,14 +77,14 @@ func castCost() *Cost {
 
 // cast builds the machine the door would build for one cantrip.
 func (s *CastActionTestSuite) cast(id spells.Spell, casterID, targetID string, roll int) Machine {
-	definition := spells.CastDefinition(id, spellSaveDC)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: spellSaveDC})
 	s.Require().NotNil(definition, "this build has cast content for %s", id)
 	definition.Cost = oneAction()
 
 	machine, err := NewAction(&ActionInput{
 		Definition: *definition,
 		AttackerID: casterID,
-		TargetID:   targetID,
+		TargetIDs:  []string{targetID},
 		Roller:     facedRoller{d20: roll, other: psychicFace},
 	})
 	s.Require().NoError(err)
@@ -113,6 +120,196 @@ func (s *CastActionTestSuite) castOutcome(out *Output) CastOutcome {
 // THE HEADLINE FOR THE GATED HALF. Vicious Mockery, compiled from content,
 // entered through the door at a price: the save fails, 1d4 psychic lands, and
 // the rider goes on the target carrying the bard who imposed it.
+type countingCastRoller struct {
+	calls int
+	facedRoller
+}
+
+func (r *countingCastRoller) Roll(ctx context.Context, size int) (int, error) {
+	r.calls++
+	return r.facedRoller.Roll(ctx, size)
+}
+
+func (r *countingCastRoller) RollN(ctx context.Context, count, size int) ([]int, error) {
+	r.calls++
+	return r.facedRoller.RollN(ctx, count, size)
+}
+
+func baneDefinition() *combatActions.Definition {
+	return spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Bane, SpellSaveDC: spellSaveDC})
+}
+
+func baneCost() *Cost {
+	return &Cost{
+		PayerID: bardID,
+		Profile: baneDefinition().Cost,
+		Turn:    &Turn{Number: mockeryTurn, Speed: mockerySpeed},
+	}
+}
+
+func baneCaster(actions, slots int) *character.Data {
+	caster := (&ContestDamageTestSuite{}).bard(actions)
+	caster.Resources = map[coreResources.ResourceKey]character.RecoverableResourceData{
+		resources.SpellSlotLevel1: {
+			Current: slots, Maximum: 2, ResetType: coreResources.ResetLongRest,
+		},
+	}
+	return caster
+}
+
+func (s *CastActionTestSuite) TestBanePaysOnceAndResolvesTargetsInCallerOrder() {
+	for _, targets := range [][]string{
+		{heroID},
+		{wolfID, heroID},
+		{heroID, wolfID, bardID},
+	} {
+		s.Run(fmt.Sprintf("%d targets", len(targets)), func() {
+			fixtures := s.fixtures()
+			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
+			machine, err := NewAction(&ActionInput{
+				Definition: *baneDefinition(), AttackerID: bardID,
+				TargetIDs: targets, Roller: roller,
+			})
+			s.Require().NoError(err)
+
+			out, err := fixtures.resolve(fixtures.saver(14), machine, baneCost(), baneCaster(1, 2))
+			s.Require().NoError(err)
+			outcome := s.castOutcome(out)
+			gotTargets := make([]string, len(outcome.Targets))
+			for i, target := range outcome.Targets {
+				gotTargets[i] = target.TargetID
+				s.Require().False(target.Save.Succeeded)
+				s.Require().Len(target.Applied, 1)
+			}
+			s.Equal(targets, gotTargets)
+
+			payer := fixtures.sheet(out, bardID)
+			s.Zero(payer.ActionEconomy.ActionsRemaining)
+			s.Equal(1, payer.Resources[resources.SpellSlotLevel1].Current,
+				"one ordered fan-out pays one level-1 slot")
+		})
+	}
+}
+
+func (s *CastActionTestSuite) TestBaneRefusesMalformedWholeTargetListsBeforeRNG() {
+	for _, tc := range []struct {
+		name    string
+		targets []string
+	}{
+		{name: "empty list", targets: nil},
+		{name: "empty id", targets: []string{""}},
+		{name: "duplicate", targets: []string{heroID, heroID}},
+		{name: "fourth target", targets: []string{heroID, wolfID, bardID, "fourth"}},
+	} {
+		s.Run(tc.name, func() {
+			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
+			caster := baneCaster(1, 2)
+			caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
+			before, err := json.Marshal(caster)
+			s.Require().NoError(err)
+			machine, err := NewAction(&ActionInput{
+				Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: tc.targets, Roller: roller,
+			})
+			s.Error(err)
+			s.Nil(machine)
+			s.Zero(roller.calls)
+			after, marshalErr := json.Marshal(caster)
+			s.Require().NoError(marshalErr)
+			s.JSONEq(string(before), string(after), "action, slot pool, and old concentration are unchanged")
+		})
+	}
+}
+
+func (s *CastActionTestSuite) TestBaneRejectsAnInvalidLaterTargetBeforeRNGOrMutation() {
+	fixtures := s.fixtures()
+	roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID, wolfID, "absent"}, Roller: roller,
+	})
+	s.Require().NoError(err)
+	caster := baneCaster(1, 2)
+	caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
+	before, err := json.Marshal(caster)
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, baneCost(), caster)
+	s.Require().Error(err)
+	s.Nil(out)
+	s.Zero(roller.calls)
+	after, marshalErr := json.Marshal(caster)
+	s.Require().NoError(marshalErr)
+	s.JSONEq(string(before), string(after))
+}
+
+func baneWorld(t *testing.T, targetX float64) encounter.EncounterData {
+	t.Helper()
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
+		Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{
+			rectRegion("room", 0, 0, 20, 10),
+		}},
+		Members: []encounter.MemberInput{
+			{ID: bardID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: targetX, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	return enc.ToData()
+}
+
+func (s *CastActionTestSuite) TestBaneRefusesStaleAndOutOfRangeTargetsBeforeDropOrRNG() {
+	for _, tc := range []struct {
+		name    string
+		targetX float64
+		dead    bool
+		want    error
+	}{
+		{name: "stale defeated target", targetX: 2, dead: true, want: ErrBadAction},
+		{name: "out of range", targetX: 9, want: ErrOutOfRange},
+	} {
+		s.Run(tc.name, func() {
+			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
+			machine, err := NewAction(&ActionInput{
+				Definition: *baneDefinition(), AttackerID: bardID,
+				TargetIDs: []string{heroID}, Roller: roller,
+			})
+			s.Require().NoError(err)
+			caster := baneCaster(1, 2)
+			caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
+			before, marshalErr := json.Marshal(caster)
+			s.Require().NoError(marshalErr)
+			target := s.fixtures().saver(14)
+			if tc.dead {
+				target.HitPoints = 0
+				target.DeathSaveState = &saves.DeathSaveState{Dead: true}
+			}
+			bus := events.NewEventBus()
+			removals := 0
+			_, err = dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+				func(context.Context, dnd5eEvents.ConditionRemovedEvent) error { removals++; return nil })
+			s.Require().NoError(err)
+			out, err := resolveOn(s.ctx, &Input{
+				World:        baneWorld(s.T(), tc.targetX),
+				Participants: []Participant{{Character: caster}, {Character: target}},
+				Machine:      machine, Cost: baneCost(), Initiative: orderAsGiven{},
+				Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+				TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+			}, newSurface(bus))
+			s.ErrorIs(err, tc.want)
+			s.Nil(out)
+			s.Zero(roller.calls)
+			s.Zero(removals)
+			after, marshalErr := json.Marshal(caster)
+			s.Require().NoError(marshalErr)
+			s.JSONEq(string(before), string(after), "action, slot pool, and old concentration are unchanged")
+		})
+	}
+}
+
 func (s *CastActionTestSuite) TestViciousMockeryLandsDamageAndItsRider() {
 	fixtures := s.fixtures()
 
@@ -125,32 +322,32 @@ func (s *CastActionTestSuite) TestViciousMockeryLandsDamageAndItsRider() {
 	outcome := s.castOutcome(out)
 	s.Require().Equal(refs.Spells.ByID(string(spells.ViciousMockery)).String(), outcome.Spell.String())
 	s.Require().Equal(bardID, outcome.CasterID)
-	s.Require().Equal(heroID, outcome.TargetID)
+	s.Require().Equal(heroID, outcome.Targets[0].TargetID)
 
-	s.Require().NotNil(outcome.Save, "a gated cast carries its whole contest")
-	s.Require().False(outcome.Save.Succeeded, "WIS +1 on a 3 is 4 against DC 13")
-	s.Require().Equal(spellSaveDC, outcome.Save.DC)
-	s.Require().Equal(abilities.WIS, outcome.Save.Ability)
-	s.Require().NotNil(outcome.Save.Save.Result, "and the roll the player must see")
+	s.Require().NotNil(outcome.Targets[0].Save, "a gated cast carries its whole contest")
+	s.Require().False(outcome.Targets[0].Save.Succeeded, "WIS +1 on a 3 is 4 against DC 13")
+	s.Require().Equal(spellSaveDC, outcome.Targets[0].Save.DC)
+	s.Require().Equal(abilities.WIS, outcome.Targets[0].Save.Ability)
+	s.Require().NotNil(outcome.Targets[0].Save.Save.Result, "and the roll the player must see")
 
-	s.Require().Len(outcome.Applied, 2)
-	s.Require().Equal(ImposedDamage, outcome.Applied[0].Kind)
-	s.Require().Equal(psychicFace, outcome.Applied[0].Amount)
-	s.Require().Equal(heroID, outcome.Applied[0].RecipientID)
-	s.Require().Equal(damage.Psychic, outcome.Applied[0].Components[0].DamageType)
+	s.Require().Len(outcome.Targets[0].Applied, 2)
+	s.Require().Equal(ImposedDamage, outcome.Targets[0].Applied[0].Kind)
+	s.Require().Equal(psychicFace, outcome.Targets[0].Applied[0].Amount)
+	s.Require().Equal(heroID, outcome.Targets[0].Applied[0].RecipientID)
+	s.Require().Equal(damage.Psychic, outcome.Targets[0].Applied[0].Components[0].DamageType)
 
 	// Everything a damage-applied beat needs, from the real content path.
-	s.Require().Equal(psychicFace, outcome.Applied[0].Requested)
-	s.Require().Equal(14, outcome.Applied[0].Before)
-	s.Require().Equal(11, outcome.Applied[0].After)
-	s.Require().NotNil(outcome.Applied[0].Calculation)
-	s.Require().Equal(outcome.Applied[0].Requested, outcome.Applied[0].Calculation.Total)
-	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(outcome.Applied[0].Calculation))
-	s.Require().Equal("Vicious Mockery", outcome.Applied[0].Calculation.Components[0].Source.Name,
+	s.Require().Equal(psychicFace, outcome.Targets[0].Applied[0].Requested)
+	s.Require().Equal(14, outcome.Targets[0].Applied[0].Before)
+	s.Require().Equal(11, outcome.Targets[0].Applied[0].After)
+	s.Require().NotNil(outcome.Targets[0].Applied[0].Calculation)
+	s.Require().Equal(outcome.Targets[0].Applied[0].Requested, outcome.Targets[0].Applied[0].Calculation.Total)
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(outcome.Targets[0].Applied[0].Calculation))
+	s.Require().Equal("Vicious Mockery", outcome.Targets[0].Applied[0].Calculation.Components[0].Source.Name,
 		"the compiled definition is the provenance pair, ref and name")
-	s.Require().Equal(ImposedCondition, outcome.Applied[1].Kind)
-	s.Require().Equal(refs.Conditions.ViciousMockery().String(), outcome.Applied[1].Ref.String())
-	s.Require().Equal(heroID, outcome.Applied[1].RecipientID)
+	s.Require().Equal(ImposedCondition, outcome.Targets[0].Applied[1].Kind)
+	s.Require().Equal(refs.Conditions.ViciousMockery().String(), outcome.Targets[0].Applied[1].Ref.String())
+	s.Require().Equal(heroID, outcome.Targets[0].Applied[1].RecipientID)
 
 	target := fixtures.sheet(out, heroID)
 	s.Require().Equal(11, target.HitPoints, "14 - 3 psychic")
@@ -175,10 +372,10 @@ func (s *CastActionTestSuite) TestAMadeSaveAgainstViciousMockeryDeliversNothing(
 	s.Require().NoError(err)
 
 	outcome := s.castOutcome(out)
-	s.Require().NotNil(outcome.Save)
-	s.Require().True(outcome.Save.Succeeded)
-	s.Require().Empty(outcome.Applied, "no damage, no rider")
-	s.Require().Equal(spellSaveDC, outcome.Save.DC, "and the save is still on the record")
+	s.Require().NotNil(outcome.Targets[0].Save)
+	s.Require().True(outcome.Targets[0].Save.Succeeded)
+	s.Require().Empty(outcome.Targets[0].Applied, "no damage, no rider")
+	s.Require().Equal(spellSaveDC, outcome.Targets[0].Save.DC, "and the save is still on the record")
 
 	for _, sheet := range out.DirtyCharacters {
 		if sheet.ID == heroID {
@@ -207,11 +404,11 @@ func (s *CastActionTestSuite) TestTrueStrikeDeliversToTheCasterWithNoRoll() {
 	outcome := s.castOutcome(out)
 	s.Require().Equal(refs.Spells.ByID(string(spells.TrueStrike)).String(), outcome.Spell.String(),
 		"the outcome echoes the spell that ran")
-	s.Require().Nil(outcome.Save, "no gate means no saved beat to write")
-	s.Require().Len(outcome.Applied, 1, "one Gather, one condition, one effect")
-	s.Require().Equal(ImposedCondition, outcome.Applied[0].Kind)
-	s.Require().Equal(bardID, outcome.Applied[0].RecipientID, "on the caster, not the creature named")
-	s.Require().Equal(refs.Conditions.TrueStrike().String(), outcome.Applied[0].Ref.String())
+	s.Require().Nil(outcome.Targets[0].Save, "no gate means no saved beat to write")
+	s.Require().Len(outcome.Targets[0].Applied, 1, "one Gather, one condition, one effect")
+	s.Require().Equal(ImposedCondition, outcome.Targets[0].Applied[0].Kind)
+	s.Require().Equal(bardID, outcome.Targets[0].Applied[0].RecipientID, "on the caster, not the creature named")
+	s.Require().Equal(refs.Conditions.TrueStrike().String(), outcome.Targets[0].Applied[0].Ref.String())
 
 	caster := fixtures.sheet(out, bardID)
 	params := s.castParams(caster, refs.Conditions.TrueStrike().String())
@@ -258,29 +455,31 @@ func (s *CastActionTestSuite) TestAGatedCastWithNoActionLeftIsRefusedBeforeTheSa
 // from the same content table pick two different machines.
 func (s *CastActionTestSuite) TestTheProfileArmPicksTheMachine() {
 	gated, err := NewAction(&ActionInput{
-		Definition: *spells.CastDefinition(spells.ViciousMockery, spellSaveDC),
-		AttackerID: bardID, TargetID: heroID, Roller: facedRoller{d20: straightRoll, other: psychicFace},
+		Definition: *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: spellSaveDC}),
+		AttackerID: bardID, TargetIDs: []string{heroID}, Roller: facedRoller{d20: straightRoll, other: psychicFace},
 	})
 	s.Require().NoError(err)
 	s.Require().IsType(&castMachine{}, gated)
-	s.Require().IsType(&contestMachine{}, gated.(*castMachine).inner,
+	s.Require().IsType(&contestMachine{}, gated.(*castMachine).targets[0].inner,
 		"a gate is a save, and a save is a contest")
 
 	gateless, err := NewAction(&ActionInput{
-		Definition: *spells.CastDefinition(spells.TrueStrike, spellSaveDC),
-		AttackerID: bardID, TargetID: heroID,
+		Definition: *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: spellSaveDC}),
+		AttackerID: bardID, TargetIDs: []string{heroID},
 	})
 	s.Require().NoError(err)
 	s.Require().IsType(&castMachine{}, gateless)
-	s.Require().IsType(&activationMachine{}, gateless.(*castMachine).inner, "no gate is a delivery")
+	s.Require().IsType(&activationMachine{}, gateless.(*castMachine).targets[0].inner, "no gate is a delivery")
 }
 
 // Every refusal the cast branch makes, and each says what content got wrong.
 func (s *CastActionTestSuite) TestTheCastBranchRefusesWhatItCannotDeliver() {
-	trueStrike := func() combatActions.Definition { return *spells.CastDefinition(spells.TrueStrike, spellSaveDC) }
+	trueStrike := func() combatActions.Definition {
+		return *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: spellSaveDC})
+	}
 
 	s.Run("no caster", func() {
-		_, err := NewAction(&ActionInput{Definition: trueStrike(), TargetID: heroID})
+		_, err := NewAction(&ActionInput{Definition: trueStrike(), TargetIDs: []string{heroID}})
 		s.Require().ErrorIs(err, ErrBadAction)
 		s.Require().Contains(err.Error(), "cast by nobody")
 	})
@@ -288,33 +487,35 @@ func (s *CastActionTestSuite) TestTheCastBranchRefusesWhatItCannotDeliver() {
 	s.Run("a one-creature cast with no creature", func() {
 		_, err := NewAction(&ActionInput{Definition: trueStrike(), AttackerID: bardID})
 		s.Require().ErrorIs(err, ErrBadAction)
-		s.Require().Contains(err.Error(), "names one creature")
+		s.Require().Contains(err.Error(), "requires 1..1 targets")
 	})
 
 	s.Run("a self-targeted cast handed a target", func() {
 		definition := trueStrike()
 		definition.Cast.Target = combatActions.CastTargetSelf
+		definition.Cast.MinTargets = 0
+		definition.Cast.MaxTargets = 0
 		definition.Cast.Effects[0].CounterpartKey = ""
 
-		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetID: heroID})
+		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetIDs: []string{heroID}})
 		s.Require().ErrorIs(err, ErrBadAction)
-		s.Require().Contains(err.Error(), "reaches only its caster")
+		s.Require().Contains(err.Error(), "requires 0..0 targets")
 	})
 
 	s.Run("a gated cast delivering to its caster", func() {
-		definition := *spells.CastDefinition(spells.ViciousMockery, spellSaveDC)
+		definition := *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: spellSaveDC})
 		definition.Cast.Effects[0].Recipient = combatActions.CastRecipientCaster
 
-		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetID: heroID})
+		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetIDs: []string{heroID}})
 		s.Require().ErrorIs(err, ErrBadAction)
 		s.Require().Contains(err.Error(), "delivers to its caster")
 	})
 
 	s.Run("a gated cast with two conditions", func() {
-		definition := *spells.CastDefinition(spells.ViciousMockery, spellSaveDC)
+		definition := *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: spellSaveDC})
 		definition.Cast.Effects = append(definition.Cast.Effects, definition.Cast.Effects[0])
 
-		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetID: heroID})
+		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetIDs: []string{heroID}})
 		s.Require().ErrorIs(err, ErrBadAction)
 		s.Require().Contains(err.Error(), "a contest delivers one")
 	})
@@ -323,7 +524,7 @@ func (s *CastActionTestSuite) TestTheCastBranchRefusesWhatItCannotDeliver() {
 		definition := trueStrike()
 		definition.Cast.Damage = []damage.Damage{{Dice: "1d4", Type: damage.Psychic}}
 
-		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetID: heroID})
+		_, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetIDs: []string{heroID}})
 		s.Require().ErrorIs(err, ErrBadAction)
 		s.Require().Contains(err.Error(), "deals damage with no save")
 	})
@@ -392,8 +593,10 @@ func (s *CastActionTestSuite) TestTheCounterpartKeyIsWrittenWhereContentSaid() {
 // caster repeated into TargetID would be a second way to say the same thing,
 // and content already refuses a counterpart binding it could never satisfy.
 func (s *CastActionTestSuite) TestASelfTargetedCastNamesNoCreature() {
-	definition := *spells.CastDefinition(spells.TrueStrike, spellSaveDC)
+	definition := *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: spellSaveDC})
 	definition.Cast.Target = combatActions.CastTargetSelf
+	definition.Cast.MinTargets = 0
+	definition.Cast.MaxTargets = 0
 	definition.Cast.Effects[0].CounterpartKey = ""
 	definition.Cast.Effects[0].Parameters = json.RawMessage(`{"target_id":"` + heroID + `"}`)
 	definition.Cost = oneAction()
@@ -406,10 +609,10 @@ func (s *CastActionTestSuite) TestASelfTargetedCastNamesNoCreature() {
 	s.Require().NoError(err)
 
 	outcome := s.castOutcome(out)
-	s.Require().Empty(outcome.TargetID, "nobody was named, and the outcome says so")
-	s.Require().Nil(outcome.Save)
-	s.Require().Len(outcome.Applied, 1)
-	s.Require().Equal(bardID, outcome.Applied[0].RecipientID)
+	s.Require().Empty(outcome.Targets[0].TargetID, "nobody was named, and the outcome says so")
+	s.Require().Nil(outcome.Targets[0].Save)
+	s.Require().Len(outcome.Targets[0].Applied, 1)
+	s.Require().Equal(bardID, outcome.Targets[0].Applied[0].RecipientID)
 }
 
 // THE ORDERING THAT MATTERS. The cast's identity WRAPS the machine, and the
@@ -481,7 +684,7 @@ func (s *CastActionTestSuite) TestACastsConditionsCarryTheSpellAsTheirSource() {
 
 		out := s.resolveOnBus(s.fixtures(), s.cast(spells.TrueStrike, bardID, heroID, straightRoll), bus)
 
-		s.Require().Len(s.castOutcome(out).Applied, 1)
+		s.Require().Len(s.castOutcome(out).Targets[0].Applied, 1)
 		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[dnd5eEvents.ConditionTrueStrike])
 	})
 
@@ -491,7 +694,7 @@ func (s *CastActionTestSuite) TestACastsConditionsCarryTheSpellAsTheirSource() {
 
 		out := s.resolveOnBus(s.fixtures(), s.cast(spells.ViciousMockery, bardID, heroID, straightRoll), bus)
 
-		s.Require().Len(s.castOutcome(out).Applied, 2)
+		s.Require().Len(s.castOutcome(out).Targets[0].Applied, 2)
 		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[dnd5eEvents.ConditionViciousMockery],
 			"the contest reads the cause it was given, which says a spell raised the save")
 	})
