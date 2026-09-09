@@ -36,7 +36,7 @@ type CastInput struct {
 
 	// DeclarationID is the opaque selector echoed from [Manager.Afford], and
 	// it is also WHICH SPELL this casts: one verb compiles one offer per
-	// castable cantrip, so the selector names the row rather than the verb.
+	// castable known entry, so the selector names the row rather than the verb.
 	// Required.
 	//
 	// There is deliberately no spell ref on this input. A caller that named
@@ -45,10 +45,13 @@ type CastInput struct {
 	// makes for an ability.
 	DeclarationID string
 
-	// Target is who it lands on, for a cast whose profile names one creature.
-	// Empty for a self-targeted cast, and a populated ID on one is refused
-	// rather than ignored.
+	// Target is the legacy single-target spelling.
+	// Deprecated: use Targets; put a single target in a one-element slice.
 	Target string
+
+	// Targets is the canonical ordered target list. Its bounds come from the
+	// selected declaration.
+	Targets []string
 }
 
 // CastOutput is what a cast produced.
@@ -72,8 +75,10 @@ type CastOutput struct {
 	//
 	// NIL IS THE HONEST ZERO. True Strike delivers a condition and rolls
 	// nothing, and a report reading 0 against DC 0 would say a roll happened
-	// that never did — the same presence law [encounter.RecordCastInput.Save]
-	// keeps one layer down.
+	// that never did — the same presence law each target result keeps one layer
+	// down.
+	// Saved is the legacy single-target save projection. It is populated only
+	// when exactly one target produced a save.
 	Saved *CastSaveReport `json:"saved,omitempty"`
 
 	// Seqs are the story sequences of the recorded beats, in the order they
@@ -96,15 +101,16 @@ type CastOutput struct {
 // answers — the same reading [SavedBody] and the composition's own CastSave
 // keep, so the response and the beat do not describe one roll two ways.
 type CastSaveReport struct {
-	Saver     string `json:"saver"`
-	Ability   string `json:"ability"`
-	Roll      int    `json:"roll"`
-	Total     int    `json:"total"`
-	DC        int    `json:"dc"`
-	Succeeded bool   `json:"succeeded"`
+	Saver       string           `json:"saver"`
+	Ability     string           `json:"ability"`
+	Roll        int              `json:"roll"`
+	Total       int              `json:"total"`
+	DC          int              `json:"dc"`
+	Succeeded   bool             `json:"succeeded"`
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
-// Cast casts a cantrip the member knows at a target the offer named.
+// Cast casts a known spell at the ordered targets the offer permits.
 //
 // # It is Activate's twin everywhere but the door
 //
@@ -115,19 +121,14 @@ type CastSaveReport struct {
 // # THIS ONE IS PAID AT THE DOOR
 //
 // [resolution.Input.Cost] is NON-NIL here, and [Manager.Activate]'s is nil.
-// That is not an inconsistency between two verbs that look alike: an
-// activation's ability spends its own slot underneath, so a Cost passed
-// alongside would charge the same ledger twice and the second charge would look
-// exactly like the first. A cantrip has nothing underneath it — no
-// ActivateAbility, no feature-owned spend, no second currency — so the door
-// charges the one action and the machine is never told, which is the ignorance
-// [resolution.Input.Cost]'s own doc asks for.
-//
-// The charge lands after pure machine preflight and before the first yielded
-// step, and it is all-or-none by the gate's construction. A bard with no action
-// left is refused BEFORE anything moves: no publish, no roll, no dirty sheet.
-// The price is exactly what the Afford row already showed, because the offer
-// this verb regenerates is the offer that was priced.
+// Cast passes the complete provider-authored Definition.Cost — an action for a
+// cantrip, and an action plus the level-one pool for Bane — without selecting a
+// resource key or pricing a spell itself. The charge lands after pure machine
+// preflight and before the first yielded step, and it is all-or-none by the
+// gate's construction. A bard with no action or slot left is refused BEFORE
+// anything moves: no publish, no roll, no dirty sheet. The price is exactly
+// what the Afford row already showed, because the offer this verb regenerates
+// is the offer that was priced.
 //
 // # A second cast in one turn is refused by the ledger, not by a rule here
 //
@@ -164,6 +165,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 	if in.Member == "" {
 		return nil, fmt.Errorf("cast: %w", ErrNoMemberID)
+	}
+	targets, err := normalizeCastTargets(in.Target, in.Targets)
+	if err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
 	}
 
 	scope, err := m.openForChange(ctx, in.Session)
@@ -244,7 +249,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 	definition := selected.spell
 
-	target, err := castTarget(definition, selected, in.Target)
+	targets, err = castTargets(definition, selected, targets)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -252,7 +257,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	machine, err := resolution.NewAction(&resolution.ActionInput{
 		Definition: definition.Clone(),
 		AttackerID: in.Member,
-		TargetID:   target,
+		TargetIDs:  targets,
 		// A machine that rolls carries its own roller (resolution's rule): a
 		// gated cast rolls the target's save, and it rolls with the HOST'S
 		// dice through the same seam every other roll takes. There is no
@@ -319,7 +324,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", translateResolution(err))
 	}
 
-	save, results, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
+	targetResults, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -339,14 +344,12 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// the mechanical sheet writes remain durable and are named by
 	// reportUnrecorded while this unsaved encounter scope is dropped.
 	recorded, err := scope.enc.RecordCast(&encounter.RecordCastInput{
-		Actor:  encounter.MemberID(in.Member),
-		Target: encounter.MemberID(target),
+		Actor: encounter.MemberID(in.Member),
 		Spell: encounter.SpellIdentity{
 			Ref:  selected.declaration.Spell.Ref,
 			Name: selected.declaration.Spell.Name,
 		},
-		Save:    save,
-		Results: results,
+		Targets: targetResults,
 		// PASSED THROUGH, exactly as the strike passes them: resolution
 		// assembled both lists and this seam copies two slice headers. A cast
 		// ends a concentration two ways — displacing one by casting again, and
@@ -364,16 +367,32 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
+	var singleSave *encounter.CastSave
+	if len(targetResults) == 1 {
+		singleSave = targetResults[0].Save
+	}
 	return &CastOutput{
 		Spell:     *selected.declaration.Spell,
-		Saved:     castSaveReport(save),
+		Saved:     castSaveReport(singleSave),
 		Seqs:      recorded.Seqs,
 		Persisted: report,
 		Delivery:  delivery,
 	}, nil
 }
 
-// castTarget enforces the profile's own target rule against what the caller
+// normalizeCastTargets resolves the deprecated scalar at the public boundary.
+// It always returns independently owned storage and never edits caller slices.
+func normalizeCastTargets(target string, targets []string) ([]string, error) {
+	if target != "" && len(targets) != 0 {
+		return nil, fmt.Errorf("%w: received both Target and Targets", ErrBadCast)
+	}
+	if target != "" {
+		return []string{target}, nil
+	}
+	return append([]string(nil), targets...), nil
+}
+
+// castTargets enforces the profile's own target rule against what the caller
 // asked for, and re-enforces the offer's per-candidate gate.
 //
 // # The rule comes from the content, and the reach from the offer
@@ -389,36 +408,40 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 // A populated target on a self-targeted cast is REFUSED rather than ignored.
 // Ignoring it would let a client believe True Strike had been pointed at the
 // skeleton when the profile never offered that choice.
-func castTarget(
-	definition *combatActions.Definition, selected compiledOffer, requested string,
-) (string, error) {
-	if definition.Cast.Target == combatActions.CastTargetSelf {
-		if requested != "" {
-			return "", fmt.Errorf("%w: spell %q names no target",
+func castTargets(
+	definition *combatActions.Definition, selected compiledOffer, requested []string,
+) ([]string, error) {
+	profile := definition.Cast
+	if profile.Target == combatActions.CastTargetSelf {
+		if len(requested) != 0 {
+			return nil, fmt.Errorf("%w: spell %q names no targets",
 				ErrBadCast, definition.Ref.String())
 		}
-		return "", nil
+		return []string{}, nil
 	}
 
-	if requested == "" {
-		return "", fmt.Errorf("%w: spell %q requires a target",
-			ErrBadCast, definition.Ref.String())
+	if len(requested) < profile.MinTargets || len(requested) > profile.MaxTargets {
+		return nil, fmt.Errorf("%w: spell %q requires %d..%d targets; got %d",
+			ErrBadCast, definition.Ref.String(), profile.MinTargets, profile.MaxTargets, len(requested))
 	}
-	candidate, offered := selected.targets[requested]
-	if !offered {
-		// Not in the candidate universe at all: out of sight, out of the
-		// roster, or never a candidate for this spell's range. From a client's
-		// side that is the same event as any other stale offer.
-		return "", fmt.Errorf("%w", ErrStaleDeclaration)
-	}
-	if !candidate.available {
-		reason := "target is unavailable"
-		if candidate.why != nil {
-			reason = candidate.why.Text
+	for _, target := range requested {
+		if target == "" {
+			return nil, fmt.Errorf("%w: spell %q has an empty target",
+				ErrBadCast, definition.Ref.String())
 		}
-		return "", fmt.Errorf("%w: target %q: %s", ErrStaleDeclaration, requested, reason)
+		candidate, offered := selected.targets[target]
+		if !offered {
+			return nil, fmt.Errorf("%w", ErrStaleDeclaration)
+		}
+		if !candidate.available {
+			reason := "target is unavailable"
+			if candidate.why != nil {
+				reason = candidate.why.Text
+			}
+			return nil, fmt.Errorf("%w: target %q: %s", ErrStaleDeclaration, target, reason)
+		}
 	}
-	return requested, nil
+	return append([]string(nil), requested...), nil
 }
 
 // castSaveReport projects the composition's save onto the caller's own.
@@ -429,11 +452,12 @@ func castSaveReport(save *encounter.CastSave) *CastSaveReport {
 		return nil
 	}
 	return &CastSaveReport{
-		Saver:     string(save.Saver),
-		Ability:   save.Ability,
-		Roll:      save.Roll,
-		Total:     save.Total,
-		DC:        save.DC,
-		Succeeded: save.Succeeded,
+		Saver:       string(save.Saver),
+		Ability:     save.Ability,
+		Roll:        save.Roll,
+		Total:       save.Total,
+		DC:          save.DC,
+		Succeeded:   save.Succeeded,
+		Calculation: sessionRollCalculationFor(save.Calculation),
 	}
 }

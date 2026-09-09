@@ -597,16 +597,32 @@ func castEventBody(payload []byte) EventBody {
 			Ref  string `json:"ref"`
 			Name string `json:"name"`
 		} `json:"spell"`
-		Target string `json:"target"`
+		Target  string   `json:"target"`
+		Targets []string `json:"targets"`
 	}
 	if json.Unmarshal(payload, &p) != nil ||
 		p.Actor == "" || p.Spell.Ref == "" || p.Spell.Name == "" {
 		return nil
 	}
+	if p.Target != "" && len(p.Targets) != 0 {
+		return nil
+	}
+	targets := append([]string(nil), p.Targets...)
+	if p.Target != "" {
+		targets = []string{p.Target}
+	}
+	for _, target := range targets {
+		if target == "" {
+			return nil
+		}
+	}
+	legacyTarget := ""
+	if len(targets) == 1 {
+		legacyTarget = targets[0]
+	}
 	return CastBody{
-		Actor:  p.Actor,
-		Spell:  SpellRef{Ref: p.Spell.Ref, Name: p.Spell.Name},
-		Target: p.Target,
+		Actor: p.Actor, Spell: SpellRef{Ref: p.Spell.Ref, Name: p.Spell.Name},
+		Target: legacyTarget, Targets: targets,
 	}
 }
 
@@ -646,10 +662,21 @@ func savedEventBody(payload []byte) EventBody {
 		p.Source.Ref == "" || p.Source.Name == "" {
 		return nil
 	}
+	var calculation *RollCalculation
+	if raw, present := outer["calculation"]; present {
+		if isJSONNull(raw) {
+			return nil
+		}
+		var valid bool
+		calculation, valid = decodeRollCalculation(raw)
+		if !valid || !calculationMatchesD20(calculation, p.Roll, p.Total) {
+			return nil
+		}
+	}
 	return SavedBody{
 		Saver: p.Saver, Ability: p.Ability,
 		Roll: p.Roll, Total: p.Total, DC: p.DC, Succeeded: p.Succeeded,
-		Source: SpellRef{Ref: p.Source.Ref, Name: p.Source.Name},
+		Source: SpellRef{Ref: p.Source.Ref, Name: p.Source.Name}, Calculation: calculation,
 	}
 }
 
@@ -738,6 +765,7 @@ func activationResultBody(payload []byte) EventBody {
 		Reason      *string `json:"reason"`
 
 		DamageType *string `json:"damage_type"`
+		SourceID   string  `json:"source_id"`
 	}
 	if json.Unmarshal(resultPayload, &result) != nil || result.Target == "" {
 		return nil
@@ -754,6 +782,7 @@ func activationResultBody(payload []byte) EventBody {
 	_, descriptionPresent := fields["description"]
 	_, reasonPresent := fields["reason"]
 	_, damageTypePresent := fields["damage_type"]
+	_, sourceIDPresent := fields["source_id"]
 	calculationRaw, calculationPresent := fields["calculation"]
 
 	healingNumericsPresent := amountPresent && requestedPresent && beforePresent && afterPresent &&
@@ -772,6 +801,13 @@ func activationResultBody(payload []byte) EventBody {
 	// a damage type is a payload no build here produced, and reading it as
 	// though only the damage arm cared would let it through unnoticed.
 	if result.Kind != encounter.ResultDamageApplied && damageTypePresent {
+		return nil
+	}
+	if result.Kind != encounter.ResultConditionApplied &&
+		result.Kind != encounter.ResultConditionRemoved && sourceIDPresent {
+		return nil
+	}
+	if raw, present := fields["source_id"]; present && isJSONNull(raw) {
 		return nil
 	}
 
@@ -849,7 +885,7 @@ func activationResultBody(payload []byte) EventBody {
 			return nil
 		}
 		body.ConditionApplied = &ConditionAppliedBody{
-			Target: result.Target, Ref: *result.Ref, Name: *result.Name,
+			Target: result.Target, Ref: *result.Ref, Name: *result.Name, SourceID: result.SourceID,
 		}
 	case encounter.ResultConditionRemoved:
 		if !identityPresent || calculationPresent || numericPresent || descriptionPresent || !reasonPresent ||
@@ -857,7 +893,8 @@ func activationResultBody(payload []byte) EventBody {
 			return nil
 		}
 		body.ConditionRemoved = &ConditionRemovedBody{
-			Target: result.Target, Ref: *result.Ref, Name: *result.Name, Reason: *result.Reason,
+			Target: result.Target, Ref: *result.Ref, Name: *result.Name,
+			Reason: *result.Reason, SourceID: result.SourceID,
 		}
 	case encounter.ResultCapacityGranted:
 		if refPresent || namePresent || reasonPresent || calculationPresent || !descriptionPresent ||
@@ -909,8 +946,14 @@ func deathSaveEventBody(payload []byte) EventBody {
 		"successes_needed", "failures_remaining", "stabilized", "dead", "recovered",
 		"hp_restored", "continuation", "presentation_id",
 	}
-	if len(detail) != len(required) {
-		return nil
+	for key := range detail {
+		known := key == "calculation"
+		for _, requiredKey := range required {
+			known = known || key == requiredKey
+		}
+		if !known {
+			return nil
+		}
 	}
 	for _, key := range required {
 		if _, present := detail[key]; !present || isJSONNull(detail[key]) {
@@ -938,6 +981,21 @@ func deathSaveEventBody(payload []byte) EventBody {
 		decoded.Continuation == "" || decoded.PresentationID == "" {
 		return nil
 	}
+	var calculation *RollCalculation
+	if raw, present := detail["calculation"]; present {
+		if isJSONNull(raw) {
+			return nil
+		}
+		var valid bool
+		calculation, valid = decodeRollCalculation(raw)
+		if !valid || len(calculation.Components) == 0 ||
+			calculation.Components[0].Dice == nil ||
+			calculation.Components[0].Dice.DieSize != 20 ||
+			calculation.Components[0].SubtractDice ||
+			calculation.Components[0].Dice.Subtotal != decoded.Roll {
+			return nil
+		}
+	}
 	return DeathSaveBody{
 		Actor: actor, Roll: decoded.Roll, Outcome: decoded.Outcome,
 		SuccessesAdded: decoded.SuccessesAdded, FailuresAdded: decoded.FailuresAdded,
@@ -946,6 +1004,7 @@ func deathSaveEventBody(payload []byte) EventBody {
 		Stabilized: decoded.Stabilized, Dead: decoded.Dead,
 		Recovered: decoded.Recovered, HPRestored: decoded.HPRestored,
 		Continuation: decoded.Continuation, PresentationID: decoded.PresentationID,
+		Calculation: calculation,
 	}
 }
 
@@ -1068,7 +1127,7 @@ func decodeRollComponent(raw json.RawMessage) (RollComponent, bool) {
 	}
 	for key := range fields {
 		switch key {
-		case "source", "dice", "modifier":
+		case "source", "dice", "modifier", "subtract_dice":
 		default:
 			return RollComponent{}, false
 		}
@@ -1101,6 +1160,11 @@ func decodeRollComponent(raw json.RawMessage) (RollComponent, bool) {
 		}
 		component.Modifier = &modifier
 	}
+	if subtractRaw, present := fields["subtract_dice"]; present {
+		if json.Unmarshal(subtractRaw, &component.SubtractDice) != nil {
+			return RollComponent{}, false
+		}
+	}
 	if component.Dice == nil && component.Modifier == nil {
 		// No rollable fact: nothing to replay. The source identity is all this
 		// decoder can vouch for, and the damage facts beside the roll — a
@@ -1126,7 +1190,7 @@ func decodeRollSource(raw json.RawMessage) (RollSource, bool) {
 	}
 	for key := range fields {
 		switch key {
-		case "ref", "name", "label":
+		case "ref", "name", "label", "source_id":
 		default:
 			return RollSource{}, false
 		}
@@ -1156,6 +1220,11 @@ func decodeRollSource(raw json.RawMessage) (RollSource, bool) {
 	}
 	if labelRaw, labelPresent := fields["label"]; labelPresent {
 		if json.Unmarshal(labelRaw, &source.Label) != nil {
+			return RollSource{}, false
+		}
+	}
+	if sourceIDRaw, sourceIDPresent := fields["source_id"]; sourceIDPresent {
+		if json.Unmarshal(sourceIDRaw, &source.SourceID) != nil {
 			return RollSource{}, false
 		}
 	}
@@ -1276,12 +1345,27 @@ func decodeDiceReroll(raw json.RawMessage) (DiceReroll, bool) {
 func rollComponentTotal(component RollComponent) int {
 	total := 0
 	if component.Dice != nil {
-		total += component.Dice.Subtotal
+		if component.SubtractDice {
+			total -= component.Dice.Subtotal
+		} else {
+			total += component.Dice.Subtotal
+		}
 	}
 	if component.Modifier != nil {
 		total += *component.Modifier
 	}
 	return total
+}
+
+// calculationMatchesD20 checks scalar summaries against the authoritative
+// calculation without deciding any success rule.
+func calculationMatchesD20(calculation *RollCalculation, roll, total int) bool {
+	if calculation == nil || len(calculation.Components) == 0 {
+		return false
+	}
+	first := calculation.Components[0]
+	return first.Dice != nil && first.Dice.DieSize == 20 && !first.SubtractDice &&
+		first.Dice.Subtotal == roll && calculation.Total == total
 }
 
 // validationComponentFor projects the SDK's string-ref roll component onto the
@@ -1292,9 +1376,11 @@ func validationComponentFor(component RollComponent) encounter.RollComponent {
 	return encounter.RollComponent{
 		Source: encounter.RollSource{
 			Ref: component.Source.Ref, Name: component.Source.Name, Label: component.Source.Label,
+			SourceID: component.Source.SourceID,
 		},
-		Dice:     validationDiceTraceFor(component.Dice),
-		Modifier: cloneInt(component.Modifier),
+		Dice:         validationDiceTraceFor(component.Dice),
+		Modifier:     cloneInt(component.Modifier),
+		SubtractDice: component.SubtractDice,
 	}
 }
 
@@ -1335,6 +1421,7 @@ func validationDiceTraceFor(trace *DiceTrace) *encounter.DiceTrace {
 				DieIndex: reroll.DieIndex, Before: reroll.Before, After: reroll.After,
 				Source: encounter.RollSource{
 					Ref: reroll.Source.Ref, Name: reroll.Source.Name, Label: reroll.Source.Label,
+					SourceID: reroll.Source.SourceID,
 				},
 			}
 		}
@@ -1481,7 +1568,7 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		switch key {
 		case "beat", "actor", "targets", "roll", "total", "against", "amount", "critical",
 			"attack", "reaction", "damage_components", "advantage_sources", "disadvantage_sources",
-			"presentation_id":
+			"presentation_id", "calculation":
 			if isJSONNull(value) {
 				return nil
 			}
@@ -1535,6 +1622,13 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 	if !ok {
 		return nil
 	}
+	var calculation *RollCalculation
+	if raw, present := outer["calculation"]; present {
+		calculation, ok = decodeRollCalculation(raw)
+		if !ok || !calculationMatchesD20(calculation, p.Roll, p.Total) {
+			return nil
+		}
+	}
 	// The reaction identity, present only when the composition recorded the
 	// beat AS one (encounter.ReactionIdentity). Absent is the common case and
 	// stays nil; a present-but-nameless one is a payload this decoder does not
@@ -1550,13 +1644,13 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 			Attack: p.Attack.toRef(), Critical: p.Critical,
 			DamageComponents: components,
 			AdvantageSources: p.AdvantageSources, DisadvantageSources: p.DisadvantageSources,
-			Reaction: reaction, PresentationID: p.PresentationID,
+			Reaction: reaction, PresentationID: p.PresentationID, Calculation: calculation,
 		}
 	}
 	return MissedBody{
 		Attacker: p.Actor, Target: p.Targets[0],
 		Roll: p.Roll, Total: p.Total, Against: p.Against, Attack: p.Attack.toRef(),
-		Reaction: reaction, PresentationID: p.PresentationID,
+		Reaction: reaction, PresentationID: p.PresentationID, Calculation: calculation,
 	}
 }
 

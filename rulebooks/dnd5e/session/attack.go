@@ -104,6 +104,9 @@ type AttackOutput struct {
 	// them did not, until now (rpg-toolkit#866).
 	Attack AttackRef `json:"attack"`
 
+	// Calculation is the authoritative sourced attack-roll arithmetic.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+
 	// PresentationID is the opaque token the attacker and every witness share
 	// for THIS one roll. The client echoes it and never parses it.
 	//
@@ -402,6 +405,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Saved:        report,
 		Delivery:     delivery,
 		Attack:       attackRefFor(definition),
+		Calculation:  sessionRollCalculationFor(rollCalculationFor(struck.Calculation)),
 
 		PresentationID: presentationID,
 	}, nil
@@ -651,7 +655,9 @@ func rollSourceFor(source dnd5eEvents.RollSource) encounter.RollSource {
 	if source.Ref != nil {
 		ref = source.Ref.String()
 	}
-	return encounter.RollSource{Ref: ref, Name: source.Name, Label: source.Label}
+	return encounter.RollSource{
+		Ref: ref, Name: source.Name, Label: source.Label, SourceID: source.SourceID,
+	}
 }
 
 // diceRerollFor clones one ordered die replacement, source included.
@@ -699,9 +705,10 @@ func rollComponentFor(component dnd5eEvents.RollComponent) encounter.RollCompone
 		modifier = &value
 	}
 	return encounter.RollComponent{
-		Source:   rollSourceFor(component.Source),
-		Dice:     diceTraceFor(component.Dice),
-		Modifier: modifier,
+		Source:       rollSourceFor(component.Source),
+		Dice:         diceTraceFor(component.Dice),
+		Modifier:     modifier,
+		SubtractDice: component.SubtractDice,
 	}
 }
 
@@ -717,6 +724,63 @@ func rollCalculationFor(calculation *dnd5eEvents.RollCalculation) *encounter.Rol
 		clone.Components = make([]encounter.RollComponent, len(calculation.Components))
 		for i, component := range calculation.Components {
 			clone.Components[i] = rollComponentFor(component)
+		}
+	}
+	return clone
+}
+
+// sessionRollCalculationFor deep-clones the neutral persisted calculation onto
+// the host-facing shape without interpreting any source or arithmetic.
+func sessionRollCalculationFor(calculation *encounter.RollCalculation) *RollCalculation {
+	if calculation == nil {
+		return nil
+	}
+	clone := &RollCalculation{Total: calculation.Total}
+	if calculation.Components != nil {
+		clone.Components = make([]RollComponent, len(calculation.Components))
+		for i, component := range calculation.Components {
+			clone.Components[i] = sessionRollComponentFor(component)
+		}
+	}
+	return clone
+}
+
+func sessionRollComponentFor(component encounter.RollComponent) RollComponent {
+	var modifier *int
+	if component.Modifier != nil {
+		value := *component.Modifier
+		modifier = &value
+	}
+	return RollComponent{
+		Source: RollSource{
+			Ref: component.Source.Ref, Name: component.Source.Name,
+			Label: component.Source.Label, SourceID: component.Source.SourceID,
+		},
+		Dice: diceTraceFromEncounter(component.Dice), Modifier: modifier,
+		SubtractDice: component.SubtractDice,
+	}
+}
+
+func diceTraceFromEncounter(trace *encounter.DiceTrace) *DiceTrace {
+	if trace == nil {
+		return nil
+	}
+	clone := &DiceTrace{
+		Notation: trace.Notation, DieSize: trace.DieSize,
+		OriginalRolls: append([]int(nil), trace.OriginalRolls...),
+		FinalRolls:    append([]int(nil), trace.FinalRolls...),
+		KeptIndices:   append([]int(nil), trace.KeptIndices...), Subtotal: trace.Subtotal,
+	}
+	if trace.Rerolls != nil {
+		clone.Rerolls = make([]DiceReroll, len(trace.Rerolls))
+		for i, reroll := range trace.Rerolls {
+			clone.Rerolls[i] = DiceReroll{
+				DieIndex: reroll.DieIndex, Before: reroll.Before, After: reroll.After,
+				Source: RollSource{
+					Ref: reroll.Source.Ref, Name: reroll.Source.Name,
+					Label: reroll.Source.Label, SourceID: reroll.Source.SourceID,
+				},
+			}
 		}
 	}
 	return clone

@@ -540,9 +540,6 @@ func (s *JoinLongRestTestSuite) assertCompleteRest(got *character.Data) {
 		got.Resources[resources.HitDice], "half the maximum hit dice recover without exceeding maximum")
 	s.Equal(character.RecoverableResourceData{Current: 2, Maximum: 2, ResetType: coreResources.ResetShortRest},
 		got.Resources[joinRestPool], "character-owned rest resources refill")
-	s.Equal(character.SpellSlotData{Max: 3, Used: 0}, got.SpellSlots[1])
-	s.Equal(character.SpellSlotData{Max: 2, Used: 0}, got.SpellSlots[2])
-
 	var secondWind features.SecondWindData
 	s.Require().NoError(json.Unmarshal(effectWithRef(s.T(), got.Features, refs.Features.SecondWind()), &secondWind))
 	s.Equal(1, secondWind.Uses, "feature-owned resources hear the normal rest event")
@@ -586,10 +583,6 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 		HitPoints: 7, MaxHitPoints: 36, ArmorClass: 16,
 		DeathSaveState: &saves.DeathSaveState{
 			Successes: 1, Failures: 2, Stabilized: true, Dead: true,
-		},
-		SpellSlots: map[int]character.SpellSlotData{
-			1: {Max: 3, Used: 3},
-			2: {Max: 2, Used: 1},
 		},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice: {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},

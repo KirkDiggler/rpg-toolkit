@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -331,6 +332,8 @@ func TestDeathSaveOutcomesAndContinuations(t *testing.T) {
 			require.Equal(t, tc.hp, out.HPRestored)
 			require.Equal(t, tc.continueAs, out.Continuation)
 			require.Equal(t, f.token, out.PresentationID)
+			require.NotNil(t, out.Calculation)
+			require.Equal(t, out.Roll, out.Calculation.Components[0].Dice.Subtotal)
 			require.Positive(t, out.Seq)
 			require.Equal(t, 1, f.rolls, "an accepted declaration rolls exactly once")
 			require.Equal(t, 1, f.ids, "an accepted declaration generates exactly one opaque token")
@@ -367,6 +370,41 @@ func TestDeathSaveOutcomesAndContinuations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDeathSaveProjectsSourceQualifiedBaneCalculation(t *testing.T) {
+	f := newDeathSaveFixture(t, 4)
+	f.makeDying(0, 0)
+	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: "alice", SourceID: "bob", SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	raw, err := baned.ToJSON()
+	require.NoError(t, err)
+	f.characters.byID["alice"].Conditions = append(f.characters.byID["alice"].Conditions, raw)
+
+	out, err := f.execute(f.declaration().ID)
+	require.NoError(t, err)
+	require.NotNil(t, out.Calculation)
+	require.Len(t, out.Calculation.Components, 2)
+	bane := out.Calculation.Components[1]
+	require.True(t, bane.SubtractDice)
+	require.Equal(t, refs.Spells.Bane().String(), bane.Source.Ref)
+	require.Equal(t, "bob", bane.Source.SourceID)
+	require.NotNil(t, bane.Dice)
+	require.Equal(t, 4, bane.Dice.Subtotal)
+	require.Equal(t, 0, out.Calculation.Total)
+
+	var eventBody session.DeathSaveBody
+	for _, event := range f.stream.published {
+		if event.Kind == session.EventDeathSave && event.Recipient == "alice" {
+			var ok bool
+			eventBody, ok = event.Body.(session.DeathSaveBody)
+			require.True(t, ok)
+		}
+	}
+	require.NotNil(t, eventBody.Calculation)
+	require.Equal(t, bane, eventBody.Calculation.Components[1])
 }
 
 func TestDeathSaveStoryAndResponseShareOpaqueFactsAcrossLocalSequences(t *testing.T) {
@@ -415,6 +453,7 @@ func TestDeathSaveStoryAndResponseShareOpaqueFactsAcrossLocalSequences(t *testin
 	require.Equal(t, actorBody, witnessBody)
 	require.Equal(t, out.Roll, actorBody.Roll)
 	require.Equal(t, out.Outcome, actorBody.Outcome)
+	require.Equal(t, out.Calculation, actorBody.Calculation)
 	require.Equal(t, out.Seq, deathEvents["alice"].Seq)
 	require.NotEqual(t, deathEvents["alice"].Seq, deathEvents["bob"].Seq,
 		"recipient-local cursors may differ without changing correlation")

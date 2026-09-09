@@ -6,12 +6,15 @@ package session
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // AffordInput asks what one member can still declare this turn.
@@ -59,8 +62,8 @@ const (
 
 	// VerbCast is [Manager.Cast]: casting a spell the character knows.
 	//
-	// One offer per KNOWN cantrip this build can actually cast — the sheet's
-	// own known list, intersected with the content that carries a cast
+	// One offer per KNOWN cantrip or leveled spell this build can actually cast
+	// — the sheet's known lists intersected with content carrying a cast
 	// profile. A known ref with no profile mints NO ROW rather than a row
 	// that would resolve to nothing (design R9, fail closed): a bard who
 	// chose Mage Hand and Light is offered no Cast at all, and that is the
@@ -71,10 +74,10 @@ const (
 	// compiled into that definition: a bard whose DC changed between the read
 	// and the click has a stale offer, and the selector is what catches it.
 	//
-	// THE FIRST VERB THAT IS REALLY PAID AT THE DOOR. A cantrip's whole price
-	// is one action — no pool, no slot, no charge on any feature — so
-	// [Manager.Cast] hands resolution a non-nil Cost, which [Manager.Activate]
-	// deliberately does not (design R10).
+	// THE FIRST VERB THAT IS REALLY PAID AT THE DOOR. A spell's whole price is
+	// the complete provider-authored definition price, so [Manager.Cast]
+	// hands resolution a non-nil Cost, which [Manager.Activate] deliberately
+	// does not (design R10).
 	VerbCast Verb = "cast"
 
 	// VerbDeathSave is [Manager.DeathSave]: the explicit saving throw offered
@@ -138,6 +141,19 @@ const (
 type DeathSaveRef struct {
 	// Name is the provider-authored display name of the saving throw.
 	Name string `json:"name"`
+}
+
+// CostComponent is one provider-authored display component of a declaration's
+// price. It is copied from the same spend profile execution charges, but is not
+// authorization: execution regenerates and revalidates the offer.
+type CostComponent struct {
+	// Currency is the generic kind consumed; private rulebook keys never cross.
+	Currency Currency `json:"currency"`
+	// Needed is the number of units required.
+	Needed int `json:"needed"`
+	// Label is the provider-authored resource display name, when a generic
+	// charge needs one.
+	Label string `json:"label,omitempty"`
 }
 
 // Declaration is one server-compiled action/cost variant a member could
@@ -251,9 +267,9 @@ type Declaration struct {
 	// gates, which still carries its compiled ref — and absent from every
 	// other row. The same presence law [Declaration.Attack] keeps.
 	//
-	// It names WHICH CANTRIP this row casts, so a dock can say "Vicious
-	// Mockery" rather than "Cast": one verb compiles one offer per castable
-	// cantrip, exactly as Activate compiles one per carried ability, and the
+	// It names WHICH SPELL this row casts, so a dock can say "Bane" rather than
+	// "Cast": one verb compiles one offer per castable known entry, exactly as
+	// Activate compiles one per carried ability, and the
 	// verb alone cannot tell them apart.
 	Spell *SpellRef `json:"spell,omitempty"`
 
@@ -269,6 +285,15 @@ type Declaration struct {
 	// reasons. ShortfallNoTargetInReach does not remove these rows. Empty
 	// (non-nil) for Move, DeathSave, EndTurn, and early per-verb blockers.
 	Candidates []TargetCandidate `json:"candidates"`
+
+	// MinTargets and MaxTargets are provider-authored bounds for the ordered
+	// target list. They are zero on declarations that do not expose bounds.
+	MinTargets int `json:"min_targets"`
+	MaxTargets int `json:"max_targets"`
+
+	// Cost is generic provider-authored display data copied from the executable
+	// spend profile. Private resource keys never cross this seam.
+	Cost []CostComponent `json:"cost"`
 }
 
 // AffordOutput is what one member can still declare this turn.
@@ -440,7 +465,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 			blockedDeclaration(VerbActivate, TargetNone, notYourTurn),
 			// ONE Cast row for the same reason there is one Activate row: a
 			// member whose turn it is not can cast none of what they know,
-			// and the reason is identical for every cantrip.
+			// and the reason is identical for every known spell.
 			blockedDeclaration(VerbCast, TargetNone, notYourTurn),
 			blockedDeclaration(VerbEndTurn, TargetNone, notYourTurn),
 		}}, nil
@@ -507,26 +532,27 @@ func currencyOfSlot(slot Slot) Currency {
 // consults — SlotsLeft/CapacityLeft, never by parsing the text Pay's error
 // carries (rpg-toolkit#1010).
 //
-// SLOT FIRST, AND USUALLY ONLY. slot is the declaration's own answer to
-// "which shape does this price light" (slotOf) — the same SpendProfile,
-// asked the same way — and it covers the whole of v1's reachable economy:
-// character.CostOfSwing's folding means a capacity shortfall
-// always resurfaces as the action slot being spent already, so a profile
-// that draws SlotNone (a purely banked swing) never actually runs out in a
-// way this build can produce. That branch is still handled, defensively,
-// rather than assumed away.
-func shortfallForPay(sheet *character.Character, profile *combat.SpendProfile, slot Slot) Shortfall {
+// Checks follow the profile's generic currency groups. A slot is reported only
+// when that slot is actually short; a definition with its action intact and
+// its pool exhausted therefore reports labelled charges rather than a
+// misleading action shortfall.
+func shortfallForPay(sheet *character.Character, profile *combat.SpendProfile, _ Slot) Shortfall {
 	if profile == nil {
 		return Shortfall{Reason: ShortfallNoBudget, Text: "action cannot be paid for"}
 	}
 
-	switch slot {
-	case SlotAction:
-		return slotShortfall(sheet, coreCombat.ActionStandard, currencyOfSlot(slot), profile.Slots[coreCombat.ActionStandard])
-	case SlotBonus:
-		return slotShortfall(sheet, coreCombat.ActionBonus, currencyOfSlot(slot), profile.Slots[coreCombat.ActionBonus])
-	case SlotReaction:
-		return slotShortfall(sheet, coreCombat.ActionReaction, currencyOfSlot(slot), profile.Slots[coreCombat.ActionReaction])
+	for _, entry := range []struct {
+		slotKey  coreCombat.ActionType
+		currency Currency
+	}{
+		{coreCombat.ActionStandard, CurrencyAction},
+		{coreCombat.ActionBonus, CurrencyBonus},
+		{coreCombat.ActionReaction, CurrencyReaction},
+	} {
+		needed := profile.Slots[entry.slotKey]
+		if left := sheet.SlotsLeft(entry.slotKey); left < needed {
+			return slotShortfall(sheet, entry.slotKey, entry.currency, needed)
+		}
 	}
 
 	for key, amount := range profile.Capacity {
@@ -534,6 +560,26 @@ func shortfallForPay(sheet *character.Character, profile *combat.SpendProfile, s
 			return Shortfall{
 				Reason: ShortfallNoBudget, Needed: amount, Left: left,
 				Text: fmt.Sprintf("%s: %d needed, %d left", key, amount, left),
+			}
+		}
+	}
+
+	poolKeys := make([]coreResources.ResourceKey, 0, len(profile.Pools))
+	for key := range profile.Pools {
+		poolKeys = append(poolKeys, key)
+	}
+	sort.Slice(poolKeys, func(i, j int) bool { return poolKeys[i] < poolKeys[j] })
+	for _, key := range poolKeys {
+		amount := profile.Pools[key]
+		if left := sheet.PoolLeft(key); left < amount {
+			label, ok := resources.DisplayName(key)
+			if !ok {
+				label = "charges"
+			}
+			return Shortfall{
+				Reason: ShortfallNoBudget, Currency: CurrencyCharges,
+				Needed: amount, Left: left,
+				Text: fmt.Sprintf("%s: %d needed, %d left", label, amount, left),
 			}
 		}
 	}
