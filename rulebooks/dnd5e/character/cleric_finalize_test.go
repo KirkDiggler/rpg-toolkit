@@ -101,7 +101,6 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	var stored Data
 	s.Require().NoError(json.Unmarshal(encoded, &stored))
 	stored.HitPoints = 4
-	stored.SpellSlots[1] = SpellSlotData{Max: 2, Used: 1}
 	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
 	s.Require().NoError(err)
 	back := loaded.ToData()
@@ -111,7 +110,6 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Equal(data.Inventory, back.Inventory)
 	s.Equal(data.KnownCantrips, back.KnownCantrips)
 	s.Equal(data.Resources, back.Resources)
-	s.Equal(stored.SpellSlots, back.SpellSlots, "loading does not recover spent slots")
 	s.Equal(4, back.HitPoints, "loading is not a rest")
 }
 

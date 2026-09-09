@@ -321,15 +321,11 @@ func TestStatusViewRejectsMalformedFeatureStatus(t *testing.T) {
 	require.Nil(t, out, "no partial output on malformed feature status")
 }
 
-// TestStatusViewExcludesSpellSlotsAndClassResources confirms that non-empty
-// SpellSlots and legacy ClassResources never surface as status resources —
-// excluded by construction, locked by test.
-func TestStatusViewExcludesSpellSlotsAndClassResources(t *testing.T) {
+// TestStatusViewExcludesLegacyClassResources confirms that legacy
+// ClassResources never surface as status resources.
+func TestStatusViewExcludesLegacyClassResources(t *testing.T) {
 	fighter := newLevel3Fighter(t)
 
-	fighter.spellSlots = map[int]SpellSlotData{
-		1: {Max: 2, Used: 0},
-	}
 	fighter.classResources = map[shared.ClassResourceType]ResourceData{
 		shared.ClassResourceType(1): {Name: "sorcery_points", Current: 1, Max: 1},
 	}
@@ -339,7 +335,6 @@ func TestStatusViewExcludesSpellSlotsAndClassResources(t *testing.T) {
 	require.NotNil(t, out)
 
 	for _, r := range out.View.Resources {
-		require.NotEqual(t, coreResources.ResourceKey("spell_slots"), r.Key)
 		require.NotEqual(t, coreResources.ResourceKey("sorcery_points"), r.Key)
 	}
 }

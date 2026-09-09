@@ -76,8 +76,7 @@ type Data struct {
 	// numeric field on this struct.
 	Wallet currency.Money `json:"wallet"`
 
-	EquipmentSlots EquipmentSlots        `json:"equipment_slots,omitempty"`
-	SpellSlots     map[int]SpellSlotData `json:"spell_slots,omitempty"`
+	EquipmentSlots EquipmentSlots `json:"equipment_slots,omitempty"`
 
 	// KnownCantrips and KnownSpells are what this character knows, as
 	// canonical content refs ("dnd5e:spells:vicious-mockery"), written by the
@@ -85,10 +84,9 @@ type Data struct {
 	//
 	// REFS RATHER THAN NAMES OR ENUM VALUES, because a known spell is content
 	// and this sheet holds an identity for it rather than a copy of it
-	// (rpg-project#391 §5.2). Nothing in this slice reads them: there is no
-	// Cast verb and no slot pool, so they are a record of what was chosen and
-	// not yet a capability. The compiler that mints Cast declarations is what
-	// reads them, and it arrives with casting.
+	// (rpg-project#391 §5.2). They are authorization facts rather than copied
+	// behavior: the compiler that mints Cast declarations reads them and emits
+	// only spells with complete definitions.
 	//
 	// Two fields rather than one keyed by level, because the two are chosen
 	// separately, counted separately by every class table, and refilled by
@@ -119,12 +117,6 @@ type InventoryItemData struct {
 	Type     shared.EquipmentType `json:"type"` // weapon, armor, tool, pack, item, ammunition
 	ID       string               `json:"id"`   // The specific item ID (e.g., "longsword", "leather_armor")
 	Quantity int                  `json:"quantity"`
-}
-
-// SpellSlotData represents serializable spell slot info
-type SpellSlotData struct {
-	Max  int `json:"max"`
-	Used int `json:"used"`
 }
 
 // ResourceData represents serializable class resource info

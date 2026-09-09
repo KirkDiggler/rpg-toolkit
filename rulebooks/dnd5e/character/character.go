@@ -85,7 +85,6 @@ type Character struct {
 	inventory      []InventoryItem
 	wallet         currency.Money
 	equipmentSlots EquipmentSlots
-	spellSlots     map[int]SpellSlotData
 
 	// knownCantrips and knownSpells are the content refs this character knows.
 	// Parsed at load and kept as refs so a reader gets an identity rather than
@@ -435,19 +434,8 @@ func (c *Character) LongRest(ctx context.Context) error {
 		}
 	}
 
-	// Spell slots are persisted directly rather than as recoverable resources,
-	// so their long-rest reset belongs here with the other character-owned
-	// state and before feature/condition listeners hear the rest.
-	for level, slots := range c.spellSlots {
-		if slots.Used == 0 {
-			continue
-		}
-		slots.Used = 0
-		c.spellSlots[level] = slots
-	}
-
-	// Covers all four writes above — hit points, death saves, pools, spell
-	// slots — in one place, because a rest is one change to the sheet.
+	// Covers the hit-point, death-save, and resource writes above in one
+	// place, because a rest is one change to the sheet.
 	c.poolChanged()
 
 	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
@@ -1026,9 +1014,6 @@ func (c *Character) ToData() *Data {
 
 	// Copy languages slice
 	data.Languages = c.languages
-
-	// Copy spell slots map directly since SpellSlotData is already the data type
-	data.SpellSlots = maps.Clone(c.spellSlots)
 
 	data.KnownCantrips = spellRefStrings(c.knownCantrips)
 	data.KnownSpells = spellRefStrings(c.knownSpells)

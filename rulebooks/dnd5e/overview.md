@@ -64,11 +64,11 @@ needs; not every encounter operation calls `World.Act`. Wiring is absorbed above
 facts. `play` leaves have no RNG or bus; those guarantees must not be casually generalized into a claim
 that every package takes the same inputs or has the same lifecycle.
 
-**Spell-slot state is CHANGED, not yet shipped.** The current character sheet still has a legacy
-`SpellSlots` map alongside its recoverable `Resources`. The approved Bane work removes that parallel
-mutable state without migration and makes a typed level-1 spell-slot resource the only runtime pool;
-class spell-slot tables remain source progression data. Until that implementation lands, do not claim
-that the new resource exists or extend the legacy map for another mechanic.
+**Spell-slot state uses one authority.** The character sheet has no legacy `SpellSlots` map. A typed
+level-1 spell-slot entry in recoverable `Resources` is the only mutable pool, and level-1 Bard
+finalization seeds its two uses from the existing class progression table. Class spell-slot tables
+remain source progression data, not runtime state; do not introduce a parallel slot map or legacy
+reader.
 
 ## The boundary around an interaction
 

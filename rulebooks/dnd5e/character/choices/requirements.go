@@ -418,29 +418,23 @@ func getBardRequirements() *Requirements {
 			Options: musicalInstrumentToolOptions(),
 			Label:   "Choose 3 musical instruments",
 		},
-		// CANTRIPS ARE BACK, and this is the cast door's half of slice one's
-		// ruling. They were removed because answering them bought nothing:
-		// there was no Cast verb and nothing that could spend what was chosen.
-		// Both now exist, so the question is asked in the same slice its
-		// answer becomes reachable.
-		//
-		// GATED TO WHAT THIS BUILD CAN CAST, which is Kirk's ruling. A bard's
-		// cantrips are all eleven — [spells.BardCantrips] still says so — but
-		// a known cantrip with no cast content mints no Cast row, so offering
-		// the other nine would be a menu of picks that produce nothing. That
-		// is the rule this stack already applies one level up, where a class
-		// is offered when it has behaviour. The cost is that "choose 2 of 2"
-		// is not a choice at level 1, which is honest about where the build is
-		// and disappears the moment a third cantrip gets a profile.
-		//
-		// NO LEVEL-1 SPELLS. Slots are their own shape and their own slice; a
-		// bard's two spells known stay unasked until something can spend a
-		// slot.
+		// Gated to the cantrips this build can cast. Unsupported catalog
+		// entries are not offered as choices that produce nothing.
 		Cantrips: &CantripRequirement{
 			ID:      BardCantrips1,
 			Count:   2,
 			Options: spells.Castable(spells.BardCantrips),
 			Label:   "Choose 2 cantrips",
+		},
+		// The supported acquisition catalog is intentionally narrower than
+		// the factual four-known-spells class progression. Bane is the one
+		// levelled spell this slice offers and can carry forward to casting.
+		Spellbook: &SpellbookRequirement{
+			ID:         BardSpells1,
+			Count:      1,
+			SpellLevel: 1,
+			Options:    []spells.Spell{spells.Bane},
+			Label:      "Choose 1 supported 1st-level spell",
 		},
 
 		// Bards get expertise at level 3, not level 1
