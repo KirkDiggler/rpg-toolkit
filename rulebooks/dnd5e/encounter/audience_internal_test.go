@@ -161,9 +161,18 @@ func TestCallSiteClassification(t *testing.T) {
 	require.NoError(t, err)
 
 	// missed: a clean outcome beat, nobody down yet.
+	attackModifier := 0
 	_, err = enc.Record(&RecordInput{
 		Kind: OutcomeMissed, Actor: "zebra", Targets: []MemberID{"goblin"},
-		Values: map[OutcomeValue]int{ValueRoll: 4, ValueAgainst: 15},
+		Values: map[OutcomeValue]int{ValueRoll: 4, ValueTotal: 4, ValueAgainst: 15},
+		Calculation: &RollCalculation{Components: []RollComponent{
+			{
+				Source: RollSource{Ref: "dnd5e:weapons:club", Name: "Club"},
+				Dice: &DiceTrace{Notation: "1d20", DieSize: 20,
+					OriginalRolls: []int{4}, FinalRolls: []int{4}, Subtotal: 4},
+			},
+			{Source: RollSource{Ref: "dnd5e:weapons:club", Name: "Club"}, Modifier: &attackModifier},
+		}, Total: 4},
 	})
 	require.NoError(t, err)
 
@@ -174,8 +183,9 @@ func TestCallSiteClassification(t *testing.T) {
 		Target:  "goblin",
 		Ability: ActivationIdentity{Ref: "dnd5e:combat-abilities:help", Name: "Help"},
 		Results: []ActivationResult{{
-			Kind: ResultConditionApplied, Target: "goblin",
-			Ref: "dnd5e:conditions:helped", Name: "Helped",
+			Kind:    ResultConditionApplied,
+			Address: &ConditionAddress{MemberID: "goblin", ConditionRef: "dnd5e:conditions:helped"},
+			Name:    "Helped",
 		}},
 	})
 	require.NoError(t, err)

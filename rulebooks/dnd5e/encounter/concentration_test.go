@@ -17,6 +17,7 @@ import (
 func concentrationCheck() *encounter.CastSave {
 	return &encounter.CastSave{
 		Saver: castBard, Ability: "constitution", Roll: 4, Total: 6, DC: 10, Succeeded: false,
+		Calculation: saveCalculation(trueStrike, "constitution", 4, 6),
 	}
 }
 
@@ -24,11 +25,11 @@ func concentrationCheck() *encounter.CastSave {
 // condition it had put on the skeleton.
 func strickenChild() encounter.ActivationResult {
 	return encounter.ActivationResult{
-		Kind:   encounter.ResultConditionRemoved,
-		Target: castSkeleton,
-		Ref:    "dnd5e:conditions:true-strike",
-		Name:   "True Strike",
-		Reason: "damage",
+		Kind: encounter.ResultConditionRemoved,
+		Address: &encounter.ConditionAddress{
+			MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:true-strike",
+		},
+		Name: "True Strike", Reason: "damage",
 	}
 }
 
@@ -36,11 +37,11 @@ func strickenChild() encounter.ActivationResult {
 // sheet, the last address every break strips.
 func theOwnerItself() encounter.ActivationResult {
 	return encounter.ActivationResult{
-		Kind:   encounter.ResultConditionRemoved,
-		Target: castBard,
-		Ref:    "dnd5e:conditions:concentrating",
-		Name:   "Concentrating",
-		Reason: "damage",
+		Kind: encounter.ResultConditionRemoved,
+		Address: &encounter.ConditionAddress{
+			MemberID: castBard, ConditionRef: "dnd5e:conditions:concentrating",
+		},
+		Name: "Concentrating", Reason: "damage",
 	}
 }
 
@@ -99,7 +100,10 @@ func (s *RecordCastSuite) TestTheConcentrationEndedPayload() {
 	entries := s.storyEntries(enc, castBard, out.FollowUpSeqs)
 	s.Equal(
 		`{"beat":"saved","saver":"bard","ability":"constitution","roll":4,"total":6,"dc":10,`+
-			`"succeeded":false,`+
+			`"succeeded":false,"calculation":{"components":[`+
+			`{"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"},`+
+			`"dice":{"notation":"1d20","die_size":20,"original_rolls":[4],"final_rolls":[4],"subtotal":4}},`+
+			`{"source":{"ref":"dnd5e:abilities:constitution","name":"constitution"},"modifier":2}],"total":6},`+
 			`"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"}}`,
 		string(entries[0].Payload),
 	)
@@ -211,7 +215,8 @@ func (s *RecordCastSuite) TestABreakSaysWhoAndWhyOrIsRefused() {
 			s.Require().ErrorIs(err, tc.target)
 
 			_, err = enc.RecordCast(&encounter.RecordCastInput{
-				Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
+				Actor: castBard, Spell: viciousMockery,
+				Targets:             []encounter.CastTargetResult{{Target: castSkeleton}},
 				ConcentrationBreaks: []encounter.ConcentrationBreak{broken},
 			})
 			s.Require().ErrorIs(err, tc.target, "the cast path refuses the same break")
@@ -230,7 +235,8 @@ func (s *RecordCastSuite) TestAClosedEncounterRecordsNoBreak() {
 	s.Require().ErrorIs(err, encounter.ErrClosed)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
+		Actor: castBard, Spell: viciousMockery,
+		Targets:             []encounter.CastTargetResult{{Target: castSkeleton}},
 		ConcentrationBreaks: []encounter.ConcentrationBreak{brokenByDamage()},
 	})
 	s.Require().ErrorIs(err, encounter.ErrClosed)
@@ -249,8 +255,8 @@ func (s *RecordCastSuite) TestACastDropsWhatItReplaced() {
 	recast.Removed[0].Reason = "recast"
 
 	out, err := enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
-		Results:             []encounter.ActivationResult{psychicDamage()},
+		Actor: castBard, Spell: viciousMockery,
+		Targets:             []encounter.CastTargetResult{{Target: castSkeleton, Save: failedSave(), Results: []encounter.ActivationResult{psychicDamage()}}},
 		ConcentrationBreaks: []encounter.ConcentrationBreak{recast},
 	})
 	s.Require().NoError(err)
@@ -272,8 +278,11 @@ func (s *RecordCastSuite) TestTwoBreaksKeepTheirOrder() {
 		Spell:  viciousMockery,
 		Reason: "caster_down",
 		Removed: []encounter.ActivationResult{{
-			Kind: encounter.ResultConditionRemoved, Target: castFighter,
-			Ref: "dnd5e:conditions:concentrating", Name: "Concentrating", Reason: "caster_down",
+			Kind: encounter.ResultConditionRemoved,
+			Address: &encounter.ConditionAddress{
+				MemberID: castFighter, ConditionRef: "dnd5e:conditions:concentrating",
+			},
+			Name: "Concentrating", Reason: "caster_down",
 		}},
 	}
 
@@ -312,6 +321,7 @@ func theBardHeldOn() encounter.ConcentrationCheck {
 		Spell: trueStrike,
 		Save: encounter.CastSave{
 			Saver: castBard, Ability: "constitution", Roll: 14, Total: 16, DC: 10, Succeeded: true,
+			Calculation: saveCalculation(trueStrike, "constitution", 14, 16),
 		},
 	}
 }
@@ -334,7 +344,10 @@ func (s *RecordCastSuite) TestAMadeCheckIsOneSavedBeatAndNothingElse() {
 	s.NotContains(names, "condition-removed")
 	s.Equal(
 		`{"beat":"saved","saver":"bard","ability":"constitution","roll":14,"total":16,"dc":10,`+
-			`"succeeded":true,`+
+			`"succeeded":true,"calculation":{"components":[`+
+			`{"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"},`+
+			`"dice":{"notation":"1d20","die_size":20,"original_rolls":[14],"final_rolls":[14],"subtotal":14}},`+
+			`{"source":{"ref":"dnd5e:abilities:constitution","name":"constitution"},"modifier":2}],"total":16},`+
 			`"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"}}`,
 		string(entries[1].Payload),
 	)
@@ -451,7 +464,8 @@ func (s *RecordCastSuite) TestACheckSaysWhatWasAtStakeOrIsRefused() {
 			s.Require().ErrorIs(err, tc.target)
 
 			_, err = enc.RecordCast(&encounter.RecordCastInput{
-				Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
+				Actor: castBard, Spell: viciousMockery,
+				Targets:             []encounter.CastTargetResult{{Target: castSkeleton}},
 				ConcentrationChecks: []encounter.ConcentrationCheck{held},
 			})
 			s.Require().ErrorIs(err, tc.target, "the cast path refuses the same check")
@@ -465,8 +479,8 @@ func (s *RecordCastSuite) TestACastReportsTheChecksItAsked() {
 	enc := s.scene(everyoneStanding{})
 
 	out, err := enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
-		Results:             []encounter.ActivationResult{psychicDamage()},
+		Actor: castBard, Spell: viciousMockery,
+		Targets:             []encounter.CastTargetResult{{Target: castSkeleton, Save: failedSave(), Results: []encounter.ActivationResult{psychicDamage()}}},
 		ConcentrationChecks: []encounter.ConcentrationCheck{theBardHeldOn()},
 	})
 	s.Require().NoError(err)
@@ -505,10 +519,14 @@ func (s *RecordCastSuite) TestTwoFailedChecksNeverPool() {
 		Reason: "damage",
 		Save: &encounter.CastSave{
 			Saver: castFighter, Ability: "constitution", Roll: 2, Total: 3, DC: 10, Succeeded: false,
+			Calculation: saveCalculation(viciousMockery, "constitution", 2, 3),
 		},
 		Removed: []encounter.ActivationResult{{
-			Kind: encounter.ResultConditionRemoved, Target: castFighter,
-			Ref: "dnd5e:conditions:concentrating", Name: "Concentrating", Reason: "damage",
+			Kind: encounter.ResultConditionRemoved,
+			Address: &encounter.ConditionAddress{
+				MemberID: castFighter, ConditionRef: "dnd5e:conditions:concentrating",
+			},
+			Name: "Concentrating", Reason: "damage",
 		}},
 	}
 

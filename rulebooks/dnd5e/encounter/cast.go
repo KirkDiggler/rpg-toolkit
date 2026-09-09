@@ -181,30 +181,32 @@ type CastSave struct {
 	// DC is the number the total was against.
 	DC int
 
-	// Succeeded is whether the total beat the DC. It is the CASTER'S ruling,
-	// recorded rather than recomputed: Total >= DC is the ordinary rule and
-	// this composition does not own the exceptions to it.
+	// Calculation is the authoritative sourced arithmetic. Roll and Total are
+	// retained summaries and must agree with its d20 component and total.
+	Calculation *RollCalculation
+
+	// Succeeded is the rulebook's ruling. Encounter records it without
+	// recomputing success policy from Total and DC.
 	Succeeded bool
 }
 
-// RecordCastInput is one cast transaction: the caster and the spell, an
-// optional named target, the save its gate produced if it had one, and zero or
-// more delivered effects in the exact synchronous order the rulebook produced
-// them.
-type RecordCastInput struct {
-	Actor  MemberID
-	Target MemberID
-	Spell  SpellIdentity
-
-	// Save is the gate's saving throw, or nil for a cast that had no gate.
-	// NIL IS THE HONEST ZERO — True Strike delivers a condition and rolls
-	// nothing, and a save beat reading 0 against DC 0 would say a roll
-	// happened that never did.
-	Save *CastSave
-
-	// Results are the effects actually delivered, in order. A successful save
-	// against Vicious Mockery delivers none, and that is a complete cast.
+// CastTargetResult is one member named by a cast, the save they rolled when
+// gated, and the effects delivered to that target transaction. Results may
+// name another recipient (for example the caster); caller target order remains
+// the ordering authority.
+type CastTargetResult struct {
+	Target  MemberID
+	Save    *CastSave
 	Results []ActivationResult
+}
+
+// RecordCastInput is one cast transaction: one caster, one spell, and an
+// ordered target-result list. Empty Targets is the honest shape for a
+// self/no-target cast.
+type RecordCastInput struct {
+	Actor   MemberID
+	Spell   SpellIdentity
+	Targets []CastTargetResult
 
 	// ConcentrationBreaks are the concentrations this cast ended, in the order
 	// the rulebook ended them. Their beats are appended after the cast's own,
@@ -229,10 +231,10 @@ type RecordCastOutput struct {
 }
 
 type castPayload struct {
-	Beat   string               `json:"beat"`
-	Actor  MemberID             `json:"actor"`
-	Spell  spellIdentityPayload `json:"spell"`
-	Target MemberID             `json:"target,omitempty"`
+	Beat    string               `json:"beat"`
+	Actor   MemberID             `json:"actor"`
+	Spell   spellIdentityPayload `json:"spell"`
+	Targets []MemberID           `json:"targets,omitempty"`
 }
 
 type spellIdentityPayload struct {
@@ -241,14 +243,15 @@ type spellIdentityPayload struct {
 }
 
 type savedPayload struct {
-	Beat      string               `json:"beat"`
-	Saver     MemberID             `json:"saver"`
-	Ability   string               `json:"ability"`
-	Roll      int                  `json:"roll"`
-	Total     int                  `json:"total"`
-	DC        int                  `json:"dc"`
-	Succeeded bool                 `json:"succeeded"`
-	Source    spellIdentityPayload `json:"source"`
+	Beat        string               `json:"beat"`
+	Saver       MemberID             `json:"saver"`
+	Ability     string               `json:"ability"`
+	Roll        int                  `json:"roll"`
+	Total       int                  `json:"total"`
+	DC          int                  `json:"dc"`
+	Succeeded   bool                 `json:"succeeded"`
+	Calculation *RollCalculation     `json:"calculation"`
+	Source      spellIdentityPayload `json:"source"`
 }
 
 type concentrationEndedPayload struct {
@@ -258,9 +261,9 @@ type concentrationEndedPayload struct {
 	Reason string               `json:"reason"`
 }
 
-// RecordCast appends one cast beat, then the saved beat if the spell's gate
-// rolled one, then one activation-result beat per delivered effect, preserving
-// result order. The entire input and every payload are validated before the
+// RecordCast appends one cast beat naming the ordered target list, then each
+// target's saved beat (when gated) and activation-result beats before moving to
+// the next target. The entire input and every payload are validated before the
 // first append, so an input rejection cannot leave a partial transaction in
 // the story.
 //
@@ -270,8 +273,7 @@ type concentrationEndedPayload struct {
 // SAME closed result kinds, because a condition applied by a spell and a
 // condition applied by a feature are the same fact in the story and every host
 // that already reads one should read the other with no new code. What a spell
-// adds is the two beats above them: the cast itself, and the save that decided
-// whether anything followed.
+// adds is the cast beat ahead of the ordered per-target save/result trains.
 //
 // # It does not refuse a paused encounter
 //
@@ -281,7 +283,7 @@ type concentrationEndedPayload struct {
 // for. A record verb narrates; only verbs that move the clock refuse a pause
 // (see EndTurn's ErrTurnPaused).
 //
-// AUDIENCE IS EVERYONE for all three shapes, the pre-v1 full-data rule every
+// AUDIENCE IS EVERYONE for every shape, the pre-v1 full-data rule every
 // other beat here keeps, including the save's numbers. When per-recipient
 // beats arrive (rpg-toolkit#940) that becomes a beatClass rather than a
 // special case.
@@ -293,9 +295,10 @@ type concentrationEndedPayload struct {
 // unsaved.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
-// named target, empty or unknown saver, or empty/unknown result target),
-// ErrInvalidData (missing spell identity, a save with no ability or a roll
-// that is not a d20, unknown result kind, a missing/forbidden kind field, or a
+// listed target, empty or unknown saver, or empty/unknown result target),
+// ErrInvalidData (duplicate targets, a target/save mismatch, missing spell
+// identity, a save with no ability or authoritative calculation, a roll that
+// is not a d20, unknown result kind, a missing/forbidden kind field, or a
 // healing or damage whose calculation is absent, structurally inconsistent, or
 // whose Total does not equal the requested amount), an append error, or
 // anything the Standing capability returns from noticeDown.
@@ -344,10 +347,20 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 	if _, ok := e.members[in.Actor]; !ok {
 		return nil, fmt.Errorf("record cast: actor %q: %w", in.Actor, ErrNoMember)
 	}
-	if in.Target != "" {
-		if _, ok := e.members[in.Target]; !ok {
-			return nil, fmt.Errorf("record cast: target %q: %w", in.Target, ErrNoMember)
+	targets := make([]MemberID, len(in.Targets))
+	seenTargets := make(map[MemberID]struct{}, len(in.Targets))
+	for i, target := range in.Targets {
+		if target.Target == "" {
+			return nil, fmt.Errorf("record cast: target %d: %w", i, ErrNoMember)
 		}
+		if _, ok := e.members[target.Target]; !ok {
+			return nil, fmt.Errorf("record cast: target %d %q: %w", i, target.Target, ErrNoMember)
+		}
+		if _, duplicate := seenTargets[target.Target]; duplicate {
+			return nil, fmt.Errorf("record cast: target %d %q is duplicated: %w", i, target.Target, ErrInvalidData)
+		}
+		seenTargets[target.Target] = struct{}{}
+		targets[i] = target.Target
 	}
 	if in.Spell.Ref == "" {
 		return nil, fmt.Errorf("record cast: spell ref: %w", ErrInvalidData)
@@ -358,53 +371,64 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 	spell := spellIdentityPayload{Ref: in.Spell.Ref, Name: in.Spell.Name}
 
 	castBytes, err := json.Marshal(castPayload{
-		Beat:   BeatCast,
-		Actor:  in.Actor,
-		Spell:  spell,
-		Target: in.Target,
+		Beat: BeatCast, Actor: in.Actor, Spell: spell, Targets: targets,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("record cast: cast payload: %w", err)
 	}
-	castSubjects := []MemberID{in.Actor}
-	if in.Target != "" {
-		castSubjects = append(castSubjects, in.Target)
-	}
+	castSubjects := append([]MemberID{in.Actor}, targets...)
 
-	prepared := make([]preparedActivationBeat, 0, len(in.Results)+2)
+	beatCount := 1
+	for _, target := range in.Targets {
+		if target.Save != nil {
+			beatCount++
+		}
+		beatCount += len(target.Results)
+	}
+	prepared := make([]preparedActivationBeat, 0, beatCount)
 	prepared = append(prepared, preparedActivationBeat{
 		payload:  castBytes,
 		subjects: castSubjects,
 	})
 
-	if in.Save != nil {
-		savedBytes, savedSubjects, saveErr := e.prepareSaveBeat("record cast", in.Actor, in.Save, spell)
-		if saveErr != nil {
-			return nil, saveErr
+	for targetIndex, target := range in.Targets {
+		if target.Save != nil {
+			savedBytes, savedSubjects, saveErr := e.prepareSaveBeat(
+				fmt.Sprintf("record cast: target %d", targetIndex), in.Actor, target.Save, spell,
+			)
+			if saveErr != nil {
+				return nil, saveErr
+			}
+			if target.Save.Saver != target.Target {
+				return nil, fmt.Errorf(
+					"record cast: target %d %q has save for %q: %w",
+					targetIndex, target.Target, target.Save.Saver, ErrInvalidData,
+				)
+			}
+			prepared = append(prepared, preparedActivationBeat{
+				payload: savedBytes, subjects: savedSubjects,
+			})
 		}
-		prepared = append(prepared, preparedActivationBeat{
-			payload:  savedBytes,
-			subjects: savedSubjects,
-		})
-	}
 
-	for i, result := range in.Results {
-		resultPayload, validationErr := e.prepareActivationResult("record cast", i, result)
-		if validationErr != nil {
-			return nil, validationErr
+		for resultIndex, result := range target.Results {
+			resultPayload, validationErr := e.prepareActivationResult(
+				fmt.Sprintf("record cast: target %d", targetIndex), resultIndex, result,
+			)
+			if validationErr != nil {
+				return nil, validationErr
+			}
+			resultBytes, marshalErr := json.Marshal(activationResultPayload{
+				Beat: "activation-result", Actor: in.Actor, Result: resultPayload,
+			})
+			if marshalErr != nil {
+				return nil, fmt.Errorf(
+					"record cast: target %d result %d payload: %w", targetIndex, resultIndex, marshalErr,
+				)
+			}
+			prepared = append(prepared, preparedActivationBeat{
+				payload: resultBytes, subjects: []MemberID{in.Actor, activationResultTarget(result)},
+			})
 		}
-		resultBytes, marshalErr := json.Marshal(activationResultPayload{
-			Beat:   "activation-result",
-			Actor:  in.Actor,
-			Result: resultPayload,
-		})
-		if marshalErr != nil {
-			return nil, fmt.Errorf("record cast: result %d payload: %w", i, marshalErr)
-		}
-		prepared = append(prepared, preparedActivationBeat{
-			payload:  resultBytes,
-			subjects: []MemberID{in.Actor, result.Target},
-		})
 	}
 
 	checkBeats, checkErr := e.prepareConcentrationChecks("record cast", in.Actor, in.ConcentrationChecks)
@@ -447,16 +471,20 @@ func (e *Encounter) prepareSaveBeat(
 		// A DC of zero is not a difficulty; it is a field nobody filled in.
 		return nil, nil, fmt.Errorf("%s: save dc %d: %w", verb, save.DC, ErrInvalidData)
 	}
+	if err := validateRecordedD20(save.Calculation, save.Roll, save.Total); err != nil {
+		return nil, nil, fmt.Errorf("%s: save calculation: %v: %w", verb, err, ErrInvalidData)
+	}
 
 	savedBytes, err := json.Marshal(savedPayload{
-		Beat:      BeatSaved,
-		Saver:     save.Saver,
-		Ability:   save.Ability,
-		Roll:      save.Roll,
-		Total:     save.Total,
-		DC:        save.DC,
-		Succeeded: save.Succeeded,
-		Source:    spell,
+		Beat:        BeatSaved,
+		Saver:       save.Saver,
+		Ability:     save.Ability,
+		Roll:        save.Roll,
+		Total:       save.Total,
+		DC:          save.DC,
+		Succeeded:   save.Succeeded,
+		Calculation: save.Calculation,
+		Source:      spell,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: saved payload: %w", verb, err)
@@ -619,7 +647,7 @@ func (e *Encounter) prepareConcentrationBreaks(
 			}
 			prepared = append(prepared, preparedActivationBeat{
 				payload:  resultBytes,
-				subjects: []MemberID{actor, removed.Target},
+				subjects: []MemberID{actor, activationResultTarget(removed)},
 			})
 		}
 	}
