@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -102,21 +101,9 @@ func (b *BanedCondition) Apply(ctx context.Context, bus events.EventBus) error {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "baned condition already applied")
 	}
 	b.bus = bus
-	restSubID, err := dnd5eEvents.RestTopic.On(bus).Subscribe(ctx,
-		func(ctx context.Context, event dnd5eEvents.RestEvent) error {
-			if event.CharacterID != b.MemberID || event.RestType != coreResources.ResetLongRest {
-				return nil
-			}
-			address := b.ConditionAddress()
-			if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx,
-				dnd5eEvents.ConditionRemovedEvent{
-					MemberID: address.MemberID, ConditionRef: address.ConditionRef, SourceID: address.SourceID,
-					Reason: "long rest",
-				}); err != nil {
-				return err
-			}
-			return b.Remove(ctx, bus)
-		})
+	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+		Address: b.ConditionAddress(), Remove: b.Remove,
+	})
 	if err != nil {
 		b.bus = nil
 		return rpgerr.Wrap(err, "failed to subscribe baned condition to long rest")
