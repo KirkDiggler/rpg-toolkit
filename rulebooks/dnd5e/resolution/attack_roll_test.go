@@ -73,6 +73,12 @@ func TestAttackRollIsNotReportedAgainWhenTheChoiceResumes(t *testing.T) {
 	}
 }
 
+func TestAttackRollFailureReturnsNoPartialOutput(t *testing.T) {
+	out, err := heroSwings(t, inspiredHero(t), &actionRoller{})
+	require.ErrorContains(t, err, "roll attack: no scripted single")
+	require.Nil(t, out, "a failed d20 must not expose a zero-valued roll or a partial pose")
+}
+
 func TestAttackRollSnapshotDoesNotAliasMachineState(t *testing.T) {
 	machine := strikeFor(t, &actionRoller{singles: []int{8}})
 	out, err := resolveHeroStrike(t, inspiredHero(t), machine)
