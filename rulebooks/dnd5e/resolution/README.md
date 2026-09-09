@@ -17,16 +17,18 @@ Producers hand resolution a `combat/actions.Definition`:
 machine, err := resolution.NewAction(&resolution.ActionInput{
     Definition: definition,
     AttackerID: "wolf",
-    TargetID:   "hero",
+    TargetIDs:  []string{"hero"},
     Roller:     roller,
 })
 ```
 
 `NewAction` validates the definition and dispatches by populated profile arm.
 Content identity is attribution, never routing. An unknown monster/weapon ref
-with a valid Attack profile still resolves through Strike. Attack profiles use
-`TargetID`; cast profiles use the canonical ordered `TargetIDs` list and reject
-the singular field.
+with a valid Attack profile still resolves through Strike. `TargetIDs` is the
+canonical ordered list for both attack and cast profiles. The deprecated
+`TargetID` remains a working single-target alias; callers must not populate both
+forms. Resolution normalizes the public input while the lower-level
+`StrikeInput` stays genuinely single-target.
 
 Character definitions come from `character.AssembleAttack`; monster factories
 persist the same definitions directly. Resolution owns no producer compiler,

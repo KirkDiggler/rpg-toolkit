@@ -25,10 +25,12 @@ import (
 type ActionInput struct {
 	Definition combatActions.Definition
 	AttackerID string
-	// TargetID is the single target of an attack profile.
+
+	// TargetID is the legacy single-target spelling.
+	// Deprecated: use TargetIDs; put a single target in a one-element slice.
 	TargetID string
 
-	// TargetIDs is the canonical ordered target list of a cast profile.
+	// TargetIDs is the canonical ordered target list for every profile arm.
 	TargetIDs []string
 	Roller    dice.Roller
 }
@@ -53,18 +55,46 @@ func NewAction(in *ActionInput) (Machine, error) {
 	if err := in.Definition.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
+
+	targetIDs, err := normalizeActionTargets(in.Definition.Ref, in.TargetID, in.TargetIDs)
+	if err != nil {
+		return nil, err
+	}
 	if in.Definition.Attack != nil {
+		if len(targetIDs) != 1 {
+			return nil, fmt.Errorf("%w: %s attack requires exactly one target; got %d",
+				ErrBadAction, in.Definition.Ref.String(), len(targetIDs))
+		}
+		if targetIDs[0] == "" {
+			return nil, fmt.Errorf("%w: %s attack target 0 is empty",
+				ErrBadAction, in.Definition.Ref.String())
+		}
 		return NewStrike(&StrikeInput{
 			AttackerID: in.AttackerID,
-			TargetID:   in.TargetID,
+			TargetID:   targetIDs[0],
 			Definition: in.Definition.Clone(),
 			Roller:     in.Roller,
 		}), nil
 	}
 	if in.Definition.Cast != nil {
-		return newCast(in)
+		return newCast(in, targetIDs)
 	}
 	return nil, fmt.Errorf("%w: definition %q has no supported profile", ErrBadAction, in.Definition.Ref.String())
+}
+
+// normalizeActionTargets resolves the deprecated scalar at the public door.
+// Its result never shares caller-owned slice storage, so a running machine is
+// insulated from later edits to the input and normalization never edits it.
+func normalizeActionTargets(ref core.Ref, targetID string, targetIDs []string) ([]string, error) {
+	if targetID != "" && len(targetIDs) != 0 {
+		return nil, fmt.Errorf("%w: %s received both TargetID and TargetIDs",
+			ErrBadAction, ref.String())
+	}
+	if targetID != "" {
+		return []string{targetID}, nil
+	}
+
+	return append([]string(nil), targetIDs...), nil
 }
 
 // newCast reads a cast profile and returns the machine that already exists for
@@ -73,17 +103,14 @@ func NewAction(in *ActionInput) (Machine, error) {
 // The definition is CLONED first and everything below reads the clone: the
 // save cause holds a pointer to its ref, and a caller reusing its definition
 // must not be able to rewrite what a running interaction says caused the save.
-func newCast(in *ActionInput) (Machine, error) {
+func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	definition := in.Definition.Clone()
 	profile := definition.Cast
 	casterID := in.AttackerID
-	targetIDs := append([]string(nil), in.TargetIDs...)
+	targetIDs := append([]string(nil), normalizedTargetIDs...)
 
 	if casterID == "" {
 		return nil, fmt.Errorf("%w: %s was cast by nobody", ErrBadAction, definition.Ref.String())
-	}
-	if in.TargetID != "" {
-		return nil, fmt.Errorf("%w: %s received singular TargetID; casts use TargetIDs", ErrBadAction, definition.Ref.String())
 	}
 	if err := checkCastTargets(profile, definition.Ref, targetIDs); err != nil {
 		return nil, err
