@@ -43,6 +43,11 @@ type RollWindowInput struct {
 	// Roll is the d20 as rolled and Total the number the offer would join.
 	Roll  int
 	Total int
+
+	// PresentationID is the caller's existing opaque token for this d20,
+	// shared with the attack response, visual throw and eventual outcome.
+	// Empty remains valid for legacy callers; never derive it from Seq.
+	PresentationID string
 }
 
 // RollWindowOutput reports where the beat landed.
@@ -52,11 +57,12 @@ type RollWindowOutput struct {
 }
 
 type rollWindowPayload struct {
-	Beat     string                  `json:"beat"`
-	Audience MemberID                `json:"audience"`
-	Offer    reactionIdentityPayload `json:"offer"`
-	Roll     int                     `json:"roll"`
-	Total    int                     `json:"total"`
+	Beat           string                  `json:"beat"`
+	Audience       MemberID                `json:"audience"`
+	Offer          reactionIdentityPayload `json:"offer"`
+	Roll           int                     `json:"roll"`
+	Total          int                     `json:"total"`
+	PresentationID string                  `json:"presentation_id,omitempty"`
 }
 
 type reactionIdentityPayload struct {
@@ -117,11 +123,12 @@ func (e *Encounter) RecordRollWindow(in *RollWindowInput) (*RollWindowOutput, er
 	}
 
 	payload, err := json.Marshal(rollWindowPayload{
-		Beat:     BeatRollWindowOpened,
-		Audience: in.Audience,
-		Offer:    reactionIdentityPayload{Ref: in.Offer.Ref, Name: in.Offer.Name},
-		Roll:     in.Roll,
-		Total:    in.Total,
+		Beat:           BeatRollWindowOpened,
+		Audience:       in.Audience,
+		Offer:          reactionIdentityPayload{Ref: in.Offer.Ref, Name: in.Offer.Name},
+		Roll:           in.Roll,
+		Total:          in.Total,
+		PresentationID: in.PresentationID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("record roll window: marshal beat: %w", err)

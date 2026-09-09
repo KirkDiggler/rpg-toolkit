@@ -43,6 +43,23 @@ func (s *RollWindowTestSuite) rollWindowBeat(
 	return nil
 }
 
+func (s *RollWindowTestSuite) TestItPreservesTheSamePresentationIDForEveryRecipient() {
+	enc := s.scene()
+	_, err := enc.RecordRollWindow(&encounter.RollWindowInput{
+		Audience: encounter.MemberID(alice), Offer: testBardicInspiration,
+		Roll: 8, Total: 12, PresentationID: "roll~opaque:not-a-sequence",
+	})
+	s.Require().NoError(err)
+
+	for _, recipient := range []encounter.MemberID{encounter.MemberID(alice), encounter.MemberID(goblin)} {
+		beat := s.rollWindowBeat(enc, recipient)
+		s.Equal("roll~opaque:not-a-sequence", beat["presentation_id"])
+		s.Equal(float64(8), beat["roll"])
+		s.Equal(float64(12), beat["total"])
+		s.Equal(string(alice), beat["audience"], "the owner is not the event recipient")
+	}
+}
+
 // TestItNarratesTheNumbersTheChoiceIsMadeWith — the beat exists so the player
 // can see what they are deciding about.
 func (s *RollWindowTestSuite) TestItNarratesTheNumbersTheChoiceIsMadeWith() {
@@ -63,6 +80,7 @@ func (s *RollWindowTestSuite) TestItNarratesTheNumbersTheChoiceIsMadeWith() {
 	s.Require().True(ok)
 	s.Equal(testBardicInspiration.Ref, offer["ref"])
 	s.Equal(testBardicInspiration.Name, offer["name"])
+	s.NotContains(beat, "presentation_id", "legacy input does not invent a roll identity")
 }
 
 // TestTheACIsNotOnIt is the one number deliberately left off. A beat that
