@@ -307,6 +307,7 @@ func TestCancelledAttackStopsBeforeDiceAndDamage(t *testing.T) {
 	require.NoError(t, err)
 	outcome := out.Outcome.(StrikeOutcome)
 	require.Len(t, outcome.Folded.CancellationSources, 1)
+	require.Nil(t, out.AttackRoll, "a canceled strike never rolled a d20")
 	require.False(t, outcome.Hit)
 	require.Zero(t, outcome.Damage)
 	require.Zero(t, roller.calls)

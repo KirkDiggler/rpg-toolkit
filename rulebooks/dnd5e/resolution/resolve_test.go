@@ -203,6 +203,7 @@ func (s *ResolveTestSuite) save(ability abilities.Ability) Machine {
 
 func (s *ResolveTestSuite) outcomeOf(out *Output) SaveOutcome {
 	s.Require().NotNil(out)
+	s.Require().Nil(out.AttackRoll, "a saving throw is not an attack roll")
 	outcome, ok := out.Outcome.(SaveOutcome)
 	s.Require().True(ok, "a save machine produces a SaveOutcome")
 

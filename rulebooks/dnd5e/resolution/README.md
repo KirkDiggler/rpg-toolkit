@@ -55,9 +55,9 @@ Order:
    the cast, and the reaction readiness derived from that cast;
 5. call `Machine.Start` as pure preflight;
 6. pay the declared cost only after preflight succeeds;
-7. drive `Gather | Request | Done` steps;
+7. drive `Gather | Request | Pose | Done` steps;
 8. tear down newest-first;
-9. return world, dirty sheets, outcome, and hook ledger.
+9. return world, dirty sheets, outcome or pose, captured attack roll, and hook ledger.
 
 `Start` may validate and read attached sheets. It may not roll, spend, publish,
 or mutate. Invalid definitions, participants, delivery range, or condition
@@ -80,6 +80,19 @@ Strike interprets `Definition.Attack`:
 A save-gated condition requests Contest. The declaration names the condition,
 parameters, and `SaveGate`; the condition implementation owns executable
 behavior and lifecycle.
+
+## Pre-offer attack roll
+
+`Output.AttackRoll` reports a top-level strike's selected natural d20 and its
+total before a post-roll offer, whether the strike finishes or poses. It has
+no AC, hit/miss, damage, offer, or answer fields. The capture is made at the
+actual roll boundary, not reconstructed from the final total.
+
+A resumed Spend/Keep interaction reports no new `AttackRoll`: it resolves the
+original d20, possibly with a different final total. Canceled attacks and
+non-strike machines likewise report nil. The returned snapshot is a caller-owned
+copy. Session recording and multiplayer delivery are separate consumer work;
+this field alone does not broadcast a roll.
 
 ## Contracts
 

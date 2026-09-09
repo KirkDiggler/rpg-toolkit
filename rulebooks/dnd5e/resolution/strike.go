@@ -156,6 +156,10 @@ type strikeMachine struct {
 	// outcome accumulates across phases. It is the machine's whole state, and
 	// the reason a suspension between any two phases would need nothing else.
 	outcome StrikeOutcome
+
+	// rolled captures only a new d20, before any post-roll offer is answered.
+	// The resumed path does not populate it.
+	rolled *AttackRoll
 }
 
 // Start validates the profile and produces the first post-payment resolution step.
@@ -166,6 +170,7 @@ type strikeMachine struct {
 // records an attempt would record two — and re-rolling would throw away the
 // number the player was asked about.
 func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
+	m.rolled = nil
 	if err := m.preflight(ctx, cast); err != nil {
 		return nil, err
 	}
@@ -360,6 +365,12 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 
 	m.outcome.Roll = roll
 	m.outcome.Total = roll + folded.AttackBonus
+	m.rolled = &AttackRoll{
+		AttackerID: m.outcome.AttackerID,
+		TargetID:   m.outcome.TargetID,
+		Roll:       roll,
+		Total:      m.outcome.Total,
+	}
 
 	// A natural 20 is the only automatic hit and a natural 1 the only
 	// automatic miss; everything between is arithmetic. The crit range is

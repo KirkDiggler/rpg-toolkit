@@ -259,6 +259,12 @@ type Output struct {
 	// caller must handle.
 	Outcome Outcome
 
+	// AttackRoll is a new top-level strike's selected d20 and pre-offer total.
+	// It is present whether that strike completes or poses a question. Nil
+	// means no new attack die was rolled, including a resumed strike, a
+	// canceled attack, and interactions performed by non-strike machines.
+	AttackRoll *AttackRoll
+
 	// Posed is the question the machine stopped on, or nil when it ran to
 	// completion. The world, the dirty sheets and the hooks above are all
 	// still true — everything up to the pose happened, and the cost was
@@ -490,6 +496,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		DirtyCharacters:     dirtyCharacters(cast),
 		DirtyMonsters:       dirtyMonsters(cast),
 		Outcome:             outcome,
+		AttackRoll:          reportedAttackRoll(in.Machine),
 		Posed:               posed,
 		Hooks:               surf.registrations(),
 		ConcentrationChecks: kept,
