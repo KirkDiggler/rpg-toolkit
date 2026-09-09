@@ -381,6 +381,23 @@ func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
 	add("roll source ref is not a canonical ref", func(c *encounter.DamageComponent) {
 		c.Roll.Source.Ref = "greatsword"
 	})
+	add("modifier-only roll cannot subtract dice", func(c *encounter.DamageComponent) {
+		modifier := 2
+		c.Roll.Dice = nil
+		c.Roll.Modifier = &modifier
+		c.Roll.SubtractDice = true
+	})
+	add("multiplier-only roll cannot subtract dice", func(c *encounter.DamageComponent) {
+		*c = multiplierCarrier()
+		c.Roll.SubtractDice = true
+	})
+	add("subtractive dice source id is missing", func(c *encounter.DamageComponent) {
+		c.Roll.SubtractDice = true
+	})
+	add("subtractive dice source id is blank", func(c *encounter.DamageComponent) {
+		c.Roll.Source.SourceID = "  "
+		c.Roll.SubtractDice = true
+	})
 	add("roll source name is missing", func(c *encounter.DamageComponent) {
 		c.Roll.Source.Name = ""
 	})
@@ -529,6 +546,33 @@ func gwfDamageComponents() []encounter.DamageComponent {
 			DamageType: "slashing",
 		},
 	}
+}
+
+// TestARecordedStrikeCarriesSourcedSubtractiveDamageRoll proves the shared
+// operator validation still accepts a structurally valid subtractive dice
+// component and preserves its positive face, source identity, and operator.
+func (s *OutcomeTestSuite) TestARecordedStrikeCarriesSourcedSubtractiveDamageRoll() {
+	enc := s.scene()
+	components := gwfDamageComponents()[:1]
+	components[0].Roll.Source.SourceID = "caster-a"
+	components[0].Roll.SubtractDice = true
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice,
+		Targets: []encounter.MemberID{goblin}, DamageComponents: components,
+	})
+	s.Require().NoError(err)
+
+	entry := s.storyEntriesForOutcome(enc, out.Seq)
+	var payload struct {
+		DamageComponents []encounter.DamageComponent `json:"damage_components"`
+	}
+	s.Require().NoError(json.Unmarshal(entry.Payload, &payload))
+	s.Require().Len(payload.DamageComponents, 1)
+	s.True(payload.DamageComponents[0].Roll.SubtractDice)
+	s.Equal("caster-a", payload.DamageComponents[0].Roll.Source.SourceID)
+	s.Equal([]int{4, 5}, payload.DamageComponents[0].Roll.Dice.FinalRolls)
+	s.Equal(9, payload.DamageComponents[0].Roll.Dice.Subtotal)
 }
 
 // TestARecordedMissCarriesNoCriticalKey pins that a miss's payload never

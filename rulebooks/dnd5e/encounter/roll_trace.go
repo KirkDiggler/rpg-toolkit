@@ -135,11 +135,21 @@ func validateRecordedD20(calculation *RollCalculation, roll, total int) error {
 }
 
 func validateRollComponent(component RollComponent) error {
-	if err := validateRollSource(component.Source); err != nil {
-		return fmt.Errorf("source: %w", err)
+	if err := validateRollComponentData(component); err != nil {
+		return err
 	}
 	if component.Dice == nil && component.Modifier == nil {
 		return fmt.Errorf("must contain dice, a modifier, or both")
+	}
+	return nil
+}
+
+// validateRollComponentData is the one neutral source/operator/trace contract
+// shared by every container that persists a RollComponent. Each container
+// separately decides which absent roll facts it permits.
+func validateRollComponentData(component RollComponent) error {
+	if err := validateRollSource(component.Source); err != nil {
+		return fmt.Errorf("source: %w", err)
 	}
 	if component.SubtractDice && component.Dice == nil {
 		return fmt.Errorf("cannot subtract dice without dice")
