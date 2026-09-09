@@ -451,10 +451,19 @@ equipmentChoices := []choices.EquipmentChoiceSelection{
 **Need:** Resolve equipment SelectionIDs to actual item entities
 **Blocked by:** Items module (#31)
 
-### Future: Spell Slot Management
-**Need:** Track spell slots, spell casting
-**Pattern:** Integrate with resources module
-**Status:** Not implemented
+### Spell slot state and casting direction
+
+**EXISTING:** character data currently carries a legacy `SpellSlots` map, while
+ordinary class pools use recoverable `Resources`. The legacy map is real state;
+do not describe slots as wholly unimplemented.
+
+**CHANGED (approved, not shipped by this documentation task):** levelled casting
+will retire the legacy map without a migration or compatibility reader. A typed
+level-1 spell-slot resource will become the sole mutable authority, paid through
+the existing atomic resource ledger and restored through normal recoverable-
+resource rest behavior. Class spell-slot tables remain source progression data,
+not a second runtime pool. Do not add new mechanics to the legacy map while this
+change is pending.
 
 ## Questions to Ask Before Adding Features
 

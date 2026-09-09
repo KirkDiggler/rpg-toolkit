@@ -14,7 +14,7 @@ In `rulebooks/dnd5e/refs/`:
 ```go
 // refs/conditions.go
 func (c conditions) MyNewCondition() *core.Ref {
-    return &core.Ref{Module: "dnd5e", Type: "conditions", Value: "my-new-condition"}
+    return &core.Ref{Module: "dnd5e", Type: "conditions", ID: "my-new-condition"}
 }
 ```
 
@@ -45,10 +45,18 @@ type MyNewCondition struct {
 
 The runtime struct should not have JSON tags. Only `Data` has JSON tags.
 
-## 4. Implement BusEffect
+## 4. Implement ConditionBehavior
+
+Every condition names itself with the same canonical ref that its JSON embeds
+and its loader routes on. `Apply` and `Remove` take the operation context and
+the interaction-scoped bus:
 
 ```go
-func (c *MyNewCondition) Apply(bus events.EventBus) error {
+func (c *MyNewCondition) Ref() *core.Ref {
+    return refs.Conditions.MyNewCondition()
+}
+
+func (c *MyNewCondition) Apply(ctx context.Context, bus events.EventBus) error {
     id, err := someTopic.On(bus).Subscribe(ctx, c.handleSomeEvent)
     if err != nil {
         return fmt.Errorf("subscribe MyNewCondition: %w", err)
@@ -57,7 +65,7 @@ func (c *MyNewCondition) Apply(bus events.EventBus) error {
     return nil
 }
 
-func (c *MyNewCondition) Remove(bus events.EventBus) error {
+func (c *MyNewCondition) Remove(ctx context.Context, bus events.EventBus) error {
     var errs []error
     for _, id := range c.subscriptions {
         if err := bus.Unsubscribe(ctx, id); err != nil {
@@ -76,7 +84,11 @@ func (c *MyNewCondition) IsApplied() bool {
 }
 ```
 
-Note: `Remove` collects all unsubscribe errors (PR #603 pattern). Never stop at the first error.
+Resolution creates one bus for one interaction and calls `Apply(ctx, bus)`
+while attaching participant effects. Conditions may subscribe to that supplied
+bus, but they do not create it, persist it, or expose it through session. The
+bus dies with the resolution call. `Remove` collects all unsubscribe errors
+(PR #603 pattern); never stop at the first error.
 
 ## 5. Implement ToJSON / loadJSON
 
@@ -108,7 +120,7 @@ func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
     if err := json.Unmarshal(data, &peek); err != nil {
         return nil, err
     }
-    switch peek.Ref.Value {
+    switch peek.Ref.ID {
     case "my-new-condition":
         c := &MyNewCondition{}
         if err := c.loadJSON(data); err != nil {
@@ -117,7 +129,7 @@ func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
         return c, nil
     // ... existing cases
     }
-    return nil, fmt.Errorf("unknown condition ref: %s", peek.Ref.Value)
+    return nil, fmt.Errorf("unknown condition ref: %s", peek.Ref.ID)
 }
 ```
 
@@ -137,9 +149,10 @@ func (s *MyNewConditionTestSuite) SetupTest() {
 }
 
 func (s *MyNewConditionTestSuite) TestApplySubscribes() {
-    err := s.cond.Apply(s.bus)
+    err := s.cond.Apply(context.Background(), s.bus)
     s.Require().NoError(err)
     s.True(s.cond.IsApplied())
+    s.Equal(refs.Conditions.MyNewCondition(), s.cond.Ref())
 }
 
 func (s *MyNewConditionTestSuite) TestRoundTrip() {
