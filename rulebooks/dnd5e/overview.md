@@ -91,8 +91,8 @@ the bus resolution owns for the interaction.
 | **EXISTING** | Character/monster condition list | Authoritative recipient state; ordered and serialized by its owner |
 | **EXISTING** | Condition's persisted blob | Rule state and provenance, not a bus, roller, or live pointer |
 | **EXISTING/CHANGED** | Attached condition behavior | Runtime behavior reconstructed for the interaction; new Bane behavior supplies a rule description |
-| **NEW** | Selected dice contribution | Unresolved operation input; has source and notation, no face |
-| **CHANGED** | Resolved calculation | Settled facts gain operator and source-entity details while preserving actual faces and checked total |
+| **IMPLEMENTED** | Selected dice contribution | Unresolved operation input; has source and notation, no face |
+| **IMPLEMENTED** | Resolved calculation | Settled facts carry operator and source-entity details while preserving actual faces and checked total |
 | **CHANGED** | Frozen operation | Settled state needed to resume gains the calculation facts; remains opaque to interrupt custody and session |
 
 ## Seam cards: read the inputs before the implementation
@@ -102,11 +102,11 @@ fields. Standard context/cancellation parameters are not a container for game st
 
 | Operation | Owner | Input → result | Side effects / important absence |
 |---|---|---|---|
-| **CHANGED Compile spell action** | `spells` | `CastDefinitionInput{Spell, SpellSaveDC}` → existing action definition or no supported content | No targets, bus, RNG, payment, or entire character object |
+| **IMPLEMENTED Compile spell action** | `spells` | `CastDefinitionInput{Spell, SpellSaveDC}` → existing action definition or no supported content | No targets, bus, RNG, payment, or entire character object |
 | **EXISTING Run interaction** | `resolution` | `Input{World, Participants, Machine, Cost, …}` → outcome and changed participant data | Owns attachment/teardown; does not persist repositories |
 | **NEW Describe applicable contributions** | Recipient condition owner | `DescribeRollContributionsInput{Kind}` → selected descriptions | Reads current ordered state; does not roll or remove suppressed effects |
 | **NEW Describe the selected effect** | Selected condition | Roll-kind input → the condition's sourced dice description | Bane knows `subtract 1d4`; collection does not manufacture that rule |
-| **NEW Evaluate contributions** | Shared rulebook roll arithmetic, invoked by the operation | Selected descriptions and roller input → sourced resolved components | No condition list or stacking policy; exact helper signature still needs the input audit |
+| **IMPLEMENTED Evaluate contributions** | `rolls.ResolveContributions` | `ResolveContributionsInput{Roller, Contributions}` → `ResolveContributionsOutput{Components}` | No condition list or stacking policy; validates every description before contribution RNG |
 | **CHANGED Record result** | `encounter` | Ordered cast/result/calculation facts → recorded sequence facts | No new rolls, source selection or reconstruction from anonymous totals |
 
 The compiler example becomes:

@@ -4,12 +4,25 @@
 package spells
 
 import (
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
+
+// BaneRangeFeet is how far a caster may point Bane (PHB p.216).
+const BaneRangeFeet = 30
+
+// BaneTurnEnds is the ten subsequent caster turn ends in Bane's one-minute duration.
+const BaneTurnEnds = 10
+
+// BaneCasterParameter names the caster provenance required by Baned.
+const BaneCasterParameter = "source_id"
 
 // TrueStrikeRangeFeet is how far a caster may point True Strike (PHB p.283).
 const TrueStrikeRangeFeet = 30
@@ -66,23 +79,66 @@ var BardCantrips = []Spell{
 	ViciousMockery,
 }
 
-// castProfileBuilder is one spell's cast content: everything the profile says
-// except the caster's own save DC, which is not a property of the spell.
+// castProfileBuilder is one spell's compiled cast content and price, with the
+// caster's own save DC supplied later because it is not a property of the spell.
 type castProfileBuilder struct {
 	name  string
+	cost  *combat.SpendProfile
 	build func(spellSaveDC int) actions.CastProfile
+}
+
+func cantripCost() *combat.SpendProfile {
+	return &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+	}
+}
+
+func baneCost() *combat.SpendProfile {
+	return &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+		Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
+	}
 }
 
 // castContent is the cast table, keyed by spell id. A spell absent from it has
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
 var castContent = map[Spell]castProfileBuilder{
-	SacredFlame: {
-		name: "Sacred Flame",
+	Bane: {
+		name: "Bane",
+		cost: baneCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
-				RangeFeet: SacredFlameRangeFeet,
-				Target:    actions.CastTargetOneCreature,
+				RangeFeet:  BaneRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 3,
+				Save: &saves.SaveGate{
+					Abilities:  []abilities.Ability{abilities.CHA},
+					DC:         saves.DCStatic(spellSaveDC),
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Effects: []actions.CastEffect{{
+					Recipient:      actions.CastRecipientTarget,
+					Ref:            *refs.Conditions.Baned(),
+					CounterpartKey: BaneCasterParameter,
+				}},
+				Concentration: &actions.CastConcentration{
+					TurnEnds: BaneTurnEnds, SkipFirstTurnEnd: true,
+				},
+			}
+		},
+	},
+	SacredFlame: {
+		name: "Sacred Flame",
+		cost: cantripCost(),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet:  SacredFlameRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
 				Save: &saves.SaveGate{
 					Abilities:  []abilities.Ability{abilities.DEX},
 					DC:         saves.DCStatic(spellSaveDC),
@@ -95,10 +151,13 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	TrueStrike: {
 		name: "True Strike",
+		cost: cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
-				RangeFeet: TrueStrikeRangeFeet,
-				Target:    actions.CastTargetOneCreature,
+				RangeFeet:  TrueStrikeRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
 				// NO GATE. Nobody resists True Strike: it names a creature and
 				// grants the caster something. This is the whole gateless half
 				// of the cast door.
@@ -117,10 +176,13 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	ViciousMockery: {
 		name: "Vicious Mockery",
+		cost: cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
-				RangeFeet: ViciousMockeryRangeFeet,
-				Target:    actions.CastTargetOneCreature,
+				RangeFeet:  ViciousMockeryRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
 				Save: &saves.SaveGate{
 					Abilities: []abilities.Ability{abilities.WIS},
 					DC:        saves.DCStatic(spellSaveDC),
@@ -146,7 +208,15 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 }
 
-// CastDefinition returns the action definition for one spell, with spellSaveDC
+// CastDefinitionInput contains the exact caster-specific facts needed to
+// compile one spell definition. SpellSaveDC is a difficulty class, not a
+// spell, slot, or character level.
+type CastDefinitionInput struct {
+	Spell       Spell
+	SpellSaveDC int
+}
+
+// CastDefinition returns the action definition for one spell, with SpellSaveDC
 // written into the gate of a spell that has one, or nil when this build has no
 // cast content for the id.
 //
@@ -158,13 +228,13 @@ var castContent = map[Spell]castProfileBuilder{
 // The DC is a parameter and not content because it belongs to the caster
 // (8 + proficiency + spellcasting modifier), which is why the same Vicious
 // Mockery is DC 13 for one bard and DC 12 for another.
-func CastDefinition(id Spell, spellSaveDC int) *actions.Definition {
-	content, ok := castContent[id]
+func CastDefinition(input CastDefinitionInput) *actions.Definition {
+	content, ok := castContent[input.Spell]
 	if !ok {
 		return nil
 	}
 
-	ref := refs.Spells.ByID(string(id))
+	ref := refs.Spells.ByID(string(input.Spell))
 	if ref == nil {
 		// The table and the ref catalog disagreeing is a build defect rather
 		// than a runtime condition, and returning nil says the same thing the
@@ -172,10 +242,11 @@ func CastDefinition(id Spell, spellSaveDC int) *actions.Definition {
 		return nil
 	}
 
-	profile := content.build(spellSaveDC)
+	profile := content.build(input.SpellSaveDC)
 	return &actions.Definition{
 		Ref:  *ref,
 		Name: content.name,
+		Cost: actions.CloneSpendProfile(content.cost),
 		Cast: &profile,
 	}
 }

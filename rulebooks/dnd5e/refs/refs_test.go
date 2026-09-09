@@ -459,6 +459,11 @@ func TestBanedConditionRefIsCanonicalSingleton(t *testing.T) {
 	assert.Equal(t, "dnd5e:conditions:baned", refs.Conditions.Baned().String())
 }
 
+func TestDeathSaveActionRefIsCanonicalSingleton(t *testing.T) {
+	assert.Same(t, refs.Actions.DeathSave(), refs.Actions.DeathSave())
+	assert.Equal(t, "dnd5e:actions:death_save", refs.Actions.DeathSave().String())
+}
+
 // TestSingletonSwitchPattern demonstrates the intended usage pattern
 func TestSingletonSwitchPattern(t *testing.T) {
 	// This test demonstrates how singletons enable switch on ref directly
