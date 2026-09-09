@@ -186,8 +186,8 @@ on a personal checkout path:
 ```
 
 These focused tests prove the condition's canonical ref, JSON round trip, and
-`Apply`/`Remove` lifecycle. They do not prove that an interaction reaches the
-condition through resolution's attached bus.
+`Apply` lifecycle. They do not prove `Remove`, or that an interaction reaches
+the condition through resolution's attached bus.
 
 ## 9. Add a resolution scene when the mechanic affects an interaction
 

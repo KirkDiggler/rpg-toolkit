@@ -8,19 +8,22 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 )
 
-// ChildRef is the address of one condition on one member's sheet: whose sheet,
-// and which condition.
+// ConditionAddress is the exact persisted identity of one condition on one
+// member's sheet. SourceID is exact identity: an empty value names only a
+// legacy unqualified condition and is never a wildcard.
 //
-// An ADDRESS RATHER THAN A POINTER, and that is the whole reason the type
-// exists. A condition that owns effects sitting on other members' sheets is
-// persisted as an opaque blob, so a live pointer to another member's condition
-// object cannot survive the round trip. A {member, ref} pair can — and it is
-// already the exact address [ConditionRemovedEvent] takes, so an owner that
-// holds addresses can publish the removal it means with nothing in between.
-type ChildRef struct {
+// An address rather than a pointer survives opaque condition persistence and
+// lets a concentration owner remove one source's child without disturbing an
+// otherwise identical condition imposed by somebody else.
+type ConditionAddress struct {
 	MemberID     string `json:"member_id"`
 	ConditionRef string `json:"condition_ref"`
+	SourceID     string `json:"source_id"`
 }
+
+// ChildRef is retained as a source-compatible alias while nested consumers
+// adopt ConditionAddress in their own scoped tasks.
+type ChildRef = ConditionAddress
 
 // Consequence is what happens when a [FollowUp]'s check fails: these
 // conditions come off those sheets, and the owner that asked for the check
@@ -33,11 +36,11 @@ type ChildRef struct {
 type Consequence struct {
 	// Remove are the addresses to strip. Each becomes one
 	// [ConditionRemovedEvent] published by whoever delivers this.
-	Remove []ChildRef
+	Remove []ConditionAddress
 
 	// Owner is the condition that asked for the check, stripped last so the
 	// children come off while their owner still names them.
-	Owner ChildRef
+	Owner ConditionAddress
 
 	// Reason is why, in the vocabulary of whoever wrote the consequence, for
 	// the removal facts and the record that reads them.
@@ -160,5 +163,5 @@ type ConcentrationEndedEvent struct {
 
 	// Removed are the child addresses that came off with it, in the order
 	// their removal facts were published. Empty when the hold had none left.
-	Removed []ChildRef
+	Removed []ConditionAddress
 }

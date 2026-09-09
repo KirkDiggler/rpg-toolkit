@@ -581,6 +581,16 @@ func (c *Character) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return c.conditions
 }
 
+// DescribeRollContributions returns the oldest applicable contribution in each
+// condition-declared stacking group from a copy of the current persisted order.
+func (c *Character) DescribeRollContributions(
+	input *dnd5eEvents.DescribeRollContributionsInput,
+) (*dnd5eEvents.DescribeRollContributionsOutput, error) {
+	current := append([]dnd5eEvents.ConditionBehavior(nil), c.conditions...)
+	return conditions.DescribeSelectedRollContributions(
+		&conditions.DescribeSelectedRollContributionsInput{Conditions: current, Request: input})
+}
+
 // GetHitPoints returns the character's current hit points
 func (c *Character) GetHitPoints() int {
 	return c.hitPoints
@@ -1195,8 +1205,9 @@ func (c *Character) onConditionRemoved(
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
 	var detachErrs []error
 	for _, cond := range c.conditions {
-		// Keep condition if it doesn't match the removed ref
-		if cond.Ref().String() != event.ConditionRef {
+		// All three identity fields match exactly. Empty source identifies only
+		// legacy-unqualified state and is never a wildcard.
+		if conditions.ConditionAddressOf(c.id, cond) != event.Address() {
 			filtered = append(filtered, cond)
 			continue
 		}

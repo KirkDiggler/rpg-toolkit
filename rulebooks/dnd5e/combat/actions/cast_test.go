@@ -86,13 +86,27 @@ func (s *CastProfileSuite) TestItRefusesAConcentrationThatEndsBeforeItBegins() {
 
 func (s *CastProfileSuite) TestCloningACastProfileCopiesItsConcentration() {
 	profile := gatelessProfile()
-	profile.Concentration = &actions.CastConcentration{TurnEnds: 2}
+	profile.Concentration = &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true}
 
 	clone := profile.Clone()
 	clone.Concentration.TurnEnds = 99
+	clone.Concentration.SkipFirstTurnEnd = false
 
 	s.Require().NotNil(profile.Concentration)
-	s.Equal(2, profile.Concentration.TurnEnds, "a clone that aliased the duration would rewrite the original")
+	s.Equal(10, profile.Concentration.TurnEnds, "a clone that aliased the duration would rewrite the original")
+	s.True(profile.Concentration.SkipFirstTurnEnd)
+}
+
+func (s *CastProfileSuite) TestConcentrationSkipFirstTurnEndRoundTrips() {
+	profile := gatelessProfile()
+	profile.Concentration = &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true}
+
+	raw, err := json.Marshal(profile)
+	s.Require().NoError(err)
+	var back actions.CastProfile
+	s.Require().NoError(json.Unmarshal(raw, &back))
+	s.Require().NotNil(back.Concentration)
+	s.True(back.Concentration.SkipFirstTurnEnd)
 }
 
 func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
