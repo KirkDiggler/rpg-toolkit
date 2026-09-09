@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>A Request Needs an Owner</title>
+<meta name="description" content="How typed requests separated desired changes from owner-controlled mutation, and how Flurry of Blows helped Actions become things a Character could hold.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/a-request-needs-an-owner/">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="A Request Needs an Owner">
+<meta property="og:description" content="How typed requests separated desired changes from owner-controlled mutation, and how Flurry of Blows helped Actions become things a Character could hold.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/a-request-needs-an-owner/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-request-needs-an-owner.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-request-needs-an-owner.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading A Request Needs an Owner beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A Request Needs an Owner">
+<meta name="twitter:description" content="How typed requests separated desired changes from owner-controlled mutation, and how Flurry of Blows helped Actions become things a Character could hold.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-request-needs-an-owner.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading A Request Needs an Owner beside a blue D20 wireframe.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+  :root{
+    --ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;
+    --rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--accent-strong:#8ea2e4;--accent-soft:#1b2236;
+    --pressure:#c96d62;--pressure-soft:#2b1e20;--life:#76a58c;--life-soft:#192922;--signal:#d2ad68;--signal-soft:#2b261a;
+  }
+  *{box-sizing:border-box}
+  html{overflow-x:clip;background:var(--ground);color-scheme:dark}
+  body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+  .page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+  header{padding:82px 72px 76px;border-bottom:1px solid var(--rule)}
+  .eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+  .eyebrow{color:var(--accent);font-size:.76rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase}
+  h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1;text-wrap:balance}
+  h1{max-width:950px;margin:.28em 0 .22em;font-size:clamp(4rem,9vw,7.2rem);letter-spacing:-.04em}
+  .dek{max-width:800px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+  .origin-links{display:flex;flex-wrap:wrap;gap:1.8rem;max-width:900px;margin-top:1.7rem}
+  .origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);color:inherit;text-decoration:none}
+  .origin-link span{color:var(--accent);font:600 .68rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+  .origin-link strong{color:var(--primary);font:600 1rem/1.2 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+  .origin-link:hover strong{color:var(--accent)}
+  .opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));max-width:900px;margin-top:36px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+  .opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+  .opening-proof b{display:block;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:1.04rem;font-weight:600}.opening-proof span{color:var(--muted);font-size:.86rem}
+  .legend{display:flex;gap:1.5rem;max-width:900px;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+  .legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{display:inline-block;width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+  .timeline{position:relative}.timeline::before{content:"";position:absolute;top:0;bottom:0;left:55px;width:1px;background:var(--rule-strong)}
+  .timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px;margin:0}.rail{position:relative;padding-top:47px;text-align:right}
+  .node{position:absolute;top:50px;right:-8px;z-index:2;display:grid;width:18px;height:18px;place-items:center;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}
+  .rail-number{display:block;padding-right:22px;color:var(--accent);font:600 1.25rem/1 "IBM Plex Mono",ui-monospace,monospace}.pressure-panel .rail-number{color:var(--pressure)}
+  .date-label{display:block;max-width:90px;margin:12px 16px 0 auto;color:var(--faint);font-size:.7rem;letter-spacing:.08em;line-height:1.35;text-transform:uppercase}
+  .panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule);background:transparent}
+  .question-label{margin-bottom:7px;color:var(--accent);font-size:.73rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase}.pressure-panel .question-label{color:var(--pressure)}
+  h2{max-width:880px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+  p{max-width:74ch;margin:.76em 0}.lead{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}code{color:var(--accent);font-size:.88em}
+  figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-top:1px solid var(--rule-strong);border-bottom:1px solid var(--rule-strong);background:transparent;scrollbar-color:var(--rule-strong) var(--ground)}
+  figure svg{display:block;width:100%;min-width:820px;height:auto;margin:0 auto}
+  figcaption{max-width:78ch;margin-top:12px;color:var(--faint);font:400 .82rem/1.55 "IBM Plex Mono",ui-monospace,monospace}
+  .law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",ui-monospace,monospace}.law b{color:var(--primary);font-weight:600}.pressure-law{border-left-color:var(--pressure)}
+  .end-question{max-width:880px;margin:34px 0 23px;padding-top:28px;border-top:1px solid var(--rule);font-size:clamp(1.8rem,3.6vw,2.65rem)}
+  footer{max-width:920px;margin:72px 0 0 136px;padding:28px 0 0;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.45rem;color:var(--primary);font-size:1.4rem}footer p{margin:.45rem 0;font-size:.86rem}footer code{color:var(--accent)}
+  svg{color:var(--primary)}svg text{fill:currentColor;font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:15px}
+  svg .t-title{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px;font-weight:600}svg .t-big{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:25px;font-weight:600}
+  svg .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px}svg .small{fill:var(--muted);font-size:13px}svg .tiny{fill:var(--muted);font-size:12px}svg .label{fill:var(--muted);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;font-weight:600;letter-spacing:.8px}
+  svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.2}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.2;stroke-dasharray:7 6}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.3}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.3}svg .life{fill:var(--life-soft);stroke:var(--life);stroke-width:1.3}svg .signal{fill:var(--signal-soft);stroke:var(--signal);stroke-width:1.3}
+  svg .wire{fill:none;stroke:var(--primary);stroke-width:1.4}svg .wire-muted{fill:none;stroke:var(--rule-strong);stroke-width:1.3}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .wire-life{fill:none;stroke:var(--life);stroke-width:1.8}svg .dash{stroke-dasharray:6 5}
+  svg .blue{fill:var(--accent)}svg .rust{fill:var(--pressure)}svg .green{fill:var(--life)}svg .gold{fill:var(--signal)}
+  figure::before{display:none}
+  @media(max-width:760px){
+    figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);background:var(--ground);color:var(--accent);font:500 .7rem/1.3 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+    .page{padding:14px 14px 70px}header{padding:58px 14px 56px 42px}.origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{align-items:flex-start;flex-direction:column;gap:.55rem}.timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{padding-right:0;font-size:0}.date-label{position:absolute;top:62px;left:-5px;width:48px;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.64rem;white-space:nowrap}.panel-body{padding:40px 13px 48px}figure{margin-inline:0;padding:14px 0 10px}figure svg{min-width:900px}footer{margin:50px 0 0 42px}
+  }
+  @media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.55rem}}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Layer 5 · Owner-directed change</div>
+    <h1>A Request Needs an Owner</h1>
+    <p class="dek">The rpg-api dungeon prototype was deliberately where the pieces met. Its first lesson was a boundary: rules should describe the change they need; state owners should know how to apply it. Actions became things a Character could hold, and Flurry of Blows tested both ideas at once.</p>
+    <div class="origin-links">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets &rarr;</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/when-a-rule-needs-the-room/"><span>Previous field note</span><strong>When a Rule Needs the Room &rarr;</strong></a>
+    </div>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Setting</b><span>a prototype built to learn</span></div><div><b>Climax</b><span>two temporary strikes appear</span></div><div><b>Horizon</b><span>the interaction needs a driver</span></div></div>
+    <div class="legend" aria-label="Visual legend"><span><i></i>owner-directed request</span><span><i></i>driver responsibility</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Four-panel request ownership timeline">
+    <section class="timeline-panel" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">01</span><span class="date-label">The answer to Layer 4</span></div>
+      <div class="panel-body">
+        <div class="question-label">Inside the deliberate prototype</div>
+        <h2 id="panel-1-title">The rule asks. The owner changes itself.</h2>
+        <p class="lead">Layer 4 ended with a condition reading a live object and changing it directly. That condition had to know both the result it wanted and how Character applied that result without breaking its own invariants. A typed request became the boundary contract: the rule described the desired change; Character's listener owned the mutation.</p>
+        <figure>
+          <svg viewBox="0 0 1040 500" role="img" aria-label="A rule knows what change it needs, including target, value, and source. A typed request is the boundary contract. Character owns how to validate and mutate its state. Supporting examples are ConditionAppliedEvent, HealingReceivedEvent, and ActionGrantedEvent.">
+            <title>A typed request separates the desired change from owner-controlled mutation</title>
+            <defs><marker id="q1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <text x="29" y="29" class="label blue">THE OWNER-DIRECTED SHAPE</text>
+            <rect x="29" y="62" width="286" height="102" class="signal"/><text x="55" y="92" class="label gold">RULE KNOWS WHAT</text><text x="55" y="124" class="t-title">describe the change</text><text x="55" y="150" class="small">target · requested value · source</text>
+            <line x1="315" y1="113" x2="369" y2="113" class="wire-blue" marker-end="url(#q1)"/>
+            <rect x="371" y="62" width="298" height="102" class="soft"/><text x="397" y="92" class="label blue">BOUNDARY CONTRACT</text><text x="397" y="124" class="t-title">typed request</text><text x="397" y="150" class="small">only the facts the owner needs</text>
+            <line x1="669" y1="113" x2="723" y2="113" class="wire-blue" marker-end="url(#q1)"/>
+            <rect x="725" y="62" width="286" height="102" class="life"/><text x="751" y="92" class="label green">CHARACTER OWNS HOW</text><text x="751" y="124" class="t-title">apply it correctly</text><text x="751" y="150" class="small">validate · preserve invariants · mutate</text>
+
+            <line x1="29" y1="215" x2="1011" y2="215" class="wire-muted dash"/>
+            <text x="29" y="252" class="label">THREE CONCRETE REQUESTS</text>
+            <rect x="29" y="278" width="303" height="142" class="box"/><text x="55" y="311" class="label blue">CONDITION APPLIED</text><text x="55" y="348" class="mono">apply + store Condition</text><text x="55" y="391" class="small">Character owns active state</text>
+            <rect x="368" y="278" width="303" height="142" class="box"/><text x="394" y="311" class="label blue">HEALING RECEIVED</text><text x="394" y="348" class="mono">restore hit points</text><text x="394" y="391" class="small">Character owns HP</text>
+            <rect x="707" y="278" width="304" height="142" class="box"/><text x="733" y="311" class="label blue">ACTION GRANTED</text><text x="733" y="348" class="mono">add temporary Action</text><text x="733" y="391" class="small">Character owns []Action</text>
+            <text x="520" y="472" text-anchor="middle" class="label blue">THE PUBLISHER DESCRIBES THE CHANGE · THE OWNER PERFORMS IT</text>
+          </svg>
+          <figcaption>The request named the desired result without teaching the publisher how Character represented or safely changed that state.</figcaption>
+        </figure>
+        <div class="law"><b>The ownership rule:</b> The rule asks. The owner changes itself.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">02</span><span class="date-label">2026-01-02 → 01-07</span></div>
+      <div class="panel-body">
+        <div class="question-label">A new thing a Character can hold</div>
+        <h2 id="panel-2-title">Actions become part of the character</h2>
+        <p class="lead">The new Action type represented something a Character could do. Basic combat supplied lasting options. Features could grant temporary ones. When doing an Action required a wider interaction, the Action published a uniquely typed request.</p>
+        <figure>
+          <svg viewBox="0 0 1040 560" role="img" aria-label="Character owns permanent and temporary Actions. Basic combat supplies Attack and Move. A Feature can grant temporary Flurry Strike or Off-Hand Strike actions. Features grant, Actions do, and Conditions modify. A temporary Action can publish a typed strike request.">
+            <title>Actions become first-class things a Character can hold and Features can grant</title>
+            <defs><marker id="q2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <rect x="29" y="50" width="633" height="286" class="box"/><text x="58" y="84" class="label">CHARACTER</text><text x="58" y="124" class="t-big">things I can do</text>
+            <rect x="58" y="158" width="264" height="133" class="soft"/><text x="84" y="191" class="label blue">BASE COMBAT</text><text x="84" y="230" class="t-title">Attack · Move</text><text x="84" y="263" class="small">available to every Character</text>
+            <rect x="351" y="158" width="282" height="133" class="life"/><text x="377" y="191" class="label green">TEMPORARY ACTIONS</text><text x="377" y="230" class="t-title">granted by Features</text><text x="377" y="263" class="mono">Flurry · Off-Hand</text>
+
+            <rect x="718" y="50" width="293" height="118" class="signal"/><text x="744" y="83" class="label gold">FEATURE</text><text x="744" y="121" class="t-title">grants an Action</text><path d="M718 145H676V224H635" class="wire-blue" marker-end="url(#q2)"/>
+            <rect x="718" y="218" width="293" height="118" class="soft"/><text x="744" y="251" class="label blue">ACTION</text><text x="744" y="289" class="t-title">publishes a request</text><path d="M718 277H663" class="wire-blue dash" marker-end="url(#q2)"/>
+
+            <line x1="29" y1="381" x2="1011" y2="381" class="wire-muted dash"/>
+            <text x="29" y="418" class="label">RELATED ROLES · NOT ONE REQUIRED PIPELINE</text>
+            <rect x="29" y="443" width="303" height="76" class="soft"/><text x="181" y="476" text-anchor="middle" class="label blue">FEATURES</text><text x="181" y="503" text-anchor="middle" class="t-title">grant</text>
+            <rect x="368" y="443" width="303" height="76" class="signal"/><text x="520" y="476" text-anchor="middle" class="label gold">ACTIONS</text><text x="520" y="503" text-anchor="middle" class="t-title">do</text>
+            <rect x="707" y="443" width="304" height="76" class="life"/><text x="859" y="476" text-anchor="middle" class="label green">CONDITIONS</text><text x="859" y="503" text-anchor="middle" class="t-title">modify</text>
+            <text x="520" y="551" text-anchor="middle" class="label blue">A FEATURE CAN CHANGE WHAT THE CHARACTER IS ABLE TO DO NOW</text>
+          </svg>
+          <figcaption>Actions could be owned, granted, removed, and presented without making the Feature itself perform the later interaction.</figcaption>
+        </figure>
+        <div class="law"><b>The new seam:</b> A Feature can grant something to do without becoming the Action that does it.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">03</span><span class="date-label">Flurry → 2026-01-26</span></div>
+      <div class="panel-body">
+        <div class="question-label">The hardest real case becomes visible</div>
+        <h2 id="panel-3-title">One feature grants two strikes</h2>
+        <p class="lead">Flurry of Blows spent one Ki, created two temporary Flurry Strikes, and asked Character to add both. The prototype then exposed the current Flurry capacity as an available combat control.</p>
+        <figure>
+          <svg viewBox="0 0 1040 720" role="img" aria-label="Flurry of Blows spends one Ki, creates two temporary Flurry Strike actions, and publishes ActionGrantedEvent twice. Character adds both. Current Flurry capacity becomes AvailableActions and the combat UI shows Flurry Strike. Fighter, Barbarian, Rogue, and Monk are listed as the playable dungeon target, not completed coverage.">
+            <title>Flurry tests action granting and reaches the combat interface</title>
+            <defs><marker id="q3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>
+            <rect x="355" y="31" width="330" height="94" class="signal"/><text x="520" y="62" text-anchor="middle" class="label gold">FLURRY OF BLOWS · SPEND 1 KI</text><text x="520" y="99" text-anchor="middle" class="t-big">create two temporary Actions</text>
+            <path d="M455 125V157H222V187" class="wire-blue" marker-end="url(#q3)"/><path d="M585 125V157H818V187" class="wire-blue" marker-end="url(#q3)"/>
+            <rect x="68" y="189" width="308" height="108" class="soft"/><text x="94" y="222" class="label blue">FLURRY STRIKE 01</text><text x="94" y="260" class="t-title">turn-end cleanup</text>
+            <rect x="664" y="189" width="308" height="108" class="soft"/><text x="690" y="222" class="label blue">FLURRY STRIKE 02</text><text x="690" y="260" class="t-title">turn-end cleanup</text>
+            <path d="M222 297V330H425" class="wire-blue" marker-end="url(#q3)"/><path d="M818 297V330H615" class="wire-blue" marker-end="url(#q3)"/>
+            <rect x="365" y="314" width="310" height="80" class="soft"/><text x="520" y="345" text-anchor="middle" class="label blue">ACTIONGRANTEDEVENT × 2</text><text x="520" y="375" text-anchor="middle" class="mono">Character hears both</text>
+            <line x1="520" y1="394" x2="520" y2="425" class="wire-blue" marker-end="url(#q3)"/>
+            <rect x="223" y="427" width="594" height="74" class="life"/><text x="249" y="456" class="label green">CHARACTER OWNS</text><text x="249" y="484" class="mono">actions: [ Flurry Strike 1, Flurry Strike 2 ]</text>
+
+            <line x1="29" y1="540" x2="1011" y2="540" class="wire-muted dash"/>
+            <rect x="29" y="566" width="242" height="85" class="life"/><text x="54" y="596" class="label green">CURRENT TURN</text><text x="54" y="628" class="mono">Flurry remaining: 2</text>
+            <line x1="271" y1="609" x2="340" y2="609" class="wire-blue" marker-end="url(#q3)"/>
+            <rect x="342" y="566" width="280" height="85" class="soft"/><text x="367" y="596" class="label blue">RPG-API</text><text x="367" y="628" class="mono">AvailableActions</text>
+            <line x1="622" y1="609" x2="691" y2="609" class="wire-blue" marker-end="url(#q3)"/>
+            <rect x="693" y="552" width="318" height="113" class="box"/><text x="719" y="583" class="label">COMBAT PANEL</text><rect x="719" y="599" width="266" height="45" class="soft"/><text x="852" y="628" text-anchor="middle" class="t-title">Flurry Strike</text>
+            <text x="520" y="705" text-anchor="middle" class="label blue">FEATURE ASKS · CHARACTER OWNS · THE PLAYER CAN SEE IT</text>
+          </svg>
+          <figcaption>The client became data-driven before the server did. The four-class dungeon milestone was the proving ground, not a completion claim.</figcaption>
+        </figure>
+        <div class="law"><b>The breakthrough:</b> Feature asks. Character owns the mutation. The player sees the result.</div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail" aria-hidden="true"><span class="node"></span><span class="rail-number">04</span><span class="date-label">2026-02-08 · the horizon</span></div>
+      <div class="panel-body">
+        <div class="question-label">The successful prototype reveals the next seam</div>
+        <h2 id="panel-4-title">The request still needs a driver</h2>
+        <p class="lead">Selecting Flurry Strike needed a complete interaction, not one local mutation. The rpg-api dungeon prototype made it real through a dedicated path. Every successful new request taught that prototype another sequence of loading, wiring, resolving, persisting, and translating.</p>
+        <figure>
+          <svg viewBox="0 0 1040 680" role="img" aria-label="A player selects Flurry Strike. Request intent enters a direct rpg-api executeFlurryStrike path, not a generic subscriber. The dungeon prototype loads actors, creates a bus, applies conditions, installs context, resolves, consumes capacity, persists, and translates. Other requests point toward similar paths. A small historical label shows 4,443 lines and 54 functions, leading to the question when enough has been learned to extract a driver.">
+            <title>The successful dungeon prototype drives the request and reveals future extraction pressure</title>
+            <defs><marker id="q4b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker><marker id="q4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pressure)"/></marker></defs>
+            <rect x="29" y="44" width="250" height="94" class="life"/><text x="55" y="77" class="label green">PLAYER</text><text x="55" y="113" class="t-title">Select Flurry Strike</text>
+            <line x1="279" y1="91" x2="365" y2="91" class="wire-blue" marker-end="url(#q4b)"/>
+            <rect x="367" y="44" width="306" height="94" class="soft"/><text x="393" y="77" class="label blue">REQUEST INTENT</text><text x="393" y="113" class="mono">FlurryStrikeRequested</text>
+            <line x1="673" y1="91" x2="759" y2="91" class="wire-rust dash" marker-end="url(#q4r)"/><text x="716" y="74" text-anchor="middle" class="tiny rust">DIRECT API PATH</text>
+            <rect x="761" y="44" width="250" height="94" class="pressure"/><text x="787" y="77" class="label rust">RPG-API</text><text x="787" y="113" class="t-title">executeFlurryStrike</text>
+
+            <rect x="113" y="191" width="814" height="226" class="box"/><text x="141" y="225" class="label">DUNGEON PROTOTYPE · ACTION-SPECIFIC DRIVER</text>
+            <rect x="141" y="252" width="172" height="60" class="soft"/><text x="227" y="289" text-anchor="middle" class="mono">load actors</text>
+            <rect x="329" y="252" width="172" height="60" class="soft"/><text x="415" y="289" text-anchor="middle" class="mono">create bus</text>
+            <rect x="517" y="252" width="172" height="60" class="soft"/><text x="603" y="289" text-anchor="middle" class="mono">apply conditions</text>
+            <rect x="705" y="252" width="194" height="60" class="soft"/><text x="802" y="289" text-anchor="middle" class="mono">install context</text>
+            <rect x="141" y="331" width="172" height="60" class="pressure"/><text x="227" y="368" text-anchor="middle" class="mono">resolve strike</text>
+            <rect x="329" y="331" width="172" height="60" class="pressure"/><text x="415" y="368" text-anchor="middle" class="mono">consume capacity</text>
+            <rect x="517" y="331" width="172" height="60" class="pressure"/><text x="603" y="368" text-anchor="middle" class="mono">persist state</text>
+            <rect x="705" y="331" width="194" height="60" class="pressure"/><text x="802" y="368" text-anchor="middle" class="mono">translate result</text>
+            <text x="520" y="448" text-anchor="middle" class="label blue">A REAL PLAYABLE INTERACTION · A REAL PLACE TO LEARN THE SEAM</text>
+
+            <line x1="29" y1="486" x2="1011" y2="486" class="wire-muted dash"/>
+            <rect x="29" y="515" width="258" height="91" class="box"/><text x="55" y="548" class="label">HISTORICAL SNAPSHOT · JAN 08</text><text x="55" y="582" class="mono">4,443 lines · 54 functions</text>
+            <rect x="325" y="515" width="686" height="91" class="signal"/><text x="668" y="548" text-anchor="middle" class="label gold">THE NEXT DRAGON ON THE HORIZON</text><text x="668" y="582" text-anchor="middle" class="t-title">When has the prototype taught us enough to extract the driver?</text>
+            <text x="520" y="660" text-anchor="middle" class="label rust">THE PROTOTYPE IS WORKING · THE FUTURE SEAM IS BECOMING VISIBLE</text>
+          </svg>
+          <figcaption>The metrics show accumulated responsibility, not failure. Each completed interaction made the future boundary less hypothetical.</figcaption>
+        </figure>
+        <p class="end-question">The request had an owner. The interaction still needed a driver.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>ADR-0028 records “Features grant. Actions do. Conditions modify.” Flurry and Off-Hand requests begin in <code>a4a0e9f7</code> and <code>69c11444</code>; Character-side action granting is exercised in <code>7bd794ce</code> and <code>fdd27be2</code>.</p>
+    <p>Available actions reach the API and web in <code>53186db</code> and <code>a7da7f01</code>. By January 26, four class encounter suites had landed across toolkit and API. The dedicated prototype Flurry driver is <code>1df5555</code>. Later extraction is intentionally outside this field note.</p>
+  </footer>
+</main>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
