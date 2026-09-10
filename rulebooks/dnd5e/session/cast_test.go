@@ -839,3 +839,35 @@ func (s *CastSuite) TestACantripCanDropATarget() {
 	s.NotEmpty(s.beats(session.EventDowned),
 		"the world noticed the drop; nobody announced it")
 }
+
+// THE SEAM, end to end, and the regression that motivated the fix underneath
+// it: a self-targeted cast used to resolve, apply its condition to the sheet,
+// and then DIE at RecordCast with ErrNoMember -- after the mechanical writes
+// were already durable, leaving the ward on the character and no beat naming it.
+//
+// resolution/newCast fabricated a one-element target list holding the empty
+// string so its per-target loop would run once. Blade Ward is the first content
+// that declares CastTargetSelf, so it is the first thing to reach that path.
+// Nothing here asserts the sentinel is gone; it asserts the cast SUCCEEDS and
+// the record says who received it, which is what the sentinel made impossible.
+func (s *CastSuite) TestBladeWardCastsWithNoTargetAndRecordsTheCasterAsItsRecipient() {
+	s.scene(castingBard("bard", spells.BladeWard), 2)
+
+	row := s.castRow(spells.BladeWard)
+	s.Equal(session.TargetNone, row.TargetKind, "the player aims a self cast at nobody")
+	s.Empty(row.Candidates, "and is offered nobody to aim it at")
+	s.True(row.Available)
+
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: row.ID,
+	})
+	s.Require().NoError(err, "the whole point: this used to fail at RecordCast after the sheet was written")
+
+	casts := s.beats(session.EventCast)
+	s.Require().Len(casts, 1)
+	body, ok := casts[0].Body.(session.CastBody)
+	s.Require().True(ok)
+	s.Equal(refs.Spells.BladeWard().String(), body.Spell.Ref)
+	s.Equal([]string{"bard"}, body.Targets,
+		"one recipient, and it is the caster -- an empty list would have nowhere to hang the ward")
+}
