@@ -331,21 +331,25 @@ func activationResults(effects []resolution.ActivationEffect) []encounter.Activa
 
 	results := make([]encounter.ActivationResult, 0, len(effects))
 	for _, effect := range effects {
-		results = append(results, encounter.ActivationResult{
-			Kind:   encounter.ActivationResultKind(effect.Kind),
-			Target: encounter.MemberID(effect.TargetID),
-			Ref:    effect.Ref,
-			Name:   effect.Name,
-
-			Amount:      effect.Amount,
-			Requested:   effect.Requested,
-			Before:      effect.Before,
-			After:       effect.After,
+		result := encounter.ActivationResult{
+			Kind: encounter.ActivationResultKind(effect.Kind), Name: effect.Name,
+			Amount: effect.Amount, Requested: effect.Requested,
+			Before: effect.Before, After: effect.After,
 			Calculation: rollCalculationFor(effect.Calculation),
-
-			Description: effect.Description,
-			Reason:      effect.Reason,
-		})
+			Description: effect.Description, Reason: effect.Reason,
+		}
+		switch result.Kind {
+		case encounter.ResultConditionApplied, encounter.ResultConditionRemoved:
+			result.Address = &encounter.ConditionAddress{
+				MemberID:     encounter.MemberID(effect.Address.MemberID),
+				ConditionRef: effect.Address.ConditionRef,
+				SourceID:     effect.Address.SourceID,
+			}
+		default:
+			result.Target = encounter.MemberID(effect.TargetID)
+			result.Ref = effect.Ref
+		}
+		results = append(results, result)
 	}
 	return results
 }

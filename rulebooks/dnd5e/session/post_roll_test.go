@@ -304,6 +304,16 @@ func (s *PostRollWindowSuite) TestSpendingFinishesTheSwingWithTheDieOnIt() {
 	s.Equal(float64(posed.Roll), beat["roll"], "the d20 is not re-rolled")
 	s.Greater(beat["total"], float64(posed.Total), "the face joined the total")
 	s.Equal(float64(6), beat["total"].(float64)-float64(posed.Total), "a d6 rolling its own face")
+	calculation, ok := beat["calculation"].(map[string]any)
+	s.Require().True(ok, "the resumed beat retains the frozen sourced calculation")
+	s.Equal(beat["total"], calculation["total"])
+	components, ok := calculation["components"].([]any)
+	s.Require().True(ok)
+	s.Require().Len(components, 3)
+	inspiration := components[2].(map[string]any)
+	source := inspiration["source"].(map[string]any)
+	s.Equal(refs.Conditions.Inspired().String(), source["ref"],
+		"the offered die keeps the provider-authored source identity")
 
 	s.False(s.holdsTheDie("alice"), "the die is spent when it is TAKEN")
 	s.Empty(s.reactRow(mgr, "alice").ID, "and the window is closed")
@@ -321,6 +331,9 @@ func (s *PostRollWindowSuite) TestKeepingFinishesTheSwingWithoutIt() {
 	s.Equal(1, s.countBeats(mgr, "alice", "struck")+s.countBeats(mgr, "alice", "missed"))
 	beat := s.outcomeBeat(mgr)
 	s.Equal(float64(posed.Total), beat["total"], "no face joined it")
+	calculation, ok := beat["calculation"].(map[string]any)
+	s.Require().True(ok, "declining preserves the frozen calculation without rewriting it")
+	s.Equal(beat["total"], calculation["total"])
 
 	s.True(s.holdsTheDie("alice"), "declining costs nothing")
 }

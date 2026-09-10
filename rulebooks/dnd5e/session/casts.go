@@ -9,45 +9,26 @@ import (
 	"sort"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// castPrice is what one cantrip costs: the standard action, and nothing else.
-//
-// # It is compiled HERE rather than read off content, and that is the ruling
-//
-// A [combatActions.CastProfile] declares what a cast DOES and says nothing
-// about what it costs, deliberately — the same profile is free for a monster's
-// innate cast and an action for a player's. So the price belongs to whoever
-// mints the declaration, which is this seam.
-//
-// # One action, no pool, no slot
-//
-// That is the whole of a cantrip's price at level 1, which is why the cast door
-// is the first verb at this seam that is really paid at the door (design R10):
-// there is nothing underneath it to charge a second time. A levelled spell adds
-// a pool entry to this same profile and changes nothing about who charges it.
-func castPrice() *combat.SpendProfile {
-	return &combat.SpendProfile{
-		Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
-	}
-}
-
-// buildCastOffers compiles one offer per cantrip this member knows AND this
-// build can actually cast.
+// buildCastOffers compiles one offer per cantrip or leveled spell this member
+// knows AND this build can actually cast.
 //
 // # A known ref with no cast profile mints no row
 //
-// The sheet's [character.Character.KnownCantrips] is what the bard CHOSE;
-// [spells.CastDefinition] is what this build can DO with it, and nine of the
-// bard's eleven cantrips answer nil. The intersection is the row list, and a
+// The sheet's known cantrip and spell lists are what the character CHOSE;
+// [spells.CastDefinition] is what this build can DO with each entry. The
+// intersection is the row list, and a
 // nil answer is skipped rather than turned into a disabled row — fail closed
 // (design R9). A row that resolved to nothing would be the lie; a missing row
 // is the truth, and the consequence is real: a bard who chose Mage Hand and
@@ -60,11 +41,11 @@ func castPrice() *combat.SpendProfile {
 // never changes, and a permanently disabled row is a menu item that is not a
 // choice.
 //
-// # It compiles and prices, unlike buildActivationOffers
+// # It compiles and projects the provider price, unlike buildActivationOffers
 //
-// An activation projects an answer the rulebook already assembled. A cast has
-// no such answer to project: nothing on the sheet knows what Vicious Mockery
-// reaches, what it costs, or what DC it demands. So this compiles the same way
+// An activation projects an answer the rulebook already assembled. A cast reads
+// its bounds, price, range and effects from the complete rulebook definition,
+// with only the caster-specific save DC supplied. So this compiles the same way
 // Attack does — a complete priced [combatActions.Definition] whose serialized
 // form IS the selector — with the caster's own save DC written into the gate
 // before the hash, so a DC that moved makes the offer stale rather than making
@@ -92,7 +73,7 @@ func (m *Manager) buildCastOffers(
 	participants []resolution.Participant,
 	dependencyFailures []resolutionDependencyFailure,
 ) ([]compiledOffer, error) {
-	known := sheet.KnownCantrips()
+	known := append(sheet.KnownCantrips(), sheet.KnownSpells()...)
 	if len(known) == 0 {
 		return nil, nil
 	}
@@ -100,20 +81,22 @@ func (m *Manager) buildCastOffers(
 	// The caster answers its own DC once, before any spell is compiled: it is
 	// 8 + proficiency + spellcasting modifier, a property of the caster known
 	// before any machine starts (design R4), so it does not vary between two
-	// cantrips on the same sheet.
+	// known spells on the same sheet.
 	dc := sheet.SpellSaveDC()
 
 	offers := make([]compiledOffer, 0, len(known))
 	for _, ref := range known {
 		if ref == nil {
 			// Fail closed, exactly as buildActivationOffers does for a
-			// nameless ability. A cantrip with no ref cannot be selected,
+			// nameless ability. A spell with no ref cannot be selected,
 			// echoed back or executed, and dropping it quietly would leave a
 			// button missing from a panel with no trace of why.
-			return nil, fmt.Errorf("member %q knows a cantrip with no ref: %w", member, ErrBadCharacter)
+			return nil, fmt.Errorf("member %q knows a spell with no ref: %w", member, ErrBadCharacter)
 		}
 
-		definition := spells.CastDefinition(spells.Spell(ref.ID), dc)
+		definition := spells.CastDefinition(spells.CastDefinitionInput{
+			Spell: spells.Spell(ref.ID), SpellSaveDC: dc,
+		})
 		if definition == nil {
 			// R9: this build has no cast content for the ref. Not an error,
 			// and not a row.
@@ -127,8 +110,6 @@ func (m *Manager) buildCastOffers(
 			return nil, fmt.Errorf("member %q: spell %q compiled no cast profile: %w",
 				member, ref.String(), ErrBadCharacter)
 		}
-		definition.Cost = castPrice()
-
 		offer, err := m.compileCastOffer(ctx, &compileCastOfferInput{
 			Encounter: enc, SessionID: session, Member: member, Sheet: sheet,
 			Definition: *definition, Roster: roster, Positions: positions, Holdings: holdings,
@@ -147,7 +128,7 @@ func (m *Manager) buildCastOffers(
 	return offers, nil
 }
 
-// compileCastOfferInput carries one compiled and priced cantrip into the
+// compileCastOfferInput carries one compiled and priced spell into the
 // shared declaration compiler.
 type compileCastOfferInput struct {
 	Encounter          *encounter.Encounter
@@ -163,7 +144,7 @@ type compileCastOfferInput struct {
 }
 
 // compileCastOffer applies the shared budget, dependency, candidate, selector
-// and projection rules to one cantrip — the cast twin of compileAttackOffer,
+// and projection rules to one spell — the cast twin of compileAttackOffer,
 // over a candidate universe the profile's own target rule chooses.
 func (m *Manager) compileCastOffer(
 	ctx context.Context, input *compileCastOfferInput,
@@ -186,6 +167,10 @@ func (m *Manager) compileCastOffer(
 		return compiledOffer{}, err
 	}
 	spellRef := SpellRef{Ref: definition.Ref.String(), Name: definition.Name}
+	cost, err := castCostComponents(definition.Cost)
+	if err != nil {
+		return compiledOffer{}, err
+	}
 
 	// A SELF-TARGETED CAST PROMPTS FOR NOBODY, and carries no candidates
 	// rather than an empty universe that reads as "nobody is reachable" — the
@@ -195,6 +180,7 @@ func (m *Manager) compileCastOffer(
 		declaration := Declaration{
 			Verb: VerbCast, Slot: slot, Available: budgetOK, Why: budgetWhy, ID: id,
 			Spell: &spellRef, TargetKind: TargetNone, Candidates: []TargetCandidate{},
+			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets, Cost: cost,
 		}
 		return compiledOffer{
 			declaration: declaration, spell: &definition, sheet: input.Sheet,
@@ -219,7 +205,7 @@ func (m *Manager) compileCastOffer(
 		return compiledOffer{}, err
 	}
 
-	// Dependency failures annotate this offer's own working copy: two cantrips
+	// Dependency failures annotate this offer's own working copy: two spells
 	// share the same preflight facts and must not share the mutable
 	// annotations, exactly as two Attack variants must not.
 	candidates = cloneTargetPreflights(candidates)
@@ -268,10 +254,57 @@ func (m *Manager) compileCastOffer(
 		declaration: Declaration{
 			Verb: VerbCast, Slot: slot, Available: available, Why: why, ID: id,
 			Spell: &spellRef, TargetKind: TargetMember, Candidates: projectCandidates(candidates),
+			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets, Cost: cost,
 		},
 		spell: &definition, targets: targets, sheet: input.Sheet,
 		cast: input.Participants, verb: VerbCast, slot: slot, variant: variant,
 	}, nil
+}
+
+// castCostComponents projects the executable slot and pool price without
+// exposing private pool keys. Pool labels come from the rulebook catalog; an
+// unknown key is refused rather than displayed as persistence bytes.
+func castCostComponents(profile *combat.SpendProfile) ([]CostComponent, error) {
+	if profile == nil {
+		return []CostComponent{}, nil
+	}
+	if len(profile.Capacity) != 0 {
+		return nil, fmt.Errorf("%w: cast price contains unprojectable capacity", ErrBadCost)
+	}
+
+	out := make([]CostComponent, 0, len(profile.Slots)+len(profile.Pools))
+	for _, entry := range []struct {
+		key      coreCombat.ActionType
+		currency Currency
+	}{
+		{coreCombat.ActionStandard, CurrencyAction},
+		{coreCombat.ActionBonus, CurrencyBonus},
+		{coreCombat.ActionReaction, CurrencyReaction},
+	} {
+		if needed := profile.Slots[entry.key]; needed > 0 {
+			out = append(out, CostComponent{Currency: entry.currency, Needed: needed})
+		}
+	}
+
+	keys := make([]coreResources.ResourceKey, 0, len(profile.Pools))
+	for key := range profile.Pools {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	for _, key := range keys {
+		needed := profile.Pools[key]
+		if needed <= 0 {
+			continue
+		}
+		label, ok := resources.DisplayName(key)
+		if !ok {
+			return nil, fmt.Errorf("%w: cast price pool has no provider display name", ErrBadCost)
+		}
+		out = append(out, CostComponent{
+			Currency: CurrencyCharges, Needed: needed, Label: label,
+		})
+	}
+	return out, nil
 }
 
 // sortCastOffers orders compiled Cast rows by the spell's ref. Ranking across

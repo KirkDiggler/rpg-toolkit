@@ -30,7 +30,6 @@ func castingCleric() *character.Data {
 		KnownCantrips: []string{
 			refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
 		},
-		SpellSlots: map[int]character.SpellSlotData{1: {Max: 2, Used: 2}},
 	}
 }
 
@@ -124,7 +123,6 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 			s.Require().NoError(err)
 			s.Equal(events, story, "cast, save and damage survive JSON and manager recreation")
 			s.Equal(before-tc.damage, s.storedSkeleton())
-			s.Equal(castingCleric().SpellSlots, s.characters.byID[s.member].SpellSlots)
 			s.Equal(castingCleric().KnownCantrips, s.characters.byID[s.member].KnownCantrips)
 			row := s.castRow(spells.SacredFlame)
 			s.False(row.Available)

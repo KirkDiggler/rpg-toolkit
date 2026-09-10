@@ -4,6 +4,8 @@
 package session
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -566,12 +568,16 @@ func TestActivationResultsMapEveryProviderFieldInOrder(t *testing.T) {
 			},
 		},
 		{
-			Kind: resolution.EffectConditionApplied, TargetID: "bob",
-			Ref: "dnd5e:conditions:raging", Name: "Raging",
+			Kind: resolution.EffectConditionApplied, Name: "Raging",
+			Address: dnd5eEvents.ConditionAddress{
+				MemberID: "bob", ConditionRef: "dnd5e:conditions:raging", SourceID: "alice",
+			},
 		},
 		{
-			Kind: resolution.EffectConditionRemoved, TargetID: "carol",
-			Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
+			Kind: resolution.EffectConditionRemoved, Name: "Hidden", Reason: "revealed",
+			Address: dnd5eEvents.ConditionAddress{
+				MemberID: "carol", ConditionRef: "dnd5e:conditions:hidden", SourceID: "alice",
+			},
 		},
 		{
 			Kind: resolution.EffectCapacityGranted, TargetID: "dave",
@@ -600,13 +606,18 @@ func TestActivationResultsMapEveryProviderFieldInOrder(t *testing.T) {
 	require.Equal(t, 3, *results[0].Calculation.Components[1].Modifier)
 
 	require.Equal(t, encounter.ActivationResult{
-		Kind: encounter.ResultConditionApplied, Target: "bob",
-		Ref: "dnd5e:conditions:raging", Name: "Raging",
-		Calculation: nil, // the non-healing kinds carry no calculation
+		Kind: encounter.ResultConditionApplied,
+		Address: &encounter.ConditionAddress{
+			MemberID: "bob", ConditionRef: "dnd5e:conditions:raging", SourceID: "alice",
+		},
+		Name: "Raging", Calculation: nil, // the non-healing kinds carry no calculation
 	}, results[1])
 	require.Equal(t, encounter.ActivationResult{
-		Kind: encounter.ResultConditionRemoved, Target: "carol",
-		Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
+		Kind: encounter.ResultConditionRemoved,
+		Address: &encounter.ConditionAddress{
+			MemberID: "carol", ConditionRef: "dnd5e:conditions:hidden", SourceID: "alice",
+		},
+		Name: "Hidden", Reason: "revealed",
 	}, results[2])
 	require.Equal(t, encounter.ActivationResult{
 		Kind: encounter.ResultCapacityGranted, Target: "dave",
@@ -672,16 +683,16 @@ func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
 		},
 		{
 			name: "condition applied",
-			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-applied","target":"alice","ref":"dnd5e:conditions:raging","name":"Raging"}}`,
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-applied","target":"alice","ref":"dnd5e:conditions:raging","name":"Raging","source_id":"alice"}}`,
 			want: ActivationResultBody{Actor: "alice", ConditionApplied: &ConditionAppliedBody{
-				Target: "alice", Ref: "dnd5e:conditions:raging", Name: "Raging",
+				Target: "alice", Ref: "dnd5e:conditions:raging", Name: "Raging", SourceID: "alice",
 			}},
 		},
 		{
 			name: "condition removed",
-			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-removed","target":"bob","ref":"dnd5e:conditions:hidden","name":"Hidden","reason":"revealed"}}`,
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-removed","target":"bob","ref":"dnd5e:conditions:hidden","name":"Hidden","reason":"revealed","source_id":"alice"}}`,
 			want: ActivationResultBody{Actor: "alice", ConditionRemoved: &ConditionRemovedBody{
-				Target: "bob", Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
+				Target: "bob", Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed", SourceID: "alice",
 			}},
 		},
 		{
@@ -710,6 +721,28 @@ func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
 				}
 			}
 			require.Equal(t, 1, populated, "one payload must produce exactly one result body")
+		})
+	}
+}
+
+func TestRollCalculationDecodesSourceQualifiedSubtractionStrictly(t *testing.T) {
+	valid := json.RawMessage(`{"components":[` +
+		`{"source":{"ref":"dnd5e:actions:death_save","name":"Death Saving Throw"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[10],"final_rolls":[10],"subtotal":10}},` +
+		`{"source":{"ref":"dnd5e:spells:bane","name":"Bane","source_id":"bard-a"},"dice":{"notation":"1d4","die_size":4,"original_rolls":[3],"final_rolls":[3],"subtotal":3},"subtract_dice":true}],"total":7}`)
+	calculation, ok := decodeRollCalculation(valid)
+	require.True(t, ok)
+	require.Equal(t, 7, calculation.Total)
+	require.True(t, calculation.Components[1].SubtractDice)
+	require.Equal(t, "bard-a", calculation.Components[1].Source.SourceID)
+
+	for name, raw := range map[string]json.RawMessage{
+		"subtraction without source id": bytes.Replace(valid, []byte(`,"source_id":"bard-a"`), nil, 1),
+		"missing source ref":            bytes.Replace(valid, []byte(`"ref":"dnd5e:spells:bane",`), nil, 1),
+		"mismatched total":              bytes.Replace(valid, []byte(`"total":7`), []byte(`"total":8`), 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, accepted := decodeRollCalculation(raw)
+			require.False(t, accepted)
 		})
 	}
 }

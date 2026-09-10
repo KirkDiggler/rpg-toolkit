@@ -1099,6 +1099,7 @@ type DeathSaveBody struct {
 	HPRestored        int                   `json:"hp_restored"`
 	Continuation      DeathSaveContinuation `json:"continuation"`
 	PresentationID    string                `json:"presentation_id"`
+	Calculation       *RollCalculation      `json:"calculation,omitempty"`
 }
 
 func (DeathSaveBody) isEventBody() {}
@@ -1120,6 +1121,10 @@ type RollSource struct {
 
 	// Label is the source's role within its calculation, when it has one.
 	Label string `json:"label,omitempty"`
+
+	// SourceID is the entity responsible for this contribution, when the
+	// provider qualifies it. Subtractive dice require one.
+	SourceID string `json:"source_id,omitempty"`
 }
 
 // DiceReroll records one ordered replacement of a die face and its source.
@@ -1180,6 +1185,9 @@ type RollComponent struct {
 	// contributed one — even when that value is zero. Nil means the modifier
 	// did not participate; a present zero is a real zero.
 	Modifier *int `json:"modifier,omitempty"`
+
+	// SubtractDice subtracts Dice.Subtotal while retaining positive die faces.
+	SubtractDice bool `json:"subtract_dice,omitempty"`
 }
 
 // RollCalculation records the sourced components and authoritative total of
@@ -1288,6 +1296,9 @@ type StruckBody struct {
 	// player's behalf, and every attack beat recorded before shared dice
 	// existed all say it, and a client rolls its own die for them.
 	PresentationID string `json:"presentation_id,omitempty"`
+
+	// Calculation is the authoritative sourced attack-roll arithmetic.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 func (StruckBody) isEventBody() {}
@@ -1314,6 +1325,9 @@ type MissedBody struct {
 	// [StruckBody.PresentationID]. A whiff is the throw a table most wants to
 	// watch together: the die that clatters and comes up short is the drama.
 	PresentationID string `json:"presentation_id,omitempty"`
+
+	// Calculation is the authoritative sourced attack-roll arithmetic.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 func (MissedBody) isEventBody() {}
@@ -1331,11 +1345,17 @@ func (ActivatedBody) isEventBody() {}
 
 // CastBody is EventCast's typed body. Spell is copied from the selected
 // server-authored declaration; Session does not derive its name from its ref.
-// Target is empty for a cast that names nobody.
 type CastBody struct {
-	Actor  string   `json:"actor"`
-	Spell  SpellRef `json:"spell"`
-	Target string   `json:"target,omitempty"`
+	Actor string   `json:"actor"`
+	Spell SpellRef `json:"spell"`
+
+	// Target is the legacy single-target projection. It is populated only when
+	// Targets contains exactly one member.
+	// Deprecated: use Targets.
+	Target string `json:"target,omitempty"`
+
+	// Targets is the canonical ordered target list.
+	Targets []string `json:"targets"`
 }
 
 func (CastBody) isEventBody() {}
@@ -1369,6 +1389,9 @@ type SavedBody struct {
 	// Source is the spell whose gate demanded the roll, so a client can say
 	// what was resisted without holding the cast beat beside it.
 	Source SpellRef `json:"source"`
+
+	// Calculation is the authoritative sourced save arithmetic.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 func (SavedBody) isEventBody() {}
@@ -1489,18 +1512,20 @@ type DamageAppliedBody struct {
 
 // ConditionAppliedBody identifies a condition attached to a target.
 type ConditionAppliedBody struct {
-	Target string `json:"target"`
-	Ref    string `json:"ref"`
-	Name   string `json:"name"`
+	Target   string `json:"target"`
+	Ref      string `json:"ref"`
+	Name     string `json:"name"`
+	SourceID string `json:"source_id,omitempty"`
 }
 
 // ConditionRemovedBody identifies a condition removed from a target and the
 // provider-authored reason it ended.
 type ConditionRemovedBody struct {
-	Target string `json:"target"`
-	Ref    string `json:"ref"`
-	Name   string `json:"name"`
-	Reason string `json:"reason"`
+	Target   string `json:"target"`
+	Ref      string `json:"ref"`
+	Name     string `json:"name"`
+	Reason   string `json:"reason"`
+	SourceID string `json:"source_id,omitempty"`
 }
 
 // CapacityGrantedBody carries the member and provider-authored description of

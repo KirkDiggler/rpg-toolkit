@@ -436,6 +436,8 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.False(out.Critical)
 	s.Equal(8, out.Damage, "d8 scripted to 5, plus 3 STR")
 	s.NotZero(out.Seq)
+	s.Require().NotNil(out.Calculation)
+	s.Equal(out.Total, out.Calculation.Total)
 
 	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
@@ -445,6 +447,9 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.JSONEq(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
+			`"calculation":{"components":[`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[15],"final_rolls":[15],"subtotal":15}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":20},`+
 			`"damage_components":[`+
 			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
 			`"dice":{"notation":"d8","die_size":8,"original_rolls":[5],"final_rolls":[5],"subtotal":5}},"damage_type":"slashing"},`+
@@ -469,6 +474,9 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 	s.JSONEq(
 		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
 			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
+			`"calculation":{"components":[`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[2],"final_rolls":[2],"subtotal":2}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":7},`+
 			`"presentation_id":"presentation-test-id"}`,
 		string(story[len(story)-1].Payload))
 }

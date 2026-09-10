@@ -63,6 +63,7 @@ type DeathSaveOutput struct {
 	Seq               uint64                `json:"seq"`
 	Saved             SaveReport            `json:"saved"`
 	Delivery          DeliveryReport        `json:"delivery"`
+	Calculation       *RollCalculation      `json:"calculation,omitempty"`
 }
 
 // deathSaveResult is projected exactly once from the provider and then reused
@@ -83,6 +84,7 @@ type deathSaveResult struct {
 	HPRestored        int
 	Continuation      DeathSaveContinuation
 	PresentationID    string
+	Calculation       *RollCalculation
 }
 
 // DeathSave executes the active Dying character's selected current offer.
@@ -218,6 +220,7 @@ func projectDeathSaveResult(
 		Recovered: in.RegainedConscious, HPRestored: in.HPRestored,
 		Continuation:   DeathSaveContinuation(in.Continuation),
 		PresentationID: presentationID,
+		Calculation:    sessionRollCalculationFor(rollCalculationFor(in.Calculation)),
 	}
 }
 
@@ -233,6 +236,7 @@ func deathSaveRecord(member string, result deathSaveResult) *encounter.RecordInp
 			Stabilized:        result.Stabilized, Dead: result.Dead,
 			Recovered: result.Recovered, HPRestored: result.HPRestored,
 			Continuation: string(result.Continuation), PresentationID: result.PresentationID,
+			Calculation: validationCalculationFor(result.Calculation),
 		},
 	}
 }
@@ -282,5 +286,6 @@ func (r deathSaveResult) output(
 		Stabilized: r.Stabilized, Dead: r.Dead, Recovered: r.Recovered,
 		HPRestored: r.HPRestored, Continuation: r.Continuation,
 		PresentationID: r.PresentationID, Seq: seq, Saved: saved, Delivery: delivery,
+		Calculation: r.Calculation,
 	}
 }

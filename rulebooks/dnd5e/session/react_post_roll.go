@@ -226,6 +226,7 @@ func recordStrike(
 		},
 
 		PresentationID: presentationID,
+		Calculation:    rollCalculationFor(struck.Calculation),
 	}
 	if struck.Hit {
 		recorded.DamageComponents = recordDamageComponents(struck.DamageComponents)
