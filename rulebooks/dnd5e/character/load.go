@@ -295,16 +295,8 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		weaponProficiencies: d.WeaponProficiencies,
 		toolProficiencies:   d.ToolProficiencies,
 		equipmentSlots:      d.EquipmentSlots,
-		// Round-trip fix (#659): SpellSlots and ClassResources are written
-		// by ToData (character.go ~954-957) via maps.Clone, but were not
-		// being read back here. A finalized character round-tripping through
-		// Data lost its spell slots and class resources, breaking any
-		// consumer that gates on them — most visibly Wave 2.11d's
-		// applyReactionConditions.hasFirstLevelSpellSlot check in rpg-api
-		// that decides whether to Apply()  the Shield reaction.
-		// maps.Clone(nil) safely returns nil; consumers (hasFirstLevelSpellSlot,
-		// etc.) already handle the nil-map case.
-		spellSlots:      maps.Clone(d.SpellSlots),
+		// ClassResources remains legacy class state. Spell slots do not: the
+		// generic recoverable Resources map is their sole mutable authority.
 		classResources:  maps.Clone(d.ClassResources),
 		subscriptionIDs: make([]string, 0),
 		policy:          policy,

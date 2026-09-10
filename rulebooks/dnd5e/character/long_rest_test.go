@@ -193,6 +193,27 @@ func TestLongRestSuite(t *testing.T) {
 	suite.Run(t, new(LongRestTestSuite))
 }
 
+// TestLongRestRestoresTheLevelOneSpellSlotResource catches spell slots being
+// special-cased outside the canonical recoverable-resource path.
+func TestLongRestRestoresTheLevelOneSpellSlotResource(t *testing.T) {
+	ctx := context.Background()
+	data := longRestEconomyTestData(nil)
+	data.Resources = map[coreResources.ResourceKey]RecoverableResourceData{
+		resources.SpellSlotLevel1: {
+			Current: 1, Maximum: 2, ResetType: coreResources.ResetLongRest,
+		},
+	}
+	char, err := Load(ctx, data)
+	require.NoError(t, err)
+	bus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, char, bus))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+
+	require.NoError(t, char.LongRest(ctx))
+	require.Equal(t, 2, char.GetResource(resources.SpellSlotLevel1).Current())
+	require.Equal(t, 2, char.ToData().Resources[resources.SpellSlotLevel1].Current)
+}
+
 func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
 	ctx := context.Background()
 	data := longRestEconomyTestData(&ActionEconomyData{
@@ -376,7 +397,6 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 		MaxHitPoints:   36,
 		ArmorClass:     16,
 		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 2},
-		SpellSlots:     map[int]SpellSlotData{1: {Max: 3, Used: 2}},
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			shortRestPool:     {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
 			resources.HitDice: {Current: 0, Maximum: 4, ResetType: coreResources.ResetLongRest},
@@ -407,7 +427,6 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 	require.Equal(t, 1, restoredSecondWind.Uses)
 	require.Equal(t, 1, restoredSecondWind.MaxUses)
 
-	require.Equal(t, 0, got.SpellSlots[1].Used)
 }
 
 func featureByRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.RawMessage {

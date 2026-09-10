@@ -61,7 +61,30 @@ tells you the shape so you know to go looking.
 
 This workspace moves fast pre-v1.0, and the version system is what makes that
 safe. Internalize this model before reasoning about releases, freezes, or
-"breaking" changes:
+"breaking" changes.
+
+### Pull requests follow release-unit boundaries
+
+These are hard rules, including when several modules change for one feature:
+
+1. **One nearest-`go.mod` module per PR.** CI builds and tags each Go module as
+   an independent release unit, so a PR must contain changes for exactly one
+   module as determined by the nearest `go.mod`. Repository-level docs may
+   accompany the relevant module PR.
+2. **Nested modules are separate PRs.** A nested module has its own `go.mod` and
+   therefore gets its own PR even when its changes implement the same feature
+   as its parent or sibling modules.
+3. **Open a draft on the first working push.** Push meaningful checkpoints,
+   create the draft immediately, and update its description or comments as
+   checkpoints and validation evidence accumulate.
+4. **Final gates are readiness gates, not visibility gates.** Tests, lint, and
+   review must pass before marking a PR ready; they must not delay publishing
+   the first working draft.
+5. **Publish providers before consumers.** Merge the provider, wait for CI to
+   mint its real module tag, then update the consumer's committed pin to that
+   tag. The consumer must not merge before that pin update.
+
+The version model behind those rules is:
 
 1. **A tag can't break you. Only a bump you choose can.** Every module pins its
    dependencies by exact version in its own `go.mod`. A merged change — even a
@@ -350,13 +373,15 @@ git checkout -b fix/NNN-short-slug    # or feat/, docs/
 git add -A
 git commit -m "type: description"
 git push -u origin fix/NNN-short-slug
-gh pr create                          # ready for review — not draft
+gh pr create --draft                  # publish the first working checkpoint
 ```
 
-Open PRs ready-for-review and drive CI green; draft PRs sit outside the
-review queue. Branch from and merge to `main` — there is no `dev` here.
+Open a draft PR on the first working push and keep its checkpoint and
+validation evidence current. Mark it ready only after the final gates pass;
+those gates never delay draft visibility. Branch from and merge to `main` —
+there is no `dev` here.
 
-**Development checklist:**
+**Final-readiness checklist (not a draft-publication gate):**
 1. Always check existing patterns in similar modules
 2. Read Journey and ADR docs before implementing new features
 3. Never create files unless necessary - prefer editing existing ones

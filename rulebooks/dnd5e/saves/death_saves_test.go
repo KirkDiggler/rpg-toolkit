@@ -9,6 +9,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type DeathSaveTestSuite struct {
@@ -48,8 +50,9 @@ func (s *DeathSaveTestSuite) TestRoll1AddsTwoFailures() {
 
 	state := &DeathSaveState{}
 	input := &DeathSaveInput{
-		Roller: s.mockRoller,
-		State:  state,
+		Roller:    s.mockRoller,
+		State:     state,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
 	result, err := MakeDeathSave(s.ctx, input)
@@ -73,8 +76,9 @@ func (s *DeathSaveTestSuite) TestRoll2To9AddsOneFailure() {
 
 			state := &DeathSaveState{}
 			input := &DeathSaveInput{
-				Roller: s.mockRoller,
-				State:  state,
+				Roller:    s.mockRoller,
+				State:     state,
+				D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 			}
 
 			result, err := MakeDeathSave(s.ctx, input)
@@ -101,8 +105,9 @@ func (s *DeathSaveTestSuite) TestRoll10To19AddsOneSuccess() {
 
 			state := &DeathSaveState{}
 			input := &DeathSaveInput{
-				Roller: s.mockRoller,
-				State:  state,
+				Roller:    s.mockRoller,
+				State:     state,
+				D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 			}
 
 			result, err := MakeDeathSave(s.ctx, input)
@@ -124,8 +129,9 @@ func (s *DeathSaveTestSuite) TestRoll20RegainsConsciousness() {
 
 	state := &DeathSaveState{Failures: 2} // Even with 2 failures, nat 20 saves you
 	input := &DeathSaveInput{
-		Roller: s.mockRoller,
-		State:  state,
+		Roller:    s.mockRoller,
+		State:     state,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
 	result, err := MakeDeathSave(s.ctx, input)
@@ -147,8 +153,9 @@ func (s *DeathSaveTestSuite) TestThreeFailuresCausesDeath() {
 
 	state := &DeathSaveState{Failures: 2} // One more failure = death
 	input := &DeathSaveInput{
-		Roller: s.mockRoller,
-		State:  state,
+		Roller:    s.mockRoller,
+		State:     state,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
 	result, err := MakeDeathSave(s.ctx, input)
@@ -166,8 +173,9 @@ func (s *DeathSaveTestSuite) TestThreeSuccessesStabilizes() {
 
 	state := &DeathSaveState{Successes: 2} // One more success = stabilized
 	input := &DeathSaveInput{
-		Roller: s.mockRoller,
-		State:  state,
+		Roller:    s.mockRoller,
+		State:     state,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
 	result, err := MakeDeathSave(s.ctx, input)
@@ -185,8 +193,9 @@ func (s *DeathSaveTestSuite) TestRoll1WithTwoFailuresCausesDeath() {
 
 	state := &DeathSaveState{Failures: 2} // Rolling 1 adds 2, total = 4, capped at 3 = death
 	input := &DeathSaveInput{
-		Roller: s.mockRoller,
-		State:  state,
+		Roller:    s.mockRoller,
+		State:     state,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
 	result, err := MakeDeathSave(s.ctx, input)
@@ -195,6 +204,61 @@ func (s *DeathSaveTestSuite) TestRoll1WithTwoFailuresCausesDeath() {
 
 	s.True(result.State.Dead, "should be dead")
 	s.GreaterOrEqual(result.State.Failures, 3, "should have at least 3 failures")
+}
+
+func (s *DeathSaveTestSuite) TestBaneAdjustedTotalClassifiesFacesTwoThroughNineteen() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(10, nil)
+	s.mockRoller.EXPECT().RollN(s.ctx, 1, 4).Return([]int{1}, nil)
+
+	result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
+		Roller: s.mockRoller, State: &DeathSaveState{},
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
+		Contributions: []dnd5eEvents.DiceContribution{{
+			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+			Dice:   "1d4", Subtract: true,
+		}},
+	})
+	s.Require().NoError(err)
+	s.Equal(9, result.Calculation.Total)
+	s.Equal(1, result.FailuresAdded)
+	s.Zero(result.SuccessesAdded)
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(result.Calculation))
+}
+
+func (s *DeathSaveTestSuite) TestNaturalOnePolicyOverridesBaneAdjustedTotal() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(1, nil)
+	s.mockRoller.EXPECT().RollN(s.ctx, 1, 4).Return([]int{4}, nil)
+
+	result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
+		Roller: s.mockRoller, State: &DeathSaveState{},
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
+		Contributions: []dnd5eEvents.DiceContribution{{
+			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+			Dice:   "1d4", Subtract: true,
+		}},
+	})
+	s.Require().NoError(err)
+	s.Equal(-3, result.Calculation.Total)
+	s.True(result.IsCriticalFail)
+	s.Equal(2, result.FailuresAdded)
+}
+
+func (s *DeathSaveTestSuite) TestNaturalTwentyPolicyOverridesBaneAdjustedTotal() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil)
+	s.mockRoller.EXPECT().RollN(s.ctx, 1, 4).Return([]int{4}, nil)
+
+	result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
+		Roller: s.mockRoller, State: &DeathSaveState{Failures: 2},
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
+		Contributions: []dnd5eEvents.DiceContribution{{
+			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+			Dice:   "1d4", Subtract: true,
+		}},
+	})
+	s.Require().NoError(err)
+	s.Equal(16, result.Calculation.Total)
+	s.True(result.IsCriticalSuccess)
+	s.True(result.RegainedConsciousness)
 }
 
 // TestDamageWhileUnconsciousAddsOneFailure tests normal damage adds 1 failure
@@ -287,8 +351,9 @@ func (s *DeathSaveTestSuite) TestResultAuthorsExactProgressDeltas() {
 			s.SetupTest()
 			s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(tc.roll, nil)
 			result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
-				Roller: s.mockRoller,
-				State:  &DeathSaveState{},
+				Roller:    s.mockRoller,
+				State:     &DeathSaveState{},
+				D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 			})
 			s.Require().NoError(err)
 			s.Equal(tc.successes, result.SuccessesAdded)

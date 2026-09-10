@@ -96,7 +96,9 @@ func (c *UnconsciousCondition) Apply(ctx context.Context, bus events.EventBus) e
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, healingSubID)
 
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, c.CharacterID, c.Ref(), c.Remove)
+	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+		Address: ConditionAddressOf(c.CharacterID, c), Remove: c.Remove,
+	})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to long rest")

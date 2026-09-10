@@ -85,7 +85,6 @@ type Character struct {
 	inventory      []InventoryItem
 	wallet         currency.Money
 	equipmentSlots EquipmentSlots
-	spellSlots     map[int]SpellSlotData
 
 	// knownCantrips and knownSpells are the content refs this character knows.
 	// Parsed at load and kept as refs so a reader gets an identity rather than
@@ -253,6 +252,9 @@ type MakeSavingThrowInput struct {
 	// DC is the Difficulty Class that must be met or exceeded
 	DC int
 
+	// D20Source is the canonical effect/action source that caused this save.
+	D20Source dnd5eEvents.RollSource
+
 	// HasAdvantage indicates the character has advantage on this save
 	HasAdvantage bool
 
@@ -279,17 +281,47 @@ func (c *Character) MakeSavingThrow(
 	}
 
 	modifier := c.GetSavingThrowModifier(input.Ability)
+	contributions, err := c.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
+		Kind: dnd5eEvents.RollKindSavingThrow,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	return saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
-		Roller:          input.Roller,
-		EventBus:        c.bus,
-		SaverID:         c.GetID(),
-		Ability:         input.Ability,
-		DC:              input.DC,
-		Modifier:        modifier,
+		Roller:    input.Roller,
+		EventBus:  c.bus,
+		SaverID:   c.GetID(),
+		Ability:   input.Ability,
+		DC:        input.DC,
+		Modifier:  modifier,
+		D20Source: input.D20Source,
+		ModifierSource: dnd5eEvents.RollSource{
+			Ref: savingThrowAbilityRef(input.Ability), Name: input.Ability.Display(),
+		},
+		Contributions:   contributions.Contributions,
 		HasAdvantage:    input.HasAdvantage,
 		HasDisadvantage: input.HasDisadvantage,
 	})
+}
+
+func savingThrowAbilityRef(ability abilities.Ability) *core.Ref {
+	switch ability {
+	case abilities.STR:
+		return refs.Abilities.Strength()
+	case abilities.DEX:
+		return refs.Abilities.Dexterity()
+	case abilities.CON:
+		return refs.Abilities.Constitution()
+	case abilities.INT:
+		return refs.Abilities.Intelligence()
+	case abilities.WIS:
+		return refs.Abilities.Wisdom()
+	case abilities.CHA:
+		return refs.Abilities.Charisma()
+	default:
+		return nil
+	}
 }
 
 // SpendHitDiceInput contains parameters for spending hit dice during a short rest
@@ -435,19 +467,8 @@ func (c *Character) LongRest(ctx context.Context) error {
 		}
 	}
 
-	// Spell slots are persisted directly rather than as recoverable resources,
-	// so their long-rest reset belongs here with the other character-owned
-	// state and before feature/condition listeners hear the rest.
-	for level, slots := range c.spellSlots {
-		if slots.Used == 0 {
-			continue
-		}
-		slots.Used = 0
-		c.spellSlots[level] = slots
-	}
-
-	// Covers all four writes above — hit points, death saves, pools, spell
-	// slots — in one place, because a rest is one change to the sheet.
+	// Covers the hit-point, death-save, and resource writes above in one
+	// place, because a rest is one change to the sheet.
 	c.poolChanged()
 
 	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
@@ -591,6 +612,16 @@ func (c *Character) GetCombatAbility(id string) combatabilities.CombatAbility {
 // GetConditions returns all active conditions
 func (c *Character) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return c.conditions
+}
+
+// DescribeRollContributions returns the oldest applicable contribution in each
+// condition-declared stacking group from a copy of the current persisted order.
+func (c *Character) DescribeRollContributions(
+	input *dnd5eEvents.DescribeRollContributionsInput,
+) (*dnd5eEvents.DescribeRollContributionsOutput, error) {
+	current := append([]dnd5eEvents.ConditionBehavior(nil), c.conditions...)
+	return conditions.DescribeSelectedRollContributions(
+		&conditions.DescribeSelectedRollContributionsInput{Conditions: current, Request: input})
 }
 
 // GetHitPoints returns the character's current hit points
@@ -1027,9 +1058,6 @@ func (c *Character) ToData() *Data {
 	// Copy languages slice
 	data.Languages = c.languages
 
-	// Copy spell slots map directly since SpellSlotData is already the data type
-	data.SpellSlots = maps.Clone(c.spellSlots)
-
 	data.KnownCantrips = spellRefStrings(c.knownCantrips)
 	data.KnownSpells = spellRefStrings(c.knownSpells)
 
@@ -1210,8 +1238,9 @@ func (c *Character) onConditionRemoved(
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
 	var detachErrs []error
 	for _, cond := range c.conditions {
-		// Keep condition if it doesn't match the removed ref
-		if cond.Ref().String() != event.ConditionRef {
+		// All three identity fields match exactly. Empty source identifies only
+		// legacy-unqualified state and is never a wildcard.
+		if conditions.ConditionAddressOf(c.id, cond) != event.Address() {
 			filtered = append(filtered, cond)
 			continue
 		}

@@ -47,6 +47,11 @@ const (
 	// Charisma modifier and never fewer than one. Recovered on long rest.
 	// Used by: Bardic Inspiration.
 	Inspiration coreResources.ResourceKey = "inspiration"
+
+	// SpellSlotLevel1 is the canonical pool for first-level spell slots.
+	// Level-1 Bards start with two uses from their class progression and
+	// recover them on a long rest.
+	SpellSlotLevel1 coreResources.ResourceKey = "spell_slot_level_1"
 )
 
 // DisplayName returns the rulebook-owned display name for a resource key and
@@ -67,6 +72,8 @@ func DisplayName(key coreResources.ResourceKey) (string, bool) {
 		return "Action Surge", true
 	case Inspiration:
 		return "Bardic Inspiration", true
+	case SpellSlotLevel1:
+		return "1st-level Spell Slots", true
 	default:
 		return "", false
 	}

@@ -44,9 +44,11 @@ ref/key → definition or factory → runtime rule behavior → Data/JSON → ho
    `ToData` (or `ToJSON` for polymorphic conditions/features); rulebook loaders
    reconstruct behavior and subscriptions. The host persists the data but does
    not interpret it.
-5. **Composition is above rule resolution.** The top-level `encounter` module
-   currently composes D&D 5e monster decisions, combat resolution, spatial
-   state, and encounter events. It is D&D-5e-coupled today.
+5. **Live play has three composable layers.** [`encounter`](encounter/doc.go)
+   composes `play/*`, world, and spatial capabilities; [`resolution`](resolution/doc.go)
+   owns one interaction-scoped bus and executes rule behavior; [`session`](session/doc.go)
+   is the ID-and-repository host seam. See the [layer overview](overview.md) for
+   responsibilities, boundaries, and a worked mechanic.
 
 Loading has two halves, and they are separately callable: `character.Load` and
 `monstertraits.LoadMonster` turn data into a sheet with no event bus involved,
@@ -112,6 +114,7 @@ another `go.mod` for each content family.
 - [Monster package guide](monster/README.md)
 - [Add a mechanic](../../docs/how-to/add-a-mechanic.md)
 - [Add another rulebook entry](../../docs/how-to/add-a-rulebook-entry.md)
+- [Composable D&D 5e layer overview](overview.md)
 - [Rulebook architecture component](../../docs/architecture/components/rulebook-dnd5e.md)
 - [Data model and round trips](../../docs/architecture/data-model.md)
 - [Run tests](../../docs/how-to/run-tests.md)

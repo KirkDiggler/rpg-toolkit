@@ -118,7 +118,9 @@ func (p *ProneCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	}
 	p.subscriptionIDs = append(p.subscriptionIDs, subID)
 
-	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, p.CharacterID, p.Ref(), p.Remove)
+	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+		Address: ConditionAddressOf(p.CharacterID, p), Remove: p.Remove,
+	})
 	if err != nil {
 		_ = p.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to long rest")

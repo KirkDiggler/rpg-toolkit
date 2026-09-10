@@ -6,6 +6,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/rolls"
 )
 
 // DeathSaveState tracks the current state of death saving throws for a character at 0 HP.
@@ -33,6 +35,12 @@ type DeathSaveInput struct {
 
 	// State is the current death save state to update
 	State *DeathSaveState
+
+	// D20Source is the canonical death-save action source.
+	D20Source dnd5eEvents.RollSource
+
+	// Contributions are already selected by the dying creature's condition owner.
+	Contributions []dnd5eEvents.DiceContribution
 }
 
 // DeathSaveResult contains the outcome of a death saving throw
@@ -60,6 +68,9 @@ type DeathSaveResult struct {
 
 	// HPRestored is the HP restored (1 on a natural 20, 0 otherwise)
 	HPRestored int
+
+	// Calculation is the complete sourced d20 and contribution arithmetic.
+	Calculation *dnd5eEvents.RollCalculation
 }
 
 // DamageWhileUnconsciousInput contains parameters for taking damage while unconscious
@@ -84,17 +95,26 @@ type DamageWhileUnconsciousResult struct {
 //
 // D&D 5e death save rules:
 //   - Roll 1: Add 2 failures (critical fail)
-//   - Roll 2-9: Add 1 failure
-//   - Roll 10-19: Add 1 success
+//   - Roll 2-19: checked total below 10 adds 1 failure; 10 or more adds 1 success
 //   - Roll 20: Regain consciousness at 1 HP (critical success)
 //   - 3 failures: Character dies
 //   - 3 successes: Character stabilizes (unconscious, no more saves needed)
+//
+// Selected dice contributions affect only the checked total for faces 2..19;
+// natural 1 and natural 20 retain the policy above.
 func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult, error) {
 	if input == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
 	}
 	if input.State == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "state cannot be nil")
+	}
+
+	if err := validateCalculationSource("d20", input.D20Source); err != nil {
+		return nil, err
+	}
+	if err := rolls.ValidateContributions(input.Contributions); err != nil {
+		return nil, rpgerr.Wrap(err, "death save contributions are invalid")
 	}
 
 	roller := input.Roller
@@ -106,6 +126,25 @@ func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult
 	if err != nil {
 		return nil, err
 	}
+	resolved, err := rolls.ResolveContributions(ctx, &rolls.ResolveContributionsInput{
+		Roller: roller, Contributions: input.Contributions,
+	})
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "failed to resolve death save contributions")
+	}
+	components := make([]dnd5eEvents.RollComponent, 0, 1+len(resolved.Components))
+	components = append(components, dnd5eEvents.RollComponent{
+		Source: cloneRollSource(input.D20Source),
+		Dice: &dnd5eEvents.DiceTrace{
+			Notation: "1d20", DieSize: 20, OriginalRolls: []int{roll},
+			FinalRolls: []int{roll}, Subtotal: roll,
+		},
+	})
+	components = append(components, resolved.Components...)
+	calculation := calculationFor(components)
+	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
+		return nil, rpgerr.Wrap(err, "death save calculation is invalid")
+	}
 
 	// Copy state to avoid modifying the original directly
 	newState := &DeathSaveState{
@@ -116,8 +155,9 @@ func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult
 	}
 
 	result := &DeathSaveResult{
-		Roll:  roll,
-		State: newState,
+		Roll:        roll,
+		State:       newState,
+		Calculation: calculation,
 	}
 
 	// Apply roll results
@@ -127,12 +167,11 @@ func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult
 		result.IsCriticalFail = true
 		result.FailuresAdded = 2
 		newState.Failures += result.FailuresAdded
-	case roll >= 2 && roll <= 9:
-		// Failure: 1 failure
+	case roll >= 2 && roll <= 19 && calculation.Total < 10:
+		// Faces 2..19 use the checked total against DC 10.
 		result.FailuresAdded = 1
 		newState.Failures += result.FailuresAdded
-	case roll >= 10 && roll <= 19:
-		// Success: 1 success
+	case roll >= 2 && roll <= 19:
 		result.SuccessesAdded = 1
 		newState.Successes += result.SuccessesAdded
 	case roll == 20:

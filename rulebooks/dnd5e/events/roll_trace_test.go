@@ -105,6 +105,74 @@ func TestRollCalculationValidNegativeModifier(t *testing.T) {
 	require.NoError(t, ValidateRollCalculation(calc))
 }
 
+func TestRollCalculationValidSubtractiveDiceAndSignedModifier(t *testing.T) {
+	calc := &RollCalculation{Components: []RollComponent{
+		{
+			Source: RollSource{Ref: refs.Actions.Strike(), Name: "Strike"},
+			Dice: &DiceTrace{Notation: "1d20", DieSize: 20,
+				OriginalRolls: []int{14}, FinalRolls: []int{14}, Subtotal: 14},
+		},
+		{
+			Source:   RollSource{Ref: refs.Abilities.Charisma(), Name: "Charisma"},
+			Modifier: intPtr(4),
+		},
+		{
+			Source: RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+			Dice: &DiceTrace{Notation: "1d4", DieSize: 4,
+				OriginalRolls: []int{3}, FinalRolls: []int{3}, Subtotal: 3},
+			Modifier: intPtr(-2), SubtractDice: true,
+		},
+	}, Total: 13}
+
+	require.NoError(t, ValidateRollCalculation(calc))
+}
+
+func TestRollCalculationRejectsInvalidSubtractiveDice(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*RollCalculation)
+	}{
+		{
+			name: "subtract without dice",
+			change: func(calc *RollCalculation) {
+				calc.Components[1].SubtractDice = true
+			},
+		},
+		{
+			name: "subtractive modification without responsible entity",
+			change: func(calc *RollCalculation) {
+				calc.Components[0] = RollComponent{
+					Source: RollSource{Ref: refs.Spells.Bless(), Name: "Bless"},
+					Dice: &DiceTrace{Notation: "1d4", DieSize: 4,
+						OriginalRolls: []int{2}, FinalRolls: []int{2}, Subtotal: 2},
+					SubtractDice: true,
+				}
+				calc.Total = 1
+			},
+		},
+		{
+			name: "total ignores subtraction",
+			change: func(calc *RollCalculation) {
+				calc.Components[0] = RollComponent{
+					Source: RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+					Dice: &DiceTrace{Notation: "1d4", DieSize: 4,
+						OriginalRolls: []int{2}, FinalRolls: []int{2}, Subtotal: 2},
+					SubtractDice: true,
+				}
+				calc.Total = 5
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calc := validRollCalculation()
+			test.change(calc)
+			require.Error(t, ValidateRollCalculation(calc))
+		})
+	}
+}
+
 func TestRollCalculationValidation(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -135,9 +203,15 @@ func TestRollCalculationValidation(t *testing.T) {
 			},
 		},
 		{
-			name: "face is outside die range",
+			name: "zero face is outside die range",
 			change: func(calc *RollCalculation) {
 				calc.Components[0].Dice.OriginalRolls[0] = 0
+			},
+		},
+		{
+			name: "negative face is outside die range",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.OriginalRolls[0] = -1
 			},
 		},
 		{

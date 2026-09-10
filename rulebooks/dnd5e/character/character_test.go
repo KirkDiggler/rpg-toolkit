@@ -2,6 +2,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -12,9 +13,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -397,8 +400,9 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowFunctionExists() {
 
 	// Make a saving throw against DC 15
 	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability: abilities.WIS,
-		DC:      15,
+		Ability:   abilities.WIS,
+		DC:        15,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
 	})
 
 	s.Require().NoError(err)
@@ -423,8 +427,9 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowRefusesUnattachedChar
 	)
 
 	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability: abilities.WIS,
-		DC:      15,
+		Ability:   abilities.WIS,
+		DC:        15,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
 	})
 
 	s.Require().Error(err)
@@ -440,6 +445,29 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowRefusesUnattachedChar
 // advantage on DEX saves keyed by SaverID; if a refactor ever swaps in a
 // different bus or id, this modifier vanishes and this test fails while every
 // arithmetic-only test stays green.
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowResolvesRecipientSelectedBane() {
+	char := s.createTestCharacter(map[string]int{"con": 10}, nil)
+	char.bus = events.NewEventBus()
+	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: char.GetID(), SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
+	})
+	s.Require().NoError(err)
+	char.conditions = append(char.conditions, baned)
+	roller := &scriptedRoller{results: []int{10, 3}}
+
+	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
+		Roller: roller, Ability: abilities.CON, DC: 10,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
+	})
+	s.Require().NoError(err)
+	s.Equal([]int{20, 4}, roller.calls)
+	s.Equal(7, result.Total)
+	s.False(result.Success)
+	s.Require().Len(result.Calculation.Components, 3)
+	s.True(result.Calculation.Components[2].SubtractDice)
+	s.Equal("bard-a", result.Calculation.Components[2].Source.SourceID)
+}
+
 func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowConsultsParkedBusConditions() {
 	char := s.createTestCharacter(
 		map[string]int{"dex": 14},
@@ -451,8 +479,9 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowConsultsParkedBusCond
 	s.Require().NoError(dodging.Apply(s.ctx, char.bus))
 
 	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability: abilities.DEX,
-		DC:      10,
+		Ability:   abilities.DEX,
+		DC:        10,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
 	})
 
 	s.Require().NoError(err)
@@ -847,17 +876,19 @@ func TestCharacterHitDiceSuite(t *testing.T) {
 	suite.Run(t, new(CharacterHitDiceTestSuite))
 }
 
-// CharacterLoadFromDataRoundTripSuite verifies that LoadFromData reads every
-// Data field that ToData writes. Regression coverage for issue #659: SpellSlots
-// and ClassResources were written by ToData (character.go ~954-957) but
-// silently dropped by LoadFromData's constructor — a finalized character
-// round-tripping through Data emerged with empty maps.
-//
-// Wave 2.11d's rpg-api applyReactionConditions gates Shield-Apply on
-// hasFirstLevelSpellSlot(char), which reads ToData().SpellSlots. Before the
-// fix, every spellcaster rehydrated from the encounter repo had zero slots,
-// so Shield was never Apply()'d, so the Shield reaction prompt never fired
-// in production.
+// TestLegacySpellSlotsAreNotReadOrWritten catches the retired JSON shape
+// surviving as hidden mutable state at the character persistence boundary.
+func TestLegacySpellSlotsAreNotReadOrWritten(t *testing.T) {
+	var data Data
+	require.NoError(t, json.Unmarshal([]byte(`{"id":"legacy","spell_slots":{"1":{"max":2,"used":1}}}`), &data))
+
+	raw, err := json.Marshal(&data)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "spell_slots")
+}
+
+// CharacterLoadFromDataRoundTripSuite verifies that LoadFromData reads the
+// legacy class-resource field and current character data that ToData writes.
 type CharacterLoadFromDataRoundTripSuite struct {
 	suite.Suite
 	ctx context.Context
@@ -868,28 +899,6 @@ type CharacterLoadFromDataRoundTripSuite struct {
 func (s *CharacterLoadFromDataRoundTripSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
-}
-
-// TestSpellSlotsSurviveRoundTrip is the core regression: SpellSlots populated
-// on input Data must equal SpellSlots emitted by ToData after LoadFromData.
-func (s *CharacterLoadFromDataRoundTripSuite) TestSpellSlotsSurviveRoundTrip() {
-	in := s.minimalSpellcasterData()
-	in.SpellSlots = map[int]SpellSlotData{
-		1: {Max: 2, Used: 0},
-		2: {Max: 1, Used: 0},
-	}
-
-	char, err := LoadFromData(s.ctx, in, s.bus)
-	s.Require().NoError(err, "LoadFromData must succeed for a minimal spellcaster")
-	s.Require().NotNil(char)
-
-	out := char.ToData()
-	s.Require().NotNil(out, "ToData must not return nil after LoadFromData")
-	s.Require().NotNil(out.SpellSlots, "round-tripped SpellSlots must not be nil")
-
-	s.Equal(2, out.SpellSlots[1].Max, "level-1 slot Max must survive round-trip")
-	s.Equal(0, out.SpellSlots[1].Used, "level-1 slot Used must survive round-trip")
-	s.Equal(1, out.SpellSlots[2].Max, "level-2 slot Max must survive round-trip")
 }
 
 // TestAppearanceSurvivesRoundTrip verifies that the complete character data
@@ -930,21 +939,6 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestClassResourcesSurviveRoundTrip
 	s.Require().True(ok, "rage class resource must survive round-trip")
 	s.Equal(2, rage.Max, "rage Max must survive round-trip")
 	s.Equal(2, rage.Current, "rage Current must survive round-trip")
-}
-
-// TestNilSpellSlots_StaysNil verifies the input-nil case: a character with
-// no SpellSlots on input must produce nil (not empty map) on output, so the
-// nil-map handling in consumers (e.g. hasFirstLevelSpellSlot) continues to
-// work correctly. maps.Clone(nil) returns nil — confirming.
-func (s *CharacterLoadFromDataRoundTripSuite) TestNilSpellSlots_StaysNil() {
-	in := s.minimalSpellcasterData()
-	in.SpellSlots = nil
-
-	char, err := LoadFromData(s.ctx, in, s.bus)
-	s.Require().NoError(err)
-
-	out := char.ToData()
-	s.Nil(out.SpellSlots, "nil input SpellSlots must round-trip as nil, not empty map")
 }
 
 // minimalSpellcasterData builds the smallest valid Data shape the test needs.

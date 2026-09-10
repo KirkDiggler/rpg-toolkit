@@ -10,6 +10,7 @@ var (
 	actionStrike        = &core.Ref{Module: Module, Type: TypeActions, ID: "strike"}
 	actionFlurryStrike  = &core.Ref{Module: Module, Type: TypeActions, ID: "flurry_strike"}
 	actionUnarmedStrike = &core.Ref{Module: Module, Type: TypeActions, ID: "unarmed_strike"}
+	actionDeathSave     = &core.Ref{Module: Module, Type: TypeActions, ID: "death_save"}
 )
 
 // Actions provides type-safe, discoverable references to D&D 5e combat actions.
@@ -35,3 +36,6 @@ func (n actionsNS) FlurryStrike() *core.Ref { return actionFlurryStrike }
 // UnarmedStrike returns the ref for the UnarmedStrike action.
 // UnarmedStrike is an attack made without a weapon.
 func (n actionsNS) UnarmedStrike() *core.Ref { return actionUnarmedStrike }
+
+// DeathSave returns the canonical ref for the separate death-saving-throw action.
+func (n actionsNS) DeathSave() *core.Ref { return actionDeathSave }

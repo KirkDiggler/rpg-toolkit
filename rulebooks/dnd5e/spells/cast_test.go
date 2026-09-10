@@ -8,10 +8,12 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
@@ -25,14 +27,47 @@ func TestCastContentSuite(t *testing.T) {
 	suite.Run(t, new(CastContentSuite))
 }
 
+func (s *CastContentSuite) TestBaneCompilesItsCompleteLevelOneProfile() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Bane, SpellSaveDC: 13})
+
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Equal(*refs.Spells.Bane(), definition.Ref)
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, definition.Cost.Pools[resources.SpellSlotLevel1])
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(30, profile.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, profile.Target)
+	s.Equal(1, profile.MinTargets)
+	s.Equal(3, profile.MaxTargets)
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.CHA}, profile.Save.Abilities)
+	s.Equal(13, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess)
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence)
+	s.Require().Len(profile.Effects, 1)
+	s.Equal(actions.CastRecipientTarget, profile.Effects[0].Recipient)
+	s.Equal(*refs.Conditions.Baned(), profile.Effects[0].Ref)
+	s.Require().NotNil(profile.Concentration)
+	s.Equal(10, profile.Concentration.TurnEnds)
+	s.True(profile.Concentration.SkipFirstTurnEnd)
+	s.True(spells.HasCastProfile(spells.Bane))
+	s.Equal([]spells.Spell{spells.Bane}, spells.Castable([]spells.Spell{spells.Bless, spells.Bane}))
+}
+
 func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {
-	definition := spells.CastDefinition(spells.SacredFlame, 14)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.SacredFlame, SpellSaveDC: 14})
 	s.Require().NotNil(definition)
 	s.Require().NoError(definition.Validate())
 	s.Equal(refs.Spells.SacredFlame().String(), definition.Ref.String())
 	s.Equal("Sacred Flame", definition.Name)
 	s.Nil(definition.Attack)
-	s.Nil(definition.Cost, "the existing cast door supplies payment")
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(definition.Cost.Pools, "cantrips spend no spell-slot pool")
 
 	profile := definition.Cast
 	s.Require().NotNil(profile)
@@ -56,7 +91,7 @@ func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantri
 }
 
 func (s *CastContentSuite) TestViciousMockeryCarriesItsSaveGateAndDamage() {
-	definition := spells.CastDefinition(spells.ViciousMockery, 13)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: 13})
 
 	s.Require().NotNil(definition)
 	s.Require().NoError(definition.Validate())
@@ -86,8 +121,8 @@ func (s *CastContentSuite) TestViciousMockeryCarriesItsSaveGateAndDamage() {
 }
 
 func (s *CastContentSuite) TestTheDCIsTheCastersRatherThanTheSpells() {
-	twelve := spells.CastDefinition(spells.ViciousMockery, 12)
-	fifteen := spells.CastDefinition(spells.ViciousMockery, 15)
+	twelve := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: 12})
+	fifteen := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: 15})
 
 	s.Require().NotNil(twelve)
 	s.Require().NotNil(fifteen)
@@ -96,7 +131,7 @@ func (s *CastContentSuite) TestTheDCIsTheCastersRatherThanTheSpells() {
 }
 
 func (s *CastContentSuite) TestTrueStrikeCarriesNoSave() {
-	definition := spells.CastDefinition(spells.TrueStrike, 13)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: 13})
 
 	s.Require().NotNil(definition)
 	s.Require().NoError(definition.Validate())
@@ -119,7 +154,7 @@ func (s *CastContentSuite) TestTrueStrikeCarriesNoSave() {
 // and the two turn ends it used to count for itself now live on the profile,
 // which is where the owning condition reads them.
 func (s *CastContentSuite) TestTrueStrikeDeclaresConcentration() {
-	definition := spells.CastDefinition(spells.TrueStrike, 13)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: 13})
 
 	s.Require().NotNil(definition)
 	s.Require().NotNil(definition.Cast.Concentration)
@@ -129,7 +164,7 @@ func (s *CastContentSuite) TestTrueStrikeDeclaresConcentration() {
 }
 
 func (s *CastContentSuite) TestViciousMockeryDeclaresNone() {
-	definition := spells.CastDefinition(spells.ViciousMockery, 13)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: 13})
 
 	s.Require().NotNil(definition)
 	s.Nil(definition.Cast.Concentration, "an insult that landed needs nobody to hold it")
@@ -137,13 +172,13 @@ func (s *CastContentSuite) TestViciousMockeryDeclaresNone() {
 
 func (s *CastContentSuite) TestACantripWithNoContentMintsNothing() {
 	for _, id := range []spells.Spell{spells.MageHand, spells.Light, spells.Prestidigitation} {
-		s.Nil(spells.CastDefinition(id, 13), "%s has no cast content in this build", id)
+		s.Nil(spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13}), "%s has no cast content in this build", id)
 		s.False(spells.HasCastProfile(id))
 	}
 }
 
 func (s *CastContentSuite) TestASpellThisBuildNeverHeardOfMintsNothing() {
-	s.Nil(spells.CastDefinition("song-of-nothing", 13))
+	s.Nil(spells.CastDefinition(spells.CastDefinitionInput{Spell: "song-of-nothing", SpellSaveDC: 13}))
 	s.False(spells.HasCastProfile("song-of-nothing"))
 }
 
@@ -161,9 +196,12 @@ func (s *CastContentSuite) TestCastableIsTheTwoThisBuildCanCast() {
 
 func (s *CastContentSuite) TestEveryCastableCantripHasAValidDefinition() {
 	for _, id := range spells.Castable(spells.BardCantrips) {
-		definition := spells.CastDefinition(id, 13)
+		definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
 		s.Require().NotNil(definition, "%s", id)
 		s.Require().NoError(definition.Validate(), "%s", id)
 		s.Nil(definition.Attack, "%s declares a cast, not an attack", id)
+		s.Require().NotNil(definition.Cost, "%s", id)
+		s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard], "%s", id)
+		s.Empty(definition.Cost.Pools, "%s is a cantrip", id)
 	}
 }

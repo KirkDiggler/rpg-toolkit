@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type SavingThrowTestSuite struct {
@@ -39,6 +40,34 @@ func (s *SavingThrowTestSuite) TearDownTest() {
 	s.ctrl.Finish()
 }
 
+func (s *SavingThrowTestSuite) withSources(input *SavingThrowInput) *SavingThrowInput {
+	if input == nil {
+		return nil
+	}
+	if input.D20Source.Ref == nil {
+		input.D20Source = dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"}
+	}
+	if input.ModifierSource.Ref == nil {
+		var ref = refs.Abilities.Constitution()
+		switch input.Ability {
+		case abilities.STR:
+			ref = refs.Abilities.Strength()
+		case abilities.DEX:
+			ref = refs.Abilities.Dexterity()
+		case abilities.CON:
+			ref = refs.Abilities.Constitution()
+		case abilities.INT:
+			ref = refs.Abilities.Intelligence()
+		case abilities.WIS:
+			ref = refs.Abilities.Wisdom()
+		case abilities.CHA:
+			ref = refs.Abilities.Charisma()
+		}
+		input.ModifierSource = dnd5eEvents.RollSource{Ref: ref, Name: input.Ability.Display()}
+	}
+	return input
+}
+
 // TestBasicSuccess tests that a saving throw succeeds when roll + modifier >= DC
 func (s *SavingThrowTestSuite) TestBasicSuccess() {
 	// Roll 10 with +3 modifier should succeed against DC 13 (10+3=13 >= 13)
@@ -53,7 +82,7 @@ func (s *SavingThrowTestSuite) TestBasicSuccess() {
 		Modifier: 3,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -63,6 +92,11 @@ func (s *SavingThrowTestSuite) TestBasicSuccess() {
 	s.True(result.Success, "13 should succeed against DC 13")
 	s.False(result.IsNat1, "10 is not a natural 1")
 	s.False(result.IsNat20, "10 is not a natural 20")
+	s.Require().NotNil(result.Calculation)
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(result.Calculation))
+	s.Require().Len(result.Calculation.Components, 2)
+	s.Equal(10, result.Calculation.Components[0].Dice.Subtotal)
+	s.Equal(3, *result.Calculation.Components[1].Modifier)
 }
 
 // TestBasicFailure tests that a saving throw fails when roll + modifier < DC
@@ -79,7 +113,7 @@ func (s *SavingThrowTestSuite) TestBasicFailure() {
 		Modifier: 3,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -106,7 +140,7 @@ func (s *SavingThrowTestSuite) TestAdvantage() {
 		HasAdvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -133,7 +167,7 @@ func (s *SavingThrowTestSuite) TestDisadvantage() {
 		HasDisadvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -159,7 +193,7 @@ func (s *SavingThrowTestSuite) TestNatural1() {
 		Modifier: 10, // Even with a huge modifier, nat 1 is still detected
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -185,7 +219,7 @@ func (s *SavingThrowTestSuite) TestNatural20() {
 		Modifier: -2, // Even with a negative modifier, nat 20 is still detected
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -212,7 +246,7 @@ func (s *SavingThrowTestSuite) TestNatural20WithAdvantage() {
 		HasAdvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -238,7 +272,7 @@ func (s *SavingThrowTestSuite) TestNatural1WithDisadvantage() {
 		HasDisadvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -262,7 +296,7 @@ func (s *SavingThrowTestSuite) TestNegativeModifier() {
 		Modifier: -2,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -285,7 +319,7 @@ func (s *SavingThrowTestSuite) TestZeroModifier() {
 		Modifier: 0,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -311,13 +345,69 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 		HasDisadvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
 	s.Equal(11, result.Roll, "should roll normally when advantage and disadvantage cancel")
 	s.Equal(13, result.Total, "total should be 11 + 2 = 13")
 	s.False(result.Success, "13 should fail against DC 15")
+}
+
+func (s *SavingThrowTestSuite) TestBaneContributionProducesCheckedCalculationWithOneD4UnderAdvantage() {
+	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{12, 16}, nil)
+	s.mockRoller.EXPECT().RollN(s.ctx, 1, 4).Return([]int{4}, nil)
+
+	result, err := MakeSavingThrow(s.ctx, &SavingThrowInput{
+		Roller: s.mockRoller, EventBus: s.bus, SaverID: "hero", Ability: abilities.CHA,
+		DC: 14, Modifier: 2, HasAdvantage: true,
+		D20Source:      dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
+		ModifierSource: dnd5eEvents.RollSource{Ref: refs.Abilities.Charisma(), Name: "Charisma"},
+		Contributions: []dnd5eEvents.DiceContribution{{
+			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+			Dice:   "1d4", Subtract: true,
+		}},
+	})
+	s.Require().NoError(err)
+	s.Equal(16, result.Roll)
+	s.Equal(14, result.Total)
+	s.True(result.Success)
+	s.Require().NotNil(result.Calculation)
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(result.Calculation))
+	s.Require().Len(result.Calculation.Components, 3)
+	s.Equal([]int{12, 16}, result.Calculation.Components[0].Dice.OriginalRolls)
+	s.Equal([]int{1}, result.Calculation.Components[0].Dice.KeptIndices)
+	s.True(result.Calculation.Components[2].SubtractDice)
+	s.Equal([]int{4}, result.Calculation.Components[2].Dice.FinalRolls)
+}
+
+func (s *SavingThrowTestSuite) TestContributionDescriptionsAreValidatedBeforeD20RNG() {
+	input := &SavingThrowInput{
+		Roller: s.mockRoller, EventBus: s.bus, SaverID: "hero",
+		Ability: abilities.CON, DC: 10,
+		D20Source:      dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
+		ModifierSource: dnd5eEvents.RollSource{Ref: refs.Abilities.Constitution(), Name: "Constitution"},
+		Contributions: []dnd5eEvents.DiceContribution{{
+			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+			Dice:   "-1d4", Subtract: true,
+		}},
+	}
+	result, err := MakeSavingThrow(s.ctx, input)
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "contributions are invalid")
+}
+
+func (s *SavingThrowTestSuite) TestMandatoryCalculationSourcesAreValidatedBeforeRNG() {
+	input := &SavingThrowInput{
+		Roller: s.mockRoller, EventBus: s.bus, SaverID: "hero",
+		Ability: abilities.CON, DC: 10,
+		ModifierSource: dnd5eEvents.RollSource{Ref: refs.Abilities.Constitution(), Name: "Constitution"},
+	}
+	result, err := MakeSavingThrow(s.ctx, input)
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "d20 source")
 }
 
 // TestNilInput tests that nil input returns an error
@@ -364,7 +454,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
 		Modifier: 2,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -408,7 +498,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
 		Modifier: 4,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -433,6 +523,7 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 					SaveModifierSource: dnd5eEvents.SaveModifierSource{
 						Name:       "Bless",
 						SourceType: "spell",
+						SourceRef:  refs.Spells.Bless(),
 						EntityID:   "cleric",
 					},
 					Bonus: 3, // Simulating a 1d4 roll of 3
@@ -455,7 +546,7 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 		Modifier: 2,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -500,7 +591,7 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 		HasDisadvantage: true, // Input has disadvantage
 	}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 

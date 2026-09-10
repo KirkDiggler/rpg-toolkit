@@ -18,42 +18,25 @@ creation and leveling paths, combat resolution, initiative, selected features
 Unconscious, etc.), spells, monsters, and dungeon layouts. It is not a complete
 implementation of every D&D 5e rule or content clause.
 
-## What rpg-api consumes
+## Supported host path
 
-The module currently contains **43 Go sub-packages** (44 packages including
-its module root), verified with `go list ./...` on 2026-09-03. The `character/`
-package alone is imported by 24 rpg-api files. The canonical integration path
-now consumes the session stack and built-in monster registry; the removed
-`monster/actions` package is not a supported surface.
+The host-facing live-play path is the nested `rulebooks/dnd5e/session` module,
+not a direct combat resolver. The host implements repositories, sends IDs and
+intent to session verbs, and stores returned data. The toolkit owns every D&D
+rule along the path.
 
-This is the dominant consumer-facing surface. The top imports by file count:
-
-| Sub-package | Files in rpg-api | Notes |
+| Layer | Current responsibility | Contract |
 |---|---|---|
-| `character/` | 24 | Character/Draft lifecycle, ToData/LoadFromData |
-| `monster/` | 14 | Monster data, NewGoblin, perception |
-| `refs/` | 12 | The boundary key — `refs.Weapons.Longsword()`, `refs.Features.Rage()`, etc. |
-| `classes/` | 11 | Typed class constants |
-| `abilities/` | 10 | DEX/STR/CON/WIS/INT/CHA constants |
-| `shared/` | 9 | Cross-cutting types (`AbilityScores`, `SelectionID`) |
-| `races/` | 8 | Typed race constants |
-| `initiative/` | 7 | Tracker, Roll, Participant |
-| `character/choices/` | 6 | Service-shaped choice/validation surface |
-| `combat/` | 5 | `ResolveAttack`, `WithCombatantLookup`, action-economy types |
-| `weapons/` | 5 | Weapon data |
-| `backgrounds/` | 4 | Typed background constants |
-| `damage/` | 3 | Damage type constants |
-| `spells/` | 3 | Spell typed constants (resolution is internal) |
-| `armor/` | 3 | Armor data |
-| `gamectx/` | 3 | Combatant registry — the integration shim for chain resolution |
-| `skills/` | 2 | Skill constants and `Skill` type |
-| `monstertraits/` | 2 | `LoadMonster` / `AttachMonster` |
-| `fightingstyles/` | 2 | Fighting style constants |
-| `languages/` | 2 | Language constants |
-| `ammunition/`, `packs/`, `tools/`, `proficiencies/`, `saves/`, `equipment/`, `features/`, `events/`, `resources/` | narrow | see current import graph |
+| [`session`](../../../rulebooks/dnd5e/session/doc.go) | Host seam: IDs, repositories, load–act–save | No inner runtime type or rule crosses the boundary |
+| [`encounter`](../../../rulebooks/dnd5e/encounter/doc.go) | Bus-free composition over `play/*`, world, and spatial capabilities | Coordinates play and records returned facts |
+| [`resolution`](../../../rulebooks/dnd5e/resolution/doc.go) | One interaction-scoped bus, participant attachment, preflight, payment, and step execution | Returns data; nothing runtime survives the call |
+| Root `rulebooks/dnd5e` packages | Rulebook content, sheets, conditions, saves, and combat vocabulary | Conditions implement `Ref()` and attach with `Apply(ctx, bus)` |
+| [`play/clock`](../../../play/clock/doc.go) | Generic world ticks, turn bubbles, and atomic transfer between clocks | No D&D rules, randomness, context, or bus |
 
-Most rpg-api callsites send **refs in** and receive **rich breakdowns out**.
-The toolkit owns the rules; rpg-api orchestrates load → call → save.
+The [code-local layer overview](../../../rulebooks/dnd5e/overview.md) explains
+why mechanics join these owners and uses Bane as an explicitly labelled worked
+example. `session` is the ordinary integration boundary; direct root package
+imports remain appropriate for authoring rulebook content and character data.
 
 ## Sub-package map (toolkit-side)
 
@@ -67,18 +50,18 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 | `combat/actions/` | Inert shared definitions, typed attack profiles, validation, deep clones | High |
 | `features/` | Feature loader for dnd5e features | High — Rage, SecondWind, MartialArts, etc. |
 | `conditions/` | Condition loader + all named conditions | High — loader test, individual condition tests |
-| `initiative/` | Initiative roll + tracker | High |
+| `initiative/` | Legacy initiative tracker; `play/clock` owns current time/turn membership | High |
 | `saves/` | Saving throw resolution | Medium |
 | `skills/` | Skill check resolution | Medium |
 | `monster/` | Monster stat block, direct definition storage, load/persistence | High |
 | `monster/monsters/` | Bandit, Brown Bear, Ghoul — sibling of `monster/` | High |
 | `monstertraits/` | Special monster abilities | Medium |
-| `resources/` | Resource loading (ki, rage uses, spell slots) | Medium |
-| `spells/` | Spell list, slot management | Medium |
+| `resources/` | Recoverable-resource keys and helpers (ki, rage uses, hit dice, and similar pools) | Medium |
+| `spells/` | Spell identity and cast-definition content | Medium |
 | `equipment/` | Equipment slots + item interface | Medium |
 | `weapons/` | Weapon definitions and proficiencies | High — used in combat tests |
 | `dungeon/` | Procedural dungeon: room types, wall perimeters, door spawning | Medium (336 test lines) |
-| `gamectx/` | D&D-specific game-context plumbing — combatant registry, characters, room | Low |
+| `gamectx/` | Resolution-local room, cast, and reaction-readiness views used by rule predicates | Low |
 | `refs/` | Typed ref constructors (`refs.Features.Rage()`) | Medium |
 | `shared/` | Shared type aliases (EquipmentID, etc.) | — |
 | `events/` | D&D event payloads, topics, and `ConditionBehavior` | High |
@@ -168,62 +151,60 @@ implements "what Rage does."
 The full `refs/` surface and how it composes with `core.Ref` /
 `core.SourcedRef` is documented separately in `refs.md`.
 
-## gamectx/ — the integration shim for chain resolution
+## gamectx/ — resolution-local rule views
 
-`gamectx/` is the most surprising omission from the previous version of this
-doc (per audit "things discovered off-script"). It owns the combatant registry
-and the context-key plumbing that lets toolkit chain resolution look up
-combatants by ID during an attack.
+Current `gamectx` room, cast, and reaction-readiness views are legitimate
+inputs to rule predicates. They are installed by resolution's single
+`installTruth` door for the lifetime of an attached-behavior operation. The
+host and session layer do not build a combatant registry or place a bus in
+`context.Context`.
 
-Key types (verified by `grep` over `gamectx/*.go`):
+| Current view | Role |
+|---|---|
+| `WithRoom` / `Room` / `RequireRoom` | Read the encounter world supplied to this interaction |
+| `WithCast` / `CastOf` | Read participant relationships assembled by resolution |
+| `WithReactionReadiness` / `IsReactionReady` | Read reaction availability derived from that cast |
 
-| Symbol | File | Role |
-|---|---|---|
-| `GameContext`, `GameContextConfig`, `NewGameContext` | `gamectx.go` | aggregate game-context value carried in `context.Context` |
-| `WithGameContext`, `Characters`, `RequireCharacters` | `require.go` | context-key plumbing for the character registry |
-| `CharacterRegistry`, `BasicCharacterRegistry`, `NewBasicCharacterRegistry` | `gamectx.go`, `characters.go` | per-character registry (weapons, ability scores) |
-| `CombatantRegistry`, `NewCombatantRegistry`, `WithCombatants`, `GetCombatant` | `combatant.go` | the registry the attack chain consults during resolution |
-| `EquippedWeapon`, `CharacterWeapons`, `SlotMainHand`, `SlotOffHand` | `characters.go` | weapon-slot plumbing |
-| `WithRoom`, `Room`, `RequireRoom` | `room.go` | spatial context |
-| `CombatState`, `WithCombatState` | `combat.go` | per-encounter combat state |
+These scoped views do not contradict ADR-0038: resolution still owns the one
+bus and all attachment. A general-purpose context bag or a host-installed
+registry would be a different, unsupported design.
 
-rpg-api drives this from `internal/orchestrators/encounter/orchestrator.go`:
+## resolution/ — the interaction entry point
+
+Rulebook packages author inert `combat/actions.Definition` values and rule
+behavior. Resolution selects the profile arm, creates one interaction bus,
+attaches persisted participant effects, runs pure machine preflight, pays the
+compiled cost, drives the machine, tears down, and returns data:
 
 ```go
-ctx = gamectx.WithGameContext(ctx, gameCtx)
-registry := gamectx.NewCombatantRegistry()
-// ... populate registry ...
-ctx = combat.WithCombatantLookup(ctx, registry)
-result, err := combat.ResolveAttack(ctx, &combat.AttackInput{ /* ... */ })
+machine, err := resolution.NewAction(&resolution.ActionInput{
+    Definition: definition,
+    AttackerID: "wolf",
+    TargetID:   "hero",
+    Roller:     roller,
+})
+if err != nil {
+    return err
+}
+
+out, err := resolution.Resolve(ctx, &resolution.Input{
+    World:        worldData,
+    Participants: participants,
+    Machine:      machine,
+    Cost:         cost,
+    Initiative:   initiative,
+    Standing:     standing,
+    Sight:        sight,
+    TurnDriver:   turns,
+    Roller:       loaderRoller,
+})
 ```
 
-Inside `combat.ResolveAttack` (and inside subscriber handlers along the attack
-chain), code calls `combat.GetCombatantFromContext(ctx, id)` — which reads
-back through the context keys gamectx sets up. Without this shim the chain
-has no way to find "what is the attacker's STR mod" or "is the target
-prone."
-
-## combat/ — the chain entry point
-
-`combat/` is where the attack chain entry point lives. The worked example for
-the chain pattern (see `events.md`) is `combat.ResolveAttack` in
-`rulebooks/dnd5e/combat/attack.go` — search for the `func ResolveAttack`
-symbol.
-
-Top symbols rpg-api consumes:
-
-| Symbol | Role |
-|---|---|
-| `combat.AttackInput`, `combat.ResolveAttack` | the chain entry point |
-| `combat.WithCombatantLookup` | wires the gamectx registry into context |
-| `combat.AttackHandMain`, `combat.AttackHandOff`, `combat.AttackHand` | which hand is attacking |
-| `combat.AttackResult`, `combat.DamageBreakdown` | return shape with rich modifier provenance |
-| `combat.NewActionEconomy`, `combat.CapacityFlurryStrike` | action-economy support |
-
-The chain stages (`StageBase`, `StageFeatures`, `StageConditions`,
-`StageEquipment`, `StageFinal`) are defined in
-`rulebooks/dnd5e/combat/stages.go`. See `events.md` for how `StagedChain[T]`
-and `ChainedTopic[T]` cooperate to drive the chain.
+The caller checks every error and persists only the returned data. It does not
+invoke a second combat path or hold the interaction bus. See
+[`resolution/README.md`](../../../rulebooks/dnd5e/resolution/README.md),
+[`resolution/doc.go`](../../../rulebooks/dnd5e/resolution/doc.go), and
+[ADR-0038](../../adr/0038-resolution-owns-the-bus.md).
 
 ### combat.AttackContext as pure data (Wave 2.11d)
 
@@ -587,19 +568,21 @@ verified. Track separately when the migration's status is clarified.
 
 ## Verification
 
+From the repository root:
+
 ```sh
-# Sub-package import surface
-grep -rln '"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"' /home/kirk/personal/rpg-api/internal/ /home/kirk/personal/rpg-api/cmd/ --include="*.go" | wc -l   # 24
-grep -rln '"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"' /home/kirk/personal/rpg-api/internal/ /home/kirk/personal/rpg-api/cmd/ --include="*.go" | wc -l    # 14
-grep -rln '"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"' /home/kirk/personal/rpg-api/internal/ /home/kirk/personal/rpg-api/cmd/ --include="*.go" | wc -l       # 12
-grep -rln '"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"' /home/kirk/personal/rpg-api/internal/ /home/kirk/personal/rpg-api/cmd/ --include="*.go" | wc -l    # 3
+# Current live-play contracts and host boundary
+grep -n 'Package encounter' rulebooks/dnd5e/encounter/doc.go
+grep -n 'Package resolution' rulebooks/dnd5e/resolution/doc.go
+grep -n 'Package session' rulebooks/dnd5e/session/doc.go
 
-# Combat chain entry point
-grep -n 'combat.ResolveAttack\|combat.WithCombatantLookup' /home/kirk/personal/rpg-api/internal/orchestrators/encounter/orchestrator.go | head
+# Canonical identity and attached-condition contract
+grep -n 'ID ID' core/ref.go
+grep -n 'type ConditionBehavior interface' rulebooks/dnd5e/events/events.go
 
-# NewGoblin location (NOT in monster/monsters)
-grep -n 'func NewGoblin' /home/kirk/personal/rpg-toolkit/rulebooks/dnd5e/monster/monster.go
-
-# refs surface
-grep -nE '^var [A-Z]' /home/kirk/personal/rpg-toolkit/rulebooks/dnd5e/refs/*.go | grep -v _test
+# Owning module gates
+(cd rulebooks/dnd5e && go test -race ./...)
+(cd rulebooks/dnd5e/resolution && go test -race ./...)
+(cd rulebooks/dnd5e/encounter && go test -race ./...)
+(cd rulebooks/dnd5e/session && go test -race ./...)
 ```

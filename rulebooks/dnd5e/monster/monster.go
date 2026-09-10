@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -303,6 +304,16 @@ func (m *Monster) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return m.conditions
 }
 
+// DescribeRollContributions returns the oldest applicable contribution in each
+// condition-declared stacking group from a copy of the current persisted order.
+func (m *Monster) DescribeRollContributions(
+	input *dnd5eEvents.DescribeRollContributionsInput,
+) (*dnd5eEvents.DescribeRollContributionsOutput, error) {
+	current := append([]dnd5eEvents.ConditionBehavior(nil), m.conditions...)
+	return conditions.DescribeSelectedRollContributions(
+		&conditions.DescribeSelectedRollContributionsInput{Conditions: current, Request: input})
+}
+
 // Actions returns deep copies of the monster's shared action definitions.
 func (m *Monster) Actions() []combatActions.Definition {
 	definitions := make([]combatActions.Definition, len(m.actions))
@@ -565,7 +576,7 @@ func (m *Monster) onConditionRemoved(
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
 	var detachErrs []error
 	for _, condition := range m.conditions {
-		if condition.Ref().String() != event.ConditionRef {
+		if conditions.ConditionAddressOf(m.id, condition) != event.Address() {
 			filtered = append(filtered, condition)
 			continue
 		}

@@ -419,6 +419,68 @@ func (s *ConcentratingConditionSuite) TestEveryEndPathPublishesOneFact() {
 
 // The sixth reason, which is the one nobody else can publish: the hold ending
 // because its last child ended on its own account.
+func (s *ConcentratingConditionSuite) TestBaneClockSkipsCastingTurnThenCountsTenSubsequentCasterEndsAcrossReload() {
+	condition := NewConcentratingConditionWithInput(NewConcentratingConditionInput{
+		MemberID:         s.casterID,
+		SourceID:         s.casterID,
+		SpellRef:         refs.Spells.Bane().String(),
+		SpellName:        "Bane",
+		TurnEnds:         10,
+		SkipFirstTurnEnd: true,
+	})
+	child := dnd5eEvents.ConditionAddress{
+		MemberID: "target-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: s.casterID,
+	}
+	s.Require().NoError(condition.AddChild(s.ctx, child))
+	s.Require().NoError(condition.Apply(s.ctx, s.bus))
+
+	s.endTurn(s.casterID)
+	s.Equal(10, condition.TurnEndsLeft, "the casting turn consumes only the persisted grace")
+	s.False(condition.SkipNextTurnEnd)
+	s.endTurn("another-member")
+	s.Equal(10, condition.TurnEndsLeft, "recipient and other member turns do not own this clock")
+
+	for range 5 {
+		s.endTurn(s.casterID)
+	}
+	s.Equal(5, condition.TurnEndsLeft)
+	raw, err := condition.ToJSON()
+	s.Require().NoError(err)
+	s.Require().NoError(condition.Remove(s.ctx, s.bus))
+
+	loadedBehavior, err := LoadJSON(raw)
+	s.Require().NoError(err)
+	loaded := loadedBehavior.(*ConcentratingCondition)
+	s.False(loaded.SkipNextTurnEnd, "consumed grace stays consumed after reload")
+	s.Equal(5, loaded.TurnEndsLeft)
+	s.Require().NoError(loaded.Apply(s.ctx, s.bus))
+
+	for range 4 {
+		s.endTurn(s.casterID)
+	}
+	s.Empty(s.removals)
+	s.endTurn(s.casterID)
+	s.Require().Len(s.removals, 2, "the tenth subsequent caster end removes child then owner")
+	s.Equal(child, s.removals[0].Address())
+	s.Equal(loaded.ConditionAddress(), s.removals[1].Address())
+}
+
+func (s *ConcentratingConditionSuite) TestBaneOwnerRejectsUnqualifiedOrForeignChildren() {
+	condition := NewConcentratingConditionWithInput(NewConcentratingConditionInput{
+		MemberID: s.casterID, SourceID: s.casterID, SpellRef: refs.Spells.Bane().String(),
+		SpellName: "Bane", TurnEnds: 10, SkipFirstTurnEnd: true,
+	})
+
+	err := condition.AddChild(s.ctx, dnd5eEvents.ConditionAddress{
+		MemberID: "target-1", ConditionRef: refs.Conditions.Baned().String(),
+	})
+	s.Require().ErrorContains(err, "source")
+	err = condition.AddChild(s.ctx, dnd5eEvents.ConditionAddress{
+		MemberID: "target-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: "bard-b",
+	})
+	s.Require().ErrorContains(err, "source")
+}
+
 func (s *ConcentratingConditionSuite) TestTheLastChildLeavingPublishesSpellEnded() {
 	condition := s.applied()
 

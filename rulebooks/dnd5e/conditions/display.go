@@ -31,15 +31,15 @@ func DisplayFor(ref core.Ref) (Display, bool) {
 	return d, ok
 }
 
-// displayCatalog maps the canonical ref string of every condition reachable by
-// the four builds (Fighter, Barbarian, Monk, Rogue) to its display descriptor.
+// displayCatalog maps the canonical ref string of every status-visible
+// condition, including supported spell-delivered conditions, to its display
+// descriptor.
 // It is keyed by ref.String() because at least one condition — Sneak Attack —
 // names itself by a feature ref (refs.Features.SneakAttack) rather than a
 // condition ref, so the type alone is not enough to disambiguate.
 //
-// The catalog deliberately excludes spell-oriented status (e.g. the Shield
-// spell condition): a status view is a no-magic projection of the sheet, and
-// the existing Shield condition is not promoted into this catalog.
+// The existing Shield spell condition remains excluded because it is not
+// promoted into status projection; Baned is explicitly status-visible.
 var displayCatalog = map[string]Display{
 	// Fighting styles (Fighter).
 	refs.Conditions.FightingStyleArchery().String():             {Name: "Archery"},
@@ -74,6 +74,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.TrueStrike().String():        {Name: TrueStrikeName},
 	refs.Conditions.ViciousMockery().String():    {Name: ViciousMockeryName},
 	refs.Conditions.Concentrating().String():     {Name: ConcentratingName},
+	refs.Conditions.Baned().String():             {Name: BanedName},
 	refs.Conditions.Prone().String():             {Name: "Prone"},
 	refs.Conditions.OpportunityAttack().String(): {Name: "Opportunity Attack"},
 

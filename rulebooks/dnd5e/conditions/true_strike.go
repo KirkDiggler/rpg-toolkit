@@ -129,7 +129,9 @@ func (t *TrueStrikeCondition) Apply(ctx context.Context, bus events.EventBus) er
 	// combat end both fire first in any ordinary fight — but a blob that
 	// survived to a long rest must not outlive it, which is the registry every
 	// combat-scoped condition here is in.
-	restSub, err := subscribeRemoveOnLongRest(ctx, bus, t.MemberID, t.Ref(), t.Remove)
+	restSub, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+		Address: ConditionAddressOf(t.MemberID, t), Remove: t.Remove,
+	})
 	if err != nil {
 		_ = t.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to long rest")

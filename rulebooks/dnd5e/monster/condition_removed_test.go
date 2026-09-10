@@ -24,6 +24,35 @@ import (
 // A monster does not cast today (R12), so the condition here is a stand-in for
 // a child a caster's concentration will strip off a monster's sheet. The fix is
 // about the removal FACT, not about casting, which is why both keepers get it.
+func TestWrongBaneSourceDoesNotRemoveOrDirtyMonster(t *testing.T) {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	m := monster.New(monster.Config{ID: "skeleton-1", Name: "Skeleton", HP: 13, AC: 13})
+	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: "skeleton-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	require.NoError(t, m.AddLoadedCondition(bane))
+	require.NoError(t, m.SheetKeeper().Apply(ctx, bus))
+	require.False(t, m.IsDirty())
+
+	for _, sourceID := range []string{"bard-b", ""} {
+		require.NoError(t, dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx,
+			dnd5eEvents.ConditionRemovedEvent{
+				MemberID: "skeleton-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: sourceID,
+			}))
+		require.Len(t, m.GetConditions(), 1)
+		require.False(t, m.IsDirty(), "mismatched and empty source identities are exact no-ops")
+	}
+
+	output, err := m.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
+		Kind: dnd5eEvents.RollKindAttack,
+	})
+	require.NoError(t, err)
+	require.Len(t, output.Contributions, 1)
+	require.Equal(t, "bard-a", output.Contributions[0].Source.SourceID)
+}
+
 func TestAPrunedConditionIsUnsubscribedFromAMonster(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewEventBus()

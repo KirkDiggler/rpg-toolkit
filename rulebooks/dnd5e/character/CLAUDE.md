@@ -451,10 +451,15 @@ equipmentChoices := []choices.EquipmentChoiceSelection{
 **Need:** Resolve equipment SelectionIDs to actual item entities
 **Blocked by:** Items module (#31)
 
-### Future: Spell Slot Management
-**Need:** Track spell slots, spell casting
-**Pattern:** Integrate with resources module
-**Status:** Not implemented
+### Spell slot state and casting direction
+
+Character data carries spell slots only through recoverable `Resources`.
+`resources.SpellSlotLevel1` is the sole mutable level-1 authority; level-1 Bard
+finalization seeds two uses from the factual class progression table. Generic
+resource spending persists the debit, and normal long-rest recovery restores
+the pool. There is no legacy `SpellSlots` field, compatibility reader, or dual
+writer. Class spell-slot tables remain source progression data, not a second
+runtime pool.
 
 ## Questions to Ask Before Adding Features
 

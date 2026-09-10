@@ -88,11 +88,11 @@ type ResourceView struct {
 // StatusView is the immutable, no-magic projection of a character's status:
 // level, hit points, base speed, features, conditions, and resources. It is
 // built from the live sheet and feature Status reports — never from
-// persistence JSON — and excludes spell slots and legacy class resources by
-// construction. Its resource catalog is closed to the current five builds:
-// Barbarian (RageCharges/HitDice), Fighter (HitDice plus private Second Wind
-// and Action Surge), Monk (Ki/HitDice), Rogue (HitDice), and Bard
-// (Inspiration/HitDice).
+// persistence JSON — and excludes legacy class resources by construction. Its
+// resource catalog is closed to the current five builds: Barbarian
+// (RageCharges/HitDice), Fighter (HitDice plus private Second Wind and Action
+// Surge), Monk (Ki/HitDice), Rogue (HitDice), and Bard
+// (Inspiration/SpellSlotLevel1/HitDice).
 type StatusView struct {
 	// Level is the character's level.
 	Level int
@@ -269,9 +269,9 @@ func (c *Character) projectConditions() ([]ConditionView, error) {
 }
 
 // ownerResourceReports collects the character's owner-owned resource rows
-// (every entry in c.resources, including standalone Hit Dice) as reports ready
-// for merging. Spell slots and legacy class resources are never read here, so
-// they are excluded by construction.
+// (every entry in c.resources, including standalone Hit Dice and the typed
+// level-1 spell-slot pool) as reports ready for merging. Legacy class resources
+// are never read here, so they are excluded by construction.
 func (c *Character) ownerResourceReports() ([]resourceReport, error) {
 	if c.resources == nil {
 		return nil, nil
@@ -396,7 +396,7 @@ func ownerResourceAllowed(class classes.Class, key coreResources.ResourceKey) bo
 	case classes.Monk:
 		return key == resources.Ki || key == resources.HitDice
 	case classes.Bard:
-		return key == resources.Inspiration || key == resources.HitDice
+		return key == resources.Inspiration || key == resources.SpellSlotLevel1 || key == resources.HitDice
 	default:
 		// A CLASS WITH NO ARM PROJECTS NO STATUS AT ALL, which is why a
 		// missing one is not a cosmetic gap: the whole view is refused, and

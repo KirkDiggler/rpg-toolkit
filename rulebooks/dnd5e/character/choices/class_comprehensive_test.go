@@ -271,6 +271,40 @@ func (s *ClassComprehensiveSuite) TestAllClassesEquipmentVariations() {
 	}
 }
 
+// TestBardSpellSelectionRejectsWrongCountsAndUnsupportedSpells catches
+// validation accepting an incomplete, widened, or multi-spell answer.
+func (s *ClassComprehensiveSuite) TestBardSpellSelectionRejectsWrongCountsAndUnsupportedSpells() {
+	reqs := choices.GetClassRequirements(classes.Bard)
+	for _, tc := range []struct {
+		name   string
+		values []shared.SelectionID
+	}{
+		{name: "zero", values: nil},
+		{name: "two", values: []shared.SelectionID{spells.Bane, spells.Bane}},
+		{name: "unsupported", values: []shared.SelectionID{spells.HealingWord}},
+	} {
+		s.Run(tc.name, func() {
+			subs := choices.NewSubmissions()
+			for _, sub := range s.bardData.ValidBase.Choices {
+				if sub.Category != shared.ChoiceSpells {
+					subs.Add(sub)
+				}
+			}
+			if tc.values != nil {
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceSpells,
+					Source:   shared.SourceClass,
+					ChoiceID: choices.BardSpells1,
+					Values:   tc.values,
+				})
+			}
+
+			result := s.validator.Validate(reqs, subs)
+			s.False(result.Valid)
+		})
+	}
+}
+
 // TestClericDomains tests all Cleric domains
 func (s *ClassComprehensiveSuite) TestClericDomains() {
 	domains := []classes.Subclass{
@@ -958,12 +992,12 @@ func (s *ClassComprehensiveSuite) createBardTestData() *ClassTestData {
 		Name:       "bard",
 		HitDie:     8,
 		SkillCount: 3,
-		// CANTRIPS AT LEVEL 1, SPELLS NOT. The cast door can spend a cantrip
-		// so the question is asked; a slot cannot be spent by anything yet, so
-		// the levelled-spell question stays unasked. See getBardRequirements.
+		// The supported catalog is intentionally narrower than the factual
+		// four-spell class progression: this slice can execute only Bane.
 		HasCantrips:  true,
 		CantripCount: 2,
-		HasSpells:    false,
+		HasSpells:    true,
+		SpellCount:   1,
 		HasTools:     true,
 		ToolCount:    3,
 		// Bards can choose ANY 3 skills (no restricted list)
@@ -1014,9 +1048,7 @@ func (s *ClassComprehensiveSuite) createBardValidBase() *choices.Submissions {
 		},
 	})
 
-	// Cantrips - the two this build can cast. No levelled spells: nothing asks
-	// a level-1 bard for one, so submitting them would describe a choice
-	// nothing offers.
+	// Cantrips remain the two this build can cast.
 	subs.Add(choices.Submission{
 		Category: shared.ChoiceCantrips,
 		Source:   shared.SourceClass,
@@ -1025,6 +1057,15 @@ func (s *ClassComprehensiveSuite) createBardValidBase() *choices.Submissions {
 			spells.TrueStrike,
 			spells.ViciousMockery,
 		},
+	})
+
+	// One supported levelled spell is offered without changing the factual
+	// four-known-spells progression table.
+	subs.Add(choices.Submission{
+		Category: shared.ChoiceSpells,
+		Source:   shared.SourceClass,
+		ChoiceID: choices.BardSpells1,
+		Values:   []shared.SelectionID{spells.Bane},
 	})
 
 	// Weapon choice - rapier

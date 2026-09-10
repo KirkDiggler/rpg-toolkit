@@ -40,6 +40,7 @@ func newLevel1Bard(t *testing.T) *Character {
 			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:    []shared.SelectionID{"lute", "flute", "drum"},
 			Cantrips: []shared.SelectionID{spells.TrueStrike, spells.ViciousMockery},
+			Spells:   []spells.Spell{spells.Bane},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
@@ -95,6 +96,12 @@ func TestTheBardsStatusCarriesTheInspirationPool(t *testing.T) {
 	require.Equal(t, "Bardic Inspiration", inspiration.Name)
 	require.Equal(t, 3, inspiration.Current, "Charisma 16 is a +3 modifier")
 	require.Equal(t, 3, inspiration.Maximum)
+
+	spellSlots, ok := byKey[resources.SpellSlotLevel1]
+	require.True(t, ok, "the canonical spell-slot pool is in the generic resource view")
+	require.Equal(t, "1st-level Spell Slots", spellSlots.Name)
+	require.Equal(t, 2, spellSlots.Current)
+	require.Equal(t, 2, spellSlots.Maximum)
 
 	hitDice, ok := byKey[resources.HitDice]
 	require.True(t, ok, "and the hit dice every character carries")

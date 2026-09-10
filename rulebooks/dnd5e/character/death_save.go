@@ -9,6 +9,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -63,6 +65,7 @@ type MakeDeathSaveOutput struct {
 	HPRestored        int
 	RegainedConscious bool
 	Continuation      DeathSaveContinuation
+	Calculation       *dnd5eEvents.RollCalculation
 }
 
 // CanMakeDeathSave reports whether c is Dying and still holds this turn's one
@@ -133,9 +136,17 @@ func (c *Character) MakeDeathSave(
 	if state == nil {
 		state = &saves.DeathSaveState{}
 	}
+	contributions, err := c.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
+		Kind: dnd5eEvents.RollKindSavingThrow,
+	})
+	if err != nil {
+		return nil, err
+	}
 	result, err := saves.MakeDeathSave(ctx, &saves.DeathSaveInput{
-		Roller: input.Roller,
-		State:  state,
+		Roller:        input.Roller,
+		State:         state,
+		D20Source:     dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
+		Contributions: contributions.Contributions,
 	})
 	if err != nil {
 		return nil, err
@@ -170,6 +181,7 @@ func (c *Character) MakeDeathSave(
 		HPRestored:        result.HPRestored,
 		RegainedConscious: result.RegainedConsciousness,
 		Continuation:      continuation,
+		Calculation:       dnd5eEvents.CloneRollCalculation(result.Calculation),
 	}, nil
 }
 
