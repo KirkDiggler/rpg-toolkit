@@ -122,9 +122,25 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 		InstigatorID: casterID,
 	}
 
+	// A self-targeted cast resolves against ONE recipient and that recipient is
+	// the caster, so the loop below runs once over the caster's own id.
+	//
+	// The caster rather than an empty sentinel, because the list this produces
+	// becomes [CastOutcome.Targets] and each entry carries the effects
+	// delivered to it. Downstream, encounter.RecordCastInput is Actor, Spell
+	// and Targets and nothing else — there is no caster-side results lane — so
+	// a self cast's condition can only be recorded against a target entry, and
+	// an empty member is refused there with ErrNoMember AFTER the sheet writes
+	// are durable. A sentinel would leave the condition applied and its beat
+	// missing.
+	//
+	// MinTargets and MaxTargets stay zero for a self cast and that is not in
+	// tension with this: they bound what the CALLER may name, and a self cast
+	// lets the caller name nobody. Who received the spell is a different
+	// question, answered here.
 	entries := make([]castTargetMachine, 0, len(targetIDs))
 	if profile.Target == combatActions.CastTargetSelf {
-		targetIDs = []string{""}
+		targetIDs = []string{casterID}
 	}
 	for _, targetID := range targetIDs {
 		var inner Machine
