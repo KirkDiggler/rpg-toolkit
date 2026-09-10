@@ -420,8 +420,9 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 
 	data := enc.ToData()
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  data,
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Data:      data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})
@@ -457,8 +458,9 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 		// links a second time, and a third on the next load, growing the
 		// blob without bound. The fact count is what catches that.
 		fresh, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data:  data,
-			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Data:      data,
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
@@ -556,7 +558,8 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 	// second loot of the SAME body transfers nothing and would say nothing
 	// whatever the guard did.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
@@ -627,7 +630,8 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 	})
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
@@ -725,7 +729,8 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOut() {
 			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 6, 6)},
 		}
 		bare, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field:   plain,
 			Members: []encounter.MemberInput{{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell}},
@@ -785,7 +790,8 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 	// The world starts with the players and NO captain — the shape the host
 	// actually builds.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
@@ -852,7 +858,8 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
 	spawn := func(holds []encounter.IntelID) (string, string) {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field: heirloomField(),
@@ -1024,7 +1031,8 @@ func (s *HoldingsSuite) TestACarrierWalksOutWithEVERYTHINGTheyHold() {
 // narrating something that did not happen.
 func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
@@ -1107,7 +1115,8 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
@@ -1310,8 +1319,9 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 	})
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  data,
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Data:      data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})

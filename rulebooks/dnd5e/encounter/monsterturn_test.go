@@ -54,7 +54,7 @@ func requireHolding(t *testing.T, enc *encounter.Encounter, observer encounter.M
 // public location codec and asserts the complete known-state shape.
 func requireKnownLocation(t *testing.T, payload []byte, want spatial.Position) {
 	t.Helper()
-	location, ok := encounter.DecodeLocationPayload(payload)
+	location, ok := encounter.DecodeSightTestimony(payload)
 	require.True(t, ok, "payload must be valid encounter location testimony")
 	require.Equal(t, encounter.LocationKnown, location.State)
 	require.Equal(t, want, location.Position)
@@ -64,7 +64,7 @@ func requireKnownLocation(t *testing.T, payload []byte, want spatial.Position) {
 // public location codec and asserts explicit unknown testimony.
 func requireUnknownLocation(t *testing.T, payload []byte) {
 	t.Helper()
-	location, ok := encounter.DecodeLocationPayload(payload)
+	location, ok := encounter.DecodeSightTestimony(payload)
 	require.True(t, ok, "payload must be valid encounter location testimony")
 	require.Equal(t, encounter.LocationUnknown, location.State)
 	require.Equal(t, spatial.Position{}, location.Position)
@@ -110,7 +110,8 @@ func newDrivenArrivalEncounter(
 	}
 
 	base, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
 		TurnDriver: passDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -122,7 +123,7 @@ func newDrivenArrivalEncounter(
 	require.NoError(t, err)
 
 	data := base.ToData()
-	known, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{
+	known, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
 		State: encounter.LocationKnown, Position: remembered,
 	})
 	require.NoError(t, err)
@@ -143,7 +144,7 @@ func newDrivenArrivalEncounter(
 	}
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: sight, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		Data: data, Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
@@ -200,7 +201,7 @@ func (s *MonsterTurnTestSuite) TestRecordSurfacesCorrectionDrivenByNoticingTheAc
 	down := &downList{}
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: seeded.ToData(), Sight: sight, Standing: down, Initiative: arrivalOrder{},
+		Data: seeded.ToData(), Sight: sight, Equipment: noHandsAreObserved{}, Standing: down, Initiative: arrivalOrder{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -442,7 +443,8 @@ func (r *recordingMover) Move(
 // carrying one melee action at 5 feet reach and a 30-foot walking speed.
 func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDriver, striker encounter.Striker) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -489,7 +491,8 @@ func (s *MonsterTurnTestSuite) farSkeletonFight(
 	driver encounter.TurnDriver, striker encounter.Striker, mover encounter.Mover,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -572,7 +575,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemember
 	driver := &scriptedDriver{}
 	sight := &stagedSight{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -612,7 +615,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemember
 // turn-driver seam, preserving its active bubble and intel exactly.
 func (s *MonsterTurnTestSuite) loadEncounterData(data encounter.EncounterData, driver *scriptedDriver) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -641,7 +644,8 @@ func (s *MonsterTurnTestSuite) loadHeldMonsterEncounter(
 // subjects.
 func (s *MonsterTurnTestSuite) threeMemberSkeletonEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -665,7 +669,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewHeldUnknownProjectsIntoNeitherColl
 	driver := &scriptedDriver{}
 	base := s.adjacentSkeletonEncounter(passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed})
 	data := base.ToData()
-	unknown, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationUnknown})
+	unknown, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationUnknown})
 	s.Require().NoError(err)
 	enc := s.loadHeldMonsterEncounter(data, unknown, alice, driver)
 
@@ -689,7 +693,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewHeldKnownUsesStalePosition() {
 			data.Members[i].Cell = &encounter.PositionData{X: cellAt(7, 7).X, Y: cellAt(7, 7).Y}
 		}
 	}
-	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: oldCell})
+	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationKnown, Position: oldCell})
 	s.Require().NoError(err)
 	enc := s.loadHeldMonsterEncounter(data, payload, alice, driver)
 
@@ -709,9 +713,9 @@ func (s *MonsterTurnTestSuite) TestMonsterViewRememberedSortsIDsIndependently() 
 	driver := &scriptedDriver{}
 	base := s.threeMemberSkeletonEncounter()
 	data := base.ToData()
-	payloadAlice, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: cellAt(2, 2)})
+	payloadAlice, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationKnown, Position: cellAt(2, 2)})
 	s.Require().NoError(err)
-	payloadBob, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: cellAt(4, 2)})
+	payloadBob, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationKnown, Position: cellAt(4, 2)})
 	s.Require().NoError(err)
 	// Mutate in reverse ID order to ensure output ordering is a projection law,
 	// not an accident of fixture or insertion order.
@@ -749,7 +753,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewRememberedSupportsOriginCell() {
 		}
 	}
 	origin := spatial.Position{}
-	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: origin})
+	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationKnown, Position: origin})
 	s.Require().NoError(err)
 	enc := s.loadHeldMonsterEncounter(data, payload, alice, driver)
 
@@ -769,7 +773,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewRememberedUnreachableHasEmptyPath(
 	base := s.adjacentSkeletonEncounter(passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed})
 	data := base.ToData()
 	farOutside := spatial.Position{X: 100, Y: 100}
-	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: farOutside})
+	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationKnown, Position: farOutside})
 	s.Require().NoError(err)
 	enc := s.loadHeldMonsterEncounter(data, payload, alice, driver)
 
@@ -997,7 +1001,8 @@ func (s *MonsterTurnTestSuite) TestAStrikerMalfunctionAbortsTheWholeCall() {
 // than discovered when the first monster decides to attack.
 func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoStriker() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1017,8 +1022,9 @@ func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoStriker() {
 	saved := s.adjacentSkeletonEncounter(passDriver{}, passStriker{}).ToData()
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  saved,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data:      saved,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoStriker)
@@ -1033,8 +1039,9 @@ func (s *MonsterTurnTestSuite) TestMemberFactsRoundTripThroughToDataAndLoadEncou
 	saved := enc.ToData()
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  saved,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data:      saved,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -1176,7 +1183,8 @@ func (s *MonsterTurnTestSuite) TestAnOverBudgetMoveAnnouncesNothing() {
 // the first monster decides to walk.
 func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoMover() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1196,8 +1204,9 @@ func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoMover() {
 	saved := s.adjacentSkeletonEncounter(passDriver{}, passStriker{}).ToData()
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  saved,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data:      saved,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMover)
@@ -1251,7 +1260,8 @@ func (s *MonsterTurnTestSuite) TestAReactionThatDropsTheMoverStopsTheWalk() {
 	// Three cells asked for. The first is walked; the reaction lands as the
 	// second is announced, so the second and third never happen.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: &scriptedDriver{intents: []encounter.TurnIntent{
 			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
 		}},
@@ -1308,7 +1318,8 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 		}
 		mutate(&mi)
 		return &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1391,7 +1402,8 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	}
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1442,7 +1454,8 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachable() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			// Sight crosses void here (VoidIsTransparent), but a 4-cell gap
@@ -1481,7 +1494,8 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 	reachWeapon := core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "reach"}
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1557,7 +1571,8 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 	}
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1640,7 +1655,8 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1747,7 +1763,8 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 	striker := &killerStriker{scriptedStriker: inner, standing: standing}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),

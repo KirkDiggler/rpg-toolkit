@@ -28,7 +28,7 @@ func (s *InteractSuite) setup(
 	sight encounter.Sight, members ...encounter.MemberInput,
 ) (*encounter.Encounter, error) {
 	return encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   worldField(),
 		Members: members,

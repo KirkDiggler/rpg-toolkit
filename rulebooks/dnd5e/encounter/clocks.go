@@ -1103,7 +1103,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		if !ok {
 			continue
 		}
-		location, ok := DecodeLocationPayload(h.Payload)
+		location, ok := DecodeSightTestimony(h.Payload)
 		if !ok || location.State == LocationUnknown {
 			continue
 		}

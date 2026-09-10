@@ -56,7 +56,8 @@ func TestVaultChase(t *testing.T) {
 	// composition's room-shaped topology (rpg-toolkit#1044).
 	pursuit := &pursuitDecider{target: alice}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(corridorRoom, 0, 0, 10, 10), rectRegion(vaultRoom, 10, 0, 10, 10)}, Walls: corridorWall,
@@ -122,7 +123,8 @@ func TestVaultChase(t *testing.T) {
 	// INTEL does — beliefs are state and traveled in the aggregate).
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 			goblin: &pursuitDecider{doorways: atlas.Doorways, target: alice},
 		}})
 	require.NoError(t, err, "beat 3: the suspended chase crosses a process boundary")

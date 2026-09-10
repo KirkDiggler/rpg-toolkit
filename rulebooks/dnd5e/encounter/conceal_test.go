@@ -153,7 +153,8 @@ func partyMembers(inVault bool) []encounter.MemberInput {
 
 func (s *ConcealSuite) open(resolver encounter.CheckResolver, inVault bool) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: resolver, Witness: s.witness,
 		Field:   concealField(),
@@ -241,7 +242,8 @@ func doorsListed(doors []encounter.Door, id encounter.DoorID) bool {
 func (s *ConcealSuite) TestAConcealedFieldRefusesConstructionWithoutItsCapabilities() {
 	setup := func(resolver encounter.CheckResolver, witness encounter.Witness) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: resolver, Witness: witness,
 			Field:   concealField(),
@@ -261,8 +263,9 @@ func (s *ConcealSuite) TestAConcealedFieldRefusesConstructionWithoutItsCapabilit
 	data := s.open(findsNothing{}, false).ToData()
 	load := func(resolver encounter.CheckResolver, witness encounter.Witness) error {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data:  data,
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Data:      data,
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: resolver, Witness: witness,
 		})
@@ -283,7 +286,8 @@ func (s *ConcealSuite) TestAConcealedFieldRefusesConstructionWithoutItsCapabilit
 // search answers without machinery.
 func (s *ConcealSuite) TestAPlainFieldNeedsNoCapabilitiesAndBuildsNoWorld() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: doorField(3, encounter.DoorIsClosed(), "plain-door", 1),
 		Members: []encounter.MemberInput{
@@ -566,8 +570,9 @@ func (s *ConcealSuite) TestKnowledgeRidesTheBlob() {
 	s.Contains(string(blob), `"known:door:veil-door"`, "with the searcher's fact")
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  data,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data:      data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsEverything{}, Witness: s.witness,
 	})
@@ -593,8 +598,9 @@ func (s *ConcealSuite) TestKnowledgeRidesTheBlob() {
 func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
 	load := func(data encounter.EncounterData) error {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data:  data,
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Data:      data,
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
@@ -648,7 +654,8 @@ func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
 	})
 	s.Run("a world on a field with nothing concealed", func() {
 		plain, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: doorField(3, encounter.DoorIsClosed(), "plain-door", 1),
 			Members: []encounter.MemberInput{
@@ -685,8 +692,9 @@ func (s *ConcealSuite) TestAnOldBlobsOccupantIsPiercedAtLoad() {
 	beatsBefore := len(s.beatsFor(live, lurker, "region_revealed"))
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  data,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data:      data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})
