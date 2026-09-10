@@ -275,6 +275,16 @@ var longRestCases = map[string]longRestCase{
 		outcome:          longRestRemove,
 		removalReason:    "long rest",
 	},
+	refs.Conditions.BladeWard().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"blade_ward"},
+			"member_id":"member-1","source_ref":"dnd5e:spells:blade-ward","turn_ends_left":2
+		}`),
+		ownerID:       "member-1",
+		expectedRef:   refs.Conditions.BladeWard(),
+		outcome:       longRestRemove,
+		removalReason: "long rest",
+	},
 	refs.Conditions.TrueStrike().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"true_strike"},

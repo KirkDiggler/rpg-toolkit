@@ -189,8 +189,15 @@ func (s *CastContentSuite) TestTheBardsListIsAllElevenCantrips() {
 	s.Contains(spells.BardCantrips, spells.MageHand)
 }
 
-func (s *CastContentSuite) TestCastableIsTheTwoThisBuildCanCast() {
-	s.Equal([]spells.Spell{spells.TrueStrike, spells.ViciousMockery},
+// Castable is the subset of a class's list that has cast content, in the order
+// the list gave. Named for the property rather than for a count: the count is
+// the part that changes every time a cantrip grows a profile, and a test whose
+// NAME goes stale is a test people stop trusting.
+//
+// Blade Ward leads because spells.BardCantrips is in book order, and its
+// arrival is the moment the bard's cantrip pick stops being "choose 2 of 2".
+func (s *CastContentSuite) TestCastableIsTheSubsetWithProfilesInListOrder() {
+	s.Equal([]spells.Spell{spells.BladeWard, spells.TrueStrike, spells.ViciousMockery},
 		spells.Castable(spells.BardCantrips))
 }
 

@@ -176,6 +176,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return ts, nil
 	},
+	refs.Conditions.BladeWard().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		bw := &BladeWardCondition{}
+		if err := bw.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load blade ward condition")
+		}
+		return bw, nil
+	},
 	refs.Conditions.ViciousMockery().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		vm := &ViciousMockeryCondition{}
 		if err := vm.loadJSON(data); err != nil {

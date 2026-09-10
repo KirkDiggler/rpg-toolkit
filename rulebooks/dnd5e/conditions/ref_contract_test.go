@@ -48,6 +48,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"hidden":            NewHiddenCondition("m1"),
 		"helped":            NewHelpedCondition("m1", "helper-1"),
 		"inspired":          NewInspiredCondition("m1", "bard-1", InspiredDie),
+		"blade_ward":        NewBladeWardCondition("m1", "", 2),
 		"true_strike":       NewTrueStrikeCondition("m1", "goblin-1", ""),
 		"concentrating":     NewConcentratingCondition("m1", refs.Spells.TrueStrike().String(), TrueStrikeName, 2),
 		"baned":             baned,
