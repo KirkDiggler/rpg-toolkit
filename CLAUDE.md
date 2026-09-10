@@ -68,18 +68,20 @@ safe. Internalize this model before reasoning about releases, freezes, or
 These are hard rules, including when several modules change for one feature:
 
 1. **One nearest-`go.mod` module per PR.** CI builds and tags each Go module as
-   an independent release unit, so a PR must contain changes for exactly one
+   an independent release unit, so a PR must contain changes for at most one
    module as determined by the nearest `go.mod`. Repository-level docs may
-   accompany the relevant module PR.
+   accompany the relevant module PR or ship as a docs-only PR.
 2. **Nested modules are separate PRs.** A nested module has its own `go.mod` and
    therefore gets its own PR even when its changes implement the same feature
    as its parent or sibling modules.
 3. **Open a draft on the first working push.** Push meaningful checkpoints,
    create the draft immediately, and update its description or comments as
    checkpoints and validation evidence accumulate.
-4. **Final gates are readiness gates, not visibility gates.** Tests, lint, and
-   review must pass before marking a PR ready; they must not delay publishing
-   the first working draft.
+4. **Distinguish review readiness from merge readiness.** A draft exposes work
+   in progress. Mark it ready for review when its declared scope is implemented
+   and applicable checks are green; required review and release prerequisites
+   must be satisfied before declaring it merge-ready. Neither state authorizes
+   an automatic merge. Gates must not delay the first working draft.
 5. **Publish providers before consumers.** Merge the provider, wait for CI to
    mint its real module tag, then update the consumer's committed pin to that
    tag. The consumer must not merge before that pin update.
@@ -377,11 +379,13 @@ gh pr create --draft                  # publish the first working checkpoint
 ```
 
 Open a draft PR on the first working push and keep its checkpoint and
-validation evidence current. Mark it ready only after the final gates pass;
-those gates never delay draft visibility. Branch from and merge to `main` —
-there is no `dev` here.
+validation evidence current. Mark it ready for review after implementation and
+applicable checks; publish the required review disposition before calling it
+merge-ready. Branch from and merge to `main` — there is no `dev` here.
+Published branches describe the issue/feature/module (for example,
+`feat/1601-bane-session`); keep runtime/session IDs in execution metadata.
 
-**Final-readiness checklist (not a draft-publication gate):**
+**Implementation/check checklist (not a draft-publication gate):**
 1. Always check existing patterns in similar modules
 2. Read Journey and ADR docs before implementing new features
 3. Never create files unless necessary - prefer editing existing ones
