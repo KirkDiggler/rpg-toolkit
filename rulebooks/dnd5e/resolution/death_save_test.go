@@ -14,6 +14,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -56,6 +58,59 @@ func deathSaveCharacter(hp int, state *saves.DeathSaveState) *character.Data {
 	}
 }
 
+type baneDeathSaveRoller struct {
+	d20, d4 int
+	calls   int
+}
+
+func (r *baneDeathSaveRoller) Roll(_ context.Context, sides int) (int, error) {
+	r.calls++
+	if sides == 20 {
+		return r.d20, nil
+	}
+	return 0, errors.New("unexpected single")
+}
+
+func (r *baneDeathSaveRoller) RollN(_ context.Context, count, sides int) ([]int, error) {
+	r.calls++
+	if count == 1 && sides == 4 {
+		return []int{r.d4}, nil
+	}
+	return nil, errors.New("unexpected group")
+}
+
+func TestDeathSaveUsesCurrentBaneAndPreservesNaturalTwentyPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		d20     int
+		outcome character.DeathSaveOutcome
+		total   int
+	}{
+		{name: "checked total fails", d20: 10, outcome: character.DeathSaveOutcomeFailure, total: 7},
+		{name: "natural twenty recovers", d20: 20, outcome: character.DeathSaveOutcomeRecovered, total: 17},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+				MemberID: deathSaveCharacterID, SourceID: "bane-caster", SourceRef: refs.Spells.Bane(),
+			})
+			require.NoError(t, err)
+			stored, err := bane.ToJSON()
+			require.NoError(t, err)
+			characterData := deathSaveCharacter(0, &saves.DeathSaveState{})
+			characterData.Conditions = []json.RawMessage{stored}
+			roller := &baneDeathSaveRoller{d20: tc.d20, d4: 3}
+			out, err := DeathSave(context.Background(), &DeathSaveInput{Character: characterData, Roller: roller})
+			require.NoError(t, err)
+			require.Equal(t, tc.outcome, out.Result.Outcome)
+			require.Equal(t, tc.total, out.Result.Calculation.Total)
+			require.Len(t, out.Result.Calculation.Components, 2)
+			require.True(t, out.Result.Calculation.Components[1].SubtractDice)
+			require.Equal(t, "bane-caster", out.Result.Calculation.Components[1].Source.SourceID)
+			require.Equal(t, 2, roller.calls)
+		})
+	}
+}
+
 func TestDeathSavePersistsTheProviderResultWithoutReclassification(t *testing.T) {
 	input := deathSaveCharacter(0, &saves.DeathSaveState{Successes: 1, Failures: 1})
 	before, err := json.Marshal(input)
@@ -71,6 +126,8 @@ func TestDeathSavePersistsTheProviderResultWithoutReclassification(t *testing.T)
 	require.NotNil(t, out)
 	require.Equal(t, 1, roller.calls)
 	require.Equal(t, []int{20}, roller.sides)
+	calculation := out.Result.Calculation
+	out.Result.Calculation = nil
 	require.Equal(t, character.MakeDeathSaveOutput{
 		Roll:          9,
 		Outcome:       character.DeathSaveOutcomeFailure,
@@ -83,6 +140,10 @@ func TestDeathSavePersistsTheProviderResultWithoutReclassification(t *testing.T)
 		},
 		Continuation: character.DeathSaveContinuationEndTurn,
 	}, out.Result)
+	require.NotNil(t, calculation)
+	require.Equal(t, 9, calculation.Total)
+	require.Len(t, calculation.Components, 1)
+	require.Equal(t, []int{9}, calculation.Components[0].Dice.FinalRolls)
 	require.Equal(t, &saves.DeathSaveState{Successes: 1, Failures: 2}, out.Character.DeathSaveState)
 	require.Zero(t, out.Character.ActionEconomy.Granted[character.GrantedDeathSaves],
 		"the provider's capacity debit is part of the persisted result")

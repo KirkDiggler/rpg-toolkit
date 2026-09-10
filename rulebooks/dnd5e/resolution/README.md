@@ -24,7 +24,9 @@ machine, err := resolution.NewAction(&resolution.ActionInput{
 
 `NewAction` validates the definition and dispatches by populated profile arm.
 Content identity is attribution, never routing. An unknown monster/weapon ref
-with a valid Attack profile still resolves through Strike.
+with a valid Attack profile still resolves through Strike. Attack profiles use
+`TargetID`; cast profiles use the canonical ordered `TargetIDs` list and reject
+the singular field.
 
 Character definitions come from `character.AssembleAttack`; monster factories
 persist the same definitions directly. Resolution owns no producer compiler,
@@ -66,6 +68,19 @@ Order:
 or mutate. Invalid definitions, participants, delivery range, or condition
 construction therefore consume nothing.
 
+## Cast
+
+A cast validates the complete ordered target list before the resolution door
+pays. Cardinality, empty/duplicate IDs, participant eligibility, range, save
+construction, and condition construction are all preflight-only. After one
+payment, a concentration recast removes only the caster's qualified old owner
+and children, resolves each target in caller order, and installs one qualified
+new owner even when every target saves and it owns zero children.
+
+Each save asks its recipient's current condition owner for contributions when
+that save executes. Descriptions are never cached during whole-cast preflight,
+so a recast cannot apply a contribution from the concentration it just ended.
+
 ## Strike
 
 Strike interprets `Definition.Attack`:
@@ -78,7 +93,12 @@ Strike interprets `Definition.Attack`:
 - a condition-only attack skips damage and still processes on-hit declarations;
 - `ConditionApplication` behavior is prepared during Start, before payment;
 - automatic and save-gated conditions execute in declaration order and produce
-  ordered `StrikeOutcome.Conditions`.
+  ordered `StrikeOutcome.Conditions`;
+- attack, ordinary save, concentration save, and death-save results carry a
+  strict sourced calculation; selected contribution dice retain positive faces
+  and a separate add/subtract operator;
+- post-roll Inspiration freezes strike version 2 with that settled calculation.
+  Keep reuses it unchanged; spend appends only the offered die component.
 
 A save-gated condition requests Contest. The declaration names the condition,
 parameters, and `SaveGate`; the condition implementation owns executable

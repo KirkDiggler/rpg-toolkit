@@ -117,6 +117,7 @@ type ActivationEffect struct {
 	TargetID string
 	Ref      string
 	Name     string
+	Address  dnd5eEvents.ConditionAddress
 
 	Amount    int
 	Requested int
@@ -278,6 +279,7 @@ func (c *activationEffectCollector) captureConditionApplied(
 
 	c.append(ActivationEffect{
 		Kind: EffectConditionApplied, TargetID: event.Target.GetID(), Ref: ref, Name: name,
+		Address: conditions.ConditionAddressOf(event.Target.GetID(), event.Condition),
 	})
 	return nil
 }
@@ -297,6 +299,9 @@ func (c *activationEffectCollector) captureConditionRemoved(
 	c.append(ActivationEffect{
 		Kind: EffectConditionRemoved, TargetID: event.MemberID,
 		Ref: canonical, Name: name, Reason: event.Reason,
+		Address: dnd5eEvents.ConditionAddress{
+			MemberID: event.MemberID, ConditionRef: event.ConditionRef, SourceID: event.SourceID,
+		},
 	})
 	return nil
 }
