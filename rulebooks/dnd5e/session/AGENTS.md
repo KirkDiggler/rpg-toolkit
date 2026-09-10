@@ -96,9 +96,23 @@ range constants do live here: `helpReachFeet = 5`
 ([`activations.go`](./activations.go):269), `inspirationReachFeet = 60`
 ([`inspiration.go`](./inspiration.go):29), `defaultSightFeet = 120`
 ([`sight.go`](./sight.go):25). Each is documented as a ruling with its RAW
-divergence named. They are the reach of a *candidate universe* this seam
-compiles, not a threshold applied to an outcome — but they are numbers about the
-game, and a fourth one arriving without that argument is the charter slipping.
+divergence named.
+
+**Do not read them as precedent, because they are not one exception but two
+different problems** (rpg-toolkit#1630):
+
+- `helpReachFeet` and `inspirationReachFeet` are **content facts with nowhere to
+  live.** An attack declares `AttackDelivery.ReachFeet` and a cast declares
+  `CastProfile.RangeFeet` ([`../combat/actions/cast.go`](../combat/actions/cast.go):66);
+  an activation has no such field. These two numbers are here because the data
+  model has a hole exactly where they belong, not because this package decided to
+  hold game numbers. When an activation can declare its range, they leave.
+- `defaultSightFeet` is not a range declaration at all. It is a **fallback for an
+  absent fact** — its own comment says *"we don't have this stat block's Senses
+  yet"* — which is the fail-closed question, not this one.
+
+So a fourth constant arriving is the charter slipping, and the right response is
+to ask which of those two shapes it is rather than to weigh it against these.
 
 ## Questions it answers, questions it asks
 
@@ -182,7 +196,7 @@ before the implementation is.
 | A fact the composition needs but cannot compute | **here, as a capability** | Only this module imports the rulebook root; supply the lookup, never the rule |
 | A new persistence shape | **here**, in `data.go` | S3/S13: one repository per data type, hydration inside the laws |
 | Something the host wants to display | **here**, in `types.go` | S2 forbids the inner type; project it, and put nothing in the projection the composition did not say |
-| A number about the game | **the rulebook** | See the honest exception above; a fourth range constant needs an argument, not a precedent |
+| A number about the game | **the rulebook** | See the honest exception above. If it is an action's own reach it belongs in `combat/actions` beside `ReachFeet`/`RangeFeet` (rpg-toolkit#1630); if it is a fallback for a fact content did not state, it is a fail-closed question, not a range |
 
 ## Traps
 
