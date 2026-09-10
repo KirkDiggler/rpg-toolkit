@@ -151,6 +151,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight:      aggregateRecordEveryoneSees{},
+		Equipment:  encNoHandsObserved{},
 		Standing:   aggregateRecordEveryoneStanding{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
@@ -242,6 +243,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight:      aggregateRecordEveryoneSees{},
+		Equipment:  encNoHandsObserved{},
 		Standing:   aggregateRecordEveryoneStanding{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
@@ -614,7 +616,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 	require.NoError(t, err)
 
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
@@ -680,7 +682,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	require.NoError(t, err)
 
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
@@ -786,7 +788,7 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 	require.NoError(t, err)
 
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
@@ -866,7 +868,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	require.NoError(t, err)
 
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},

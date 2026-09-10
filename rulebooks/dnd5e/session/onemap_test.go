@@ -44,7 +44,7 @@ func TestOneMapSuite(t *testing.T) {
 // seam. Every authored pair in this fixture is ABSOLUTE offset, and every
 // cell a verb takes or reports is the axial one hexCell makes of it.
 func offsetWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
@@ -303,7 +303,17 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	}
 	s.Require().NotNil(payload, "alice and bob share an open hall in plain sight")
 
-	s.Equal(map[string]any{"state": string(encounter.LocationKnown), "x": bobsCell.X, "y": bobsCell.Y}, payload,
+	// Exhaustive on purpose: this pins the whole sight payload, so a new fact
+	// riding the snapshot has to be acknowledged here rather than appearing
+	// unnoticed. bob is a player whose sheet was found holding nothing, so his
+	// hands were OBSERVED and observed empty — an empty object, distinct from
+	// the key being absent, which would mean nobody looked (rpg-toolkit#1615).
+	s.Equal(map[string]any{
+		"state":     string(encounter.LocationKnown),
+		"x":         bobsCell.X,
+		"y":         bobsCell.Y,
+		"equipment": map[string]any{},
+	}, payload,
 		"bob's cell on the dungeon map — authored [42,21] as one axial cell")
 	s.NotContains(payload, "room", "a sighting names no room; there is one map")
 
@@ -362,7 +372,7 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 // shallowAnchoredWorld is one 10x10 region painted at [2,3], off the origin
 // by less than its own span.
 func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),

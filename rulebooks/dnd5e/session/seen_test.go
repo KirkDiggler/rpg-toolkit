@@ -61,7 +61,7 @@ func (s *SeenTestSuite) SetupTest() {
 // [9,3], where nothing but the doorway can put it in sight.
 func skeletonBehindADoor(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
@@ -142,6 +142,51 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 	s.Require().NotNil(skeleton.Seen, "a sight-channel sighting must carry Seen")
 	s.Equal(where.Position, skeleton.Seen.Position,
 		"Seen.Position must equal the skeleton's own reported placement, read independently via Where")
+
+	// A skeleton has no character sheet and therefore no hands to observe, which
+	// is a DIFFERENT claim from being seen empty-handed. Nil all the way through
+	// the SDK is what keeps a client from drawing "we don't know" as "unarmed"
+	// (rpg-toolkit#1615).
+	s.Nil(skeleton.Seen.Equipment,
+		"a monster has no hands to observe; it was not seen empty-handed")
+}
+
+// TestSeenEquipmentComesFromTheSnapshotNotTheSheet pins the property the whole
+// design rests on: what a client is told a peer is holding is read out of the
+// observer's own sight testimony, not resolved from the subject when somebody
+// asks. That is what lets a memory keep the hands it last saw — and what makes
+// a lie expressible at all, since a live read could only ever be true.
+func (s *SeenTestSuite) TestSeenEquipmentComesFromTheSnapshotNotTheSheet() {
+	ctx := context.Background()
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "skeleton-behind-a-door", World: skeletonBehindADoor(s.T()),
+	})
+	s.Require().NoError(err)
+
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "fighter",
+		Path: []spatial.Position{hexCell(5, 1), hexCell(5, 2), hexCell(6, 2)},
+	})
+	s.Require().NoError(err)
+
+	after, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+
+	var skeleton *session.Sighting
+	for i := range after {
+		if after[i].Subject == "skeleton-1" {
+			skeleton = &after[i]
+		}
+	}
+	s.Require().NotNil(skeleton, "the fighter must see the skeleton once through the doorway")
+	s.Require().NotNil(skeleton.Seen, "a sight-channel sighting must carry Seen")
+
+	// The decoded payload is the observer's snapshot. Whatever Seen reports has
+	// to agree with it, because that is where it came from — no second source.
+	testimony, ok := encounter.DecodeSightTestimony(skeleton.Payload)
+	s.Require().True(ok, "the composition must decode its own testimony")
+	s.Equal(testimony.Equipment == nil, skeleton.Seen.Equipment == nil,
+		"Seen.Equipment must mirror the snapshot's own claim, not a live read")
 }
 
 // TestDiscoveredAlsoCarriesSeen pins the other producer of Report: MoveOutput

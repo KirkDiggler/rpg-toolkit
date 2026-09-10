@@ -49,7 +49,7 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 	require.NoError(t, err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -98,7 +98,7 @@ func injectHolding(
 	t *testing.T, encounters *fakeEncounters, subject string, currentVia []intel.Channel,
 ) {
 	t.Helper()
-	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{
+	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
 		State:    encounter.LocationKnown,
 		Position: spatial.Position{X: 1, Y: 1},
 	})
@@ -333,7 +333,7 @@ func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	require.NoError(t, err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
@@ -467,7 +467,7 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
@@ -537,7 +537,7 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	require.NoError(t, err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{

@@ -178,7 +178,7 @@ func campWorld(t *testing.T, compiled dungeonspec.Compiled, withEnding bool) *en
 		t.Fatalf("the camp seats %d, and the party is two", len(seats))
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
 		Field: compiled.Field,

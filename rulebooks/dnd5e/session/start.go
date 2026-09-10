@@ -163,6 +163,7 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 		Initiative: m.initiative,
 		Standing:   standing,
 		Sight:      &sightSeam{members: worldMembers(*world)},
+		Equipment:  equipmentBeside(standing),
 		TurnDriver: m.turnDriver,
 		Striker:    encounter.RefusingStriker{},
 		// An authored world is walked by nobody: it is loaded to be inspected
