@@ -108,8 +108,10 @@ area" — is different. Its answer silently depends on what happened to be loade
 Two identical calls over the same fiction return different sets if the caller
 attached a different cast, and nothing in the signature says so.
 
-> **Any API that returns a collection names the universe it ranges over, or it
-> does not ship.**
+> **Every collection-returning API here names the universe it ranges over.** An
+> observation about the surface as it stands, not a gate on the next one — but
+> worth keeping, because a producer with an unstated universe fails invisibly:
+> whatever it left out looks exactly like something that was never there.
 
 For this package, R3 already supplies the universe: **the participant list IS
 the declared universe of a resolution.** That is precisely why R3 says pass
