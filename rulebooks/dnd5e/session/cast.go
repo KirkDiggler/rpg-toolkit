@@ -81,6 +81,16 @@ type CastOutput struct {
 	// when exactly one target produced a save.
 	Saved *CastSaveReport `json:"saved,omitempty"`
 
+	// Caught are members an area cast's footprint reached that this build could
+	// not resolve against — a placed world member with no sheet behind it.
+	//
+	// REPORTED RATHER THAN DROPPED. Silently omitting them would make "nobody
+	// was standing there" and "somebody was standing there and we have nothing
+	// to do about it" the same answer, and the second is a missing capability
+	// that should stay visible until it is built. Nil when nothing was caught
+	// this way, which is every cast that is not an area and most that are.
+	Caught []CaughtMember `json:"caught,omitempty"`
+
 	// Seqs are the story sequences of the recorded beats, in the order they
 	// were appended: the cast, then the save if there was one, then one per
 	// delivered effect.
@@ -254,10 +264,24 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
+	// An area cast's recipients are worked out here, from the shape the content
+	// declared and the roster the composition placed — never from what the
+	// caller sent, which castTargets has just confirmed was nobody.
+	var caught *areaCaught
+	if definition.Cast != nil && definition.Cast.Target == combatActions.CastTargetArea {
+		caught, err = deriveAreaMembers(scope.enc, definition.Cast, in.Member, roster)
+		if err != nil {
+			return nil, fmt.Errorf("cast: %w", err)
+		}
+	}
+
 	machine, err := resolution.NewAction(&resolution.ActionInput{
 		Definition: definition.Clone(),
 		AttackerID: in.Member,
 		TargetIDs:  targets,
+		// Empty for every other arm. Derived recipients travel separately from
+		// named ones all the way down, so no gate has to guess which it holds.
+		AreaMembers: areaMemberIDs(caught),
 		// A machine that rolls carries its own roller (resolution's rule): a
 		// gated cast rolls the target's save, and it rolls with the HOST'S
 		// dice through the same seam every other roll takes. There is no
@@ -375,6 +399,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	return &CastOutput{
 		Spell:     *selected.declaration.Spell,
 		Saved:     castSaveReport(singleSave),
+		Caught:    areaUnresolved(caught),
 		Seqs:      recorded.Seqs,
 		Persisted: report,
 		Delivery:  delivery,
@@ -413,7 +438,12 @@ func castTargets(
 	definition *combatActions.Definition, selected compiledOffer, requested []string,
 ) ([]string, error) {
 	profile := definition.Cast
-	if profile.Target == combatActions.CastTargetSelf {
+	if profile.Target == combatActions.CastTargetSelf || profile.Target == combatActions.CastTargetArea {
+		// Neither lets the caller name anybody, and a populated list is
+		// REFUSED rather than ignored for the same reason in both cases: a
+		// client that believed it had pointed the spell somewhere must be told
+		// it had not. An area cast's recipients are derived after this, from
+		// the shape, and never from what arrived here.
 		if len(requested) != 0 {
 			return nil, fmt.Errorf("%w: spell %q names no targets",
 				ErrBadCast, definition.Ref.String())
