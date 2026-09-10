@@ -52,7 +52,8 @@ func TestRecordActivationSuite(t *testing.T) {
 // capability.
 func (s *RecordActivationSuite) scene(standing encounter.Standing) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},

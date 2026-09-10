@@ -153,7 +153,8 @@ func tombProp(origin spatial.Position, x, y int) encounter.PropInput {
 // them. Nothing about rooms can tell them apart.
 func (s *CanvasSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow)},
@@ -307,7 +308,8 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 		"the old blob still PARSES — that is exactly why the refusal has to be by name")
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data,
 	})
 	require.Error(t, err, "a room-chain blob must not load as a region one")
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
@@ -323,7 +325,8 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 // painted.
 func TestAFieldAlwaysFitsOneGrid(t *testing.T) {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", -20, -20, 6, 6)},
@@ -352,7 +355,8 @@ func TestPropsAreCompiledThroughTheOneConversion(t *testing.T) {
 	field.Props = wallColumn(int(tombHallOrigin.X)+5, int(tombHallOrigin.Y)+2, int(tombHallOrigin.Y)+4)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 3, 3)},
@@ -377,7 +381,8 @@ func TestPropsAreCompiledThroughTheOneConversion(t *testing.T) {
 func TestAWallThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
 	setup := func(b spatial.Boundary) *encounter.SetupInput {
 		return &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("hall", 4, 4, 6, 6)}, Walls: []encounter.WallInput{{Boundary: b}},

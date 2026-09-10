@@ -1195,6 +1195,15 @@ type SetupInput struct {
 	// per-light-source.
 	Sight Sight
 
+	// Equipment reports what each member is holding (rpg-toolkit#1615). REQUIRED,
+	// for the same reason Sight is: the consult runs at every sight refresh
+	// including first light, so an encounter that cannot ask cannot snapshot a
+	// complete percept. Refused at construction (ErrNoEquipment). There is no
+	// default — empty hands for everybody would be this module inventing
+	// testimony, and the difference between "no hands to observe" and "observed
+	// empty" is a distinction only the rulebook can draw.
+	Equipment Equipment
+
 	// TurnDriver decides what a member with no player does when the fight's
 	// clock lands on their turn (rpg-toolkit#1162). REQUIRED — a fight can
 	// form at first light with an unplayed member first in initiative, so an

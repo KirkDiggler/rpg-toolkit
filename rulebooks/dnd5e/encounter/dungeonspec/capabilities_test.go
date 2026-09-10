@@ -136,3 +136,19 @@ type nobodyPerceivesAnything struct{}
 func (nobodyPerceivesAnything) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
 	return nil, nil
 }
+
+// noHandsAreObserved answers the equipment question for tests that are not
+// about equipment: every member is present in the answer, and every answer is
+// "no hands to observe". That is the honest default for a fixture roster of
+// bare member IDs with no sheets behind them — and it is deliberately NOT
+// "everybody is empty-handed", which would be testimony this fixture has no
+// standing to give. See [encounter.Equipment].
+type noHandsAreObserved struct{}
+
+func (noHandsAreObserved) Equipment(members []encounter.MemberID) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
+	out := make(map[encounter.MemberID]*encounter.HeldEquipment, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
+}

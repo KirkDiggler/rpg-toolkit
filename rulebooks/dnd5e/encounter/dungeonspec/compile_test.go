@@ -383,7 +383,8 @@ func (s *CompileSuite) TestCompile_DoorInsideARegionIsLegal() {
 	s.Equal(encounter.DoorID("reference-tomb/shortcut"), c.Field.Doors[0].ID)
 
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   c.Field,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},

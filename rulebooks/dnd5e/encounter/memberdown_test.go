@@ -45,7 +45,8 @@ func (s *MemberDownSuite) doomed(standing encounter.Standing) *encounter.Encount
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight: everyoneSeesTheWholeMap{}, Standing: standing,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{
@@ -111,7 +112,8 @@ func (s *MemberDownSuite) TestAnotherBodyIsNotTheDoom() {
 func (s *MemberDownSuite) TestSetupRefusesADoomNamingNobody() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight: everyoneSeesTheWholeMap{}, Standing: &downList{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: &downList{},
 		Retention: encounter.RetentionUnbounded,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{
@@ -140,7 +142,8 @@ func (s *MemberDownSuite) TestTheDoomSurvivesTheRoundTrip() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       saved,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight: everyoneSeesTheWholeMap{}, Standing: down,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: down,
 	})
 	s.Require().NoError(err)
 
@@ -164,7 +167,8 @@ func (s *MemberDownSuite) TestLoadRefusesADoomNamingNobody() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       saved,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight: everyoneSeesTheWholeMap{}, Standing: &downList{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: &downList{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)

@@ -51,7 +51,8 @@ func Example_theDoorway() {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 7, Y: 4}},

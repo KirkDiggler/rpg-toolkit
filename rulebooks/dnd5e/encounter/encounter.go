@@ -17,10 +17,10 @@ import (
 )
 
 // SightPayload is the legacy untagged known-location shape retained for source
-// compatibility. New encounter testimony is encoded with LocationKnowledge.
+// compatibility. New encounter testimony is encoded with SightTestimony.
 //
 // It describes dungeon-absolute coordinates and is readable by
-// DecodeLocationPayload as the legacy known form.
+// DecodeSightTestimony as the legacy known form.
 type SightPayload struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
@@ -134,6 +134,11 @@ type Encounter struct {
 	// — see [Sight] for why it is asked at every refresh rather than held, and
 	// why there is no default.
 	sight Sight
+
+	// equipment reports what each member is holding. Required at both
+	// constructors — see [Equipment] for why it answers truth rather than
+	// testimony, and why a nil answer is a fact rather than a gap.
+	equipment Equipment
 
 	// turnDriver decides what a member with no player does when the clock
 	// lands on their turn. Required at both constructors, for the same reason
@@ -556,6 +561,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoSight)
 	}
 
+	// Required for the same reason again, one seam over: the equipment consult
+	// runs at every sight refresh including first light, so an encounter that
+	// cannot ask what a member is holding cannot snapshot a complete percept —
+	// and the hands would have to be invented at the moment somebody looks
+	// (rpg-toolkit#1615). Never defaulted: "everyone is empty-handed" is
+	// testimony, not an absence of it.
+	if in.Equipment == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoEquipment)
+	}
+
 	// Required for the same reason again: a fight can form at first light
 	// with an unplayed member first in the rolled order, so an encounter that
 	// cannot answer "what does this member do" would stall before its caller
@@ -745,6 +760,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		standing:      standingWithParticipation,
 		participation: standingWithParticipation,
 		sight:         in.Sight,
+		equipment:     in.Equipment,
 		turnDriver:    in.TurnDriver,
 		striker:       in.Striker,
 		mover:         in.Mover,
@@ -1798,6 +1814,16 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		return nil, err
 	}
 
+	// Asked once per refresh for the same C8 reason, and beside sight rather
+	// than inside the loop so that one pass writes one consistent reading of the
+	// world into every observer's testimony. What a member holds is a fact an
+	// observer can be WRONG about later, which is why it is snapshotted here
+	// rather than read when somebody asks — see [SightTestimony].
+	hands, err := e.equipmentNow()
+	if err != nil {
+		return nil, err
+	}
+
 	for _, observerID := range observers {
 		if _, ok := e.members[observerID]; !ok {
 			continue // Skip if not found
@@ -1863,11 +1889,21 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 				continue // A wall, or something standing in the way
 			}
 
-			payload, err := EncodeLocationPayload(LocationKnowledge{
-				State: LocationKnown, Position: otherCell,
-			})
+			// Down is deliberately NOT set here yet. Standing is a fact an
+			// observer can be wrong about and therefore belongs in this
+			// snapshot — but the composition may ask its participation
+			// capability exactly once per pass (C8), and this choke point has
+			// no pass-scoped reading to draw on. Asking here is a second
+			// question, which the contract refuses. Nil is the honest value
+			// meanwhile: this build did not observe standing. See rpg-toolkit#1615.
+			testimony := SightTestimony{
+				State:     LocationKnown,
+				Position:  otherCell,
+				Equipment: hands[otherMember.ID],
+			}
+			payload, err := EncodeSightTestimony(testimony)
 			if err != nil {
-				return nil, fmt.Errorf("encode sight location: %w", err)
+				return nil, fmt.Errorf("encode sight testimony: %w", err)
 			}
 			percept = append(percept, intel.Report{
 				Subject: intel.Subject(otherMember.ID),

@@ -95,7 +95,8 @@ func (s *PropsSuite) chamber(ref string, blocksMovement, blocksSight *bool) *enc
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
@@ -192,7 +193,8 @@ func (s *PropsSuite) TestCandlesAreThereAndInNobodysWay() {
 // as "a pillar and a statue are the same cell".
 func (s *PropsSuite) TestTheMapSaysWHICHThingIsWhere() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("tomb", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
@@ -230,7 +232,8 @@ func (s *PropsSuite) TestTheMapSaysWHICHThingIsWhere() {
 func (s *PropsSuite) TestAPropMustSayWhatItDoes() {
 	build := func(p encounter.PropInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
@@ -279,7 +282,7 @@ func (s *PropsSuite) TestAPropSurvivesASave() {
 	s.False(*data.Field.Props[0].BlocksLineOfSight)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -320,7 +323,7 @@ func (s *PropsSuite) TestAnOldBlobsRoomsAreRefusedLoudly() {
 	s.Require().NoError(json.Unmarshal(rewound, &data))
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -344,7 +347,7 @@ func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
 		data := enc.ToData()
 		mutate(&data.Field.Props[0])
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
+			Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
 			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		})
 		return err
@@ -377,7 +380,8 @@ func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
 func (s *PropsSuite) TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon() {
 	solid := true
 	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
@@ -439,7 +443,8 @@ func (s *PropsSuite) TestASavedPropIsNotAliasedByTheSnapshot() {
 // design, so a prop that authors neither carries the zero value of both.
 func (s *PropsSuite) TestFacingAndOffsetAreCarriedButNeverInterpreted() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("tomb", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
@@ -481,7 +486,8 @@ func (s *PropsSuite) TestFacingAndOffsetAreCarriedButNeverInterpreted() {
 // (TestAPropSurvivesASave).
 func (s *PropsSuite) TestFacingAndOffsetSurviveASave() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
@@ -504,7 +510,7 @@ func (s *PropsSuite) TestFacingAndOffsetSurviveASave() {
 	s.Equal([3]float64{0.25, -0.4}, data.Field.Props[0].Offset)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)

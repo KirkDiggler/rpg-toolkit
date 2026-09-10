@@ -275,6 +275,19 @@ var (
 	// have to invent, which rpg-toolkit#1033 forbids it to do.
 	ErrNoSight = errors.New("encounter: no sight capability")
 
+	// ErrNoEquipment indicates this module was not told, usably, what somebody is
+	// holding. Two ways to earn it: Setup or Load was given no Equipment
+	// capability; or the capability answered without covering a member it was
+	// asked about. Both are the same defect seen from different sides — a pair of
+	// hands this module would have to invent, which rpg-toolkit#1033 forbids it
+	// to do.
+	//
+	// A nil answer for a member does NOT earn this. That is the capability saying
+	// the member has no hands to observe, which is a fact and not a gap — see
+	// [Equipment] for why "nothing to observe" and "observed empty" are two
+	// different claims that must not collapse.
+	ErrNoEquipment = errors.New("encounter: no equipment capability")
+
 	// ErrNoCheckResolver indicates Setup or Load was given a field carrying
 	// concealed structure and no CheckResolver capability. A concealed door
 	// exists to be searched for, and this module refuses to roll the find

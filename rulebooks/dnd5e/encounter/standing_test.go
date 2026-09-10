@@ -62,7 +62,8 @@ func (s *deathScene) scene(standing encounter.Standing, members ...encounter.Mem
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight: everyoneSeesTheWholeMap{}, Standing: standing,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members:   members,
@@ -203,7 +204,8 @@ func (s *StandingSuite) TestALoadedEncounterAsksToo() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       saved,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight: everyoneSeesTheWholeMap{}, Standing: down,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: down,
 	})
 	s.Require().NoError(err)
 	s.Require().Equal([]encounter.MemberID{alice, goblin, wolf}, s.orderOf(enc, alice),
@@ -406,7 +408,8 @@ func (s *StandingSuite) TestTheStorySaysItOnce() {
 func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight: everyoneSeesTheWholeMap{}, Standing: &downList{down: []encounter.MemberID{goblin}},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: &downList{down: []encounter.MemberID{goblin}},
 		Retention: 4,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{
