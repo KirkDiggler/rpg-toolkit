@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -103,6 +105,9 @@ type ImposedEffect struct {
 	// is why it travels with the effect rather than being inferred by whoever
 	// reads it.
 	RecipientID string
+
+	// Address is the exact source-qualified identity for condition consequences.
+	Address dnd5eEvents.ConditionAddress
 
 	// Amount is the damage the SHEET applied. Zero on a condition, and zero on
 	// the AT-STAKE effect of a contest whose dice have not been rolled yet.
@@ -201,6 +206,25 @@ func prepareCondition(
 	if err := application.Validate(); err != nil {
 		return preparedCondition{}, fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
+	if application.Ref.Equals(refs.Conditions.Baned()) {
+		var config struct {
+			SourceID string `json:"source_id"`
+		}
+		if err := json.Unmarshal(application.Parameters, &config); err != nil {
+			return preparedCondition{}, fmt.Errorf("build condition baned for %q: %w", targetID, err)
+		}
+		source, err := core.ParseString(sourceRef)
+		if err != nil {
+			return preparedCondition{}, fmt.Errorf("build condition baned for %q: source: %w", targetID, err)
+		}
+		condition, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+			MemberID: targetID, SourceID: config.SourceID, SourceRef: source,
+		})
+		if err != nil {
+			return preparedCondition{}, fmt.Errorf("build condition baned for %q: %w", targetID, err)
+		}
+		return preparedCondition{declaration: application.Clone(), behavior: condition}, nil
+	}
 	built, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
 		Ref:       application.Ref.String(),
 		Config:    application.Parameters,
@@ -220,6 +244,7 @@ func (p preparedCondition) atStake(recipientID string) ImposedEffect {
 		Ref:         &ref,
 		Description: conditionDescription(ref),
 		RecipientID: recipientID,
+		Address:     conditions.ConditionAddressOf(recipientID, p.behavior),
 	}
 }
 
@@ -493,16 +518,6 @@ type contestMachine struct {
 	hasCondition bool
 }
 
-// rollerOrDefault is the machine's own roller, or the package default when the
-// caller named none — the same seam a strike keeps for the same reason.
-func (m *contestMachine) rollerOrDefault() dice.Roller {
-	if m.in.Roller != nil {
-		return m.in.Roller
-	}
-
-	return dice.NewRoller()
-}
-
 func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
@@ -564,15 +579,46 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 		return nil, err
 	}
 	dc := m.in.Gate.DC.DC(saves.DCInput{DamageTaken: m.in.DamageTaken})
+	d20Source, err := m.saveSource()
+	if err != nil {
+		return nil, err
+	}
+	if m.in.Roller == nil {
+		return nil, fmt.Errorf("%w: a contest rolls with no roller", ErrNoRoller)
+	}
 	return requestSave(&SaveInput{
-		SaverID: m.in.SaverID,
-		Ability: ability,
-		DC:      dc,
-		Cause:   m.in.Cause,
-		Roller:  m.in.Roller,
+		SaverID:   m.in.SaverID,
+		Ability:   ability,
+		DC:        dc,
+		Cause:     m.in.Cause,
+		D20Source: d20Source,
+		Roller:    m.in.Roller,
 	}, func(_ context.Context, save SaveOutcome) (Step, error) {
 		return m.resolve(ability, dc, save)
 	}), nil
+}
+
+func (m *contestMachine) saveSource() (dnd5eEvents.RollSource, error) {
+	ref := cloneCoreRef(m.in.Cause.EffectRef)
+	name := strings.TrimSpace(m.in.SourceName)
+	if ref == nil && m.hasCondition {
+		conditionRef := m.prepared.declaration.Ref
+		ref = cloneCoreRef(&conditionRef)
+	}
+	if ref == nil && m.in.Removal != nil {
+		parsed, err := core.ParseString(m.in.Removal.Owner.ConditionRef)
+		if err != nil {
+			return dnd5eEvents.RollSource{}, fmt.Errorf("%w: save source: %v", ErrBadAction, err)
+		}
+		ref = parsed
+	}
+	if ref == nil {
+		return dnd5eEvents.RollSource{}, fmt.Errorf("%w: contest save needs a source ref", ErrBadAction)
+	}
+	if name == "" {
+		name = ref.ID
+	}
+	return dnd5eEvents.RollSource{Ref: ref, Name: name, SourceID: m.in.Cause.InstigatorID}, nil
 }
 
 func (m *contestMachine) chooseAbility(cast *Participants) (abilities.Ability, error) {
@@ -661,7 +707,7 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 	}
 
 	return applyPreparedDamage(
-		m.in.Damage, m.rollerOrDefault(), m.in.Cause, m.in.SourceName, m.cast, m.in.SaverID,
+		m.in.Damage, m.in.Roller, m.in.Cause, m.in.SourceName, m.cast, m.in.SaverID,
 		func(applied ImposedEffect) (Step, error) {
 			outcome.Imposed = append(outcome.Imposed, applied)
 
@@ -676,7 +722,7 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 				DroppedToZero: applied.Before > 0 && applied.After == 0,
 				Cause:         m.in.Cause,
 			}, func(ctx context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
-				return runFollowUps(ctx, ups, 0, m.rollerOrDefault(),
+				return runFollowUps(ctx, ups, 0, m.in.Roller,
 					func(followUp FollowUpOutcome) {
 						outcome.FollowUps = append(outcome.FollowUps, followUp)
 					},
@@ -708,6 +754,7 @@ func removalEffect(address dnd5eEvents.ChildRef, reason string) ImposedEffect {
 		Kind:        ImposedConditionRemoved,
 		Description: fmt.Sprintf("%s ended (%s)", address.ConditionRef, reason),
 		RecipientID: address.MemberID,
+		Address:     address,
 	}
 	if ref, err := core.ParseString(address.ConditionRef); err == nil {
 		effect.Ref = ref

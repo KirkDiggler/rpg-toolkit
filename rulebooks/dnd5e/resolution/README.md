@@ -6,6 +6,9 @@ A `Resolve` call validates data, loads the world, attaches every participant,
 purely preflights the machine, pays any cost, drives sealed steps, tears down,
 and returns data. Nothing runtime survives the call.
 
+See the [D&D 5e layer overview](../overview.md) for how resolution composes with
+`encounter`, `session`, rulebook content, and the reusable `play/*` leaves.
+
 ## Actions are shared data
 
 Producers hand resolution a `combat/actions.Definition`:
@@ -14,14 +17,18 @@ Producers hand resolution a `combat/actions.Definition`:
 machine, err := resolution.NewAction(&resolution.ActionInput{
     Definition: definition,
     AttackerID: "wolf",
-    TargetID:   "hero",
+    TargetIDs:  []string{"hero"},
     Roller:     roller,
 })
 ```
 
 `NewAction` validates the definition and dispatches by populated profile arm.
 Content identity is attribution, never routing. An unknown monster/weapon ref
-with a valid Attack profile still resolves through Strike.
+with a valid Attack profile still resolves through Strike. `TargetIDs` is the
+canonical ordered list for both attack and cast profiles. The deprecated
+`TargetID` remains a working single-target alias; callers must not populate both
+forms. Resolution normalizes the public input while the lower-level
+`StrikeInput` stays genuinely single-target.
 
 Character definitions come from `character.AssembleAttack`; monster factories
 persist the same definitions directly. Resolution owns no producer compiler,
@@ -63,6 +70,19 @@ Order:
 or mutate. Invalid definitions, participants, delivery range, or condition
 construction therefore consume nothing.
 
+## Cast
+
+A cast validates the complete ordered target list before the resolution door
+pays. Cardinality, empty/duplicate IDs, participant eligibility, range, save
+construction, and condition construction are all preflight-only. After one
+payment, a concentration recast removes only the caster's qualified old owner
+and children, resolves each target in caller order, and installs one qualified
+new owner even when every target saves and it owns zero children.
+
+Each save asks its recipient's current condition owner for contributions when
+that save executes. Descriptions are never cached during whole-cast preflight,
+so a recast cannot apply a contribution from the concentration it just ended.
+
 ## Strike
 
 Strike interprets `Definition.Attack`:
@@ -75,7 +95,12 @@ Strike interprets `Definition.Attack`:
 - a condition-only attack skips damage and still processes on-hit declarations;
 - `ConditionApplication` behavior is prepared during Start, before payment;
 - automatic and save-gated conditions execute in declaration order and produce
-  ordered `StrikeOutcome.Conditions`.
+  ordered `StrikeOutcome.Conditions`;
+- attack, ordinary save, concentration save, and death-save results carry a
+  strict sourced calculation; selected contribution dice retain positive faces
+  and a separate add/subtract operator;
+- post-roll Inspiration freezes strike version 2 with that settled calculation.
+  Keep reuses it unchanged; spend appends only the offered die component.
 
 A save-gated condition requests Contest. The declaration names the condition,
 parameters, and `SaveGate`; the condition implementation owns executable

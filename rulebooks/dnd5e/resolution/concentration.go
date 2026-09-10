@@ -116,13 +116,60 @@ func castSave(check FollowUpOutcome) encounter.CastSave {
 	result := check.Save.Result
 
 	return encounter.CastSave{
-		Saver:     encounter.MemberID(check.SaverID),
-		Ability:   string(check.Ability),
-		Roll:      result.Roll,
-		Total:     result.Total,
-		DC:        result.DC,
-		Succeeded: result.Success,
+		Saver:       encounter.MemberID(check.SaverID),
+		Ability:     string(check.Ability),
+		Roll:        result.Roll,
+		Total:       result.Total,
+		DC:          result.DC,
+		Calculation: encounterRollCalculation(result.Calculation),
+		Succeeded:   result.Success,
 	}
+}
+
+func encounterRollCalculation(calculation *dnd5eEvents.RollCalculation) *encounter.RollCalculation {
+	if calculation == nil {
+		return nil
+	}
+	converted := &encounter.RollCalculation{Total: calculation.Total}
+	converted.Components = make([]encounter.RollComponent, len(calculation.Components))
+	for i, component := range calculation.Components {
+		converted.Components[i] = encounter.RollComponent{
+			Source: encounter.RollSource{
+				Name: component.Source.Name, Label: component.Source.Label, SourceID: component.Source.SourceID,
+			},
+			SubtractDice: component.SubtractDice,
+		}
+		if component.Source.Ref != nil {
+			converted.Components[i].Source.Ref = component.Source.Ref.String()
+		}
+		if component.Modifier != nil {
+			modifier := *component.Modifier
+			converted.Components[i].Modifier = &modifier
+		}
+		if component.Dice != nil {
+			trace := &encounter.DiceTrace{
+				Notation: component.Dice.Notation, DieSize: component.Dice.DieSize,
+				OriginalRolls: append([]int(nil), component.Dice.OriginalRolls...),
+				FinalRolls:    append([]int(nil), component.Dice.FinalRolls...),
+				KeptIndices:   append([]int(nil), component.Dice.KeptIndices...),
+				Subtotal:      component.Dice.Subtotal,
+			}
+			trace.Rerolls = make([]encounter.DiceReroll, len(component.Dice.Rerolls))
+			for j, reroll := range component.Dice.Rerolls {
+				trace.Rerolls[j] = encounter.DiceReroll{
+					DieIndex: reroll.DieIndex, Before: reroll.Before, After: reroll.After,
+					Source: encounter.RollSource{
+						Name: reroll.Source.Name, Label: reroll.Source.Label, SourceID: reroll.Source.SourceID,
+					},
+				}
+				if reroll.Source.Ref != nil {
+					trace.Rerolls[j].Source.Ref = reroll.Source.Ref.String()
+				}
+			}
+			converted.Components[i].Dice = trace
+		}
+	}
+	return converted
 }
 
 // breaks reads the collected facts back in the shape the record takes.
@@ -179,11 +226,11 @@ func removedResults(fact dnd5eEvents.ConcentrationEndedEvent) ([]encounter.Activ
 				fact.SpellName, address.ConditionRef, address.MemberID, err)
 		}
 		results = append(results, encounter.ActivationResult{
-			Kind:   encounter.ResultConditionRemoved,
-			Target: encounter.MemberID(address.MemberID),
-			Ref:    ref,
-			Name:   name,
-			Reason: fact.Reason,
+			Kind: encounter.ResultConditionRemoved,
+			Address: &encounter.ConditionAddress{
+				MemberID: encounter.MemberID(address.MemberID), ConditionRef: ref, SourceID: address.SourceID,
+			},
+			Name: name, Reason: fact.Reason,
 		})
 	}
 
@@ -246,6 +293,7 @@ func publishRemoval(removal *ConditionRemoval, next func(ImposedEffect) (Step, e
 				ctx, dnd5eEvents.ConditionRemovedEvent{
 					MemberID:     removal.Owner.MemberID,
 					ConditionRef: removal.Owner.ConditionRef,
+					SourceID:     removal.Owner.SourceID,
 					Reason:       removal.Reason,
 				}); err != nil {
 				return nil, fmt.Errorf("end %s on %q: %w",

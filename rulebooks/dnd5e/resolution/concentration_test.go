@@ -6,8 +6,10 @@ package resolution
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -222,8 +224,8 @@ func (s *ConcentrationTestSuite) TestAStrikeOnAConcentratingCasterRunsTheCheckIn
 	s.False(broke.Save.Succeeded)
 	s.Require().Len(broke.Removed, 1)
 	s.Equal(encounter.ResultConditionRemoved, broke.Removed[0].Kind)
-	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Target)
-	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Address.MemberID)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
 
 	// The strip, as facts on the interaction's own bus. Resolution publishes
 	// ONE removal — the owner's — and the hold strips its own children with
@@ -236,6 +238,33 @@ func (s *ConcentrationTestSuite) TestAStrikeOnAConcentratingCasterRunsTheCheckIn
 
 	// And on the sheet: both are gone.
 	s.Empty(s.conditionRefs(out, heroID), "the child went with the parent")
+}
+
+func (s *ConcentrationTestSuite) TestBaneAppliesToConcentrationSaveAndRecordCalculation() {
+	conditionsJSON := append([]json.RawMessage{}, s.holding(heroID, wolfID)...)
+	conditionsJSON = append(conditionsJSON, baneConditionJSON(s.T(), heroID, "other-caster"))
+	out, err := s.strike(
+		s.fixtures().saver(40, conditionsJSON...), claw("1d6"),
+		&sequenceRoller{singles: []int{straightRoll, 12}, pair: []int{6, 4}},
+		events.NewEventBus(),
+	)
+	s.Require().NoError(err)
+	followUp := s.struck(out).FollowUps[0]
+	calculation := followUp.Save.Result.Calculation
+	s.Require().NotNil(calculation)
+	s.Equal(10, calculation.Total, "12 + CON 2 - Bane 4 keeps concentration at DC 10")
+	s.Require().Len(calculation.Components, 3)
+	s.True(calculation.Components[2].SubtractDice)
+	s.Equal("other-caster", calculation.Components[2].Source.SourceID)
+	s.Equal([]int{4}, calculation.Components[2].Dice.FinalRolls)
+	s.True(followUp.Save.Result.Success)
+
+	s.Require().Len(out.ConcentrationChecks, 1)
+	recorded := out.ConcentrationChecks[0].Save.Calculation
+	s.Require().NotNil(recorded)
+	s.Equal(10, recorded.Total)
+	s.True(recorded.Components[2].SubtractDice)
+	s.Equal("other-caster", recorded.Components[2].Source.SourceID)
 }
 
 // A made check removes nothing and still records roll, total and DC.
@@ -349,8 +378,8 @@ func (s *ConcentrationTestSuite) TestACasterDroppedToZeroLosesTheSpellWithNoRoll
 	s.Nil(broke.Save, "no roll was made, so no save beat may be written")
 	s.Require().Len(broke.Removed, 1)
 	s.Equal(encounter.ResultConditionRemoved, broke.Removed[0].Kind)
-	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Target)
-	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Address.MemberID)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
 	s.Equal(conditions.ConcentrationEndedCasterDown, broke.Removed[0].Reason)
 
 	// The child comes off first and the owner last, which is the hold's own
@@ -486,12 +515,12 @@ func (s *ConcentrationTestSuite) resolveCast(
 }
 
 func (s *ConcentrationTestSuite) trueStrike() Machine {
-	definition := spells.CastDefinition(spells.TrueStrike, spellSaveDC)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: spellSaveDC})
 	s.Require().NotNil(definition)
 	definition.Cost = oneAction()
 
 	machine, err := NewAction(&ActionInput{
-		Definition: *definition, AttackerID: bardID, TargetID: wolfID,
+		Definition: *definition, AttackerID: bardID, TargetIDs: []string{wolfID},
 	})
 	s.Require().NoError(err)
 
@@ -520,6 +549,134 @@ func (s *ConcentrationTestSuite) held(out *Output, id string) conditions.Concent
 
 // A concentration cast registers what it delivered on the owner, so ending the
 // hold can end the child.
+type recastRoller struct {
+	order *[]string
+}
+
+func (r recastRoller) Roll(_ context.Context, sides int) (int, error) {
+	*r.order = append(*r.order, fmt.Sprintf("roll:d%d", sides))
+	if sides == 20 {
+		return 20, nil
+	}
+	return 0, fmt.Errorf("unexpected d%d", sides)
+}
+
+func (r recastRoller) RollN(_ context.Context, count, sides int) ([]int, error) {
+	*r.order = append(*r.order, fmt.Sprintf("roll:%dd%d", count, sides))
+	if count == 1 && sides == 4 {
+		return []int{4}, nil
+	}
+	return nil, fmt.Errorf("unexpected %dd%d", count, sides)
+}
+
+func baneConditionJSON(t *testing.T, memberID, sourceID string) json.RawMessage {
+	t.Helper()
+	condition, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: memberID, SourceID: sourceID, SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	stored, err := condition.ToJSON()
+	require.NoError(t, err)
+	return stored
+}
+
+func baneOwnerJSON(t *testing.T, casterID string, turns int, children ...dnd5eEvents.ConditionAddress) json.RawMessage {
+	t.Helper()
+	owner := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
+		MemberID: casterID, SourceID: casterID, SpellRef: refs.Spells.Bane().String(),
+		SpellName: "Bane", TurnEnds: turns, SkipFirstTurnEnd: true,
+	})
+	for _, child := range children {
+		require.NoError(t, owner.AddChild(context.Background(), child))
+	}
+	stored, err := owner.ToJSON()
+	require.NoError(t, err)
+	return stored
+}
+
+func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOwnerAndUsesCurrentSources() {
+	fixtures := s.fixtures()
+	oldChild := dnd5eEvents.ConditionAddress{
+		MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: bardID,
+	}
+	unrelatedChild := dnd5eEvents.ConditionAddress{
+		MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: wolfID,
+	}
+	caster := baneCaster(1, 2)
+	caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 6, oldChild)}
+	target := fixtures.saver(14,
+		baneConditionJSON(s.T(), heroID, bardID),
+		baneConditionJSON(s.T(), heroID, wolfID),
+	)
+	unrelated := fixtures.wolfData()
+	unrelated.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), wolfID, 7, unrelatedChild)}
+
+	var order []string
+	bus := events.NewEventBus()
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			order = append(order, "remove:"+event.MemberID+":"+event.SourceID)
+			return nil
+		})
+	s.Require().NoError(err)
+	_, err = dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			if event.Type == dnd5eEvents.ConditionType(refs.Conditions.Concentrating().ID) {
+				order = append(order, "apply-owner:"+event.Target.GetID())
+			}
+			return nil
+		})
+	s.Require().NoError(err)
+	roller := recastRoller{order: &order}
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Roller: roller,
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), World: fixtures.world(),
+		Participants: []Participant{{Character: target}, {Monster: unrelated}, {Character: caster}},
+		Machine:      machine, Cost: baneCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+	s.Equal([]string{
+		"remove:" + bardID + ":" + bardID,
+		"remove:" + heroID + ":" + bardID,
+		"roll:d20", "roll:1d4", "apply-owner:" + bardID,
+	}, order)
+
+	s.Require().Len(out.ConcentrationBreaks, 1)
+	s.Equal(encounter.MemberID(bardID), out.ConcentrationBreaks[0].Caster)
+	s.Require().Len(out.ConcentrationBreaks[0].Removed, 1)
+	s.Equal(encounter.MemberID(heroID), out.ConcentrationBreaks[0].Removed[0].Address.MemberID)
+	s.Equal(bardID, out.ConcentrationBreaks[0].Removed[0].Address.SourceID)
+
+	outcome := out.Outcome.(CastOutcome)
+	s.Require().Len(outcome.Targets, 1)
+	s.True(outcome.Targets[0].Save.Succeeded)
+	s.Empty(outcome.Targets[0].Applied)
+	s.Require().Len(outcome.Targets[0].Save.Save.Result.Calculation.Components, 3)
+	s.Equal(wolfID, outcome.Targets[0].Save.Save.Result.Calculation.Components[2].Source.SourceID,
+		"the removed old source is not cached into the recast save")
+
+	hold := s.held(out, bardID)
+	s.Equal(bardID, hold.SourceID)
+	s.Empty(hold.Children, "an all-save cast still installs one zero-child owner")
+	s.Equal(spells.BaneTurnEnds, hold.TurnEndsLeft)
+	s.True(hold.SkipNextTurnEnd)
+
+	updatedTarget := fixtures.sheet(out, heroID)
+	s.Require().Len(updatedTarget.Conditions, 1)
+	var remaining conditions.BanedConditionData
+	s.Require().NoError(json.Unmarshal(updatedTarget.Conditions[0], &remaining))
+	s.Equal(wolfID, remaining.SourceID)
+	for _, dirty := range out.DirtyMonsters {
+		s.NotEqual(wolfID, dirty.ID, "the unrelated owner and its seven-turn clock stay untouched")
+	}
+}
+
 func (s *ConcentrationTestSuite) TestTheCastRegistersItsDeliveredChildOnTheOwner() {
 	out, err := s.resolveCast(s.castingBard(1), s.trueStrike(), events.NewEventBus())
 	s.Require().NoError(err)
@@ -578,7 +735,7 @@ func (s *ConcentrationTestSuite) TestASecondConcentrationCastDropsTheFirst() {
 	s.Equal(conditions.ConcentrationEndedRecast, broke.Reason)
 	s.Nil(broke.Save, "no roll was made, so no save beat may be written")
 	s.Require().Len(broke.Removed, 1)
-	s.Equal(encounter.MemberID(bardID), broke.Removed[0].Target)
+	s.Equal(encounter.MemberID(bardID), broke.Removed[0].Address.MemberID)
 }
 
 // A cast refused at the door drops nothing, which is what RAW means by "when
@@ -642,8 +799,8 @@ func (s *ConcentrationTestSuite) TestTheSpellsOwnDurationEndsItAtATurnEnd() {
 
 	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedDuration)
 	s.Require().Len(broke.Removed, 1)
-	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Target)
-	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Address.MemberID)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
 
 	s.Empty(s.conditionRefs(out, heroID), "the hold and its child are both gone")
 }
@@ -669,7 +826,7 @@ func (s *ConcentrationTestSuite) TestCombatEndingEndsTheHold() {
 
 	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedCombatEnd)
 	s.Require().Len(broke.Removed, 1)
-	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
 	s.Empty(s.conditionRefs(out, heroID))
 }
 
@@ -716,11 +873,11 @@ func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
 func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 	fixtures := s.fixtures()
 
-	definition := spells.CastDefinition(spells.ViciousMockery, spellSaveDC)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: spellSaveDC})
 	s.Require().NotNil(definition)
 	definition.Cost = oneAction()
 	machine, err := NewAction(&ActionInput{
-		Definition: *definition, AttackerID: bardID, TargetID: heroID,
+		Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID},
 		// singles: the cantrip's own save, which the hero fails, then the
 		// concentration check, which the hero makes. pair: the 1d4 psychic.
 		Roller: &sequenceRoller{singles: []int{straightRoll, 18}, pair: []int{3}},
@@ -743,8 +900,8 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 
 	outcome, ok := out.Outcome.(CastOutcome)
 	s.Require().True(ok)
-	s.Require().NotNil(outcome.Save)
-	s.False(outcome.Save.Succeeded, "the cantrip landed, so damage was applied")
+	s.Require().NotNil(outcome.Targets[0].Save)
+	s.False(outcome.Targets[0].Save.Succeeded, "the cantrip landed, so damage was applied")
 
 	s.Require().Len(outcome.FollowUps, 1, "the cast's damage asked for a check")
 	followUp := outcome.FollowUps[0]
@@ -771,11 +928,11 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 	fixtures := s.fixtures()
 
-	definition := spells.CastDefinition(spells.ViciousMockery, spellSaveDC)
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: spellSaveDC})
 	s.Require().NotNil(definition)
 	definition.Cost = oneAction()
 	machine, err := NewAction(&ActionInput{
-		Definition: *definition, AttackerID: bardID, TargetID: heroID,
+		Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID},
 		// Both saves fail: the cantrip lands, and the hero cannot keep the
 		// spell against it.
 		Roller: &sequenceRoller{singles: []int{straightRoll, straightRoll}, pair: []int{3}},
@@ -805,7 +962,7 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 	s.False(broke.Save.Succeeded)
 	s.Equal(conditions.ConcentrationDCFloor, broke.Save.DC)
 	s.Require().Len(broke.Removed, 1)
-	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Ref)
+	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
 
 	s.Empty(out.ConcentrationChecks, "a failed check rides its break, not the check list")
 

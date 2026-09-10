@@ -197,7 +197,10 @@ func (s *ResolveTestSuite) save(ability abilities.Ability) Machine {
 		SaverID: heroID,
 		Ability: ability,
 		DC:      saveDifficulty,
-		Roller:  s.roller,
+		D20Source: dnd5eEvents.RollSource{
+			Ref: refs.Spells.ViciousMockery(), Name: "Test Save",
+		},
+		Roller: s.roller,
 	})
 }
 
@@ -490,7 +493,11 @@ func (s *ResolveTestSuite) TestASaverWhoIsNotAParticipantIsRefused() {
 	_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.skeleton()}},
-		Machine:      NewSave(&SaveInput{SaverID: "nobody", Ability: abilities.STR, DC: saveDifficulty}),
+		Machine: NewSave(&SaveInput{
+			SaverID: "nobody", Ability: abilities.STR, DC: saveDifficulty,
+			D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
+			Roller:    s.roller,
+		}),
 	})
 	s.Require().ErrorIs(err, ErrNoSaver)
 }
@@ -505,7 +512,10 @@ func (s *ResolveTestSuite) TestAMonsterCanSucceedOnASavingThrow() {
 			SaverID: wolfID,
 			Ability: abilities.STR,
 			DC:      saveDifficulty,
-			Roller:  s.roller,
+			D20Source: dnd5eEvents.RollSource{
+				Ref: refs.Spells.ViciousMockery(), Name: "Test Save",
+			},
+			Roller: s.roller,
 		}),
 	})
 	s.Require().NoError(err)
@@ -526,7 +536,10 @@ func (s *ResolveTestSuite) TestAMonsterCanFailASavingThrowWithANegativeModifier(
 			SaverID: wolfID,
 			Ability: abilities.INT,
 			DC:      7,
-			Roller:  s.roller,
+			D20Source: dnd5eEvents.RollSource{
+				Ref: refs.Spells.ViciousMockery(), Name: "Test Save",
+			},
+			Roller: s.roller,
 		}),
 	})
 	s.Require().NoError(err)
@@ -568,7 +581,9 @@ func TestResolveSuite(t *testing.T) {
 // "nobody is down" on the caller's behalf, from a package holding no hit points.
 func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 	machine := NewSave(&SaveInput{
-		SaverID: "x", Ability: abilities.CON, DC: 10, Roller: dice.NewRoller(),
+		SaverID: "x", Ability: abilities.CON, DC: 10,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
+		Roller:    dice.NewRoller(),
 	})
 
 	t.Run("no initiative", func(t *testing.T) {
@@ -698,7 +713,9 @@ func TestTheStandingCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 			HitPoints: 14, MaxHitPoints: 14, ProficiencyBonus: 2,
 		}}},
 		Machine: NewSave(&SaveInput{
-			SaverID: heroID, Ability: abilities.CON, DC: 10, Roller: dice.NewRoller(),
+			SaverID: heroID, Ability: abilities.CON, DC: 10,
+			D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
+			Roller:    dice.NewRoller(),
 		}),
 	})
 
@@ -764,7 +781,9 @@ func TestTheSightCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 			HitPoints: 14, MaxHitPoints: 14, ProficiencyBonus: 2,
 		}}},
 		Machine: NewSave(&SaveInput{
-			SaverID: heroID, Ability: abilities.CON, DC: 10, Roller: dice.NewRoller(),
+			SaverID: heroID, Ability: abilities.CON, DC: 10,
+			D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
+			Roller:    dice.NewRoller(),
 		}),
 	})
 

@@ -42,7 +42,7 @@ const (
 // trust boundary a stored window payload keeps one layer up.
 const (
 	frozenStrikeKind    = "strike.post_roll"
-	frozenStrikeVersion = 1
+	frozenStrikeVersion = 2
 )
 
 // frozenStrike is a strike stopped after its d20, in enough detail to finish
@@ -69,11 +69,15 @@ type frozenStrike struct {
 	// the advantage/disadvantage sources — everything the second half reads.
 	Folded dnd5eEvents.AttackChainEvent `json:"folded"`
 
-	// Roll is the d20 as rolled and Total is Roll plus the folded bonus. Both
-	// are stored so the pair can be CHECKED against each other on the way back
-	// in: a total that is not roll plus bonus is a blob nobody should act on.
+	// Roll is the d20 as rolled. Total is the settled pre-offer calculation:
+	// the roll, fixed bonus, and any selected sourced contributions. Both are
+	// stored so they can be CHECKED against Calculation on the way back in; a
+	// total that disagrees with it is a blob nobody should act on.
 	Roll  int `json:"roll"`
 	Total int `json:"total"`
+
+	// Calculation is the settled pre-offer arithmetic and is reused verbatim on resume.
+	Calculation *dnd5eEvents.RollCalculation `json:"calculation"`
 
 	// Offer is what was put on the table.
 	Offer dnd5eEvents.Offer `json:"offer"`
@@ -110,9 +114,9 @@ type StrikeResumeInput struct {
 //
 // # It fails closed on a frozen blob it cannot trust
 //
-// A d20 outside 1-20, or a total that is not the roll plus the folded bonus,
-// is refused by name — before the world is loaded and before anything is
-// charged. Repairing either would resolve an attack nobody rolled.
+// A d20 outside 1-20, or a total that disagrees with the validated sourced
+// calculation, is refused by name — before the world is loaded and before
+// anything is charged. Repairing either would resolve an attack nobody rolled.
 func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 	if in == nil {
 		return nil, ErrNilInput
@@ -140,9 +144,22 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 	if frozen.Roll < 1 || frozen.Roll > 20 {
 		return nil, fmt.Errorf("%w: a d20 does not read %d", ErrBadFrozen, frozen.Roll)
 	}
-	if frozen.Total != frozen.Roll+frozen.Folded.AttackBonus {
-		return nil, fmt.Errorf("%w: total %d is not roll %d plus bonus %d",
-			ErrBadFrozen, frozen.Total, frozen.Roll, frozen.Folded.AttackBonus)
+	if err := dnd5eEvents.ValidateRollCalculation(frozen.Calculation); err != nil {
+		return nil, fmt.Errorf("%w: calculation: %v", ErrBadFrozen, err)
+	}
+	if len(frozen.Calculation.Components) < 2 || frozen.Calculation.Components[0].Dice == nil ||
+		frozen.Calculation.Components[0].Source.Ref == nil ||
+		!frozen.Calculation.Components[0].Source.Ref.Equals(&frozen.Definition.Ref) ||
+		frozen.Calculation.Components[0].Source.Name != frozen.Definition.Name ||
+		frozen.Calculation.Components[0].Dice.DieSize != 20 ||
+		frozen.Calculation.Components[0].Dice.Subtotal != frozen.Roll ||
+		frozen.Calculation.Components[1].Modifier == nil ||
+		frozen.Calculation.Components[1].Source.Ref == nil ||
+		!frozen.Calculation.Components[1].Source.Ref.Equals(&frozen.Definition.Ref) ||
+		frozen.Calculation.Components[1].Source.Name != frozen.Definition.Name ||
+		*frozen.Calculation.Components[1].Modifier != frozen.Folded.AttackBonus ||
+		frozen.Calculation.Total != frozen.Total {
+		return nil, fmt.Errorf("%w: roll, contributions, and total do not match the frozen calculation", ErrBadFrozen)
 	}
 	if frozen.Offer.Audience != frozen.AttackerID {
 		// The same rule the pose enforced, checked again on the way back in:
@@ -212,15 +229,16 @@ func (m *strikeMachine) pose(
 	}
 
 	frozen, err := json.Marshal(frozenStrike{
-		Kind:       frozenStrikeKind,
-		Version:    frozenStrikeVersion,
-		AttackerID: m.outcome.AttackerID,
-		TargetID:   m.outcome.TargetID,
-		Definition: m.in.Definition.Clone(),
-		Folded:     folded,
-		Roll:       roll,
-		Total:      m.outcome.Total,
-		Offer:      offer,
+		Kind:        frozenStrikeKind,
+		Version:     frozenStrikeVersion,
+		AttackerID:  m.outcome.AttackerID,
+		TargetID:    m.outcome.TargetID,
+		Definition:  m.in.Definition.Clone(),
+		Folded:      folded,
+		Roll:        roll,
+		Total:       m.outcome.Total,
+		Calculation: dnd5eEvents.CloneRollCalculation(m.outcome.Calculation),
+		Offer:       offer,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: freeze strike: %v", ErrBadFrozen, err)
@@ -246,12 +264,13 @@ func (m *strikeMachine) resumeStep() Step {
 	// The outcome is rebuilt from the frozen half rather than recomputed. This
 	// is the machine's whole state at the moment it stopped.
 	m.outcome = StrikeOutcome{
-		AttackerID: frozen.AttackerID,
-		TargetID:   frozen.TargetID,
-		Roll:       frozen.Roll,
-		Total:      frozen.Total,
-		TargetAC:   frozen.Folded.TargetAC,
-		Folded:     frozen.Folded,
+		AttackerID:  frozen.AttackerID,
+		TargetID:    frozen.TargetID,
+		Roll:        frozen.Roll,
+		Total:       frozen.Total,
+		Calculation: dnd5eEvents.CloneRollCalculation(frozen.Calculation),
+		TargetAC:    frozen.Folded.TargetAC,
+		Folded:      frozen.Folded,
 	}
 
 	return Gather{
@@ -291,12 +310,24 @@ func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) err
 	if err != nil {
 		return fmt.Errorf("%w: offered die: %v", ErrBadFrozen, err)
 	}
-	face, err := m.rollerOrDefault().Roll(ctx, size)
+	face, err := m.in.Roller.Roll(ctx, size)
 	if err != nil {
 		return fmt.Errorf("roll offered die: %w", err)
 	}
 
-	m.outcome.Total += face
+	component := dnd5eEvents.RollComponent{
+		Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(offer.Ref), Name: offer.Name},
+		Dice: &dnd5eEvents.DiceTrace{
+			Notation: dice.SimplePool(1, size, 0).Notation(), DieSize: size,
+			OriginalRolls: []int{face}, FinalRolls: []int{face}, Subtotal: face,
+		},
+	}
+	m.outcome.Calculation.Components = append(m.outcome.Calculation.Components, component)
+	m.outcome.Calculation.Total += face
+	if err := dnd5eEvents.ValidateRollCalculation(m.outcome.Calculation); err != nil {
+		return fmt.Errorf("append offered die: %w", err)
+	}
+	m.outcome.Total = m.outcome.Calculation.Total
 
 	if err := dnd5eEvents.OfferTakenTopic.On(bus).Publish(ctx, dnd5eEvents.OfferTakenEvent{
 		Audience: offer.Audience,

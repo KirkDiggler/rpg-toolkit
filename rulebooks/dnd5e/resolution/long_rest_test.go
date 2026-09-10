@@ -115,11 +115,6 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	s.Require().Equal(4, got.Resources[resources.HitDice].Maximum)
 	s.Require().Equal(2, got.Resources[fighterRestPool].Current,
 		"a character-owned short-rest pool also refills on a long rest")
-	s.Require().Len(got.SpellSlots, 2)
-	s.Require().Zero(got.SpellSlots[1].Used)
-	s.Require().Equal(3, got.SpellSlots[1].Max)
-	s.Require().Zero(got.SpellSlots[2].Used)
-	s.Require().Equal(2, got.SpellSlots[2].Max)
 
 	s.Require().Len(got.Features, 2)
 	var secondWind features.SecondWindData
@@ -153,16 +148,12 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	got.Skills[skills.Athletics] = shared.NotProficient
 	got.Inventory[0].Quantity = 99
 	got.EquipmentSlots[character.SlotMainHand] = "scribbled"
-	slot := got.SpellSlots[1]
-	slot.Used = 2
-	got.SpellSlots[1] = slot
 
 	s.Require().Equal(16, input.AbilityScores[abilities.STR])
 	s.Require().Equal(languages.Common, input.Languages[0])
 	s.Require().Equal(shared.Proficient, input.Skills[skills.Athletics])
 	s.Require().Equal(1, input.Inventory[0].Quantity)
 	s.Require().Equal("longsword", input.EquipmentSlots[character.SlotMainHand])
-	s.Require().Equal(3, input.SpellSlots[1].Used)
 }
 
 // The persistence boundary carries identity metadata through the live sheet.
@@ -216,8 +207,6 @@ func (s *LongRestTestSuite) TestBarbarianRecoveryIsComplete() {
 	s.Require().Equal(3, got.Resources[resources.RageCharges].Current)
 	s.Require().Equal(3, got.Resources[resources.RageCharges].Maximum)
 	s.Require().Equal(2, got.Resources[barbarianRestPool].Current)
-	s.Require().Len(got.SpellSlots, 1)
-	s.Require().Zero(got.SpellSlots[1].Used)
 
 	s.Require().Len(got.Conditions, 1)
 	s.Require().NotNil(conditionWithRefOrNil(got.Conditions, refs.Conditions.UnarmoredDefense()),
@@ -330,10 +319,6 @@ func (s *LongRestTestSuite) fighter() *character.Data {
 			{Type: shared.EquipmentTypeWeapon, ID: "longsword", Quantity: 1},
 		},
 		EquipmentSlots: character.EquipmentSlots{character.SlotMainHand: "longsword"},
-		SpellSlots: map[int]character.SpellSlotData{
-			1: {Max: 3, Used: 3},
-			2: {Max: 2, Used: 1},
-		},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice: {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},
 			fighterRestPool:   {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
@@ -367,7 +352,6 @@ func (s *LongRestTestSuite) barbarian() *character.Data {
 		},
 		HitPoints: 0, MaxHitPoints: 55, ArmorClass: 15,
 		DeathSaveState: &saves.DeathSaveState{Successes: 2, Failures: 1, Dead: true},
-		SpellSlots:     map[int]character.SpellSlotData{1: {Max: 2, Used: 2}},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice:     {Current: 0, Maximum: 5, ResetType: coreResources.ResetLongRest},
 			resources.RageCharges: {Current: 0, Maximum: 3, ResetType: coreResources.ResetLongRest},

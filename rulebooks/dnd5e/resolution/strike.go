@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/rolls"
 )
 
 // criticalThreshold is the roll at or above which an attack crits. A flat 20
@@ -49,8 +50,11 @@ type StrikeOutcome struct {
 	// Roll is the d20 as rolled, after advantage or disadvantage was applied.
 	Roll int
 
-	// Total is Roll plus the attack bonus the chain settled on.
+	// Total is the settled sourced calculation total.
 	Total int
+
+	// Calculation is the complete sourced d20, fixed bonus, and selected dice contributions.
+	Calculation *dnd5eEvents.RollCalculation
 
 	// TargetAC is what the total had to reach.
 	TargetAC int
@@ -184,6 +188,9 @@ func (m *strikeMachine) preflight(ctx context.Context, cast *Participants) error
 	}
 	if m.in.AttackerID == "" || m.in.TargetID == "" {
 		return fmt.Errorf("%w: a strike needs an attacker and a target", ErrNilInput)
+	}
+	if m.in.Roller == nil {
+		return fmt.Errorf("%w: an attack rolls with no roller", ErrNoRoller)
 	}
 	if err := m.in.Definition.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrBadAction, err)
@@ -338,28 +345,55 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 		return Done{Outcome: m.outcome}, nil
 	}
 
-	roller := m.rollerOrDefault()
+	if m.in.Roller == nil {
+		return nil, fmt.Errorf("%w: an attack rolls with no roller", ErrNoRoller)
+	}
+	roller := m.in.Roller
 
 	hasAdvantage := len(folded.AdvantageSources) > 0
 	hasDisadvantage := len(folded.DisadvantageSources) > 0
-
-	var roll int
-	var err error
-	switch {
-	case hasAdvantage == hasDisadvantage:
-		// Both or neither: one die either way.
-		roll, err = roller.Roll(ctx, 20)
-	case hasAdvantage:
-		roll, err = rollTwice(ctx, roller, takeHigher)
-	default:
-		roll, err = rollTwice(ctx, roller, takeLower)
+	contributions, err := describeRollContributions(m.cast, m.in.AttackerID, dnd5eEvents.RollKindAttack)
+	if err != nil {
+		return nil, fmt.Errorf("describe attack contributions: %w", err)
 	}
+	if err := rolls.ValidateContributions(contributions); err != nil {
+		return nil, fmt.Errorf("validate attack contributions: %w", err)
+	}
+	roll, d20Trace, err := rollAttackD20(ctx, roller, hasAdvantage, hasDisadvantage)
 	if err != nil {
 		return nil, fmt.Errorf("roll attack: %w", err)
 	}
+	resolved, err := rolls.ResolveContributions(ctx, &rolls.ResolveContributionsInput{
+		Roller: roller, Contributions: contributions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve attack contributions: %w", err)
+	}
+	bonus := folded.AttackBonus
+	calculation := &dnd5eEvents.RollCalculation{Components: []dnd5eEvents.RollComponent{
+		{Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(&m.in.Definition.Ref), Name: m.in.Definition.Name}, Dice: d20Trace},
+		{Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(&m.in.Definition.Ref), Name: m.in.Definition.Name}, Modifier: &bonus},
+	}}
+	calculation.Components = append(calculation.Components, resolved.Components...)
+	for _, component := range calculation.Components {
+		if component.Dice != nil {
+			if component.SubtractDice {
+				calculation.Total -= component.Dice.Subtotal
+			} else {
+				calculation.Total += component.Dice.Subtotal
+			}
+		}
+		if component.Modifier != nil {
+			calculation.Total += *component.Modifier
+		}
+	}
+	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
+		return nil, fmt.Errorf("attack calculation: %w", err)
+	}
 
 	m.outcome.Roll = roll
-	m.outcome.Total = roll + folded.AttackBonus
+	m.outcome.Total = calculation.Total
+	m.outcome.Calculation = dnd5eEvents.CloneRollCalculation(calculation)
 
 	// A natural 20 is the only automatic hit and a natural 1 the only
 	// automatic miss; everything between is arithmetic. The crit range is
@@ -452,18 +486,8 @@ func (m *strikeMachine) afterOffers(
 			return Done{Outcome: m.outcome}, nil
 		}
 
-		return m.rollDamage(nextCtx, m.rollerOrDefault())
+		return m.rollDamage(nextCtx, m.in.Roller)
 	})
-}
-
-// rollerOrDefault is the machine's own roller, or the package default when the
-// caller supplied none. Resolve refuses a nil Input.Roller; StrikeInput's is
-// still optional, which is the older shape and not this slice's to change.
-func (m *strikeMachine) rollerOrDefault() dice.Roller {
-	if m.in.Roller != nil {
-		return m.in.Roller
-	}
-	return dice.NewRoller()
 }
 
 // attackModifierRefs projects the richer attack-chain source records onto the
@@ -826,34 +850,35 @@ func combatantFor(cast *Participants, id string) (combat.Combatant, error) {
 	return nil, fmt.Errorf("%w: %q", ErrNoCombatant, id)
 }
 
-// rollTwice rolls two d20s and picks one, which is what advantage and
-// disadvantage each are.
-func rollTwice(ctx context.Context, roller dice.Roller, pick func(a, b int) int) (int, error) {
-	rolls, err := roller.RollN(ctx, 2, 20)
+func rollAttackD20(
+	ctx context.Context, roller dice.Roller, hasAdvantage, hasDisadvantage bool,
+) (int, *dnd5eEvents.DiceTrace, error) {
+	if hasAdvantage == hasDisadvantage {
+		face, err := roller.Roll(ctx, 20)
+		if err != nil {
+			return 0, nil, err
+		}
+		return face, &dnd5eEvents.DiceTrace{
+			Notation: "1d20", DieSize: 20, OriginalRolls: []int{face},
+			FinalRolls: []int{face}, Subtotal: face,
+		}, nil
+	}
+	faces, err := roller.RollN(ctx, 2, 20)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	if len(rolls) < 2 {
-		return 0, fmt.Errorf("%w: roller returned %d dice for a pair", ErrBadAttack, len(rolls))
+	if len(faces) != 2 {
+		return 0, nil, fmt.Errorf("%w: roller returned %d dice for a pair", ErrBadAttack, len(faces))
 	}
-
-	return pick(rolls[0], rolls[1]), nil
-}
-
-func takeHigher(a, b int) int {
-	if a > b {
-		return a
+	kept := 0
+	if hasAdvantage && faces[1] > faces[0] || hasDisadvantage && faces[1] < faces[0] {
+		kept = 1
 	}
-
-	return b
-}
-
-func takeLower(a, b int) int {
-	if a < b {
-		return a
-	}
-
-	return b
+	return faces[kept], &dnd5eEvents.DiceTrace{
+		Notation: "2d20", DieSize: 20,
+		OriginalRolls: append([]int(nil), faces...), FinalRolls: append([]int(nil), faces...),
+		KeptIndices: []int{kept}, Subtotal: faces[kept],
+	}, nil
 }
 
 // gatherAttack builds the step that folds the attack chain.
@@ -1008,10 +1033,10 @@ func cloneDamageComponents(components []dnd5eEvents.DamageComponent) []dnd5eEven
 func cloneRollComponent(roll dnd5eEvents.RollComponent) dnd5eEvents.RollComponent {
 	clone := dnd5eEvents.RollComponent{
 		Source: dnd5eEvents.RollSource{
-			Ref:   cloneCoreRef(roll.Source.Ref),
-			Name:  roll.Source.Name,
-			Label: roll.Source.Label,
+			Ref: cloneCoreRef(roll.Source.Ref), Name: roll.Source.Name,
+			Label: roll.Source.Label, SourceID: roll.Source.SourceID,
 		},
+		SubtractDice: roll.SubtractDice,
 	}
 	if roll.Dice != nil {
 		dice := *roll.Dice
@@ -1023,9 +1048,8 @@ func cloneRollComponent(roll dnd5eEvents.RollComponent) dnd5eEvents.RollComponen
 			for i, reroll := range roll.Dice.Rerolls {
 				dice.Rerolls[i] = reroll
 				dice.Rerolls[i].Source = dnd5eEvents.RollSource{
-					Ref:   cloneCoreRef(reroll.Source.Ref),
-					Name:  reroll.Source.Name,
-					Label: reroll.Source.Label,
+					Ref: cloneCoreRef(reroll.Source.Ref), Name: reroll.Source.Name,
+					Label: reroll.Source.Label, SourceID: reroll.Source.SourceID,
 				}
 			}
 		}
