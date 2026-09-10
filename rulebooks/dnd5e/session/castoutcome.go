@@ -6,6 +6,7 @@ package session
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -34,33 +35,31 @@ import (
 // happened to be running rather than as one machine's answer.
 func castOutcome(
 	outcome resolution.Outcome, actor string, spell SpellRef,
-) (*encounter.CastSave, []encounter.ActivationResult, error) {
+) ([]encounter.CastTargetResult, error) {
 	cast, ok := outcome.(resolution.CastOutcome)
 	if !ok {
-		return nil, nil, fmt.Errorf("%w: cast by %q produced %T", ErrInvalidWorld, actor, outcome)
+		return nil, fmt.Errorf("%w: cast by %q produced %T", ErrInvalidWorld, actor, outcome)
 	}
 
-	save, err := castSave(cast)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if len(cast.Applied) == 0 {
-		// A made save delivers nothing. Nil rather than an empty slice: the
-		// composition reads "no results" as a complete cast, and a save that
-		// negated both halves is exactly that.
-		return save, nil, nil
-	}
-
-	results := make([]encounter.ActivationResult, 0, len(cast.Applied))
-	for _, applied := range cast.Applied {
-		result, resultErr := imposedResult(applied, spell)
-		if resultErr != nil {
-			return nil, nil, resultErr
+	targets := make([]encounter.CastTargetResult, 0, len(cast.Targets))
+	for _, target := range cast.Targets {
+		save, err := castSave(target, cast.Spell)
+		if err != nil {
+			return nil, err
 		}
-		results = append(results, result)
+		results := make([]encounter.ActivationResult, 0, len(target.Applied))
+		for _, applied := range target.Applied {
+			result, resultErr := imposedResult(applied, spell)
+			if resultErr != nil {
+				return nil, resultErr
+			}
+			results = append(results, result)
+		}
+		targets = append(targets, encounter.CastTargetResult{
+			Target: encounter.MemberID(target.TargetID), Save: save, Results: results,
+		})
 	}
-	return save, results, nil
+	return targets, nil
 }
 
 // castSave reads the gate's saving throw, or nothing when there was no gate.
@@ -69,30 +68,31 @@ func castOutcome(
 // "there is no saved beat to write" without a second boolean that could
 // disagree with it. True Strike delivers a condition and rolls nothing, and a
 // save beat reading 0 against DC 0 would say a roll happened that never did.
-func castSave(cast resolution.CastOutcome) (*encounter.CastSave, error) {
-	if cast.Save == nil {
+func castSave(target resolution.CastTargetOutcome, spell core.Ref) (*encounter.CastSave, error) {
+	if target.Save == nil {
 		return nil, nil
 	}
-	if cast.Save.Save.Result == nil {
+	if target.Save.Save.Result == nil {
 		// A contest reporting no saving throw result rolled nothing, and a beat
 		// built from its zero values would narrate a roll that never happened.
 		// A provider defect this fails closed on rather than records.
 		return nil, fmt.Errorf("%w: cast %q contested a save with no result",
-			ErrInvalidWorld, cast.Spell.String())
+			ErrInvalidWorld, spell.String())
 	}
 	return &encounter.CastSave{
 		// The saver is the creature the cast named. A contest is saver-centric
 		// and this slice's casts have exactly one, so the beat's "who rolled"
 		// and the cast's "who was named" are the same member by construction.
-		Saver:   encounter.MemberID(cast.TargetID),
-		Ability: string(cast.Save.Ability),
-		Roll:    cast.Save.Save.Result.Roll,
-		Total:   cast.Save.Save.Result.Total,
-		DC:      cast.Save.DC,
+		Saver:       encounter.MemberID(target.TargetID),
+		Ability:     string(target.Save.Ability),
+		Roll:        target.Save.Save.Result.Roll,
+		Total:       target.Save.Save.Result.Total,
+		DC:          target.Save.DC,
+		Calculation: rollCalculationFor(target.Save.Save.Result.Calculation),
 		// The CASTER'S ruling, recorded rather than recomputed: the contest
 		// owns whether the total beat the DC, including any exception to
 		// Total >= DC this seam does not know about.
-		Succeeded: cast.Save.Succeeded,
+		Succeeded: target.Save.Succeeded,
 	}, nil
 }
 
@@ -133,11 +133,19 @@ func imposedResult(
 			return encounter.ActivationResult{}, fmt.Errorf(
 				"%w: cast delivered a condition with no ref", ErrInvalidWorld)
 		}
+		if imposed.Address.MemberID != imposed.RecipientID ||
+			imposed.Address.ConditionRef != imposed.Ref.String() {
+			return encounter.ActivationResult{}, fmt.Errorf(
+				"%w: cast delivered a condition with a mismatched address", ErrInvalidWorld)
+		}
 		return encounter.ActivationResult{
-			Kind:   encounter.ResultConditionApplied,
-			Target: encounter.MemberID(imposed.RecipientID),
-			Ref:    imposed.Ref.String(),
-			Name:   imposed.Description,
+			Kind: encounter.ResultConditionApplied,
+			Address: &encounter.ConditionAddress{
+				MemberID:     encounter.MemberID(imposed.Address.MemberID),
+				ConditionRef: imposed.Address.ConditionRef,
+				SourceID:     imposed.Address.SourceID,
+			},
+			Name: imposed.Description,
 		}, nil
 	case resolution.ImposedDamage:
 		if len(imposed.Components) == 0 {

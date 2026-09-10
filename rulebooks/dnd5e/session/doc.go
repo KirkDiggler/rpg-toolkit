@@ -89,8 +89,8 @@
 //
 // Afford is the one current action surface on the turn clock. It compiles the
 // member's Attack variants, one Move and EndTurn offer, one Activate offer per
-// thing the member carries, and one Cast offer per cantrip the member knows AND
-// this build can cast — a known spell with no cast content mints no row at all,
+// thing the member carries, and one Cast offer per known cantrip or spell this
+// build can cast — known content with no cast definition mints no row at all,
 // which is the one absence here that is not about the turn. An active Dying
 // character additionally receives one explicit Death Save offer before normal
 // downed blockers. It projects only seam-owned values and gives each compiled

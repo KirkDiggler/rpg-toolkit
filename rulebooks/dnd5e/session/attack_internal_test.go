@@ -80,6 +80,22 @@ func (d *scriptedDice) Roll(_ context.Context, _ int) (int, error) {
 	return roll, nil
 }
 
+func recordedStrikeCalculation(roll, modifier int) *dnd5eEvents.RollCalculation {
+	return &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation: "1d20", DieSize: 20,
+					OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll,
+				},
+			},
+			{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Modifier: &modifier},
+		},
+		Total: roll + modifier,
+	}
+}
+
 // TestRecordProjectsSelectedStrikeDetail pins the one session-to-encounter
 // projection. Resolution keeps richer internal evidence; the replay carrier
 // receives only the approved ordered subset and never modifier prose.
@@ -87,7 +103,8 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	immunity := 0.0
 	zero := 0
 	struck := resolution.StrikeOutcome{
-		Roll: 15, Total: 20, TargetAC: 12, Hit: true, Damage: 9,
+		Roll: 15, Total: 20, Calculation: recordedStrikeCalculation(15, 5),
+		TargetAC: 12, Hit: true, Damage: 9,
 		DamageInstances: []damage.Instance{
 			{Amount: 5, Type: damage.Slashing},
 			{Amount: 4, Type: damage.Fire},
@@ -163,6 +180,9 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
+			`"calculation":{"components":[`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[15],"final_rolls":[15],"subtotal":15}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":20},`+
 			`"damage_components":[`+
 			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
 			`"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],`+
@@ -192,7 +212,8 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	three := 3
 	struck := resolution.StrikeOutcome{
-		Roll: 20, Total: 25, TargetAC: 12, Hit: true, Critical: true, Damage: 14,
+		Roll: 20, Total: 25, Calculation: recordedStrikeCalculation(20, 5),
+		TargetAC: 12, Hit: true, Critical: true, Damage: 14,
 		DamageComponents: []dnd5eEvents.DamageComponent{
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
@@ -255,6 +276,9 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":20,"total":25,"against":12,"amount":14,`+
 			`"critical":true,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
+			`"calculation":{"components":[`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[20],"final_rolls":[20],"subtotal":20}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":25},`+
 			`"damage_components":[`+
 			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
 			`"dice":{"notation":"2d8","die_size":8,"original_rolls":[5,6],"final_rolls":[5,6],"subtotal":11}},"damage_type":"slashing"},`+

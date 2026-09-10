@@ -217,6 +217,9 @@ func (s *ConcentrationBreakSuite) TestTheCheckIsTheRulebooksArithmeticAndNotThis
 			s.False(saved.Succeeded)
 			s.Equal(session.SpellRef{Ref: heldSpellRef.String(), Name: heldSpellName}, saved.Source,
 				"the saved beat names the spell that was at stake")
+			s.Require().NotNil(saved.Calculation)
+			s.Equal(saved.Total, saved.Calculation.Total)
+			s.Equal(saved.Roll, saved.Calculation.Components[0].Dice.Subtotal)
 		})
 	}
 }
@@ -283,6 +286,8 @@ func (s *ConcentrationBreakSuite) TestAMadeCheckIsARollTheTableSees() {
 	s.True(saved.Succeeded, "the spell was kept, and the beat says so")
 	s.Equal(session.SpellRef{Ref: heldSpellRef.String(), Name: heldSpellName}, saved.Source,
 		"a made check still names what was at stake")
+	s.Require().NotNil(saved.Calculation)
+	s.Equal(saved.Total, saved.Calculation.Total)
 
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{
 		Session: "sess", Member: "bob",

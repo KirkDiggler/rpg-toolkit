@@ -9,11 +9,13 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -63,6 +65,23 @@ func castingBard(id string, cantrips ...spells.Spell) *character.Data {
 	return bard
 }
 
+// castingBardWithSpells extends the ordinary cantrip fixture with the
+// finalized level-one spellbook and its provider-owned recoverable pool.
+func castingBardWithSpells(id string, known ...spells.Spell) *character.Data {
+	bard := castingBard(id)
+	for _, spell := range known {
+		ref := refs.Spells.ByID(string(spell))
+		if ref == nil {
+			panic("the fixture named a spell the ref catalog does not have: " + spell)
+		}
+		bard.KnownSpells = append(bard.KnownSpells, ref.String())
+	}
+	bard.Resources[resources.SpellSlotLevel1] = character.RecoverableResourceData{
+		Current: 2, Maximum: 2, ResetType: coreResources.ResetLongRest,
+	}
+	return bard
+}
+
 // armForSwinging gives a sheet a longsword and the proficiency to use it, so
 // it can open a post-roll window by swinging. Only the freeze scene needs it:
 // a cast has nothing to do with what the caster is holding.
@@ -89,14 +108,21 @@ const bardSaveDC = 13
 // candidate for one row and a shortfall on the other, which is the thing worth
 // pinning.
 func (s *CastSuite) scene(bard *character.Data, cells int, rolls ...int) {
+	s.sceneWithAllies(bard, nil, cells, rolls...)
+}
+
+func (s *CastSuite) sceneWithAllies(
+	bard *character.Data, allies []*character.Data, cells int, rolls ...int,
+) {
 	s.T().Helper()
 
 	// One die per member of the bubble the spawn forms, ahead of whatever this
 	// scene scripted.
-	const initiativeRolls = 2
+	initiativeRolls := 2 + len(allies)
 	scripted := append(make([]int, initiativeRolls), rolls...)
 
-	s.characters = newFakeCharacters(bard)
+	sheets := append([]*character.Data{bard}, allies...)
+	s.characters = newFakeCharacters(sheets...)
 	s.member = bard.ID
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
@@ -111,6 +137,17 @@ func (s *CastSuite) scene(bard *character.Data, cells int, rolls ...int) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
+	members := []encounter.MemberInput{{
+		ID: encounter.MemberID(bard.ID), Kind: encounter.KindPlayer,
+		Position: spatial.Position{X: 1, Y: 1},
+	}}
+	for i, ally := range allies {
+		members = append(members, encounter.MemberInput{
+			ID: encounter.MemberID(ally.ID), Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: float64(2 + i), Y: 1},
+		})
+	}
+
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
 		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
@@ -120,10 +157,7 @@ func (s *CastSuite) scene(bard *character.Data, cells int, rolls ...int) {
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 40, 8)},
 		},
-		Members: []encounter.MemberInput{
-			{ID: encounter.MemberID(bard.ID), Kind: encounter.KindPlayer,
-				Position: spatial.Position{X: 1, Y: 1}},
-		},
+		Members:   members,
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 	})
@@ -207,9 +241,212 @@ func castCandidate(
 	return session.TargetCandidate{}, false
 }
 
-// TestTwoCastableCantripsAreTwoRows is the slice's own done-when at the panel:
-// a bard who knows both cantrips this build can cast sees both, one per row,
-// each priced at the action and each naming its own spell.
+func (s *CastSuite) TestUnsupportedKnownSpellMintsNoCastRow() {
+	s.scene(castingBardWithSpells("bard", spells.Bless), 2)
+	s.Empty(s.castRows(), "knowledge and executable rulebook content must intersect")
+}
+
+func (s *CastSuite) TestBaneKnownSpellCompilesProviderBoundsAndGenericPrice() {
+	s.scene(castingBardWithSpells("bard", spells.Bane), 2)
+
+	row := s.castRow(spells.Bane)
+	s.Equal(1, row.MinTargets)
+	s.Equal(3, row.MaxTargets)
+	s.Equal(session.TargetMember, row.TargetKind)
+	s.Equal([]session.CostComponent{
+		{Currency: session.CurrencyAction, Needed: 1},
+		{Currency: session.CurrencyCharges, Needed: 1, Label: "1st-level Spell Slots"},
+	}, row.Cost)
+	s.True(row.Available)
+}
+
+func (s *CastSuite) TestBaneWithoutASpellSlotReportsProviderLabelledChargeShortfall() {
+	bard := castingBardWithSpells("bard", spells.Bane)
+	spent := bard.Resources[resources.SpellSlotLevel1]
+	spent.Current = 0
+	bard.Resources[resources.SpellSlotLevel1] = spent
+	s.scene(bard, 2)
+
+	row := s.castRow(spells.Bane)
+	s.False(row.Available)
+	s.Require().NotNil(row.Why)
+	s.Equal(session.CurrencyCharges, row.Why.Currency)
+	s.Equal(1, row.Why.Needed)
+	s.Equal(0, row.Why.Left)
+	s.Equal("1st-level Spell Slots: 1 needed, 0 left", row.Why.Text)
+}
+
+func (s *CastSuite) TestCanonicalTargetsCastBaneAndLegacyConflictIsRejectedBeforeRolling() {
+	s.scene(castingBardWithSpells("bard", spells.Bane), 2, 5)
+	row := s.castRow(spells.Bane)
+	targets := []string{"skeleton"}
+
+	out, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: row.ID, Targets: targets,
+	})
+	s.Require().NoError(err)
+	s.Equal(refs.Spells.Bane().String(), out.Spell.Ref)
+	s.Equal([]string{"skeleton"}, targets, "entry normalization never mutates caller storage")
+
+	castEvents := s.beats(session.EventCast)
+	s.Require().Len(castEvents, 1)
+	castBody, ok := castEvents[0].Body.(session.CastBody)
+	s.Require().True(ok)
+	s.Equal([]string{"skeleton"}, castBody.Targets)
+	s.Equal("skeleton", castBody.Target, "one target retains the deprecated projection")
+
+	savedEvents := s.beats(session.EventSaved)
+	s.Require().Len(savedEvents, 1)
+	savedBody, ok := savedEvents[0].Body.(session.SavedBody)
+	s.Require().True(ok)
+	s.Require().NotNil(savedBody.Calculation)
+	s.Equal(savedBody.Total, savedBody.Calculation.Total)
+
+	results := s.beats(session.EventActivationResult)
+	s.Require().Len(results, 1)
+	applied, ok := results[0].Body.(session.ActivationResultBody)
+	s.Require().True(ok)
+	s.Require().NotNil(applied.ConditionApplied)
+	s.Equal("bard", applied.ConditionApplied.SourceID)
+
+	before := s.dice.next
+	_, err = s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: row.ID,
+		Target: "skeleton", Targets: []string{"skeleton"},
+	})
+	s.ErrorIs(err, session.ErrBadCast)
+	s.Equal(before, s.dice.next, "conflicting aliases are rejected before RNG")
+}
+
+func (s *CastSuite) TestBaneRefusesTargetCountsOutsideProviderBoundsWithoutSpending() {
+	s.scene(castingBardWithSpells("bard", spells.Bane), 2)
+	row := s.castRow(spells.Bane)
+	for _, targets := range [][]string{nil, {"a", "b", "c", "d"}} {
+		beforeRolls := s.dice.next
+		beforePool := s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current
+		_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+			Session: "sess", Member: "bard", DeclarationID: row.ID, Targets: targets,
+		})
+		s.ErrorIs(err, session.ErrBadCast)
+		s.Equal(beforeRolls, s.dice.next)
+		s.Equal(beforePool, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
+	}
+}
+
+func (s *CastSuite) TestBaneResolvesOneOrderedThreeTargetCast() {
+	allyA := armedFighter("fighter-a")
+	allyB := armedFighter("fighter-b")
+	s.sceneWithAllies(castingBardWithSpells("bard", spells.Bane),
+		[]*character.Data{allyA, allyB}, 4, 5, 5, 5)
+
+	targets := []string{"fighter-b", "skeleton", "fighter-a"}
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Bane).ID,
+		Targets: targets,
+	})
+	s.Require().NoError(err)
+
+	casts := s.beats(session.EventCast)
+	s.Require().Len(casts, 1)
+	body, ok := casts[0].Body.(session.CastBody)
+	s.Require().True(ok)
+	s.Equal(targets, body.Targets)
+	s.Empty(body.Target, "multi-target casts never invent a deprecated representative")
+
+	saves := s.beats(session.EventSaved)
+	s.Require().Len(saves, 3)
+	for i, event := range saves {
+		saved, ok := event.Body.(session.SavedBody)
+		s.Require().True(ok)
+		s.Equal(targets[i], saved.Saver, "per-target trains retain caller order")
+	}
+	s.Require().Len(s.beats(session.EventActivationResult), 3)
+
+	stored := s.characters.byID["bard"]
+	s.Equal(1, stored.Resources[resources.SpellSlotLevel1].Current,
+		"the whole three-target cast spends one slot")
+
+	refreshed := s.castRow(spells.Bane)
+	s.False(refreshed.Available, "the spent action closes the same-turn cast door")
+	s.Require().NotNil(refreshed.Why)
+	s.Equal(session.CurrencyAction, refreshed.Why.Currency)
+	beforeRolls := s.dice.next
+	_, err = s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: refreshed.ID,
+		Targets: []string{"fighter-a"},
+	})
+	s.ErrorIs(err, session.ErrStaleDeclaration)
+	s.Equal(beforeRolls, s.dice.next)
+	s.Equal(1, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current,
+		"a refused same-turn second cast spends neither RNG nor the remaining slot")
+}
+
+func (s *CastSuite) TestBaneAffectsTheTargetsNextAttackWithSourceQualifiedSubtraction() {
+	fighter := armedFighter("fighter")
+	s.sceneWithAllies(castingBardWithSpells("bard", spells.Bane), []*character.Data{fighter}, 2,
+		5, 15, 3, 4)
+
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Bane).ID,
+		Targets: []string{"fighter"},
+	})
+	s.Require().NoError(err)
+
+	_, err = s.mgr.EndTurn(context.Background(), &session.EndTurnInput{
+		Session: "sess", Member: "bard",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "bard"),
+	})
+	s.Require().NoError(err)
+
+	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Require().Equal("fighter", turn.Active)
+	row := currentDeclaration(s.T(), s.mgr, "sess", "fighter", session.VerbAttack)
+	s.Require().True(row.Available, "attack row refusal: %#v", row.Why)
+	target, found := castCandidate(s.T(), row, "skeleton")
+	s.Require().True(found, "attack candidates: %#v", row.Candidates)
+	s.Require().True(target.Available, "skeleton candidate refusal: %#v", target.Why)
+	attack, err := s.mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "fighter", Target: "skeleton", DeclarationID: row.ID,
+	})
+	s.Require().NoError(err)
+	s.Equal(15, attack.Roll)
+	s.Equal(17, attack.Total, "15 + 5 attack bonus - 3 Bane")
+	s.True(attack.Hit)
+	s.Equal(7, attack.Damage, "4 on the longsword die + 3 Strength")
+	s.Require().NotNil(attack.Calculation)
+	s.Equal(attack.Total, attack.Calculation.Total)
+
+	var bane *session.RollComponent
+	for i := range attack.Calculation.Components {
+		component := &attack.Calculation.Components[i]
+		if component.Source.Ref == refs.Spells.Bane().String() {
+			bane = component
+			break
+		}
+	}
+	s.Require().NotNil(bane)
+	s.True(bane.SubtractDice)
+	s.Equal("bard", bane.Source.SourceID)
+	s.Require().NotNil(bane.Dice)
+	s.Equal(3, bane.Dice.Subtotal)
+
+	outcomes := s.beats(session.EventStruck, session.EventMissed)
+	s.Require().Len(outcomes, 1)
+	switch body := outcomes[0].Body.(type) {
+	case session.StruckBody:
+		s.Require().NotNil(body.Calculation)
+		s.Equal("bard", body.Calculation.Components[len(body.Calculation.Components)-1].Source.SourceID)
+	case session.MissedBody:
+		s.Require().NotNil(body.Calculation)
+		s.Equal("bard", body.Calculation.Components[len(body.Calculation.Components)-1].Source.SourceID)
+	default:
+		s.FailNow("attack outcome has no typed body")
+	}
+}
+
+// TestTwoCastableCantripsAreTwoRows keeps the existing cantrip panel contract:
+// two known supported cantrips remain two separately selectable rows.
 func (s *CastSuite) TestTwoCastableCantripsAreTwoRows() {
 	s.scene(castingBard("bard", spells.TrueStrike, spells.ViciousMockery), 2)
 
