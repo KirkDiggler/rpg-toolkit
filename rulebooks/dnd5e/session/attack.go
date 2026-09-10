@@ -488,10 +488,11 @@ func (m *Manager) poseAttackWindow(
 	scope.touched = true
 
 	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
-		Audience: encounter.MemberID(ask.Audience),
-		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
-		Roll:     ask.Roll,
-		Total:    ask.Total,
+		PresentationID: presentationID,
+		Audience:       encounter.MemberID(ask.Audience),
+		Offer:          encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
+		Roll:           ask.Roll,
+		Total:          ask.Total,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))

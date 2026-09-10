@@ -1441,10 +1441,11 @@ func windowOpenedBody(payload []byte) EventBody {
 // without a typed body rather than with an invented one.
 func rollWindowOpenedBody(payload []byte) EventBody {
 	var p struct {
-		Audience string        `json:"audience"`
-		Offer    *beatReaction `json:"offer"`
-		Roll     int           `json:"roll"`
-		Total    int           `json:"total"`
+		PresentationID string        `json:"presentation_id"`
+		Audience       string        `json:"audience"`
+		Offer          *beatReaction `json:"offer"`
+		Roll           int           `json:"roll"`
+		Total          int           `json:"total"`
 	}
 	if json.Unmarshal(payload, &p) != nil || p.Audience == "" {
 		return nil
@@ -1456,7 +1457,7 @@ func rollWindowOpenedBody(payload []byte) EventBody {
 	if p.Roll < 1 || p.Roll > 20 {
 		return nil
 	}
-	return RollWindowOpenedBody{Audience: p.Audience, Offer: *offer, Roll: p.Roll, Total: p.Total}
+	return RollWindowOpenedBody{PresentationID: p.PresentationID, Audience: p.Audience, Offer: *offer, Roll: p.Roll, Total: p.Total}
 }
 
 // structBody decodes a struck or missed outcome beat's shared fields.
