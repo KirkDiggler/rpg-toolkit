@@ -63,7 +63,7 @@ func (r *actionRoller) RollN(_ context.Context, count, sides int) ([]int, error)
 
 func actionWorld(t *testing.T, targetX float64) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 30, 10)},
@@ -102,7 +102,7 @@ func resolveActionDefinition(
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: actionHero()},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	})
 }
@@ -111,7 +111,7 @@ func resolveActionDefinitionAgainstMonster(
 	t *testing.T, definition combatActions.Definition, roller dice.Roller,
 ) (*Output, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 10)},
@@ -133,7 +133,7 @@ func resolveActionDefinitionAgainstMonster(
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Monster: monsters.NewSkeleton(secondWolfID).ToData()},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	})
 }
@@ -159,7 +159,7 @@ func TestAttackRequiresItsRollerDuringPurePreflight(t *testing.T) {
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      machine,
 		Cost:         &Cost{PayerID: heroID, Profile: oneAction(), Turn: &Turn{Number: 1, Speed: 30}},
-		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	}, newSurface(bus))
 	require.ErrorIs(t, err, ErrNoRoller)
@@ -193,6 +193,7 @@ func TestBaneAttackUsesOneSelectedContributionAndRecordsCalculation(t *testing.T
 		Participants: []Participant{{Monster: attacker}, {Character: actionHero()}},
 		Machine:      machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+		Equipment: noHandsAreObserved{},
 	})
 	require.NoError(t, err)
 	outcome := out.Outcome.(StrikeOutcome)
@@ -226,6 +227,7 @@ func TestBaneWithAdvantageRollsTwoD20FacesAndOneD4(t *testing.T) {
 		World: actionWorld(t, 2), Participants: []Participant{{Monster: attacker}, {Character: actionHero()}},
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+		Equipment: noHandsAreObserved{},
 	})
 	require.NoError(t, err)
 	calculation := out.Outcome.(StrikeOutcome).Calculation
@@ -399,7 +401,7 @@ func TestCancelledAttackStopsBeforeDiceAndDamage(t *testing.T) {
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: actionHero()},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	}, newSurface(bus))
 
@@ -597,6 +599,7 @@ func resolveStrikeAgainstDeathSaveTarget(
 		Initiative: orderAsGiven{},
 		Standing:   everyoneStanding{},
 		Sight:      everyoneSeesTheWholeMap{},
+		Equipment:  noHandsAreObserved{},
 		TurnDriver: passDriver{},
 		Roller:     dice.NewRoller(),
 	}

@@ -155,3 +155,19 @@ func (everyoneSeesTheWholeMap) Sight(members []encounter.MemberID) (map[encounte
 
 	return out, nil
 }
+
+// noHandsAreObserved answers the equipment question for tests that are not
+// about equipment: every member is answered for, and every answer is "no hands
+// to observe" — deliberately NOT "everybody is empty-handed", which would be
+// testimony this fixture has no standing to give.
+type noHandsAreObserved struct{}
+
+func (noHandsAreObserved) Equipment(
+	members []encounter.MemberID,
+) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
+	out := make(map[encounter.MemberID]*encounter.HeldEquipment, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
+}

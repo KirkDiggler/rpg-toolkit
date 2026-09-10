@@ -166,7 +166,7 @@ func (s *ActivationTestSuite) world(members ...encounter.MemberInput) encounter.
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -188,7 +188,7 @@ func (s *ActivationTestSuite) run(
 		World:        world,
 		Participants: participants,
 		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Roller:  dice.NewRoller(),
 		Machine: machine,
 		// Cost stays nil ON PURPOSE — see NewActivation's doc. The ability
@@ -1003,6 +1003,7 @@ func (s *ActivationTestSuite) TestActivationSuccessPreservesCollectorCleanupErro
 		World: s.world(), Participants: []Participant{{Character: s.barbarian(2)}},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Machine: machine,
+		Equipment: noHandsAreObserved{},
 	}, newSurface(bus))
 
 	s.Nil(out, "cleanup failure cannot accompany a successful outcome")
@@ -1023,6 +1024,7 @@ func (s *ActivationTestSuite) TestActivationErrorJoinsCollectorCleanupError() {
 		World: s.world(), Participants: []Participant{{Character: s.barbarian(0)}},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Machine: machine,
+		Equipment: noHandsAreObserved{},
 	}, newSurface(bus))
 
 	s.Nil(out)

@@ -59,6 +59,7 @@ func resolveHeroAttack(
 		Initiative: orderAsGiven{},
 		Standing:   everyoneStanding{},
 		Sight:      everyoneSeesTheWholeMap{},
+		Equipment:  noHandsAreObserved{},
 		TurnDriver: passDriver{},
 		Roller:     dice.NewRoller(),
 	})

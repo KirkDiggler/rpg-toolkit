@@ -194,7 +194,7 @@ func (s *ContestDamageTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
 		Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -252,7 +252,8 @@ func (s *ContestDamageTestSuite) resolve(
 	return Resolve(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World: s.world(), Participants: participants, Machine: machine, Cost: cost,
+		Equipment: noHandsAreObserved{},
+		World:     s.world(), Participants: participants, Machine: machine, Cost: cost,
 	})
 }
 
