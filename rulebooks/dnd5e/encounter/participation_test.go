@@ -681,7 +681,7 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 	require.Equal(t, []string{
 		"Roll", "Outcome", "SuccessesAdded", "FailuresAdded", "Successes", "Failures",
 		"SuccessesNeeded", "FailuresRemaining", "Stabilized", "Dead", "Recovered",
-		"HPRestored", "Continuation", "PresentationID",
+		"HPRestored", "Continuation", "PresentationID", "Calculation",
 	}, structFieldNames(encounter.DeathSaveDetail{}), "closed detail has no caller prose field")
 
 	_, err = participationTrio(t, &scriptedParticipation{}).Record(&encounter.RecordInput{
