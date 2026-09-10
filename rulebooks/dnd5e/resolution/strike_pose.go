@@ -69,9 +69,10 @@ type frozenStrike struct {
 	// the advantage/disadvantage sources — everything the second half reads.
 	Folded dnd5eEvents.AttackChainEvent `json:"folded"`
 
-	// Roll is the d20 as rolled and Total is Roll plus the folded bonus. Both
-	// are stored so the pair can be CHECKED against each other on the way back
-	// in: a total that is not roll plus bonus is a blob nobody should act on.
+	// Roll is the d20 as rolled. Total is the settled pre-offer calculation:
+	// the roll, fixed bonus, and any selected sourced contributions. Both are
+	// stored so they can be CHECKED against Calculation on the way back in; a
+	// total that disagrees with it is a blob nobody should act on.
 	Roll  int `json:"roll"`
 	Total int `json:"total"`
 
@@ -113,9 +114,9 @@ type StrikeResumeInput struct {
 //
 // # It fails closed on a frozen blob it cannot trust
 //
-// A d20 outside 1-20, or a total that is not the roll plus the folded bonus,
-// is refused by name — before the world is loaded and before anything is
-// charged. Repairing either would resolve an attack nobody rolled.
+// A d20 outside 1-20, or a total that disagrees with the validated sourced
+// calculation, is refused by name — before the world is loaded and before
+// anything is charged. Repairing either would resolve an attack nobody rolled.
 func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 	if in == nil {
 		return nil, ErrNilInput
@@ -158,7 +159,7 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 		frozen.Calculation.Components[1].Source.Name != frozen.Definition.Name ||
 		*frozen.Calculation.Components[1].Modifier != frozen.Folded.AttackBonus ||
 		frozen.Calculation.Total != frozen.Total {
-		return nil, fmt.Errorf("%w: roll, bonus, and total do not match the frozen calculation", ErrBadFrozen)
+		return nil, fmt.Errorf("%w: roll, contributions, and total do not match the frozen calculation", ErrBadFrozen)
 	}
 	if frozen.Offer.Audience != frozen.AttackerID {
 		// The same rule the pose enforced, checked again on the way back in:

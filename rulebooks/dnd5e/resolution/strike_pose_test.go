@@ -351,7 +351,7 @@ func TestATamperedFrozenBlobIsRefused(t *testing.T) {
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 
-	t.Run("a total that is not roll plus bonus", func(t *testing.T) {
+	t.Run("a total that disagrees with the frozen calculation", func(t *testing.T) {
 		bad := frozen
 		bad.Total = frozen.Total + 7
 		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
