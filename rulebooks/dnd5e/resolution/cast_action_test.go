@@ -589,10 +589,24 @@ func (s *CastActionTestSuite) TestTheCounterpartKeyIsWrittenWhereContentSaid() {
 	})
 }
 
-// A self-targeted cast names no creature, and empty is the one spelling: the
-// caster repeated into TargetID would be a second way to say the same thing,
-// and content already refuses a counterpart binding it could never satisfy.
-func (s *CastActionTestSuite) TestASelfTargetedCastNamesNoCreature() {
+// A self-targeted cast names THE CASTER, because the outcome's target list is
+// the list of RECIPIENTS and a recipient has to be somebody.
+//
+// This reverses the reasoning that stood here before, and the reasoning was
+// sound for the shape it was written against: when a cast reported one
+// TargetID beside a CasterID, repeating the caster into both really was a
+// second way to say the same thing. The multi-target work replaced that pair
+// with Targets []CastTargetOutcome, and the list stopped meaning "who did the
+// player name" and started meaning "who received what" -- each entry carrying
+// the effects delivered to it. An entry naming nobody has nowhere to hang them.
+//
+// Downstream is where it bites. encounter.RecordCastInput has exactly Actor,
+// Spell and Targets []CastTargetResult; there is no caster-side results lane,
+// so a self cast's condition can only be recorded against a target entry. An
+// empty MemberID is refused there with ErrNoMember -- and refused AFTER the
+// sheet writes are already durable, leaving the condition applied and the beat
+// missing.
+func (s *CastActionTestSuite) TestASelfTargetedCastNamesTheCaster() {
 	definition := *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: spellSaveDC})
 	definition.Cast.Target = combatActions.CastTargetSelf
 	definition.Cast.MinTargets = 0
@@ -609,7 +623,8 @@ func (s *CastActionTestSuite) TestASelfTargetedCastNamesNoCreature() {
 	s.Require().NoError(err)
 
 	outcome := s.castOutcome(out)
-	s.Require().Empty(outcome.Targets[0].TargetID, "nobody was named, and the outcome says so")
+	s.Require().Len(outcome.Targets, 1, "one recipient, because one creature received the spell")
+	s.Require().Equal(bardID, outcome.Targets[0].TargetID, "and the recipient is the caster, named as a real member")
 	s.Require().Nil(outcome.Targets[0].Save)
 	s.Require().Len(outcome.Targets[0].Applied, 1)
 	s.Require().Equal(bardID, outcome.Targets[0].Applied[0].RecipientID)
