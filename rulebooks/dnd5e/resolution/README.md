@@ -6,6 +6,9 @@ A `Resolve` call validates data, loads the world, attaches every participant,
 purely preflights the machine, pays any cost, drives sealed steps, tears down,
 and returns data. Nothing runtime survives the call.
 
+See the [D&D 5e layer overview](../overview.md) for how resolution composes with
+`encounter`, `session`, rulebook content, and the reusable `play/*` leaves.
+
 ## Actions are shared data
 
 Producers hand resolution a `combat/actions.Definition`:
