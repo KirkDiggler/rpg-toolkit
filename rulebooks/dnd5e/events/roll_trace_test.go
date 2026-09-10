@@ -139,10 +139,10 @@ func TestRollCalculationRejectsInvalidSubtractiveDice(t *testing.T) {
 			},
 		},
 		{
-			name: "bane without source id",
+			name: "subtractive modification without responsible entity",
 			change: func(calc *RollCalculation) {
 				calc.Components[0] = RollComponent{
-					Source: RollSource{Ref: refs.Spells.Bane(), Name: "Bane"},
+					Source: RollSource{Ref: refs.Spells.Bless(), Name: "Bless"},
 					Dice: &DiceTrace{Notation: "1d4", DieSize: 4,
 						OriginalRolls: []int{2}, FinalRolls: []int{2}, Subtotal: 2},
 					SubtractDice: true,

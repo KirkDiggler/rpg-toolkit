@@ -15,14 +15,14 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 var contributionNotation = regexp.MustCompile(`^([1-9][0-9]*)?[dD]([1-9][0-9]*)$`)
 
-// ResolveContributionsInput supplies the roller and already-selected,
-// unresolved contribution descriptions. It contains no conditions or stacking
-// policy; the recipient owner selects descriptions before this helper runs.
+// ResolveContributionsInput supplies the required operation-owned roller and
+// already-selected unresolved contribution descriptions. It contains no
+// conditions or stacking policy; the recipient owner selects descriptions
+// before this helper runs.
 type ResolveContributionsInput struct {
 	Roller        dice.Roller
 	Contributions []dnd5eEvents.DiceContribution
@@ -57,6 +57,9 @@ func ResolveContributions(
 	if input == nil {
 		return nil, fmt.Errorf("resolve contributions input is required")
 	}
+	if input.Roller == nil {
+		return nil, fmt.Errorf("resolve contributions roller is required")
+	}
 
 	checked, err := checkContributions(input.Contributions)
 	if err != nil {
@@ -64,9 +67,6 @@ func ResolveContributions(
 	}
 
 	roller := input.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
 	output := &ResolveContributionsOutput{}
 	if input.Contributions != nil {
 		output.Components = make([]dnd5eEvents.RollComponent, 0, len(checked))
@@ -128,8 +128,8 @@ func validateContribution(contribution dnd5eEvents.DiceContribution) (checkedCon
 	if strings.TrimSpace(contribution.Source.Name) == "" {
 		return checkedContribution{}, fmt.Errorf("source name is required")
 	}
-	if contribution.Source.Ref.Equals(refs.Spells.Bane()) && strings.TrimSpace(contribution.Source.SourceID) == "" {
-		return checkedContribution{}, fmt.Errorf("bane source id is required")
+	if strings.TrimSpace(contribution.Source.SourceID) == "" {
+		return checkedContribution{}, fmt.Errorf("source id is required for a dice contribution")
 	}
 
 	matches := contributionNotation.FindStringSubmatch(contribution.Dice)

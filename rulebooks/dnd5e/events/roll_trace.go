@@ -10,7 +10,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // RollSource identifies and describes the rulebook-owned source of a roll fact.
@@ -24,7 +23,9 @@ type RollSource struct {
 	SourceID string
 }
 
-// DiceContribution describes an unresolved homogeneous dice contribution.
+// DiceContribution describes an unresolved homogeneous dice modification.
+// Its SourceID names the responsible entity uniformly for every contribution;
+// base dice and fixed components retain RollSource's broader optional provenance.
 // Dice is unsigned notation; Subtract records the operator without encoding a
 // sign into the pool or producing a face before the owning roll path evaluates it.
 type DiceContribution struct {
@@ -256,8 +257,8 @@ func validateRollComponent(component RollComponent) error {
 	if component.SubtractDice && component.Dice == nil {
 		return fmt.Errorf("cannot subtract dice without dice")
 	}
-	if component.Source.Ref.Equals(refs.Spells.Bane()) && strings.TrimSpace(component.Source.SourceID) == "" {
-		return fmt.Errorf("bane source id is required")
+	if component.SubtractDice && strings.TrimSpace(component.Source.SourceID) == "" {
+		return fmt.Errorf("subtractive dice source id is required")
 	}
 	if component.Dice == nil {
 		return nil
