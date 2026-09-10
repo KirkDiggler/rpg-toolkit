@@ -156,7 +156,9 @@ func (s *MyNewConditionTestSuite) TestApplySubscribes() {
 }
 
 func (s *MyNewConditionTestSuite) TestRoundTrip() {
-    s.cond.Apply(s.bus)
+    err := s.cond.Apply(context.Background(), s.bus)
+    s.Require().NoError(err)
+
     raw, err := s.cond.ToJSON()
     s.Require().NoError(err)
     
@@ -172,13 +174,41 @@ func TestMyNewCondition(t *testing.T) {
 
 ## 8. Run tests and lint
 
+From the repository root, run the owning root-module checks without depending
+on a personal checkout path:
+
 ```bash
-cd /home/kirk/personal/rpg-toolkit/rulebooks/dnd5e
-go test -race ./conditions/...
-go test -race ./integration/...   # make sure integration tests still pass
-golangci-lint run ./conditions/...
+(
+  cd rulebooks/dnd5e
+  go test -race ./conditions/...
+  golangci-lint run ./conditions/...
+)
 ```
 
-## 9. Add to integration test
+These focused tests prove the condition's canonical ref, JSON round trip, and
+`Apply`/`Remove` lifecycle. They do not prove that an interaction reaches the
+condition through resolution's attached bus.
 
-Add a scenario in `rulebooks/dnd5e/integration/` that exercises the new mechanic through a real character. This is the forcing function — if the condition does not survive a `LoadFromData` round-trip under load, the integration test will catch it.
+## 9. Add a resolution scene when the mechanic affects an interaction
+
+If the mechanic changes an attack, save, movement, or another resolved
+interaction, add a real-path scene in `rulebooks/dnd5e/resolution/`. Construct
+participant data containing the condition, call `resolution.Resolve`, and
+assert the returned outcome and data. That is the forcing function for current
+interaction behavior: resolution must load the participant, attach the
+condition once to its interaction-scoped bus, execute the rule, and return the
+result.
+
+Run the focused scene from the repository root, replacing the pattern with its
+real test name:
+
+```bash
+(
+  cd rulebooks/dnd5e/resolution
+  go test -race ./... -run 'MyNewCondition'
+)
+```
+
+A root-module integration scenario can still cover character creation or
+compilation when those paths change, but a legacy `LoadFromData` round trip is
+not a substitute for the resolution scene.
