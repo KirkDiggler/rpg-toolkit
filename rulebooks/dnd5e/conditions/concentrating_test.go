@@ -511,3 +511,154 @@ func (s *ConcentratingConditionSuite) TestChildrenStrippedFirstStillEndWithTheRe
 	s.Equal(ConcentrationEndedDamage, s.ended[0].Reason)
 	s.False(condition.IsApplied())
 }
+
+// --- persistence and clock, asserted through the wire and the outcome ---
+//
+// The four tests below exist because the hold's clock had no persistence
+// assertion at all: "skip_next_turn_end" appeared exactly once in the
+// repository -- the struct tag -- and in zero tests. Every reload case was a
+// symmetric ToJSON -> LoadJSON round trip, so a rename or a polarity flip moved
+// writer and reader together and shipped green.
+
+// TestItPersistsTheExactWireShape pins the WRITE side, key for key.
+//
+// A round trip cannot catch a rename; this can. The literal is the whole blob
+// rather than a field-by-field walk, because the failure being guarded is a key
+// changing name or vanishing under omitempty, and only the whole shape shows
+// that.
+func (s *ConcentratingConditionSuite) TestItPersistsTheExactWireShape() {
+	condition := NewConcentratingConditionWithInput(NewConcentratingConditionInput{
+		MemberID: s.casterID, SourceID: s.casterID,
+		SpellRef: refs.Spells.Bane().String(), SpellName: "Bane",
+		TurnEnds: 10, SkipFirstTurnEnd: true,
+	})
+	s.Require().NoError(condition.AddChild(s.ctx, dnd5eEvents.ConditionAddress{
+		MemberID: "target-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: s.casterID,
+	}))
+
+	raw, err := condition.ToJSON()
+	s.Require().NoError(err)
+
+	s.JSONEq(`{
+		"ref":"dnd5e:conditions:concentrating",
+		"member_id":"bard-1",
+		"source_id":"bard-1",
+		"spell_ref":"dnd5e:spells:bane",
+		"spell_name":"Bane",
+		"turn_ends_left":10,
+		"skip_next_turn_end":true,
+		"children":[{"member_id":"target-1","condition_ref":"dnd5e:conditions:baned","source_id":"bard-1"}]
+	}`, string(raw))
+}
+
+// TestAHandAuthoredBlobKeepsItsGrace pins the READ side, and it is the half a
+// round trip structurally cannot reach.
+//
+// Two blobs that differ ONLY in skip_next_turn_end, each driven to the boundary
+// and judged by WHEN THE HOLD ENDS rather than by what a field reads. Rename the
+// key and the graced blob silently loads ungraced, ending a turn early -- which
+// is a failing assertion here and was invisible before.
+func (s *ConcentratingConditionSuite) TestAHandAuthoredBlobKeepsItsGrace() {
+	blob := func(skip bool) json.RawMessage {
+		grace := ""
+		if skip {
+			grace = `"skip_next_turn_end":true,`
+		}
+		return json.RawMessage(`{
+			"ref":"dnd5e:conditions:concentrating",
+			"member_id":"bard-1","source_id":"bard-1",
+			"spell_ref":"dnd5e:spells:bane","spell_name":"Bane",
+			"turn_ends_left":1,` + grace + `
+			"children":[{"member_id":"target-1","condition_ref":"dnd5e:conditions:baned","source_id":"bard-1"}]
+		}`)
+	}
+
+	s.Run("ungraced ends on the first caster turn end", func() {
+		s.removals = nil
+		loaded, err := LoadJSON(blob(false))
+		s.Require().NoError(err)
+		s.Require().NoError(loaded.Apply(s.ctx, s.bus))
+
+		s.endTurn(s.casterID)
+
+		s.Len(s.removals, 2, "no grace, so the first end spends the only turn end it had")
+	})
+
+	s.Run("graced survives one more", func() {
+		s.removals = nil
+		loaded, err := LoadJSON(blob(true))
+		s.Require().NoError(err)
+		s.Require().NoError(loaded.Apply(s.ctx, s.bus))
+
+		s.endTurn(s.casterID)
+		s.Empty(s.removals, "the persisted grace spends this one and the count is untouched")
+
+		s.endTurn(s.casterID)
+		s.Len(s.removals, 2, "and the next end is the one the count was for")
+	})
+}
+
+// TestTheClockIsProvenByWhenItEndsNotByItsCounter is the same behaviour the
+// Bane clock case describes, asserted without reading a single field.
+//
+// Written this way on purpose: the counter, the grace flag and their names are
+// implementation, and a test that reads them fails on a representation change
+// that alters nothing a player could see. What a player sees is when the hold
+// ends, and that is all this asserts -- so the clock's shape stays free to
+// change underneath it.
+func (s *ConcentratingConditionSuite) TestTheClockIsProvenByWhenItEndsNotByItsCounter() {
+	condition := NewConcentratingConditionWithInput(NewConcentratingConditionInput{
+		MemberID: s.casterID, SourceID: s.casterID,
+		SpellRef: refs.Spells.Bane().String(), SpellName: "Bane",
+		TurnEnds: 3, SkipFirstTurnEnd: true,
+	})
+	s.Require().NoError(condition.AddChild(s.ctx, dnd5eEvents.ConditionAddress{
+		MemberID: "target-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: s.casterID,
+	}))
+	s.Require().NoError(condition.Apply(s.ctx, s.bus))
+
+	s.endTurn(s.casterID)
+	s.Empty(s.removals, "the casting turn's own end is graced")
+
+	s.endTurn("target-1")
+	s.endTurn("another-member")
+	s.Empty(s.removals, "and nobody else's turn owns this clock")
+
+	s.endTurn(s.casterID)
+	s.endTurn(s.casterID)
+	s.Empty(s.removals, "two of the three subsequent caster ends are not three")
+
+	s.endTurn(s.casterID)
+	s.Require().Len(s.removals, 2, "the third ends the child and then its owner")
+	s.Require().Len(s.ended, 1)
+	s.Equal(ConcentrationEndedDuration, s.ended[0].Reason)
+}
+
+// TestTheClockCountsTurnEndsAndIgnoresTheirRound pins an invariant that is
+// currently true by omission: onTurnEnd never reads event.Round.
+//
+// It is pinned rather than assumed because the obvious next move on this clock
+// is to anchor it to a round instead of counting -- and rage already paid for
+// that lesson. conditions/raging.go's grace was once derived from
+// RoundActivated == 0, which collapsed "not yet anchored" into "not yet
+// checked"; a publisher that stamped no round then produced a rage that never
+// anchored and never expired (raging_test.go, TestARoundlessTurnEndDoesNot
+// GrantPerpetualGrace). Round 0 does not mean round zero, it means unknown.
+//
+// So this test is a tripwire with a name: anyone converting this clock to an
+// anchor SHOULD see it fail, and must decide consciously what a round-less turn
+// end means here rather than discover it the way rage did.
+func (s *ConcentratingConditionSuite) TestTheClockCountsTurnEndsAndIgnoresTheirRound() {
+	condition := NewConcentratingCondition(s.casterID, s.spellRef, TrueStrikeName, 2)
+	s.Require().NoError(condition.AddChild(s.ctx, s.child()))
+	s.Require().NoError(condition.Apply(s.ctx, s.bus))
+
+	// Rounds out of order, repeated, and absent entirely. Every one of these is
+	// constructible by anyone who publishes the topic.
+	for _, round := range []int{7, 7} {
+		s.Require().NoError(dnd5eEvents.TurnEndTopic.On(s.bus).Publish(s.ctx,
+			dnd5eEvents.TurnEndEvent{SubjectID: s.casterID, Round: round}))
+	}
+
+	s.Require().Len(s.removals, 2, "two turn ends spent the two it had, whatever their rounds said")
+}

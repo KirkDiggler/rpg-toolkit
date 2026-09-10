@@ -119,8 +119,11 @@ func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndBane() {
 	s.Require().NotNil(requirements.Cantrips, "the cast door asks for them")
 	s.Equal(choices.BardCantrips1, requirements.Cantrips.ID)
 	s.Equal(2, requirements.Cantrips.Count)
-	s.Equal([]spells.Spell{spells.TrueStrike, spells.ViciousMockery}, requirements.Cantrips.Options,
-		"gated to the cantrips this build can actually cast")
+	s.Equal([]spells.Spell{spells.BladeWard, spells.TrueStrike, spells.ViciousMockery},
+		requirements.Cantrips.Options,
+		"gated to the cantrips this build can actually cast, in book order")
+	s.Greater(len(requirements.Cantrips.Options), requirements.Cantrips.Count,
+		"and with Blade Ward there are more options than picks, so the choice is a real one")
 	s.Require().NotNil(requirements.Spellbook)
 	s.Equal(choices.BardSpells1, requirements.Spellbook.ID)
 	s.Equal(1, requirements.Spellbook.Count)

@@ -50,6 +50,7 @@ var (
 	conditionTrueStrike     = &core.Ref{Module: Module, Type: TypeConditions, ID: "true_strike"}
 	conditionViciousMockery = &core.Ref{Module: Module, Type: TypeConditions, ID: "vicious_mockery"}
 	conditionBaned          = &core.Ref{Module: Module, Type: TypeConditions, ID: "baned"}
+	conditionBladeWard      = &core.Ref{Module: Module, Type: TypeConditions, ID: "blade_ward"}
 
 	// Concentration (rpg-project#407): the owner on the caster's sheet that
 	// holds what its spell left behind.
@@ -156,6 +157,10 @@ func (n conditionsNS) ViciousMockery() *core.Ref { return conditionViciousMocker
 
 // Baned returns the ref for the source-qualified penalty imposed by Bane.
 func (n conditionsNS) Baned() *core.Ref { return conditionBaned }
+
+// BladeWard returns the ref for the BladeWardCondition, applied to the caster
+// by the Blade Ward cantrip and halving incoming weapon damage.
+func (n conditionsNS) BladeWard() *core.Ref { return conditionBladeWard }
 
 // Concentrating returns the ref for the ConcentratingCondition, applied to the
 // CASTER of a concentration spell and holding the addresses of the effects

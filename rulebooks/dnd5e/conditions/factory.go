@@ -108,6 +108,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createInspired(input.Config, input.MemberID)
 	case refs.Conditions.TrueStrike().ID:
 		condition, err = createTrueStrike(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.BladeWard().ID:
+		condition, err = createBladeWard(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.ViciousMockery().ID:
 		condition, err = createViciousMockery(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Concentrating().ID:
@@ -386,6 +388,36 @@ func createTrueStrike(config json.RawMessage, memberID, sourceRef string) (*True
 	}
 
 	return NewTrueStrikeCondition(memberID, cfg.TargetID, sourceRef), nil
+}
+
+// bladeWardConfig is the config structure for the blade ward condition.
+// TurnEnds is how many of the warded creature's own turn ends the ward lasts,
+// declared by the cast content rather than assumed here.
+type bladeWardConfig struct {
+	TurnEnds int `json:"turn_ends"`
+}
+
+// createBladeWard creates a blade ward condition from config. The member is the
+// warded creature, who for a self-targeted cast is also the caster.
+//
+// A missing or non-positive turn count is REFUSED rather than defaulted. A ward
+// that expired before it was applied is an affordance with nothing behind it,
+// and defaulting here would put a duration ruling in the factory where content
+// is supposed to own it.
+func createBladeWard(config json.RawMessage, memberID, sourceRef string) (*BladeWardCondition, error) {
+	var cfg bladeWardConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse blade ward config")
+		}
+	}
+
+	if cfg.TurnEnds <= 0 {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
+			"blade ward config requires a positive 'turn_ends' field")
+	}
+
+	return NewBladeWardCondition(memberID, sourceRef, cfg.TurnEnds), nil
 }
 
 // viciousMockeryConfig is the config structure for the vicious mockery

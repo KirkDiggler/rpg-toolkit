@@ -4,6 +4,8 @@
 package spells
 
 import (
+	"encoding/json"
+
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -26,6 +28,29 @@ const BaneCasterParameter = "source_id"
 
 // TrueStrikeRangeFeet is how far a caster may point True Strike (PHB p.283).
 const TrueStrikeRangeFeet = 30
+
+// BladeWardRangeFeet is Blade Ward's reach. The spell is Range: Self and
+// touches nobody, but CastProfile.Validate requires a positive range because
+// the range is what a UI draws, so this is the caster's own square.
+const BladeWardRangeFeet = 5
+
+// BladeWardTurnEnds is how many of the caster's own turn ends the ward
+// survives: the end of the turn it was traced on, and the end of the next one.
+//
+// Two, and the first one is the reason -- the same arithmetic that makes
+// TrueStrikeTurnEnds two. A cantrip costs an action, so Blade Ward is always
+// cast DURING the caster's turn, and the very next turn end on the bus is that
+// same turn's. Ending there would mean the ward never survived to see a swing.
+//
+// Counted on the condition rather than anchored to a round, because a
+// TurnEndEvent may carry no round at all and Round 0 means "unknown" rather
+// than "round zero" -- see conditions/raging.go, which paid for that once.
+const BladeWardTurnEnds = 2
+
+// bladeWardParameters is the ward's clock, declared by content and read by the
+// condition factory. Duration is the spell's to state, not the factory's to
+// default.
+var bladeWardParameters = json.RawMessage(`{"turn_ends":2}`)
 
 // ViciousMockeryRangeFeet is how far a caster may point Vicious Mockery
 // (PHB p.285).
@@ -146,6 +171,36 @@ var castContent = map[Spell]castProfileBuilder{
 					Recurrence: saves.RecurrenceNone,
 				},
 				Damage: []damage.Damage{{Dice: SacredFlameDamage, Type: damage.Radiant}},
+			}
+		},
+	},
+	BladeWard: {
+		name: "Blade Ward",
+		cost: cantripCost(),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: BladeWardRangeFeet,
+				Target:    actions.CastTargetSelf,
+				// MinTargets and MaxTargets stay ZERO, which Validate requires
+				// of a self-targeted profile: they bound what the CALLER may
+				// name, and Blade Ward lets the caller name nobody. Who
+				// receives the ward is a different question, and resolution
+				// answers it with the caster.
+				//
+				// NO GATE, and NOT concentration. Nobody resists a ward traced
+				// in front of yourself, and RAW's Blade Ward needs no
+				// concentration -- which is not a detail. Declaring it would
+				// drop whatever the bard was already holding, and would let the
+				// first weapon hit the ward exists to soften provoke a
+				// concentration check that could strip it: the spell cancelled
+				// by the damage it resists.
+				Effects: []actions.CastEffect{{
+					Recipient: actions.CastRecipientCaster,
+					Ref:       *refs.Conditions.BladeWard(),
+					// NO CounterpartKey. A self-targeted cast has no other
+					// party to bind, and CastEffect.validate refuses one.
+					Parameters: bladeWardParameters,
+				}},
 			}
 		},
 	},
