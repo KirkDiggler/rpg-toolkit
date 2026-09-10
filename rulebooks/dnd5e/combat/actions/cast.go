@@ -26,6 +26,19 @@ const (
 	// CastTargetOneCreature is the existing creature target kind. MinTargets
 	// and MaxTargets carry cardinality, including Bane's one-to-three range.
 	CastTargetOneCreature CastTargetRule = "one_creature"
+
+	// CastTargetArea is a cast whose recipients the ENGINE derives, from a
+	// shape the content declares. The caller names nobody.
+	//
+	// A RULE OF ITS OWN rather than a nil-check on [CastProfile.Area], and the
+	// cost — arms in three closed switches — is the point. The alternative is
+	// precedence between two fields: CastTargetSelf with a non-nil Area, read
+	// as "self, except not really". Resolution's self arm rewrites the target
+	// list to the caster, so a spell that must never hit the caster would be
+	// resolved against them by a rule that looked right. One value meaning two
+	// things is how that happens quietly; [CastProfile.Validate] binds the two
+	// so neither can appear without the other.
+	CastTargetArea CastTargetRule = "area"
 )
 
 // CastRecipient names which of a cast's two parties one delivered condition
@@ -89,6 +102,14 @@ type CastProfile struct {
 
 	// Effects are the conditions the cast delivers when it lands.
 	Effects []CastEffect `json:"effects,omitempty"`
+
+	// Area is the shape this cast covers, or nil for a cast that names its
+	// recipients instead. Non-nil exactly when Target is [CastTargetArea].
+	//
+	// A pointer for [CastConcentration]'s reason: a shape beside a target rule
+	// that means nothing unless the rule says "area" is a zero value that
+	// lies. Nil is "this cast names its targets"; non-nil is the whole answer.
+	Area *CastArea `json:"area,omitempty"`
 
 	// Concentration is how long the caster must hold this cast together, or
 	// nil for a cast that needs no concentration at all.
@@ -164,8 +185,30 @@ func (p CastProfile) Validate() error {
 		if p.MaxTargets < p.MinTargets {
 			return fmt.Errorf("cast maximum targets must be at least its minimum")
 		}
+	case CastTargetArea:
+		// Zero targets for the same reason a self cast declares zero: these
+		// bound what the CALLER may name, and the caller names nobody. Who
+		// receives an area cast is a different question, answered by the
+		// engine from the shape.
+		if p.MinTargets != 0 || p.MaxTargets != 0 {
+			return fmt.Errorf("area cast must declare zero targets")
+		}
 	default:
 		return fmt.Errorf("unknown cast target rule %q", p.Target)
+	}
+
+	// The two halves are bound in both directions, so neither an area rule with
+	// no shape nor a shape no rule reads can reach a machine.
+	if p.Target == CastTargetArea && p.Area == nil {
+		return fmt.Errorf("area cast must declare an area")
+	}
+	if p.Target != CastTargetArea && p.Area != nil {
+		return fmt.Errorf("cast declares an area but its target rule is %q", p.Target)
+	}
+	if p.Area != nil {
+		if err := p.Area.Validate(); err != nil {
+			return fmt.Errorf("cast area is invalid: %w", err)
+		}
 	}
 
 	if p.Save != nil {
@@ -232,6 +275,10 @@ func (p CastProfile) Clone() CastProfile {
 		for index, effect := range p.Effects {
 			clone.Effects[index] = effect.Clone()
 		}
+	}
+	if p.Area != nil {
+		area := *p.Area
+		clone.Area = &area
 	}
 	if p.Concentration != nil {
 		concentration := *p.Concentration

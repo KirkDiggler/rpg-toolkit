@@ -60,6 +60,20 @@ const ViciousMockeryRangeFeet = 60
 // Mockery takes at levels 1–4.
 const ViciousMockeryDamage = "1d4"
 
+// ThunderclapRadiusFeet is how far Thunderclap's burst reaches from the caster.
+//
+// It is the spell's RANGE and its AREA at once, which is why one constant fills
+// both fields of the profile: the burst is centred on the caster, so how far it
+// reaches and how far it can be aimed are the same number.
+const ThunderclapRadiusFeet = 5
+
+// ThunderclapDamage is the thunder damage a failed save takes at levels 1-4.
+//
+// Unscaled, as Sacred Flame ships unscaled: nothing in the cast path reads a
+// character level, and higher-level scaling is out of this slice (see the note
+// on cantrip damage above).
+const ThunderclapDamage = "1d6"
+
 // SacredFlameRangeFeet is Sacred Flame's range in the 2014 Basic Rules.
 const SacredFlameRangeFeet = 60
 
@@ -84,12 +98,20 @@ const TrueStrikeTurnEnds = 2
 // naming the bard who imposed it.
 const ViciousMockeryCasterParameter = "source_id"
 
-// BardCantrips is the 2014 PHB bard cantrip list, in book order.
+// BardCantrips is the cantrip list this build offers a bard: the 2014 PHB list
+// in book order, then what we have added since.
 //
-// ALL ELEVEN, even though this build can cast two of them. The list is what a
-// bard's cantrips ARE; which of them have behavior is a separate question
-// answered by [Castable], and the day a third grows a profile the two answers
-// converge without this list moving.
+// IT IS THIS BUILD'S LIST, NOT A TRANSCRIPTION OF ONE BOOK. It began as the
+// latter and could then never hold anything we invented, which is the wrong
+// shape for a toolkit whose published rulebooks are a supply of proof cases
+// rather than a scope to finish. Thunderclap is the first entry that is not on
+// the 2014 bard list, and it will not be the last.
+//
+// The idea worth keeping from the original is untouched: the list is what a
+// bard's cantrips ARE; which of them have behavior is a separate question,
+// answered by [Castable]. That separation is why the list has always been able
+// to hold entries with no profile, and it is what lets this widen without
+// lying about anything.
 var BardCantrips = []Spell{
 	BladeWard,
 	DancingLights,
@@ -102,6 +124,7 @@ var BardCantrips = []Spell{
 	Prestidigitation,
 	TrueStrike,
 	ViciousMockery,
+	Thunderclap,
 }
 
 // castProfileBuilder is one spell's compiled cast content and price, with the
@@ -152,6 +175,38 @@ var castContent = map[Spell]castProfileBuilder{
 				Concentration: &actions.CastConcentration{
 					TurnEnds: BaneTurnEnds, SkipFirstTurnEnd: true,
 				},
+			}
+		},
+	},
+	Thunderclap: {
+		name: "Thunderclap",
+		cost: cantripCost(),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				// The range and the radius are the same number: a burst
+				// centred on the caster reaches exactly as far as it can be
+				// aimed. RangeFeet is still declared because it is what a UI
+				// draws, the way a self-targeted cast declares one.
+				RangeFeet: ThunderclapRadiusFeet,
+				Target:    actions.CastTargetArea,
+				Area: &actions.CastArea{
+					Footprint: actions.Footprint{
+						Shape:    actions.AreaRadius,
+						SizeFeet: ThunderclapRadiusFeet,
+						Origin:   actions.AreaOriginCaster,
+					},
+					// "each creature other than you" — the caster stands in
+					// their own burst and is not affected by it. A projection
+					// of the footprint, never part of its shape.
+					Catches: actions.AreaCatchesOthers,
+				},
+				Save: &saves.SaveGate{
+					Abilities:  []abilities.Ability{abilities.CON},
+					DC:         saves.DCStatic(spellSaveDC),
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage: []damage.Damage{{Dice: ThunderclapDamage, Type: damage.Thunder}},
 			}
 		},
 	},

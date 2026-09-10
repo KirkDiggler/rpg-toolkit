@@ -62,6 +62,7 @@ const (
 	Message        Spell = "message"
 	TrueStrike     Spell = "true-strike"
 	ViciousMockery Spell = "vicious-mockery"
+	Thunderclap    Spell = "thunderclap"
 )
 
 // Level 1 Damage Spells
@@ -237,6 +238,7 @@ var spellName = map[Spell]string{
 	FireBolt:       "Fire Bolt",
 	RayOfFrost:     "Ray of Frost",
 	ShockingGrasp:  "Shocking Grasp",
+	Thunderclap:    "Thunderclap",
 	AcidSplash:     "Acid Splash",
 	PoisonSpray:    "Poison Spray",
 	ChillTouch:     "Chill Touch",
@@ -354,6 +356,7 @@ var spellSlotDescription = map[Spell]string{
 	FireBolt:        "Hurl a mote of fire at a creature or object (1d10 fire damage)",
 	RayOfFrost:      "A frigid beam that deals 1d8 cold damage and reduces speed by 10 feet",
 	ShockingGrasp:   "Lightning springs from your hand dealing 1d8 lightning damage, advantage vs metal armor",
+	Thunderclap:     "A burst of thunder erupts around you for 1d6 thunder damage to every other creature within 5 feet",
 	AcidSplash:      "Hurl a bubble of acid at creatures for 1d6 acid damage",
 	PoisonSpray:     "Project a puff of noxious gas dealing 1d12 poison damage",
 	ChillTouch:      "Assail with necrotic energy for 1d8 damage and prevent healing",
