@@ -155,7 +155,8 @@ func withdrawn() encounter.EndingInput {
 
 func (s *HoldOutSuite) open(field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
@@ -174,8 +175,9 @@ func (s *HoldOutSuite) camp(endings ...encounter.EndingInput) *encounter.Encount
 
 func (s *HoldOutSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  enc.ToData(),
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Data:      enc.ToData(),
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
@@ -635,8 +637,9 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 
 	load := func(data encounter.EncounterData) error {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data:  data,
-			Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Data:      data,
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		})
@@ -688,7 +691,8 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 // and reads every side exactly as it did.
 func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: heirloomField(),
@@ -719,7 +723,8 @@ func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 	open := func(field encounter.FieldInput, endings ...encounter.EndingInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 			Field: field, Members: s.cast(true), Endings: append([]encounter.EndingInput{withdrawn()}, endings...),
@@ -833,7 +838,8 @@ func (s *HoldOutSuite) openWith(
 	driver encounter.TurnDriver, striker encounter.Striker, endings ...encounter.EndingInput,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,

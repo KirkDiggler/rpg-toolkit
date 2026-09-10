@@ -106,7 +106,7 @@ func solidPillar(x, y float64) encounter.PropInput {
 
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
+		Sight: torchAndDarkvision{}, Equipment: noHandsAreObserved{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
 		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{},
 		Field: encounter.FieldInput{
 			// You cannot see across the space the crypt's two regions do not
@@ -585,7 +585,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+				Sight: torchAndDarkvision{}, Equipment: noHandsAreObserved{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 					"goblin": goblinPatrol(),
 				}})
 			if err != nil {
@@ -731,4 +731,20 @@ func (torchAndDarkvision) Sight(members []encounter.MemberID) (map[encounter.Mem
 	}
 
 	return reach, nil
+}
+
+// noHandsAreObserved answers the equipment question for the workbench, which
+// walks a dungeon with no character sheets behind its members. Every member is
+// answered for, and every answer is "no hands to observe" — deliberately not
+// "empty-handed", which would be testimony this demo has no standing to give.
+type noHandsAreObserved struct{}
+
+func (noHandsAreObserved) Equipment(
+	members []encounter.MemberID,
+) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
+	out := make(map[encounter.MemberID]*encounter.HeldEquipment, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
 }

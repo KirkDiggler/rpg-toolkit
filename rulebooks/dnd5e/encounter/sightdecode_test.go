@@ -31,35 +31,35 @@ func TestDecodeSightPayloadRoundTripsASightPayload(t *testing.T) {
 }
 
 func TestLocationPayloadRoundTrip(t *testing.T) {
-	known := encounter.LocationKnowledge{State: encounter.LocationKnown, Position: spatial.Position{X: 0, Y: -2}}
-	payload, err := encounter.EncodeLocationPayload(known)
+	known := encounter.SightTestimony{State: encounter.LocationKnown, Position: spatial.Position{X: 0, Y: -2}}
+	payload, err := encounter.EncodeSightTestimony(known)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"state":"known","x":0,"y":-2}`, string(payload))
 
-	got, ok := encounter.DecodeLocationPayload(payload)
+	got, ok := encounter.DecodeSightTestimony(payload)
 	require.True(t, ok)
 	require.Equal(t, known, got)
 	pos, ok := encounter.DecodeSightPayload(payload)
 	require.True(t, ok)
 	require.Equal(t, known.Position, pos)
 
-	unknown, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationUnknown})
+	unknown, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationUnknown})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"state":"unknown"}`, string(unknown))
 	_, ok = encounter.DecodeSightPayload(unknown)
 	require.False(t, ok)
 }
 
-func TestDecodeLocationPayloadReadsLegacyKnownPosition(t *testing.T) {
-	got, ok := encounter.DecodeLocationPayload([]byte(`{"x":0,"y":4}`))
+func TestDecodeSightTestimonyReadsLegacyKnownPosition(t *testing.T) {
+	got, ok := encounter.DecodeSightTestimony([]byte(`{"x":0,"y":4}`))
 	require.True(t, ok)
-	require.Equal(t, encounter.LocationKnowledge{
+	require.Equal(t, encounter.SightTestimony{
 		State:    encounter.LocationKnown,
 		Position: spatial.Position{X: 0, Y: 4},
 	}, got)
 }
 
-func TestDecodeLocationPayloadRejectsMalformedOrContradictoryShapes(t *testing.T) {
+func TestDecodeSightTestimonyRejectsMalformedOrContradictoryShapes(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		payload string
@@ -86,18 +86,18 @@ func TestDecodeLocationPayloadRejectsMalformedOrContradictoryShapes(t *testing.T
 		{name: "trailing json", payload: `{"state":"known","x":1,"y":2}{}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ok := encounter.DecodeLocationPayload([]byte(tc.payload))
+			_, ok := encounter.DecodeSightTestimony([]byte(tc.payload))
 			require.False(t, ok)
 		})
 	}
 }
 
-func TestEncodeLocationPayloadRejectsInvalidKnowledge(t *testing.T) {
-	for _, knowledge := range []encounter.LocationKnowledge{
+func TestEncodeSightTestimonyRejectsInvalidKnowledge(t *testing.T) {
+	for _, knowledge := range []encounter.SightTestimony{
 		{State: "maybe", Position: spatial.Position{X: 1, Y: 2}},
 		{State: encounter.LocationUnknown, Position: spatial.Position{Y: 1}},
 	} {
-		_, err := encounter.EncodeLocationPayload(knowledge)
+		_, err := encounter.EncodeSightTestimony(knowledge)
 		require.Error(t, err)
 	}
 }
@@ -154,7 +154,8 @@ func TestDecodeSightPayloadRefusesTheRoomBearingDialect(t *testing.T) {
 // invented.
 func TestDecodeSightPayloadAgreesWithAViewsOwnPayload(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},

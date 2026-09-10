@@ -85,7 +85,8 @@ func newCorrectionPropagationEncounter(
 	t.Helper()
 
 	base, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
@@ -119,7 +120,7 @@ func newCorrectionPropagationEncounter(
 		}
 	}
 
-	known, err := EncodeLocationPayload(LocationKnowledge{
+	known, err := EncodeSightTestimony(SightTestimony{
 		State: LocationKnown, Position: propagationArrival,
 	})
 	require.NoError(t, err)
@@ -135,7 +136,7 @@ func newCorrectionPropagationEncounter(
 		Pass{},
 	}}
 	enc, err := LoadEncounter(&LoadEncounterInput{
-		Data: data, Sight: propagationSight{}, Standing: standing, Initiative: orderAsGiven{},
+		Data: data, Sight: propagationSight{}, Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
@@ -168,7 +169,7 @@ func requireSurfacedPropagationCorrection(
 			continue
 		}
 		require.Equal(t, intel.Held, holding.Status)
-		location, ok := DecodeLocationPayload(holding.Payload)
+		location, ok := DecodeSightTestimony(holding.Payload)
 		require.True(t, ok)
 		require.Equal(t, LocationUnknown, location.State)
 		return

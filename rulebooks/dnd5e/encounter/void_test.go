@@ -78,7 +78,8 @@ func gappedField(void encounter.Void) encounter.FieldInput {
 // that nothing forms a fight and sight is the only thing under test.
 func (s *VoidSuite) gapped(void encounter.Void) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: gappedField(void),
 		Members: []encounter.MemberInput{
 			{ID: brenna, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
@@ -160,7 +161,8 @@ func (s *VoidSuite) TestTransparentVoidIsStillNotFloor() {
 // gap.
 func (s *VoidSuite) TestOpaqueVoidDoesNotBlockSightWithinAChamber() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: gappedField(encounter.VoidIsOpaque()),
 		Members: []encounter.MemberInput{
 			{ID: brenna, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
@@ -200,7 +202,8 @@ func (s *VoidSuite) TestTheHandedOutCanvasAnswersTheSameWay() {
 // it construction data (rpg-toolkit#1033's law, applied to the map).
 func (s *VoidSuite) TestAFieldMustSayWhatItsVoidIs() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Regions: []encounter.RegionInput{rectRegion(voidWest, 0, 0, 4, 4)},
 		},
@@ -230,8 +233,9 @@ func (s *VoidSuite) TestTheDeclarationSurvivesASave() {
 			s.Equal(string(tc.kind), data.Field.Canvas.Void, "the blob carries the word")
 
 			back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Data:  data,
-				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+				Data:      data,
+				Sight:     everyoneSeesTheWholeMap{},
+				Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			})
 			s.Require().NoError(err)
 
@@ -268,8 +272,9 @@ func (s *VoidSuite) TestAnOldBlobIsRefusedByName() {
 	s.Require().NoError(json.Unmarshal(raw, &old))
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  old,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data:      old,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Contains(err.Error(), "canvas.void", "the refusal names the field the blob does not carry")
@@ -286,8 +291,9 @@ func (s *VoidSuite) TestAnUnknownVoidIsRefusedByName() {
 	data.Field.Canvas.Void = "lava"
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  data,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data:      data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Contains(err.Error(), "lava", "the refusal quotes the word it does not know")
@@ -309,7 +315,8 @@ func (s *VoidSuite) TestAnUnknownVoidIsRefusedByName() {
 func (s *VoidSuite) TestTheCanvasKeepsItsOwnCopyOfTheChambers() {
 	field := gappedField(encounter.VoidIsOpaque())
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: brenna, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
@@ -390,7 +397,8 @@ func contiguousField(void encounter.Void) encounter.FieldInput {
 // canvasOf opens a field with nobody in it and hands back its map.
 func (s *VoidSuite) canvasOf(field encounter.FieldInput) spatial.Room {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   field,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})

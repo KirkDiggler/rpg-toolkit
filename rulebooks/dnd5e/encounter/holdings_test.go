@@ -262,7 +262,8 @@ func (s *HoldingsSuite) open(holds bool, endings ...encounter.EndingInput) *enco
 		endings = []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field:     heirloomField(),
@@ -279,7 +280,8 @@ func (s *HoldingsSuite) open(holds bool, endings ...encounter.EndingInput) *enco
 // the field carries and nothing else touches.
 func (s *HoldingsSuite) openWithField(field encounter.FieldInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field:     field,
@@ -296,8 +298,9 @@ func (s *HoldingsSuite) openWithField(field encounter.FieldInput) *encounter.Enc
 func (s *HoldingsSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	data := enc.ToData()
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:  data,
-		Sight: everyoneSeesTheWholeMap{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Data:      data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})

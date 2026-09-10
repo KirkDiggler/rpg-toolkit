@@ -1541,6 +1541,13 @@ type LoadEncounterInput struct {
 	// without one. Refused at the door, never guarded at the use site.
 	Sight Sight
 
+	// Equipment reports what each member is holding. REQUIRED, exactly as it is
+	// on SetupInput: a loaded encounter snapshots hands on its first sight
+	// refresh, so a blob that comes back without one is as unusable as a Setup
+	// without one (rpg-toolkit#1615). Refused at the door, never guarded at the
+	// use site, and never defaulted.
+	Equipment Equipment
+
 	// TurnDriver decides what a member with no player does when the fight's
 	// clock lands on their turn. REQUIRED, exactly as it is on SetupInput: a
 	// loaded encounter's bubble can land on an unplayed member the moment it
@@ -1604,6 +1611,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Sight == nil {
 		return fmt.Errorf("load encounter: Sight is required: %w", ErrNoSight)
+	}
+	if in.Equipment == nil {
+		return fmt.Errorf("load encounter: Equipment is required: %w", ErrNoEquipment)
 	}
 	if in.TurnDriver == nil {
 		return fmt.Errorf("load encounter: TurnDriver is required: %w", ErrNoTurnDriver)
@@ -2094,6 +2104,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		standing:      standingWithParticipation,
 		participation: standingWithParticipation,
 		sight:         input.Sight,
+		equipment:     input.Equipment,
 		turnDriver:    input.TurnDriver,
 		striker:       input.Striker,
 		mover:         input.Mover,
@@ -2427,7 +2438,7 @@ func refuseRoomLocalSightings(data intel.Data) error {
 				}
 			}
 
-			location, ok := DecodeLocationPayload(holding.Payload)
+			location, ok := DecodeSightTestimony(holding.Payload)
 			if !ok {
 				return fmt.Errorf(
 					"load encounter sight location: %q's sighting of %q is malformed: %w",

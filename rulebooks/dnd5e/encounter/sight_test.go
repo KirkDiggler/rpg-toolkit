@@ -86,7 +86,7 @@ func cells(from, to spatial.Position) int {
 // thing deciding percepts is sight.
 func (s *SightSuite) theLongRow(sight encounter.Sight) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 0, tombDoorRow)},
@@ -187,7 +187,7 @@ func (s *SightSuite) TestTheEdgeOfYourSightIsInsideIt() {
 // before it — would pass every other test in this file.
 func (s *SightSuite) TestSightIsStillGeometryFirst() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: &sightList{fallback: darkvision}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Sight: &sightList{fallback: darkvision}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: carol, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow-1)},
@@ -238,7 +238,7 @@ func (s *SightSuite) TestTheConeStillNarrows() {
 		}}, marks...)
 
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: &sightList{fallback: generous}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+			Sight: &sightList{fallback: generous}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field:   tombField(),
 			Members: members,
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -341,7 +341,7 @@ func (s *SightSuite) TestTheFarSightedSpotTheShortSightedAndSurpriseThem() {
 
 	scene := func(sight encounter.Sight) *encounter.Encounter {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+			Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 0, tombDoorRow)},
@@ -413,7 +413,8 @@ func TestASceneThatDoesNotSayHowFarAnyoneCanSeeIsRefused(t *testing.T) {
 
 	t.Run("load", func(t *testing.T) {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 0, tombDoorRow)},
