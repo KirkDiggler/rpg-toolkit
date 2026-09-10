@@ -91,9 +91,14 @@ A **producer** returns a set: *who is in this area*, *everyone within five feet 
 depends on what the set was drawn FROM, and if that is not stated the answer silently depends on
 what happened to be loaded. So:
 
-> **Any API in this package that returns a collection names the universe it ranges over, or it does
-> not ship.** *(Convention this file establishes — the existing surface already obeys it, but no
-> file said so before.)*
+> **Every collection-returning API here names the universe it ranges over.** That is an
+> observation about the surface as it stands, not a gate on the next one.
+
+It is worth keeping because of *how* it fails when it is missing, which is invisibly: a producer
+with an unstated universe returns a plausible list, and the members it quietly left out look
+exactly like members that were not there. Nothing throws and no test anybody thought to write goes
+red. So when you add one, the question worth asking is not "does this pass a rule" but **"what was
+this drawn from, and does the signature say so?"**
 
 The surface today obeys it. `Members()` names the roster. `MembersIn(region)` names the roster
 filtered by an authored region. `View(member)` names one member's own holdings. `AtlasFor(member)`
