@@ -247,7 +247,7 @@ func baneWorld(t *testing.T, targetX float64) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
 		Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{
 			rectRegion("room", 0, 0, 20, 10),
 		}},
@@ -296,7 +296,7 @@ func (s *CastActionTestSuite) TestBaneRefusesStaleAndOutOfRangeTargetsBeforeDrop
 				World:        baneWorld(s.T(), tc.targetX),
 				Participants: []Participant{{Character: caster}, {Character: target}},
 				Machine:      machine, Cost: baneCost(), Initiative: orderAsGiven{},
-				Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+				Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 				TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 			}, newSurface(bus))
 			s.ErrorIs(err, tc.want)
@@ -677,7 +677,8 @@ func (s *CastActionTestSuite) resolveOnBus(
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World: fixtures.world(),
+		Equipment: noHandsAreObserved{},
+		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: fixtures.bard(1)},
 		},
@@ -725,6 +726,7 @@ func (s *CastActionTestSuite) TestAContestWithNoSpellCauseStillSaysDamage() {
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		Equipment:    noHandsAreObserved{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}},
 		Machine: NewContest(&ContestInput{

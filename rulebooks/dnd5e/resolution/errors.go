@@ -43,6 +43,15 @@ var (
 	// rule about light it cannot see (rpg-toolkit#1111, rpg-toolkit#1033).
 	ErrNoSight = errors.New("resolution: no sight capability")
 
+	// ErrNoEquipment indicates an interaction given no way to find out what
+	// anybody is holding. Carried rather than computed for [ErrNoSight]'s
+	// reason, and refused for a sharper one: an absent answer here would have to
+	// be replaced with "everybody is empty-handed", which is not a missing fact
+	// but an invented one. The sight seam turns this answer into per-observer
+	// testimony, and testimony nobody gave is the one thing it must never carry
+	// (rpg-toolkit#1615).
+	ErrNoEquipment = errors.New("resolution: no equipment capability")
+
 	// ErrNoTurnDriver indicates an interaction given no way to decide what an
 	// unplayed member does when a fight's clock lands on their turn. The
 	// composition requires one to load at all, the same way it requires an

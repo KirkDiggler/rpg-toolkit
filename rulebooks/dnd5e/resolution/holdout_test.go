@@ -68,7 +68,7 @@ func (s *HoldOutSuite) camp() *encounter.Encounter {
 	no := false
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 8, 4)},
@@ -193,7 +193,7 @@ func (s *HoldOutSuite) resolve(world encounter.EncounterData, strike *StrikeInpu
 			{Monster: s.raider(holdOutScout)}, {Monster: s.raider(holdOutChief)},
 		},
 		Machine:    NewStrike(strike),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		TurnDriver: passDriver{}, Roller: strike.Roller,
 	})
 	s.Require().NoError(err)

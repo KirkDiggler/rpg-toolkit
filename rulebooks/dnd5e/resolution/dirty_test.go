@@ -97,7 +97,7 @@ func (s *DirtyTestSuite) ragingHero() *character.Data {
 func (s *DirtyTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -127,6 +127,7 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 	out, err := Resolve(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		Equipment:    noHandsAreObserved{},
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine: NewStrike(&StrikeInput{
@@ -166,7 +167,7 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -183,7 +184,8 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 	out, err := Resolve(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World: enc.ToData(),
+		Equipment: noHandsAreObserved{},
+		World:     enc.ToData(),
 		Participants: []Participant{
 			{Character: hero},
 			{Monster: monsters.NewWolf(wolfID).ToData()},

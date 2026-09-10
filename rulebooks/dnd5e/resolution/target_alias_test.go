@@ -37,6 +37,7 @@ func resolveTargetAliasAttack(
 		},
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+		Equipment: noHandsAreObserved{},
 	})
 	require.NoError(t, err)
 

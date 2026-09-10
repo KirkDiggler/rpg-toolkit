@@ -131,6 +131,21 @@ type Input struct {
 	// are handed over, and the caller that owns the sheets owns the answer.
 	Sight encounter.Sight
 
+	// Equipment reports what each member is holding. REQUIRED.
+	//
+	// Carried, never consulted, for exactly the reason Sight one field up is:
+	// the composition asks what somebody is holding at the one choke point where
+	// it rebuilds percepts, and this package calls neither of that choke point's
+	// two callers. It loads a world and reads it back out as data, so the
+	// question is never put here.
+	//
+	// The composition still refuses to load without one (rpg-toolkit#1615), and
+	// answering on the caller's behalf would be worse than a guess about light:
+	// "everybody is empty-handed" is not a missing answer, it is TESTIMONY, and
+	// inventing testimony is the one thing the sight seam must never do. So it
+	// is handed over, and the caller that owns the sheets owns the answer.
+	Equipment encounter.Equipment
+
 	// Roller reconstitutes runtime dice dependencies for effects that roll when
 	// triggered rather than when loaded — Character conditions such as Great
 	// Weapon Fighting and Monster traits such as Undead Fortitude. REQUIRED.
@@ -207,6 +222,9 @@ func (in *Input) Validate() error {
 	}
 	if in.Sight == nil {
 		return ErrNoSight
+	}
+	if in.Equipment == nil {
+		return ErrNoEquipment
 	}
 	if in.TurnDriver == nil {
 		return ErrNoTurnDriver
@@ -358,6 +376,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Initiative: in.Initiative,
 		Standing:   in.Standing,
 		Sight:      in.Sight,
+		Equipment:  in.Equipment,
 		TurnDriver: in.TurnDriver,
 		// The concealment capabilities (rpg-toolkit#1378), handed over exactly
 		// as supplied: nil stays nil, so a plain world loads untouched and a

@@ -18,3 +18,19 @@ func (everyoneSeesTheWholeMap) Sight(members []MemberID) (map[MemberID]int, erro
 
 	return out, nil
 }
+
+// noHandsAreObserved answers the equipment question for tests that are not
+// about equipment: every member is present in the answer, and every answer is
+// "no hands to observe". That is the honest default for a fixture roster of
+// bare member IDs with no sheets behind them — and it is deliberately NOT
+// "everybody is empty-handed", which would be testimony this fixture has no
+// standing to give. See [encounter.Equipment].
+type noHandsAreObserved struct{}
+
+func (noHandsAreObserved) Equipment(members []MemberID) (map[MemberID]*HeldEquipment, error) {
+	out := make(map[MemberID]*HeldEquipment, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
+}

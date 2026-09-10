@@ -158,7 +158,8 @@ func compiledAtlas(t *testing.T, path string) (dungeonspec.Compiled, encounter.A
 	compiled, err := dungeonspec.Load(raw)
 	require.NoError(t, err)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		// Required exactly when the field carries concealed structure, which
 		// the heirloom tomb does — supplied unconditionally here so one

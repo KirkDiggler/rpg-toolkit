@@ -46,7 +46,8 @@ func (s *StartFacingSuite) withStart(line string) string {
 func (s *StartFacingSuite) atlasOf(compiled dungeonspec.Compiled) encounter.Atlas {
 	s.T().Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: nothingIsEverFound{}, Witness: nobodyPerceivesAnything{},
 		Field:   compiled.Field,
