@@ -201,8 +201,24 @@ type CastTargetResult struct {
 }
 
 // RecordCastInput is one cast transaction: one caster, one spell, and an
-// ordered target-result list. Empty Targets is the honest shape for a
-// self/no-target cast.
+// ordered target-result list of RECIPIENTS.
+//
+// # A self cast is not an empty list, it is a list naming the caster
+//
+// Every entry carries the effects delivered to it, and this input has no
+// caster-side results lane, so an effect can only be recorded against a target
+// entry. combat/actions.CastProfile.Validate refuses a cast that declares
+// neither damage nor a delivered condition, so every cast this build can
+// resolve delivers something to somebody — and for a self-targeted profile
+// that somebody is the caster, which resolution names as the one recipient
+// rather than a sentinel (see newCast). An empty MemberID is refused below,
+// and refused after the sheet writes are already durable, which is why the
+// naming happens upstream instead of being papered over here.
+//
+// Empty Targets is therefore unreachable for the casts that exist today. It is
+// deliberately still ACCEPTED rather than refused, because it becomes reachable
+// the moment an area cast catches nobody: a thunderclap with no creature in
+// range pays its action, delivers nothing, and should record honestly.
 type RecordCastInput struct {
 	Actor   MemberID
 	Spell   SpellIdentity
