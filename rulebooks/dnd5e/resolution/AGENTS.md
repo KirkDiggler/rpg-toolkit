@@ -95,6 +95,70 @@ that would have applied simply never hears the event. `defaultReadiness`
 ([`truth.go:137`](./truth.go)) makes the same move — it readies every
 participant for every free reaction and lets each condition refuse itself.
 
+## Whose question is it?
+
+**Ask this before asking where the code could go.** It is the test the rest of
+this file assumes you have already applied, and the one that is easy to skip,
+because the answer to *"where could this live?"* is so often *"here, easily."*
+
+| The question | Owner |
+|---|---|
+| **Where is anything** — who stands where, who can see what, what shape the floor has, who is inside a shape | [`encounter`](../encounter) |
+| **What happens when things interact** — does it land, for how much, what does it leave behind, what does a fact mean | **`resolution`** (this module) |
+| **What was asked for, what is loaded, what is saved** — the host's verbs, the repositories, the integrity of what enters and leaves | [`session`](../session) |
+
+All three seam docs carry this same table. If they ever disagree, that is the
+bug — not a nuance.
+
+**Computability is not ownership.** That a module *can* produce an answer —
+because it happens to hold the two facts the answer is made from — is not
+evidence the answer is its to give. Every seam here can reach far enough to
+answer a neighbour's question. That is what makes them useful to each other, and
+it is exactly what makes this mistake easy and quiet.
+
+The counter-question that works: **if a second caller needed this same answer
+later, from somewhere else, where would they have to go and get it?** If the
+honest answer is "somewhere other than where I am about to put it", it belongs
+there instead.
+
+### The worked example, because it nearly shipped
+
+A spell that names a shape in space — a five-foot radius around the caster — and
+the engine works out who is caught by it.
+
+`session` holds the roster and can call `Distance`, so it *can* fold the two into
+a target list in about fifteen lines. It was designed that way for two drafts,
+and the argument each time was economy: fifteen lines here versus a new method
+there.
+
+That is a mechanism argument, and it survived the predicate/producer test below
+— the fold names its universe perfectly well at the call site. What it never
+faced was the ownership question. *"Who is standing in this shape"* is a
+**placement** question. `encounter` owns placement, and already answers this
+exact question for an authored footprint (`MembersIn` — a roster read, filtered
+through the same `placementOf` projection every other member read uses).
+
+The cost of getting it wrong was not fifteen lines. Fireball's lingering floor is
+the same question asked *continuously*, and its home is a runtime-minted region
+answered by `MembersIn`. Answer the transient case in `session` and one question
+has two mechanisms in two modules forever; answer both here and the persistent
+case becomes *"mint the region, then ask the question we already ask."*
+
+**One question, one owner** — decided before, and independently of, where the
+answer is convenient to compute.
+
+### What that means for this module in particular
+
+Things that look like somebody else's and are yours: **what a fact means.** A
+condition's effect, a save's consequence, whether a hit lands, what a follow-up
+rolls. If it is a decision the rules make, it belongs in a machine here even when
+the data is more convenient somewhere else.
+
+Things that look like yours and are not: **where anything is.** `installTruth`
+hands you a room and a live encounter, so a machine at `Start` genuinely *can*
+measure positions — see Traps. Being able to is not permission. Placement
+questions are answered by `encounter` and arrive here as data already settled.
+
 ## Predicates and producers
 
 Two shapes of question, and they are not the same animal.
