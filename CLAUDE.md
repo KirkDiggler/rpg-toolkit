@@ -105,10 +105,33 @@ The version model behind those rules is:
    dependency has, which makes it unbuildable for everyone but you. Let the
    merge flow mint tags and "latest of everything builds together" stays true.
 
-4. **Develop outside-in, publish inside-out.** Build the consumer against a
-   local sibling to discover the contract (see local overrides below). To
-   publish, merge the innermost module's PR first, let CI mint its tag,
-   `go get` that minted version in the consumer, then merge the consumer.
+4. **Develop outside-in on pseudo-versions. Publish inside-out, and publish
+   LAST.**
+
+   These are two phases, and collapsing them is the mistake this point exists
+   to prevent. **Merging is never a development step. Nothing merges in order
+   to unblock anything.**
+
+   *While the wave is being built:* a consumer pins its provider's **pushed
+   commit**. `go get <module>@<sha>` mints a real, resolvable pseudo-version —
+   that is not a hand-rolled `replace` and is not the thing banned below. The
+   whole stack builds and runs from those pins, locally, and gets **walked**.
+   The walk is where cross-repo findings surface, and surfacing them before
+   anything is tagged is the entire reason to develop outside-in.
+
+   *Only once it is proven:* merge the innermost module, let CI mint its tag,
+   `go get` that tag in the consumer, merge the consumer, repeat outward.
+
+   **The tell that you have collapsed the two** is the sentence *"X can't start
+   until Y merges and CI mints the tag."* For a Go module in this repo that is
+   almost always false, and reaching for a merge to make progress is the same
+   error wearing a different sentence.
+
+   **Protos are the one real exception**, because `gen/` is gitignored there,
+   so a Go consumer cannot build from a protos branch at all. They are also
+   the cheapest thing to get wrong and correct — a versioned contract and
+   nothing else — which is why they merge first and why there is deliberately
+   no protos manifest variable.
 
 5. **A freeze protects files, not versions.** Tags elsewhere cannot affect
    in-flight work (point 1), so there is no reason to pause tagging repo-wide.
