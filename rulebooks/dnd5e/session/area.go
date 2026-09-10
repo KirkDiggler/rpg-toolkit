@@ -34,8 +34,11 @@ type CaughtMember struct {
 	// Member is who was caught.
 	Member string `json:"member"`
 
-	// Kind is what they are, in this seam's own vocabulary.
-	Kind string `json:"kind"`
+	// Kind is what they are, in this seam's own vocabulary — [MemberKind]
+	// rather than a bare string, so a caller deciding what to do about a
+	// caught member compares against the same constants every other verb
+	// hands it.
+	Kind MemberKind `json:"kind"`
 
 	// Reason is why the engine could not resolve against them.
 	Reason UnresolvedReason `json:"reason"`
@@ -134,7 +137,7 @@ func deriveAreaMembers(
 		// behind it is refused mid-run, after the door has already charged.
 		if member.Kind == encounter.MemberKind(KindWorld) {
 			out.unresolved = append(out.unresolved, CaughtMember{
-				Member: id, Kind: string(member.Kind), Reason: UnresolvedNoSheet,
+				Member: id, Kind: MemberKind(member.Kind), Reason: UnresolvedNoSheet,
 			})
 			continue
 		}
