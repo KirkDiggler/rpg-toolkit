@@ -6,8 +6,8 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.151.1-0.20260909103310-9d3f439e1f12
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.68.2-0.20260909103310-9d3f439e1f12
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.152.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.69.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/stretchr/testify v1.11.1
 )
