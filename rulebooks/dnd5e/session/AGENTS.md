@@ -163,8 +163,11 @@ the universe it ranges over is *declared*. Two compilations of the same offer
 against two different loads give two different answers, both look correct, and
 neither names the difference.
 
-**The rule this file establishes: any API that returns a collection names the
-universe it ranges over, or it does not ship.**
+**Every collection-returning API here names the universe it ranges over.** That
+is an observation about the surface as it stands rather than a gate on the next
+one. It is worth keeping because of how it fails when it is missing — invisibly.
+A producer with an unstated universe returns a plausible list, and whatever it
+left out looks exactly like something that was never there.
 
 The existing producers already obey it, which is why it is writable as a rule
 rather than a wish. `buildTargetPreflight` ([`offers.go`](./offers.go):701) takes
