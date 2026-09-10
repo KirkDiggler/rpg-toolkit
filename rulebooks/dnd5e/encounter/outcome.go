@@ -296,16 +296,13 @@ type DamageComponent struct {
 // the right rule (resistance, vulnerability, immunity) is never interpreted
 // here; only a dice trace's structural and arithmetic consistency is.
 func validateDamageComponentRoll(component DamageComponent) error {
-	if err := validateRollSource(component.Roll.Source); err != nil {
-		return fmt.Errorf("source: %w", err)
+	if err := validateRollComponentData(component.Roll); err != nil {
+		return err
 	}
 	if component.Roll.Dice == nil && component.Roll.Modifier == nil && component.Multiplier == nil {
 		return fmt.Errorf("must contain dice, a modifier, or a multiplier")
 	}
-	if component.Roll.Dice == nil {
-		return nil
-	}
-	return validateDiceTrace(component.Roll.Dice)
+	return nil
 }
 
 // AttackModifierSource identifies an entity/content source without carrying
