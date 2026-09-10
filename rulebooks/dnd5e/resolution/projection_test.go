@@ -294,7 +294,7 @@ func (s *ProjectionTestSuite) TestTheProjectionRefusesARecordItCannotName() {
 func (s *ProjectionTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -343,7 +343,7 @@ func (s *ProjectionTestSuite) TestTheProjectionReadsWhatResolveRefuses() {
 		Participants: []Participant{{Character: s.barbarian(s.unarmoredDefense(), unreadable)}},
 		Machine:      &captureMachine{},
 		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
 		Roller: dice.NewRoller(),
 	})
 	s.Require().Error(err,

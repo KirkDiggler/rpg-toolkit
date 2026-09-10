@@ -139,6 +139,7 @@ func (s *ConcentrationTestSuite) strike(
 	return resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		Equipment:    noHandsAreObserved{},
 		World:        fixtures.world(),
 		Participants: participants,
 		Machine: NewStrike(&StrikeInput{
@@ -505,7 +506,8 @@ func (s *ConcentrationTestSuite) resolveCast(
 	return resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World: fixtures.world(),
+		Equipment: noHandsAreObserved{},
+		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: bard},
 		},
@@ -637,6 +639,7 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), World: fixtures.world(),
+		Equipment:    noHandsAreObserved{},
 		Participants: []Participant{{Character: target}, {Monster: unrelated}, {Character: caster}},
 		Machine:      machine, Cost: baneCost(),
 	}, newSurface(bus))
@@ -763,6 +766,7 @@ func (s *ConcentrationTestSuite) resolveBoundary(
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		Equipment:    noHandsAreObserved{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: hero}, {Monster: fixtures.wolfData()}},
 		Machine:      machine,
@@ -841,7 +845,8 @@ func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World: fixtures.world(),
+		Equipment: noHandsAreObserved{},
+		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
 			{Monster: fixtures.wolfData()},
@@ -887,7 +892,8 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World: fixtures.world(),
+		Equipment: noHandsAreObserved{},
+		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
 			{Monster: fixtures.wolfData()},
@@ -942,7 +948,8 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World: fixtures.world(),
+		Equipment: noHandsAreObserved{},
+		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
 			{Monster: fixtures.wolfData()},
