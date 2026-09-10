@@ -150,6 +150,77 @@ What it ASKS for, and never computes:
 | What does this action cost, what does this spell do | content, as data ([ADR-0045](../../../docs/adr/0045-actions-are-data.md)) |
 | Where are the bytes | the host, through the repositories |
 
+## Whose question is it?
+
+**Ask this before asking where the code could go.** It is the test the rest of
+this file assumes you have already applied, and the one that is easy to skip,
+because the answer to *"where could this live?"* is so often *"here, easily."*
+
+| The question | Owner |
+|---|---|
+| **Where is anything** — who stands where, who can see what, what shape the floor has, who is inside a shape | [`encounter`](../encounter) |
+| **What happens when things interact** — does it land, for how much, what does it leave behind, what does a fact mean | [`resolution`](../resolution) |
+| **What was asked for, what is loaded, what is saved** — the host's verbs, the repositories, the integrity of what enters and leaves | **`session`** (this module) |
+
+All three seam docs carry this same table. If they ever disagree, that is the
+bug — not a nuance.
+
+**Computability is not ownership.** That a module *can* produce an answer —
+because it happens to hold the two facts the answer is made from — is not
+evidence the answer is its to give. Every seam here can reach far enough to
+answer a neighbour's question. That is what makes them useful to each other, and
+it is exactly what makes this mistake easy and quiet.
+
+The counter-question that works: **if a second caller needed this same answer
+later, from somewhere else, where would they have to go and get it?** If the
+honest answer is "somewhere other than where I am about to put it", it belongs
+there instead.
+
+### The worked example, because it nearly shipped
+
+A spell that names a shape in space — a five-foot radius around the caster — and
+the engine works out who is caught by it.
+
+`session` holds the roster and can call `Distance`, so it *can* fold the two into
+a target list in about fifteen lines. It was designed that way for two drafts,
+and the argument each time was economy: fifteen lines here versus a new method
+there.
+
+That is a mechanism argument, and it survived the predicate/producer test below
+— the fold names its universe perfectly well at the call site. What it never
+faced was the ownership question. *"Who is standing in this shape"* is a
+**placement** question. `encounter` owns placement, and already answers this
+exact question for an authored footprint (`MembersIn` — a roster read, filtered
+through the same `placementOf` projection every other member read uses).
+
+The cost of getting it wrong was not fifteen lines. Fireball's lingering floor is
+the same question asked *continuously*, and its home is a runtime-minted region
+answered by `MembersIn`. Answer the transient case in `session` and one question
+has two mechanisms in two modules forever; answer both here and the persistent
+case becomes *"mint the region, then ask the question we already ask."*
+
+**One question, one owner** — decided before, and independently of, where the
+answer is convenient to compute.
+
+### What that means for this module in particular
+
+This is the seam where the mistake above is easiest to make, and the reason is
+structural: **`go.mod` lets this module import all three.** It can reach the
+roster, the rulebook and the machines, so almost any question *can* be answered
+here. That reach exists so this package can **carry** answers between layers,
+never so it can produce them.
+
+Things that look like somebody else's and are yours: **what enters and leaves.**
+Which sheets are loaded, which world view is handed over, what is written back,
+what the host is told. Integrity at the boundary is the whole product.
+
+Things that look like yours and are not: **anything with a shape or a rule in
+it.** If you are about to compute a distance, compare against a threshold, or
+decide what a fact implies, stop — ask the owner and inject the answer. The
+existing lookups are the model, and they are lookups precisely because they find
+records and hand them on: `standingSeam` finds sheets, `resolution.Participation`
+decides what being down means.
+
 ## Predicates and producers
 
 A **pointed question** — "is `to` within `rangeFeet` of `from`", "is this sheet
