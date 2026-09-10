@@ -20,6 +20,7 @@ func TestDisplayNameIsClosedToTheStatusCatalog(t *testing.T) {
 		{HitDice, "Hit Dice"},
 		{SecondWind, "Second Wind"},
 		{ActionSurge, "Action Surge"},
+		{SpellSlotLevel1, "1st-level Spell Slots"},
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.key), func(t *testing.T) {

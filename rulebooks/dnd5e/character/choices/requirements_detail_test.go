@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // RequirementsDetailTestSuite tests that all equipment items have resolved details.
@@ -15,6 +16,20 @@ type RequirementsDetailTestSuite struct {
 
 func TestRequirementsDetailSuite(t *testing.T) {
 	suite.Run(t, new(RequirementsDetailTestSuite))
+}
+
+// TestBardSpells1OffersOnlyTheSupportedLevelOneSpell catches widening the executable
+// catalog to nominal-but-unsupported spells or changing the settled choice count.
+func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlyTheSupportedLevelOneSpell() {
+	req := GetClassRequirements(classes.Bard).Spellbook
+
+	s.Require().NotNil(req)
+	s.Equal(BardSpells1, req.ID)
+	s.Equal(1, req.Count)
+	s.Equal(1, req.SpellLevel)
+	s.Equal([]spells.Spell{spells.Bane}, req.Options)
+	s.Equal(4, classes.ClassData[classes.Bard].SpellsKnown,
+		"the supported choice count must not rewrite factual class progression")
 }
 
 func (s *RequirementsDetailTestSuite) TestFighterEquipmentItemsHaveDetails() {

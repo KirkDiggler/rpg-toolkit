@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -22,12 +23,8 @@ import (
 )
 
 // KnownSpellsSuite covers the sheet's known-spell fields (rpg-project#391
-// §5.2): carried, compiled from a choice, round-tripped, and read back.
-//
-// SLICE TWO FILLS THEM. Slice one asked a level-1 bard nothing about spells
-// because nothing could spend the answer; the cast door can, so the cantrip
-// question is back and a bard's two choices land on the sheet as refs. Levelled
-// spells stay unasked — slots are their own slice.
+// §5.2): carried, compiled from a choice, round-tripped, and read back. Bard
+// cantrips remain separate while the one supported levelled choice stores Bane.
 type KnownSpellsSuite struct {
 	suite.Suite
 	bus events.EventBus
@@ -67,6 +64,7 @@ func (s *KnownSpellsSuite) bardDraftWithoutCantrips() *Draft {
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:  []shared.SelectionID{"lute", "flute", "drum"},
+			Spells: []spells.Spell{spells.Bane},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
@@ -94,9 +92,9 @@ func spellRefsAsStrings(refList []*core.Ref) []string {
 	return out
 }
 
-// TestALevelOneBardFinalizesWithItsTwoCantrips — the answers reach the sheet
-// as refs, and no slot pool comes with them.
-func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithItsTwoCantrips() {
+// TestALevelOneBardFinalizesWithSupportedKnowledgeAndResource catches a
+// finalized Bard losing either unchanged cantrips, Bane, or the two-use pool.
+func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithSupportedKnowledgeAndResource() {
 	draft := s.bardDraft()
 
 	s.Require().NoError(draft.ValidateChoices(), "nothing further is required of a level-1 bard")
@@ -107,13 +105,14 @@ func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithItsTwoCantrips() {
 	s.Equal([]string{
 		refs.Spells.TrueStrike().String(), refs.Spells.ViciousMockery().String(),
 	}, spellRefsAsStrings(char.KnownCantrips()))
-	s.Empty(char.KnownSpells(), "no levelled spells until something can spend a slot")
-	s.Empty(char.ToData().SpellSlots, "and no slot pool either")
+	s.Equal([]string{refs.Spells.Bane().String()}, spellRefsAsStrings(char.KnownSpells()))
+	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Maximum())
+	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Current())
 }
 
-// TestTheBardIsAskedForCantripsAndNothingElse pins the ruling itself: two
-// cantrips, gated to what this build can cast, and no levelled-spell question.
-func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndNothingElse() {
+// TestTheBardIsAskedForCantripsAndBane pins the supported acquisition surface
+// without widening either spell catalog.
+func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndBane() {
 	requirements := choices.GetClassRequirements(classes.Bard)
 
 	s.Require().NotNil(requirements)
@@ -122,9 +121,41 @@ func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndNothingElse() {
 	s.Equal(2, requirements.Cantrips.Count)
 	s.Equal([]spells.Spell{spells.TrueStrike, spells.ViciousMockery}, requirements.Cantrips.Options,
 		"gated to the cantrips this build can actually cast")
-	s.Nil(requirements.Spellbook, "no levelled-spell question")
+	s.Require().NotNil(requirements.Spellbook)
+	s.Equal(choices.BardSpells1, requirements.Spellbook.ID)
+	s.Equal(1, requirements.Spellbook.Count)
+	s.Equal(1, requirements.Spellbook.SpellLevel)
+	s.Equal([]spells.Spell{spells.Bane}, requirements.Spellbook.Options)
 	s.NotNil(requirements.Skills)
 	s.NotNil(requirements.Tools)
+}
+
+// TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAndRest catches either
+// acquisition fact being lost, a spent pool being refilled by load, or a long
+// rest failing to restore that same canonical resource.
+func (s *KnownSpellsSuite) TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAndRest() {
+	ctx := context.Background()
+	char, err := s.bardDraft().ToCharacter(ctx, "bard-reload", s.bus)
+	s.Require().NoError(err)
+	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
+	persisted := char.ToData()
+	s.Require().NoError(char.Cleanup(ctx))
+
+	loaded, err := Load(ctx, persisted)
+	s.Require().NoError(err)
+	s.Equal([]string{refs.Spells.Bane().String()}, spellRefsAsStrings(loaded.KnownSpells()))
+	s.Equal([]string{
+		refs.Spells.TrueStrike().String(), refs.Spells.ViciousMockery().String(),
+	}, spellRefsAsStrings(loaded.KnownCantrips()))
+	s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current(),
+		"loading preserves the spent use")
+	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Maximum())
+
+	bus := events.NewEventBus()
+	s.Require().NoError(Attach(ctx, loaded, bus))
+	s.T().Cleanup(func() { s.Require().NoError(loaded.Cleanup(ctx)) })
+	s.Require().NoError(loaded.LongRest(ctx))
+	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
 }
 
 // TestAFighterKnowsNothing — the fields are absent rather than empty on a

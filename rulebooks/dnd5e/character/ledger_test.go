@@ -106,6 +106,23 @@ func (s *SheetLedgerTestSuite) TestPayingMarksTheSheetDirty() {
 	s.Equal(2, char.GetResource(resources.Ki).Current())
 }
 
+// TestSpellSlotResourceSpendSurvivesReload catches a generic pool debit being
+// lost when the sheet crosses ToData and strict Load.
+func (s *SheetLedgerTestSuite) TestSpellSlotResourceSpendSurvivesReload() {
+	data := s.monk()
+	data.Resources[resources.SpellSlotLevel1] = RecoverableResourceData{
+		Current: 2, Maximum: 2, ResetType: coreResources.ResetLongRest,
+	}
+	char, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
+
+	loaded, err := Load(s.ctx, char.ToData())
+	s.Require().NoError(err)
+	s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current())
+	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Maximum())
+}
+
 // Every currency dirties on its own — a profile that only spends a slot, only
 // spends capacity, or only banks capacity still has to reach storage.
 func (s *SheetLedgerTestSuite) TestEveryKindOfSpendMarksTheSheet() {

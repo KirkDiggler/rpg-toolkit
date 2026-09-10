@@ -684,7 +684,6 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		languages:           d.compileLanguages(raceData),
 		inventory:           d.compileInventory(bgGrant),
 		wallet:              compileWallet(bgGrant),
-		spellSlots:          d.compileSpellSlots(classData),
 		knownCantrips:       knownCantrips,
 		knownSpells:         knownSpells,
 		classResources:      make(map[shared.ClassResourceType]ResourceData),
@@ -1421,34 +1420,6 @@ func (d *Draft) materializeEquipmentOption(
 	return items
 }
 
-// compileSpellSlots determines starting spell slots
-func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData {
-	slots := make(map[int]SpellSlotData)
-
-	// Only spellcasters get spell slots
-	if classData.SpellcastingAbility == "" {
-		return slots
-	}
-
-	// Level 1 spell slots based on class
-	switch d.class {
-	// The bard is deliberately absent, and its absence is a deletion rather
-	// than an oversight (rpg-project#397 R6). Nothing in this stack casts a
-	// spell or spends a slot yet, so two slots on a level-1 bard's sheet were
-	// a zero value that lied: a number a client could render and nothing
-	// could reach. Spellcasting arrives as pools with the Cast door, and the
-	// bard's slots come back with it.
-	case classes.Wizard, classes.Sorcerer, classes.Cleric, classes.Druid:
-		slots[1] = SpellSlotData{Max: 2, Used: 0}
-	case classes.Warlock:
-		slots[1] = SpellSlotData{Max: 1, Used: 0}
-	case classes.Ranger, classes.Paladin:
-		// Half-casters don't get spells until level 2
-	}
-
-	return slots
-}
-
 // compileFeatures returns the character's class features using the unified grant system.
 // Features are created from FeatureRef grants defined in classes/grant.go.
 func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) {
@@ -2119,6 +2090,19 @@ func (d *Draft) initializeClassResources(char *Character) {
 			CharacterID: char.id,
 			ResetType:   coreResources.ResetLongRest,
 		})
+
+		// Seed only the level-1 Bard pool supported by this slice. The class
+		// table remains progression source data; Resources is the one mutable
+		// authority after finalization.
+		classData := classes.ClassData[classes.Bard]
+		if len(classData.SpellSlots) > 0 && classData.SpellSlots[0] > 0 {
+			char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID:          string(resources.SpellSlotLevel1),
+				Maximum:     classData.SpellSlots[0],
+				CharacterID: char.id,
+				ResetType:   coreResources.ResetLongRest,
+			})
+		}
 
 	case classes.Monk:
 		// Ki points - equal to monk level, recovered on short or long rest.

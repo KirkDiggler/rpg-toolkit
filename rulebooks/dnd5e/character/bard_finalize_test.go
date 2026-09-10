@@ -2,6 +2,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -27,8 +28,7 @@ import (
 )
 
 // BardFinalizeSuite is rpg-project#397's "a bard finalizes" done-when: the
-// feature is on the sheet, the pool is its Charisma modifier, and no spell
-// slots are on it (R6).
+// feature and canonical resource pools are on the sheet.
 type BardFinalizeSuite struct {
 	suite.Suite
 	bus events.EventBus
@@ -61,6 +61,7 @@ func (s *BardFinalizeSuite) bardDraft(charisma int, instruments []shared.Selecti
 			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:    instruments,
 			Cantrips: []shared.SelectionID{spells.TrueStrike, spells.ViciousMockery},
+			Spells:   []spells.Spell{spells.Bane},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
@@ -123,11 +124,13 @@ func (s *BardFinalizeSuite) TestTheFeatureIsOnTheSheet() {
 	s.Equal(3, current)
 }
 
-// TestNoSpellSlots is R6. Two slots nothing in this stack could spend were a
-// zero value that lied, so they are deleted rather than left for later.
-func (s *BardFinalizeSuite) TestNoSpellSlots() {
+// TestNoLegacySpellSlotsProjection catches the retired parallel slot map
+// leaking back into the serialized character shape.
+func (s *BardFinalizeSuite) TestNoLegacySpellSlotsProjection() {
 	char := s.finalize(16)
-	s.Empty(char.ToData().SpellSlots, "a bard has no reachable slots in this slice")
+	raw, err := json.Marshal(char.ToData())
+	s.Require().NoError(err)
+	s.NotContains(string(raw), "spell_slots")
 }
 
 // TestLongRestRestoresTheUses — the pool is a long-rest resource and nothing

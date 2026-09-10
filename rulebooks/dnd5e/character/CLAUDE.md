@@ -453,17 +453,13 @@ equipmentChoices := []choices.EquipmentChoiceSelection{
 
 ### Spell slot state and casting direction
 
-**EXISTING:** character data currently carries a legacy `SpellSlots` map, while
-ordinary class pools use recoverable `Resources`. The legacy map is real state;
-do not describe slots as wholly unimplemented.
-
-**CHANGED (approved, not shipped by this documentation task):** levelled casting
-will retire the legacy map without a migration or compatibility reader. A typed
-level-1 spell-slot resource will become the sole mutable authority, paid through
-the existing atomic resource ledger and restored through normal recoverable-
-resource rest behavior. Class spell-slot tables remain source progression data,
-not a second runtime pool. Do not add new mechanics to the legacy map while this
-change is pending.
+Character data carries spell slots only through recoverable `Resources`.
+`resources.SpellSlotLevel1` is the sole mutable level-1 authority; level-1 Bard
+finalization seeds two uses from the factual class progression table. Generic
+resource spending persists the debit, and normal long-rest recovery restores
+the pool. There is no legacy `SpellSlots` field, compatibility reader, or dual
+writer. Class spell-slot tables remain source progression data, not a second
+runtime pool.
 
 ## Questions to Ask Before Adding Features
 
