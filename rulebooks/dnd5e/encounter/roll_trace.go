@@ -29,11 +29,14 @@ import (
 // RollSource identifies and describes the rulebook-owned source of a roll
 // fact. Ref is the canonical module:type:id string of the content that
 // produced the fact; Name is its display name. Label optionally describes the
-// source's role within its calculation ("Fighter level").
+// source's role within its calculation ("Fighter level"). SourceID optionally
+// names the entity responsible for the fact and is the sole contributor-ID
+// field in the calculation graph.
 type RollSource struct {
-	Ref   string `json:"ref"`
-	Name  string `json:"name"`
-	Label string `json:"label,omitempty"`
+	Ref      string `json:"ref"`
+	Name     string `json:"name"`
+	Label    string `json:"label,omitempty"`
+	SourceID string `json:"source_id,omitempty"`
 }
 
 // DiceReroll records one ordered replacement of a die face and its source.
@@ -63,6 +66,10 @@ type RollComponent struct {
 	Source   RollSource `json:"source"`
 	Dice     *DiceTrace `json:"dice,omitempty"`
 	Modifier *int       `json:"modifier,omitempty"`
+
+	// SubtractDice subtracts Dice.Subtotal while leaving every physical face
+	// positive. A fixed Modifier on the same component remains additive.
+	SubtractDice bool `json:"subtract_dice,omitempty"`
 }
 
 // RollCalculation records the sourced components and authoritative total of
@@ -89,7 +96,11 @@ func ValidateRollCalculation(calculation *RollCalculation) error {
 			return fmt.Errorf("roll component %d: %w", i, err)
 		}
 		if component.Dice != nil {
-			total += component.Dice.Subtotal
+			if component.SubtractDice {
+				total -= component.Dice.Subtotal
+			} else {
+				total += component.Dice.Subtotal
+			}
 		}
 		if component.Modifier != nil {
 			total += *component.Modifier
@@ -102,12 +113,49 @@ func ValidateRollCalculation(calculation *RollCalculation) error {
 	return nil
 }
 
+// validateRecordedD20 checks a scalar d20 summary against the authoritative
+// calculation that carries it. The first component is the operation-owned d20
+// pool by the shared calculation contract; this validates shape and agreement,
+// not success, failure, or any D&D natural-face policy.
+func validateRecordedD20(calculation *RollCalculation, roll, total int) error {
+	if err := ValidateRollCalculation(calculation); err != nil {
+		return err
+	}
+	first := calculation.Components[0]
+	if first.Dice == nil || first.Dice.DieSize != 20 || first.SubtractDice {
+		return fmt.Errorf("first component must be an additive d20 pool")
+	}
+	if first.Dice.Subtotal != roll {
+		return fmt.Errorf("roll summary is %d, want calculation d20 subtotal %d", roll, first.Dice.Subtotal)
+	}
+	if calculation.Total != total {
+		return fmt.Errorf("total summary is %d, want calculation total %d", total, calculation.Total)
+	}
+	return nil
+}
+
 func validateRollComponent(component RollComponent) error {
-	if err := validateRollSource(component.Source); err != nil {
-		return fmt.Errorf("source: %w", err)
+	if err := validateRollComponentData(component); err != nil {
+		return err
 	}
 	if component.Dice == nil && component.Modifier == nil {
 		return fmt.Errorf("must contain dice, a modifier, or both")
+	}
+	return nil
+}
+
+// validateRollComponentData is the one neutral source/operator/trace contract
+// shared by every container that persists a RollComponent. Each container
+// separately decides which absent roll facts it permits.
+func validateRollComponentData(component RollComponent) error {
+	if err := validateRollSource(component.Source); err != nil {
+		return fmt.Errorf("source: %w", err)
+	}
+	if component.SubtractDice && component.Dice == nil {
+		return fmt.Errorf("cannot subtract dice without dice")
+	}
+	if component.SubtractDice && strings.TrimSpace(component.Source.SourceID) == "" {
+		return fmt.Errorf("subtractive dice source id is required")
 	}
 	if component.Dice == nil {
 		return nil

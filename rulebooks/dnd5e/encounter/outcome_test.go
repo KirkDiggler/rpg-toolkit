@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -63,6 +64,7 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 			encounter.ValueAgainst: 15,
 			encounter.ValueAmount:  9,
 		},
+		Calculation: attackCalculation(17, 5, 0),
 	})
 	s.Require().NoError(err)
 	s.NotZero(out.Seq)
@@ -202,8 +204,9 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 		Values: map[encounter.OutcomeValue]int{
 			encounter.ValueRoll: 20, encounter.ValueTotal: 25, encounter.ValueAgainst: 15, encounter.ValueAmount: 12,
 		},
-		Critical: true,
-		Attack:   &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+		Calculation: attackCalculation(20, 5, 0),
+		Critical:    true,
+		Attack:      &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
 	})
 	s.Require().NoError(err)
 
@@ -312,6 +315,7 @@ func (s *OutcomeTestSuite) TestARecordedStruckDamageComponentCarriesOrderedRollF
 			encounter.ValueRoll: 17, encounter.ValueTotal: 22,
 			encounter.ValueAgainst: 15, encounter.ValueAmount: 12,
 		},
+		Calculation:      attackCalculation(17, 5, 0),
 		DamageComponents: gwfDamageComponents(),
 	})
 	s.Require().NoError(err)
@@ -376,6 +380,23 @@ func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
 	})
 	add("roll source ref is not a canonical ref", func(c *encounter.DamageComponent) {
 		c.Roll.Source.Ref = "greatsword"
+	})
+	add("modifier-only roll cannot subtract dice", func(c *encounter.DamageComponent) {
+		modifier := 2
+		c.Roll.Dice = nil
+		c.Roll.Modifier = &modifier
+		c.Roll.SubtractDice = true
+	})
+	add("multiplier-only roll cannot subtract dice", func(c *encounter.DamageComponent) {
+		*c = multiplierCarrier()
+		c.Roll.SubtractDice = true
+	})
+	add("subtractive dice source id is missing", func(c *encounter.DamageComponent) {
+		c.Roll.SubtractDice = true
+	})
+	add("subtractive dice source id is blank", func(c *encounter.DamageComponent) {
+		c.Roll.Source.SourceID = "  "
+		c.Roll.SubtractDice = true
 	})
 	add("roll source name is missing", func(c *encounter.DamageComponent) {
 		c.Roll.Source.Name = ""
@@ -527,6 +548,33 @@ func gwfDamageComponents() []encounter.DamageComponent {
 	}
 }
 
+// TestARecordedStrikeCarriesSourcedSubtractiveDamageRoll proves the shared
+// operator validation still accepts a structurally valid subtractive dice
+// component and preserves its positive face, source identity, and operator.
+func (s *OutcomeTestSuite) TestARecordedStrikeCarriesSourcedSubtractiveDamageRoll() {
+	enc := s.scene()
+	components := gwfDamageComponents()[:1]
+	components[0].Roll.Source.SourceID = "caster-a"
+	components[0].Roll.SubtractDice = true
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice,
+		Targets: []encounter.MemberID{goblin}, DamageComponents: components,
+	})
+	s.Require().NoError(err)
+
+	entry := s.storyEntriesForOutcome(enc, out.Seq)
+	var payload struct {
+		DamageComponents []encounter.DamageComponent `json:"damage_components"`
+	}
+	s.Require().NoError(json.Unmarshal(entry.Payload, &payload))
+	s.Require().Len(payload.DamageComponents, 1)
+	s.True(payload.DamageComponents[0].Roll.SubtractDice)
+	s.Equal("caster-a", payload.DamageComponents[0].Roll.Source.SourceID)
+	s.Equal([]int{4, 5}, payload.DamageComponents[0].Roll.Dice.FinalRolls)
+	s.Equal(9, payload.DamageComponents[0].Roll.Dice.Subtotal)
+}
+
 // TestARecordedMissCarriesNoCriticalKey pins that a miss's payload never
 // says "critical" at all — a whiff cannot crit, so there is nothing to
 // answer false about, unlike a hit where false is itself a meaningful
@@ -652,7 +700,7 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
-		"DamageComponents", "AdvantageSources", "DisadvantageSources", "DeathSave", "Trade",
+		"DamageComponents", "AdvantageSources", "DisadvantageSources", "Calculation", "DeathSave", "Trade",
 		"PresentationID", "ConcentrationBreaks", "ConcentrationChecks",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
@@ -985,4 +1033,106 @@ func (s *OutcomeTestSuite) lastBeat(enc *encounter.Encounter) map[string]any {
 	var beat map[string]any
 	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
 	return beat
+}
+
+func attackCalculation(roll, modifier, penalty int) *encounter.RollCalculation {
+	calculation := &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source: encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
+					OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll},
+			},
+			{
+				Source:   encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Modifier: intPtr(modifier),
+			},
+		},
+		Total: roll + modifier,
+	}
+	if penalty > 0 {
+		calculation.Components = append(calculation.Components, encounter.RollComponent{
+			Source: encounter.RollSource{Ref: "dnd5e:spells:generic-penalty", Name: "Generic Penalty", SourceID: "caster-a"},
+			Dice: &encounter.DiceTrace{Notation: "1d4", DieSize: 4,
+				OriginalRolls: []int{penalty}, FinalRolls: []int{penalty}, Subtotal: penalty},
+			SubtractDice: true,
+		})
+		calculation.Total -= penalty
+	}
+	return calculation
+}
+
+func (s *OutcomeTestSuite) TestAttackCalculationRoundTripsAndScalarOnlyIsRefused() {
+	enc := s.scene()
+	calculation := attackCalculation(17, 5, 3)
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+		Values: map[encounter.OutcomeValue]int{
+			encounter.ValueRoll: 17, encounter.ValueTotal: 19, encounter.ValueAgainst: 15,
+		},
+		Calculation: calculation,
+	})
+	s.Require().NoError(err)
+
+	entries := s.storyEntriesForOutcome(enc, out.Seq)
+	var payload struct {
+		Calculation encounter.RollCalculation `json:"calculation"`
+	}
+	s.Require().NoError(json.Unmarshal(entries.Payload, &payload))
+	s.Equal(*calculation, payload.Calculation)
+
+	_, err = s.scene().Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
+		Values: map[encounter.OutcomeValue]int{encounter.ValueRoll: 3, encounter.ValueTotal: 8},
+	})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+}
+
+func (s *OutcomeTestSuite) TestDeathSaveCalculationRoundTripsAndMalformedDataIsRefused() {
+	calculation := attackCalculation(12, 0, 4)
+	calculation.Components[0].Source = encounter.RollSource{Ref: "dnd5e:actions:death-save", Name: "Death Save"}
+	calculation.Components[1] = calculation.Components[2]
+	calculation.Components = calculation.Components[:2]
+	calculation.Total = 8
+
+	enc := s.scene()
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeDeathSave, Actor: alice,
+		DeathSave: &encounter.DeathSaveDetail{
+			Roll: 12, Outcome: "failure", FailuresAdded: 1, Failures: 1,
+			SuccessesNeeded: 3, FailuresRemaining: 2, Continuation: "end_turn",
+			PresentationID: "death-save-1", Calculation: calculation,
+		},
+	})
+	s.Require().NoError(err)
+
+	entry := s.storyEntriesForOutcome(enc, out.Seq)
+	var payload struct {
+		DeathSave encounter.DeathSaveDetail `json:"death_save"`
+	}
+	s.Require().NoError(json.Unmarshal(entry.Payload, &payload))
+	s.Equal(*calculation, *payload.DeathSave.Calculation)
+
+	bad := *calculation
+	bad.Total++
+	_, err = s.scene().Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeDeathSave, Actor: alice,
+		DeathSave: &encounter.DeathSaveDetail{
+			Roll: 12, Outcome: "failure", Continuation: "end_turn",
+			PresentationID: "death-save-2", Calculation: &bad,
+		},
+	})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+}
+
+func (s *OutcomeTestSuite) storyEntriesForOutcome(enc *encounter.Encounter, seq uint64) record.Entry {
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	for _, entry := range story {
+		if entry.Seq == seq {
+			return entry
+		}
+	}
+	s.FailNow("outcome sequence was not recorded", "seq %d", seq)
+	return record.Entry{}
 }

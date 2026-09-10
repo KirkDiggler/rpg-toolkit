@@ -135,26 +135,47 @@ func psychicDamage() encounter.ActivationResult {
 
 func mockedCondition() encounter.ActivationResult {
 	return encounter.ActivationResult{
-		Kind:   encounter.ResultConditionApplied,
-		Target: castSkeleton,
-		Ref:    "dnd5e:conditions:mocked",
-		Name:   "Mocked",
+		Kind: encounter.ResultConditionApplied,
+		Address: &encounter.ConditionAddress{
+			MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:mocked",
+		},
+		Name: "Mocked",
+	}
+}
+
+func saveCalculation(source encounter.SpellIdentity, ability string, roll, total int) *encounter.RollCalculation {
+	modifier := total - roll
+	return &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source: encounter.RollSource{Ref: source.Ref, Name: source.Name},
+				Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
+					OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll},
+			},
+			{
+				Source:   encounter.RollSource{Ref: "dnd5e:abilities:" + ability, Name: ability},
+				Modifier: &modifier,
+			},
+		},
+		Total: total,
 	}
 }
 
 func failedSave() *encounter.CastSave {
 	return &encounter.CastSave{
 		Saver: castSkeleton, Ability: "wisdom", Roll: 6, Total: 8, DC: 13, Succeeded: false,
+		Calculation: saveCalculation(viciousMockery, "wisdom", 6, 8),
 	}
 }
 
 func viciousMockeryCast() *encounter.RecordCastInput {
 	return &encounter.RecordCastInput{
-		Actor:   castBard,
-		Target:  castSkeleton,
-		Spell:   viciousMockery,
-		Save:    failedSave(),
-		Results: []encounter.ActivationResult{psychicDamage(), mockedCondition()},
+		Actor: castBard,
+		Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton, Save: failedSave(),
+			Results: []encounter.ActivationResult{psychicDamage(), mockedCondition()},
+		}},
 	}
 }
 
@@ -191,12 +212,15 @@ func (s *RecordCastSuite) TestTheCastAndSavedPayloads() {
 	s.Equal(
 		`{"beat":"cast","actor":"bard",`+
 			`"spell":{"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery"},`+
-			`"target":"cast-skeleton"}`,
+			`"targets":["cast-skeleton"]}`,
 		string(entries[0].Payload),
 	)
 	s.Equal(
 		`{"beat":"saved","saver":"cast-skeleton","ability":"wisdom","roll":6,"total":8,"dc":13,`+
-			`"succeeded":false,`+
+			`"succeeded":false,"calculation":{"components":[`+
+			`{"source":{"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery"},`+
+			`"dice":{"notation":"1d20","die_size":20,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},`+
+			`{"source":{"ref":"dnd5e:abilities:wisdom","name":"wisdom"},"modifier":2}],"total":8},`+
 			`"source":{"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery"}}`,
 		string(entries[1].Payload),
 	)
@@ -234,17 +258,17 @@ func (s *RecordCastSuite) TestAConditionStillRefusesRollFacts() {
 	withCalculation := mockedCondition()
 	withCalculation.Calculation = psychicDamage().Calculation
 	_, err := enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
-		Results: []encounter.ActivationResult{withCalculation},
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Results: []encounter.ActivationResult{withCalculation}}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
-	s.Contains(err.Error(), "record cast: result 0 condition-applied forbids calculation")
+	s.Contains(err.Error(), "record cast: target 0: result 0 condition-applied forbids calculation")
 
 	withAmount := mockedCondition()
 	withAmount.Amount = 3
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
-		Results: []encounter.ActivationResult{withAmount},
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Results: []encounter.ActivationResult{withAmount}}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Contains(err.Error(), "forbids amount")
@@ -259,8 +283,8 @@ func (s *RecordCastSuite) TestDamageIsHeldToHealingsLaw() {
 	noCalculation := psychicDamage()
 	noCalculation.Calculation = nil
 	_, err := enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
-		Results: []encounter.ActivationResult{noCalculation},
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Save: failedSave(), Results: []encounter.ActivationResult{noCalculation}}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Contains(err.Error(), "damage-applied requires a calculation")
@@ -268,8 +292,8 @@ func (s *RecordCastSuite) TestDamageIsHeldToHealingsLaw() {
 	disagreeing := psychicDamage()
 	disagreeing.Requested = 4
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
-		Results: []encounter.ActivationResult{disagreeing},
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Save: failedSave(), Results: []encounter.ActivationResult{disagreeing}}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Contains(err.Error(), "calculation total 3 does not equal the requested 4")
@@ -284,17 +308,17 @@ func (s *RecordCastSuite) TestTheDamageTypeIsRequiredAndNobodyElseMayCarryOne() 
 	untyped := psychicDamage()
 	untyped.DamageType = ""
 	_, err := enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
-		Results: []encounter.ActivationResult{untyped},
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Save: failedSave(), Results: []encounter.ActivationResult{untyped}}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
-	s.Contains(err.Error(), "record cast: result 0 damage-applied damage type")
+	s.Contains(err.Error(), "record cast: target 0: result 0 damage-applied damage type")
 
 	typedCondition := mockedCondition()
 	typedCondition.DamageType = "psychic"
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery,
-		Results: []encounter.ActivationResult{typedCondition},
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Results: []encounter.ActivationResult{typedCondition}}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Contains(err.Error(), "condition-applied forbids damage type")
@@ -306,7 +330,7 @@ func (s *RecordCastSuite) TestTheDamageTypeIsRequiredAndNobodyElseMayCarryOne() 
 	}
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
 		Actor: castBard, Spell: viciousMockery,
-		Results: []encounter.ActivationResult{typedHealing},
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Results: []encounter.ActivationResult{typedHealing}}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Contains(err.Error(), "healing-applied forbids damage type", "healing is damage's twin and still refuses one")
@@ -320,12 +344,16 @@ func (s *RecordCastSuite) TestAnUngatedCastAppendsNoSavedBeat() {
 	out, err := enc.RecordCast(&encounter.RecordCastInput{
 		Actor: castBard,
 		Spell: trueStrike,
-		Results: []encounter.ActivationResult{
-			{
-				Kind: encounter.ResultConditionApplied, Target: castBard,
-				Ref: "dnd5e:conditions:true-strike", Name: "True Strike",
-			},
-		},
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton,
+			Results: []encounter.ActivationResult{{
+				Kind: encounter.ResultConditionApplied,
+				Address: &encounter.ConditionAddress{
+					MemberID: castBard, ConditionRef: "dnd5e:conditions:true-strike",
+				},
+				Name: "True Strike",
+			}},
+		}},
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Seqs, 2)
@@ -333,9 +361,9 @@ func (s *RecordCastSuite) TestAnUngatedCastAppendsNoSavedBeat() {
 	entries := s.storyEntries(enc, castBard, out.Seqs)
 	s.Equal([]string{"cast", "condition-applied"}, s.beatNames(entries))
 	s.Equal(
-		`{"beat":"cast","actor":"bard","spell":{"ref":"dnd5e:spells:true-strike","name":"True Strike"}}`,
+		`{"beat":"cast","actor":"bard","spell":{"ref":"dnd5e:spells:true-strike","name":"True Strike"},"targets":["cast-skeleton"]}`,
 		string(entries[0].Payload),
-		"a cast with no named target carries no empty target key",
+		"the spell's ordered target list names its selected creature",
 	)
 }
 
@@ -347,10 +375,12 @@ func (s *RecordCastSuite) TestASuccessfulSaveIsACompleteCast() {
 	save := failedSave()
 	save.Roll = 18
 	save.Total = 20
+	save.Calculation = saveCalculation(viciousMockery, "wisdom", 18, 20)
 	save.Succeeded = true
 
 	out, err := enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: save,
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Save: save}},
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Seqs, 2)
@@ -440,10 +470,14 @@ func (s *RecordCastSuite) TestItNarratesWhileATurnIsPaused() {
 	s.Require().True(enc.Paused(), "the fixture must actually be holding a paused walk")
 
 	out, err := enc.RecordCast(&encounter.RecordCastInput{
-		Actor: encounter.MemberID(alice), Target: encounter.MemberID(goblin), Spell: viciousMockery,
-		Save: &encounter.CastSave{
-			Saver: encounter.MemberID(goblin), Ability: "wisdom", Roll: 4, Total: 5, DC: 13,
-		},
+		Actor: encounter.MemberID(alice), Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: encounter.MemberID(goblin),
+			Save: &encounter.CastSave{
+				Saver: encounter.MemberID(goblin), Ability: "wisdom", Roll: 4, Total: 5, DC: 13,
+				Calculation: saveCalculation(viciousMockery, "wisdom", 4, 5),
+			},
+		}},
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Seqs, 2)
@@ -466,7 +500,8 @@ func (s *RecordCastSuite) TestItRefusesWhatItCannotNarrate() {
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: "nobody", Spell: viciousMockery,
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: "nobody"}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 
@@ -509,7 +544,8 @@ func (s *RecordCastSuite) TestItRefusesWhatItCannotNarrate() {
 	} {
 		save := tc.save
 		_, saveErr := enc.RecordCast(&encounter.RecordCastInput{
-			Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: &save,
+			Actor: castBard, Spell: viciousMockery,
+			Targets: []encounter.CastTargetResult{{Target: castSkeleton, Save: &save}},
 		})
 		s.Require().ErrorIs(saveErr, tc.want, tc.name)
 	}
@@ -524,11 +560,14 @@ func (s *RecordCastSuite) TestNothingLandsWhenAnythingIsRefused() {
 	s.Require().NoError(err)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
-		Actor: castBard, Target: castSkeleton, Spell: viciousMockery, Save: failedSave(),
-		Results: []encounter.ActivationResult{
-			psychicDamage(),
-			{Kind: encounter.ResultConditionApplied, Target: "nobody", Ref: "r", Name: "n"},
-		},
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton, Save: failedSave(),
+			Results: []encounter.ActivationResult{
+				psychicDamage(),
+				{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: "nobody", ConditionRef: "dnd5e:conditions:unknown"}, Name: "n"},
+			},
+		}},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 
@@ -542,11 +581,12 @@ func (s *RecordCastSuite) TestNothingLandsWhenAnythingIsRefused() {
 func (s *RecordCastSuite) TestRecordCastClosedShapes() {
 	s.Equal([]string{"Ref", "Name"}, structFieldNames(encounter.SpellIdentity{}))
 	s.Equal(
-		[]string{"Saver", "Ability", "Roll", "Total", "DC", "Succeeded"},
+		[]string{"Saver", "Ability", "Roll", "Total", "DC", "Calculation", "Succeeded"},
 		structFieldNames(encounter.CastSave{}),
 	)
+	s.Equal([]string{"Target", "Save", "Results"}, structFieldNames(encounter.CastTargetResult{}))
 	s.Equal(
-		[]string{"Actor", "Target", "Spell", "Save", "Results", "ConcentrationBreaks", "ConcentrationChecks"},
+		[]string{"Actor", "Spell", "Targets", "ConcentrationBreaks", "ConcentrationChecks"},
 		structFieldNames(encounter.RecordCastInput{}),
 	)
 	s.Equal(
@@ -565,4 +605,104 @@ func (s *RecordCastSuite) TestAClosedEncounterRecordsNothing() {
 
 	_, err = enc.RecordCast(viciousMockeryCast())
 	s.Require().ErrorIs(err, encounter.ErrClosed)
+}
+
+// TestAnOrderedThreeTargetCastRecordsOneCastAndEachTargetsAnswer pins the
+// canonical list-shaped cast record. Target order is caller order: each save
+// sits immediately before only that target's delivered results.
+func (s *RecordCastSuite) TestMalformedOrderedTargetDataAppendsNothing() {
+	for name, targets := range map[string][]encounter.CastTargetResult{
+		"duplicate target": {
+			{Target: castSkeleton}, {Target: castSkeleton},
+		},
+		"save belongs to another target": {
+			{Target: castSkeleton, Save: func() *encounter.CastSave {
+				save := failedSave()
+				save.Saver = castFighter
+				return save
+			}()},
+		},
+		"scalar-only save": {
+			{Target: castSkeleton, Save: &encounter.CastSave{
+				Saver: castSkeleton, Ability: "wisdom", Roll: 6, Total: 8, DC: 13,
+			}},
+		},
+	} {
+		s.Run(name, func() {
+			enc := s.scene(everyoneStanding{})
+			before := enc.WorldView().Log
+			_, err := enc.RecordCast(&encounter.RecordCastInput{
+				Actor: castBard, Spell: viciousMockery, Targets: targets,
+			})
+			s.Require().ErrorIs(err, encounter.ErrInvalidData)
+			s.Equal(before, enc.WorldView().Log)
+		})
+	}
+}
+
+func (s *RecordCastSuite) TestAnOrderedThreeTargetCastRecordsOneCastAndEachTargetsAnswer() {
+	enc := s.scene(everyoneStanding{})
+	third := encounter.MemberID("third-cast-target")
+	_, err := enc.Join(&encounter.JoinInput{
+		Member: third, Kind: encounter.KindPlayer, Cell: spatial.Position{X: 4, Y: 2},
+	})
+	s.Require().NoError(err)
+
+	makeSave := func(target encounter.MemberID, roll, modifier, penalty int, succeeded bool) *encounter.CastSave {
+		fixed := modifier
+		return &encounter.CastSave{
+			Saver: target, Ability: "charisma", Roll: roll,
+			Total: roll + modifier - penalty, DC: 13, Succeeded: succeeded,
+			Calculation: &encounter.RollCalculation{
+				Components: []encounter.RollComponent{
+					{
+						Source: encounter.RollSource{Ref: viciousMockery.Ref, Name: viciousMockery.Name},
+						Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
+							OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll},
+					},
+					{
+						Source:   encounter.RollSource{Ref: "dnd5e:abilities:charisma", Name: "Charisma"},
+						Modifier: &fixed,
+					},
+					{
+						Source: encounter.RollSource{Ref: "dnd5e:spells:generic-penalty", Name: "Generic Penalty", SourceID: string(castBard)},
+						Dice: &encounter.DiceTrace{Notation: "1d4", DieSize: 4,
+							OriginalRolls: []int{penalty}, FinalRolls: []int{penalty}, Subtotal: penalty},
+						SubtractDice: true,
+					},
+				},
+				Total: roll + modifier - penalty,
+			},
+		}
+	}
+	condition := func(target encounter.MemberID) encounter.ActivationResult {
+		return encounter.ActivationResult{
+			Kind: encounter.ResultConditionApplied,
+			Address: &encounter.ConditionAddress{
+				MemberID: target, ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(castBard),
+			},
+			Name: "Generic Penalty",
+		}
+	}
+
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard,
+		Spell: encounter.SpellIdentity{Ref: "dnd5e:spells:generic-penalty", Name: "Generic Penalty"},
+		Targets: []encounter.CastTargetResult{
+			{Target: castSkeleton, Save: makeSave(castSkeleton, 11, 2, 2, false), Results: []encounter.ActivationResult{condition(castSkeleton)}},
+			{Target: castFighter, Save: makeSave(castFighter, 17, 2, 1, true)},
+			{Target: third, Save: makeSave(third, 10, 1, 3, false), Results: []encounter.ActivationResult{condition(third)}},
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(out.Seqs, 6)
+
+	entries := s.storyEntries(enc, castBard, out.Seqs)
+	s.Equal([]string{"cast", "saved", "condition-applied", "saved", "saved", "condition-applied"}, s.beatNames(entries))
+	s.JSONEq(`{"beat":"cast","actor":"bard","spell":{"ref":"dnd5e:spells:generic-penalty","name":"Generic Penalty"},"targets":["cast-skeleton","cast-fighter","third-cast-target"]}`, string(entries[0].Payload))
+	s.Contains(string(entries[1].Payload), `"saver":"cast-skeleton"`)
+	s.Contains(string(entries[3].Payload), `"saver":"cast-fighter"`)
+	s.Contains(string(entries[4].Payload), `"saver":"third-cast-target"`)
+	s.Contains(string(entries[2].Payload), `"source_id":"bard"`)
+	s.Contains(string(entries[5].Payload), `"source_id":"bard"`)
 }

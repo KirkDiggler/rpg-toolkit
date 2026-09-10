@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -50,16 +51,27 @@ const (
 	ResultDamageApplied ActivationResultKind = "damage-applied"
 )
 
+// ConditionAddress is the exact neutral identity of one condition on one
+// member. SourceID is exact identity: empty names only an unqualified legacy
+// condition and is never a wildcard.
+type ConditionAddress struct {
+	MemberID     MemberID `json:"member_id"`
+	ConditionRef string   `json:"condition_ref"`
+	SourceID     string   `json:"source_id"`
+}
+
 // ActivationResult carries one result from a successful activation using only
 // primitives this composition can persist without importing the root D&D event
 // types that own the rule meaning.
 //
-// Every kind requires Target. Damage also requires DamageType, which every
-// other kind refuses. Healing and damage also require Ref and Name,
+// Every kind names a recipient: condition kinds require Address while the
+// others require Target. Damage also requires DamageType, which every other
+// kind refuses. Healing and damage also require Ref and Name,
 // carry the amount/requested/HP facts, and require a non-nil
 // [RollCalculation] whose Total equals Requested — the roll trace IS the
-// roll record, so one without it is not writable. Condition-applied requires Ref and
-// Name. Condition-removed requires Ref, Name, and Reason. Capacity-granted
+// roll record, so one without it is not writable. Condition-applied requires
+// Address and Name. Condition-removed requires Address, Name, and Reason.
+// Capacity-granted
 // requires Description. Fields outside a kind's shape — including a
 // calculation on any non-healing kind — are refused rather than silently
 // discarded.
@@ -69,10 +81,14 @@ const (
 // recomputes the rulebook's clamp: Amount, Before, and After are preserved
 // exactly as supplied.
 type ActivationResult struct {
-	Kind   ActivationResultKind
-	Target MemberID
-	Ref    string
-	Name   string
+	Kind ActivationResultKind
+
+	// Target is the recipient for non-condition results. Condition results use
+	// Address so member, condition ref, and exact source identity cannot drift.
+	Target  MemberID
+	Address *ConditionAddress
+	Ref     string
+	Name    string
 
 	Amount    int
 	Requested int
@@ -166,18 +182,20 @@ type damageAppliedPayload struct {
 }
 
 type conditionAppliedPayload struct {
-	Kind   ActivationResultKind `json:"kind"`
-	Target MemberID             `json:"target"`
-	Ref    string               `json:"ref"`
-	Name   string               `json:"name"`
+	Kind     ActivationResultKind `json:"kind"`
+	Target   MemberID             `json:"target"`
+	Ref      string               `json:"ref"`
+	Name     string               `json:"name"`
+	SourceID string               `json:"source_id,omitempty"`
 }
 
 type conditionRemovedPayload struct {
-	Kind   ActivationResultKind `json:"kind"`
-	Target MemberID             `json:"target"`
-	Ref    string               `json:"ref"`
-	Name   string               `json:"name"`
-	Reason string               `json:"reason"`
+	Kind     ActivationResultKind `json:"kind"`
+	Target   MemberID             `json:"target"`
+	Ref      string               `json:"ref"`
+	Name     string               `json:"name"`
+	SourceID string               `json:"source_id,omitempty"`
+	Reason   string               `json:"reason"`
 }
 
 type capacityGrantedPayload struct {
@@ -302,7 +320,7 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 		}
 		prepared = append(prepared, preparedActivationBeat{
 			payload:  resultBytes,
-			subjects: []MemberID{in.Actor, result.Target},
+			subjects: []MemberID{in.Actor, activationResultTarget(result)},
 		})
 	}
 
@@ -323,17 +341,21 @@ func (e *Encounter) prepareActivationResult(
 		return nil, fmt.Errorf("%s: result %d kind %q: %w", verb, index, result.Kind, ErrInvalidData)
 	}
 
-	if result.Target == "" {
+	target := activationResultTarget(result)
+	if target == "" {
 		return nil, fmt.Errorf("%s: result %d target: %w", verb, index, ErrNoMember)
 	}
-	if _, ok := e.members[result.Target]; !ok {
-		return nil, fmt.Errorf("%s: result %d target %q: %w", verb, index, result.Target, ErrNoMember)
+	if _, ok := e.members[target]; !ok {
+		return nil, fmt.Errorf("%s: result %d target %q: %w", verb, index, target, ErrNoMember)
 	}
 	// ONE GUARD RATHER THAN AN ARM APIECE. A damage type belongs to exactly
 	// one kind, so the refusal is stated once, before the switch, and a kind
 	// added later cannot quietly start accepting one by forgetting to say no.
 	if result.Kind != ResultDamageApplied && result.DamageType != "" {
 		return nil, forbiddenActivationResultField(verb, index, result.Kind, "damage type")
+	}
+	if result.Kind != ResultConditionApplied && result.Kind != ResultConditionRemoved && result.Address != nil {
+		return nil, forbiddenActivationResultField(verb, index, result.Kind, "condition address")
 	}
 
 	switch result.Kind {
@@ -389,7 +411,7 @@ func (e *Encounter) prepareActivationResult(
 		}, nil
 
 	case ResultConditionApplied:
-		if err := requireActivationIdentity(verb, index, result); err != nil {
+		if err := validateConditionResult(verb, index, result); err != nil {
 			return nil, err
 		}
 		if field := rollFactsActivationResultField(result); field != "" {
@@ -402,11 +424,12 @@ func (e *Encounter) prepareActivationResult(
 			return nil, forbiddenActivationResultField(verb, index, result.Kind, "reason")
 		}
 		return conditionAppliedPayload{
-			Kind: result.Kind, Target: result.Target, Ref: result.Ref, Name: result.Name,
+			Kind: result.Kind, Target: result.Address.MemberID,
+			Ref: result.Address.ConditionRef, Name: result.Name, SourceID: result.Address.SourceID,
 		}, nil
 
 	case ResultConditionRemoved:
-		if err := requireActivationIdentity(verb, index, result); err != nil {
+		if err := validateConditionResult(verb, index, result); err != nil {
 			return nil, err
 		}
 		if result.Reason == "" {
@@ -419,7 +442,9 @@ func (e *Encounter) prepareActivationResult(
 			return nil, forbiddenActivationResultField(verb, index, result.Kind, "description")
 		}
 		return conditionRemovedPayload{
-			Kind: result.Kind, Target: result.Target, Ref: result.Ref, Name: result.Name, Reason: result.Reason,
+			Kind: result.Kind, Target: result.Address.MemberID,
+			Ref: result.Address.ConditionRef, Name: result.Name,
+			SourceID: result.Address.SourceID, Reason: result.Reason,
 		}, nil
 
 	case ResultCapacityGranted:
@@ -444,6 +469,36 @@ func (e *Encounter) prepareActivationResult(
 	}
 
 	panic("unreachable activation result kind")
+}
+
+func activationResultTarget(result ActivationResult) MemberID {
+	if result.Address != nil {
+		return result.Address.MemberID
+	}
+	return result.Target
+}
+
+func validateConditionResult(verb string, index int, result ActivationResult) error {
+	if result.Address == nil {
+		return fmt.Errorf("%s: result %d %s address: %w", verb, index, result.Kind, ErrInvalidData)
+	}
+	if result.Target != "" {
+		return forbiddenActivationResultField(verb, index, result.Kind, "target outside address")
+	}
+	if result.Ref != "" {
+		return forbiddenActivationResultField(verb, index, result.Kind, "ref outside address")
+	}
+	if result.Address.ConditionRef == "" {
+		return fmt.Errorf("%s: result %d %s condition ref: %w", verb, index, result.Kind, ErrInvalidData)
+	}
+	if _, err := core.ParseString(result.Address.ConditionRef); err != nil {
+		return fmt.Errorf("%s: result %d %s condition ref %q: %v: %w",
+			verb, index, result.Kind, result.Address.ConditionRef, err, ErrInvalidData)
+	}
+	if result.Name == "" {
+		return fmt.Errorf("%s: result %d %s name: %w", verb, index, result.Kind, ErrInvalidData)
+	}
+	return nil
 }
 
 func requireActivationIdentity(verb string, index int, result ActivationResult) error {

@@ -394,14 +394,73 @@ func TestRollCalculationPersistenceShape(t *testing.T) {
 // TestRollTraceCarrierShapes pins the field sets of the neutral carriers so a
 // new field needs an argument here, where its persistence meaning is decided.
 func TestRollTraceCarrierShapes(t *testing.T) {
-	require.Equal(t, []string{"Ref", "Name", "Label"}, structFieldNames(encounter.RollSource{}))
+	require.Equal(t, []string{"Ref", "Name", "Label", "SourceID"}, structFieldNames(encounter.RollSource{}))
 	require.Equal(t, []string{"DieIndex", "Before", "After", "Source"}, structFieldNames(encounter.DiceReroll{}))
 	require.Equal(t, []string{
 		"Notation", "DieSize", "OriginalRolls", "Rerolls", "FinalRolls", "KeptIndices", "Subtotal",
 	}, structFieldNames(encounter.DiceTrace{}))
-	require.Equal(t, []string{"Source", "Dice", "Modifier"}, structFieldNames(encounter.RollComponent{}))
+	require.Equal(t, []string{"Source", "Dice", "Modifier", "SubtractDice"}, structFieldNames(encounter.RollComponent{}))
 	require.Equal(t, []string{"Components", "Total"}, structFieldNames(encounter.RollCalculation{}))
 	require.Equal(t, []string{"Source", "Roll", "DamageType", "Multiplier"},
 		structFieldNames(encounter.DamageComponent{}),
 		"a damage component carries its category, its roll facts, its damage type, and its multiplier — nothing else")
+}
+
+func TestRollCalculationPreservesQualifiedSubtractiveComponents(t *testing.T) {
+	modifier := 4
+	calculation := &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source: encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
+					OriginalRolls: []int{14}, FinalRolls: []int{14}, Subtotal: 14},
+			},
+			{
+				Source:   encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Modifier: &modifier,
+			},
+			{
+				Source: encounter.RollSource{
+					Ref: "dnd5e:spells:generic-penalty", Name: "Generic Penalty", SourceID: "caster-a",
+				},
+				Dice: &encounter.DiceTrace{Notation: "1d4", DieSize: 4,
+					OriginalRolls: []int{3}, FinalRolls: []int{3}, Subtotal: 3},
+				SubtractDice: true,
+			},
+		},
+		Total: 15,
+	}
+
+	require.NoError(t, encounter.ValidateRollCalculation(calculation))
+	encoded, err := json.Marshal(calculation)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"source_id":"caster-a"`)
+	require.Contains(t, string(encoded), `"subtract_dice":true`)
+
+	var decoded encounter.RollCalculation
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	require.Equal(t, *calculation, decoded)
+}
+
+func TestRollCalculationRejectsMalformedOperatorsAndSources(t *testing.T) {
+	t.Run("subtractive dice requires a responsible source entity", func(t *testing.T) {
+		calculation := validRollCalculation()
+		calculation.Components[0].SubtractDice = true
+		calculation.Total = -6
+		require.Error(t, encounter.ValidateRollCalculation(calculation))
+	})
+
+	t.Run("subtract cannot appear without dice", func(t *testing.T) {
+		calculation := validRollCalculation()
+		calculation.Components[1].SubtractDice = true
+		require.Error(t, encounter.ValidateRollCalculation(calculation))
+	})
+
+	t.Run("subtractive total is validated rather than repaired", func(t *testing.T) {
+		calculation := validRollCalculation()
+		calculation.Components[0].Source.SourceID = "source-a"
+		calculation.Components[0].SubtractDice = true
+		calculation.Total = 12
+		require.Error(t, encounter.ValidateRollCalculation(calculation))
+	})
 }

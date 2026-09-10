@@ -177,9 +177,9 @@ func (s *RecordActivationSuite) TestRecordActivationMultiResultOrder() {
 		Target:  activationCleric,
 		Ability: encounter.ActivationIdentity{Ref: "dnd5e:features:many-effects", Name: "Many Effects"},
 		Results: []encounter.ActivationResult{
-			{Kind: encounter.ResultConditionApplied, Target: activationFighter, Ref: "dnd5e:conditions:raging", Name: "Raging"},
+			{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionRef: "dnd5e:conditions:raging"}, Name: "Raging"},
 			{Kind: encounter.ResultCapacityGranted, Target: activationFighter, Description: "30ft movement"},
-			{Kind: encounter.ResultConditionRemoved, Target: activationCleric, Ref: "dnd5e:conditions:helped", Name: "Helped", Reason: "expired"},
+			{Kind: encounter.ResultConditionRemoved, Address: &encounter.ConditionAddress{MemberID: activationCleric, ConditionRef: "dnd5e:conditions:helped"}, Name: "Helped", Reason: "expired"},
 			healingWithTotal(activationCleric, "dnd5e:features:many-effects", "Many Effects", 3, 1, 2),
 		},
 	}
@@ -487,11 +487,11 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	})
 
 	conditionApplied := func() encounter.ActivationResult {
-		return encounter.ActivationResult{Kind: encounter.ResultConditionApplied, Target: activationFighter, Ref: "dnd5e:conditions:raging", Name: "Raging"}
+		return encounter.ActivationResult{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionRef: "dnd5e:conditions:raging"}, Name: "Raging"}
 	}
 	add("condition applied missing ref", func(in *encounter.RecordActivationInput) {
 		in.Results = []encounter.ActivationResult{conditionApplied()}
-		in.Results[0].Ref = ""
+		in.Results[0].Address.ConditionRef = ""
 	}, encounter.ErrInvalidData)
 	add("condition applied missing name", func(in *encounter.RecordActivationInput) {
 		in.Results = []encounter.ActivationResult{conditionApplied()}
@@ -521,11 +521,11 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	}
 
 	conditionRemoved := func() encounter.ActivationResult {
-		return encounter.ActivationResult{Kind: encounter.ResultConditionRemoved, Target: activationFighter, Ref: "dnd5e:conditions:raging", Name: "Raging", Reason: "expired"}
+		return encounter.ActivationResult{Kind: encounter.ResultConditionRemoved, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionRef: "dnd5e:conditions:raging"}, Name: "Raging", Reason: "expired"}
 	}
 	add("condition removed missing ref", func(in *encounter.RecordActivationInput) {
 		in.Results = []encounter.ActivationResult{conditionRemoved()}
-		in.Results[0].Ref = ""
+		in.Results[0].Address.ConditionRef = ""
 	}, encounter.ErrInvalidData)
 	add("condition removed missing name", func(in *encounter.RecordActivationInput) {
 		in.Results = []encounter.ActivationResult{conditionRemoved()}
@@ -657,11 +657,46 @@ func (s *RecordActivationSuite) TestRecordActivationNoticeDownFailure() {
 // primitive carrier rather than importing or embedding root D&D event types.
 func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 	s.Equal([]string{"Ref", "Name"}, structFieldNames(encounter.ActivationIdentity{}))
+	s.Equal([]string{"MemberID", "ConditionRef", "SourceID"}, structFieldNames(encounter.ConditionAddress{}))
 	s.Equal([]string{
-		"Kind", "Target", "Ref", "Name",
+		"Kind", "Target", "Address", "Ref", "Name",
 		"Amount", "Requested", "Before", "After", "Calculation",
 		"DamageType", "Description", "Reason",
 	}, structFieldNames(encounter.ActivationResult{}))
 	s.Equal([]string{"Actor", "Target", "Ability", "Results"}, structFieldNames(encounter.RecordActivationInput{}))
 	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordActivationOutput{}))
+}
+
+func (s *RecordActivationSuite) TestQualifiedConditionAddressRoundTripsAndRejectsMismatch() {
+	enc := s.scene(everyoneStanding{})
+	address := &encounter.ConditionAddress{
+		MemberID: activationGoblin, ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(activationCleric),
+	}
+	out, err := enc.RecordActivation(&encounter.RecordActivationInput{
+		Actor:   activationCleric,
+		Ability: encounter.ActivationIdentity{Ref: "dnd5e:features:generic-penalty", Name: "Generic Penalty"},
+		Results: []encounter.ActivationResult{
+			{Kind: encounter.ResultConditionApplied, Address: address, Name: "Generic Penalty"},
+			{Kind: encounter.ResultConditionRemoved, Address: address, Name: "Generic Penalty", Reason: "expired"},
+		},
+	})
+	s.Require().NoError(err)
+	entries := s.storyEntries(enc, activationCleric, out.Seqs)
+	s.JSONEq(`{"beat":"activation-result","actor":"cleric","result":{"kind":"condition-applied","target":"goblin-activation","ref":"dnd5e:conditions:generic-penalty","name":"Generic Penalty","source_id":"cleric"}}`, string(entries[1].Payload))
+	s.JSONEq(`{"beat":"activation-result","actor":"cleric","result":{"kind":"condition-removed","target":"goblin-activation","ref":"dnd5e:conditions:generic-penalty","name":"Generic Penalty","source_id":"cleric","reason":"expired"}}`, string(entries[2].Payload))
+
+	before := enc.WorldView().Log
+	_, err = enc.RecordActivation(&encounter.RecordActivationInput{
+		Actor:   activationCleric,
+		Ability: encounter.ActivationIdentity{Ref: "dnd5e:features:generic-penalty", Name: "Generic Penalty"},
+		Results: []encounter.ActivationResult{{
+			Kind: encounter.ResultConditionRemoved,
+			Address: &encounter.ConditionAddress{
+				MemberID: "", ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(activationCleric),
+			},
+			Name: "Generic Penalty", Reason: "expired",
+		}},
+	})
+	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Equal(before, enc.WorldView().Log)
 }

@@ -160,6 +160,11 @@ type RecordInput struct {
 	AdvantageSources    []AttackModifierSource
 	DisadvantageSources []AttackModifierSource
 
+	// Calculation is the authoritative sourced arithmetic for an attack. It
+	// is valid only for struck/missed outcomes; when scalar roll/total values
+	// are present they must agree with it.
+	Calculation *RollCalculation
+
 	// DeathSave carries the authoritative primitive facts for
 	// OutcomeDeathSave. It is required for that kind and invalid for every
 	// other kind; the encounter preserves it without interpreting thresholds.
@@ -218,20 +223,21 @@ type RecordInput struct {
 // save. Its fields are primitive facts supplied by the authoritative rulebook;
 // this composition validates presence and preserves them verbatim.
 type DeathSaveDetail struct {
-	Roll              int    `json:"roll"`
-	Outcome           string `json:"outcome"`
-	SuccessesAdded    int    `json:"successes_added"`
-	FailuresAdded     int    `json:"failures_added"`
-	Successes         int    `json:"successes"`
-	Failures          int    `json:"failures"`
-	SuccessesNeeded   int    `json:"successes_needed"`
-	FailuresRemaining int    `json:"failures_remaining"`
-	Stabilized        bool   `json:"stabilized"`
-	Dead              bool   `json:"dead"`
-	Recovered         bool   `json:"recovered"`
-	HPRestored        int    `json:"hp_restored"`
-	Continuation      string `json:"continuation"`
-	PresentationID    string `json:"presentation_id"`
+	Roll              int              `json:"roll"`
+	Outcome           string           `json:"outcome"`
+	SuccessesAdded    int              `json:"successes_added"`
+	FailuresAdded     int              `json:"failures_added"`
+	Successes         int              `json:"successes"`
+	Failures          int              `json:"failures"`
+	SuccessesNeeded   int              `json:"successes_needed"`
+	FailuresRemaining int              `json:"failures_remaining"`
+	Stabilized        bool             `json:"stabilized"`
+	Dead              bool             `json:"dead"`
+	Recovered         bool             `json:"recovered"`
+	HPRestored        int              `json:"hp_restored"`
+	Continuation      string           `json:"continuation"`
+	PresentationID    string           `json:"presentation_id"`
+	Calculation       *RollCalculation `json:"calculation,omitempty"`
 }
 
 // TradeDetail is the closed, rulebook-neutral story shape for one traded
@@ -290,16 +296,13 @@ type DamageComponent struct {
 // the right rule (resistance, vulnerability, immunity) is never interpreted
 // here; only a dice trace's structural and arithmetic consistency is.
 func validateDamageComponentRoll(component DamageComponent) error {
-	if err := validateRollSource(component.Roll.Source); err != nil {
-		return fmt.Errorf("source: %w", err)
+	if err := validateRollComponentData(component.Roll); err != nil {
+		return err
 	}
 	if component.Roll.Dice == nil && component.Roll.Modifier == nil && component.Multiplier == nil {
 		return fmt.Errorf("must contain dice, a modifier, or a multiplier")
 	}
-	if component.Roll.Dice == nil {
-		return nil
-	}
-	return validateDiceTrace(component.Roll.Dice)
+	return nil
 }
 
 // AttackModifierSource identifies an entity/content source without carrying
@@ -527,6 +530,9 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	if in.PresentationID != "" && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
 		return nil, fmt.Errorf("record: presentation id does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
+	if in.Calculation != nil && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
+		return nil, fmt.Errorf("record: calculation does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
 
 	if in.Actor == "" {
 		return nil, fmt.Errorf("record: actor: %w", ErrNoMember)
@@ -584,6 +590,21 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		payload[string(name)] = in.Values[name]
 	}
 
+	roll, hasRoll := in.Values[ValueRoll]
+	total, hasTotal := in.Values[ValueTotal]
+	if hasRoll || hasTotal || in.Calculation != nil {
+		if in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
+			return nil, fmt.Errorf("record: roll calculation does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+		}
+		if !hasRoll || !hasTotal || in.Calculation == nil {
+			return nil, fmt.Errorf("record: attack roll, total, and calculation are required together: %w", ErrInvalidData)
+		}
+		if err := validateRecordedD20(in.Calculation, roll, total); err != nil {
+			return nil, fmt.Errorf("record: attack calculation: %v: %w", err, ErrInvalidData)
+		}
+		payload["calculation"] = in.Calculation
+	}
+
 	// Critical is only ever true for a struck outcome — a miss cannot crit —
 	// but it is written unconditionally rather than only when true: false
 	// beside a hit is itself the answer ("not a critical"), the same
@@ -603,6 +624,13 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		}
 	}
 	if in.DeathSave != nil {
+		if in.DeathSave.Calculation != nil {
+			if err := validateRecordedD20(
+				in.DeathSave.Calculation, in.DeathSave.Roll, in.DeathSave.Calculation.Total,
+			); err != nil {
+				return nil, fmt.Errorf("record: death save calculation: %v: %w", err, ErrInvalidData)
+			}
+		}
 		payload["death_save"] = in.DeathSave
 	}
 	if in.Trade != nil {
