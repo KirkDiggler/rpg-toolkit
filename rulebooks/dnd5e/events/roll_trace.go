@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // RollSource identifies and describes the rulebook-owned source of a roll fact.
@@ -103,6 +104,10 @@ type RollComponent struct {
 	Source   RollSource
 	Dice     *DiceTrace
 	Modifier *int
+
+	// SubtractDice subtracts Dice.Subtotal from the calculation. It never
+	// negates physical die faces or a fixed Modifier on the same component.
+	SubtractDice bool
 }
 
 // RollCalculation records the sourced components and authoritative total of a roll.
@@ -132,9 +137,10 @@ func cloneRollComponents(components []RollComponent) []RollComponent {
 	clones := make([]RollComponent, len(components))
 	for i, component := range components {
 		clones[i] = RollComponent{
-			Source:   cloneRollSource(component.Source),
-			Dice:     cloneDiceTrace(component.Dice),
-			Modifier: cloneInt(component.Modifier),
+			Source:       cloneRollSource(component.Source),
+			Dice:         cloneDiceTrace(component.Dice),
+			Modifier:     cloneInt(component.Modifier),
+			SubtractDice: component.SubtractDice,
 		}
 	}
 	return clones
@@ -223,7 +229,11 @@ func ValidateRollCalculation(calculation *RollCalculation) error {
 			return fmt.Errorf("roll component %d: %w", i, err)
 		}
 		if component.Dice != nil {
-			total += component.Dice.Subtotal
+			if component.SubtractDice {
+				total -= component.Dice.Subtotal
+			} else {
+				total += component.Dice.Subtotal
+			}
 		}
 		if component.Modifier != nil {
 			total += *component.Modifier
@@ -242,6 +252,12 @@ func validateRollComponent(component RollComponent) error {
 	}
 	if component.Dice == nil && component.Modifier == nil {
 		return fmt.Errorf("must contain dice, a modifier, or both")
+	}
+	if component.SubtractDice && component.Dice == nil {
+		return fmt.Errorf("cannot subtract dice without dice")
+	}
+	if component.Source.Ref.Equals(refs.Spells.Bane()) && strings.TrimSpace(component.Source.SourceID) == "" {
+		return fmt.Errorf("bane source id is required")
 	}
 	if component.Dice == nil {
 		return nil

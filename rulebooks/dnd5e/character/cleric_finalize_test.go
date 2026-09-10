@@ -123,7 +123,7 @@ func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReloa
 
 	var supported []string
 	for _, known := range loaded.KnownCantrips() {
-		definition := spells.CastDefinition(spells.Spell(known.ID), loaded.SpellSaveDC())
+		definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Spell(known.ID), SpellSaveDC: loaded.SpellSaveDC()})
 		if definition == nil {
 			continue
 		}

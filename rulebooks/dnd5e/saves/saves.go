@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/rolls"
 )
 
 // SavingThrowInput contains all parameters needed to make a saving throw
@@ -48,6 +49,16 @@ type SavingThrowInput struct {
 	// (typically ability modifier + proficiency bonus if proficient)
 	Modifier int
 
+	// D20Source is the canonical rule/content source that caused the d20 roll.
+	D20Source dnd5eEvents.RollSource
+
+	// ModifierSource is the canonical ability source for Modifier.
+	ModifierSource dnd5eEvents.RollSource
+
+	// Contributions are already selected by the saving creature's condition
+	// owner. This evaluator applies no stacking or source-selection policy.
+	Contributions []dnd5eEvents.DiceContribution
+
 	// HasAdvantage indicates rolling two d20s and taking the higher result
 	HasAdvantage bool
 
@@ -62,7 +73,7 @@ type SavingThrowResult struct {
 	// Roll is the actual d20 roll result used (highest/lowest if advantage/disadvantage)
 	Roll int
 
-	// Total is the final value (Roll + Modifier + ChainBonuses)
+	// Total is the final checked value after fixed bonuses and dice contributions.
 	Total int
 
 	// DC is the Difficulty Class that was tested against
@@ -87,6 +98,9 @@ type SavingThrowResult struct {
 
 	// BonusSources contains the sources that added bonuses to this save
 	BonusSources []dnd5eEvents.SaveBonusSource
+
+	// Calculation is the complete sourced arithmetic checked for this result.
+	Calculation *dnd5eEvents.RollCalculation
 }
 
 // MakeSavingThrow executes a saving throw: the SavingThrowChain fires on the
@@ -120,6 +134,15 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 	if input.SaverID == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
 			"SaverID is required: chain subscribers key off the saver's id")
+	}
+	if err := validateCalculationSource("d20", input.D20Source); err != nil {
+		return nil, err
+	}
+	if err := validateCalculationSource("modifier", input.ModifierSource); err != nil {
+		return nil, err
+	}
+	if err := rolls.ValidateContributions(input.Contributions); err != nil {
+		return nil, rpgerr.Wrap(err, "saving throw contributions are invalid")
 	}
 
 	roller := input.Roller
@@ -179,50 +202,136 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 		hasDisadvantage = true
 		disadvantageSources = append(disadvantageSources, result.DisadvantageSources...)
 	}
-	bonusFromChain := result.TotalBonus()
 	bonusSources = append(bonusSources, result.BonusSources...)
 
-	var roll int
-
-	// D&D 5e Rule: Advantage and Disadvantage cancel each other out
-	effectiveAdvantage := hasAdvantage && !hasDisadvantage
-	effectiveDisadvantage := hasDisadvantage && !hasAdvantage
-
-	switch {
-	case effectiveAdvantage:
-		// Roll with advantage: 2d20, take higher
-		rolls, rollErr := roller.RollN(ctx, 2, 20)
-		if rollErr != nil {
-			return nil, rollErr
+	bonusComponents := make([]dnd5eEvents.RollComponent, 0, len(bonusSources))
+	for i, source := range bonusSources {
+		rollSource := cloneRollSource(dnd5eEvents.RollSource{
+			Ref: source.SourceRef, Name: source.Name, SourceID: source.EntityID,
+		})
+		if err := validateCalculationSource("bonus", rollSource); err != nil {
+			return nil, rpgerr.Wrapf(err, "bonus source %d", i)
 		}
-		roll = max(rolls[0], rolls[1])
-	case effectiveDisadvantage:
-		// Roll with disadvantage: 2d20, take lower
-		rolls, rollErr := roller.RollN(ctx, 2, 20)
-		if rollErr != nil {
-			return nil, rollErr
-		}
-		roll = min(rolls[0], rolls[1])
-	default:
-		// Normal roll: 1d20
-		roll, err = roller.Roll(ctx, 20)
-		if err != nil {
-			return nil, err
-		}
+		bonus := source.Bonus
+		bonusComponents = append(bonusComponents, dnd5eEvents.RollComponent{
+			Source: rollSource, Modifier: &bonus,
+		})
 	}
 
-	// Calculate total (base modifier + chain bonuses)
-	total := roll + input.Modifier + bonusFromChain
+	// D&D 5e Rule: Advantage and Disadvantage cancel each other out.
+	effectiveAdvantage := hasAdvantage && !hasDisadvantage
+	effectiveDisadvantage := hasDisadvantage && !hasAdvantage
+	roll, d20Trace, err := rollD20(ctx, roller, effectiveAdvantage, effectiveDisadvantage)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved, err := rolls.ResolveContributions(ctx, &rolls.ResolveContributionsInput{
+		Roller: roller, Contributions: input.Contributions,
+	})
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "failed to resolve saving throw contributions")
+	}
+
+	modifier := input.Modifier
+	components := make([]dnd5eEvents.RollComponent, 0, 2+len(bonusComponents)+len(resolved.Components))
+	components = append(components,
+		dnd5eEvents.RollComponent{Source: cloneRollSource(input.D20Source), Dice: d20Trace},
+		dnd5eEvents.RollComponent{Source: cloneRollSource(input.ModifierSource), Modifier: &modifier},
+	)
+	components = append(components, bonusComponents...)
+	components = append(components, resolved.Components...)
+	calculation := calculationFor(components)
+	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
+		return nil, rpgerr.Wrap(err, "saving throw calculation is invalid")
+	}
 
 	return &SavingThrowResult{
 		Roll:                roll,
-		Total:               total,
+		Total:               calculation.Total,
 		DC:                  input.DC,
-		Success:             total >= input.DC,
+		Success:             calculation.Total >= input.DC,
 		IsNat1:              roll == 1,
 		IsNat20:             roll == 20,
 		AdvantageSources:    advantageSources,
 		DisadvantageSources: disadvantageSources,
 		BonusSources:        bonusSources,
+		Calculation:         calculation,
 	}, nil
+}
+
+func rollD20(
+	ctx context.Context,
+	roller dice.Roller,
+	advantage bool,
+	disadvantage bool,
+) (int, *dnd5eEvents.DiceTrace, error) {
+	if !advantage && !disadvantage {
+		face, err := roller.Roll(ctx, 20)
+		if err != nil {
+			return 0, nil, err
+		}
+		return face, &dnd5eEvents.DiceTrace{
+			Notation: "1d20", DieSize: 20, OriginalRolls: []int{face},
+			FinalRolls: []int{face}, Subtotal: face,
+		}, nil
+	}
+
+	faces, err := roller.RollN(ctx, 2, 20)
+	if err != nil {
+		return 0, nil, err
+	}
+	if len(faces) != 2 {
+		return 0, nil, rpgerr.Newf(rpgerr.CodeInternal, "d20 roller returned %d faces, want 2", len(faces))
+	}
+	kept := 0
+	if advantage && faces[1] > faces[0] {
+		kept = 1
+	}
+	if disadvantage && faces[1] < faces[0] {
+		kept = 1
+	}
+	face := faces[kept]
+	return face, &dnd5eEvents.DiceTrace{
+		Notation: "2d20", DieSize: 20,
+		OriginalRolls: append([]int(nil), faces...),
+		FinalRolls:    append([]int(nil), faces...), KeptIndices: []int{kept}, Subtotal: face,
+	}, nil
+}
+
+func validateCalculationSource(kind string, source dnd5eEvents.RollSource) error {
+	zero := 0
+	calculation := &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{{Source: source, Modifier: &zero}},
+	}
+	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
+		return rpgerr.Wrapf(err, "%s source is invalid", kind)
+	}
+	return nil
+}
+
+func cloneRollSource(source dnd5eEvents.RollSource) dnd5eEvents.RollSource {
+	clone := source
+	if source.Ref != nil {
+		ref := *source.Ref
+		clone.Ref = &ref
+	}
+	return clone
+}
+
+func calculationFor(components []dnd5eEvents.RollComponent) *dnd5eEvents.RollCalculation {
+	calculation := &dnd5eEvents.RollCalculation{Components: components}
+	for _, component := range components {
+		if component.Dice != nil {
+			if component.SubtractDice {
+				calculation.Total -= component.Dice.Subtotal
+			} else {
+				calculation.Total += component.Dice.Subtotal
+			}
+		}
+		if component.Modifier != nil {
+			calculation.Total += *component.Modifier
+		}
+	}
+	return calculation
 }

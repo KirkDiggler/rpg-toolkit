@@ -23,8 +23,8 @@ const (
 	// CastTargetSelf is a cast with no target but the caster.
 	CastTargetSelf CastTargetRule = "self"
 
-	// CastTargetOneCreature is a cast that names one other creature within
-	// range.
+	// CastTargetOneCreature is the existing creature target kind. MinTargets
+	// and MaxTargets carry cardinality, including Bane's one-to-three range.
 	CastTargetOneCreature CastTargetRule = "one_creature"
 )
 
@@ -67,8 +67,14 @@ type CastProfile struct {
 	// declares one, because the range is what a UI draws.
 	RangeFeet int `json:"range_feet"`
 
-	// Target is who may be named.
+	// Target is what kind of recipient may be named. Cardinality is declared
+	// separately so one creature kind can support both single- and multi-target casts.
 	Target CastTargetRule `json:"target"`
+
+	// MinTargets and MaxTargets bound the ordered target list. Self-targeted
+	// casts declare zero; creature-targeted casts require at least one.
+	MinTargets int `json:"min_targets"`
+	MaxTargets int `json:"max_targets"`
 
 	// Save is the gate the target contests the whole cast with, or nil for a
 	// cast that lands without a roll. Negated-on-success only: a successful
@@ -147,7 +153,17 @@ func (p CastProfile) Validate() error {
 	}
 
 	switch p.Target {
-	case CastTargetSelf, CastTargetOneCreature:
+	case CastTargetSelf:
+		if p.MinTargets != 0 || p.MaxTargets != 0 {
+			return fmt.Errorf("self-targeted cast must declare zero targets")
+		}
+	case CastTargetOneCreature:
+		if p.MinTargets < 1 {
+			return fmt.Errorf("creature-targeted cast must require at least one target")
+		}
+		if p.MaxTargets < p.MinTargets {
+			return fmt.Errorf("cast maximum targets must be at least its minimum")
+		}
 	default:
 		return fmt.Errorf("unknown cast target rule %q", p.Target)
 	}

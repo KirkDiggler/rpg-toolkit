@@ -252,6 +252,9 @@ type MakeSavingThrowInput struct {
 	// DC is the Difficulty Class that must be met or exceeded
 	DC int
 
+	// D20Source is the canonical effect/action source that caused this save.
+	D20Source dnd5eEvents.RollSource
+
 	// HasAdvantage indicates the character has advantage on this save
 	HasAdvantage bool
 
@@ -278,17 +281,47 @@ func (c *Character) MakeSavingThrow(
 	}
 
 	modifier := c.GetSavingThrowModifier(input.Ability)
+	contributions, err := c.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
+		Kind: dnd5eEvents.RollKindSavingThrow,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	return saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
-		Roller:          input.Roller,
-		EventBus:        c.bus,
-		SaverID:         c.GetID(),
-		Ability:         input.Ability,
-		DC:              input.DC,
-		Modifier:        modifier,
+		Roller:    input.Roller,
+		EventBus:  c.bus,
+		SaverID:   c.GetID(),
+		Ability:   input.Ability,
+		DC:        input.DC,
+		Modifier:  modifier,
+		D20Source: input.D20Source,
+		ModifierSource: dnd5eEvents.RollSource{
+			Ref: savingThrowAbilityRef(input.Ability), Name: input.Ability.Display(),
+		},
+		Contributions:   contributions.Contributions,
 		HasAdvantage:    input.HasAdvantage,
 		HasDisadvantage: input.HasDisadvantage,
 	})
+}
+
+func savingThrowAbilityRef(ability abilities.Ability) *core.Ref {
+	switch ability {
+	case abilities.STR:
+		return refs.Abilities.Strength()
+	case abilities.DEX:
+		return refs.Abilities.Dexterity()
+	case abilities.CON:
+		return refs.Abilities.Constitution()
+	case abilities.INT:
+		return refs.Abilities.Intelligence()
+	case abilities.WIS:
+		return refs.Abilities.Wisdom()
+	case abilities.CHA:
+		return refs.Abilities.Charisma()
+	default:
+		return nil
+	}
 }
 
 // SpendHitDiceInput contains parameters for spending hit dice during a short rest

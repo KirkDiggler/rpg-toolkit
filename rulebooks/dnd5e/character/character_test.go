@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -399,8 +400,9 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowFunctionExists() {
 
 	// Make a saving throw against DC 15
 	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability: abilities.WIS,
-		DC:      15,
+		Ability:   abilities.WIS,
+		DC:        15,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
 	})
 
 	s.Require().NoError(err)
@@ -425,8 +427,9 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowRefusesUnattachedChar
 	)
 
 	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability: abilities.WIS,
-		DC:      15,
+		Ability:   abilities.WIS,
+		DC:        15,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
 	})
 
 	s.Require().Error(err)
@@ -442,6 +445,29 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowRefusesUnattachedChar
 // advantage on DEX saves keyed by SaverID; if a refactor ever swaps in a
 // different bus or id, this modifier vanishes and this test fails while every
 // arithmetic-only test stays green.
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowResolvesRecipientSelectedBane() {
+	char := s.createTestCharacter(map[string]int{"con": 10}, nil)
+	char.bus = events.NewEventBus()
+	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: char.GetID(), SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
+	})
+	s.Require().NoError(err)
+	char.conditions = append(char.conditions, baned)
+	roller := &scriptedRoller{results: []int{10, 3}}
+
+	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
+		Roller: roller, Ability: abilities.CON, DC: 10,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
+	})
+	s.Require().NoError(err)
+	s.Equal([]int{20, 4}, roller.calls)
+	s.Equal(7, result.Total)
+	s.False(result.Success)
+	s.Require().Len(result.Calculation.Components, 3)
+	s.True(result.Calculation.Components[2].SubtractDice)
+	s.Equal("bard-a", result.Calculation.Components[2].Source.SourceID)
+}
+
 func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowConsultsParkedBusConditions() {
 	char := s.createTestCharacter(
 		map[string]int{"dex": 14},
@@ -453,8 +479,9 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowConsultsParkedBusCond
 	s.Require().NoError(dodging.Apply(s.ctx, char.bus))
 
 	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability: abilities.DEX,
-		DC:      10,
+		Ability:   abilities.DEX,
+		DC:        10,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
 	})
 
 	s.Require().NoError(err)

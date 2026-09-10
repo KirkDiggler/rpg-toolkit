@@ -95,6 +95,25 @@ func TestMakeDeathSaveReportsAuthoritativeOutcomes(t *testing.T) {
 	}
 }
 
+func TestMakeDeathSaveUsesRecipientSelectedBaneCalculation(t *testing.T) {
+	char := dyingCharacterForTurn(t, &saves.DeathSaveState{})
+	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: char.GetID(), SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
+	})
+	require.NoError(t, err)
+	char.conditions = append(char.conditions, baned)
+	roller := &scriptedRoller{results: []int{10, 1}}
+
+	out, err := char.MakeDeathSave(context.Background(), &MakeDeathSaveInput{Roller: roller})
+	require.NoError(t, err)
+	require.Equal(t, DeathSaveOutcomeFailure, out.Outcome)
+	require.Equal(t, 1, out.FailuresAdded)
+	require.NotNil(t, out.Calculation)
+	require.Equal(t, 9, out.Calculation.Total)
+	require.Equal(t, []int{20, 4}, roller.calls)
+	require.Equal(t, "bard-a", out.Calculation.Components[1].Source.SourceID)
+}
+
 func TestMakeDeathSaveTerminalOutcomes(t *testing.T) {
 	tests := []struct {
 		name         string

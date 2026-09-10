@@ -4,6 +4,7 @@
 package events
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,11 +49,35 @@ func TestCloneRollCalculationPreservesSourceEntityIdentity(t *testing.T) {
 			Source: RollSource{
 				Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a",
 			},
-			Modifier: &modifier,
+			Dice: &DiceTrace{
+				Notation: "1d4", DieSize: 4, OriginalRolls: []int{2},
+				FinalRolls: []int{2}, Subtotal: 2,
+			},
+			Modifier: &modifier, SubtractDice: true,
 		}},
-		Total: 2,
+		Total: 0,
 	}
 
 	clone := CloneRollCalculation(original)
 	require.Equal(t, "bard-a", clone.Components[0].Source.SourceID)
+	require.True(t, clone.Components[0].SubtractDice)
+}
+
+func TestRollCalculationRoundTripPreservesSoleSourceIdentityAndOperator(t *testing.T) {
+	original := &RollCalculation{Components: []RollComponent{{
+		Source: RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
+		Dice: &DiceTrace{
+			Notation: "1d4", DieSize: 4, OriginalRolls: []int{3},
+			FinalRolls: []int{3}, Subtotal: 3,
+		},
+		SubtractDice: true,
+	}}, Total: -3}
+
+	raw, err := json.Marshal(original)
+	require.NoError(t, err)
+	var roundTrip RollCalculation
+	require.NoError(t, json.Unmarshal(raw, &roundTrip))
+	require.NoError(t, ValidateRollCalculation(&roundTrip))
+	require.Equal(t, "bard-a", roundTrip.Components[0].Source.SourceID)
+	require.True(t, roundTrip.Components[0].SubtractDice)
 }

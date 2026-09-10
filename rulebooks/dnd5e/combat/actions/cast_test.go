@@ -10,9 +10,13 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -21,6 +25,29 @@ import (
 type CastProfileSuite struct {
 	suite.Suite
 }
+
+type castLedger struct {
+	actions int
+	pools   map[coreResources.ResourceKey]int
+	writes  int
+}
+
+func (l *castLedger) InCombat() bool { return true }
+func (l *castLedger) SlotsLeft(slot coreCombat.ActionType) int {
+	if slot == coreCombat.ActionStandard {
+		return l.actions
+	}
+	return 0
+}
+func (l *castLedger) CapacityLeft(combat.CapacityType) int           { return 0 }
+func (l *castLedger) PoolLeft(key coreResources.ResourceKey) int     { return l.pools[key] }
+func (l *castLedger) SpendSlots(_ coreCombat.ActionType, amount int) { l.writes++; l.actions -= amount }
+func (l *castLedger) SpendCapacity(combat.CapacityType, int)         {}
+func (l *castLedger) SpendPool(key coreResources.ResourceKey, amount int) {
+	l.writes++
+	l.pools[key] -= amount
+}
+func (l *castLedger) BankCapacity(combat.CapacityType, int) {}
 
 func TestCastProfileSuite(t *testing.T) {
 	suite.Run(t, new(CastProfileSuite))
@@ -34,8 +61,10 @@ func conditionRef(id string) core.Ref {
 // the caster, no roll anywhere.
 func gatelessProfile() actions.CastProfile {
 	return actions.CastProfile{
-		RangeFeet: 30,
-		Target:    actions.CastTargetOneCreature,
+		RangeFeet:  30,
+		Target:     actions.CastTargetOneCreature,
+		MinTargets: 1,
+		MaxTargets: 1,
 		Effects: []actions.CastEffect{{
 			Recipient:      actions.CastRecipientCaster,
 			Ref:            conditionRef("true_strike"),
@@ -47,10 +76,12 @@ func gatelessProfile() actions.CastProfile {
 // gatedProfile is Vicious Mockery's shape: a save, damage, and a rider.
 func gatedProfile() actions.CastProfile {
 	return actions.CastProfile{
-		RangeFeet: 60,
-		Target:    actions.CastTargetOneCreature,
-		Save:      saves.NewSaveGate(abilities.WIS, 13),
-		Damage:    []damage.Damage{{Dice: "1d4", Type: damage.Psychic}},
+		RangeFeet:  60,
+		Target:     actions.CastTargetOneCreature,
+		MinTargets: 1,
+		MaxTargets: 1,
+		Save:       saves.NewSaveGate(abilities.WIS, 13),
+		Damage:     []damage.Damage{{Dice: "1d4", Type: damage.Psychic}},
 		Effects: []actions.CastEffect{{
 			Recipient:      actions.CastRecipientTarget,
 			Ref:            conditionRef("vicious_mockery"),
@@ -122,6 +153,19 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 		s.Require().ErrorContains(profile.Validate(), "unknown cast target rule")
 	})
 
+	s.Run("creature target minimum is zero", func() {
+		profile := gatelessProfile()
+		profile.MinTargets = 0
+		s.Require().ErrorContains(profile.Validate(), "at least one target")
+	})
+
+	s.Run("maximum is below minimum", func() {
+		profile := gatelessProfile()
+		profile.MinTargets = 3
+		profile.MaxTargets = 2
+		s.Require().ErrorContains(profile.Validate(), "at least its minimum")
+	})
+
 	s.Run("no consequence at all", func() {
 		profile := gatelessProfile()
 		profile.Effects = nil
@@ -161,6 +205,8 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 	s.Run("a self cast delivering to a target", func() {
 		profile := gatelessProfile()
 		profile.Target = actions.CastTargetSelf
+		profile.MinTargets = 0
+		profile.MaxTargets = 0
 		profile.Effects[0].Recipient = actions.CastRecipientTarget
 		s.Require().ErrorContains(profile.Validate(), "delivers only to the caster")
 	})
@@ -168,8 +214,37 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 	s.Run("a self cast binding a counterpart", func() {
 		profile := gatelessProfile()
 		profile.Target = actions.CastTargetSelf
+		profile.MinTargets = 0
+		profile.MaxTargets = 0
 		s.Require().ErrorContains(profile.Validate(), "no counterpart to bind")
 	})
+}
+
+func (s *CastProfileSuite) TestLevelOneCastPriceRefusalPreservesActionAndPoolAtomically() {
+	price := &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+		Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
+	}
+
+	for _, test := range []struct {
+		name    string
+		actions int
+		pool    int
+	}{
+		{name: "action shortage", actions: 0, pool: 1},
+		{name: "pool shortage", actions: 1, pool: 0},
+	} {
+		s.Run(test.name, func() {
+			ledger := &castLedger{actions: test.actions, pools: map[coreResources.ResourceKey]int{
+				resources.SpellSlotLevel1: test.pool,
+			}}
+			s.False(combat.CanPay(ledger, price))
+			s.Require().Error(combat.Pay(ledger, price))
+			s.Zero(ledger.writes)
+			s.Equal(test.actions, ledger.actions)
+			s.Equal(test.pool, ledger.pools[resources.SpellSlotLevel1])
+		})
+	}
 }
 
 func (s *CastProfileSuite) TestADefinitionWithTwoProfilesIsRefused() {
