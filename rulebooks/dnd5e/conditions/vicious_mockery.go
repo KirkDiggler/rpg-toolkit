@@ -122,7 +122,9 @@ func (v *ViciousMockeryCondition) Apply(ctx context.Context, bus events.EventBus
 	// combat end both fire first in any ordinary fight — but a blob that
 	// survived to a long rest must not outlive it, which is the registry every
 	// combat-scoped condition here is in.
-	restSub, err := subscribeRemoveOnLongRest(ctx, bus, v.MemberID, v.Ref(), v.Remove)
+	restSub, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+		Address: ConditionAddressOf(v.MemberID, v), Remove: v.Remove,
+	})
 	if err != nil {
 		_ = v.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to long rest")

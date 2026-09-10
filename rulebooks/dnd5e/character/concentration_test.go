@@ -176,6 +176,81 @@ func (s *ConcentrationKeeperSuite) TestTwoRealBaneOwnersRemoveOnlyTheirQualified
 		"A's source-qualified child removal does not alter B's bookkeeping")
 }
 
+func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerAndChildren() {
+	baneA, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
+	})
+	s.Require().NoError(err)
+	baneB, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane(),
+	})
+	s.Require().NoError(err)
+	holdA := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
+		MemberID: "bard-a", SourceID: "bard-a", SpellRef: refs.Spells.Bane().String(),
+		SpellName: "Bane", TurnEnds: 10, SkipFirstTurnEnd: true,
+	})
+	holdB := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
+		MemberID: "bard-b", SourceID: "bard-b", SpellRef: refs.Spells.Bane().String(),
+		SpellName: "Bane", TurnEnds: 10, SkipFirstTurnEnd: true,
+	})
+	s.Require().NoError(holdA.AddChild(s.ctx, baneA.ConditionAddress()))
+	s.Require().NoError(holdB.AddChild(s.ctx, baneB.ConditionAddress()))
+
+	targetData := s.bardData(baneA, baneB)
+	targetData.ID = "target-1"
+	target, err := Load(s.ctx, targetData)
+	s.Require().NoError(err)
+	bardAData := s.bardData(holdA)
+	bardAData.ID = "bard-a"
+	bardA, err := Load(s.ctx, bardAData)
+	s.Require().NoError(err)
+	bardBData := s.bardData(holdB)
+	bardBData.ID = "bard-b"
+	bardB, err := Load(s.ctx, bardBData)
+	s.Require().NoError(err)
+	for _, member := range []*Character{target, bardA, bardB} {
+		s.Require().NoError(Attach(s.ctx, member, s.bus))
+		s.False(member.IsDirty())
+	}
+
+	var removals []dnd5eEvents.ConditionRemovedEvent
+	_, err = dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removals = append(removals, event)
+			return nil
+		})
+	s.Require().NoError(err)
+
+	s.Require().NoError(bardA.LongRest(s.ctx))
+
+	s.Empty(bardA.GetConditions(), "the qualified owner leaves its caster sheet")
+	s.True(bardA.IsDirty())
+	s.Require().Len(target.GetConditions(), 1, "only A's qualified child leaves the recipient")
+	s.True(target.IsDirty(), "the recipient persists its changed condition list")
+	s.Require().Len(bardB.GetConditions(), 1, "B's qualified owner is preserved")
+	s.False(bardB.IsDirty(), "B's untouched sheet remains clean")
+	liveB := bardB.GetConditions()[0].(*conditions.ConcentratingCondition)
+	s.Equal(10, liveB.TurnEndsLeft)
+	s.True(liveB.SkipNextTurnEnd)
+	s.Equal([]dnd5eEvents.ConditionAddress{baneB.ConditionAddress()}, liveB.Children)
+
+	remaining, err := target.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
+		Kind: dnd5eEvents.RollKindAttack,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(remaining.Contributions, 1)
+	s.Equal("bard-b", remaining.Contributions[0].Source.SourceID)
+
+	addresses := make([]dnd5eEvents.ConditionAddress, 0, len(removals))
+	for _, removal := range removals {
+		addresses = append(addresses, removal.Address())
+		s.Equal("long rest", removal.Reason)
+	}
+	s.ElementsMatch([]dnd5eEvents.ConditionAddress{
+		baneA.ConditionAddress(), holdA.ConditionAddress(),
+	}, addresses, "both removal facts preserve A's source identity")
+}
+
 func (s *ConcentrationKeeperSuite) TestWrongBaneSourceDoesNotRemoveOrDirtyCharacter() {
 	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
 		MemberID: "bard-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
