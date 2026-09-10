@@ -240,6 +240,29 @@ func (s *PostRollWindowSuite) TestTheBeatCarriesTheNumbersAndNotTheAC() {
 	s.False(leaked)
 }
 
+func (s *PostRollWindowSuite) TestWindowPresentationIDReachesEveryRecipientBeforeTheAnswer() {
+	mgr := s.scene()
+	s.inspire("alice")
+	out := s.swing(mgr)
+	s.Require().NotEmpty(out.PresentationID)
+	for _, member := range []string{"alice", "bob"} {
+		found := false
+		for _, beat := range s.beatsOf(mgr, member) {
+			if beat["beat"] != "roll_window_opened" {
+				continue
+			}
+			found = true
+			s.Equal(out.PresentationID, beat["presentation_id"])
+			s.Equal(float64(out.Roll), beat["roll"])
+			s.Equal(float64(out.Total), beat["total"])
+		}
+		s.True(found, "both recipients must already have the same rolled fact")
+	}
+	mgr = s.duelOverStores()
+	s.answer(mgr, session.ReactHold)
+	s.Equal(out.PresentationID, s.outcomeBeat(mgr)["presentation_id"])
+}
+
 // TestTheDockIsToldWhatItMayDo is the panel the player actually sees: their own
 // REACT row named for the die, and everybody else told the table is waiting.
 func (s *PostRollWindowSuite) TestTheDockIsToldWhatItMayDo() {
@@ -277,6 +300,7 @@ func (s *PostRollWindowSuite) TestSpendingFinishesTheSwingWithTheDieOnIt() {
 		"exactly one outcome beat across the pause and the answer")
 
 	beat := s.outcomeBeat(mgr)
+	s.Equal(posed.PresentationID, beat["presentation_id"])
 	s.Equal(float64(posed.Roll), beat["roll"], "the d20 is not re-rolled")
 	s.Greater(beat["total"], float64(posed.Total), "the face joined the total")
 	s.Equal(float64(6), beat["total"].(float64)-float64(posed.Total), "a d6 rolling its own face")

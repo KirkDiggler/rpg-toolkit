@@ -1586,6 +1586,10 @@ func (WindowOpenedBody) isEventBody() {}
 // their swing already lands before they choose whether to improve it, which is
 // the whole decision.
 type RollWindowOpenedBody struct {
+	// PresentationID correlates the existing rolled fact, visual throw and
+	// later outcome. Empty on legacy windows; never derived from Seq.
+	PresentationID string `json:"presentation_id,omitempty"`
+
 	// Audience is the member being asked — always the one whose d20 was
 	// rolled, in this build.
 	Audience string `json:"audience"`
