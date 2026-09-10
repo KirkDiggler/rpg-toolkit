@@ -117,7 +117,7 @@ func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
 }
 
 func TestHeldUnknownSightProjectsExplicitUnknownLocation(t *testing.T) {
-	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationUnknown})
+	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationUnknown})
 	require.NoError(t, err)
 	out := projectSightings([]intel.Holding{{
 		Subject: "billy", Payload: payload, Channel: intel.Sight,

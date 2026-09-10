@@ -150,7 +150,7 @@ func (s *CastSuite) sceneWithAllies(
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{

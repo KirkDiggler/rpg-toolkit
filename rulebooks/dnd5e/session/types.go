@@ -509,7 +509,7 @@ type MemberOutcome struct {
 //
 // On [Sighting], present when BOTH hold: the sighting was produced by sight
 // (gated on Holding.Channel) AND the composition's payload actually decodes
-// as a known location payload (encounter.DecodeLocationPayload succeeds). Nil
+// as a known location payload (encounter.DecodeSightTestimony succeeds). Nil
 // for every other channel — that is the ordinary, expected case. Nil on a
 // sight-channel holding whose payload fails to decode is NOT a legal state a
 // caller should plan for; it means the composition wrote something projectSeen
@@ -541,9 +541,49 @@ type Seen struct {
 	// SIGHT-CHANNEL KNOWLEDGE, not roster truth: an observer who can see a
 	// member can see whether they are standing, which is why it belongs
 	// inside Seen and not on a roster read this seam deliberately lacks.
-	// A memory (CurrentVia empty) keeps the standing it last saw, exactly
-	// as it keeps the position. Lands with rpg-toolkit#1137.
+	// Lands with rpg-toolkit#1137.
+	//
+	// KNOWN DEFECT: this is read LIVE from the roster and stamped onto every
+	// holding including memories, so a ghost currently discloses a standing
+	// change it never witnessed. It should keep the standing it last saw,
+	// exactly as Position does; closing that needs the composition to
+	// snapshot standing into the sight testimony, which needs a pass-scoped
+	// participation reading it does not have yet. rpg-toolkit#1615.
 	Standing Standing `json:"standing"`
+
+	// Equipment is what the sighted subject was observed holding, read out of
+	// the observer's own snapshot rather than from the subject. A memory keeps
+	// the hands it last saw and cannot disclose a swap it never witnessed —
+	// and because it is a snapshot rather than a live read it can be WRONG,
+	// which is what illusion and enchantment need (rpg-toolkit#1615).
+	//
+	// NIL IS NOT EMPTY HANDS. Nil means the hands were not observed: nothing
+	// with a sheet behind it (a skeleton has no hands to report on), or
+	// testimony older than this field. Observed-empty arrives as a present
+	// value whose strings are empty.
+	Equipment *SeenEquipment `json:"equipment,omitempty"`
+}
+
+// SeenEquipment is what a subject was observed holding, as one observer saw
+// it. Mirrors encounter.HeldEquipment across this seam.
+//
+// The strings are BARE ITEM IDS — "longsword", "shield" — exactly as the
+// rulebook holds them. The full ref a client keys a model off lives in the
+// asset pipeline's namespace and is minted by the host, which is the side
+// that knows both the rulebook id and the provider manifest. This seam does
+// not learn that namespace.
+//
+// An empty string is a hand seen holding nothing, which is a POSITIVE fact
+// and not an absence: the rulebook turns an empty main hand into an unarmed
+// strike with its own ref and its own name.
+type SeenEquipment struct {
+	// MainHand is the item id in the subject's main hand, or "" for a hand
+	// seen holding nothing.
+	MainHand string `json:"main_hand,omitempty"`
+
+	// OffHand is the item id in the subject's off hand, or "" for a hand seen
+	// holding nothing.
+	OffHand string `json:"off_hand,omitempty"`
 }
 
 // Standing says whether a member is still on their feet. Lands with

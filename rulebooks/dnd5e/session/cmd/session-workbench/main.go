@@ -492,7 +492,8 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 		// supplies its own sight seam, so the walk below runs on session's
 		// answer rather than this one. Matched to it anyway, so the scene
 		// reads the same however it is entered.
-		Sight: encEveryoneSees{},
+		Sight:     encEveryoneSees{},
+		Equipment: encNoHandsObserved{},
 		Field: encounter.FieldInput{
 			// The space between the chambers is ROCK, which is the ordinary
 			// dungeon reading and the one that keeps this scene about the gate:
@@ -643,4 +644,20 @@ func hexSeam(east, rows, openRow int) []encounter.WallInput {
 	}
 
 	return out
+}
+
+// encNoHandsObserved answers the equipment question for fixtures that are not
+// about equipment: every member is answered for, every answer is "no hands to
+// observe" — deliberately NOT "everybody is empty-handed", which would be
+// testimony this fixture has no standing to give.
+type encNoHandsObserved struct{}
+
+func (encNoHandsObserved) Equipment(
+	members []encounter.MemberID,
+) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
+	out := make(map[encounter.MemberID]*encounter.HeldEquipment, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
 }

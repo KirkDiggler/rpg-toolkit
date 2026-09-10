@@ -556,6 +556,7 @@ func (m *Manager) loadWorldWithBaseline(
 		Initiative: m.initiative,
 		Standing:   standing,
 		Sight:      sight,
+		Equipment:  equipmentBeside(standing),
 		TurnDriver: m.turnDriver,
 		// The caller says which: a real one bound to a write verb's own
 		// scope, or RefusingStriker{} for a read that must never drive a

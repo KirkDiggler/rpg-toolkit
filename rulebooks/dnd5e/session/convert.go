@@ -229,41 +229,75 @@ func projectSightings(
 // (the composition is the only writer of sight payloads) that a wrong
 // Position would be worse than admitting to.
 //
-// The decode itself happens in encounter.DecodeLocationPayload, not here: this
+// The decode itself happens in encounter.DecodeSightTestimony, not here: this
 // package never calls encoding/json on a payload. h.Channel is intel's own
 // provenance field — a holding's last accepted testimony — so a held memory
 // (CurrentVia empty) still carries the channel and payload that produced it.
 // Known testimony gets Seen; explicit unknown testimony gets LocationState
 // without a stale coordinate.
 //
+// # Equipment comes from the testimony, never from a live read
+//
+// What a subject was seen holding is read out of the snapshot the observer
+// took, exactly as Position is. That is what makes a memory honest — a ghost
+// reports the hands it last saw and cannot disclose a swap it never witnessed
+// — and it is also what makes a LIE possible at all, since a fact resolved
+// live could only ever be true (Kirk, rpg-toolkit#1615).
+//
+// Nil equipment means the hands were not observed: no sheet behind the
+// subject, or testimony older than the field. It does NOT mean empty hands,
+// which arrive as a present value with empty strings.
+//
 // downed is the caller's own batched Standing() answer for this subject —
 // asked once per verb over the whole roster (turn.go's own pattern), never
 // once per sighting, and passed in rather than looked up here so this stays
 // a pure projection.
+//
+// STANDING IS STILL THE LIVE ANSWER, and that is a known defect rather than a
+// design: this doc and [Seen.Standing] both claim a memory keeps the standing
+// it last saw, and it does not. Closing it needs the composition to snapshot
+// standing into the testimony beside equipment, which needs a pass-scoped
+// reading of participation it does not have yet (C8 allows exactly one Assess
+// per pass). Tracked on rpg-toolkit#1615; Position and Equipment are the
+// shapes to copy when it lands, never Standing.
 func projectSeen(channel intel.Channel, payload []byte, downed bool) *Seen {
 	if channel != intel.Sight {
 		return nil
 	}
-	location, ok := encounter.DecodeLocationPayload(payload)
-	if !ok || location.State != encounter.LocationKnown {
+	testimony, ok := encounter.DecodeSightTestimony(payload)
+	if !ok || testimony.State != encounter.LocationKnown {
 		return nil
 	}
 	standing := StandingUp
 	if downed {
 		standing = StandingDowned
 	}
-	return &Seen{Position: location.Position, Standing: standing}
+	return &Seen{
+		Position:  testimony.Position,
+		Standing:  standing,
+		Equipment: projectSeenEquipment(testimony.Equipment),
+	}
+}
+
+// projectSeenEquipment copies observed hands across the seam, preserving the
+// difference between hands that were not observed (nil) and hands that were
+// observed empty (present, both strings empty).
+func projectSeenEquipment(in *encounter.HeldEquipment) *SeenEquipment {
+	if in == nil {
+		return nil
+	}
+	return &SeenEquipment{MainHand: in.MainHand, OffHand: in.OffHand}
 }
 
 func projectLocationState(channel intel.Channel, payload []byte) LocationState {
 	if channel != intel.Sight {
 		return ""
 	}
-	location, ok := encounter.DecodeLocationPayload(payload)
+	testimony, ok := encounter.DecodeSightTestimony(payload)
 	if !ok {
 		return ""
 	}
-	return LocationState(location.State)
+	return LocationState(testimony.State)
 }
 
 func projectMember(in encounter.Member) Member {

@@ -70,7 +70,7 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 	data, err := encounters.GetEncounter(ctx, "world")
 	require.NoError(t, err)
 	oldCell := spatial.Position{X: 0, Y: 0}
-	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{
+	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
 		State: encounter.LocationKnown, Position: oldCell,
 	})
 	require.NoError(t, err)
@@ -89,12 +89,12 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 	return mgr, sessions, encounters, stream
 }
 
-func task6StoredLocation(t *testing.T, encounters *fakeEncounters) encounter.LocationKnowledge {
+func task6StoredLocation(t *testing.T, encounters *fakeEncounters) encounter.SightTestimony {
 	t.Helper()
 	data, err := encounters.GetEncounter(context.Background(), "world")
 	require.NoError(t, err)
 	holding := data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
-	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	location, ok := encounter.DecodeSightTestimony(holding.Payload)
 	require.True(t, ok, "stored sight testimony must be canonical")
 	return location
 }
@@ -193,7 +193,7 @@ func (s *MonsterTurnTestSuite) SetupTest() {
 // in — everything these tests need except (b), which adds its own wall.
 func tombRoom(width, height int) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, width, height)},
@@ -375,7 +375,7 @@ func (s *MonsterTurnTestSuite) TestBlindSkeletonBehindAWallNeverJoinsTheFight() 
 	mgr := s.tombManager(session.Behavior(), testDice{})
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
@@ -950,7 +950,7 @@ func requireUnknownStoredLocation(t *testing.T, repo *fakeEncounters, observer, 
 	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
 	require.True(t, ok, "persisted %s testimony for %s must remain held", observer, subject)
 	require.Empty(t, holding.CurrentVia)
-	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	location, ok := encounter.DecodeSightTestimony(holding.Payload)
 	require.True(t, ok, "persisted testimony must remain canonical")
 	require.Equal(t, encounter.LocationUnknown, location.State)
 }
@@ -964,7 +964,7 @@ func requireHeldKnownStoredLocation(
 	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
 	require.Empty(t, holding.CurrentVia, "broken sight must leave held testimony")
-	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	location, ok := encounter.DecodeSightTestimony(holding.Payload)
 	require.True(t, ok, "persisted testimony must remain canonical")
 	require.Equal(t, encounter.LocationKnown, location.State)
 	require.Equal(t, want, location.Position)
@@ -977,7 +977,7 @@ func persistedKnownLocation(t *testing.T, repo *fakeEncounters, observer, subjec
 	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
 	require.NotEmpty(t, holding.CurrentVia, "initial testimony must be current")
-	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	location, ok := encounter.DecodeSightTestimony(holding.Payload)
 	require.True(t, ok, "persisted testimony must be canonical")
 	require.Equal(t, encounter.LocationKnown, location.State)
 	return location.Position
@@ -1006,7 +1006,7 @@ func doubleDoorWorld(t *testing.T, withDavid bool) *encounter.EncounterData {
 		}})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
@@ -1112,7 +1112,7 @@ func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
 		}
 		data, loadErr := repo.GetEncounter(ctx, "world")
 		require.NoError(t, loadErr)
-		location, ok := encounter.DecodeLocationPayload(data.Intel.Holdings[core.EntityID("goblin")][intel.Subject("billy")].Payload)
+		location, ok := encounter.DecodeSightTestimony(data.Intel.Holdings[core.EntityID("goblin")][intel.Subject("billy")].Payload)
 		require.True(t, ok)
 		if location.State == encounter.LocationUnknown {
 			break

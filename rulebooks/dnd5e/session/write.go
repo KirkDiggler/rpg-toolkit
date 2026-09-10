@@ -1190,6 +1190,7 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		Initiative: m.initiative,
 		Standing:   scope.standing,
 		Sight:      scope.sight,
+		Equipment:  equipmentBeside(scope.standing),
 		TurnDriver: m.turnDriver,
 		// Bound to the SAME scope, not rebuilt: this replaces scope.enc, and
 		// strikerSeam only ever reads scope.enc from inside a later Strike

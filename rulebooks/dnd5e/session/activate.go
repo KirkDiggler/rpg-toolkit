@@ -260,6 +260,7 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
 		Sight:        &sightSeam{members: worldMembers(world)},
+		Equipment:    equipmentBeside(scope.standing),
 		TurnDriver:   m.turnDriver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:

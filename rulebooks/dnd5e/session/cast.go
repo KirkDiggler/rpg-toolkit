@@ -303,6 +303,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
 		Sight:        &sightSeam{members: worldMembers(world)},
+		Equipment:    equipmentBeside(scope.standing),
 		TurnDriver:   m.turnDriver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForChange and adopt bind — the one-seam consistency law.
