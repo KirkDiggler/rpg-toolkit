@@ -158,6 +158,13 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
+// ConditionAddressProvider is the optional capability for a condition whose
+// identity is source-qualified. Unqualified legacy conditions omit it and are
+// addressed with an exact empty SourceID by their sheet owner.
+type ConditionAddressProvider interface {
+	ConditionAddress() ConditionAddress
+}
+
 // =============================================================================
 // Damage Source Types
 // =============================================================================
@@ -689,7 +696,15 @@ type ConditionAppliedEvent struct {
 type ConditionRemovedEvent struct {
 	MemberID     string // whose sheet carried the condition that ended
 	ConditionRef string // which condition ended, as the ref its Ref() returns
+	SourceID     string // exact source qualifier; empty names only unqualified legacy state
 	Reason       string // why, for a log that wants to say so
+}
+
+// Address returns the removal's exact three-field condition identity.
+func (e ConditionRemovedEvent) Address() ConditionAddress {
+	return ConditionAddress{
+		MemberID: e.MemberID, ConditionRef: e.ConditionRef, SourceID: e.SourceID,
+	}
 }
 
 // ConditionStateChangedEvent is published by a condition whose OWN persisted

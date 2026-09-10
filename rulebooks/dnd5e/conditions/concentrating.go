@@ -94,12 +94,14 @@ func ConcentrationDC(damageTaken int) int {
 // ConcentratingConditionData is the serializable form of the concentrating
 // condition, stored by the game server as an opaque JSON blob.
 type ConcentratingConditionData struct {
-	Ref          *core.Ref              `json:"ref"`
-	MemberID     string                 `json:"member_id"`
-	SpellRef     string                 `json:"spell_ref"`
-	SpellName    string                 `json:"spell_name"`
-	TurnEndsLeft int                    `json:"turn_ends_left"`
-	Children     []dnd5eEvents.ChildRef `json:"children,omitempty"`
+	Ref             *core.Ref                      `json:"ref"`
+	MemberID        string                         `json:"member_id"`
+	SourceID        string                         `json:"source_id"`
+	SpellRef        string                         `json:"spell_ref"`
+	SpellName       string                         `json:"spell_name"`
+	TurnEndsLeft    int                            `json:"turn_ends_left"`
+	SkipNextTurnEnd bool                           `json:"skip_next_turn_end,omitempty"`
+	Children        []dnd5eEvents.ConditionAddress `json:"children,omitempty"`
 }
 
 // ConcentratingCondition is one caster holding one spell together, and the
@@ -132,6 +134,10 @@ type ConcentratingCondition struct {
 	// MemberID is the caster holding the spell together.
 	MemberID string
 
+	// SourceID source-qualifies this owner and every child it owns. Existing
+	// unqualified concentration conditions retain the exact empty identity.
+	SourceID string
+
 	// SpellRef is what is being concentrated on, as a ref string.
 	SpellRef string
 
@@ -144,8 +150,12 @@ type ConcentratingCondition struct {
 	// children do not count their own.
 	TurnEndsLeft int
 
+	// SkipNextTurnEnd is the persisted one-shot grace for a cast resolved on
+	// the caster's current turn.
+	SkipNextTurnEnd bool
+
 	// Children are the addresses of the effects this spell left behind.
-	Children []dnd5eEvents.ChildRef
+	Children []dnd5eEvents.ConditionAddress
 
 	bus             events.EventBus
 	subscriptionIDs []string
@@ -158,24 +168,53 @@ type ConcentratingCondition struct {
 }
 
 // Ensure ConcentratingCondition implements dnd5eEvents.ConditionBehavior
-var _ dnd5eEvents.ConditionBehavior = (*ConcentratingCondition)(nil)
+var (
+	_ dnd5eEvents.ConditionBehavior        = (*ConcentratingCondition)(nil)
+	_ dnd5eEvents.ConditionAddressProvider = (*ConcentratingCondition)(nil)
+)
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
 func (c *ConcentratingCondition) Ref() *core.Ref { return refs.Conditions.Concentrating() }
 
-// NewConcentratingCondition creates the caster's hold on one spell, good for
-// turnEnds of the caster's turn ends unless something takes it first.
-//
-// The children are added as the spell delivers them, through
-// [ConcentratingCondition.AddChild]: what a cast leaves behind is known when it
-// lands, not when the profile is read.
-func NewConcentratingCondition(casterID, spellRef, spellName string, turnEnds int) *ConcentratingCondition {
+// ConditionAddress derives this owner's exact identity from persisted state.
+func (c *ConcentratingCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
+	return dnd5eEvents.ConditionAddress{
+		MemberID: c.MemberID, ConditionRef: c.Ref().String(), SourceID: c.SourceID,
+	}
+}
+
+// NewConcentratingConditionInput declares one persisted owner clock.
+type NewConcentratingConditionInput struct {
+	MemberID         string
+	SourceID         string
+	SpellRef         string
+	SpellName        string
+	TurnEnds         int
+	SkipFirstTurnEnd bool
+}
+
+// NewConcentratingCondition creates a legacy-unqualified owner. New casts that
+// need source qualification or grace use [NewConcentratingConditionWithInput].
+func NewConcentratingCondition(
+	memberID, spellRef, spellName string, turnEnds int,
+) *ConcentratingCondition {
+	return NewConcentratingConditionWithInput(NewConcentratingConditionInput{
+		MemberID: memberID, SpellRef: spellRef, SpellName: spellName, TurnEnds: turnEnds,
+	})
+}
+
+// NewConcentratingConditionWithInput creates a source-qualified owner clock.
+// Children are added as the spell delivers them through
+// [ConcentratingCondition.AddChild].
+func NewConcentratingConditionWithInput(input NewConcentratingConditionInput) *ConcentratingCondition {
 	return &ConcentratingCondition{
-		MemberID:     casterID,
-		SpellRef:     spellRef,
-		SpellName:    spellName,
-		TurnEndsLeft: turnEnds,
+		MemberID:        input.MemberID,
+		SourceID:        input.SourceID,
+		SpellRef:        input.SpellRef,
+		SpellName:       input.SpellName,
+		TurnEndsLeft:    input.TurnEnds,
+		SkipNextTurnEnd: input.SkipFirstTurnEnd,
 	}
 }
 
@@ -187,9 +226,20 @@ func NewConcentratingCondition(casterID, spellRef, spellName string, turnEnds in
 // discarded at save time. A duplicate address is ignored rather than doubled:
 // the list is a set of addresses, and publishing one removal twice would ask
 // two keepers to drop the same thing.
-func (c *ConcentratingCondition) AddChild(ctx context.Context, child dnd5eEvents.ChildRef) error {
+func (c *ConcentratingCondition) AddChild(
+	ctx context.Context, child dnd5eEvents.ConditionAddress,
+) error {
 	if child.MemberID == "" || child.ConditionRef == "" {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "concentration child needs a member and a condition ref")
+	}
+	if c.SpellRef == refs.Spells.Bane().String() {
+		if c.SourceID == "" {
+			return rpgerr.New(rpgerr.CodeInvalidArgument, "Bane concentration owner needs a source id")
+		}
+		if child.ConditionRef != refs.Conditions.Baned().String() || child.SourceID != c.SourceID {
+			return rpgerr.New(rpgerr.CodeInvalidArgument,
+				"Bane concentration child source must match its owner source")
+		}
 	}
 	for _, existing := range c.Children {
 		if existing == child {
@@ -219,6 +269,9 @@ func (c *ConcentratingCondition) IsApplied() bool { return c.bus != nil }
 // that read c.bus would find nil and answer nothing, which is a rules decision
 // made by subscription order.
 func (c *ConcentratingCondition) Apply(ctx context.Context, bus events.EventBus) error {
+	if c.SpellRef == refs.Spells.Bane().String() && c.SourceID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "Bane concentration owner needs a source id")
+	}
 	if c.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "concentrating condition already applied")
 	}
@@ -308,12 +361,14 @@ func (c *ConcentratingCondition) Remove(ctx context.Context, bus events.EventBus
 // ToJSON converts the condition to JSON for persistence.
 func (c *ConcentratingCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(ConcentratingConditionData{
-		Ref:          refs.Conditions.Concentrating(),
-		MemberID:     c.MemberID,
-		SpellRef:     c.SpellRef,
-		SpellName:    c.SpellName,
-		TurnEndsLeft: c.TurnEndsLeft,
-		Children:     c.Children,
+		Ref:             refs.Conditions.Concentrating(),
+		MemberID:        c.MemberID,
+		SourceID:        c.SourceID,
+		SpellRef:        c.SpellRef,
+		SpellName:       c.SpellName,
+		TurnEndsLeft:    c.TurnEndsLeft,
+		SkipNextTurnEnd: c.SkipNextTurnEnd,
+		Children:        c.Children,
 	})
 }
 
@@ -324,9 +379,11 @@ func (c *ConcentratingCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal concentrating data")
 	}
 	c.MemberID = stored.MemberID
+	c.SourceID = stored.SourceID
 	c.SpellRef = stored.SpellRef
 	c.SpellName = stored.SpellName
 	c.TurnEndsLeft = stored.TurnEndsLeft
+	c.SkipNextTurnEnd = stored.SkipNextTurnEnd
 	if c.TurnEndsLeft <= 0 {
 		// The same reading True Strike's counter takes: a blob whose count ran
 		// out without the removal landing is honestly "one more turn end", not
@@ -376,11 +433,8 @@ func (c *ConcentratingCondition) onDamageTaken(
 			InstigatorType: event.Cause.InstigatorType,
 		},
 		OnFailure: dnd5eEvents.Consequence{
-			Remove: append([]dnd5eEvents.ChildRef(nil), c.Children...),
-			Owner: dnd5eEvents.ChildRef{
-				MemberID:     c.MemberID,
-				ConditionRef: c.Ref().String(),
-			},
+			Remove: append([]dnd5eEvents.ConditionAddress(nil), c.Children...),
+			Owner:  c.ConditionAddress(),
 			Reason: ConcentrationEndedDamage,
 		},
 	})
@@ -395,6 +449,11 @@ func (c *ConcentratingCondition) onTurnEnd(
 ) error {
 	if event.SubjectID != c.MemberID || c.ending {
 		return nil
+	}
+
+	if c.SkipNextTurnEnd {
+		c.SkipNextTurnEnd = false
+		return publishStateChanged(ctx, bus, c.MemberID, c.Ref())
 	}
 
 	c.TurnEndsLeft--
@@ -437,14 +496,14 @@ func (c *ConcentratingCondition) onConditionRemoved(
 		return nil
 	}
 
-	if event.MemberID == c.MemberID && event.ConditionRef == c.Ref().String() {
+	if event.Address() == c.ConditionAddress() {
 		// Somebody else ended this hold. They published the owner's fact, so
 		// this takes the children and the reason and does not republish it.
 		return c.endFromFact(ctx, bus, event.Reason)
 	}
 
-	removed := dnd5eEvents.ChildRef{MemberID: event.MemberID, ConditionRef: event.ConditionRef}
-	kept := make([]dnd5eEvents.ChildRef, 0, len(c.Children))
+	removed := event.Address()
+	kept := make([]dnd5eEvents.ConditionAddress, 0, len(c.Children))
 	for _, child := range c.Children {
 		if child != removed {
 			kept = append(kept, child)
@@ -483,10 +542,10 @@ func (c *ConcentratingCondition) end(ctx context.Context, bus events.EventBus, r
 		return err
 	}
 
+	address := c.ConditionAddress()
 	if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     c.MemberID,
-		ConditionRef: c.Ref().String(),
-		Reason:       reason,
+		MemberID: address.MemberID, ConditionRef: address.ConditionRef, SourceID: address.SourceID,
+		Reason: reason,
 	}); err != nil {
 		return rpgerr.Wrapf(err, "failed to publish concentration removal for member %s", c.MemberID)
 	}
@@ -527,9 +586,8 @@ func (c *ConcentratingCondition) strip(ctx context.Context, bus events.EventBus,
 	removed := c.Children
 	for _, child := range removed {
 		if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-			MemberID:     child.MemberID,
-			ConditionRef: child.ConditionRef,
-			Reason:       reason,
+			MemberID: child.MemberID, ConditionRef: child.ConditionRef, SourceID: child.SourceID,
+			Reason: reason,
 		}); err != nil {
 			return rpgerr.Wrapf(err, "failed to publish %s removal for member %s",
 				child.ConditionRef, child.MemberID)

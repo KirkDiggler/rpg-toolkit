@@ -104,6 +104,11 @@ type CastConcentration struct {
 	// Turn ends rather than minutes because turn end is the only duration
 	// boundary this stack has.
 	TurnEnds int `json:"turn_ends"`
+
+	// SkipFirstTurnEnd gives a newly created owner one persisted grace boundary.
+	// It is used when the cast resolves during the caster's current turn so that
+	// turn does not consume one of the declared subsequent turn ends.
+	SkipFirstTurnEnd bool `json:"skip_first_turn_end,omitempty"`
 }
 
 // CastEffect declares one condition a cast delivers, and who receives it.

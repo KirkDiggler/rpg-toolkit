@@ -13,11 +13,68 @@ import (
 )
 
 // RollSource identifies and describes the rulebook-owned source of a roll fact.
-// Label optionally describes the source's role within its calculation.
+// Label optionally describes the source's role within its calculation. SourceID
+// optionally identifies the entity that contributed the fact; it is the sole
+// calculation home for contributor entity identity.
 type RollSource struct {
-	Ref   *core.Ref
-	Name  string
-	Label string
+	Ref      *core.Ref
+	Name     string
+	Label    string
+	SourceID string
+}
+
+// DiceContribution describes an unresolved homogeneous dice contribution.
+// Dice is unsigned notation; Subtract records the operator without encoding a
+// sign into the pool or producing a face before the owning roll path evaluates it.
+type DiceContribution struct {
+	Source   RollSource
+	Dice     string
+	Subtract bool
+}
+
+// RollKind identifies the operation whose conditions are being consulted.
+type RollKind string
+
+const (
+	// RollKindAttack identifies an attack roll.
+	RollKindAttack RollKind = "attack"
+	// RollKindSavingThrow identifies a saving throw.
+	RollKindSavingThrow RollKind = "saving_throw"
+)
+
+// DescribeRollContributionsInput asks for condition contributions to one roll kind.
+type DescribeRollContributionsInput struct {
+	Kind RollKind
+}
+
+// DescribeRollContributionsOutput contains unresolved selected contributions.
+type DescribeRollContributionsOutput struct {
+	Contributions []DiceContribution
+}
+
+// RollConditionOwner exposes the selected contributions from a recipient's
+// current ordered condition collection.
+type RollConditionOwner interface {
+	DescribeRollContributions(
+		input *DescribeRollContributionsInput,
+	) (*DescribeRollContributionsOutput, error)
+}
+
+// RollContributionMetadataOutput declares whether a provider applies to a roll
+// kind and the stacking group in which only the oldest provider contributes.
+type RollContributionMetadataOutput struct {
+	Applicable bool
+	Group      string
+}
+
+// RollContributionProvider is the optional capability implemented by a
+// condition that can describe a dice contribution. The condition owns both its
+// applicability/stacking rule and the resulting description.
+type RollContributionProvider interface {
+	RollContributionMetadata(input *DescribeRollContributionsInput) RollContributionMetadataOutput
+	DescribeRollContributions(
+		input *DescribeRollContributionsInput,
+	) (*DescribeRollContributionsOutput, error)
 }
 
 // DiceReroll records one ordered replacement of a die face and its source.
@@ -124,9 +181,10 @@ func cloneDiceRerolls(rerolls []DiceReroll) []DiceReroll {
 
 func cloneRollSource(source RollSource) RollSource {
 	return RollSource{
-		Ref:   cloneRef(source.Ref),
-		Name:  source.Name,
-		Label: source.Label,
+		Ref:      cloneRef(source.Ref),
+		Name:     source.Name,
+		Label:    source.Label,
+		SourceID: source.SourceID,
 	}
 }
 

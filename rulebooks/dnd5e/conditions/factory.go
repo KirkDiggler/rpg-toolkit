@@ -418,10 +418,11 @@ func createViciousMockery(
 // spell's own duration; Children are the addresses it already left behind,
 // present for a hold rebuilt rather than freshly cast.
 type concentratingConfig struct {
-	SpellRef  string                 `json:"spell_ref"`
-	SpellName string                 `json:"spell_name"`
-	TurnEnds  int                    `json:"turn_ends"`
-	Children  []dnd5eEvents.ChildRef `json:"children"`
+	SpellRef         string                         `json:"spell_ref"`
+	SpellName        string                         `json:"spell_name"`
+	TurnEnds         int                            `json:"turn_ends"`
+	SkipFirstTurnEnd bool                           `json:"skip_first_turn_end"`
+	Children         []dnd5eEvents.ConditionAddress `json:"children"`
 }
 
 // createConcentrating creates a concentrating condition from config. The member
@@ -451,7 +452,18 @@ func createConcentrating(config json.RawMessage, memberID, sourceRef string) (*C
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "concentrating config requires a positive 'turn_ends'")
 	}
 
-	condition := NewConcentratingCondition(memberID, spellRef, cfg.SpellName, cfg.TurnEnds)
+	sourceID := ""
+	if spellRef == refs.Spells.Bane().String() {
+		sourceID = memberID
+	}
+	condition := NewConcentratingConditionWithInput(NewConcentratingConditionInput{
+		MemberID:         memberID,
+		SourceID:         sourceID,
+		SpellRef:         spellRef,
+		SpellName:        cfg.SpellName,
+		TurnEnds:         cfg.TurnEnds,
+		SkipFirstTurnEnd: cfg.SkipFirstTurnEnd,
+	})
 	condition.Children = cfg.Children
 	return condition, nil
 }

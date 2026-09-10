@@ -49,6 +49,7 @@ var (
 	// Bard cantrips (rpg-project#405): what the two cast cantrips deliver.
 	conditionTrueStrike     = &core.Ref{Module: Module, Type: TypeConditions, ID: "true_strike"}
 	conditionViciousMockery = &core.Ref{Module: Module, Type: TypeConditions, ID: "vicious_mockery"}
+	conditionBaned          = &core.Ref{Module: Module, Type: TypeConditions, ID: "baned"}
 
 	// Concentration (rpg-project#407): the owner on the caster's sheet that
 	// holds what its spell left behind.
@@ -152,6 +153,9 @@ func (n conditionsNS) TrueStrike() *core.Ref { return conditionTrueStrike }
 // ViciousMockery returns the ref for the ViciousMockeryCondition, applied to
 // the creature that failed its save against Vicious Mockery.
 func (n conditionsNS) ViciousMockery() *core.Ref { return conditionViciousMockery }
+
+// Baned returns the ref for the source-qualified penalty imposed by Bane.
+func (n conditionsNS) Baned() *core.Ref { return conditionBaned }
 
 // Concentrating returns the ref for the ConcentratingCondition, applied to the
 // CASTER of a concentration spell and holding the addresses of the effects

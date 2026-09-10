@@ -28,11 +28,12 @@ const (
 )
 
 type longRestCase struct {
-	data          json.RawMessage
-	ownerID       string
-	expectedRef   *core.Ref
-	outcome       longRestOutcome
-	removalReason string
+	data             json.RawMessage
+	ownerID          string
+	expectedRef      *core.Ref
+	expectedSourceID string
+	outcome          longRestOutcome
+	removalReason    string
 }
 
 // longRestCases is deliberately authored independently of conditionLoaders.
@@ -262,6 +263,18 @@ var longRestCases = map[string]longRestCase{
 		outcome:       longRestRemove,
 		removalReason: "long rest",
 	},
+	refs.Conditions.Baned().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"baned"},
+			"member_id":"member-1","source_id":"bard-1",
+			"source_ref":{"module":"dnd5e","type":"spells","id":"bane"}
+		}`),
+		ownerID:          "member-1",
+		expectedRef:      refs.Conditions.Baned(),
+		expectedSourceID: "bard-1",
+		outcome:          longRestRemove,
+		removalReason:    "long rest",
+	},
 	refs.Conditions.TrueStrike().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"true_strike"},
@@ -366,6 +379,7 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 				require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
 					MemberID:     testCase.ownerID,
 					ConditionRef: testCase.expectedRef.String(),
+					SourceID:     testCase.expectedSourceID,
 					Reason:       testCase.removalReason,
 				}}, removed)
 				require.Empty(t, changed)

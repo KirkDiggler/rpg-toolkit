@@ -190,6 +190,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return cc, nil
 	},
+	refs.Conditions.Baned().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		baned := &BanedCondition{}
+		if err := baned.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load baned condition")
+		}
+		return baned, nil
+	},
 	refs.Spells.Shield().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		sh := &ShieldSpellCondition{}
 		if err := sh.loadJSON(data); err != nil {
