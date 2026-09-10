@@ -871,3 +871,55 @@ func (s *CastSuite) TestBladeWardCastsWithNoTargetAndRecordsTheCasterAsItsRecipi
 	s.Equal([]string{"bard"}, body.Targets,
 		"one recipient, and it is the caster -- an empty list would have nowhere to hang the ward")
 }
+
+// TestThunderclapIsOfferedAsAnAreaWithNobodyToAimAt.
+//
+// The first offer whose selector shape is neither "pick a creature" nor "this
+// lands on you". An area cast prompts for nobody the way a self cast does, and
+// carries no candidates — but it is deliberately NOT TargetNone, because that
+// value already means the spell lands on the caster and this one lands on
+// everyone but.
+func (s *CastSuite) TestThunderclapIsOfferedAsAnAreaWithNobodyToAimAt() {
+	s.scene(castingBard("bard", spells.Thunderclap), 1)
+
+	row := s.castRow(spells.Thunderclap)
+	s.Equal(session.TargetArea, row.TargetKind, "the engine decides who it catches, not the player")
+	s.Empty(row.Candidates, "there is nothing to choose between")
+	s.True(row.Available, "and casting it into an empty room would still be legal")
+	s.Zero(row.MinTargets)
+	s.Zero(row.MaxTargets)
+}
+
+// TestThunderclapCatchesTheCreatureStandingInIt is the whole capability, end to
+// end through the verb: content declared a shape, the composition said who was
+// standing in it, and the cast resolved against them — with the player naming
+// nobody at any point.
+func (s *CastSuite) TestThunderclapCatchesTheCreatureStandingInIt() {
+	s.scene(castingBard("bard", spells.Thunderclap), 1, 3, 4)
+	before := s.storedSkeleton()
+	s.Require().Positive(before, "the scene starts with a skeleton worth hitting")
+
+	row := s.castRow(spells.Thunderclap)
+	out, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: row.ID,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+
+	s.Less(s.storedSkeleton(), before,
+		"the skeleton was standing in the burst and took it, without ever being named")
+}
+
+// TestAnAreaCastRefusesACallerThatNamesSomebody — the recipients are derived,
+// so a populated target is a client believing it aimed a spell that offers no
+// aim. Refused rather than ignored, exactly as a self cast refuses one.
+func (s *CastSuite) TestAnAreaCastRefusesACallerThatNamesSomebody() {
+	s.scene(castingBard("bard", spells.Thunderclap), 1)
+
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", Target: "skeleton",
+		DeclarationID: s.castRow(spells.Thunderclap).ID,
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadCast)
+}
