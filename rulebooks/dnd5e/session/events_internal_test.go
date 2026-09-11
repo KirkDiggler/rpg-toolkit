@@ -1190,6 +1190,28 @@ func TestASightingBodyCarriesBothHalvesIndependently(t *testing.T) {
 	}
 }
 
+// TestASightingCarriesTheChangedHalf pins the third list: members still in
+// view whose appearance moved under the recipient. It travels beside the two
+// transitions rather than instead of them, because one pass can legitimately
+// carry all three.
+func TestASightingCarriesTheChangedHalf(t *testing.T) {
+	_, body := decodeBeat([]byte(`{"beat":"sighted","changed":["goblin"]}`))
+	sighted, ok := body.(SightedBody)
+	require.True(t, ok)
+	require.Equal(t, []string{"goblin"}, sighted.Changed)
+	require.Empty(t, sighted.Gained, "nobody arrived — it was already in view")
+	require.Empty(t, sighted.Lost)
+
+	_, body = decodeBeat([]byte(
+		`{"beat":"sighted","gained":["orc"],"lost":["wolf"],"changed":["goblin"]}`))
+	all, ok := body.(SightedBody)
+	require.True(t, ok)
+	require.Equal(t, []string{"orc"}, all.Gained)
+	require.Equal(t, []string{"wolf"}, all.Lost)
+	require.Equal(t, []string{"goblin"}, all.Changed,
+		"three independent lists, and one pass can carry all of them")
+}
+
 // TestASightingThatNamesNobodyIsRefused pins bodyFor's guard.
 //
 // The composition appends this beat only because something changed, and omits
@@ -1202,6 +1224,7 @@ func TestASightingThatNamesNobodyIsRefused(t *testing.T) {
 	for _, payload := range []string{
 		`{"beat":"sighted"}`,
 		`{"beat":"sighted","gained":[],"lost":[]}`,
+		`{"beat":"sighted","gained":[],"lost":[],"changed":[]}`,
 	} {
 		kind, body := decodeBeat([]byte(payload))
 		require.Equal(t, EventSighted, kind, "the kind is still understood")

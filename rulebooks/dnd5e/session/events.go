@@ -586,13 +586,15 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		// body says so rather than handing a client an empty change to
 		// act on.
 		var p struct {
-			Gained []string `json:"gained"`
-			Lost   []string `json:"lost"`
+			Gained  []string `json:"gained"`
+			Lost    []string `json:"lost"`
+			Changed []string `json:"changed"`
 		}
-		if json.Unmarshal(payload, &p) != nil || (len(p.Gained) == 0 && len(p.Lost) == 0) {
+		if json.Unmarshal(payload, &p) != nil ||
+			(len(p.Gained) == 0 && len(p.Lost) == 0 && len(p.Changed) == 0) {
 			return nil
 		}
-		return SightedBody{Gained: p.Gained, Lost: p.Lost}
+		return SightedBody{Gained: p.Gained, Lost: p.Lost, Changed: p.Changed}
 	default:
 		// EventSceneOpened, EventTick: no body member exists for these — see
 		// EventBody's own doc.
