@@ -40,6 +40,7 @@ type sighting struct {
 	audience []encounter.MemberID
 	gained   []string
 	lost     []string
+	changed  []string
 	seq      uint64
 }
 
@@ -55,16 +56,18 @@ func (s *SightedBeatTestSuite) sightingsOf(
 	out := make([]sighting, 0)
 	for _, entry := range story {
 		var beat struct {
-			Beat   string   `json:"beat"`
-			Gained []string `json:"gained"`
-			Lost   []string `json:"lost"`
+			Beat    string   `json:"beat"`
+			Gained  []string `json:"gained"`
+			Lost    []string `json:"lost"`
+			Changed []string `json:"changed"`
 		}
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
 		if beat.Beat != encounter.BeatSighted {
 			continue
 		}
 		out = append(out, sighting{
-			audience: entry.Audience, gained: beat.Gained, lost: beat.Lost, seq: entry.Seq,
+			audience: entry.Audience, gained: beat.Gained, lost: beat.Lost,
+			changed: beat.Changed, seq: entry.Seq,
 		})
 	}
 	return out
@@ -439,4 +442,236 @@ func (s *SightedBeatTestSuite) TestThePerceptItselfIsOrdered() {
 	for i := 0; i < 40; i++ {
 		s.Equal(first, seen(), "run %d built a differently ordered percept", i)
 	}
+}
+
+// open is the shared set for the declared-change cases: the two of them clear
+// of the wall's span, watching each other from the opening frame.
+func (s *SightedBeatTestSuite) open() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: wallRoom(),
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// sightingsAfter reads the sighted beats appended after the given seq, so a
+// case can look at what ITS verb produced rather than at first light's.
+func (s *SightedBeatTestSuite) sightingsAfter(
+	enc *encounter.Encounter, audience encounter.MemberID, after uint64,
+) []sighting {
+	s.T().Helper()
+	out := make([]sighting, 0)
+	for _, beat := range s.sightingsOf(enc, audience) {
+		if beat.seq > after {
+			out = append(out, beat)
+		}
+	}
+	return out
+}
+
+// lastSeq is the highest seq in one member's story, which is where a case
+// draws the line between setup and the verb under test.
+func (s *SightedBeatTestSuite) lastSeq(enc *encounter.Encounter, audience encounter.MemberID) uint64 {
+	s.T().Helper()
+	story, err := enc.Story(&encounter.StoryInput{Audience: audience})
+	s.Require().NoError(err)
+	if len(story) == 0 {
+		return 0
+	}
+	return story[len(story)-1].Seq
+}
+
+// A WATCHER IS TOLD. The plain case the verb exists for: somebody's gear
+// changed on a sheet this module cannot read, and the person looking at them
+// learns their own picture is stale.
+func (s *SightedBeatTestSuite) TestARecheckTellsWhoeverCanSeeTheSubject() {
+	enc := s.open()
+	mark := s.lastSeq(enc, alice)
+
+	_, err := enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().NoError(err)
+
+	told := s.sightingsAfter(enc, alice, mark)
+	s.Require().Len(told, 1, "one beat, for the one thing she is owed")
+	s.Equal([]string{string(goblin)}, told[0].changed)
+	s.Empty(told[0].gained, "nobody arrived — she could already see it")
+	s.Empty(told[0].lost)
+	s.Equal([]encounter.MemberID{alice}, told[0].audience)
+}
+
+// NOBODY ELSE IS. The subject is not in their own percept, so a member never
+// hears that they themselves changed — they are the one who did it.
+func (s *SightedBeatTestSuite) TestTheSubjectIsNotToldAboutItself() {
+	enc := s.open()
+	mark := s.lastSeq(enc, goblin)
+
+	_, err := enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().NoError(err)
+
+	s.Empty(s.sightingsAfter(enc, goblin, mark),
+		"it changed its own hands; it does not need telling what is in them")
+}
+
+// A DECLARED CHANGE NOBODY CAN SEE IS SILENCE. The wall stands between them,
+// so the re-look happens and appends nothing at all — the scoping is per
+// observer, not a broadcast of the fact.
+func (s *SightedBeatTestSuite) TestARecheckNobodyCanSeeSaysNothing() {
+	enc := s.blocked()
+	mark := s.lastSeq(enc, alice)
+
+	_, err := enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().NoError(err)
+
+	s.Empty(s.sightingsAfter(enc, alice, mark), "she cannot see it, so there is no news for her")
+}
+
+// THE GHOST IS NOT TOLD, and this is the case the whole snapshot model exists
+// to protect. Alice holds the goblin as a memory of the moment she last saw
+// it. If a re-look reached her, her ghost would acquire news she never
+// witnessed — which is exactly the leak rpg-toolkit#1615 asks us not to make
+// while closing it.
+func (s *SightedBeatTestSuite) TestAGhostHolderIsNotTold() {
+	enc := s.blocked()
+
+	// Out past the wall to meet it, then back behind the wall so what she
+	// holds is a ghost.
+	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(6, 2)})
+	s.Require().NoError(err)
+	mark := s.lastSeq(enc, alice)
+
+	_, err = enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().NoError(err)
+
+	s.Empty(s.sightingsAfter(enc, alice, mark),
+		"her picture of it is a memory, and a memory does not get updates")
+}
+
+// ONE PIECE OF NEWS, SAID ONCE. A subject who changed while out of sight and
+// is walked back into view is a re-acquisition: gained already says "look
+// again", so changed must not say it a second time in the same beat.
+func (s *SightedBeatTestSuite) TestAReturningSubjectIsGainedAndNotAlsoChanged() {
+	enc := s.blocked()
+
+	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(6, 2)})
+	s.Require().NoError(err)
+	mark := s.lastSeq(enc, alice)
+
+	// It changes while she cannot see it -- silence, as above -- and then she
+	// walks back out and re-acquires it.
+	_, err = enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
+	s.Require().NoError(err)
+
+	told := s.sightingsAfter(enc, alice, mark)
+	s.Require().Len(told, 1, "the change said nothing; the return is the only beat")
+	s.Equal([]string{string(goblin)}, told[0].gained)
+	s.Empty(told[0].changed, "gained already means look again")
+}
+
+// AN ORDINARY REFRESH DECLARES NOTHING, so no other verb can produce a
+// changed list by accident. She steps in front of it and the beat is a plain
+// first contact.
+func (s *SightedBeatTestSuite) TestAnOrdinaryVerbNeverReportsAChange() {
+	enc := s.blocked()
+
+	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
+	s.Require().NoError(err)
+
+	told := s.sightingsOf(enc, alice)
+	s.Require().Len(told, 1)
+	s.Empty(told[0].changed, "a step declares nothing about anybody's sheet")
+
+	raw := s.sightedKeys(enc, alice)
+	s.Require().Len(raw, 1)
+	s.NotContains(raw[0], "changed", "omitted, not empty")
+}
+
+// The door: nil input, an empty list, a stranger, and a scene that is over.
+func (s *SightedBeatTestSuite) TestRecheckRefusesWhatItCannotDo() {
+	enc := s.open()
+
+	_, err := enc.Recheck(nil)
+	s.Require().ErrorIs(err, encounter.ErrNilInput)
+
+	_, err = enc.Recheck(&encounter.RecheckInput{})
+	s.Require().ErrorIs(err, encounter.ErrNoMember, "a re-look of nobody is a caller mistake")
+
+	_, err = enc.Recheck(&encounter.RecheckInput{
+		Members: []encounter.MemberID{goblin, "a-stranger"},
+	})
+	s.Require().ErrorIs(err, encounter.ErrNotMember,
+		"one stranger beside a member refuses the whole call, not half of it")
+
+	// ...and the refusal was total: the member named beside the stranger got
+	// no re-look of their own (R5 atomicity).
+	s.Empty(s.sightingsAfter(enc, alice, s.lastSeq(enc, alice)))
+
+	_, err = enc.End(&encounter.EndInput{Ending: "withdrawn"})
+	s.Require().NoError(err)
+	_, err = enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().ErrorIs(err, encounter.ErrClosed, "the run is over; nobody is watching anybody")
+}
+
+// TestAReacquisitionInTheSAMEPassIsGainedOnly is the narrow case the
+// exclusion is actually for, and the one a walk cannot stage: a subject who
+// is BOTH declared changed AND re-acquired on the same refresh.
+//
+// Staged through the sight capability rather than by walking, because that is
+// the only thing that can move a subject in and out of view without a verb of
+// its own. Reach is asked fresh every refresh (see sightList), so shrinking it
+// fades the goblin and restoring it brings the goblin back — on a pass that is
+// also carrying the declaration.
+//
+// Both facts are true of the goblin on that pass. gained already means "look
+// again", so the beat must say it once.
+func (s *SightedBeatTestSuite) TestAReacquisitionInTheSamePassIsGainedOnly() {
+	reach := &sightList{reach: map[encounter.MemberID]int{}, fallback: 60}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     reach,
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: wallRoom(),
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(s.sightingsOf(enc, alice), 1, "she sees it at first light")
+
+	// Her light fails. The re-look fades the goblin for her.
+	reach.reach[alice] = 1
+	_, err = enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().NoError(err)
+	dark := s.sightingsOf(enc, alice)
+	s.Require().Len(dark, 2)
+	s.Equal([]string{string(goblin)}, dark[1].lost, "it went dark, so she lost it")
+	s.Empty(dark[1].changed, "and a subject she cannot see is not one she is told about")
+
+	// Her light returns on the very pass that declares the goblin changed.
+	reach.reach[alice] = 60
+	mark := s.lastSeq(enc, alice)
+	_, err = enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{goblin}})
+	s.Require().NoError(err)
+
+	told := s.sightingsAfter(enc, alice, mark)
+	s.Require().Len(told, 1)
+	s.Equal([]string{string(goblin)}, told[0].gained, "it came back")
+	s.Empty(told[0].changed,
+		"and it is not ALSO reported as changed — gained already means look again")
 }
