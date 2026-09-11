@@ -125,6 +125,22 @@ var (
 	// declared (0,0).
 	ErrBadPlacement = errors.New("bad placement")
 
+	// ErrBadReach is returned when [Encounter.MembersWithin] is handed a
+	// negative reach.
+	//
+	// REFUSED RATHER THAN ANSWERED EMPTY, though answering empty would be
+	// arithmetically honest: no distance is less than a negative number, so a
+	// backwards footprint catches nobody either way. But "nobody was standing
+	// there" and "you asked a question that cannot have an answer" are
+	// different facts, and a caller that converted feet to cells and came out
+	// below zero has content that is wrong. Returning the same empty roster a
+	// real miss returns would hide that, and a spell would quietly do nothing
+	// for the rest of its life.
+	//
+	// Zero is NOT refused: a zero reach is the origin cell alone, which is a
+	// footprint somebody could mean.
+	ErrBadReach = errors.New("negative reach")
+
 	// ErrRegionEmpty is returned when a region declares no cells
 	// (rpg-project#256). A region IS its cells — the floor is nothing but
 	// their union — so one with none is not a small room, it is a name with
