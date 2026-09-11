@@ -836,6 +836,34 @@ type Grid interface {
 }
 ```
 
+#### Distance Field
+
+`Field` floods outward from one or more sources over `Grid.GetNeighbors`,
+Dijkstra by `Cost`, and answers with the distance and predecessor of every
+cell it reached. Reach is a field with a `Limit`, a path is `PathTo` on the
+same field, and a blast that spreads around corners is a field under a
+walls-only predicate. What a cell *means* is not spatial's: it reaches the
+field through `Passable` and `Cost`.
+
+```go
+func Field(g Grid, in FieldInput) (FieldOutput, error)
+
+type FieldInput struct {
+    Sources  []Position                   // flood from all of these at once
+    Passable func(from, to Position) bool // required; nil fails closed
+    Cost     func(from, to Position) int  // nil means one per step
+    Limit    int                          // stop past this distance; 0 = unbounded
+}
+
+type FieldOutput struct {
+    Dist map[Position]int      // every reached cell, sources at 0
+    Prev map[Position]Position // the cell each was entered from; absent for sources
+}
+
+// PathTo reads the field backwards: the path excludes the source and ends at goal.
+func (f FieldOutput) PathTo(goal Position) ([]Position, bool)
+```
+
 #### Room Interface
 ```go
 type Room interface {

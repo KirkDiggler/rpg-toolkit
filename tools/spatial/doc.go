@@ -12,7 +12,7 @@
 //   - Grid support (square, offset hex, axial hex, gridless)
 //   - Room-based spatial organization
 //   - Collision detection and spatial queries
-//   - Path validation (not pathfinding algorithms)
+//   - Path validation, and distance fields over a grid (Field, PathTo)
 //   - Multi-room orchestration and connections
 //   - Distance calculations and area queries
 //   - Entity position tracking
@@ -20,7 +20,9 @@
 // Non-Goals:
 //   - Movement rules: Speed, difficult terrain are game-specific
 //   - Line of sight rules: Cover/concealment mechanics belong in games
-//   - Pathfinding algorithms: AI navigation belongs in behavior package
+//   - Cell meaning: what a cell means (blocked, costly, burning) is the
+//     game's; spatial answers where and how far, and Field is the search
+//     over that
 //   - Interaction ranges: Their meanings and effects are game-specific
 //   - 3D positioning: This is explicitly 2D only
 //   - Movement costs: Action economy is game-specific
