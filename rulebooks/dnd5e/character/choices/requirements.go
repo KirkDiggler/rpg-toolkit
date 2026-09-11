@@ -427,13 +427,19 @@ func getBardRequirements() *Requirements {
 			Label:   "Choose 2 cantrips",
 		},
 		// The supported acquisition catalog is intentionally narrower than
-		// the factual four-known-spells class progression. Bane is the one
-		// levelled spell this slice offers and can carry forward to casting.
+		// the factual four-known-spells class progression. These are the
+		// levelled spells this build can carry forward to casting: every
+		// option here compiles to a cast profile, because an option that
+		// produced nothing would be a choice with nothing behind it.
+		//
+		// Count stays at one. Which spells are OFFERED is a fact about what
+		// this build can do; how many a level-1 bard picks is a fact about the
+		// class, and the second is not free to move because the first did.
 		Spellbook: &SpellbookRequirement{
 			ID:         BardSpells1,
 			Count:      1,
 			SpellLevel: 1,
-			Options:    []spells.Spell{spells.Bane},
+			Options:    []spells.Spell{spells.Bane, spells.Thunderwave},
 			Label:      "Choose 1 supported 1st-level spell",
 		},
 

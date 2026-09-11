@@ -253,3 +253,66 @@ func (s *CastContentSuite) TestEveryCastableCantripHasAValidDefinition() {
 		s.Empty(definition.Cost.Pools, "%s is a cantrip", id)
 	}
 }
+
+// TestThunderwaveDeclaresACubeAndAPush is the first content in this build that
+// MOVES a creature that did not choose to move.
+//
+// Thunderclap proved a cast can say WHERE and let the engine work out WHO.
+// This one proves a cast can say what happens to them afterwards without
+// naming a single cell: a policy, a budget, and the layer that owns the map
+// deciding where the body actually stops.
+func (s *CastContentSuite) TestThunderwaveDeclaresACubeAndAPush() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{
+		Spell: spells.Thunderwave, SpellSaveDC: 13,
+	})
+	s.Require().NotNil(definition, "a spell missing from the byID map mints a nil definition, silently")
+	s.Equal(*refs.Spells.Thunderwave(), definition.Ref)
+	s.Require().NoError(definition.Validate())
+
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, definition.Cost.Pools[resources.SpellSlotLevel1], "a levelled spell spends a level-1 slot")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(actions.CastTargetArea, profile.Target)
+	s.Zero(profile.MinTargets, "the caller names nobody")
+	s.Zero(profile.MaxTargets)
+
+	s.Require().NotNil(profile.Area)
+	s.Equal(actions.AreaBox, profile.Area.Footprint.Shape)
+	s.Equal(spells.ThunderwaveCubeFeet, profile.Area.Footprint.SizeFeet)
+	s.Equal(actions.AreaOriginCasterEdge, profile.Area.Footprint.Origin,
+		`"a 15-foot cube originating from you" — the caster is never under it`)
+	s.Equal(actions.AreaCatchesOthers, profile.Area.Catches)
+
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.CON}, profile.Save.Abilities)
+	s.Equal(13, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess, "half on a save does not exist yet; the row flips when it does")
+
+	s.Require().Len(profile.Damage, 1)
+	s.Equal(damage.Thunder, profile.Damage[0].Type)
+	s.Equal(spells.ThunderwaveDamage, profile.Damage[0].Dice)
+
+	s.Require().NotNil(profile.Move)
+	s.Equal(actions.MoveLine, profile.Move.Policy, "straight away from the caster; a shove looks for nothing better")
+	s.Equal(spells.ThunderwavePushCells, profile.Move.Cells)
+	s.False(profile.Move.Speed, "a fixed ten feet, not the mover's own legs")
+	s.Equal(actions.PaysNothing, profile.Move.Pays, "being shoved costs the creature nothing")
+	s.False(profile.Move.Provokes, "and fires nobody's reaction on the way")
+}
+
+// TestBaneAndThunderwaveSpendTheSameSlot — the slot cost is a function of the
+// spell's LEVEL and nothing else, so two unrelated level-1 spells declare it
+// through one call rather than through two hand-written profiles that could
+// drift apart.
+func (s *CastContentSuite) TestBaneAndThunderwaveSpendTheSameSlot() {
+	for _, id := range []spells.Spell{spells.Bane, spells.Thunderwave} {
+		definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
+		s.Require().NotNil(definition, "%s", id)
+		s.Require().NotNil(definition.Cost, "%s", id)
+		s.Equal(1, definition.Cost.Pools[resources.SpellSlotLevel1], "%s", id)
+		s.Len(definition.Cost.Pools, 1, "%s spends one pool and no other", id)
+	}
+}

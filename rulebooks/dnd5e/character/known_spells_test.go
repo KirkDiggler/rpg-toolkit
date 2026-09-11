@@ -129,7 +129,11 @@ func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndBane() {
 	s.Equal(choices.BardSpells1, requirements.Spellbook.ID)
 	s.Equal(1, requirements.Spellbook.Count)
 	s.Equal(1, requirements.Spellbook.SpellLevel)
-	s.Equal([]spells.Spell{spells.Bane}, requirements.Spellbook.Options)
+	s.Contains(requirements.Spellbook.Options, spells.Bane)
+	s.Contains(requirements.Spellbook.Options, spells.Thunderwave,
+		"the second levelled spell this build can cast, and the first that moves anybody")
+	s.Greater(len(requirements.Spellbook.Options), requirements.Spellbook.Count,
+		"so the levelled pick is a real choice too")
 	s.NotNil(requirements.Skills)
 	s.NotNil(requirements.Tools)
 }

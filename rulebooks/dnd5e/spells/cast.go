@@ -74,6 +74,30 @@ const ThunderclapRadiusFeet = 5
 // on cantrip damage above).
 const ThunderclapDamage = "1d6"
 
+// ThunderwaveCubeFeet is the edge of Thunderwave's cube, and its range.
+//
+// One constant fills both fields for Thunderclap's reason: the cube
+// originates from the caster, so how far it reaches and how far it can be
+// aimed are the same number. The cube is anchored on the caster's own edge
+// rather than centred on them ([actions.AreaOriginCasterEdge]), so it extends
+// this far AWAY and the caster never stands in their own wave.
+const ThunderwaveCubeFeet = 15
+
+// ThunderwaveDamage is the thunder damage a failed save takes when Thunderwave
+// is cast from a first-level slot.
+//
+// Unscaled by slot level, as every cantrip here ships unscaled: nothing in the
+// cast path reads the slot a cast was paid from, and upcasting is out of this
+// slice.
+const ThunderwaveDamage = "2d8"
+
+// ThunderwavePushCells is how far a failed save is shoved: ten feet, two cells.
+//
+// Cells rather than feet because it is a MOVE budget, and the thing that walks
+// it counts cells. The footprint beside it is in feet because it is a shape
+// content authors against no grid at all — the two units are the two questions.
+const ThunderwavePushCells = 2
+
 // SacredFlameRangeFeet is Sacred Flame's range in the 2014 Basic Rules.
 const SacredFlameRangeFeet = 60
 
@@ -141,10 +165,17 @@ func cantripCost() *combat.SpendProfile {
 	}
 }
 
-func baneCost() *combat.SpendProfile {
+// slotCost is what a levelled spell costs: an action and one slot of the named
+// pool.
+//
+// A PARAMETER RATHER THAN A CONSTANT because the pool is a property of the
+// spell's level, and the two level-1 spells this build can cast would otherwise
+// hand-write the same map twice and be free to drift apart. It was baneCost()
+// while Bane was the only one; the second customer made the level the argument.
+func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 	return &combat.SpendProfile{
 		Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
-		Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
+		Pools: map[coreResources.ResourceKey]int{pool: 1},
 	}
 }
 
@@ -154,7 +185,7 @@ func baneCost() *combat.SpendProfile {
 var castContent = map[Spell]castProfileBuilder{
 	Bane: {
 		name: "Bane",
-		cost: baneCost(),
+		cost: slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet:  BaneRangeFeet,
@@ -207,6 +238,60 @@ var castContent = map[Spell]castProfileBuilder{
 					Recurrence: saves.RecurrenceNone,
 				},
 				Damage: []damage.Damage{{Dice: ThunderclapDamage, Type: damage.Thunder}},
+			}
+		},
+	},
+	Thunderwave: {
+		name: "Thunderwave",
+		cost: slotCost(resources.SpellSlotLevel1),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				// The range and the cube's edge are the same number: a wave
+				// that originates from the caster reaches exactly as far as it
+				// can be aimed. RangeFeet is declared rather than left at zero
+				// because CastProfile.Validate requires a positive one — the
+				// range is what a UI draws, which is also why Blade Ward
+				// declares the caster's own square.
+				RangeFeet: ThunderwaveCubeFeet,
+				Target:    actions.CastTargetArea,
+				Area: &actions.CastArea{
+					Footprint: actions.Footprint{
+						Shape:    actions.AreaBox,
+						SizeFeet: ThunderwaveCubeFeet,
+						// Anchored on the caster's EDGE, not centred on them.
+						// A cube centred on the caster would put its first
+						// five feet on the caster's own square; this one
+						// stands entirely in front of them.
+						Origin: actions.AreaOriginCasterEdge,
+					},
+					// "each creature in a 15-foot cube originating from you" —
+					// the caster is not in the cube at all, and the projection
+					// still says so for the same reason Thunderclap's does.
+					Catches: actions.AreaCatchesOthers,
+				},
+				Save: &saves.SaveGate{
+					Abilities: []abilities.Ability{abilities.CON},
+					DC:        saves.DCStatic(spellSaveDC),
+					// RAW is half on a success. Half does not exist in this
+					// stack yet — it is rpg-project#414's to land — and we are
+					// not bound to the letter while it is missing. Negated is
+					// the honest reading of what the engine can do today, and
+					// this is content: the row flips to saves.Half with no
+					// code change here the moment half resolves.
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage: []damage.Damage{{Dice: ThunderwaveDamage, Type: damage.Thunder}},
+				// The push, and every field that makes it the least permissive
+				// directive there is comes from a zero value: it pays nothing
+				// and provokes nothing. Content says "straight away from me,
+				// two cells"; which cells those actually are is read from the
+				// map by the layer that owns it, so a wave stops at a pillar
+				// without this profile knowing a pillar exists.
+				Move: &actions.CastMove{
+					Policy: actions.MoveLine,
+					Cells:  ThunderwavePushCells,
+				},
 			}
 		},
 	},
