@@ -290,8 +290,18 @@ func (m *Manager) strikeForWindow(ctx context.Context, scope *writeScope, payloa
 	if err != nil {
 		return translate(err)
 	}
+	// THE FROZEN STEP AS IT WAS ANNOUNCED, and that is a chosen walk by
+	// construction: a forced step suppresses the opportunity attacks, so it
+	// never reaches a player reactor and never opens a window for one to
+	// answer. The day a directive both forces and provokes (rpg-project#431's
+	// deferred Dissonant Whispers), windowPayload gains the two fields with
+	// it — inventing them now would store a cause nothing can produce.
 	return moverSeam{m: m, scope: scope}.offerStep(
-		ctx, scope.enc, encounter.MemberID(payload.Mover), payload.From, payload.To, roster,
+		ctx, scope.enc,
+		encounter.MoveStep{
+			Mover: encounter.MemberID(payload.Mover), From: payload.From, To: payload.To,
+		},
+		roster,
 		&reactionAttacks{only: payload.Reactor, definition: payload.Definition},
 	)
 }

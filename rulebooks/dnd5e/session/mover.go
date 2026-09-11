@@ -67,7 +67,7 @@ var reactionName = map[string]string{
 // nothing reacted to returns nil having recorded nothing, which is the ordinary
 // case.
 func (s moverSeam) Move(
-	ctx context.Context, enc *encounter.Encounter, mover encounter.MemberID, from, to spatial.Position,
+	ctx context.Context, enc *encounter.Encounter, step encounter.MoveStep,
 ) error {
 	roster, err := enc.Members()
 	if err != nil {
@@ -85,9 +85,9 @@ func (s moverSeam) Move(
 	// to a driven monster turn, and a wandering placement is neither driven
 	// nor in a fight, so it keeps rung 2's behaviour rather than freezing the
 	// table on a stroll.
-	reactions := &reactionAttacks{askPlayers: moverKind(roster, mover) == string(KindMonster)}
+	reactions := &reactionAttacks{askPlayers: moverKind(roster, step.Mover) == string(KindMonster)}
 
-	if err := s.offerStep(ctx, enc, mover, from, to, roster, reactions); err != nil {
+	if err := s.offerStep(ctx, enc, step, roster, reactions); err != nil {
 		return err
 	}
 
@@ -97,7 +97,7 @@ func (s moverSeam) Move(
 	// bit whether or not the fighter is still deciding, and losing that beat
 	// to the pause would be a swing nobody can account for.
 	if len(reactions.asked) > 0 {
-		return s.pose(from, to, mover, reactions.asked)
+		return s.pose(step.From, step.To, step.Mover, reactions.asked)
 	}
 	return nil
 }
@@ -115,8 +115,8 @@ func (s moverSeam) Move(
 // for exactly one of them. Everything else here — the cast, the machine, the
 // beats, the save order — is identical either way.
 func (s moverSeam) offerStep(
-	ctx context.Context, enc *encounter.Encounter, mover encounter.MemberID,
-	from, to spatial.Position, roster []encounter.Member, reactions *reactionAttacks,
+	ctx context.Context, enc *encounter.Encounter, step encounter.MoveStep,
+	roster []encounter.Member, reactions *reactionAttacks,
 ) error {
 	// THE WALKER'S OWN READIED SHEET, when this walk has one. A player's walk
 	// is charged for before the first cell ([Manager.Move]), and a reaction to
@@ -132,20 +132,25 @@ func (s moverSeam) offerStep(
 
 	reactions.ctx = ctx
 	reactions.enc = enc
-	reactions.mover = mover
+	reactions.mover = step.Mover
 	reactions.sheets = sheetsByID(cast)
 	reactions.answered = map[string]combatActions.Definition{}
 
 	machine, err := resolution.NewMovement(&resolution.MovementInput{
-		Mover:     mover,
-		MoverKind: moverKind(roster, mover),
-		From:      from,
-		To:        to,
+		Mover:     step.Mover,
+		MoverKind: moverKind(roster, step.Mover),
+		From:      step.From,
+		To:        step.To,
 		Reactions: reactions,
 		Roller:    &diceSeam{roller: s.m.dice},
+		// THE ONE THING THIS SEAM ADDS TO THE STEP. The composition below
+		// knows the creature did not choose to move and says so; the machine
+		// above knows what an opportunity attack is. Neither can reach the
+		// other, and this line is the whole of the translation.
+		ForcedBy: forcedBy(step),
 	})
 	if err != nil {
-		return fmt.Errorf("move: mover %q: %w: %v", mover, ErrInvalidWorld, err)
+		return fmt.Errorf("move: mover %q: %w: %v", step.Mover, ErrInvalidWorld, err)
 	}
 
 	// A pure view for resolution's Input.World — a mid-verb read, never the
@@ -255,6 +260,33 @@ func (s moverSeam) offerStep(
 		}
 	}
 	return nil
+}
+
+// forcedBy names the effect suppressing this step's opportunity attacks, or
+// nothing at all for a step somebody chose.
+//
+// TWO FIELDS COLLAPSE INTO ONE ANSWER, and the collapse is the rule.
+// [encounter.MoveStep] carries Forced and Cause separately because the
+// composition has no idea what either is for; [resolution.MovementInput] asks
+// one question — are the triggers suppressed, and by what — because the fold
+// needs a name to refuse in. A prevention source reading "something" is not a
+// name, so a forced step with no cause still hands over the zero ref rather
+// than nil: the step was forced, and the honest record of a forced step by
+// nobody is a forced step by nobody.
+//
+// NIL IS THE PROVOKING CASE on both sides of this line, which is why nothing
+// here reads Cause on its own. A forced move that PROVOKES — Dissonant
+// Whispers sends its target running and the running provokes — reaches this
+// seam with Forced false, because encounter inverts Direct's own Provokes flag
+// before it builds the step. This function must not second-guess that: reading
+// a non-zero Cause as "suppress" would silence the one directive whose whole
+// point is that it does not.
+func forcedBy(step encounter.MoveStep) *core.Ref {
+	if !step.Forced {
+		return nil
+	}
+	cause := step.Cause
+	return &cause
 }
 
 // pose opens one window per player reactor of this step and reports the pause.
