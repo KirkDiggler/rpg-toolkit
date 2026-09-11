@@ -75,6 +75,38 @@ func (s *BeatOrderTestSuite) beatKinds(enc *encounter.Encounter, audience encoun
 	return kinds
 }
 
+// inOrder asserts the named beat kinds appear in one audience's story in
+// exactly this relative order, ignoring anything else the story contains.
+//
+// THE RELATIVE ORDER IS THE LAW, and the whole transcript never was. These
+// cases used to compare against the complete list of kinds, which pinned two
+// things at once: the order this suite exists to guard, and the incidental
+// fact that no other beat happened to be appended in between. The second one
+// is not a law, and it made every honest new beat look like six regressions —
+// the sighting beat (sightedbeat.go) is the one that surfaced it, landing
+// truthfully between the cause and the fight and failing all six.
+//
+// Naming only the beats under test also states each case's claim on its own
+// line, which the old form left the reader to infer from a list.
+func (s *BeatOrderTestSuite) inOrder(enc *encounter.Encounter, audience encounter.MemberID, want ...string) {
+	s.T().Helper()
+	kinds := s.beatKinds(enc, audience)
+
+	previous := -1
+	for _, wanted := range want {
+		found := -1
+		for i := previous + 1; i < len(kinds); i++ {
+			if kinds[i] == wanted {
+				found = i
+				break
+			}
+		}
+		s.Require().GreaterOrEqual(found, 0,
+			"no %q beat after position %d in %v", wanted, previous, kinds)
+		previous = found
+	}
+}
+
 // TestSetupOpensBeforeItFights is the pin Setup already earned: first light
 // can start a fight, and the fight belongs INSIDE the scene it happens in.
 // Classifying before the opening beat is appended reads as a fight in a room
@@ -93,8 +125,7 @@ func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 	})
 	s.Require().NoError(err)
 
-	s.Equal([]string{"scene-opened", "bubble-formed"}, s.beatKinds(enc, alice),
-		"the scene opens, THEN the fight inside it starts")
+	s.inOrder(enc, alice, "scene-opened", "bubble-formed")
 }
 
 // TestAStepThroughADoorwayBeforeItFights pins the crossing case — the verb
@@ -131,7 +162,7 @@ func (s *BeatOrderTestSuite) TestAStepThroughADoorwayBeforeItFights() {
 	s.Require().NotNil(out.Formed, "she walks into the chamber the goblin is standing in")
 	s.Greater(out.Formed.Seq, out.Seq, "she goes through the door, THEN the fight starts")
 
-	s.Equal([]string{"scene-opened", "moved", "bubble-formed"}, s.beatKinds(enc, alice))
+	s.inOrder(enc, alice, "scene-opened", "moved", "bubble-formed")
 }
 
 // TestStepBeforeItFights pins the step verb's half, and it is the one that
@@ -148,7 +179,7 @@ func (s *BeatOrderTestSuite) TestStepBeforeItFights() {
 	s.Require().NotNil(out.Formed, "stepping into the open puts her in contact")
 	s.Greater(out.Formed.Seq, out.Seq, "she steps, THEN the fight starts")
 
-	s.Equal([]string{"scene-opened", "moved", "bubble-formed"}, s.beatKinds(enc, alice))
+	s.inOrder(enc, alice, "scene-opened", "moved", "bubble-formed")
 }
 
 // TestPumpBeforeItFights pins Pump's half, and Pump is the verb the whole
@@ -166,7 +197,7 @@ func (s *BeatOrderTestSuite) TestPumpBeforeItFights() {
 		s.Greater(out.Formed.Seq, seq, "the world moves, THEN the fight starts")
 	}
 
-	s.Equal([]string{"scene-opened", "tick", "moved", "bubble-formed"}, s.beatKinds(enc, alice))
+	s.inOrder(enc, alice, "scene-opened", "tick", "moved", "bubble-formed")
 }
 
 // TestJoinBeforeItFights pins Join's half. Cormac connects late and lands in
@@ -182,7 +213,7 @@ func (s *BeatOrderTestSuite) TestJoinBeforeItFights() {
 	s.Require().NotNil(out.Formed, "he lands in the open, in the goblin's sight")
 	s.Greater(out.Formed.Seq, out.Seq, "he arrives, THEN the fight starts")
 
-	s.Equal([]string{"scene-opened", "joined", "bubble-formed"}, s.beatKinds(enc, alice))
+	s.inOrder(enc, alice, "scene-opened", "joined", "bubble-formed")
 }
 
 // TestOpenDoorOpensBeforeItFights pins the door's half, and doors are the first
@@ -217,7 +248,7 @@ func (s *BeatOrderTestSuite) TestOpenDoorOpensBeforeItFights() {
 	s.Require().NotNil(out.Formed, "the door opens onto the goblin")
 	s.Greater(out.Formed.Seq, out.Seq, "the door opens, THEN the fight starts")
 
-	s.Equal([]string{"scene-opened", "door", "bubble-formed"}, s.beatKinds(enc, alice))
+	s.inOrder(enc, alice, "scene-opened", "door", "bubble-formed")
 }
 
 // blockedScene opens the shared set with alice at (6,2) and the goblin at

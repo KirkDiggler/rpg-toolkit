@@ -905,6 +905,21 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter append beat: %w", err)
 	}
 
+	// First light's own sighting beats, AFTER the scene has opened for the
+	// same reason everything else here is: a story in which members see each
+	// other before the scene exists is one nobody can follow. Setup holds the
+	// two halves of a refresh apart precisely so this beat and the
+	// scene-opened beat land in the right order, which refreshSight's single
+	// call cannot express.
+	//
+	// FIRST LIGHT EMITS, it does not skip. Every awareness that exists was
+	// created by some refresh and this is the first one, so a recipient who
+	// applies nothing but these beats has the whole picture from the opening
+	// beat onward — which is the property the perception stream is for.
+	if serr := e.appendSightedBeats(firstLight, nil, uint64(e.clock.ToData().HighWater)); serr != nil {
+		return nil, fmt.Errorf("newencounter first light: %w", serr)
+	}
+
 	// Concealment's own first light, AFTER the scene has opened and BEFORE
 	// any fight it might start: presence pierces from the first frame — a
 	// party start inside a concealed region is legal authoring, and the
@@ -1776,8 +1791,40 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 // only caller — Setup needs the two halves separated so its scene-opened beat
 // can land between them.
 func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*IntelDelta, *FormedBubble, error) {
+	return e.refreshSightDeclaring(observers, nil)
+}
+
+// refreshSightDeclaring is refreshSight with a list of members whose OBSERVABLE
+// FACTS a caller says changed outside this composition — the equipment on a
+// character sheet, today.
+//
+// It exists because a re-look on its own is silent. Everybody watching the
+// subject simply refreshes, which is a state and not a transition, so the
+// sighting beat says nothing and the watchers never learn their picture went
+// stale. The declaration is what turns that refresh into news, and it is the
+// CALLER's to make: this module cannot see a character sheet and must not
+// guess that one moved.
+//
+// The declaration names the subject and never what about them changed. What a
+// watcher may now perceive of them is their own testimony to re-read, which is
+// the only shape in which an illusion can disagree with the truth.
+//
+// Every other caller passes nothing, which is refreshSight above.
+func (e *Encounter) refreshSightDeclaring(
+	observers []MemberID, declared []MemberID,
+) (map[MemberID]*IntelDelta, *FormedBubble, error) {
 	deltas, err := e.rebuildPercepts(observers)
 	if err != nil {
+		return nil, nil, err
+	}
+
+	// WHO SAW WHOM, before anything that seeing causes. A fight forms
+	// because somebody came into view, so the view changing has to be
+	// readable ahead of the fight — this function's own law, applied to the
+	// beat that records the cause (see sightedbeat.go). Appended even on a
+	// closed encounter: the percepts were rebuilt, so the transitions are
+	// real whether or not a fight can follow them.
+	if err := e.appendSightedBeats(deltas, declared, uint64(e.clock.ToData().HighWater)); err != nil {
 		return nil, nil, err
 	}
 
@@ -1878,8 +1925,24 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// What it does do is give [Encounter.classify]'s spotted and drop arms
 		// their first producible input, and 5e surprise with them, without
 		// changing a line of how percepts are CONSUMED.
+		// SORTED, because a percept built by ranging a map has no order at
+		// all — and every list downstream inherits whatever order it had.
+		// play/intel reports FirstContact and Refreshed in percept order,
+		// those reach a host as Discovered, and the sighting beat names
+		// them in a story that is supposed to be a transcript. Two runs of
+		// one scene were producing gained:["captain","alice"] and
+		// gained:["alice","captain"], which CI caught and a local run did
+		// not. The randomness was always here; nothing had asked it for an
+		// order before.
+		subjects := make([]MemberID, 0, len(e.members))
+		for id := range e.members {
+			subjects = append(subjects, id)
+		}
+		sort.Slice(subjects, func(i, j int) bool { return subjects[i] < subjects[j] })
+
 		var percept []intel.Report
-		for _, otherMember := range e.members {
+		for _, subjectID := range subjects {
+			otherMember := e.members[subjectID]
 			if otherMember.ID == observerID {
 				continue // Skip self
 			}

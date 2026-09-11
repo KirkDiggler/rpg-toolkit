@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -493,28 +494,32 @@ func (s *EncounterTestSuite) TestSetupOpeningBeat() {
 		enc, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 
-		// Assert: alice's Story contains exactly one entry (opening beat)
-		aliceStory, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: 0})
-		s.Require().NoError(err)
-		s.Len(aliceStory, 1, "alice should have exactly one story entry")
+		// Assert: the opening beat reaches EVERY member. Asserted by
+		// finding it rather than by counting the story — first light can
+		// truthfully append other beats beside it (a sighting, a fight)
+		// and none of that is what this test is about. Still
+		// mutation-proof: delete Setup's Append and there is no
+		// scene-opened beat to find, for any of the three.
+		for _, member := range []encounter.MemberID{alice, bob, goblin} {
+			story, serr := enc.Story(&encounter.StoryInput{Audience: member, AfterSeq: 0})
+			s.Require().NoError(serr)
 
-		// Decode the opening beat payload
-		var beatPayload map[string]string
-		err = json.Unmarshal(aliceStory[0].Payload, &beatPayload)
-		s.Require().NoError(err)
-		s.Equal("scene-opened", beatPayload["beat"], "beat payload should contain scene-opened")
-
-		// Assert: bob and goblin also receive the opening beat
-		bobStory, err := enc.Story(&encounter.StoryInput{Audience: bob, AfterSeq: 0})
-		s.Require().NoError(err)
-		s.Len(bobStory, 1, "bob should have exactly one story entry")
-
-		goblinStory, err := enc.Story(&encounter.StoryInput{Audience: goblin, AfterSeq: 0})
-		s.Require().NoError(err)
-		s.Len(goblinStory, 1, "goblin should have exactly one story entry")
-
-		// MUTATION-PROOF: Verify by checking the actual implementation
-		// (This test ensures that if the Append call is deleted, the test fails)
+			opened := 0
+			for _, entry := range story {
+				// Decoded into the ONE field this test reads. A
+				// map[string]string could not hold a beat whose payload
+				// carries a list, and every other beat in the story is
+				// none of this test's business.
+				var beatPayload struct {
+					Beat string `json:"beat"`
+				}
+				s.Require().NoError(json.Unmarshal(entry.Payload, &beatPayload))
+				if beatPayload.Beat == "scene-opened" {
+					opened++
+				}
+			}
+			s.Equal(1, opened, "%s is owed exactly one scene-opened beat", member)
+		}
 	})
 }
 
@@ -1151,11 +1156,9 @@ func (s *EncounterTestSuite) TestMoveBeatPinned() {
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
-	s.Require().Len(story, 2, "opening beat + movement beat")
-	last := story[len(story)-1]
-	s.Equal(moveOut.Seq, last.Seq, "MoveOutput.Seq must reference the appended beat")
+	moved := s.entryWithSeq(story, moveOut.Seq)
 	var beat map[string]any
-	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Require().NoError(json.Unmarshal(moved.Payload, &beat))
 	s.Equal("moved", beat["beat"], "the movement beat must be recorded")
 	s.Equal(string(alice), beat["member"])
 }
@@ -1443,9 +1446,7 @@ func (s *EncounterTestSuite) TestTheCrossingBeatIsAMovedBeatThatNamesTheDoorway(
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
-	s.Require().GreaterOrEqual(len(story), 2)
-	crossed := story[len(story)-2]
-	s.Equal(out.Seq, crossed.Seq, "StepOutput.Seq references the movement beat")
+	crossed := s.entryWithSeq(story, out.Seq)
 
 	var beat map[string]any
 	s.Require().NoError(json.Unmarshal(crossed.Payload, &beat))
@@ -2134,4 +2135,25 @@ func (s *EncounterTestSuite) TestExitBeatPinned() {
 
 func TestEncounterSuite(t *testing.T) {
 	suite.Run(t, new(EncounterTestSuite))
+}
+
+// entryWithSeq finds the one story entry a verb's output Seq refers to, and
+// fails if the story does not contain it.
+//
+// BY SEQ, NEVER BY POSITION. These assertions used to index from the end of
+// the story — story[len-1], story[len-2] — which quietly encoded how many
+// OTHER beats the verb happened to append beside the one under test. That is
+// not a claim any of them was making, and a verb that truthfully appends one
+// more moves every index at once: the sighting beat (sightedbeat.go) is what
+// surfaced it. A Seq is the identity the output actually hands its caller,
+// so it is what a test should look the beat up by.
+func (s *EncounterTestSuite) entryWithSeq(story []record.Entry, seq uint64) record.Entry {
+	s.T().Helper()
+	for _, entry := range story {
+		if entry.Seq == seq {
+			return entry
+		}
+	}
+	s.Require().Fail("no story entry with seq", "seq %d is not in the story", seq)
+	return record.Entry{}
 }

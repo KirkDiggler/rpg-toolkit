@@ -17,6 +17,7 @@ package encounter_test
 // point — the rulebook is a fake driven by hand, exactly as D1 and D2 drive it.
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -379,10 +380,26 @@ func (s *KillingBlowSuite) TestRecordStillMovesNoClock() {
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
-	s.Require().Len(story, 5)
 
-	at := story[2].At // the struck beat
-	for _, entry := range story[2:] {
+	// FOUND, NOT COUNTED. This used to pin the story at five entries and
+	// index the struck beat at [2], which encoded how many beats happened to
+	// precede it rather than anything this test claims. The claim is that
+	// recording a killing blow moves no clock, so it needs the struck beat
+	// and everything after it — by kind, at whatever position it lands.
+	struck := -1
+	for i, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == "struck" {
+			struck = i
+			break
+		}
+	}
+	s.Require().GreaterOrEqual(struck, 0, "no struck beat in the story")
+	s.Require().Less(struck, len(story)-1, "the struck beat is not the last word")
+
+	at := story[struck].At
+	for _, entry := range story[struck:] {
 		s.Equal(at, entry.At, "beat at seq %d moved the clock", entry.Seq)
 	}
 }

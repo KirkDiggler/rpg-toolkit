@@ -8,8 +8,8 @@ github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbs
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0DkPBkSUwD/yX6bfK0i4XA=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0/go.mod h1:LRzXoz7Is2z6s4KWtVG6B68uunxJgE5qWdk14EtHlbk=
-github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0 h1:89nU27faMf80JrIJlQeVeYacQIexkgBFzHomvXWyE/I=
-github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.2.0 h1:hbzajwi80Hz+mNxWSYBaT2hqJau4bbI4eQLKz/JU9H4=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.2.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0 h1:CefHnp1Cuk9BrIxWcrrAE+q+6k8n0krpcnka+lLyflk=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0/go.mod h1:URY6tA/joFr1iUmw7QHVFN5lzV9Aa214ygGmCGXk5dE=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.12.1-0.20260911073454-d94979a418a3 h1:bwgd8zK2Pe5qHMl/xxO9CGX9wsPC7LMxgJWt66Vw2oc=

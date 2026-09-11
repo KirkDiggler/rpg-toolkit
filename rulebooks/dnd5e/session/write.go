@@ -1521,3 +1521,89 @@ func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id 
 	}
 	return m.saveWalker(ctx, scope, sheet)
 }
+
+// Recheck tells the session that something an observer could SEE about these
+// members has changed outside it, so that everyone watching them is told to
+// look again.
+//
+// # The trigger the snapshot model was missing
+//
+// What a member is holding is read off a character sheet through the
+// composition's Equipment capability, and only ever at the moment sight
+// refreshes. A swap made while two people stand still watching each other
+// therefore changes nothing anybody can see until somebody takes a step. This
+// is the call that closes that, and it is the host's to make: the session
+// cannot watch a character store and must not poll one.
+//
+// EQUIPITEM STAYS THE SINGLE WRITER (Kirk, 2026-09-11: "I do not want two
+// paths for 1 thing"). This verb writes no equipment and reads no sheet
+// directly — the sheet is changed in one place, by the host, and the session
+// is TOLD afterwards.
+//
+// # It names who, never what
+//
+// Members names the creatures whose appearance moved. It does not say a
+// longsword was put away, and there is deliberately nowhere on this input to
+// put that. Each watcher re-reads their OWN view and sees what they are
+// entitled to see — the only shape in which one of them can be wrong, and the
+// reason an illusion is expressible at all.
+//
+// # Not everybody hears it
+//
+// Who is told is worked out per observer by the composition, from what each
+// of them can actually see on this pass. A member across the map hears
+// nothing; so does one holding the subject only as a GHOST, whose testimony
+// is a memory that must not acquire news they never witnessed.
+//
+// Returns ErrNilInput, ErrNoSessionID, ErrNoSession, ErrNoEncounter,
+// ErrNoMemberID for an empty list or an empty name in it, ErrNotMember for a
+// name the encounter does not have, ErrClosed for a finished encounter, or
+// ErrSaveFailed with a populated report.
+func (m *Manager) Recheck(ctx context.Context, in *RecheckInput) (*RecheckOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("recheck: %w", ErrNilInput)
+	}
+	if len(in.Members) == 0 {
+		return nil, fmt.Errorf("recheck: %w", ErrNoMemberID)
+	}
+	// CHECKED BEFORE THE SESSION IS EVEN OPENED. An empty name in the list is
+	// the host's mistake and needs no world loaded to say so.
+	members := make([]encounter.MemberID, 0, len(in.Members))
+	for _, id := range in.Members {
+		if id == "" {
+			return nil, fmt.Errorf("recheck: %w", ErrNoMemberID)
+		}
+		members = append(members, encounter.MemberID(id))
+	}
+
+	scope, err := m.openForChange(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("recheck: %w", err)
+	}
+
+	rechecked, err := scope.enc.Recheck(&encounter.RecheckInput{Members: members})
+	if err != nil {
+		return nil, fmt.Errorf("recheck: %w", translate(err))
+	}
+
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return nil, fmt.Errorf("recheck: %w", translate(err))
+	}
+	down, err := standingSet(scope.standing, rosterIDs(roster))
+	if err != nil {
+		return nil, fmt.Errorf("recheck: %w", err)
+	}
+
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("recheck: %w", err)
+	}
+
+	return &RecheckOutput{
+		Discovered: projectDiscoveries(rechecked.IntelDeltas, down),
+		Corrected:  projectIntelCorrections(rechecked.IntelDeltas),
+		Saved:      report,
+		Delivery:   delivery,
+	}, nil
+}

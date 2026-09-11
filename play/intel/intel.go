@@ -86,10 +86,47 @@ type SurveilInput struct {
 }
 
 // SurveilOutput reports the deltas Surveil caused.
+//
+// The four lists answer four different questions and are NOT a partition of
+// the percept. In particular see [SurveilOutput.Reacquired], which refines
+// Refreshed rather than carving subjects out of it.
 type SurveilOutput struct {
+	// FirstContact is every subject this observer had no holding for at
+	// all, now created by this percept. The payload rides along because
+	// nothing the caller holds could supply it.
 	FirstContact []Report
-	Refreshed    []Subject
-	Faded        []Subject
+
+	// Refreshed is every subject whose holding already existed and was
+	// re-reported. It fires on EVERY pass for EVERY perceived subject —
+	// it is "I have a holding for you and I just wrote to it", not a
+	// transition. A caller looking for a moment wants one of the two
+	// below.
+	Refreshed []Subject
+
+	// Faded is every subject whose holding stopped being current via any
+	// channel because this percept omitted it. The holding survives — the
+	// ghost goblin — and the observer keeps what they last saw.
+	Faded []Subject
+
+	// Reacquired is every subject whose holding was a GHOST at the top of
+	// this pass — held, but current via no channel — and is current again
+	// because this percept reported it. It is the exact inverse of Faded,
+	// and the moment a consumer means by "they came back into view".
+	//
+	// IT REFINES Refreshed AND DOES NOT PARTITION IT. A re-acquired
+	// subject appears in BOTH lists, because both statements are true of
+	// it: a holding already existed (Refreshed) and that holding was dark
+	// (Reacquired). Every existing caller that reads FirstContact ∪
+	// Refreshed as "everything I perceive right now" keeps the same
+	// answer, which is why this was added beside Refreshed rather than
+	// carved out of it — a silent narrowing of a published list is how a
+	// consumer that never heard about the change starts dropping subjects.
+	//
+	// CHANNELS ARE THE WHOLE OF THE TEST, not sight specifically. A
+	// subject still current via hearing is not a ghost, so sight
+	// re-reporting them is a refresh and nothing more. That is the honest
+	// reading: nothing came back, because nothing had gone.
+	Reacquired []Subject
 }
 
 // ReportInput is the input to the Report verb.
@@ -104,7 +141,13 @@ type ReportInput struct {
 // derived: every subject previously current via this channel but absent from
 // Percept has that channel removed from CurrentVia. If CurrentVia becomes
 // empty, the subject fades (still held — the ghost goblin). An empty Percept
-// is legal (seeing nothing: fades everything this channel sustained). Errors:
+// is legal (seeing nothing: fades everything this channel sustained).
+//
+// RE-ACQUISITION IS DERIVED THE SAME WAY, and symmetrically: a holding that
+// was current via NO channel when this pass began, and is current now because
+// this percept named it, is reported in [SurveilOutput.Reacquired]. Fading
+// and returning are the two transitions a caller can act on; Refreshed is a
+// state, and fires every pass. Errors:
 // ErrNilInput, ErrNoObserver, ErrNoChannel, ErrNoSubject — validation first,
 // all before any mutation (R5).
 func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
@@ -200,6 +243,13 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 				Payload: fcPayload,
 			})
 		} else {
+			// READ BEFORE THE WRITE. A holding current via no channel is a
+			// ghost, and this percept is about to make it current again —
+			// but only the line below can tell, because the very next
+			// statement destroys the evidence. This is the inverse of the
+			// FADE PASS above, detected at the one instant it is visible.
+			wasGhost := len(h.currentVia) == 0
+
 			// Known: overwrite payload (copy), channel, at, and add channel to currentVia
 			payloadCopy := make([]byte, len(report.Payload))
 			copy(payloadCopy, report.Payload)
@@ -208,6 +258,12 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 			h.at = in.At
 			h.currentVia[in.Channel] = struct{}{}
 			out.Refreshed = append(out.Refreshed, report.Subject)
+			if wasGhost {
+				// In percept order, like FirstContact and Refreshed beside
+				// it. Faded sorts because it walks a map and has no order
+				// of its own; this pass walks a slice and already has one.
+				out.Reacquired = append(out.Reacquired, report.Subject)
+			}
 		}
 	}
 

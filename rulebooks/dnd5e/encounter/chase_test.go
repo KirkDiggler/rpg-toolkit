@@ -223,7 +223,13 @@ func TestVaultChase(t *testing.T) {
 	for _, e := range story {
 		var beat map[string]any
 		require.NoError(t, json.Unmarshal(e.Payload, &beat))
-		kinds = append(kinds, beat["beat"].(string))
+		kind := beat["beat"].(string)
+		// What HAPPENED, not what this member could see — the split
+		// standing_test.go's beatKindsOf states in full.
+		if recipientScopedKinds[kind] {
+			continue
+		}
+		kinds = append(kinds, kind)
 	}
 	require.Equal(t, []string{
 		"scene-opened", // beat 1

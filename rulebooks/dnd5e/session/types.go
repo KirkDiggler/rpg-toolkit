@@ -942,6 +942,24 @@ const (
 	// cells. Always recipient-scoped to exactly one member.
 	EventRegionRevealed EventKind = "region_revealed"
 
+	// EventSighted is a change in THIS RECIPIENT's own perception: members
+	// who came into their view, and members whose view of them was lost.
+	// Always recipient-scoped to exactly one member — what somebody can see
+	// is news for them, and a roster-wide audience would publish the sight
+	// graph to the table.
+	//
+	// IT IS A NUDGE, NOT A PATCH. Unlike the two reveals above, the body
+	// names subjects and carries no testimony: what the recipient now
+	// perceives about them is already answered, member-scoped, by their own
+	// view, and a body that restated it would be a second computation of
+	// the same truth. A client re-reads its view.
+	//
+	// A TRANSITION, NEVER A STATE. It is appended only when perception
+	// actually changed, so no event is the composition saying nothing
+	// changed — an observer who keeps watching the same people hears
+	// nothing at all.
+	EventSighted EventKind = "sighted"
+
 	// EventLooted reports that a member looted a downed body — who looted
 	// whom, and DELIBERATELY NOTHING ELSE (rpg-project#368 P3).
 	//
@@ -1885,6 +1903,46 @@ type RegionRevealedBody struct {
 
 func (RegionRevealedBody) isEventBody() {}
 
+// SightedBody is [EventSighted]'s typed body: who entered this recipient's
+// view, and who left it.
+//
+// EITHER LIST MAY BE EMPTY AND NEVER BOTH. The composition omits the half
+// that did not happen rather than sending it empty, and appends no beat at
+// all when neither did — so a delivered event always carries at least one
+// name. A reader may treat an empty Gained as "nobody arrived" without
+// having to wonder whether the question was asked.
+//
+// GAINED MERGES FIRST CONTACT WITH RE-ACQUISITION. Somebody the recipient
+// has never seen and somebody whose ghost just became real again are one
+// fact to a client — a peer is in view who was not — and the answer to both
+// is the same re-read.
+type SightedBody struct {
+	// Gained is every member who came into this recipient's view.
+	Gained []string `json:"gained"`
+	// Lost is every member who left it, and who the recipient now holds
+	// only as a ghost: what they last saw, at the moment they last saw it.
+	Lost []string `json:"lost"`
+
+	// Changed is every member STILL in this recipient's view whose
+	// appearance moved under them — a weapon drawn or put away today, and
+	// in time anything else an observer can see. Not a transition: they
+	// could be seen before and can be seen now, so they are in neither
+	// list above.
+	//
+	// IT NAMES WHO, NEVER WHAT. The composition does not say a longsword
+	// was put away, and this seam would not carry it if it did. The
+	// recipient re-reads their OWN view and sees what they are entitled to
+	// see, which is the only shape in which it can differ from the truth —
+	// a fact published to the table is true for everybody by construction.
+	//
+	// A RECIPIENT HOLDING THE SUBJECT AS A GHOST IS NEVER IN THIS LIST.
+	// Their testimony is a memory of an older moment and does not acquire
+	// news they did not witness.
+	Changed []string `json:"changed"`
+}
+
+func (SightedBody) isEventBody() {}
+
 // Door is one door's identity and live state — the dynamic half of
 // [AtlasDoorway], which carries the same door's edges and never changes.
 // Read via [Manager.Doors] once, then updated from EventDoor beats.
@@ -2560,4 +2618,27 @@ type Report struct {
 	// Payload is what the observer learned, encoded by the composition.
 	// Retained for channels the SDK has not typed.
 	Payload []byte `json:"payload,omitempty"`
+}
+
+// RecheckInput names the members whose observable facts changed outside the
+// session.
+type RecheckInput struct {
+	// Session is the session to tell.
+	Session string
+	// Members is who changed. NOT what about them changed — see
+	// [Manager.Recheck].
+	Members []string
+}
+
+// RecheckOutput reports what the re-look saved and delivered.
+type RecheckOutput struct {
+	// Discovered and Corrected are the intel movement the refresh produced,
+	// the same shape every other verb reports it in. A re-look ordinarily
+	// produces neither: nobody moved.
+	Discovered map[string]Discovery
+	Corrected  []IntelCorrection
+	// Saved and Delivery are the persistence and stream reports every
+	// changing verb returns.
+	Saved    SaveReport
+	Delivery DeliveryReport
 }
