@@ -195,6 +195,8 @@ this.**
 | You are building | Owner | Because |
 |---|---|---|
 | a new geometric shape — cone, line, blast | `tools/spatial` | This module holds no geometry of its own. `Distance` is `canvas.GetGrid().Distance`; the grid is where a shape belongs. |
+| a new MEANING for a cell — difficult, burning, blocked by a new kind of thing | [`CellAt`](./cellfacts.go) | One fold, and every reader of "may I be here" reads it. It was two — `Step` asked the field, the monster route asked region ownership and wall edges — and neither knew a pillar stands ON a cell, so the route handed back a path the step refused and the monster stood still ([rpg-toolkit#1652](https://github.com/KirkDiggler/rpg-toolkit/issues/1652)). A second reader is how that comes back. |
+| a SEARCH over the grid — a path, reach, a spreading blast, a flight | `tools/spatial` | Nothing here searches the grid itself. `routeTo` ([clocks.go](./clocks.go)) floods `spatial.Field` and reads `CellAt` for every cell; the search is geometry's and the meaning of a cell is this module's. Adding a second search here is the shape of the bug above. |
 | folding a shape into a set of targets | the caller — `resolution` for a rule, `session` for a verb | The universe is the roster, and it is declared at the call site rather than guessed inside a new method here. |
 | a new fact the world needs but cannot compute | a capability interface, supplied at `NewEncounter` and refused when absent | C1 keeps rulebook facts out of this go.mod; #1033 keeps them from being defaulted in. |
 | a new rule about what a fact MEANS | the rulebook — `resolution`, `conditions`, `combat` | C1. This module carries `Kind`, `Ref`, `DamageType` and never reads them. |
