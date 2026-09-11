@@ -198,14 +198,39 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// STANDABLE, not merely floor (rpg-project#360). Scenery is floor
 	// somebody painted and nobody walks, so the refusal names which of the
 	// two it met rather than calling a strip of rubble "not floor".
-	if !e.field.isStandable(to) {
-		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.field.notStandable(to), ErrBadPlacement)
-	}
-
+	//
+	// ASKED THROUGH THE FOLD, which is the whole of rpg-toolkit#1652. This
+	// used to read the field alone, while the monster route read region
+	// ownership and wall edges alone, and neither knew about a pillar
+	// standing ON a cell — so the route produced a path the step then
+	// refused, and the monster stood still. [Encounter.CellAt] is the one
+	// answer both now read, and it subsumes what the field said: a cell the
+	// field refuses is a Blocked cell with the field as its contributor, so
+	// this refusal keeps the sentence it has always had for scenery and void
+	// and gains one for the two contributors the field cannot see.
+	//
+	// THE CANVAS STILL DECIDES UNDERNEATH. moveMember's own placement check
+	// is left in place as the last line of defence; it now agrees with this
+	// one by construction rather than by coincidence.
 	// Where they are standing, read before the move because it is only knowable
 	// while they are still standing there — and needed only to say what
 	// stopped them if something does.
 	here, placed := e.canvas.GetEntityPosition(string(member.ID))
+
+	// WHAT IS IN THE WAY IS ANSWERED BEFORE WHAT IS ON THE CELL. A shut door
+	// with a wight behind it is refused as the door, and the refusal must not
+	// mention the wight — the mover cannot see through the door, and a
+	// refusal that named its occupant would confirm through a sentence what
+	// the map withholds. That is the concealed-door move law (rpg-project#351)
+	// applied to the contributors the fold added. SPATIAL STILL DECIDES the
+	// crossing: this asks the canvas the same question bfsShortestPath asks
+	// and adds no second answer, and moveMember below refuses it again either
+	// way.
+	crossingBlocked := placed && e.canvas.IsBoundaryMovementBlocked(here, to)
+
+	if fact := e.CellAt(CellAtInput{Cell: to, Mover: member.ID}); fact.Passage == PassageBlocked && !crossingBlocked {
+		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
+	}
 
 	from, err := e.moveMember(member, to)
 	if err != nil {

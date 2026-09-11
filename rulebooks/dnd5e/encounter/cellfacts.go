@@ -3,7 +3,11 @@
 
 package encounter
 
-import "github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+import (
+	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
 
 // Passage is what a cell allows a mover to do with it — the three-valued
 // answer 5e's own movement rules need, not a boolean.
@@ -54,6 +58,13 @@ type ContribRef struct {
 	Kind ContribKind
 	ID   string
 	Ref  string
+
+	// Blocks is whether THIS contributor is why the cell is closed to the
+	// mover. A nonhostile creature contributes a fact about the cell —
+	// something is standing there — without being a reason not to enter it,
+	// so a refusal that named it would be the story lying about which thing
+	// stopped the step.
+	Blocks bool
 }
 
 // CellAtInput asks what one cell allows one mover.
@@ -108,7 +119,7 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 
 	if !e.field.isStandable(in.Cell) {
 		fact.Passage = PassageBlocked
-		fact.Contribs = append(fact.Contribs, ContribRef{Kind: ContribField})
+		fact.Contribs = append(fact.Contribs, ContribRef{Kind: ContribField, Blocks: true})
 	}
 
 	for _, ent := range e.canvas.GetEntitiesAt(in.Cell) {
@@ -119,20 +130,66 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 			}
 			fact.Passage = PassageBlocked
 			fact.Contribs = append(fact.Contribs, ContribRef{
-				Kind: ContribProp, ID: v.GetID(), Ref: v.ref,
+				Kind: ContribProp, ID: v.GetID(), Ref: v.ref, Blocks: true,
 			})
 		case *memberEntity:
 			if MemberID(v.id) == in.Mover {
 				continue // a mover is not its own obstacle
 			}
-			if v.BlocksMovement() || e.opposed(in.Mover, MemberID(v.id)) {
+			blocks := v.BlocksMovement() || e.opposed(in.Mover, MemberID(v.id))
+			if blocks {
 				fact.Passage = PassageBlocked
 			} else if fact.Passage == PassageStandable {
 				fact.Passage = PassagePassThrough
 			}
-			fact.Contribs = append(fact.Contribs, ContribRef{Kind: ContribMember, ID: v.id})
+			fact.Contribs = append(fact.Contribs, ContribRef{
+				Kind: ContribMember, ID: v.id, Blocks: blocks,
+			})
 		}
 	}
 
 	return fact
+}
+
+// blockedBy is WHY a cell is closed to a mover, as a phrase to drop into a
+// refusal — the same shape [field.notStandable] has always had, extended to the
+// contributors the field itself knows nothing about.
+//
+// NAMES THE THING, not the category. "Cannot place entity" is true and useless;
+// a caller can do something about "is blocked by dnd5e:props:pillar" and about
+// the id of the creature in the way. This is the door refusal's lesson
+// (rpg-toolkit#1123) applied to the two contributors that had no sentence.
+//
+// The field speaks first when it has something to say, because a cell no region
+// owns is not a cell with a pillar on it — it is not a cell at all, and naming
+// whatever happens to be standing in the void would be the more confusing of
+// two true answers. Only contributors that actually [ContribRef.Blocks] are
+// eligible: an ally sharing a blocked cell did not block it.
+func (e *Encounter) blockedBy(fact CellFact, cell spatial.Position) string {
+	var prop, member string
+	for _, c := range fact.Contribs {
+		if !c.Blocks {
+			continue
+		}
+		switch c.Kind {
+		case ContribField:
+			return e.field.notStandable(cell)
+		case ContribProp:
+			if prop == "" {
+				prop = fmt.Sprintf("is blocked by %s", c.Ref)
+			}
+		case ContribMember:
+			if member == "" {
+				member = fmt.Sprintf("is occupied by %s", c.ID)
+			}
+		}
+	}
+	switch {
+	case prop != "":
+		return prop
+	case member != "":
+		return member
+	default:
+		return e.field.notStandable(cell)
+	}
 }
