@@ -49,6 +49,23 @@ const (
 	// spell that deals damage records it through [Encounter.RecordCast],
 	// through this one closed family.
 	ResultDamageApplied ActivationResultKind = "damage-applied"
+
+	// ResultMoved records a creature MOVED BY SOMETHING — pushed, pulled,
+	// routed — with how far it actually went and what stopped it short.
+	//
+	// It is the projection of an imposed move, and it is a result rather than
+	// a movement beat for the same reason damage is a result rather than a
+	// damage beat: the walk itself already narrated every cell
+	// ([Encounter.Direct], whose beats carry the cause), and THIS is the
+	// cast's own account of what its effect achieved. A reader of the cast
+	// should not have to correlate movement beats by hand to learn that the
+	// blast moved somebody one cell instead of two.
+	//
+	// The distance and the blocker are the two facts a table asks for, and
+	// they are exactly what [DirectOutput] returns. A zero distance is a real
+	// outcome — a creature pinned against a wall is pushed nowhere — so it is
+	// recorded rather than treated as nothing having happened.
+	ResultMoved ActivationResultKind = "moved"
 )
 
 // ConditionAddress is the exact neutral identity of one condition on one
@@ -72,7 +89,8 @@ type ConditionAddress struct {
 // roll record, so one without it is not writable. Condition-applied requires
 // Address and Name. Condition-removed requires Address, Name, and Reason.
 // Capacity-granted
-// requires Description. Fields outside a kind's shape — including a
+// requires Description. Moved requires Target, Ref and Name, and carries the
+// distance and the blocker. Fields outside a kind's shape — including a
 // calculation on any non-healing kind — are refused rather than silently
 // discarded.
 //
@@ -114,6 +132,20 @@ type ActivationResult struct {
 
 	Description string
 	Reason      string
+
+	// Moved is how many cells the creature actually travelled, and StoppedBy
+	// is the phrase naming what ended the move short of what was paid for —
+	// both exactly as [DirectOutput] reports them. Required shape for
+	// [ResultMoved] and forbidden on every other kind.
+	//
+	// NEITHER IS REQUIRED TO BE NON-ZERO, and both zeros mean something. A
+	// distance of zero is a creature pushed nowhere, which happens whenever
+	// the fold refuses the very first cell. An empty StoppedBy is a move that
+	// went the whole way and hit nothing, which is why the beat omits the key
+	// rather than writing a blank one: a reader asking what got in the way
+	// should find no answer rather than an empty one.
+	Moved     int
+	StoppedBy string
 }
 
 // RecordActivationInput is one successful activation transaction: the actor
@@ -196,6 +228,19 @@ type conditionRemovedPayload struct {
 	Name     string               `json:"name"`
 	SourceID string               `json:"source_id,omitempty"`
 	Reason   string               `json:"reason"`
+}
+
+type movedPayload struct {
+	Kind   ActivationResultKind `json:"kind"`
+	Target MemberID             `json:"target"`
+	Ref    string               `json:"ref"`
+	Name   string               `json:"name"`
+
+	// Moved is never omitted: zero cells is a creature pushed nowhere, and a
+	// beat that dropped the number would read as a push that never happened.
+	// StoppedBy is omitted when nothing stopped it — see [ActivationResult.Moved].
+	Moved     int    `json:"moved"`
+	StoppedBy string `json:"stopped_by,omitempty"`
 }
 
 type capacityGrantedPayload struct {
@@ -336,7 +381,7 @@ func (e *Encounter) prepareActivationResult(
 ) (interface{}, error) {
 	switch result.Kind {
 	case ResultHealingApplied, ResultDamageApplied,
-		ResultConditionApplied, ResultConditionRemoved, ResultCapacityGranted:
+		ResultConditionApplied, ResultConditionRemoved, ResultCapacityGranted, ResultMoved:
 	default:
 		return nil, fmt.Errorf("%s: result %d kind %q: %w", verb, index, result.Kind, ErrInvalidData)
 	}
@@ -356,6 +401,17 @@ func (e *Encounter) prepareActivationResult(
 	}
 	if result.Kind != ResultConditionApplied && result.Kind != ResultConditionRemoved && result.Address != nil {
 		return nil, forbiddenActivationResultField(verb, index, result.Kind, "condition address")
+	}
+	// THE SAME GUARD POINTED THE OTHER WAY, and it is the half that is easy to
+	// forget. Every kind but Moved refuses the move facts, stated once here so
+	// a kind added later cannot quietly start accepting one — and so a damage
+	// result somebody filled a distance into is refused rather than having the
+	// number dropped on the floor, which would make a push vanish out of a
+	// story that reported it.
+	if result.Kind != ResultMoved {
+		if field := moveFactsActivationResultField(result); field != "" {
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, field)
+		}
 	}
 
 	switch result.Kind {
@@ -447,6 +503,25 @@ func (e *Encounter) prepareActivationResult(
 			SourceID: result.Address.SourceID, Reason: result.Reason,
 		}, nil
 
+	case ResultMoved:
+		if err := requireActivationIdentity(verb, index, result); err != nil {
+			return nil, err
+		}
+		if field := rollFactsActivationResultField(result); field != "" {
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, field)
+		}
+		if result.Description != "" {
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "description")
+		}
+		if result.Reason != "" {
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "reason")
+		}
+		return movedPayload{
+			Kind: result.Kind, Target: result.Target,
+			Ref: result.Ref, Name: result.Name,
+			Moved: result.Moved, StoppedBy: result.StoppedBy,
+		}, nil
+
 	case ResultCapacityGranted:
 		if result.Description == "" {
 			return nil, fmt.Errorf("%s: result %d %s description: %w", verb, index, result.Kind, ErrInvalidData)
@@ -530,6 +605,26 @@ func rollFactsActivationResultField(result ActivationResult) string {
 		return "before"
 	case result.After != 0:
 		return "after"
+	default:
+		return ""
+	}
+}
+
+// moveFactsActivationResultField names the first move fact a result with no
+// move behind it — every kind but [ResultMoved] — may not carry.
+//
+// Both are scalars with meaningful zeros, so what is detected is a NON-ZERO
+// value: a zero distance and an empty blocker are indistinguishable from absent
+// fields here and are not refused. That is [rollFactsActivationResultField]'s
+// own limitation and it is the same trade — the alternative is a pointer per
+// fact, which buys a refusal nobody has needed at the cost of every caller
+// taking an address.
+func moveFactsActivationResultField(result ActivationResult) string {
+	switch {
+	case result.Moved != 0:
+		return "moved"
+	case result.StoppedBy != "":
+		return "stopped by"
 	default:
 		return ""
 	}
