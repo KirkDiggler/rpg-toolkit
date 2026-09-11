@@ -59,6 +59,20 @@ type ContestInput struct {
 	// whole of today's behaviour.
 	Removal *ConditionRemoval
 
+	// Move is the contest's FOURTH consequence: the saver is moved against
+	// their will, which is the only consequence this package describes rather
+	// than delivers.
+	//
+	// Nil is the common case. The anchor is the caller's to name — the cast
+	// door names the caster — because a contest knows who saved and what they
+	// saved against, and not who is doing the pushing.
+	//
+	// It RIDES a contest that also delivers something: a contest whose only
+	// consequence is a move is refused with the empty one, because what is at
+	// stake in a save would have nothing to name. No content declares one —
+	// a cast must declare damage or a condition to exist at all.
+	Move *MoveDirective
+
 	Cause       dnd5eEvents.SaveCause
 	DamageTaken int
 	Roller      dice.Roller
@@ -85,7 +99,57 @@ const (
 	// because "this landed" and "this came off" are opposite facts and a reader
 	// that had to infer which from a nil field would be inferring a rule.
 	ImposedConditionRemoved ImposedEffectKind = "condition-removed"
+
+	// ImposedMove is a move the contest forced on the saver: a shove, a slide,
+	// a creature sent running.
+	//
+	// It is the consequence that is not finished when this package is done
+	// with it. A condition is APPLIED here and damage is DEALT here, but a move
+	// is only described — the cells it crosses are read from the map under its
+	// own fold, which is encounter's, so what leaves here is a directive and
+	// whoever holds the board walks it (rpg-project#431 §2).
+	ImposedMove ImposedEffectKind = "move"
 )
+
+// MoveDirective is a move DESCRIBED: how the creature is moved, what it is
+// measured from, how far, and what being moved costs them.
+//
+// NOTHING HERE IS GEOMETRY. No cells, no directions, no map. It mirrors
+// [combatActions.CastMove], which is how content declares the same thing, plus
+// the anchor — the creature the policy is measured from, which content cannot
+// name because it does not know who cast it.
+//
+// The division is the point: a spell holding a path search of its own is what
+// this shape exists to prevent, and a rules layer that worked out which cells a
+// push crosses would be a second author of passability the day it disagreed
+// with the fold.
+type MoveDirective struct {
+	// Policy is how the mover is moved. One value exists and it is the one
+	// something can walk (see [combatActions.MovePolicy]).
+	Policy combatActions.MovePolicy
+
+	// AnchorID is the creature the policy is measured from — the caster, for
+	// everything that pushes today.
+	//
+	// AN ID RATHER THAN A POSITION, because a position read here would be read
+	// at the moment the save resolved and walked at the moment the push runs,
+	// and the two are not the same moment. Whoever executes the move asks the
+	// board where the anchor is.
+	AnchorID string
+
+	// Cells is a fixed budget, and Speed says the budget is the mover's own
+	// speed instead. Exactly one of the two, as the declaration requires.
+	Cells int
+	Speed bool
+
+	// Pays is what being moved costs the creature that is moved. Zero is
+	// nothing, which is the push.
+	Pays combatActions.MovePays
+
+	// Provokes says whether the move offers opportunity attacks as it goes.
+	// Zero is false: being thrown is not walking out of a reach.
+	Provokes bool
+}
 
 // ImposedEffect names one consequence a contest delivered, or would have
 // delivered, to the saver.
@@ -108,6 +172,11 @@ type ImposedEffect struct {
 
 	// Address is the exact source-qualified identity for condition consequences.
 	Address dnd5eEvents.ConditionAddress
+
+	// Move is the directive for an [ImposedMove], and nil for every other
+	// kind. It is the whole of what this package says about the move: the
+	// cells are worked out by whoever owns the board.
+	Move *MoveDirective
 
 	// Amount is the damage the SHEET applied. Zero on a condition, and zero on
 	// the AT-STAKE effect of a contest whose dice have not been rolled yet.
@@ -143,8 +212,8 @@ type ImposedEffect struct {
 //
 // AtStake is what the save was against: the condition when one was declared,
 // and otherwise the declared damage. Imposed is what a failed save actually
-// delivered, damage first and the condition second, and it is empty on a
-// success — a made save negates both.
+// delivered, damage first, then the condition, then the move, and it is empty
+// on a success — a made save negates them all.
 type ContestOutcome struct {
 	Save      SaveOutcome
 	DC        int
@@ -395,6 +464,105 @@ func applyPreparedDamage(
 	}
 }
 
+// validateMove refuses a directive this stack cannot execute, at the door,
+// before the save is rolled or the price is charged.
+//
+// The policy, the budget and the price are CONTENT's rules, so they are checked
+// by content's own validator rather than restated here — one owner for what a
+// move may declare, and no second copy to drift. What this layer adds is the
+// anchor, which content never names.
+//
+// # Two legal declarations are refused here and not there, on purpose
+//
+// A move paid for with a reaction, and a budget that is the mover's own speed.
+// Both validate in content because both are real, and neither has an executor
+// anywhere in this stack today: nothing spends the reaction and nothing turns a
+// speed into cells. Describing one would hand the board a directive it would
+// walk for free, or for a distance nobody worked out — an affordance with
+// nothing behind it, and silently wrong rather than loudly.
+//
+// Dissonant Whispers brings both, with the spend and the lookup (rpg-project#431
+// §0). It deletes these two arms; it does not work around them.
+func validateMove(directive *MoveDirective) error {
+	declared := combatActions.CastMove{
+		Policy: directive.Policy, Cells: directive.Cells, Speed: directive.Speed,
+		Pays: directive.Pays, Provokes: directive.Provokes,
+	}
+	if err := declared.Validate(); err != nil {
+		return fmt.Errorf("%w: contest move: %w", ErrBadAction, err)
+	}
+	if directive.AnchorID == "" {
+		return fmt.Errorf("%w: a move must name the anchor it is measured from", ErrBadAction)
+	}
+	if directive.Pays != combatActions.PaysNothing {
+		return fmt.Errorf("%w: a move priced at %q cannot be imposed here, because nothing in this "+
+			"stack spends a reaction for one yet", ErrBadAction, directive.Pays)
+	}
+	if directive.Speed {
+		return fmt.Errorf(
+			"%w: a move budgeted by the mover's own speed cannot be imposed here, because nothing "+
+				"in this stack reads a speed into cells yet", ErrBadAction)
+	}
+
+	return nil
+}
+
+// describeMove names the directive the way a step log should read it: "a line
+// move of 2 cells".
+func describeMove(directive MoveDirective) string {
+	budget := fmt.Sprintf("%d cells", directive.Cells)
+	if directive.Speed {
+		budget = "their own speed"
+	}
+
+	return fmt.Sprintf("a %s move of %s", directive.Policy, budget)
+}
+
+// imposeMove is applyPreparedDamage's other sibling: the third thing a failed
+// save can cost, in the same shape, chained through the same continuation.
+//
+// IT MOVES NOBODY. What it produces is the directive, handed on as an
+// [ImposedMove] for whoever owns the board to route and walk. There is no
+// publish and no write here, which is why it is the one consequence that is not
+// finished when this package is: a rule that worked out the cells would be
+// reading a map it does not own, and would disagree with the fold the day the
+// two were written by different hands.
+//
+// # The dropped are not pushed
+//
+// Read here rather than decided in resolve, because resolve builds the whole
+// chain before the damage step has run: the hit points that matter are the ones
+// the saver has at the moment the push would happen, and this is that moment.
+// A creature the damage dropped stays where it fell (rpg-project#432 §5), and
+// it is `stayed` that says so — the effect is never produced, rather than
+// produced and filtered by somebody downstream.
+func imposeMove(
+	directive MoveDirective, cause dnd5eEvents.SaveCause, cast *Participants, targetID string,
+	pushed func(ImposedEffect) (Step, error), stayed func() (Step, error),
+) Gather {
+	return Gather{
+		name: "impose " + describeMove(directive),
+		run: func(_ context.Context, _ events.EventBus) (Step, error) {
+			target, err := combatantFor(cast, targetID)
+			if err != nil {
+				return nil, err
+			}
+			if combat.IsDown(target) {
+				return stayed()
+			}
+
+			moved := directive
+			return pushed(ImposedEffect{
+				Kind:        ImposedMove,
+				Ref:         cloneCoreRef(cause.EffectRef),
+				Description: describeMove(moved),
+				RecipientID: targetID,
+				Move:        &moved,
+			})
+		},
+	}
+}
+
 // damageCalculation is the roll behind the damage, in the one shape a record
 // replays: every component's own trace, and the total they come to.
 //
@@ -544,6 +712,11 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 			return nil, err
 		}
 	}
+	if m.in.Move != nil {
+		if err := validateMove(m.in.Move); err != nil {
+			return nil, err
+		}
+	}
 
 	if m.in.prepared != nil {
 		m.prepared = *m.in.prepared
@@ -660,7 +833,15 @@ func (m *contestMachine) atStake() ImposedEffect {
 }
 
 // resolve turns the save into the outcome, and on a failure chains whatever was
-// declared: damage first, then the condition.
+// declared: damage first, then the condition, then the move.
+//
+// THE MOVE IS LAST, and that is a rule rather than an ordering accident. Damage
+// before the push is ruled by the design (rpg-project#432 §5) — what the damage
+// drops is not pushed, and a body sliding across the floor is not a story we
+// tell. The condition before the push follows from the same reading: whatever
+// the failure put on the creature is on it before it is moved, so a rule that
+// has something to say about being moved has already been applied when the
+// board comes to walk it.
 //
 // THE SUCCESS BRANCH IS UNTOUCHED. Done is returned before any delivery step
 // exists, so a made save negates the damage and the rider together — which is
@@ -677,14 +858,28 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		return Done{Outcome: outcome}, nil
 	}
 
+	done := func() (Step, error) { return Done{Outcome: outcome}, nil }
+
+	deliverMove := func() (Step, error) {
+		if m.in.Move == nil {
+			return done()
+		}
+
+		return imposeMove(*m.in.Move, m.in.Cause, m.cast, m.in.SaverID,
+			func(directed ImposedEffect) (Step, error) {
+				outcome.Imposed = append(outcome.Imposed, directed)
+				return done()
+			}, done), nil
+	}
+
 	deliverRemoval := func() (Step, error) {
 		if m.in.Removal == nil {
-			return Done{Outcome: outcome}, nil
+			return deliverMove()
 		}
 
 		return publishRemoval(m.in.Removal, func(stripped ImposedEffect) (Step, error) {
 			outcome.Imposed = append(outcome.Imposed, stripped)
-			return Done{Outcome: outcome}, nil
+			return deliverMove()
 		}), nil
 	}
 
