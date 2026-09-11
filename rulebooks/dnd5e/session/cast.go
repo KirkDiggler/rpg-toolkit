@@ -290,7 +290,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// caller sent, which castTargets has just confirmed was nobody.
 	var caught *areaCaught
 	if definition.Cast != nil && definition.Cast.Target == combatActions.CastTargetArea {
-		caught, err = deriveAreaMembers(scope.enc, definition.Cast, in.Member, roster)
+		caught, err = deriveAreaMembers(scope.enc, definition.Cast, in.Member, roster, in.Cell)
 		if err != nil {
 			return nil, fmt.Errorf("cast: %w", err)
 		}

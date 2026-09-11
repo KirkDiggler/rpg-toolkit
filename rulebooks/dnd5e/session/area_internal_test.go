@@ -98,7 +98,7 @@ func areaProfile(sizeFeet int, catches combatActions.AreaCatches) *combatActions
 }
 
 func (s *AreaDeriveSuite) derive(profile *combatActions.CastProfile) *areaCaught {
-	caught, err := deriveAreaMembers(s.enc, profile, areaBard, s.roster())
+	caught, err := deriveAreaMembers(s.enc, profile, areaBard, s.roster(), nil)
 	s.Require().NoError(err)
 	return caught
 }
@@ -155,7 +155,7 @@ func (s *AreaDeriveSuite) TestTheShopkeeperIsCaughtAndReported() {
 // the first layer that can measure, and it refuses rather than resolving a
 // spell that does nothing forever.
 func (s *AreaDeriveSuite) TestAFootprintThatCannotReachIsRefusedHere() {
-	_, err := deriveAreaMembers(s.enc, areaProfile(4, combatActions.AreaCatchesOthers), areaBard, s.roster())
+	_, err := deriveAreaMembers(s.enc, areaProfile(4, combatActions.AreaCatchesOthers), areaBard, s.roster(), nil)
 	s.Require().Error(err)
 	s.ErrorIs(err, ErrBadCast)
 	s.Contains(err.Error(), "4 feet")
@@ -167,7 +167,7 @@ func (s *AreaDeriveSuite) TestAFootprintThatCannotReachIsRefusedHere() {
 // this case.
 func (s *AreaDeriveSuite) TestAnEmptyFootprintIsAnOrdinaryAnswer() {
 	// The ally, alone at three cells out, catching nothing within one.
-	caught, err := deriveAreaMembers(s.enc, areaProfile(5, combatActions.AreaCatchesOthers), areaFar, s.roster())
+	caught, err := deriveAreaMembers(s.enc, areaProfile(5, combatActions.AreaCatchesOthers), areaFar, s.roster(), nil)
 	s.Require().NoError(err)
 	s.Empty(caught.resolvable)
 	s.Empty(caught.unresolved)
@@ -177,7 +177,7 @@ func (s *AreaDeriveSuite) TestAnEmptyFootprintIsAnOrdinaryAnswer() {
 // caster the composition never placed has no footprint to project. Fails closed
 // rather than defaulting to the origin cell.
 func (s *AreaDeriveSuite) TestACasterNobodyPlacedIsRefused() {
-	_, err := deriveAreaMembers(s.enc, areaProfile(5, combatActions.AreaCatchesOthers), "ghost", s.roster())
+	_, err := deriveAreaMembers(s.enc, areaProfile(5, combatActions.AreaCatchesOthers), "ghost", s.roster(), nil)
 	s.Require().Error(err)
 	s.ErrorIs(err, ErrBadCast)
 }
@@ -188,7 +188,129 @@ func (s *AreaDeriveSuite) TestACasterNobodyPlacedIsRefused() {
 func (s *AreaDeriveSuite) TestAProfileWithNoShapeIsRefused() {
 	profile := areaProfile(5, combatActions.AreaCatchesOthers)
 	profile.Area = nil
-	_, err := deriveAreaMembers(s.enc, profile, areaBard, s.roster())
+	_, err := deriveAreaMembers(s.enc, profile, areaBard, s.roster(), nil)
 	require.Error(s.T(), err)
 	s.ErrorIs(err, ErrBadCast)
+}
+
+// AreaCoveredSuite is the caster-edge box: a shape with a DIRECTION, which the
+// radius arm above has never needed.
+//
+// Its own scene rather than the one above, because the members this needs —
+// somebody behind the caster, somebody past the far edge — would change what
+// every radius test catches. A fixture shared past the point of honesty is how
+// a test starts passing for a reason nobody wrote down.
+type AreaCoveredSuite struct {
+	suite.Suite
+	enc *encounter.Encounter
+
+	casterAt, aheadAt, behindAt, farAt spatial.Position
+}
+
+func TestAreaCoveredSuite(t *testing.T) {
+	suite.Run(t, new(AreaCoveredSuite))
+}
+
+const (
+	coveredCaster = "bard"
+	coveredAhead  = "skeleton"
+	coveredBehind = "ally"
+	coveredFar    = "wolf"
+)
+
+func (s *AreaCoveredSuite) SetupTest() {
+	const row = 5
+	offset := func(col int) spatial.Position {
+		return spatial.Position{X: float64(col), Y: float64(row)}
+	}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
+		Announcer: encQuietAnnouncer{}, Sight: &sightSeam{}, Equipment: encNoHandsObserved{},
+		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 14, 14)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: coveredCaster, Kind: encounter.KindPlayer, Position: offset(5)},
+			{ID: coveredAhead, Kind: encounter.KindMonster, Position: offset(6)},
+			{ID: coveredBehind, Kind: encounter.KindPlayer, Position: offset(4)},
+			{ID: coveredFar, Kind: encounter.KindMonster, Position: offset(9)},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	s.enc = enc
+
+	placed := map[encounter.MemberID]spatial.Position{}
+	for _, m := range s.roster() {
+		placed[m.ID] = m.Position
+	}
+	s.casterAt = placed[coveredCaster]
+	s.aheadAt = placed[coveredAhead]
+	s.behindAt = placed[coveredBehind]
+	s.farAt = placed[coveredFar]
+
+	// The scene's own assumptions, before anything depends on them.
+	s.Require().Equal(1.0, enc.Distance(s.casterAt, s.aheadAt), "the skeleton is one cell ahead")
+	s.Require().Equal(1.0, enc.Distance(s.casterAt, s.behindAt), "the ally is one cell behind")
+	s.Require().Equal(4.0, enc.Distance(s.casterAt, s.farAt), "the wolf is four cells out")
+}
+
+func (s *AreaCoveredSuite) roster() []encounter.Member {
+	roster, err := s.enc.Members()
+	s.Require().NoError(err)
+	return roster
+}
+
+// coveredProfile is Thunderwave's shape: a box of sizeFeet on a side, anchored
+// on the caster's own edge, catching everyone but them.
+func coveredProfile(sizeFeet int) *combatActions.CastProfile {
+	return &combatActions.CastProfile{
+		RangeFeet: sizeFeet,
+		Target:    combatActions.CastTargetArea,
+		Area: &combatActions.CastArea{
+			Footprint: combatActions.Footprint{
+				Shape: combatActions.AreaBox, SizeFeet: sizeFeet,
+				Origin: combatActions.AreaOriginCasterEdge,
+			},
+			Catches: combatActions.AreaCatchesOthers,
+		},
+	}
+}
+
+// TestTheCubeCatchesWhatItIsPointedAt is the whole of what the cell buys.
+//
+// The same spell, cast by the same bard standing in the same cell, catches a
+// different creature depending only on which way it was aimed — and the caster,
+// whose own cell an edge-anchored box never covers, is caught by neither.
+func (s *AreaCoveredSuite) TestTheCubeCatchesWhatItIsPointedAt() {
+	s.Run("aimed at the skeleton", func() {
+		caught, err := deriveAreaMembers(
+			s.enc, coveredProfile(15), coveredCaster, s.roster(), &s.aheadAt)
+		s.Require().NoError(err)
+		s.Contains(caught.resolvable, coveredAhead)
+		s.NotContains(caught.resolvable, coveredBehind, "the cube hangs off one edge, not both")
+		s.NotContains(caught.resolvable, coveredCaster)
+		s.NotContains(caught.resolvable, coveredFar, "four cells out is past a fifteen-foot box")
+	})
+
+	s.Run("aimed at the ally", func() {
+		caught, err := deriveAreaMembers(
+			s.enc, coveredProfile(15), coveredCaster, s.roster(), &s.behindAt)
+		s.Require().NoError(err)
+		s.Contains(caught.resolvable, coveredBehind)
+		s.NotContains(caught.resolvable, coveredAhead)
+	})
+}
+
+// TestACubeWithNoCellIsRefused. The door validates the cell against the offer,
+// so reaching here without one is a caller that went around it — and a cube
+// given a direction here would be a rule invented at the layer that measures.
+func (s *AreaCoveredSuite) TestACubeWithNoCellIsRefused() {
+	_, err := deriveAreaMembers(s.enc, coveredProfile(15), coveredCaster, s.roster(), nil)
+	s.Require().Error(err)
+	s.ErrorIs(err, ErrBadCast)
+	s.Contains(err.Error(), "cell")
 }
