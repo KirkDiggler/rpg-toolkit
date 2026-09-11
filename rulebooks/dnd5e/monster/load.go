@@ -232,17 +232,15 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 		{"condition state changed", func() (string, error) {
 			return dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx, m.onConditionStateChanged)
 		}},
-		// The three rows the reaction meter needs: what spends it, and the two
-		// things that give it back. See Monster.CanReact for why a monster has
-		// a meter at all.
+		// The two rows the reaction meter needs: what spends it, and the one
+		// thing that gives it back. See Monster.CanReact for why a monster has
+		// a meter at all, and Monster.onTurnStart for why a long rest is not
+		// the other thing.
 		{"spend requested", func() (string, error) {
 			return dnd5eEvents.SpendRequestedTopic.On(bus).Subscribe(ctx, m.onSpendRequested)
 		}},
 		{"turn start", func() (string, error) {
 			return dnd5eEvents.TurnStartTopic.On(bus).Subscribe(ctx, m.onTurnStart)
-		}},
-		{"rest", func() (string, error) {
-			return dnd5eEvents.RestTopic.On(bus).Subscribe(ctx, m.onRest)
 		}},
 	}
 

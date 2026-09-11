@@ -211,6 +211,19 @@ func (s *PureLoadTestSuite) TestLoadRejectsNilData() {
 // Two fields of Data survive no loader: a monster has nowhere to hold features
 // or inventory and ToData does not write them. Pinned so the round-trip
 // guarantee above is read with its actual scope.
+func (s *PureLoadTestSuite) TestKnownRoundTripGaps() {
+	data := s.sheet()
+	data.Features = []json.RawMessage{json.RawMessage(`{"ref":"whatever"}`)}
+	data.Inventory = []InventoryItemData{{ID: "potion", Name: "Potion", Quantity: 1}}
+
+	m, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+
+	out := m.ToData()
+	s.Require().Empty(out.Features, "Features has no home on a monster")
+	s.Require().Empty(out.Inventory, "Inventory has no home on a monster")
+}
+
 // The meter is persisted for the reason SneakAttackData gives for its own
 // once-per-turn field: every call reconstructs the sheet from JSON, so a
 // runtime-only bool resets on each RPC and meters nothing at all.
@@ -233,19 +246,6 @@ func (s *PureLoadTestSuite) TestAnOlderBlobWithNoMeterHasItsReaction() {
 
 	s.True(m.CanReact())
 	s.False(m.ToData().ReactionSpent)
-}
-
-func (s *PureLoadTestSuite) TestKnownRoundTripGaps() {
-	data := s.sheet()
-	data.Features = []json.RawMessage{json.RawMessage(`{"ref":"whatever"}`)}
-	data.Inventory = []InventoryItemData{{ID: "potion", Name: "Potion", Quantity: 1}}
-
-	m, err := Load(s.ctx, data)
-	s.Require().NoError(err)
-
-	out := m.ToData()
-	s.Require().Empty(out.Features, "Features has no home on a monster")
-	s.Require().Empty(out.Inventory, "Inventory has no home on a monster")
 }
 
 type liveMonsterCondition struct {
@@ -667,30 +667,31 @@ func (s *MonsterKeeperTestSuite) TestATurnStartWithAFullMeterWritesNothing() {
 	s.False(s.mon.IsDirty())
 }
 
-// A long rest clears it too, which is where the opportunity attack's flag used
-// to clear. A short rest does not: reactions are not a short-rest resource.
-func (s *MonsterKeeperTestSuite) TestALongRestClearsTheMeterAndAShortRestDoesNot() {
+// THE TURN START IS THE ONLY RESET, and a rest is not a second one.
+//
+// The flag this meter replaced cleared on a long rest as well, so the row is
+// an obvious thing to re-add. It would have no caller: every publisher of
+// RestEvent is a character verb naming a character, so no rest in this
+// rulebook can carry a monster's id. This pins the absence so the row is not
+// put back without the publisher that would make it mean something.
+func (s *MonsterKeeperTestSuite) TestARestDoesNotGiveAMonsterItsReactionBack() {
 	s.spendReaction(s.mon.GetID())
 	markSaved(s.mon)
 
-	s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType:    coreResources.ResetShortRest,
-		CharacterID: s.mon.GetID(),
-	}))
-	s.Require().False(s.mon.CanReact(), "a short rest does not give a reaction back")
+	for _, restType := range []coreResources.ResetType{
+		coreResources.ResetShortRest, coreResources.ResetLongRest,
+	} {
+		s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
+			RestType:    restType,
+			CharacterID: s.mon.GetID(),
+		}))
+		s.False(s.mon.CanReact(), "%s", restType)
+		s.False(s.mon.IsDirty(), "%s: a sheet that did not change is not a write", restType)
+	}
 
-	s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType:    coreResources.ResetLongRest,
-		CharacterID: "someone-else",
-	}))
-	s.Require().False(s.mon.CanReact(), "and neither does somebody else's long rest")
-
-	s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType:    coreResources.ResetLongRest,
-		CharacterID: s.mon.GetID(),
-	}))
-	s.True(s.mon.CanReact())
-	s.True(s.mon.IsDirty())
+	s.Require().NoError(dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx,
+		dnd5eEvents.TurnStartEvent{SubjectID: s.mon.GetID(), Round: 2}))
+	s.True(s.mon.CanReact(), "the monster's own turn start is what gives it back")
 }
 
 func TestPureLoadSuite(t *testing.T) {

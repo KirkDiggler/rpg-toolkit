@@ -129,6 +129,24 @@ func (s *OpportunityAttackMeterSuite) sheetFor(sheet *fakeConditionOwner) *fakeS
 	return keeper
 }
 
+// bills collects every spend request published on the bus, so a test can count
+// what the condition ASKED for rather than what a keeper happened to pay. The
+// two differ now that a debit can be floored, and "spends exactly once" is a
+// claim about the asking.
+func (s *OpportunityAttackMeterSuite) bills() *[]dnd5eEvents.SpendRequestedEvent {
+	mu := &sync.Mutex{}
+	collected := &[]dnd5eEvents.SpendRequestedEvent{}
+	_, err := dnd5eEvents.SpendRequestedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, e dnd5eEvents.SpendRequestedEvent) error {
+			mu.Lock()
+			defer mu.Unlock()
+			*collected = append(*collected, e)
+			return nil
+		})
+	s.Require().NoError(err)
+	return collected
+}
+
 // readyCtx is the context a live movement fold runs under: a room to read
 // geometry from, and the reactor readied for OA.
 func (s *OpportunityAttackMeterSuite) readyCtx(reactor string) context.Context {
@@ -419,13 +437,10 @@ func (s *OpportunityAttackMeterSuite) TestATriggerNobodyTakesCostsNothing() {
 	s.Len(*collected, 2, "so the next mover is still offered a swing")
 }
 
-// Taken spends, and spends ONCE — and the thing that makes it once is now the
-// meter itself rather than a flag on this condition.
-//
-// A second taken event for a reactor who has had no turn since is a duplicate
-// rather than a second reaction. The condition no longer remembers the first
-// one, so it bills again; the ledger's floor is what makes that harmless. You
-// cannot spend a reaction you do not have.
+// ONE SWING, ONE BILL. Counted on the bus rather than on the keeper, because
+// the bill is what this condition controls and the debit is not: a keeper
+// floors what it cannot pay, so a second request would be invisible on the
+// sheet and perfectly visible to any other subscriber.
 func (s *OpportunityAttackMeterSuite) TestATakenReactionSpendsExactlyOnce() {
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
@@ -435,9 +450,38 @@ func (s *OpportunityAttackMeterSuite) TestATakenReactionSpendsExactlyOnce() {
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
+	billed := s.bills()
 	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().Len(*collected, 1)
+
+	s.taken(ctx, "fighter-1", "wolf-1")
+
+	s.Require().Len(*billed, 1, "one swing asks the economy once")
+	s.Equal(coreCombat.ActionReaction, (*billed)[0].ActionType)
+	s.Equal(refs.Conditions.OpportunityAttack().String(), (*billed)[0].SourceRef.String(),
+		"and says what is asking, so a log can name it")
+	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
+	s.Equal(0, keeper.sheet.reactions)
+}
+
+// A DUPLICATE EVENT IS NOT A SECOND REACTION, and what makes that true is the
+// meter rather than anything this condition remembers.
+//
+// The flag that used to dedup here is gone. A second taken event for a reactor
+// who has had no turn since bills again — the condition has no memory of the
+// first — and the ledger's floor is what makes that harmless: you cannot spend
+// a reaction you do not have.
+func (s *OpportunityAttackMeterSuite) TestADuplicateTakenEventCannotSpendPastEmpty() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("wolf-1", "monster", 5, 6)
+
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
+	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 
 	s.taken(ctx, "fighter-1", "wolf-1")
 	s.taken(ctx, "fighter-1", "wolf-1")
@@ -445,6 +489,7 @@ func (s *OpportunityAttackMeterSuite) TestATakenReactionSpendsExactlyOnce() {
 	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent,
 		"the slot is debited once, not once per event")
 	s.Equal(0, keeper.sheet.reactions, "and never below empty")
+	s.False(keeper.sheet.CanReact())
 }
 
 // One bus carries every combatant's conditions, so a taken event names its

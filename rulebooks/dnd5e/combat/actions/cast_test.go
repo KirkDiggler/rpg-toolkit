@@ -205,6 +205,16 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 		s.Require().ErrorContains(profile.Validate(), "damage or a delivered condition")
 	})
 
+	s.Run("a save word neither half nor negated", func() {
+		// The profile stopped naming the permitted words and DELEGATES to the
+		// gate, so this is the subtest that proves the delegation happens at
+		// all: without the p.Save.Validate() call, a garbage word would reach
+		// a machine that has no branch for it.
+		profile := gatedDamageProfile()
+		profile.Save.OnSuccess = "mostly"
+		s.Require().ErrorContains(profile.Validate(), "cast save is invalid")
+	})
+
 	s.Run("a save that recurs", func() {
 		profile := gatedProfile()
 		profile.Save.Recurrence = saves.RecurrenceEndOfTurn

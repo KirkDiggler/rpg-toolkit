@@ -9,7 +9,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
-	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
@@ -252,22 +251,15 @@ func (m *Monster) onSpendRequested(_ context.Context, event dnd5eEvents.SpendReq
 // Only when the meter actually moved, because a boundary runs for every
 // participant of every round: marking unconditionally would flag every monster
 // in the fight dirty on every turn of it.
+//
+// THE ONLY RESET. The flag this meter replaced also cleared on a long rest,
+// and that arm is deliberately not carried over: the only publishers of
+// RestEvent are Character.LongRest and Character.ShortRest, and both name a
+// character, so nothing in this rulebook can send a rest that a monster's id
+// would match. A row for it would be wiring with no caller. If a rest that can
+// name a monster is ever written, this is where its arm goes.
 func (m *Monster) onTurnStart(_ context.Context, event dnd5eEvents.TurnStartEvent) error {
 	if event.SubjectID != m.id || !m.reactionSpent {
-		return nil
-	}
-
-	m.reactionSpent = false
-	m.dirty = true
-
-	return nil
-}
-
-// onRest gives the reaction back on this monster's long rest, which is where
-// the opportunity attack's flag used to clear. A short rest does not: a
-// reaction is not a short-rest resource.
-func (m *Monster) onRest(_ context.Context, event dnd5eEvents.RestEvent) error {
-	if event.CharacterID != m.id || event.RestType != coreResources.ResetLongRest || !m.reactionSpent {
 		return nil
 	}
 
