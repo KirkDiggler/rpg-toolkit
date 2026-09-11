@@ -13,16 +13,27 @@ import "fmt"
 // a push that would cross a wall stops at the wall without any spell knowing a
 // wall exists.
 //
-// ONE VALUE, AND IT IS THE ONE SOMETHING CAN WALK. "Away" and "toward" arrive
-// with the spells that bring their executors — Dissonant Whispers and Thorn
-// Whip (rpg-project#431 §0) — and not one line before. A policy named here
-// ahead of its executor would validate clean in content and then fail at the
-// moment of the shove, which moves the refusal from the author to the table.
+// EVERY VALUE HERE IS ONE SOMETHING CAN WALK. A policy arrives with the spell
+// that brings its executor and not one line before: "line" came with
+// Thunderwave, "away" with Dissonant Whispers, and "toward" waits for Thorn
+// Whip (rpg-project#431 §0). A policy named here ahead of its executor would
+// validate clean in content and then fail at the moment of the shove, which
+// moves the refusal from the author to the table.
 type MovePolicy string
 
-// MoveLine continues the line from the anchor through the mover, past the
-// mover, for the budget. A shove: it does not search for anywhere better.
-const MoveLine MovePolicy = "line"
+const (
+	// MoveLine continues the line from the anchor through the mover, past the
+	// mover, for the budget. A shove: it does not search for anywhere better.
+	MoveLine MovePolicy = "line"
+
+	// MoveAway sends the mover to the reached standable cell FARTHEST from the
+	// anchor by the ruler, within the budget. Not a direction and not a line:
+	// a creature in a dead-end corridor that runs its whole speed and ends
+	// nearer the anchor as the crow flies has not run away, so it does not
+	// run. The executor is encounter's Route, which floods from the mover and
+	// measures every reached cell against the anchor.
+	MoveAway MovePolicy = "away"
+)
 
 // MovePays is what the moved creature spends to be moved.
 //
@@ -80,7 +91,7 @@ type CastMove struct {
 // budget, and a known price.
 func (m CastMove) Validate() error {
 	switch m.Policy {
-	case MoveLine:
+	case MoveLine, MoveAway:
 	default:
 		return fmt.Errorf("unknown move policy %q", m.Policy)
 	}
