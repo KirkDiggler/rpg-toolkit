@@ -107,6 +107,17 @@ func (e *Encounter) appendSightedBeats(deltas map[MemberID]*IntelDelta, at uint6
 		gained = appendSubjectStrings(gained, delta.Reacquired)
 		lost := appendSubjectStrings(make([]string, 0, len(delta.Faded)), delta.Faded)
 
+		// SORTED HERE TOO, and not only where the percept is built. This
+		// beat's own guarantee is that two runs of one scene produce one
+		// transcript, and a guarantee that holds only because a function
+		// three calls away happens to sort is not one this file can make.
+		// gained also concatenates two lists whose own orders mean nothing
+		// to each other — first contacts then re-acquisitions — so even a
+		// perfectly ordered percept would leave it grouped by a distinction
+		// the beat deliberately does not draw.
+		sort.Strings(gained)
+		sort.Strings(lost)
+
 		// NOTHING CHANGED, SO NOTHING IS SAID. This is the whole of the
 		// noise control: a refresh in which everybody simply kept seeing
 		// what they already saw appends no beats at all.
@@ -147,10 +158,9 @@ func (e *Encounter) appendSightedBeats(deltas map[MemberID]*IntelDelta, at uint6
 	return nil
 }
 
-// appendSubjectStrings appends subjects to out in their own order, which is
-// percept order for everything play/intel reports from a land pass and sorted
-// order for Faded (it walks a map). Either way the composition preserves what
-// it was given rather than imposing an order of its own.
+// appendSubjectStrings appends subjects to out as strings. The caller sorts
+// what it builds — see the sort in appendSightedBeats for why the order these
+// arrive in cannot be trusted.
 func appendSubjectStrings(out []string, subjects []intel.Subject) []string {
 	for _, subject := range subjects {
 		out = append(out, string(subject))

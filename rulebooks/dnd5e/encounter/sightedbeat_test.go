@@ -288,3 +288,155 @@ func (s *SightedBeatTestSuite) TestTheBeatCarriesItsOwnTag() {
 	s.Require().NoError(json.Unmarshal(tagged[0].Payload, &beat))
 	s.Equal(encounter.BeatSighted, beat["beat"])
 }
+
+// TestTheNamesAreDeterministic is the guard for the defect CI caught and a
+// local run did not.
+//
+// A percept is built by ranging the member map, so the order of everything
+// downstream of it — play/intel's FirstContact, a host's Discovered, and this
+// beat's own lists — was whatever that range happened to produce. Two runs of
+// one scene were emitting gained:["bob","goblin"] and gained:["goblin","bob"].
+// A story is a transcript; two runs of one scene must read the same.
+//
+// Three members in the open, so each observer gains TWO at once and an
+// unordered pair has somewhere to show. Repeated, because Go randomises map
+// iteration per run rather than per range — one pass could agree by luck.
+func (s *SightedBeatTestSuite) TestTheNamesAreDeterministic() {
+	scene := func() []string {
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+			Field: wallRoom(),
+			Members: []encounter.MemberInput{
+				// Declared out of alphabetical order on purpose: a beat
+				// that echoed declaration order would pass a sorted
+				// assertion only by accident.
+				{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+				{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
+			},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		})
+		s.Require().NoError(err)
+
+		hers := s.sightingsOf(enc, alice)
+		s.Require().Len(hers, 1)
+		return hers[0].gained
+	}
+
+	first := scene()
+	s.Require().Len(first, 2, "she sees both of them at first light")
+	s.Equal([]string{string(bob), string(goblin)}, first, "named in one settled order")
+
+	for i := 0; i < 40; i++ {
+		s.Equal(first, scene(), "run %d told a different story", i)
+	}
+}
+
+// TestGainedIsSortedAcrossBothItsHalves pins the beat's own sort, which the
+// percept's cannot stand in for.
+//
+// gained concatenates TWO lists — first contacts, then re-acquisitions — so
+// even a perfectly ordered percept leaves it grouped by a distinction this
+// beat deliberately does not draw. Deterministic, and still not sorted.
+//
+// The scene is built so the two halves are in the wrong order without the
+// sort: the member who RETURNS sorts first, and the member seen for the
+// FIRST time sorts last, so a bare concatenation reads ["zzz…", "aaa…"].
+func (s *SightedBeatTestSuite) TestGainedIsSortedAcrossBothItsHalves() {
+	const (
+		returning = encounter.MemberID("aaa-lurker")    // fades and comes back
+		newcomer  = encounter.MemberID("zzz-latecomer") // arrives while she is blind
+	)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: wallRoom(),
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+			{ID: returning, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// Out past the wall and back, so the lurker is a ghost she has already met.
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(6, 2)})
+	s.Require().NoError(err)
+
+	// The latecomer arrives on the far side of the wall, where she cannot
+	// see them — so they are still unmet when she walks back out.
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: newcomer, Kind: encounter.KindPlayer,
+		Cell: cellAt(6, 11), SpeedFeet: 30, SightFeet: 60,
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
+	s.Require().NoError(err)
+
+	hers := s.sightingsOf(enc, alice)
+	s.Require().NotEmpty(hers)
+	last := hers[len(hers)-1]
+	s.Equal([]string{string(returning), string(newcomer)}, last.gained,
+		"one returning and one met for the first time, named in one sorted list")
+}
+
+// TestThePerceptItselfIsOrdered guards the fix at the SOURCE rather than at
+// this beat — the sighting beat's own sort would hide it.
+//
+// rebuildPercepts used to build each percept by ranging the member map, so
+// play/intel reported FirstContact and Refreshed in no order at all, and a
+// host reading those as Discovered inherited the randomness. This asserts the
+// delta directly, which is the shape every other consumer of a verb's output
+// sees.
+func (s *SightedBeatTestSuite) TestThePerceptItselfIsOrdered() {
+	const (
+		nearer  = encounter.MemberID("aaa-second")
+		further = encounter.MemberID("zzz-first")
+	)
+
+	seen := func() []string {
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+			Field: wallRoom(),
+			Members: []encounter.MemberInput{
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+				// Declared with the later name first, so declaration order
+				// cannot be mistaken for sorted order.
+				{ID: further, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
+				{ID: nearer, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 10}},
+			},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		})
+		s.Require().NoError(err)
+
+		out, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
+		s.Require().NoError(err)
+
+		delta := out.IntelDeltas[alice]
+		s.Require().NotNil(delta, "she stepped past the wall and met two people")
+
+		names := make([]string, 0, len(delta.FirstContact))
+		for _, report := range delta.FirstContact {
+			names = append(names, string(report.Subject))
+		}
+		return names
+	}
+
+	first := seen()
+	s.Require().Len(first, 2, "both of them were behind the wall and are not now")
+	s.Equal([]string{string(nearer), string(further)}, first,
+		"the percept names them in one settled order, not the map's")
+
+	for i := 0; i < 40; i++ {
+		s.Equal(first, seen(), "run %d built a differently ordered percept", i)
+	}
+}

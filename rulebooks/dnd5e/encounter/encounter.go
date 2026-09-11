@@ -1890,8 +1890,24 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// What it does do is give [Encounter.classify]'s spotted and drop arms
 		// their first producible input, and 5e surprise with them, without
 		// changing a line of how percepts are CONSUMED.
+		// SORTED, because a percept built by ranging a map has no order at
+		// all — and every list downstream inherits whatever order it had.
+		// play/intel reports FirstContact and Refreshed in percept order,
+		// those reach a host as Discovered, and the sighting beat names
+		// them in a story that is supposed to be a transcript. Two runs of
+		// one scene were producing gained:["captain","alice"] and
+		// gained:["alice","captain"], which CI caught and a local run did
+		// not. The randomness was always here; nothing had asked it for an
+		// order before.
+		subjects := make([]MemberID, 0, len(e.members))
+		for id := range e.members {
+			subjects = append(subjects, id)
+		}
+		sort.Slice(subjects, func(i, j int) bool { return subjects[i] < subjects[j] })
+
 		var percept []intel.Report
-		for _, otherMember := range e.members {
+		for _, subjectID := range subjects {
+			otherMember := e.members[subjectID]
 			if otherMember.ID == observerID {
 				continue // Skip self
 			}
