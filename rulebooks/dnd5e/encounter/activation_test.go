@@ -659,10 +659,15 @@ func (s *RecordActivationSuite) TestRecordActivationNoticeDownFailure() {
 func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 	s.Equal([]string{"Ref", "Name"}, structFieldNames(encounter.ActivationIdentity{}))
 	s.Equal([]string{"MemberID", "ConditionRef", "SourceID"}, structFieldNames(encounter.ConditionAddress{}))
+	// The move facts are two more PRIMITIVES, which is the whole of what this
+	// assertion guards: an int and a string, not a spatial position and not a
+	// root event type. A result says how far a creature went and what stopped
+	// it in words a host can persist without knowing what either means.
 	s.Equal([]string{
 		"Kind", "Target", "Address", "Ref", "Name",
 		"Amount", "Requested", "Before", "After", "Calculation",
 		"DamageType", "Description", "Reason",
+		"Moved", "StoppedBy",
 	}, structFieldNames(encounter.ActivationResult{}))
 	s.Equal([]string{"Actor", "Target", "Ability", "Results"}, structFieldNames(encounter.RecordActivationInput{}))
 	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordActivationOutput{}))

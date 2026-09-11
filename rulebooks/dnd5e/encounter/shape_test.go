@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -182,4 +183,250 @@ func (s *ShapeSuite) TestAnEmptyFootprintIsAnAnswerButABackwardsOneIsNot() {
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrNilInput)
 	})
+}
+
+// --- MembersCovered: a footprint aimed at a cell -----------------------------
+
+// CoveredSuite is about [Encounter.MembersCovered]: a shape drawn on the plane
+// rather than a reach measured in cells, and who is standing under it.
+//
+// THE SCENE IS ONE AXIAL ROW, for the reason the file's header gives. Under
+// pointy-top, cells sharing an authored row convert to cells sharing an axial R,
+// so the bearing from the caster to anyone here is due east and the box is drawn
+// along an axis. That is the case worth pinning first: it is the one a reader
+// can check by hand, and the off-axis case is the walk's job (the design says
+// the blob is two to three wide depending on the bearing, and that is the rule
+// working rather than a bug).
+//
+//	authored col:  4       5       6       7       9
+//	row 5:      behind  caster    .     ahead    far
+//
+// A 15-foot box on the caster's EDGE starts half a cell out and runs 15 feet
+// from there, so it covers the three cells ahead and stops: the fourth cell's
+// near boundary is exactly the box's far edge.
+type CoveredSuite struct {
+	suite.Suite
+	enc *encounter.Encounter
+
+	casterAt, aheadAt, behindAt, farAheadAt spatial.Position
+}
+
+func TestCoveredSuite(t *testing.T) {
+	suite.Run(t, new(CoveredSuite))
+}
+
+func (s *CoveredSuite) SetupTest() {
+	const casterCol, aheadCol, behindCol, farAheadCol, row = 5, 7, 4, 9, 5
+	offset := func(col int) spatial.Position {
+		return spatial.Position{X: float64(col), Y: float64(row)}
+	}
+	s.casterAt = cellAt(casterCol, row)
+	s.aheadAt = cellAt(aheadCol, row)
+	s.behindAt = cellAt(behindCol, row)
+	s.farAheadAt = cellAt(farAheadCol, row)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion(string(shapeRegion), 0, 0, 14, 14)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "caster", Kind: encounter.KindPlayer, Position: offset(casterCol)},
+			{ID: "ahead", Kind: encounter.KindMonster, Position: offset(aheadCol)},
+			{ID: "behind", Kind: encounter.KindPlayer, Position: offset(behindCol)},
+			{ID: "far-ahead", Kind: encounter.KindMonster, Position: offset(farAheadCol)},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	s.enc = enc
+
+	// The scene's own assumptions, asserted before anything depends on them.
+	placed := map[encounter.MemberID]spatial.Position{}
+	roster, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range roster {
+		placed[m.ID] = m.Position
+	}
+	s.Require().Equal(s.casterAt, placed["caster"])
+	s.Require().Equal(s.aheadAt, placed["ahead"])
+	s.Require().Equal(s.behindAt, placed["behind"])
+	s.Require().Equal(s.farAheadAt, placed["far-ahead"])
+
+	s.Require().Equal(2.0, enc.Distance(s.casterAt, s.aheadAt), "ahead is two cells out")
+	s.Require().Equal(1.0, enc.Distance(s.casterAt, s.behindAt), "behind is one cell the other way")
+	s.Require().Equal(4.0, enc.Distance(s.casterAt, s.farAheadAt), "far-ahead is four cells out")
+	s.Require().Equal(
+		enc.Distance(s.behindAt, s.farAheadAt), enc.Distance(s.behindAt, s.casterAt)+
+			enc.Distance(s.casterAt, s.farAheadAt),
+		"all four stand on one straight line, so the box is drawn along an axis")
+}
+
+// memberIDs is the roster ids of a covered set, in the order it came back.
+func memberIDs(members []encounter.Member) []encounter.MemberID {
+	out := make([]encounter.MemberID, 0, len(members))
+	for _, m := range members {
+		out = append(out, m.ID)
+	}
+
+	return out
+}
+
+// TestMembersCoveredByAnEdgeAnchoredBox.
+//
+// The 15-foot cube, aimed. Everyone the shape lies on at half or better is
+// caught, and the caster — whose own cell the box starts in FRONT of — is not.
+func (s *CoveredSuite) TestMembersCoveredByAnEdgeAnchoredBox() {
+	out, err := s.enc.MembersCovered(&encounter.MembersCoveredInput{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 15, D: 15}},
+		Anchor:    s.casterAt,
+		Toward:    s.aheadAt,
+		AtEdge:    true,
+	})
+	s.Require().NoError(err)
+
+	ids := memberIDs(out.Members)
+	s.Contains(ids, encounter.MemberID("ahead"))
+	s.NotContains(ids, encounter.MemberID("caster"),
+		"the caster is never under a box anchored on their own edge")
+	s.NotContains(ids, encounter.MemberID("behind"), "the box is aimed the other way")
+	s.NotContains(ids, encounter.MemberID("far-ahead"), "four cells out is past a 15-foot box")
+
+	s.Equal(1.0, out.Cells[s.aheadAt], "the cell two straight ahead is wholly under the box")
+	for cell, f := range out.Cells {
+		s.GreaterOrEqual(f+1e-9, encounter.CoverageThreshold,
+			"only cells at or above the threshold are reported: %v=%v", cell, f)
+		s.LessOrEqual(f, 1.0, "a fraction of a cell is never more than the cell: %v=%v", cell, f)
+	}
+	s.Less(out.Cells[s.casterAt], encounter.CoverageThreshold,
+		"whatever the box clips off the caster's own cell, it is not half of it")
+
+	s.bisectedCellsAreAllCaught(out)
+}
+
+// bisectedCellsAreAllCaught is the reason the threshold comparison carries a
+// tolerance, asserted rather than asserted-about.
+//
+// The box's long edges run through cells and cut them in half. Four of them,
+// drawn on this axis — and the four do not agree with each other to the last
+// bit: measured here, two come back a couple of ulp ABOVE 0.5, one lands on it
+// exactly, and one sits at 0.49999999999999933. They are the same cut through
+// four mirror-image cells, and which side of 0.5 each one lands on is which
+// cosine it went through, nothing else.
+//
+// A bare `>= 0.5` would therefore catch three of those four and drop the
+// fourth, which is a spell that is asymmetric for no reason a player could ever
+// be told. So: every cell the raster puts within a whisker of half must be in
+// the answer, and this asks the raster directly to find them.
+func (s *CoveredSuite) bisectedCellsAreAllCaught(out encounter.MembersCoveredOutput) {
+	canvas, err := s.enc.Canvas()
+	s.Require().NoError(err)
+	emb := spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{
+		Orientation: spatial.HexOrientationPointyTop, CellWidth: encounter.FeetPerCell,
+	})
+	facing, ok := emb.Bearing(s.casterAt, s.aheadAt)
+	s.Require().True(ok)
+
+	raw, err := spatial.Coverage(emb, canvas.GetGrid(), spatial.CoverageInput{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 15, D: 15}},
+		At:        s.casterAt, Facing: facing, Anchor: spatial.AnchorAtEdge,
+	})
+	s.Require().NoError(err)
+
+	var bisected int
+	for cell, f := range raw.Cells {
+		if math.Abs(f-encounter.CoverageThreshold) > 1e-9 {
+			continue
+		}
+		bisected++
+		s.Contains(out.Cells, cell,
+			"cell %v is cut in half (%.17g) and must be caught like every other half", cell, f)
+	}
+	s.Positive(bisected, "this scene is about cells the box bisects, and it drew none")
+}
+
+// TestTheCoveredSetIsTheRostersOwnOrder.
+//
+// A producer that returned its members in map order would give two identical
+// casts two different stories, and a save resolved in a different order is a
+// different fight (C8).
+func (s *CoveredSuite) TestTheCoveredSetIsTheRostersOwnOrder() {
+	out, err := s.enc.MembersCovered(&encounter.MembersCoveredInput{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 25, D: 25}},
+		Anchor:    s.casterAt,
+		Toward:    s.aheadAt,
+		AtEdge:    true,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(out.Members)
+
+	roster, err := s.enc.Members()
+	s.Require().NoError(err)
+	caught := map[encounter.MemberID]bool{}
+	for _, m := range out.Members {
+		caught[m.ID] = true
+	}
+	var expected []encounter.MemberID
+	for _, m := range roster {
+		if caught[m.ID] {
+			expected = append(expected, m.ID)
+		}
+	}
+	s.Equal(expected, memberIDs(out.Members), "the covered set is the roster, filtered")
+}
+
+// TestACentredBoxCatchesTheCaster.
+//
+// The other anchor rule, and the reason AtEdge is a field rather than an
+// assumption: a box centred on a cell covers that cell. No spell asks for it
+// yet; the rule it proves is that WHERE the shape sits is content's to declare.
+func (s *CoveredSuite) TestACentredBoxCatchesTheCaster() {
+	out, err := s.enc.MembersCovered(&encounter.MembersCoveredInput{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 15, D: 15}},
+		Anchor:    s.casterAt,
+		Toward:    s.aheadAt,
+		AtEdge:    false,
+	})
+	s.Require().NoError(err)
+	s.Contains(memberIDs(out.Members), encounter.MemberID("caster"))
+	s.Equal(1.0, out.Cells[s.casterAt], "a box centred on a cell covers it whole")
+}
+
+// TestTowardEqualToTheAnchorIsRefused.
+//
+// There is no bearing from a cell to itself, so there is no box to draw. An
+// empty answer would read as a spell that caught nobody, which is a thing that
+// happens — and this is not that.
+func (s *CoveredSuite) TestTowardEqualToTheAnchorIsRefused() {
+	_, err := s.enc.MembersCovered(&encounter.MembersCoveredInput{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 15, D: 15}},
+		Anchor:    s.casterAt,
+		Toward:    s.casterAt,
+		AtEdge:    true,
+	})
+	s.ErrorIs(err, encounter.ErrBadReach)
+}
+
+// TestAMalformedFootprintIsRefusedByName.
+//
+// Content that authored a shape with no sides has a defect, and the refusal
+// that says so is spatial's own — carried through rather than reworded, so a
+// caller greps for one sentinel and finds it wherever the shape was wrong.
+func (s *CoveredSuite) TestAMalformedFootprintIsRefusedByName() {
+	_, err := s.enc.MembersCovered(&encounter.MembersCoveredInput{
+		Anchor: s.casterAt, Toward: s.aheadAt, AtEdge: true,
+	})
+	s.ErrorIs(err, spatial.ErrNoFootprint)
+
+	_, err = s.enc.MembersCovered(&encounter.MembersCoveredInput{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 0, D: 15}},
+		Anchor:    s.casterAt, Toward: s.aheadAt, AtEdge: true,
+	})
+	s.ErrorIs(err, spatial.ErrBadFootprint)
+
+	_, err = s.enc.MembersCovered(nil)
+	s.ErrorIs(err, encounter.ErrNilInput)
 }

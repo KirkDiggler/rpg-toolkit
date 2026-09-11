@@ -697,9 +697,7 @@ func (noAttacksExpected) Strike(context.Context, *encounter.Encounter, encounter
 // and not a stub standing in for one.
 type nothingReactsHere struct{}
 
-func (nothingReactsHere) Move(
-	context.Context, *encounter.Encounter, encounter.MemberID, spatial.Position, spatial.Position,
-) error {
+func (nothingReactsHere) Move(context.Context, *encounter.Encounter, encounter.MoveStep) error {
 	return nil
 }
 

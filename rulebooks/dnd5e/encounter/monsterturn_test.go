@@ -411,30 +411,43 @@ type announcedStep struct {
 	Mover    encounter.MemberID
 	From, To spatial.Position
 
+	// Cause and Forced are what the step says about WHY it is happening: the
+	// effect that moved this creature, and whether they were moved rather
+	// than walking. Both zero for a step somebody chose.
+	Cause  core.Ref
+	Forced bool
+
 	// StoodAt is where the encounter itself had this member when the
 	// announcement arrived, read back rather than echoed.
 	StoodAt spatial.Position
 	Placed  bool
 }
 
-func (r *recordingMover) Move(
-	_ context.Context, enc *encounter.Encounter, mover encounter.MemberID,
-	from, to spatial.Position,
-) error {
-	call := announcedStep{Mover: mover, From: from, To: to}
+func (r *recordingMover) Move(_ context.Context, enc *encounter.Encounter, step encounter.MoveStep) error {
+	call := announcedOf(step)
 
 	members, err := enc.Members()
 	if err != nil {
 		return err
 	}
 	for _, m := range members {
-		if m.ID == mover {
+		if m.ID == step.Mover {
 			call.StoodAt, call.Placed = m.Position, true
 		}
 	}
 	r.calls = append(r.calls, call)
 
 	return r.fail
+}
+
+// announcedOf is the announced step, as this file records one. It copies every
+// field rather than the three it used to, so a scene about WHY a creature is
+// moving can assert on the same record a scene about where it went does.
+func announcedOf(step encounter.MoveStep) announcedStep {
+	return announcedStep{
+		Mover: step.Mover, From: step.From, To: step.To,
+		Cause: step.Cause, Forced: step.Forced,
+	}
 }
 
 // adjacentSkeletonEncounter builds a one-room fight: alice and a monster
@@ -1216,7 +1229,8 @@ func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoMover() {
 // exact twin of TestRefusingStrikerFailsLoudly.
 func (s *MonsterTurnTestSuite) TestRefusingMoverFailsLoudly() {
 	err := (encounter.RefusingMover{}).Move(
-		context.Background(), nil, goblin, cellAt(1, 1), cellAt(2, 1),
+		context.Background(), nil,
+		encounter.MoveStep{Mover: goblin, From: cellAt(1, 1), To: cellAt(2, 1)},
 	)
 	s.Require().ErrorIs(err, encounter.ErrRefusingMover)
 }
@@ -1230,13 +1244,10 @@ type droppingMover struct {
 	calls    []announcedStep
 }
 
-func (d *droppingMover) Move(
-	_ context.Context, _ *encounter.Encounter, mover encounter.MemberID,
-	from, to spatial.Position,
-) error {
-	d.calls = append(d.calls, announcedStep{Mover: mover, From: from, To: to})
+func (d *droppingMover) Move(_ context.Context, _ *encounter.Encounter, step encounter.MoveStep) error {
+	d.calls = append(d.calls, announcedOf(step))
 	if len(d.calls) > d.after {
-		d.standing.down = append(d.standing.down, mover)
+		d.standing.down = append(d.standing.down, step.Mover)
 	}
 	return nil
 }

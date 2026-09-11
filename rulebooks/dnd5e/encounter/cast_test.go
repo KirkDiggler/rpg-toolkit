@@ -708,3 +708,190 @@ func (s *RecordCastSuite) TestAnOrderedThreeTargetCastRecordsOneCastAndEachTarge
 	s.Contains(string(entries[2].Payload), `"source_id":"bard"`)
 	s.Contains(string(entries[5].Payload), `"source_id":"bard"`)
 }
+
+// --- ResultMoved: the projection of an imposed move --------------------------
+
+// thunderwave is the spell that pushes. It has no profile in this module and
+// never will — a SpellIdentity is two strings this composition carries and does
+// not read (C1) — but the scenes below need a spell whose whole point is that
+// it moves somebody.
+var thunderwave = encounter.SpellIdentity{
+	Ref: "dnd5e:spells:thunderwave", Name: "Thunderwave",
+}
+
+// slidTwoCells is a clean push: the save failed, the blast moved the skeleton
+// the whole two cells it paid for, and nothing stopped it.
+func slidTwoCells() encounter.ActivationResult {
+	return encounter.ActivationResult{
+		Kind:   encounter.ResultMoved,
+		Target: castSkeleton,
+		Ref:    thunderwave.Ref,
+		Name:   thunderwave.Name,
+		Moved:  2,
+	}
+}
+
+// TestAMovedResultRecordsHowFarAndWhatStoppedIt.
+//
+// The whole reason this kind exists. A creature that was PUSHED is somewhere
+// else now, and the two things a reader wants are how far it went and what it
+// hit — the pillar, in the scene this was built for.
+func (s *RecordCastSuite) TestAMovedResultRecordsHowFarAndWhatStoppedIt() {
+	enc := s.scene(everyoneStanding{})
+
+	stopped := slidTwoCells()
+	stopped.Moved = 1
+	stopped.StoppedBy = "is blocked by dnd5e:props:pillar"
+
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: thunderwave,
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton, Save: failedSave(),
+			Results: []encounter.ActivationResult{psychicDamage(), stopped},
+		}},
+	})
+	s.Require().NoError(err)
+
+	entries := s.storyEntries(enc, castBard, out.Seqs)
+	s.Equal([]string{"cast", "saved", "damage-applied", "moved"}, s.beatNames(entries),
+		"the damage lands and then the push, in the order the rulebook produced them")
+	s.JSONEq(
+		`{"beat":"activation-result","actor":"bard","result":{"kind":"moved","target":"cast-skeleton",`+
+			`"ref":"dnd5e:spells:thunderwave","name":"Thunderwave","moved":1,`+
+			`"stopped_by":"is blocked by dnd5e:props:pillar"}}`,
+		string(entries[3].Payload),
+	)
+}
+
+// TestAPushThatWentTheWholeWayNamesNothing.
+//
+// stopped_by is absent when nothing stopped it, rather than present and empty:
+// a reader asking what got in the way should find no answer, not a blank one.
+// The distance is NOT omitted, because zero cells is a real outcome — a
+// creature pinned against a wall is pushed nowhere, and a beat that dropped the
+// number would read as a push that never happened.
+func (s *RecordCastSuite) TestAPushThatWentTheWholeWayNamesNothing() {
+	enc := s.scene(everyoneStanding{})
+
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: thunderwave,
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton, Save: failedSave(),
+			Results: []encounter.ActivationResult{slidTwoCells()},
+		}},
+	})
+	s.Require().NoError(err)
+
+	entries := s.storyEntries(enc, castBard, out.Seqs)
+	s.NotContains(string(entries[2].Payload), "stopped_by")
+	s.Contains(string(entries[2].Payload), `"moved":2`)
+
+	pinned := slidTwoCells()
+	pinned.Moved = 0
+	pinned.StoppedBy = "is blocked by dnd5e:props:pillar"
+	out, err = enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: thunderwave,
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton, Save: failedSave(),
+			Results: []encounter.ActivationResult{pinned},
+		}},
+	})
+	s.Require().NoError(err)
+	entries = s.storyEntries(enc, castBard, out.Seqs)
+	s.Contains(string(entries[2].Payload), `"moved":0`, "pushed nowhere is a fact, not an absence")
+}
+
+// TestAMovedResultRefusesEveryFieldOutsideItsShape.
+//
+// The closed-shape law, applied to the new kind. A moved result is a target, a
+// spell, a distance and a reason it stopped; anything else on it is a caller
+// that built the wrong result and must hear so rather than watch the field be
+// dropped on the floor.
+func (s *RecordCastSuite) TestAMovedResultRefusesEveryFieldOutsideItsShape() {
+	enc := s.scene(everyoneStanding{})
+
+	cases := map[string]func(*encounter.ActivationResult){
+		"a damage calculation": func(r *encounter.ActivationResult) {
+			r.Calculation = psychicDamage().Calculation
+			r.Requested = 3
+		},
+		"a condition address": func(r *encounter.ActivationResult) {
+			r.Target = ""
+			r.Address = &encounter.ConditionAddress{
+				MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:prone",
+			}
+		},
+		"a damage type": func(r *encounter.ActivationResult) { r.DamageType = "thunder" },
+		"a description": func(r *encounter.ActivationResult) { r.Description = "shoved" },
+		"a reason":      func(r *encounter.ActivationResult) { r.Reason = "failed the save" },
+		"an amount":     func(r *encounter.ActivationResult) { r.Amount = 2 },
+	}
+	for name, spoil := range cases {
+		s.Run(name, func() {
+			result := slidTwoCells()
+			spoil(&result)
+			_, err := enc.RecordCast(&encounter.RecordCastInput{
+				Actor: castBard, Spell: thunderwave,
+				Targets: []encounter.CastTargetResult{{
+					Target: castSkeleton, Save: failedSave(),
+					Results: []encounter.ActivationResult{result},
+				}},
+			})
+			s.ErrorIs(err, encounter.ErrInvalidData)
+		})
+	}
+}
+
+// TestEveryOtherKindRefusesTheMoveFacts is the same law pointed the other way,
+// and it is the half that is easy to forget. A damage result carrying a
+// distance is a caller who filled in the wrong struct, and silently discarding
+// the number would make a push vanish out of a story that reported it.
+func (s *RecordCastSuite) TestEveryOtherKindRefusesTheMoveFacts() {
+	enc := s.scene(everyoneStanding{})
+
+	for name, spoil := range map[string]func(*encounter.ActivationResult){
+		"a distance": func(r *encounter.ActivationResult) { r.Moved = 2 },
+		"a stopped-by": func(r *encounter.ActivationResult) {
+			r.StoppedBy = "is blocked by dnd5e:props:pillar"
+		},
+	} {
+		s.Run(name, func() {
+			result := psychicDamage()
+			spoil(&result)
+			_, err := enc.RecordCast(&encounter.RecordCastInput{
+				Actor: castBard, Spell: thunderwave,
+				Targets: []encounter.CastTargetResult{{
+					Target: castSkeleton, Save: failedSave(),
+					Results: []encounter.ActivationResult{result},
+				}},
+			})
+			s.ErrorIs(err, encounter.ErrInvalidData)
+		})
+	}
+}
+
+// TestAMovedResultRequiresTheSpellThatMovedThem.
+//
+// Same law as healing's and damage's identity: a creature that was pushed was
+// pushed by SOMETHING, and a result that cannot say what is the shove the
+// directive's own beat cause exists to prevent, arriving one layer up.
+func (s *RecordCastSuite) TestAMovedResultRequiresTheSpellThatMovedThem() {
+	enc := s.scene(everyoneStanding{})
+
+	for _, strip := range []func(*encounter.ActivationResult){
+		func(r *encounter.ActivationResult) { r.Ref = "" },
+		func(r *encounter.ActivationResult) { r.Name = "" },
+		func(r *encounter.ActivationResult) { r.Target = "" },
+	} {
+		result := slidTwoCells()
+		strip(&result)
+		_, err := enc.RecordCast(&encounter.RecordCastInput{
+			Actor: castBard, Spell: thunderwave,
+			Targets: []encounter.CastTargetResult{{
+				Target: castSkeleton, Save: failedSave(),
+				Results: []encounter.ActivationResult{result},
+			}},
+		})
+		s.Require().Error(err)
+	}
+}

@@ -576,4 +576,28 @@ var (
 	// reaches it has lost track of which half of the pose/answer pair it is
 	// in, and a silent success would hide that.
 	ErrNotPaused = errors.New("encounter: no turn is paused")
+
+	// ErrUnsupportedPolicy is what [Encounter.Route] returns for any
+	// [MovePolicy] that is not [MoveLine] — including the zero value, which is
+	// not a default.
+	//
+	// A CLOSED SWITCH FAILING CLOSED. [MoveLine] is the only policy that
+	// exists, because a policy arrives with the thing that carries it out and
+	// nothing has yet paid for "away" or "toward". This refusal is what makes
+	// that honest: the wrong answer here is not an error but an EMPTY PATH,
+	// which reads as "there was nowhere to go" and is indistinguishable from a
+	// creature pinned against a wall (rpg-project#430, the directed-movement
+	// design §3).
+	ErrUnsupportedPolicy = errors.New("encounter: no such move policy")
+
+	// ErrNoCause is what [Encounter.Direct] returns for a directed move that
+	// names no effect.
+	//
+	// The cause is what makes a push legible. Every movement beat says a
+	// creature is somewhere else now; only the cause says something MOVED
+	// them, and an observer who cannot tell a shove from a stride has been
+	// told something false by omission. Intel is testimony, so the thing an
+	// observer is entitled to be wrong about must at least have been recorded
+	// correctly first.
+	ErrNoCause = errors.New("encounter: a directed move names no cause")
 )
