@@ -149,8 +149,13 @@ func TestCallSiteClassification(t *testing.T) {
 
 	from, ok := enc.canvas.GetEntityPosition(string(activeMember))
 	require.True(t, ok)
+	// ONTO EMPTY FLOOR. The three seats are a row, so the next cell along X
+	// is somebody else's — and since rpg-toolkit#1652 a hostile creature's
+	// space refuses a step, which would make this beat-classification test
+	// fail for a reason that has nothing to do with beats. The row below is
+	// empty and one step away, which is all this needs.
 	to := from
-	to.X++
+	to.Y++
 	_, err = enc.Step(&StepInput{Member: activeMember, To: to})
 	require.NoError(t, err)
 

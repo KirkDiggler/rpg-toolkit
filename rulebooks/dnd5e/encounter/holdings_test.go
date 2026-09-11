@@ -374,13 +374,23 @@ func (s *HoldingsSuite) drop(enc *encounter.Encounter) {
 }
 
 // walkTo moves a member to a cell, through the seam gap when the two are in
-// different rooms.
+// different rooms, and BESIDE the cell rather than onto it when something
+// standing there refuses the mover.
 //
 // Step is a PLACEMENT question and does not check adjacency ([StepOutput]'s
 // own doc), so a move inside one room is one step however far it is — but a
 // move BETWEEN rooms still cannot cross a wall, so it goes through the one
 // open crossing. Two waypoints, named, rather than a pathfinder: the fixture
 // has exactly one way through and a reader should be able to see it.
+//
+// STANDING BESIDE A BODY IS WHAT THESE SCENES ALWAYS MEANT. Loot reaches one
+// cell ([LootInput.Range] zero means adjacent) and so does Hold, so "walk to
+// the captain" is "get within reach of the captain" and never was "stand
+// inside him". The fixture walked onto the body's own cell only because
+// nothing on the step path consulted stance (rpg-toolkit#1652); now a hostile
+// creature's space is closed, and this says what the scene meant instead of
+// what it used to get away with. An ALLY's cell is untouched: two friends may
+// still share one here, exactly as before.
 func (s *HoldingsSuite) walkTo(enc *encounter.Encounter, member core.EntityID, to spatial.Position) {
 	from, ok := enc.RegionAt(s.cellOf(enc, member))
 	s.Require().True(ok, "the member is standing somewhere")
@@ -397,13 +407,39 @@ func (s *HoldingsSuite) walkTo(enc *encounter.Encounter, member core.EntityID, t
 			s.step(enc, member, w)
 		}
 	}
-	s.step(enc, member, to)
+	s.stepAbs(enc, member, s.withinReachOf(enc, member, cellAt(int(to.X), int(to.Y))))
+}
+
+// withinReachOf is cell itself when the mover may stand on it, and otherwise
+// the first free neighbour of it — read through [Encounter.CellAt], so the
+// fixture and the verb it is about to call agree on what "may stand here"
+// means rather than the fixture keeping its own opinion.
+func (s *HoldingsSuite) withinReachOf(
+	enc *encounter.Encounter, member core.EntityID, cell spatial.Position,
+) spatial.Position {
+	if enc.CellAt(encounter.CellAtInput{Cell: cell, Mover: member}).Passage != encounter.PassageBlocked {
+		return cell
+	}
+	canvas, err := enc.Canvas()
+	s.Require().NoError(err)
+	for _, n := range canvas.GetGrid().GetNeighbors(cell) {
+		if enc.CellAt(encounter.CellAtInput{Cell: n, Mover: member}).Passage == encounter.PassageStandable {
+			return n
+		}
+	}
+	s.Require().Fail("nowhere to stand", "no free cell beside %v", cell)
+	return cell
 }
 
 // step is one placement, in the fixture's own authored coordinates.
 func (s *HoldingsSuite) step(enc *encounter.Encounter, member core.EntityID, to spatial.Position) {
-	_, err := enc.Step(&encounter.StepInput{Member: member, To: cellAt(int(to.X), int(to.Y))})
-	s.Require().NoError(err, "step to [%g,%g]", to.X, to.Y)
+	s.stepAbs(enc, member, cellAt(int(to.X), int(to.Y)))
+}
+
+// stepAbs is one placement, in the absolute cells every verb speaks.
+func (s *HoldingsSuite) stepAbs(enc *encounter.Encounter, member core.EntityID, to spatial.Position) {
+	_, err := enc.Step(&encounter.StepInput{Member: member, To: to})
+	s.Require().NoError(err, "step to %v", to)
 }
 
 // cellOf is a member's current absolute cell, read the way a client reads it.

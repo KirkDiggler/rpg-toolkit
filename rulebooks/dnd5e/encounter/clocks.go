@@ -1110,9 +1110,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		pos := location.Position
 
 		if h.Status == intel.Held {
-			path, reachable := e.bfsShortestPath(ownCell, func(cell spatial.Position) bool {
-				return cell == pos
-			})
+			path, reachable := e.routeToRemembered(m.ID, ownCell, pos)
 			if !reachable {
 				path = nil
 			}
@@ -1160,14 +1158,14 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// relative to the far side of a wall, reachable in fewer steps
 		// than continuing on toward pos itself, and InReach never checked
 		// walkability to begin with (it is distance-only, matching 5e's
-		// own reach rule). bfsShortestPath's goal predicate stops the
+		// own reach rule). routeTo's goal predicate stops the
 		// search the moment ANY cell — including this member's own
 		// starting position, handling "already in reach" for free — is
 		// within bestRangeCells of pos, which is the actual nearest
 		// walkable answer rather than a proxy for it. One BFS per
 		// sighting, every Act call — see the field's own doc for why that
 		// cost is accepted rather than deferred behind a lazy capability.
-		path, _ := e.bfsShortestPath(ownCell, func(cell spatial.Position) bool {
+		path, _ := e.routeTo(m.ID, ownCell, func(cell spatial.Position) bool {
 			return e.Distance(cell, pos) <= float64(bestRangeCells)
 		})
 
@@ -1198,103 +1196,171 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	}, nil
 }
 
-// pathTo computes the shortest path from `from` to `to` over this
-// composition's own floor and walls — a plain breadth-first search, which
-// is exact (not merely a heuristic) here because every edge this module's
-// grids offer costs exactly one cell (Chebyshev on a square grid, cube
-// distance on a hex one); there is no weighted-edge case for A* to earn its
-// keep over. Returns the path EXCLUDING `from` and INCLUDING `to`, or
-// ok=false when `to` is not floor or no floor-connected route reaches it.
+// routeTo is the search [Encounter.buildMonsterView]'s reach-aware Path runs
+// on: the shortest route for `mover` from `from` to the nearest cell it may
+// STOP on that satisfies `goal`.
 //
-// DOES NOT CONSULT OCCUPANCY, deliberately: this answers "how would the
-// geometry let me get there", the same question a player planning a route
-// asks before checking whether someone is standing in the doorway. A cell
-// another member currently occupies still refuses at actual step time
-// (stepMember's own CanPlaceEntity gate), and driveMonsterTurns already
-// treats a mid-move refusal as "stop the walk, keep the turn running" —
-// exactly the shape a transient occupant should have, not a permanently
-// unreachable cell a stale path would have to be recomputed around.
+// IT READS [Encounter.CellAt] FOR EVERY CELL, which is the whole of
+// rpg-toolkit#1652. The breadth-first search this replaced filtered on three
+// things — visited, region ownership, and wall edges — so it knew about
+// boundaries BETWEEN cells and nothing at all about what stands ON one. A
+// pillar was invisible to it. It handed a monster a route through the pillar,
+// [Encounter.Step] refused the step, the walk broke, and the monster stood
+// still. A route and a step that read the same fold cannot disagree.
 //
-// NEIGHBOURS ARE VISITED IN A FIXED ORDER (C8): map iteration has none, and
-// a driver asked twice against unchanged geometry must get the same answer
-// both times, not merely an equally-short one.
-// bfsShortestPath is the search engine [Encounter.buildMonsterView]'s
-// reach-aware Path runs on: a breadth-first search from `from` over this
-// composition's own floor and
-// walls, stopping at the first cell — in BFS DISCOVERY order, which is
-// shortest-distance-from-`from` order — satisfying `goal`. goal(from)
-// itself is checked first: a caller whose own starting cell already
-// satisfies the goal gets an EMPTY path with ok=true, not a one-element
-// path naming its own position.
+// CROSSING AND CONTENTS ARE BOTH ASKED, and of their own owners: the canvas
+// answers whether the edge between two cells may be crossed, exactly as the
+// old search asked it, and the fold answers whether the cell may be entered.
 //
-// Exact (not a heuristic): every edge this module's grids offer costs
-// exactly one cell (Chebyshev on a square grid, cube distance on a hex
-// one), so BFS IS shortest-path here — there is no weighted-edge case for
-// A* to earn its keep over. Returns the path EXCLUDING `from` and
-// INCLUDING the first cell satisfying goal, or ok=false when no reachable
-// cell ever does.
+// MAY CROSS IS NOT MAY STOP (2014's rule for moving around other creatures).
+// The flood passes through anything not Blocked — an ally's cell included —
+// while the goal cell must be Standable, so a route ends beside a friend
+// rather than inside one.
 //
-// NEIGHBOURS ARE VISITED IN A FIXED ORDER (C8): map iteration has none,
-// and a driver asked twice against unchanged geometry must get the same
-// answer both times, not merely an equally-short one.
-func (e *Encounter) bfsShortestPath(from spatial.Position, goal func(spatial.Position) bool) ([]spatial.Position, bool) {
+// goal(from) is checked FIRST: a caller whose own starting cell already
+// satisfies the goal gets an EMPTY path with ok=true, not a one-element path
+// naming its own position, and not a pointless step to some other in-range
+// cell. That is what makes "already in reach, do not bother moving" free
+// (rpg-project#254).
+//
+// Returns the path EXCLUDING `from` and INCLUDING the chosen cell, or
+// ok=false when no reachable cell satisfies the goal.
+//
+// DETERMINISTIC (C8): a driver asked twice against unchanged geometry must
+// get the same answer, not merely an equally good one. spatial.Field visits
+// neighbours in a fixed order and breaks equal-cost ties the same way every
+// time; the goal scan below breaks its own ties by distance, then X, then Y,
+// so ranging over the field's map cannot leak iteration order into the answer.
+func (e *Encounter) routeTo(
+	mover MemberID, from spatial.Position, goal func(spatial.Position) bool,
+) ([]spatial.Position, bool) {
 	if goal(from) {
 		return nil, true
 	}
 
-	grid := e.canvas.GetGrid()
-	visited := map[spatial.Position]bool{from: true}
-	prev := make(map[spatial.Position]spatial.Position)
-	queue := []spatial.Position{from}
-
-	var found spatial.Position
-	ok := false
-
-	for len(queue) > 0 && !ok {
-		cur := queue[0]
-		queue = queue[1:]
-
-		neighbors := grid.GetNeighbors(cur)
-		sort.Slice(neighbors, func(i, j int) bool {
-			if neighbors[i].X != neighbors[j].X {
-				return neighbors[i].X < neighbors[j].X
-			}
-			return neighbors[i].Y < neighbors[j].Y
-		})
-
-		for _, n := range neighbors {
-			if visited[n] {
-				continue
-			}
-			if _, owned := e.RegionAt(n); !owned {
-				continue
-			}
-			if e.canvas.IsBoundaryMovementBlocked(cur, n) {
-				continue
-			}
-			visited[n] = true
-			prev[n] = cur
-			if goal(n) {
-				found = n
-				ok = true
-				break
-			}
-			queue = append(queue, n)
-		}
-	}
-
+	field, ok := e.floodFrom(mover, from, nil)
 	if !ok {
 		return nil, false
 	}
 
-	var path []spatial.Position
-	for at := found; at != from; at = prev[at] {
-		path = append(path, at)
+	best, found := e.nearestStop(field, mover, from, goal)
+	if !found {
+		return nil, false
 	}
-	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-		path[i], path[j] = path[j], path[i]
+
+	return field.PathTo(best)
+}
+
+// routeToRemembered is the route to ONE remembered cell, and it is a different
+// question from [Encounter.routeTo] in exactly one way: the mover may finish on
+// the remembered cell even when a creature is standing there.
+//
+// A MEMORY IS TESTIMONY, NOT A LIVE READ. `Remembered` holds what this member
+// was told and has not re-checked; that somebody is standing on that cell right
+// now is a fact the mover does not have, so letting it cut the route would be
+// the composition answering a memory out of live state — the one thing
+// per-observer intel exists to prevent. Its contract says so already
+// ([RememberedMember.Path]: an exact-cell route, empty only when the cell is
+// unreachable), and a nil here would put the monster back where #1652 found it:
+// standing still because the route it was handed said there was nowhere to go.
+//
+// THE MAP STILL RULES. Only a creature is forgiven on the target cell. A wall,
+// a sealed cell or a pillar closes it exactly as it closes any other, because
+// those are facts about the floor that no memory of it gets to overrule.
+func (e *Encounter) routeToRemembered(
+	mover MemberID, from, target spatial.Position,
+) ([]spatial.Position, bool) {
+	if from == target {
+		return nil, true
 	}
-	return path, true
+
+	field, ok := e.floodFrom(mover, from, func(cell spatial.Position) bool {
+		return cell == target && e.blockedOnlyByCreatures(mover, cell)
+	})
+	if !ok {
+		return nil, false
+	}
+	if _, reached := field.Dist[target]; !reached {
+		return nil, false
+	}
+
+	return field.PathTo(target)
+}
+
+// floodFrom is the one distance field both routes read: outward from `from`,
+// crossing only edges the canvas allows and entering only cells the fold does
+// not call Blocked. `forgiven` names cells whose blockage does not stop the
+// flood, and may be nil.
+func (e *Encounter) floodFrom(
+	mover MemberID, from spatial.Position, forgiven func(spatial.Position) bool,
+) (spatial.FieldOutput, bool) {
+	field, err := spatial.Field(e.canvas.GetGrid(), spatial.FieldInput{
+		Sources: []spatial.Position{from},
+		Passable: func(a, b spatial.Position) bool {
+			if e.canvas.IsBoundaryMovementBlocked(a, b) {
+				return false
+			}
+			if e.CellAt(CellAtInput{Cell: b, Mover: mover}).Passage != PassageBlocked {
+				return true
+			}
+			return forgiven != nil && forgiven(b)
+		},
+	})
+	if err != nil {
+		return spatial.FieldOutput{}, false
+	}
+
+	return field, true
+}
+
+// blockedOnlyByCreatures reports whether the single reason a cell is closed to
+// `mover` is somebody standing on it — no wall, no seal, no prop.
+func (e *Encounter) blockedOnlyByCreatures(mover MemberID, cell spatial.Position) bool {
+	fact := e.CellAt(CellAtInput{Cell: cell, Mover: mover})
+	if fact.Passage != PassageBlocked {
+		return false
+	}
+	for _, contrib := range fact.Contribs {
+		if contrib.Blocks && contrib.Kind != ContribMember {
+			return false
+		}
+	}
+
+	return true
+}
+
+// nearestStop is the cell satisfying goal that `mover` may stop on and reach
+// in the fewest steps — ties broken by X then Y, so the answer does not depend
+// on map iteration order (C8).
+func (e *Encounter) nearestStop(
+	field spatial.FieldOutput, mover MemberID, from spatial.Position, goal func(spatial.Position) bool,
+) (spatial.Position, bool) {
+	var best spatial.Position
+	bestDist, found := 0, false
+
+	for cell, dist := range field.Dist {
+		if cell == from || !goal(cell) {
+			continue
+		}
+		// May cross an ally, may not stop on one.
+		if e.CellAt(CellAtInput{Cell: cell, Mover: mover}).Passage != PassageStandable {
+			continue
+		}
+		if !found || dist < bestDist || (dist == bestDist && beforeInScanOrder(cell, best)) {
+			best, bestDist, found = cell, dist, true
+		}
+	}
+
+	return best, found
+}
+
+// beforeInScanOrder is the tie-break between two equally near goal cells: X
+// then Y, the same order spatial.Field visits neighbours in.
+func beforeInScanOrder(a, b spatial.Position) bool {
+	if a.X != b.X {
+		return a.X < b.X
+	}
+	return a.Y < b.Y
 }
 
 // driveIfStillRunning calls driveMonsterTurns on bubble if it still holds any

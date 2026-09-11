@@ -1444,6 +1444,76 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	s.True(usedTheGap, "the path must cross the wall column through its one gap at y=0: %+v", aliceSeen.Path)
 }
 
+// TestSeenMemberPathWalksAroundAPillar is the same question as the wall test
+// one cell over: a wall is a boundary BETWEEN cells and the route has always
+// known about those, while a movement-blocking prop stands ON a cell and the
+// route could not see it at all (rpg-toolkit#1652). The skeleton behind the
+// tomb's pillar therefore got a route through the pillar, the step refused it,
+// and the monster stood still.
+//
+// The corridor is authored cell by cell rather than as a rectangle so the
+// detour is the ONLY way past: one row of five, with a two-cell bulge at row 0
+// that rejoins the corridor at [3,1]. The pillar sits at [2,1], the single cell
+// the straight route needs.
+//
+//	x:  0  1  2  3  4
+//	y=0:       .  .
+//	y=1: G  .  #  .  A
+func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAPillar() {
+	corridor := encounter.RegionInput{
+		ID:   room1,
+		Name: room1,
+		Cells: []spatial.Position{
+			{X: 0, Y: 1}, {X: 1, Y: 1}, {X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 1},
+			{X: 2, Y: 0}, {X: 3, Y: 0},
+		},
+		Archetype: testArchetype,
+		Lighting:  fullLight(),
+	}
+	driver := &scriptedDriver{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{corridor},
+			// A pillar is one cell wide, so spatial's lane rule says it
+			// obstructs no sightline on its own: the goblin sees alice
+			// straight through it and the question stays about walking.
+			Props: []encounter.PropInput{{
+				Ref:               "dnd5e:props:pillar",
+				At:                spatial.Position{X: 2, Y: 1},
+				BlocksMovement:    propTrue(),
+				BlocksLineOfSight: propFalse(),
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 1}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 1},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(driver.calls, 1)
+	aliceSeen := s.seenFor(driver.calls[0], alice)
+	s.Require().NotEmpty(aliceSeen.Path)
+	s.NotContains(aliceSeen.Path, cellAt(2, 1),
+		"the route may not cross the pillar's cell: %+v", aliceSeen.Path)
+	s.NotEqual(cellAt(4, 1), aliceSeen.Path[len(aliceSeen.Path)-1],
+		"the path stops ADJACENT to alice, not on her own occupied cell")
+	s.Contains(aliceSeen.Path, cellAt(3, 0),
+		"the bulge is the only way past the pillar: %+v", aliceSeen.Path)
+}
+
 // TestSeenMemberPathIsEmptyWhenSightedButUnreachable pins the case Sight
 // and walkability disagree on: two floor regions separated by a void gap
 // wide enough that no walkable route bridges them, with the void itself
