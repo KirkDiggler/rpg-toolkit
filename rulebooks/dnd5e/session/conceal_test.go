@@ -901,8 +901,17 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	s.NotEmpty(region.Boundaries, "with every boundary touching its cells, border walls included")
 
 	// carol sees five feet from the far corner: the one sight seam answers
-	// "no" for her exactly as her own percepts would, so she learns nothing.
-	s.Empty(eventsFor(s.stream.published, "carol"))
+	// "no" for her exactly as her own percepts would, so she learns nothing
+	// OF THE OPENING. Asserted as "no reveal reached her" rather than "no
+	// event did: her five-foot reach also drops the two of them from her
+	// percepts on this same refresh, and that fade has always happened —
+	// it is only visible now that a sighting beat reports it. Publishing
+	// her own narrowing view is not leaking the vault.
+	carolHeard := kinds(eventsFor(s.stream.published, "carol"))
+	s.NotContains(carolHeard, session.EventDoorRevealed,
+		"she cannot see the door open, so it is not revealed to her")
+	s.NotContains(carolHeard, session.EventRegionRevealed,
+		"and the room behind it stays off her map")
 
 	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
 	s.Require().NoError(err)
