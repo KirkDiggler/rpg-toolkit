@@ -2487,6 +2487,24 @@ const (
 	// clock. Move declarations carry no candidates; the path is chosen at
 	// execution time and priced whole.
 	TargetPath TargetKind = "path"
+
+	// TargetCell is the selector shape of an area the caster has to POINT.
+	// The caster names a cell the shape is aimed toward; it is a REFERENCE,
+	// not a calculation, and it rides the verb the way a path does rather
+	// than arriving as a candidate somebody chose.
+	//
+	// NOT TargetArea, though both derive their recipients. TargetArea's shape
+	// is settled the moment the offer is compiled — Thunderclap's burst is
+	// centred on the caster and a client can draw it from the profile alone.
+	// A cube hanging off the caster's own edge cannot be drawn or resolved
+	// until somebody says which way it faces, and a client told only "area"
+	// would prompt for nothing and send a cast the door has to refuse.
+	//
+	// It carries no candidates for the same reason TargetArea carries none: a
+	// candidate is somebody you may CHOOSE, and the cells of a room are not a
+	// roster. Which cells are legal is the client's own reading of the map it
+	// already holds; the door is what refuses a cell that was not.
+	TargetCell TargetKind = "cell"
 )
 
 // TargetCandidate is one member in a compiled Attack's complete candidate

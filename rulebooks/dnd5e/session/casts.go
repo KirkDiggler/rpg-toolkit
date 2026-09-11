@@ -208,7 +208,7 @@ func (m *Manager) compileCastOffer(
 	if profile.Target == combatActions.CastTargetArea {
 		declaration := Declaration{
 			Verb: VerbCast, Slot: slot, Available: budgetOK, Why: budgetWhy, ID: id,
-			Spell: &spellRef, TargetKind: TargetArea, Candidates: []TargetCandidate{},
+			Spell: &spellRef, TargetKind: areaTargetKind(profile.Area), Candidates: []TargetCandidate{},
 			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets, Cost: cost,
 		}
 		return compiledOffer{
@@ -343,4 +343,24 @@ func sortCastOffers(offers []compiledOffer) {
 	sort.SliceStable(offers, func(i, j int) bool {
 		return offers[i].declaration.Spell.Ref < offers[j].declaration.Spell.Ref
 	})
+}
+
+// areaTargetKind is which of the two derived shapes this area cast is: one
+// settled by the profile alone, or one the caster has to point.
+//
+// THE ORIGIN IS THE WHOLE QUESTION, and it is the CONTENT's answer rather than
+// this seam's. An area anchored on the caster's own edge has a direction and
+// nothing in the profile supplies it; every other origin this build knows
+// hangs off the caster's cell and is complete the moment it is compiled.
+//
+// A profile with no area at all falls to [TargetArea], which is what it was
+// before this function existed. It is not a case worth an arm: CastProfile's
+// own Validate binds the target rule and the shape together, deriveAreaMembers
+// refuses the same content at the door, and a shape-less area cast that
+// prompted for a cell would ask the player to aim nothing.
+func areaTargetKind(area *combatActions.CastArea) TargetKind {
+	if area != nil && area.Footprint.Origin == combatActions.AreaOriginCasterEdge {
+		return TargetCell
+	}
+	return TargetArea
 }

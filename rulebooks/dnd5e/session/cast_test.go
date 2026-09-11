@@ -890,6 +890,23 @@ func (s *CastSuite) TestThunderclapIsOfferedAsAnAreaWithNobodyToAimAt() {
 	s.Zero(row.MaxTargets)
 }
 
+// TestThunderwaveIsOfferedAsACellToAimAt is the other half of the area offer,
+// and the reason TargetCell exists at all.
+//
+// Thunderclap's burst is centred on the caster and needs nothing from the
+// player. Thunderwave's cube hangs off the caster's own edge and has to be
+// POINTED, so the offer says a cell is wanted — and still carries no
+// candidates, because a cell is not a creature and there is nobody to choose
+// between.
+func (s *CastSuite) TestThunderwaveIsOfferedAsACellToAimAt() {
+	s.scene(castingBardWithSpells("bard", spells.Thunderwave), 1)
+
+	row := s.castRow(spells.Thunderwave)
+	s.Equal(session.TargetCell, row.TargetKind, "a caster-edge box is aimed, and a cell is what aims it")
+	s.Empty(row.Candidates, "there is nothing to choose between")
+	s.True(row.Available)
+}
+
 // TestThunderclapCatchesTheCreatureStandingInIt is the whole capability, end to
 // end through the verb: content declared a shape, the composition said who was
 // standing in it, and the cast resolved against them — with the player naming
