@@ -377,6 +377,16 @@ type DirectOutput struct {
 	// IntelDeltas is what this move changed about who can see whom, in the
 	// shape [StepOutput.IntelDeltas] reports it. Nil when nobody moved.
 	IntelDeltas map[MemberID]*IntelDelta
+
+	// Paused is true when the walk is HELD on an open window: a reactor is
+	// being asked about the next cell, and [Encounter.ResumeDirective]
+	// finishes the rest once they have answered.
+	//
+	// AN ORDINARY OUTCOME, NOT A FAILURE, and the field exists so a caller
+	// can tell it from a walk that simply ended. Moved is still true — it is
+	// the cells taken so far, accumulated across every hold of this same
+	// walk — and StoppedBy is empty, because nothing stopped it.
+	Paused bool
 }
 
 // Direct walks a creature along cells an effect chose for them, off their own
@@ -402,19 +412,29 @@ type DirectOutput struct {
 // and does not act on it: what a forced step means for a reaction is a rule,
 // and rules live above a module whose go.mod cannot import the rulebook (C1).
 //
-// # A window mid-push is refused, loudly
+// # A window mid-push is HELD, not refused
 //
-// A [Mover] that pauses is asking a player about a step, and the machinery that
-// holds the rest of a paused walk is a TURN's ([Encounter.ResumeTurn]) — there
-// is nowhere to put the remainder of a push. Rather than drop those cells
-// silently, this refuses with [ErrStepPaused] and the caller is told the
-// directive could not be carried out. Today nothing reaches it: the only
-// customer pushes without provoking. The day a directive provokes
-// (Dissonant Whispers), this refusal is the thing that has to be answered.
+// This used to refuse with [ErrStepPaused], and its doc said why that was
+// survivable: the only customer pushed without provoking, so nothing reached
+// it, and "the day a directive provokes (Dissonant Whispers), this refusal is
+// the thing that has to be answered." The day came. A [Mover] that pauses is
+// asking a player about a step, and the rest of the route is now held beside
+// the held turn (held.go): this returns [DirectOutput.Paused] with the cells
+// taken so far, and [Encounter.ResumeDirective] finishes it once the answer is
+// in. Nothing is dropped and nothing is refused.
 //
-// Refusals: [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrNoCause],
-// [ErrTurnPaused] for a mover whose own walk is half-taken, and
-// [ErrStepPaused] above.
+// # A second held walk is refused at the door
+//
+// There is exactly one, and a verb that overwrote it would lose a walk the
+// table is waiting on. So a directive is refused outright while anything is
+// held — which subsumes the older, narrower refusal of pushing the currently
+// paused member, and keeps it for its own reason: their walk is announced and
+// not taken, and moving them off the cell the open window was announced from
+// would leave the reaction it exists for checking reach against a body that is
+// no longer there.
+//
+// Refusals: [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrNoCause], and
+// [ErrTurnPaused] while any walk is held.
 func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, error) {
 	if in.Mover == "" {
 		return DirectOutput{}, fmt.Errorf("direct: %w", ErrNoMember)
@@ -429,12 +449,13 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	if err := in.Cause.IsValid(); err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w: %w", in.Mover, ErrNoCause, err)
 	}
-	// THE PAUSED MEMBER CANNOT BE PUSHED, for [Encounter.Step]'s own reason:
-	// their walk is announced and not taken, and moving them off the cell the
-	// open window was announced from would leave the reaction it exists for
-	// checking reach against a body that is no longer there.
-	if e.PausedMember() == in.Mover {
-		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, ErrTurnPaused)
+	// A HELD TABLE TAKES NO SECOND DIRECTIVE — see this verb's own doc. It
+	// covers the paused member themself, who could never be pushed, and
+	// everybody else, whose push would need a second hold this composition
+	// has no slot for and would refuse to read back.
+	if e.Paused() {
+		return DirectOutput{}, fmt.Errorf(
+			"direct %q: %q is already waiting on an answer: %w", in.Mover, e.PausedMember(), ErrTurnPaused)
 	}
 	if len(in.Route) == 0 {
 		return DirectOutput{}, nil
@@ -449,25 +470,41 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	if err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, err)
 	}
-	if res.paused != nil {
-		return DirectOutput{}, fmt.Errorf(
-			"direct %q: a directed move has no turn to hold the rest of the walk on: %w",
-			in.Mover, ErrStepPaused)
-	}
-
 	out := DirectOutput{Moved: res.moved}
-	if !res.dropped && res.moved < len(in.Route) {
+	if res.paused == nil && !res.dropped && res.moved < len(in.Route) {
 		cell := in.Route[res.moved]
 		out.StoppedBy = e.stoppedBy(e.CellAt(CellAtInput{Cell: cell, Mover: in.Mover}), cell)
 	}
 
-	// THE SAME SETTLE EVERY WALK RUNS. A push reveals what a step reveals:
-	// the mover is somewhere else now, and who can see whom changed with them.
+	// THE SAME SETTLE EVERY WALK RUNS, AND IT RUNS AT A HOLD TOO. A push
+	// reveals what a step reveals: the mover is somewhere else now, and who
+	// can see whom changed with them. A walk that stopped half way still
+	// walked its half (clocks.go's own note on settling at a pause).
 	deltas, serr := e.settleWalk(in.Mover, audience, res.moved)
 	if serr != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, serr)
 	}
 	out.IntelDeltas = deltas
+
+	if res.paused != nil {
+		e.heldDirective = &heldDirective{
+			member:    in.Mover,
+			from:      res.from,
+			to:        res.to,
+			remaining: res.pending,
+			moved:     res.moved,
+			at:        at,
+			audience:  audience,
+			cause:     in.Cause,
+			forced:    !in.Provokes,
+		}
+		if _, berr := e.appendWindowOpenedBeat(
+			in.Mover, res.from, res.to, at, res.paused.Windows, in.Cause,
+		); berr != nil {
+			return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, berr)
+		}
+		out.Paused = true
+	}
 
 	return out, nil
 }

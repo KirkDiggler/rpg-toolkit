@@ -223,6 +223,19 @@ type Encounter struct {
 	// way forward and it is [Encounter.ResumeTurn].
 	pausedTurn *pausedTurn
 
+	// heldDirective is the one DIRECTED walk stopped mid-route because a
+	// reactor is being asked about a step (held.go). Nil whenever the fight
+	// is not waiting on anybody, which is almost always.
+	//
+	// PERSISTED for pausedTurn's reason, and MUTUALLY EXCLUSIVE with it:
+	// there is one held walk, and a blob carrying two is refused at load
+	// because the two continue-verbs would be left guessing which of them
+	// owns the answer. [Encounter.Direct] refuses at the door for the same
+	// reason, so the live verb cannot write what the load would reject.
+	//
+	// It travels in the blob as EncounterData.HeldDirective.
+	heldDirective *heldDirective
+
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Step, Join) declaration order is

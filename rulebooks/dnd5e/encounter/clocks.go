@@ -832,7 +832,9 @@ func (e *Encounter) executeTurnIntent(
 				at:        at,
 				audience:  audience,
 			}
-			if _, berr := e.appendWindowOpenedBeat(e.pausedTurn, res.paused.Windows); berr != nil {
+			if _, berr := e.appendWindowOpenedBeat(
+				activeID, res.from, res.to, at, res.paused.Windows, core.Ref{},
+			); berr != nil {
 				return false, intelDeltas, fmt.Errorf("window beat: %w", berr)
 			}
 			return false, intelDeltas, nil

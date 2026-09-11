@@ -278,24 +278,44 @@ func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}) e
 	return nil
 }
 
-// Paused reports whether a driven turn is stopped mid-walk waiting on an
-// answer.
+// Paused reports whether a walk is stopped mid-route waiting on an answer.
 //
 // THE ONE QUESTION every drive entry asks before it drives and every
 // pause-carrying output answers. A host reads it to know whether the fight is
-// waiting on somebody, and [Encounter.ResumeTurn] is the only thing that
-// makes it false again.
-func (e *Encounter) Paused() bool { return e.pausedTurn != nil }
+// waiting on somebody.
+//
+// TWO SOURCES, ONE ANSWER. A driven turn can be paused mid-walk and a DIRECTED
+// walk can be held mid-route (held.go), and both freeze the table while a
+// player decides — which is the right freeze for a directive too, even though
+// the walk being held is nobody's turn. They are mutually exclusive by
+// construction. [Encounter.HeldDirective] says which of the two it is, and the
+// matching continue-verb is the only thing that makes this false again.
+func (e *Encounter) Paused() bool { return e.pausedTurn != nil || e.heldDirective != nil }
 
-// PausedMember names whose turn is paused, or "" when nothing is.
+// PausedMember names whose walk is held — the paused turn's member, or the
+// held directive's — or "" when nothing is.
 func (e *Encounter) PausedMember() MemberID {
-	if e.pausedTurn == nil {
-		return ""
+	if e.pausedTurn != nil {
+		return e.pausedTurn.member
 	}
-	return e.pausedTurn.member
+	if e.heldDirective != nil {
+		return e.heldDirective.member
+	}
+	return ""
 }
 
 // appendWindowOpenedBeat narrates a step stopping to ask.
+//
+// IT TAKES THE WALK'S FIELDS RATHER THAN THE PAUSE, because there are two
+// kinds of held walk now and only one beat: a driven turn's pause (this file)
+// and a directed walk's hold (held.go) are the same news to a client.
+//
+// cause is ADDED TO THE PAYLOAD ONLY WHEN IT IS A REF, which is what keeps the
+// change additive for the decoders that already read [BeatWindowOpened]. A
+// turn's walk has no cause and passes the zero value, so the beat it writes is
+// byte-identical to the one it always wrote; a directive names the effect that
+// is moving the creature, for [DirectInput.Cause]'s own reason — an observer
+// who cannot tell a rout from a stroll was told something false by omission.
 //
 // AUDIENCE IS EVERYONE (subjectBeat, subject the mover), which is the pre-v1
 // full-data rule this composition applies to every other beat: the client
@@ -303,7 +323,9 @@ func (e *Encounter) PausedMember() MemberID {
 // arrive for all of them at once. A window is plausibly the reactor's own
 // business, and when that day comes it becomes a beatClass rather than a
 // special case here.
-func (e *Encounter) appendWindowOpenedBeat(p *pausedTurn, windows []PausedWindow) (uint64, error) {
+func (e *Encounter) appendWindowOpenedBeat(
+	member MemberID, from, to spatial.Position, at uint64, windows []PausedWindow, cause core.Ref,
+) (uint64, error) {
 	posed := make([]map[string]interface{}, 0, len(windows))
 	for _, w := range windows {
 		posed = append(posed, map[string]interface{}{
@@ -317,10 +339,13 @@ func (e *Encounter) appendWindowOpenedBeat(p *pausedTurn, windows []PausedWindow
 
 	payload := map[string]interface{}{
 		"beat":    BeatWindowOpened,
-		"member":  string(p.member),
-		"from":    p.from,
-		"to":      p.to,
+		"member":  string(member),
+		"from":    from,
+		"to":      to,
 		"windows": posed,
+	}
+	if cause.IsValid() == nil {
+		payload["cause"] = cause.String()
 	}
 	beatBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -328,8 +353,8 @@ func (e *Encounter) appendWindowOpenedBeat(p *pausedTurn, windows []PausedWindow
 	}
 
 	out, err := e.appendBeat(&record.AppendInput{
-		At:       p.at,
-		Audience: e.audienceFor(subjectBeat, p.member),
+		At:       at,
+		Audience: e.audienceFor(subjectBeat, member),
 		Tags:     map[string]string{"tag": "window"},
 		Payload:  beatBytes,
 	})
@@ -613,7 +638,8 @@ func (e *Encounter) finishPausedIntent(
 			at:        p.at,
 			audience:  p.audience,
 		}
-		wseq, berr := e.appendWindowOpenedBeat(e.pausedTurn, res.paused.Windows)
+		wseq, berr := e.appendWindowOpenedBeat(
+			p.member, res.from, res.to, p.at, res.paused.Windows, core.Ref{})
 		if berr != nil {
 			return 0, deltas, false, fmt.Errorf("resume window beat: %w", berr)
 		}
