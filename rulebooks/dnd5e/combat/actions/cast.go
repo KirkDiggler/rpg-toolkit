@@ -111,6 +111,15 @@ type CastProfile struct {
 	// lies. Nil is "this cast names its targets"; non-nil is the whole answer.
 	Area *CastArea `json:"area,omitempty"`
 
+	// Move declares that this cast MOVES whoever fails its save, or nil for a
+	// cast that moves nobody. Non-nil requires [CastProfile.Save]: the move is
+	// what a failure costs, and a cast with no gate has no failure to hang it
+	// on.
+	//
+	// A pointer for [CastConcentration]'s reason, and a declaration rather
+	// than a route: see [CastMove].
+	Move *CastMove `json:"move,omitempty"`
+
 	// Concentration is how long the caster must hold this cast together, or
 	// nil for a cast that needs no concentration at all.
 	//
@@ -223,6 +232,20 @@ func (p CastProfile) Validate() error {
 		}
 	}
 
+	if p.Move != nil {
+		// The gate is required in this direction only. A cast may gate and
+		// move nobody; a cast that moves somebody needs the moment at which it
+		// does, and without a save whoever resolved it would have to invent
+		// one — shoving on every cast or never shoving at all, both of them
+		// rules nobody wrote.
+		if p.Save == nil {
+			return fmt.Errorf("a cast that moves its target must declare the save that failure is measured by")
+		}
+		if err := p.Move.Validate(); err != nil {
+			return fmt.Errorf("cast move is invalid: %w", err)
+		}
+	}
+
 	if len(p.Damage) == 0 && len(p.Effects) == 0 {
 		return fmt.Errorf("cast must declare damage or a delivered condition")
 	}
@@ -279,6 +302,10 @@ func (p CastProfile) Clone() CastProfile {
 	if p.Area != nil {
 		area := *p.Area
 		clone.Area = &area
+	}
+	if p.Move != nil {
+		move := *p.Move
+		clone.Move = &move
 	}
 	if p.Concentration != nil {
 		concentration := *p.Concentration
