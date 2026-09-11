@@ -116,6 +116,17 @@ type EncounterData struct {
 	// turn they interrupted, and the two are written in the order this
 	// module's consumers already write them.
 	PausedTurn *PausedTurnData `json:"paused_turn,omitempty"`
+
+	// HeldDirective is the one DIRECTED walk stopped mid-route because a
+	// reactor is being asked about a step (held.go). Its relationship to
+	// PausedTurn above is EXCLUSIVE, not parallel: a fight waits on one
+	// answer at a time, and a blob carrying both is refused at load rather
+	// than resumed by whichever continue-verb the host happens to call.
+	//
+	// Absent means nothing is held, which is what every blob written before
+	// this field existed meant — and what every blob written today means,
+	// since a directive that pauses is rare and short-lived.
+	HeldDirective *HeldDirectiveData `json:"held_directive,omitempty"`
 }
 
 // OutcomeData is the persistent representation of an Outcome.
@@ -1331,6 +1342,8 @@ func (e *Encounter) snapshot() EncounterData {
 		EverMembers: everMembersSlice,
 		Retention:   e.retention,
 		PausedTurn:  pausedTurnDataFrom(e.pausedTurn),
+
+		HeldDirective: heldDirectiveDataFrom(e.heldDirective),
 	}
 }
 
@@ -2077,6 +2090,24 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			data.PausedTurn.Member, ErrInvalidData)
 	}
 
+	// The held directive, on the same terms and at the same moment — plus
+	// the one refusal a single held walk needs and a pair of them cannot
+	// give: both at once would leave ResumeTurn and ResumeDirective each
+	// holding half an answer.
+	if err = validateHeldDirective(data.HeldDirective, isMember); err != nil {
+		return nil, err
+	}
+	if data.HeldDirective != nil && data.Outcome != nil {
+		return nil, fmt.Errorf(
+			"load encounter held directive %q: the encounter is already closed: %w",
+			data.HeldDirective.Member, ErrInvalidData)
+	}
+	if data.HeldDirective != nil && data.PausedTurn != nil {
+		return nil, fmt.Errorf(
+			"load encounter held directive %q: a turn is paused as well, and only one walk is held: %w",
+			data.HeldDirective.Member, ErrInvalidData)
+	}
+
 	if err = refuseRoomLocalSightings(data.Intel); err != nil {
 		return nil, err
 	}
@@ -2306,6 +2337,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// needs are re-derived on resume from the roster this load has just
 	// rebuilt, which is why neither is in the blob.
 	e.pausedTurn = pausedTurnFrom(data.PausedTurn)
+
+	// And the held directive, the same way. Its converter parses the cause,
+	// which validation above already proved parses; the arm is kept rather
+	// than discarded so neither half can start lying by silence.
+	e.heldDirective, err = heldDirectiveFrom(data.HeldDirective)
+	if err != nil {
+		return nil, err
+	}
 
 	// Restore outcome if present
 	if data.Outcome != nil {

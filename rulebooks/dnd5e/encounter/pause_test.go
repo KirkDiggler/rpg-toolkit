@@ -208,6 +208,11 @@ func (s *PauseTestSuite) TestAPausedStepLeavesTheMoverOnTheCellBefore() {
 
 	beat := s.windowBeat(enc, alice)
 	s.Equal(string(goblin), beat["member"])
+	// THE PAYLOAD IS THE ONE IT ALWAYS WAS. A directed walk's hold writes
+	// this same beat with a "cause" added (held.go), and the guard that
+	// keeps that additive is only honest if the turn side is pinned too —
+	// two repos already decode this beat kind.
+	s.NotContains(beat, "cause", "a turn's walk has no cause to name")
 	windows, ok := beat["windows"].([]any)
 	s.Require().True(ok)
 	s.Require().Len(windows, 1)

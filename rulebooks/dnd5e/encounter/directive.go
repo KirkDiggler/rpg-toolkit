@@ -51,14 +51,34 @@ type MovePolicy string
 // as many cells as the budget pays for. It is the push: Thunderwave's blast
 // blows a creature straight away from where the caster stands.
 //
-// IT IS THE ONLY ONE, and that is the rule rather than the schedule. A policy
-// arrives with its executor — "away" comes with Dissonant Whispers, "toward"
-// with Thorn Whip — because a constant declared ahead of the thing that carries
-// it out is a name callers can validate against and nothing can honour.
-// [Encounter.Route]'s switch is closed on this single value and refuses every
-// other word with [ErrUnsupportedPolicy], so the day a second one is added, the
-// place that must learn about it is the place that already refuses it.
+// A POLICY ARRIVES WITH ITS EXECUTOR, and that is the rule rather than the
+// schedule: a constant declared ahead of the thing that carries it out is a
+// name callers can validate against and nothing can honour. [MoveAway] arrived
+// with Dissonant Whispers; "toward" is still waiting for Thorn Whip.
+// [Encounter.Route]'s switch is closed on the policies that exist and refuses
+// every other word with [ErrUnsupportedPolicy], so the day a third one is
+// added, the place that must learn about it is the place that already refuses
+// it.
 const MoveLine MovePolicy = "line"
+
+// MoveAway is the rout: of every cell the mover can reach within the budget
+// and legally stop on, the one FARTHEST FROM THE ANCHOR BY THE RULER. It is
+// Dissonant Whispers — a creature that must use its whole movement to run
+// away from the caster.
+//
+// MEASURED BY THE RULER, NOT BY THE WALK (rpg-project#430, the
+// directed-movement design §3, and its rejected alternative). "Away from you"
+// means far from you, so a creature that could run six cells down a dead-end
+// corridor and finish one cell from the caster by the crow does not run: it
+// takes the open floor that ends farther away, even when that is a shorter
+// walk. Ties go to the shorter walk, then to scan order, so the answer is the
+// same every time it is asked (C8).
+//
+// It is a SEARCH, unlike [MoveLine]'s arithmetic, and it searches the same
+// flood a monster's own route reads: it may cross a nonhostile creature and
+// may not stop on one, and a wall, a pillar or a sealed cell closes a cell to
+// it exactly as it closes one to a step.
+const MoveAway MovePolicy = "away"
 
 // RouteInput asks which cells a directed move would cross.
 type RouteInput struct {
@@ -114,10 +134,15 @@ type RouteOutput struct {
 // IT CHANGES NOTHING. A caller may ask, trim the answer to what was actually
 // paid for, and walk it with [Encounter.Direct], or ask and never walk at all.
 //
+// AN EMPTY PATH IS NOT A REFUSAL. A mover with a wall at their back, and a
+// mover with nowhere farther from the anchor to stand, both come back with no
+// cells and a [RouteOutput.StoppedBy] saying which — not an error. That
+// distinction is the whole reason an unknown policy is an error instead.
+//
 // Refusals: [ErrNilInput] is not reachable (the input is a value), but
 // [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrBadReach] for a negative
-// budget or an anchor standing on the mover, and [ErrUnsupportedPolicy] for
-// anything that is not [MoveLine], all are.
+// budget or a [MoveLine] anchor standing on the mover, and
+// [ErrUnsupportedPolicy] for any word that is not a policy, all are.
 func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 	if in.Mover == "" {
 		return RouteOutput{}, fmt.Errorf("route: %w", ErrNoMember)
@@ -132,21 +157,28 @@ func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 	if in.Budget < 0 {
 		return RouteOutput{}, fmt.Errorf("route %q: budget %d cells: %w", in.Mover, in.Budget, ErrBadReach)
 	}
-	if in.Policy != MoveLine {
-		return RouteOutput{}, fmt.Errorf("route %q: policy %q: %w", in.Mover, in.Policy, ErrUnsupportedPolicy)
-	}
-
 	from, err := e.cellOf(m)
 	if err != nil {
 		return RouteOutput{}, fmt.Errorf("route %q: %w", in.Mover, err)
 	}
-	if from == in.Anchor {
-		return RouteOutput{}, fmt.Errorf(
-			"route %q: the anchor stands on the mover, so there is no line through them: %w",
-			in.Mover, ErrBadReach)
-	}
 
-	return e.routeLine(in.Mover, from, in.Anchor, in.Budget), nil
+	// ONE SWITCH, CLOSED ON THE POLICIES THAT EXIST. The anchor-on-the-mover
+	// refusal below belongs to the line and only to the line: a line through
+	// two identical cells has no direction, while "as far from here as you
+	// can get" is a perfectly good question asked from the cell itself.
+	switch in.Policy {
+	case MoveLine:
+		if from == in.Anchor {
+			return RouteOutput{}, fmt.Errorf(
+				"route %q: the anchor stands on the mover, so there is no line through them: %w",
+				in.Mover, ErrBadReach)
+		}
+		return e.routeLine(in.Mover, from, in.Anchor, in.Budget), nil
+	case MoveAway:
+		return e.routeAway(in.Mover, from, in.Anchor, in.Budget), nil
+	default:
+		return RouteOutput{}, fmt.Errorf("route %q: policy %q: %w", in.Mover, in.Policy, ErrUnsupportedPolicy)
+	}
 }
 
 // routeLine is the [MoveLine] policy: the grid's own line from the anchor
@@ -199,6 +231,77 @@ func (e *Encounter) routeLine(mover MemberID, from, anchor spatial.Position, bud
 	}
 
 	return out
+}
+
+// routeAway is the [MoveAway] policy: flood as far as the budget pays for,
+// then keep the reached cell that is farthest from the anchor by the ruler.
+//
+// IT IS THE SAME FLOOD A MONSTER'S OWN ROUTE READS ([Encounter.floodFrom]),
+// with a Limit, which is the whole reason a speed-bounded rout needed no
+// second searcher: the budget is a bound on a field that already existed
+// (rpg-toolkit#1652's lesson, one policy later).
+//
+// MAY CROSS IS NOT MAY STOP, exactly as [Encounter.nearestStop] has it: the
+// flood passes through a nonhostile creature's cell, and the cell the mover
+// ends on must be Standable.
+//
+// STRICTLY FARTHER, OR NOWHERE. A cell the same distance from the anchor is
+// not away from it, so the mover stays put rather than shuffling sideways to
+// spend a budget. When nothing qualifies the path is EMPTY and StoppedBy says
+// so — the pinned creature, and the case [ErrUnsupportedPolicy]'s doc insists
+// must be distinguishable from a policy nobody wrote.
+//
+// TIES: the shorter walk first, then [beforeInScanOrder], so ranging over the
+// flood's map cannot leak iteration order into the answer (C8).
+//
+// A ZERO BUDGET RETURNS FIRST, before the flood. Zero is unbounded to
+// [spatial.FieldInput.Limit], so asking the field with it would flood the
+// entire floor and hand a creature with no movement the far corner of the
+// dungeon.
+func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, budget int) RouteOutput {
+	if budget == 0 {
+		return RouteOutput{}
+	}
+
+	field, ok := e.floodFrom(mover, from, nil, budget)
+	if !ok {
+		return RouteOutput{StoppedBy: "the floor could not be flooded"}
+	}
+
+	here := e.Distance(anchor, from)
+
+	var best spatial.Position
+	bestFar, bestWalk, found := 0.0, 0, false
+	for cell, walk := range field.Dist {
+		if cell == from {
+			continue
+		}
+		if e.CellAt(CellAtInput{Cell: cell, Mover: mover}).Passage != PassageStandable {
+			continue
+		}
+		far := e.Distance(anchor, cell)
+		if far <= here {
+			continue
+		}
+		better := !found || far > bestFar ||
+			(far == bestFar && (walk < bestWalk || (walk == bestWalk && beforeInScanOrder(cell, best))))
+		if better {
+			best, bestFar, bestWalk, found = cell, far, walk, true
+		}
+	}
+	if !found {
+		return RouteOutput{StoppedBy: fmt.Sprintf("nowhere farther from %v within %d cells", anchor, budget)}
+	}
+
+	path, reached := field.PathTo(best)
+	if !reached {
+		// Unreachable by construction: best came out of this field's own
+		// Dist. Refused rather than returned empty, because an empty path
+		// here would be the pinned sentence about a cell that is not pinned.
+		return RouteOutput{StoppedBy: fmt.Sprintf("no path to %v, which the flood reached", best)}
+	}
+
+	return RouteOutput{Path: path}
 }
 
 // stoppedBy is WHY a cell ends a directed move, as a phrase for
@@ -274,6 +377,16 @@ type DirectOutput struct {
 	// IntelDeltas is what this move changed about who can see whom, in the
 	// shape [StepOutput.IntelDeltas] reports it. Nil when nobody moved.
 	IntelDeltas map[MemberID]*IntelDelta
+
+	// Paused is true when the walk is HELD on an open window: a reactor is
+	// being asked about the next cell, and [Encounter.ResumeDirective]
+	// finishes the rest once they have answered.
+	//
+	// AN ORDINARY OUTCOME, NOT A FAILURE, and the field exists so a caller
+	// can tell it from a walk that simply ended. Moved is still true — it is
+	// the cells taken so far, accumulated across every hold of this same
+	// walk — and StoppedBy is empty, because nothing stopped it.
+	Paused bool
 }
 
 // Direct walks a creature along cells an effect chose for them, off their own
@@ -299,19 +412,29 @@ type DirectOutput struct {
 // and does not act on it: what a forced step means for a reaction is a rule,
 // and rules live above a module whose go.mod cannot import the rulebook (C1).
 //
-// # A window mid-push is refused, loudly
+// # A window mid-push is HELD, not refused
 //
-// A [Mover] that pauses is asking a player about a step, and the machinery that
-// holds the rest of a paused walk is a TURN's ([Encounter.ResumeTurn]) — there
-// is nowhere to put the remainder of a push. Rather than drop those cells
-// silently, this refuses with [ErrStepPaused] and the caller is told the
-// directive could not be carried out. Today nothing reaches it: the only
-// customer pushes without provoking. The day a directive provokes
-// (Dissonant Whispers), this refusal is the thing that has to be answered.
+// This used to refuse with [ErrStepPaused], and its doc said why that was
+// survivable: the only customer pushed without provoking, so nothing reached
+// it, and "the day a directive provokes (Dissonant Whispers), this refusal is
+// the thing that has to be answered." The day came. A [Mover] that pauses is
+// asking a player about a step, and the rest of the route is now held beside
+// the held turn (held.go): this returns [DirectOutput.Paused] with the cells
+// taken so far, and [Encounter.ResumeDirective] finishes it once the answer is
+// in. Nothing is dropped and nothing is refused.
 //
-// Refusals: [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrNoCause],
-// [ErrTurnPaused] for a mover whose own walk is half-taken, and
-// [ErrStepPaused] above.
+// # A second held walk is refused at the door
+//
+// There is exactly one, and a verb that overwrote it would lose a walk the
+// table is waiting on. So a directive is refused outright while anything is
+// held — which subsumes the older, narrower refusal of pushing the currently
+// paused member, and keeps it for its own reason: their walk is announced and
+// not taken, and moving them off the cell the open window was announced from
+// would leave the reaction it exists for checking reach against a body that is
+// no longer there.
+//
+// Refusals: [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrNoCause], and
+// [ErrTurnPaused] while any walk is held.
 func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, error) {
 	if in.Mover == "" {
 		return DirectOutput{}, fmt.Errorf("direct: %w", ErrNoMember)
@@ -326,12 +449,13 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	if err := in.Cause.IsValid(); err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w: %w", in.Mover, ErrNoCause, err)
 	}
-	// THE PAUSED MEMBER CANNOT BE PUSHED, for [Encounter.Step]'s own reason:
-	// their walk is announced and not taken, and moving them off the cell the
-	// open window was announced from would leave the reaction it exists for
-	// checking reach against a body that is no longer there.
-	if e.PausedMember() == in.Mover {
-		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, ErrTurnPaused)
+	// A HELD TABLE TAKES NO SECOND DIRECTIVE — see this verb's own doc. It
+	// covers the paused member themself, who could never be pushed, and
+	// everybody else, whose push would need a second hold this composition
+	// has no slot for and would refuse to read back.
+	if e.Paused() {
+		return DirectOutput{}, fmt.Errorf(
+			"direct %q: %q is already waiting on an answer: %w", in.Mover, e.PausedMember(), ErrTurnPaused)
 	}
 	if len(in.Route) == 0 {
 		return DirectOutput{}, nil
@@ -346,25 +470,41 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	if err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, err)
 	}
-	if res.paused != nil {
-		return DirectOutput{}, fmt.Errorf(
-			"direct %q: a directed move has no turn to hold the rest of the walk on: %w",
-			in.Mover, ErrStepPaused)
-	}
-
 	out := DirectOutput{Moved: res.moved}
-	if !res.dropped && res.moved < len(in.Route) {
+	if res.paused == nil && !res.dropped && res.moved < len(in.Route) {
 		cell := in.Route[res.moved]
 		out.StoppedBy = e.stoppedBy(e.CellAt(CellAtInput{Cell: cell, Mover: in.Mover}), cell)
 	}
 
-	// THE SAME SETTLE EVERY WALK RUNS. A push reveals what a step reveals:
-	// the mover is somewhere else now, and who can see whom changed with them.
+	// THE SAME SETTLE EVERY WALK RUNS, AND IT RUNS AT A HOLD TOO. A push
+	// reveals what a step reveals: the mover is somewhere else now, and who
+	// can see whom changed with them. A walk that stopped half way still
+	// walked its half (clocks.go's own note on settling at a pause).
 	deltas, serr := e.settleWalk(in.Mover, audience, res.moved)
 	if serr != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, serr)
 	}
 	out.IntelDeltas = deltas
+
+	if res.paused != nil {
+		e.heldDirective = &heldDirective{
+			member:    in.Mover,
+			from:      res.from,
+			to:        res.to,
+			remaining: res.pending,
+			moved:     res.moved,
+			at:        at,
+			audience:  audience,
+			cause:     in.Cause,
+			forced:    !in.Provokes,
+		}
+		if _, berr := e.appendWindowOpenedBeat(
+			in.Mover, res.from, res.to, at, res.paused.Windows, in.Cause,
+		); berr != nil {
+			return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, berr)
+		}
+		out.Paused = true
+	}
 
 	return out, nil
 }
