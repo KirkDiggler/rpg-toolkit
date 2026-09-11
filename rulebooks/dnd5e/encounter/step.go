@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -42,6 +43,17 @@ type executedAction struct {
 	doors []CrossedDoor
 	from  spatial.Position
 	to    spatial.Position
+
+	// cause is the effect that MOVED them, when something did — a directive
+	// from [Encounter.Direct] and nothing else. The zero Ref is the ordinary
+	// case and means exactly what it says: this creature walked because it
+	// chose to.
+	//
+	// It rides HERE rather than as a parameter on [Encounter.appendMovementBeat]
+	// because a step and the beat that narrates it are one thing, and three
+	// unrelated call sites passing an empty Ref forever would be ceremony
+	// standing in for a fact.
+	cause core.Ref
 }
 
 // Step moves a member ONE STEP to a dungeon-absolute cell and says what

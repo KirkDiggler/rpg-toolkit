@@ -69,9 +69,9 @@ supplied capability, never as a new import.** Every one of these is required at
 
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
 `MembersIn`, `RegionAt`, `Region`, `Distance`, `Canvas`, `Grid`, `Atlas`/`AtlasFor`,
-`Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`IsHostile`/`IsAllied`, `Status`, and the
-verbs that change them — `Join`, `Exit`, `Step`, `Pump`, `Transfer`, `EndTurn`, `Dissolve`,
-`Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Record`, `End`.
+`Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`IsHostile`/`IsAllied`, `Status`, `Route`,
+and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Pump`, `Transfer`, `EndTurn`,
+`Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Record`, `End`.
 
 `session` answering "who is standing" back down into this composition is not the charter breaking.
 It is the shape every capability takes: the composition asks, the rulebook answers, and the answer
@@ -198,6 +198,7 @@ this.**
 | a new MEANING for a cell — difficult, burning, blocked by a new kind of thing | [`CellAt`](./cellfacts.go) | One fold, and every reader of "may I be here" reads it. It was two — `Step` asked the field, the monster route asked region ownership and wall edges — and neither knew a pillar stands ON a cell, so the route handed back a path the step refused and the monster stood still ([rpg-toolkit#1652](https://github.com/KirkDiggler/rpg-toolkit/issues/1652)). A second reader is how that comes back. |
 | a SEARCH over the grid — a path, reach, a spreading blast, a flight | `tools/spatial` | Nothing here searches the grid itself. `routeTo` ([clocks.go](./clocks.go)) floods `spatial.Field` and reads `CellAt` for every cell; the search is geometry's and the meaning of a cell is this module's. Adding a second search here is the shape of the bug above. |
 | folding a shape into a set of targets | the caller — `resolution` for a rule, `session` for a verb | The universe is the roster, and it is declared at the call site rather than guessed inside a new method here. |
+| an effect that MOVES a creature — a push, a pull, a rout | a directive ([`directive.go`](./directive.go)) | `resolution` describes the move (policy, anchor, budget); [`Route`](./directive.go) finds the cells through the same fold a step reads; [`Direct`](./directive.go) walks them through the same [`Mover`](./turndriver.go) seam, off the mover's own turn and charging no turn budget. Every beat it appends carries the cause, because an observer who cannot tell a shove from a stride was told something false by omission. A push built inside the spell is the shortcut that forecloses Flee ([rpg-project#430](https://github.com/KirkDiggler/rpg-project/issues/430)). |
 | a new fact the world needs but cannot compute | a capability interface, supplied at `NewEncounter` and refused when absent | C1 keeps rulebook facts out of this go.mod; #1033 keeps them from being defaulted in. |
 | a new rule about what a fact MEANS | the rulebook — `resolution`, `conditions`, `combat` | C1. This module carries `Kind`, `Ref`, `DamageType` and never reads them. |
 | a new rule about what a LOCATION fact means | here | [ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md): `play/intel` is opaque; this composition is the only place sight testimony gets its meaning. |

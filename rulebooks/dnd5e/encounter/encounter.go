@@ -1296,6 +1296,19 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		"member":   string(action.member.ID),
 		"position": action.to,
 	}
+	// WHY THEY MOVED, when something moved them (rpg-project#430). A step a
+	// creature chose carries no cause and the key is absent — the beat says
+	// what it has always said. A directed one names the effect, reduced to its
+	// canonical module:type:id string like every other ref this composition
+	// persists (roll_trace.go's header), so a client reads a word rather than
+	// an object it would have to know the shape of.
+	//
+	// FULL DATA, per the pre-v1 rule (rpg-project#260 slice 4): the ref goes
+	// down the log to everyone. WHICH effect an observer is entitled to know
+	// is a per-observer question and it is #940's, not this beat's.
+	if cause := action.cause; cause.IsValid() == nil {
+		payload["cause"] = cause.String()
+	}
 	if len(action.doors) > 0 {
 		// A step that went through a door names it. The BEAT does not
 		// change — it is still "moved", because that is what happened

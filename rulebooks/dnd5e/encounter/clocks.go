@@ -902,12 +902,36 @@ type walkResult struct {
 // walkCells announces and takes each cell of a path in turn — the body of a
 // Move intent's walk, and the body of a resumed one.
 //
-// ANNOUNCE, THEN STEP, per cell. That order is [Mover]'s contract and the
-// reason a reaction can be checked for reach against a mover who is still
-// standing where the reaction fired.
+// A WALK A CREATURE CHOSE HAS NO CAUSE, which is what the empty Ref says.
+// Somebody walked because they decided to; there is no effect to name, and a
+// beat that named one would be this composition inventing a reason. The one
+// walker is [Encounter.walkPath]; this is the name its two turn-bound callers
+// ask for it by.
 func (e *Encounter) walkCells(
 	ctx context.Context, activeID MemberID, m *memberRecord,
 	path []spatial.Position, audience []MemberID, at uint64,
+) (walkResult, error) {
+	return e.walkPath(ctx, activeID, m, path, audience, at, core.Ref{})
+}
+
+// walkPath announces and takes each cell of a path in turn — THE walk, for a
+// turn's own Move intent, for a resumed one, and for a directed move
+// ([Encounter.Direct]).
+//
+// ANNOUNCE, THEN STEP, per cell. That order is [Mover]'s contract and the
+// reason a reaction can be checked for reach against a mover who is still
+// standing where the reaction fired.
+//
+// ONE BODY, TWO KINDS OF MOVE, and that is deliberate. A push and a stride meet
+// the same walls, the same pillars, the same creatures in the way, and the same
+// reactions — because they are the same act, differing only in who decided it.
+// A second loop for the directed case would be two answers to "what stops a
+// step", which is rpg-toolkit#1652 one layer up. What differs is carried as
+// data: `mover` need not hold the active turn, and `cause` names the effect
+// that moved them on every beat this appends.
+func (e *Encounter) walkPath(
+	ctx context.Context, mover MemberID, m *memberRecord,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
 ) (walkResult, error) {
 	var res walkResult
 
@@ -924,12 +948,12 @@ func (e *Encounter) walkCells(
 		// fabricated position — and the walk ending here rather than at
 		// stepTo costs nothing, because stepTo refuses an unplaced member
 		// too.
-		from, placed := e.canvas.GetEntityPosition(string(activeID))
+		from, placed := e.canvas.GetEntityPosition(string(mover))
 		if !placed {
 			break
 		}
 
-		if merr := e.mover.Move(ctx, e, activeID, from, cell); merr != nil {
+		if merr := e.mover.Move(ctx, e, mover, from, cell); merr != nil {
 			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
 			// about this step; it is announced and not taken, and the rest
 			// of the path — this cell first — waits with them. Every other
@@ -978,12 +1002,13 @@ func (e *Encounter) walkCells(
 		if derr != nil {
 			return res, fmt.Errorf("move standing: %w", derr)
 		}
-		if down[activeID] {
+		if down[mover] {
 			res.dropped = true
 			break
 		}
 
 		action, stepped := e.stepTo(m, cell)
+		action.cause = cause
 		if !stepped {
 			// The same silent-refusal contract stepTo already has for
 			// the pump: a wall stops the WALK, not the turn — whatever
