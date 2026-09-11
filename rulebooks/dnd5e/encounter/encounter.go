@@ -905,6 +905,21 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter append beat: %w", err)
 	}
 
+	// First light's own sighting beats, AFTER the scene has opened for the
+	// same reason everything else here is: a story in which members see each
+	// other before the scene exists is one nobody can follow. Setup holds the
+	// two halves of a refresh apart precisely so this beat and the
+	// scene-opened beat land in the right order, which refreshSight's single
+	// call cannot express.
+	//
+	// FIRST LIGHT EMITS, it does not skip. Every awareness that exists was
+	// created by some refresh and this is the first one, so a recipient who
+	// applies nothing but these beats has the whole picture from the opening
+	// beat onward — which is the property the perception stream is for.
+	if serr := e.appendSightedBeats(firstLight, uint64(e.clock.ToData().HighWater)); serr != nil {
+		return nil, fmt.Errorf("newencounter first light: %w", serr)
+	}
+
 	// Concealment's own first light, AFTER the scene has opened and BEFORE
 	// any fight it might start: presence pierces from the first frame — a
 	// party start inside a concealed region is legal authoring, and the
@@ -1765,6 +1780,16 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*IntelDelta, *FormedBubble, error) {
 	deltas, err := e.rebuildPercepts(observers)
 	if err != nil {
+		return nil, nil, err
+	}
+
+	// WHO SAW WHOM, before anything that seeing causes. A fight forms
+	// because somebody came into view, so the view changing has to be
+	// readable ahead of the fight — this function's own law, applied to the
+	// beat that records the cause (see sightedbeat.go). Appended even on a
+	// closed encounter: the percepts were rebuilt, so the transitions are
+	// real whether or not a fight can follow them.
+	if err := e.appendSightedBeats(deltas, uint64(e.clock.ToData().HighWater)); err != nil {
 		return nil, nil, err
 	}
 

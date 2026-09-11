@@ -103,6 +103,28 @@ var wantClass = map[string]beatClass{
 	"ended":             tableBeat,
 }
 
+// recipientScoped names the beats that deliberately DO NOT pass through
+// audienceFor, because their audience is not a class of member — it is one
+// named recipient, worked out by the append site itself.
+//
+// These are the beats built FOR a single member rather than shared: the two
+// reveals, which carry what that member's cached view was withholding
+// (revealbeat.go), and the sighting beat, which reports a change in that
+// member's own perception (sightedbeat.go). Passing them through audienceFor
+// would hand them e.rosterIDs() and tell everybody what one member learned,
+// which is the whole thing they exist to avoid.
+//
+// The distinction is recorded here rather than as a fourth beatClass on
+// purpose: beatClass is the question "who is this beat ABOUT" that
+// audienceFor answers, and these sites never ask it. A new beat kind must
+// appear in exactly one of these two tables — the loop at the bottom of
+// TestCallSiteClassification is what enforces that.
+var recipientScoped = map[string]bool{
+	"sighted":         true,
+	"door_revealed":   true,
+	"region_revealed": true,
+}
+
 // TestCallSiteClassification runs one scripted scene through every
 // Audience: site and checks the FULL SET of beat kinds it produces
 // is exactly wantClass's key set — nothing missing, nothing unclassified.
@@ -244,8 +266,28 @@ func TestCallSiteClassification(t *testing.T) {
 	}
 
 	for kind := range seen {
+		if recipientScoped[kind] {
+			continue
+		}
 		require.Contains(t, wantClass, kind,
-			"beat kind %q was appended but has no entry in wantClass — a new "+
-				"call site landed without a reviewed classification", kind)
+			"beat kind %q was appended but has no entry in wantClass or "+
+				"recipientScoped — a new call site landed without a reviewed "+
+				"classification", kind)
 	}
+
+	// AND THE TWO TABLES DO NOT OVERLAP. A kind in both would mean a beat
+	// that both asks audienceFor who it is about and overrides the answer,
+	// which is a call site nobody has reviewed.
+	for kind := range recipientScoped {
+		require.NotContains(t, wantClass, kind,
+			"beat kind %q is in both tables — it either consults audienceFor "+
+				"or computes its own recipient, never both", kind)
+	}
+
+	// The scripted scene below produces "sighted" (everyone sees everyone at
+	// first light) but no reveals — it authors no concealment. So this is
+	// the one recipientScoped kind the completeness half can assert.
+	require.True(t, seen["sighted"],
+		"the scripted scene never produced a sighted beat — first light puts "+
+			"three members in view of each other, so one is owed")
 }

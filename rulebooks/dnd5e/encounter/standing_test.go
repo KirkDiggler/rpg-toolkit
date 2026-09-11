@@ -131,17 +131,45 @@ func (s *deathScene) positionOf(enc *encounter.Encounter, id encounter.MemberID)
 	return spatial.Position{}
 }
 
-// beatKindsOf reads one audience's whole retained story as its list of beat
-// kinds — the shape the beat-order law is asserted in.
+// beatKindsOf reads one audience's retained story as its list of beat kinds —
+// the shape the beat-order law is asserted in — leaving out the beats that
+// report what this member could SEE.
+//
+// TWO AXES, AND THESE CASES PIN ONE OF THEM. The lists below say what
+// HAPPENED: a body dropped, a fight formed, the scene ended, in that order.
+// A sighting beat (sightedbeat.go) says who was in whose view at the time,
+// which changes whenever a fixture's geometry does and is pinned by its own
+// tests. Splicing it into these lists would make every one of them assert a
+// second thing it never meant to, and re-assert it in nine places.
+//
+// The excluded kinds are exactly audience_internal_test.go's recipientScoped
+// table — the beats built FOR one member rather than shared — so a future
+// per-recipient beat is left out of these transcripts for the same stated
+// reason rather than quietly breaking them.
 func (s *deathScene) beatKindsOf(enc *encounter.Encounter, audience encounter.MemberID) []string {
 	s.T().Helper()
 
 	kinds := make([]string, 0)
 	for _, beat := range s.beatsOf(enc, audience) {
-		kinds = append(kinds, beat["beat"].(string))
+		kind := beat["beat"].(string)
+		if recipientScopedKinds[kind] {
+			continue
+		}
+		kinds = append(kinds, kind)
 	}
 
 	return kinds
+}
+
+// recipientScopedKinds is the external-test mirror of
+// audience_internal_test.go's recipientScoped: the beats whose audience is
+// one named member rather than a class. Duplicated rather than shared
+// because the two live in different packages — encounter and encounter_test
+// — and the internal one is what actually guards the classification.
+var recipientScopedKinds = map[string]bool{
+	"sighted":         true,
+	"door_revealed":   true,
+	"region_revealed": true,
 }
 
 func (s *deathScene) beatsOf(enc *encounter.Encounter, audience encounter.MemberID) []map[string]any {
