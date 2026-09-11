@@ -432,7 +432,7 @@ func getBardRequirements() *Requirements {
 		// option here compiles to a cast profile, because an option that
 		// produced nothing would be a choice with nothing behind it.
 		//
-		// COUNT TRACKS THE CATALOGUE — two today, four when the catalogue
+		// COUNT TRACKS THE CATALOGUE — three today, four when the catalogue
 		// reaches the class progression (rpg-toolkit#1661). It is not a
 		// ration. While the catalogue is smaller than what a bard actually
 		// knows, asking them to pick a subset of it invents a restriction the
@@ -443,10 +443,10 @@ func getBardRequirements() *Requirements {
 		// stops moving there.
 		Spellbook: &SpellbookRequirement{
 			ID:         BardSpells1,
-			Count:      2,
+			Count:      3,
 			SpellLevel: 1,
-			Options:    []spells.Spell{spells.Bane, spells.Thunderwave},
-			Label:      "Choose 2 supported 1st-level spells",
+			Options:    []spells.Spell{spells.Bane, spells.Thunderwave, spells.DissonantWhispers},
+			Label:      "Choose 3 supported 1st-level spells",
 		},
 
 		// Bards get expertise at level 3, not level 1

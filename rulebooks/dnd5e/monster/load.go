@@ -99,6 +99,7 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 		speed:            d.Speed,
 		senses:           d.Senses,
 		targeting:        d.Targeting,
+		reactionSpent:    d.ReactionSpent,
 		subscriptionIDs:  make([]string, 0),
 		actions:          make([]combatActions.Definition, 0, len(d.Actions)),
 		proficiencies:    make(map[string]int),
@@ -165,7 +166,8 @@ func (m *Monster) SheetKeeper() *SheetKeeper {
 	return m.keeper
 }
 
-// Apply subscribes the monster's damage, healing, and condition handlers to bus.
+// Apply subscribes the monster's damage, healing, condition and reaction-meter
+// handlers to bus.
 //
 // The handlers close over this bus rather than reading one off the monster: a
 // purely loaded monster has none of its own.
@@ -229,6 +231,16 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 		}},
 		{"condition state changed", func() (string, error) {
 			return dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx, m.onConditionStateChanged)
+		}},
+		// The two rows the reaction meter needs: what spends it, and the one
+		// thing that gives it back. See Monster.CanReact for why a monster has
+		// a meter at all, and Monster.onTurnStart for why a long rest is not
+		// the other thing.
+		{"spend requested", func() (string, error) {
+			return dnd5eEvents.SpendRequestedTopic.On(bus).Subscribe(ctx, m.onSpendRequested)
+		}},
+		{"turn start", func() (string, error) {
+			return dnd5eEvents.TurnStartTopic.On(bus).Subscribe(ctx, m.onTurnStart)
 		}},
 	}
 

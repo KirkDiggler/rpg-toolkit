@@ -33,10 +33,10 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 
 	s.Require().NotNil(req)
 	s.Equal(BardSpells1, req.ID)
-	s.Equal(2, req.Count, "the bard learns every level-1 spell this build can cast")
 	s.Equal(1, req.SpellLevel)
 	s.Contains(req.Options, spells.Bane)
 	s.Contains(req.Options, spells.Thunderwave)
+	s.Contains(req.Options, spells.DissonantWhispers)
 	for _, option := range req.Options {
 		s.True(spells.HasCastProfile(option),
 			"%s is offered as a levelled pick and must compile to a cast", option)
@@ -44,6 +44,10 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 		s.Require().NotNil(data, "%s", option)
 		s.Equal(req.SpellLevel, data.Level, "%s is offered as a level-%d pick", option, req.SpellLevel)
 	}
+	// The count is asserted against the catalogue rather than against a
+	// number. A literal here would be the thing somebody bumps to 4 with the
+	// next spell instead of deleting, and it pins nothing this line does not:
+	// the bard learns every level-1 spell this build can cast.
 	s.Equal(len(req.Options), req.Count,
 		"and knows all of them: the count tracks the supported catalogue rather than rationing it")
 	s.Equal(4, classes.ClassData[classes.Bard].SpellsKnown,

@@ -90,9 +90,13 @@ type CastProfile struct {
 	MaxTargets int `json:"max_targets"`
 
 	// Save is the gate the target contests the whole cast with, or nil for a
-	// cast that lands without a roll. Negated-on-success only: a successful
-	// save against a cantrip negates every consequence, and half-on-success
-	// arrives with a spell that has one.
+	// cast that lands without a roll.
+	//
+	// Negated is every cast that delivers a condition: you are frightened or
+	// you are not. Half arrived with Dissonant Whispers and is permitted only
+	// for a cast that deals damage and delivers nothing, because half of a
+	// condition is not a smaller condition — it is a number nobody can write
+	// down.
 	Save *saves.SaveGate `json:"save,omitempty"`
 
 	// Damage is what the cast deals when it lands. Never marked with
@@ -221,8 +225,12 @@ func (p CastProfile) Validate() error {
 	}
 
 	if p.Save != nil {
-		if p.Save.OnSuccess != saves.Negated {
-			return fmt.Errorf("cast save must negate the cast on success")
+		// The gate itself refuses a word that is neither Negated nor Half
+		// (see saves.SaveGate.Validate), so what is left to say here is the
+		// one combination the gate cannot see: half of a delivered condition.
+		if p.Save.OnSuccess == saves.Half && len(p.Effects) > 0 {
+			return fmt.Errorf(
+				"half on a save is only for damage: this cast delivers a condition, and half a condition means nothing")
 		}
 		if p.Save.Recurrence != saves.RecurrenceNone {
 			return fmt.Errorf("cast save must not recur")

@@ -75,6 +75,9 @@ const (
 	IceKnife     Spell = "ice-knife"
 	WitchBolt    Spell = "witch-bolt"
 
+	// Bard Level 1
+	DissonantWhispers Spell = "dissonant-whispers"
+
 	// Cleric Level 1
 	GuidingBolt   Spell = "guiding-bolt"
 	InflictWounds Spell = "inflict-wounds"

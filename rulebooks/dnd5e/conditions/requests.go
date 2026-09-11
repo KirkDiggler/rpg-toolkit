@@ -53,9 +53,9 @@ func publishStateChanged(ctx context.Context, bus events.EventBus, memberID stri
 //
 // The caller has already established that the cost is owed and affordable —
 // [combat.Pay]'s contract is that a debit past a passed check cannot fail — so
-// this is the payment, not a question about it. A keeper with no economy to
-// debit simply has no row for the topic, which is how a monster pays nothing
-// without anything here knowing what a monster is.
+// this is the payment, not a question about it. Which meter it lands on is the
+// keeper's business and not this function's: a character's slot, a monster's
+// single reaction. Neither goes below empty, so asking twice is harmless.
 func publishSpendRequested(
 	ctx context.Context, bus events.EventBus, memberID string, slot coreCombat.ActionType, amount int, source *core.Ref,
 ) error {

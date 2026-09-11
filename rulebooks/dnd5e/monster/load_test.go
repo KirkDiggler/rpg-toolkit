@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -221,6 +222,30 @@ func (s *PureLoadTestSuite) TestKnownRoundTripGaps() {
 	out := m.ToData()
 	s.Require().Empty(out.Features, "Features has no home on a monster")
 	s.Require().Empty(out.Inventory, "Inventory has no home on a monster")
+}
+
+// The meter is persisted for the reason SneakAttackData gives for its own
+// once-per-turn field: every call reconstructs the sheet from JSON, so a
+// runtime-only bool resets on each RPC and meters nothing at all.
+func (s *PureLoadTestSuite) TestASpentReactionSurvivesTheRoundTrip() {
+	data := s.sheet()
+	data.ReactionSpent = true
+
+	m, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+
+	s.False(m.CanReact(), "a monster reloaded mid-turn has already spent it")
+	s.True(m.ToData().ReactionSpent, "and writes it back out")
+}
+
+// The absent field reads as a full meter, which is what every blob written
+// before this field existed says.
+func (s *PureLoadTestSuite) TestAnOlderBlobWithNoMeterHasItsReaction() {
+	m, err := Load(s.ctx, s.sheet())
+	s.Require().NoError(err)
+
+	s.True(m.CanReact())
+	s.False(m.ToData().ReactionSpent)
 }
 
 type liveMonsterCondition struct {
@@ -543,29 +568,130 @@ func (s *MonsterKeeperTestSuite) TestConditionStateChangedForSomeoneElseIsIgnore
 	s.Require().False(s.mon.IsDirty(), "every sheet hears it; only one of them is it")
 }
 
-// A spend request passes the monster keeper by, and that absence is the D&D
-// asymmetry rather than an oversight: monsters carry no action economy here, so
-// there is no ledger to debit and nothing to refuse. The keeper says so by
-// having no row for the topic — the sheet does not even go dirty.
-func (s *MonsterKeeperTestSuite) TestSpendRequestedPassesTheMonsterBy() {
-	markSaved(s.mon)
-
-	err := dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.SpendRequestedEvent{
-		MemberID:   s.mon.GetID(),
-		ActionType: coreCombat.ActionReaction,
-		Amount:     1,
-		SourceRef:  refs.Conditions.OpportunityAttack(),
-	})
-
-	s.Require().NoError(err)
-	s.Require().False(s.mon.IsDirty(), "nothing on this sheet could have paid")
+// spendReaction publishes the bill a reacting condition publishes, addressed
+// to whichever member the caller names.
+func (s *MonsterKeeperTestSuite) spendReaction(memberID string) {
+	s.Require().NoError(dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx,
+		dnd5eEvents.SpendRequestedEvent{
+			MemberID:   memberID,
+			ActionType: coreCombat.ActionReaction,
+			Amount:     1,
+			SourceRef:  refs.Conditions.OpportunityAttack(),
+		}))
 }
 
-// CanReact is true, and true is the answer rather than a stub. False would mean
-// "my economy refuses"; a monster has no economy to do the refusing, which is
-// the same thing the reacting rules say today in a nil check.
-func (s *MonsterKeeperTestSuite) TestAMonsterNeverRefusesAReaction() {
-	s.Require().True(s.mon.CanReact())
+// A monster has exactly one reaction, and this keeper is what meters it.
+//
+// The bill used to pass a monster by: the keeper had no row for the topic, so
+// a wolf could swing an opportunity attack every time anybody moved. Kirk
+// ruled it on 2026-09-11 — "monsters should have reaction and it should
+// replace that used once hack" — because Dissonant Whispers spends a monster's
+// reaction from outside any condition the monster carries, and there was
+// nothing for it to spend.
+func (s *MonsterKeeperTestSuite) TestASpentReactionIsMeteredOnThisSheet() {
+	markSaved(s.mon)
+	s.Require().True(s.mon.CanReact(), "a monster starts its turn with its reaction")
+
+	s.spendReaction(s.mon.GetID())
+
+	s.False(s.mon.CanReact(), "the bill lands on the sheet that has to pay it")
+	s.True(s.mon.IsDirty(), "a spent reaction that is not written down is not spent")
+}
+
+// Every sheet hears the bill; only one of them is the one being billed.
+func (s *MonsterKeeperTestSuite) TestAReactionSomebodyElseSpentIsNotThisMonstersBill() {
+	markSaved(s.mon)
+
+	s.spendReaction("someone-else")
+
+	s.True(s.mon.CanReact())
+	s.False(s.mon.IsDirty())
+}
+
+// Only the reaction is metered here. A monster has no action and no bonus
+// action to run out of, so a request for one is not this sheet's business and
+// must not quietly empty the one meter it does keep.
+func (s *MonsterKeeperTestSuite) TestASpentActionIsNotTheReactionMeter() {
+	markSaved(s.mon)
+
+	s.Require().NoError(dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx,
+		dnd5eEvents.SpendRequestedEvent{
+			MemberID:   s.mon.GetID(),
+			ActionType: coreCombat.ActionStandard,
+			Amount:     1,
+		}))
+
+	s.True(s.mon.CanReact())
+	s.False(s.mon.IsDirty())
+}
+
+// TURN START, NOT TURN END. A reaction is spent on somebody else's turn, so a
+// meter cleared at the end of its holder's turn would be full again for the
+// whole window it governs. 2014 PHB: "you regain a spent reaction at the start
+// of each of your turns."
+func (s *MonsterKeeperTestSuite) TestTheReactionComesBackAtThisMonstersTurnStart() {
+	s.spendReaction(s.mon.GetID())
+	s.Require().False(s.mon.CanReact())
+	markSaved(s.mon)
+
+	s.Require().NoError(dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx,
+		dnd5eEvents.TurnStartEvent{SubjectID: s.mon.GetID(), Round: 2}))
+
+	s.True(s.mon.CanReact())
+	s.True(s.mon.IsDirty(), "a refreshed meter is a sheet worth saving")
+}
+
+// Somebody ELSE's turn beginning is exactly the window a reaction is spent in.
+// Refreshing on it would make the meter meaningless.
+func (s *MonsterKeeperTestSuite) TestAnotherSubjectsTurnStartLeavesTheMeterSpent() {
+	s.spendReaction(s.mon.GetID())
+	markSaved(s.mon)
+
+	s.Require().NoError(dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx,
+		dnd5eEvents.TurnStartEvent{SubjectID: "someone-else", Round: 2}))
+
+	s.False(s.mon.CanReact())
+	s.False(s.mon.IsDirty(), "a turn start that changed nothing is not a write")
+}
+
+// A turn start with nothing to clear is not a write either. A boundary runs
+// for every participant of every round, so marking unconditionally would flag
+// every monster in the fight dirty on every turn of it.
+func (s *MonsterKeeperTestSuite) TestATurnStartWithAFullMeterWritesNothing() {
+	markSaved(s.mon)
+
+	s.Require().NoError(dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx,
+		dnd5eEvents.TurnStartEvent{SubjectID: s.mon.GetID(), Round: 2}))
+
+	s.True(s.mon.CanReact())
+	s.False(s.mon.IsDirty())
+}
+
+// THE TURN START IS THE ONLY RESET, and a rest is not a second one.
+//
+// The flag this meter replaced cleared on a long rest as well, so the row is
+// an obvious thing to re-add. It would have no caller: every publisher of
+// RestEvent is a character verb naming a character, so no rest in this
+// rulebook can carry a monster's id. This pins the absence so the row is not
+// put back without the publisher that would make it mean something.
+func (s *MonsterKeeperTestSuite) TestARestDoesNotGiveAMonsterItsReactionBack() {
+	s.spendReaction(s.mon.GetID())
+	markSaved(s.mon)
+
+	for _, restType := range []coreResources.ResetType{
+		coreResources.ResetShortRest, coreResources.ResetLongRest,
+	} {
+		s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
+			RestType:    restType,
+			CharacterID: s.mon.GetID(),
+		}))
+		s.False(s.mon.CanReact(), "%s", restType)
+		s.False(s.mon.IsDirty(), "%s: a sheet that did not change is not a write", restType)
+	}
+
+	s.Require().NoError(dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx,
+		dnd5eEvents.TurnStartEvent{SubjectID: s.mon.GetID(), Round: 2}))
+	s.True(s.mon.CanReact(), "the monster's own turn start is what gives it back")
 }
 
 func TestPureLoadSuite(t *testing.T) {

@@ -105,7 +105,13 @@ func (c *Character) SpendSlots(slot coreCombat.ActionType, n int) {
 	case coreCombat.ActionBonus:
 		c.actionEconomy.BonusActionsRemaining -= n
 	case coreCombat.ActionReaction:
-		c.actionEconomy.ReactionsRemaining -= n
+		// FLOORED, unlike its siblings, and the floor is load-bearing. The
+		// opportunity attack used to keep a once-per-turn flag that also
+		// stopped a duplicate reaction-taken event from billing twice; that
+		// flag is gone (Kirk, 2026-09-11), so the meter itself is the guard. A
+		// sheet driven to -1 would read as owing a reaction and refuse one
+		// through the turn that reseeds it.
+		c.actionEconomy.ReactionsRemaining = max(0, c.actionEconomy.ReactionsRemaining-n)
 	case coreCombat.ActionFree, coreCombat.ActionMovement:
 		return
 	default:

@@ -86,17 +86,31 @@ func (s *MoveSuite) TestTheVocabularyIsClosed() {
 		s.Contains(err.Error(), "unknown move price")
 	})
 	s.Run("a policy nothing can walk is refused, not reserved", func() {
-		// "away" and "toward" are the next two policies this stack will have,
-		// and naming them here would be the whole mistake: content could
-		// declare one, validate clean, and fail at the moment of the shove
-		// instead of the moment it was written. They arrive with the spells
-		// that bring their executors (rpg-project#431).
-		for _, reserved := range []actions.MovePolicy{"away", "toward"} {
+		// "toward" is the next policy this stack will have, and naming it here
+		// would be the whole mistake: content could declare it, validate
+		// clean, and fail at the moment of the shove instead of the moment it
+		// was written. It arrives with Thorn Whip, which brings its executor
+		// (rpg-project#431). "away" left this list when Dissonant Whispers
+		// brought encounter's Route for it.
+		for _, reserved := range []actions.MovePolicy{"toward"} {
 			err := (&actions.CastMove{Policy: reserved, Cells: 2}).Validate()
 			s.Require().Error(err, "%s", reserved)
 			s.Contains(err.Error(), "unknown move policy")
 		}
 	})
+}
+
+// TestTheFleeIsDeclaredInFullBecauseNoneOfItIsTheDefault — Dissonant Whispers'
+// flee is the opposite lean from the push: every field it needs is the
+// non-zero one, so the declaration says all three out loud.
+func (s *MoveSuite) TestTheFleeIsDeclaredInFullBecauseNoneOfItIsTheDefault() {
+	flee := &actions.CastMove{
+		Policy:   actions.MoveAway,
+		Speed:    true,
+		Pays:     actions.PaysReaction,
+		Provokes: true,
+	}
+	s.NoError(flee.Validate())
 }
 
 // moveProfile is a gated cast that also shoves, the shape Thunderwave takes.

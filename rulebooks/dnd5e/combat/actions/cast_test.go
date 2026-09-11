@@ -90,6 +90,19 @@ func gatedProfile() actions.CastProfile {
 	}
 }
 
+// gatedDamageProfile is Dissonant Whispers' shape without its move: a save, a
+// damage pool, and nothing delivered. The shape half-on-a-save is for.
+func gatedDamageProfile() actions.CastProfile {
+	return actions.CastProfile{
+		RangeFeet:  60,
+		Target:     actions.CastTargetOneCreature,
+		MinTargets: 1,
+		MaxTargets: 1,
+		Save:       saves.NewSaveGate(abilities.WIS, 13),
+		Damage:     []damage.Damage{{Dice: "3d6", Type: damage.Psychic}},
+	}
+}
+
 func (s *CastProfileSuite) TestAGatelessCastValidates() {
 	s.Require().NoError(gatelessProfile().Validate())
 }
@@ -140,6 +153,26 @@ func (s *CastProfileSuite) TestConcentrationSkipFirstTurnEndRoundTrips() {
 	s.True(back.Concentration.SkipFirstTurnEnd)
 }
 
+// TestHalfIsPermittedForADamageOnlyGate — half arrived with Dissonant
+// Whispers, and a cast that only deals damage is the whole of what it means:
+// the pool is rolled and the successful save takes half of the number.
+func (s *CastProfileSuite) TestHalfIsPermittedForADamageOnlyGate() {
+	p := gatedDamageProfile()
+	p.Save.OnSuccess = saves.Half
+	s.NoError(p.Validate())
+}
+
+// TestHalfIsRefusedWhenAConditionIsDelivered — half a condition means nothing.
+// Vicious Mockery's shape delivers a rider, so the refusal stays exactly where
+// there is no arithmetic to halve.
+func (s *CastProfileSuite) TestHalfIsRefusedWhenAConditionIsDelivered() {
+	p := gatedProfile()
+	p.Save.OnSuccess = saves.Half
+	err := p.Validate()
+	s.Require().Error(err)
+	s.Contains(err.Error(), "half on a save is only for damage")
+}
+
 func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 	s.Run("no range", func() {
 		profile := gatelessProfile()
@@ -172,10 +205,14 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 		s.Require().ErrorContains(profile.Validate(), "damage or a delivered condition")
 	})
 
-	s.Run("a save that buys half", func() {
-		profile := gatedProfile()
-		profile.Save.OnSuccess = saves.Half
-		s.Require().ErrorContains(profile.Validate(), "negate the cast")
+	s.Run("a save word neither half nor negated", func() {
+		// The profile stopped naming the permitted words and DELEGATES to the
+		// gate, so this is the subtest that proves the delegation happens at
+		// all: without the p.Save.Validate() call, a garbage word would reach
+		// a machine that has no branch for it.
+		profile := gatedDamageProfile()
+		profile.Save.OnSuccess = "mostly"
+		s.Require().ErrorContains(profile.Validate(), "cast save is invalid")
 	})
 
 	s.Run("a save that recurs", func() {

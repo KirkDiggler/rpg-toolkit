@@ -13,7 +13,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
-	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -39,12 +38,6 @@ const defaultMeleeReach = 1.0
 type OpportunityAttackConditionData struct {
 	Ref      *core.Ref `json:"ref"`
 	MemberID string    `json:"member_id"`
-
-	// UsedThisTurn is persisted rather than kept in memory for the reason
-	// SneakAttackData gives for its own copy of this field: every call
-	// reconstructs the condition from JSON, so a runtime-only flag is a flag
-	// that resets on each RPC and meters nothing at all.
-	UsedThisTurn bool `json:"used_this_turn"`
 }
 
 // OpportunityAttackCondition publishes a ReactionTriggerEvent when an enemy
@@ -68,10 +61,8 @@ type OpportunityAttackConditionData struct {
 // Subscribes to MovementChain. Predicate per move event, in the order the code
 // asks it:
 //   - Mover is not self (no self-OA).
-//   - This reactor has not already reacted (UsedThisTurn, cleared on its own
-//     turn start).
-//   - canReact: a reactor holding an economy must have a reaction to spend; a
-//     monster holds none and is metered by UsedThisTurn alone.
+//   - canReact: the reactor still has its one reaction, which its own keeper
+//     meters — a character's slot, a monster's meter.
 //   - gamectx.IsReactionReady(self, OA-ref) returns true.
 //   - A room is in context; without one the geometry cannot be evaluated and
 //     the condition is a silent no-op.
@@ -82,11 +73,6 @@ type OpportunityAttackConditionData struct {
 // the predicate is conservative today.
 type OpportunityAttackCondition struct {
 	MemberID string
-
-	// UsedThisTurn is the meter EVERY reactor has, character and monster
-	// alike. It is cleared at the start of this reactor's OWN turn, which is
-	// when 5e refreshes a spent reaction — see onTurnStart.
-	UsedThisTurn bool
 
 	bus             events.EventBus
 	subscriptionIDs []string
@@ -99,27 +85,22 @@ var _ dnd5eEvents.ConditionBehavior = (*OpportunityAttackCondition)(nil)
 // its ToJSON embeds and its loader routes on.
 func (o *OpportunityAttackCondition) Ref() *core.Ref { return refs.Conditions.OpportunityAttack() }
 
-// stateChanged reports that the once-per-turn meter moved. See
-// [publishStateChanged].
-func (o *OpportunityAttackCondition) stateChanged(ctx context.Context) error {
-	return publishStateChanged(ctx, o.bus, o.MemberID, o.Ref())
-}
-
 // canReact asks this reactor's own sheet whether it has a reaction to spend,
 // in place of the ledger handle a loader used to pass in.
 //
-// # Where the asymmetry went
+// # ONE METER, AND IT IS NOT THIS CONDITION'S
 //
-// The handle carried a fact the cast does not: a monster never satisfied
-// combat.Ledger, so "I hold a purse" meant "I am a character" and the
-// gate could be written as "refuse only if an economy says no". The cast hands
-// out both kinds through one surface, so that fact moved INTO the answer — a
-// character reports its slots, a monster reports true because it has no economy
-// to refuse with. Kirk ruled the asymmetry 2026-08-28: "characters have to pay
-// for it. the condition can still track it was used but players have a cost."
-// Paying is also what keeps this and Protection fighting style mutually
-// exclusive, which they are in the rules: both spend the one reaction, and the
-// second to ask finds it gone.
+// This condition used to keep a once-per-turn flag of its own, because a
+// monster had no economy and the flag was the only thing holding it to one
+// swing. Kirk reversed that on 2026-09-11: a monster's keeper now keeps its
+// one reaction, a character's keeps the slot, and this gate is the single
+// question both answer. Dissonant Whispers is why — it spends a monster's
+// reaction to make it flee, and a flag living here could never have seen that.
+//
+// So the whole of this condition's part is: ask before offering, and publish
+// the bill once a swing has run. Paying is also what keeps this and Protection
+// fighting style mutually exclusive, which they are in the rules: both spend
+// the one reaction, and the second to ask finds it gone.
 //
 // # A reactor nobody can look up does NOT react
 //
@@ -177,24 +158,10 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 	// leaves the WORST of both: IsApplied reports false, Remove early-returns
 	// on the nil bus and unsubscribes nothing, and the orphaned handler keeps
 	// receiving movement on a bus this condition no longer admits to holding.
-	turnStarts := dnd5eEvents.TurnStartTopic.On(bus)
-	resetID, err := turnStarts.Subscribe(ctx, o.onTurnStart)
-	if err != nil {
-		_ = o.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to turn start")
-	}
-	o.subscriptionIDs = append(o.subscriptionIDs, resetID)
-
-	rests := dnd5eEvents.RestTopic.On(bus)
-	restID, err := rests.Subscribe(ctx, o.onRest)
-	if err != nil {
-		_ = o.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
-	}
-	o.subscriptionIDs = append(o.subscriptionIDs, restID)
-
-	// The meter is spent from HERE, not from the movement chain. See
-	// onReactionTaken.
+	//
+	// TWO SUBSCRIPTIONS, and there used to be four. Turn start and long rest
+	// were here to clear a flag this condition no longer keeps; the keeper
+	// that owns the meter now owns the clearing too.
 	taken := dnd5eEvents.ReactionTakenTopic.On(bus)
 	takenID, err := taken.Subscribe(ctx, o.onReactionTaken)
 	if err != nil {
@@ -204,39 +171,6 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 	o.subscriptionIDs = append(o.subscriptionIDs, takenID)
 
 	return nil
-}
-
-// onTurnStart refreshes the spent reaction at the start of the reactor's own
-// turn.
-//
-// TURN START, NOT TURN END, and the difference is the whole point of the
-// field. A reaction is spent on somebody ELSE's turn — that is what makes it a
-// reaction — so a meter cleared at the end of its holder's turn would be full
-// again for the entire window it is supposed to govern. 2014 PHB: "you regain
-// a spent reaction at the start of each of your turns."
-//
-// Only when the flag actually changes, for SneakAttackCondition's stated
-// reason: marking unconditionally would flag every combatant dirty at the
-// start of every turn they did not react on, and a boundary already runs for
-// every participant.
-func (o *OpportunityAttackCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.SubjectID == o.MemberID && o.UsedThisTurn {
-		o.UsedThisTurn = false
-
-		return o.stateChanged(ctx)
-	}
-	return nil
-}
-
-// onRest clears a spent reaction on its owner's long rest. A short rest does
-// not reset reactions, and an already-clear meter publishes no state change.
-func (o *OpportunityAttackCondition) onRest(ctx context.Context, event dnd5eEvents.RestEvent) error {
-	if event.CharacterID != o.MemberID || event.RestType != coreResources.ResetLongRest || !o.UsedThisTurn {
-		return nil
-	}
-
-	o.UsedThisTurn = false
-	return o.stateChanged(ctx)
 }
 
 // Remove unsubscribes the condition from all events.
@@ -262,9 +196,8 @@ func (o *OpportunityAttackCondition) Remove(ctx context.Context, bus events.Even
 // ToJSON converts the condition to its JSON representation.
 func (o *OpportunityAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := OpportunityAttackConditionData{
-		Ref:          refs.Conditions.OpportunityAttack(),
-		MemberID:     o.MemberID,
-		UsedThisTurn: o.UsedThisTurn,
+		Ref:      refs.Conditions.OpportunityAttack(),
+		MemberID: o.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -276,7 +209,6 @@ func (o *OpportunityAttackCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal opportunity attack data")
 	}
 	o.MemberID = oaData.MemberID
-	o.UsedThisTurn = oaData.UsedThisTurn
 	return nil
 }
 
@@ -313,14 +245,9 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		return c, nil
 	}
 
-	// Already reacted. Cleared at the start of this reactor's own turn.
-	if o.UsedThisTurn {
-		return c, nil
-	}
-
-	// A reactor with an economy PAYS; a monster has none to pay from and is
-	// metered by UsedThisTurn alone. See canReact for why that asymmetry is
-	// the rule rather than a gap.
+	// The meter, and the only one: a reactor that has already spent its
+	// reaction — on this, on Protection, or on a spell that made it flee —
+	// has nothing left to swing with. See canReact.
 	if !o.canReact(ctx) {
 		return c, nil
 	}
@@ -388,33 +315,24 @@ func (o *OpportunityAttackCondition) onMovementChain(
 // the same reason the trigger does, and a reactor's OA meter must not move
 // because somebody else swung or because the same member's Shield fired.
 //
-// Spending is idempotent by the meter. UsedThisTurn already gates the trigger,
-// so a second taken event for a reactor who has not had a turn since is a
-// duplicate rather than a second reaction, and billing it twice would charge
-// an economy for a swing that was never offered.
+// Spending is idempotent by the meter, which is the KEEPER's rather than this
+// condition's. A second taken event for a reactor who has not had a turn since
+// bills again, and the ledger's floor makes that harmless: you cannot spend a
+// reaction you do not have. Nothing here has to remember that you already did.
 func (o *OpportunityAttackCondition) onReactionTaken(
 	ctx context.Context, event dnd5eEvents.ReactionTakenEvent,
 ) error {
 	if event.ReactorID != o.MemberID || event.ConditionRef != o.Ref().String() {
 		return nil
 	}
-	if o.UsedThisTurn {
-		return nil
-	}
 
-	// The bill goes out unconditionally. Nothing here decides who pays: a
-	// keeper holding an economy debits it, and a monster's keeper has no row
-	// for the topic at all, so the request truthfully passes it by. That is
-	// the character-pays asymmetry canReact describes, moved from a nil check
-	// in this condition to which subscriptions each sheet keeper's table holds.
-	o.UsedThisTurn = true
+	// The bill goes out and nothing here decides who pays. Both keepers hold a
+	// row for it now: a character's debits the slot, a monster's flips the one
+	// reaction it has. Neither goes below empty.
 	if err := publishSpendRequested(
 		ctx, o.bus, o.MemberID, coreCombat.ActionReaction, 1, o.Ref(),
 	); err != nil {
 		return rpgerr.Wrap(err, "failed to publish opportunity attack reaction spend")
-	}
-	if err := o.stateChanged(ctx); err != nil {
-		return rpgerr.Wrap(err, "failed to publish opportunity attack meter change")
 	}
 
 	return nil

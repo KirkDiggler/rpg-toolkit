@@ -49,6 +49,17 @@ type Data struct {
 
 	// AI behavior
 	Targeting TargetingStrategy `json:"targeting,omitempty"`
+
+	// ReactionSpent is the one reaction meter a monster has: true from the
+	// moment something bills it until the monster's next turn start or a long
+	// rest.
+	//
+	// Absent on every blob written before 2026-09-11 and read as false, which
+	// is the truth for those: nothing could spend a monster's reaction then.
+	// It lives here rather than on the opportunity attack's blob because the
+	// meter is the creature's, not one reacting condition's — Dissonant
+	// Whispers spends it from outside any condition the monster carries.
+	ReactionSpent bool `json:"reaction_spent,omitempty"`
 }
 
 // SpeedData represents monster movement speeds in feet

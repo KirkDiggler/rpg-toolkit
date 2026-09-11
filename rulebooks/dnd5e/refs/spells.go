@@ -50,22 +50,23 @@ var (
 	spellViciousMockery   = &core.Ref{Module: Module, Type: TypeSpells, ID: "vicious-mockery"}
 
 	// Level 1 - Damage
-	spellMagicMissile    = &core.Ref{Module: Module, Type: TypeSpells, ID: "magic-missile"}
-	spellBurningHands    = &core.Ref{Module: Module, Type: TypeSpells, ID: "burning-hands"}
-	spellChromaticOrb    = &core.Ref{Module: Module, Type: TypeSpells, ID: "chromatic-orb"}
-	spellThunderwave     = &core.Ref{Module: Module, Type: TypeSpells, ID: "thunderwave"}
-	spellIceKnife        = &core.Ref{Module: Module, Type: TypeSpells, ID: "ice-knife"}
-	spellWitchBolt       = &core.Ref{Module: Module, Type: TypeSpells, ID: "witch-bolt"}
-	spellGuidingBolt     = &core.Ref{Module: Module, Type: TypeSpells, ID: "guiding-bolt"}
-	spellInflictWounds   = &core.Ref{Module: Module, Type: TypeSpells, ID: "inflict-wounds"}
-	spellHailOfThorns    = &core.Ref{Module: Module, Type: TypeSpells, ID: "hail-of-thorns"}
-	spellEnsnaringStrike = &core.Ref{Module: Module, Type: TypeSpells, ID: "ensnaring-strike"}
-	spellHellishRebuke   = &core.Ref{Module: Module, Type: TypeSpells, ID: "hellish-rebuke"}
-	spellArmsOfHadar     = &core.Ref{Module: Module, Type: TypeSpells, ID: "arms-of-hadar"}
-	spellHex             = &core.Ref{Module: Module, Type: TypeSpells, ID: "hex"}
-	spellSearingSmite    = &core.Ref{Module: Module, Type: TypeSpells, ID: "searing-smite"}
-	spellThunderousSmite = &core.Ref{Module: Module, Type: TypeSpells, ID: "thunderous-smite"}
-	spellWrathfulSmite   = &core.Ref{Module: Module, Type: TypeSpells, ID: "wrathful-smite"}
+	spellMagicMissile      = &core.Ref{Module: Module, Type: TypeSpells, ID: "magic-missile"}
+	spellBurningHands      = &core.Ref{Module: Module, Type: TypeSpells, ID: "burning-hands"}
+	spellChromaticOrb      = &core.Ref{Module: Module, Type: TypeSpells, ID: "chromatic-orb"}
+	spellThunderwave       = &core.Ref{Module: Module, Type: TypeSpells, ID: "thunderwave"}
+	spellDissonantWhispers = &core.Ref{Module: Module, Type: TypeSpells, ID: "dissonant-whispers"}
+	spellIceKnife          = &core.Ref{Module: Module, Type: TypeSpells, ID: "ice-knife"}
+	spellWitchBolt         = &core.Ref{Module: Module, Type: TypeSpells, ID: "witch-bolt"}
+	spellGuidingBolt       = &core.Ref{Module: Module, Type: TypeSpells, ID: "guiding-bolt"}
+	spellInflictWounds     = &core.Ref{Module: Module, Type: TypeSpells, ID: "inflict-wounds"}
+	spellHailOfThorns      = &core.Ref{Module: Module, Type: TypeSpells, ID: "hail-of-thorns"}
+	spellEnsnaringStrike   = &core.Ref{Module: Module, Type: TypeSpells, ID: "ensnaring-strike"}
+	spellHellishRebuke     = &core.Ref{Module: Module, Type: TypeSpells, ID: "hellish-rebuke"}
+	spellArmsOfHadar       = &core.Ref{Module: Module, Type: TypeSpells, ID: "arms-of-hadar"}
+	spellHex               = &core.Ref{Module: Module, Type: TypeSpells, ID: "hex"}
+	spellSearingSmite      = &core.Ref{Module: Module, Type: TypeSpells, ID: "searing-smite"}
+	spellThunderousSmite   = &core.Ref{Module: Module, Type: TypeSpells, ID: "thunderous-smite"}
+	spellWrathfulSmite     = &core.Ref{Module: Module, Type: TypeSpells, ID: "wrathful-smite"}
 
 	// Level 1 - Utility
 	spellShield              = &core.Ref{Module: Module, Type: TypeSpells, ID: "shield"}
@@ -239,22 +240,23 @@ func (n spellsNS) TrueStrike() *core.Ref       { return spellTrueStrike }
 func (n spellsNS) ViciousMockery() *core.Ref   { return spellViciousMockery }
 
 // Level 1 - Damage
-func (n spellsNS) MagicMissile() *core.Ref    { return spellMagicMissile }
-func (n spellsNS) BurningHands() *core.Ref    { return spellBurningHands }
-func (n spellsNS) ChromaticOrb() *core.Ref    { return spellChromaticOrb }
-func (n spellsNS) Thunderwave() *core.Ref     { return spellThunderwave }
-func (n spellsNS) IceKnife() *core.Ref        { return spellIceKnife }
-func (n spellsNS) WitchBolt() *core.Ref       { return spellWitchBolt }
-func (n spellsNS) GuidingBolt() *core.Ref     { return spellGuidingBolt }
-func (n spellsNS) InflictWounds() *core.Ref   { return spellInflictWounds }
-func (n spellsNS) HailOfThorns() *core.Ref    { return spellHailOfThorns }
-func (n spellsNS) EnsnaringStrike() *core.Ref { return spellEnsnaringStrike }
-func (n spellsNS) HellishRebuke() *core.Ref   { return spellHellishRebuke }
-func (n spellsNS) ArmsOfHadar() *core.Ref     { return spellArmsOfHadar }
-func (n spellsNS) Hex() *core.Ref             { return spellHex }
-func (n spellsNS) SearingSmite() *core.Ref    { return spellSearingSmite }
-func (n spellsNS) ThunderousSmite() *core.Ref { return spellThunderousSmite }
-func (n spellsNS) WrathfulSmite() *core.Ref   { return spellWrathfulSmite }
+func (n spellsNS) MagicMissile() *core.Ref      { return spellMagicMissile }
+func (n spellsNS) BurningHands() *core.Ref      { return spellBurningHands }
+func (n spellsNS) ChromaticOrb() *core.Ref      { return spellChromaticOrb }
+func (n spellsNS) Thunderwave() *core.Ref       { return spellThunderwave }
+func (n spellsNS) DissonantWhispers() *core.Ref { return spellDissonantWhispers }
+func (n spellsNS) IceKnife() *core.Ref          { return spellIceKnife }
+func (n spellsNS) WitchBolt() *core.Ref         { return spellWitchBolt }
+func (n spellsNS) GuidingBolt() *core.Ref       { return spellGuidingBolt }
+func (n spellsNS) InflictWounds() *core.Ref     { return spellInflictWounds }
+func (n spellsNS) HailOfThorns() *core.Ref      { return spellHailOfThorns }
+func (n spellsNS) EnsnaringStrike() *core.Ref   { return spellEnsnaringStrike }
+func (n spellsNS) HellishRebuke() *core.Ref     { return spellHellishRebuke }
+func (n spellsNS) ArmsOfHadar() *core.Ref       { return spellArmsOfHadar }
+func (n spellsNS) Hex() *core.Ref               { return spellHex }
+func (n spellsNS) SearingSmite() *core.Ref      { return spellSearingSmite }
+func (n spellsNS) ThunderousSmite() *core.Ref   { return spellThunderousSmite }
+func (n spellsNS) WrathfulSmite() *core.Ref     { return spellWrathfulSmite }
 
 // Level 1 - Utility
 func (n spellsNS) Shield() *core.Ref              { return spellShield }
@@ -426,6 +428,7 @@ var spellByID = map[string]*core.Ref{
 	"burning-hands":                 spellBurningHands,
 	"chromatic-orb":                 spellChromaticOrb,
 	"thunderwave":                   spellThunderwave,
+	"dissonant-whispers":            spellDissonantWhispers,
 	"ice-knife":                     spellIceKnife,
 	"witch-bolt":                    spellWitchBolt,
 	"guiding-bolt":                  spellGuidingBolt,

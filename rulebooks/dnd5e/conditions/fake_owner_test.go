@@ -41,12 +41,16 @@ type fakeConditionOwner struct {
 	//
 	// Two fields rather than one because the two kinds answer CanReact for
 	// different reasons, and a fake that flattened them could not tell the
-	// reasons apart. A character with no slots left refuses; a monster has
-	// nothing that could refuse, so it never does. The zero value is the
-	// monster — which is also the sheet a test that does not care about
-	// reactions should get, since it is the one that never gets in the way.
+	// reasons apart. A character with no slots left refuses because its
+	// economy is empty; a monster refuses because its one reaction is gone.
+	// The zero value is the monster with its reaction in hand, which is also
+	// the sheet a test that does not care about reactions should get.
 	hasEconomy bool
 	reactions  int
+
+	// reactionSpent is the monster's meter, the one its keeper keeps. A
+	// character does not use it: its slot count IS its meter.
+	reactionSpent bool
 
 	hp, maxHP        int
 	ac               int
@@ -60,10 +64,11 @@ func (f *fakeConditionOwner) AC() int                 { return f.ac }
 func (f *fakeConditionOwner) HasShieldEquipped() bool { return f.shield }
 
 // CanReact answers the way the two real sheets do: a character out of its
-// slots refuses, and a monster has no economy to refuse with.
+// slots refuses, and a monster that has already spent its one reaction
+// refuses too.
 func (f *fakeConditionOwner) CanReact() bool {
 	if !f.hasEconomy {
-		return true
+		return !f.reactionSpent
 	}
 
 	return f.reactions > 0

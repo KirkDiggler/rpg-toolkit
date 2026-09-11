@@ -289,7 +289,7 @@ func (s *CastContentSuite) TestThunderwaveDeclaresACubeAndAPush() {
 	s.Require().NotNil(profile.Save)
 	s.Equal([]abilities.Ability{abilities.CON}, profile.Save.Abilities)
 	s.Equal(13, profile.Save.DC.DC(saves.DCInput{}))
-	s.Equal(saves.Negated, profile.Save.OnSuccess, "half on a save does not exist yet; the row flips when it does")
+	s.Equal(saves.Half, profile.Save.OnSuccess, "half exists now; the row promised to flip")
 
 	s.Require().Len(profile.Damage, 1)
 	s.Equal(damage.Thunder, profile.Damage[0].Type)
@@ -303,12 +303,60 @@ func (s *CastContentSuite) TestThunderwaveDeclaresACubeAndAPush() {
 	s.False(profile.Move.Provokes, "and fires nobody's reaction on the way")
 }
 
-// TestBaneAndThunderwaveSpendTheSameSlot — the slot cost is a function of the
-// spell's LEVEL and nothing else, so two unrelated level-1 spells declare it
-// through one call rather than through two hand-written profiles that could
-// drift apart.
-func (s *CastContentSuite) TestBaneAndThunderwaveSpendTheSameSlot() {
-	for _, id := range []spells.Spell{spells.Bane, spells.Thunderwave} {
+// TestDissonantWhispersRunsTheTargetAwayAndChargesItForIt is the first content
+// in this build that makes a creature MOVE ITSELF.
+//
+// Thunderwave proved a cast can shove a body along a line for free. This one
+// proves the other kind: the target is not thrown, it runs — as far as its own
+// legs carry it, away from the caster by the ruler, paying its reaction for the
+// privilege and drawing every opportunity attack on the way out. Three fields
+// Thunderwave left at zero, all non-zero here, and each of them a rule the
+// spell's text actually states.
+func (s *CastContentSuite) TestDissonantWhispersRunsTheTargetAwayAndChargesItForIt() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{
+		Spell: spells.DissonantWhispers, SpellSaveDC: 13,
+	})
+	s.Require().NotNil(definition, "a spell missing from the byID map mints a nil definition, silently")
+	s.Equal(*refs.Spells.DissonantWhispers(), definition.Ref)
+	s.Require().NoError(definition.Validate())
+
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, definition.Cost.Pools[resources.SpellSlotLevel1], "a levelled spell spends a level-1 slot")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(spells.DissonantWhispersRangeFeet, profile.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, profile.Target)
+	s.Equal(1, profile.MinTargets, "one creature, named by the caster")
+	s.Equal(1, profile.MaxTargets)
+	s.Nil(profile.Area, "a named creature is not an area")
+
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.WIS}, profile.Save.Abilities)
+	s.Equal(13, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Half, profile.Save.OnSuccess, "a made save still hears the whisper, just quieter")
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence, "one save, at the moment it lands")
+
+	s.Require().Len(profile.Damage, 1)
+	s.Equal(damage.Psychic, profile.Damage[0].Type)
+	s.Equal(spells.DissonantWhispersDamage, profile.Damage[0].Dice)
+	s.Empty(profile.Effects, "it delivers no condition, which is what lets its save buy half")
+
+	s.Require().NotNil(profile.Move)
+	s.Equal(actions.MoveAway, profile.Move.Policy, "as far from the caster as the ruler measures")
+	s.True(profile.Move.Speed, "the budget is the mover's own legs, which content cannot know")
+	s.Zero(profile.Move.Cells, "and therefore not a fixed count")
+	s.Equal(actions.PaysReaction, profile.Move.Pays, "the flight costs the target its reaction")
+	s.True(profile.Move.Provokes, "running is running: everyone in reach gets their swing")
+}
+
+// TestEveryLevelOneSpellSpendsTheSameSlot — the slot cost is a function of the
+// spell's LEVEL and nothing else, so unrelated level-1 spells declare it
+// through one call rather than through hand-written profiles that could drift
+// apart.
+func (s *CastContentSuite) TestEveryLevelOneSpellSpendsTheSameSlot() {
+	for _, id := range []spells.Spell{spells.Bane, spells.Thunderwave, spells.DissonantWhispers} {
 		definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
 		s.Require().NotNil(definition, "%s", id)
 		s.Require().NotNil(definition.Cost, "%s", id)

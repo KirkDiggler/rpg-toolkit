@@ -111,16 +111,15 @@ type Member interface {
 	// CanReact reports whether this combatant's action economy has a reaction
 	// left to spend.
 	//
-	// A MONSTER ANSWERS TRUE, and that is the truthful zero rather than a stub.
-	// False means "my economy refuses," and a monster has no action economy in
-	// this rulebook to do the refusing: the reaction slot is a cost only a
-	// sheet can be charged (Kirk's ruling, 2026-08-28 — characters pay for a
-	// reaction; a monster is metered by its reacting condition's own
-	// once-per-turn flag instead). The rules asking this question already
-	// behave that way, in a nil check that denies a reaction only when a
-	// ledger exists and reports none left. This states the branch on the
-	// surface instead of hiding it behind a handle each condition had to be
-	// given.
+	// BOTH KINDS ANSWER FROM A REAL METER, and a monster's is the newer half.
+	// It answered an unconditional true until 2026-09-11, on the reasoning
+	// that a monster had no action economy to refuse with and its reacting
+	// condition's own once-per-turn flag was meter enough. Dissonant Whispers
+	// broke that: it spends a monster's reaction from outside any condition
+	// the monster carries, and a flag on one reactor cannot see it. So a
+	// monster now keeps one reaction of its own, cleared at the start of its
+	// own turn, and this question is the single gate every reacting rule asks
+	// of either kind.
 	//
 	// A CHARACTER WITH NO FIGHT AROUND IT ALSO ANSWERS FALSE, which is the same
 	// answer it gives today: a sheet outside combat carries no action economy
