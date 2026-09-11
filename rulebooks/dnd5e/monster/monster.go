@@ -8,6 +8,8 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
@@ -52,6 +54,10 @@ type Monster struct {
 
 	// AI behavior
 	targeting TargetingStrategy
+
+	// reactionSpent is this monster's one reaction meter. See
+	// [Data.ReactionSpent]; the keeper owns every write to it.
+	reactionSpent bool
 
 	// Event bus wiring
 	bus             events.EventBus
@@ -195,16 +201,80 @@ func (m *Monster) HasShieldEquipped() bool {
 	return false
 }
 
-// CanReact reports that nothing on this monster refuses a reaction.
+// CanReact reports whether this monster still has its reaction.
 //
-// TRUE IS THE ANSWER, not a placeholder for one nobody has written. A monster
-// carries no action economy in this rulebook, so there is no reaction slot to
-// run out and nothing here that could say no — and false would mean exactly
-// that, "my economy refuses." What meters a monster's reaction is the reacting
-// condition's own once-per-turn flag, which every reactor has; the slot is the
-// additional cost only a sheet can be charged. Implements [combat.Member].
+// THIS USED TO BE AN UNCONDITIONAL TRUE, argued at length as the truthful
+// answer rather than a stub: a monster carried no action economy, so nothing
+// here could say no, and the reacting condition's own once-per-turn flag was
+// the only meter. Kirk reversed it on 2026-09-11 — "monsters should have
+// reaction and it should replace that used once hack" — because Dissonant
+// Whispers spends a monster's reaction from OUTSIDE any condition the monster
+// carries. A flag living on one reactor cannot meter a spell that never asks
+// that reactor anything, so the meter moved to the creature.
+//
+// It is the smallest economy a monster can have and deliberately not a
+// ledger: one bool, one question, cleared at this monster's own turn start.
+// Implements [combat.Member].
 func (m *Monster) CanReact() bool {
-	return true
+	return !m.reactionSpent
+}
+
+// onSpendRequested pays the one thing this sheet can be billed for.
+//
+// A monster has no action and no bonus action to run out of, so every other
+// slot passes it by untouched: answering a request it cannot pay by emptying
+// the meter it can would spend a reaction nobody asked for.
+func (m *Monster) onSpendRequested(_ context.Context, event dnd5eEvents.SpendRequestedEvent) error {
+	if event.MemberID != m.id || event.ActionType != coreCombat.ActionReaction || m.reactionSpent {
+		return nil
+	}
+
+	m.reactionSpent = true
+	m.dirty = true
+
+	return nil
+}
+
+// onTurnStart gives the reaction back at the start of this monster's own turn.
+//
+// TURN START, NOT TURN END. A reaction is spent on somebody else's turn, so a
+// meter cleared at the end of its holder's turn would be full again for the
+// whole window it governs. 2014 PHB: "you regain a spent reaction at the start
+// of each of your turns."
+//
+// A keeper subscribing to turn start is new — a character's economy is
+// reseeded by a verb the session calls, and a monster has no such verb — and
+// it is the least wiring there is: the composition's boundary already
+// publishes a turn start for every crossing, monsters included. The handler
+// only clears a bool, so the attach-time context this hears under (see
+// resolution/truth.go) cannot bite it.
+//
+// Only when the meter actually moved, because a boundary runs for every
+// participant of every round: marking unconditionally would flag every monster
+// in the fight dirty on every turn of it.
+func (m *Monster) onTurnStart(_ context.Context, event dnd5eEvents.TurnStartEvent) error {
+	if event.SubjectID != m.id || !m.reactionSpent {
+		return nil
+	}
+
+	m.reactionSpent = false
+	m.dirty = true
+
+	return nil
+}
+
+// onRest gives the reaction back on this monster's long rest, which is where
+// the opportunity attack's flag used to clear. A short rest does not: a
+// reaction is not a short-rest resource.
+func (m *Monster) onRest(_ context.Context, event dnd5eEvents.RestEvent) error {
+	if event.CharacterID != m.id || event.RestType != coreResources.ResetLongRest || !m.reactionSpent {
+		return nil
+	}
+
+	m.reactionSpent = false
+	m.dirty = true
+
+	return nil
 }
 
 // IsDirty returns true if the monster has been modified since last save.
@@ -644,6 +714,7 @@ func (m *Monster) ToData() *Data {
 		Speed:            m.speed,
 		Senses:           m.senses,
 		Targeting:        m.targeting,
+		ReactionSpent:    m.reactionSpent,
 		Actions:          make([]combatActions.Definition, len(m.actions)),
 		Proficiencies:    make([]ProficiencyData, 0, len(m.proficiencies)),
 	}

@@ -403,6 +403,25 @@ func (s *SheetLedgerTestSuite) TestSlotsReadTheStoredEconomy() {
 	s.Equal(1, char.GetActionEconomy().ActionsRemaining)
 }
 
+// THE REACTION NEVER GOES BELOW EMPTY, and that floor is what replaced the
+// opportunity attack's once-per-turn flag (Kirk, 2026-09-11).
+//
+// The flag was doing a second job nobody named: it stopped a duplicate
+// reaction-taken event from billing twice. With the flag gone the bill can go
+// out twice, so the meter itself has to be the guard — you cannot spend a
+// reaction you do not have. A sheet that reached -1 would read as owing one,
+// and CanReact would keep answering no after the turn that reseeds it.
+func (s *SheetLedgerTestSuite) TestAReactionIsNeverSpentBelowEmpty() {
+	char := s.loaded()
+	s.Require().True(char.CanReact())
+
+	char.SpendSlots(coreCombat.ActionReaction, 1)
+	char.SpendSlots(coreCombat.ActionReaction, 1)
+
+	s.Equal(0, char.GetActionEconomy().ReactionsRemaining, "a second bill takes it no further")
+	s.False(char.CanReact())
+}
+
 // A pool the sheet does not have reads as empty, so a cost in it is refused
 // rather than charged to nothing.
 func (s *SheetLedgerTestSuite) TestAnAbsentPoolIsEmptyRatherThanFree() {

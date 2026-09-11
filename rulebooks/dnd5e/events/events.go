@@ -760,13 +760,19 @@ type AttackEvent struct {
 // cannot fail - so a keeper receiving this does not re-run the gate. Being
 // request-shaped is only about who performs the write.
 //
-// A KEEPER MAY HAVE NO ROW FOR IT AT ALL, and the monster keeper does not.
-// Monsters carry no action economy in this rulebook, so a monster has no
-// ledger to debit and nothing to refuse; the request passes its keeper by,
-// truthfully. That is the D&D asymmetry stated as which subscriptions each
-// keeper's table has, rather than as a nil check inside the condition. A
-// reaction-metering condition on a monster still meters itself through its own
-// state — see conditions.OpportunityAttackCondition's UsedThisTurn.
+// BOTH KEEPERS HOLD A ROW FOR IT, and that is new as of 2026-09-11. The
+// monster keeper used to have none: a monster carried no action economy, so
+// the request truthfully passed it by and a reacting condition metered itself.
+// Kirk reversed that when Dissonant Whispers needed to spend a monster's
+// reaction from outside any condition it carries. A character's keeper debits
+// the slot; a monster's flips the single reaction meter on its sheet. Every
+// other slot still passes a monster by — it has no action and no bonus action
+// to run out of.
+//
+// NEITHER DEBIT GOES BELOW EMPTY. The floor is what replaced the once-per-turn
+// flag that used to stop a duplicate bill: a publisher does not have to
+// remember that it already asked, because you cannot spend a reaction you do
+// not have.
 //
 // It supersedes a ReactionUsedEvent that had no publisher and no subscriber:
 // that one named a single action type in its own topic, carried no amount, and

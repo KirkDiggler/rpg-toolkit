@@ -444,15 +444,14 @@ type freeReaction struct {
 // every other one, and this loop is the single path that turns trait data into
 // behaviour. It joins the sheet through AddLoadedCondition below, which does not
 // mark it dirty — gaining a reaction is not something that happened in the
-// world — and from then on ToData serializes it, which is what lets a SPENT
-// meter survive to the next call.
+// world — and from then on ToData serializes it.
 //
-// That last part is where a monster differs from a character, and the asymmetry
-// is the ruling rather than an oversight: a character's meter is
-// ActionEconomy.ReactionsRemaining, already persisted and already what
-// Protection fighting style competes for, so character.Attach carries the
-// condition live and never writes it down. A monster has no action economy at
-// all, so its UsedThisTurn is the only meter there is and it has to be written.
+// THE BLOB CARRIES NO METER. It used to: the condition kept a once-per-turn
+// flag, and this paragraph used to argue that a monster had no action economy
+// at all so that flag was the only meter there was. Kirk reversed that on
+// 2026-09-11. A monster's one reaction is now monster.Data.ReactionSpent, kept
+// by the monster's own keeper, and what this function seats is the reactor
+// alone.
 func carryingFreeReactions(blobs []json.RawMessage, id string) ([]json.RawMessage, error) {
 	for _, reaction := range freeReactions {
 		if carriesRef(blobs, reaction.ref) {

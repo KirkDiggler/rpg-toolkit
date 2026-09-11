@@ -197,12 +197,15 @@ var attachedLongRestCases = []attachedLongRestCase{
 			"stabilized":false,"dead":false
 		}`),
 	},
+	// Retained rather than reset since 2026-09-11. A character's reaction was
+	// always the slot on its action economy, never this condition's flag, and
+	// the flag is gone: there is nothing on the blob left for a rest to clear.
 	{
 		expectedRef: refs.Conditions.OpportunityAttack(),
-		outcome:     attachedLongRestReset,
+		outcome:     attachedLongRestRetain,
 		persisted: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"opportunity_attack"},
-			"member_id":"condition-rest-member","used_this_turn":true
+			"member_id":"condition-rest-member"
 		}`),
 	},
 	{
@@ -217,23 +220,18 @@ var attachedLongRestCases = []attachedLongRestCase{
 
 func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) {
 	const (
-		ownerID              = "condition-rest-member"
-		expectedCaseCount    = 22
-		expectedRetainCount  = 11
-		expectedResetCount   = 2
-		expectedRemovalCount = 9
+		ownerID           = "condition-rest-member"
+		expectedCaseCount = 22
 	)
 
 	require.Len(t, attachedLongRestCases, expectedCaseCount,
 		"the current condition-loader audit has exactly 22 explicit cases")
 	seen := make(map[string]struct{}, expectedCaseCount)
-	outcomeCounts := make(map[attachedLongRestOutcome]int, 3)
 
 	for _, testCase := range attachedLongRestCases {
 		refString := testCase.expectedRef.String()
 		require.NotContains(t, seen, refString, "each canonical condition ref must appear exactly once")
 		seen[refString] = struct{}{}
-		outcomeCounts[testCase.outcome]++
 
 		t.Run(refString, func(t *testing.T) {
 			ctx := context.Background()
@@ -326,10 +324,10 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 		})
 	}
 
+	// How the 22 cases divide between retain, reset and removal is not pinned:
+	// the distribution tests nothing on its own, and every condition added or
+	// re-ruled since has had to bump it.
 	require.Len(t, seen, expectedCaseCount)
-	require.Equal(t, expectedRetainCount, outcomeCounts[attachedLongRestRetain])
-	require.Equal(t, expectedResetCount, outcomeCounts[attachedLongRestReset])
-	require.Equal(t, expectedRemovalCount, outcomeCounts[attachedLongRestRemove])
 }
 
 func persistedConditionBlobsByRef(t *testing.T, data *Data) map[string][]json.RawMessage {

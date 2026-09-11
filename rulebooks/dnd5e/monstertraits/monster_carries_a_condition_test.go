@@ -71,11 +71,10 @@ func TestAMonsterCanCarryAnOrdinaryCondition(t *testing.T) {
 // The owner handoff character.Attach has made since rpg-toolkit#1178, now that
 // a monster can carry a condition that needs it.
 //
-// The opportunity attack's once-per-turn meter is stored on the condition and
-// serialized as part of this sheet, so nothing else notices when it changes:
-// without the handoff the flag is set, the sheet never goes dirty, the save is
-// dropped, and a wolf reacts again on the very next call. The meter would exist
-// and mean nothing.
+// The wolf's one reaction is metered on the SHEET, so a spend has to reach the
+// sheet to mean anything: without the handoff the bill is published into a bus
+// the monster is not listening on, the sheet never goes dirty, the save is
+// dropped, and the wolf reacts again on the very next call.
 func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 	ctx := context.Background()
 	data := &monster.Data{
@@ -143,7 +142,9 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 		}))
 
 	require.True(t, m.IsDirty(),
-		"the condition spent its meter and said so — a silent update is a dropped save")
+		"the sheet spent its reaction and said so — a silent update is a dropped save")
+	require.False(t, m.CanReact(), "and the wolf has nothing left to swing with")
+	require.True(t, m.ToData().ReactionSpent, "written on the sheet, not on the condition")
 }
 
 // The substitution this package now depends on: a loaded entry names itself
@@ -185,13 +186,12 @@ func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
 	}
 }
 
-// The monster half of Kirk's ruling: a monster has NO action economy at all, so
-// the condition's own UsedThisTurn is the only meter there is — and a meter that
-// is not written down is a wolf that reacts again on the very next call.
+// A monster carries the REACTOR on its sheet, and nothing else.
 //
-// So unlike a character, whose carried reaction stays live-but-unwritten because
-// ActionEconomy.ReactionsRemaining is already its persisted meter, a monster's
-// joins the sheet and is serialized by ToData.
+// The blob used to carry the meter too, back when the condition's own
+// UsedThisTurn was the only thing metering a monster. Since 2026-09-11 the
+// meter is monster.Data.ReactionSpent, kept by the monster's keeper, and what
+// is written here is the condition that does the swinging.
 func TestAnAttachedMonsterCarriesItsFreeReactionOnTheSheet(t *testing.T) {
 	ctx := context.Background()
 	data := &monster.Data{ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13}
@@ -205,9 +205,12 @@ func TestAnAttachedMonsterCarriesItsFreeReactionOnTheSheet(t *testing.T) {
 	require.Len(t, m.GetConditions(), 1)
 	require.Equal(t, refs.Conditions.OpportunityAttack().String(), m.GetConditions()[0].Ref().String())
 	require.Len(t, m.ToData().Conditions, 1,
-		"written down, because UsedThisTurn is the only meter a monster has")
+		"written down, because the reactor is part of what this sheet is")
+	require.NotContains(t, string(m.ToData().Conditions[0]), "used_this_turn",
+		"and it carries no meter of its own any more")
+	require.False(t, m.ToData().ReactionSpent, "the meter it does have starts full")
 	require.False(t, m.IsDirty(),
-		"but gaining it is not a change worth saving — only spending the meter is")
+		"gaining a reactor is not a change worth saving — only spending the reaction is")
 }
 
 // A monster that already persisted one — every monster, from its second attach

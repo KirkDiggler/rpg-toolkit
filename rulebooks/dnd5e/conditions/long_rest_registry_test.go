@@ -243,14 +243,17 @@ var longRestCases = map[string]longRestCase{
 		outcome:       longRestRemove,
 		removalReason: "long rest",
 	},
+	// Retained rather than reset since 2026-09-11: the meter this used to
+	// reset moved to the reactor's own keeper, so the condition itself has no
+	// rest behaviour left to declare.
 	refs.Conditions.OpportunityAttack().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"opportunity_attack"},
-			"member_id":"member-1","used_this_turn":true
+			"member_id":"member-1"
 		}`),
 		ownerID:     "member-1",
 		expectedRef: refs.Conditions.OpportunityAttack(),
-		outcome:     longRestReset,
+		outcome:     longRestRetain,
 	},
 	refs.Conditions.Concentrating().String(): {
 		data: json.RawMessage(`{
