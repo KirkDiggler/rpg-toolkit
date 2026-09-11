@@ -13,7 +13,18 @@ type IntelDelta struct {
 	FirstContact []intel.Report
 	Refreshed    []intel.Subject
 	Faded        []intel.Subject
-	Corrected    []intel.Subject
+
+	// Reacquired is every subject who was a GHOST to this observer and is
+	// in view again — the exact inverse of Faded, and the moment
+	// [Encounter.appendSightedBeats] means by "they came back".
+	//
+	// It REFINES Refreshed and does not partition it (play/intel's own doc
+	// says why): a re-acquired subject appears in both, so anything reading
+	// FirstContact ∪ Refreshed as "everything perceived this pass" — which
+	// correctArrivedLocations does — keeps the answer it always had.
+	Reacquired []intel.Subject
+
+	Corrected []intel.Subject
 }
 
 func intelDeltaFromSurveil(in *intel.SurveilOutput) *IntelDelta {
@@ -25,6 +36,7 @@ func intelDeltaFromSurveil(in *intel.SurveilOutput) *IntelDelta {
 		FirstContact: cloneIntelReports(in.FirstContact),
 		Refreshed:    cloneIntelSubjects(in.Refreshed),
 		Faded:        cloneIntelSubjects(in.Faded),
+		Reacquired:   cloneIntelSubjects(in.Reacquired),
 	}
 }
 
@@ -64,6 +76,7 @@ func mergeIntelDeltas(dst, src map[MemberID]*IntelDelta) map[MemberID]*IntelDelt
 			FirstContact: mergeIntelReports(existing.FirstContact, incoming.FirstContact),
 			Refreshed:    mergeIntelSubjects(existing.Refreshed, incoming.Refreshed),
 			Faded:        mergeIntelSubjects(existing.Faded, incoming.Faded),
+			Reacquired:   mergeIntelSubjects(existing.Reacquired, incoming.Reacquired),
 			Corrected:    mergeIntelSubjects(existing.Corrected, incoming.Corrected),
 		}
 	}
@@ -80,6 +93,7 @@ func cloneIntelDelta(in *IntelDelta) *IntelDelta {
 		FirstContact: cloneIntelReports(in.FirstContact),
 		Refreshed:    cloneIntelSubjects(in.Refreshed),
 		Faded:        cloneIntelSubjects(in.Faded),
+		Reacquired:   cloneIntelSubjects(in.Reacquired),
 		Corrected:    cloneIntelSubjects(in.Corrected),
 	}
 }
