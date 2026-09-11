@@ -30,9 +30,9 @@ func rosterPositions(roster []encounter.Member) map[string]spatial.Position {
 // one read is what keeps the two answers describing one moment.
 //
 // A member with no speed on its row answers zero, which is the honest reading
-// of a fact nobody supplied rather than a walk of unknown length: a creature
-// nothing declared a speed for is routed nowhere and the beat says it moved
-// nothing.
+// of a fact nobody supplied rather than a walk of unknown length. The caller
+// turns that zero into a refusal with a sentence on it rather than a silent
+// distance of nothing — see routeCastPushes and noSpeedToRunWith.
 func rosterSpeeds(roster []encounter.Member) map[string]int {
 	out := make(map[string]int, len(roster))
 	for _, m := range roster {

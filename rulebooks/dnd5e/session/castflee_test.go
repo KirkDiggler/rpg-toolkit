@@ -150,6 +150,38 @@ func (s *CastSuite) TestACreatureWithNoReactionToSpendStaysWhereItIs() {
 	s.Zero(s.walkedCells("skeleton"), "no walk was taken, so no cell was announced")
 }
 
+// TestACreatureWithNoSpeedOnItsRowIsToldSo is the third zero, and the reason
+// it is a test rather than a shrug.
+//
+// Two of them already say why: a route that hit a wall names the wall, and a
+// price nobody could pay names the price. A budget read off a roster row that
+// carries no speed would otherwise be the one that says nothing — the same
+// silence this seam refuses eleven lines away, wearing "nobody declared how
+// fast you are" instead.
+//
+// The composition cannot close it. Route answers a zero budget with an empty
+// path and no sentence, because from down there a budget of zero and a budget
+// that reached nowhere are the same walk. The budget was read HERE, so the
+// reason lives here.
+func (s *CastSuite) TestACreatureWithNoSpeedOnItsRowIsToldSo() {
+	s.whispersAt(2)
+	s.slowTo("skeleton", 0)
+	before := s.cellOf("skeleton")
+
+	_, err := s.cast(spells.DissonantWhispers)
+	s.Require().NoError(err)
+
+	moved := s.fleeResult()
+	s.Require().NotNil(moved, "a creature that cannot run is still narrated")
+	s.Require().NotNil(moved.Result.Moved)
+	s.Zero(*moved.Result.Moved)
+	s.Equal("has no speed to run with", moved.Result.StoppedBy,
+		"and the beat names which zero this is")
+
+	s.Equal(before, s.cellOf("skeleton"))
+	s.Zero(s.walkedCells("skeleton"), "nothing was routed, so nothing was walked")
+}
+
 // TestTheWhisperStillDamagesWhatItCannotMove pins the two halves apart. The
 // psychic damage is the gate's; the flee is the price's. A creature with no
 // reaction still took the whisper.
