@@ -21,17 +21,26 @@ import (
 // which are orientation-free and unitless, and every question before this one
 // was answerable there.
 //
-// # Where it lives, and when it moves
+// # The second customer arrived, so the frame moved
 //
-// Here, package-private, and NOT in [tools/spatial], deliberately. There is
-// exactly one customer today — the wall derivations in this file's package —
-// and a shared package with one caller is a guess about the second one. The
-// second customer is named and real: `tools/spatial/room.go`'s corner-rule
-// sight test measures whether a sightline clears a hex corner and reimplements
-// its own notion of where a corner is. When that test is rewritten against a
-// real embedding, THIS moves to tools/spatial and both call it. Not before:
-// promoting it now would publish an API shaped by one caller and freeze it
-// before the caller that would have changed it arrives.
+// This file used to own the embedding outright, package-private, and said so:
+// one customer, and a shared package with one caller is a guess about the
+// second one. The second one is here. Coverage — which cells a footprint lies
+// on, as fractions — needs a cell's centre, its corners and the bearing between
+// two cells, which is exactly the frame the wall derivations needed, and it is
+// asked for by spells rather than by dungeon content
+// ([rpg-project#432](https://github.com/KirkDiggler/rpg-project/issues/432)).
+//
+// So [spatial.HexEmbedding] is the frame now, and this file is WALL DERIVATION
+// ALONE: which crossings a segment blocks, which cells it cuts, how much room
+// is left to stand in. Those are questions about walls, which is dungeon
+// content's business and not the ruler's.
+//
+// What moved out: the axial-to-plane basis, a cell's corners, and the bearing
+// between two points. What stayed: [hexGeom.axialAt] and [hexGeom.stepAt]
+// (positions are exact rational arithmetic and never touch the embedding, see
+// below), the seven-position tables, and every area and intersection routine
+// under [hexGeom.standingFraction].
 //
 // # The frame
 //
@@ -39,7 +48,10 @@ import (
 //
 //   - CIRCUMRADIUS 1. A hex's corners are one unit from its centre. Every
 //     length here is in those units, and no length ever leaves this file —
-//     areas leave as RATIOS and positions leave as fractional axial.
+//     areas leave as RATIOS and positions leave as fractional axial. The
+//     embedding is built at CellWidth sqrt(3), because across the flats is
+//     sqrt(3) circumradii and this file's unit is the circumradius: every
+//     number below is the number it always was.
 //   - X EAST, Y SOUTH. The screen's axes, and the axes the authored offset
 //     pair already runs on: row 1 is south of row 0.
 //   - The BOUNDING BOX is the unit the file's offsets are written in — x in
@@ -89,9 +101,14 @@ type axialPoint struct {
 
 // worldPoint is a point in the plane of the embedding: x east, y south,
 // circumradius 1. It never leaves this file.
-type worldPoint struct {
-	X, Y float64
-}
+//
+// AN ALIAS, not a copy. It is [spatial.Point] under the file's own name, so
+// the embedding's answers arrive as this file's points with no conversion at
+// the seam — and a conversion is exactly where a frame gets re-derived and two
+// readings of one basis are born (rpg-toolkit#1141, #1150 were both that).
+// The name stays because "world" is what this file has always called the plane
+// its areas are measured in.
+type worldPoint = spatial.Point
 
 // sidePosition is one of a hex's six side midpoints: the offset the file
 // writes for it, and the neighbour whose side it is the midpoint of.
@@ -148,16 +165,14 @@ var (
 type hexGeom struct {
 	kind encounter.OrientationKind
 
-	// qx, qy and rx, ry are the world vectors one axial step moves: a point
-	// at axial (q,r) sits at q*(qx,qy) + r*(rx,ry).
-	qx, qy, rx, ry float64
+	// emb is the plane: where a cell's centre sits, where its corners are,
+	// and the bearing between two of them. Built at circumradius 1, which is
+	// CellWidth sqrt(3) in the embedding's own across-the-flats unit.
+	emb spatial.HexEmbedding
 
 	// width and height are the hex's bounding box — the unit the file's
 	// offsets are fractions of.
 	width, height float64
-
-	// corner is the six corners of a hex, relative to its centre.
-	corner [6]worldPoint
 
 	// sides is the six side midpoints in this layout. See [sidePosition].
 	sides []sidePosition
@@ -171,40 +186,34 @@ type hexGeom struct {
 // height sqrt(3)).
 func geometryOf(o encounter.Orientation) hexGeom {
 	if o.Kind() == encounter.OrientationFlatTop {
-		g := hexGeom{
+		return hexGeom{
 			kind:   encounter.OrientationFlatTop,
-			qx:     1.5,
-			qy:     sqrt3 / 2,
-			rx:     0,
-			ry:     sqrt3,
+			emb:    embeddingAt(spatial.HexOrientationFlatTop),
 			width:  2,
 			height: sqrt3,
 			sides:  flatSides,
 		}
-		for i := range g.corner {
-			a := float64(i) * math.Pi / 3
-			g.corner[i] = worldPoint{X: math.Cos(a), Y: math.Sin(a)}
-		}
-
-		return g
 	}
 
-	g := hexGeom{
+	return hexGeom{
 		kind:   encounter.OrientationPointyTop,
-		qx:     sqrt3,
-		qy:     0,
-		rx:     sqrt3 / 2,
-		ry:     1.5,
+		emb:    embeddingAt(spatial.HexOrientationPointyTop),
 		width:  sqrt3,
 		height: 2,
 		sides:  pointySides,
 	}
-	for i := range g.corner {
-		a := float64(i)*math.Pi/3 + math.Pi/6
-		g.corner[i] = worldPoint{X: math.Cos(a), Y: math.Sin(a)}
-	}
+}
 
-	return g
+// embeddingAt is this file's one call into [spatial.NewHexEmbedding], and the
+// one place the unit is chosen.
+//
+// CELL WIDTH SQRT(3), which is circumradius 1 — across the flats is sqrt(3)
+// circumradii. This file's every offset, area and tolerance is written in
+// circumradii and always has been, so asking for that width is what keeps each
+// of them the number it was. A rulebook measuring the same grid in feet passes
+// 5 and reads feet back; the embedding holds no opinion about either.
+func embeddingAt(o spatial.HexOrientation) spatial.HexEmbedding {
+	return spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{Orientation: o, CellWidth: sqrt3})
 }
 
 // axialAt is the fractional axial point a position names: the cell, plus half
@@ -244,27 +253,26 @@ func (g hexGeom) stepAt(offset [2]float64) ([2]int, bool) {
 }
 
 // world embeds a fractional axial point in the plane.
+//
+// [spatial.HexEmbedding.CellCentre] is linear in its argument and reads
+// Position.X as Q and Position.Y as R, so a HALF lands halfway, which is the
+// whole of what a wall endpoint needs. The embedding says "cell" because whole
+// cells are what every other caller asks it about; nothing in its arithmetic
+// requires one.
 func (g hexGeom) world(a axialPoint) worldPoint {
-	return worldPoint{
-		X: a.Q*g.qx + a.R*g.rx,
-		Y: a.Q*g.qy + a.R*g.ry,
-	}
+	return g.emb.CellCentre(spatial.Position{X: a.Q, Y: a.R})
 }
 
 // centreOf is the world point at the middle of a whole cell.
 func (g hexGeom) centreOf(cell spatial.Position) worldPoint {
-	return g.world(axialPoint{Q: cell.X, R: cell.Y})
+	return g.emb.CellCentre(cell)
 }
 
 // hexOf is a cell's six corners in the plane, in boundary order.
 func (g hexGeom) hexOf(cell spatial.Position) []worldPoint {
-	c := g.centreOf(cell)
-	out := make([]worldPoint, 6)
-	for i, k := range g.corner {
-		out[i] = worldPoint{X: c.X + k.X, Y: c.Y + k.Y}
-	}
+	corners := g.emb.CellCorners(cell)
 
-	return out
+	return corners[:]
 }
 
 // directionTolerance is how far off a multiple of 30° a wall may be and still
@@ -282,15 +290,19 @@ const directionTolerance = 1e-9
 // the embedding turns with the hexes. A zero-length wall reports false: it has
 // no direction at all, which is a different defect the caller words for itself.
 func (g hexGeom) directionOf(from, to axialPoint) (float64, bool) {
-	a, b := g.world(from), g.world(to)
-	dx, dy := b.X-a.X, b.Y-a.Y
-	if dx == 0 && dy == 0 {
+	// THE BEARING IS THE EMBEDDING'S; WHICH BEARINGS ARE LEGAL IS THIS
+	// FILE'S. Spatial answers where a direction points, in degrees within
+	// [0,360) — the same number this file computed for itself before the frame
+	// moved. Whether that direction is one a wall may be written along is a
+	// rule about walls, and it stays here.
+	deg, ok := g.emb.Bearing(
+		spatial.Position{X: from.Q, Y: from.R}, spatial.Position{X: to.Q, Y: to.R})
+	if !ok {
 		return 0, false
 	}
-	rad := math.Atan2(dy, dx)
+	rad := deg * math.Pi / 180
 	step := math.Pi / 6
 	k := math.Round(rad / step)
-	deg := math.Mod(math.Mod(rad*180/math.Pi, 360)+360, 360)
 
 	return deg, math.Abs(rad-k*step) <= directionTolerance
 }
