@@ -81,6 +81,29 @@ func Field(g Grid, in FieldInput) (FieldOutput, error) {
 	return out, nil
 }
 
+// PathTo reads the field backwards from goal to the source that reached it.
+// The returned path excludes the source and ends at goal, matching the
+// contract a route has always had. ok is false when goal was never reached.
+func (f FieldOutput) PathTo(goal Position) ([]Position, bool) {
+	if _, reached := f.Dist[goal]; !reached {
+		return nil, false
+	}
+	var rev []Position
+	cur := goal
+	for {
+		prev, hasPrev := f.Prev[cur]
+		if !hasPrev {
+			break // cur is a source
+		}
+		rev = append(rev, cur)
+		cur = prev
+	}
+	for i, j := 0, len(rev)-1; i < j; i, j = i+1, j-1 {
+		rev[i], rev[j] = rev[j], rev[i]
+	}
+	return rev, true
+}
+
 // unitCost is the default Cost: one per step, which makes the flood a
 // breadth-first search.
 func unitCost(_, _ Position) int { return 1 }
