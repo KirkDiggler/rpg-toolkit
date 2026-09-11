@@ -240,7 +240,10 @@ func (m *strikeMachine) preflight(ctx context.Context, cast *Participants) error
 	m.prepared = make([]preparedCondition, len(m.attack.OnHit))
 	for index, application := range m.attack.OnHit {
 		if application.Save != nil {
-			if gateErr := validateConditionGate(application.Save); gateErr != nil {
+			// Never damage-only: an on-hit rider IS a condition, so a Half gate
+			// on one has nothing to halve and is refused here exactly as
+			// combat/actions refuses it on the declaration.
+			if gateErr := validateGate(application.Save, false); gateErr != nil {
 				return fmt.Errorf("validate on-hit condition %s: %w", application.Ref.String(), gateErr)
 			}
 		}

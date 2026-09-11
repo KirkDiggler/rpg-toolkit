@@ -476,10 +476,19 @@ func (s *ContestDamageTestSuite) TestMalformedDamageIsRefusedBeforeThePriceIsCha
 func TestTheContestsDeliveryStepsSayWhatTheyDo(t *testing.T) {
 	deal := applyPreparedDamage(
 		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{},
-		mockeryName, nil, heroID,
+		mockeryName, nil, heroID, false,
 		func(ImposedEffect) (Step, error) { return nil, nil },
 	)
 	require.Equal(t, "deal 1d4 psychic damage", deal.Name())
+
+	// And a made save's delivery says which one it is, so a step log does not
+	// show two identical lines for the two branches of one gate.
+	halved := applyPreparedDamage(
+		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{},
+		mockeryName, nil, heroID, true,
+		func(ImposedEffect) (Step, error) { return nil, nil },
+	)
+	require.Equal(t, "deal 1d4 psychic damage (halved)", halved.Name())
 
 	require.Equal(t, "1d4 psychic and 1d6 fire damage", describeDamage([]damage.Damage{
 		{Dice: "1d4", Type: damage.Psychic},
