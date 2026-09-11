@@ -864,6 +864,70 @@ type FieldOutput struct {
 func (f FieldOutput) PathTo(goal Position) ([]Position, bool)
 ```
 
+#### Coverage
+
+`Coverage` rasterises a footprint at a transform onto a grid and answers with
+the fraction of each cell's area under it. It is the one geometric question
+asked of every shape in the game: a prop that does not fit in a cell, a
+creature bigger than one, a blast. Fractions come out and thresholds go in
+above — half is the tabletop's template rule, and it is the rulebook's number,
+not spatial's.
+
+Coverage needs the grid's place in the plane, which is `HexEmbedding`: where a
+cell's centre sits, where its six corners are, and the bearing from one cell to
+another. `CellWidth` is measured **across the flats**, in the caller's own unit
+— spatial has no notion of feet, so a rulebook that calls a cell five feet
+passes 5 and reads everything back in feet. A cell's circumradius is
+`CellWidth/sqrt(3)` under both orientations.
+
+```go
+func NewHexEmbedding(c HexEmbeddingConfig) HexEmbedding
+
+type HexEmbeddingConfig struct {
+    Orientation HexOrientation // pointy-top or flat-top
+    CellWidth   float64        // across the flats, caller's unit; must be positive
+}
+
+func (c HexEmbeddingConfig) Validate() error            // ErrBadCellWidth
+func (e HexEmbedding) CellCentre(cell Position) Point
+func (e HexEmbedding) CellCorners(cell Position) [6]Point
+func (e HexEmbedding) Bearing(from, to Position) (degrees float64, ok bool)
+
+func Coverage(emb HexEmbedding, g Grid, in CoverageInput) (CoverageOutput, error)
+
+type CoverageInput struct {
+    Footprint Footprint  // Box{W across the bearing, D along it}; Polygon later
+    At        Position   // the anchor cell
+    Facing    float64    // degrees counter-clockwise from east; nothing snaps to an axis
+    Anchor    AnchorRule // AnchorAtCentre | AnchorAtEdge
+}
+
+type CoverageOutput struct {
+    Cells map[Position]float64 // fraction of each cell's area under it, (0, 1]
+}
+```
+
+`AnchorAtEdge` puts the footprint's near edge on the anchor cell's boundary
+along `Facing`, so the anchor cell is (very nearly) not under it — at a bearing
+off a grid axis the anchor's own corner pokes past that line by a percent or
+so, which a threshold above discards. `Edges` — the cell boundaries an outline
+crosses, which is how a thin thing that covers under half of everything still
+blocks something — arrives with the first thin prop that needs it.
+
+```go
+emb := spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{
+    Orientation: spatial.HexOrientationPointyTop,
+    CellWidth:   5, // feet, because the caller measured in feet
+})
+facing, _ := emb.Bearing(casterCell, chosenCell)
+out, err := spatial.Coverage(emb, room.GetGrid(), spatial.CoverageInput{
+    Footprint: spatial.Footprint{Box: &spatial.Box{W: 15, D: 15}},
+    At:        casterCell,
+    Facing:    facing,
+    Anchor:    spatial.AnchorAtEdge,
+})
+```
+
 #### Room Interface
 ```go
 type Room interface {
