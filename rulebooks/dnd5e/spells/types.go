@@ -72,8 +72,11 @@ const (
 	BurningHands Spell = "burning-hands"
 	ChromaticOrb Spell = "chromatic-orb"
 	Thunderwave  Spell = "thunderwave"
-	IceKnife     Spell = "ice-knife"
-	WitchBolt    Spell = "witch-bolt"
+
+	// Bard Level 1
+	DissonantWhispers Spell = "dissonant-whispers"
+	IceKnife          Spell = "ice-knife"
+	WitchBolt         Spell = "witch-bolt"
 
 	// Cleric Level 1
 	GuidingBolt   Spell = "guiding-bolt"

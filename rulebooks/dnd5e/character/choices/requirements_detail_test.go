@@ -33,10 +33,11 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 
 	s.Require().NotNil(req)
 	s.Equal(BardSpells1, req.ID)
-	s.Equal(2, req.Count, "the bard learns every level-1 spell this build can cast")
+	s.Equal(3, req.Count, "the bard learns every level-1 spell this build can cast")
 	s.Equal(1, req.SpellLevel)
 	s.Contains(req.Options, spells.Bane)
 	s.Contains(req.Options, spells.Thunderwave)
+	s.Contains(req.Options, spells.DissonantWhispers)
 	for _, option := range req.Options {
 		s.True(spells.HasCastProfile(option),
 			"%s is offered as a levelled pick and must compile to a cast", option)

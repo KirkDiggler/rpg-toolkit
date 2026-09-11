@@ -91,6 +91,15 @@ const ThunderwaveCubeFeet = 15
 // slice.
 const ThunderwaveDamage = "2d8"
 
+// DissonantWhispersRangeFeet is how far a caster may point Dissonant Whispers.
+// Sixty feet, the same reach as Vicious Mockery: the bard is whispering into
+// one mind, not filling a room.
+const DissonantWhispersRangeFeet = 60
+
+// DissonantWhispersDamage is the psychic damage the whisper deals. A made save
+// takes half of it, rounded down, which is what the gate's Half means.
+const DissonantWhispersDamage = "3d6"
+
 // ThunderwavePushCells is how far a failed save is shoved: ten feet, two cells.
 //
 // Cells rather than feet because it is a MOVE budget, and the thing that walks
@@ -272,13 +281,9 @@ var castContent = map[Spell]castProfileBuilder{
 				Save: &saves.SaveGate{
 					Abilities: []abilities.Ability{abilities.CON},
 					DC:        saves.DCStatic(spellSaveDC),
-					// RAW is half on a success. Half does not exist in this
-					// stack yet — it is rpg-project#414's to land — and we are
-					// not bound to the letter while it is missing. Negated is
-					// the honest reading of what the engine can do today, and
-					// this is content: the row flips to saves.Half with no
-					// code change here the moment half resolves.
-					OnSuccess:  saves.Negated,
+					// Half arrived with Dissonant Whispers, and this row
+					// promised to flip the moment it did.
+					OnSuccess:  saves.Half,
 					Recurrence: saves.RecurrenceNone,
 				},
 				Damage: []damage.Damage{{Dice: ThunderwaveDamage, Type: damage.Thunder}},
@@ -291,6 +296,44 @@ var castContent = map[Spell]castProfileBuilder{
 				Move: &actions.CastMove{
 					Policy: actions.MoveLine,
 					Cells:  ThunderwavePushCells,
+				},
+			}
+		},
+	},
+	DissonantWhispers: {
+		name: "Dissonant Whispers",
+		cost: slotCost(resources.SpellSlotLevel1),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet:  DissonantWhispersRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
+				Save: &saves.SaveGate{
+					Abilities: []abilities.Ability{abilities.WIS},
+					DC:        saves.DCStatic(spellSaveDC),
+					// HALF, and this is the spell half was built for. "On a
+					// successful save, the creature takes half as much damage
+					// and doesn't have to move away." One gate, two different
+					// consequences on either side of it — which is only
+					// legible because this cast delivers no condition.
+					OnSuccess:  saves.Half,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage: []damage.Damage{{Dice: DissonantWhispersDamage, Type: damage.Psychic}},
+				// THE FLEE, and it is the opposite lean from Thunderwave's
+				// push in every field that one left at zero. The target is not
+				// thrown: it turns and runs, so it pays its own reaction for
+				// the movement and everyone whose reach it leaves gets a
+				// swing. The budget is its own legs, which content cannot
+				// know — the same whisper moves a dwarf and a horse different
+				// distances. Where "away" actually lands is read off the map
+				// by the layer that owns it.
+				Move: &actions.CastMove{
+					Policy:   actions.MoveAway,
+					Speed:    true,
+					Pays:     actions.PaysReaction,
+					Provokes: true,
 				},
 			}
 		},

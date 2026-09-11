@@ -164,6 +164,12 @@ var SpellData = map[Spell]*Data{
 		Name:        "Thunderwave",
 		Description: "A wave of thunderous force deals 2d8 thunder damage and pushes creatures",
 	},
+	DissonantWhispers: {
+		ID:          DissonantWhispers,
+		Level:       1,
+		Name:        "Dissonant Whispers",
+		Description: "A discordant whisper deals 3d6 psychic damage and sends the target fleeing",
+	},
 	IceKnife: {
 		ID:          IceKnife,
 		Level:       1,
