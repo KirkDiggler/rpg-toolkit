@@ -911,7 +911,7 @@ func (e *Encounter) walkCells(
 	ctx context.Context, activeID MemberID, m *memberRecord,
 	path []spatial.Position, audience []MemberID, at uint64,
 ) (walkResult, error) {
-	return e.walkPath(ctx, activeID, m, path, audience, at, core.Ref{})
+	return e.walkPath(ctx, activeID, m, path, audience, at, core.Ref{}, false)
 }
 
 // walkPath announces and takes each cell of a path in turn — THE walk, for a
@@ -927,11 +927,12 @@ func (e *Encounter) walkCells(
 // reactions — because they are the same act, differing only in who decided it.
 // A second loop for the directed case would be two answers to "what stops a
 // step", which is rpg-toolkit#1652 one layer up. What differs is carried as
-// data: `mover` need not hold the active turn, and `cause` names the effect
-// that moved them on every beat this appends.
+// data: `mover` need not hold the active turn, `cause` names the effect that
+// moved them on every beat this appends, and `forced` tells the [Mover] whether
+// this creature is walking or being walked.
 func (e *Encounter) walkPath(
 	ctx context.Context, mover MemberID, m *memberRecord,
-	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, forced bool,
 ) (walkResult, error) {
 	var res walkResult
 
@@ -953,7 +954,13 @@ func (e *Encounter) walkPath(
 			break
 		}
 
-		if merr := e.mover.Move(ctx, e, mover, from, cell); merr != nil {
+		// FORCED IS THE WALK'S OWN ANSWER, and for this body it is always
+		// false: walkPath is reached by a creature's own Move intent and by
+		// the resume of one. [Encounter.Direct] builds its own step with the
+		// flag set, because being moved is the thing it knows and this loop
+		// does not.
+		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Forced: forced}
+		if merr := e.mover.Move(ctx, e, step); merr != nil {
 			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
 			// about this step; it is announced and not taken, and the rest
 			// of the path — this cell first — waits with them. Every other

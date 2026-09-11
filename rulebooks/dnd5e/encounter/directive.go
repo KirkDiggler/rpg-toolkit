@@ -243,6 +243,16 @@ type DirectInput struct {
 	// paid for. It is supplied rather than recomputed so the caller that
 	// priced the move is the caller that decided how much of it happens.
 	Route []spatial.Position
+
+	// Provokes is whether this move offers opportunity attacks. It reaches
+	// the [Mover] inverted, as [MoveStep.Forced], because THAT zero value is
+	// the safe one: a step nobody filled a field in for is an ordinary walk
+	// that provokes, and no amount of forgetting can switch a reaction off.
+	//
+	// False is the push — the least permissive directive there is, and
+	// Thunderwave's. True is the rout: Dissonant Whispers sends a creature
+	// fleeing and it IS struck on the way out.
+	Provokes bool
 }
 
 // DirectOutput is what the directed walk did.
@@ -281,6 +291,13 @@ type DirectOutput struct {
 // What it does NOT do is charge a turn budget or check whose turn it is.
 // Neither is a fact about walking; both are facts about a turn, and this is
 // nobody's turn.
+//
+// # Provoking, and who decides
+//
+// [DirectInput.Provokes] reaches the [Mover] as [MoveStep.Forced], inverted, so
+// the zero value on the wire is the ordinary walk. This module carries the flag
+// and does not act on it: what a forced step means for a reaction is a rule,
+// and rules live above a module whose go.mod cannot import the rulebook (C1).
 //
 // # A window mid-push is refused, loudly
 //
@@ -325,7 +342,7 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	audience := e.audienceFor(subjectBeat, in.Mover)
 	at := uint64(e.clock.ToData().HighWater)
 
-	res, err := e.walkPath(ctx, in.Mover, m, in.Route, audience, at, in.Cause)
+	res, err := e.walkPath(ctx, in.Mover, m, in.Route, audience, at, in.Cause, !in.Provokes)
 	if err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, err)
 	}

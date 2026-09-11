@@ -43,8 +43,9 @@ var thunderwaveRef = core.Ref{Module: thunderwaveModule, Type: "spells", ID: "th
 type DirectiveTestSuite struct {
 	suite.Suite
 
-	enc   *encounter.Encounter
-	mover *recordingMover
+	enc    *encounter.Encounter
+	mover  *recordingMover
+	driver *scriptedDriver
 
 	casterCell spatial.Position
 	moverCell  spatial.Position
@@ -56,6 +57,7 @@ func TestDirectiveSuite(t *testing.T) {
 }
 
 func (s *DirectiveTestSuite) SetupTest() {
+	s.driver = nil
 	s.casterCell = cellAt(0, 0)
 	s.moverCell = cellAt(1, 0)
 	s.pillarCell = cellAt(3, 0)
@@ -91,10 +93,13 @@ func (s *DirectiveTestSuite) lineScene(withPillar bool) *encounter.Encounter {
 	}
 
 	s.mover = &recordingMover{}
+	if s.driver == nil {
+		s.driver = &scriptedDriver{}
+	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: &scriptedDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
@@ -220,6 +225,8 @@ func (s *DirectiveTestSuite) TestDirectMovesOffTurnAndTheBeatSaysWhy() {
 	s.Equal(route.Path[0], s.mover.calls[0].To)
 	s.Equal(s.moverCell, s.mover.calls[0].StoodAt,
 		"announced BEFORE the step, exactly as a chosen walk announces it")
+	s.True(s.mover.calls[0].Forced, "a push that does not provoke says so to the Mover")
+	s.Equal(thunderwaveRef, s.mover.calls[0].Cause, "and names what is doing the pushing")
 
 	beats := s.movedBeats(alice)
 	s.Require().NotEmpty(beats)
@@ -230,6 +237,57 @@ func (s *DirectiveTestSuite) TestDirectMovesOffTurnAndTheBeatSaysWhy() {
 	clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
 	s.Require().NoError(err)
 	s.Equal(alice, clockOf.Active, "a push is nobody's turn and spends nobody's turn")
+}
+
+// TestADirectiveThatProvokesSaysSoToTheMover.
+//
+// The other half of the flag, and the reason it is not simply "a directed move
+// never provokes". Dissonant Whispers sends a creature fleeing and IS struck
+// for it; the fold that drops opportunity attacks reads a suppression source,
+// so a directive that wants them must not send one.
+func (s *DirectiveTestSuite) TestADirectiveThatProvokesSaysSoToTheMover() {
+	enc := s.lineScene(false)
+
+	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0)},
+		Provokes: true,
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(s.mover.calls, 1)
+	s.False(s.mover.calls[0].Forced, "a directive that provokes is announced like any other step")
+	s.Equal(thunderwaveRef, s.mover.calls[0].Cause, "it still says what moved them")
+}
+
+// TestAChosenWalkIsNeitherForcedNorCaused.
+//
+// THE ZERO VALUE HAS TO BE THE WALK. Every existing Mover call in this module
+// is a step somebody chose, and the flag is named Forced rather than Provokes
+// precisely so that forgetting it cannot switch an opportunity attack off —
+// false means "ordinary walk", which is the least permissive reading.
+func (s *DirectiveTestSuite) TestAChosenWalkIsNeitherForcedNorCaused() {
+	// The goblin's own driver walks it one cell, which is walkPath's path
+	// rather than Direct's — the same body, reached the other way.
+	s.driver = &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{cellAt(2, 0)}},
+	}}
+	enc := s.lineScene(false)
+
+	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0)},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(s.mover.calls, 1)
+	s.Require().True(s.mover.calls[0].Forced, "the push is the forced one")
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Greater(len(s.mover.calls), 1, "the driven turn walked")
+	for _, call := range s.mover.calls[1:] {
+		s.False(call.Forced, "a step a creature chose is not forced")
+		s.Equal(core.Ref{}, call.Cause, "and nothing caused it but the creature")
+	}
 }
 
 // TestAChosenStepCarriesNoCause.

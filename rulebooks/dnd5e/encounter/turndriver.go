@@ -326,7 +326,7 @@ func (RefusingStriker) Strike(context.Context, *Encounter, MemberID, MemberID, c
 type RefusingMover struct{}
 
 // Move always fails with ErrRefusingMover.
-func (RefusingMover) Move(context.Context, *Encounter, MemberID, spatial.Position, spatial.Position) error {
+func (RefusingMover) Move(context.Context, *Encounter, MoveStep) error {
 	return ErrRefusingMover
 }
 
@@ -507,13 +507,10 @@ type Striker interface {
 // to end and precisely the shape [Announcer]'s doc warns about, one capability
 // over. Refused at both doors (ErrNoMover).
 type Mover interface {
-	// Move announces mover's step from one cell to the next and resolves
-	// whatever reacts to it, recording any resulting beats itself via
-	// [Encounter.Record] — the same way [Striker.Strike] records its own.
-	//
-	// From is where the mover still stands; to is where this composition is
-	// about to put them. Both are dungeon-absolute, the frame every position
-	// on this module already speaks.
+	// Move announces one step and resolves whatever reacts to it, recording
+	// any resulting beats itself via [Encounter.Record] — the same way
+	// [Striker.Strike] records its own. What the step IS, including why it is
+	// happening, is [MoveStep].
 	//
 	// Errors here are MOVER MALFUNCTIONS (a resolution failure, a corrupt
 	// sheet) and abort the caller's whole verb exactly as a [Striker.Strike]
@@ -536,5 +533,49 @@ type Mover interface {
 	// travels as an error at all is that this interface has no other channel:
 	// widening it would make every implementation and every construction site
 	// carry a second return they never use.
-	Move(ctx context.Context, enc *Encounter, mover MemberID, from, to spatial.Position) error
+	Move(ctx context.Context, enc *Encounter, step MoveStep) error
+}
+
+// MoveStep is one announced step: who, from where to where, and why.
+//
+// # The zero value is a walk somebody chose
+//
+// That is the whole reason this is a struct rather than more parameters, and
+// the reason the flag is named Forced rather than Provokes. Every field left
+// unset describes the ordinary case — a creature walking of its own accord,
+// which provokes opportunity attacks and has no cause to name. A [Mover] that
+// reads a field nobody filled in gets the LEAST permissive answer, so nothing
+// can switch a reaction off by forgetting something ("zero values tell the
+// truth", and the inverse flag would have made forgetting into suppression).
+type MoveStep struct {
+	// Mover is who is stepping.
+	Mover MemberID
+
+	// From is where the mover STILL STANDS when this is called; To is where
+	// this composition is about to put them. Both are dungeon-absolute, the
+	// frame every position on this module already speaks.
+	//
+	// The order is a contract: announce, then step. See this interface's own
+	// doc for what a composition that stepped first would break.
+	From, To spatial.Position
+
+	// Cause is the effect that moved this creature, when something did — a
+	// directive from [Encounter.Direct]. The zero Ref means nobody moved
+	// them; they walked.
+	//
+	// Opaque here, like every other [core.Ref] this composition carries (C1).
+	// It is passed on so a [Mover] can attribute what it resolves — a
+	// suppression the fold reads has to name what is suppressing it, and
+	// "something" is not a name.
+	Cause core.Ref
+
+	// Forced reports that this creature is being MOVED rather than moving:
+	// pushed, pulled, routed. A forced move does not offer opportunity
+	// attacks, because nobody chose to leave anybody's reach.
+	//
+	// It is a fact about the step, not an instruction. What a [Mover] does
+	// with it is the rules layer's — today, seeding the movement chain with a
+	// prevention source naming [MoveStep.Cause] so the existing fold drops
+	// the triggers. This module cannot know that and does not.
+	Forced bool
 }

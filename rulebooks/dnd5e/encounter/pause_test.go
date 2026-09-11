@@ -44,12 +44,9 @@ type pausingMover struct {
 	calls   []announcedStep
 }
 
-func (m *pausingMover) Move(
-	_ context.Context, _ *encounter.Encounter, mover encounter.MemberID,
-	from, to spatial.Position,
-) error {
+func (m *pausingMover) Move(_ context.Context, _ *encounter.Encounter, step encounter.MoveStep) error {
 	n := len(m.calls)
-	m.calls = append(m.calls, announcedStep{Mover: mover, From: from, To: to})
+	m.calls = append(m.calls, announcedOf(step))
 	if m.pauseAt[n] {
 		return &encounter.StepPausedError{Windows: []encounter.PausedWindow{
 			{Audience: encounter.MemberID(alice), Reaction: testOpportunityAttack},
@@ -68,12 +65,11 @@ type pausingThenDroppingMover struct {
 }
 
 func (m *pausingThenDroppingMover) Move(
-	ctx context.Context, enc *encounter.Encounter, mover encounter.MemberID,
-	from, to spatial.Position,
+	ctx context.Context, enc *encounter.Encounter, step encounter.MoveStep,
 ) error {
-	err := m.pausingMover.Move(ctx, enc, mover, from, to)
+	err := m.pausingMover.Move(ctx, enc, step)
 	if len(m.calls)-1 == m.dropAt {
-		m.standing.down = append(m.standing.down, mover)
+		m.standing.down = append(m.standing.down, step.Mover)
 	}
 	return err
 }
