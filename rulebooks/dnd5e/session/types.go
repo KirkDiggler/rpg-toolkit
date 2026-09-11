@@ -2473,6 +2473,16 @@ const (
 	// every live CurrentVia-nonempty holding except the actor exactly once.
 	TargetMember TargetKind = "member"
 
+	// TargetArea is an area cast's selector shape: the caster chooses nobody,
+	// and the engine derives who is caught from the shape the spell declares.
+	//
+	// NOT TargetNone, though both mean "do not prompt". TargetNone already
+	// carries "this lands on you" for a self cast; an area centred on the
+	// caster lands on everyone BUT them, and one value meaning both is a
+	// distinction a client cannot recover. A client that knows the shape can
+	// also draw it, which no amount of "no selector" ever permits.
+	TargetArea TargetKind = "area"
+
 	// TargetPath is Move's selector shape: a walk along a path on the turn
 	// clock. Move declarations carry no candidates; the path is chosen at
 	// execution time and priced whole.

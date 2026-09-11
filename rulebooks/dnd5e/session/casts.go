@@ -188,6 +188,35 @@ func (m *Manager) compileCastOffer(
 		}, nil
 	}
 
+	// AN AREA CAST PROMPTS FOR NOBODY EITHER, and takes its own arm rather than
+	// falling into either of the two above.
+	//
+	// Not the self arm, because TargetKind would then say "this lands on you"
+	// about a spell that lands on everyone but. Not the targeted arm below,
+	// because that one refuses the whole declaration when nothing is in reach
+	// (ShortfallNoTargetInReach) — correct when a player must pick somebody,
+	// and wrong here: casting a thunderclap in an empty room is legal, spends
+	// the action, and catches nobody, which the beat reports honestly.
+	//
+	// So availability is the budget alone. There is deliberately no "your
+	// footprint is empty" verdict: a derived cast has no candidate list by
+	// construction, nothing needs the preview yet, and an offer cannot say it
+	// without Declaration growing a field for it. When a client wants to draw
+	// the ring with the caught members lit up, that field arrives with it —
+	// never by overloading Candidates, because a candidate is something you may
+	// CHOOSE and nobody chooses these.
+	if profile.Target == combatActions.CastTargetArea {
+		declaration := Declaration{
+			Verb: VerbCast, Slot: slot, Available: budgetOK, Why: budgetWhy, ID: id,
+			Spell: &spellRef, TargetKind: TargetArea, Candidates: []TargetCandidate{},
+			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets, Cost: cost,
+		}
+		return compiledOffer{
+			declaration: declaration, spell: &definition, sheet: input.Sheet,
+			cast: input.Participants, verb: VerbCast, slot: slot, variant: variant,
+		}, nil
+	}
+
 	// The candidate universe, by Attack's own rules over this spell's range:
 	// every live sighting except the caster, within RangeFeet, world NPCs
 	// excluded, then the participation filter that removes the dead and the
