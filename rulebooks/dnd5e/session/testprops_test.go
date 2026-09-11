@@ -149,3 +149,26 @@ func (encNoHandsObserved) Equipment(
 	}
 	return out, nil
 }
+
+// blockingProps is occludingProps' opposite number: cells a creature cannot be
+// put into.
+//
+// The two answers are independent (rpg-toolkit#1128) and a scene has to say
+// which it means. A push is the first thing in this package that asks the MAP a
+// question rather than a creature — everything a cast did before it happened to
+// somebody — and what it asks is "may this creature stand here", which a prop
+// that only stops sight answers yes to.
+func blockingProps(at ...spatial.Position) []encounter.PropInput {
+	blocks, passes := true, false
+	out := make([]encounter.PropInput, 0, len(at))
+	for _, cell := range at {
+		out = append(out, encounter.PropInput{
+			Ref:               "dnd5e:props:pillar",
+			At:                cell,
+			BlocksMovement:    &blocks,
+			BlocksLineOfSight: &passes,
+		})
+	}
+
+	return out
+}

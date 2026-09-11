@@ -370,8 +370,18 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", translateResolution(err))
 	}
 
-	targetResults, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
+	targetResults, pushes, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
 	if err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
+	}
+
+	// THE ROUTE IS TAKEN BEFORE THE RECORD AND THE WALK AFTER IT, which is the
+	// whole of how a push is ordered here. Route is a pure computation and
+	// writes nothing, so the cast's own beat can say the blast moved somebody
+	// one cell instead of two; the walk that follows puts the movement beats
+	// after the cast beat, which is the order a client animates them in.
+	// Thunder, then the slide. See [castPush].
+	if err := routeCastPushes(scope.enc, pushes, targetResults); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
@@ -406,6 +416,14 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))
+	}
+
+	// The pushes, now that the cast beat naming them is on the story. A
+	// failure here leaves the cast recorded and the shove untaken, which is
+	// the same shape RecordCast's own failure has and is reported the same
+	// way: the durable writes are named and this unsaved scope is dropped.
+	if err := walkCastPushes(ctx, scope.enc, pushes, definition.Ref); err != nil {
+		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)

@@ -1476,6 +1476,7 @@ type ActivationResultBody struct {
 	ConditionApplied *ConditionAppliedBody `json:"condition_applied,omitempty"`
 	ConditionRemoved *ConditionRemovedBody `json:"condition_removed,omitempty"`
 	CapacityGranted  *CapacityGrantedBody  `json:"capacity_granted,omitempty"`
+	MoveImposed      *MoveImposedBody      `json:"move_imposed,omitempty"`
 }
 
 func (ActivationResultBody) isEventBody() {}
@@ -1573,6 +1574,38 @@ type ConditionRemovedBody struct {
 type CapacityGrantedBody struct {
 	Member      string `json:"member"`
 	Description string `json:"description"`
+}
+
+// MoveImposedBody is the cast's own account of a creature it MOVED — pushed,
+// pulled, routed — and what stopped the move short.
+//
+// IT IS NOT THE MOVEMENT. Every cell the creature crossed is already a
+// [EventMoved] beat carrying the cause, and those are what a client animates.
+// This is the one line the caster is owed instead: the blast moved the skeleton
+// one cell, and the pillar is why it was not two. A reader who had only the
+// movement beats would have to correlate them by hand to learn it.
+type MoveImposedBody struct {
+	// Target is who was moved.
+	Target string `json:"target"`
+
+	// SourceRef and SourceName name whatever moved them — the spell, for a
+	// cast — authored by the provider and never derived from the ref, the same
+	// pair [DamageAppliedBody] carries for the same reason.
+	SourceRef  string `json:"source_ref"`
+	SourceName string `json:"source_name"`
+
+	// MovedCells is how far the creature actually travelled.
+	//
+	// NEVER OMITTED, because zero is a real outcome: a creature pinned against
+	// a wall is pushed nowhere, and a body that dropped the number would read
+	// as a push that never happened.
+	MovedCells int `json:"moved_cells"`
+
+	// StoppedBy is what ended the move short of what was paid for, in the
+	// fold's own refusal phrase. Empty when the whole of it was walked, and
+	// omitted rather than blank: a reader asking what got in the way should
+	// find no answer rather than an empty one.
+	StoppedBy string `json:"stopped_by,omitempty"`
 }
 
 // FightStartedBody is EventFightStarted's typed body: two sides came into
