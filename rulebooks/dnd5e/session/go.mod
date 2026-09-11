@@ -9,7 +9,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.154.1-0.20260911074042-30709d834d9c
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.155.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.73.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.40.1-0.20260911075512-39018510bffb
