@@ -907,6 +907,73 @@ func (s *CastSuite) TestThunderwaveIsOfferedAsACellToAimAt() {
 	s.True(row.Available)
 }
 
+// cellOf is where the composition actually put somebody. Members are placed by
+// AUTHORED OFFSET and reported in absolute axial, so a test that aimed at the
+// offset it wrote would be aiming somewhere else.
+func (s *CastSuite) cellOf(member string) spatial.Position {
+	s.T().Helper()
+	where, err := s.mgr.Where(context.Background(), &session.WhereInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	return where.Position
+}
+
+// TestACellCastRefusesEveryAimButACellOfItsOwn.
+//
+// The cell is the only thing this cast takes from the player, so each of the
+// three ways of getting it wrong is REFUSED rather than repaired: a client that
+// believed it had pointed a spell somewhere must be told it had not, which is
+// the same argument the self and area arms make about a named target.
+func (s *CastSuite) TestACellCastRefusesEveryAimButACellOfItsOwn() {
+	s.scene(castingBardWithSpells("bard", spells.Thunderwave), 1)
+	ctx := context.Background()
+
+	s.Run("a cast with no cell is refused, and the refusal says so", func() {
+		_, err := s.mgr.Cast(ctx, &session.CastInput{
+			Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Thunderwave).ID,
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrBadCast)
+		s.Contains(err.Error(), "cell", "a refusal that does not name what is missing teaches nothing")
+	})
+
+	s.Run("the caster's own cell is not a direction", func() {
+		own := s.cellOf("bard")
+		_, err := s.mgr.Cast(ctx, &session.CastInput{
+			Session: "sess", Member: "bard", Cell: &own,
+			DeclarationID: s.castRow(spells.Thunderwave).ID,
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrBadCast)
+	})
+
+	s.Run("naming somebody is refused as it is for any derived cast", func() {
+		ahead := s.cellOf("skeleton")
+		_, err := s.mgr.Cast(ctx, &session.CastInput{
+			Session: "sess", Member: "bard", Cell: &ahead, Targets: []string{"skeleton"},
+			DeclarationID: s.castRow(spells.Thunderwave).ID,
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrBadCast)
+	})
+}
+
+// TestAnAreaCastRefusesACellItWouldNeverRead is the guard read from the other
+// side. Thunderclap's burst is centred on the caster and has no direction to
+// take, so a cell arriving with it is a client aiming a spell that offers no
+// aim — and a cell silently discarded is a client that never finds out.
+func (s *CastSuite) TestAnAreaCastRefusesACellItWouldNeverRead() {
+	s.scene(castingBard("bard", spells.Thunderclap), 1)
+
+	ahead := s.cellOf("skeleton")
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", Cell: &ahead,
+		DeclarationID: s.castRow(spells.Thunderclap).ID,
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadCast)
+	s.Contains(err.Error(), "no cell")
+}
+
 // TestThunderclapCatchesTheCreatureStandingInIt is the whole capability, end to
 // end through the verb: content declared a shape, the composition said who was
 // standing in it, and the cast resolved against them — with the player naming

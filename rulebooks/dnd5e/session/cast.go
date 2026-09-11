@@ -11,6 +11,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // CastInput casts a spell the member knows.
@@ -52,6 +53,25 @@ type CastInput struct {
 	// Targets is the canonical ordered target list. Its bounds come from the
 	// selected declaration.
 	Targets []string
+
+	// Cell is the cell a [TargetCell] cast is aimed at, and nothing else ever
+	// carries one. Required for that shape and refused on every other.
+	//
+	// A REFERENCE, NOT A CALCULATION. The caster points; the shape's geometry
+	// is derived from this cell and the caster's own, by the composition that
+	// owns placement. Nothing here reads it as a distance, a facing, or a
+	// target, and a creature standing on it is not thereby aimed at.
+	//
+	// NOT THE CASTER'S OWN CELL. A cube anchored on the caster's edge takes
+	// its direction from the line between the two, and a cell with no line
+	// out of it is not a direction. Refused at the door rather than defaulted
+	// to whatever the caster is facing, which is a fact this seam does not
+	// hold.
+	//
+	// A POINTER because absence is the question. spatial.Position's zero value
+	// is a real cell somewhere on the canvas, so a missing cell and a cell at
+	// the origin must not be the same value.
+	Cell *spatial.Position
 }
 
 // CastOutput is what a cast produced.
@@ -191,9 +211,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", translate(err))
 	}
 	kind, inRoster := encounter.MemberKind(""), false
+	var casterAt spatial.Position
 	for _, member := range roster {
 		if string(member.ID) == in.Member {
-			kind, inRoster = member.Kind, true
+			kind, casterAt, inRoster = member.Kind, member.Position, true
 			break
 		}
 	}
@@ -259,7 +280,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 	definition := selected.spell
 
-	targets, err = castTargets(definition, selected, targets)
+	targets, err = castTargets(definition, selected, targets, castAim{cell: in.Cell, casterAt: casterAt})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -418,6 +439,23 @@ func normalizeCastTargets(target string, targets []string) ([]string, error) {
 	return append([]string(nil), targets...), nil
 }
 
+// castAim is where the caller pointed this cast, and where they were standing
+// when they did.
+//
+// Both halves travel together because the one refusal that needs them needs
+// BOTH: a caster-edge shape takes its direction from the line between the two
+// cells, and a line whose ends are the same cell is not a direction. Carried as
+// a value rather than read back off the encounter here, so the cell this gate
+// judges is the same cell the shape is later derived from.
+type castAim struct {
+	// cell is the cell a TargetCell cast was aimed at, nil for every other
+	// shape.
+	cell *spatial.Position
+
+	// casterAt is the caster's own cell, as the composition placed them.
+	casterAt spatial.Position
+}
+
 // castTargets enforces the profile's own target rule against what the caller
 // asked for, and re-enforces the offer's per-candidate gate.
 //
@@ -435,9 +473,19 @@ func normalizeCastTargets(target string, targets []string) ([]string, error) {
 // Ignoring it would let a client believe True Strike had been pointed at the
 // skeleton when the profile never offered that choice.
 func castTargets(
-	definition *combatActions.Definition, selected compiledOffer, requested []string,
+	definition *combatActions.Definition, selected compiledOffer, requested []string, aim castAim,
 ) ([]string, error) {
 	profile := definition.Cast
+
+	// ONE GUARD RATHER THAN AN ARM APIECE. A cell belongs to exactly one
+	// selector shape, so the refusal is stated once, before the shapes are
+	// told apart, and a kind added later cannot quietly start accepting one by
+	// forgetting to say no.
+	if selected.declaration.TargetKind != TargetCell && aim.cell != nil {
+		return nil, fmt.Errorf("%w: spell %q names no cell",
+			ErrBadCast, definition.Ref.String())
+	}
+
 	if profile.Target == combatActions.CastTargetSelf || profile.Target == combatActions.CastTargetArea {
 		// Neither lets the caller name anybody, and a populated list is
 		// REFUSED rather than ignored for the same reason in both cases: a
@@ -447,6 +495,21 @@ func castTargets(
 		if len(requested) != 0 {
 			return nil, fmt.Errorf("%w: spell %q names no targets",
 				ErrBadCast, definition.Ref.String())
+		}
+		if selected.declaration.TargetKind == TargetCell {
+			// THE OFFER SAID A CELL WAS WANTED, so its absence is the caller's
+			// omission rather than a shape this door has to guess at. Nothing
+			// below can proceed without it: the cube has no direction, and a
+			// direction chosen here would be a rule invented at the seam.
+			if aim.cell == nil {
+				return nil, fmt.Errorf("%w: spell %q needs a cell to aim at",
+					ErrBadCast, definition.Ref.String())
+			}
+			if *aim.cell == aim.casterAt {
+				return nil, fmt.Errorf(
+					"%w: spell %q cannot be aimed at the caster's own cell, which is no direction",
+					ErrBadCast, definition.Ref.String())
+			}
 		}
 		return []string{}, nil
 	}
