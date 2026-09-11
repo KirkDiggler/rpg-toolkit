@@ -25,6 +25,9 @@ var (
 	monsterBanditCaptain = &core.Ref{Module: Module, Type: TypeMonsters, ID: "bandit-captain"}
 	monsterThug          = &core.Ref{Module: Module, Type: TypeMonsters, ID: "thug"}
 	monsterGoblin        = &core.Ref{Module: Module, Type: TypeMonsters, ID: "goblin"}
+
+	// Constructs
+	monsterAnimatedArmor = &core.Ref{Module: Module, Type: TypeMonsters, ID: "animated-armor"}
 )
 
 // Monsters provides type-safe, discoverable references to D&D 5e monsters.
@@ -54,3 +57,11 @@ func (n monstersNS) BanditArcher() *core.Ref  { return monsterBanditArcher }
 func (n monstersNS) BanditCaptain() *core.Ref { return monsterBanditCaptain }
 func (n monstersNS) Thug() *core.Ref          { return monsterThug }
 func (n monstersNS) Goblin() *core.Ref        { return monsterGoblin }
+
+// Constructs
+
+// AnimatedArmor returns the animated armor's ref. First construct in the set —
+// every other ref here is undead, beast or humanoid. Creature type is not a
+// field on monster.Config today, so "construct" is a fact about the rulebook
+// rather than one any rule keys off yet.
+func (n monstersNS) AnimatedArmor() *core.Ref { return monsterAnimatedArmor }

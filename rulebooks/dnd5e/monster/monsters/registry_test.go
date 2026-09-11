@@ -13,7 +13,7 @@ import (
 )
 
 func TestByRef_EveryCanonicalMonsterResolves(t *testing.T) {
-	// The 11 refs verified to have a real constructor today (see the
+	// The 12 refs verified to have a real constructor today (see the
 	// inventory comment on the byRef map in registry.go) — bandit/
 	// bandit-archer resolve via NewBanditMelee/NewBanditRanged despite the
 	// name mismatch; the other 4 canonical refs (skeleton-archer,
@@ -31,9 +31,10 @@ func TestByRef_EveryCanonicalMonsterResolves(t *testing.T) {
 		refs.Monsters.BanditArcher().String(),
 		refs.Monsters.Thug().String(),
 		refs.Monsters.Goblin().String(),
+		refs.Monsters.AnimatedArmor().String(),
 	}
 
-	// Closes the "12th entry never gets mapping-checked" drift window: a
+	// Closes the "13th entry never gets mapping-checked" drift window: a
 	// future addition to byRef that isn't also added to this list would
 	// otherwise go untested by the loop below.
 	assert.ElementsMatch(t, want, monsters.Refs())

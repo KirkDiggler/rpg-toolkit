@@ -7,6 +7,7 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 const TypeMonsterActions core.Type = "monster_actions"
 
 var (
+	monsterActionAnimatedArmorSlam        = monsterActionRef("animated-armor-slam")
 	monsterActionBanditScimitar           = monsterActionRef("bandit-scimitar")
 	monsterActionBanditLightCrossbow      = monsterActionRef("bandit-light-crossbow")
 	monsterActionBrownBearBite            = monsterActionRef("brown-bear-bite")
@@ -32,6 +33,9 @@ func monsterActionRef(id string) *core.Ref {
 var MonsterActions = monsterActionsNS{}
 
 type monsterActionsNS struct{}
+
+// AnimatedArmorSlam returns the animated armor's slam definition ref.
+func (monsterActionsNS) AnimatedArmorSlam() *core.Ref { return monsterActionAnimatedArmorSlam }
 
 // BanditScimitar returns the bandit's scimitar definition ref.
 func (monsterActionsNS) BanditScimitar() *core.Ref { return monsterActionBanditScimitar }
