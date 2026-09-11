@@ -256,26 +256,25 @@ func (s *DirectiveTestSuite) TestAChosenStepCarriesNoCause() {
 	s.NotContains(beats[1], "cause", "a step alice chose has no cause to name")
 }
 
-// TestPoliciesWithoutACustomerAreRefused.
+// TestAnyPolicyButTheLineIsRefused.
 //
-// Away and Toward are declared because the directive's shape is the same for
-// all three and a closed switch has to name them. Neither has a customer yet
-// (Dissonant Whispers brings Away), so both fail closed and loudly rather than
-// returning an empty path that reads as "nowhere to go".
-func (s *DirectiveTestSuite) TestPoliciesWithoutACustomerAreRefused() {
+// The line is the only policy that exists, because a policy arrives with the
+// thing that carries it out. Every other word fails closed and loudly rather
+// than returning an empty path — which would read as "there was nowhere to go"
+// and be indistinguishable from a creature pinned against a wall.
+//
+// "away" is spelled out here on purpose: it is the next policy anybody will
+// reach for (Dissonant Whispers), and it must be refused today exactly as
+// firmly as a typo is.
+func (s *DirectiveTestSuite) TestAnyPolicyButTheLineIsRefused() {
 	enc := s.lineScene(false)
 
-	for _, policy := range []encounter.MovePolicy{encounter.MoveAway, encounter.MoveToward} {
+	for _, policy := range []encounter.MovePolicy{"", "away", "toward", "sideways"} {
 		_, err := enc.Route(encounter.RouteInput{
 			Mover: goblin, Policy: policy, Anchor: s.casterCell, Budget: 2,
 		})
 		s.ErrorIs(err, encounter.ErrUnsupportedPolicy, "policy %q", policy)
 	}
-
-	_, err := enc.Route(encounter.RouteInput{
-		Mover: goblin, Policy: "", Anchor: s.casterCell, Budget: 2,
-	})
-	s.ErrorIs(err, encounter.ErrUnsupportedPolicy, "the zero policy is not a default, it is a refusal")
 }
 
 // TestRouteRefusesAnAnchorOnTheMover.

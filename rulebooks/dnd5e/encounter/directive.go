@@ -47,24 +47,18 @@ import (
 // word its author wrote, the way [OrientationKind] and [ContribKind] do.
 type MovePolicy string
 
-const (
-	// MoveLine continues the line from the anchor THROUGH the mover, past
-	// them, for as many cells as the budget pays for. It is the push:
-	// Thunderwave's blast blows a creature straight away from where the
-	// caster stands.
-	MoveLine MovePolicy = "line"
-
-	// MoveAway is the greatest distance from the anchor the mover can
-	// reach — a rout, not a shove. DECLARED, NOT IMPLEMENTED: its customer
-	// is Dissonant Whispers, which has no profile yet, so [Encounter.Route]
-	// refuses it by name rather than answering it with a guess.
-	MoveAway MovePolicy = "away"
-
-	// MoveToward is the least distance from the anchor the mover can reach.
-	// DECLARED, NOT IMPLEMENTED, for MoveAway's reason: Thorn Whip and
-	// Command: Approach bring it.
-	MoveToward MovePolicy = "toward"
-)
+// MoveLine continues the line from the anchor THROUGH the mover, past them, for
+// as many cells as the budget pays for. It is the push: Thunderwave's blast
+// blows a creature straight away from where the caster stands.
+//
+// IT IS THE ONLY ONE, and that is the rule rather than the schedule. A policy
+// arrives with its executor — "away" comes with Dissonant Whispers, "toward"
+// with Thorn Whip — because a constant declared ahead of the thing that carries
+// it out is a name callers can validate against and nothing can honour.
+// [Encounter.Route]'s switch is closed on this single value and refuses every
+// other word with [ErrUnsupportedPolicy], so the day a second one is added, the
+// place that must learn about it is the place that already refuses it.
+const MoveLine MovePolicy = "line"
 
 // RouteInput asks which cells a directed move would cross.
 type RouteInput struct {
@@ -74,8 +68,9 @@ type RouteInput struct {
 	// paid for before.
 	Mover MemberID
 
-	// Policy is how the move is measured. Required: the zero value is not a
-	// default, it is a refusal ([ErrUnsupportedPolicy]).
+	// Policy is how the move is measured. Required, and [MoveLine] is the
+	// only one that exists: the zero value is not a default, it is a refusal
+	// ([ErrUnsupportedPolicy]), and so is any other word.
 	Policy MovePolicy
 
 	// Anchor is the cell the policy is measured FROM — the caster's cell for
@@ -121,8 +116,8 @@ type RouteOutput struct {
 //
 // Refusals: [ErrNilInput] is not reachable (the input is a value), but
 // [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrBadReach] for a negative
-// budget or an anchor standing on the mover, and [ErrUnsupportedPolicy] for a
-// policy whose customer has not arrived, all are.
+// budget or an anchor standing on the mover, and [ErrUnsupportedPolicy] for
+// anything that is not [MoveLine], all are.
 func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 	if in.Mover == "" {
 		return RouteOutput{}, fmt.Errorf("route: %w", ErrNoMember)

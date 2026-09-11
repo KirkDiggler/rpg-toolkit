@@ -577,17 +577,17 @@ var (
 	// in, and a silent success would hide that.
 	ErrNotPaused = errors.New("encounter: no turn is paused")
 
-	// ErrUnsupportedPolicy is what [Encounter.Route] returns for a
-	// [MovePolicy] whose customer has not arrived — and for the zero value,
-	// which is not a default.
+	// ErrUnsupportedPolicy is what [Encounter.Route] returns for any
+	// [MovePolicy] that is not [MoveLine] — including the zero value, which is
+	// not a default.
 	//
-	// A CLOSED SWITCH FAILING CLOSED, not a stub. [MoveAway] and [MoveToward]
-	// are declared because the directive's shape is the same for all three and
-	// a policy nobody can name cannot be validated at the seam above; they are
-	// refused because nothing has yet paid for them, and the wrong answer here
-	// is not an error but an empty path, which reads as "there was nowhere to
-	// go" and is indistinguishable from a creature pinned against a wall
-	// (rpg-project#430, the directed-movement design §3).
+	// A CLOSED SWITCH FAILING CLOSED. [MoveLine] is the only policy that
+	// exists, because a policy arrives with the thing that carries it out and
+	// nothing has yet paid for "away" or "toward". This refusal is what makes
+	// that honest: the wrong answer here is not an error but an EMPTY PATH,
+	// which reads as "there was nowhere to go" and is indistinguishable from a
+	// creature pinned against a wall (rpg-project#430, the directed-movement
+	// design §3).
 	ErrUnsupportedPolicy = errors.New("encounter: no such move policy")
 
 	// ErrNoCause is what [Encounter.Direct] returns for a directed move that
