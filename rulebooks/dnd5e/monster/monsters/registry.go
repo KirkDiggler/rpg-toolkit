@@ -21,6 +21,9 @@ type Constructor = func(id string) *monster.Monster
 //
 // Four canonical refs have no constructor today and are deliberately absent:
 // skeleton-archer, giant-spider, giant-wolf-spider, bandit-captain.
+//
+// animated-armor is the first construct in the table; every other entry is
+// undead, beast or humanoid.
 var byRef = map[string]Constructor{
 	refs.Monsters.Skeleton().String():        NewSkeleton,
 	refs.Monsters.Zombie().String():          NewZombie,
@@ -33,6 +36,7 @@ var byRef = map[string]Constructor{
 	refs.Monsters.BanditArcher().String():    NewBanditRanged,
 	refs.Monsters.Thug().String():            NewThug,
 	refs.Monsters.Goblin().String():          NewGoblin,
+	refs.Monsters.AnimatedArmor().String():   NewAnimatedArmor,
 }
 
 // ByRef resolves a canonical monster ref to its constructor. The bool

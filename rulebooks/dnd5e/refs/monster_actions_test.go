@@ -16,6 +16,7 @@ func TestMonsterActionRefsAreUniqueContentIdentities(t *testing.T) {
 		ref  *core.Ref
 		id   string
 	}{
+		{"animated armor slam", refs.MonsterActions.AnimatedArmorSlam(), "animated-armor-slam"},
 		{"bandit scimitar", refs.MonsterActions.BanditScimitar(), "bandit-scimitar"},
 		{"bandit light crossbow", refs.MonsterActions.BanditLightCrossbow(), "bandit-light-crossbow"},
 		{"brown bear bite", refs.MonsterActions.BrownBearBite(), "brown-bear-bite"},
@@ -46,5 +47,8 @@ func TestMonsterActionRefsAreUniqueContentIdentities(t *testing.T) {
 			seen[tc.ref.String()] = tc.name
 		})
 	}
-	assert.Len(t, seen, 14)
+	// No assertion on len(seen): the duplicate check above already proves
+	// every ref is distinct, which makes len(seen) == len(tests) by
+	// construction. Pinning the number tested nothing and taxed every
+	// addition — dropped rather than bumped to 15.
 }
