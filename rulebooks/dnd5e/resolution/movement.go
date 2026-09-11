@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -57,6 +58,28 @@ type MovementInput struct {
 
 	// Roller rolls the reaction's attack. Required.
 	Roller dice.Roller
+
+	// ForcedBy names the effect that is moving the mover against their will
+	// and, by doing so, suppresses the opportunity attacks this step would
+	// otherwise provoke. Nil is an ordinary walk.
+	//
+	// THE ZERO VALUE IS THE PROVOKING CASE, deliberately: a caller that
+	// forgets this field announces a step that provokes, which is what a step
+	// does. No forgotten field can silence an opportunity attack.
+	//
+	// It is seeded into the fold's prevention sources BEFORE the publish
+	// rather than written from a chain stage, because there is no condition
+	// here to write it — the cause is an effect resolution was handed, and
+	// this machine is the only thing that knows the step was not chosen. The
+	// existing prevention then drops the triggers; there is no second path.
+	//
+	// A FORCED MOVE THAT PROVOKES PASSES NIL. Dissonant Whispers sends its
+	// target running and the running provokes (rpg-project#431 §0), so the
+	// directive's own Provokes flag is what the caller reads to decide
+	// whether to name a cause here. This field answers one question — are the
+	// opportunity attacks suppressed, and by what — and the cause that
+	// travels on the story beat is encounter's to carry, not this one's.
+	ForcedBy *core.Ref
 }
 
 // MovementOutcome is what one step produced.
@@ -174,8 +197,11 @@ func NewMovement(in *MovementInput) (Machine, error) {
 
 	// Copied rather than kept by pointer, for the reason NewActivation copies
 	// its ref: a caller reusing the struct must not be able to change which
-	// step this machine announces after it was constructed.
+	// step this machine announces after it was constructed. The cause is
+	// copied too — a shared pointer would leave the caller holding the ref
+	// this step says suppressed its opportunity attacks.
 	cloned := *in
+	cloned.ForcedBy = cloneCoreRef(in.ForcedBy)
 
 	return &movementMachine{in: &cloned}, nil
 }
@@ -216,7 +242,7 @@ func (m *movementMachine) announce() Step {
 				EntityType:          m.in.MoverKind,
 				FromPosition:        dnd5eEvents.Position{X: m.in.From.X, Y: m.in.From.Y},
 				ToPosition:          dnd5eEvents.Position{X: m.in.To.X, Y: m.in.To.Y},
-				OAPreventionSources: make([]dnd5eEvents.MovementModifierSource, 0),
+				OAPreventionSources: m.preventionSources(),
 			}
 
 			chain := events.NewStagedChain[*dnd5eEvents.MovementChainEvent](combat.ModifierStages)
@@ -266,6 +292,35 @@ func (m *movementMachine) announce() Step {
 			return m.react(0), nil
 		},
 	}
+}
+
+// preventionSources is what the fold starts with: nothing for a chosen step,
+// and the cause for a forced one.
+//
+// Seeded rather than appended after the fold, so everything that reads the
+// event reads the same answer. An opportunity attack's predicate is a
+// SUBSCRIBER and runs before any stage, so a suppression written later is
+// invisible to it; this one is there from the first read, and a condition that
+// wants to know whether a step was chosen can ask.
+//
+// A non-nil ref with no id is still a source. There is no half-forced step:
+// whoever named a cause said the step was forced, and refusing to seed a
+// malformed ref would turn a content mistake into a silent opportunity attack.
+func (m *movementMachine) preventionSources() []dnd5eEvents.MovementModifierSource {
+	sources := make([]dnd5eEvents.MovementModifierSource, 0, 1)
+	if m.in.ForcedBy == nil {
+		return sources
+	}
+
+	return append(sources, dnd5eEvents.MovementModifierSource{
+		// The ref IS the name. This package holds no spell table and must not
+		// grow one (ADR-0045), so the display name a condition supplies for
+		// itself has no equivalent here.
+		Name:       m.in.ForcedBy.String(),
+		SourceType: "forced movement",
+		SourceRef:  cloneCoreRef(m.in.ForcedBy),
+		EntityID:   string(m.in.Mover),
+	})
 }
 
 // collectTriggers subscribes to reaction triggers and returns the buffer plus

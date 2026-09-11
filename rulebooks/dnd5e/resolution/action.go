@@ -631,12 +631,35 @@ func newGatedCast(
 		SaverID:     targetID,
 		Application: application,
 		Damage:      profile.Damage,
+		Move:        directiveFor(profile.Move, casterID),
 		// The compiled definition is the provenance pair: its ref names the
 		// spell and its name is what the player reads on the roll.
 		SourceName: definition.Name,
 		Cause:      cause,
 		Roller:     roller,
 	}), nil
+}
+
+// directiveFor turns content's declaration into the contest's directive by
+// adding the one thing content cannot know: who the move is measured from.
+//
+// The caster, for everything that moves anybody today. A spell that shoves away
+// from somewhere else — a point on the floor, a wall, the creature that was hit
+// rather than the one who cast — is a real shape and it arrives with a
+// declaration that says so, rather than by reinterpreting this line.
+func directiveFor(declared *combatActions.CastMove, casterID string) *MoveDirective {
+	if declared == nil {
+		return nil
+	}
+
+	return &MoveDirective{
+		Policy:   declared.Policy,
+		AnchorID: casterID,
+		Cells:    declared.Cells,
+		Speed:    declared.Speed,
+		Pays:     declared.Pays,
+		Provokes: declared.Provokes,
+	}
 }
 
 // newGatelessCast is a delivery, not a resolution. Nobody resists it, so there

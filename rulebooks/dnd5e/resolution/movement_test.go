@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -480,4 +481,55 @@ func (s *MovementTestSuite) TestTheOutcomeReportsWhereTheStepACTUALLYWent() {
 	s.Equal(spatial.Position{X: 7, Y: 3}, moved.To,
 		"a modifier moved the step and the outcome must say so, not repeat the request")
 	s.Equal(spatial.Position{X: 2, Y: 1}, moved.From, "the origin was untouched and still reads back")
+}
+
+// A FORCED STEP PROVOKES NOTHING, and the fold says what forced it.
+//
+// The push is the least permissive directive there is (rpg-project#431 §3):
+// being thrown across a room is not walking out of somebody's reach, so the
+// opportunity attack never fires. The suppression is seeded BEFORE the publish
+// rather than written from a stage, because there is no condition here to
+// write it — the cause is an effect resolution was handed, and the machine is
+// the only thing that knows the step was not chosen.
+func (s *MovementTestSuite) TestAForcedStepProvokesNothingAndTheFoldNamesWhatForcedIt() {
+	swings := &everyoneSwings{}
+	in := s.stepInput()
+	in.Reactions = swings
+	in.ForcedBy = refs.Spells.Thunderwave()
+
+	var seen []dnd5eEvents.MovementChainEvent
+	out, err := s.runStep(in, func(ctx context.Context, bus events.EventBus) {
+		watchSteps(&seen)(ctx, bus)
+		triggerFrom(heroID, wolfID)(ctx, bus)
+	})
+	s.Require().NoError(err)
+
+	moved := out.Outcome.(MovementOutcome)
+	s.True(moved.OAPrevented, "a shove reports its suppression exactly as Disengage does")
+	s.Empty(moved.Reactions, "nothing swings at a creature that was pushed")
+	s.Empty(swings.asked, "and the capability is never even asked what it would swing")
+
+	s.Require().NotEmpty(seen, "the step is still announced; only the triggers are dropped")
+	source := preventionSourceFor(seen[0].OAPreventionSources, refs.Spells.Thunderwave())
+	s.Require().NotNil(source, "a subscriber can read WHAT forced the step, not merely that something did")
+	s.Equal(refs.Spells.Thunderwave().String(), source.Name,
+		"resolution holds no spell table, so the ref is the only honest name it can give (ADR-0045)")
+	s.Equal("forced movement", source.SourceType)
+	s.Equal(string(in.Mover), source.EntityID, "the source protects the mover's step, as Disengaging's does")
+}
+
+// preventionSourceFor finds the prevention source raised by one ref, or nil.
+// By membership rather than by index: what matters is that the cause is in
+// there, not that it is the only thing in there — a disengaging creature that
+// is then shoved has two, and both are true.
+func preventionSourceFor(
+	sources []dnd5eEvents.MovementModifierSource, ref *core.Ref,
+) *dnd5eEvents.MovementModifierSource {
+	for i, source := range sources {
+		if source.SourceRef != nil && source.SourceRef.String() == ref.String() {
+			return &sources[i]
+		}
+	}
+
+	return nil
 }
