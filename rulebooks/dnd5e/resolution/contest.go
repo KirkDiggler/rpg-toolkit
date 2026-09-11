@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -177,6 +178,17 @@ type ImposedEffect struct {
 	// kind. It is the whole of what this package says about the move: the
 	// cells are worked out by whoever owns the board.
 	Move *MoveDirective
+
+	// NotTaken is why an imposed move was not carried out, and empty when it
+	// was. It is only ever set on an [ImposedMove].
+	//
+	// A MOVE NOBODY COULD AFFORD IS A REAL ANSWER, not a missing one. The
+	// directive still rides beside this, so a reader can see what the creature
+	// was asked to do as well as why it did not — and whoever owns the board
+	// records a distance of zero that says so rather than silently walking
+	// nobody. Today the only reason is the price: a creature with no reaction
+	// left cannot buy the right to run.
+	NotTaken string `json:"not_taken,omitempty"`
 
 	// Amount is the damage the SHEET applied. Zero on a condition, and zero on
 	// the AT-STAKE effect of a contest whose dice have not been rolled yet.
@@ -503,17 +515,18 @@ func applyPreparedDamage(
 // move may declare, and no second copy to drift. What this layer adds is the
 // anchor, which content never names.
 //
-// # Two legal declarations are refused here and not there, on purpose
+// # The two declarations this used to refuse are now executable
 //
-// A move paid for with a reaction, and a budget that is the mover's own speed.
-// Both validate in content because both are real, and neither has an executor
-// anywhere in this stack today: nothing spends the reaction and nothing turns a
-// speed into cells. Describing one would hand the board a directive it would
-// walk for free, or for a distance nobody worked out — an affordance with
-// nothing behind it, and silently wrong rather than loudly.
+// A move paid for with a reaction, and a budget that is the mover's own speed,
+// were both refused here for the same reason: they validated in content and had
+// no executor anywhere in this stack, so describing one would have handed the
+// board a directive it walked for free or for a distance nobody worked out.
 //
-// Dissonant Whispers brings both, with the spend and the lookup (rpg-project#431
-// §0). It deletes these two arms; it does not work around them.
+// Dissonant Whispers brought both, and the arms are gone rather than worked
+// around. The price is charged by payForMove before the move is described, and
+// the speed is read into cells by whoever owns the board, from the roster row
+// it already holds — which is the same reason the cells were never worked out
+// here either.
 func validateMove(directive *MoveDirective) error {
 	declared := combatActions.CastMove{
 		Policy: directive.Policy, Cells: directive.Cells, Speed: directive.Speed,
@@ -525,29 +538,110 @@ func validateMove(directive *MoveDirective) error {
 	if directive.AnchorID == "" {
 		return fmt.Errorf("%w: a move must name the anchor it is measured from", ErrBadAction)
 	}
-	if directive.Pays != combatActions.PaysNothing {
-		return fmt.Errorf("%w: a move priced at %q cannot be imposed here, because nothing in this "+
-			"stack spends a reaction for one yet", ErrBadAction, directive.Pays)
-	}
-	if directive.Speed {
-		return fmt.Errorf(
-			"%w: a move budgeted by the mover's own speed cannot be imposed here, because nothing "+
-				"in this stack reads a speed into cells yet", ErrBadAction)
-	}
 
 	return nil
 }
 
 // describeMove names the directive the way a step log should read it: "a line
-// move of 2 cells".
+// move of 2 cells", "an away move of their own speed".
+//
+// The article agrees with the policy word, which is a detail only because the
+// policy is content's own vocabulary rather than a closed list this function
+// may switch on: the second policy to arrive started with a vowel, and the
+// third might too.
 func describeMove(directive MoveDirective) string {
 	budget := fmt.Sprintf("%d cells", directive.Cells)
 	if directive.Speed {
 		budget = "their own speed"
 	}
 
-	return fmt.Sprintf("a %s move of %s", directive.Policy, budget)
+	return fmt.Sprintf("%s %s move of %s", articleFor(string(directive.Policy)), directive.Policy, budget)
 }
+
+// articleFor is "an" before a vowel sound and "a" otherwise, judged on the
+// spelling because every word it sees is a policy an author wrote in English.
+func articleFor(word string) string {
+	if word == "" {
+		return "a"
+	}
+	switch word[0] {
+	case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U':
+		return "an"
+	default:
+		return "a"
+	}
+}
+
+// payForMove charges the directive's price, and it runs BEFORE the move is
+// described rather than after.
+//
+// PAID FIRST, WALKED AFTER. A reaction buys the right to run, not the distance
+// run: a creature that pays and then finds a wall two cells out does not get a
+// refund, exactly as a creature that Dashes into a dead end does not get its
+// action back. Charging after the walk would make the price depend on the map,
+// which is a rule nobody wrote and a seam this package does not own.
+//
+// Three answers, and each of them ends the price:
+//
+//   - The target is DOWN. The dropped are not asked. `stayed` finishes the
+//     contest with no move at all, which is imposeMove's own reading of
+//     rpg-project#432 §5 applied one step earlier — the creature that is not
+//     going to be pushed is also not going to be billed for it.
+//   - The target CANNOT REACT. The move is described anyway, carrying
+//     [ImposedEffect.NotTaken], because a price nobody could pay is a real
+//     answer: whoever owns the board records a distance of zero that says why,
+//     rather than a missing result somebody downstream has to interpret.
+//   - The target CAN. The same [dnd5eEvents.SpendRequestedEvent] an
+//     opportunity attack publishes goes out, attributed to whatever raised the
+//     save, and the move is described.
+//
+// The bus is the Gather's own — the driver's, which is where every sheet in
+// this interaction attached its keeper. A bus captured out of an earlier step
+// would publish onto whatever bus that step happened to run on, which is the
+// rule movementMachine.bill states and this obeys.
+func payForMove(
+	directive MoveDirective, cause dnd5eEvents.SaveCause, cast *Participants, targetID string,
+	paid func() (Step, error), unpaid func(ImposedEffect) (Step, error), stayed func() (Step, error),
+) Gather {
+	return Gather{
+		name: "pay for " + describeMove(directive),
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			target, err := combatantFor(cast, targetID)
+			if err != nil {
+				return nil, err
+			}
+			if combat.IsDown(target) {
+				return stayed()
+			}
+			if !target.CanReact() {
+				asked := directive
+				return unpaid(ImposedEffect{
+					Kind:        ImposedMove,
+					Ref:         cloneCoreRef(cause.EffectRef),
+					Description: describeMove(asked),
+					RecipientID: targetID,
+					Move:        &asked,
+					NotTaken:    noReactionToSpend,
+				})
+			}
+
+			if err := dnd5eEvents.SpendRequestedTopic.On(bus).Publish(ctx,
+				dnd5eEvents.SpendRequestedEvent{
+					MemberID:   targetID,
+					ActionType: coreCombat.ActionReaction,
+					Amount:     1,
+					SourceRef:  cloneCoreRef(cause.EffectRef),
+				}); err != nil {
+				return nil, fmt.Errorf("charge %q for a move: %w", targetID, err)
+			}
+
+			return paid()
+		},
+	}
+}
+
+// noReactionToSpend is the one reason a move goes untaken today.
+const noReactionToSpend = "has no reaction to spend"
 
 // imposeMove is applyPreparedDamage's other sibling: the third thing a failed
 // save can cost, in the same shape, chained through the same continuation.
@@ -933,7 +1027,8 @@ func (m *contestMachine) atStake() ImposedEffect {
 }
 
 // resolve turns the save into the outcome, and on a failure chains whatever was
-// declared: damage first, then the condition, then the move.
+// declared: damage first, then the condition, then the removal, then the price,
+// then the move.
 //
 // THE MOVE IS LAST, and that is a rule rather than an ordering accident. Damage
 // before the push is ruled by the design (rpg-project#432 §5) — what the damage
@@ -1015,14 +1110,27 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 			}, done), nil
 	}
 
+	payTheMove := func() (Step, error) {
+		if m.in.Move == nil || m.in.Move.Pays == combatActions.PaysNothing {
+			return deliverMove()
+		}
+
+		return payForMove(*m.in.Move, m.in.Cause, m.cast, m.in.SaverID,
+			deliverMove,
+			func(unpaid ImposedEffect) (Step, error) {
+				outcome.Imposed = append(outcome.Imposed, unpaid)
+				return done()
+			}, done), nil
+	}
+
 	deliverRemoval := func() (Step, error) {
 		if m.in.Removal == nil {
-			return deliverMove()
+			return payTheMove()
 		}
 
 		return publishRemoval(m.in.Removal, func(stripped ImposedEffect) (Step, error) {
 			outcome.Imposed = append(outcome.Imposed, stripped)
-			return deliverMove()
+			return payTheMove()
 		}), nil
 	}
 
