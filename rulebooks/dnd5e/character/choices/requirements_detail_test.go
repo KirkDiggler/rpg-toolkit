@@ -18,16 +18,34 @@ func TestRequirementsDetailSuite(t *testing.T) {
 	suite.Run(t, new(RequirementsDetailTestSuite))
 }
 
-// TestBardSpells1OffersOnlyTheSupportedLevelOneSpell catches widening the executable
-// catalog to nominal-but-unsupported spells or changing the settled choice count.
-func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlyTheSupportedLevelOneSpell() {
+// TestBardSpells1OffersOnlySpellsThisBuildCanCast catches widening the
+// executable catalog to nominal-but-unsupported spells or changing the settled
+// choice count.
+//
+// It pins the PROPERTY rather than the list. The list used to be pinned
+// whole (s.Equal([]Spell{Bane}, req.Options)), which tested the catalog's
+// length as much as its content and made every second spell an edit to a test
+// that was never about that spell. What must stay true is that every option
+// offered here resolves to something a caster can actually do — an option that
+// produced nothing would be a choice with nothing behind it.
+func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCanCast() {
 	req := GetClassRequirements(classes.Bard).Spellbook
 
 	s.Require().NotNil(req)
 	s.Equal(BardSpells1, req.ID)
-	s.Equal(1, req.Count)
+	s.Equal(2, req.Count, "the bard learns every level-1 spell this build can cast")
 	s.Equal(1, req.SpellLevel)
-	s.Equal([]spells.Spell{spells.Bane}, req.Options)
+	s.Contains(req.Options, spells.Bane)
+	s.Contains(req.Options, spells.Thunderwave)
+	for _, option := range req.Options {
+		s.True(spells.HasCastProfile(option),
+			"%s is offered as a levelled pick and must compile to a cast", option)
+		data := spells.GetData(option)
+		s.Require().NotNil(data, "%s", option)
+		s.Equal(req.SpellLevel, data.Level, "%s is offered as a level-%d pick", option, req.SpellLevel)
+	}
+	s.Equal(len(req.Options), req.Count,
+		"and knows all of them: the count tracks the supported catalogue rather than rationing it")
 	s.Equal(4, classes.ClassData[classes.Bard].SpellsKnown,
 		"the supported choice count must not rewrite factual class progression")
 }

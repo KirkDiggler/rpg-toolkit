@@ -40,7 +40,7 @@ func newLevel1Bard(t *testing.T) *Character {
 			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:    []shared.SelectionID{"lute", "flute", "drum"},
 			Cantrips: []shared.SelectionID{spells.TrueStrike, spells.ViciousMockery},
-			Spells:   []spells.Spell{spells.Bane},
+			Spells:   []spells.Spell{spells.Bane, spells.Thunderwave},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},

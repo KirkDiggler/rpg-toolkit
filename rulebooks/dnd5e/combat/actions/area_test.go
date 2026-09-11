@@ -138,3 +138,58 @@ func (s *AreaSuite) TestCloningCarriesTheShapeSomewhereElse() {
 	clone.Area.Footprint.SizeFeet = 30
 	s.Equal(5, original.Area.Footprint.SizeFeet, "editing a clone must not reach the original")
 }
+
+// thunderwaveShape is the second footprint this package can declare: a cube,
+// anchored on the caster's own boundary so the caster is never under it.
+func thunderwaveShape() actions.Footprint {
+	return actions.Footprint{
+		Shape: actions.AreaBox, SizeFeet: 15, Origin: actions.AreaOriginCasterEdge,
+	}
+}
+
+// TestABoxIsAnchoredOnTheCastersEdgeAndNothingElseIs pins the one pairing rule
+// this package can state about a shape and its anchor.
+//
+// A box centred on the caster would cover the caster, and no spell says that —
+// Thunderwave's cube "originates from you" and extends away. A radius, by
+// contrast, is measured from a point outward and has no near edge to sit on a
+// boundary, so the edge anchor means nothing to it. Both halves are refused
+// rather than quietly reinterpreted, because an anchor that was ignored would
+// produce a shape in the wrong place with nothing saying why.
+func (s *AreaSuite) TestABoxIsAnchoredOnTheCastersEdgeAndNothingElseIs() {
+	s.Run("a caster-edge box is valid", func() {
+		s.NoError(thunderwaveShape().Validate())
+	})
+	s.Run("a box centred on the caster is refused", func() {
+		f := thunderwaveShape()
+		f.Origin = actions.AreaOriginCaster
+		err := f.Validate()
+		s.Require().Error(err)
+		s.Contains(err.Error(), "caster's edge")
+	})
+	s.Run("a radius on the caster's edge is refused", func() {
+		f := thunderwaveShape()
+		f.Shape = actions.AreaRadius
+		err := f.Validate()
+		s.Require().Error(err)
+		s.Contains(err.Error(), "caster's edge")
+	})
+	s.Run("a box still needs a positive extent", func() {
+		f := thunderwaveShape()
+		f.SizeFeet = 0
+		err := f.Validate()
+		s.Require().Error(err)
+		s.Contains(err.Error(), "positive size")
+	})
+}
+
+// TestACastMayDeclareABoxArea — the profile-level binding is the shape's, not
+// the target rule's: an area cast with a cube validates exactly as one with a
+// burst does.
+func (s *AreaSuite) TestACastMayDeclareABoxArea() {
+	p := areaProfile(func(p *actions.CastProfile) {
+		p.RangeFeet = 15
+		p.Area = &actions.CastArea{Footprint: thunderwaveShape(), Catches: actions.AreaCatchesOthers}
+	})
+	s.NoError(p.Validate())
+}

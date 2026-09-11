@@ -280,7 +280,12 @@ func (s *ClassComprehensiveSuite) TestBardSpellSelectionRejectsWrongCountsAndUns
 		values []shared.SelectionID
 	}{
 		{name: "zero", values: nil},
-		{name: "two", values: []shared.SelectionID{spells.Bane, spells.Bane}},
+		// One is refused now that the pick is two. It was the count that
+		// caught {Bane, Bane} here while the pick was one; the validator has
+		// no duplicate check of its own, so that case stopped testing what
+		// this test is named for the moment the count moved (rpg-toolkit#1662).
+		{name: "one", values: []shared.SelectionID{spells.Bane}},
+		{name: "three", values: []shared.SelectionID{spells.Bane, spells.Thunderwave, spells.Bane}},
 		{name: "unsupported", values: []shared.SelectionID{spells.HealingWord}},
 	} {
 		s.Run(tc.name, func() {
@@ -993,11 +998,12 @@ func (s *ClassComprehensiveSuite) createBardTestData() *ClassTestData {
 		HitDie:     8,
 		SkillCount: 3,
 		// The supported catalog is intentionally narrower than the factual
-		// four-spell class progression: this slice can execute only Bane.
+		// four-spell class progression, and the bard learns all of it: two
+		// executable level-1 spells today, Bane and Thunderwave.
 		HasCantrips:  true,
 		CantripCount: 2,
 		HasSpells:    true,
-		SpellCount:   1,
+		SpellCount:   2,
 		HasTools:     true,
 		ToolCount:    3,
 		// Bards can choose ANY 3 skills (no restricted list)
@@ -1059,13 +1065,13 @@ func (s *ClassComprehensiveSuite) createBardValidBase() *choices.Submissions {
 		},
 	})
 
-	// One supported levelled spell is offered without changing the factual
+	// Both supported levelled spells, without changing the factual
 	// four-known-spells progression table.
 	subs.Add(choices.Submission{
 		Category: shared.ChoiceSpells,
 		Source:   shared.SourceClass,
 		ChoiceID: choices.BardSpells1,
-		Values:   []shared.SelectionID{spells.Bane},
+		Values:   []shared.SelectionID{spells.Bane, spells.Thunderwave},
 	})
 
 	// Weapon choice - rapier
