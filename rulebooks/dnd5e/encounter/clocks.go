@@ -1270,7 +1270,7 @@ func (e *Encounter) routeTo(
 		return nil, true
 	}
 
-	field, ok := e.floodFrom(mover, from, nil)
+	field, ok := e.floodFrom(mover, from, nil, 0)
 	if !ok {
 		return nil, false
 	}
@@ -1308,7 +1308,7 @@ func (e *Encounter) routeToRemembered(
 
 	field, ok := e.floodFrom(mover, from, func(cell spatial.Position) bool {
 		return cell == target && e.blockedOnlyByCreatures(mover, cell)
-	})
+	}, 0)
 	if !ok {
 		return nil, false
 	}
@@ -1319,15 +1319,22 @@ func (e *Encounter) routeToRemembered(
 	return field.PathTo(target)
 }
 
-// floodFrom is the one distance field both routes read: outward from `from`,
-// crossing only edges the canvas allows and entering only cells the fold does
-// not call Blocked. `forgiven` names cells whose blockage does not stop the
-// flood, and may be nil.
+// floodFrom is the one distance field every route here reads: outward from
+// `from`, crossing only edges the canvas allows and entering only cells the
+// fold does not call Blocked. `forgiven` names cells whose blockage does not
+// stop the flood, and may be nil.
+//
+// `limit` bounds the flood to cells within that many steps, and ZERO MEANS
+// UNBOUNDED — [spatial.FieldInput.Limit]'s own contract, carried through
+// rather than reinterpreted here. A caller with a real budget of zero has
+// nowhere to go and must say so before it asks, because asking with zero is
+// asking for the whole floor.
 func (e *Encounter) floodFrom(
-	mover MemberID, from spatial.Position, forgiven func(spatial.Position) bool,
+	mover MemberID, from spatial.Position, forgiven func(spatial.Position) bool, limit int,
 ) (spatial.FieldOutput, bool) {
 	field, err := spatial.Field(e.canvas.GetGrid(), spatial.FieldInput{
 		Sources: []spatial.Position{from},
+		Limit:   limit,
 		Passable: func(a, b spatial.Position) bool {
 			if e.canvas.IsBoundaryMovementBlocked(a, b) {
 				return false

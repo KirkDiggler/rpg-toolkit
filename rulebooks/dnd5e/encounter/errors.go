@@ -578,16 +578,21 @@ var (
 	ErrNotPaused = errors.New("encounter: no turn is paused")
 
 	// ErrUnsupportedPolicy is what [Encounter.Route] returns for any
-	// [MovePolicy] that is not [MoveLine] — including the zero value, which is
-	// not a default.
+	// [MovePolicy] that is neither [MoveLine] nor [MoveAway] — including the
+	// zero value, which is not a default.
 	//
-	// A CLOSED SWITCH FAILING CLOSED. [MoveLine] is the only policy that
-	// exists, because a policy arrives with the thing that carries it out and
-	// nothing has yet paid for "away" or "toward". This refusal is what makes
-	// that honest: the wrong answer here is not an error but an EMPTY PATH,
-	// which reads as "there was nowhere to go" and is indistinguishable from a
-	// creature pinned against a wall (rpg-project#430, the directed-movement
-	// design §3).
+	// A CLOSED SWITCH FAILING CLOSED. Two policies exist, because a policy
+	// arrives with the thing that carries it out: the line came with
+	// Thunderwave and away came with Dissonant Whispers, and nothing has yet
+	// paid for "toward". This refusal is what makes that honest: the wrong
+	// answer here is not an error but an EMPTY PATH, which reads as "there was
+	// nowhere to go" and is indistinguishable from a creature pinned against a
+	// wall (rpg-project#430, the directed-movement design §3).
+	//
+	// Away makes that distinction load-bearing rather than theoretical: a
+	// pinned rout is a real, ordinary outcome with an empty path of its own,
+	// and the sentence in [RouteOutput.StoppedBy] is the only thing separating
+	// the two.
 	ErrUnsupportedPolicy = errors.New("encounter: no such move policy")
 
 	// ErrNoCause is what [Encounter.Direct] returns for a directed move that
