@@ -303,7 +303,9 @@ func (s *HoldingsSuite) TestExitAwayFromTheBoundExitDropsTheHolding() {
 	})
 
 	s.Run("the departure is narrated before the drop", func() {
-		s.Equal([]session.EventKind{session.EventExited, session.EventDropped}, s.kinds("alice"))
+		s.Equal([]session.EventKind{
+			session.EventExited, session.EventDropped, session.EventSighted,
+		}, s.kinds("alice"), "and losing sight of the leaver is its own beat")
 	})
 
 	s.Run("and it is back on the map, at the drop cell", func() {
@@ -510,6 +512,10 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 
 	s.Equal([]session.EventKind{
 		session.EventLooted, session.EventHeld, session.EventExited, session.EventDropped,
+		// And the departure changed what alice can see, which is its own
+		// statement on her own stream — bob left the map, so she holds him
+		// as a ghost now.
+		session.EventSighted,
 	}, s.kinds("alice"), "every beat arrived named, and in the order the fiction happened")
 	s.Equal([]session.EventKind{
 		session.EventLooted, session.EventDoorRevealed, session.EventHeld,
@@ -565,7 +571,7 @@ func (s *HoldingsSuite) TestAnOrdinaryDepartureCarriesNothingAndNamesNoExit() {
 	s.Empty(body.Holding)
 	s.Empty(body.Exit, "no authored exit was used, and that is a fact rather than a gap")
 
-	s.Equal([]session.EventKind{session.EventExited}, s.kinds("alice"),
+	s.Equal([]session.EventKind{session.EventExited, session.EventSighted}, s.kinds("alice"),
 		"nothing was carried, so nothing was dropped")
 }
 
