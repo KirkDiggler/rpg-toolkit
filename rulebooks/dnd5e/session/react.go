@@ -187,12 +187,26 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 	if err != nil {
 		return nil, fmt.Errorf("react: %w: %v", ErrInvalidSession, err)
 	}
-	if len(open) == 0 && scope.enc.Paused() {
+	if len(open) == 0 {
+		// TWO CONTINUE-VERBS, AND THE ENCOUNTER SAYS WHICH. A driven turn that
+		// stopped mid-walk is finished by ResumeTurn; a DIRECTED walk — a
+		// creature a spell sent running — is finished by ResumeDirective, and
+		// it is nobody's turn that is waiting: the caster's turn is still going
+		// on. The two are asked in this order because a hold is the narrower
+		// fact, and Paused() answers true for either.
+		//
 		// Resuming can pause AGAIN on a later cell — a new question, not a
 		// failure — and the pose that does it writes its own windows onto
 		// this same ledger. Both outcomes are read off the ledger below.
-		if _, err := scope.enc.ResumeTurn(ctx); err != nil {
-			return nil, fmt.Errorf("react: %w", translate(err))
+		switch {
+		case scope.enc.HeldDirective():
+			if _, err := scope.enc.ResumeDirective(ctx); err != nil {
+				return nil, fmt.Errorf("react: %w", translate(err))
+			}
+		case scope.enc.Paused():
+			if _, err := scope.enc.ResumeTurn(ctx); err != nil {
+				return nil, fmt.Errorf("react: %w", translate(err))
+			}
 		}
 	}
 
@@ -290,12 +304,21 @@ func (m *Manager) strikeForWindow(ctx context.Context, scope *writeScope, payloa
 	if err != nil {
 		return translate(err)
 	}
-	// THE FROZEN STEP AS IT WAS ANNOUNCED, and that is a chosen walk by
-	// construction: a forced step suppresses the opportunity attacks, so it
-	// never reaches a player reactor and never opens a window for one to
-	// answer. The day a directive both forces and provokes (rpg-project#431's
-	// deferred Dissonant Whispers), windowPayload gains the two fields with
-	// it — inventing them now would store a cause nothing can produce.
+	// THE FROZEN STEP AS IT WAS ANNOUNCED, and the two fields it does not
+	// carry are deliberately absent rather than lost.
+	//
+	// A window is only ever posed for a step whose triggers are LIVE, and
+	// [forcedBy] reads no cause at all unless the step was forced. So the
+	// replay is complete for both kinds of walk that can reach here: a chosen
+	// step, and a creature a spell sent running. Dissonant Whispers is the
+	// second — encounter inverts the directive's Provokes into Forced before
+	// it builds the step, so the flee arrives unforced and suppresses nothing,
+	// which is the whole point of it. Storing its cause here would give the
+	// fold a prevention source for a step that has none.
+	//
+	// TestTheCasterIsAskedOnHerOwnTurn and its siblings are the proof: the
+	// replayed swing lands on the fleeing skeleton, from a window this walk
+	// opened.
 	return moverSeam{m: m, scope: scope}.offerStep(
 		ctx, scope.enc,
 		encounter.MoveStep{

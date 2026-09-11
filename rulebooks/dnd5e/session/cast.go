@@ -121,6 +121,22 @@ type CastOutput struct {
 
 	// Delivery names what reached the event stream.
 	Delivery DeliveryReport `json:"delivery"`
+
+	// Paused reports that a creature this cast sent running STOPPED MID-WALK
+	// to ask somebody whether they swing at it, and the table is frozen until
+	// they answer.
+	//
+	// THE CAST ITSELF IS WHOLE. Everything above is final: the save was rolled,
+	// the damage landed, the beat is on the story, and the price is paid. What
+	// is unfinished is the walk — the creature is standing where the held step
+	// was announced from, and the cast beat's own distance is what the route
+	// priced rather than what has been taken so far. Answering the open window
+	// with [Manager.React] finishes the run and writes the movement beats this
+	// call did not.
+	//
+	// A cast whose push does not provoke never pauses, because nothing is
+	// asked; see [Manager.Cast] on why a flee is the one directive that does.
+	Paused bool `json:"paused,omitempty"`
 }
 
 // CastSaveReport is one saving throw a cast's gate produced, as the caster's
@@ -422,7 +438,16 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// failure here leaves the cast recorded and the shove untaken, which is
 	// the same shape RecordCast's own failure has and is reported the same
 	// way: the durable writes are named and this unsaved scope is dropped.
-	if err := walkCastPushes(ctx, scope.enc, pushes, definition.Ref); err != nil {
+	//
+	// A PAUSE IS NOT ONE OF THOSE FAILURES, and telling them apart is the whole
+	// of what this line does. When a flee provokes and the reactor is a player,
+	// the walk stops to ask — and by the time it does, the seam that asked has
+	// already written the windows into this scope's session record. Dropping
+	// the scope would throw the question away and leave the table waiting on a
+	// window nobody can see; so the verb commits, and says on its own output
+	// that the walk is unfinished.
+	paused, err := walkCastPushes(ctx, scope.enc, pushes, definition.Ref)
+	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, err))
 	}
 
@@ -440,6 +465,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		Saved:     castSaveReport(singleSave),
 		Caught:    areaUnresolved(caught),
 		Seqs:      recorded.Seqs,
+		Paused:    paused,
 		Persisted: report,
 		Delivery:  delivery,
 	}, nil

@@ -140,15 +140,30 @@ func routeCastPushes(
 }
 
 // walkCastPushes walks each routed push, so the movement beats and their cause
-// land after the cast beat that reported them.
+// land after the cast beat that reported them. It reports whether a walk STOPPED
+// TO ASK somebody about a cell, which is a checkpoint rather than a failure.
 //
 // The cells are the ones routeCastPushes priced. They are supplied rather than
 // recomputed for [encounter.DirectInput.Route]'s own reason: the caller that
 // decided how far the push goes is the caller that decides how much of it
 // happens.
+//
+// # A pause ends this loop, and today that costs nothing
+//
+// The composition refuses a second directive while one is held, so there is no
+// honest way to walk a later push past a pause: the hold has to be answered
+// before anything else moves. Every cast that can pause has exactly one target
+// — a flee provokes and a shove does not, and only a flee reaches a player —
+// so the loop stopping here is the whole of what can happen rather than a case
+// being dropped.
+//
+// The day a cast shoves two creatures AND provokes, the remaining pushes need
+// somewhere to wait while the first one's question stands. That is a second
+// hold, which is the composition's to build; a queue up here would be this seam
+// deciding what order a board walks in.
 func walkCastPushes(
 	ctx context.Context, enc *encounter.Encounter, pushes []castPush, cause core.Ref,
-) error {
+) (bool, error) {
 	for _, push := range pushes {
 		if len(push.route) == 0 {
 			// A creature with a wall at its back is pushed nowhere. That is an
@@ -156,16 +171,20 @@ func walkCastPushes(
 			// zero, and there is no walk to take.
 			continue
 		}
-		if _, err := enc.Direct(ctx, encounter.DirectInput{
+		walked, err := enc.Direct(ctx, encounter.DirectInput{
 			Mover:    push.target,
 			Cause:    cause,
 			Route:    push.route,
 			Provokes: push.move.Provokes,
-		}); err != nil {
-			return fmt.Errorf("cast push: %w", translate(err))
+		})
+		if err != nil {
+			return false, fmt.Errorf("cast push: %w", translate(err))
+		}
+		if walked.Paused {
+			return true, nil
 		}
 	}
-	return nil
+	return false, nil
 }
 
 // routePolicy maps the content's word for how a creature is moved onto the
