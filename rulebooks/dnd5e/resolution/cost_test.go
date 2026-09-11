@@ -393,6 +393,57 @@ func (s *CostTestSuite) TestARecurringOnHitGateFailsBeforePaymentDiceOrMutation(
 		"outer strike preflight leaves the target unchanged")
 }
 
+// HALF OF A RIDER MEANS NOTHING, and the refusal lands at the DECLARATION
+// rather than at this module's gate check.
+//
+// An on-hit rider IS a condition: a save that "halves" it would have to produce
+// a smaller prone, which is not a thing. ConditionApplication.Validate refuses
+// that combination, and Strike.Start runs Definition.Validate before it ever
+// reaches its own per-rider gate check — so a Half rider cannot get that far,
+// even when the machine is built directly as this does, skipping the door.
+//
+// That is why this asserts the declaration's reason and not ErrBadGate. The
+// gate check below it is still reached by gates content DOES admit, which
+// TestARecurringOnHitGateFailsBeforePaymentDiceOrMutation pins.
+func (s *CostTestSuite) TestAHalfOnHitRiderFailsBeforePaymentDiceOrMutation() {
+	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	definition, err := character.AssembleAttack(s.load(hero), &character.AssembleAttackInput{
+		Slot: character.SlotMainHand,
+	})
+	s.Require().NoError(err)
+
+	gate := saves.NewSaveGate(abilities.STR, 11)
+	gate.OnSuccess = saves.Half
+	definition.Attack.OnHit = append(definition.Attack.OnHit, combatActions.ConditionApplication{
+		Ref:  *refs.Conditions.Prone(),
+		Save: gate,
+	})
+
+	roller := &actionRoller{singles: []int{15}, damage: [][]int{{4}}}
+	machine := NewStrike(&StrikeInput{
+		AttackerID: heroID,
+		TargetID:   wolfID,
+		Definition: definition,
+		Roller:     roller,
+	})
+
+	wolf := monsters.NewWolf(wolfID).ToData()
+	out, err := Resolve(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		Equipment: noHandsAreObserved{},
+		World:     s.world(), Participants: []Participant{{Character: hero}, {Monster: wolf}},
+		Machine: machine,
+		Cost:    &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+	})
+
+	s.Require().ErrorIs(err, ErrBadAction)
+	s.Require().Contains(err.Error(), "must negate the condition on success",
+		"and the reason names what half had nothing to halve")
+	s.Require().Nil(out)
+	s.Zero(roller.calls, "the preflight refuses before attack or damage dice")
+}
+
 // A paid swing that MISSES still costs what it cost. The attacker's sheet comes
 // back dirty with nothing on it but the spend, which is the whole reason the
 // economy had to mark (#1087): a miss changes nothing else, so without the mark

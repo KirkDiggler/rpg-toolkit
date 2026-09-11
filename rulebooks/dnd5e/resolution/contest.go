@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -178,6 +179,17 @@ type ImposedEffect struct {
 	// cells are worked out by whoever owns the board.
 	Move *MoveDirective
 
+	// NotTaken is why an imposed move was not carried out, and empty when it
+	// was. It is only ever set on an [ImposedMove].
+	//
+	// A MOVE NOBODY COULD AFFORD IS A REAL ANSWER, not a missing one. The
+	// directive still rides beside this, so a reader can see what the creature
+	// was asked to do as well as why it did not — and whoever owns the board
+	// records a distance of zero that says so rather than silently walking
+	// nobody. Today the only reason is the price: a creature with no reaction
+	// left cannot buy the right to run.
+	NotTaken string `json:"not_taken,omitempty"`
+
 	// Amount is the damage the SHEET applied. Zero on a condition, and zero on
 	// the AT-STAKE effect of a contest whose dice have not been rolled yet.
 	Amount int
@@ -211,9 +223,10 @@ type ImposedEffect struct {
 // ContestOutcome records the requested save and what its failure delivered.
 //
 // AtStake is what the save was against: the condition when one was declared,
-// and otherwise the declared damage. Imposed is what a failed save actually
-// delivered, damage first, then the condition, then the move, and it is empty
-// on a success — a made save negates them all.
+// and otherwise the declared damage. Imposed is what the save actually
+// delivered: on a failure, damage first, then the condition, then the move; on
+// a success, nothing at all, unless the gate halves — a made save against a
+// Half gate imposes the one halved damage and never a condition or a move.
 type ContestOutcome struct {
 	Save      SaveOutcome
 	DC        int
@@ -235,10 +248,48 @@ type preparedCondition struct {
 	behavior    dnd5eEvents.ConditionBehavior
 }
 
-// validateConditionGate checks the subset of save gates resolution can execute.
-// Shared action data permits recurrence, but this module currently resolves
-// only the immediate save that negates a condition on success.
-func validateConditionGate(gate *saves.SaveGate) error {
+// validateGate checks the subset of save gates resolution can execute.
+//
+// It was validateConditionGate and was never only about conditions: Start has
+// always called it for every contest, damage-only ones included, so a name that
+// promised less than it did was refusing damage gates with a message about
+// conditions. The name now says what the function does.
+//
+// What is left to check here is what the gate cannot see for itself.
+// saves.SaveGate.Validate already refuses any word that is neither Negated nor
+// Half, so this adds the ownership question: HALF OF WHAT.
+//
+// Half a condition is not a smaller condition and half a removal is not a
+// partial one, so Half is permitted only for a contest whose consequences are
+// damage and, at most, the move that damage's failure imposes.
+//
+// It must also be half of ONE DAMAGE TYPE. The halving is a single component
+// and combat.FinalDamage groups per type, so a reduction large enough to sink
+// the type it sits on leaves the trace explaining a number FinalDamage never
+// produced — measured at 1d4 psychic beside 4d6 fire, where the delivery
+// refused with "dealt 20, and its roll trace explains 11". That refusal is
+// correct and it is far too late: the cast is charged and the save is rolled
+// by then, which is the very shape Start's damage preflight exists to prevent.
+// A second type arrives with the spell that has one, and it brings a reduction
+// per type with it.
+//
+// Recurrence is still refused outright: shared action data permits it and this
+// module resolves only the immediate save.
+// contestShape is what a gate is validated AGAINST: the consequences a contest
+// declares, reduced to the two facts a Half gate's legality turns on.
+//
+// A struct rather than two bare bools because they are answers to the same
+// question — half of WHAT — and a caller that had to remember their order
+// would be one transposition away from permitting exactly what this refuses.
+type contestShape struct {
+	// damageOnly is true when damage is the whole of what a failure delivers.
+	damageOnly bool
+
+	// damageTypes is how many DISTINCT damage types the declared pools carry.
+	damageTypes int
+}
+
+func validateGate(gate *saves.SaveGate, shape contestShape) error {
 	if gate == nil {
 		return fmt.Errorf("%w: contest has no save gate", ErrNilInput)
 	}
@@ -250,8 +301,17 @@ func validateConditionGate(gate *saves.SaveGate) error {
 			return fmt.Errorf("%w: unsupported save ability %q", ErrBadGate, ability)
 		}
 	}
-	if gate.OnSuccess != saves.Negated {
-		return fmt.Errorf("%w: a condition contest must negate on success", ErrBadGate)
+	if gate.OnSuccess == saves.Half {
+		if !shape.damageOnly {
+			return fmt.Errorf(
+				"%w: half on a save is for damage only, and this contest delivers more than damage",
+				ErrBadGate)
+		}
+		if shape.damageTypes != 1 {
+			return fmt.Errorf(
+				"%w: half on a save halves one damage type; a second type arrives with the spell "+
+					"that has one", ErrBadGate)
+		}
 	}
 	if gate.Recurrence != saves.RecurrenceNone {
 		return fmt.Errorf("%w: %q", ErrRecurrenceUnsupported, gate.Recurrence)
@@ -370,6 +430,11 @@ func publishCondition(
 	return nil
 }
 
+// halvedBySaveLabel is what the halving component calls itself on the roll
+// trace. A player reading the damage breakdown sees the dice, then this line,
+// then the total they came to.
+const halvedBySaveLabel = "halved by a successful save"
+
 // describeDamage names the declared pools the way a step log should read them:
 // "1d4 psychic damage", and "1d4 psychic and 1d6 fire damage" for two.
 func describeDamage(pools []damage.Damage) string {
@@ -404,10 +469,15 @@ func describeDamage(pools []damage.Damage) string {
 // can name, not by inventing one here.
 func applyPreparedDamage(
 	pools []damage.Damage, roller dice.Roller, cause dnd5eEvents.SaveCause, sourceName string,
-	cast *Participants, targetID string, next func(ImposedEffect) (Step, error),
+	cast *Participants, targetID string, halved bool, next func(ImposedEffect) (Step, error),
 ) Gather {
+	described := describeDamage(pools)
+	if halved {
+		described += " (halved)"
+	}
+
 	return Gather{
-		name: "deal " + describeDamage(pools),
+		name: "deal " + described,
 		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
 			target, err := combatantFor(cast, targetID)
 			if err != nil {
@@ -416,6 +486,12 @@ func applyPreparedDamage(
 			components, err := rollContestDamage(ctx, pools, roller, cause, sourceName)
 			if err != nil {
 				return nil, err
+			}
+			if halved {
+				components, err = halveDamage(components, cause, sourceName)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			calculation, err := damageCalculation(components)
@@ -432,7 +508,7 @@ func applyPreparedDamage(
 				// faces that do not add up to the damage the player took.
 				return nil, fmt.Errorf(
 					"%w: %s dealt %d, and its roll trace explains %d",
-					ErrBadAction, describeDamage(pools), total, calculation.Total)
+					ErrBadAction, described, total, calculation.Total)
 			}
 
 			instances := make([]combat.DamageInstance, 0, len(final))
@@ -451,7 +527,7 @@ func applyPreparedDamage(
 			return next(ImposedEffect{
 				Kind:        ImposedDamage,
 				Ref:         cloneCoreRef(cause.EffectRef),
-				Description: describeDamage(pools),
+				Description: described,
 				RecipientID: targetID,
 				Amount:      applied.TotalDamage,
 				Requested:   calculation.Total,
@@ -472,17 +548,18 @@ func applyPreparedDamage(
 // move may declare, and no second copy to drift. What this layer adds is the
 // anchor, which content never names.
 //
-// # Two legal declarations are refused here and not there, on purpose
+// # The two declarations this used to refuse are now executable
 //
-// A move paid for with a reaction, and a budget that is the mover's own speed.
-// Both validate in content because both are real, and neither has an executor
-// anywhere in this stack today: nothing spends the reaction and nothing turns a
-// speed into cells. Describing one would hand the board a directive it would
-// walk for free, or for a distance nobody worked out — an affordance with
-// nothing behind it, and silently wrong rather than loudly.
+// A move paid for with a reaction, and a budget that is the mover's own speed,
+// were both refused here for the same reason: they validated in content and had
+// no executor anywhere in this stack, so describing one would have handed the
+// board a directive it walked for free or for a distance nobody worked out.
 //
-// Dissonant Whispers brings both, with the spend and the lookup (rpg-project#431
-// §0). It deletes these two arms; it does not work around them.
+// Dissonant Whispers brought both, and the arms are gone rather than worked
+// around. The price is charged by payForMove before the move is described, and
+// the speed is read into cells by whoever owns the board, from the roster row
+// it already holds — which is the same reason the cells were never worked out
+// here either.
 func validateMove(directive *MoveDirective) error {
 	declared := combatActions.CastMove{
 		Policy: directive.Policy, Cells: directive.Cells, Speed: directive.Speed,
@@ -494,29 +571,110 @@ func validateMove(directive *MoveDirective) error {
 	if directive.AnchorID == "" {
 		return fmt.Errorf("%w: a move must name the anchor it is measured from", ErrBadAction)
 	}
-	if directive.Pays != combatActions.PaysNothing {
-		return fmt.Errorf("%w: a move priced at %q cannot be imposed here, because nothing in this "+
-			"stack spends a reaction for one yet", ErrBadAction, directive.Pays)
-	}
-	if directive.Speed {
-		return fmt.Errorf(
-			"%w: a move budgeted by the mover's own speed cannot be imposed here, because nothing "+
-				"in this stack reads a speed into cells yet", ErrBadAction)
-	}
 
 	return nil
 }
 
 // describeMove names the directive the way a step log should read it: "a line
-// move of 2 cells".
+// move of 2 cells", "an away move of their own speed".
+//
+// The article agrees with the policy word, which is a detail only because the
+// policy is content's own vocabulary rather than a closed list this function
+// may switch on: the second policy to arrive started with a vowel, and the
+// third might too.
 func describeMove(directive MoveDirective) string {
 	budget := fmt.Sprintf("%d cells", directive.Cells)
 	if directive.Speed {
 		budget = "their own speed"
 	}
 
-	return fmt.Sprintf("a %s move of %s", directive.Policy, budget)
+	return fmt.Sprintf("%s %s move of %s", articleFor(string(directive.Policy)), directive.Policy, budget)
 }
+
+// articleFor is "an" before a vowel sound and "a" otherwise, judged on the
+// spelling because every word it sees is a policy an author wrote in English.
+func articleFor(word string) string {
+	if word == "" {
+		return "a"
+	}
+	switch word[0] {
+	case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U':
+		return "an"
+	default:
+		return "a"
+	}
+}
+
+// payForMove charges the directive's price, and it runs BEFORE the move is
+// described rather than after.
+//
+// PAID FIRST, WALKED AFTER. A reaction buys the right to run, not the distance
+// run: a creature that pays and then finds a wall two cells out does not get a
+// refund, exactly as a creature that Dashes into a dead end does not get its
+// action back. Charging after the walk would make the price depend on the map,
+// which is a rule nobody wrote and a seam this package does not own.
+//
+// Three answers, and each of them ends the price:
+//
+//   - The target is DOWN. The dropped are not asked. `stayed` finishes the
+//     contest with no move at all, which is imposeMove's own reading of
+//     rpg-project#432 §5 applied one step earlier — the creature that is not
+//     going to be pushed is also not going to be billed for it.
+//   - The target CANNOT REACT. The move is described anyway, carrying
+//     [ImposedEffect.NotTaken], because a price nobody could pay is a real
+//     answer: whoever owns the board records a distance of zero that says why,
+//     rather than a missing result somebody downstream has to interpret.
+//   - The target CAN. The same [dnd5eEvents.SpendRequestedEvent] an
+//     opportunity attack publishes goes out, attributed to whatever raised the
+//     save, and the move is described.
+//
+// The bus is the Gather's own — the driver's, which is where every sheet in
+// this interaction attached its keeper. A bus captured out of an earlier step
+// would publish onto whatever bus that step happened to run on, which is the
+// rule movementMachine.bill states and this obeys.
+func payForMove(
+	directive MoveDirective, cause dnd5eEvents.SaveCause, cast *Participants, targetID string,
+	paid func() (Step, error), unpaid func(ImposedEffect) (Step, error), stayed func() (Step, error),
+) Gather {
+	return Gather{
+		name: "pay for " + describeMove(directive),
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			target, err := combatantFor(cast, targetID)
+			if err != nil {
+				return nil, err
+			}
+			if combat.IsDown(target) {
+				return stayed()
+			}
+			if !target.CanReact() {
+				asked := directive
+				return unpaid(ImposedEffect{
+					Kind:        ImposedMove,
+					Ref:         cloneCoreRef(cause.EffectRef),
+					Description: describeMove(asked),
+					RecipientID: targetID,
+					Move:        &asked,
+					NotTaken:    noReactionToSpend,
+				})
+			}
+
+			if err := dnd5eEvents.SpendRequestedTopic.On(bus).Publish(ctx,
+				dnd5eEvents.SpendRequestedEvent{
+					MemberID:   targetID,
+					ActionType: coreCombat.ActionReaction,
+					Amount:     1,
+					SourceRef:  cloneCoreRef(cause.EffectRef),
+				}); err != nil {
+				return nil, fmt.Errorf("charge %q for a move: %w", targetID, err)
+			}
+
+			return paid()
+		},
+	}
+}
+
+// noReactionToSpend is the one reason a move goes untaken today.
+const noReactionToSpend = "has no reaction to spend"
 
 // imposeMove is applyPreparedDamage's other sibling: the third thing a failed
 // save can cost, in the same shape, chained through the same continuation.
@@ -561,6 +719,62 @@ func imposeMove(
 			})
 		},
 	}
+}
+
+// halveDamage makes a made save's damage half of what was rolled, as ONE MORE
+// COMPONENT rather than as a flag on the roll.
+//
+// The rounded half's complement rides on a modifier-only component of the same
+// damage type: 3d6 that came to 13 gains a -7, and the trace totals 6. Nothing
+// downstream has to learn a new word for it. The guard that FinalDamage and the
+// trace agree holds by construction, the encounter record's identical guard
+// holds for the same reason, and a client already rendering Bane's -1d4 renders
+// this with no change — which a Halved flag on the calculation could not have
+// claimed, since a trace showing dice that sum to 13 above a total of 6 is a
+// trace that contradicts itself everywhere it is read.
+//
+// Rounding is the tabletop's: half, rounded DOWN. Integer division does that
+// for the non-negative sums a declared pool produces, and a pool small enough
+// to halve to nothing is an honest zero rather than a special case — the
+// component cancels the die exactly, FinalDamage drops a group that nets zero,
+// and both sides of the guard are zero.
+//
+// It refuses rather than no-ops on an empty component set: validateGate
+// guarantees a Half gate has damage, so reaching here with nothing rolled means
+// that guarantee broke, and halving nothing would hide it.
+func halveDamage(
+	components []dnd5eEvents.DamageComponent, cause dnd5eEvents.SaveCause, sourceName string,
+) ([]dnd5eEvents.DamageComponent, error) {
+	if len(components) == 0 {
+		return nil, fmt.Errorf(
+			"%w: a made save cannot halve damage that was never rolled", ErrBadAction)
+	}
+
+	sum := 0
+	for _, component := range components {
+		sum += component.Total()
+	}
+	reduction := sum/2 - sum
+
+	return append(components, dnd5eEvents.DamageComponent{
+		Source: dnd5eEvents.DamageSourceSpell,
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{
+				Ref:   cloneCoreRef(cause.EffectRef),
+				Name:  sourceName,
+				Label: halvedBySaveLabel,
+			},
+			Modifier: &reduction,
+		},
+		// The first pool's type, which validateGate has already established is
+		// the ONLY type: a Half gate over two of them is refused at the door,
+		// because FinalDamage groups per type and one reduction can only
+		// cancel against one group. The guard below still compares this
+		// component's arithmetic against FinalDamage's, so if that door were
+		// ever widened without a reduction per type, the delivery would say so
+		// rather than quietly deal the wrong number.
+		DamageType: components[0].DamageType,
+	}), nil
 }
 
 // damageCalculation is the roll behind the damage, in the one shape a record
@@ -691,11 +905,16 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 		return nil, ErrNilInput
 	}
 	m.cast = cast
-	if err := validateConditionGate(m.in.Gate); err != nil {
+
+	// Read before the gate is checked, because the gate's own question is what
+	// this contest DELIVERS: a Half gate is legal here only when damage is the
+	// whole of it. Nothing below this line depends on the order, and every
+	// other refusal still fires in the order it always did.
+	m.hasCondition = m.in.prepared != nil || m.in.Application.Ref != (core.Ref{})
+	if err := validateGate(m.in.Gate, m.shape()); err != nil {
 		return nil, err
 	}
 
-	m.hasCondition = m.in.prepared != nil || m.in.Application.Ref != (core.Ref{})
 	if !m.hasCondition && len(m.in.Damage) == 0 && m.in.Removal == nil {
 		// Fail closed: a contest that would deliver nothing is a save the
 		// player is asked to roll for no reason, and it would look like it
@@ -812,6 +1031,25 @@ func (m *contestMachine) chooseAbility(cast *Participants) (abilities.Ability, e
 	return best, nil
 }
 
+// shape reduces what this contest declares to the facts a gate is judged
+// against.
+//
+// A declared MOVE does not disqualify a damage-only contest. The move is what
+// the failure costs and a made save never imposes one, so "half" still has
+// exactly one thing to halve — which is how Dissonant Whispers saves for half
+// AND sends a creature running when it does not.
+func (m *contestMachine) shape() contestShape {
+	types := make(map[damage.Type]struct{}, len(m.in.Damage))
+	for _, pool := range m.in.Damage {
+		types[pool.Type] = struct{}{}
+	}
+
+	return contestShape{
+		damageOnly:  len(m.in.Damage) > 0 && !m.hasCondition && m.in.Removal == nil,
+		damageTypes: len(types),
+	}
+}
+
 // atStake names what this save is against, which is the condition whenever one
 // was declared and the damage otherwise.
 func (m *contestMachine) atStake() ImposedEffect {
@@ -833,7 +1071,8 @@ func (m *contestMachine) atStake() ImposedEffect {
 }
 
 // resolve turns the save into the outcome, and on a failure chains whatever was
-// declared: damage first, then the condition, then the move.
+// declared: damage first, then the condition, then the removal, then the price,
+// then the move.
 //
 // THE MOVE IS LAST, and that is a rule rather than an ordering accident. Damage
 // before the push is ruled by the design (rpg-project#432 §5) — what the damage
@@ -843,9 +1082,15 @@ func (m *contestMachine) atStake() ImposedEffect {
 // has something to say about being moved has already been applied when the
 // board comes to walk it.
 //
-// THE SUCCESS BRANCH IS UNTOUCHED. Done is returned before any delivery step
-// exists, so a made save negates the damage and the rider together — which is
-// also what the gate's Negated-only policy already promised.
+// THE SUCCESS BRANCH DELIVERS, for one gate. A Negated gate still negates
+// everything, which is most of them. A Half gate — legal only for a contest
+// whose whole consequence is damage — deals half of it, and it does so through
+// the SAME continuation the failure branch runs: the apply, then the report,
+// then whatever the report came back with. A creature that makes its save
+// against a spell it was concentrating through still owes the Constitution
+// check, and a success branch that shortcut straight to Done would silently owe
+// nothing. There is no condition and no move on that branch: the save was made,
+// and half is the only thing a made save costs.
 func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOutcome) (Step, error) {
 	outcome := ContestOutcome{
 		Save:      save,
@@ -854,11 +1099,48 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		Succeeded: save.Result != nil && save.Result.Success,
 		AtStake:   m.atStake(),
 	}
-	if outcome.Succeeded {
-		return Done{Outcome: outcome}, nil
-	}
 
 	done := func() (Step, error) { return Done{Outcome: outcome}, nil }
+
+	// deliverDamage is the damage phase both branches share: roll it, apply it,
+	// say what landed, answer what came back, then tail-call `then`. Named once
+	// for the reason reportDamage and runFollowUps are named once — two copies
+	// of it would be two places a follow-up could go missing from.
+	deliverDamage := func(halved bool, then func(context.Context) (Step, error)) (Step, error) {
+		return applyPreparedDamage(
+			m.in.Damage, m.in.Roller, m.in.Cause, m.in.SourceName, m.cast, m.in.SaverID, halved,
+			func(applied ImposedEffect) (Step, error) {
+				outcome.Imposed = append(outcome.Imposed, applied)
+
+				// Say what landed, then answer what came back — the same two
+				// steps the strike calls, in the same order, right after the
+				// apply. A third damage source gets concentration by calling
+				// them too, which is the whole reason they are named once.
+				return reportDamage(reportDamageInput{
+					MemberID:      m.in.SaverID,
+					Amount:        applied.Amount,
+					DamageType:    primaryComponentType(applied.Components),
+					DroppedToZero: applied.Before > 0 && applied.After == 0,
+					Cause:         m.in.Cause,
+				}, func(ctx context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
+					return runFollowUps(ctx, ups, 0, m.in.Roller,
+						func(followUp FollowUpOutcome) {
+							outcome.FollowUps = append(outcome.FollowUps, followUp)
+						},
+						then,
+					)
+				}), nil
+			},
+		), nil
+	}
+
+	if outcome.Succeeded {
+		if m.in.Gate.OnSuccess != saves.Half {
+			return done()
+		}
+
+		return deliverDamage(true, func(context.Context) (Step, error) { return done() })
+	}
 
 	deliverMove := func() (Step, error) {
 		if m.in.Move == nil {
@@ -872,14 +1154,27 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 			}, done), nil
 	}
 
+	payTheMove := func() (Step, error) {
+		if m.in.Move == nil || m.in.Move.Pays == combatActions.PaysNothing {
+			return deliverMove()
+		}
+
+		return payForMove(*m.in.Move, m.in.Cause, m.cast, m.in.SaverID,
+			deliverMove,
+			func(unpaid ImposedEffect) (Step, error) {
+				outcome.Imposed = append(outcome.Imposed, unpaid)
+				return done()
+			}, done), nil
+	}
+
 	deliverRemoval := func() (Step, error) {
 		if m.in.Removal == nil {
-			return deliverMove()
+			return payTheMove()
 		}
 
 		return publishRemoval(m.in.Removal, func(stripped ImposedEffect) (Step, error) {
 			outcome.Imposed = append(outcome.Imposed, stripped)
-			return deliverMove()
+			return payTheMove()
 		}), nil
 	}
 
@@ -901,31 +1196,7 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		return deliverCondition()
 	}
 
-	return applyPreparedDamage(
-		m.in.Damage, m.in.Roller, m.in.Cause, m.in.SourceName, m.cast, m.in.SaverID,
-		func(applied ImposedEffect) (Step, error) {
-			outcome.Imposed = append(outcome.Imposed, applied)
-
-			// Say what landed, then answer what came back — the same two steps
-			// the strike calls, in the same order, right after the apply. A
-			// third damage source gets concentration by calling them too, which
-			// is the whole reason they are named once.
-			return reportDamage(reportDamageInput{
-				MemberID:      m.in.SaverID,
-				Amount:        applied.Amount,
-				DamageType:    primaryComponentType(applied.Components),
-				DroppedToZero: applied.Before > 0 && applied.After == 0,
-				Cause:         m.in.Cause,
-			}, func(ctx context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
-				return runFollowUps(ctx, ups, 0, m.in.Roller,
-					func(followUp FollowUpOutcome) {
-						outcome.FollowUps = append(outcome.FollowUps, followUp)
-					},
-					func(context.Context) (Step, error) { return deliverCondition() },
-				)
-			}), nil
-		},
-	), nil
+	return deliverDamage(false, func(context.Context) (Step, error) { return deliverCondition() })
 }
 
 // validateRemoval refuses a removal that names nothing to end.

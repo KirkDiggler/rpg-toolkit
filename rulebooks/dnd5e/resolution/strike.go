@@ -240,7 +240,19 @@ func (m *strikeMachine) preflight(ctx context.Context, cast *Participants) error
 	m.prepared = make([]preparedCondition, len(m.attack.OnHit))
 	for index, application := range m.attack.OnHit {
 		if application.Save != nil {
-			if gateErr := validateConditionGate(application.Save); gateErr != nil {
+			// The zero shape, and every field of it is the statement: an
+			// on-hit rider IS a condition, so it is not damage-only and it
+			// declares no damage pools at all.
+			//
+			// The Half arm it implies is UNREACHABLE from here, and that is
+			// worth saying rather than leaving as a claim: Definition.Validate
+			// above refuses a halving rider first, because half of a condition
+			// is not a smaller condition. What still reaches this call is a
+			// gate content admits and this module cannot execute — a recurring
+			// one. The shape is passed honestly anyway, so the day a rider may
+			// declare damage of its own, this line already answers correctly
+			// instead of being the one that was never updated.
+			if gateErr := validateGate(application.Save, contestShape{}); gateErr != nil {
 				return fmt.Errorf("validate on-hit condition %s: %w", application.Ref.String(), gateErr)
 			}
 		}

@@ -9,9 +9,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -140,7 +146,7 @@ func (s *ContestMoveTestSuite) TestAFailedSaveIsPushedAfterItIsDamaged() {
 	s.False(moved.Move.Provokes, "being thrown across a room is not walking out of a reach")
 	s.Require().NotNil(moved.Ref)
 	s.Equal(refs.Spells.Thunderwave().String(), moved.Ref.String(), "named by whatever moved them")
-	s.NotEmpty(moved.Description, "and it reads as something in a step log")
+	s.Equal("a line move of 2 cells", moved.Description, "and it reads as something in a step log")
 	s.Zero(moved.Amount, "a move has no amount to report")
 }
 
@@ -212,40 +218,243 @@ func (s *ContestMoveTestSuite) TestADirectiveWithNoAnchorIsRefused() {
 	s.Contains(err.Error(), "anchor")
 }
 
-// A price nobody charges and a budget nobody resolves are refused rather than
-// described, because a description this stack cannot execute is an affordance
-// with nothing behind it. Both arrive with Dissonant Whispers, which brings
-// the reaction spend and the speed lookup with it (rpg-project#431 §0).
-func (s *ContestMoveTestSuite) TestADirectiveNothingCanExecuteIsRefused() {
-	fixtures := s.fixtures()
+// fleeing is the Dissonant Whispers directive: away from the caster, as far as
+// the mover's own legs carry it, bought with their reaction, and provoking on
+// the way out.
+//
+// Every field Thunderwave's push left at its zero value is set here, which is
+// the whole difference between being shoved and being made to run.
+func fleeing() *combatActions.CastMove {
+	return &combatActions.CastMove{
+		Policy:   combatActions.MoveAway,
+		Speed:    true,
+		Pays:     combatActions.PaysReaction,
+		Provokes: true,
+	}
+}
 
-	s.Run("a reaction nobody spends", func() {
-		_, err := fixtures.resolve(fixtures.saver(14), s.contestMoving(&MoveDirective{
-			Policy: combatActions.MoveLine, AnchorID: bardID, Cells: 2,
-			Pays: combatActions.PaysReaction,
-		}), nil, nil)
-		s.Require().ErrorIs(err, ErrBadAction)
-		s.Contains(err.Error(), "reaction")
-	})
+// reacting is an action economy with the given reactions left on it, and a turn
+// the door will not refresh out from under the scene.
+func reacting(reactions int) *character.ActionEconomyData {
+	return &character.ActionEconomyData{
+		TurnNumber:            mockeryTurn,
+		ActionsRemaining:      1,
+		BonusActionsRemaining: 1,
+		ReactionsRemaining:    reactions,
+		MovementRemaining:     mockerySpeed,
+	}
+}
 
-	s.Run("a speed nobody reads", func() {
-		_, err := fixtures.resolve(fixtures.saver(14), s.contestMoving(&MoveDirective{
-			Policy: combatActions.MoveLine, AnchorID: bardID, Speed: true,
-		}), nil, nil)
-		s.Require().ErrorIs(err, ErrBadAction)
-		s.Contains(err.Error(), "speed")
+// shoveAt is [ContestMoveTestSuite.shove] with the target named, so a monster
+// can be the one who pays.
+func (s *ContestMoveTestSuite) shoveAt(
+	targetID string, move *combatActions.CastMove, roll int,
+) (Machine, error) {
+	return NewAction(&ActionInput{
+		Definition: shoveDefinition(move),
+		AttackerID: bardID,
+		TargetIDs:  []string{targetID},
+		Roller:     facedRoller{d20: roll, other: thunderFace},
 	})
 }
 
-// contestMoving is the damage suite's contest with a directive on it.
-func (s *ContestMoveTestSuite) contestMoving(move *MoveDirective) Machine {
-	return NewContest(&ContestInput{
-		Gate:       mockeryGate(),
-		SaverID:    heroID,
-		Damage:     psychic(),
-		SourceName: mockeryName,
-		Cause:      mockedCause(),
-		Move:       move,
-		Roller:     facedRoller{d20: straightRoll, other: psychicFace},
-	})
+// monsterSheet is the damage suite's sheet reader for the other kind of
+// creature: the blob the host writes back is where a monster's meter lives.
+func (s *ContestMoveTestSuite) monsterSheet(out *Output, id string) *monster.Data {
+	for _, data := range out.DirtyMonsters {
+		if data.ID == id {
+			return data
+		}
+	}
+	s.Require().Failf("no dirty monster", "%q did not come back to be saved", id)
+
+	return nil
+}
+
+// spendLog records every spend request in publication order, which is the only
+// place the bill is visible as an event rather than as its effect on a sheet.
+func (s *ContestMoveTestSuite) spendLog(bus events.EventBus) *[]dnd5eEvents.SpendRequestedEvent {
+	seen := &[]dnd5eEvents.SpendRequestedEvent{}
+	_, err := dnd5eEvents.SpendRequestedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.SpendRequestedEvent) error {
+			*seen = append(*seen, event)
+			return nil
+		})
+	s.Require().NoError(err)
+
+	return seen
+}
+
+// resolveOnBus is the damage suite's resolve with the interaction's bus handed
+// in, so a scene can watch what was published on it.
+func (s *ContestMoveTestSuite) resolveOnBus(
+	fixtures *ContestDamageTestSuite, saver *character.Data, machine Machine, bus events.EventBus,
+) (*Output, error) {
+	return resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		Equipment: noHandsAreObserved{},
+		World:     fixtures.world(),
+		Participants: []Participant{
+			{Character: saver}, {Monster: fixtures.wolfData()}, {Character: fixtures.bard(1)},
+		},
+		Machine: machine,
+		Cost:    castCost(),
+	}, newSurface(bus))
+}
+
+// THE HEADLINE OF THE PRICE. A move that costs a reaction is billed exactly
+// once, for one reaction, named to what asked — and then described as taken.
+//
+// This test is NOT the one that pins paid-before-described, and it was named as
+// though it were. For a creature that CAN pay, the two orders are
+// indistinguishable from out here: the same one event on the same bus, the same
+// effect list, the same sheet. The order is observable only when the price
+// cannot be paid, where charging second means describing a move and then
+// refusing it — two imposed moves instead of one. That is
+// TestAPricedMoveWithNoReactionIsRecordedAsNotTaken, which says so, and a
+// rewrite of this scene cannot cover for it.
+func (s *ContestMoveTestSuite) TestAPricedMoveIsBilledOnceAndDescribedAsTaken() {
+	fixtures := s.fixtures()
+	saver := fixtures.saver(14)
+	saver.ActionEconomy = reacting(1)
+
+	machine, err := s.shove(fleeing(), straightRoll)
+	s.Require().NoError(err)
+
+	bus := events.NewEventBus()
+	spends := s.spendLog(bus)
+
+	out, err := s.resolveOnBus(fixtures, saver, machine, bus)
+	s.Require().NoError(err)
+
+	target := s.castOutcome(out).Targets[0]
+	s.Require().NotNil(target.Save)
+	s.Require().False(target.Save.Succeeded)
+	s.Equal([]ImposedEffectKind{ImposedDamage, ImposedMove}, kindsOf(target.Applied),
+		"the damage, then the move it was bought the right to impose")
+
+	moved := target.Applied[1]
+	s.Empty(moved.NotTaken, "the price was paid, so the move is taken")
+	s.Require().NotNil(moved.Move)
+	s.True(moved.Move.Speed, "the budget is the mover's own legs, carried through as declared")
+	s.Equal(combatActions.PaysReaction, moved.Move.Pays)
+	s.True(moved.Move.Provokes, "and it is a walk out of a reach, not a shove")
+
+	s.Require().Len(*spends, 1, "one move, one bill — a flee is not charged per cell")
+	bill := (*spends)[0]
+	s.Equal(heroID, bill.MemberID, "whoever ran is who pays")
+	s.Equal(coreCombat.ActionReaction, bill.ActionType)
+	s.Equal(1, bill.Amount)
+	s.Require().NotNil(bill.SourceRef)
+	s.Equal(refs.Spells.Thunderwave().String(), bill.SourceRef.String(),
+		"attributed to what asked, so a log can say what took the reaction")
+
+	s.Require().NotNil(fixtures.sheet(out, heroID).ActionEconomy)
+	s.Zero(fixtures.sheet(out, heroID).ActionEconomy.ReactionsRemaining,
+		"and the bill reached the keeper on the interaction's own bus")
+}
+
+// A price that cannot be paid is a REAL ANSWER, not a missing one. The move is
+// still described so a reader knows what was asked of the creature, and
+// NotTaken says why it never happened.
+//
+// THIS IS ALSO THE SCENE THAT PINS PAID-BEFORE-DESCRIBED, and it is the only
+// one that can: a creature that can pay looks identical either way. Describing
+// the move first and charging second would leave a move already in the list
+// when the refusal arrived, so the count below would be two moves rather than
+// one. Do not relax it to "contains an ImposedMove".
+func (s *ContestMoveTestSuite) TestAPricedMoveWithNoReactionIsRecordedAsNotTaken() {
+	fixtures := s.fixtures()
+	saver := fixtures.saver(14)
+	saver.ActionEconomy = reacting(0)
+
+	machine, err := s.shove(fleeing(), straightRoll)
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(saver, machine, castCost(), fixtures.bard(1))
+	s.Require().NoError(err)
+
+	target := s.castOutcome(out).Targets[0]
+	s.Equal([]ImposedEffectKind{ImposedDamage, ImposedMove}, kindsOf(target.Applied),
+		"the damage landed, and ONE move is recorded as the thing that did not: "+
+			"a move described before the price was known would be a second one")
+
+	moved := target.Applied[1]
+	s.Equal("has no reaction to spend", moved.NotTaken)
+	s.Require().NotNil(moved.Move, "the directive still rides, so a reader knows what was asked")
+	s.Equal(combatActions.MoveAway, moved.Move.Policy)
+	s.Equal(heroID, moved.RecipientID)
+}
+
+// The OTHER kind of creature, through the meter PR 1 put on its keeper. One
+// question, one bill, and the same event a condition publishes.
+func (s *ContestMoveTestSuite) TestAMonsterPaysFromItsMeter() {
+	fixtures := s.fixtures()
+	machine, err := s.shoveAt(wolfID, fleeing(), straightRoll)
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, castCost(), fixtures.bard(1))
+	s.Require().NoError(err)
+
+	target := s.castOutcome(out).Targets[0]
+	s.Require().NotNil(target.Save)
+	s.Require().False(target.Save.Succeeded, "no ability scores is a -5, which misses DC 13 on a 3")
+	s.Equal([]ImposedEffectKind{ImposedDamage, ImposedMove}, kindsOf(target.Applied))
+	s.Empty(target.Applied[1].NotTaken, "a monster has a reaction now, and it just spent it")
+
+	blob := s.monsterSheet(out, wolfID)
+	s.True(blob.ReactionSpent, "the meter is on the monster's own sheet, ready to be written back")
+
+	reloaded, err := monster.LoadFromData(s.ctx, blob, events.NewEventBus())
+	s.Require().NoError(err)
+	s.False(reloaded.CanReact(),
+		"and it is the same question every reacting rule asks: no opportunity attack after fleeing")
+}
+
+// THE DROPPED ARE NOT ASKED. A creature the damage put on the floor keeps its
+// reaction, because nobody made it run anywhere.
+func (s *ContestMoveTestSuite) TestADroppedTargetIsNotAskedToPay() {
+	fixtures := s.fixtures()
+	saver := fixtures.saver(5)
+	saver.ActionEconomy = reacting(1)
+
+	machine, err := s.shove(fleeing(), straightRoll)
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(saver, machine, castCost(), fixtures.bard(1))
+	s.Require().NoError(err)
+
+	target := s.castOutcome(out).Targets[0]
+	s.Equal([]ImposedEffectKind{ImposedDamage}, kindsOf(target.Applied),
+		"eight thunder on five hit points, and nothing to charge afterwards")
+
+	sheet := fixtures.sheet(out, heroID)
+	s.Zero(sheet.HitPoints, "they are down where they fell")
+	s.Require().NotNil(sheet.ActionEconomy)
+	s.Equal(1, sheet.ActionEconomy.ReactionsRemaining, "and they were never billed for the run")
+}
+
+// A speed budget with no price, so the two halves the old refusals covered are
+// separable: Speed travels to the board as declared whether or not anything was
+// charged for it.
+func (s *ContestMoveTestSuite) TestASpeedBudgetIsDescribedAsIs() {
+	fixtures := s.fixtures()
+	machine, err := s.shove(&combatActions.CastMove{
+		Policy: combatActions.MoveAway, Speed: true,
+	}, straightRoll)
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, castCost(), fixtures.bard(1))
+	s.Require().NoError(err)
+
+	moved := s.castOutcome(out).Targets[0].Applied[1]
+	s.Require().Equal(ImposedMove, moved.Kind)
+	s.Require().NotNil(moved.Move)
+	s.True(moved.Move.Speed)
+	s.Zero(moved.Move.Cells, "exactly one budget, and it is not a cell count")
+	s.Equal(combatActions.PaysNothing, moved.Move.Pays)
+	s.Empty(moved.NotTaken, "nothing was asked for, so nothing went unpaid")
+	s.Equal("an away move of their own speed", moved.Description,
+		"and the article agrees with the policy word the second one brought")
 }
