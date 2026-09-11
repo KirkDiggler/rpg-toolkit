@@ -85,9 +85,16 @@ func (s *MoveSuite) TestTheVocabularyIsClosed() {
 		s.Require().Error(err)
 		s.Contains(err.Error(), "unknown move price")
 	})
-	s.Run("every declared policy is known", func() {
-		for _, policy := range []actions.MovePolicy{actions.MoveLine, actions.MoveAway, actions.MoveToward} {
-			s.NoError((&actions.CastMove{Policy: policy, Cells: 2}).Validate(), "%s", policy)
+	s.Run("a policy nothing can walk is refused, not reserved", func() {
+		// "away" and "toward" are the next two policies this stack will have,
+		// and naming them here would be the whole mistake: content could
+		// declare one, validate clean, and fail at the moment of the shove
+		// instead of the moment it was written. They arrive with the spells
+		// that bring their executors (rpg-project#431).
+		for _, reserved := range []actions.MovePolicy{"away", "toward"} {
+			err := (&actions.CastMove{Policy: reserved, Cells: 2}).Validate()
+			s.Require().Error(err, "%s", reserved)
+			s.Contains(err.Error(), "unknown move policy")
 		}
 	})
 }

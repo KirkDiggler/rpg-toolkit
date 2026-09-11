@@ -13,25 +13,16 @@ import "fmt"
 // a push that would cross a wall stops at the wall without any spell knowing a
 // wall exists.
 //
-// ONE EXECUTOR TODAY. [MoveLine] is the only policy anything can walk;
-// [MoveAway] and [MoveToward] are declared because the vocabulary is shared
-// with the layers that execute it and a closed set they can switch on is the
-// point, and encounter refuses the two that have no executor by name. The
-// customers that bring them are Dissonant Whispers and Thorn Whip.
+// ONE VALUE, AND IT IS THE ONE SOMETHING CAN WALK. "Away" and "toward" arrive
+// with the spells that bring their executors — Dissonant Whispers and Thorn
+// Whip (rpg-project#431 §0) — and not one line before. A policy named here
+// ahead of its executor would validate clean in content and then fail at the
+// moment of the shove, which moves the refusal from the author to the table.
 type MovePolicy string
 
-const (
-	// MoveLine continues the line from the anchor through the mover, past the
-	// mover, for the budget. A shove: it does not search for anywhere better.
-	MoveLine MovePolicy = "line"
-
-	// MoveAway puts as much distance between the mover and the anchor as the
-	// budget allows, going around what is in the way.
-	MoveAway MovePolicy = "away"
-
-	// MoveToward closes the distance between the mover and the anchor.
-	MoveToward MovePolicy = "toward"
-)
+// MoveLine continues the line from the anchor through the mover, past the
+// mover, for the budget. A shove: it does not search for anywhere better.
+const MoveLine MovePolicy = "line"
 
 // MovePays is what the moved creature spends to be moved.
 //
@@ -89,7 +80,7 @@ type CastMove struct {
 // budget, and a known price.
 func (m CastMove) Validate() error {
 	switch m.Policy {
-	case MoveLine, MoveAway, MoveToward:
+	case MoveLine:
 	default:
 		return fmt.Errorf("unknown move policy %q", m.Policy)
 	}
