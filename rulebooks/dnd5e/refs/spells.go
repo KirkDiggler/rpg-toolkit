@@ -9,6 +9,7 @@ var (
 	spellFireBolt        = &core.Ref{Module: Module, Type: TypeSpells, ID: "fire-bolt"}
 	spellRayOfFrost      = &core.Ref{Module: Module, Type: TypeSpells, ID: "ray-of-frost"}
 	spellShockingGrasp   = &core.Ref{Module: Module, Type: TypeSpells, ID: "shocking-grasp"}
+	spellThunderclap     = &core.Ref{Module: Module, Type: TypeSpells, ID: "thunderclap"}
 	spellAcidSplash      = &core.Ref{Module: Module, Type: TypeSpells, ID: "acid-splash"}
 	spellPoisonSpray     = &core.Ref{Module: Module, Type: TypeSpells, ID: "poison-spray"}
 	spellChillTouch      = &core.Ref{Module: Module, Type: TypeSpells, ID: "chill-touch"}
@@ -192,13 +193,16 @@ var Spells = spellsNS{}
 type spellsNS struct{}
 
 // Cantrips - Damage
-func (n spellsNS) FireBolt() *core.Ref        { return spellFireBolt }
-func (n spellsNS) RayOfFrost() *core.Ref      { return spellRayOfFrost }
-func (n spellsNS) ShockingGrasp() *core.Ref   { return spellShockingGrasp }
-func (n spellsNS) AcidSplash() *core.Ref      { return spellAcidSplash }
-func (n spellsNS) PoisonSpray() *core.Ref     { return spellPoisonSpray }
-func (n spellsNS) ChillTouch() *core.Ref      { return spellChillTouch }
-func (n spellsNS) SacredFlame() *core.Ref     { return spellSacredFlame }
+func (n spellsNS) FireBolt() *core.Ref      { return spellFireBolt }
+func (n spellsNS) RayOfFrost() *core.Ref    { return spellRayOfFrost }
+func (n spellsNS) ShockingGrasp() *core.Ref { return spellShockingGrasp }
+func (n spellsNS) AcidSplash() *core.Ref    { return spellAcidSplash }
+func (n spellsNS) PoisonSpray() *core.Ref   { return spellPoisonSpray }
+func (n spellsNS) ChillTouch() *core.Ref    { return spellChillTouch }
+func (n spellsNS) SacredFlame() *core.Ref   { return spellSacredFlame }
+
+// Thunderclap returns the ref for the Thunderclap cantrip.
+func (n spellsNS) Thunderclap() *core.Ref     { return spellThunderclap }
 func (n spellsNS) TollTheDead() *core.Ref     { return spellTollTheDead }
 func (n spellsNS) WordOfRadiance() *core.Ref  { return spellWordOfRadiance }
 func (n spellsNS) EldritchBlast() *core.Ref   { return spellEldritchBlast }
@@ -385,6 +389,7 @@ var spellByID = map[string]*core.Ref{
 	"poison-spray":                  spellPoisonSpray,
 	"chill-touch":                   spellChillTouch,
 	"sacred-flame":                  spellSacredFlame,
+	"thunderclap":                   spellThunderclap,
 	"toll-the-dead":                 spellTollTheDead,
 	"word-of-radiance":              spellWordOfRadiance,
 	"eldritch-blast":                spellEldritchBlast,

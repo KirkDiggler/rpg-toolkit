@@ -182,11 +182,17 @@ func (s *CastContentSuite) TestASpellThisBuildNeverHeardOfMintsNothing() {
 	s.False(spells.HasCastProfile("song-of-nothing"))
 }
 
-func (s *CastContentSuite) TestTheBardsListIsAllElevenCantrips() {
-	s.Len(spells.BardCantrips, 11)
+// TestTheBardsListHoldsWhatThisBuildOffers deliberately does NOT pin the list's
+// length.
+//
+// It used to (s.Len(BardCantrips, 11)), and that assertion tested nothing about
+// the list while making every future addition an edit to a test that was never
+// about the addition. What is worth pinning is that a named cantrip is present.
+func (s *CastContentSuite) TestTheBardsListHoldsWhatThisBuildOffers() {
 	s.Contains(spells.BardCantrips, spells.TrueStrike)
 	s.Contains(spells.BardCantrips, spells.ViciousMockery)
 	s.Contains(spells.BardCantrips, spells.MageHand)
+	s.Contains(spells.BardCantrips, spells.Thunderclap)
 }
 
 // Castable is the subset of a class's list that has cast content, in the order
@@ -194,11 +200,46 @@ func (s *CastContentSuite) TestTheBardsListIsAllElevenCantrips() {
 // the part that changes every time a cantrip grows a profile, and a test whose
 // NAME goes stale is a test people stop trusting.
 //
-// Blade Ward leads because spells.BardCantrips is in book order, and its
+// Blade Ward leads because spells.BardCantrips opens in book order, and its
 // arrival is the moment the bard's cantrip pick stops being "choose 2 of 2".
+// Thunderclap trails because it is not on the 2014 book list at all: the list
+// is what THIS BUILD offers a bard, book order first and additions after.
 func (s *CastContentSuite) TestCastableIsTheSubsetWithProfilesInListOrder() {
-	s.Equal([]spells.Spell{spells.BladeWard, spells.TrueStrike, spells.ViciousMockery},
+	s.Equal([]spells.Spell{spells.BladeWard, spells.TrueStrike, spells.ViciousMockery, spells.Thunderclap},
 		spells.Castable(spells.BardCantrips))
+}
+
+// TestThunderclapDeclaresAShapeRatherThanATarget is the first content in this
+// build that names a region of space instead of a creature.
+//
+// Everything else the toolkit can cast, it casts at somebody a caller picked.
+// This one says WHERE and lets the engine work out WHO — which is the whole
+// capability, and the reason the spell is here at all.
+func (s *CastContentSuite) TestThunderclapDeclaresAShapeRatherThanATarget() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{
+		Spell: spells.Thunderclap, SpellSaveDC: 13,
+	})
+	s.Require().NotNil(definition, "a spell missing from the byID map mints a nil definition, silently")
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Require().NoError(profile.Validate())
+
+	s.Equal(actions.CastTargetArea, profile.Target)
+	s.Zero(profile.MinTargets, "the caller names nobody")
+	s.Zero(profile.MaxTargets)
+
+	s.Require().NotNil(profile.Area)
+	s.Equal(actions.AreaRadius, profile.Area.Footprint.Shape)
+	s.Equal(spells.ThunderclapRadiusFeet, profile.Area.Footprint.SizeFeet)
+	s.Equal(actions.AreaOriginCaster, profile.Area.Footprint.Origin)
+	s.Equal(actions.AreaCatchesOthers, profile.Area.Catches,
+		`"each creature other than you" — the caster stands in their own burst`)
+
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.CON}, profile.Save.Abilities)
+	s.Require().Len(profile.Damage, 1)
+	s.Equal(damage.Thunder, profile.Damage[0].Type)
+	s.Equal(spells.ThunderclapDamage, profile.Damage[0].Dice)
 }
 
 func (s *CastContentSuite) TestEveryCastableCantripHasAValidDefinition() {
