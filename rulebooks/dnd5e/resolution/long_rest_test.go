@@ -131,8 +131,8 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	var opportunity conditions.OpportunityAttackConditionData
 	s.Require().NoError(json.Unmarshal(
 		conditionWithRef(s.T(), got.Conditions, refs.Conditions.OpportunityAttack()), &opportunity))
-	s.Require().False(opportunity.UsedThisTurn,
-		"the retained reaction meter resets on a long rest")
+	s.Require().Equal(longRestFighterID, opportunity.MemberID,
+		"the reactor is retained across a long rest, still seated on its holder")
 	s.Require().Nil(conditionWithRefOrNil(got.Conditions, refs.Conditions.Prone()),
 		"the temporary prone condition ends on a long rest")
 
@@ -298,7 +298,7 @@ func (s *LongRestTestSuite) fighter() *character.Data {
 	})
 	s.Require().NoError(err)
 	opportunity, err := (&conditions.OpportunityAttackCondition{
-		MemberID: longRestFighterID, UsedThisTurn: true,
+		MemberID: longRestFighterID,
 	}).ToJSON()
 	s.Require().NoError(err)
 	prone, err := conditions.NewProneCondition(longRestFighterID).ToJSON()
