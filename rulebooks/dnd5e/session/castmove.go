@@ -87,6 +87,7 @@ func routeCastPushes(
 		return fmt.Errorf("cast push: %w", translate(err))
 	}
 	positions := rosterPositions(roster)
+	speeds := rosterSpeeds(roster)
 
 	for i := range pushes {
 		push := &pushes[i]
@@ -95,13 +96,17 @@ func routeCastPushes(
 		if !ok {
 			return fmt.Errorf("%w: unsupported move policy %q", ErrBadCast, push.move.Policy)
 		}
+		// THE BUDGET, AND THE ONE THE CONTENT COULD NOT WRITE. A push in
+		// cells is a distance the spell chose; a flee is the creature's own
+		// legs, and the same whisper moves a dwarf and a horse different
+		// distances. The roster row is where that fact lives and this is the
+		// only module that reads it, so the conversion into cells happens
+		// here — a LOOKUP, not a ruling: nothing on this side decides what a
+		// creature's speed is, only where to find it and how many cells five
+		// feet make.
+		budget := push.move.Cells
 		if push.move.Speed {
-			// No content declares a speed budget, and answering one here would
-			// mean this seam deciding what a creature's speed is — a rulebook
-			// fact with an owner that is not this package. Refused until the
-			// spell that needs it arrives with it.
-			return fmt.Errorf("%w: a move budgeted by the mover's own speed has no executor here",
-				ErrBadCast)
+			budget = encounter.CellsFromFeet(speeds[string(push.target)])
 		}
 		anchor, placed := positions[push.move.AnchorID]
 		if !placed {
@@ -113,7 +118,7 @@ func routeCastPushes(
 			Mover:  push.target,
 			Policy: policy,
 			Anchor: anchor,
-			Budget: push.move.Cells,
+			Budget: budget,
 		})
 		if routeErr != nil {
 			return fmt.Errorf("cast push: %w", translate(routeErr))
@@ -166,8 +171,8 @@ func walkCastPushes(
 // routePolicy maps the content's word for how a creature is moved onto the
 // composition's.
 //
-// TWO CLOSED SETS WITH ONE MEMBER EACH, and the crossing is spelled out rather
-// than converted by a cast between two string types. They are the same word
+// TWO CLOSED SETS WITH TWO MEMBERS EACH, and the crossing is spelled out rather
+// than converted by a cast between two string types. They are the same words
 // today and they are not the same vocabulary: content says what a spell does
 // and the composition says what it can walk, and the day one of them learns a
 // word the other has not, this function is where a builder is stopped and asked
@@ -176,6 +181,8 @@ func routePolicy(policy combatActions.MovePolicy) (encounter.MovePolicy, bool) {
 	switch policy {
 	case combatActions.MoveLine:
 		return encounter.MoveLine, true
+	case combatActions.MoveAway:
+		return encounter.MoveAway, true
 	default:
 		return "", false
 	}
