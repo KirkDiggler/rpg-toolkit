@@ -32,7 +32,30 @@ type ActionInput struct {
 
 	// TargetIDs is the canonical ordered target list for every profile arm.
 	TargetIDs []string
-	Roller    dice.Roller
+
+	// AreaMembers are the recipients a caller DERIVED from the profile's
+	// declared footprint, for a [combatActions.CastTargetArea] cast. Ignored by
+	// every other arm.
+	//
+	// A SEPARATE FIELD RATHER THAN TargetIDs, because a derived recipient and a
+	// named one are not the same thing and the gates here are right to treat
+	// them differently. TargetIDs is what the CALLER asked for: it is bounded
+	// by MinTargets/MaxTargets, it was offered to a client, and it is re-checked
+	// against the caster's reach because a client may echo a stale selection.
+	// None of that is true of a member the engine worked out from a shape —
+	// nobody offered it, nobody clicked it, and its membership was already
+	// decided by geometry.
+	//
+	// Sharing one field would force every gate downstream to guess which kind
+	// it was holding, and a wrong guess is invisible: an area cast would be
+	// refused for naming three targets when its profile permits zero, by a rule
+	// that is correct for the list it was written about.
+	//
+	// EMPTY IS LEGAL. A footprint that catches nobody is an ordinary outcome —
+	// the cast pays its price, delivers nothing, and records honestly.
+	AreaMembers []string
+
+	Roller dice.Roller
 }
 
 // NewAction validates an inert definition and dispatches by populated profile arm.
@@ -138,6 +161,14 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	// tension with this: they bound what the CALLER may name, and a self cast
 	// lets the caller name nobody. Who received the spell is a different
 	// question, answered here.
+	// An area cast's recipients arrive already derived, in their own field, and
+	// they replace the caller's list rather than extending it — the caller of an
+	// area cast names nobody, which checkCastTargets has just confirmed.
+	derived := profile.Target == combatActions.CastTargetArea
+	if derived {
+		targetIDs = append([]string(nil), in.AreaMembers...)
+	}
+
 	entries := make([]castTargetMachine, 0, len(targetIDs))
 	if profile.Target == combatActions.CastTargetSelf {
 		targetIDs = []string{casterID}
@@ -159,6 +190,7 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	return &castMachine{
 		spell: definition.Ref, spellName: definition.Name, casterID: casterID,
 		profile: profile.Clone(), concentration: profile.Concentration, targets: entries,
+		derivedTargets: derived,
 	}, nil
 }
 
@@ -228,6 +260,11 @@ type castMachine struct {
 	concentration *combatActions.CastConcentration
 	cast          *Participants
 	outcome       CastOutcome
+
+	// derivedTargets records that this cast's recipients were worked out from a
+	// declared footprint rather than named by a caller. It changes which
+	// preflight checks apply — see Start.
+	derivedTargets bool
 }
 
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
@@ -243,7 +280,13 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 			return nil, fmt.Errorf("target %d %q: %w", i, target.targetID, err)
 		}
 		if target.targetID != "" {
-			if err := validateCastTarget(ctx, cast, m.casterID, target.targetID, m.profile.RangeFeet); err != nil {
+			var err error
+			if m.derivedTargets {
+				err = castRecipientIsEligible(cast, target.targetID)
+			} else {
+				err = validateCastTarget(ctx, cast, m.casterID, target.targetID, m.profile.RangeFeet)
+			}
+			if err != nil {
 				return nil, fmt.Errorf("target %d %q: %w", i, target.targetID, err)
 			}
 		}
@@ -461,11 +504,14 @@ func deliveredConditions(spell core.Ref, effects []ActivationEffect) ([]ImposedE
 	return applied, nil
 }
 
-// validateCastTarget checks one preflighted participant's current eligibility
-// and range without mutating a sheet or consuming randomness.
-func validateCastTarget(
-	ctx context.Context, cast *Participants, casterID, targetID string, rangeFeet int,
-) error {
+// castRecipientIsEligible checks one preflighted participant's current
+// eligibility without mutating a sheet or consuming randomness.
+//
+// APPLIES TO EVERY RECIPIENT, named or derived. Being unconscious does not stop
+// a thunderclap reaching you, but it is still the rulebook's answer to whether
+// this cast may resolve against you, and it is answered from the sheet rather
+// than from the map.
+func castRecipientIsEligible(cast *Participants, targetID string) error {
 	target, err := combatantFor(cast, targetID)
 	if err != nil {
 		return err
@@ -478,6 +524,28 @@ func validateCastTarget(
 	}
 	if !combat.ParticipationFor(state).AttackTarget {
 		return fmt.Errorf("%w: target is not currently eligible", ErrBadAction)
+	}
+	return nil
+}
+
+// validateCastTarget checks one NAMED target's eligibility and the caster's
+// reach to it.
+//
+// NOT APPLIED TO A DERIVED RECIPIENT, and the distinction is not a shortcut.
+// This measures from the CASTER, which answers "could you have aimed there" —
+// the right question for a target a client picked, and the wrong one for a
+// member the engine found inside a shape. The two coincide only while a
+// footprint is centred on the caster and reaches exactly as far as the spell's
+// range, which is true of Thunderclap and of nothing after it: a twenty-foot
+// burst dropped at a hundred and fifty feet catches creatures a hundred and
+// seventy feet away, every one of which this check would refuse. Containment
+// was already decided by whoever derived the members; asking a different
+// question here would silently constrain what shapes can exist.
+func validateCastTarget(
+	ctx context.Context, cast *Participants, casterID, targetID string, rangeFeet int,
+) error {
+	if err := castRecipientIsEligible(cast, targetID); err != nil {
+		return err
 	}
 	room, err := gamectx.RequireRoom(ctx)
 	if err != nil {
