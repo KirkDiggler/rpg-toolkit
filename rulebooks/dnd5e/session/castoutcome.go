@@ -35,23 +35,36 @@ import (
 // happened to be running rather than as one machine's answer.
 func castOutcome(
 	outcome resolution.Outcome, actor string, spell SpellRef,
-) ([]encounter.CastTargetResult, error) {
+) ([]encounter.CastTargetResult, []castPush, error) {
 	cast, ok := outcome.(resolution.CastOutcome)
 	if !ok {
-		return nil, fmt.Errorf("%w: cast by %q produced %T", ErrInvalidWorld, actor, outcome)
+		return nil, nil, fmt.Errorf("%w: cast by %q produced %T", ErrInvalidWorld, actor, outcome)
 	}
 
 	targets := make([]encounter.CastTargetResult, 0, len(cast.Targets))
+	var pushes []castPush
 	for _, target := range cast.Targets {
 		save, err := castSave(target, cast.Spell)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		results := make([]encounter.ActivationResult, 0, len(target.Applied))
 		for _, applied := range target.Applied {
 			result, resultErr := imposedResult(applied, spell)
 			if resultErr != nil {
-				return nil, resultErr
+				return nil, nil, resultErr
+			}
+			if applied.Kind == resolution.ImposedMove {
+				// THE BEAT IS BUILT HERE AND FINISHED LATER. How far the push
+				// went is the board's answer, not the contest's, and this
+				// function has no board. It is named by index rather than by
+				// pointer so nothing holds a reference into a slice that is
+				// still growing.
+				pushes = append(pushes, castPush{
+					target:   encounter.MemberID(applied.RecipientID),
+					move:     *applied.Move,
+					targetAt: len(targets), resultAt: len(results),
+				})
 			}
 			results = append(results, result)
 		}
@@ -59,7 +72,7 @@ func castOutcome(
 			Target: encounter.MemberID(target.TargetID), Save: save, Results: results,
 		})
 	}
-	return targets, nil
+	return targets, pushes, nil
 }
 
 // castSave reads the gate's saving throw, or nothing when there was no gate.
@@ -112,6 +125,13 @@ func castSave(target resolution.CastTargetOutcome, spell core.Ref) (*encounter.C
 // the cast named a creature, and Vicious Mockery's lands on the target — so a
 // reader that assumed "the target" would put half of this slice's conditions on
 // the wrong sheet.
+//
+// # A move is named by the spell too, and is only half filled in here
+//
+// A push is the one consequence whose outcome this function cannot know. What
+// the contest decided is that the creature is moved and by what policy; how far
+// it actually goes is the board's, and the board is not in scope. So this
+// builds the beat and [castPush] finishes it.
 //
 // # Damage is named by the SPELL
 //
@@ -175,6 +195,26 @@ func imposedResult(
 			// aliases the provider's own graph — the same copy
 			// activationResults makes for a heal's.
 			Calculation: rollCalculationFor(imposed.Calculation),
+		}, nil
+	case resolution.ImposedMove:
+		if imposed.Move == nil {
+			// resolution fills the directive for this kind and nothing else
+			// produces one, so a nil here is a provider defect. Failing closed
+			// names it where it can be read, rather than recording a push with
+			// no policy and then finding nothing to walk.
+			return encounter.ActivationResult{}, fmt.Errorf(
+				"%w: cast delivered a move with no directive", ErrInvalidWorld)
+		}
+		// HOW FAR IT WENT IS NOT KNOWN YET, and the zero is not a claim that
+		// it went nowhere. This function projects what the CONTEST decided;
+		// the distance and the blocker are the board's answer and are written
+		// onto this result by the route, before the record is taken. See
+		// [castPush].
+		return encounter.ActivationResult{
+			Kind:   encounter.ResultMoved,
+			Target: encounter.MemberID(imposed.RecipientID),
+			Ref:    spell.Ref,
+			Name:   spell.Name,
 		}, nil
 	default:
 		// A delivered kind this build has no case for is a resolution newer

@@ -447,8 +447,14 @@ func (m *Manager) runWalk(
 		// each cell of a driven walk exactly this way (encounter/clocks.go);
 		// this is the player's half of the same rule, and a walk that skipped
 		// it would mean a fighter takes the bite while a wolf never does.
+		//
+		// THE ZERO MoveStep, spelled out rather than assumed: a player's walk
+		// is the ordinary case the struct's zero value describes — nobody
+		// forced it and nothing caused it, so it provokes.
 		if err := (moverSeam{m: m, scope: scope}).Move(
-			ctx, scope.enc, encounter.MemberID(member), from, cell,
+			ctx, scope.enc, encounter.MoveStep{
+				Mover: encounter.MemberID(member), From: from, To: cell,
+			},
 		); err != nil {
 			return nil, fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, len(path), cell.X, cell.Y, err)
 		}

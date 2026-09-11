@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -108,11 +109,28 @@ const bardSaveDC = 13
 // candidate for one row and a shortfall on the other, which is the thing worth
 // pinning.
 func (s *CastSuite) scene(bard *character.Data, cells int, rolls ...int) {
-	s.sceneWithAllies(bard, nil, cells, rolls...)
+	s.build(bard, nil, nil, cells, rolls...)
 }
 
 func (s *CastSuite) sceneWithAllies(
 	bard *character.Data, allies []*character.Data, cells int, rolls ...int,
+) {
+	s.build(bard, allies, nil, cells, rolls...)
+}
+
+// sceneWithProps is the same fight with something drawn on the floor. Only the
+// push needs it: everything a cast did before this slice happened to creatures,
+// and the first thing that asks the MAP a question is a creature being shoved
+// into it.
+func (s *CastSuite) sceneWithProps(
+	bard *character.Data, props []encounter.PropInput, cells int, rolls ...int,
+) {
+	s.build(bard, nil, props, cells, rolls...)
+}
+
+func (s *CastSuite) build(
+	bard *character.Data, allies []*character.Data, props []encounter.PropInput,
+	cells int, rolls ...int,
 ) {
 	s.T().Helper()
 
@@ -156,6 +174,7 @@ func (s *CastSuite) sceneWithAllies(
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 40, 8)},
+			Props:   props,
 		},
 		Members:   members,
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -890,6 +909,90 @@ func (s *CastSuite) TestThunderclapIsOfferedAsAnAreaWithNobodyToAimAt() {
 	s.Zero(row.MaxTargets)
 }
 
+// TestThunderwaveIsOfferedAsACellToAimAt is the other half of the area offer,
+// and the reason TargetCell exists at all.
+//
+// Thunderclap's burst is centred on the caster and needs nothing from the
+// player. Thunderwave's cube hangs off the caster's own edge and has to be
+// POINTED, so the offer says a cell is wanted — and still carries no
+// candidates, because a cell is not a creature and there is nobody to choose
+// between.
+func (s *CastSuite) TestThunderwaveIsOfferedAsACellToAimAt() {
+	s.scene(castingBardWithSpells("bard", spells.Thunderwave), 1)
+
+	row := s.castRow(spells.Thunderwave)
+	s.Equal(session.TargetCell, row.TargetKind, "a caster-edge box is aimed, and a cell is what aims it")
+	s.Empty(row.Candidates, "there is nothing to choose between")
+	s.True(row.Available)
+}
+
+// cellOf is where the composition actually put somebody. Members are placed by
+// AUTHORED OFFSET and reported in absolute axial, so a test that aimed at the
+// offset it wrote would be aiming somewhere else.
+func (s *CastSuite) cellOf(member string) spatial.Position {
+	s.T().Helper()
+	where, err := s.mgr.Where(context.Background(), &session.WhereInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	return where.Position
+}
+
+// TestACellCastRefusesEveryAimButACellOfItsOwn.
+//
+// The cell is the only thing this cast takes from the player, so each of the
+// three ways of getting it wrong is REFUSED rather than repaired: a client that
+// believed it had pointed a spell somewhere must be told it had not, which is
+// the same argument the self and area arms make about a named target.
+func (s *CastSuite) TestACellCastRefusesEveryAimButACellOfItsOwn() {
+	s.scene(castingBardWithSpells("bard", spells.Thunderwave), 1)
+	ctx := context.Background()
+
+	s.Run("a cast with no cell is refused, and the refusal says so", func() {
+		_, err := s.mgr.Cast(ctx, &session.CastInput{
+			Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Thunderwave).ID,
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrBadCast)
+		s.Contains(err.Error(), "cell", "a refusal that does not name what is missing teaches nothing")
+	})
+
+	s.Run("the caster's own cell is not a direction", func() {
+		own := s.cellOf("bard")
+		_, err := s.mgr.Cast(ctx, &session.CastInput{
+			Session: "sess", Member: "bard", Cell: &own,
+			DeclarationID: s.castRow(spells.Thunderwave).ID,
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrBadCast)
+	})
+
+	s.Run("naming somebody is refused as it is for any derived cast", func() {
+		ahead := s.cellOf("skeleton")
+		_, err := s.mgr.Cast(ctx, &session.CastInput{
+			Session: "sess", Member: "bard", Cell: &ahead, Targets: []string{"skeleton"},
+			DeclarationID: s.castRow(spells.Thunderwave).ID,
+		})
+		s.Require().Error(err)
+		s.ErrorIs(err, session.ErrBadCast)
+	})
+}
+
+// TestAnAreaCastRefusesACellItWouldNeverRead is the guard read from the other
+// side. Thunderclap's burst is centred on the caster and has no direction to
+// take, so a cell arriving with it is a client aiming a spell that offers no
+// aim — and a cell silently discarded is a client that never finds out.
+func (s *CastSuite) TestAnAreaCastRefusesACellItWouldNeverRead() {
+	s.scene(castingBard("bard", spells.Thunderclap), 1)
+
+	ahead := s.cellOf("skeleton")
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", Cell: &ahead,
+		DeclarationID: s.castRow(spells.Thunderclap).ID,
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadCast)
+	s.Contains(err.Error(), "no cell")
+}
+
 // TestThunderclapCatchesTheCreatureStandingInIt is the whole capability, end to
 // end through the verb: content declared a shape, the composition said who was
 // standing in it, and the cast resolved against them — with the player naming
@@ -922,4 +1025,159 @@ func (s *CastSuite) TestAnAreaCastRefusesACallerThatNamesSomebody() {
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrBadCast)
+}
+
+// storyOf is every beat the bard's story holds, reduced to the four fields
+// these tests ask about, in delivered order.
+//
+// READ OFF THE STORY rather than off the verb's return value, because the ORDER
+// is the thing under test and only the story has one.
+type storyBeat struct {
+	Beat   string `json:"beat"`
+	Member string `json:"member"`
+	Cause  string `json:"cause"`
+	Result *struct {
+		Kind      string `json:"kind"`
+		Target    string `json:"target"`
+		Ref       string `json:"ref"`
+		Moved     *int   `json:"moved"`
+		StoppedBy string `json:"stopped_by"`
+	} `json:"result"`
+}
+
+func (s *CastSuite) storyOf(member string) []storyBeat {
+	s.T().Helper()
+	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+
+	out := make([]storyBeat, 0, len(entries))
+	for _, entry := range entries {
+		var beat storyBeat
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		out = append(out, beat)
+	}
+	return out
+}
+
+// TestThunderwaveShovesTheSkeletonAndTheStoryReadsInOrder is the whole slice
+// through the one verb: the bard points at a cell, the cube catches what is
+// standing in it, the failed save takes the thunder and is shoved — and the
+// pillar two cells out gives it one cell instead of two.
+//
+// # The order is the assertion
+//
+// Route is a pure computation and Direct is the walk, so they sit either side
+// of the record: the route is known before RecordCast, which lets the CAST's
+// own beat say how far the push went and what stopped it, and the walk happens
+// after it, which puts the movement beats where a client animates them. Thunder
+// first, then the slide.
+func (s *CastSuite) TestThunderwaveShovesTheSkeletonAndTheStoryReadsInOrder() {
+	// The pillar stands two cells past the skeleton, which is one cell past
+	// where a two-cell push would end. Authored offsets, the frame the scene
+	// places everybody in.
+	s.sceneWithProps(
+		castingBardWithSpells("bard", spells.Thunderwave),
+		blockingProps(spatial.Position{X: 4, Y: 1}),
+		1,
+		// The skeleton's save, then the one 2d8 every failure shares. A 1
+		// fails against any DC, and 10 thunder leaves a 13-hit-point skeleton
+		// standing — the dropped are not pushed, and this one must be pushed.
+		1, 5, 5,
+	)
+
+	ahead := s.cellOf("skeleton")
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", Cell: &ahead,
+		DeclarationID: s.castRow(spells.Thunderwave).ID,
+	})
+	s.Require().NoError(err)
+
+	s.Positive(s.storedSkeleton(), "a dropped skeleton is not pushed, and this test is about the push")
+	after := s.cellOf("skeleton")
+	s.NotEqual(ahead, after, "the skeleton was shoved")
+
+	story := s.storyOf("bard")
+	var recordedAt, walkedAt int
+	var moved *storyBeat
+	for i := range story {
+		switch {
+		case story[i].Result != nil && story[i].Result.Kind == "moved":
+			recordedAt = i
+			moved = &story[i]
+		case story[i].Beat == "moved" && story[i].Member == "skeleton":
+			walkedAt = i
+		}
+	}
+
+	s.Require().NotNil(moved, "the cast's own account of what its push achieved")
+	s.Require().NotNil(moved.Result.Moved)
+	s.Equal(1, *moved.Result.Moved, "one open cell, then the pillar")
+	s.Contains(moved.Result.StoppedBy, "pillar", "the beat names what got in the way")
+	s.Equal("skeleton", moved.Result.Target)
+	s.Equal(refs.Spells.Thunderwave().String(), moved.Result.Ref)
+
+	s.Require().Positive(walkedAt, "the walk wrote a movement beat")
+	s.Less(recordedAt, walkedAt, "thunder, then the slide")
+	s.Equal(refs.Spells.Thunderwave().String(), story[walkedAt].Cause,
+		"a step a creature chose carries no cause; this one names the spell")
+}
+
+// TestAShovedCreatureProvokesNobody is the directive's other half, and the one
+// a walk would get wrong. The skeleton leaves the bard's reach and the bard is
+// a player, so an ordinary step here would stop the whole fight to ask her
+// whether she swings. Nobody chose to leave anybody's reach, so there is
+// nothing to ask.
+func (s *CastSuite) TestAShovedCreatureProvokesNobody() {
+	s.sceneWithProps(
+		castingBardWithSpells("bard", spells.Thunderwave), nil, 1, 1, 5, 5)
+
+	ahead := s.cellOf("skeleton")
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", Cell: &ahead,
+		DeclarationID: s.castRow(spells.Thunderwave).ID,
+	})
+	s.Require().NoError(err, "a step that stopped to ask would be news here, and there is none")
+
+	for _, beat := range s.storyOf("bard") {
+		s.NotEqual("window-opened", beat.Beat, "nobody was asked about a shove")
+	}
+
+	afford, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bard"})
+	s.Require().NoError(err)
+	for _, declaration := range afford.Declarations {
+		s.NotEqual(session.VerbReact, declaration.Verb, "no reaction was offered against a push")
+	}
+}
+
+// TestTheShoveReachesTheClientAsATypedResult. The beat on the story is the
+// record; this is what a client actually decodes, and a result kind with no arm
+// in the projection arrives as a body nobody can read — a push that happened,
+// was recorded, and cannot be drawn.
+func (s *CastSuite) TestTheShoveReachesTheClientAsATypedResult() {
+	s.sceneWithProps(
+		castingBardWithSpells("bard", spells.Thunderwave),
+		blockingProps(spatial.Position{X: 4, Y: 1}), 1, 1, 5, 5)
+
+	ahead := s.cellOf("skeleton")
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", Cell: &ahead,
+		DeclarationID: s.castRow(spells.Thunderwave).ID,
+	})
+	s.Require().NoError(err)
+
+	var pushed *session.MoveImposedBody
+	for _, event := range s.beats(session.EventActivationResult) {
+		body, ok := event.Body.(session.ActivationResultBody)
+		s.Require().True(ok, "an activation result reached the bard as %T", event.Body)
+		if body.MoveImposed != nil {
+			pushed = body.MoveImposed
+		}
+	}
+
+	s.Require().NotNil(pushed, "the push reached the client as something it can read")
+	s.Equal("skeleton", pushed.Target)
+	s.Equal(1, pushed.MovedCells, "one open cell, then the pillar")
+	s.Contains(pushed.StoppedBy, "pillar")
+	s.Equal(refs.Spells.Thunderwave().String(), pushed.SourceRef)
+	s.Equal("Thunderwave", pushed.SourceName)
 }

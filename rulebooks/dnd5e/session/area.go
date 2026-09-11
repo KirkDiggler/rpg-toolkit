@@ -8,6 +8,7 @@ import (
 
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // UnresolvedReason says why a member a footprint caught could not be resolved
@@ -57,18 +58,24 @@ type areaCaught struct {
 // deriveAreaMembers works out who an area cast catches, by asking the
 // composition that owns placement.
 //
-// THIS SEAM ASKS; IT DOES NOT MEASURE. [encounter.Encounter.MembersWithin]
-// answers who is standing in a shape, because placement is the composition's
-// and it already answers the same question for an authored region. What happens
-// here is the part that is genuinely this seam's: converting the spell's feet
-// into the grid's cells, applying the projection the SPELL declared, and
+// THIS SEAM ASKS; IT DOES NOT MEASURE. [encounter.Encounter.MembersWithin] and
+// [encounter.Encounter.MembersCovered] answer who is standing in a shape,
+// because placement is the composition's and it already answers the same
+// question for an authored region. What happens here is the part that is
+// genuinely this seam's: applying the projection the SPELL declared, and
 // deciding which of the answer this build can resolve against.
 //
 // None of that is a rule. There is no die and no threshold the content did not
-// state — the radius is the profile's, and the exclusion is the profile's.
+// state — the size is the profile's, and the exclusion is the profile's. The
+// half-coverage threshold a box is judged by is not here either; it is the
+// composition's, beside the measurement it qualifies.
+//
+// cell is the cell a [TargetCell] cast was aimed at and is nil for every other
+// shape. It is a REFERENCE the caster picked: only its bearing from the caster
+// is read, so nothing here treats the creature standing on it as a target.
 func deriveAreaMembers(
 	enc *encounter.Encounter, profile *combatActions.CastProfile, casterID string,
-	roster []encounter.Member,
+	roster []encounter.Member, cell *spatial.Position,
 ) (*areaCaught, error) {
 	area := profile.Area
 	if area == nil {
@@ -101,21 +108,51 @@ func deriveAreaMembers(
 		return nil, fmt.Errorf("%w: caster %q is not on the roster", ErrBadCast, casterID)
 	}
 
-	switch area.Footprint.Origin {
-	case combatActions.AreaOriginCaster:
-	default:
-		return nil, fmt.Errorf("%w: unsupported area origin %q", ErrBadCast, area.Footprint.Origin)
-	}
-
+	// THE ORIGIN PICKS THE QUESTION, and each origin knows the one shape it
+	// can ask about. Both switches are closed: content this build has no arm
+	// for is refused rather than measured as whatever the nearest arm happens
+	// to be.
 	var caught []encounter.Member
 	var err error
-	switch area.Footprint.Shape {
-	case combatActions.AreaRadius:
-		caught, err = enc.MembersWithin(&encounter.MembersWithinInput{
-			Origin: origin.Position, RadiusCells: float64(cells),
+	switch area.Footprint.Origin {
+	case combatActions.AreaOriginCaster:
+		switch area.Footprint.Shape {
+		case combatActions.AreaRadius:
+			caught, err = enc.MembersWithin(&encounter.MembersWithinInput{
+				Origin: origin.Position, RadiusCells: float64(cells),
+			})
+		default:
+			return nil, fmt.Errorf("%w: unsupported area shape %q", ErrBadCast, area.Footprint.Shape)
+		}
+
+	case combatActions.AreaOriginCasterEdge:
+		if area.Footprint.Shape != combatActions.AreaBox {
+			return nil, fmt.Errorf("%w: unsupported area shape %q on a caster-edge origin",
+				ErrBadCast, area.Footprint.Shape)
+		}
+		if cell == nil {
+			// The door validates the cell against the offer, so reaching here
+			// without one is a caller that went around it. Fails closed: a
+			// direction chosen here would be a rule invented at the layer that
+			// only measures.
+			return nil, fmt.Errorf("%w: a caster-edge area needs a cell to aim at", ErrBadCast)
+		}
+		// FEET, NOT CELLS. The composition builds its own plane at
+		// FeetPerCell across the flats and places a footprint authored in the
+		// unit a rulebook writes spells in; handing it the floored cell count
+		// above would measure a fifteen-foot cube as three of something.
+		feet := float64(area.Footprint.SizeFeet)
+		var covered encounter.MembersCoveredOutput
+		covered, err = enc.MembersCovered(&encounter.MembersCoveredInput{
+			Footprint: spatial.Footprint{Box: &spatial.Box{W: feet, D: feet}},
+			Anchor:    origin.Position,
+			Toward:    *cell,
+			AtEdge:    true,
 		})
+		caught = covered.Members
+
 	default:
-		return nil, fmt.Errorf("%w: unsupported area shape %q", ErrBadCast, area.Footprint.Shape)
+		return nil, fmt.Errorf("%w: unsupported area origin %q", ErrBadCast, area.Footprint.Origin)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("area cast: %w", err)

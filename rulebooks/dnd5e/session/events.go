@@ -790,6 +790,9 @@ func activationResultBody(payload []byte) EventBody {
 
 		DamageType *string `json:"damage_type"`
 		SourceID   string  `json:"source_id"`
+
+		Moved     *int   `json:"moved"`
+		StoppedBy string `json:"stopped_by"`
 	}
 	if json.Unmarshal(resultPayload, &result) != nil || result.Target == "" {
 		return nil
@@ -807,6 +810,8 @@ func activationResultBody(payload []byte) EventBody {
 	_, reasonPresent := fields["reason"]
 	_, damageTypePresent := fields["damage_type"]
 	_, sourceIDPresent := fields["source_id"]
+	_, movedPresent := fields["moved"]
+	_, stoppedByPresent := fields["stopped_by"]
 	calculationRaw, calculationPresent := fields["calculation"]
 
 	healingNumericsPresent := amountPresent && requestedPresent && beforePresent && afterPresent &&
@@ -829,6 +834,12 @@ func activationResultBody(payload []byte) EventBody {
 	}
 	if result.Kind != encounter.ResultConditionApplied &&
 		result.Kind != encounter.ResultConditionRemoved && sourceIDPresent {
+		return nil
+	}
+	// THE SAME GUARD POINTED THE OTHER WAY, and the same one encounter makes
+	// before it writes the beat: every kind but Moved refuses the move facts,
+	// stated once so a kind added later cannot quietly start accepting one.
+	if result.Kind != encounter.ResultMoved && (movedPresent || stoppedByPresent) {
 		return nil
 	}
 	if raw, present := fields["source_id"]; present && isJSONNull(raw) {
@@ -919,6 +930,23 @@ func activationResultBody(payload []byte) EventBody {
 		body.ConditionRemoved = &ConditionRemovedBody{
 			Target: result.Target, Ref: *result.Ref, Name: *result.Name,
 			Reason: *result.Reason, SourceID: result.SourceID,
+		}
+	case encounter.ResultMoved:
+		// MOVED IS REQUIRED BY PRESENCE AND NOT BY VALUE, which is the whole
+		// difference between this arm and the damage one. The composition
+		// never omits the key, so a payload without it is a beat this build
+		// did not write — but the value it holds may honestly be zero, and
+		// refusing that would drop every push a wall refused.
+		if !identityPresent || calculationPresent || numericPresent ||
+			descriptionPresent || reasonPresent {
+			return nil
+		}
+		if !movedPresent || result.Moved == nil {
+			return nil
+		}
+		body.MoveImposed = &MoveImposedBody{
+			Target: result.Target, SourceRef: *result.Ref, SourceName: *result.Name,
+			MovedCells: *result.Moved, StoppedBy: result.StoppedBy,
 		}
 	case encounter.ResultCapacityGranted:
 		if refPresent || namePresent || reasonPresent || calculationPresent || !descriptionPresent ||
