@@ -548,7 +548,8 @@ func (s *JoinLongRestTestSuite) assertCompleteRest(got *character.Data) {
 	var opportunity conditions.OpportunityAttackConditionData
 	s.Require().NoError(json.Unmarshal(
 		effectWithRef(s.T(), got.Conditions, refs.Conditions.OpportunityAttack()), &opportunity))
-	s.False(opportunity.UsedThisTurn, "retained passive condition resets its mutable meter")
+	s.Equal(got.ID, opportunity.MemberID,
+		"the reactor is retained across a long rest, still seated on its holder")
 	s.Nil(effectWithRefOrNil(got.Conditions, refs.Conditions.Prone()),
 		"temporary conditions are removed")
 }
@@ -563,7 +564,7 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 		t.Fatalf("build Second Wind: %v", err)
 	}
 	opportunity, err := (&conditions.OpportunityAttackCondition{
-		MemberID: id, UsedThisTurn: true,
+		MemberID: id,
 	}).ToJSON()
 	if err != nil {
 		t.Fatalf("build Opportunity Attack: %v", err)
