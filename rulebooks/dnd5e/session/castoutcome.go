@@ -54,12 +54,20 @@ func castOutcome(
 			if resultErr != nil {
 				return nil, nil, resultErr
 			}
-			if applied.Kind == resolution.ImposedMove {
+			if applied.Kind == resolution.ImposedMove && applied.NotTaken == "" {
 				// THE BEAT IS BUILT HERE AND FINISHED LATER. How far the push
 				// went is the board's answer, not the contest's, and this
 				// function has no board. It is named by index rather than by
 				// pointer so nothing holds a reference into a slice that is
 				// still growing.
+				//
+				// A MOVE THAT WAS NOT TAKEN IS NOT A PUSH TO FINISH. The
+				// contest already answered it — the price went unpaid and
+				// nothing moves — so there is nothing for the board to route
+				// and nothing for the walk to walk. Its beat is already whole
+				// (imposedResult writes the zero and the reason), and
+				// collecting it here would ask the board how far a walk that
+				// never happened would have gone.
 				pushes = append(pushes, castPush{
 					target:   encounter.MemberID(applied.RecipientID),
 					move:     *applied.Move,
@@ -210,11 +218,20 @@ func imposedResult(
 		// the distance and the blocker are the board's answer and are written
 		// onto this result by the route, before the record is taken. See
 		// [castPush].
+		//
+		// UNLESS THE CONTEST ALREADY ANSWERED IT. A move priced at something
+		// the mover could not pay is not a move waiting on the board — it is a
+		// finished outcome the contest reached, and NotTaken is its reason. So
+		// it is written here, in the one place a zero distance is a claim: no
+		// cells, and the sentence saying why. Reporting it as an absent result
+		// would make "nothing pushed you" and "you had nothing left to spend"
+		// the same silence.
 		return encounter.ActivationResult{
-			Kind:   encounter.ResultMoved,
-			Target: encounter.MemberID(imposed.RecipientID),
-			Ref:    spell.Ref,
-			Name:   spell.Name,
+			Kind:      encounter.ResultMoved,
+			Target:    encounter.MemberID(imposed.RecipientID),
+			Ref:       spell.Ref,
+			Name:      spell.Name,
+			StoppedBy: imposed.NotTaken,
 		}, nil
 	default:
 		// A delivered kind this build has no case for is a resolution newer

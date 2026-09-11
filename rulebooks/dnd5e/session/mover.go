@@ -281,6 +281,12 @@ func (s moverSeam) offerStep(
 // before it builds the step. This function must not second-guess that: reading
 // a non-zero Cause as "suppress" would silence the one directive whose whole
 // point is that it does not.
+//
+// THAT DAY CAME. Dissonant Whispers ships, so the paragraph above describes
+// live traffic rather than a case being held open — and it is the reason
+// [Manager.React] can replay a held flee with the two fields its window does
+// not store. A mutant that read Cause when Forced is false would swallow every
+// swing the whisper is supposed to buy.
 func forcedBy(step encounter.MoveStep) *core.Ref {
 	if !step.Forced {
 		return nil

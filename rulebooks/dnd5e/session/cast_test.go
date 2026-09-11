@@ -1086,11 +1086,14 @@ func (s *CastSuite) TestThunderwaveShovesTheSkeletonAndTheStoryReadsInOrder() {
 	)
 
 	ahead := s.cellOf("skeleton")
-	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+	out, err := s.mgr.Cast(context.Background(), &session.CastInput{
 		Session: "sess", Member: "bard", Cell: &ahead,
 		DeclarationID: s.castRow(spells.Thunderwave).ID,
 	})
 	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	s.False(out.Paused,
+		"a shove suppresses the swings, so nobody was asked and the walk ran to its end")
 
 	s.Positive(s.storedSkeleton(), "a dropped skeleton is not pushed, and this test is about the push")
 	after := s.cellOf("skeleton")
