@@ -204,6 +204,49 @@ func (s *ContestHalfTestSuite) TestAMadeSaveAgainstAHalfGateDealsHalfRoundedDown
 	s.Equal(8, fixtures.sheet(out, heroID).HitPoints, "14 - 6, applied exactly once")
 }
 
+// THE TOTAL IS HALVED, NOT EACH POOL. Design §9 rejects per-pool halving by
+// name, and one pool cannot tell the two apart: every other scene here declares
+// a single pool, where Σfloor(cᵢ/2) and floor(Σcᵢ/2) are the same number.
+//
+// Two pools of the SAME type, rolling 13 and 3. The total halves to 8; halving
+// each pool first gives 6 + 1 = 7. The difference is exactly the rounding the
+// rule places once, at the end.
+func (s *ContestHalfTestSuite) TestTwoPoolsHalveTheirTotalRatherThanEachOther() {
+	fixtures := s.fixtures()
+	definition := whisperDefinition(saves.Half)
+	definition.Cast.Damage = []damage.Damage{
+		{Dice: whisperDice, Type: damage.Psychic},
+		{Dice: "1d4", Type: damage.Psychic},
+	}
+
+	machine, err := NewAction(&ActionInput{
+		Definition: definition,
+		AttackerID: bardID,
+		TargetIDs:  []string{heroID},
+		Roller:     &sequenceRoller{singles: []int{advantageRoll}, pair: []int{4, 5, 4, 3}},
+	})
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, castCost(), fixtures.bard(1))
+	s.Require().NoError(err)
+
+	target := s.castOutcome(out).Targets[0]
+	s.Require().True(target.Save.Succeeded)
+
+	dealt := target.Applied[0]
+	s.Equal(8, dealt.Amount, "sixteen halved once, not six and one halved separately")
+	s.Equal(8, dealt.Requested)
+	s.Require().NotNil(dealt.Calculation)
+	s.Equal(8, dealt.Calculation.Total)
+	s.Equal(16, diceSubtotal(dealt.Calculation), "both pools' faces are on the record")
+
+	halving := componentLabelled(dealt.Calculation, halvedBySaveLabel)
+	s.Require().NotNil(halving)
+	s.Require().NotNil(halving.Modifier)
+	s.Equal(-8, *halving.Modifier, "ONE reduction against the whole, not one per pool")
+	s.Equal(6, fixtures.sheet(out, heroID).HitPoints, "14 - 8")
+}
+
 // The discriminator. Same machine, same dice, one different word on the gate —
 // and a Negated gate still delivers nothing on a success.
 func (s *ContestHalfTestSuite) TestAMadeSaveAgainstANegatedGateStillDeliversNothing() {
@@ -264,6 +307,42 @@ func (s *ContestHalfTestSuite) TestHalfDamageStillOwesAConcentrationCheck() {
 	s.Equal(conditions.ConcentrationDCFloor, followUp.Save.Result.DC, "six psychic asks for the floor")
 	s.True(followUp.Save.Result.Success)
 	s.Require().Len(out.ConcentrationChecks, 1, "and the roll that kept it is the record")
+}
+
+// A second damage type is refused AT THE DOOR, not mid-delivery.
+//
+// The halving is one component and FinalDamage groups per damage type, so a
+// reduction big enough to sink the type it sits on would leave the trace
+// explaining a number combat.FinalDamage never produced. The guard inside the
+// delivery catches that — but it catches it with the cast already charged and
+// the save already rolled, which is the exact shape Start's own damage
+// preflight exists to prevent.
+func (s *ContestHalfTestSuite) TestAHalfGateOverTwoDamageTypesIsRefusedAtTheDoor() {
+	fixtures := s.fixtures()
+	definition := whisperDefinition(saves.Half)
+	// The scene that actually blows up today: the reduction is bigger than the
+	// pool it sits on, so FinalDamage drops the psychic group entirely and
+	// reports 20 while the trace explains 11.
+	definition.Cast.Damage = []damage.Damage{
+		{Dice: "1d4", Type: damage.Psychic},
+		{Dice: "4d6", Type: damage.Fire},
+	}
+
+	roller := &sequenceRoller{singles: []int{advantageRoll}, pair: []int{2, 5, 5, 5, 5}}
+	machine, err := NewAction(&ActionInput{
+		Definition: definition,
+		AttackerID: bardID,
+		TargetIDs:  []string{heroID},
+		Roller:     roller,
+	})
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, castCost(), fixtures.bard(1))
+	s.Require().ErrorIs(err, ErrBadGate)
+	s.Contains(err.Error(), "one damage type")
+	s.Require().Nil(out)
+	s.Len(roller.singles, 1, "the door refused before the save was rolled")
+	s.Len(roller.pair, 5, "and before a single damage die was")
 }
 
 // Half of a condition means nothing, so a contest that would deliver one is

@@ -255,15 +255,41 @@ type preparedCondition struct {
 // promised less than it did was refusing damage gates with a message about
 // conditions. The name now says what the function does.
 //
-// What is left to check here is one combination the gate cannot see for itself.
+// What is left to check here is what the gate cannot see for itself.
 // saves.SaveGate.Validate already refuses any word that is neither Negated nor
-// Half, so this adds the ownership question: HALF OF WHAT. Half a condition is
-// not a smaller condition and half a removal is not a partial one, so Half is
-// permitted only for a contest whose consequences are damage and, at most, the
-// move that damage's failure imposes. Recurrence is still refused outright:
-// shared action data permits it and this module resolves only the immediate
-// save.
-func validateGate(gate *saves.SaveGate, damageOnly bool) error {
+// Half, so this adds the ownership question: HALF OF WHAT.
+//
+// Half a condition is not a smaller condition and half a removal is not a
+// partial one, so Half is permitted only for a contest whose consequences are
+// damage and, at most, the move that damage's failure imposes.
+//
+// It must also be half of ONE DAMAGE TYPE. The halving is a single component
+// and combat.FinalDamage groups per type, so a reduction large enough to sink
+// the type it sits on leaves the trace explaining a number FinalDamage never
+// produced — measured at 1d4 psychic beside 4d6 fire, where the delivery
+// refused with "dealt 20, and its roll trace explains 11". That refusal is
+// correct and it is far too late: the cast is charged and the save is rolled
+// by then, which is the very shape Start's damage preflight exists to prevent.
+// A second type arrives with the spell that has one, and it brings a reduction
+// per type with it.
+//
+// Recurrence is still refused outright: shared action data permits it and this
+// module resolves only the immediate save.
+// contestShape is what a gate is validated AGAINST: the consequences a contest
+// declares, reduced to the two facts a Half gate's legality turns on.
+//
+// A struct rather than two bare bools because they are answers to the same
+// question — half of WHAT — and a caller that had to remember their order
+// would be one transposition away from permitting exactly what this refuses.
+type contestShape struct {
+	// damageOnly is true when damage is the whole of what a failure delivers.
+	damageOnly bool
+
+	// damageTypes is how many DISTINCT damage types the declared pools carry.
+	damageTypes int
+}
+
+func validateGate(gate *saves.SaveGate, shape contestShape) error {
 	if gate == nil {
 		return fmt.Errorf("%w: contest has no save gate", ErrNilInput)
 	}
@@ -275,10 +301,17 @@ func validateGate(gate *saves.SaveGate, damageOnly bool) error {
 			return fmt.Errorf("%w: unsupported save ability %q", ErrBadGate, ability)
 		}
 	}
-	if gate.OnSuccess == saves.Half && !damageOnly {
-		return fmt.Errorf(
-			"%w: half on a save is for damage only, and this contest delivers more than damage",
-			ErrBadGate)
+	if gate.OnSuccess == saves.Half {
+		if !shape.damageOnly {
+			return fmt.Errorf(
+				"%w: half on a save is for damage only, and this contest delivers more than damage",
+				ErrBadGate)
+		}
+		if shape.damageTypes != 1 {
+			return fmt.Errorf(
+				"%w: half on a save halves one damage type; a second type arrives with the spell "+
+					"that has one", ErrBadGate)
+		}
 	}
 	if gate.Recurrence != saves.RecurrenceNone {
 		return fmt.Errorf("%w: %q", ErrRecurrenceUnsupported, gate.Recurrence)
@@ -733,10 +766,13 @@ func halveDamage(
 			},
 			Modifier: &reduction,
 		},
-		// The FIRST pool's type, which is the whole of it while every gate that
-		// halves declares one. A spell that halves two types needs a reduction
-		// per type, because FinalDamage groups by type and a reduction sitting
-		// on the wrong group would not cancel anything.
+		// The first pool's type, which validateGate has already established is
+		// the ONLY type: a Half gate over two of them is refused at the door,
+		// because FinalDamage groups per type and one reduction can only
+		// cancel against one group. The guard below still compares this
+		// component's arithmetic against FinalDamage's, so if that door were
+		// ever widened without a reduction per type, the delivery would say so
+		// rather than quietly deal the wrong number.
 		DamageType: components[0].DamageType,
 	}), nil
 }
@@ -875,7 +911,7 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 	// whole of it. Nothing below this line depends on the order, and every
 	// other refusal still fires in the order it always did.
 	m.hasCondition = m.in.prepared != nil || m.in.Application.Ref != (core.Ref{})
-	if err := validateGate(m.in.Gate, m.damageOnly()); err != nil {
+	if err := validateGate(m.in.Gate, m.shape()); err != nil {
 		return nil, err
 	}
 
@@ -995,15 +1031,23 @@ func (m *contestMachine) chooseAbility(cast *Participants) (abilities.Ability, e
 	return best, nil
 }
 
-// damageOnly answers whether damage is the whole of what a failed save
-// delivers, which is the one shape a Half gate may take.
+// shape reduces what this contest declares to the facts a gate is judged
+// against.
 //
-// A declared MOVE does not disqualify it. The move is what the failure costs
-// and a made save never imposes one, so "half" still has exactly one thing to
-// halve — which is how Dissonant Whispers saves for half AND sends a creature
-// running when it does not.
-func (m *contestMachine) damageOnly() bool {
-	return len(m.in.Damage) > 0 && !m.hasCondition && m.in.Removal == nil
+// A declared MOVE does not disqualify a damage-only contest. The move is what
+// the failure costs and a made save never imposes one, so "half" still has
+// exactly one thing to halve — which is how Dissonant Whispers saves for half
+// AND sends a creature running when it does not.
+func (m *contestMachine) shape() contestShape {
+	types := make(map[damage.Type]struct{}, len(m.in.Damage))
+	for _, pool := range m.in.Damage {
+		types[pool.Type] = struct{}{}
+	}
+
+	return contestShape{
+		damageOnly:  len(m.in.Damage) > 0 && !m.hasCondition && m.in.Removal == nil,
+		damageTypes: len(types),
+	}
 }
 
 // atStake names what this save is against, which is the condition whenever one
