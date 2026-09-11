@@ -419,3 +419,56 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 		s.Equal(thunderwaveRef, call.Cause)
 	}
 }
+
+// TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo is the case a directed
+// walk has and a driven turn does not: the route was priced before the window
+// opened, and the window is exactly the stretch of time in which the map can
+// change under it. A door can shut, a creature can arrive.
+//
+// The walk stops where the floor stops it, silently, the way walkPath stops
+// for a wall — and DirectOutput.StoppedBy says which thing did it, which is
+// the question that field exists to answer and the route's own StoppedBy
+// cannot, because the cell was clear when the route was drawn.
+func (s *HeldTestSuite) TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo() {
+	s.Run("a later cell of the route is taken while the window is open", func() {
+		mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+		enc := s.scene(mover, &downList{})
+		_, err := s.flee(enc)
+		s.Require().NoError(err)
+
+		_, jerr := enc.Join(&encounter.JoinInput{
+			Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(8, 2), SpeedFeet: 30,
+		})
+		s.Require().NoError(jerr, "somebody arriving while a window is open is ordinary")
+
+		out, rerr := enc.ResumeDirective(context.Background())
+		s.Require().NoError(rerr, "a blocked cell stops the walk, it does not fail the verb")
+		s.False(out.Paused)
+		s.Equal(1, out.Moved, "the announced cell was taken; the one after it was not")
+		s.Equal(cellAt(7, 2), s.positionOf(enc, goblin))
+		s.Contains(out.StoppedBy, string(bob), "the walk names the thing that stopped it")
+	})
+
+	s.Run("the announced cell itself is taken while the window is open", func() {
+		mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+		enc := s.scene(mover, &downList{})
+		_, err := s.flee(enc)
+		s.Require().NoError(err)
+
+		_, jerr := enc.Join(&encounter.JoinInput{
+			Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(7, 2), SpeedFeet: 30,
+		})
+		s.Require().NoError(jerr)
+
+		before := len(mover.calls)
+		out, rerr := enc.ResumeDirective(context.Background())
+		s.Require().NoError(rerr)
+		s.Equal(0, out.Moved, "the cell the window was measuring against is not there any more")
+		s.False(out.Paused)
+		s.False(enc.Paused(), "and the hold is cleared, not left standing on a walk that cannot happen")
+		s.Equal(cellAt(6, 2), s.positionOf(enc, goblin))
+		s.Contains(out.StoppedBy, string(bob))
+		s.Equal(before, len(mover.calls),
+			"the announced cell is never re-announced, refused or not")
+	})
+}

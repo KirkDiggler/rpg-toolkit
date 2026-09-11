@@ -382,6 +382,41 @@ func (s *DirectiveTestSuite) awayScene() *encounter.Encounter {
 	return s.sceneOfCells(rectCells(0, 0, 7, 5), spatial.Position{X: 3, Y: 2}, spatial.Position{X: 4, Y: 2})
 }
 
+// allyCorridorScene is "may cross is not may stop" drawn as a floor: one
+// row-2 corridor with a FRIENDLY monster standing in it.
+//
+//	authored:  3    4    5    6    7
+//	row 2:     C    M    .    A    .
+//
+// bob is a monster like the goblin, so the two share a faction and the fold
+// calls bob's cell PassThrough rather than Blocked — crossable, and not a
+// place to stop. At budget 2 bob's cell is the FARTHEST the flood reaches; at
+// budget 3 the cell beyond it is, and the only way there is through him.
+func (s *DirectiveTestSuite) allyCorridorScene() *encounter.Encounter {
+	cells := []spatial.Position{{X: 3, Y: 2}, {X: 4, Y: 2}, {X: 5, Y: 2}, {X: 6, Y: 2}, {X: 7, Y: 2}}
+	return s.sceneOfCells(cells, spatial.Position{X: 3, Y: 2}, spatial.Position{X: 4, Y: 2},
+		encounter.MemberInput{
+			ID: bob, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
+			SpeedFeet: 30, Targeting: "closest",
+		})
+}
+
+// ringScene is the floor where running changes nothing: the caster's cell and
+// the six cells around it, so every cell the mover can reach is EXACTLY as far
+// from the caster as the cell it is standing on.
+//
+// It is the scene the two-cell pinnedScene is not. There the mover had nowhere
+// to walk at all, so "nowhere farther" and "nowhere" were the same sentence
+// and the strictly-farther rule never had to decide anything. Here there is
+// plenty of floor and the answer is still nowhere.
+func (s *DirectiveTestSuite) ringScene() *encounter.Encounter {
+	cells := []spatial.Position{
+		{X: 3, Y: 2},
+		{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 2}, {X: 3, Y: 3}, {X: 2, Y: 3}, {X: 2, Y: 2},
+	}
+	return s.sceneOfCells(cells, spatial.Position{X: 3, Y: 2}, spatial.Position{X: 4, Y: 2})
+}
+
 // pocketScene is the dead end that bends back.
 //
 // Two ways out of the mover's cell. One is two cells of open floor heading
@@ -416,7 +451,9 @@ func (s *DirectiveTestSuite) pinnedScene() *encounter.Encounter {
 // alice (the caster) and goblin (the mover) on it, with the suite's anchor and
 // mover cells set to match. It is lineScene's wiring with the floor as a
 // parameter.
-func (s *DirectiveTestSuite) sceneOfCells(cells []spatial.Position, caster, mover spatial.Position) *encounter.Encounter {
+func (s *DirectiveTestSuite) sceneOfCells(
+	cells []spatial.Position, caster, mover spatial.Position, extra ...encounter.MemberInput,
+) *encounter.Encounter {
 	s.casterCell = cellAt(int(caster.X), int(caster.Y))
 	s.moverCell = cellAt(int(mover.X), int(mover.Y))
 
@@ -436,14 +473,14 @@ func (s *DirectiveTestSuite) sceneOfCells(cells []spatial.Position, caster, move
 				Archetype: testArchetype, Lighting: fullLight(),
 			}},
 		},
-		Members: []encounter.MemberInput{
+		Members: append([]encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: caster},
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: mover,
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}},
 			},
-		},
+		}, extra...),
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().NoError(err)
@@ -490,6 +527,36 @@ func reachedStandableWithin(
 			continue
 		}
 		out[cell] = dist
+	}
+	return out
+}
+
+// reachedWithin is the same oracle WITHOUT the standable filter: every cell
+// the flood entered, stoppable or not. It is what lets a test say "the flood
+// reached the ally's cell and the fold is what refused it" rather than leaving
+// the two indistinguishable.
+func reachedWithin(
+	enc *encounter.Encounter, mover encounter.MemberID, from spatial.Position, budget int,
+) map[spatial.Position]int {
+	canvas, err := enc.Canvas()
+	if err != nil {
+		panic(err)
+	}
+	field, err := spatial.Field(canvas.GetGrid(), spatial.FieldInput{
+		Sources: []spatial.Position{from},
+		Passable: func(_, to spatial.Position) bool {
+			return enc.CellAt(encounter.CellAtInput{Cell: to, Mover: mover}).Passage != encounter.PassageBlocked
+		},
+		Limit: budget,
+	})
+	if err != nil {
+		panic(err)
+	}
+	out := make(map[spatial.Position]int, len(field.Dist))
+	for cell, dist := range field.Dist {
+		if cell != from {
+			out[cell] = dist
+		}
 	}
 	return out
 }
@@ -626,4 +693,79 @@ func (s *DirectiveTestSuite) TestAwayTiesAreStable() {
 	s.Require().True(found)
 	s.Equal(want, first.Path[len(first.Path)-1], "farthest, then shortest walk, then scan order")
 	s.Equal(wantWalk, len(first.Path), "and the walk to it is the flood's own shortest")
+}
+
+// TestAwayCrossesAnAllyAndDoesNotStopOnOne is 2014's rule for moving around
+// other creatures, which the flee obeys because it reads the same fold every
+// other route reads — not because it checks for allies.
+//
+// The two halves are asked of one floor at two budgets, so neither can pass by
+// accident of the other: at 2 the ally's cell is the farthest the flood
+// reaches and the route declines it; at 3 the cell past the ally wins and the
+// only way there is straight through him.
+func (s *DirectiveTestSuite) TestAwayCrossesAnAllyAndDoesNotStopOnOne() {
+	enc := s.allyCorridorScene()
+	allyCell := cellAt(6, 2)
+	s.Require().Equal(allyCell, s.cellOfMember(bob), "the ally stands where the scene says")
+
+	near, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveAway, Anchor: s.casterCell, Budget: 2,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(near.Path)
+	end := near.Path[len(near.Path)-1]
+	s.Equal(cellAt(5, 2), end, "it stops beside the ally, not inside him")
+	s.Greater(enc.Distance(s.casterCell, allyCell), enc.Distance(s.casterCell, end),
+		"and the cell it declined was the farther one, which is the whole point")
+	s.Require().Contains(reachedWithin(enc, goblin, s.cellOfMember(goblin), 2), allyCell,
+		"the flood did reach it; the fold is what refused it")
+
+	far, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveAway, Anchor: s.casterCell, Budget: 3,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(far.Path)
+	s.Equal(cellAt(7, 2), far.Path[len(far.Path)-1], "one more cell of budget reaches past him")
+	s.Contains(far.Path, allyCell, "and the way past him is through him")
+}
+
+// TestAwayRefusesToShuffleSidewaysWhenNothingIsFarther.
+//
+// Strictly farther, or nowhere. Every cell on the ring is the same distance
+// from the caster as the one the mover is standing on, so running anywhere on
+// it is running nowhere — and a flee that spent its whole speed to end up
+// equally close would be obeying the budget instead of the spell.
+func (s *DirectiveTestSuite) TestAwayRefusesToShuffleSidewaysWhenNothingIsFarther() {
+	enc := s.ringScene()
+	const budget = 6
+
+	start := s.cellOfMember(goblin)
+	here := enc.Distance(s.casterCell, start)
+	reached := reachedStandableWithin(enc, goblin, start, budget)
+	s.Require().NotEmpty(reached, "there is floor to walk on, which is what makes this a real refusal")
+	for cell := range reached {
+		s.Equal(here, enc.Distance(s.casterCell, cell), "every cell on the ring is equally close")
+	}
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveAway, Anchor: s.casterCell, Budget: budget,
+	})
+	s.Require().NoError(err)
+	s.Empty(out.Path, "equally far is not farther")
+	s.Contains(out.StoppedBy, "nowhere farther")
+	s.Equal(start, s.cellOfMember(goblin))
+}
+
+// TestAwayWithNoBudgetRoutesNowhere. Zero is unbounded to the field's own
+// Limit, so a route that asked it with zero would flood the whole floor and
+// hand a creature with no movement the far corner of the dungeon.
+func (s *DirectiveTestSuite) TestAwayWithNoBudgetRoutesNowhere() {
+	enc := s.awayScene()
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveAway, Anchor: s.casterCell, Budget: 0,
+	})
+	s.Require().NoError(err, "a pointless directive is legal, as RouteInput.Budget says")
+	s.Empty(out.Path)
+	s.Empty(out.StoppedBy, "nothing stopped it; it was never paid for")
 }
