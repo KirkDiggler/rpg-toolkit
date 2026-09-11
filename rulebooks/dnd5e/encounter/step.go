@@ -223,7 +223,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// refusal that named its occupant would confirm through a sentence what
 	// the map withholds. That is the concealed-door move law (rpg-project#351)
 	// applied to the contributors the fold added. SPATIAL STILL DECIDES the
-	// crossing: this asks the canvas the same question bfsShortestPath asks
+	// crossing: this asks the canvas the same question routeTo asks
 	// and adds no second answer, and moveMember below refuses it again either
 	// way.
 	crossingBlocked := placed && e.canvas.IsBoundaryMovementBlocked(here, to)
