@@ -64,7 +64,7 @@ func (s *KnownSpellsSuite) bardDraftWithoutCantrips() *Draft {
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:  []shared.SelectionID{"lute", "flute", "drum"},
-			Spells: []spells.Spell{spells.Bane},
+			Spells: []spells.Spell{spells.Bane, spells.Thunderwave},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
@@ -105,14 +105,16 @@ func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithSupportedKnowledgeAndRe
 	s.Equal([]string{
 		refs.Spells.TrueStrike().String(), refs.Spells.ViciousMockery().String(),
 	}, spellRefsAsStrings(char.KnownCantrips()))
-	s.Equal([]string{refs.Spells.Bane().String()}, spellRefsAsStrings(char.KnownSpells()))
+	s.Equal([]string{
+		refs.Spells.Bane().String(), refs.Spells.Thunderwave().String(),
+	}, spellRefsAsStrings(char.KnownSpells()), "both supported level-1 spells, not a pick between them")
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Maximum())
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Current())
 }
 
-// TestTheBardIsAskedForCantripsAndBane pins the supported acquisition surface
-// without widening either spell catalog.
-func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndBane() {
+// TestTheBardIsAskedForCantripsAndEveryLevelledSpellWeCanCast pins the
+// supported acquisition surface without widening either spell catalog.
+func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndEveryLevelledSpellWeCanCast() {
 	requirements := choices.GetClassRequirements(classes.Bard)
 
 	s.Require().NotNil(requirements)
@@ -127,13 +129,12 @@ func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndBane() {
 		"and with Blade Ward there are more options than picks, so the choice is a real one")
 	s.Require().NotNil(requirements.Spellbook)
 	s.Equal(choices.BardSpells1, requirements.Spellbook.ID)
-	s.Equal(1, requirements.Spellbook.Count)
 	s.Equal(1, requirements.Spellbook.SpellLevel)
 	s.Contains(requirements.Spellbook.Options, spells.Bane)
 	s.Contains(requirements.Spellbook.Options, spells.Thunderwave,
 		"the second levelled spell this build can cast, and the first that moves anybody")
-	s.Greater(len(requirements.Spellbook.Options), requirements.Spellbook.Count,
-		"so the levelled pick is a real choice too")
+	s.Equal(2, requirements.Spellbook.Count,
+		"and the bard learns both rather than picking one of two")
 	s.NotNil(requirements.Skills)
 	s.NotNil(requirements.Tools)
 }
@@ -151,7 +152,9 @@ func (s *KnownSpellsSuite) TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAnd
 
 	loaded, err := Load(ctx, persisted)
 	s.Require().NoError(err)
-	s.Equal([]string{refs.Spells.Bane().String()}, spellRefsAsStrings(loaded.KnownSpells()))
+	s.Equal([]string{
+		refs.Spells.Bane().String(), refs.Spells.Thunderwave().String(),
+	}, spellRefsAsStrings(loaded.KnownSpells()))
 	s.Equal([]string{
 		refs.Spells.TrueStrike().String(), refs.Spells.ViciousMockery().String(),
 	}, spellRefsAsStrings(loaded.KnownCantrips()))

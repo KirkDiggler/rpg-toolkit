@@ -33,7 +33,7 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 
 	s.Require().NotNil(req)
 	s.Equal(BardSpells1, req.ID)
-	s.Equal(1, req.Count)
+	s.Equal(2, req.Count, "the bard learns every level-1 spell this build can cast")
 	s.Equal(1, req.SpellLevel)
 	s.Contains(req.Options, spells.Bane)
 	s.Contains(req.Options, spells.Thunderwave)
@@ -44,8 +44,8 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 		s.Require().NotNil(data, "%s", option)
 		s.Equal(req.SpellLevel, data.Level, "%s is offered as a level-%d pick", option, req.SpellLevel)
 	}
-	s.Greater(len(req.Options), req.Count,
-		"more options than picks, so the levelled choice is a real one")
+	s.Equal(len(req.Options), req.Count,
+		"and knows all of them: the count tracks the supported catalogue rather than rationing it")
 	s.Equal(4, classes.ClassData[classes.Bard].SpellsKnown,
 		"the supported choice count must not rewrite factual class progression")
 }
