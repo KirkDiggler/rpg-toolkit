@@ -6,12 +6,12 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
-	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.1-0.20260911012734-3c8bd921bd73
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.154.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.71.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.71.1-0.20260911014124-333e4a275653
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.40.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467

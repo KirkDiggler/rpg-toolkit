@@ -296,6 +296,13 @@ func kindFor(beat string) EventKind {
 		return EventDoorRevealed
 	case "region_revealed":
 		return EventRegionRevealed
+	// A change in one recipient's own perception. The composition exports
+	// this string by name, as it does for the two window beats, precisely
+	// because this decoder was written against it in the same wave — so a
+	// rename fails to compile here instead of quietly producing a beat
+	// nobody renders.
+	case encounter.BeatSighted:
+		return EventSighted
 	// The holdings verbs, named by what the record says (rpg-project#368
 	// §4.1). "looted", "held" and "dropped" are the composition's own words
 	// for what it did, so they cross unchanged — unlike "down"/"downed"
@@ -571,6 +578,21 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Region: p.Region, Props: p.Props, Boundaries: p.Boundaries,
 			Segments: p.Segments, Sealed: p.Sealed,
 		}
+	case EventSighted:
+		// REFUSED IF IT NAMES NOBODY. The composition appends this beat
+		// only because something changed and omits the half that did not,
+		// so a payload with neither list is not a quiet "nothing happened"
+		// — it is a beat that should never have been written, and a nil
+		// body says so rather than handing a client an empty change to
+		// act on.
+		var p struct {
+			Gained []string `json:"gained"`
+			Lost   []string `json:"lost"`
+		}
+		if json.Unmarshal(payload, &p) != nil || (len(p.Gained) == 0 && len(p.Lost) == 0) {
+			return nil
+		}
+		return SightedBody{Gained: p.Gained, Lost: p.Lost}
 	default:
 		// EventSceneOpened, EventTick: no body member exists for these — see
 		// EventBody's own doc.

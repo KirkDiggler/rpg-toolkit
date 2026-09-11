@@ -1140,3 +1140,71 @@ func decodeBeatBody(t *testing.T, payload string) EventBody {
 	_, body := decodeBeat([]byte(payload))
 	return body
 }
+
+// TestTheSightingBeatCrossesTheSeamNamed pins the kind mapping for the
+// composition's perception beat.
+//
+// Asserted against encounter.BeatSighted rather than the literal "sighted"
+// on purpose: the composition exports that constant precisely because this
+// decoder was written against it, so a rename over there fails to compile
+// here instead of quietly producing a beat nobody renders.
+func TestTheSightingBeatCrossesTheSeamNamed(t *testing.T) {
+	require.Equal(t, EventSighted,
+		testKindOf(`{"beat":"`+encounter.BeatSighted+`","gained":["goblin"]}`))
+}
+
+// TestASightingBodyCarriesBothHalvesIndependently pins that gained and lost
+// are separate lists rather than two readings of one, and that either may be
+// absent while the other stands.
+func TestASightingBodyCarriesBothHalvesIndependently(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload string
+		gained  []string
+		lost    []string
+	}{
+		{
+			name:    "somebody arrived",
+			payload: `{"beat":"sighted","gained":["goblin","orc"]}`,
+			gained:  []string{"goblin", "orc"},
+		},
+		{
+			name:    "somebody left",
+			payload: `{"beat":"sighted","lost":["goblin"]}`,
+			lost:    []string{"goblin"},
+		},
+		{
+			name:    "one of each, in one pass",
+			payload: `{"beat":"sighted","gained":["orc"],"lost":["goblin"]}`,
+			gained:  []string{"orc"},
+			lost:    []string{"goblin"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, body := decodeBeat([]byte(tc.payload))
+			sighted, ok := body.(SightedBody)
+			require.True(t, ok, "a sighting beat decodes to a SightedBody")
+			require.Equal(t, tc.gained, sighted.Gained)
+			require.Equal(t, tc.lost, sighted.Lost)
+		})
+	}
+}
+
+// TestASightingThatNamesNobodyIsRefused pins bodyFor's guard.
+//
+// The composition appends this beat only because something changed, and omits
+// the half that did not — so a payload naming nobody is not a quiet "nothing
+// happened", it is a beat that should never have been written. A nil body
+// says so rather than handing a client an empty change to act on. The KIND
+// still crosses, because a kind the seam understood must stay in the stream
+// to keep the recipient's sequence gapless.
+func TestASightingThatNamesNobodyIsRefused(t *testing.T) {
+	for _, payload := range []string{
+		`{"beat":"sighted"}`,
+		`{"beat":"sighted","gained":[],"lost":[]}`,
+	} {
+		kind, body := decodeBeat([]byte(payload))
+		require.Equal(t, EventSighted, kind, "the kind is still understood")
+		require.Nil(t, body, "but it names nobody, so there is no change to carry")
+	}
+}

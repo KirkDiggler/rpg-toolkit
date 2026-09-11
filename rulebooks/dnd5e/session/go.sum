@@ -14,6 +14,8 @@ github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0Dk
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0/go.mod h1:LRzXoz7Is2z6s4KWtVG6B68uunxJgE5qWdk14EtHlbk=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0 h1:89nU27faMf80JrIJlQeVeYacQIexkgBFzHomvXWyE/I=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.1-0.20260911012734-3c8bd921bd73 h1:XbUarRITQlsdtk0DT9EwH+Rh5+bUfmpKFr7ddWMgLpY=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.1-0.20260911012734-3c8bd921bd73/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
 github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0 h1:L9ozHqfxKo8Ca/z4EF/juHaDT62b343d43CRwW6kTlY=
 github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0/go.mod h1:IRzIF0Rp4mzlan3SxrRR41drGYsL3DY4p8oM7qRSBag=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0 h1:CefHnp1Cuk9BrIxWcrrAE+q+6k8n0krpcnka+lLyflk=
@@ -26,6 +28,8 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0 h1:hH7lU5maz2
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0/go.mod h1:REskYInq0+iizpuvHXL7q6jibRIBBTbiiXOpX9xuYzQ=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.71.0 h1:Z025pbnAqCA0KVsJ59VwbB9NEg19yoi/Kgb5xF2UIW8=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.71.0/go.mod h1:8SJ4bIqJ9A5+q0byP4YhgoYubqH8pI0bqbH9KYqCv/0=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.71.1-0.20260911014124-333e4a275653 h1:6q8+I0uO63H8OSnVFogRXqxCsHTk5WsDHM/k47WfP14=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.71.1-0.20260911014124-333e4a275653/go.mod h1:JgP0G7hVkSI3wpWsVkeHQWzZVQWEr7n6rjHb/bA1QXs=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.40.0 h1:5BjqpMaFZdKnzeLdrjJtSoNgpfevL4c1rW52he27XgA=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.40.0/go.mod h1:rmGmHTZSms0PvqqERLMnu9bk2x1tH7FIBBhoAfy7X7Q=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0 h1:FzCB2NbNS/BMRuKwEr8GRnadWJvdYermOs3smTd8Ss0=
