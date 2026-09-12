@@ -162,14 +162,22 @@ func TestParticipationIsRequiredWithoutChangingTheStandingFieldShape(t *testing.
 }
 
 func TestParticipationQuestionAndAnswerContract(t *testing.T) {
-	t.Run("stable complete question exactly once per pass", func(t *testing.T) {
+	// Stable and complete every time it is asked — not "asked only once".
+	// rpg-toolkit#1697 retired the "once per pass" reading of C8: first light
+	// now asks once from rebuildPercepts, to snapshot standing into the
+	// percept, and once more from noticeDown a moment later, to narrate a
+	// down beat and drive initiative. Both questions carry the identical
+	// sorted roster, which is the property worth pinning — a capability
+	// handed a differently-ordered roster on its second ask could legally
+	// answer differently, and nothing here would catch it.
+	t.Run("stable complete question every time it is asked", func(t *testing.T) {
 		capability := &scriptedParticipation{}
 		_, err := encounter.NewEncounter(participationSetup(capability,
 			encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
 			encounter.MemberInput{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
 		))
 		require.NoError(t, err)
-		require.Equal(t, [][]encounter.MemberID{{"alice", "zara"}}, capability.questions)
+		require.Equal(t, [][]encounter.MemberID{{"alice", "zara"}, {"alice", "zara"}}, capability.questions)
 	})
 
 	for _, tc := range []struct {

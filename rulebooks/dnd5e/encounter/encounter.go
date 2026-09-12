@@ -1918,6 +1918,30 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		return nil, err
 	}
 
+	// Asked once per refresh for the same reason, and beside sight and
+	// equipment rather than inside the pass, so that one pass writes one
+	// consistent reading of the world into every subject's testimony.
+	// Standing is a fact an observer can be WRONG about later, exactly like
+	// equipment and position, which is why it is snapshotted here rather than
+	// read live when somebody asks — see [SightTestimony].
+	//
+	// This choke point used to leave Down nil and cite C8 as the reason it
+	// could not ask participation a second time in one pass. That reading of
+	// C8 was wrong: C8 (design.md's composition laws) is "deciders may be
+	// stochastic; the composition itself is deterministic" — a rule about
+	// determinism, not a call budget, and "once per pass" appears nowhere in
+	// [Standing] or [participationState] either. noticeDown already asks
+	// participation again later in this same refresh (through applyTrigger),
+	// so the second question this choke point refused was never actually
+	// forbidden. Ruled 2026-09-12 (rpg-toolkit#1697): Assess is consistent,
+	// so a caller may ask it when it needs it. Nil now means only what
+	// testimony from a build that predates this field honestly says:
+	// standing was not observed.
+	down, err := e.standingNow()
+	if err != nil {
+		return nil, err
+	}
+
 	// SORTED, because a roster read off a map has no order at all — and every
 	// list downstream inherits whatever order it had. perception reports
 	// FirstContact and Refreshed in percept order, those reach a host as
@@ -1944,17 +1968,17 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		}
 		positions[subjectID] = cell
 
-		// Down is deliberately NOT set here yet. Standing is a fact an
-		// observer can be wrong about and therefore belongs in this
-		// snapshot — but the composition may ask its participation
-		// capability exactly once per pass (C8), and this choke point has
-		// no pass-scoped reading to draw on. Asking here is a second
-		// question, which the contract refuses. Nil is the honest value
-		// meanwhile: this build did not observe standing. See rpg-toolkit#1615.
+		// Standing comes from the pass-scoped reading taken above, beside
+		// sight and equipment — see the comment on [down] for why there was
+		// never a rule against asking participation twice. isDown is its own
+		// local so its address is a value for exactly this subject, not the
+		// range variable.
+		isDown := down[subjectID]
 		payload, perr := encodeSighting(SightTestimony{
 			State:     LocationKnown,
 			Position:  cell,
 			Equipment: hands[subjectID],
+			Down:      &isDown,
 		})
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
