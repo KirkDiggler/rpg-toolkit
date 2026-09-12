@@ -699,6 +699,11 @@ func directiveFor(declared *combatActions.CastMove, casterID string) *MoveDirect
 		AnchorID: casterID,
 		Cells:    declared.Cells,
 		Speed:    declared.Speed,
+		// Always false from a cast — the turn budget belongs to a move that IS
+		// somebody's turn, and a cast is never that. Copied anyway, so the day
+		// content declares one it is not silently dropped by a field this
+		// function forgot to carry.
+		Turn:     declared.Turn,
 		Pays:     declared.Pays,
 		Provokes: declared.Provokes,
 	}

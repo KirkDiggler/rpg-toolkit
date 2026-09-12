@@ -24,6 +24,14 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   `NewStrikeResumed` ([`strike.go`](./strike.go)), `NewAction`
   ([`action.go`](./action.go)), `NewMovement` ([`movement.go`](./movement.go)),
   `NewBoundary` ([`boundary.go`](./boundary.go)).
+- **The words a compelled creature obeys.** `Obey` ([`obey.go`](./obey.go)) —
+  one order's turn, answered in the same `ImposedEffect` vocabulary a cast's
+  consequences travel in, so the composition applies it the way it applies a
+  cast's. The set of words is CLOSED here and unexported, because what
+  "approach" means — toward the caster, on this turn's movement, provoking — is
+  a rule; content declares only the menu a client may choose from. The two
+  lists have to agree and nothing makes them, so a test pins content's menu
+  against the arms.
 - **The door, and the door pays.** `Machine.Start` is pure preflight; the cost
   is charged after it and before the first step — [`resolve.go:452-459`](./resolve.go),
   `payAtTheDoor` at [`cost.go:148`](./cost.go). A resolution nobody can pay for

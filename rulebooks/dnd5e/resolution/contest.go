@@ -138,10 +138,17 @@ type MoveDirective struct {
 	// board where the anchor is.
 	AnchorID string
 
-	// Cells is a fixed budget, and Speed says the budget is the mover's own
-	// speed instead. Exactly one of the two, as the declaration requires.
+	// Cells is a fixed budget, Speed says the budget is the mover's own speed
+	// instead, and Turn says it is whatever movement the mover has left on its
+	// own turn. Exactly one of the three, as the declaration requires.
 	Cells int
 	Speed bool
+
+	// Turn is the third budget, and it is only meaningful when the move IS the
+	// mover's turn — which is what [Obey] produces and what no cast declares.
+	// Whoever owns the board reads the remaining movement off the turn it is
+	// already tracking.
+	Turn bool
 
 	// Pays is what being moved costs the creature that is moved. Zero is
 	// nothing, which is the push.
@@ -638,7 +645,7 @@ func applyPreparedDamage(
 func validateMove(directive *MoveDirective) error {
 	declared := combatActions.CastMove{
 		Policy: directive.Policy, Cells: directive.Cells, Speed: directive.Speed,
-		Pays: directive.Pays, Provokes: directive.Provokes,
+		Turn: directive.Turn, Pays: directive.Pays, Provokes: directive.Provokes,
 	}
 	if err := declared.Validate(); err != nil {
 		return fmt.Errorf("%w: contest move: %w", ErrBadAction, err)
@@ -659,8 +666,11 @@ func validateMove(directive *MoveDirective) error {
 // third might too.
 func describeMove(directive MoveDirective) string {
 	budget := fmt.Sprintf("%d cells", directive.Cells)
-	if directive.Speed {
+	switch {
+	case directive.Speed:
 		budget = "their own speed"
+	case directive.Turn:
+		budget = "their own turn's movement"
 	}
 
 	return fmt.Sprintf("%s %s move of %s", articleFor(string(directive.Policy)), directive.Policy, budget)

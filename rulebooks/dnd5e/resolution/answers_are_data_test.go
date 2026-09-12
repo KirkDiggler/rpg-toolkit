@@ -153,6 +153,7 @@ var outcomeTypes = []reflect.Type{
 	reflect.TypeOf(BoundaryOutcome{}),
 	reflect.TypeOf(CastOutcome{}),
 	reflect.TypeOf(ContestOutcome{}),
+	reflect.TypeOf(ObeyOutcome{}),
 	reflect.TypeOf(StrikeOutcome{}),
 }
 

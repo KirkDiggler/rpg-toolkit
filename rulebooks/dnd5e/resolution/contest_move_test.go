@@ -458,3 +458,38 @@ func (s *ContestMoveTestSuite) TestASpeedBudgetIsDescribedAsIs() {
 	s.Equal("an away move of their own speed", moved.Description,
 		"and the article agrees with the policy word the second one brought")
 }
+
+// Toward is accepted exactly where Away is. It arrived with Command rather than
+// with a cast, so this is the proof that the directive road itself learned the
+// third policy rather than Obey learning a private one.
+func (s *ContestMoveTestSuite) TestATowardDirectiveTravelsWhereAnAwayOneDoes() {
+	fixtures := s.fixtures()
+	machine, err := s.shove(&combatActions.CastMove{
+		Policy: combatActions.MoveToward, Cells: 2,
+	}, straightRoll)
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, castCost(), fixtures.bard(1))
+	s.Require().NoError(err)
+
+	moved := s.castOutcome(out).Targets[0].Applied[1]
+	s.Require().Equal(ImposedMove, moved.Kind)
+	s.Require().NotNil(moved.Move)
+	s.Equal(combatActions.MoveToward, moved.Move.Policy)
+	s.Equal(bardID, moved.Move.AnchorID)
+	s.Equal("a toward move of 2 cells", moved.Description)
+}
+
+// The turn budget is copied out of the declaration rather than dropped, and it
+// is false for every cast that exists: a cast is never somebody's whole turn.
+// Copied anyway, so the day content declares one it is not lost by a field
+// directiveFor forgot to carry.
+func (s *ContestMoveTestSuite) TestTheTurnBudgetIsCarriedOutOfADeclaration() {
+	s.False(directiveFor(&combatActions.CastMove{
+		Policy: combatActions.MoveAway, Speed: true,
+	}, bardID).Turn, "no cast in content declares one")
+
+	s.True(directiveFor(&combatActions.CastMove{
+		Policy: combatActions.MoveToward, Turn: true,
+	}, bardID).Turn)
+}
