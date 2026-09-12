@@ -5,6 +5,7 @@ package perception
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -167,7 +168,11 @@ func (p *Perception) Held(observer core.EntityID) ([]Holding, error) {
 	return result, nil
 }
 
-// On returns what one observer holds about one subject.
+// On returns what one observer holds about one subject. Returns ErrNotHeld
+// if the observer holds nothing on it — intel's own not-held error is
+// translated to this package's sentinel, never passed through, so a caller
+// never has to import play/intel to ask the single most common question
+// this package answers.
 func (p *Perception) On(observer, subject core.EntityID) (Holding, error) {
 	if observer == "" {
 		return Holding{}, fmt.Errorf("on: %w", ErrNoObserver)
@@ -178,6 +183,9 @@ func (p *Perception) On(observer, subject core.EntityID) (Holding, error) {
 
 	h, err := p.intel.On(&intel.OnInput{Observer: observer, Subject: intel.Subject(subject)})
 	if err != nil {
+		if errors.Is(err, intel.ErrNotHeld) {
+			return Holding{}, fmt.Errorf("on: %w", ErrNotHeld)
+		}
 		return Holding{}, fmt.Errorf("on: %w", err)
 	}
 	return fromIntelHolding(h), nil

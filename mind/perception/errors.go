@@ -21,4 +21,14 @@ var (
 	ErrNoSubject = errors.New("empty subject")
 	// ErrNoObserver reports an empty observer ID.
 	ErrNoObserver = errors.New("empty observer")
+	// ErrNotHeld reports that an observer holds nothing on a subject. This
+	// is On's routine "nothing there" answer, not a wiring fault — unlike
+	// the four validation sentinels above, it is not caught before mutation,
+	// it IS the result. On translates intel's own not-held error into this
+	// one so a caller can dispatch on it without importing play/intel: the
+	// charter in doc.go says intel is never seen by callers, and a caller
+	// forced to check errors.Is(err, intel.ErrNotHeld) would make that
+	// false for exactly the error callers hit most often. Do not replace
+	// this translation with a bare wrap.
+	ErrNotHeld = errors.New("nothing held on subject")
 )

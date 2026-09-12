@@ -193,7 +193,7 @@ func (s *PerceptionSuite) TestObserverNeverPerceivesItself() {
 	s.Equal([]perception.Presence{{ID: goblin, Payload: []byte("wounded")}}, deltas[alice].FirstContact)
 
 	_, err = s.p.On(alice, alice)
-	s.Require().Error(err, "alice never held anything about itself, across any pass")
+	s.Require().ErrorIs(err, perception.ErrNotHeld, "alice never held anything about itself, across any pass")
 }
 
 // Case 7: observer reaches nothing → complete empty percept — everything it
@@ -262,7 +262,8 @@ func (s *PerceptionSuite) TestTwoObserversDoNotShareKnowledge() {
 	_, err = s.p.On(alice, goblin)
 	s.Require().NoError(err)
 	_, err = s.p.On(bob, goblin)
-	s.Require().Error(err, "bob never perceived the goblin; alice's knowledge did not leak to him")
+	s.Require().ErrorIs(err, perception.ErrNotHeld,
+		"bob never perceived the goblin; alice's knowledge did not leak to him")
 }
 
 // Case 10: payload is bytes that are not valid anything → round-trips
