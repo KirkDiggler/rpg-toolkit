@@ -115,6 +115,9 @@ Six things the design did not know before there was code:
 12. **The journal already refuses a belief**, and for its own reasons — but it is
     incurious about truth, so the discipline lives in the projection having no
     way to write.
+13. **A store's load checks are a list of what it cannot do.** Writing them is
+    the fastest way to find out whether the invariants were ever real, because
+    each one has to name a state the writer could not have produced.
 
 ## Leaving a run
 
@@ -223,19 +226,58 @@ reaches the ledger therefore holds for a different reason: the projection is the
 only thing that authors one, and it has no path to `Append` at all.
 
 **One piece of friction worth naming:** `journal` speaks `EntityID` and
-perception speaks `Observer`. Both strings, different types, so the composition
-converts at the seam. That is correct — neither module should learn the other's
-vocabulary — but it is a conversion somebody owns.
+perception speaks `Observer`. Both strings, different types, so these tests
+convert at the seam.
+
+That is not necessarily where it stays. `journal` was written when its own
+entities were all anybody had, and perception is its first outside user — so the
+right reading is that a shape is showing itself, not that a conversion has found
+its permanent home. Packages evolve as shapes appear.
 
 **A carried belief is only ever refreshed by carrying again.** Perceiving the
 same goblins in a later run mints new run-local handles and touches nothing a
 player holds. That is correct — nobody inside a run is reading the player's
 store — but it means the two stores only ever meet at a distillation.
 
+## Surviving the process
+
+`ToData` / `Load` on both stores, per play's leaf contract — round-trip the
+state, and **reject invalid state on load**.
+
+`TestKnowledgeSurvivesTheProcess` is the claim the whole carry story rests on,
+finally made real: a player's knowledge goes out through `encoding/json`,
+everything in memory is dropped, and a run months later is built from nothing but
+those bytes. The memory comes back a ghost, as old as it really is, still named —
+and the ranger still recognises the tunnels when he walks back in.
+
+**The refusals are the interesting half.** Every check names a state the store
+*cannot reach on its own*, so meeting one means the data came from somewhere else
+— a hand edit, a partial write, a version that disagreed — and continuing would
+mean trusting testimony nobody gave.
+
+| refused | because |
+|---|---|
+| an observer holding nothing | never-perceived and perceived-nothing would become indistinguishable in storage |
+| a track with no testimony | a track *is* its testimony; every reader of `Latest` assumes this cannot happen |
+| an entry repeating the one before it | the one shape neither verb can produce — see below |
+| a log that runs backwards | append-only, or the two stamps mean nothing |
+| confirmed before observed | a memory cannot be re-confirmed before it was made |
+| `unrelated` stored as a claim | no claim is not a claim; a stored one is a judgment nobody made |
+| a pair stored out of order | keys are normalised, so a second spelling would hide a duplicate |
+| a track named twice, or named nothing | an empty name is how naming is *retracted* |
+
+The sharpest one is the repeat. Two consecutive entries saying the same thing in
+the same place is exactly what `Surveil` and `Report` never write — identical
+content extends a watermark rather than appending. Loading one would turn a
+single belief that held for a while into two separate ones, and the difference
+between *still true* and *true again* is the whole reason there are two stamps.
+
+`TestNothingHeldIsNothingStored` keeps the common case free at rest too,
+including a claim made and then retracted: it leaves nothing behind to store.
+
 ## Deliberately absent
 
-Persistence (`ToData`/`Load…`), which play's contract requires of every leaf and
-this spike honours nowhere — "knowledge survives the run" is currently a claim
-about in-memory structs. Forgetting or compaction: a ghost is immortal here,
-which is probably correct and definitely unpaid-for. The `world` composer, the
-act loop, and any dependency on `encounter`, `spatial`, or `core`.
+Forgetting or compaction — a ghost is immortal here, which is probably correct
+and definitely unpaid-for. The `world` composer and the act loop, so nothing yet
+proves *acting* on a belief that is wrong. Any dependency on `encounter`,
+`spatial`, or `core`.

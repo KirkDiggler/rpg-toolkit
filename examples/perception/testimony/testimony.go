@@ -123,6 +123,10 @@ var (
 	// ErrChannelMismatch reports a percept landing on a track another channel
 	// owns. Tracks belong to exactly one channel for the life of the handle.
 	ErrChannelMismatch = errors.New("track belongs to another channel")
+	// ErrInvalidData reports persisted state this package could not have
+	// written. Every check that returns it names a state the store cannot
+	// reach, so meeting one means the data came from somewhere else.
+	ErrInvalidData = errors.New("invalid testimony data")
 	// ErrStampRegress reports a percept older than testimony already held on
 	// that track. Time only moves one way, and silently accepting a regress
 	// would let a stale percept overwrite a fresh one.
