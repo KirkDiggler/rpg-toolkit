@@ -26,6 +26,10 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
+	commanded, err := NewCommandedCondition("m1", "", "bard-1", "flee", 1)
+	if err != nil {
+		panic(err)
+	}
 
 	return map[string]dnd5eEvents.ConditionBehavior{
 		"raging":            &RagingCondition{CharacterID: "m1"},
@@ -49,6 +53,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"helped":            NewHelpedCondition("m1", "helper-1"),
 		"inspired":          NewInspiredCondition("m1", "bard-1", InspiredDie),
 		"blade_ward":        NewBladeWardCondition("m1", "", 2),
+		"commanded":         commanded,
 		"true_strike":       NewTrueStrikeCondition("m1", "goblin-1", ""),
 		"concentrating":     NewConcentratingCondition("m1", refs.Spells.TrueStrike().String(), TrueStrikeName, 2),
 		"baned":             baned,

@@ -255,6 +255,17 @@ var longRestCases = map[string]longRestCase{
 		expectedRef: refs.Conditions.OpportunityAttack(),
 		outcome:     longRestRetain,
 	},
+	refs.Conditions.Commanded().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"commanded"},
+			"member_id":"member-1","source_ref":"dnd5e:spells:command",
+			"caster_id":"bard-1","word":"flee","turn_ends_left":1
+		}`),
+		ownerID:       "member-1",
+		expectedRef:   refs.Conditions.Commanded(),
+		outcome:       longRestRemove,
+		removalReason: "long rest",
+	},
 	refs.Conditions.Concentrating().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"concentrating"},
