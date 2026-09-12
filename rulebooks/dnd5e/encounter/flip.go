@@ -281,7 +281,7 @@ func (e *Encounter) sweepPresence(at uint64) error {
 			}
 			if down == nil {
 				var err error
-				if down, err = e.standingNow(); err != nil {
+				if down, err = e.downNow(); err != nil {
 					return fmt.Errorf("presence transfer: %w", err)
 				}
 			}

@@ -117,14 +117,14 @@ type Sight interface {
 // sightNow asks the capability how far each member can see, right now, and
 // returns the answer keyed by member.
 //
-// The roster goes over SORTED, for C8's reason and [Encounter.standingNow]'s:
+// The roster goes over SORTED, for C8's reason and [Encounter.downNow]'s:
 // what a pass concludes must be a function of persisted data rather than of map
 // iteration order, and a capability handed its question in a different order
 // each time could answer differently each time. An empty roster is not a
 // question worth asking, and the capability is not called for one.
 //
 // The whole roster is asked about rather than only this refresh's observers,
-// which is the same choice [Encounter.standingNow] makes and for the same
+// which is the same choice [Encounter.downNow] makes and for the same
 // reason: the question a rulebook receives should not depend on which verb
 // happens to be running. Every caller of [Encounter.rebuildPercepts] passes the
 // roster anyway.

@@ -116,7 +116,7 @@ type Equipment interface {
 // question worth asking, and the capability is not called for one.
 //
 // The whole roster is asked about rather than only this refresh's observers,
-// which is the same choice [Encounter.sightNow] and [Encounter.standingNow]
+// which is the same choice [Encounter.sightNow] and [Encounter.downNow]
 // make and for the same reason: the question a rulebook receives should not
 // depend on which verb happens to be running.
 //

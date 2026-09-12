@@ -661,7 +661,7 @@ func (e *Encounter) finishPausedIntent(
 	// STANDING FIRST (ruling R6). A reaction that dropped the mover during
 	// the window ends the turn where they stood, and the announced step
 	// never happens.
-	downNow, derr := e.standingNow()
+	downNow, derr := e.downNow()
 	if derr != nil {
 		return 0, nil, false, fmt.Errorf("resume standing: %w", derr)
 	}
