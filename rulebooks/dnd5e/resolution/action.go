@@ -55,6 +55,24 @@ type ActionInput struct {
 	// the cast pays its price, delivers nothing, and records honestly.
 	AreaMembers []string
 
+	// Option is the id of the menu entry the caller chose, for a profile that
+	// offers one — Command's word.
+	//
+	// A CAST-TIME INPUT, the way an aimed cell is: content lists the menu on
+	// the profile, the client sends back one id, and the engine writes it into
+	// the parameters of every effect that names an OptionKey. It is not part of
+	// the definition, so a spell with three words is still one declaration and
+	// one selector.
+	//
+	// CHECKED HERE EVEN THOUGH THE CALLER ALREADY CHECKED IT. The host offers
+	// the menu and validates the choice against the offer it drew; this package
+	// validates it against the profile it is about to execute, and the two are
+	// not the same fact — an offer is a compiled snapshot and a definition is
+	// what runs. Empty on a profile with a menu, and an id the menu does not
+	// list, are both refused rather than resolved into a condition bound to a
+	// word nobody can obey.
+	Option string
+
 	Roller dice.Roller
 }
 
@@ -138,6 +156,9 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	if err := checkCastTargets(profile, definition.Ref, targetIDs); err != nil {
 		return nil, err
 	}
+	if err := checkCastOption(profile, definition.Ref, in.Option); err != nil {
+		return nil, err
+	}
 
 	cause := dnd5eEvents.SaveCause{
 		Trigger:      dnd5eEvents.SaveTriggerSpell,
@@ -177,9 +198,9 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 		var inner Machine
 		var err error
 		if profile.Save != nil {
-			inner, err = newGatedCast(definition, casterID, targetID, cause, in.Roller)
+			inner, err = newGatedCast(definition, casterID, targetID, in.Option, cause, in.Roller)
 		} else {
-			inner, err = newGatelessCast(definition, casterID, targetID)
+			inner, err = newGatelessCast(definition, casterID, targetID, in.Option)
 		}
 		if err != nil {
 			return nil, err
@@ -588,6 +609,33 @@ func checkCastTargets(profile *combatActions.CastProfile, ref core.Ref, targetID
 	return nil
 }
 
+// checkCastOption refuses a choice the profile's menu does not answer for,
+// before the door charges anybody.
+//
+// FAIL CLOSED IN BOTH DIRECTIONS, and the two refusals are different bugs. A
+// profile that offers a menu and receives nothing has lost the player's choice
+// somewhere between the client and here; a profile that offers no menu and
+// receives an id has a caller sending a word to a spell that has none. Either
+// one resolved rather than refused would land a condition configured by
+// whatever the factory defaults to, which for a compulsion is a creature
+// obeying an order nobody gave.
+//
+// It is [combatActions.CastProfile.HasOption] that answers, rather than a scan
+// written here: content owns what its menu contains, and an empty menu answers
+// false for every id, which is the second refusal for free.
+func checkCastOption(profile *combatActions.CastProfile, ref core.Ref, option string) error {
+	if len(profile.Options) > 0 && option == "" {
+		return fmt.Errorf("%w: %s offers %d options and the cast chose none",
+			ErrBadAction, ref.String(), len(profile.Options))
+	}
+	if option != "" && !profile.HasOption(option) {
+		return fmt.Errorf("%w: %s does not offer the option %q",
+			ErrBadAction, ref.String(), option)
+	}
+
+	return nil
+}
+
 // newGatedCast is a save and what failing it costs, which is exactly
 // [NewContest]. The saver is the creature the cast named; the damage and the
 // condition are the profile's, handed over as the contest's two consequences.
@@ -601,7 +649,7 @@ func checkCastTargets(profile *combatActions.CastProfile, ref core.Ref, targetID
 // on the same failed save arrives with its own customer, and it will widen the
 // contest rather than being smuggled through this branch.
 func newGatedCast(
-	definition combatActions.Definition, casterID, targetID string,
+	definition combatActions.Definition, casterID, targetID, option string,
 	cause dnd5eEvents.SaveCause, roller dice.Roller,
 ) (Machine, error) {
 	profile := definition.Cast
@@ -616,7 +664,7 @@ func newGatedCast(
 				"%w: %s contests a save and delivers to its caster, which no contest can do",
 				ErrBadAction, definition.Ref.String())
 		}
-		parameters, err := bindCounterpart(effect, casterID)
+		parameters, err := bindCast(effect, casterID, option)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
 		}
@@ -672,7 +720,7 @@ func directiveFor(declared *combatActions.CastMove, casterID string) *MoveDirect
 // either contested or a condition, and a branch that silently dropped a
 // declared damage pool would be the affordance-with-nothing-behind-it this
 // stack keeps finding.
-func newGatelessCast(definition combatActions.Definition, casterID, targetID string) (Machine, error) {
+func newGatelessCast(definition combatActions.Definition, casterID, targetID, option string) (Machine, error) {
 	profile := definition.Cast
 	if len(profile.Damage) > 0 {
 		return nil, fmt.Errorf("%w: %s deals damage with no save, which this module cannot yet deliver",
@@ -685,7 +733,7 @@ func newGatelessCast(definition combatActions.Definition, casterID, targetID str
 		if effect.Recipient == combatActions.CastRecipientTarget {
 			recipientID, counterpartID = targetID, casterID
 		}
-		parameters, err := bindCounterpart(effect, counterpartID)
+		parameters, err := bindCast(effect, counterpartID, option)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
 		}
@@ -724,21 +772,73 @@ func bindCounterpart(effect combatActions.CastEffect, counterpartID string) (jso
 			effect.Ref.String(), effect.CounterpartKey)
 	}
 
+	return writeParameter(effect.Ref, effect.Parameters, effect.CounterpartKey, counterpartID)
+}
+
+// bindCast writes BOTH of a cast's bindings onto one configuration: the other
+// party first, then the word the caller chose.
+//
+// Chained rather than computed side by side, because the two land on the same
+// object. Each binding reading the effect's own parameters would hand back a
+// configuration carrying one of them and not the other, and the factories
+// refuse a config missing either — so the binding that was made would be
+// refused as the binding that was not.
+func bindCast(effect combatActions.CastEffect, counterpartID, option string) (json.RawMessage, error) {
+	bound, err := bindCounterpart(effect, counterpartID)
+	if err != nil {
+		return nil, err
+	}
+
+	return bindOption(effect, bound, option)
+}
+
+// bindOption writes the CHOSEN WORD into the parameter the effect names, the
+// way bindCounterpart writes the other party into its own.
+//
+// It takes the parameters rather than reading the effect's, because it is the
+// second of two bindings onto one object — see bindCast, which is the only
+// caller and the reason this signature differs from its sibling's.
+//
+// An effect that names a key and receives nothing is REFUSED rather than bound
+// to the empty string. The menu was checked at the cast door against the
+// profile, so arriving here with no choice means a door was skipped, and a
+// compulsion carrying no word is an order the driver cannot read.
+func bindOption(
+	effect combatActions.CastEffect, parameters json.RawMessage, option string,
+) (json.RawMessage, error) {
+	if effect.OptionKey == "" {
+		return parameters, nil
+	}
+	if option == "" {
+		return nil, fmt.Errorf("condition %s binds %q to the cast's chosen option, and there is none",
+			effect.Ref.String(), effect.OptionKey)
+	}
+
+	return writeParameter(effect.Ref, parameters, effect.OptionKey, option)
+}
+
+// writeParameter puts one string under one key in a condition's configuration
+// and hands the whole object back.
+//
+// The parameters it is given may already carry a binding, so it re-reads them
+// rather than starting from the effect: what comes back is everything content
+// authored plus everything the engine has bound so far.
+func writeParameter(ref core.Ref, parameters json.RawMessage, key, value string) (json.RawMessage, error) {
 	fields := map[string]json.RawMessage{}
-	if len(effect.Parameters) > 0 {
-		if err := json.Unmarshal(effect.Parameters, &fields); err != nil {
-			return nil, fmt.Errorf("condition %s parameters are not an object: %w", effect.Ref.String(), err)
+	if len(parameters) > 0 {
+		if err := json.Unmarshal(parameters, &fields); err != nil {
+			return nil, fmt.Errorf("condition %s parameters are not an object: %w", ref.String(), err)
 		}
 	}
-	encoded, err := json.Marshal(counterpartID)
+	encoded, err := json.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("condition %s counterpart %q: %w", effect.Ref.String(), counterpartID, err)
+		return nil, fmt.Errorf("condition %s %s %q: %w", ref.String(), key, value, err)
 	}
-	fields[effect.CounterpartKey] = encoded
+	fields[key] = encoded
 
 	bound, err := json.Marshal(fields)
 	if err != nil {
-		return nil, fmt.Errorf("condition %s parameters: %w", effect.Ref.String(), err)
+		return nil, fmt.Errorf("condition %s parameters: %w", ref.String(), err)
 	}
 
 	return bound, nil

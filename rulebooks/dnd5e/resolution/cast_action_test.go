@@ -741,3 +741,141 @@ func (s *CastActionTestSuite) TestAContestWithNoSpellCauseStillSaysDamage() {
 
 	s.Require().Equal(dnd5eEvents.ConditionSourceDamage, seen[dnd5eEvents.ConditionProne])
 }
+
+// commandDefinition is Command as content compiles it: a WIS gate, a menu of
+// three words, and one effect that reads both the caster and the word.
+func commandDefinition() *combatActions.Definition {
+	return spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Command, SpellSaveDC: spellSaveDC})
+}
+
+func commandCost() *Cost {
+	return &Cost{
+		PayerID: bardID,
+		Profile: commandDefinition().Cost,
+		Turn:    &Turn{Number: mockeryTurn, Speed: mockerySpeed},
+	}
+}
+
+// THE HEADLINE FOR THE OPTION. Command is the first spell whose parameters are
+// not fully written by content: the caster comes from the cast and the WORD
+// comes from the player, and both have to be on the sheet for the compulsion to
+// mean anything.
+//
+// Asserted on a GATED cast, which is the half that nearly lost the binding: the
+// contest builds its one application through a different branch from the
+// gateless delivery's loop, so a binding wired on one path only would resolve
+// Command with an empty word and still look fine.
+func (s *CastActionTestSuite) TestTheChosenWordIsWrittenOnAGatedCast() {
+	for _, word := range []string{spells.CommandWordApproach, spells.CommandWordFlee, spells.CommandWordGrovel} {
+		s.Run(word, func() {
+			fixtures := s.fixtures()
+			machine, err := NewAction(&ActionInput{
+				Definition: *commandDefinition(), AttackerID: bardID,
+				TargetIDs: []string{heroID}, Option: word,
+				Roller: facedRoller{d20: 1, other: psychicFace},
+			})
+			s.Require().NoError(err)
+
+			out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+			s.Require().NoError(err)
+			outcome := s.castOutcome(out)
+			s.Require().Len(outcome.Targets, 1)
+			s.Require().False(outcome.Targets[0].Save.Succeeded, "a 1 misses a DC 13 Wisdom save")
+
+			stored := s.castParams(fixtures.sheet(out, heroID), refs.Conditions.Commanded().String())
+			s.Equal(word, stored[spells.CommandWordParameter], "the word the player chose")
+			s.Equal(bardID, stored[spells.CommandCasterParameter], "the caster the words are measured from")
+		})
+	}
+}
+
+// A made save leaves nothing behind, so there is no word on any sheet: the
+// option is bound at construction and the gate still decides whether it lands.
+func (s *CastActionTestSuite) TestAMadeSaveLeavesNoWordBehind() {
+	fixtures := s.fixtures()
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 20, other: psychicFace},
+	})
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+	s.Require().NoError(err)
+	s.Require().True(s.castOutcome(out).Targets[0].Save.Succeeded)
+	s.Empty(s.castOutcome(out).Targets[0].Applied, "Command has no damage, so a made save delivers nothing")
+	for _, data := range out.DirtyCharacters {
+		s.NotContains(fixtures.conditionRefs(data), refs.Conditions.Commanded().String(),
+			"%s came back to be saved carrying a compulsion nobody imposed", data.ID)
+	}
+}
+
+// The menu is re-checked HERE even though the host checked it against the offer
+// it drew, and each of these is a different way for the choice to go missing.
+func (s *CastActionTestSuite) TestACastIsRefusedForAChoiceItsProfileDoesNotOffer() {
+	for _, tc := range []struct {
+		name       string
+		definition *combatActions.Definition
+		option     string
+		contains   string
+	}{
+		{
+			name: "a menu and no choice", definition: commandDefinition(), option: "",
+			contains: "chose none",
+		},
+		{
+			name: "a word the spell does not know", definition: commandDefinition(), option: "halt",
+			contains: `does not offer the option "halt"`,
+		},
+		{
+			name: "a choice for a spell with no menu", definition: baneDefinition(),
+			option: spells.CommandWordFlee, contains: `does not offer the option "flee"`,
+		},
+	} {
+		s.Run(tc.name, func() {
+			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: psychicFace}}
+			machine, err := NewAction(&ActionInput{
+				Definition: *tc.definition, AttackerID: bardID,
+				TargetIDs: []string{heroID}, Option: tc.option, Roller: roller,
+			})
+			s.Require().ErrorIs(err, ErrBadAction)
+			s.Require().Contains(err.Error(), tc.contains)
+			s.Nil(machine)
+			s.Zero(roller.calls, "a choice the profile cannot answer for is refused before any die")
+		})
+	}
+}
+
+// The option key, like the counterpart key, is content's own: an effect that
+// names none keeps exactly the parameters it was authored with.
+func (s *CastActionTestSuite) TestTheOptionKeyIsWrittenWhereContentSaidAndNowhereElse() {
+	command := commandDefinition().Cast.Effects[0]
+
+	s.Run("both bindings land on one configuration", func() {
+		bound, err := bindCast(command, bardID, spells.CommandWordFlee)
+		s.Require().NoError(err)
+
+		var fields map[string]any
+		s.Require().NoError(json.Unmarshal(bound, &fields))
+		s.Equal(bardID, fields[spells.CommandCasterParameter])
+		s.Equal(spells.CommandWordFlee, fields[spells.CommandWordParameter])
+		s.Equal(float64(spells.CommandTurnEnds), fields["turn_ends"],
+			"content's own parameters survive both bindings")
+	})
+
+	s.Run("an effect that reads no option is untouched", func() {
+		mockery := combatActions.CastEffect{
+			Recipient: combatActions.CastRecipientTarget, Ref: *refs.Conditions.ViciousMockery(),
+			CounterpartKey: spells.ViciousMockeryCasterParameter,
+		}
+		bound, err := bindCast(mockery, bardID, spells.CommandWordFlee)
+		s.Require().NoError(err)
+		s.JSONEq(fmt.Sprintf(`{%q:%q}`, spells.ViciousMockeryCasterParameter, bardID), string(bound))
+	})
+
+	s.Run("an effect that reads the option and gets none is refused", func() {
+		_, err := bindOption(command, json.RawMessage(`{}`), "")
+		s.Require().Error(err)
+		s.Require().Contains(err.Error(), "the cast's chosen option")
+	})
+}
