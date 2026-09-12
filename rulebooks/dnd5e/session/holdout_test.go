@@ -85,7 +85,9 @@ func campSource(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("read the camp fixture: %v", err)
 	}
-	return string(raw)
+	// Local Windows module overrides read CRLF checkouts; published module
+	// archives use LF. The fixture edits below match logical lines in either.
+	return strings.ReplaceAll(string(raw), "\r\n", "\n")
 }
 
 // compileCamp compiles one source of the camp.

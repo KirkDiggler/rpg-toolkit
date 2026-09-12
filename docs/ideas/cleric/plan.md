@@ -1,6 +1,7 @@
 # Cleric contribution plan — Cure Wounds
 
-Updated 2026-09-12 against toolkit main `fd4cdade`.
+Design baseline: toolkit main `fd4cdade`. Session handoff updated 2026-09-12
+against main `ead003f0` after #1693, #1694, and #1695 merged.
 Implementation is authorized by the user in this conversation after their maintainer discussion.
 The external proposal still says approval requested; this records the user's authorization,
 not an invented GitHub approval or board status.
@@ -25,15 +26,19 @@ authorized. Verify live PR and release state when resuming; this sequence is
 not evidence that any PR has merged.
 
 Provider releases verified: #1693 is `rulebooks/dnd5e/v0.159.0`; #1694 is
-`rulebooks/dnd5e/encounter/v0.76.0`. Resolution #1695 consumes those real tags.
+`rulebooks/dnd5e/encounter/v0.76.0`; #1695 is
+`rulebooks/dnd5e/resolution/v0.44.0`. Session #1696 consumes all three real tags.
 
 The user decided that missing creature type must not block selection or healing.
 Only a known excluded type receives a paid no-effect result. Include the user
 before settling eligibility, missing-data defaults, compatibility, or new scope.
-Broad creature classification remains outside this slice. When advancing #1696,
-remove its now-unneeded `HealingTargetsInput.Excludes` argument and verify an
-untyped custom monster can be selected, healed, and saved using the resolution
-release. That session work remains pending until #1695 merges and is tagged.
+Broad creature classification remains outside this slice. Session #1696 removes
+the now-unneeded `HealingTargetsInput.Excludes` argument. Its acceptance tests
+verify selection, healing, payment, saved HP and exact story replay after JSON
+reload for monsters with missing or unknown refs and no explicit type. The full
+session suite and vet pass with released dependencies and no workspace override.
+The remaining handoff is review/merge of #1696 and its CI-issued session tag;
+API/protos/web adoption remains outside this slice.
 
 ### Intended behavior
 
