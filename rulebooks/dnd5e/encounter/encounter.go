@@ -1920,9 +1920,10 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		return nil, err
 	}
 
-	// Asked once per refresh for the same reason, and beside sight and
-	// equipment rather than inside the pass, so that one pass writes one
-	// consistent reading of the world into every subject's testimony.
+	// Read before the pass and never carried into it, for the same reason as
+	// sight and equipment above and beside them rather than inside the pass,
+	// so that one pass writes one consistent reading of the world into every
+	// subject's testimony.
 	// Standing is a fact an observer can be WRONG about later, exactly like
 	// equipment and position, which is why it is snapshotted here rather than
 	// read live when somebody asks — see [SightTestimony].
