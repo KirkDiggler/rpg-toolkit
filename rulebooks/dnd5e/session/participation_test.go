@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -14,11 +15,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/npcs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -398,4 +401,147 @@ func dwarfCharacterRecord(id string, hp int) *character.Data {
 			abilities.INT: 10, abilities.WIS: 10, abilities.CHA: 10,
 		},
 	}
+}
+
+// commandedBlob is what a landed Command leaves on a sheet, written through
+// the condition's own constructor so a change to the stored shape reaches this
+// test rather than passing it.
+func commandedBlob(t *testing.T, member, caster, word string) json.RawMessage {
+	t.Helper()
+	condition, err := conditions.NewCommandedCondition(
+		member, refs.Spells.Command().String(), caster, word, 1,
+	)
+	require.NoError(t, err)
+	raw, err := condition.ToJSON()
+	require.NoError(t, err)
+	return raw
+}
+
+// TestACommandedMemberIsDrivenWhoeverTheyAre is the seam's half of design
+// §5.1. The compulsion is on a sheet, so this is the only layer that can see
+// it, and the word it produces is the same for a player and for a monster:
+// nobody is asked, the slot is kept, the driver answers.
+func TestACommandedMemberIsDrivenWhoeverTheyAre(t *testing.T) {
+	player := dwarfCharacterRecord("fighter", 10)
+	player.Conditions = []json.RawMessage{commandedBlob(t, "fighter", "bard", "flee")}
+	skeleton, err := instantiate("skeleton", "dnd5e:monsters:skeleton")
+	require.NoError(t, err)
+	skeleton.Conditions = append(skeleton.Conditions,
+		commandedBlob(t, "skeleton", "bard", "approach"))
+	free := dwarfCharacterRecord("wizard", 10)
+
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{byID: map[string]*character.Data{
+			"fighter": player, "wizard": free,
+		}},
+		data: &SessionData{NPCs: []monster.Data{*skeleton}},
+		kinds: map[string]encounter.MemberKind{
+			"fighter": encounter.KindPlayer, "skeleton": encounter.KindMonster,
+			"wizard": encounter.KindPlayer,
+		},
+	}
+
+	snapshot, err := seam.participation(
+		[]encounter.MemberID{"fighter", "skeleton", "wizard"})
+	require.NoError(t, err)
+	require.Equal(t, []encounter.MemberParticipation{
+		{Member: "fighter", Contact: true, Conscious: true, Turn: encounter.TurnParticipationDriven},
+		{Member: "skeleton", Contact: true, Conscious: true, Turn: encounter.TurnParticipationDriven},
+		{Member: "wizard", Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait},
+	}, snapshot.assessment.Members)
+
+	require.Equal(t, LifeStateConscious, snapshot.views["fighter"].LifeState,
+		"a compelled member is not a hurt one: the life state is untouched")
+	require.True(t, snapshot.views["fighter"].attackTarget)
+}
+
+// TestADyingCommandedMemberStillAutoPasses is the ordering ruling made real.
+// Driven narrows Wait alone, so a fighter who is dying when the clock reaches
+// him dies on schedule rather than being marched across the room.
+func TestADyingCommandedMemberStillAutoPasses(t *testing.T) {
+	stabilized := dwarfCharacterRecord("stabilized", 0)
+	stabilized.DeathSaveState = &saves.DeathSaveState{Successes: 3, Stabilized: true}
+	stabilized.Conditions = []json.RawMessage{commandedBlob(t, "stabilized", "bard", "grovel")}
+	dead := dwarfCharacterRecord("dead", 0)
+	dead.DeathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
+	dead.Conditions = []json.RawMessage{commandedBlob(t, "dead", "bard", "grovel")}
+
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{byID: map[string]*character.Data{
+			"stabilized": stabilized, "dead": dead,
+		}},
+		kinds: map[string]encounter.MemberKind{
+			"stabilized": encounter.KindPlayer, "dead": encounter.KindPlayer,
+		},
+	}
+
+	snapshot, err := seam.participation([]encounter.MemberID{"stabilized", "dead"})
+	require.NoError(t, err)
+	require.Equal(t, []encounter.MemberParticipation{
+		{Member: "stabilized", Down: true, Turn: encounter.TurnParticipationAutoPass},
+		{Member: "dead", Down: true, Turn: encounter.TurnParticipationRemove},
+	}, snapshot.assessment.Members,
+		"AutoPass and Remove both outrank a compulsion")
+}
+
+// TestAnUnreadableConditionIsNotACompulsion pins the ruling this module
+// already made twice, against the plan, which asked for an error here.
+//
+// The character loader drops a condition it cannot parse and logs a warning;
+// an unreadable sheet refuses that member's OFFERS and not the whole read. So
+// bytes nobody can parse are not on the sheet, are never attached, and compel
+// nobody — and this function must not be stricter about the record than the
+// loader that produced it. A blob that does parse and is some other condition
+// is the same answer by the same path, which is why both are asserted here.
+func TestAnUnreadableConditionIsNotACompulsion(t *testing.T) {
+	broken := dwarfCharacterRecord("broken", 10)
+	broken.Conditions = []json.RawMessage{json.RawMessage(`{"ref":`)}
+	commanded := dwarfCharacterRecord("commanded", 10)
+	commanded.Conditions = []json.RawMessage{
+		json.RawMessage(`{"ref":`),
+		commandedBlob(t, "commanded", "bard", "flee"),
+	}
+
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{byID: map[string]*character.Data{
+			"broken": broken, "commanded": commanded,
+		}},
+		kinds: map[string]encounter.MemberKind{
+			"broken": encounter.KindPlayer, "commanded": encounter.KindPlayer,
+		},
+	}
+
+	snapshot, err := seam.participation([]encounter.MemberID{"broken", "commanded"})
+	require.NoError(t, err, "a byte the loader already threw away does not stop a fight")
+	require.Equal(t, []encounter.MemberParticipation{
+		{Member: "broken", Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait},
+		{Member: "commanded", Contact: true, Conscious: true, Turn: encounter.TurnParticipationDriven},
+	}, snapshot.assessment.Members,
+		"and a real compulsion beside it is still found")
+}
+
+// TestAnUncommandedSheetIsUntouched is the control the three above need: the
+// new lookup runs on every waiting member, so a member holding some OTHER
+// condition must still be waited for — the lookup matches one ref and not
+// "has conditions at all".
+func TestAnUncommandedSheetIsUntouched(t *testing.T) {
+	raging := dwarfCharacterRecord("fighter", 10)
+	raw, err := conditions.NewDodgingCondition("fighter").ToJSON()
+	require.NoError(t, err)
+	raging.Conditions = []json.RawMessage{raw}
+
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{byID: map[string]*character.Data{
+			"fighter": raging,
+		}},
+		kinds: map[string]encounter.MemberKind{"fighter": encounter.KindPlayer},
+	}
+
+	snapshot, err := seam.participation([]encounter.MemberID{"fighter"})
+	require.NoError(t, err)
+	require.Equal(t, encounter.TurnParticipationWait, snapshot.assessment.Members[0].Turn)
 }
