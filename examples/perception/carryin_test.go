@@ -18,14 +18,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
 )
 
+const (
+	// learnedAt is the run where bram first found the band.
+	learnedAt testimony.Stamp = 10
+	// returnedAt is the much later run he walks back in on.
+	returnedAt testimony.Stamp = 50
+)
+
 // whatBramTookHome runs one dungeon, has bram name the band on both channels,
 // and hands back the player's store and names.
-func whatBramTookHome(t *testing.T, at testimony.Stamp) (*testimony.Store, *belief.Beliefs) {
+func whatBramTookHome(t *testing.T) (*testimony.Store, *belief.Beliefs) {
 	t.Helper()
 
-	run := aRunWhereBramFindsGoblins(t, at)
-	require.NoError(t, run.Identify(bram, handle(sight, goblinBand), easternName, at))
-	require.NoError(t, run.Identify(bram, handle(hearing, goblinBand), easternName, at))
+	run := aRunWhereBramFindsGoblins(t, learnedAt)
+	require.NoError(t, run.Identify(bram, handle(sight, goblinBand), easternName, learnedAt))
+	require.NoError(t, run.Identify(bram, handle(hearing, goblinBand), easternName, learnedAt))
 
 	keeping, kept := testimony.New(), belief.New()
 	require.NoError(t, carry.Land(keeping, kept, playerBram,
@@ -35,10 +42,10 @@ func whatBramTookHome(t *testing.T, at testimony.Stamp) (*testimony.Store, *beli
 }
 
 // carriedIn starts a new run with bram already believing what he took home.
-func carriedIn(t *testing.T, mind reconcile.Reconciler, learnedAt testimony.Stamp) *perception.Game {
+func carriedIn(t *testing.T, mind reconcile.Reconciler) *perception.Game {
 	t.Helper()
 
-	keeping, kept := whatBramTookHome(t, learnedAt)
+	keeping, kept := whatBramTookHome(t)
 
 	g := perception.NewGame()
 	g.Mind(bram, mind)
@@ -56,14 +63,14 @@ func carriedIn(t *testing.T, mind reconcile.Reconciler, learnedAt testimony.Stam
 // TestCarryingIn proves the direction is the only thing that changes: a belief
 // arrives in a fresh run held, never current, and as old as it really is.
 func TestCarryingIn(t *testing.T) {
-	g := carriedIn(t, reconcile.Oblivious{}, 10)
+	g := carriedIn(t, reconcile.Oblivious{})
 
 	remembered := carry.Handle(easternName, sight)
 
 	memory, ok := g.Track(bram, remembered)
 	require.True(t, ok)
 	assert.False(t, memory.Current, "walking in believing something is not perceiving it")
-	assert.Equal(t, testimony.Stamp(10), memory.Latest().Confirmed,
+	assert.Equal(t, learnedAt, memory.Latest().Confirmed,
 		"the memory is as stale as it actually is, not as fresh as the new run")
 	assert.Equal(t, "a dozen of them", mustRead(t, memory.Latest().Payload).Note)
 
@@ -76,7 +83,7 @@ func TestCarryingIn(t *testing.T) {
 			Says:   map[testimony.Channel]projection.Says{sight: says(content.Creature, "goblin", "a dozen of them", tunnels)},
 		}},
 		Senses: senses(sight, []string{tunnels}, bram),
-		At:     50,
+		At:     returnedAt,
 	})
 	require.NoError(t, err)
 
@@ -87,7 +94,7 @@ func TestCarryingIn(t *testing.T) {
 
 	memory, ok = g.Track(bram, remembered)
 	require.True(t, ok)
-	assert.Equal(t, testimony.Stamp(10), memory.Latest().Confirmed,
+	assert.Equal(t, learnedAt, memory.Latest().Confirmed,
 		"and seeing it did not quietly refresh the memory")
 }
 
@@ -104,23 +111,23 @@ func TestRecognisingWhatYouRemember(t *testing.T) {
 	rememberedHeard := carry.Handle(easternName, hearing)
 	seen := handle(sight, goblinBand)
 
-	woodwise := carriedIn(t, reconcile.Woodwise{}, 10)
+	woodwise := carriedIn(t, reconcile.Woodwise{})
 	_, err := woodwise.Tick(projection.Input{
 		Presences: []projection.Presence{band},
 		Senses:    senses(sight, []string{tunnels}, bram),
-		At:        50,
+		At:        returnedAt,
 	})
 	require.NoError(t, err)
 
 	rel, at := woodwise.Relation(bram, remembered, seen)
 	assert.Equal(t, belief.Same, rel, "this is the band I remember")
-	assert.Equal(t, testimony.Stamp(50), at)
+	assert.Equal(t, returnedAt, at)
 
-	oblivious := carriedIn(t, reconcile.Oblivious{}, 10)
+	oblivious := carriedIn(t, reconcile.Oblivious{})
 	_, err = oblivious.Tick(projection.Input{
 		Presences: []projection.Presence{band},
 		Senses:    senses(sight, []string{tunnels}, bram),
-		At:        50,
+		At:        returnedAt,
 	})
 	require.NoError(t, err)
 
@@ -157,7 +164,7 @@ func TestTwoCurrentSightingsStillDoNotMerge(t *testing.T) {
 			},
 		},
 		Senses: senses(sight, []string{tunnels}, bram),
-		At:     50,
+		At:     returnedAt,
 	})
 	require.NoError(t, err)
 
@@ -174,7 +181,7 @@ func TestTwoCurrentSightingsStillDoNotMerge(t *testing.T) {
 // believes, he can still act on it, and the only thing that has changed is how
 // old the belief is.
 func TestAnEmptyRoomDoesNotDeleteYourMemory(t *testing.T) {
-	g := carriedIn(t, reconcile.Woodwise{}, 10)
+	g := carriedIn(t, reconcile.Woodwise{})
 
 	remembered := carry.Handle(easternName, sight)
 
@@ -184,7 +191,7 @@ func TestAnEmptyRoomDoesNotDeleteYourMemory(t *testing.T) {
 	// He looks. There is nothing there. The percept is complete and empty.
 	landings, err := g.Tick(projection.Input{
 		Senses: senses(sight, []string{tunnels}, bram),
-		At:     50,
+		At:     returnedAt,
 	})
 	require.NoError(t, err)
 	assert.Empty(t, landings[0].Delta.Faded,
@@ -194,7 +201,7 @@ func TestAnEmptyRoomDoesNotDeleteYourMemory(t *testing.T) {
 	require.True(t, ok, "he still believes there are goblins in the eastern tunnels")
 	assert.Equal(t, before.Entries, after.Entries, "nothing revised it")
 	assert.False(t, after.Current)
-	assert.Equal(t, testimony.Stamp(10), after.Latest().Confirmed,
+	assert.Equal(t, learnedAt, after.Latest().Confirmed,
 		"forty stamps stale, and nothing in the system has an opinion about that")
 
 	// Nothing invented a doubt on his behalf either, and nothing new arrived:
@@ -207,7 +214,7 @@ func TestAnEmptyRoomDoesNotDeleteYourMemory(t *testing.T) {
 // than resolved. He remembers a dozen goblins and is looking at three wolves;
 // both are his, side by side, and nothing chooses.
 func TestAFreshPerceptDoesNotCorrectAMemory(t *testing.T) {
-	g := carriedIn(t, reconcile.Oblivious{}, 10)
+	g := carriedIn(t, reconcile.Oblivious{})
 
 	_, err := g.Tick(projection.Input{
 		Presences: []projection.Presence{{
@@ -216,7 +223,7 @@ func TestAFreshPerceptDoesNotCorrectAMemory(t *testing.T) {
 			Says:   map[testimony.Channel]projection.Says{sight: says(content.Creature, "wolf", "three of them", tunnels)},
 		}},
 		Senses: senses(sight, []string{tunnels}, bram),
-		At:     50,
+		At:     returnedAt,
 	})
 	require.NoError(t, err)
 
