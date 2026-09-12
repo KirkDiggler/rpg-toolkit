@@ -87,12 +87,19 @@ func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartT
 // this turn's to spend. Shared by the turn-start verb and the freshness helper
 // so the two cannot drift into disagreeing about what a fresh turn looks like.
 func (c *Character) seedTurn(turnNumber, speed int) {
+	// Economy refresh and spell-turn history have independent identities.
+	// Preserve history here; the next explicit casting turn selects its scope.
+	var spellcasting combat.SpellTurnState
+	if c.actionEconomy != nil {
+		spellcasting = c.actionEconomy.Spellcasting
+	}
 	granted := make(map[GrantedActionKey]int)
 	if combat.ParticipationFor(c.lifeState()).NeedsDeathSave {
 		granted[GrantedDeathSaves] = 1
 	}
 
 	c.actionEconomy = &ActionEconomyData{
+		Spellcasting:          spellcasting,
 		TurnNumber:            turnNumber,
 		ActionsRemaining:      1,
 		BonusActionsRemaining: 1,
