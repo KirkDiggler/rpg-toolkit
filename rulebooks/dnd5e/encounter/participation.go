@@ -23,6 +23,13 @@ const (
 	// without client input whenever the slot becomes active.
 	TurnParticipationAutoPass TurnParticipation = "auto_pass"
 
+	// TurnParticipationDriven retains the initiative slot and hands the turn
+	// to the [TurnDriver] whoever the member is. A player in Driven is not
+	// waited for; the composition acts for them exactly as it acts for a
+	// monster. The rulebook owns the reason (a compulsion); the encounter
+	// owns only that nobody is asked.
+	TurnParticipationDriven TurnParticipation = "driven"
+
 	// TurnParticipationRemove transfers the member out of a turn bubble. The
 	// member remains on the map, in the encounter roster, and on the world
 	// clock. A Remove member cannot also report Contact; that incoherent answer
@@ -128,7 +135,7 @@ func (e *Encounter) participationNow() (*participationState, error) {
 			return nil, fmt.Errorf("participation: reported %q twice: %w", member.Member, ErrInvalidData)
 		}
 		switch member.Turn {
-		case TurnParticipationWait, TurnParticipationAutoPass:
+		case TurnParticipationWait, TurnParticipationAutoPass, TurnParticipationDriven:
 		case TurnParticipationRemove:
 			if member.Contact {
 				return nil, fmt.Errorf(

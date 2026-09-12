@@ -404,6 +404,16 @@ func (e *Encounter) driveTurnsWithParticipation(
 			if m.Kind == KindPlayer {
 				return wrapped, lastSeq, deltas, nil
 			}
+		case TurnParticipationDriven:
+			// NOBODY IS ASKED, WHOEVER THEY ARE — the empty arm IS the
+			// behaviour: the switch ends and the loop reaches
+			// driveOneMonsterTurn below without the Wait case's player
+			// check, so a compelled player's turn is taken by the
+			// TurnDriver exactly as a monster's is. The rulebook owns the reason a member is
+			// Driven; this module owns only that the clock does not rest
+			// here. Every player verb already refuses a member who does
+			// not hold the active slot, so a compelled player has no verb
+			// that could land while their own turn is being taken for them.
 		case TurnParticipationRemove:
 			// Removal is applied by the noticeDown participation pass before
 			// scheduling. A stale Remove here must not be interpreted as Wait
