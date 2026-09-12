@@ -4,9 +4,10 @@
 // Package encounter implements the free-roam encounter composition.
 //
 // An encounter is a composition with an outcome (Setup → play → Outcome).
-// This module is the courier between play/clock, play/intel, play/record,
-// and tools/spatial: it surveils percepts into intel, lets deciders act on
-// their own intel, and appends the story to record.
+// This module is the courier between play/clock, mind/perception,
+// play/record, and tools/spatial: it hands one perception pass the presences
+// and the geometry, lets deciders act on their own holdings, and appends the
+// story to record.
 // Members exit, encounters close; player activity pumps the clock, the world
 // thinks on the tick. Participation is supplied by the rulebook: Down writes
 // the story beat, Contact decides sides, and Turn independently retains,
@@ -15,11 +16,11 @@
 // retain turn order are likewise supplied group policy, never thresholds
 // inferred here; party defeat takes precedence.
 //
-// LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. play/intel stores channel-
+// LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. mind/perception holds channel-
 // sourced testimony opaquely; this composition gives sight payloads their
 // strict Known(position) or Unknown meaning. New payloads are tagged, legacy
 // untagged coordinates remain readable as known, and malformed or current-
-// unknown sight testimony is refused on load. Other Intel channel payloads
+// unknown sight testimony is refused on load. Other channels' payloads
 // remain uninterpreted.
 //
 // A fight-time [MonsterView] keeps current sight in Seen and held known

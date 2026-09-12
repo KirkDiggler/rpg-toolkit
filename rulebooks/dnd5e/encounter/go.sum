@@ -6,10 +6,12 @@ github.com/KirkDiggler/rpg-toolkit/events v0.6.2 h1:lRtKXko35bGw/l2TKYsN7JKOODUi
 github.com/KirkDiggler/rpg-toolkit/events v0.6.2/go.mod h1:JNzyCw1l/RL4nyoCpx3tSko8Dsocwye9eFg33Ot6mUw=
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbspR6748sO/KYqE=
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
+github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.0 h1:VYIxuWfy186jAmLJA/DzRbLydPeH9cvlVmAXtzYv2cY=
+github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.0/go.mod h1:oSmM7omgDmbPZNO3zPblmPQXbceVMQWxIcDJjm8EBqw=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0DkPBkSUwD/yX6bfK0i4XA=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0/go.mod h1:LRzXoz7Is2z6s4KWtVG6B68uunxJgE5qWdk14EtHlbk=
-github.com/KirkDiggler/rpg-toolkit/play/intel v0.2.0 h1:hbzajwi80Hz+mNxWSYBaT2hqJau4bbI4eQLKz/JU9H4=
-github.com/KirkDiggler/rpg-toolkit/play/intel v0.2.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0 h1:yX/5HaPKYJTIlGEywEKnQiQ+Vm/gGNOyHggxi0aJoOg=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0 h1:CefHnp1Cuk9BrIxWcrrAE+q+6k8n0krpcnka+lLyflk=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0/go.mod h1:URY6tA/joFr1iUmw7QHVFN5lzV9Aa214ygGmCGXk5dE=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.13.0 h1:Em99FSeKctJRKeH/sPYxoAougMdcI0vDE6kHHr4bwU8=

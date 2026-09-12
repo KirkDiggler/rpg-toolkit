@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -173,7 +172,7 @@ func (s *CanvasSuite) holds(observer, subject core.EntityID) bool {
 	view, err := s.enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
 	for _, h := range view {
-		if h.Subject == intel.Subject(subject) {
+		if h.Subject == subject {
 			return true
 		}
 	}

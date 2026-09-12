@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -86,8 +85,8 @@ func (s *ScenerySuite) seesNow(enc *encounter.Encounter, observer, subject core.
 	view, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
 	for _, h := range view {
-		if h.Subject == intel.Subject(subject) {
-			return h.Status == intel.Current
+		if h.Subject == subject {
+			return h.Current
 		}
 	}
 	return false

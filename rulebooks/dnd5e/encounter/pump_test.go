@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -43,13 +43,13 @@ func (p *patrolDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 
 // spyDecider records the Snapshot it was shown and returns a hold decision.
 type spyDecider struct {
-	capturedView []intel.Holding
+	capturedView []perception.Holding
 	capturedSnap encounter.Snapshot
 }
 
 func (s *spyDecider) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
 	// Capture the view (deep copy to persist it)
-	s.capturedView = make([]intel.Holding, len(snap.Holdings))
+	s.capturedView = make([]perception.Holding, len(snap.Holdings))
 	copy(s.capturedView, snap.Holdings)
 	s.capturedSnap = snap
 	return encounter.IntentHold{}, nil
@@ -173,7 +173,7 @@ type pursuitDecider struct {
 
 func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
 	for _, h := range snap.Holdings {
-		if h.Subject != intel.Subject(p.target) {
+		if h.Subject != p.target {
 			continue
 		}
 		var seen encounter.SightPayload
@@ -508,7 +508,8 @@ func (s *PumpTestSuite) TestPumpPartialAbort() {
 
 // TestPumpMutatingDeciderCannotCorrupt is the composed-system aliasing
 // pin: a decider that scribbles on its view must not corrupt encounter
-// state (the protection is intel.HeldBy's documented copy-out — pinned
+// state (the protection is intel's documented copy-out, carried through
+// mind/perception's Held — pinned
 // in play/intel; this test pins the composed guarantee end to end).
 func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 	vandal := &vandalDecider{}
@@ -1370,7 +1371,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinView, err := enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1)
-	s.Equal(intel.Current, goblinView[0].Status, "precondition: goblin must see alice before she leaves")
+	s.True(goblinView[0].Current, "precondition: goblin must see alice before she leaves")
 
 	// Seeing each other started a fight (rpg-toolkit#964), and a fight member
 	// cannot free-roam. Alice breaks off before she runs — which is the story
@@ -1389,7 +1390,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinView, err = enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1, "the ghost is HELD, not gone")
-	s.Equal(intel.Held, goblinView[0].Status, "the wall took her — goblin's sight of her fades")
+	s.False(goblinView[0].Current, "the wall took her — goblin's sight of her fades")
 	var ghostSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &ghostSeen))
 	s.Equal(cellAt(10, 5), spatial.Position{X: ghostSeen.X, Y: ghostSeen.Y}, "the ghost holds alice at the doorway's far cell, her last-seen one")
@@ -1409,7 +1410,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinView, err = enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1)
-	s.Equal(intel.Current, goblinView[0].Status, "the monster holds alice Current again, having come through the doorway")
+	s.True(goblinView[0].Current, "the monster holds alice Current again, having come through the doorway")
 	var aliceSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &aliceSeen))
 	s.Equal(cellAt(13, 8), spatial.Position{X: aliceSeen.X, Y: aliceSeen.Y})

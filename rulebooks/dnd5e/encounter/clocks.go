@@ -11,8 +11,8 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -854,7 +854,7 @@ func (e *Encounter) executeTurnIntent(
 		// running.
 		budget.MovementFeet -= res.moved * FeetPerCell
 
-		intelDeltas, serr := e.settleWalk(activeID, audience, res.moved)
+		intelDeltas, serr := e.settleWalk(audience, res.moved)
 		if serr != nil {
 			return false, nil, serr
 		}
@@ -965,7 +965,7 @@ func (e *Encounter) executeTurnIntent(
 		// case's rule, for the Move case's reason.
 		budget.MovementFeet -= res.moved * FeetPerCell
 
-		intelDeltas, serr := e.settleWalk(activeID, audience, res.moved)
+		intelDeltas, serr := e.settleWalk(audience, res.moved)
 		if serr != nil {
 			return false, nil, serr
 		}
@@ -1200,22 +1200,22 @@ func (e *Encounter) walkPath(
 // frozen on a window shows the party a map from before the monster moved.
 // The resume runs it again for its own cells, which is the ordinary
 // incremental answer rather than a second copy of the first one.
-func (e *Encounter) settleWalk(activeID MemberID, audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
+//
+// AND IT DOES NOT EDIT ANYBODY'S MEMORY (rpg-toolkit#1691). There was a
+// correction here: a ghost the mover held on the cell the mover just arrived
+// on was rewritten to unknown, on the reasoning that the mover would have
+// noticed nobody was standing there. It went out with the adoption of
+// mind/perception, which deliberately exposes no way to write one observer's
+// testimony behind a pass. The ghost now keeps the position it last saw —
+// honest and stale, which is what a memory is — and how to draw a memory the
+// world has moved past is the client's decision, not this module's.
+func (e *Encounter) settleWalk(audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
 	if moved == 0 {
 		return nil, nil
 	}
 	intelDeltas, _, serr := e.refreshSight(audience)
 	if serr != nil {
 		return nil, fmt.Errorf("refresh sight: %w", serr)
-	}
-	corrected, cerr := e.correctArrivedLocations(activeID, uint64(e.clock.ToData().HighWater), intelDeltas[activeID])
-	if cerr != nil {
-		return nil, fmt.Errorf("correct arrived locations: %w", cerr)
-	}
-	if len(corrected) > 0 {
-		intelDeltas = mergeIntelDeltas(intelDeltas, map[MemberID]*IntelDelta{
-			activeID: {Corrected: corrected},
-		})
 	}
 	return intelDeltas, nil
 }
@@ -1252,7 +1252,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 
 	// The member's own holdings and nothing else (C2) — the same call
 	// Pump's own Decider consult makes for a Snapshot, one seam over.
-	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
+	holdings, err := e.intelLog.Held(m.ID)
 	if err != nil {
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}
@@ -1280,7 +1280,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	for _, h := range holdings {
 		// Only location testimony from the sight channel is meaningful here.
 		// Unknown testimony deliberately populates neither collection.
-		if h.Channel != intel.Sight {
+		if h.Channel != perception.Sight {
 			continue
 		}
 		subjectID := MemberID(h.Subject)
@@ -1294,7 +1294,9 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		}
 		pos := location.Position
 
-		if h.Status == intel.Held {
+		// A holding that is not current is a GHOST — a subject remembered
+		// from before rather than one being watched now.
+		if !h.Current {
 			path, reachable := e.routeToRemembered(m.ID, ownCell, pos)
 			if !reachable {
 				path = nil
@@ -1306,9 +1308,6 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 				DistanceCells: e.Distance(ownCell, pos),
 				Path:          path,
 			})
-			continue
-		}
-		if h.Status != intel.Current {
 			continue
 		}
 

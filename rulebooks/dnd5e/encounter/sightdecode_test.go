@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -171,9 +171,9 @@ func TestDecodeSightPayloadAgreesWithAViewsOwnPayload(t *testing.T) {
 	view, err := enc.View(&encounter.ViewInput{Member: alice})
 	require.NoError(t, err)
 
-	var holding *intel.Holding
+	var holding *perception.Holding
 	for i := range view {
-		if view[i].Subject == intel.Subject("skeleton-1") {
+		if view[i].Subject == "skeleton-1" {
 			holding = &view[i]
 		}
 	}

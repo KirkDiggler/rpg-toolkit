@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -34,7 +33,7 @@ import (
 //
 // # A transition, never a state
 //
-// [intel.SurveilOutput.Refreshed] fires on every pass for every perceived
+// [perception.Delta.Refreshed] fires on every pass for every perceived
 // subject. A beat on that would be a beat per observer per visible member
 // per refresh — every step, every monster action — and a client would learn
 // nothing from one arriving. So this beat is built from the two TRANSITIONS
@@ -87,9 +86,9 @@ func (e *Encounter) appendSightedBeats(
 		return nil
 	}
 
-	declaredSet := make(map[intel.Subject]struct{}, len(declared))
+	declaredSet := make(map[MemberID]struct{}, len(declared))
 	for _, id := range declared {
-		declaredSet[intel.Subject(id)] = struct{}{}
+		declaredSet[id] = struct{}{}
 	}
 
 	// Sorted, because deltas is a map and a story is a transcript. Two runs
@@ -108,8 +107,8 @@ func (e *Encounter) appendSightedBeats(
 		}
 
 		gained := make([]string, 0, len(delta.FirstContact)+len(delta.Reacquired))
-		for _, report := range delta.FirstContact {
-			gained = append(gained, string(report.Subject))
+		for _, presence := range delta.FirstContact {
+			gained = append(gained, string(presence.ID))
 		}
 		gained = appendSubjectStrings(gained, delta.Reacquired)
 		lost := appendSubjectStrings(make([]string, 0, len(delta.Faded)), delta.Faded)
@@ -138,7 +137,7 @@ func (e *Encounter) appendSightedBeats(
 		// one beat would have a client wonder which of the two it missed.
 		changed := make([]string, 0, len(declared))
 		if len(declaredSet) > 0 {
-			reacquired := make(map[intel.Subject]struct{}, len(delta.Reacquired))
+			reacquired := make(map[MemberID]struct{}, len(delta.Reacquired))
 			for _, subject := range delta.Reacquired {
 				reacquired[subject] = struct{}{}
 			}
@@ -214,7 +213,7 @@ func (e *Encounter) appendSightedBeats(
 // appendSubjectStrings appends subjects to out as strings. The caller sorts
 // what it builds — see the sort in appendSightedBeats for why the order these
 // arrive in cannot be trusted.
-func appendSubjectStrings(out []string, subjects []intel.Subject) []string {
+func appendSubjectStrings(out []string, subjects []MemberID) []string {
 	for _, subject := range subjects {
 		out = append(out, string(subject))
 	}

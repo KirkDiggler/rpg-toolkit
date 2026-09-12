@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -78,10 +77,10 @@ func TestVaultChase(t *testing.T) {
 	require.NoError(t, err, "beat 1: the map exists")
 	pursuit.doorways = atlas.Doorways
 
-	st, _ := seen(t, enc, alice, goblin)
-	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open corridor")
-	st, _ = seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees her back — intel is symmetric")
+	current, _ := seen(t, enc, alice, goblin)
+	require.True(t, current, "beat 1: alice sees the goblin across the open corridor")
+	current, _ = seen(t, enc, goblin, alice)
+	require.True(t, current, "beat 1: and the goblin sees her back — intel is symmetric")
 
 	// Seeing each other started the fight (rpg-toolkit#964). She breaks off
 	// to run — which is what a chase IS, and what this scene always showed
@@ -109,11 +108,11 @@ func TestVaultChase(t *testing.T) {
 	// cell each actually saw the other at, which the wall beside the gate is
 	// what makes possible. Standing IN the opening she was still visible; it
 	// takes the wall to hide her (rpg-toolkit#1106).
-	st, p := seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — the wall took her")
+	current, p := seen(t, enc, goblin, alice)
+	require.False(t, current, "beat 2: the goblin's sight of alice fades — the wall took her")
 	require.Equal(t, cellAt(10, 5), spatial.Position{X: p.X, Y: p.Y}, "beat 2: at the gate's far cell, the last place it saw her")
-	st, _ = seen(t, enc, alice, goblin)
-	require.Equal(t, intel.Held, st, "beat 2: alice loses the goblin too — symmetric")
+	current, _ = seen(t, enc, alice, goblin)
+	require.False(t, current, "beat 2: alice loses the goblin too — symmetric")
 
 	// ---- Beat 3: the pause (pause is free) ------------------------------
 	// The table closes the Discord activity mid-chase. The host persists
@@ -130,8 +129,8 @@ func TestVaultChase(t *testing.T) {
 	require.NoError(t, err, "beat 3: the suspended chase crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
-	st, p = seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Held, st, "beat 3: the ghost survived the reload")
+	current, p = seen(t, enc, goblin, alice)
+	require.False(t, current, "beat 3: the ghost survived the reload")
 	require.Equal(t, cellAt(10, 5), spatial.Position{X: p.X, Y: p.Y}, "beat 3: still at the gate's far cell — loading never re-derives sight")
 
 	// ---- Beat 4: the pursuit through the gate ---------------------------
@@ -150,8 +149,8 @@ func TestVaultChase(t *testing.T) {
 
 	// It's in her chamber now — this pump's own refreshSight already shows
 	// her Current again, where she stopped in beat 2.
-	st, p = seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Current, st, "beat 4: the goblin holds alice Current again, having come through the gate")
+	current, p = seen(t, enc, goblin, alice)
+	require.True(t, current, "beat 4: the goblin holds alice Current again, having come through the gate")
 	require.Equal(t, cellAt(14, 8), spatial.Position{X: p.X, Y: p.Y}, "beat 4: vault-local (4,8), anchored at (10,0) — one map")
 
 	// ---- Beat 5: sanctuary, in the far room ------------------------------

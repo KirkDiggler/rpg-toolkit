@@ -7,10 +7,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -121,7 +122,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// after the scene opens and before the fight it causes (sightedbeat.go).
 	// The holdings above are untouched by them: a sighting beat reports a
 	// change in intel, it does not make one.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3fQ==","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":7,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdfQ=="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdfQ=="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"intel":{"intel":{"holdings":{"g1":{"p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3fQ==","channel":"sight","confirmed":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjd9","channel":"sight","confirmed":1,"current_via":["sight"]}}}}},"log":{"next_seq":7,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdfQ=="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdfQ=="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -413,9 +414,9 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		// Find goblin holding - should be ghost, not current
 		var foundGoblin bool
 		for _, h := range holdings {
-			if h.Subject == intel.Subject("goblin") {
+			if h.Subject == "goblin" {
 				foundGoblin = true
-				s.Equal(intel.Held, h.Status, "reloaded ghost should still be held as ghost")
+				s.False(h.Current, "reloaded ghost should still be held as ghost")
 				break
 			}
 		}
@@ -691,7 +692,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 		// renamed tag fails this where a decoded comparison would not.
 		// (log carries the opening beat: a fresh encounter is born with
 		// its first story entry; clock/intel marshal {} per leaf laws.)
-		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":1,"y":2}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{"intel":{}},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":1,"y":2}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -756,7 +757,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// blob written before the flip lands nowhere on today's shape and is
 		// refused by name rather than read in the wrong frame (see
 		// dialect_test.go).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="},{"seq":4,"at":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0IjoiZW5kZWQiLCJlbmRpbmciOiJkb25lIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{"intel":{}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="},{"seq":4,"at":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0IjoiZW5kZWQiLCJlbmRpbmciOiJkb25lIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -902,9 +903,9 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		// Surgical belief edit: alice's holding of the goblin becomes a
 		// ghost (CurrentVia cleared) — legal intel data, divergent from
 		// the clear-LoS geometry.
-		holding := data.Intel.Holdings["playerA"]["goblin"]
+		holding := data.Intel.Intel.Holdings["playerA"]["goblin"]
 		holding.CurrentVia = nil
-		data.Intel.Holdings["playerA"]["goblin"] = holding
+		data.Intel.Intel.Holdings["playerA"]["goblin"] = holding
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
@@ -914,7 +915,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		view, err := enc2.View(&encounter.ViewInput{Member: "playerA"})
 		s.Require().NoError(err)
 		s.Require().Len(view, 1)
-		s.Equal(intel.Held, view[0].Status,
+		s.False(view[0].Current,
 			"the loaded belief (a ghost) must survive verbatim — a load that re-surveils would resurrect it to Current")
 	})
 }
@@ -1177,33 +1178,52 @@ func validEncounterData() encounter.EncounterData {
 	}
 }
 
-func setSightHolding(t *testing.T, data *encounter.EncounterData, payload []byte, currentVia []intel.Channel) {
+// setSightHolding gives the fixture one sight testimony, current or a ghost.
+//
+// THE NEW HOLDING IS BUILT FROM THE WIRE rather than from a struct literal.
+// The persisted holding is play/intel's own shape, which encounter stopped
+// naming when it adopted mind/perception (rpg-toolkit#1691) — perception's
+// charter is what makes the map reachable at all, and a persistence fixture
+// written as the bytes it is about is the honest form anyway.
+func setSightHolding(t *testing.T, data *encounter.EncounterData, payload []byte, current bool) {
 	t.Helper()
 	// The minimal fixture has no intel holdings, so use one deterministic
 	// observer/subject pair when the caller asks to add a testimony. Existing
 	// holdings are preserved if a richer fixture supplies them.
-	for observer, subjects := range data.Intel.Holdings {
+	for observer, subjects := range data.Intel.Intel.Holdings {
 		for subject, holding := range subjects {
-			if holding.Channel != intel.Sight {
+			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
 			}
 			holding.Payload = append([]byte(nil), payload...)
-			holding.CurrentVia = append([]intel.Channel(nil), currentVia...)
-			data.Intel.Holdings[observer][subject] = holding
+			holding.CurrentVia = holding.CurrentVia[:0]
+			if current {
+				holding.CurrentVia = append(holding.CurrentVia, "sight")
+			}
+			data.Intel.Intel.Holdings[observer][subject] = holding
 			return
 		}
 	}
-	if data.Intel.Holdings == nil {
-		data.Intel.Holdings = make(map[core.EntityID]map[intel.Subject]intel.HoldingData)
+
+	var via []string
+	if current {
+		via = []string{string(perception.Sight)}
 	}
-	if data.Intel.Holdings["p1"] == nil {
-		data.Intel.Holdings["p1"] = make(map[intel.Subject]intel.HoldingData)
-	}
-	payloadCopy := append([]byte(nil), payload...)
-	viaCopy := append([]intel.Channel(nil), currentVia...)
-	data.Intel.Holdings["p1"][intel.Subject("target")] = intel.HoldingData{
-		Payload: payloadCopy, Channel: intel.Sight, At: 1, CurrentVia: viaCopy,
-	}
+	wire, err := json.Marshal(map[string]any{
+		"holdings": map[string]any{
+			"p1": map[string]any{
+				"target": map[string]any{
+					"payload":     append([]byte(nil), payload...),
+					"channel":     string(perception.Sight),
+					"observed":    1,
+					"confirmed":   1,
+					"current_via": via,
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(wire, &data.Intel.Intel))
 }
 
 // TestLoadNilInputRejected pins the guard the Input signature introduced (#976).
@@ -1406,17 +1426,17 @@ func (s *DataTestSuite) TestLoadRejections() {
 
 func (s *DataTestSuite) TestLoadRejectsMalformedOrUnknownSightLocation() {
 	tests := []struct {
-		name       string
-		payload    []byte
-		currentVia []intel.Channel
+		name    string
+		payload []byte
+		current bool
 	}{
 		{name: "unknown carries coordinate", payload: []byte(`{"state":"unknown","x":1}`)},
-		{name: "current unknown", payload: []byte(`{"state":"unknown"}`), currentVia: []intel.Channel{intel.Sight}},
+		{name: "current unknown", payload: []byte(`{"state":"unknown"}`), current: true},
 	}
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			data := validEncounterData()
-			setSightHolding(s.T(), &data, tt.payload, tt.currentVia)
+			setSightHolding(s.T(), &data, tt.payload, tt.current)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Sight:     everyoneSeesTheWholeMap{},
 				Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data,
@@ -1428,7 +1448,7 @@ func (s *DataTestSuite) TestLoadRejectsMalformedOrUnknownSightLocation() {
 
 func (s *DataTestSuite) TestLoadAcceptsHeldUnknownSightLocation() {
 	data := validEncounterData()
-	setSightHolding(s.T(), &data, []byte(`{"state":"unknown"}`), nil)
+	setSightHolding(s.T(), &data, []byte(`{"state":"unknown"}`), false)
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data,
@@ -1654,10 +1674,10 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		s.Require().NoError(err)
 
 		holdings1, _ := enc1.View(&encounter.ViewInput{Member: "playerA"})
-		var goblinStatusBefore intel.Status
+		var goblinCurrentBefore bool
 		for _, h := range holdings1 {
-			if h.Subject == intel.Subject("goblin") {
-				goblinStatusBefore = h.Status
+			if h.Subject == "goblin" {
+				goblinCurrentBefore = h.Current
 				break
 			}
 		}
@@ -1668,17 +1688,17 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
 
 		holdings2, _ := enc2.View(&encounter.ViewInput{Member: "playerA"})
-		var goblinStatusAfter intel.Status
+		var goblinCurrentAfter bool
 		for _, h := range holdings2 {
-			if h.Subject == intel.Subject("goblin") {
-				goblinStatusAfter = h.Status
+			if h.Subject == "goblin" {
+				goblinCurrentAfter = h.Current
 				break
 			}
 		}
 
-		// Status must be preserved (ghost should NOT be re-surveiled to Current)
-		s.Equal(goblinStatusBefore, goblinStatusAfter, "re-surveil on load would change ghost to current")
-		s.Equal(intel.Held, goblinStatusAfter, "ghost should remain ghost")
+		// Currency must be preserved (ghost should NOT be re-surveiled to current)
+		s.Equal(goblinCurrentBefore, goblinCurrentAfter, "re-surveil on load would change ghost to current")
+		s.False(goblinCurrentAfter, "ghost should remain ghost")
 	})
 }
 
@@ -1716,11 +1736,17 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 	})
 }
 
-// TestRememberedArrivalCorrectionPersistsUnknown verifies that a lawful
-// driven-arrival correction survives ToData/LoadEncounter without being
-// silently re-surveiled, and that the next driven view treats the corrected
-// subject as neither Seen nor Remembered.
-func (s *DataTestSuite) TestRememberedArrivalCorrectionPersistsUnknown() {
+// TestRememberedArrivalTestimonyPersists verifies that the stale testimony a
+// driven arrival walked through survives ToData/LoadEncounter without being
+// silently re-surveiled, and that the next driven view still REMEMBERS the
+// subject on the cell it was last seen on.
+//
+// This used to assert the opposite — the arrival rewrote that memory to
+// unknown, and the reloaded view then held the subject as neither seen nor
+// remembered. Adopting mind/perception deleted the rewrite (rpg-toolkit#1691):
+// the memory is honest and stale, so the monster still remembers somebody
+// standing where it is now standing itself.
+func (s *DataTestSuite) TestRememberedArrivalTestimonyPersists() {
 	arrival := cellAt(3, 1)
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{
 		encounter.Move{Path: []spatial.Position{arrival}},
@@ -1730,7 +1756,6 @@ func (s *DataTestSuite) TestRememberedArrivalCorrectionPersistsUnknown() {
 
 	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
-	s.Require().Contains(out.IntelDeltas[goblin].Corrected, intel.Subject(billy))
 
 	data := enc.ToData()
 	nextDriver := &scriptedDriver{}
@@ -1740,13 +1765,14 @@ func (s *DataTestSuite) TestRememberedArrivalCorrectionPersistsUnknown() {
 	})
 	s.Require().NoError(err)
 
-	holding := requireHolding(s.T(), loaded, goblin, intel.Subject(billy))
-	s.Require().Equal(intel.Held, holding.Status)
-	requireUnknownLocation(s.T(), holding.Payload)
+	holding := requireHolding(s.T(), loaded, goblin, billy)
+	s.Require().False(holding.Current)
+	requireKnownLocation(s.T(), holding.Payload, arrival)
 
 	// Walk the persisted bubble back to Alice's turn. The next driven view is
-	// then built from the Held+Unknown holding, so Billy must not appear in
-	// either current or remembered sight.
+	// then built from that ghost, so Billy must appear as REMEMBERED — on the
+	// arrival cell, which is where the goblin itself now stands — and never as
+	// seen, because this fixture's sight reaches nothing.
 	next := out.Next
 	for _, want := range []encounter.MemberID{billy, carol, alice} {
 		s.Require().Equal(want, next)
@@ -1760,7 +1786,13 @@ func (s *DataTestSuite) TestRememberedArrivalCorrectionPersistsUnknown() {
 	for _, seen := range view.Seen {
 		s.Require().NotEqual(encounter.MemberID(billy), seen.ID)
 	}
+	var rememberedBilly bool
 	for _, remembered := range view.Remembered {
-		s.Require().NotEqual(encounter.MemberID(billy), remembered.ID)
+		if remembered.ID != encounter.MemberID(billy) {
+			continue
+		}
+		rememberedBilly = true
+		s.Require().Equal(arrival, remembered.Position)
 	}
+	s.Require().True(rememberedBilly, "the ghost the goblin walked through is still remembered")
 }

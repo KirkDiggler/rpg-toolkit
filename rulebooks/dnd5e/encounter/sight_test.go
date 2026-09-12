@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -104,16 +104,16 @@ func (s *SightSuite) theLongRow(sight encounter.Sight) *encounter.Encounter {
 // all. A subject that faded out of the percept is still HELD — a ghost of where
 // it was last seen — so a test about sight has to read the status, not just the
 // presence.
-func (s *SightSuite) held(enc *encounter.Encounter, observer, subject core.EntityID) (intel.Holding, bool) {
+func (s *SightSuite) held(enc *encounter.Encounter, observer, subject core.EntityID) (perception.Holding, bool) {
 	view, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
 	for _, h := range view {
-		if h.Subject == intel.Subject(subject) {
+		if h.Subject == subject {
 			return h, true
 		}
 	}
 
-	return intel.Holding{}, false
+	return perception.Holding{}, false
 }
 
 // sees reports whether the observer is CURRENTLY seeing the subject — sustained
@@ -121,7 +121,7 @@ func (s *SightSuite) held(enc *encounter.Encounter, observer, subject core.Entit
 func (s *SightSuite) sees(enc *encounter.Encounter, observer, subject core.EntityID) bool {
 	h, ok := s.held(enc, observer, subject)
 
-	return ok && h.Status == intel.Current
+	return ok && h.Current
 }
 
 // TestAMemberBeyondYourSightIsNotInYourPerceptAndOneInsideItIs is the slice in
@@ -297,7 +297,7 @@ func (s *SightSuite) TestHowFarSheCanSeeIsAskedAgainEveryTime() {
 
 	ghost, ok := s.held(enc, alice, bob)
 	s.True(ok, "but she remembers where he was")
-	s.Equal(intel.Held, ghost.Status)
+	s.False(ghost.Current, "and it is a ghost, not a live sighting")
 
 	// And it goes both ways: bob's own answer never changed, so he still sees
 	// her. Two members, two ranges, one geometry.

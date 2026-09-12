@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -84,8 +84,8 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 		s.Len(aliceView, 1, "alice should see exactly one holding (goblin)")
 
 		holding := aliceView[0]
-		s.Equal(intel.Subject(goblin), holding.Subject, "holding subject should be goblin")
-		s.Equal("current", string(holding.Status), "holding status should be Current")
+		s.Equal(goblin, holding.Subject, "holding subject should be goblin")
+		s.True(holding.Current, "holding should be current")
 
 		// Decode position payload into SightPayload
 		var payload encounter.SightPayload
@@ -99,8 +99,8 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 		s.Len(goblinView, 1, "goblin should see exactly one holding (alice)")
 
 		holding = goblinView[0]
-		s.Equal(intel.Subject(alice), holding.Subject, "holding subject should be alice")
-		s.Equal("current", string(holding.Status), "holding status should be Current")
+		s.Equal(alice, holding.Subject, "holding subject should be alice")
+		s.True(holding.Current, "holding should be current")
 
 		// Decode position
 		err = json.Unmarshal(holding.Payload, &payload)
@@ -686,7 +686,7 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Len(aliceView, 1, "alice should still see bob")
-		s.Equal(intel.Subject(bob), aliceView[0].Subject)
+		s.Equal(bob, aliceView[0].Subject)
 
 		// Decode alice's holding of bob—should be at bob's current position
 		var bobPayload encounter.SightPayload
@@ -698,7 +698,7 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 		bobView, err := enc.View(&encounter.ViewInput{Member: bob})
 		s.Require().NoError(err)
 		s.Len(bobView, 1, "bob should see alice")
-		s.Equal(intel.Subject(alice), bobView[0].Subject)
+		s.Equal(alice, bobView[0].Subject)
 
 		// Decode bob's holding of alice—should be at alice's NEW position
 		var alicePayload encounter.SightPayload
@@ -739,7 +739,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		aliceViewBefore, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Require().Len(aliceViewBefore, 1, "alice must initially see bob (geometry precondition)")
-		s.Require().Equal(intel.Current, aliceViewBefore[0].Status)
+		s.Require().True(aliceViewBefore[0].Current)
 
 		_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(10, 2)})
 		s.Require().NoError(err)
@@ -748,7 +748,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Require().Len(aliceView, 1, "the ghost is HELD, not gone")
-		s.Equal(intel.Held, aliceView[0].Status, "alice's sight of bob must fade behind the wall")
+		s.False(aliceView[0].Current, "alice's sight of bob must fade behind the wall")
 		var bobSeen encounter.SightPayload
 		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &bobSeen))
 		s.Equal(18.0, bobSeen.Y, "ghost holds bob at his last-seen position")
@@ -758,7 +758,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		bobView, err := enc.View(&encounter.ViewInput{Member: bob})
 		s.Require().NoError(err)
 		s.Require().Len(bobView, 1)
-		s.Equal(intel.Held, bobView[0].Status, "bob's sight of alice must fade too (symmetric)")
+		s.False(bobView[0].Current, "bob's sight of alice must fade too (symmetric)")
 		var aliceSeen encounter.SightPayload
 		s.Require().NoError(json.Unmarshal(bobView[0].Payload, &aliceSeen))
 		s.Equal(cellAt(2, 2), spatial.Position{X: aliceSeen.X, Y: aliceSeen.Y}, "bob's ghost of alice is at her PRE-move position")
@@ -1315,7 +1315,7 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 
 	bobSees := s.holdingOf(enc, bob, alice)
 	s.Require().Len(bobSees, 1, "bob watches her from across room-a")
-	s.Equal(intel.Current, bobSees[0].Status)
+	s.True(bobSees[0].Current)
 
 	// Into the opening. She is in room-b now, and bob is still looking at her
 	// straight down the doorway's row.
@@ -1325,7 +1325,7 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 
 	bobSees = s.holdingOf(enc, bob, alice)
 	s.Require().Len(bobSees, 1)
-	s.Equal(intel.Current, bobSees[0].Status, "a doorway is a window: crossing it does not hide her")
+	s.True(bobSees[0].Current, "a doorway is a window: crossing it does not hide her")
 	var seen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(bobSees[0].Payload, &seen))
 	s.Equal(cellAt(10, 5), spatial.Position{X: seen.X, Y: seen.Y}, "and he sees her where she actually is, on the far side")
@@ -1339,7 +1339,7 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 
 	bobSees = s.holdingOf(enc, bob, alice)
 	s.Require().Len(bobSees, 1, "the ghost is HELD, not gone")
-	s.Equal(intel.Held, bobSees[0].Status)
+	s.False(bobSees[0].Current)
 	s.Require().NoError(json.Unmarshal(bobSees[0].Payload, &seen))
 	s.Equal(cellAt(10, 5), spatial.Position{X: seen.X, Y: seen.Y}, "the ghost holds her last-seen cell — in the opening")
 }
@@ -1348,12 +1348,12 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 // or empty when they hold nothing at all.
 func (s *EncounterTestSuite) holdingOf(
 	enc *encounter.Encounter, observer, subject encounter.MemberID,
-) []intel.Holding {
+) []perception.Holding {
 	view, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
-	var out []intel.Holding
+	var out []perception.Holding
 	for _, h := range view {
-		if h.Subject == intel.Subject(subject) {
+		if h.Subject == subject {
 			out = append(out, h)
 		}
 	}
@@ -1569,7 +1569,7 @@ func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
 		s.Len(aliceViewAfter, 2, "alice should see charlie after join")
 		found := false
 		for _, h := range aliceViewAfter {
-			if h.Subject == intel.Subject(charlie) {
+			if h.Subject == charlie {
 				found = true
 				break
 			}
@@ -1745,7 +1745,7 @@ func (s *EncounterTestSuite) TestExitCarryForward() {
 
 		// Assert: carry includes alice's holdings (she saw bob)
 		s.Len(exitOut.Carry, 1, "alice should carry her holdings")
-		s.Equal(intel.Subject(bob), exitOut.Carry[0].Subject)
+		s.Equal(bob, exitOut.Carry[0].Subject)
 
 		// Assert: exit beat recorded
 		s.Require().Greater(exitOut.Seq, uint64(0))
@@ -1756,7 +1756,7 @@ func (s *EncounterTestSuite) TestExitCarryForward() {
 		// Bob still has the holding from before (alice hasn't been faded yet - that happens
 		// on next refreshSight). The holding should be "held" (not yet ghost).
 		s.Len(bobViewAfterExit, 1, "bob's cached holding remains until next refreshSight")
-		s.Equal(intel.Subject(alice), bobViewAfterExit[0].Subject)
+		s.Equal(alice, bobViewAfterExit[0].Subject)
 	})
 }
 
@@ -1882,7 +1882,7 @@ func (s *EncounterTestSuite) TestExitDepartedGhostFades() {
 		aliceViewAfterExit, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Len(aliceViewAfterExit, 1, "alice's holding of bob persists in the archive")
-		s.Equal(intel.Subject(bob), aliceViewAfterExit[0].Subject)
+		s.Equal(bob, aliceViewAfterExit[0].Subject)
 		// The holding status remains as it was (the archive preserves it)
 	})
 }

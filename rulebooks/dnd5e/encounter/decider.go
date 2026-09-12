@@ -4,7 +4,7 @@
 package encounter
 
 import (
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -63,9 +63,9 @@ type Snapshot struct {
 	// really identity a monster needed, only the key to a coordinate system.
 	Position spatial.Position
 
-	// Holdings is the decider's own held intel — exactly what HeldBy
-	// returns for this member, nothing more (C2).
-	Holdings []intel.Holding
+	// Holdings is the decider's own held intel — exactly what
+	// [perception.Perception.Held] returns for this member, nothing more (C2).
+	Holdings []perception.Holding
 }
 
 // Decider is the interface for monster intelligence. A decider receives ONLY

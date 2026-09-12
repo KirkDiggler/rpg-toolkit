@@ -8,63 +8,72 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
 
-func TestIntelDeltaCopiesSurveilOutput(t *testing.T) {
-	in := &intel.SurveilOutput{
-		FirstContact: []intel.Report{{Subject: "billy", Payload: []byte("known")}},
-		Refreshed:    []intel.Subject{"david"},
-		Faded:        []intel.Subject{"alice"},
+func TestIntelDeltaCopiesPerceptionDelta(t *testing.T) {
+	in := &perception.Delta{
+		FirstContact: []perception.Presence{{ID: "billy", Payload: []byte("known")}},
+		Refreshed:    []core.EntityID{"david"},
+		Faded:        []core.EntityID{"alice"},
+		Changed:      []core.EntityID{"erin"},
+		Reacquired:   []core.EntityID{"frank"},
 	}
 
-	got := intelDeltaFromSurveil(in)
+	got := intelDeltaFromPerception(in)
 	in.FirstContact[0].Payload[0] = 'X'
-	in.FirstContact[0].Subject = "changed"
+	in.FirstContact[0].ID = "changed"
 	in.Refreshed[0] = "changed"
 	in.Faded[0] = "changed"
+	in.Changed[0] = "changed"
+	in.Reacquired[0] = "changed"
 
-	require.Equal(t, []intel.Report{{Subject: "billy", Payload: []byte("known")}}, got.FirstContact)
-	require.Equal(t, []intel.Subject{"david"}, got.Refreshed)
-	require.Equal(t, []intel.Subject{"alice"}, got.Faded)
-	require.Empty(t, got.Corrected)
+	require.Equal(t, []perception.Presence{{ID: "billy", Payload: []byte("known")}}, got.FirstContact)
+	require.Equal(t, []core.EntityID{"david"}, got.Refreshed)
+	require.Equal(t, []core.EntityID{"alice"}, got.Faded)
+	require.Equal(t, []core.EntityID{"erin"}, got.Changed)
+	require.Equal(t, []core.EntityID{"frank"}, got.Reacquired)
 }
 
 func TestMergeIntelDeltasDeduplicatesCategoriesInFirstOccurrenceOrder(t *testing.T) {
 	dst := map[MemberID]*IntelDelta{
 		"observer": {
-			FirstContact: []intel.Report{
-				{Subject: "billy", Payload: []byte("first")},
-				{Subject: "billy", Payload: []byte("duplicate")},
+			FirstContact: []perception.Presence{
+				{ID: "billy", Payload: []byte("first")},
+				{ID: "billy", Payload: []byte("duplicate")},
 			},
-			Refreshed: []intel.Subject{"david", "david"},
-			Faded:     []intel.Subject{"alice"},
-			Corrected: []intel.Subject{"alice"},
+			Refreshed:  []core.EntityID{"david", "david"},
+			Faded:      []core.EntityID{"alice"},
+			Changed:    []core.EntityID{"alice"},
+			Reacquired: []core.EntityID{"alice"},
 		},
 	}
 	originalDst := dst["observer"]
 	src := map[MemberID]*IntelDelta{
 		"observer": {
-			FirstContact: []intel.Report{
-				{Subject: "billy", Payload: []byte("later")},
-				{Subject: "charlie", Payload: []byte("new")},
-				{Subject: "charlie", Payload: []byte("duplicate")},
+			FirstContact: []perception.Presence{
+				{ID: "billy", Payload: []byte("later")},
+				{ID: "charlie", Payload: []byte("new")},
+				{ID: "charlie", Payload: []byte("duplicate")},
 			},
-			Refreshed: []intel.Subject{"david", "erin", "david"},
-			Faded:     []intel.Subject{"alice", "bob", "alice"},
-			Corrected: []intel.Subject{"alice", "bob", "alice"},
+			Refreshed:  []core.EntityID{"david", "erin", "david"},
+			Faded:      []core.EntityID{"alice", "bob", "alice"},
+			Changed:    []core.EntityID{"alice", "bob", "alice"},
+			Reacquired: []core.EntityID{"alice", "bob", "alice"},
 		},
 	}
 
 	got := mergeIntelDeltas(dst, src)
 	require.Equal(t, &IntelDelta{
-		FirstContact: []intel.Report{
-			{Subject: "billy", Payload: []byte("first")},
-			{Subject: "charlie", Payload: []byte("new")},
+		FirstContact: []perception.Presence{
+			{ID: "billy", Payload: []byte("first")},
+			{ID: "charlie", Payload: []byte("new")},
 		},
-		Refreshed: []intel.Subject{"david", "erin"},
-		Faded:     []intel.Subject{"alice", "bob"},
-		Corrected: []intel.Subject{"alice", "bob"},
+		Refreshed:  []core.EntityID{"david", "erin"},
+		Faded:      []core.EntityID{"alice", "bob"},
+		Changed:    []core.EntityID{"alice", "bob"},
+		Reacquired: []core.EntityID{"alice", "bob"},
 	}, got["observer"])
 
 	src["observer"].FirstContact[1].Payload[0] = 'X'

@@ -10,9 +10,10 @@ job.
 ## What it is
 
 An encounter is a composition with an outcome — Setup → play → Outcome. It is
-the **courier** between `play/clock`, `play/intel`, `play/record` and
-`tools/spatial`: it surveils percepts into intel, lets deciders act on their own
-intel, appends the story to record, and pumps the clock.
+the **courier** between `play/clock`, `mind/perception`, `play/record` and
+`tools/spatial`: it hands one perception pass the presences and the geometry,
+lets deciders act on their own holdings, appends the story to record, and pumps
+the clock.
 
 It is also the first layer allowed to have an opinion about D&D. Rules and
 trigger detection belong here. The leaves beneath it hold no rules, and the

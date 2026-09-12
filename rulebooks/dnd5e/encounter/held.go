@@ -267,7 +267,7 @@ func (e *Encounter) ResumeDirective(ctx context.Context) (DirectOutput, error) {
 	}
 
 	out := DirectOutput{Moved: h.moved + res.moved}
-	deltas, serr := e.settleWalk(h.member, h.audience, res.moved)
+	deltas, serr := e.settleWalk(h.audience, res.moved)
 	if serr != nil {
 		return DirectOutput{}, fmt.Errorf("resume directive %q: %w", h.member, serr)
 	}

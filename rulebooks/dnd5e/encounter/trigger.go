@@ -6,8 +6,6 @@ package encounter
 import (
 	"fmt"
 	"sort"
-
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 )
 
 // InitiativeRoller turns the members entering a fight into the order they act
@@ -197,8 +195,8 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, contact map[Member
 		if !ok || delta == nil {
 			return false
 		}
-		for _, report := range delta.FirstContact {
-			if MemberID(report.Subject) == subject {
+		for _, presence := range delta.FirstContact {
+			if presence.ID == subject {
 				return true
 			}
 		}
@@ -325,19 +323,19 @@ func (e *Encounter) unawareOfOpposition(id MemberID, contact map[MemberID]bool) 
 		return false, nil
 	}
 
-	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: id})
+	holdings, err := e.intelLog.Held(id)
 	if err != nil {
 		return false, err
 	}
 
 	for _, holding := range holdings {
-		// Held, not Current, is a ghost — a subject remembered from before
-		// rather than one being watched now. Remembering where a wolf used to
-		// be does not stop it surprising you.
-		if holding.Status != intel.Current {
+		// Not current is a ghost — a subject remembered from before rather
+		// than one being watched now. Remembering where a wolf used to be
+		// does not stop it surprising you.
+		if !holding.Current {
 			continue
 		}
-		other, ok := e.members[MemberID(holding.Subject)]
+		other, ok := e.members[holding.Subject]
 		if !ok {
 			continue
 		}
