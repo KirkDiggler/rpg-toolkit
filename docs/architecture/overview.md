@@ -43,6 +43,9 @@ flowchart TD
     INTEL["play/intel"]
     RECORD["play/record"]
   end
+  subgraph MIND["Mind primitives"]
+    PERCEPTION["mind/perception"]
+  end
   subgraph TOOLS["Tools"]
     SPATIAL["tools/spatial"]
     ENV["tools/environments"]
@@ -69,6 +72,7 @@ flowchart TD
   SESS --> ENC & RESMOD & DND & INTEL & RECORD
   RESMOD --> ENC & DND & SPATIAL & EV & C & DICE
   ENC --> SPATIAL & CLOCK & INTEL & RECORD & C
+  PERCEPTION --> INTEL & C
   DND --> RES & ENV & SPATIAL & EV & C & DICE
   SPAWN --> ENV & SPATIAL
   ENV --> SPATIAL
@@ -163,6 +167,7 @@ module is historical only.
 | play/intel | `play/intel/` | Play primitive | Viewer knowledge/intelligence facts and merge contracts |
 | play/interrupt | `play/interrupt/` | Play primitive | Owned interruption windows and answer custody contracts |
 | play/record | `play/record/` | Play primitive | Append-only play record contracts |
+| mind/perception | `mind/perception/` | Mind primitive | One `Pass`, one `Delta` per observer over `play/intel`: the per-observer loop and geometry-free contract a composition needs, none of the geometry itself |
 | mechanics/effects | `mechanics/effects/` | Mechanics | Shared effect infrastructure (tracker, behaviors) |
 | mechanics/conditions | `mechanics/conditions/` | Mechanics | Condition manager, simple/enhanced condition types |
 | mechanics/resources | `mechanics/resources/` | Mechanics | Resource pools (spell slots, ki, rage uses) |
