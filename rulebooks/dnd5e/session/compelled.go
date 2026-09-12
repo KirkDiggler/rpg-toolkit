@@ -109,26 +109,26 @@ func (d compelledDriver) compulsionOn(
 // The caster is part of the compulsion's identity, so two casters' Commands
 // stand side by side: nothing removes another caster's spell, and each ends on
 // its own clock. One turn cannot obey two words, and the one it obeys is the
-// one that got there FIRST — Kirk's ruling, 2026-09-12, on the precedent Bane's
-// contribution group already sets: a second source of the same effect does not
-// displace the first.
+// one that got there FIRST — Kirk's ruling, 2026-09-12, on the precedent the
+// rulebook already sets for a die: DescribeSelectedRollContributions walks the
+// persisted order and takes the OLDEST applicable provider in a stacking group,
+// which is why a second Bane contributes nothing while the first stands. A turn
+// is that question asked of a turn instead of a roll, and answering it the
+// other way would give the engine two rules for "who wins when two spells
+// overlap" depending on what was overlapping.
 //
-// That is the opposite of "the loudest voice wins", and it is the more honest
-// reading of a compulsion: the creature is already under orders when the second
-// caster speaks, and a rule where interrupting is free would make the last
-// caster in the round the only one who mattered.
+// A second Command from the SAME caster never reaches this decision: resolution
+// replaces an existing instance of one address before applying the new one, so
+// the sheet holds one.
 //
-// A second Command from the SAME caster is a different case and never reaches
-// this decision: resolution replaces an existing instance of one address before
-// applying the new one, so the sheet holds one.
+// # The order kept here is this function's own
 //
-// # Why the loop decides this rather than the reader
-//
-// Reading one blob at a time makes this seam's choice independent of
-// DecodeCommanded's own whole-list tiebreak, which is a real advantage rather
-// than a coincidence: that rule flipped once during this wave and nothing here
-// had to move with it. Each call answers about a single blob, and the order
-// this loop keeps is the order the sheet appended.
+// [conditions.DecodeCommanded] answers the same way for a whole list, so the
+// two agree today and neither is deriving its answer from the other. That is
+// worth one sentence rather than a claim of independence: the ruling moved once
+// while this branch was open, and because each call here answers about a SINGLE
+// blob, moving with it was one line — which match the loop keeps — rather than
+// a question about what the reader would do with the rest.
 //
 // # Why one at a time, stated honestly
 //
