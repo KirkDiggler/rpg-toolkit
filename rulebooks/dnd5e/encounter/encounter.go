@@ -1897,22 +1897,24 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReading := uint64(clockReadingInt)
 
-	// Asked ONCE per refresh and never carried between them — see [Sight] for
-	// why remembering the answer would be the smallest possible version of the
-	// dual state the capability exists to avoid. Asked BEFORE the pass rather
-	// than inside it so that every observer in one refresh is bounded by the
-	// same reading of the world (C8), and so that a rulebook is consulted once
-	// per pass rather than once per member.
+	// Asked fresh for this refresh and never carried over from the last one —
+	// see [Sight] for why remembering the answer would be the smallest
+	// possible version of the dual state the capability exists to avoid.
+	// Asked BEFORE the pass rather than inside it so that every observer in
+	// one refresh is bounded by the same reading of the world (C8), and so
+	// that a rulebook is consulted once for the whole roster rather than once
+	// per member.
 	reach, err := e.sightNow()
 	if err != nil {
 		return nil, err
 	}
 
-	// Asked once per refresh for the same C8 reason, and beside sight rather
-	// than inside the pass so that one pass writes one consistent reading of the
-	// world into every observer's testimony. What a member holds is a fact an
-	// observer can be WRONG about later, which is why it is snapshotted here
-	// rather than read when somebody asks — see [SightTestimony].
+	// Asked fresh for this refresh too, for the same C8 reason, and beside
+	// sight rather than inside the pass so that one pass writes one
+	// consistent reading of the world into every observer's testimony. What a
+	// member holds is a fact an observer can be WRONG about later, which is
+	// why it is snapshotted here rather than read when somebody asks — see
+	// [SightTestimony].
 	hands, err := e.equipmentNow()
 	if err != nil {
 		return nil, err
