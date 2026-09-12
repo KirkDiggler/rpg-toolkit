@@ -235,3 +235,20 @@ saved paused Bard cast resuming without losing history or paying twice.
 Local formatting and tidy complete. Linux CI supplies the linter and race
 checks; review evidence belongs on the session PR. Acquisition remains a
 separate root-module follow-up after session release.
+
+### Healing Word acquisition (after #1705)
+
+With session `v0.79.0` released, root acquisition offers Healing Word to both
+Cleric and Bard. Cleric's deferred-preparation selection includes all four
+supported entries; Bard chooses four of five with its existing fixed count.
+The change uses the existing acquisition and slot initialization paths.
+
+Focused character and choice tests pass. Each four-of-five Bard combination
+finalizes and round-trips through JSON while preserving the selected spells,
+omitted spell, and spent first-level slot. The previous four-spell selection
+still works. Cleric's existing finalization/reload/rest test now covers Healing
+Word alongside the previous three spells. Wrong counts, duplicate picks, and
+unsupported entries remain rejected. Existing sheets receive no implicit grants.
+
+Full root-module and Linux CI validation evidence is recorded on the acquisition
+PR. This is a root-module-only change with no dependency pin updates.

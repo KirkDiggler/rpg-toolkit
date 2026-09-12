@@ -280,18 +280,16 @@ func (s *ClassComprehensiveSuite) TestBardSpellSelectionRejectsWrongCountsAndUns
 		values []shared.SelectionID
 	}{
 		{name: "zero", values: nil},
-		// Short and long are both refused by the count, which is what the
-		// count is for. The validator has no duplicate check of its own, so a
-		// repeated spell is caught here only when it makes the answer the
-		// wrong length (rpg-toolkit#1662).
+		// Count, supported options, and uniqueness are separate requirements.
 		{name: "too few", values: []shared.SelectionID{spells.Bane, spells.Thunderwave}},
 		{
 			name: "too many",
 			values: []shared.SelectionID{
-				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command, spells.Bane,
+				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command, spells.HealingWord,
 			},
 		},
-		{name: "unsupported", values: []shared.SelectionID{spells.HealingWord}},
+		{name: "unsupported", values: []shared.SelectionID{spells.Bane, spells.Thunderwave, spells.HealingWord, spells.CharmPerson}},
+		{name: "duplicate", values: []shared.SelectionID{spells.Bane, spells.Thunderwave, spells.HealingWord, spells.HealingWord}},
 	} {
 		s.Run(tc.name, func() {
 			subs := choices.NewSubmissions()
@@ -848,7 +846,7 @@ func (s *ClassComprehensiveSuite) createClericTestData() *ClassTestData {
 		HasCantrips:  true,
 		CantripCount: 3,
 		HasSpells:    true,
-		SpellCount:   3,
+		SpellCount:   4,
 		SkillList: []shared.SelectionID{
 			skills.History, skills.Insight, skills.Medicine,
 			skills.Persuasion, skills.Religion,
@@ -948,7 +946,7 @@ func (s *ClassComprehensiveSuite) createClericValidBase() *choices.Submissions {
 
 	subs.Add(choices.Submission{
 		Category: shared.ChoiceSpells, Source: shared.SourceClass, ChoiceID: choices.ClericSpells1,
-		Values: []shared.SelectionID{spells.Bane, spells.Command, spells.CureWounds},
+		Values: []shared.SelectionID{spells.Bane, spells.Command, spells.CureWounds, spells.HealingWord},
 	})
 
 	// Subclass - Life Domain (default)

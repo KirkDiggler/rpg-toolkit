@@ -2,6 +2,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -37,8 +38,8 @@ func TestKnownSpellsSuite(t *testing.T) {
 func (s *KnownSpellsSuite) SetupTest() { s.bus = events.NewEventBus() }
 
 // bardDraft builds a level-1 bard draft, cantrips included.
-func (s *KnownSpellsSuite) bardDraft() *Draft {
-	draft := s.bardDraftWithoutCantrips()
+func (s *KnownSpellsSuite) bardDraft(known ...spells.Spell) *Draft {
+	draft := s.bardDraftWithoutCantrips(known...)
 	draft.recordChoice(choices.ChoiceData{
 		Category:       shared.ChoiceCantrips,
 		Source:         shared.SourceClass,
@@ -50,7 +51,10 @@ func (s *KnownSpellsSuite) bardDraft() *Draft {
 
 // bardDraftWithoutCantrips is the same draft with the cantrip question left
 // unanswered, so a scene can record its own selection or check the refusal.
-func (s *KnownSpellsSuite) bardDraftWithoutCantrips() *Draft {
+func (s *KnownSpellsSuite) bardDraftWithoutCantrips(known ...spells.Spell) *Draft {
+	if len(known) == 0 {
+		known = []spells.Spell{spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command}
+	}
 	draft, err := NewDraft(&DraftConfig{ID: "draft-1", PlayerID: "player-1"})
 	s.Require().NoError(err)
 
@@ -64,9 +68,7 @@ func (s *KnownSpellsSuite) bardDraftWithoutCantrips() *Draft {
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:  []shared.SelectionID{"lute", "flute", "drum"},
-			Spells: []spells.Spell{
-				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
-			},
+			Spells: known,
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
@@ -111,14 +113,14 @@ func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithSupportedKnowledgeAndRe
 		refs.Spells.Bane().String(), refs.Spells.Thunderwave().String(),
 		refs.Spells.DissonantWhispers().String(),
 		refs.Spells.Command().String(),
-	}, spellRefsAsStrings(char.KnownSpells()), "every supported level-1 spell, not a pick between them")
+	}, spellRefsAsStrings(char.KnownSpells()), "the existing four-spell selection remains valid")
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Maximum())
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Current())
 }
 
-// TestTheBardIsAskedForCantripsAndEveryLevelledSpellWeCanCast pins the
-// supported acquisition surface without widening either spell catalog.
-func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndEveryLevelledSpellWeCanCast() {
+// TestTheBardChoosesFourSupportedLevelledSpells pins the supported acquisition
+// surface and the fixed known-spell count.
+func (s *KnownSpellsSuite) TestTheBardChoosesFourSupportedLevelledSpells() {
 	requirements := choices.GetClassRequirements(classes.Bard)
 
 	s.Require().NotNil(requirements)
@@ -141,10 +143,42 @@ func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndEveryLevelledSpellWeC
 		"and the first that makes a creature move itself")
 	s.Contains(requirements.Spellbook.Options, spells.Command,
 		"and the first whose caster makes a choice as they cast")
-	s.Equal(len(requirements.Spellbook.Options), requirements.Spellbook.Count,
-		"and the bard learns all of them rather than picking between them")
+	s.Contains(requirements.Spellbook.Options, spells.HealingWord)
+	s.Equal(4, requirements.Spellbook.Count)
+	s.Greater(len(requirements.Spellbook.Options), requirements.Spellbook.Count)
 	s.NotNil(requirements.Skills)
 	s.NotNil(requirements.Tools)
+}
+
+func (s *KnownSpellsSuite) TestEveryFourSpellBardSelectionFinalizesAndSurvivesReload() {
+	options := choices.GetClassRequirements(classes.Bard).Spellbook.Options
+	for omit, unchosen := range options {
+		s.Run(string(unchosen), func() {
+			selected := append([]spells.Spell(nil), options[:omit]...)
+			selected = append(selected, options[omit+1:]...)
+			draft := s.bardDraft(selected...)
+			s.Require().NoError(draft.ValidateChoices())
+			char, err := draft.ToCharacter(context.Background(), "bard-selection", s.bus)
+			s.Require().NoError(err)
+			s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
+			encoded, err := json.Marshal(char.ToData())
+			s.Require().NoError(err)
+			var data Data
+			s.Require().NoError(json.Unmarshal(encoded, &data))
+			loaded, err := Load(context.Background(), &data)
+			s.Require().NoError(err)
+			s.Len(loaded.KnownSpells(), 4)
+			s.NotContains(spellRefsAsStrings(loaded.KnownSpells()), refs.Spells.ByID(string(unchosen)).String())
+			for _, picked := range selected {
+				s.Contains(spellRefsAsStrings(loaded.KnownSpells()), refs.Spells.ByID(string(picked)).String())
+				definition := loaded.CastDefinition(picked)
+				s.Require().NotNil(definition)
+				s.Require().NoError(definition.Validate())
+			}
+			s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current())
+			s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Maximum())
+		})
+	}
 }
 
 // TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAndRest catches either
