@@ -143,8 +143,15 @@ func (s *CommandTurnSuite) inFight(id string) {
 // offered row.
 func (s *CommandTurnSuite) command(target, word string) (*session.CastOutput, error) {
 	s.T().Helper()
+	return s.commandFrom("bard", target, word)
+}
+
+// commandFrom is the same cast from a named caster, for the scenes where two
+// people give orders.
+func (s *CommandTurnSuite) commandFrom(caster, target, word string) (*session.CastOutput, error) {
+	s.T().Helper()
 	out, err := s.mgr.Afford(context.Background(), &session.AffordInput{
-		Session: "sess", Member: "bard",
+		Session: "sess", Member: caster,
 	})
 	s.Require().NoError(err)
 
@@ -154,12 +161,28 @@ func (s *CommandTurnSuite) command(target, word string) (*session.CastOutput, er
 			continue
 		}
 		return s.mgr.Cast(context.Background(), &session.CastInput{
-			Session: "sess", Member: "bard", DeclarationID: row.ID,
+			Session: "sess", Member: caster, DeclarationID: row.ID,
 			Targets: []string{target}, Option: word,
 		})
 	}
-	s.Require().FailNow("the bard was offered no Command row")
+	s.Require().FailNowf("no Command row", "%q was offered no Command row", caster)
 	return nil, nil
+}
+
+// storedConditions is one member's raw condition blobs, from wherever their
+// sheet lives.
+func (s *CommandTurnSuite) storedConditions(member string) []json.RawMessage {
+	s.T().Helper()
+	data, err := s.sessions.GetSession(context.Background(), "sess")
+	s.Require().NoError(err)
+	for _, npc := range data.NPCs {
+		if npc.ID == member {
+			return npc.Conditions
+		}
+	}
+	sheet, err := s.characters.GetCharacter(context.Background(), member)
+	s.Require().NoError(err)
+	return sheet.Conditions
 }
 
 // endTurn ends one member's turn, which is what lets the clock reach the
@@ -196,6 +219,33 @@ func (s *CommandTurnSuite) story(member string) []storyBeat {
 		var beat storyBeat
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
 		out = append(out, beat)
+	}
+	return out
+}
+
+// appliedSources is the source named by every condition-applied beat for one
+// ref, in the order they were recorded — who the fight says put it there.
+func (s *CommandTurnSuite) appliedSources(ref string) []string {
+	s.T().Helper()
+	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{
+		Session: "sess", Member: "bard",
+	})
+	s.Require().NoError(err)
+
+	var out []string
+	for _, entry := range entries {
+		var beat struct {
+			Result *struct {
+				Kind     string `json:"kind"`
+				Ref      string `json:"ref"`
+				SourceID string `json:"source_id"`
+			} `json:"result"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat.Result == nil || beat.Result.Kind != "condition-applied" || beat.Result.Ref != ref {
+			continue
+		}
+		out = append(out, beat.Result.SourceID)
 	}
 	return out
 }
@@ -382,10 +432,16 @@ func (s *CommandTurnSuite) TestTheCompulsionIsGoneAfterTheTurnItTook() {
 		"a creature no longer under an order is driven by its own brain again")
 }
 
-// TestASecondWordReplacesTheFirst is acceptance 11. Two orders on one creature
-// is not a state this design allows, and the replacement is general rather
-// than Command's own — resolution strips an existing instance of the same ref
-// before applying the new one.
+// TestASecondWordReplacesTheFirst is acceptance 11, and its scope narrowed once
+// the compulsion's address grew a caster: ONE CASTER cannot have two words in
+// force at once, because the second application replaces the first at the same
+// address. Two DIFFERENT casters is the other case and it stands — see
+// TestTwoCastersCommandsBothStandAndTheNewestIsObeyed.
+//
+// The sheet is counted rather than just read, because that is now the whole
+// difference between the two rules: replacement leaves one blob and coexistence
+// leaves two, and a test that only asked which word was in force would pass
+// either way.
 func (s *CommandTurnSuite) TestASecondWordReplacesTheFirst() {
 	s.duel()
 
@@ -405,6 +461,19 @@ func (s *CommandTurnSuite) TestASecondWordReplacesTheFirst() {
 	second, held := s.compulsionOn("skeleton")
 	s.Require().True(held)
 	s.Equal(spells.CommandWordGrovel, second.Word, "the newer word is the one in force")
+
+	commanded := 0
+	for _, raw := range s.storedConditions("skeleton") {
+		var peek struct {
+			Ref string `json:"ref"`
+		}
+		s.Require().NoError(json.Unmarshal(raw, &peek))
+		if peek.Ref == refs.Conditions.Commanded().String() {
+			commanded++
+		}
+	}
+	s.Equal(1, commanded,
+		"one caster holds one address, so the second word replaced the first rather than joining it")
 }
 
 // TestACommandedPlayerIsDrivenAndCannotActAfterwards is acceptance 9, and the
@@ -682,4 +751,72 @@ func (s *CommandTurnSuite) TestAHostDriversRoutedReachesTheCompositionThroughThe
 	}
 	s.Equal(1, ended, "Routed is terminal for a host driver too")
 	s.Equal(1, brain.asked, "and terminal means it is not asked again within the turn")
+}
+
+// TestTheAppliedBeatNamesWhoSpoke is the observable half of the compulsion's
+// address carrying its caster: a table watching the log learns WHO the creature
+// is now under orders from, which is the same fact the walk will later be
+// measured against.
+func (s *CommandTurnSuite) TestTheAppliedBeatNamesWhoSpoke() {
+	s.duel()
+
+	_, err := s.command("skeleton", spells.CommandWordApproach)
+	s.Require().NoError(err)
+
+	s.Equal([]string{"bard"}, s.appliedSources(refs.Conditions.Commanded().String()),
+		"the caster, not the spell and not the target")
+}
+
+// TestTwoCastersCommandsBothStandAndTheNewestIsObeyed is the rule the
+// caster-addressed compulsion created, driven end to end.
+//
+// Nothing removes another caster's spell, so the skeleton really is holding two
+// orders when its turn arrives — and the second cast leaves the first's beat
+// alone, which is how a table can see both. One turn cannot obey two words, so
+// the driver takes the one said last.
+//
+// Grovel is the newest word on purpose: it leaves a Prone, which is a durable
+// fact about WHICH word ran. Approach would only have shown that something
+// walked somewhere, and the two orders here point at different casters standing
+// in different places, so a walk would be a weaker signal than a condition.
+func (s *CommandTurnSuite) TestTwoCastersCommandsBothStandAndTheNewestIsObeyed() {
+	s.scene(
+		[]*character.Data{commandingBard("bard"), commandingBard("cleric")},
+		map[string]spatial.Position{"bard": hexCell(0, 0), "cleric": hexCell(1, 1)},
+		hexCell(4, 0),
+	)
+	before := s.where("skeleton")
+
+	_, err := s.command("skeleton", spells.CommandWordApproach)
+	s.Require().NoError(err)
+	s.Require().NoError(s.endTurn("bard"))
+
+	_, err = s.commandFrom("cleric", "skeleton", spells.CommandWordGrovel)
+	s.Require().NoError(err)
+
+	stored := s.storedConditions("skeleton")
+	commanded := 0
+	for _, raw := range stored {
+		var peek struct {
+			Ref      string `json:"ref"`
+			CasterID string `json:"caster_id"`
+		}
+		s.Require().NoError(json.Unmarshal(raw, &peek))
+		if peek.Ref == refs.Conditions.Commanded().String() {
+			commanded++
+		}
+	}
+	s.Equal(2, commanded,
+		"nothing removes another caster's spell: both orders stand, each on its own clock")
+	s.Equal([]string{"bard", "cleric"}, s.appliedSources(refs.Conditions.Commanded().String()),
+		"and the log names both, in the order they were spoken")
+
+	s.Require().NoError(s.endTurn("cleric"))
+
+	s.True(s.holdsRef("skeleton", refs.Conditions.Prone().String()),
+		"the word said last is the one obeyed")
+	s.Equal(before, s.where("skeleton"),
+		"and the older Approach did not also run: grovelling is not walking")
+	s.Zero(s.walkedCells("skeleton"))
+	s.Empty(s.viewsOf("skeleton"))
 }

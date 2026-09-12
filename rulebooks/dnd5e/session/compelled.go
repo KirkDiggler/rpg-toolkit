@@ -101,36 +101,53 @@ func (d compelledDriver) compulsionOn(
 }
 
 // commandedIn finds the compulsion among a sheet's stored blobs, asking
-// [conditions.DecodeCommanded] ONE BLOB AT A TIME.
+// [conditions.DecodeCommanded] ONE BLOB AT A TIME and keeping the LAST one that
+// answers.
 //
-// # What one-at-a-time buys, stated honestly
+// # The newest wins, and a sheet may really hold two
 //
-// DecodeCommanded answers for a whole list and stops at the first entry whose
-// ref it cannot read, so a corrupt blob sitting in FRONT of a real compulsion
-// would hide it — and hiding it here is worse than it sounds, because
-// participation has already answered Driven: the driver would find nothing,
-// delegate, and a commanded PLAYER's turn would be taken by the host's monster
-// brain.
+// The caster is part of the compulsion's identity, so two casters' Commands
+// stand side by side: nothing removes another caster's spell, and each ends on
+// its own clock. One turn cannot obey two words, and the one it obeys is the
+// one said last, which is the last a sheet appended. That is DecodeCommanded's
+// own rule for a whole list, and keeping the last match here is how the
+// per-blob loop preserves it rather than quietly answering with the oldest.
 //
-// That scenario is NOT reachable through the verbs today, and the doc said
-// otherwise before a reviewer checked. Resolution's own attach refuses a record
+// A second Command from the SAME caster is a different case and never reaches
+// this decision: resolution replaces an existing instance of one address before
+// applying the new one, so the sheet holds one.
+//
+// # Why one at a time, stated honestly
+//
+// DecodeCommanded reports an unreadable blob anywhere on the sheet, deliberately
+// — its own doc says a sheet whose conditions cannot all be read is a sheet
+// nobody should be deciding turns from. Asked per blob, an unreadable one costs
+// exactly itself, so a corrupt entry cannot hide a real compulsion. Hiding one
+// here is worse than it sounds, because participation has already answered
+// Driven: the driver would find nothing, delegate, and a commanded PLAYER's turn
+// would be taken by the host's monster brain.
+//
+// That scenario is NOT reachable through the verbs today, and this doc said
+// otherwise before a reviewer checked. Resolution's attach refuses a record
 // carrying an unreadable condition one seam earlier — outright for a monster,
 // and after the lenient loader drops it for a character — so a sheet in this
-// state never reaches a compelled turn at all. This is defence in depth against
-// a record loaded by some other path, and against resolution's reader becoming
-// lenient later; it is not a case anybody can produce today.
+// state never reaches a compelled turn at all.
 //
-// It is kept rather than simplified because the cost is one loop and the
-// failure it guards is silent. [holdsCompulsion] keeps the same rule for the
-// same reason, and the two must agree: a member called Driven whose driver
-// found nothing is a turn nobody takes.
+// So the leniency is defence in depth, and it is also a DIVERGENCE from the
+// provider's stated judgement, taken on purpose: this module already answers an
+// unreadable sheet by refusing that member's offers rather than the whole read,
+// and [holdsCompulsion] one file over must stay lenient for two tested rulings
+// that predate Command. The two readers have to agree — a member called Driven
+// whose driver found nothing is a turn nobody takes — so they are lenient
+// together or not at all.
 func commandedIn(stored []json.RawMessage) (*conditions.CommandedConditionData, bool) {
+	var newest *conditions.CommandedConditionData
 	for _, raw := range stored {
 		if data, held, err := conditions.DecodeCommanded([]json.RawMessage{raw}); err == nil && held {
-			return data, true
+			newest = data
 		}
 	}
-	return nil, false
+	return newest, newest != nil
 }
 
 // obey asks resolution what the word means, on an interaction built exactly as

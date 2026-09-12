@@ -140,6 +140,45 @@ func TestTheLookupSkipsABlobItCannotReadRatherThanStoppingAtIt(t *testing.T) {
 	require.False(t, none, "and a sheet with nothing readable on it holds no compulsion")
 }
 
+// TestTheLookupObeysTheWordSaidLast is the rule the caster-addressed compulsion
+// created: two casters' Commands stand side by side, because neither removes
+// the other's spell, and one turn cannot obey two words.
+//
+// It is a test of THIS function rather than of DecodeCommanded, and it has to
+// be: reading one blob at a time is what keeps a corrupt entry from hiding a
+// compulsion, and the obvious way to write that loop returns the FIRST match
+// instead of the newest. Both facts have to hold at once.
+func TestTheLookupObeysTheWordSaidLast(t *testing.T) {
+	blob := func(caster, word string) json.RawMessage {
+		condition, err := conditions.NewCommandedCondition(
+			"skeleton", refs.Spells.Command().String(), caster, word, 1,
+		)
+		require.NoError(t, err)
+		raw, err := condition.ToJSON()
+		require.NoError(t, err)
+		return raw
+	}
+
+	data, held := commandedIn([]json.RawMessage{
+		blob("bard", "approach"),
+		blob("cleric", "grovel"),
+	})
+	require.True(t, held)
+	require.Equal(t, "grovel", data.Word, "the word said last is the one obeyed")
+	require.Equal(t, "cleric", data.CasterID, "and it is measured from whoever said it")
+
+	// The same pair with an unreadable blob wedged between them: still the
+	// newest of the two that CAN be read, which is the point of the loop.
+	wedged, held := commandedIn([]json.RawMessage{
+		blob("bard", "approach"),
+		json.RawMessage(`{"ref":`),
+		blob("cleric", "flee"),
+	})
+	require.True(t, held)
+	require.Equal(t, "flee", wedged.Word)
+	require.Equal(t, "cleric", wedged.CasterID)
+}
+
 // TestATranslationThisSeamCannotMakeIsRefused — each of these is a wiring
 // fault rather than anything content can express, and a turn that quietly
 // passed instead would be indistinguishable from a creature that was never
