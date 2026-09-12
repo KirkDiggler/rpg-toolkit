@@ -782,6 +782,14 @@ func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, 
 // way; a successful [Attack] or [Move] leaves it running so the driver is
 // asked again against the updated budget and view.
 //
+// [Routed] is the one arm that is ALWAYS the end of the turn, however its walk
+// went: arrived, stopped by a wall, dropped, or never started. That is the
+// intent's own contract rather than a decision made here — a compelled
+// creature's turn IS the walk — and it is why the arm has no "still going"
+// branch. A Routed walk that PAUSES is the one case that reports the turn not
+// over, which is the same thing a paused Move reports and means the same
+// thing: the turn is waiting, not finished.
+//
 // budget is mutated in place: the one thing every branch here shares is that
 // what it spends must be visible to the NEXT buildMonsterView call, and a
 // return value the caller has to remember to feed back in is exactly the

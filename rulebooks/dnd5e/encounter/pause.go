@@ -218,11 +218,21 @@ func pausedTurnDataFrom(p *pausedTurn) *PausedTurnData {
 }
 
 // causeString renders a walk's cause for the blob — the empty string for the
-// zero Ref, which is how a turn's own Move says it has none. [core.Ref.String]
+// ZERO Ref, which is how a turn's own Move says it has none. [core.Ref.String]
 // would spell that as a pair of colons, and a decoder reading it back would
 // have to know to treat that shape as absent.
+//
+// THE ZERO REF, NOT ANY INVALID ONE, and the difference is the whole reason
+// this reads three fields instead of calling IsValid. A Ref that is malformed
+// rather than absent is a defect somewhere above; rendering it as "" would
+// silently turn a compelled walk into a chosen one in the story of every cell
+// after a reload, which is the one lie the cause exists to prevent. Written
+// out as whatever it is, it comes back through [parseCause] as ErrInvalidData
+// and the load says so by name. Unreachable today — [Routed] validates its
+// cause before the walk starts and [Move]'s is the zero Ref — and kept that
+// way deliberately rather than left to be discovered.
 func causeString(cause core.Ref) string {
-	if cause.IsValid() != nil {
+	if cause == (core.Ref{}) {
 		return ""
 	}
 	return cause.String()

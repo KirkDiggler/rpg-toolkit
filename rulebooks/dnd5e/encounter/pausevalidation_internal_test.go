@@ -59,3 +59,22 @@ func TestValidatePausedTurnReadsTheCauseBeforeAnythingIsBuilt(t *testing.T) {
 			"a compelled walk names its cause, and a resumed one still has to")
 	})
 }
+
+// TestAMalformedCauseIsWrittenOutRatherThanSilentlyDropped is causeString's
+// own claim: it renders the empty string for the ZERO Ref, which means "this
+// creature walked because it decided to", and for nothing else.
+//
+// A Ref that is malformed rather than absent is a defect somewhere above.
+// Rendering it as "" would turn a compelled walk into a chosen one in the
+// story of every cell after a reload — the one lie the cause exists to
+// prevent. Written out as whatever it is, the load refuses it by name.
+func TestAMalformedCauseIsWrittenOutRatherThanSilentlyDropped(t *testing.T) {
+	half := core.Ref{Module: "dnd5e"}
+	require.Error(t, half.IsValid(), "the fixture is a Ref that is malformed rather than absent")
+
+	written := causeString(half)
+	require.NotEmpty(t, written, "a malformed cause is not the same news as no cause")
+
+	_, err := parseCause(written)
+	require.Error(t, err, "and it comes back as a refusal rather than as a walk nobody was compelled into")
+}
