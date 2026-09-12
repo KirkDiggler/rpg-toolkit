@@ -230,11 +230,13 @@ type TurnBudget struct {
 // keeps the two Go types from colliding rather than overloading one
 // vocabulary to mean two things depending which clock a member is on.
 //
-// THREE CASES, following this repo's practice for sealed vocabularies at
+// FOUR CASES, following this repo's practice for sealed vocabularies at
 // this seam (ADR-0038's rule for Gather | Pose | Request | Done): Pass,
-// Attack, Move. A fourth case is real vocabulary growth and should probably
-// earn its own ADR rather than being added quietly, the same note the old
-// one-case TurnOutcome carried.
+// Attack, Move, Routed. The doc here used to say three and that a fourth
+// "should probably earn its own ADR rather than being added quietly". It
+// did: [Routed] arrived with Command, and the design that argues for it is
+// the ADR (rpg-project, ideas/spells/command). A fifth should expect the
+// same.
 type TurnIntent interface {
 	isTurnIntent()
 }
@@ -288,6 +290,52 @@ type Move struct {
 
 // isTurnIntent marks Move as a TurnIntent.
 func (Move) isTurnIntent() {}
+
+// Routed asks the encounter to find the path and walk it, then end the turn.
+// Where [Move] hands the encounter a path the driver already knows, Routed
+// hands it a POLICY and an ANCHOR: "toward that member, as far as this turn's
+// movement reaches." The encounter routes with the same [Encounter.Route]
+// every directive uses, walks the cells one at a time through the same step
+// every Move uses (so the walk provokes, pauses for a player's window, and
+// resumes by [Encounter.ResumeTurn]), and ends the turn when the walk stops
+// for any reason.
+//
+// TERMINAL because its customers are: a commanded creature's turn IS the
+// walk, and a fleeing monster that stops running has nothing else to do with
+// the turn. A driver that wants to walk and then act hands a path to [Move],
+// as today.
+//
+// This is the fourth case the sealed vocabulary's doc said should earn its own
+// ADR; the ADR is the Command design (rpg-project ideas/spells/command).
+//
+// Refused with [ErrBadIntent] — the turn simply ends, as [Pass] would — when
+// Anchor names nobody on the map. A Policy this composition does not carry out
+// is [ErrUnsupportedPolicy] and a missing Cause is [ErrNoCause], and both of
+// those abort the caller's verb rather than ending the turn: they are the
+// malformed intent the `default` arm already treats that way, not a decision
+// that cannot be carried out.
+type Routed struct {
+	// Policy is how the route is measured — [MoveToward] or [MoveAway].
+	Policy MovePolicy
+
+	// Anchor is the member the policy is measured from: the thing being
+	// approached, or the thing being fled. Their cell is read off the canvas
+	// at execution, not carried, for [Encounter.placementOf]'s reason.
+	Anchor MemberID
+
+	// Cause is the effect that routed them, and it travels on every beat this
+	// walk appends. REQUIRED ([ErrNoCause]), exactly as [DirectInput.Cause]
+	// is and for the identical reason: a creature whose whole turn was spent
+	// walking somewhere it did not choose, narrated with no cause, is an
+	// observer being told it walked away of its own accord.
+	//
+	// It is why this walk carries a cause where a [Move] intent's does not.
+	// A Move is the member's own decision; a Routed is somebody else's.
+	Cause core.Ref
+}
+
+// isTurnIntent marks Routed as a TurnIntent.
+func (Routed) isTurnIntent() {}
 
 // PassDriver is a TurnDriver that always passes — the same v1 answer every
 // unplayed member's turn used to get automatically before this capability

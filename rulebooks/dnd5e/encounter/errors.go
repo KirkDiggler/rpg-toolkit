@@ -350,14 +350,14 @@ var (
 
 	// ErrBadTurnOutcome indicates a TurnDriver returned a TurnIntent this
 	// version of the module does not recognise — a value outside the sealed
-	// Pass/Attack/Move vocabulary.
+	// Pass/Attack/Move/Routed vocabulary.
 	//
 	// Unreachable from any driver outside this package today: TurnIntent is
 	// sealed on an unexported method, so nothing outside encounter can
-	// construct a value satisfying it other than these three. It exists for
+	// construct a value satisfying it other than these four. It exists for
 	// the same reason ErrBadRepository exists beside ErrNotFound — a defect
 	// this module can detect should say so by name rather than proceed on a
-	// value it does not understand, the day a fourth TurnIntent case is added
+	// value it does not understand, the day a fifth TurnIntent case is added
 	// here and some call site is not updated to handle it.
 	ErrBadTurnOutcome = errors.New("encounter: turn driver returned an unrecognised intent")
 
@@ -596,7 +596,8 @@ var (
 	ErrUnsupportedPolicy = errors.New("encounter: no such move policy")
 
 	// ErrNoCause is what [Encounter.Direct] returns for a directed move that
-	// names no effect.
+	// names no effect, and what a driven turn returns for a [Routed] intent
+	// that names none.
 	//
 	// The cause is what makes a push legible. Every movement beat says a
 	// creature is somewhere else now; only the cause says something MOVED
@@ -604,5 +605,5 @@ var (
 	// told something false by omission. Intel is testimony, so the thing an
 	// observer is entitled to be wrong about must at least have been recorded
 	// correctly first.
-	ErrNoCause = errors.New("encounter: a directed move names no cause")
+	ErrNoCause = errors.New("encounter: a move somebody else decided names no cause")
 )

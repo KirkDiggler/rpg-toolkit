@@ -381,8 +381,14 @@ func (s *PauseTestSuite) TestTheIntentBoundHoldsAcrossAPause() {
 		s.Require().NoError(rerr)
 	}
 
-	s.Equal(8, len(driver.calls),
-		"2 + 30/5 intents for the whole turn, pauses included — never a fresh allowance per window")
+	// AN ALLOWANCE, NOT A COUNT. 2 + 30/5 is what the whole turn may spend on
+	// intents, pauses included; a resume that restarted the inner loop would
+	// hand out a second allowance and land above it. How many of the
+	// allowance the turn actually uses is not the guarantee and is free to
+	// change — it dropped by one when the drive loop stopped asking a paused
+	// member for a turn they were already taking.
+	s.LessOrEqual(len(driver.calls), 8,
+		"never a fresh allowance of intents per window")
 	s.Less(asked, len(driver.calls), "and the resume genuinely kept asking")
 }
 
@@ -533,4 +539,160 @@ func (s *PauseTestSuite) TestAResumedWalkContinuesFromTheReloadedTurn() {
 		"a restart between the question and the answer changed nothing")
 	s.Require().Len(resumeMover.calls, 1,
 		"only the cell after the announced one is announced by the reloaded encounter")
+}
+
+// A ROUTED TURN PAUSED MID-WALK is the case this suite grew for Command
+// (rpg-project ideas/spells/command §5.4). Everything about the hold is the
+// same as a Move's; what is new is that finishing the walk finishes the TURN,
+// and that the flag saying so, and the cause the beats name, both have to
+// survive the window and a restart.
+
+// routedWalkingScene is walkingScene with a Routed intent instead of a Move:
+// alice at [2,2] and the goblin at [6,2], compelled to approach her.
+func (s *PauseTestSuite) routedWalkingScene(
+	mover encounter.Mover, standing encounter.Standing, driver encounter.TurnDriver,
+) *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		TurnDriver: driver,
+		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{
+					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+				},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestARoutedPauseCarriesTerminalAndItsCauseThroughASaveAndLoad. The window
+// opened on the second cell of a compelled walk. Neither of the two facts the
+// resume needs — that this turn ends with the walk, and what routed it — can
+// be rebuilt from the cells that are left, so both are in the blob.
+func (s *PauseTestSuite) TestARoutedPauseCarriesTerminalAndItsCauseThroughASaveAndLoad() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc := s.routedWalkingScene(mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused())
+
+	before := enc.ToData()
+	s.Require().NotNil(before.PausedTurn)
+	s.True(before.PausedTurn.Terminal, "a routed turn ends when its walk does")
+	s.Equal(commandedRef.String(), before.PausedTurn.Cause, "and the beats after the window still say why")
+	s.Equal(25, before.PausedTurn.Budget.MovementFeet,
+		"the one cell already walked is charged before the blob is written")
+
+	loaded := s.reload(enc, &pausingMover{}, &downList{})
+	s.True(loaded.Paused())
+
+	wantJSON, err := json.Marshal(before)
+	s.Require().NoError(err)
+	gotJSON, err := json.Marshal(loaded.ToData())
+	s.Require().NoError(err)
+	s.JSONEq(string(wantJSON), string(gotJSON), "ToData -> Load -> ToData is the identity")
+}
+
+// TestAResumedRoutedTurnEndsWithoutAnotherAct is the terminal rule arriving
+// through the resume: the rest of the walk happens, the turn ends, and the
+// driver is never asked a second time.
+//
+// One Act call across a pause and a resume is the whole assertion. A resume
+// that fell into runTurnIntents would ask again, and a commanded creature
+// would get a turn its compulsion never gave it.
+func (s *PauseTestSuite) TestAResumedRoutedTurnEndsWithoutAnotherAct() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc := s.routedWalkingScene(mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused())
+	s.Require().Len(driver.calls, 1)
+
+	out, err := enc.ResumeTurn(context.Background())
+	s.Require().NoError(err)
+	s.False(out.Paused, "the walk finished")
+	s.False(enc.Paused())
+	s.Len(driver.calls, 1, "the brain is asked once for the whole turn, window and all")
+	s.Equal(encounter.MemberID(alice), out.Next, "the turn came back to the player")
+	s.Equal(cellAt(3, 2), s.positionOf(enc, goblin), "and the whole route was walked")
+
+	s.Equal([]string{
+		"scene-opened", "bubble-formed", "turn-ended",
+		"moved", encounter.BeatWindowOpened, "moved", "moved", "turn-ended",
+	}, s.beats(enc, alice))
+}
+
+// TestEveryCellOfAResumedRoutedWalkNamesItsCause. The cause survives the
+// window, and that includes the hand-taken cell the resume steps without
+// announcing — a single beat in three claiming the creature walked off on its
+// own would be the story lying about a compulsion.
+func (s *PauseTestSuite) TestEveryCellOfAResumedRoutedWalkNamesItsCause() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc := s.routedWalkingScene(mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(commandedRef.String(), s.windowBeat(enc, alice)["cause"],
+		"the window says what the interrupted walk was")
+
+	_, err = enc.ResumeTurn(context.Background())
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	cells := 0
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] != "moved" {
+			continue
+		}
+		cells++
+		s.Equal(commandedRef.String(), beat["cause"], "every cell, the hand-taken one included")
+	}
+	s.Equal(3, cells)
+}
+
+// TestAMovePausedTurnStillResumesIntoAnotherAct is the flag's other side,
+// pinned so terminal cannot quietly become "every paused turn". A Move's walk
+// is one intent of a turn that has more, so finishing it asks the driver
+// again — and the blob says the turn was never terminal.
+func (s *PauseTestSuite) TestAMovePausedTurnStillResumesIntoAnotherAct() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
+		encounter.Pass{},
+	}}
+	enc := s.sceneWithDriver(mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused())
+	s.Require().Len(driver.calls, 1)
+
+	data := enc.ToData()
+	s.Require().NotNil(data.PausedTurn)
+	s.False(data.PausedTurn.Terminal, "a Move's pause is not terminal")
+	s.Empty(data.PausedTurn.Cause, "and a walk the creature chose has no cause to name")
+
+	_, err = enc.ResumeTurn(context.Background())
+	s.Require().NoError(err)
+	s.Greater(len(driver.calls), 1, "the turn had intents left and the driver was asked for them")
 }
