@@ -252,15 +252,21 @@ func encounterParticipation(
 // holdsCompulsion reports whether any blob on the sheet is a Commanded, asking
 // the conditions package one blob at a time.
 //
-// ONE AT A TIME IS THE WHOLE POINT, and it is not a style choice. HoldsRef
-// stops at the first blob whose ref it cannot read and answers with an error
-// for the whole list, so a corrupt entry sitting ahead of a real compulsion
-// would hide it — and the member it hid would be handed back a turn somebody
-// else was taking. Asked per blob, an unreadable one costs exactly itself.
+// ONE AT A TIME, because HoldsRef stops at the first blob whose ref it cannot
+// read and answers with an error for the whole list — so a corrupt entry
+// sitting ahead of a real compulsion would hide it, and the member it hid would
+// be handed back a turn somebody else was taking. Asked per blob, an unreadable
+// one costs exactly itself.
 //
-// Which is also the character loader's own rule: drop what cannot be parsed,
-// keep what can, and warn. See [encounterParticipation] for why this seam must
-// not be stricter about a record than the loader that produced it.
+// DEFENCE IN DEPTH RATHER THAN A REACHABLE CASE, which this comment used to
+// overstate. Resolution's attach refuses a record carrying an unreadable
+// condition one seam later, so a sheet in that state does not survive the live
+// path to reach a compelled turn. What is kept here is the shape: this function
+// agrees with the character loader's own rule — drop what cannot be parsed,
+// keep what can, and warn — so it is never stricter about a record than the
+// loader that produced it, whatever the layer above decides to do. See
+// [encounterParticipation], and [commandedIn], which keeps the same rule for
+// the driver's own lookup.
 func holdsCompulsion(stored []json.RawMessage) bool {
 	commanded := refs.Conditions.Commanded()
 	for _, raw := range stored {

@@ -89,13 +89,6 @@ func (d compelledDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, 
 
 // compulsionOn reads the member's stored conditions and decodes the compulsion
 // if one is there.
-//
-// It asks ONE BLOB AT A TIME for [holdsCompulsion]'s reason: DecodeCommanded
-// answers for a whole list and stops at the first entry whose ref it cannot
-// read, so a corrupt blob sitting in front of a real compulsion would free the
-// creature holding it. The same rule participation keeps, because the two must
-// agree — a member participation called Driven and a driver that found nothing
-// would be a turn nobody takes.
 func (d compelledDriver) compulsionOn(
 	member encounter.MemberID,
 ) (*conditions.CommandedConditionData, bool, error) {
@@ -103,14 +96,41 @@ func (d compelledDriver) compulsionOn(
 	if err != nil {
 		return nil, false, fmt.Errorf("compelled turn %q: %w", member, err)
 	}
+	data, held := commandedIn(storedConditionsOf(characters, monsters)[string(member)])
+	return data, held, nil
+}
 
-	for _, raw := range storedConditionsOf(characters, monsters)[string(member)] {
-		data, held, decodeErr := conditions.DecodeCommanded([]json.RawMessage{raw})
-		if decodeErr == nil && held {
-			return data, true, nil
+// commandedIn finds the compulsion among a sheet's stored blobs, asking
+// [conditions.DecodeCommanded] ONE BLOB AT A TIME.
+//
+// # What one-at-a-time buys, stated honestly
+//
+// DecodeCommanded answers for a whole list and stops at the first entry whose
+// ref it cannot read, so a corrupt blob sitting in FRONT of a real compulsion
+// would hide it — and hiding it here is worse than it sounds, because
+// participation has already answered Driven: the driver would find nothing,
+// delegate, and a commanded PLAYER's turn would be taken by the host's monster
+// brain.
+//
+// That scenario is NOT reachable through the verbs today, and the doc said
+// otherwise before a reviewer checked. Resolution's own attach refuses a record
+// carrying an unreadable condition one seam earlier — outright for a monster,
+// and after the lenient loader drops it for a character — so a sheet in this
+// state never reaches a compelled turn at all. This is defence in depth against
+// a record loaded by some other path, and against resolution's reader becoming
+// lenient later; it is not a case anybody can produce today.
+//
+// It is kept rather than simplified because the cost is one loop and the
+// failure it guards is silent. [holdsCompulsion] keeps the same rule for the
+// same reason, and the two must agree: a member called Driven whose driver
+// found nothing is a turn nobody takes.
+func commandedIn(stored []json.RawMessage) (*conditions.CommandedConditionData, bool) {
+	for _, raw := range stored {
+		if data, held, err := conditions.DecodeCommanded([]json.RawMessage{raw}); err == nil && held {
+			return data, true
 		}
 	}
-	return nil, false, nil
+	return nil, false
 }
 
 // obey asks resolution what the word means, on an interaction built exactly as
@@ -124,6 +144,13 @@ func (d compelledDriver) compulsionOn(
 // supplies the machine itself. The cast is the WHOLE fight, by
 // [announcerSeam.boundaryCast]'s rule: which effects apply is each effect's own
 // question, and choosing who to load out here would answer it in the wiring.
+//
+// NO TEST STANDS BEHIND THAT LAST SENTENCE TODAY, and a reviewer proved it:
+// narrowing the cast to the compelled member alone leaves the package green,
+// because none of the three words reaches a listener on anybody else's sheet.
+// It is the rule this layer should keep rather than a guarantee this layer can
+// currently demonstrate, and the first word that touches a second creature is
+// what will make it demonstrable.
 //
 // # The save is not optional
 //
@@ -183,6 +210,36 @@ func (d compelledDriver) obey(
 	return out, nil
 }
 
+// alreadySpent are the imposed effect kinds that ask nothing of the turn:
+// resolution has already applied each one by the time the driver is answering,
+// so the turn's own question — where does it go — is untouched by them.
+//
+// # It is an allow-list, and a new kind must be added here on purpose
+//
+// The set happens to be every kind that exists beside [resolution.ImposedMove]
+// today, which is the point rather than a coincidence. A kind added later has
+// to be read and placed: does the TURN have to carry it out, or has it already
+// happened? A default that waved the unknown one through would answer that
+// question by accident, and answer it wrong in the direction nobody notices —
+// resolution produces the effects, applies them on the bus, and then the turn
+// ends as though nothing had been asked of the creature, with nothing in the
+// log saying a translation was skipped.
+var alreadySpent = map[resolution.ImposedEffectKind]bool{
+	// Grovel's prone, applied on the interaction's own bus and saved before
+	// this is reached.
+	resolution.ImposedCondition: true,
+
+	// The same word landing on a creature that is already prone: Grovel
+	// inherits the same-ref replacement rule rather than restating it, so the
+	// old instance's removal rides back beside the new one.
+	resolution.ImposedConditionRemoved: true,
+
+	// No word deals damage today. It is listed because a word that did would
+	// still be asking nothing of the turn — the sheet has already taken it —
+	// so refusing it would be this seam failing on somebody else's arithmetic.
+	resolution.ImposedDamage: true,
+}
+
 // compelledIntent turns the word's effects into the one intent the composition
 // executes.
 //
@@ -191,9 +248,9 @@ func (d compelledDriver) obey(
 // Approach and Flee each describe exactly one move and Grovel describes none,
 // so those are the only two shapes this translation accepts. A second move
 // would be two answers to "where does this turn go", and an effect kind that is
-// neither is a word this seam was never taught — both are ErrBadTurnOutcome,
-// which is what the driver boundary already answers when it cannot translate
-// what came back.
+// on neither list is a word this seam was never taught — both are
+// ErrBadTurnOutcome, which is what the driver boundary already answers when it
+// cannot translate what came back.
 //
 // Nothing here ENDS the turn, and that is not an omission: [encounter.Routed]
 // is terminal and Pass ends the turn by being Pass. The text's "and then ends
@@ -211,7 +268,12 @@ func compelledIntent(
 	for i := range effects {
 		effect := effects[i]
 		if effect.Kind != resolution.ImposedMove {
-			continue
+			if alreadySpent[effect.Kind] {
+				continue
+			}
+			return nil, fmt.Errorf(
+				"compelled turn %q: %w: the word imposed %q, which this seam cannot translate",
+				member, ErrBadTurnOutcome, effect.Kind)
 		}
 		if move != nil {
 			return nil, fmt.Errorf(

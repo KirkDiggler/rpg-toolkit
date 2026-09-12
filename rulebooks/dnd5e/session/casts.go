@@ -303,8 +303,11 @@ func (m *Manager) compileCastOffer(
 // catalog definition and must not share a slice header into it.
 func castOptions(profile *combatActions.CastProfile) []CastOption {
 	if len(profile.Options) == 0 {
-		// Nil rather than an empty slice, so "this spell has no menu" reaches a
-		// host as an absent field and not as a menu of nothing.
+		// Nil, which the omitempty tag on Declaration.Options renders exactly
+		// as an empty slice would — the two are the same answer on the wire,
+		// and an earlier version of this comment claimed a distinction the
+		// encoding does not make. Returning nil allocates nothing for the many
+		// rows that offer no choice.
 		return nil
 	}
 	out := make([]CastOption, 0, len(profile.Options))

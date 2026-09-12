@@ -45,6 +45,12 @@ type CommandTurnSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 	driver     *recordingBehavior
+
+	// behind is the brain the recorder wraps, for the one test that needs a
+	// driver of its own. Nil means the real behavior, which is what every
+	// compelled test wants: a compelled turn that leaked through to it would
+	// produce a view.
+	behind session.TurnDriver
 }
 
 func TestCommandTurnSuite(t *testing.T) {
@@ -69,7 +75,10 @@ func (s *CommandTurnSuite) scene(
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = newFakeCharacters(sheets...)
-	s.driver = &recordingBehavior{next: session.Behavior()}
+	if s.behind == nil {
+		s.behind = session.Behavior()
+	}
+	s.driver = &recordingBehavior{next: s.behind}
 
 	mgr, err := session.NewManager(&session.Config{
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: s.driver,
@@ -594,4 +603,83 @@ func (s *CommandTurnSuite) reactRow(member string) session.Declaration {
 		}
 	}
 	return session.Declaration{}
+}
+
+// runsOnce hands back one Routed for the named member's first turn and passes
+// on every other, which is what a monster deciding to run looks like from the
+// seam's side: a policy, an anchor, and its own cause.
+type runsOnce struct {
+	member string
+	anchor string
+	cause  string
+	asked  int
+}
+
+func (r *runsOnce) Act(view session.MonsterView) (session.TurnIntent, error) {
+	if view.Self != r.member {
+		return session.Pass{}, nil
+	}
+	r.asked++
+	if r.asked > 1 {
+		return session.Pass{}, nil
+	}
+	return session.Routed{
+		Policy: session.MoveAway, Anchor: r.anchor, Cause: r.cause,
+	}, nil
+}
+
+// TestAHostDriversRoutedReachesTheCompositionThroughTheSeam is the hand-off
+// this PR leaves for the monster-flee lane, driven end to end.
+//
+// # Why the unit test beside it was not enough
+//
+// A reviewer deleted both Routed arms from turnDriverSeam.Act and the package
+// stayed green: the compelled path builds encounter.Routed directly and never
+// touches that switch, and the translation's own test calls
+// routedToEncounter. So the DISPATCH — a host's session.Routed being
+// recognised at all — had no test, and the one customer the PR names for it is
+// a host driver.
+//
+// Nobody is compelled here. The skeleton runs because its own brain said so,
+// and the beats carry the brain's own cause rather than the compulsion's,
+// which is what proves all three fields crossed rather than being supplied by
+// the compelled path.
+func (s *CommandTurnSuite) TestAHostDriversRoutedReachesTheCompositionThroughTheSeam() {
+	brain := &runsOnce{
+		member: "skeleton", anchor: "bard",
+		cause: refs.Conditions.Frightened().String(),
+	}
+	s.behind = brain
+	s.scene(
+		[]*character.Data{commandingBard("bard")},
+		map[string]spatial.Position{"bard": hexCell(0, 0)},
+		hexCell(2, 0),
+	)
+	before := s.where("skeleton")
+
+	s.Require().NoError(s.endTurn("bard"))
+
+	s.Equal(1, brain.asked, "the brain WAS asked: this member holds no compulsion")
+	after := s.where("skeleton")
+	s.NotEqual(before, after, "and the composition walked the route it was handed")
+	s.Greater(after.X, before.X, "away from the anchor it named")
+
+	walked := 0
+	for _, beat := range s.story("bard") {
+		if beat.Beat == "moved" && beat.Member == "skeleton" {
+			walked++
+			s.Equal(refs.Conditions.Frightened().String(), beat.Cause,
+				"the driver's own cause crossed, not the compulsion's")
+		}
+	}
+	s.Positive(walked)
+
+	ended := 0
+	for _, beat := range s.story("bard") {
+		if beat.Beat == "turn-ended" && beat.Member == "skeleton" {
+			ended++
+		}
+	}
+	s.Equal(1, ended, "Routed is terminal for a host driver too")
+	s.Equal(1, brain.asked, "and terminal means it is not asked again within the turn")
 }

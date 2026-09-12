@@ -4,11 +4,13 @@
 package session
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -68,6 +70,74 @@ func TestAWordThatImposesNoMoveEndsTheTurn(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, encounter.Pass{}, empty,
 		"and a word that imposed nothing at all still spends the turn")
+}
+
+// TestAnEffectKindThisSeamWasNeverTaughtIsRefused is the one the doc promised
+// and the code did not do until a reviewer probed it: an unknown kind used to
+// be skipped, so the turn ended as though nothing had been asked of the
+// creature and nothing said a translation had been dropped.
+//
+// The three kinds that ARE known must keep passing through, which is why the
+// fix is an allow-list and not a bare default — Grovel rides on two of them.
+func TestAnEffectKindThisSeamWasNeverTaughtIsRefused(t *testing.T) {
+	intent, err := compelledIntent("skeleton", []resolution.ImposedEffect{
+		{Kind: "teleport", RecipientID: "skeleton"},
+	})
+	require.ErrorIs(t, err, ErrBadTurnOutcome)
+	require.Nil(t, intent, "and no turn is invented for it")
+	require.Contains(t, err.Error(), "teleport", "the refusal names what it could not translate")
+
+	for _, kind := range []resolution.ImposedEffectKind{
+		resolution.ImposedCondition,
+		resolution.ImposedConditionRemoved,
+		resolution.ImposedDamage,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			spent, spentErr := compelledIntent("skeleton", []resolution.ImposedEffect{
+				{Kind: kind, RecipientID: "skeleton"},
+			})
+			require.NoError(t, spentErr,
+				"resolution already applied this one; the turn has nothing to carry out")
+			require.Equal(t, encounter.Pass{}, spent)
+		})
+	}
+
+	// And an unknown kind is refused even when a walk arrived beside it, so a
+	// word that grew a second consequence cannot hide it behind its move.
+	beside, err := compelledIntent("skeleton", []resolution.ImposedEffect{
+		imposedMove(combatActions.MoveToward, "bard"),
+		{Kind: "teleport", RecipientID: "skeleton"},
+	})
+	require.ErrorIs(t, err, ErrBadTurnOutcome)
+	require.Nil(t, beside)
+}
+
+// TestTheLookupSkipsABlobItCannotReadRatherThanStoppingAtIt is the driver's
+// own half of the rule participation keeps.
+//
+// It is a UNIT test on purpose. The reviewer showed the scenario cannot be
+// built through the verbs — resolution's attach refuses a record carrying an
+// unreadable condition one seam earlier — so this is the only place the
+// defence can be observed at all, and the doc on commandedIn now says that is
+// what it is.
+//
+// The ORDER is the assertion: the corrupt blob goes first, which is exactly
+// the arrangement that makes a whole-list decode answer "nothing here".
+func TestTheLookupSkipsABlobItCannotReadRatherThanStoppingAtIt(t *testing.T) {
+	real, err := conditions.NewCommandedCondition(
+		"skeleton", refs.Spells.Command().String(), "bard", "flee", 1,
+	)
+	require.NoError(t, err)
+	raw, err := real.ToJSON()
+	require.NoError(t, err)
+
+	data, held := commandedIn([]json.RawMessage{json.RawMessage(`{"ref":`), raw})
+	require.True(t, held, "a corrupt blob in front of a compulsion must not hide it")
+	require.Equal(t, "flee", data.Word)
+	require.Equal(t, "bard", data.CasterID)
+
+	_, none := commandedIn([]json.RawMessage{json.RawMessage(`{"ref":`)})
+	require.False(t, none, "and a sheet with nothing readable on it holds no compulsion")
 }
 
 // TestATranslationThisSeamCannotMakeIsRefused — each of these is a wiring
