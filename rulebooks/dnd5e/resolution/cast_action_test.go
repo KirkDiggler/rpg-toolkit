@@ -1108,28 +1108,35 @@ func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
 	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Baned()))
 }
 
-// TWO CASTERS EACH KEEP THEIR OWN COMMAND, and this is the rule rather than a
-// consequence somebody noticed.
+// TWO CASTERS EACH KEEP THEIR OWN COMMAND, AND THE FIRST ONE APPLIED IS THE ONE
+// OBEYED.
 //
 // Command is per CASTER, exactly as Bane is (design §2 and §4, ruled
-// 2026-09-12 off a walk finding). The condition's identity includes the caster
-// who gave the order, so a second caster's word is a different instance at a
-// different address and the replacement rule correctly leaves both standing.
-// Nobody's spell is taken off to make room for anybody else's — which is the
-// guarantee, and the thing ref-keying would have broken.
+// 2026-09-12). The condition's identity includes the caster who gave the order,
+// so a second caster's word is a different instance at a different address and
+// the replacement rule correctly leaves both standing. Nobody's spell is taken
+// off to make room for anybody else's — that is the guarantee, and the thing
+// ref-keying would have broken.
 //
 // A SAME-caster recast still replaces, because that is the same address; that
 // is TestASecondCommandReplacesTheFirst, one scene up.
 //
-// # The newest word is the one obeyed, and the sheet order is how
+// # First applied wins, and Bane's group is the precedent
 //
-// The compelled turn obeys the newest word on the sheet. That rule rests on
-// something THIS package decides: the keeper appends the newly applied
-// instance after the one already there, so the newer order is last. The
-// assertion below pins it, because the driver in session reads the last blob
-// and a silently reordered sheet would make it obey the older order with
-// nothing looking wrong.
-func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheNewestIsLast() {
+// Two orders coexisting need a rule for which one the creature obeys, and it is
+// the one that got there first — the same rule conditions.BanedContributionGroup
+// already runs for Bane, where DescribeSelectedRollContributions takes the
+// OLDEST applicable provider in the group and skips the rest. One rule across
+// the tree rather than a second answer for compulsions.
+//
+// # The sheet's order is what "first" means, and this package decides it
+//
+// The keeper appends each newly applied instance after the one already there,
+// so the sheet reads in application order and the first word applied is FIRST.
+// The assertion below pins that sequence, because the compelled turn reads the
+// order off the sheet: silently reorder it and a creature obeys the wrong
+// caster with nothing looking wrong.
+func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheFirstAppliedWins() {
 	fixtures := s.fixtures()
 	target := fixtures.saver(14, commandedConditionJSON(s, heroID, wolfID, spells.CommandWordFlee))
 	bus := events.NewEventBus()
@@ -1159,11 +1166,12 @@ func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheNewestI
 
 	orders := s.commandedInOrder(sheet.Conditions)
 	s.Equal([]string{spells.CommandWordFlee, spells.CommandWordGrovel}, orders,
-		"the newest word is LAST on the sheet, which is how the compelled turn picks it")
+		"the sheet reads in application order, so the word that got there first is FIRST")
 }
 
 // commandedInOrder is every order a sheet is carrying, in the order the sheet
-// carries them. The sequence is the assertion: the driver reads the newest.
+// carries them. The sequence is the assertion: the first applied is the one
+// obeyed.
 func (s *CastActionTestSuite) commandedInOrder(stored []json.RawMessage) []string {
 	words := make([]string, 0, len(stored))
 	for _, raw := range stored {
