@@ -225,6 +225,52 @@ asking for the same approval again. Material scope changes should be surfaced cl
 
 ## After this slice
 
+### Healing Word inspection (2026-09-12)
+
+The user authorized continuing with Healing Word, Bless, remaining cantrips,
+and domain support as separate slices, one PR at a time. Healing Word starts
+from main `f39a7b26`, after acquisition #1698 released as rulebook v0.160.0.
+
+Existing healing arithmetic, ability/Life contributions, exclusions, paid
+delivery, HP persistence, and story results are reusable. Missing creature
+types remain eligible under the settled user policy. The current profile
+validator permits healing only on touch casts; resolution and session also
+use touch-specific target handling. Healing Word needs a visible creature
+within 60 feet, including eligible self-targeting, and a bonus-action cost.
+Its first-level healing is 1d4 plus casting modifier. Preparation, automatic
+domain grants, upcasting and world-clock casting remain separate.
+
+The 2014 bonus-action spell restriction is not currently enforced: session's
+cast documentation explicitly relies on spending the standard action to stop
+a second spell. The user explicitly chose to implement the shared same-turn
+restriction with Healing Word. Enforcement must handle both cast orders,
+one-action cantrips, same-turn reaction spells, persistence, and turn boundaries;
+it must not be replaced with a blanket one-spell-per-turn restriction.
+
+Sources: [Healing Word](https://www.dndbeyond.com/spells/2140-healing-word),
+[2014 casting rules](https://www.dndbeyond.com/sources/dnd/basic-rules-2014/spellcasting).
+Acceptance should cover visibility/range, self/ally/other known recipients,
+dying recovery, missing-type healing, known excluded types, ordinary/Life
+calculations, bonus action plus slot payment, replay, and the agreed same-turn
+policy. Stage provider changes first; adopt each real release before advancing
+the next module. Do not enable acquisition before the delivery path is usable.
+
+The first provider PR supplies the shared rule and character payment operation:
+`combat.SpellTurnState.AfterCast` checks the declared spell level and casting
+time in both orders; `Character.CanPaySpell` projects legality and affordability;
+`Character.PaySpell` pays through the existing gate and records history only
+on success. History persists with the character economy but has its own explicit
+turn identity, preserved across economy refresh. It is cleared on combat exit.
+Ordinary `combat.Pay` continues to own prices only.
+
+This provider does not enable Healing Word or wire the live casting door yet.
+After it releases, the remaining work is spell content/classification, ranged
+healing target validation and delivery, then session offers and execution. The
+composition must supply a turn identity that distinguishes active creatures,
+rounds, and encounters; the payer's existing refresh number is insufficient.
+Consumer tests must prove that identity using actual clock transitions, as well
+as offer/execution agreement, saved continuation, and failed-payment behavior.
+
 ### Supported spell acquisition (2026-09-12)
 
 The user authorized reusing Bard's creation/known-spell pipeline while full

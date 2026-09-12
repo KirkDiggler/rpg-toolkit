@@ -4,6 +4,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 // EconomySlot identifies which action-economy slot a menu entry draws from, so
@@ -189,6 +190,9 @@ const (
 // ActionEconomyData is the serializable form of the action economy state.
 // Lives on Character.Data.ActionEconomy (nil outside combat, omitempty).
 type ActionEconomyData struct {
+	// Spellcasting has its own turn identity: reactions can happen on another
+	// creature's turn without refreshing this character's action economy.
+	Spellcasting          combat.SpellTurnState    `json:"spellcasting,omitzero"`
 	TurnNumber            int                      `json:"turn_number"`
 	ActionsRemaining      int                      `json:"actions_remaining"`
 	BonusActionsRemaining int                      `json:"bonus_actions_remaining"`

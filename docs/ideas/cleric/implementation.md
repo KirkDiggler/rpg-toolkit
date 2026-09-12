@@ -158,3 +158,24 @@ session PR remains pending; no API/protos/web adoption or pins were changed.
 See [healing-rules.md](healing-rules.md) for rules sources, model decisions and
 explicit scope limits. Preparation, automatic grants, upcasting, out-of-combat
 casting and external repository pins remain deferred.
+
+### Healing Word: same-turn rule provider (2026-09-12)
+
+The user chose to ship the 2014 bonus-action casting restriction with Healing
+Word. The first provider checkpoint adds a pure spell-turn rule in `combat`
+and atomic `CanPaySpell`/`PaySpell` operations on Character. Casting history is
+stored with action economy, using an independent explicit turn identity. A
+resource refresh preserves that history; querying or paying on another turn
+does not refresh resources. Successful free casts also mark history dirty.
+
+Combat tests pass for both casting orders, the one-action cantrip exception,
+reaction spells, bonus-action cantrips, different turn identities, JSON history,
+and invalid declarations. Static checks pass for combat and character. Character
+payment/persistence tests compile, but Windows Application Control blocks their
+execution; Linux CI is required. Formatting and module tidy introduce no source
+changes outside this slice and no dependency changes.
+
+This is a provider checkpoint, not live Healing Word support. Spell content,
+actual clock identity wiring, ranged healing, session offers and execution
+remain to be implemented and verified in the sequence in `plan.md`. No consumer
+pins or external repositories have been changed.
