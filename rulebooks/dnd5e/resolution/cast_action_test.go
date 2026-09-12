@@ -958,8 +958,8 @@ func (s *CastActionTestSuite) TestASecondCommandReplacesTheFirst() {
 	}, newSurface(bus))
 	s.Require().NoError(err)
 
-	s.Equal([]string{"removed:" + heroID + "::replaced", "applied:" + heroID}, *traffic,
-		"the old order comes off BEFORE the new one lands")
+	s.Equal([]string{"removed:" + heroID + ":" + bardID + ":replaced", "applied:" + heroID}, *traffic,
+		"the old order comes off BEFORE the new one lands, at its full address")
 
 	sheet := fixtures.sheet(out, heroID)
 	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Commanded()),
@@ -1000,7 +1000,7 @@ func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
 	}, newSurface(bus))
 	s.Require().NoError(err)
 
-	s.Equal([]string{"removed:" + wolfID + "::replaced", "applied:" + wolfID}, *traffic)
+	s.Equal([]string{"removed:" + wolfID + ":" + bardID + ":replaced", "applied:" + wolfID}, *traffic)
 	s.Equal(1, s.countingRef(s.monsterSheet(out, wolfID).Conditions, refs.Conditions.Commanded()),
 		"one instance per address per member, on a monster's sheet too")
 }
@@ -1106,4 +1106,52 @@ func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
 	sheet := fixtures.sheet(out, heroID)
 	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.ViciousMockery()))
 	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Baned()))
+}
+
+// TWO CASTERS NOW EACH HOLD THEIR OWN COMMAND, AND THE DESIGN SAYS OTHERWISE.
+//
+// This pins what the code does; it does not endorse it. Design §4 says applying
+// a second Commanded to a member that holds one removes the first, because "two
+// words on one creature is not a state this design allows". That was true while
+// Commanded had no source of its own. It stopped being true when Commanded
+// gained a ConditionAddressProvider carrying its caster: two casters are two
+// addresses, so the replacement rule correctly leaves both standing.
+//
+// The consequence reaches the next PR. The compelled driver looks the
+// compulsion up with conditions.DecodeCommanded, which answers with ONE record,
+// so a creature holding two orders obeys whichever the decoder happens to reach
+// and the other word is invisible. Nothing is corrupt and nothing crashes — it
+// is a silent arbitrary choice, which is the shape this stack keeps finding.
+//
+// THE RULING IS OPEN, and it is not this package's to make: is Command per
+// caster, like Bane, or per member, as §4 says? If per member, Commanded should
+// not carry a source and the two addresses collapse back into one. If per
+// caster, §4 needs rewriting and the driver needs a rule for which order wins.
+// Either way this test changes, which is why it is named for the disagreement
+// rather than for a behaviour.
+func (s *CastActionTestSuite) TestTwoCastersEachHoldTheirOwnCommandAndTheDesignSaysOtherwise() {
+	fixtures := s.fixtures()
+	target := fixtures.saver(14, commandedConditionJSON(s, heroID, wolfID, spells.CommandWordFlee))
+	bus := events.NewEventBus()
+	traffic := s.conditionTraffic(bus, refs.Conditions.Commanded())
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 1, other: psychicFace},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: commandCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"applied:" + heroID}, *traffic,
+		"the wolf's order was not taken off to make room for the bard's")
+	s.Equal(2, s.countingRef(fixtures.sheet(out, heroID).Conditions, refs.Conditions.Commanded()),
+		"two casters, two addresses, two orders on one creature")
 }
