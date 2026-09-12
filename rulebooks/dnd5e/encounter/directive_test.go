@@ -1089,3 +1089,41 @@ func (s *DirectiveTestSuite) TestTowardWithNoBudgetRoutesNowhere() {
 	s.Empty(out.Path)
 	s.Empty(out.StoppedBy, "nothing stopped it; it was never paid for")
 }
+
+// TestTowardStopsBesideAnEMPTYAnchorCell is the goal scan's own test, and the
+// only scene in this file where the scan and the ruler fallback disagree.
+//
+// Every other Toward scene aims at a cell somebody is standing on, which the
+// fold already calls unstandable — so the fallback, which only knows "nearest
+// by the ruler", happens to give the same answer and the fewest-steps scan
+// could be deleted without a test noticing.
+//
+// [Encounter.Route]'s Anchor is a POSITION, not a member: a rule may aim a
+// directive at a cell nobody occupies, and [MoveToward]'s headline guarantee
+// says it still stops beside rather than on it — "an empty anchor cell is
+// still not where 'within 5 feet' ends". Without the scan the route walks the
+// extra cell and ends ON the anchor at distance zero.
+func (s *DirectiveTestSuite) TestTowardStopsBesideAnEMPTYAnchorCell() {
+	enc := s.towardCorridorScene()
+	anchor := cellAt(2, 2)
+	const budget = 6
+
+	s.Require().NotEqual(anchor, s.cellOfMember(alice), "the anchor cell is nobody's")
+	s.Require().Equal(encounter.PassageStandable,
+		enc.CellAt(encounter.CellAtInput{Cell: anchor, Mover: goblin}).Passage,
+		"and the mover could legally stop on it, which is what makes this a real refusal")
+	s.Require().Contains(reachedStandableWithin(enc, goblin, s.cellOfMember(goblin), budget), anchor,
+		"and it is inside the budget")
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: budget,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(out.Path)
+
+	end := out.Path[len(out.Path)-1]
+	s.Equal(cellAt(3, 2), end, "it stops on the ring")
+	s.Equal(float64(1), enc.Distance(anchor, end), "beside the anchor, not on it")
+	s.NotContains(out.Path, anchor, "and never enters the cell it was aimed at")
+	s.Len(out.Path, 4)
+}

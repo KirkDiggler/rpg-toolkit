@@ -473,6 +473,21 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 		Data: data,
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData, "an intent outside the turn's bound is not resumable")
+
+	// The cause a Routed pause carries is the newest field on this shape, and
+	// it gets the twin of the held directive's own check (held_test.go): a
+	// pause that names a cause the grammar cannot read is bytes no version of
+	// this module wrote, and it is refused before anything is constructed.
+	data = enc.ToData()
+	data.PausedTurn.Cause = "not-a-ref"
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: &downList{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+	})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData,
+		"a compelled walk names its cause, and a resumed one still has to")
 }
 
 // TestTheLastMonsterDroppedInTheWindowReloadsAndResumesCleanly is the case
@@ -632,10 +647,12 @@ func (s *PauseTestSuite) TestAResumedRoutedTurnEndsWithoutAnotherAct() {
 	s.Equal(encounter.MemberID(alice), out.Next, "the turn came back to the player")
 	s.Equal(cellAt(3, 2), s.positionOf(enc, goblin), "and the whole route was walked")
 
-	s.Equal([]string{
-		"scene-opened", "bubble-formed", "turn-ended",
-		"moved", encounter.BeatWindowOpened, "moved", "moved", "turn-ended",
-	}, s.beats(enc, alice))
+	// The three cells and the ending, not the whole transcript: what this test
+	// claims is that the walk finished and the turn ended, and pinning every
+	// other beat in the story would also pin "nothing else happened", which it
+	// does not claim and should not tax.
+	s.Equal(3, len(movedBeatsOf(s.T(), enc, alice)), "one beat per cell of the route")
+	s.True(turnEndedFor(s.T(), enc, goblin), "and the walk ended the turn")
 }
 
 // TestEveryCellOfAResumedRoutedWalkNamesItsCause. The cause survives the
@@ -736,4 +753,53 @@ func (s *PauseTestSuite) TestAPausedTurnTakesNoSecondStepWhileItsWindowIsOpen() 
 
 	s.Equal([]string{"scene-opened", "bubble-formed", "turn-ended", encounter.BeatWindowOpened},
 		s.beats(enc, alice), "no cell is narrated as walked, because none was")
+}
+
+// TestARoutedWalkPausedTwiceIsStillOneCompelledTurn is the case the terminal
+// flag exists for, and the only one that exercises carrying it FORWARD.
+//
+// One compelled walk, two reactors. The first window is the fresh pause the
+// intent stored; the second is a pause stored by the RESUME, out of
+// finishPausedIntent rather than executeTurnIntent — a different constructor,
+// and the one that has to copy both facts across. Drop `terminal` there and
+// the second resume falls back into runTurnIntents and hands the compelled
+// driver a second Act for a turn its compulsion never gave it. Drop `cause`
+// and the last cells narrate a creature strolling off on its own.
+func (s *PauseTestSuite) TestARoutedWalkPausedTwiceIsStillOneCompelledTurn() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true, 2: true}}
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc := s.routedWalkingScene(mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused(), "the first window")
+
+	first, err := enc.ResumeTurn(context.Background())
+	s.Require().NoError(err)
+	s.Require().True(first.Paused, "a later cell of the same walk asked somebody else")
+	s.Require().True(enc.Paused(), "the second window")
+
+	second := enc.ToData()
+	s.Require().NotNil(second.PausedTurn)
+	s.True(second.PausedTurn.Terminal, "the re-pause still knows the turn ends with the walk")
+	s.Equal(commandedRef.String(), second.PausedTurn.Cause, "and still knows what routed it")
+
+	out, err := enc.ResumeTurn(context.Background())
+	s.Require().NoError(err)
+	s.False(out.Paused, "the walk finished")
+	s.False(enc.Paused())
+	s.Len(driver.calls, 1, "one Act for the whole turn, both windows included")
+	s.Equal(cellAt(3, 2), s.positionOf(enc, goblin), "and the whole route was walked")
+	s.Equal(encounter.MemberID(alice), out.Next)
+
+	moved := 0
+	for _, beat := range storyBeats(s.T(), enc, alice) {
+		if beat["beat"] != "moved" {
+			continue
+		}
+		moved++
+		s.Equal(commandedRef.String(), beat["cause"], "every cell, across both windows")
+	}
+	s.Equal(3, moved)
+	s.True(turnEndedFor(s.T(), enc, goblin))
 }

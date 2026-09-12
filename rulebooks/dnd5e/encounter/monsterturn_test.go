@@ -1988,6 +1988,35 @@ func positionOfMember(t *testing.T, enc *encounter.Encounter, id encounter.Membe
 	return spatial.Position{}
 }
 
+// TestARoutedWalkIsAnnouncedAsWalkingAndNamesWhatRoutedIt.
+//
+// The two things every cell of a compelled walk tells the [Mover], and the
+// ruling of this slice is the second one: Forced is FALSE. A commanded
+// creature is WALKING, under somebody else's orders, so its steps provoke
+// exactly as its own would — the ghoul that obeys "approach" is struck on the
+// way in. Being compelled is not being shoved, and Forced is what a directive
+// sets when a creature is MOVED rather than moving.
+//
+// Design §5.4's first prose said the flag was set; §5.3's own table gives
+// Approach and Flee Provokes:true, and Direct maps forced = !Provokes. The
+// design record carries the correction. This is the test that makes it real,
+// because a route that announced forced=true would look identical from every
+// other seam.
+func TestARoutedWalkIsAnnouncedAsWalkingAndNamesWhatRoutedIt(t *testing.T) {
+	mover := &recordingMover{}
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc := routedScene(t, mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, mover.calls, "the walk announced its cells")
+	for i, step := range mover.calls {
+		require.False(t, step.Forced, "step %d: a compelled creature walks, and walking provokes", i)
+		require.Equal(t, commandedRef, step.Cause, "step %d: and every step says what routed it", i)
+	}
+}
+
 // TestRoutedTowardWalksTheRouteAndEndsTheTurnAskedOnce is the intent in one
 // scene: the driver names a policy and an anchor, the encounter finds the
 // cells, walks them, and the turn is over — one Act call for the whole turn,
