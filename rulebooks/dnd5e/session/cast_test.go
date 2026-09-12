@@ -1184,3 +1184,158 @@ func (s *CastSuite) TestTheShoveReachesTheClientAsATypedResult() {
 	s.Equal(refs.Spells.Thunderwave().String(), pushed.SourceRef)
 	s.Equal("Thunderwave", pushed.SourceName)
 }
+
+// storedSkeletonConditions reads the NPC's condition blobs back out of the
+// session record — what the repository actually holds after the verb returned,
+// rather than what a beat said had happened.
+func (s *CastSuite) storedSkeletonConditions() []json.RawMessage {
+	s.T().Helper()
+	for _, npc := range s.sessions.byID["sess"].NPCs {
+		if npc.ID == "skeleton" {
+			return npc.Conditions
+		}
+	}
+	s.FailNow("no skeleton in the record")
+	return nil
+}
+
+// TestCommandIsOneRowCarryingItsThreeWords is the shape §3 of the design chose
+// over a row per word: the dock gets one button and a menu, not three buttons
+// that differ only in a hidden selector.
+func (s *CastSuite) TestCommandIsOneRowCarryingItsThreeWords() {
+	s.scene(castingBardWithSpells("bard", spells.Command), 2)
+
+	rows := s.castRows()
+	s.Require().Len(rows, 1, "a menu is an input, so three words are still one offer")
+	row := rows[0]
+	s.Equal(refs.Spells.Command().String(), row.Spell.Ref)
+	s.Equal([]session.CastOption{
+		{ID: spells.CommandWordApproach, Label: "Approach"},
+		{ID: spells.CommandWordFlee, Label: "Flee"},
+		{ID: spells.CommandWordGrovel, Label: "Grovel"},
+	}, row.Options, "the content's order, which is the order a picker draws")
+	s.True(row.Available)
+	s.Equal(session.TargetMember, row.TargetKind)
+}
+
+// TestASpellWithNoMenuCarriesNoOptions — absence is the answer, and it is the
+// answer for every spell in the catalog but one.
+func (s *CastSuite) TestASpellWithNoMenuCarriesNoOptions() {
+	s.scene(castingBardWithSpells("bard", spells.Bane), 2)
+	s.Empty(s.castRow(spells.Bane).Options,
+		"Bane asks no question, so its row offers nothing to answer")
+}
+
+// TestTheChosenWordReachesTheCompulsionOnAFailedSave is the whole point of the
+// cast-time input: the id the caller sent is what the condition on the target's
+// sheet is holding, beside the caster it must measure from.
+func (s *CastSuite) TestTheChosenWordReachesTheCompulsionOnAFailedSave() {
+	s.scene(castingBardWithSpells("bard", spells.Command), 2, 1)
+	row := s.castRow(spells.Command)
+
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: row.ID,
+		Targets: []string{"skeleton"}, Option: spells.CommandWordFlee,
+	})
+	s.Require().NoError(err)
+
+	commanded, held, err := conditions.DecodeCommanded(s.storedSkeletonConditions())
+	s.Require().NoError(err)
+	s.Require().True(held, "a failed Wisdom save leaves the compulsion on the sheet")
+	s.Equal(spells.CommandWordFlee, commanded.Word)
+	s.Equal("bard", commanded.CasterID, "the word is measured from whoever spoke it")
+	s.Equal("skeleton", commanded.MemberID)
+}
+
+// TestEachWordOnTheMenuIsTheWordThatLands — one of the three would pass a test
+// that only ever sent one, so every word is sent and read back.
+func (s *CastSuite) TestEachWordOnTheMenuIsTheWordThatLands() {
+	for _, word := range []string{
+		spells.CommandWordApproach, spells.CommandWordFlee, spells.CommandWordGrovel,
+	} {
+		s.Run(word, func() {
+			s.scene(castingBardWithSpells("bard", spells.Command), 2, 1)
+			_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+				Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Command).ID,
+				Targets: []string{"skeleton"}, Option: word,
+			})
+			s.Require().NoError(err)
+
+			commanded, held, err := conditions.DecodeCommanded(s.storedSkeletonConditions())
+			s.Require().NoError(err)
+			s.Require().True(held)
+			s.Equal(word, commanded.Word)
+		})
+	}
+}
+
+// TestAMadeSaveLeavesNoCompulsion — Command has no damage, so a made save is
+// the whole success branch and nothing at all is written.
+func (s *CastSuite) TestAMadeSaveLeavesNoCompulsion() {
+	s.scene(castingBardWithSpells("bard", spells.Command), 2, 20)
+
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Command).ID,
+		Targets: []string{"skeleton"}, Option: spells.CommandWordApproach,
+	})
+	s.Require().NoError(err)
+
+	saves := s.beats(session.EventSaved)
+	s.Require().Len(saves, 1)
+	saved, ok := saves[0].Body.(session.SavedBody)
+	s.Require().True(ok)
+	s.True(saved.Succeeded, "20 beats DC 13")
+
+	_, held, err := conditions.DecodeCommanded(s.storedSkeletonConditions())
+	s.Require().NoError(err)
+	s.False(held, "a made save leaves no word behind")
+}
+
+// TestAMenuMustBeAnsweredAndAnsweredFromTheMenu pins both halves of the door,
+// because each is a different client bug: sending nothing means the effect
+// bound to the choice would have had nothing to write, and sending a word
+// nobody offered means the client invented one.
+//
+// Each refusal spends neither the RNG nor the slot, which is what makes it a
+// door rather than a rollback.
+func (s *CastSuite) TestAMenuMustBeAnsweredAndAnsweredFromTheMenu() {
+	for name, option := range map[string]string{
+		"no word at all":       "",
+		"a word off the menu":  "halt",
+		"a word with no spell": "APPROACH",
+	} {
+		s.Run(name, func() {
+			s.scene(castingBardWithSpells("bard", spells.Command), 2, 1)
+			beforeRolls := s.dice.next
+			beforePool := s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current
+
+			_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+				Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Command).ID,
+				Targets: []string{"skeleton"}, Option: option,
+			})
+			s.ErrorIs(err, session.ErrBadCast)
+			s.Equal(beforeRolls, s.dice.next, "a refused cast rolls nothing")
+			s.Equal(beforePool,
+				s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current,
+				"a refused cast spends no slot")
+			_, held, decodeErr := conditions.DecodeCommanded(s.storedSkeletonConditions())
+			s.Require().NoError(decodeErr)
+			s.False(held, "and leaves no compulsion on the target")
+		})
+	}
+}
+
+// TestAWordSentToASpellWithNoMenuIsRefused — the other direction of the same
+// law. Ignoring it would let a client believe it had chosen something about
+// Bane that Bane never offered.
+func (s *CastSuite) TestAWordSentToASpellWithNoMenuIsRefused() {
+	s.scene(castingBardWithSpells("bard", spells.Bane), 2, 5)
+	beforeRolls := s.dice.next
+
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Bane).ID,
+		Targets: []string{"skeleton"}, Option: spells.CommandWordFlee,
+	})
+	s.ErrorIs(err, session.ErrBadCast)
+	s.Equal(beforeRolls, s.dice.next)
+}

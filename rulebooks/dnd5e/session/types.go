@@ -2365,6 +2365,30 @@ type SpellRef struct {
 	Name string `json:"name"`
 }
 
+// CastOption is one word on a cast's menu — Command's "Approach", "Flee",
+// "Grovel" — the seam's own word for the content's authored choice.
+//
+// IT IS A CAST-TIME INPUT AND NOT A ROW. The alternative considered and
+// rejected was one declaration per word, which would have made the selector
+// carry the choice; it puts the branching in the dock, and a spell with two
+// choices becomes a grid of rows. So a spell with a menu is ONE offer that
+// lists what may be chosen, exactly as a [TargetCell] offer is one row that
+// says a cell is wanted, and the request brings one id back.
+//
+// A client draws what it was sent. Nothing here is grouped, inferred, or
+// looked up: the label is authored beside the id by the spell.
+type CastOption struct {
+	// ID is the id the request echoes in CastInput.Option — "approach". An
+	// OPEN set, so a string, for [AttackRef.Ref]'s reason: content adds words
+	// without this type changing.
+	ID string `json:"id"`
+
+	// Label is the word a person reads — "Approach". Authored by the content
+	// beside the id, never derived from it by a reader, which is the rule
+	// [SpellRef.Name] and [AbilityRef.Name] already keep.
+	Label string `json:"label"`
+}
+
 // AttackRef identifies WHAT was swung — weapon identity, which this seam
 // dropped on the floor since the first swing (rpg-toolkit#866). Carried on a
 // compiled Declaration, AttackOutput, and the Struck/Missed event bodies, so

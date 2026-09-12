@@ -72,6 +72,23 @@ type CastInput struct {
 	// is a real cell somewhere on the canvas, so a missing cell and a cell at
 	// the origin must not be the same value.
 	Cell *spatial.Position
+
+	// Option is the id of one of the selected declaration's
+	// [Declaration.Options] — "approach" for Command. Required when that row
+	// lists any, refused when it lists none, refused when it names an id the
+	// row did not list.
+	//
+	// A CHOICE, NOT A SECOND SELECTOR. It is the same kind of input Cell is:
+	// the offer says a word is wanted and the caller brings one back, rather
+	// than the caller naming a variant the offer never compiled. Nothing here
+	// reads what the word MEANS — the engine writes it into the parameters of
+	// whichever effect the content said reads it, and the rule that acts on it
+	// lives where rules live.
+	//
+	// A STRING and not a pointer, because the empty string is not a cell at the
+	// origin: no menu ever offers an empty id, so "" and "absent" are the same
+	// answer and the door refuses both the same way.
+	Option string
 }
 
 // CastOutput is what a cast produced.
@@ -296,6 +313,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 	definition := selected.spell
 
+	if err := castOption(definition, in.Option); err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
+	}
+
 	targets, err = castTargets(definition, selected, targets, castAim{cell: in.Cell, casterAt: casterAt})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
@@ -316,6 +337,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		Definition: definition.Clone(),
 		AttackerID: in.Member,
 		TargetIDs:  targets,
+		// The chosen word, on its way to the parameters of whichever effect the
+		// content bound it to. Empty for every spell with no menu, and already
+		// refused above if it disagrees with the one this definition declares.
+		Option: in.Option,
 		// Empty for every other arm. Derived recipients travel separately from
 		// named ones all the way down, so no gate has to guess which it holds.
 		AreaMembers: areaMemberIDs(caught),
@@ -580,6 +605,47 @@ func castTargets(
 		}
 	}
 	return append([]string(nil), requested...), nil
+}
+
+// castOption enforces the profile's own menu against the id the caller sent,
+// the way castTargets enforces its target rule — and for the same reason it is
+// stated here rather than left to the layer below: a client that believed it
+// had chosen a word must be told when it had not.
+//
+// BOTH HALVES ARE REFUSED, because each one is a different client bug. A word
+// on a spell that offers no menu means something was sent that nothing will
+// ever read. No word on a spell that offers one means the effect bound to the
+// choice has nothing to write, and a compulsion with no word in it is a
+// condition that compels nothing.
+//
+// The menu comes from the regenerated definition rather than from the compiled
+// row, so the words judged here are the words the cast is about to run.
+// [Declaration.Options] is the projection of that same menu, which is how the
+// caller knew what to send.
+func castOption(definition *combatActions.Definition, option string) error {
+	profile := definition.Cast
+	if profile == nil {
+		// A compiled Cast offer always carries one; failing closed here keeps a
+		// provider defect from reaching the binding as a silent empty menu.
+		return fmt.Errorf("%w: spell %q declares no cast profile",
+			ErrBadCast, definition.Ref.String())
+	}
+	if len(profile.Options) == 0 {
+		if option != "" {
+			return fmt.Errorf("%w: spell %q offers no options",
+				ErrBadCast, definition.Ref.String())
+		}
+		return nil
+	}
+	if option == "" {
+		return fmt.Errorf("%w: spell %q offers %d options and the cast chose none",
+			ErrBadCast, definition.Ref.String(), len(profile.Options))
+	}
+	if !profile.HasOption(option) {
+		return fmt.Errorf("%w: spell %q does not offer the option %q",
+			ErrBadCast, definition.Ref.String(), option)
+	}
+	return nil
 }
 
 // castSaveReport projects the composition's save onto the caller's own.
