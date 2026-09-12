@@ -221,6 +221,10 @@ func (s *ObeyTestSuite) TestAnOrderNothingKnowsHowToObeyIsRefused() {
 // have to agree, and nothing in the type system makes them. This is what makes
 // a disagreement loud: the failure otherwise is a creature standing still under
 // an order nobody could execute.
+//
+// It runs OBEY rather than newObey, because the vocabulary is written twice —
+// the door's refusal and the machine's switch — and a word admitted by one and
+// unhandled by the other is exactly the drift this is for.
 func (s *ObeyTestSuite) TestEveryWordOnCommandsMenuIsAWordThisPackageObeys() {
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Command, SpellSaveDC: 13})
 	s.Require().NotNil(definition)
@@ -228,10 +232,14 @@ func (s *ObeyTestSuite) TestEveryWordOnCommandsMenuIsAWordThisPackageObeys() {
 
 	for _, option := range definition.Cast.Options {
 		s.Run(option.ID, func() {
-			_, err := newObey(&ObeyInput{
-				Interaction: &Input{}, Member: heroID, CasterID: bardID, Word: option.ID,
+			fixtures := s.fixtures()
+			out, err := Obey(s.ctx, &ObeyInput{
+				Interaction: s.interaction(fixtures,
+					Participant{Character: fixtures.saver(14)}, Participant{Character: fixtures.bard(1)}),
+				Member: heroID, CasterID: bardID, Word: option.ID, Source: commandedRef(),
 			})
 			s.Require().NoError(err, "content offers %q and this package has no arm for it", option.ID)
+			s.NotEmpty(out.Effects, "and every word imposes something")
 		})
 	}
 }

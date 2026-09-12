@@ -32,6 +32,15 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   a rule; content declares only the menu a client may choose from. The two
   lists have to agree and nothing makes them, so a test pins content's menu
   against the arms.
+- **One instance per ADDRESS per member.** `replaceSameAddress`
+  ([`contest.go`](./contest.go)) takes off what the recipient already holds at
+  the address a condition is about to land on. The key is the address and not
+  the ref, and the doc there records why: ref-keying would let one caster's
+  Bane strip another caster's, ending a hold that was never theirs. It governs
+  what goes through `publishPreparedCondition` — the gated cast, a strike's
+  save-less condition, and `Obey`'s grovel — and NOT the gateless cast path,
+  which publishes at `activationMachine.deliverCast`. A gateless spell that
+  needs it moves the rule down into `publishCondition`.
 - **The door, and the door pays.** `Machine.Start` is pure preflight; the cost
   is charged after it and before the first step — [`resolve.go:452-459`](./resolve.go),
   `payAtTheDoor` at [`cost.go:148`](./cost.go). A resolution nobody can pay for

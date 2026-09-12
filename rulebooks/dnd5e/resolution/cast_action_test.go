@@ -924,20 +924,28 @@ func (s *CastActionTestSuite) countingRef(stored []json.RawMessage, ref *core.Re
 	return found
 }
 
-// THE EFFECTS OF THE SAME SPELL DO NOT STACK, and Bane is the proof because
-// Bane is where the stacking was: two casters each put a −1d4 on one creature
-// and the first one to end took both off.
-//
-// Command's second word replacing the first is the use case that brought the
-// rule, and the rule is general because the stacking was never Command's bug.
-func (s *CastActionTestSuite) TestASecondInstanceOfOneRefReplacesTheFirst() {
+// commandedConditionJSON is one creature already under an order.
+func commandedConditionJSON(s *CastActionTestSuite, memberID, casterID, word string) json.RawMessage {
+	condition, err := conditions.NewCommandedCondition(
+		memberID, refs.Spells.Command().String(), casterID, word, spells.CommandTurnEnds)
+	s.Require().NoError(err)
+	stored, err := condition.ToJSON()
+	s.Require().NoError(err)
+
+	return stored
+}
+
+// THE HEADLINE FOR THE REPLACEMENT, and Command is the use case that brought
+// the rule: two words on one creature is not a state anything can obey.
+func (s *CastActionTestSuite) TestASecondCommandReplacesTheFirst() {
 	fixtures := s.fixtures()
-	target := fixtures.saver(14, baneConditionJSON(s.T(), heroID, "other-caster"))
+	target := fixtures.saver(14, commandedConditionJSON(s, heroID, bardID, spells.CommandWordFlee))
 	bus := events.NewEventBus()
-	traffic := s.conditionTraffic(bus, refs.Conditions.Baned())
+	traffic := s.conditionTraffic(bus, refs.Conditions.Commanded())
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID,
-		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 1, other: psychicFace},
 	})
 	s.Require().NoError(err)
 
@@ -946,19 +954,24 @@ func (s *CastActionTestSuite) TestASecondInstanceOfOneRefReplacesTheFirst() {
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
-		Machine:      machine, Cost: baneCost(),
+		Machine:      machine, Cost: commandCost(),
 	}, newSurface(bus))
 	s.Require().NoError(err)
 
-	s.Equal([]string{"removed:" + heroID + ":other-caster:replaced", "applied:" + heroID}, *traffic,
-		"the old instance comes off BEFORE the new one lands")
-	s.Equal(1, s.countingRef(fixtures.sheet(out, heroID).Conditions, refs.Conditions.Baned()),
-		"one instance of a ref per member")
+	s.Equal([]string{"removed:" + heroID + "::replaced", "applied:" + heroID}, *traffic,
+		"the old order comes off BEFORE the new one lands")
+
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Commanded()),
+		"one instance per address per member")
+	s.Equal(spells.CommandWordGrovel,
+		s.castParams(sheet, refs.Conditions.Commanded().String())[spells.CommandWordParameter],
+		"and the word that stands is the newer one")
 
 	imposed := s.castOutcome(out).Targets[0].Applied
 	s.Require().Len(imposed, 2, "the trace says the replacement happened as well as the application")
 	s.Equal(ImposedConditionRemoved, imposed[0].Kind)
-	s.Contains(imposed[0].Description, "replaced by")
+	s.Contains(imposed[0].Description, "replaced by a newer instance")
 	s.Equal(ImposedCondition, imposed[1].Kind)
 }
 
@@ -968,12 +981,13 @@ func (s *CastActionTestSuite) TestASecondInstanceOfOneRefReplacesTheFirst() {
 func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
 	fixtures := s.fixtures()
 	wolf := fixtures.wolfData()
-	wolf.Conditions = []json.RawMessage{baneConditionJSON(s.T(), wolfID, "other-caster")}
+	wolf.Conditions = []json.RawMessage{commandedConditionJSON(s, wolfID, bardID, spells.CommandWordFlee)}
 	bus := events.NewEventBus()
-	traffic := s.conditionTraffic(bus, refs.Conditions.Baned())
+	traffic := s.conditionTraffic(bus, refs.Conditions.Commanded())
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID,
-		TargetIDs: []string{wolfID}, Roller: facedRoller{d20: 1, other: 4},
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{wolfID}, Option: spells.CommandWordApproach,
+		Roller: facedRoller{d20: 1, other: psychicFace},
 	})
 	s.Require().NoError(err)
 
@@ -982,13 +996,13 @@ func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
-		Machine:      machine, Cost: baneCost(),
+		Machine:      machine, Cost: commandCost(),
 	}, newSurface(bus))
 	s.Require().NoError(err)
 
-	s.Equal([]string{"removed:" + wolfID + ":other-caster:replaced", "applied:" + wolfID}, *traffic)
-	s.Equal(1, s.countingRef(s.monsterSheet(out, wolfID).Conditions, refs.Conditions.Baned()),
-		"one instance of a ref per member, on a monster's sheet too")
+	s.Equal([]string{"removed:" + wolfID + "::replaced", "applied:" + wolfID}, *traffic)
+	s.Equal(1, s.countingRef(s.monsterSheet(out, wolfID).Conditions, refs.Conditions.Commanded()),
+		"one instance per address per member, on a monster's sheet too")
 }
 
 // monsterSheet is the monster half of the damage suite's sheet lookup, and it
@@ -1003,6 +1017,59 @@ func (s *CastActionTestSuite) monsterSheet(out *Output, id string) *monster.Data
 	s.Require().Failf("no dirty sheet", "%q did not come back to be saved", id)
 
 	return nil
+}
+
+// THE KEY IS THE ADDRESS AND NOT THE REF, and Bane is the whole reason.
+//
+// Bane is the one condition in content that carries its caster as its own
+// source, so two casters' Banes sit at two addresses. Keyed on the ref, this
+// rule would have stripped the wolf's instance when the bard's landed — and its
+// owner, finding its child list empty, would have ENDED THE WOLF'S
+// CONCENTRATION. One player's cast silently freeing another player's spell is
+// not a detail, and the stacking group the conditions package already ships
+// resolves the overlap correctly without anybody being robbed.
+func (s *CastActionTestSuite) TestTwoCastersBanesBothStandAndBothConcentrationsHold() {
+	fixtures := s.fixtures()
+	wolfChild := dnd5eEvents.ConditionAddress{
+		MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: wolfID,
+	}
+	target := fixtures.saver(14, baneConditionJSON(s.T(), heroID, wolfID))
+	holder := fixtures.wolfData()
+	holder.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), wolfID, 7, wolfChild)}
+
+	bus := events.NewEventBus()
+	var removals []string
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removals = append(removals, event.ConditionRef+":"+event.SourceID+":"+event.Reason)
+			return nil
+		})
+	s.Require().NoError(err)
+
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: target}, {Monster: holder}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: baneCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Empty(removals, "nothing of the wolf's was taken off to make room for the bard's")
+	s.Empty(out.ConcentrationBreaks, "and no hold was broken")
+
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(2, s.countingRef(sheet.Conditions, refs.Conditions.Baned()),
+		"two casters, two addresses, two instances — the stacking group decides which one applies")
+	for _, dirty := range out.DirtyMonsters {
+		s.NotEqual(wolfID, dirty.ID, "the wolf's own hold and its seven-turn clock are untouched")
+	}
 }
 
 // Replacement is by REF and only by ref. A creature holding somebody else's
