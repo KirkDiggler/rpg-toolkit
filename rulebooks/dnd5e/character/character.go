@@ -1367,6 +1367,9 @@ func (c *Character) onHealingReceived(
 	if event.TargetID != c.id {
 		return nil
 	}
+	if event.Amount < 0 {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "healing amount cannot be negative")
+	}
 	if c.lifeState() == combat.LifeStateDead {
 		return rpgerr.New(rpgerr.CodeInvalidState, "dead characters cannot receive ordinary healing")
 	}

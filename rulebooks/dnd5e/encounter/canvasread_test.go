@@ -52,6 +52,25 @@ func TestCanvasReadSuite(t *testing.T) {
 	suite.Run(t, new(CanvasReadSuite))
 }
 
+func (s *CanvasReadSuite) TestBoundaryFactsAreReadableWithoutMutationCapability() {
+	canvas := s.canvas()
+	reader, ok := canvas.(interface {
+		GetBoundary(spatial.Position, spatial.Position) (spatial.Boundary, bool)
+	})
+	s.Require().True(ok)
+	_, writable := canvas.(spatial.BoundaryAwareRoom)
+	s.False(writable)
+	from, _ := canvas.GetEntityPosition(string(carol))
+	to, _ := canvas.GetEntityPosition(string(dave))
+	wall, exists := reader.GetBoundary(from, to)
+	s.Require().True(exists)
+	s.True(wall.BlocksMovement)
+	wall.BlocksMovement = false
+	again, exists := reader.GetBoundary(to, from)
+	s.Require().True(exists)
+	s.True(again.BlocksMovement, "returned facts do not mutate the wall")
+}
+
 // SetupTest opens the reference tomb from canvas_test.go — three walled
 // chambers, two doorways on one row, pillars in the hall. The walls are the
 // point: a map with nothing in the way agrees with any other map.

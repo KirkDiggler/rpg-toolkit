@@ -91,11 +91,12 @@ import (
 // The returned value is a [spatial.Room] and NOT a [spatial.BoundaryAwareRoom],
 // which is a decision rather than an omission. That interface's writing half —
 // RegisterBoundary, RemoveBoundary — is exactly what a read-only view must not
-// offer, and its reading half is already answered here: IsLineOfSightBlocked
+// offer. GetBoundary exposes value-only boundary facts to touch queries;
+// it grants neither registration nor removal. IsLineOfSightBlocked
 // consults the registered boundaries, and a caller that wants the walls
 // themselves has [Encounter.Atlas], which reports every one of them in absolute
 // space and in construction terms rather than a pair at a time. Adding the
-// interface to withhold half of it would be offering a door in order to lock
+// complete interface to withhold half would be offering a door in order to lock
 // it.
 //
 // # It answers about the void too
@@ -216,4 +217,9 @@ func (r readOnlyRoom) GetLineOfSight(from, to spatial.Position) []spatial.Positi
 
 func (r readOnlyRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 	return r.canvas.IsLineOfSightBlocked(from, to)
+}
+
+// GetBoundary exposes a boundary fact without granting boundary mutation.
+func (r readOnlyRoom) GetBoundary(from, to spatial.Position) (spatial.Boundary, bool) {
+	return r.canvas.GetBoundary(from, to)
 }

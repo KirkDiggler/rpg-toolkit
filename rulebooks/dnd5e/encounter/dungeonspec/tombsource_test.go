@@ -23,6 +23,7 @@ package dungeonspec_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,5 +39,6 @@ func tombYAML(t *testing.T) string {
 	t.Helper()
 	raw, err := os.ReadFile(tombPath)
 	require.NoError(t, err)
-	return string(raw)
+	// Fixture edits match logical lines in both local checkouts and module archives.
+	return strings.ReplaceAll(string(raw), "\r\n", "\n")
 }
