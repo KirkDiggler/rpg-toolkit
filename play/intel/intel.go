@@ -113,6 +113,30 @@ type SurveilOutput struct {
 	// below.
 	Refreshed []Subject
 
+	// Changed is every subject in Refreshed whose held payload DIFFERED
+	// from the one that just landed — the bytes.Equal comparison the
+	// store already makes, below, to decide whether Observed moves.
+	// It is the answer to "did this observer's knowledge actually
+	// change", reported rather than thrown away, so no consumer has to
+	// infer it from stamps: that reconstruction is only correct while At
+	// strictly increases, and this field does not depend on At at all.
+	//
+	// IT REFINES Refreshed AND DOES NOT PARTITION IT, for the same reason
+	// [SurveilOutput.Reacquired] does, below. A changed subject already
+	// had a holding, so Refreshed is true of it, and Changed says
+	// something further true of it besides — carving it out of Refreshed
+	// would be exactly the silent narrowing that comment warns about,
+	// where a consumer that never heard of Changed starts dropping
+	// subjects it used to see.
+	//
+	// FIRST CONTACT IS NEVER IN Changed: nothing was held before this
+	// pass, so "changed" has no prior state to differ from — FirstContact
+	// is already its own signal for that subject.
+	//
+	// Nil and empty payloads compare equal, so landing an empty payload
+	// over a nil one (or the reverse) is not a change.
+	Changed []Subject
+
 	// Faded is every subject whose holding stopped being current via any
 	// channel because this percept omitted it. The holding survives — the
 	// ghost goblin — and the observer keeps what they last saw.
@@ -271,6 +295,10 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 				copy(payloadCopy, report.Payload)
 				h.payload = payloadCopy
 				h.observed = in.At
+				// Same comparison, same pass: the store already knows this
+				// changed, so it says so instead of making a consumer
+				// reconstruct it from stamps.
+				out.Changed = append(out.Changed, report.Subject)
 			}
 			h.channel = in.Channel
 			h.confirmed = in.At
@@ -292,6 +320,16 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 type ReportOutput struct {
 	FirstContact []Report
 	Updated      []Subject
+
+	// Changed is every subject in Updated whose held payload DIFFERED
+	// from the one that just landed — the same bytes.Equal comparison
+	// [SurveilOutput.Changed] reports for Surveil, made here instead
+	// against Updated. It refines Updated and does not partition it, for
+	// the identical reason: a changed subject is still an updated one.
+	// First contact is never in Changed; nil and empty payloads are the
+	// same identical-nothing, so replacing one with the other is not a
+	// change.
+	Changed []Subject
 }
 
 // Report lands discrete testimony as HELD. Unknown subjects create new
@@ -366,6 +404,7 @@ func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 			if !bytes.Equal(h.payload, report.Payload) {
 				h.payload = storageCopy
 				h.observed = in.At
+				out.Changed = append(out.Changed, report.Subject)
 			}
 			h.channel = in.Channel
 			h.confirmed = in.At
