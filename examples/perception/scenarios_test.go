@@ -589,3 +589,37 @@ func mustRead(t *testing.T, payload []byte) content.Percept {
 
 	return p
 }
+
+// TestAReportedThingIsJudged: what arrives through Report is judged by the
+// observer's mind exactly as a sighting is. Bram sees the band, is then told of
+// chanting in the same place, and his own woodwise instinct puts the two
+// together — a report is testimony, not a fact, and it earns no exemption.
+func TestAReportedThingIsJudged(t *testing.T) {
+	g := perception.NewGame()
+	g.Mind(bram, reconcile.Woodwise{})
+
+	_, err := g.Tick(projection.Input{
+		Presences: []projection.Presence{{
+			Source: goblinOne,
+			Where:  hall,
+			Says:   map[testimony.Channel]projection.Says{sight: says(content.Creature, "goblin", "", hall)},
+		}},
+		Senses: senses(sight, []string{hall}, bram),
+		At:     moment(1),
+	})
+	require.NoError(t, err)
+
+	told := says(content.Noise, "", "chanting", hall)
+
+	_, err = g.Report(testimony.Recollection{
+		Observer: bram,
+		Channel:  hearing,
+		Reports: []testimony.Report{{
+			Track: "rumour-1", Payload: told.Payload, ChangeKey: told.ChangeKey, Locus: told.Locus,
+		}},
+		At: moment(2),
+	})
+	require.NoError(t, err)
+
+	assertBundles(t, [][]testimony.TrackID{{handle(sight, goblinOne), "rumour-1"}}, g.Contacts(bram))
+}

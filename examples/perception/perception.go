@@ -88,18 +88,46 @@ func (g *Game) Tick(in projection.Input) ([]Landing, error) {
 	}
 
 	for _, o := range touched {
-		mind, set := g.minds[o]
-		if !set {
-			continue
-		}
-
-		judged := g.unclaimed(o, mind.Judge(reconcile.ViewsOf(g.held.Heads(o)), in.At))
-		if err := reconcile.Apply(g.belie, o, judged, in.At); err != nil {
+		if err := g.reconcile(o, in.At); err != nil {
 			return nil, err
 		}
 	}
 
 	return out, nil
+}
+
+// Report lands discrete testimony on one observer — a rumour, a warning, a
+// deed they witnessed — and lets their mind judge it beside everything else
+// they hold.
+//
+// It is the second write door, beside [Game.Tick], and the only one a
+// composition ABOVE this one can use: the projection writes what senses
+// deliver, and nothing else may. What arrives without a channel sustaining it
+// lands held and never current, which is what [testimony.Store.Report] already
+// guarantees; this method adds only the judgment that follows any landing.
+func (g *Game) Report(in testimony.Recollection) (testimony.Delta, error) {
+	delta, err := g.held.Report(in)
+	if err != nil {
+		return testimony.Delta{}, err
+	}
+
+	if err := g.reconcile(in.Observer, in.At); err != nil {
+		return testimony.Delta{}, err
+	}
+
+	return delta, nil
+}
+
+// reconcile lets one observer's mind judge everything they currently hold.
+func (g *Game) reconcile(o testimony.Observer, at testimony.Stamp) error {
+	mind, set := g.minds[o]
+	if !set {
+		return nil
+	}
+
+	judged := g.unclaimed(o, mind.Judge(reconcile.ViewsOf(g.held.Heads(o)), at))
+
+	return reconcile.Apply(g.belie, o, judged, at)
 }
 
 // unclaimed drops any judgment about a pair this observer has already decided.
