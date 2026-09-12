@@ -18,7 +18,7 @@ import (
 
 // aCrowdedRoom is a pass the size of a real fight: everyone present, everyone
 // perceiving everyone, on two channels.
-func aCrowdedRoom(bodies int, at testimony.Stamp, jostle bool) (*perception.Game, projection.Input) {
+func aCrowdedRoom(bodies uint64, at testimony.Stamp, jostle bool) (*perception.Game, projection.Input) {
 	g := perception.NewGame()
 
 	in := projection.Input{At: at}
@@ -30,7 +30,7 @@ func aCrowdedRoom(bodies int, at testimony.Stamp, jostle bool) (*perception.Game
 		// jostle moves everyone a little every pass, which is what a fight
 		// actually looks like.
 		if jostle {
-			where = fmt.Sprintf("cell-%d", (uint64(i)+at.Tick)%8)
+			where = fmt.Sprintf("cell-%d", (i+at.Tick)%8)
 		}
 
 		in.Presences = append(in.Presences, projection.Presence{
@@ -61,7 +61,7 @@ func aCrowdedRoom(bodies int, at testimony.Stamp, jostle bool) (*perception.Game
 
 // TestWhatAPassActuallyCosts measures rather than assumes. Run with -v.
 func TestWhatAPassActuallyCosts(t *testing.T) {
-	for _, bodies := range []int{6, 12, 18} {
+	for _, bodies := range []uint64{6, 12, 18} {
 		for _, jostle := range []bool{false, true} {
 			label := fmt.Sprintf("%d bodies, still", bodies)
 			if jostle {
@@ -95,14 +95,18 @@ func TestWhatAPassActuallyCosts(t *testing.T) {
 }
 
 func BenchmarkAPass(b *testing.B) {
-	for _, bodies := range []int{6, 12, 18} {
+	for _, bodies := range []uint64{6, 12, 18} {
 		b.Run(fmt.Sprintf("%d-bodies-moving", bodies), func(b *testing.B) {
 			g, _ := aCrowdedRoom(bodies, testimony.Stamp{Tick: 0}, true)
 
 			b.ResetTimer()
 
-			for i := 0; b.Loop(); i++ {
-				_, in := aCrowdedRoom(bodies, testimony.Stamp{Tick: uint64(i + 1)}, true)
+			tick := uint64(0)
+
+			for b.Loop() {
+				tick++
+
+				_, in := aCrowdedRoom(bodies, testimony.Stamp{Tick: tick}, true)
 				if _, err := g.Tick(in); err != nil {
 					b.Fatal(err)
 				}
