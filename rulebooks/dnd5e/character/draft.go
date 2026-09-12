@@ -2058,18 +2058,6 @@ func calculateBarbarianRageUses(level int) int {
 // initializeClassResources adds class-specific resources to the character.
 // Called during ToCharacter after the character struct is created.
 func (d *Draft) initializeClassResources(char *Character) {
-	// Bard and Cleric share the existing first-level slot resource. This
-	// creation slice reads starting capacity from the class table; it does
-	// not implement higher-level progression or preparation.
-	if d.class == classes.Bard || d.class == classes.Cleric {
-		classData := classes.ClassData[d.class]
-		if len(classData.SpellSlots) > 0 && classData.SpellSlots[0] > 0 {
-			char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-				ID: string(resources.SpellSlotLevel1), Maximum: classData.SpellSlots[0],
-				CharacterID: char.id, ResetType: coreResources.ResetLongRest,
-			})
-		}
-	}
 	level := char.level
 
 	switch d.class {
@@ -2089,6 +2077,8 @@ func (d *Draft) initializeClassResources(char *Character) {
 		}
 
 	case classes.Bard:
+		d.initializeStartingSpellSlots(char)
+
 		// Bardic Inspiration uses - Charisma modifier, minimum one, recovered
 		// on long rest. The minimum is RAW and is what keeps a bard with a
 		// Charisma of 10 from carrying a pool nothing can ever spend.
@@ -2102,6 +2092,9 @@ func (d *Draft) initializeClassResources(char *Character) {
 			CharacterID: char.id,
 			ResetType:   coreResources.ResetLongRest,
 		})
+
+	case classes.Cleric:
+		d.initializeStartingSpellSlots(char)
 
 	case classes.Monk:
 		// Ki points - equal to monk level, recovered on short or long rest.
@@ -2126,6 +2119,22 @@ func (d *Draft) initializeClassResources(char *Character) {
 		Level:       level,
 	})
 	char.resources[resources.HitDice] = hitDiceResource
+}
+
+// initializeStartingSpellSlots seeds the existing first-level resource from
+// starting class data. Class cases opt into it; higher-level progression,
+// preparation, and Pact Magic are separate responsibilities.
+func (d *Draft) initializeStartingSpellSlots(char *Character) {
+	classData := classes.ClassData[d.class]
+	if len(classData.SpellSlots) == 0 || classData.SpellSlots[0] <= 0 {
+		return
+	}
+	char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          string(resources.SpellSlotLevel1),
+		Maximum:     classData.SpellSlots[0],
+		CharacterID: char.id,
+		ResetType:   coreResources.ResetLongRest,
+	})
 }
 
 // initializeStandardCombatAbilities adds universal combat abilities to the character.
