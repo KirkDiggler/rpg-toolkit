@@ -77,6 +77,17 @@ type Namer interface {
 	NameOf(o testimony.Observer, track testimony.TrackID) (belief.Name, testimony.Stamp, bool)
 }
 
+// Recorder is told what the receiving knower calls each belief they were handed.
+// [belief.Beliefs] satisfies it.
+//
+// Without this, a carried belief would arrive with its name baked into a handle
+// nobody can read back, and the knower could never carry it anywhere else. With
+// it, a player's store is shaped exactly like a run's — tracks plus names — and
+// carrying IN is [Out] and [Land] again with the two stores swapped.
+type Recorder interface {
+	Identify(o testimony.Observer, track testimony.TrackID, as belief.Name, at testimony.Stamp) error
+}
+
 // Input is one observer leaving one run.
 type Input struct {
 	Observer testimony.Observer
@@ -214,12 +225,18 @@ func resolve(key slot, tracks []testimony.Track) (*Portable, []testimony.TrackID
 	return &Portable{Name: key.name, Channel: key.channel, Entry: winner.Latest()}, superseded, nil
 }
 
-// Land lodges carried beliefs with whoever is keeping them — a player, not a
-// party, since the party was the ephemeral thing.
+// Land lodges carried beliefs with whoever is receiving them.
+//
+// Pointed at a player it is carrying OUT: the party was ephemeral, the player is
+// not. Pointed at a run's store with an in-run observer it is carrying IN: a
+// party walks into the tunnels already believing something. Same verb, same
+// arrival state, opposite direction — because both are "lodge a recollection
+// with somebody", and nothing about that changes with which way you are walking.
 //
 // Each belief keeps its Confirmed stamp, so a carried memory is as old as it
-// really is. It arrives held and never current.
-func Land(s *testimony.Store, knower testimony.Observer, carried []Portable) error {
+// really is. It arrives held and never current, and its name is recorded so the
+// receiver can carry it on again.
+func Land(s *testimony.Store, names Recorder, knower testimony.Observer, carried []Portable) error {
 	grouped := make(map[bundle][]testimony.Report)
 
 	for _, p := range carried {
@@ -253,6 +270,12 @@ func Land(s *testimony.Store, knower testimony.Observer, carried []Portable) err
 			Reports:  grouped[key],
 			At:       key.at,
 		}); err != nil {
+			return err
+		}
+	}
+
+	for _, p := range carried {
+		if err := names.Identify(knower, Handle(p.Name, p.Channel), p.Name, p.Entry.Confirmed); err != nil {
 			return err
 		}
 	}

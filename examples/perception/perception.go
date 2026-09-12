@@ -24,6 +24,7 @@ import (
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/belief"
+	"github.com/KirkDiggler/rpg-toolkit/examples/perception/carry"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/projection"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/reconcile"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
@@ -150,6 +151,17 @@ func (g *Game) Contacts(o testimony.Observer) []belief.Contact {
 // Relation is what this observer claims about a pair of their tracks.
 func (g *Game) Relation(o testimony.Observer, a, b testimony.TrackID) (belief.Relation, testimony.Stamp) {
 	return g.belie.Relation(o, a, b)
+}
+
+// Remember lodges beliefs carried in from somewhere else with an observer in
+// this run, before anybody has perceived anything.
+//
+// It is [carry.Land] pointed inward, and it is the same call a player receives
+// on the way out. A party walks into the tunnels already believing something,
+// and what they believe arrives the way every memory does: held, never current,
+// as old as it really is, and as wrong as it ever was.
+func (g *Game) Remember(o testimony.Observer, carried []carry.Portable) error {
+	return carry.Land(g.held, g.belie, o, carried)
 }
 
 // Identify records what this observer calls a track. The composition satisfies

@@ -84,8 +84,8 @@ func TestTheDistillation(t *testing.T) {
 	assert.Equal(t, sight, out.Carried[1].Channel)
 
 	// The run is over. The player keeps what they concluded.
-	keeping := testimony.New()
-	require.NoError(t, carry.Land(keeping, playerBram, out.Carried))
+	keeping, kept := testimony.New(), belief.New()
+	require.NoError(t, carry.Land(keeping, kept, playerBram, out.Carried))
 
 	carriedSight, ok := keeping.Track(playerBram, carry.Handle(easternName, sight))
 	require.True(t, ok)
@@ -124,8 +124,8 @@ func TestTheUnnamedCannotTravel(t *testing.T) {
 	require.Equal(t, 1, len(out.Carried))
 	assert.Equal(t, sight, out.Carried[0].Channel)
 
-	keeping := testimony.New()
-	require.NoError(t, carry.Land(keeping, playerBram, out.Carried))
+	keeping, kept := testimony.New(), belief.New()
+	require.NoError(t, carry.Land(keeping, kept, playerBram, out.Carried))
 
 	_, ok := keeping.Track(playerBram, carry.Handle(easternName, hearing))
 	assert.False(t, ok, "nothing invented a name for him")
@@ -135,7 +135,7 @@ func TestTheUnnamedCannotTravel(t *testing.T) {
 
 	out = carry.Out(carry.Input{Observer: bram, Tracks: g.Held(bram), Names: g})
 	assert.Empty(t, out.Unnamed)
-	require.NoError(t, carry.Land(keeping, playerBram, out.Carried))
+	require.NoError(t, carry.Land(keeping, kept, playerBram, out.Carried))
 
 	_, ok = keeping.Track(playerBram, carry.Handle(easternName, hearing))
 	assert.True(t, ok)
@@ -188,8 +188,8 @@ func TestCarryingDoesNotLaunderALie(t *testing.T) {
 
 	out := carry.Out(carry.Input{Observer: pip, Tracks: g.Held(pip), Names: g})
 
-	keeping := testimony.New()
-	require.NoError(t, carry.Land(keeping, playerPip, out.Carried))
+	keeping, kept := testimony.New(), belief.New()
+	require.NoError(t, carry.Land(keeping, kept, playerPip, out.Carried))
 
 	carriedSight, ok := keeping.Track(playerPip, carry.Handle(theChief, sight))
 	require.True(t, ok)
@@ -293,12 +293,12 @@ func TestAnUnresolvableCollapseCarriesNothing(t *testing.T) {
 // The inverse move — carrying knowledge back IN, so a party enters the tunnels
 // already believing something — is the next gap and is not built.
 func TestACarriedBeliefOnlyRefreshesByCarryingAgain(t *testing.T) {
-	keeping := testimony.New()
+	keeping, kept := testimony.New(), belief.New()
 
 	first := aRunWhereBramFindsGoblins(t, 10)
 	require.NoError(t, first.Identify(bram, handle(sight, goblinBand), easternName, 10))
 	require.NoError(t, first.Identify(bram, handle(hearing, goblinBand), easternName, 10))
-	require.NoError(t, carry.Land(keeping, playerBram,
+	require.NoError(t, carry.Land(keeping, kept, playerBram,
 		carry.Out(carry.Input{Observer: bram, Tracks: first.Held(bram), Names: first}).Carried))
 
 	held, ok := keeping.Track(playerBram, carry.Handle(easternName, sight))
@@ -315,7 +315,7 @@ func TestACarriedBeliefOnlyRefreshesByCarryingAgain(t *testing.T) {
 
 	// Only another distillation does.
 	require.NoError(t, second.Identify(bram, handle(sight, goblinBand), easternName, 50))
-	require.NoError(t, carry.Land(keeping, playerBram,
+	require.NoError(t, carry.Land(keeping, kept, playerBram,
 		carry.Out(carry.Input{Observer: bram, Tracks: second.Held(bram), Names: second}).Carried))
 
 	held, ok = keeping.Track(playerBram, carry.Handle(easternName, sight))

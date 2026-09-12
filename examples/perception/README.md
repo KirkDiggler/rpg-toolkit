@@ -24,8 +24,8 @@ reconcile            merge / rule-out. sees ONLY testimony, which is the
 belief               the observer's own claims. contacts are folded from
     |                claims, never stored.
     v
-carry                the distillation: what leaves a finished run, re-keyed
-                     onto a name, landing with a player as a ghost.
+carry                what crosses a run's edge, in either direction: re-keyed
+                     onto a name, arriving as a ghost.
 ```
 
 The arrows are the design. Nothing reads truth to answer a question about an
@@ -99,6 +99,12 @@ Six things the design did not know before there was code:
    simply cannot leave a run.
 8. **The distillation must fail closed on a tie.** Two tracks under one name,
    equally fresh, have no answer, and the arbitrary one is worse than none.
+9. **Carrying in and carrying out are one pair of verbs**, and only because
+   landing a belief records its name — that is what makes a player's store the
+   same shape as a run's.
+10. **A reconciler has to know memory from live.** Two things you can perceive at
+    once are two things; a memory and a percept on one channel may well be one.
+    That difference is the whole of recognising a place you have been before.
 
 ## Leaving a run
 
@@ -134,6 +140,35 @@ falsifiability line, doing real work.
 | `TestAnUnresolvableCollapseCarriesNothing` | a tie carries **nothing** rather than guessing |
 | `TestACarriedBeliefOnlyRefreshesByCarryingAgain` | perceiving again does not touch what a player holds |
 
+## Walking back in
+
+Carrying **in** turned out to be `Out` and `Land` again with the two stores
+swapped — a party entering the tunnels already believing something is the same
+act as a player receiving what the party brought home. That only works because
+`Land` records what the receiver *calls* each belief, which makes a player's
+store shaped exactly like a run's: tracks plus names. Without it a carried
+belief arrives with its name sealed inside a handle nobody can read back, and it
+could never travel anywhere again.
+
+A carried belief arrives the way every memory does — held, never current, as old
+as it really is, and as wrong as it ever was.
+
+| test | proves |
+|---|---|
+| `TestCarryingIn` | a belief lands in a fresh run stale and ghostly; seeing the thing mints a *separate* track and does not refresh it |
+| `TestRecognisingWhatYouRemember` | Woodwise walks in and knows the place; Oblivious has the same evidence and no idea |
+| `TestTwoCurrentSightingsStillDoNotMerge` | the loosening did not loosen the live rule |
+| `TestAnEmptyRoomDoesNotDeleteYourMemory` | he still believes, and the only thing that changed is how old the belief is |
+| `TestAFreshPerceptDoesNotCorrectAMemory` | a contradiction is held side by side, and nothing chooses |
+
+**The empty room is the case the whole design is for.** Bram walks in
+remembering a dozen goblins and the tunnels are empty. Nothing corrects him.
+Absence of evidence is not a negative claim, so looking at an empty room writes
+nothing about what is not in it — and a memory was never current, so the empty
+percept does not even fade it. He still believes it, he can still act on it, and
+whether forty stamps of silence should shake him is a judgment for somebody
+else to make.
+
 `carry` is the one place folding is legitimate — deciding what you took away is
 an authored act, not a read. It still refuses a tie: two tracks under one name,
 equally fresh, would have to be separated by handle order, and that would be the
@@ -148,10 +183,10 @@ nine-day-old knowledge look fresh, which is the exact staleness lie the two
 stamps exist to kill. Carrying the stamp out unchanged is the honest half; the
 other half is a clock above the run, and there isn't one.
 
-**Carry-in is unbuilt.** A carried belief is only ever refreshed by carrying
-again — perceiving the same goblins in a later run mints new run-local handles
-and touches nothing a player holds. Entering a dungeon *already believing*
-something is the inverse move and the obvious next gap.
+**A carried belief is only ever refreshed by carrying again.** Perceiving the
+same goblins in a later run mints new run-local handles and touches nothing a
+player holds. That is correct — nobody inside a run is reading the player's
+store — but it means the two stores only ever meet at a distillation.
 
 ## Deliberately absent
 

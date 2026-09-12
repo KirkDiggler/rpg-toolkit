@@ -25,8 +25,9 @@
 //     so every new track stays a separate possible threat forever.
 //   - [Credulous] merges whatever shares a place. The panicked commoner. It
 //     puts the footprints and the goblins together and is confidently wrong.
-//   - [Woodwise] merges across channels by co-location, and rules out by
-//     content: those are not goblin tracks, so they are not these goblins.
+//   - [Woodwise] merges across channels by co-location, recognises a memory in
+//     what it is now looking at, and rules out by content: those are not goblin
+//     tracks, so they are not these goblins.
 //
 // [Woodwise] can rule out and cannot rule in, which is how tracking actually
 // works. A trace that matches gets no claim at all — the sign is consistent,
@@ -50,6 +51,10 @@ type TrackView struct {
 	Locus     testimony.Locus
 	Observed  testimony.Stamp
 	Confirmed testimony.Stamp
+	// Current says whether a channel is delivering this right now. False is a
+	// memory — a ghost, or a belief carried in from somewhere else — and the
+	// distinction changes what a reconciler may conclude. See [Woodwise].
+	Current bool
 }
 
 // Judgment is one claim a reconciler wants recorded.
@@ -78,6 +83,7 @@ func ViewsOf(tracks []testimony.Track) []TrackView {
 			Locus:     latest.Locus,
 			Observed:  latest.Observed,
 			Confirmed: latest.Confirmed,
+			Current:   t.Current,
 		})
 	}
 
@@ -168,10 +174,6 @@ func woodwiseJudge(a TrackView, pa content.Percept, b TrackView, pb content.Perc
 		return rel, true
 	}
 
-	if a.Channel == b.Channel {
-		return belief.Unrelated, false
-	}
-
 	if a.Locus.Where == "" || a.Locus.Where != b.Locus.Where {
 		return belief.Unrelated, false
 	}
@@ -180,7 +182,22 @@ func woodwiseJudge(a TrackView, pa content.Percept, b TrackView, pb content.Perc
 		return belief.Unrelated, false
 	}
 
-	return belief.Same, true
+	if a.Channel != b.Channel {
+		return belief.Same, true
+	}
+
+	// Same channel. Two things you can perceive at once, in one place, are two
+	// things — you would be looking straight at both of them.
+	//
+	// A memory is not something you are perceiving. So a recollection and a live
+	// percept on one channel may well be the same thing, and recognising that is
+	// the whole of walking back into a room you have been in before. It is also
+	// exactly as available to be wrong as every other claim here.
+	if a.Current != b.Current {
+		return belief.Same, true
+	}
+
+	return belief.Unrelated, false
 }
 
 func signRule(a, b content.Percept) (belief.Relation, bool) {
