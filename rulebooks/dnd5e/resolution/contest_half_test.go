@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -82,6 +83,7 @@ const (
 // spell it holds. What it reads is a gate, a pool and a word.
 func whisperProfile(onSuccess saves.SaveEffect) *combatActions.CastProfile {
 	return &combatActions.CastProfile{
+		Casting:    &combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		RangeFeet:  60,
 		Target:     combatActions.CastTargetOneCreature,
 		MinTargets: 1,

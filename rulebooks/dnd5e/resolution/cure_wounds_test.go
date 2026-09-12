@@ -73,7 +73,7 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 			target.CreatureType = tc.creatureType
 			target.HitPoints = 1
 			out, err := Resolve(s.ctx, &Input{World: f.world(), Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: target}}, Machine: machine,
-				Cost:       &Cost{PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
+				Cost:       &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
 				Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller()})
 			s.Require().NoError(err)
 			outcome := s.castOutcome(out)
@@ -113,7 +113,7 @@ func (s *CastActionTestSuite) TestCureWoundsPhysicalBarrierRefusesBeforePayment(
 	world := f.world()
 	world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
 	out, err := Resolve(s.ctx, &Input{World: world, Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: f.wolfData()}}, Machine: machine,
-		Cost:       &Cost{PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
+		Cost:       &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller()})
 	s.ErrorIs(err, ErrOutOfRange)
 	s.Nil(out)

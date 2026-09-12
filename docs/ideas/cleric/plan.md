@@ -293,6 +293,32 @@ resolution must adopt its real tag and wire classification plus explicit turn
 identity into spell payment and ranged healing. Session follows with offers,
 execution, and real clock transition tests. No adjacent repository pins change.
 
+### Healing Word resolution integration (after #1701)
+
+#1701 merged as `45d5ab49`, releasing rulebook `v0.162.0`. Resolution adopts
+that actual tag, keeping encounter at its existing `v0.76.0` pin.
+
+The user approved rejecting incomplete costed casting inputs, with the explicit
+requirement that session's calling code and dependency pin be updated together.
+The runner reads classification from the cloned cast profile and requires
+`Cost.SpellTurn` plus a matching caster/payer. It uses Character.PaySpell after
+target preflight. A free combat spell supplies a Cost with nil Profile; the
+existing nil-Cost API remains explicitly ungated mechanical resolution.
+
+Ranged healing uses the same prepared healing delivery and a dedicated target
+projection. It permits healable dying recipients, self, and unknown creature
+types; exclusions remain paid no-effect outcomes. Other recipients require
+current encounter sight holdings as well as range and an unblocked ray. The
+encounter's pinned View implementation was audited: it only reads held intel,
+without consulting capabilities or refreshing perception.
+
+Before session adopts the resolution release, update every costed cast to
+supply the explicit turn identity and project the same spell-payment rule in
+offers. Prove identity across actual turn transitions and encounter lifetimes,
+including combat exit/re-entry, and preserve already-paid history on resume.
+Update the session pin and plumbing in one PR; a pin-only upgrade would refuse
+existing casts. Then enable acquisition and verify the complete player flow.
+
 ### Supported spell acquisition (2026-09-12)
 
 The user authorized reusing Bard's creation/known-spell pipeline while full

@@ -28,7 +28,10 @@ const encounterPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encoun
 // whose enemy, serialise. Nothing here advances a clock, ends a turn, or
 // pumps a pass: the two side reads fold the run's own graph and consult no
 // capability — checked on the way in, as the failure message below asks.
-var encounterReach = []string{"Canvas", "IsAllied", "IsHostile", "ToData"}
+// View joins this set for ranged healing. In the pinned encounter v0.76.0,
+// it validates membership and reads intel.Held only; it neither refreshes
+// perception nor consults Sight, Standing, or another capability.
+var encounterReach = []string{"Canvas", "IsAllied", "IsHostile", "ToData", "View"}
 
 // TestResolveTouchesTheEncounterThroughTwoMethods is the half of the reentrancy
 // invariant that only this package can hold.
