@@ -165,8 +165,7 @@ type Captain struct{}
 func (Captain) Judge(views []reconcile.TrackView, _ testimony.Stamp) []reconcile.Judgment {
 	read := make([]content.Percept, len(views))
 	ok := make([]bool, len(views))
-
-	var out []reconcile.Judgment
+	out := make([]reconcile.Judgment, 0, len(views))
 
 	for i, v := range views {
 		if d, err := deed.Decode(v.Payload); err == nil {
