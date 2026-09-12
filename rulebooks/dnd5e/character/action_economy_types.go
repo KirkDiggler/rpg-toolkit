@@ -192,7 +192,7 @@ const (
 type ActionEconomyData struct {
 	// Spellcasting has its own turn identity: reactions can happen on another
 	// creature's turn without refreshing this character's action economy.
-	Spellcasting          combat.SpellTurnState    `json:"spellcasting,omitempty"`
+	Spellcasting          combat.SpellTurnState    `json:"spellcasting,omitzero"`
 	TurnNumber            int                      `json:"turn_number"`
 	ActionsRemaining      int                      `json:"actions_remaining"`
 	BonusActionsRemaining int                      `json:"bonus_actions_remaining"`
