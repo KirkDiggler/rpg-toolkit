@@ -1567,7 +1567,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	// is a cache ([Standing]), and the narration cannot happen here because a
 	// down beat appended before Pump's own tick beat would break the ordering
 	// law refreshSight states.
-	down, err := e.standingNow()
+	down, err := e.downNow()
 	if err != nil {
 		return nil, fmt.Errorf("pump standing: %w", err)
 	}
@@ -1937,7 +1937,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// so a caller may ask it when it needs it. Nil now means only what
 	// testimony from a build that predates this field honestly says:
 	// standing was not observed.
-	down, err := e.standingNow()
+	down, err := e.downNow()
 	if err != nil {
 		return nil, err
 	}

@@ -1158,7 +1158,7 @@ func (e *Encounter) walkPath(
 		// path — resolve the movement fold, then stop before Step if the
 		// mover went down. Two paths, one rule: a walk that continued on
 		// one of them would be the asymmetry [Mover] exists to prevent.
-		down, derr := e.standingNow()
+		down, derr := e.downNow()
 		if derr != nil {
 			return res, fmt.Errorf("move standing: %w", derr)
 		}
@@ -1314,7 +1314,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// Standing is needed only for current sightings. Held memories are
 		// intentionally not enriched with a hidden standing fact.
 		if !standingLoaded {
-			down, err = e.standingNow()
+			down, err = e.downNow()
 			if err != nil {
 				return MonsterView{}, fmt.Errorf("standing: %w", err)
 			}

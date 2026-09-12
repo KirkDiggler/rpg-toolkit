@@ -27,7 +27,7 @@ type Standing interface {
 	Standing(members []MemberID) (down []MemberID, err error)
 }
 
-// standingNow asks the capability who is down, right now, and returns the
+// downNow asks the capability who is down, right now, and returns the
 // answer as a set.
 //
 // The roster goes over SORTED, for C8's reason: what a pass concludes must be a
@@ -35,7 +35,7 @@ type Standing interface {
 // capability handed its question in a different order each time could answer
 // differently each time. An empty roster is not a question worth asking, and
 // the capability is not called for one.
-func (e *Encounter) standingNow() (map[MemberID]bool, error) {
+func (e *Encounter) downNow() (map[MemberID]bool, error) {
 	participation, err := e.participationNow()
 	if err != nil {
 		return nil, err

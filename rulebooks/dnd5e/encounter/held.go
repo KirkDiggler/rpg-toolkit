@@ -251,7 +251,7 @@ func (e *Encounter) ResumeDirective(ctx context.Context) (DirectOutput, error) {
 	// Cleared before the first step — see this verb's own doc.
 	e.heldDirective = nil
 
-	downNow, derr := e.standingNow()
+	downNow, derr := e.downNow()
 	if derr != nil {
 		return DirectOutput{}, fmt.Errorf("resume directive %q standing: %w", h.member, derr)
 	}
