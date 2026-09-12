@@ -130,7 +130,7 @@ func (Zombie) Name(c behavior.Contact) (belief.Name, bool) {
 // hour ago ranks exactly as it did when it was fresh. A post means nothing to
 // it, so it never goes anywhere on purpose.
 func (Zombie) Rank(s behavior.Situation) []behavior.Contact {
-	var out []behavior.Contact
+	out := make([]behavior.Contact, 0, len(s.Contacts))
 
 	for _, c := range s.Contacts {
 		if c.Kind() != PostKind {
@@ -253,7 +253,7 @@ func (Captain) Name(c behavior.Contact) (belief.Name, bool) {
 // last saw somebody, but not to where it saw somebody an age ago — and with
 // nothing left worth pursuing, the post is what remains, so it goes back.
 func (Captain) Rank(s behavior.Situation) []behavior.Contact {
-	var kept []behavior.Contact
+	kept := make([]behavior.Contact, 0, len(s.Contacts))
 
 	for _, c := range s.Contacts {
 		if !c.Current() && c.Kind() != PostKind && age(c, s.At) > Patience {

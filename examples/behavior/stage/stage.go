@@ -38,7 +38,7 @@ type Deed struct {
 // any channel — decided by the same senses the projection runs on, so who
 // perceived a place and who witnessed what happened there cannot disagree.
 func Witnesses(in projection.Input, where string) []testimony.Observer {
-	var out []testimony.Observer
+	out := make([]testimony.Observer, 0, len(in.Senses))
 
 	for _, sense := range in.Senses {
 		if !slices.Contains(sense.Reach, where) || slices.Contains(out, sense.Observer) {
