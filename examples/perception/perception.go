@@ -127,7 +127,16 @@ func (g *Game) unclaimed(o testimony.Observer, judged []reconcile.Judgment) []re
 	return out
 }
 
-// Held is one observer's whole testimony.
+// Heads is the last thing each of this observer's tracks said.
+//
+// It is what the composition's own internals use and what [reconcile.ViewsOf]
+// takes, so a consumer asking the same question should not have to pay for the
+// trail to get at it. Use [Game.Held] when the trail itself is the point.
+func (g *Game) Heads(o testimony.Observer) []testimony.Head {
+	return g.held.Heads(o)
+}
+
+// Held is one observer's whole testimony, trail and all.
 func (g *Game) Held(o testimony.Observer) []testimony.Track {
 	return g.held.Held(o)
 }
