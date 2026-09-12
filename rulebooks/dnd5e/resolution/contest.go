@@ -94,6 +94,9 @@ const (
 	// ImposedDamage is damage the contest landed on the saver.
 	ImposedDamage ImposedEffectKind = "damage"
 
+	// ImposedHealing is an immediate, post-clamp HP restoration.
+	ImposedHealing ImposedEffectKind = "healing"
+
 	// ImposedConditionRemoved is a condition the contest took OFF somebody.
 	//
 	// A kind of its own rather than an application with an empty payload,

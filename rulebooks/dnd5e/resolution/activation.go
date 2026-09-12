@@ -62,18 +62,18 @@ type ActivationInput struct {
 	// the one caller in this package that can build them ([NewAction]), rather
 	// than a declaration an outside caller could hand over half-formed.
 	//
-	// A gateless cast has nothing to resolve — no roll, no policy, no ability
-	// to activate — so it is a DELIVERY, and this machine already is one: it
-	// opens the collector, does one thing on the interaction's bus, and hands
-	// back the effects. When this is set, Ability and Roller are not read and
-	// are not required; the machine publishes these instead of calling
-	// ActivateAbility.
+	// The cast door prepares either conditions or healing before payment.
+	// This arm resolves and publishes the prepared delivery inside Gather,
+	// under the same collector as ordinary feature activations. A healing
+	// delivery carries its own required roller; Ability and Roller here are
+	// only used by the feature-activation arm.
 	cast *preparedCast
 }
 
 // preparedCast is one gateless cast's whole delivery: what ran, and the
-// conditions it puts on which parties.
+// conditions or healing it delivers to its recipients.
 type preparedCast struct {
+	healing *preparedHealing
 	// source is the spell, echoed into the outcome so a caller learns what ran
 	// without parsing a declaration id.
 	source core.Ref
@@ -661,7 +661,15 @@ func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 		recipients[index] = recipient
 	}
 
-	return m.deliverCast(recipients), nil
+	noEffect := ""
+	if m.cast.healing != nil {
+		var err error
+		noEffect, err = m.cast.healing.prepare(cast)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return m.deliverCast(recipients, noEffect), nil
 }
 
 // deliverCast publishes what the cast delivers, inside the collector every
@@ -678,7 +686,7 @@ func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 // carries: WHICH spell travels with the condition itself, as the source ref it
 // was built with. That is the split raging already makes between "a feature
 // applied this" and "the feature was Rage".
-func (m *activationMachine) deliverCast(recipients []core.Entity) Step {
+func (m *activationMachine) deliverCast(recipients []core.Entity, noEffect string) Step {
 	return Gather{
 		name: fmt.Sprintf("cast %s for %s", m.cast.source.String(), m.member),
 		run: func(ctx context.Context, bus events.EventBus) (next Step, err error) {
@@ -695,6 +703,12 @@ func (m *activationMachine) deliverCast(recipients []core.Entity) Step {
 							m.cast.source.String(), m.member, closeErr))
 				}
 			}()
+
+			if m.cast.healing != nil {
+				if err := m.cast.healing.deliver(ctx, bus, noEffect); err != nil {
+					return nil, err
+				}
+			}
 
 			for index, delivery := range m.cast.conditions {
 				if publishErr := publishCondition(
