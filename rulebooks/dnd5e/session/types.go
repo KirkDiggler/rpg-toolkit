@@ -2490,15 +2490,10 @@ const (
 	// IS NOT, because the freeze is not about whose turn it is.
 	ShortfallWindowOpen ShortfallReason = "window_open"
 
-	// ShortfallUnavailable is the ability's own precondition refusing: already
-	// raging, already at full hit points. NOT a budget — nothing ran out,
-	// Currency is empty, and waiting will not help the way it does for
-	// [ShortfallNoBudget].
-	//
-	// This is the seam's word for what features.Feature.CanActivate refuses,
-	// which is a different question from what the economy refuses. A projection
-	// that collapsed the two would tell a raging barbarian to come back next
-	// turn.
+	// ShortfallUnavailable is a provider precondition refusing, such as already
+	// raging or an incompatible spell already cast this turn. Currency is empty:
+	// this is not a resource shortage. The accompanying text describes the
+	// provider's refusal; its resolution depends on that precondition.
 	ShortfallUnavailable ShortfallReason = "unavailable"
 )
 
