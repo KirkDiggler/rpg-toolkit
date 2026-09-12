@@ -767,19 +767,22 @@ func (s *CommandTurnSuite) TestTheAppliedBeatNamesWhoSpoke() {
 		"the caster, not the spell and not the target")
 }
 
-// TestTwoCastersCommandsBothStandAndTheNewestIsObeyed is the rule the
+// TestTwoCastersCommandsBothStandAndTheFirstIsObeyed is the rule the
 // caster-addressed compulsion created, driven end to end.
 //
 // Nothing removes another caster's spell, so the skeleton really is holding two
 // orders when its turn arrives — and the second cast leaves the first's beat
-// alone, which is how a table can see both. One turn cannot obey two words, so
-// the driver takes the one said last.
+// alone, which is how a table can see both. One turn cannot obey two words, and
+// the one it obeys is the one that got there first: Kirk's ruling, on the
+// precedent Bane's contribution group sets. A creature already under orders is
+// not freed by a second caster shouting over the top, and the opposite rule
+// would make the last caster in the round the only one who mattered.
 //
-// Grovel is the newest word on purpose: it leaves a Prone, which is a durable
-// fact about WHICH word ran. Approach would only have shown that something
-// walked somewhere, and the two orders here point at different casters standing
-// in different places, so a walk would be a weaker signal than a condition.
-func (s *CommandTurnSuite) TestTwoCastersCommandsBothStandAndTheNewestIsObeyed() {
+// Grovel is spoken FIRST on purpose, so the assertion has a durable signal:
+// a Prone on the sheet says grovel ran, and no walk says approach did not. The
+// two are mutually exclusive, which a position alone would not be — the casters
+// stand in different places, so "moved somewhere" could be either word.
+func (s *CommandTurnSuite) TestTwoCastersCommandsBothStandAndTheFirstIsObeyed() {
 	s.scene(
 		[]*character.Data{commandingBard("bard"), commandingBard("cleric")},
 		map[string]spatial.Position{"bard": hexCell(0, 0), "cleric": hexCell(1, 1)},
@@ -787,11 +790,11 @@ func (s *CommandTurnSuite) TestTwoCastersCommandsBothStandAndTheNewestIsObeyed()
 	)
 	before := s.where("skeleton")
 
-	_, err := s.command("skeleton", spells.CommandWordApproach)
+	_, err := s.command("skeleton", spells.CommandWordGrovel)
 	s.Require().NoError(err)
 	s.Require().NoError(s.endTurn("bard"))
 
-	_, err = s.commandFrom("cleric", "skeleton", spells.CommandWordGrovel)
+	_, err = s.commandFrom("cleric", "skeleton", spells.CommandWordApproach)
 	s.Require().NoError(err)
 
 	stored := s.storedConditions("skeleton")
@@ -814,9 +817,9 @@ func (s *CommandTurnSuite) TestTwoCastersCommandsBothStandAndTheNewestIsObeyed()
 	s.Require().NoError(s.endTurn("cleric"))
 
 	s.True(s.holdsRef("skeleton", refs.Conditions.Prone().String()),
-		"the word said last is the one obeyed")
+		"the order that got there first is the one obeyed")
 	s.Equal(before, s.where("skeleton"),
-		"and the older Approach did not also run: grovelling is not walking")
+		"and the cleric's later Approach did not also run: grovelling is not walking")
 	s.Zero(s.walkedCells("skeleton"))
 	s.Empty(s.viewsOf("skeleton"))
 }

@@ -101,21 +101,34 @@ func (d compelledDriver) compulsionOn(
 }
 
 // commandedIn finds the compulsion among a sheet's stored blobs, asking
-// [conditions.DecodeCommanded] ONE BLOB AT A TIME and keeping the LAST one that
-// answers.
+// [conditions.DecodeCommanded] ONE BLOB AT A TIME and keeping the FIRST one
+// that answers.
 //
-// # The newest wins, and a sheet may really hold two
+// # The first applied wins, and a sheet may really hold two
 //
 // The caster is part of the compulsion's identity, so two casters' Commands
 // stand side by side: nothing removes another caster's spell, and each ends on
 // its own clock. One turn cannot obey two words, and the one it obeys is the
-// one said last, which is the last a sheet appended. That is DecodeCommanded's
-// own rule for a whole list, and keeping the last match here is how the
-// per-blob loop preserves it rather than quietly answering with the oldest.
+// one that got there FIRST — Kirk's ruling, 2026-09-12, on the precedent Bane's
+// contribution group already sets: a second source of the same effect does not
+// displace the first.
+//
+// That is the opposite of "the loudest voice wins", and it is the more honest
+// reading of a compulsion: the creature is already under orders when the second
+// caster speaks, and a rule where interrupting is free would make the last
+// caster in the round the only one who mattered.
 //
 // A second Command from the SAME caster is a different case and never reaches
 // this decision: resolution replaces an existing instance of one address before
 // applying the new one, so the sheet holds one.
+//
+// # Why the loop decides this rather than the reader
+//
+// Reading one blob at a time makes this seam's choice independent of
+// DecodeCommanded's own whole-list tiebreak, which is a real advantage rather
+// than a coincidence: that rule flipped once during this wave and nothing here
+// had to move with it. Each call answers about a single blob, and the order
+// this loop keeps is the order the sheet appended.
 //
 // # Why one at a time, stated honestly
 //
@@ -141,13 +154,12 @@ func (d compelledDriver) compulsionOn(
 // whose driver found nothing is a turn nobody takes — so they are lenient
 // together or not at all.
 func commandedIn(stored []json.RawMessage) (*conditions.CommandedConditionData, bool) {
-	var newest *conditions.CommandedConditionData
 	for _, raw := range stored {
 		if data, held, err := conditions.DecodeCommanded([]json.RawMessage{raw}); err == nil && held {
-			newest = data
+			return data, true
 		}
 	}
-	return newest, newest != nil
+	return nil, false
 }
 
 // obey asks resolution what the word means, on an interaction built exactly as

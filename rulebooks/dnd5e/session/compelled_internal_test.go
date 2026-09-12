@@ -140,15 +140,19 @@ func TestTheLookupSkipsABlobItCannotReadRatherThanStoppingAtIt(t *testing.T) {
 	require.False(t, none, "and a sheet with nothing readable on it holds no compulsion")
 }
 
-// TestTheLookupObeysTheWordSaidLast is the rule the caster-addressed compulsion
-// created: two casters' Commands stand side by side, because neither removes
-// the other's spell, and one turn cannot obey two words.
+// TestTheLookupObeysTheWordThatGotThereFirst is the rule the caster-addressed
+// compulsion created: two casters' Commands stand side by side, because neither
+// removes the other's spell, and one turn cannot obey two words. The one it
+// obeys is the one that arrived first (Kirk, 2026-09-12, on Bane's contribution
+// group precedent) — a creature already under orders is not freed by somebody
+// shouting over the top.
 //
 // It is a test of THIS function rather than of DecodeCommanded, and it has to
 // be: reading one blob at a time is what keeps a corrupt entry from hiding a
-// compulsion, and the obvious way to write that loop returns the FIRST match
-// instead of the newest. Both facts have to hold at once.
-func TestTheLookupObeysTheWordSaidLast(t *testing.T) {
+// compulsion, and it also makes this seam's tiebreak independent of the
+// reader's. That independence is not theoretical — the reader's whole-list rule
+// flipped once during this wave and this loop did not have to move with it.
+func TestTheLookupObeysTheWordThatGotThereFirst(t *testing.T) {
 	blob := func(caster, word string) json.RawMessage {
 		condition, err := conditions.NewCommandedCondition(
 			"skeleton", refs.Spells.Command().String(), caster, word, 1,
@@ -164,19 +168,20 @@ func TestTheLookupObeysTheWordSaidLast(t *testing.T) {
 		blob("cleric", "grovel"),
 	})
 	require.True(t, held)
-	require.Equal(t, "grovel", data.Word, "the word said last is the one obeyed")
-	require.Equal(t, "cleric", data.CasterID, "and it is measured from whoever said it")
+	require.Equal(t, "approach", data.Word, "the order that got there first is the one obeyed")
+	require.Equal(t, "bard", data.CasterID, "and it is measured from whoever gave it")
 
-	// The same pair with an unreadable blob wedged between them: still the
-	// newest of the two that CAN be read, which is the point of the loop.
+	// The same pair with an unreadable blob wedged in FRONT of both: still the
+	// earlier of the two that can be read, so the leniency does not quietly
+	// change which caster is in charge.
 	wedged, held := commandedIn([]json.RawMessage{
-		blob("bard", "approach"),
 		json.RawMessage(`{"ref":`),
-		blob("cleric", "flee"),
+		blob("bard", "flee"),
+		blob("cleric", "grovel"),
 	})
 	require.True(t, held)
 	require.Equal(t, "flee", wedged.Word)
-	require.Equal(t, "cleric", wedged.CasterID)
+	require.Equal(t, "bard", wedged.CasterID)
 }
 
 // TestATranslationThisSeamCannotMakeIsRefused — each of these is a wiring
