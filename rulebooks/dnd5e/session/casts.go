@@ -399,7 +399,7 @@ func healingCandidates(ctx context.Context, input *compileCastOfferInput) ([]tar
 	if err != nil {
 		return nil, err
 	}
-	answers, err := resolution.HealingTargets(ctx, &resolution.HealingTargetsInput{Room: room, CasterID: input.Member, Candidates: ids, Participants: input.Participants, Excludes: input.Definition.Cast.HealingExcludes})
+	answers, err := resolution.HealingTargets(ctx, &resolution.HealingTargetsInput{Room: room, CasterID: input.Member, Candidates: ids, Participants: input.Participants})
 	if err != nil {
 		return nil, translateResolution(err)
 	}

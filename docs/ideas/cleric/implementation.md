@@ -120,10 +120,22 @@ healing; only a known matching type triggers the spell's no-effect exclusion.
 Regression cases cover missing refs/types, unknown custom refs, explicit and
 catalogue undead/construct types, target projection, payment, HP output, and
 concentration preservation. The full resolution suite and vet pass with the
-released pins and no workspace override. Session #1696 still needs its released
-resolution pin, removal of the unused target-query exclusion argument, and
-selection/healing/persistence acceptance for an untyped custom monster. It has
-not been advanced as part of this resolution update.
+released pins and no workspace override. At that resolution handoff, session
+#1696 still needed its released resolution pin and untyped-monster acceptance;
+those are completed by the follow-up below.
+
+### Session follow-up after resolution release (2026-09-12)
+
+PR #1696 consumes rulebook v0.159.0, encounter v0.76.0, and resolution v0.44.0.
+Its target-query call no longer supplies exclusions, because resolution owns
+the no-effect decision at cast delivery. Tests verify an untyped custom monster
+is selectable and receives healing with one action and one slot spent. Both a
+missing ref and an unknown custom ref are covered. Session/encounter/character
+records are JSON-round-tripped and a fresh manager replays the exact healing
+story with dice disabled, retaining healed monster HP, the spent slot, and the
+original missing classification. The full session suite, vet, and tidy checks
+pass against released providers without local overrides. Merge/release of the
+session PR remains pending; no API/protos/web adoption or pins were changed.
 
 See [healing-rules.md](healing-rules.md) for rules sources, model decisions and
 explicit scope limits. Preparation, automatic grants, upcasting, out-of-combat

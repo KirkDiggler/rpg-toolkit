@@ -31,13 +31,15 @@ release, with passing Cleric offer/save/damage, action/slot, range/refusal and
 JSON reload acceptance tests. Cover semantics, higher-level scaling and shared
 damage correctness (#1582) remain open; API/web adoption is still deferred.
 
-**Cure Wounds in development (2026-09-12, baseline `fd4cdade`).** The combat Cure Wounds + Life healing slice proposed in #1643 is implemented
-locally and being validated/published as separate module changes. The
+**Cure Wounds session handoff (2026-09-12).** The combat Cure Wounds + Life healing
+providers are released through #1693, #1694, and #1695. Session #1696 consumes
+rulebook v0.159.0, encounter v0.76.0, and resolution v0.44.0. The
 [current implementation plan](ideas/cleric/plan.md) reuses Bane's slot payment
 and leveled-spell offers, adds immediate healing delivery and selectable-self
 touch targeting, and keeps preparation, world-clock casting and other-repository
-pins deferred. Planning is complete; implementation and new acceptance tests
-remain outstanding.
+pins deferred. The full session suite passes, including untyped-monster target
+selection, healing, payment and JSON/story reload. Session PR merge/release and
+eventual API/web adoption remain outstanding.
 
 **rpg-toolkit#1544 (rpg-project#376) — `session.Unpack` (complete,
 2026-09-06).** New verb: removes `Quantity` units of a pack the actor

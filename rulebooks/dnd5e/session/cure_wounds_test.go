@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -114,6 +115,73 @@ func (s *CastSuite) TestCureWoundsUndeadIsPaidNoEffect() {
 	s.Zero(body.HealingApplied.Requested)
 	s.Zero(body.HealingApplied.Amount)
 	s.Equal("No effect on undead", body.HealingApplied.Calculation.Components[0].Source.Label)
+}
+
+func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
+	for _, tc := range []struct {
+		name string
+		ref  *core.Ref
+	}{
+		{name: "missing ref and type"},
+		{name: "unknown custom ref", ref: &core.Ref{Module: "custom", Type: "monsters", ID: "patient"}},
+	} {
+		s.Run(tc.name, func() {
+			s.scene(healingCleric(), 1, 5)
+			// Reuse the scene's placement and stat bundle as an untyped custom NPC.
+			for i := range s.sessions.byID["sess"].NPCs {
+				npc := &s.sessions.byID["sess"].NPCs[i]
+				if npc.ID == "skeleton" {
+					npc.Ref = tc.ref
+					npc.CreatureType = ""
+					npc.HitPoints = 1
+				}
+			}
+			row := s.castRow(spells.CureWounds)
+			candidate, found := castCandidate(s.T(), row, "skeleton")
+			s.Require().True(found, "missing classification must not hide the target")
+			s.True(candidate.Available)
+			_, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Targets: []string{"skeleton"}})
+			s.Require().NoError(err)
+			s.Equal(9, s.storedSkeleton())
+			s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
+			s.False(s.castRow(spells.CureWounds).Available, "the action was spent")
+			s.Equal(3, s.dice.next, "two initiative rolls and one healing die")
+			beats := s.beats(session.EventCast, session.EventActivationResult)
+			s.Require().Len(beats, 2)
+			heal := beats[1].Body.(session.ActivationResultBody).HealingApplied
+			s.Require().NotNil(heal)
+			s.Equal(8, heal.Requested)
+			s.Equal(8, heal.Amount)
+			s.Equal(1, heal.HPBefore)
+			s.Equal(9, heal.HPAfter)
+			s.Equal(refs.Spells.CureWounds().String(), heal.SourceRef)
+			for id, data := range s.sessions.byID {
+				s.sessions.byID[id], err = copyOf(data)
+				s.Require().NoError(err)
+			}
+			for id, data := range s.encounters.byID {
+				s.encounters.byID[id], err = copyOf(data)
+				s.Require().NoError(err)
+			}
+			for id, data := range s.characters.byID {
+				s.characters.byID[id], err = copyOf(data)
+				s.Require().NoError(err)
+			}
+			s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.Require().NoError(err)
+			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
+			s.Require().NoError(err)
+			s.Equal(beats, story, "reload replays the result without another roll")
+			s.Equal(9, s.storedSkeleton())
+			s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
+			for _, npc := range s.sessions.byID["sess"].NPCs {
+				if npc.ID == "skeleton" {
+					s.Equal(tc.ref, npc.Ref)
+					s.Empty(npc.CreatureType, "healing does not invent classification")
+				}
+			}
+		})
+	}
 }
 
 func (s *CastSuite) TestCureWoundsInvalidRequestsLeaveDiceSlotsAndHPAlone() {
