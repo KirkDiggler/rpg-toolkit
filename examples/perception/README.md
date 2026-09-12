@@ -344,7 +344,54 @@ And `act/decider_test.go` is the how-to: every test there builds a situation by
 hand, with no game, no projection, no world and no journal anywhere. A behaviour
 is a pure function of holdings, so testing one needs nothing but holdings.
 
+## What a real pass costs
+
+Every scenario above has three tracks and two observers. `scale_test.go` runs
+one the shape of a fight — eighteen bodies, two channels, everyone perceiving
+everyone — because the small stories cannot show what the design does under
+load.
+
+**Two findings, from the numbers rather than from reasoning about them.**
+
+*Append-on-change becomes append-per-pass the moment anything moves.* Fifty
+passes, eighteen bodies:
+
+| | standing still | moving |
+|---|---|---|
+| tracks held | 36 | 36 |
+| entries | 36 | 1,800 |
+
+That is not a defect, and the obvious fix is a trap. Updating an entry's locus
+in place so only payload changes append would make it read *"from tick 1 to tick
+50 I perceived a goblin at cell 5"* when the goblin was somewhere else at tick 1
+— a memory revised to say something nobody testified to, which is exactly the
+band-aid this design exists to delete.
+
+A moving thing genuinely produces testimony every pass. The trail is real and
+every entry in it is true. The open question was never how to stop recording it;
+it is whether you keep the whole trail forever — **so the measurement is what
+pays for forgetting**, which had been shelved for want of a use case.
+
+*The hot path was paying for history it never reads.* A decider asks what an
+actor believes now, and a reconciler compares one track's latest testimony
+against another's. Neither wants the trail, but reaching the tip meant copying
+every entry of every track. [`Store.Heads`](testimony/testimony.go) asks the
+cheaper question:
+
+| 50-pass benchmark | before | after |
+|---|---|---|
+| 6 bodies moving | 9.4 MB/op | 107 KB/op |
+| 12 bodies moving | 10.4 MB/op | 419 KB/op |
+| 18 bodies moving | 11.3 MB/op | 878 KB/op |
+
+The shape of those numbers matters more than the size. Before, cost barely moved
+with body count — it was dominated by history, so it grew with *ticks elapsed*
+rather than with the work. After, it scales with the bodies actually present,
+which is what a pass should cost. Stored testimony is unchanged: the trail is
+still there, still immutable, still every entry. Only the question got cheaper.
+
 ## Deliberately absent
 
-Forgetting or compaction — a ghost is immortal here, which is probably correct
-and definitely unpaid-for. Any dependency on `encounter`, `spatial`, or `core`.
+Compaction. A ghost is immortal here — which was "probably correct and
+definitely unpaid-for" until the measurement above, and is now the first thing
+worth building. Any dependency on `encounter`, `spatial`, or `core`.

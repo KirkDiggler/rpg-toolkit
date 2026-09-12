@@ -125,7 +125,7 @@ func (g *Game) reconcile(o testimony.Observer, at testimony.Stamp) error {
 		return nil
 	}
 
-	judged := g.unclaimed(o, mind.Judge(reconcile.ViewsOf(g.held.Held(o)), at))
+	judged := g.unclaimed(o, mind.Judge(reconcile.ViewsOf(g.held.Heads(o)), at))
 
 	return reconcile.Apply(g.belie, o, judged, at)
 }
@@ -155,7 +155,16 @@ func (g *Game) unclaimed(o testimony.Observer, judged []reconcile.Judgment) []re
 	return out
 }
 
-// Held is one observer's whole testimony.
+// Heads is the last thing each of this observer's tracks said.
+//
+// It is what the composition's own internals use and what [reconcile.ViewsOf]
+// takes, so a consumer asking the same question should not have to pay for the
+// trail to get at it. Use [Game.Held] when the trail itself is the point.
+func (g *Game) Heads(o testimony.Observer) []testimony.Head {
+	return g.held.Heads(o)
+}
+
+// Held is one observer's whole testimony, trail and all.
 func (g *Game) Held(o testimony.Observer) []testimony.Track {
 	return g.held.Held(o)
 }
@@ -167,11 +176,11 @@ func (g *Game) Track(o testimony.Observer, id testimony.TrackID) (testimony.Trac
 
 // Contacts is how this observer currently bundles their own tracks.
 func (g *Game) Contacts(o testimony.Observer) []belief.Contact {
-	tracks := g.held.Held(o)
+	heads := g.held.Heads(o)
 
-	ids := make([]testimony.TrackID, 0, len(tracks))
-	for _, t := range tracks {
-		ids = append(ids, t.ID)
+	ids := make([]testimony.TrackID, 0, len(heads))
+	for _, h := range heads {
+		ids = append(ids, h.ID)
 	}
 
 	return g.belie.Contacts(o, ids)
@@ -190,8 +199,8 @@ func (g *Game) Relation(o testimony.Observer, a, b testimony.TrackID) (belief.Re
 // returned value can answer a question about the world, about another observer,
 // or about whether any of this is true.
 func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) act.Situation {
-	tracks := g.held.Held(o)
-	views := reconcile.ViewsOf(tracks)
+	heads := g.held.Heads(o)
+	views := reconcile.ViewsOf(heads)
 
 	holds := make([]act.Held, 0, len(views))
 
@@ -200,9 +209,9 @@ func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) act.Situation
 		holds = append(holds, act.Held{TrackView: view, Name: name, Named: named})
 	}
 
-	ids := make([]testimony.TrackID, 0, len(tracks))
-	for _, t := range tracks {
-		ids = append(ids, t.ID)
+	ids := make([]testimony.TrackID, 0, len(heads))
+	for _, h := range heads {
+		ids = append(ids, h.ID)
 	}
 
 	return act.Situation{
