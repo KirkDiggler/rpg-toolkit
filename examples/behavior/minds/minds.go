@@ -33,7 +33,26 @@ const (
 	Robed = "robed"
 	// Heal is the deed a witness saw when somebody mended somebody.
 	Heal = "heal"
+
+	// PostKind is what sight says about a place a guard was told to stand: a
+	// banner, a doorway, a mark on the floor. A post is perceived like
+	// anything else, so returning to it is Toward a name and needs no verb.
+	PostKind content.Kind = "post"
+
+	// Patience is how many ticks old a ghost may be before the captain stops
+	// walking after it. It is a feel number, and the captain's alone.
+	Patience uint64 = 2
 )
+
+// age is how many ticks since a contact was last confirmed, within one run.
+func age(c behavior.Contact, at testimony.Stamp) uint64 {
+	last := c.LastConfirmed()
+	if last.Seq != at.Seq || last.Tick > at.Tick {
+		return 0
+	}
+
+	return at.Tick - last.Tick
+}
 
 // did reports whether any track in the contact is a deed with the given verb.
 // Deeds are never current, so this reads every track.
@@ -107,9 +126,19 @@ func (Zombie) Name(c behavior.Contact) (belief.Name, bool) {
 	return belief.Name("thing " + string(c.Tracks[0].ID)), true
 }
 
-// Rank prefers whatever it noticed first.
+// Rank prefers whatever it noticed first, and never lets go: a ghost from an
+// hour ago ranks exactly as it did when it was fresh. A post means nothing to
+// it, so it never goes anywhere on purpose.
 func (Zombie) Rank(s behavior.Situation) []behavior.Contact {
-	return byFirstSeen(s.Contacts)
+	var out []behavior.Contact
+
+	for _, c := range s.Contacts {
+		if c.Kind() != PostKind {
+			out = append(out, c)
+		}
+	}
+
+	return byFirstSeen(out)
 }
 
 // Keep is nothing. A zombie lets everything get as close as it likes.
@@ -200,6 +229,8 @@ func (Captain) Name(c behavior.Contact) (belief.Name, bool) {
 			return belief.Name("the " + p.Note + " " + p.Of), true
 		case content.Noise:
 			noise = p
+		case PostKind:
+			return "my post", true
 		case content.Trace:
 			// A captain has no word for a mark on the floor. It is not
 			// something it will act on, so it stays unnamed.
@@ -214,10 +245,25 @@ func (Captain) Name(c behavior.Contact) (belief.Name, bool) {
 }
 
 // Rank puts whoever it has seen heal first, then whoever is chanting, then
-// whoever it noticed first. A healer it has not SEEN heal is just another
-// figure: the ranking reads deeds the captain witnessed, never the sheet.
+// whoever it noticed first, and its own post last of all. A healer it has not
+// SEEN heal is just another figure: the ranking reads deeds the captain
+// witnessed, never the sheet.
+//
+// A ghost older than [Patience] is dropped. The captain will walk to where it
+// last saw somebody, but not to where it saw somebody an age ago — and with
+// nothing left worth pursuing, the post is what remains, so it goes back.
 func (Captain) Rank(s behavior.Situation) []behavior.Contact {
-	ordered := byFirstSeen(s.Contacts)
+	var kept []behavior.Contact
+
+	for _, c := range s.Contacts {
+		if !c.Current() && c.Kind() != PostKind && age(c, s.At) > Patience {
+			continue
+		}
+
+		kept = append(kept, c)
+	}
+
+	ordered := byFirstSeen(kept)
 
 	slices.SortStableFunc(ordered, func(a, b behavior.Contact) int {
 		return preference(b) - preference(a)
@@ -231,6 +277,8 @@ func (Captain) Keep(behavior.Situation) int { return 0 }
 
 func preference(c behavior.Contact) int {
 	switch {
+	case c.Kind() == PostKind:
+		return -1
 	case did(c, Heal):
 		return 2
 	case says(c, content.Noise, Chanting):

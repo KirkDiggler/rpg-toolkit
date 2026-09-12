@@ -85,11 +85,14 @@ target is always a name the actor gave. **You cannot aim at what you have not
 named**, which is why naming is a judgment of the mind rather than a step
 somebody performs on the monster's behalf.
 
-**Commitment** — a claim about oneself in the belief store: *pursuing that
-name*. Retracted when the target resolves (perceived again, or its position
-becomes unknown). A compelled or frightened turn retracts it the way any claim
-is retracted. Without this a monster between two ghosts of similar distance
-dithers forever.
+**Commitment** — *not built*, and deliberately. The design expected a monster
+between two ghosts of similar distance to dither, and a sticky target to fix
+it. No fixture produced the dither: every mind here ranks by *first noticed*,
+which is stable across turns, so a re-rank each turn picks the same target.
+Dithering needs a mind that ranks by distance, and none has been asked for.
+When one is, commitment is the primitive it pays for, and the shape on record
+is a claim about oneself — *pursuing that name* — retracted when the target
+resolves.
 
 ## Two grains in the stage
 
@@ -124,7 +127,7 @@ needs it.
 | 2 | a heal in sight retargets the captain; the same heal out of sight does not | deeds as testimony | **yes** |
 | 3 | archer fires from the next region, steps `Away` when someone enters its own | `Away`; Recall; rungs 0 and 2 | **yes** |
 | 4 | intimidated goblin cannot go `Toward` the intimidator; shoots if it can, flees if it cannot | fences on self; routing | **yes** |
-| 5 | zombie walks to a stale ghost forever; captain drops it after N and returns to post | Rank over ghost age; commitment | no |
+| 5 | zombie walks to a stale ghost forever; captain drops it after N and returns to post | Rank over ghost age; a post as a named thing | **yes** |
 
 ## What the fixtures taught
 
@@ -210,6 +213,30 @@ Things the shape did not know before there was code.
     two rooms off, has nowhere to go and stays; when the knight comes within
     bowshot it shoots. The ladder cannot know the map, so an `Away` the
     stage refuses is an actor that stays put — which is what cornered means.
+16. **A ghost has a place, and it is the same rule as a live one.**
+    `Contact.Where` first read only current tracks, so a ghost had no place
+    and rung 2 could never walk toward a memory — both fixture 5 tests
+    passed on the wrong verb. The rule is now the freshest placed testimony
+    across the contact's tracks, live or not, which is exactly the rule a
+    survived mutant had already shown in `Recall`. One rule, two callers.
+17. **A post is a thing you perceive, and going back is `Toward` a name.**
+    No fourth intent. The banner stands in the corridor, the captain sees it,
+    names it *my post*, and ranks it last; with nothing else worth pursuing
+    it is what remains. The zombie sees the same banner and its Rank drops
+    it, so it never goes anywhere on purpose.
+18. **Patience is the mind's, and the zombie has none.** A ghost older than
+    `Patience` is dropped from the captain's ranking; a mutant that never
+    tires walks off after a memory an age old and is killed. The zombie's
+    Rank never reads the age, so it sets off regardless — and having
+    arrived and found nothing, it stands on the spot at tick thirty still
+    holding the knight, last confirmed at tick one. Nothing corrected it.
+    Absence of evidence is not a negative claim.
+19. **Arriving is the other way to give up.** The captain in the empty room
+    does not need a staleness rule to leave: the ghost is *here*, the ladder
+    skips what is here, and the post is next. So there are two give-ups and
+    they are different: *too old to walk to* is Rank's, *walked there and
+    found nothing* is the ladder's, and neither needed the belief to be
+    corrected.
 
 ## What the spike simplifies, on purpose
 
@@ -227,11 +254,12 @@ Things the shape did not know before there was code.
 - How a mind comes to know who frightened it. The fence is on the sheet;
   the deed (*that one intimidated me*) would land like a heal does, and a
   mind could rank by it. No fixture has needed it.
-- Whether *return to post* is a fourth intent or `Toward` a name the monster
-  gave its own post at spawn. The latter costs nothing, if a post is something
-  a monster can perceive.
-- Whether commitment as a self claim survives the perception store's
-  refusals, which were written for claims about tracks.
+- Commitment. See the nouns: unpaid until a mind ranks by distance.
+- Absence as testimony. The zombie in the empty room still holds the knight
+  *at the room*, because nothing here downgrades a ghost's place on arrival.
+  The ladder's *here → skip* covers this spike; the shipped design
+  (`ideas/monster-intel/design.md` §5a) wants the belief itself to become
+  position-unknown, and that is a perception change no fixture has paid for.
 
 ## What the perception team's decider taught us
 

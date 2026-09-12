@@ -84,12 +84,54 @@ func (c Contact) Creature() bool {
 	return false
 }
 
-// Where is the place the actor currently puts this contact, or "" when no
-// current channel could place it — known to be there, not known where.
+// Where is the place the actor believes this contact is: the freshest placed
+// testimony across its tracks. For a live contact that is where a channel
+// puts it now; for a ghost it is where it was last seen. "" means known to be
+// there, not known where.
+//
+// There is one rule and not two, on purpose. A first draft read only current
+// tracks, and fixture 5 found that a ghost then had no place at all, so the
+// ladder could never walk toward a memory. A current track's latest entry IS
+// its placement, so the memory rule already answers for a live contact — the
+// same equivalence a survived mutant showed in the stage's Recall.
 func (c Contact) Where() string {
+	var (
+		where string
+		at    testimony.Stamp
+		found bool
+	)
+
 	for _, v := range c.Tracks {
-		if v.Current && v.Locus.Where != "" {
-			return v.Locus.Where
+		if v.Locus.Where != "" && (!found || at.Before(v.Confirmed)) {
+			where, at, found = v.Locus.Where, v.Confirmed, true
+		}
+	}
+
+	return where
+}
+
+// LastConfirmed is the latest moment any track in this contact was perceived
+// to still hold. For a ghost, that is how long ago it was last seen; the
+// arithmetic is the caller's, because the store has no opinion about whether
+// a memory still holds.
+func (c Contact) LastConfirmed() testimony.Stamp {
+	last := c.Tracks[0].Confirmed
+
+	for _, v := range c.Tracks[1:] {
+		if last.Before(v.Confirmed) {
+			last = v.Confirmed
+		}
+	}
+
+	return last
+}
+
+// Kind is what the actor would say this contact is: the kind of the first
+// track whose payload is a percept. A contact made only of deeds has no kind.
+func (c Contact) Kind() content.Kind {
+	for _, v := range c.Tracks {
+		if p, err := content.Decode(v.Payload); err == nil && p.Kind != "" {
+			return p.Kind
 		}
 	}
 

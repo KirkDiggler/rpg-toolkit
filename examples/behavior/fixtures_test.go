@@ -39,6 +39,7 @@ const (
 	knight = "knight"
 	mage   = "mage"
 	cleric = "cleric"
+	banner = "banner"
 )
 
 func moment(tick uint64) testimony.Stamp { return testimony.Stamp{Tick: tick} }
@@ -436,4 +437,124 @@ func mustName(t *testing.T, s behavior.Situation, track testimony.TrackID) belie
 	require.True(t, c.Named)
 
 	return c.Name
+}
+
+// post is a place a guard was told to stand, perceived like anything else.
+func post(where string) projection.Presence {
+	return projection.Presence{
+		Source: banner,
+		Where:  where,
+		Says:   map[testimony.Channel]projection.Says{sight: says(minds.PostKind, "banner", "", where)},
+	}
+}
+
+// TestFixture5_TheGhostWorthWalkingTo: the knight is seen in the room and
+// vanishes. Both monsters walk to where they last saw him. Finding nothing,
+// the captain goes back to its post; the zombie stands on the spot, still
+// believing, for as long as anyone cares to tick.
+func TestFixture5_TheGhostWorthWalkingTo(t *testing.T) {
+	g := behavior.New()
+	g.Connect(room, corridor)
+	g.Connect(corridor, hall)
+	g.Mind(captain, minds.Captain{})
+	g.Mind(zombie, minds.Zombie{})
+
+	everywhere := []string{room, corridor, hall}
+
+	// Tick 1: both at the post in the corridor; the knight is in the room.
+	in := projection.Input{
+		Presences: []projection.Presence{
+			standingAt(string(captain), corridor), standingAt(string(zombie), corridor), post(corridor),
+			figureAt(knight, room, "armoured", false),
+		},
+		Senses: reaching(everywhere, captain, zombie),
+		At:     moment(1),
+	}
+	require.NoError(t, g.Tick(in))
+
+	// Tick 2: the knight is gone. Looking and finding nothing is a write.
+	in.Presences = in.Presences[:3]
+	in.At = moment(2)
+	require.NoError(t, g.Tick(in))
+
+	ci, cs, err := g.Turn(captain, moment(2))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Toward, ci.Verb, "the captain goes to look where it last saw him")
+
+	to, ok := stage.Step(g, cs, ci)
+	require.True(t, ok)
+	require.Equal(t, room, to)
+
+	zi, _, err := g.Turn(zombie, moment(2))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Toward, zi.Verb, "so does the zombie")
+
+	// Tick 3: both stand in the room. Nothing is there.
+	in.Presences[0] = standingAt(string(captain), room)
+	in.Presences[1] = standingAt(string(zombie), room)
+	in.At = moment(3)
+	require.NoError(t, g.Tick(in))
+
+	ci, cs, err = g.Turn(captain, moment(3))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Toward, ci.Verb)
+	assert.Equal(t, belief.Name("my post"), ci.Target, "nothing here: back to the post")
+
+	to, ok = stage.Step(g, cs, ci)
+	require.True(t, ok)
+	assert.Equal(t, corridor, to)
+
+	zi, _, err = g.Turn(zombie, moment(3))
+	require.NoError(t, err)
+	assert.Equal(t, behavior.Pass, zi.Verb, "the zombie has arrived, and has nowhere else it wants to be")
+
+	// Tick 30: the zombie is still standing there, still believing.
+	in.At = moment(30)
+	require.NoError(t, g.Tick(in))
+
+	zi, zs, err := g.Turn(zombie, moment(30))
+	require.NoError(t, err)
+	assert.Equal(t, behavior.Pass, zi.Verb)
+
+	ghost, held := bundleOf(zs, projection.Handle(sight, knight))
+	require.True(t, held, "it still holds him")
+	assert.False(t, ghost.Current(), "as a ghost")
+	assert.Equal(t, uint64(1), ghost.LastConfirmed().Tick, "last seen at tick one, and nothing has touched that")
+}
+
+// TestFixture5_TheGhostNotWorthWalkingTo: the knight was seen an age ago. The
+// captain will not leave its post for a memory that old; the zombie does not
+// know what old means.
+func TestFixture5_TheGhostNotWorthWalkingTo(t *testing.T) {
+	g := behavior.New()
+	g.Connect(room, corridor)
+	g.Mind(captain, minds.Captain{})
+	g.Mind(zombie, minds.Zombie{})
+
+	in := projection.Input{
+		Presences: []projection.Presence{
+			standingAt(string(captain), corridor), standingAt(string(zombie), corridor), post(corridor),
+			figureAt(knight, room, "armoured", false),
+		},
+		Senses: reaching([]string{room, corridor}, captain, zombie),
+		At:     moment(1),
+	}
+	require.NoError(t, g.Tick(in))
+
+	in.Presences = in.Presences[:3]
+
+	for tick := uint64(2); tick <= minds.Patience+2; tick++ {
+		in.At = moment(tick)
+		require.NoError(t, g.Tick(in))
+	}
+
+	stale := moment(minds.Patience + 2)
+
+	ci, _, err := g.Turn(captain, stale)
+	require.NoError(t, err)
+	assert.Equal(t, behavior.Pass, ci.Verb, "too old to be worth the walk; it is already at its post")
+
+	zi, _, err := g.Turn(zombie, stale)
+	require.NoError(t, err)
+	assert.Equal(t, behavior.Toward, zi.Verb, "the zombie sets off regardless")
 }

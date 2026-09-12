@@ -126,16 +126,10 @@ func Aim(in projection.Input, s behavior.Situation, intent behavior.Intent) stri
 	return ""
 }
 
-// Recall is where the actor believes a named contact is: the freshest placed
-// testimony across the contact's tracks. It reads the situation and nothing
-// else. False means the actor has no idea — known to be there, not known
-// where.
-//
-// There is deliberately no separate rule for a live contact. A current track's
-// latest entry IS its placement, so "where a channel puts it now" and "where
-// it was last placed" are one question with one answer; a first draft had two
-// branches and a mutant proved them equivalent. A ghost is not a special case
-// of recall, only an older one.
+// Recall is where the actor believes a named contact is. It reads the
+// situation and nothing else — [behavior.Contact.Where], which is the
+// freshest placed testimony the actor holds, live or remembered. False means
+// the actor has no idea: known to be there, not known where.
 //
 // A walk resolves through Recall and never through Aim. That asymmetry is the
 // whole point: a swing has to meet what is really there, but where you choose
@@ -146,19 +140,9 @@ func Recall(s behavior.Situation, name belief.Name) (string, bool) {
 			continue
 		}
 
-		var (
-			where string
-			at    testimony.Stamp
-			found bool
-		)
+		where := c.Where()
 
-		for _, v := range c.Tracks {
-			if v.Locus.Where != "" && (!found || at.Before(v.Confirmed)) {
-				where, at, found = v.Locus.Where, v.Confirmed, true
-			}
-		}
-
-		return where, found
+		return where, where != ""
 	}
 
 	return "", false
