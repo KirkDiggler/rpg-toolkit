@@ -386,7 +386,7 @@ func conditionDescription(ref core.Ref) string {
 
 func publishPreparedCondition(
 	prepared preparedCondition, cast *Participants, targetID string,
-	source dnd5eEvents.ConditionSource, next func() (Step, error),
+	source dnd5eEvents.ConditionSource, next func(replaced []ImposedEffect) (Step, error),
 ) Gather {
 	return Gather{
 		name: "impose " + conditionDescription(prepared.declaration.Ref),
@@ -395,12 +395,87 @@ func publishPreparedCondition(
 			if err != nil {
 				return nil, err
 			}
+			replaced, err := replaceSameRef(ctx, bus, cast, targetID, prepared.declaration.Ref)
+			if err != nil {
+				return nil, err
+			}
 			if err := publishCondition(ctx, bus, prepared, target, source); err != nil {
 				return nil, err
 			}
-			return next()
+			return next(replaced)
 		},
 	}
+}
+
+// replaceSameRef takes off whatever the recipient already holds under the ref
+// that is about to land, and hands back the effects that say so.
+//
+// # The effects of the same spell do not stack
+//
+// One instance of a ref per member; the newer replaces the older. Before this
+// (2026-09-12) both sheets simply appended, so Bane from two casters put two
+// separate −1d4 on one creature and the first of them to end took the other off
+// with it, because removal is by ref across the whole list. Command's second
+// word replacing the first is the use case that brought the rule — two words on
+// one creature is not a state anything can obey — and the rule is general
+// because the stacking was never Command's bug.
+//
+// # Removed first, applied second, and the order is the rule
+//
+// The keeper strips by address off the same list it is about to append to. A
+// removal published after the new condition landed would find two entries under
+// the ref and take off whichever it reached first, which is a coin toss between
+// replacing the old one and undoing the new one.
+//
+// It ranges over the RECIPIENT's own sheet and nobody else's: this is a pointed
+// question about one member, not a set derived from what happened to be loaded.
+func replaceSameRef(
+	ctx context.Context, bus events.EventBus, cast *Participants, targetID string, ref core.Ref,
+) ([]ImposedEffect, error) {
+	var replaced []ImposedEffect
+	for _, held := range heldConditions(cast, targetID) {
+		if existing := held.Ref(); existing == nil || !existing.Equals(&ref) {
+			continue
+		}
+		address := conditions.ConditionAddressOf(targetID, held)
+		if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(
+			ctx, dnd5eEvents.ConditionRemovedEvent{
+				MemberID:     address.MemberID,
+				ConditionRef: address.ConditionRef,
+				SourceID:     address.SourceID,
+				Reason:       ConditionReplacedReason,
+			}); err != nil {
+			return nil, fmt.Errorf("replace %s on %q: %w", ref.String(), targetID, err)
+		}
+		effect := removalEffect(address, ConditionReplacedReason)
+		effect.Description = fmt.Sprintf("%s replaced by %s", address.ConditionRef, ref.String())
+		replaced = append(replaced, effect)
+	}
+
+	return replaced, nil
+}
+
+// ConditionReplacedReason is why a condition came off when the same ref landed
+// again. It travels on the removal so a listener can tell a replacement from an
+// expiry, a dispel, or a concentration break.
+const ConditionReplacedReason = "replaced"
+
+// heldConditions is what one member's sheet is currently carrying, and an
+// absent member carries nothing.
+//
+// Nil for somebody who is not in the cast, rather than an error, because every
+// caller is asking a question that has the same answer either way: a member
+// with no sheet here holds no condition this interaction can see. The callers
+// that need a member to EXIST ask cast.entity, which refuses.
+func heldConditions(cast *Participants, memberID string) []dnd5eEvents.ConditionBehavior {
+	if character, ok := cast.Character(memberID); ok {
+		return character.GetConditions()
+	}
+	if monster, ok := cast.Monster(memberID); ok {
+		return monster.GetConditions()
+	}
+
+	return nil
 }
 
 // publishCondition is the one place a built condition reaches the bus.
@@ -1185,7 +1260,12 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 
 		return publishPreparedCondition(
 			m.prepared, m.cast, m.in.SaverID, conditionSourceFor(m.in.Cause),
-			func() (Step, error) {
+			func(replaced []ImposedEffect) (Step, error) {
+				// Replacement before application, in the trace as on the bus:
+				// the record reads in the order the rules happened, and a
+				// reader that met the new condition first would be reading an
+				// instant where the creature held both.
+				outcome.Imposed = append(outcome.Imposed, replaced...)
 				outcome.Imposed = append(outcome.Imposed, m.prepared.atStake(m.in.SaverID))
 				return deliverRemoval()
 			},

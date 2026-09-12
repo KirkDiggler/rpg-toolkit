@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -20,9 +21,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -878,4 +881,162 @@ func (s *CastActionTestSuite) TestTheOptionKeyIsWrittenWhereContentSaidAndNowher
 		s.Require().Error(err)
 		s.Require().Contains(err.Error(), "the cast's chosen option")
 	})
+}
+
+// conditionTraffic is an ordered log of what landed and what came off, so the
+// ORDER of a replacement can be asserted rather than assumed.
+func (s *CastActionTestSuite) conditionTraffic(bus events.EventBus, ref *core.Ref) *[]string {
+	log := &[]string{}
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			if event.ConditionRef == ref.String() {
+				*log = append(*log, "removed:"+event.MemberID+":"+event.SourceID+":"+event.Reason)
+			}
+			return nil
+		})
+	s.Require().NoError(err)
+	_, err = dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			if event.Type == dnd5eEvents.ConditionType(ref.ID) {
+				*log = append(*log, "applied:"+event.Target.GetID())
+			}
+			return nil
+		})
+	s.Require().NoError(err)
+
+	return log
+}
+
+// countingRef is how many instances of one ref a sheet came back carrying. The
+// rule under test is "one per member", so the number IS the claim.
+func (s *CastActionTestSuite) countingRef(stored []json.RawMessage, ref *core.Ref) int {
+	found := 0
+	for _, raw := range stored {
+		var peek struct {
+			Ref core.Ref `json:"ref"`
+		}
+		s.Require().NoError(json.Unmarshal(raw, &peek))
+		if peek.Ref.Equals(ref) {
+			found++
+		}
+	}
+
+	return found
+}
+
+// THE EFFECTS OF THE SAME SPELL DO NOT STACK, and Bane is the proof because
+// Bane is where the stacking was: two casters each put a −1d4 on one creature
+// and the first one to end took both off.
+//
+// Command's second word replacing the first is the use case that brought the
+// rule, and the rule is general because the stacking was never Command's bug.
+func (s *CastActionTestSuite) TestASecondInstanceOfOneRefReplacesTheFirst() {
+	fixtures := s.fixtures()
+	target := fixtures.saver(14, baneConditionJSON(s.T(), heroID, "other-caster"))
+	bus := events.NewEventBus()
+	traffic := s.conditionTraffic(bus, refs.Conditions.Baned())
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: baneCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"removed:" + heroID + ":other-caster:replaced", "applied:" + heroID}, *traffic,
+		"the old instance comes off BEFORE the new one lands")
+	s.Equal(1, s.countingRef(fixtures.sheet(out, heroID).Conditions, refs.Conditions.Baned()),
+		"one instance of a ref per member")
+
+	imposed := s.castOutcome(out).Targets[0].Applied
+	s.Require().Len(imposed, 2, "the trace says the replacement happened as well as the application")
+	s.Equal(ImposedConditionRemoved, imposed[0].Kind)
+	s.Contains(imposed[0].Description, "replaced by")
+	s.Equal(ImposedCondition, imposed[1].Kind)
+}
+
+// A monster's sheet is the same sheet for this rule. The check reads whatever
+// the recipient is holding, and nothing about it knows which kind of sheet it
+// came off.
+func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
+	fixtures := s.fixtures()
+	wolf := fixtures.wolfData()
+	wolf.Conditions = []json.RawMessage{baneConditionJSON(s.T(), wolfID, "other-caster")}
+	bus := events.NewEventBus()
+	traffic := s.conditionTraffic(bus, refs.Conditions.Baned())
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{wolfID}, Roller: facedRoller{d20: 1, other: 4},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: baneCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"removed:" + wolfID + ":other-caster:replaced", "applied:" + wolfID}, *traffic)
+	s.Equal(1, s.countingRef(s.monsterSheet(out, wolfID).Conditions, refs.Conditions.Baned()),
+		"one instance of a ref per member, on a monster's sheet too")
+}
+
+// monsterSheet is the monster half of the damage suite's sheet lookup, and it
+// fails rather than skipping: a recipient that never came back to be saved is a
+// missing assertion, not an absent one.
+func (s *CastActionTestSuite) monsterSheet(out *Output, id string) *monster.Data {
+	for _, data := range out.DirtyMonsters {
+		if data.ID == id {
+			return data
+		}
+	}
+	s.Require().Failf("no dirty sheet", "%q did not come back to be saved", id)
+
+	return nil
+}
+
+// Replacement is by REF and only by ref. A creature holding somebody else's
+// spell keeps it when a different one lands, which is what makes this a rule
+// about one spell rather than about conditions in general.
+func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
+	fixtures := s.fixtures()
+	mockery := conditions.NewViciousMockeryCondition(heroID, bardID, refs.Spells.ViciousMockery().String())
+	stored, err := mockery.ToJSON()
+	s.Require().NoError(err)
+
+	bus := events.NewEventBus()
+	removals := 0
+	_, err = dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+		func(context.Context, dnd5eEvents.ConditionRemovedEvent) error { removals++; return nil })
+	s.Require().NoError(err)
+
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: fixtures.saver(14, stored)}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: baneCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Zero(removals, "Bane landing takes nothing else off")
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.ViciousMockery()))
+	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Baned()))
 }

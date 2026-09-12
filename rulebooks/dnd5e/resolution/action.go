@@ -435,13 +435,7 @@ func (m *castMachine) hold(outcome CastOutcome) Gather {
 func concentrationHeldBy(
 	cast *Participants, memberID string,
 ) (*conditions.ConcentratingCondition, bool) {
-	var held []dnd5eEvents.ConditionBehavior
-	if character, ok := cast.Character(memberID); ok {
-		held = character.GetConditions()
-	} else if monster, ok := cast.Monster(memberID); ok {
-		held = monster.GetConditions()
-	}
-	for _, condition := range held {
+	for _, condition := range heldConditions(cast, memberID) {
 		if holding, ok := condition.(*conditions.ConcentratingCondition); ok {
 			return holding, true
 		}
