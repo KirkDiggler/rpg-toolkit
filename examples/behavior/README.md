@@ -110,11 +110,38 @@ needs it.
 
 | # | fixture | pays for | built? |
 |---|---|---|---|
-| 1 | zombie and captain, one situation, two targets | contacts in the ladder; Name and Rank | no |
+| 1 | zombie and captain, one situation, two targets | contacts in the ladder; Name and Rank | **yes** |
 | 2 | a heal in sight retargets the captain; the same heal out of sight does not | deeds as testimony | no |
 | 3 | archer fires from the next region, steps `Away` when someone enters its own | `Away`; Recall | no |
 | 4 | intimidated goblin cannot go `Toward` the intimidator; shoots if it can, flees if it cannot | fences on self | no |
 | 5 | zombie walks to a stale ghost forever; captain drops it after N and returns to post | Rank over ghost age; commitment | no |
+
+## What the fixtures taught
+
+Things the shape did not know before there was code.
+
+1. **A name is on one track, and a swing goes there.** The first draft of
+   `Aim` resolved a name through *any* track in the contact. The
+   captain-can-be-wrong test sent its swing at the chant, and truth bound the
+   chant to the knight. A contact is a claim that several tracks are one thing,
+   and the claim can be wrong — so `Contact.Bearer` records which track the
+   name is on, and the stage binds only that. The wrong merge costs the captain
+   a claim; it never costs it a swing at the wrong person.
+2. **Woodwise is too credulous at region grain.** The perception spike's
+   reconciler merges a noise with *every* co-located creature, so with two
+   figures in one room a chant bundles both into one contact. The captain has
+   its own Judge: merge the chant into the one robed figure standing there,
+   and on two, or none, make no claim. A tie is worse than no claim — the
+   same rule carry-out already has for a distillation.
+3. **A mind is a reconciler plus two questions, and that is enough.** Zombie
+   and captain are each one type, no state, three methods. The zombie's whole
+   stupidity is `Judge` returning nil.
+4. **Naming lands as a claim and persists.** The mind is asked only for
+   contacts the actor has no word for; the next situation finds the word
+   already there. A behaviour author never sees `Identify`.
+5. **The perception example still carries `act` and `stage` on main.** They
+   are the seam this module now owns. Retiring them from perception is a
+   perception PR, and it waits until this shape has settled.
 
 ## What the spike simplifies, on purpose
 
