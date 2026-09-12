@@ -111,7 +111,7 @@ needs it.
 | # | fixture | pays for | built? |
 |---|---|---|---|
 | 1 | zombie and captain, one situation, two targets | contacts in the ladder; Name and Rank | **yes** |
-| 2 | a heal in sight retargets the captain; the same heal out of sight does not | deeds as testimony | no |
+| 2 | a heal in sight retargets the captain; the same heal out of sight does not | deeds as testimony | **yes** |
 | 3 | archer fires from the next region, steps `Away` when someone enters its own | `Away`; Recall | no |
 | 4 | intimidated goblin cannot go `Toward` the intimidator; shoots if it can, flees if it cannot | fences on self | no |
 | 5 | zombie walks to a stale ghost forever; captain drops it after N and returns to post | Rank over ghost age; commitment | no |
@@ -142,6 +142,26 @@ Things the shape did not know before there was code.
 5. **The perception example still carries `act` and `stage` on main.** They
    are the seam this module now owns. Retiring them from perception is a
    perception PR, and it waits until this shape has settled.
+6. **Perception needed one door, and only one.** `Tick` was its only write,
+   so nothing above the composition could land a deed. `Game.Report` (toolkit
+   #1678) passes the store's existing verb through and judges what landed —
+   that is the whole change, and it is the sign the arrow points the right
+   way: behaviour pulled exactly what it needed and nothing about intents
+   crossed back.
+7. **A deed names actor and target in the witness's own handles.** The stage
+   translates a fact (ledger ids) into what each witness would say — *the
+   hooded one I can see healed the armoured one I can see* — and only if the
+   witness currently holds that sight track. A witness who could not see the
+   healer learns a heal happened and not who did it. Nothing is written to
+   anybody's sight track.
+8. **Attaching a deed to a figure is a claim.** The captain's Judge merges the
+   deeds track with the sight track it names; the zombie holds the same deed
+   and never does. A mutant that stops the captain attaching is killed by
+   exactly the two assertions that claim it.
+9. **One deeds track per figure, per witness.** The change key is
+   verb + actor + target, so a second identical heal extends the watermark
+   rather than appending. What the witness knows has not changed; only how
+   recently it was confirmed.
 
 ## What the spike simplifies, on purpose
 

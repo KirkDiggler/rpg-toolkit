@@ -139,6 +139,19 @@ func bearer(c Contact) testimony.TrackID {
 	return c.Tracks[0].ID
 }
 
+// Report lands discrete testimony on one actor — the stage uses it to tell a
+// witness what they saw somebody do. It is perception's own door, passed
+// through; behaviour adds nothing to what may be said.
+func (g *Game) Report(in testimony.Recollection) (testimony.Delta, error) {
+	return g.p.Report(in)
+}
+
+// Held is one actor's whole testimony. The stage reads it to say a deed in
+// the witness's own terms: which of THEIR tracks the actor and target are.
+func (g *Game) Held(o testimony.Observer) []testimony.Track {
+	return g.p.Held(o)
+}
+
 // Turn is one actor's decision: build the situation, climb the ladder.
 func (g *Game) Turn(o testimony.Observer, at testimony.Stamp) (Intent, Situation, error) {
 	s, err := g.Situation(o, at)

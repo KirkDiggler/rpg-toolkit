@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/minds"
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/stage"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/content"
@@ -23,7 +24,8 @@ const (
 	sight                     = testimony.Sight
 	hearing testimony.Channel = "hearing"
 
-	room = "room"
+	room     = "room"
+	corridor = "corridor"
 
 	zombie  testimony.Observer = "zombie"
 	captain testimony.Observer = "captain"
@@ -32,6 +34,7 @@ const (
 	// master and may mint track handles from them to assert with.
 	knight = "knight"
 	mage   = "mage"
+	cleric = "cleric"
 )
 
 func moment(tick uint64) testimony.Stamp { return testimony.Stamp{Tick: tick} }
@@ -49,27 +52,38 @@ func standing(source string) projection.Presence {
 	return projection.Presence{Source: source, Where: room}
 }
 
-// figure is somebody seen, and heard if chanting.
+// figure is somebody in the room, seen, and heard if chanting.
 func figure(source, look string, chanting bool) projection.Presence {
+	return figureAt(source, room, look, chanting)
+}
+
+// figureAt is somebody somewhere, seen, and heard if chanting.
+func figureAt(source, where, look string, chanting bool) projection.Presence {
 	p := projection.Presence{
 		Source: source,
-		Where:  room,
-		Says:   map[testimony.Channel]projection.Says{sight: says(content.Creature, "human", look, room)},
+		Where:  where,
+		Says:   map[testimony.Channel]projection.Says{sight: says(content.Creature, "human", look, where)},
 	}
 
 	if chanting {
-		p.Says[hearing] = says(content.Noise, "", minds.Chanting, room)
+		p.Says[hearing] = says(content.Noise, "", minds.Chanting, where)
 	}
 
 	return p
 }
 
-func bothSenses(where string, observers ...testimony.Observer) []projection.Sense {
+// bothSenses gives each observer sight and hearing over the room.
+func bothSenses(observers ...testimony.Observer) []projection.Sense {
+	return reaching([]string{room}, observers...)
+}
+
+// reaching gives each observer sight and hearing over the given places.
+func reaching(reach []string, observers ...testimony.Observer) []projection.Sense {
 	out := make([]projection.Sense, 0, 2*len(observers))
 	for _, o := range observers {
 		out = append(out,
-			projection.Sense{Observer: o, Channel: sight, Reach: []string{where}},
-			projection.Sense{Observer: o, Channel: hearing, Reach: []string{where}},
+			projection.Sense{Observer: o, Channel: sight, Reach: reach},
+			projection.Sense{Observer: o, Channel: hearing, Reach: reach},
 		)
 	}
 
@@ -102,7 +116,7 @@ func TestFixture1_OneSituationTwoTargets(t *testing.T) {
 			standing(string(zombie)), standing(string(captain)),
 			figure(knight, "armoured", false),
 		},
-		Senses: bothSenses(room, zombie, captain),
+		Senses: bothSenses(zombie, captain),
 		At:     moment(1),
 	}))
 
@@ -113,7 +127,7 @@ func TestFixture1_OneSituationTwoTargets(t *testing.T) {
 			figure(knight, "armoured", false),
 			figure(mage, minds.Robed, true),
 		},
-		Senses: bothSenses(room, zombie, captain),
+		Senses: bothSenses(zombie, captain),
 		At:     moment(2),
 	}
 	require.NoError(t, g.Tick(in))
@@ -165,7 +179,7 @@ func TestFixture1_TheCaptainCanBeWrong(t *testing.T) {
 			figure(knight, "armoured", true), // the one actually chanting
 			figure(mage, minds.Robed, false), // silent
 		},
-		Senses: bothSenses(room, captain),
+		Senses: bothSenses(captain),
 		At:     moment(1),
 	}
 	require.NoError(t, g.Tick(in))
@@ -188,4 +202,88 @@ func holds(c behavior.Contact, track testimony.TrackID) bool {
 	}
 
 	return false
+}
+
+// TestFixture2_AHealInSightRetargetsTheCaptain: the cleric mends the knight
+// where the captain can see it. The deed lands as testimony on the captain's
+// deeds channel; the captain's Judge attaches it to the hooded figure, and its
+// Rank puts the healer first. The zombie holds the very same deed and never
+// attaches it to anyone.
+func TestFixture2_AHealInSightRetargetsTheCaptain(t *testing.T) {
+	g := behavior.New()
+	g.Mind(zombie, minds.Zombie{})
+	g.Mind(captain, minds.Captain{})
+
+	in := projection.Input{
+		Presences: []projection.Presence{
+			standing(string(zombie)), standing(string(captain)),
+			figure(knight, "armoured", false),
+			figure(mage, minds.Robed, true),
+			figure(cleric, "hooded", false),
+		},
+		Senses: bothSenses(zombie, captain),
+		At:     moment(1),
+	}
+	require.NoError(t, g.Tick(in))
+
+	ci, cs, err := g.Turn(captain, moment(1))
+	require.NoError(t, err)
+	require.Equal(t, mage, stage.Aim(in, cs, ci), "before the heal, the caster")
+
+	// The cleric heals the knight, in the room, in front of everyone.
+	heal := stage.Deed{Actor: cleric, Target: knight, Verb: minds.Heal, Where: room}
+	require.NoError(t, stage.Land(g, in, heal, moment(2)))
+
+	ci, cs, err = g.Turn(captain, moment(2))
+	require.NoError(t, err)
+	assert.Equal(t, cleric, stage.Aim(in, cs, ci), "after the heal, the healer")
+
+	healed := projection.Handle(deed.Channel, cleric)
+	hooded := projection.Handle(sight, cleric)
+
+	cc, held := bundleOf(cs, healed)
+	require.True(t, held)
+	assert.True(t, holds(cc, hooded), "the captain attached the deed to the figure it saw do it")
+	assert.False(t, cc.Tracks[0].Current && cc.Tracks[len(cc.Tracks)-1].Current,
+		"a deed is never current; only the figure is")
+
+	// The zombie saw exactly the same thing and it changed nothing.
+	zi, zs, err := g.Turn(zombie, moment(2))
+	require.NoError(t, err)
+	assert.Equal(t, knight, stage.Aim(in, zs, zi), "the zombie still swings at whoever it saw first")
+
+	zc, held := bundleOf(zs, healed)
+	require.True(t, held, "it holds the deed")
+	assert.Len(t, zc.Tracks, 1, "and it is its own thing, attached to nobody")
+}
+
+// TestFixture2_TheSameHealOutOfSightChangesNothing: the cleric heals from the
+// corridor, where the captain's senses do not reach. No deed lands, and the
+// captain goes on believing what it believed. Knowledge is the audience of
+// facts, and the captain was not in it.
+func TestFixture2_TheSameHealOutOfSightChangesNothing(t *testing.T) {
+	g := behavior.New()
+	g.Mind(captain, minds.Captain{})
+
+	in := projection.Input{
+		Presences: []projection.Presence{
+			standing(string(captain)),
+			figure(knight, "armoured", false),
+			figure(mage, minds.Robed, true),
+			figureAt(cleric, corridor, "hooded", false),
+		},
+		Senses: bothSenses(captain),
+		At:     moment(1),
+	}
+	require.NoError(t, g.Tick(in))
+
+	heal := stage.Deed{Actor: cleric, Target: knight, Verb: minds.Heal, Where: corridor}
+	require.NoError(t, stage.Land(g, in, heal, moment(2)))
+
+	ci, cs, err := g.Turn(captain, moment(2))
+	require.NoError(t, err)
+	assert.Equal(t, mage, stage.Aim(in, cs, ci), "still the caster")
+
+	_, held := bundleOf(cs, projection.Handle(deed.Channel, cleric))
+	assert.False(t, held, "it never learned a heal happened")
 }

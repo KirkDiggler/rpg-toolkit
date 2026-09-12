@@ -19,6 +19,7 @@ import (
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/belief"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/content"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/reconcile"
@@ -30,7 +31,21 @@ const (
 	Chanting = "chanting"
 	// Robed is what sight says about somebody dressed like a caster.
 	Robed = "robed"
+	// Heal is the deed a witness saw when somebody mended somebody.
+	Heal = "heal"
 )
+
+// did reports whether any track in the contact is a deed with the given verb.
+// Deeds are never current, so this reads every track.
+func did(c behavior.Contact, verb string) bool {
+	for _, v := range c.Tracks {
+		if d, err := deed.Decode(v.Payload); err == nil && d.Verb == verb {
+			return true
+		}
+	}
+
+	return false
+}
 
 // byFirstSeen orders contacts by when the actor first became aware of them,
 // ties broken by the first track's handle so the order is stable.
@@ -105,14 +120,31 @@ func (Zombie) Rank(s behavior.Situation) []behavior.Contact {
 // that is the point: a mind that could not be wrong would be reading the world.
 type Captain struct{}
 
-// Judge claims a chant and a robed figure in one place are the same thing —
-// but only when exactly one robed figure stands there. Two would be a guess,
-// and a guess on a tie is worse than no claim.
+// Judge makes two kinds of claim.
+//
+// A chant and a robed figure in one place are the same thing — but only when
+// exactly one robed figure stands there. Two would be a guess, and a guess on
+// a tie is worse than no claim.
+//
+// A deed and the figure the witness saw do it are the same thing. That one is
+// not a guess: the deed already names the actor in the captain's own terms.
+// It is still a claim, because attaching what you saw done to who you saw do
+// it is the mind's act — a zombie holds the same deed and never makes it.
 func (Captain) Judge(views []reconcile.TrackView, _ testimony.Stamp) []reconcile.Judgment {
 	read := make([]content.Percept, len(views))
 	ok := make([]bool, len(views))
 
+	var out []reconcile.Judgment
+
 	for i, v := range views {
+		if d, err := deed.Decode(v.Payload); err == nil {
+			if d.Actor != "" && slices.ContainsFunc(views, func(w reconcile.TrackView) bool { return w.ID == d.Actor }) {
+				out = append(out, reconcile.Judgment{A: v.ID, B: d.Actor, Rel: belief.Same})
+			}
+
+			continue
+		}
+
 		p, err := content.Decode(v.Payload)
 		if err != nil || !v.Current {
 			continue
@@ -120,8 +152,6 @@ func (Captain) Judge(views []reconcile.TrackView, _ testimony.Stamp) []reconcile
 
 		read[i], ok[i] = p, true
 	}
-
-	var out []reconcile.Judgment
 
 	for i, chant := range views {
 		if !ok[i] || read[i].Kind != content.Noise || read[i].Note != Chanting {
@@ -180,22 +210,26 @@ func (Captain) Name(c behavior.Contact) (belief.Name, bool) {
 	return "", false
 }
 
-// Rank puts whoever is chanting first, then whoever it noticed first.
+// Rank puts whoever it has seen heal first, then whoever is chanting, then
+// whoever it noticed first. A healer it has not SEEN heal is just another
+// figure: the ranking reads deeds the captain witnessed, never the sheet.
 func (Captain) Rank(s behavior.Situation) []behavior.Contact {
 	ordered := byFirstSeen(s.Contacts)
 
 	slices.SortStableFunc(ordered, func(a, b behavior.Contact) int {
-		ca, cb := says(a, content.Noise, Chanting), says(b, content.Noise, Chanting)
-
-		switch {
-		case ca && !cb:
-			return -1
-		case cb && !ca:
-			return 1
-		default:
-			return 0
-		}
+		return preference(b) - preference(a)
 	})
 
 	return ordered
+}
+
+func preference(c behavior.Contact) int {
+	switch {
+	case did(c, Heal):
+		return 2
+	case says(c, content.Noise, Chanting):
+		return 1
+	default:
+		return 0
+	}
 }

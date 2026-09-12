@@ -3,7 +3,7 @@ module github.com/KirkDiggler/rpg-toolkit/examples/behavior
 go 1.24.1
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/examples/perception v0.0.0-20260912074103-4aeec821b43c
+	github.com/KirkDiggler/rpg-toolkit/examples/perception v0.0.0-20260912085010-cf4f6be498cc
 	github.com/stretchr/testify v1.11.1
 )
 

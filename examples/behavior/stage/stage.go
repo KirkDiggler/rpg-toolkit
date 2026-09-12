@@ -16,9 +16,88 @@
 package stage
 
 import (
+	"slices"
+
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/projection"
+	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
 )
+
+// Deed is something that happened on the truth surface: who did what to
+// whom, and where. It is spoken in ledger handles because it is a fact, and
+// facts are the one thing that may be.
+type Deed struct {
+	Actor, Target string
+	Verb          string
+	Where         string
+}
+
+// Witnesses is everyone whose senses reached the place a deed happened, on
+// any channel — decided by the same senses the projection runs on, so who
+// perceived a place and who witnessed what happened there cannot disagree.
+func Witnesses(in projection.Input, where string) []testimony.Observer {
+	var out []testimony.Observer
+
+	for _, sense := range in.Senses {
+		if !slices.Contains(sense.Reach, where) || slices.Contains(out, sense.Observer) {
+			continue
+		}
+
+		out = append(out, sense.Observer)
+	}
+
+	return out
+}
+
+// Land tells every witness what they saw, in their own terms.
+//
+// The deed's actor and target become each witness's OWN sight tracks of them,
+// and only if the witness currently holds such a track: a witness who could
+// not see the healer learns that a heal happened and not who did it. The deed
+// lands on the deeds channel, one track per figure, held and never current,
+// through perception's Report door — so it is testimony, it is judged by the
+// witness's mind like everything else, and the store cannot tell it from a
+// lie. Nothing here writes to anybody's sight track.
+func Land(g *behavior.Game, in projection.Input, d Deed, at testimony.Stamp) error {
+	for _, witness := range Witnesses(in, d.Where) {
+		held := g.Held(witness)
+
+		saw := deed.Deed{
+			Verb:   d.Verb,
+			Actor:  seen(held, projection.Handle(testimony.Sight, d.Actor)),
+			Target: seen(held, projection.Handle(testimony.Sight, d.Target)),
+		}
+
+		_, err := g.Report(testimony.Recollection{
+			Observer: witness,
+			Channel:  deed.Channel,
+			Reports: []testimony.Report{{
+				Track:     projection.Handle(deed.Channel, d.Actor),
+				Payload:   deed.Encode(saw),
+				ChangeKey: deed.Key(saw),
+				Locus:     testimony.Locus{Where: d.Where},
+			}},
+			At: at,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// seen is the handle if the witness currently holds it, else nothing.
+func seen(held []testimony.Track, handle testimony.TrackID) testimony.TrackID {
+	for _, t := range held {
+		if t.ID == handle && t.Current {
+			return handle
+		}
+	}
+
+	return ""
+}
 
 // Aim resolves what an actor meant to hit against what is really there.
 //
