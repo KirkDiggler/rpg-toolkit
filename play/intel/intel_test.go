@@ -51,7 +51,7 @@ func (s *IntelSuite) TestReportLandsHeldIntel() {
 	h := s.holdingOn(testObserver, testSubject)
 	s.Equal([]byte(testPayload), h.Payload)
 	s.Equal(testChannel, h.Channel)
-	s.Equal(testAt, h.At)
+	s.Equal(testAt, h.Confirmed)
 	s.Nil(h.CurrentVia)
 	s.Equal(intel.Held, h.Status)
 }
@@ -80,7 +80,7 @@ func (s *IntelSuite) overwriteTest(p1 string, at1 uint64, ch1 string, p2 string,
 	h := s.holdingOn(testObserver, testSubject)
 	s.Equal([]byte(p2), h.Payload)
 	s.Equal(intel.Channel(ch2), h.Channel) // provenance follows latest testimony
-	s.Equal(at2, h.At)
+	s.Equal(at2, h.Confirmed)
 }
 
 func (s *IntelSuite) TestReportDedupeAndValidationOrder() {
@@ -493,6 +493,211 @@ func (s *IntelSuite) TestSurveilFadedSortedAndObserverIsolation() {
 	}
 }
 
+// --- Observed/Confirmed staleness tests ---
+
+// TestFirstContactSetsBothStamps tests that a first-contact holding sets
+// Observed and Confirmed to the same landing time (rule 1).
+func (s *IntelSuite) TestFirstContactSetsBothStamps() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("s")
+	)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 10,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	h := s.holdingOn(obs, subject)
+	s.Equal(uint64(10), h.Observed)
+	s.Equal(uint64(10), h.Confirmed)
+}
+
+// TestIdenticalPayloadConfirmsWithoutDisturbingObserved tests that landing
+// the same payload bytes again and again moves Confirmed but leaves Observed
+// alone (rule 2): first contact at 10, confirmed again at 20 and 30.
+func (s *IntelSuite) TestIdenticalPayloadConfirmsWithoutDisturbingObserved() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("s")
+	)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 10,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 20,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 30,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	h := s.holdingOn(obs, subject)
+	s.Equal(uint64(10), h.Observed, "content never changed: still first seen at 10")
+	s.Equal(uint64(30), h.Confirmed, "last landing confirmed it at 30")
+}
+
+// TestChangedPayloadMovesBothStamps tests that a different payload is a new
+// thing: Observed and Confirmed both move to the landing time, and the
+// payload is overwritten (rule 3).
+func (s *IntelSuite) TestChangedPayloadMovesBothStamps() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("s")
+	)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 10,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 40,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v2")}},
+	})
+	s.Require().NoError(err)
+
+	h := s.holdingOn(obs, subject)
+	s.Equal(uint64(40), h.Observed, "different payload: a new thing, seen now")
+	s.Equal(uint64(40), h.Confirmed)
+	s.Equal([]byte("v2"), h.Payload)
+}
+
+// TestChannelChangeAloneNeverResetsObserved tests that provenance is not
+// content: the same payload landed via a different channel updates Channel
+// but leaves Observed untouched (rule 4).
+func (s *IntelSuite) TestChannelChangeAloneNeverResetsObserved() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("s")
+		sight   = intel.Channel("sight")
+		hearing = intel.Channel("hearing")
+	)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: sight, At: 10,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: hearing, At: 20,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	h := s.holdingOn(obs, subject)
+	s.Equal(uint64(10), h.Observed, "channel is provenance, not content")
+	s.Equal(hearing, h.Channel)
+}
+
+// TestNilAndEmptyPayloadAreIdentical tests that bytes.Equal(nil, []byte{})
+// governs the comparison: a nil payload followed by an explicit empty
+// payload is the same content, so Observed does not move.
+func (s *IntelSuite) TestNilAndEmptyPayloadAreIdentical() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("s")
+	)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 10,
+		Percept: []intel.Report{{Subject: subject, Payload: nil}},
+	})
+	s.Require().NoError(err)
+
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 20,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte{}}},
+	})
+	s.Require().NoError(err)
+
+	h := s.holdingOn(obs, subject)
+	s.Equal(uint64(10), h.Observed, "nil and empty payload are the same identical-nothing")
+	s.Equal(uint64(20), h.Confirmed)
+}
+
+// TestReacquisitionWithSamePayloadKeepsOriginalObserved is the case that
+// proves the design: a ghost that returns with the exact content it left
+// with is not a new thing. Observed stays pinned to when it was first seen;
+// only Confirmed and Status move.
+func (s *IntelSuite) TestReacquisitionWithSamePayloadKeepsOriginalObserved() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("goblin")
+	)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 10,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("wounded")}},
+	})
+	s.Require().NoError(err)
+
+	// Fades: the goblin walks out of view.
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 50, Percept: []intel.Report{},
+	})
+	s.Require().NoError(err)
+	s.Equal(intel.Held, s.holdingOn(obs, subject).Status)
+
+	// Re-acquired: same payload, seeing the same thing again — not a new one.
+	out, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 60,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("wounded")}},
+	})
+	s.Require().NoError(err)
+	s.Equal([]intel.Subject{subject}, out.Reacquired)
+
+	h := s.holdingOn(obs, subject)
+	s.Equal(uint64(10), h.Observed, "you are seeing the same thing again, not a new thing")
+	s.Equal(uint64(60), h.Confirmed)
+	s.Equal(intel.Current, h.Status)
+}
+
+// TestReportObeysTheSameThreeRules tests that Report — discrete testimony —
+// follows the identical first-contact/confirm/change rules as Surveil
+// (rules 1-3), just landed as Held rather than Current.
+func (s *IntelSuite) TestReportObeysTheSameThreeRules() {
+	const (
+		obs      = core.EntityID("alice")
+		subject  = intel.Subject("rumor")
+		whispers = intel.Channel("whispers")
+	)
+	// Rule 1: first contact.
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: whispers, At: 10,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte("gold")}},
+	})
+	s.Require().NoError(err)
+	h := s.holdingOn(obs, subject)
+	s.Equal(uint64(10), h.Observed)
+	s.Equal(uint64(10), h.Confirmed)
+
+	// Rule 2: identical payload confirms without disturbing Observed.
+	_, err = s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: whispers, At: 20,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte("gold")}},
+	})
+	s.Require().NoError(err)
+	h = s.holdingOn(obs, subject)
+	s.Equal(uint64(10), h.Observed)
+	s.Equal(uint64(20), h.Confirmed)
+
+	// Rule 3: a different payload is a new thing.
+	_, err = s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: whispers, At: 30,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte("nothing, it was looted")}},
+	})
+	s.Require().NoError(err)
+	h = s.holdingOn(obs, subject)
+	s.Equal(uint64(30), h.Observed)
+	s.Equal(uint64(30), h.Confirmed)
+}
+
 // QueriesSuite tests the read-side queries: HeldBy and On.
 type QueriesSuite struct {
 	suite.Suite
@@ -584,7 +789,7 @@ func (s *QueriesSuite) TestOnFound() {
 	s.Equal(subject, holding.Subject)
 	s.Equal([]byte(payload), holding.Payload)
 	s.Equal(channel, holding.Channel)
-	s.Equal(at, holding.At)
+	s.Equal(at, holding.Confirmed)
 	s.Equal(intel.Held, holding.Status)
 }
 
@@ -904,7 +1109,7 @@ func (s *PersistenceSuite) TestRoundTripSingleHolding() {
 	s.Require().NoError(err)
 	s.Equal([]byte(payload), h.Payload)
 	s.Equal(channel, h.Channel)
-	s.Equal(at, h.At)
+	s.Equal(at, h.Confirmed)
 	s.Nil(h.CurrentVia, "Report holding should have nil CurrentVia")
 	s.Equal(intel.Held, h.Status)
 }
@@ -1066,7 +1271,8 @@ func (s *PersistenceSuite) TestGoldenJSON() {
 	s.Require().NoError(err)
 
 	// Pin exact string for Held shape (payload is base64("treasure") = "dHJlYXN1cmU=")
-	goldenHeld := `{"holdings":{"alice":{"behind-door-3":{"payload":"dHJlYXN1cmU=","channel":"hearing","at":5}}}}`
+	goldenHeld := `{"holdings":{"alice":{"behind-door-3":{"payload":"dHJlYXN1cmU=",` +
+		`"channel":"hearing","observed":5,"confirmed":5}}}}`
 	s.Equal(goldenHeld, string(b), "Held shape must match exact JSON (payload base64, no current_via)")
 
 	// Test 2: Current shape (via Surveil, with CurrentVia)
@@ -1091,14 +1297,16 @@ func (s *PersistenceSuite) TestGoldenJSON() {
 
 	// Pin exact string for Current shape
 	// (payload is base64("near") = "bmVhcg==", current_via has "sight")
-	golden := `{"holdings":{"alice":{"goblin":{"payload":"bmVhcg==","channel":"sight","at":5,"current_via":["sight"]}}}}`
+	golden := `{"holdings":{"alice":{"goblin":{"payload":"bmVhcg==","channel":"sight",` +
+		`"observed":5,"confirmed":5,"current_via":["sight"]}}}}`
 	s.Equal(golden, string(b2), "Current shape must match exact JSON wire format")
 }
 
 // TestMixedProvenanceChannelNotInCurrentVia pins that Channel ∉ CurrentVia is legal.
-// This occurs when Report overwrites a Surveil-established holding, rewriting payload/Channel/At
-// while leaving CurrentVia (the sustaining channels) intact. This mixed provenance is legal
-// and must round-trip through ToData/LoadIntel without rejection.
+// This occurs when Report overwrites a Surveil-established holding, rewriting
+// payload/Channel/Observed/Confirmed while leaving CurrentVia (the sustaining
+// channels) intact. This mixed provenance is legal and must round-trip
+// through ToData/LoadIntel without rejection.
 func (s *PersistenceSuite) TestMixedProvenanceChannelNotInCurrentVia() {
 	const (
 		obs     = core.EntityID("alice")
@@ -1120,7 +1328,8 @@ func (s *PersistenceSuite) TestMixedProvenanceChannelNotInCurrentVia() {
 	s.Equal([]byte("see it"), h.Payload)
 	s.Equal(ch1, h.Channel)
 
-	// Step 2: Report via "hearing" channel overwrites payload, channel, at but NOT currentVia
+	// Step 2: Report via "hearing" channel overwrites payload, channel, and
+	// both stamps (a different payload) but NOT currentVia
 	// This creates the mixed-provenance state: Channel="hearing" but CurrentVia=["sight"]
 	_, err = s.intel.Report(&intel.ReportInput{
 		Observer: obs, Channel: ch2, At: 2,
@@ -1152,7 +1361,7 @@ func (s *PersistenceSuite) TestMixedProvenanceChannelNotInCurrentVia() {
 	holdings2 := data2.Holdings[obs][subject]
 	s.Equal(holdings1.Payload, holdings2.Payload)
 	s.Equal(holdings1.Channel, holdings2.Channel)
-	s.Equal(holdings1.At, holdings2.At)
+	s.Equal(holdings1.Confirmed, holdings2.Confirmed)
 	s.Equal(holdings1.CurrentVia, holdings2.CurrentVia)
 
 	// Step 5: Commentary: This pins mixed provenance as LEGAL. A future Channel∈CurrentVia
@@ -1268,7 +1477,7 @@ func (s *PersistenceSuite) TestR9DuplicateCurrentVia() {
 				target: {
 					Payload:    []byte("data"),
 					Channel:    sight,
-					At:         1,
+					Confirmed:  1,
 					CurrentVia: []intel.Channel{sight, sight}, // Duplicate
 				},
 			},
@@ -1288,9 +1497,9 @@ func (s *PersistenceSuite) TestR9EmptyHoldingChannel() {
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
 			alice: {
 				target: {
-					Payload: []byte("data"),
-					Channel: "", // Empty channel
-					At:      1,
+					Payload:   []byte("data"),
+					Channel:   "", // Empty channel
+					Confirmed: 1,
 				},
 			},
 		},
@@ -1312,7 +1521,7 @@ func (s *PersistenceSuite) TestR9EmptyChannelInCurrentVia() {
 				target: {
 					Payload:    []byte("data"),
 					Channel:    sight,
-					At:         1,
+					Confirmed:  1,
 					CurrentVia: []intel.Channel{""}, // Empty channel
 				},
 			},
@@ -1356,9 +1565,9 @@ func (s *PersistenceSuite) TestNilPayloadLegal() {
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
 			alice: {
 				target: {
-					Payload: nil, // Nil payload is legal
-					Channel: "sight",
-					At:      1,
+					Payload:   nil, // Nil payload is legal
+					Channel:   "sight",
+					Confirmed: 1,
 				},
 			},
 		},
@@ -1382,9 +1591,9 @@ func (s *PersistenceSuite) TestNilPayloadRoundTrip() {
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
 			alice: {
 				target: {
-					Payload: nil, // Nil payload
-					Channel: "sight",
-					At:      1,
+					Payload:   nil, // Nil payload
+					Channel:   "sight",
+					Confirmed: 1,
 				},
 			},
 		},
@@ -1402,6 +1611,63 @@ func (s *PersistenceSuite) TestNilPayloadRoundTrip() {
 	// Verify both Data instances have nil payload
 	s.Nil(data2.Holdings[alice][target].Payload)
 	s.Nil(data3.Holdings[alice][target].Payload)
+}
+
+// TestObservedAndConfirmedSurviveRoundTrip tests that both stamps survive
+// ToData → LoadIntel when they differ (a holding confirmed more recently
+// than it was first observed).
+func (s *PersistenceSuite) TestObservedAndConfirmedSurviveRoundTrip() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("s")
+	)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 10,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 30,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	data := s.intel.ToData()
+	s.Equal(uint64(10), data.Holdings[obs][subject].Observed)
+	s.Equal(uint64(30), data.Holdings[obs][subject].Confirmed)
+
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+
+	h, err := loaded.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal(uint64(10), h.Observed)
+	s.Equal(uint64(30), h.Confirmed)
+}
+
+// TestLoadRejectsConfirmedBeforeObserved tests that LoadIntel refuses a
+// holding whose Confirmed predates its Observed: no write can produce that
+// state, so persisted data claiming it is corrupt.
+func (s *PersistenceSuite) TestLoadRejectsConfirmedBeforeObserved() {
+	const (
+		alice  = core.EntityID("alice")
+		target = intel.Subject("target")
+		sight  = intel.Channel("sight")
+	)
+	data := intel.Data{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			alice: {
+				target: {
+					Payload:   []byte("data"),
+					Channel:   sight,
+					Observed:  10,
+					Confirmed: 5, // before Observed: impossible, must be rejected
+				},
+			},
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "Confirmed < Observed must be rejected")
 }
 
 func TestPersistenceSuite(t *testing.T) {

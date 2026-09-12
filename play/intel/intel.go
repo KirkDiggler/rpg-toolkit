@@ -4,6 +4,7 @@
 package intel
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 
@@ -43,14 +44,22 @@ const (
 )
 
 // Holding is the read-side value: a subject, payload, channel provenance,
-// timestamp, active channels (CurrentVia), and derived status. Channel and
-// At are provenance of the latest accepted testimony. Status is derived
-// (Current iff CurrentVia is non-empty).
+// two timestamps, active channels (CurrentVia), and derived status. Observed
+// is when this payload was first seen; Confirmed is when it was last landed,
+// whether or not the content changed. Channel is provenance of the latest
+// accepted testimony. Status is derived (Current iff CurrentVia is
+// non-empty).
+//
+// The store compares payload bytes on landing — it never reads them, so it
+// still cannot tell a lie from the truth. That requires payload encoders to
+// be deterministic: a non-deterministic one makes every pass look like a
+// change, and Observed would silently read as always-fresh.
 type Holding struct {
 	Subject    Subject
 	Payload    []byte
 	Channel    Channel
-	At         uint64
+	Observed   uint64
+	Confirmed  uint64
 	CurrentVia []Channel
 	Status     Status
 }
@@ -66,7 +75,8 @@ type Intel struct {
 type holding struct {
 	payload    []byte
 	channel    Channel
-	at         uint64
+	observed   uint64
+	confirmed  uint64
 	currentVia map[Channel]struct{}
 }
 
@@ -226,13 +236,15 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 	for _, report := range deduped {
 		h, exists := i.holdings[in.Observer][report.Subject]
 		if !exists {
-			// Unknown subject: create holding with independent payload copy
+			// Unknown subject: create holding with independent payload copy.
+			// First contact: observed and confirmed both start here.
 			payloadCopy := make([]byte, len(report.Payload))
 			copy(payloadCopy, report.Payload)
 			i.holdings[in.Observer][report.Subject] = &holding{
 				payload:    payloadCopy,
 				channel:    in.Channel,
-				at:         in.At,
+				observed:   in.At,
+				confirmed:  in.At,
 				currentVia: map[Channel]struct{}{in.Channel: {}},
 			}
 			// Return independent copy for FirstContact
@@ -250,12 +262,18 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 			// FADE PASS above, detected at the one instant it is visible.
 			wasGhost := len(h.currentVia) == 0
 
-			// Known: overwrite payload (copy), channel, at, and add channel to currentVia
-			payloadCopy := make([]byte, len(report.Payload))
-			copy(payloadCopy, report.Payload)
-			h.payload = payloadCopy
+			// Known subject: same payload confirms without disturbing
+			// observed; a changed payload is a new thing, so both stamps
+			// move and the payload is overwritten. Channel is provenance,
+			// not content, so it always tracks the latest landing.
+			if !bytes.Equal(h.payload, report.Payload) {
+				payloadCopy := make([]byte, len(report.Payload))
+				copy(payloadCopy, report.Payload)
+				h.payload = payloadCopy
+				h.observed = in.At
+			}
 			h.channel = in.Channel
-			h.at = in.At
+			h.confirmed = in.At
 			h.currentVia[in.Channel] = struct{}{}
 			out.Refreshed = append(out.Refreshed, report.Subject)
 			if wasGhost {
@@ -324,22 +342,33 @@ func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 		copy(storageCopy, report.Payload)
 
 		if _, exists := i.holdings[in.Observer][report.Subject]; !exists {
-			// New subject: create holding and add to FirstContact with independent copy
+			// New subject: create holding and add to FirstContact with
+			// independent copy. First contact: observed and confirmed both
+			// start here.
 			firstContactCopy := make([]byte, len(report.Payload))
 			copy(firstContactCopy, report.Payload)
 			i.holdings[in.Observer][report.Subject] = &holding{
 				payload:    storageCopy,
 				channel:    in.Channel,
-				at:         in.At,
+				observed:   in.At,
+				confirmed:  in.At,
 				currentVia: make(map[Channel]struct{}),
 			}
 			out.FirstContact = append(out.FirstContact, Report{Subject: report.Subject, Payload: firstContactCopy})
 		} else {
-			// Known subject: overwrite payload, channel, at; leave currentVia untouched
+			// Known subject: same payload confirms without disturbing
+			// observed and without rewriting the payload; a changed payload
+			// is a new thing, so both stamps move and the payload is
+			// overwritten. Channel and currentVia behave exactly as before:
+			// channel always tracks the latest landing, currentVia is
+			// untouched (a rumor is not a sighting).
 			h := i.holdings[in.Observer][report.Subject]
-			h.payload = storageCopy
+			if !bytes.Equal(h.payload, report.Payload) {
+				h.payload = storageCopy
+				h.observed = in.At
+			}
 			h.channel = in.Channel
-			h.at = in.At
+			h.confirmed = in.At
 			out.Updated = append(out.Updated, report.Subject)
 		}
 	}
@@ -483,7 +512,8 @@ func (h *holding) toHolding(subject Subject) Holding {
 		Subject:    subject,
 		Payload:    payloadCopy,
 		Channel:    h.channel,
-		At:         h.at,
+		Observed:   h.observed,
+		Confirmed:  h.confirmed,
 		CurrentVia: currentVia,
 		Status:     status,
 	}

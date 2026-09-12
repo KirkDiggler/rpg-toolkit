@@ -57,7 +57,7 @@ func TestDoorScene(t *testing.T) {
 	require.NoError(t, err, "hearing testimony: On() succeeds")
 	require.Equal(t, []byte(crashingSound), h1.Payload, "hearing testimony: payload is crashing")
 	require.Equal(t, hearing, h1.Channel, "hearing testimony: Channel is hearing")
-	require.Equal(t, uint64(1), h1.At, "hearing testimony: At timestamp is 1")
+	require.Equal(t, uint64(1), h1.Confirmed, "hearing testimony: Confirmed timestamp is 1")
 	require.Nil(t, h1.CurrentVia, "hearing testimony: no CurrentVia (Report holds)")
 	require.Equal(t, intel.Held, h1.Status, "hearing testimony: Status is Held")
 
@@ -84,7 +84,7 @@ func TestDoorScene(t *testing.T) {
 	require.NoError(t, err, "sight elsewhere: On(goblin) succeeds")
 	require.Equal(t, []byte(goblinNear), hGoblin.Payload, "sight elsewhere: goblin payload is goblin-near")
 	require.Equal(t, sight, hGoblin.Channel, "sight elsewhere: goblin Channel is sight")
-	require.Equal(t, uint64(2), hGoblin.At, "sight elsewhere: goblin At is 2")
+	require.Equal(t, uint64(2), hGoblin.Confirmed, "sight elsewhere: goblin Confirmed is 2")
 	require.Equal(t, []intel.Channel{sight}, hGoblin.CurrentVia, "sight elsewhere: goblin CurrentVia is [sight]")
 	require.Equal(t, intel.Current, hGoblin.Status, "sight elsewhere: goblin Status is Current")
 
@@ -93,7 +93,7 @@ func TestDoorScene(t *testing.T) {
 	require.NoError(t, err, "sight elsewhere: On(behind-door-3) succeeds")
 	require.Equal(t, []byte(crashingSound), h2.Payload, "sight elsewhere: behind-door-3 payload unchanged (crashing)")
 	require.Equal(t, hearing, h2.Channel, "sight elsewhere: behind-door-3 Channel unchanged (hearing)")
-	require.Equal(t, uint64(1), h2.At, "sight elsewhere: behind-door-3 At unchanged (1)")
+	require.Equal(t, uint64(1), h2.Confirmed, "sight elsewhere: behind-door-3 Confirmed unchanged (1)")
 	require.Nil(t, h2.CurrentVia, "sight elsewhere: behind-door-3 CurrentVia unchanged (nil)")
 	require.Equal(t, intel.Held, h2.Status, "sight elsewhere: behind-door-3 Status unchanged (Held)")
 
@@ -116,7 +116,7 @@ func TestDoorScene(t *testing.T) {
 	require.NoError(t, err, "goblin fades: On(goblin) succeeds")
 	require.Equal(t, []byte(goblinNear), hGoblinGhost.Payload, "the ghost goblin: payload held (goblin-near)")
 	require.Equal(t, sight, hGoblinGhost.Channel, "the ghost goblin: Channel held (sight)")
-	require.Equal(t, uint64(2), hGoblinGhost.At, "the ghost goblin: At held at last observation (2)")
+	require.Equal(t, uint64(2), hGoblinGhost.Confirmed, "the ghost goblin: Confirmed held at last observation (2)")
 	require.Nil(t, hGoblinGhost.CurrentVia, "the ghost goblin: CurrentVia nil (no sustaining channels)")
 	require.Equal(t, intel.Held, hGoblinGhost.Status, "the ghost goblin: held at last observation")
 
@@ -143,7 +143,7 @@ func TestDoorScene(t *testing.T) {
 	require.NoError(t, err, "door opens: On(behind-door-3) succeeds")
 	require.Equal(t, []byte(potsFloor), hDoorOpen.Payload, "door opens: payload refreshed (pots, floor)")
 	require.Equal(t, sight, hDoorOpen.Channel, "door opens: hearing-holding overwritten by sight")
-	require.Equal(t, uint64(4), hDoorOpen.At, "door opens: At updated to 4")
+	require.Equal(t, uint64(4), hDoorOpen.Confirmed, "door opens: Confirmed updated to 4")
 	require.Equal(t, []intel.Channel{sight}, hDoorOpen.CurrentVia, "door opens: CurrentVia now [sight]")
 	require.Equal(t, intel.Current, hDoorOpen.Status, "door opens: Status now Current")
 
@@ -171,7 +171,7 @@ func TestDoorScene(t *testing.T) {
 	require.NoError(t, err, "the charm: On(the-stranger) succeeds")
 	require.Equal(t, []byte(trustedFriend), hCharm.Payload, "charm plants false belief: payload held faithfully")
 	require.Equal(t, charm, hCharm.Channel, "charm plants false belief: Channel is charm")
-	require.Equal(t, uint64(5), hCharm.At, "charm plants false belief: At is 5")
+	require.Equal(t, uint64(5), hCharm.Confirmed, "charm plants false belief: Confirmed is 5")
 	require.Nil(t, hCharm.CurrentVia, "charm plants false belief: no CurrentVia (Report holds)")
 	require.Equal(t, intel.Held, hCharm.Status, "charm plants false belief: Status is Held")
 
@@ -187,7 +187,7 @@ func TestDoorScene(t *testing.T) {
 	require.Equal(t, behindDoor3, holdings[0].Subject, "final ledger: behind-door-3 is first")
 	require.Equal(t, []byte(potsFloor), holdings[0].Payload, "final ledger: behind-door-3 payload (pots, floor)")
 	require.Equal(t, sight, holdings[0].Channel, "final ledger: behind-door-3 Channel (sight)")
-	require.Equal(t, uint64(4), holdings[0].At, "final ledger: behind-door-3 At (4)")
+	require.Equal(t, uint64(4), holdings[0].Confirmed, "final ledger: behind-door-3 Confirmed (4)")
 	require.Equal(t, []intel.Channel{sight}, holdings[0].CurrentVia, "final ledger: behind-door-3 CurrentVia ([sight])")
 	require.Equal(t, intel.Current, holdings[0].Status, "final ledger: behind-door-3 Status (Current)")
 
@@ -195,7 +195,7 @@ func TestDoorScene(t *testing.T) {
 	require.Equal(t, goblin, holdings[1].Subject, "final ledger: goblin is second")
 	require.Equal(t, []byte(goblinNear), holdings[1].Payload, "final ledger: goblin payload (goblin-near)")
 	require.Equal(t, sight, holdings[1].Channel, "final ledger: goblin Channel (sight)")
-	require.Equal(t, uint64(2), holdings[1].At, "final ledger: goblin At (2)")
+	require.Equal(t, uint64(2), holdings[1].Confirmed, "final ledger: goblin Confirmed (2)")
 	require.Nil(t, holdings[1].CurrentVia, "final ledger: goblin ghost CurrentVia (nil)")
 	require.Equal(t, intel.Held, holdings[1].Status, "final ledger: goblin Status (Held)")
 
@@ -203,7 +203,7 @@ func TestDoorScene(t *testing.T) {
 	require.Equal(t, theStranger, holdings[2].Subject, "final ledger: the-stranger is third")
 	require.Equal(t, []byte(trustedFriend), holdings[2].Payload, "final ledger: the-stranger payload (trusted-friend)")
 	require.Equal(t, charm, holdings[2].Channel, "final ledger: the-stranger Channel (charm)")
-	require.Equal(t, uint64(5), holdings[2].At, "final ledger: the-stranger At (5)")
+	require.Equal(t, uint64(5), holdings[2].Confirmed, "final ledger: the-stranger Confirmed (5)")
 	require.Nil(t, holdings[2].CurrentVia, "final ledger: the-stranger CurrentVia (nil)")
 	require.Equal(t, intel.Held, holdings[2].Status, "final ledger: the-stranger Status (Held)")
 }
