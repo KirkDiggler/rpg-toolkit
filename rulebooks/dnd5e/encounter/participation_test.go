@@ -725,3 +725,121 @@ func TestNextStorySeqIsAReadAndEqualsTheNextSuccessfulRecord(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, next+1, after)
 }
+
+// drivenScene is the floor the three Driven tests share: two players and a
+// monster in a line, close enough that the fight forms at construction.
+//
+// bob is the one whose participation the test changes, and he is a PLAYER on
+// purpose — a monster answering Driven would be indistinguishable from the
+// Wait it already gets.
+func drivenScene(
+	t *testing.T, capability encounter.Standing, driver encounter.TurnDriver,
+) *encounter.Encounter {
+	t.Helper()
+	setup := participationSetup(capability,
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
+		encounter.MemberInput{
+			ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 2}, SpeedFeet: 30,
+			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}},
+		},
+	)
+	setup.TurnDriver = driver
+	enc, err := encounter.NewEncounter(setup)
+	require.NoError(t, err)
+	return enc
+}
+
+// viewsOf is which of a scripted driver's Act calls were asked about one
+// member — the question "was this member driven, and how many times".
+func viewsOf(driver *scriptedDriver, member encounter.MemberID) []encounter.MonsterView {
+	var mine []encounter.MonsterView
+	for _, view := range driver.calls {
+		if view.Self == member {
+			mine = append(mine, view)
+		}
+	}
+	return mine
+}
+
+// turnEndedFor reports whether the story says this member's turn ended.
+func turnEndedFor(t *testing.T, enc *encounter.Encounter, member encounter.MemberID) bool {
+	t.Helper()
+	for _, beat := range storyBeats(t, enc, member) {
+		if beat["beat"] == "turn-ended" && beat["member"] == string(member) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestADrivenPlayerIsDrivenLikeAMonster is the whole of Driven in one scene:
+// the clock reaches a PLAYER, nobody is asked for input, the supplied
+// TurnDriver answers for them, and the turn ends like any other driven one.
+//
+// The contrast is the same member one participation answer over
+// (TestAWaitingPlayerStillStopsTheDrive): identical floor, identical driver,
+// and the drive stops dead on him. Only the word changed.
+func TestADrivenPlayerIsDrivenLikeAMonster(t *testing.T) {
+	capability := &scriptedParticipation{}
+	driver := &scriptedDriver{}
+	enc := drivenScene(t, capability, driver)
+
+	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+		bob: {Contact: true, Conscious: true, Turn: encounter.TurnParticipationDriven},
+	}
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Len(t, viewsOf(driver, bob), 1, "the compelled player's own driver call")
+	require.True(t, turnEndedFor(t, enc, bob), "and his turn ended")
+	require.Equal(t, alice, out.Next, "the clock ran past him to the next player who is waited for")
+	require.Equal(t, []encounter.MemberID{alice, bob, goblin}, clockState(t, enc, bob).Order,
+		"Driven retains the slot, exactly as Wait and AutoPass do")
+}
+
+// TestAWaitingPlayerStillStopsTheDrive pins the half that must not change: a
+// Wait player is the one thing that stops a drive, and adding a fourth
+// participation word must not make every player drivable.
+func TestAWaitingPlayerStillStopsTheDrive(t *testing.T) {
+	capability := &scriptedParticipation{}
+	driver := &scriptedDriver{}
+	enc := drivenScene(t, capability, driver)
+
+	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
+		bob: {Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait},
+	}
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Equal(t, bob, out.Next, "the clock rests on the player it is waiting for")
+	require.Empty(t, viewsOf(driver, bob), "and nobody answered for him")
+	require.False(t, turnEndedFor(t, enc, bob))
+}
+
+// TestDrivenIsAParticipationWordAndAnUnknownOneIsNot is the validation half:
+// participationNow's switch learned exactly one new word, and is no more
+// permissive than it was about any other.
+func TestDrivenIsAParticipationWordAndAnUnknownOneIsNot(t *testing.T) {
+	driven := &scriptedParticipation{assessment: &encounter.ParticipationAssessment{
+		Members: []encounter.MemberParticipation{
+			{Member: alice, Contact: true, Conscious: true, Turn: encounter.TurnParticipationDriven},
+		},
+	}}
+	_, err := encounter.NewEncounter(participationSetup(driven,
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+	))
+	require.NoError(t, err, "driven is a word this composition knows")
+
+	compelled := &scriptedParticipation{assessment: &encounter.ParticipationAssessment{
+		Members: []encounter.MemberParticipation{
+			{Member: alice, Contact: true, Conscious: true, Turn: encounter.TurnParticipation("compelled")},
+		},
+	}}
+	_, err = encounter.NewEncounter(participationSetup(compelled,
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+	))
+	require.ErrorIs(t, err, encounter.ErrInvalidData, "a word nobody wrote is still refused")
+}

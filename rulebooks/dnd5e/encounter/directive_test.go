@@ -314,21 +314,22 @@ func (s *DirectiveTestSuite) TestAChosenStepCarriesNoCause() {
 	s.NotContains(beats[1], "cause", "a step alice chose has no cause to name")
 }
 
-// TestAnyPolicyButTheTwoIsRefused.
+// TestAnyPolicyButTheThreeIsRefused.
 //
 // A policy exists only once something carries it out. Every other word fails
 // closed and loudly rather than returning an empty path — which would read as
 // "there was nowhere to go" and be indistinguishable from a creature pinned
 // against a wall.
 //
-// "away" used to be spelled out in this loop as the next policy anybody would
-// reach for. It arrived with Dissonant Whispers, so it left the loop and grew
-// tests of its own; "toward" is still waiting for Thorn Whip, and is still
-// refused exactly as firmly as a typo is.
-func (s *DirectiveTestSuite) TestAnyPolicyButTheTwoIsRefused() {
+// "away" and "toward" both used to be spelled out in this loop as the next
+// policies anybody would reach for. They arrived — away with Dissonant
+// Whispers, toward with Command — so they left the loop and grew tests of
+// their own, and the empty word and the typo are still refused exactly as
+// firmly as they always were.
+func (s *DirectiveTestSuite) TestAnyPolicyButTheThreeIsRefused() {
 	enc := s.lineScene(false)
 
-	for _, policy := range []encounter.MovePolicy{"", "toward", "sideways"} {
+	for _, policy := range []encounter.MovePolicy{"", "backward", "sideways"} {
 		_, err := enc.Route(encounter.RouteInput{
 			Mover: goblin, Policy: policy, Anchor: s.casterCell, Budget: 2,
 		})
@@ -768,4 +769,361 @@ func (s *DirectiveTestSuite) TestAwayWithNoBudgetRoutesNowhere() {
 	s.Require().NoError(err, "a pointless directive is legal, as RouteInput.Budget says")
 	s.Empty(out.Path)
 	s.Empty(out.StoppedBy, "nothing stopped it; it was never paid for")
+}
+
+// The toward family. "Away" is a search for the farthest cell; "toward" is a
+// WALK to the ring around the anchor, and the scenes below are shaped by that
+// difference: a corridor is a fine floor for testing a walk, and the one place
+// the ruler is asked at all is when the walk cannot get there.
+
+// towardCorridorScene is the hall: authored row 2, columns 1 through 7, with
+// the anchor (alice) standing in the westmost cell and the mover (goblin) in
+// the eastmost.
+//
+//	authored:  1    2    3    4    5    6    7
+//	row 2:     A    .    .    .    .    .    M
+//
+// The mover is six cells from the anchor by the ruler and by the walk, which
+// is exactly the speed a 30-foot monster pays for — so a route that stops
+// beside the anchor has DECLINED a cell it could afford, and one that spent
+// everything would be visibly wrong.
+func (s *DirectiveTestSuite) towardCorridorScene(extra ...encounter.MemberInput) *encounter.Encounter {
+	cells := []spatial.Position{
+		{X: 1, Y: 2}, {X: 2, Y: 2}, {X: 3, Y: 2}, {X: 4, Y: 2},
+		{X: 5, Y: 2}, {X: 6, Y: 2}, {X: 7, Y: 2},
+	}
+	return s.sceneOfCells(cells, spatial.Position{X: 1, Y: 2}, spatial.Position{X: 7, Y: 2}, extra...)
+}
+
+// TestTowardStopsBesideTheAnchorAndNotOnIt.
+//
+// The whole policy in one corridor: the mover walks the shortest way in and
+// stops on the ring, and the cell it declines is the one the anchor is
+// standing on. The budget that could have carried it there is the test —
+// "within 5 feet" is where the approach ends, not where the movement does.
+func (s *DirectiveTestSuite) TestTowardStopsBesideTheAnchorAndNotOnIt() {
+	enc := s.towardCorridorScene()
+	anchor := cellAt(1, 2)
+	const budget = 6
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: budget,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(out.Path, "there is a hall to walk down")
+
+	end := out.Path[len(out.Path)-1]
+	s.Equal(cellAt(2, 2), end, "it ends on the ring around the anchor")
+	s.Equal(float64(1), enc.Distance(anchor, end))
+	s.NotContains(out.Path, anchor, "the anchor's own cell is never the destination")
+	s.Len(out.Path, 5, "the fewest steps to the ring, and one less than the budget")
+	s.Empty(out.StoppedBy, "nothing stopped it; it arrived")
+
+	canvas, err := enc.Canvas()
+	s.Require().NoError(err)
+	grid := canvas.GetGrid()
+	s.True(grid.IsAdjacent(s.cellOfMember(goblin), out.Path[0]), "the first cell is a step from where it stands")
+	for i := 1; i < len(out.Path); i++ {
+		s.True(grid.IsAdjacent(out.Path[i-1], out.Path[i]), "every cell is a step from the last")
+	}
+}
+
+// towardTwoWaysScene is the fork: two ways from the mover to the anchor's own
+// ring, one three steps long and one five.
+//
+//	authored:  1    2    3    4    5
+//	row 1:     .    .    .    .    .      the long way round
+//	row 2:     A    .    .    .    M      the short hall
+//
+// Under pointy-top, [1,1] is a neighbour of the anchor's cell and so is
+// [2,2] — two different cells of the same ring, reached by two different
+// walks. A route that took the first goal cell it found rather than the
+// nearest would pick whichever the flood's map happened to hand it first.
+func (s *DirectiveTestSuite) towardTwoWaysScene() *encounter.Encounter {
+	cells := []spatial.Position{
+		{X: 1, Y: 1}, {X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 1}, {X: 5, Y: 1},
+		{X: 1, Y: 2}, {X: 2, Y: 2}, {X: 3, Y: 2}, {X: 4, Y: 2}, {X: 5, Y: 2},
+	}
+	return s.sceneOfCells(cells, spatial.Position{X: 1, Y: 2}, spatial.Position{X: 5, Y: 2})
+}
+
+// TestTowardTakesTheFewestStepsToTheRing.
+//
+// Two cells of the anchor's ring are reachable and they are not the same walk
+// away. The route takes the near one, and the test proves the far one was
+// genuinely on offer rather than merely absent.
+func (s *DirectiveTestSuite) TestTowardTakesTheFewestStepsToTheRing() {
+	enc := s.towardTwoWaysScene()
+	anchor := cellAt(1, 2)
+	const budget = 6
+
+	longWay := cellAt(1, 1)
+	s.Require().Equal(float64(1), enc.Distance(anchor, longWay), "the long way ends on the ring too")
+	reached := reachedStandableWithin(enc, goblin, s.cellOfMember(goblin), budget)
+	longWalk, ok := reached[longWay]
+	s.Require().True(ok, "and it is inside the budget, so the route had a real choice")
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: budget,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(out.Path)
+
+	s.Equal(cellAt(2, 2), out.Path[len(out.Path)-1], "the near cell of the ring")
+	s.Len(out.Path, 3)
+	s.Less(len(out.Path), longWalk, "and the walk it declined was the longer one")
+}
+
+// TestTowardWalledOffFallsBackToTheNearestCellByTheRuler.
+//
+// The anchor is behind a wall. A creature compelled to approach does not stand
+// still because the door is shut: it gets as close as the floor allows, which
+// is the ruler's question and the one place this policy asks it.
+func (s *DirectiveTestSuite) TestTowardWalledOffFallsBackToTheNearestCellByTheRuler() {
+	enc := s.towardCorridorWalledScene()
+	anchor := cellAt(1, 2)
+	const budget = 6
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: budget,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(out.Path, "a shut door is not a creature that stays put")
+
+	end := out.Path[len(out.Path)-1]
+	s.Equal(cellAt(4, 2), end, "the last cell on this side of the wall")
+	s.Equal(float64(3), enc.Distance(anchor, end))
+	s.Less(enc.Distance(anchor, end), enc.Distance(anchor, s.cellOfMember(goblin)),
+		"strictly nearer than where it started, which is what makes it an approach")
+	s.Len(out.Path, 3)
+}
+
+// towardCorridorWalledScene is towardCorridorScene with the crossing between
+// [3,2] and [4,2] sealed, so the anchor's half of the hall cannot be walked
+// into at all.
+func (s *DirectiveTestSuite) towardCorridorWalledScene() *encounter.Encounter {
+	s.casterCell = cellAt(1, 2)
+	s.moverCell = cellAt(7, 2)
+	s.mover = &recordingMover{}
+	if s.driver == nil {
+		s.driver = &scriptedDriver{}
+	}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		Mover: s.mover, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{{
+				ID: room1, Name: room1,
+				Cells: []spatial.Position{
+					{X: 1, Y: 2}, {X: 2, Y: 2}, {X: 3, Y: 2}, {X: 4, Y: 2},
+					{X: 5, Y: 2}, {X: 6, Y: 2}, {X: 7, Y: 2},
+				},
+				Archetype: testArchetype, Lighting: fullLight(),
+			}},
+			Walls: []encounter.WallInput{wall(3, 2, 4, 2)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 2},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	s.enc = enc
+	return enc
+}
+
+// towardRingScene is the floor where approaching changes nothing: the twelve
+// cells exactly two from the anchor, and the anchor's own cell and its whole
+// ring left off the map.
+//
+// Every cell the mover can walk to is the same two cells from the anchor, so
+// there is plenty of floor and nowhere nearer. It is the scene that tells
+// "strictly nearer" from "no nearer", which a route comparing with <= would
+// fail by shuffling around the ring to spend its budget.
+func (s *DirectiveTestSuite) towardRingScene() *encounter.Encounter {
+	cells := []spatial.Position{
+		{X: 2, Y: 0}, {X: 3, Y: 0}, {X: 4, Y: 0},
+		{X: 1, Y: 1}, {X: 4, Y: 1},
+		{X: 1, Y: 2}, {X: 5, Y: 2},
+		{X: 1, Y: 3}, {X: 4, Y: 3},
+		{X: 2, Y: 4}, {X: 3, Y: 4}, {X: 4, Y: 4},
+	}
+	return s.sceneOfCells(cells, spatial.Position{X: 2, Y: 0}, spatial.Position{X: 3, Y: 4})
+}
+
+// TestTowardRefusesToShuffleWhenNothingIsNearer.
+//
+// Strictly nearer, or nowhere. Everything the mover can reach is exactly as
+// far from the anchor as the cell it is standing on, so walking anywhere is
+// walking nowhere — and a creature that spent its whole speed to end up
+// equally far would be obeying the budget instead of the spell.
+func (s *DirectiveTestSuite) TestTowardRefusesToShuffleWhenNothingIsNearer() {
+	enc := s.towardRingScene()
+	anchor := cellAt(3, 2)
+	const budget = 6
+
+	start := s.cellOfMember(goblin)
+	here := enc.Distance(anchor, start)
+	s.Require().Equal(float64(2), here, "the mover stands on the ring, two from the hole in it")
+	reached := reachedStandableWithin(enc, goblin, start, budget)
+	s.Require().NotEmpty(reached, "there is floor to walk on, which is what makes this a real refusal")
+	for cell := range reached {
+		s.Equal(here, enc.Distance(anchor, cell), "every cell of the ring is equally far")
+	}
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: budget,
+	})
+	s.Require().NoError(err, "nowhere nearer is not an error")
+	s.Empty(out.Path, "equally near is not nearer")
+	s.Contains(out.StoppedBy, "nowhere nearer", "the route says why it is empty")
+	s.Equal(start, s.cellOfMember(goblin))
+}
+
+// TestTowardCrossesAnAllyAndDoesNotStopOnOne is 2014's rule for moving around
+// other creatures, on the approach rather than the rout — obeyed because this
+// route reads the same fold every other route reads, not because it looks for
+// allies.
+//
+// The two halves are two floors, because an ally cannot be asked to move. With
+// him standing ON the anchor's ring the route stops short of him and the
+// FALLBACK is what answers; with him standing in the middle of the hall the
+// route walks straight through him to the ring beyond.
+func (s *DirectiveTestSuite) TestTowardCrossesAnAllyAndDoesNotStopOnOne() {
+	anchor := cellAt(1, 2)
+
+	onTheRing := s.towardCorridorScene(encounter.MemberInput{
+		ID: bob, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 2},
+		SpeedFeet: 30, Targeting: "closest",
+	})
+	s.Require().Equal(cellAt(2, 2), s.cellOfMember(bob))
+	s.Require().Contains(reachedWithin(onTheRing, goblin, cellAt(7, 2), 6), cellAt(2, 2),
+		"the flood did reach the ring cell; the fold is what refuses to stop on it")
+
+	out, err := onTheRing.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: 6,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(out.Path)
+	s.Equal(cellAt(3, 2), out.Path[len(out.Path)-1], "it stops beside the ally, not inside him")
+	s.NotContains(out.Path, cellAt(2, 2), "and never enters the only ring cell there is")
+
+	midHall := s.towardCorridorScene(encounter.MemberInput{
+		ID: bob, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 2},
+		SpeedFeet: 30, Targeting: "closest",
+	})
+	through, err := midHall.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: 6,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(through.Path)
+	s.Equal(cellAt(2, 2), through.Path[len(through.Path)-1], "the ring is reached")
+	s.Contains(through.Path, cellAt(4, 2), "and the way there is through him")
+}
+
+// TestTowardIsBoundedByTheBudget.
+//
+// A budget that does not reach the ring is not a refusal: the creature closes
+// as far as it can pay for, which is the fallback answering with the nearest
+// cell the flood was allowed to reach.
+func (s *DirectiveTestSuite) TestTowardIsBoundedByTheBudget() {
+	enc := s.towardCorridorScene()
+	anchor := cellAt(1, 2)
+	const budget = 2
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: budget,
+	})
+	s.Require().NoError(err)
+	s.Len(out.Path, budget, "every cell the budget paid for, and not one more")
+	s.Equal(cellAt(5, 2), out.Path[len(out.Path)-1])
+	s.Less(enc.Distance(anchor, out.Path[len(out.Path)-1]), enc.Distance(anchor, s.cellOfMember(goblin)))
+}
+
+// TestTowardAnAnchorAlreadyBesideTheMoverRoutesNowhere.
+//
+// Two cases, one answer, and it is the empty route rather than the refusal
+// [MoveLine] gives: an anchor standing on the mover, and an anchor one cell
+// away. "Get next to that" is already true, so nothing stopped the move and
+// StoppedBy has nothing to say.
+func (s *DirectiveTestSuite) TestTowardAnAnchorAlreadyBesideTheMoverRoutesNowhere() {
+	enc := s.towardCorridorScene()
+	moverCell := s.cellOfMember(goblin)
+
+	for _, tc := range []struct {
+		name   string
+		anchor spatial.Position
+	}{
+		{name: "on the mover", anchor: moverCell},
+		{name: "one cell away", anchor: cellAt(6, 2)},
+	} {
+		s.Run(tc.name, func() {
+			out, err := enc.Route(encounter.RouteInput{
+				Mover: goblin, Policy: encounter.MoveToward, Anchor: tc.anchor, Budget: 6,
+			})
+			s.Require().NoError(err, "already there is not a refusal")
+			s.Empty(out.Path)
+			s.Empty(out.StoppedBy, "nothing stopped it; it was already over")
+		})
+	}
+}
+
+// TestTowardWithNoBudgetRoutesNowhere. Zero is unbounded to the field's own
+// Limit, so a route that asked it with zero would flood the whole floor and
+// hand a creature with no movement a walk across the dungeon.
+func (s *DirectiveTestSuite) TestTowardWithNoBudgetRoutesNowhere() {
+	enc := s.towardCorridorScene()
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: cellAt(1, 2), Budget: 0,
+	})
+	s.Require().NoError(err, "a pointless directive is legal, as RouteInput.Budget says")
+	s.Empty(out.Path)
+	s.Empty(out.StoppedBy, "nothing stopped it; it was never paid for")
+}
+
+// TestTowardStopsBesideAnEMPTYAnchorCell is the goal scan's own test, and the
+// only scene in this file where the scan and the ruler fallback disagree.
+//
+// Every other Toward scene aims at a cell somebody is standing on, which the
+// fold already calls unstandable — so the fallback, which only knows "nearest
+// by the ruler", happens to give the same answer and the fewest-steps scan
+// could be deleted without a test noticing.
+//
+// [Encounter.Route]'s Anchor is a POSITION, not a member: a rule may aim a
+// directive at a cell nobody occupies, and [MoveToward]'s headline guarantee
+// says it still stops beside rather than on it — "an empty anchor cell is
+// still not where 'within 5 feet' ends". Without the scan the route walks the
+// extra cell and ends ON the anchor at distance zero.
+func (s *DirectiveTestSuite) TestTowardStopsBesideAnEMPTYAnchorCell() {
+	enc := s.towardCorridorScene()
+	anchor := cellAt(2, 2)
+	const budget = 6
+
+	s.Require().NotEqual(anchor, s.cellOfMember(alice), "the anchor cell is nobody's")
+	s.Require().Equal(encounter.PassageStandable,
+		enc.CellAt(encounter.CellAtInput{Cell: anchor, Mover: goblin}).Passage,
+		"and the mover could legally stop on it, which is what makes this a real refusal")
+	s.Require().Contains(reachedStandableWithin(enc, goblin, s.cellOfMember(goblin), budget), anchor,
+		"and it is inside the budget")
+
+	out, err := enc.Route(encounter.RouteInput{
+		Mover: goblin, Policy: encounter.MoveToward, Anchor: anchor, Budget: budget,
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(out.Path)
+
+	end := out.Path[len(out.Path)-1]
+	s.Equal(cellAt(3, 2), end, "it stops on the ring")
+	s.Equal(float64(1), enc.Distance(anchor, end), "beside the anchor, not on it")
+	s.NotContains(out.Path, anchor, "and never enters the cell it was aimed at")
+	s.Len(out.Path, 4)
 }

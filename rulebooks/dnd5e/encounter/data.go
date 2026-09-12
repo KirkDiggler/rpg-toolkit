@@ -2335,8 +2335,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// The paused turn, restored exactly as it was stored — validated above,
 	// before construction began (R5). The bubble and the member record it
 	// needs are re-derived on resume from the roster this load has just
-	// rebuilt, which is why neither is in the blob.
-	e.pausedTurn = pausedTurnFrom(data.PausedTurn)
+	// rebuilt, which is why neither is in the blob. Its converter parses the
+	// cause a Routed walk carries, which validation above already proved
+	// parses; the arm is kept for the reason the held directive's is.
+	e.pausedTurn, err = pausedTurnFrom(data.PausedTurn)
+	if err != nil {
+		return nil, err
+	}
 
 	// And the held directive, the same way. Its converter parses the cause,
 	// which validation above already proved parses; the arm is kept rather

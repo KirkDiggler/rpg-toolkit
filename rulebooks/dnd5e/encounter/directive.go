@@ -54,9 +54,9 @@ type MovePolicy string
 // A POLICY ARRIVES WITH ITS EXECUTOR, and that is the rule rather than the
 // schedule: a constant declared ahead of the thing that carries it out is a
 // name callers can validate against and nothing can honour. [MoveAway] arrived
-// with Dissonant Whispers; "toward" is still waiting for Thorn Whip.
+// with Dissonant Whispers and [MoveToward] with Command.
 // [Encounter.Route]'s switch is closed on the policies that exist and refuses
-// every other word with [ErrUnsupportedPolicy], so the day a third one is
+// every other word with [ErrUnsupportedPolicy], so the day a fourth one is
 // added, the place that must learn about it is the place that already refuses
 // it.
 const MoveLine MovePolicy = "line"
@@ -80,6 +80,35 @@ const MoveLine MovePolicy = "line"
 // it exactly as it closes one to a step.
 const MoveAway MovePolicy = "away"
 
+// MoveToward is the approach: the shortest walking route to a cell the mover
+// may stop on WITHIN ONE CELL OF THE ANCHOR, and — when the budget reaches no
+// such cell — the reached cell NEAREST THE ANCHOR BY THE RULER. It is
+// Command's Approach: a creature that "moves toward you by the shortest and
+// most direct route, ending its turn if it moves within 5 feet of you".
+//
+// IT STOPS BESIDE, NOT ON. The anchor's own cell is never a destination: a
+// creature standing on it makes it unstandable anyway, and an empty anchor
+// cell is still not where "within 5 feet" ends. So the goal is the ring
+// around the anchor, and the route is the FEWEST STEPS to any cell of it —
+// this is a walk, measured by walking, which is where it parts company with
+// [MoveAway].
+//
+// THE RULER DECIDES ONLY WHEN THE WALK CANNOT. A door that is shut, a budget
+// that runs out halfway down the hall, a pillar in the mouth of the only way
+// in: none of those is "the creature stays put", because the spell says it
+// closes. So the fallback is the reached cell that is NEAREST the anchor by
+// the ruler, and STRICTLY nearer than the cell the mover already stands on —
+// shuffling sideways to spend a budget is not approaching, exactly as it is
+// not fleeing ([MoveAway]'s own strictly-farther rule, mirrored). Ties go to
+// the shorter walk, then to scan order, so the answer is the same every time
+// it is asked (C8).
+//
+// AN ANCHOR ON THE MOVER IS NOT A REFUSAL, unlike [MoveLine]'s: "get next to
+// that" is already true of a creature standing there, so the answer is the
+// empty route rather than [ErrBadReach]. Being already adjacent is the same
+// answer for the same reason.
+const MoveToward MovePolicy = "toward"
+
 // RouteInput asks which cells a directed move would cross.
 type RouteInput struct {
 	// Mover is who is being moved. Their current cell is read off the
@@ -88,9 +117,9 @@ type RouteInput struct {
 	// paid for before.
 	Mover MemberID
 
-	// Policy is how the move is measured. Required, and [MoveLine] is the
-	// only one that exists: the zero value is not a default, it is a refusal
-	// ([ErrUnsupportedPolicy]), and so is any other word.
+	// Policy is how the move is measured. Required, and one of [MoveLine],
+	// [MoveAway] and [MoveToward]: the zero value is not a default, it is a
+	// refusal ([ErrUnsupportedPolicy]), and so is any other word.
 	Policy MovePolicy
 
 	// Anchor is the cell the policy is measured FROM — the caster's cell for
@@ -176,6 +205,8 @@ func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 		return e.routeLine(in.Mover, from, in.Anchor, in.Budget), nil
 	case MoveAway:
 		return e.routeAway(in.Mover, from, in.Anchor, in.Budget), nil
+	case MoveToward:
+		return e.routeToward(in.Mover, from, in.Anchor, in.Budget), nil
 	default:
 		return RouteOutput{}, fmt.Errorf("route %q: policy %q: %w", in.Mover, in.Policy, ErrUnsupportedPolicy)
 	}
@@ -293,14 +324,98 @@ func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, bud
 		return RouteOutput{StoppedBy: fmt.Sprintf("nowhere farther from %v within %d cells", anchor, budget)}
 	}
 
-	path, reached := field.PathTo(best)
-	if !reached {
-		// Unreachable by construction: best came out of this field's own
-		// Dist. Refused rather than returned empty, because an empty path
-		// here would be the pinned sentence about a cell that is not pinned.
-		return RouteOutput{StoppedBy: fmt.Sprintf("no path to %v, which the flood reached", best)}
+	return pathOrRefusal(field, best)
+}
+
+// routeToward is the [MoveToward] policy: flood as far as the budget pays
+// for, then keep the reached cell beside the anchor that took the fewest
+// steps — or, when the ring around the anchor is out of reach, the reached
+// cell nearest it by the ruler.
+//
+// TWO SCANS, AND THE SECOND ONLY WHEN THE FIRST FOUND NOTHING. The first is
+// [Encounter.nearestStop] over the goal "within one cell of the anchor",
+// which is the same fewest-steps, may-cross-may-not-stop search a monster's
+// own route already runs ([Encounter.routeTo]); the second is
+// [Encounter.routeAway]'s scan with its comparison turned around. Keeping
+// them apart rather than sharing a parameterised loop is deliberate: they
+// answer different questions — "which way in" and "how close can I get" —
+// and a reader of either should not have to hold the other in mind.
+//
+// STRICTLY NEARER, OR NOWHERE, in the fallback. A cell the same distance from
+// the anchor is not toward it, so a mover ringed by cells no nearer than its
+// own stays put and the path is EMPTY with StoppedBy saying so — the
+// distinguishable-from-an-unimplemented-policy case [ErrUnsupportedPolicy]'s
+// doc insists on.
+//
+// ALREADY THERE IS THE EMPTY ROUTE WITH NO SENTENCE, which covers an anchor
+// standing on the mover: nothing stopped the move, it was already over. A
+// fallback that succeeds says nothing either, exactly as [Encounter.routeAway]
+// says nothing about a rout that spent less than its budget — StoppedBy is for
+// the empty answer, and a caller that wants the geometry has the path.
+//
+// A ZERO BUDGET RETURNS FIRST, before the flood, for [Encounter.routeAway]'s
+// reason: zero is unbounded to [spatial.FieldInput.Limit], so asking the field
+// with it would flood the whole floor on behalf of a creature that cannot
+// move.
+func (e *Encounter) routeToward(mover MemberID, from, anchor spatial.Position, budget int) RouteOutput {
+	if budget == 0 {
+		return RouteOutput{}
 	}
 
+	beside := func(cell spatial.Position) bool { return e.Distance(cell, anchor) <= 1 }
+	if beside(from) {
+		return RouteOutput{}
+	}
+
+	field, ok := e.floodFrom(mover, from, nil, budget)
+	if !ok {
+		return RouteOutput{StoppedBy: "the floor could not be flooded"}
+	}
+
+	if best, found := e.nearestStop(field, mover, from, beside); found {
+		return pathOrRefusal(field, best)
+	}
+
+	here := e.Distance(anchor, from)
+
+	var best spatial.Position
+	bestNear, bestWalk, found := 0.0, 0, false
+	for cell, walk := range field.Dist {
+		if cell == from {
+			continue
+		}
+		if e.CellAt(CellAtInput{Cell: cell, Mover: mover}).Passage != PassageStandable {
+			continue
+		}
+		near := e.Distance(anchor, cell)
+		if near >= here {
+			continue
+		}
+		better := !found || near < bestNear ||
+			(near == bestNear && (walk < bestWalk || (walk == bestWalk && beforeInScanOrder(cell, best))))
+		if better {
+			best, bestNear, bestWalk, found = cell, near, walk, true
+		}
+	}
+	if !found {
+		return RouteOutput{StoppedBy: fmt.Sprintf("nowhere nearer to %v within %d cells", anchor, budget)}
+	}
+
+	return pathOrRefusal(field, best)
+}
+
+// pathOrRefusal reads one cell's route out of the flood that reached it.
+//
+// The not-reached branch is unreachable by construction — best came out of
+// this same field's own Dist — and is refused rather than returned empty
+// because an empty path here would be the pinned sentence about a cell that
+// is not pinned. It is a function rather than a repeated four lines because
+// two policies now end this way.
+func pathOrRefusal(field spatial.FieldOutput, best spatial.Position) RouteOutput {
+	path, reached := field.PathTo(best)
+	if !reached {
+		return RouteOutput{StoppedBy: fmt.Sprintf("no path to %v, which the flood reached", best)}
+	}
 	return RouteOutput{Path: path}
 }
 

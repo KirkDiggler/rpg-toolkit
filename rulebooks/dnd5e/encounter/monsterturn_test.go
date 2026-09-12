@@ -1908,3 +1908,248 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 	s.Equal(encounter.ClockTurn, clockOf.Kind, "bob is untouched and the fight he is in must still be running")
 	s.Equal(bob, et.Next, "goblin's own turn-ended wraps the two-member order (alice spliced) straight back to bob")
 }
+
+// The Routed family (rpg-project ideas/spells/command §5.4). A driver hands
+// the encounter a policy and an anchor instead of a path; the encounter routes
+// it, walks it, and ends the turn — asked once, whatever happens on the way.
+
+// commandedRef is the cause every routed walk in these tests names. It stands
+// in for the compulsion a rulebook would supply; this module never reads it.
+var commandedRef = core.Ref{Module: "dnd5e", Type: "conditions", ID: "commanded"}
+
+// routedScene is the hall the Routed tests share: alice at authored [2,2] and
+// the goblin four cells east of her at [6,2], on ten-by-ten open floor.
+//
+// Four cells is the number that makes the assertions readable. The goblin
+// pays for six (30 feet), so a Toward route that stops on the ring beside
+// alice has declined cells it could afford, and an Away route has room to
+// spend the whole budget running.
+func routedScene(
+	t *testing.T, mover encounter.Mover, standing encounter.Standing, driver encounter.TurnDriver,
+) *encounter.Encounter {
+	t.Helper()
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		TurnDriver: driver,
+		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{
+					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+				},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	return enc
+}
+
+// routedDriver is a driver that answers one Routed intent and then, if it is
+// ever asked again, Pass — so a test can tell "asked once" from "asked twice
+// and said nothing the second time".
+func routedDriver(policy encounter.MovePolicy, anchor encounter.MemberID) *scriptedDriver {
+	return &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Routed{Policy: policy, Anchor: anchor, Cause: commandedRef},
+	}}
+}
+
+// movedBeatsOf reads every movement beat one audience saw, decoded.
+func movedBeatsOf(t *testing.T, enc *encounter.Encounter, audience encounter.MemberID) []map[string]any {
+	t.Helper()
+	var moved []map[string]any
+	for _, beat := range storyBeats(t, enc, audience) {
+		if beat["beat"] == "moved" {
+			moved = append(moved, beat)
+		}
+	}
+	return moved
+}
+
+// positionOfMember reads one member's cell through the public roster.
+func positionOfMember(t *testing.T, enc *encounter.Encounter, id encounter.MemberID) spatial.Position {
+	t.Helper()
+	members, err := enc.Members()
+	require.NoError(t, err)
+	for _, m := range members {
+		if m.ID == id {
+			return m.Position
+		}
+	}
+	require.Failf(t, "not placed", "member %q has no cell", id)
+	return spatial.Position{}
+}
+
+// TestARoutedWalkIsAnnouncedAsWalkingAndNamesWhatRoutedIt.
+//
+// The two things every cell of a compelled walk tells the [Mover], and the
+// ruling of this slice is the second one: Forced is FALSE. A commanded
+// creature is WALKING, under somebody else's orders, so its steps provoke
+// exactly as its own would — the ghoul that obeys "approach" is struck on the
+// way in. Being compelled is not being shoved, and Forced is what a directive
+// sets when a creature is MOVED rather than moving.
+//
+// Design §5.4's first prose said the flag was set; §5.3's own table gives
+// Approach and Flee Provokes:true, and Direct maps forced = !Provokes. The
+// design record carries the correction. This is the test that makes it real,
+// because a route that announced forced=true would look identical from every
+// other seam.
+func TestARoutedWalkIsAnnouncedAsWalkingAndNamesWhatRoutedIt(t *testing.T) {
+	mover := &recordingMover{}
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc := routedScene(t, mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, mover.calls, "the walk announced its cells")
+	for i, step := range mover.calls {
+		require.False(t, step.Forced, "step %d: a compelled creature walks, and walking provokes", i)
+		require.Equal(t, commandedRef, step.Cause, "step %d: and every step says what routed it", i)
+	}
+}
+
+// TestRoutedTowardWalksTheRouteAndEndsTheTurnAskedOnce is the intent in one
+// scene: the driver names a policy and an anchor, the encounter finds the
+// cells, walks them, and the turn is over — one Act call for the whole turn,
+// which is what terminal means.
+func TestRoutedTowardWalksTheRouteAndEndsTheTurnAskedOnce(t *testing.T) {
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc := routedScene(t, quietMover{}, &downList{}, driver)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Len(t, driver.calls, 1, "the brain is asked once for the whole compelled turn")
+	require.Equal(t, alice, out.Next, "the turn came back to the player")
+	require.Equal(t, cellAt(3, 2), positionOfMember(t, enc, goblin),
+		"it stopped on the ring beside alice, not on her")
+
+	moved := movedBeatsOf(t, enc, alice)
+	require.Len(t, moved, 3, "three cells of the four between them")
+	for _, beat := range moved {
+		require.Equal(t, commandedRef.String(), beat["cause"], "every cell says what routed it")
+	}
+	require.True(t, turnEndedFor(t, enc, goblin), "and the walk ended the turn")
+}
+
+// TestRoutedAwayWalksTheRouteAndEndsTheTurnAskedOnce is the same shape with
+// the other policy, so neither passes by being the only one wired up.
+func TestRoutedAwayWalksTheRouteAndEndsTheTurnAskedOnce(t *testing.T) {
+	driver := routedDriver(encounter.MoveAway, alice)
+	enc := routedScene(t, quietMover{}, &downList{}, driver)
+
+	start := positionOfMember(t, enc, goblin)
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Len(t, driver.calls, 1)
+	end := positionOfMember(t, enc, goblin)
+	require.Greater(t, enc.Distance(cellAt(2, 2), end), enc.Distance(cellAt(2, 2), start),
+		"it ran, and it ran away")
+	require.NotEmpty(t, movedBeatsOf(t, enc, alice))
+	require.True(t, turnEndedFor(t, enc, goblin))
+}
+
+// TestARoutedTurnIsBoundedByItsOwnMovement pins that the route is asked for
+// the TURN's budget rather than an unbounded one: a slow creature closes as
+// far as its speed pays for and the turn ends there.
+func TestARoutedTurnIsBoundedByItsOwnMovement(t *testing.T) {
+	driver := routedDriver(encounter.MoveToward, alice)
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: &downList{}, Initiative: orderAsGiven{},
+		TurnDriver: driver,
+		Striker:    passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
+				SpeedFeet: 5, Targeting: "closest",
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Len(t, movedBeatsOf(t, enc, alice), 1, "one cell is what five feet pays for")
+	require.Equal(t, cellAt(5, 2), positionOfMember(t, enc, goblin))
+	require.True(t, turnEndedFor(t, enc, goblin), "and the turn is over anyway")
+}
+
+// TestARoutedIntentWithNowhereToGoStillEndsTheTurn: the anchor is the mover
+// themself, so the route is empty. Nothing moved, nobody is asked again, and
+// the turn is over — obedience with no cells in it.
+func TestARoutedIntentWithNowhereToGoStillEndsTheTurn(t *testing.T) {
+	driver := routedDriver(encounter.MoveToward, goblin)
+	enc := routedScene(t, quietMover{}, &downList{}, driver)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Len(t, driver.calls, 1)
+	require.Empty(t, movedBeatsOf(t, enc, alice), "an empty route walks no cells")
+	require.Equal(t, cellAt(6, 2), positionOfMember(t, enc, goblin))
+	require.True(t, turnEndedFor(t, enc, goblin))
+	require.Equal(t, alice, out.Next)
+}
+
+// TestARoutedIntentNamingNobodyEndsTheTurn is the ErrBadIntent half: an anchor
+// who is not on the map is a driver chasing a ghost, which is a bad decision
+// rather than a malfunction — this member's turn simply ends and the caller's
+// own verb still succeeds.
+func TestARoutedIntentNamingNobodyEndsTheTurn(t *testing.T) {
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Routed{Policy: encounter.MoveToward, Anchor: "nobody", Cause: commandedRef},
+	}}
+	enc := routedScene(t, quietMover{}, &downList{}, driver)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err, "a bad decision does not cost the caller their verb")
+
+	require.Empty(t, movedBeatsOf(t, enc, alice))
+	require.Equal(t, cellAt(6, 2), positionOfMember(t, enc, goblin))
+	require.True(t, turnEndedFor(t, enc, goblin))
+	require.Equal(t, alice, out.Next)
+}
+
+// TestARoutedIntentNamingNoCauseIsRefused is the other half of that line: a
+// walk nobody can narrate is malformed, not a decision, so it aborts the
+// caller's verb exactly as an intent type nobody wrote does.
+func TestARoutedIntentNamingNoCauseIsRefused(t *testing.T) {
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Routed{Policy: encounter.MoveToward, Anchor: alice},
+	}}
+	enc := routedScene(t, quietMover{}, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.ErrorIs(t, err, encounter.ErrNoCause)
+	require.Equal(t, cellAt(6, 2), positionOfMember(t, enc, goblin), "a refused intent moves nobody")
+}
+
+// TestARoutedIntentNamingAnUnsupportedPolicyIsRefused: the same class of
+// malformed intent, on the other field.
+func TestARoutedIntentNamingAnUnsupportedPolicyIsRefused(t *testing.T) {
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Routed{Policy: "sideways", Anchor: alice, Cause: commandedRef},
+	}}
+	enc := routedScene(t, quietMover{}, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.ErrorIs(t, err, encounter.ErrUnsupportedPolicy)
+}

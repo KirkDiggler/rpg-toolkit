@@ -348,6 +348,33 @@ func (e *Encounter) driveTurnsWithParticipation(
 	}
 
 	for i := 0; i < len(order); i++ {
+		// THE PAUSE GUARD AGAIN, PER ITERATION, AND IT IS A BUG FIX. The
+		// guard at the top of this function stops a drive that STARTS on a
+		// waiting fight; this one stops the same loop from carrying on after
+		// one of its own turns paused.
+		//
+		// WHAT HAPPENED WITHOUT IT. The clock has not advanced — the paused
+		// member still holds the active slot — so the next iteration built a
+		// fresh view for the member who is mid-step, asked their driver for a
+		// turn they are already taking, and EXECUTED the answer: a second
+		// step announced to the [Mover] and taken while the reactor's window
+		// was still open, charged against a fresh full budget rather than the
+		// one the pause had stored. The stored pause then described a walk
+		// from a cell its mover had already left, still owing the announced
+		// step into a cell it was already standing on. The outer loop could
+		// do that once per remaining iteration.
+		//
+		// It is not [Routed]'s bug and it did not arrive with Command; it is
+		// as old as the mid-walk pause. Command is only what made it visible,
+		// because a compelled driver must be asked exactly once per turn.
+		//
+		// The guard asks `e.pausedTurn` rather than [Encounter.Paused]
+		// because a held DIRECTIVE is not this loop's to care about: the door
+		// guard above already refused entry on one, and nothing inside a
+		// driven turn can create one.
+		if e.pausedTurn != nil {
+			return wrapped, lastSeq, deltas, nil
+		}
 		if i > 0 {
 			// The previous iteration crossed a boundary after an AutoPass or
 			// driven turn. Reassess now, at the top of the next iteration, so a
@@ -404,6 +431,16 @@ func (e *Encounter) driveTurnsWithParticipation(
 			if m.Kind == KindPlayer {
 				return wrapped, lastSeq, deltas, nil
 			}
+		case TurnParticipationDriven:
+			// NOBODY IS ASKED, WHOEVER THEY ARE — the empty arm IS the
+			// behaviour: the switch ends and the loop reaches
+			// driveOneMonsterTurn below without the Wait case's player
+			// check, so a compelled player's turn is taken by the
+			// TurnDriver exactly as a monster's is. The rulebook owns the reason a member is
+			// Driven; this module owns only that the clock does not rest
+			// here. Every player verb already refuses a member who does
+			// not hold the active slot, so a compelled player has no verb
+			// that could land while their own turn is being taken for them.
 		case TurnParticipationRemove:
 			// Removal is applied by the noticeDown participation pass before
 			// scheduling. A stale Remove here must not be interpreted as Wait
@@ -745,6 +782,14 @@ func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, 
 // way; a successful [Attack] or [Move] leaves it running so the driver is
 // asked again against the updated budget and view.
 //
+// [Routed] is the one arm that is ALWAYS the end of the turn, however its walk
+// went: arrived, stopped by a wall, dropped, or never started. That is the
+// intent's own contract rather than a decision made here — a compelled
+// creature's turn IS the walk — and it is why the arm has no "still going"
+// branch. A Routed walk that PAUSES is the one case that reports the turn not
+// over, which is the same thing a paused Move reports and means the same
+// thing: the turn is waiting, not finished.
+//
 // budget is mutated in place: the one thing every branch here shares is that
 // what it spends must be visible to the NEXT buildMonsterView call, and a
 // return value the caller has to remember to feed back in is exactly the
@@ -856,6 +901,108 @@ func (e *Encounter) executeTurnIntent(
 		// next time this same view is built.
 		return res.moved == 0, intelDeltas, nil
 
+	case Routed:
+		// A MALFORMED INTENT, NOT A BAD DECISION. An unnamed cause makes the
+		// walk unnarratable and a policy nobody carries out makes it
+		// unroutable; neither is a choice this member could have made
+		// differently against a different view, which is the line
+		// ErrBadIntent's own doc draws. They abort the caller's verb the way
+		// the default arm below aborts it for an intent type nobody wrote.
+		if cerr := it.Cause.IsValid(); cerr != nil {
+			return false, nil, fmt.Errorf("routed %q: %w: %w", activeID, ErrNoCause, cerr)
+		}
+
+		// AN ANCHOR NOBODY IS STANDING ON, on the other hand, IS a decision:
+		// a driver naming a member who has left the map or was never on it
+		// has decided to chase a ghost. ErrBadIntent — this member's turn
+		// simply ends, exactly like Pass.
+		anchorRecord, known := e.members[it.Anchor]
+		if !known {
+			return true, nil, nil
+		}
+		anchorCell, aerr := e.cellOf(anchorRecord)
+		if aerr != nil {
+			return true, nil, nil
+		}
+
+		// THE BUDGET IS THE TURN'S OWN, converted once here. This is what
+		// makes "as far as this turn's movement reaches" true of a resumed
+		// turn as well as a fresh one: the pause charged what it walked
+		// before it stored the budget, so a route asked after a resume is
+		// asked for what is left.
+		route, rerr := e.Route(RouteInput{
+			Mover:  activeID,
+			Policy: it.Policy,
+			Anchor: anchorCell,
+			Budget: CellsFromFeet(budget.MovementFeet),
+		})
+		if rerr != nil {
+			return false, nil, fmt.Errorf("routed %q: %w", activeID, rerr)
+		}
+
+		// NOWHERE TO GO IS STILL THE WHOLE TURN. A creature pinned against a
+		// wall, or already standing beside what it was sent at, has obeyed —
+		// the turn ends with no movement beat and no news, and RouteOutput's
+		// own StoppedBy is dropped because a driven turn has no field to
+		// carry it out on. The "turn-ended" beat that follows is the story.
+		if len(route.Path) == 0 {
+			return true, nil, nil
+		}
+
+		at := uint64(e.clock.ToData().HighWater)
+		audience := e.audienceFor(subjectBeat, activeID)
+
+		// forced=false: this creature IS walking, under somebody else's
+		// orders, and it provokes exactly as its own walk would — the rout
+		// Dissonant Whispers already sends through Direct with Provokes
+		// true. Being compelled to run is not being shoved.
+		res, werr := e.walkPath(context.Background(), activeID, m, route.Path, audience, at, it.Cause, false)
+		if werr != nil {
+			return false, nil, werr
+		}
+
+		// Charged here, once, for what the walk actually took — the Move
+		// case's rule, for the Move case's reason.
+		budget.MovementFeet -= res.moved * FeetPerCell
+
+		intelDeltas, serr := e.settleWalk(activeID, audience, res.moved)
+		if serr != nil {
+			return false, nil, serr
+		}
+
+		if res.paused != nil {
+			// TERMINAL SURVIVES THE WINDOW. The flag and the cause go into
+			// the pause because the resume has to finish a walk that ends
+			// the turn and names why it happened, and neither fact is
+			// re-derivable from the cells left to walk.
+			e.pausedTurn = &pausedTurn{
+				member:    activeID,
+				round:     coords.Round,
+				from:      res.from,
+				to:        res.to,
+				remaining: res.pending,
+				moved:     res.moved,
+				budget:    *budget,
+				intent:    coords.Intent,
+				bound:     coords.Bound,
+				at:        at,
+				audience:  audience,
+				cause:     it.Cause,
+				terminal:  true,
+			}
+			if _, berr := e.appendWindowOpenedBeat(
+				activeID, res.from, res.to, at, res.paused.Windows, it.Cause,
+			); berr != nil {
+				return false, intelDeltas, fmt.Errorf("window beat: %w", berr)
+			}
+			return false, intelDeltas, nil
+		}
+
+		// Every other way the walk can end — arrived, dropped, stopped by a
+		// wall, stopped without moving at all — ends the turn, because that
+		// is what terminal means. There is no arm here for "still going".
+		return true, intelDeltas, nil
+
 	default:
 		return false, nil, fmt.Errorf("driver returned %T: %w", intent, ErrBadTurnOutcome)
 	}
@@ -907,8 +1054,9 @@ type walkResult struct {
 // A WALK A CREATURE CHOSE HAS NO CAUSE, which is what the empty Ref says.
 // Somebody walked because they decided to; there is no effect to name, and a
 // beat that named one would be this composition inventing a reason. The one
-// walker is [Encounter.walkPath]; this is the name its two turn-bound callers
-// ask for it by.
+// walker is [Encounter.walkPath]; this is the name a [Move] intent asks for it
+// by. A [Routed] intent calls the walker directly, because its whole point is
+// that somebody else decided.
 func (e *Encounter) walkCells(
 	ctx context.Context, activeID MemberID, m *memberRecord,
 	path []spatial.Position, audience []MemberID, at uint64,
@@ -924,14 +1072,16 @@ func (e *Encounter) walkCells(
 // reason a reaction can be checked for reach against a mover who is still
 // standing where the reaction fired.
 //
-// ONE BODY, TWO KINDS OF MOVE, and that is deliberate. A push and a stride meet
+// ONE BODY, EVERY KIND OF MOVE, and that is deliberate. A push and a stride meet
 // the same walls, the same pillars, the same creatures in the way, and the same
 // reactions — because they are the same act, differing only in who decided it.
 // A second loop for the directed case would be two answers to "what stops a
 // step", which is rpg-toolkit#1652 one layer up. What differs is carried as
 // data: `mover` need not hold the active turn, `cause` names the effect that
 // moved them on every beat this appends, and `forced` tells the [Mover] whether
-// this creature is walking or being walked.
+// this creature is walking or being walked. A [Routed] turn uses all three at
+// once — it IS the mover's turn, it names the compulsion, and the creature is
+// walking rather than being walked, so it provokes.
 func (e *Encounter) walkPath(
 	ctx context.Context, mover MemberID, m *memberRecord,
 	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, forced bool,
@@ -956,11 +1106,12 @@ func (e *Encounter) walkPath(
 			break
 		}
 
-		// FORCED IS THE WALK'S OWN ANSWER, and for this body it is always
-		// false: walkPath is reached by a creature's own Move intent and by
-		// the resume of one. [Encounter.Direct] builds its own step with the
-		// flag set, because being moved is the thing it knows and this loop
-		// does not.
+		// FORCED IS THE CALLER'S ANSWER, carried and not decided here. A
+		// creature's own Move intent, the resume of one, and a Routed turn
+		// all pass false: all three are somebody walking, however little
+		// choice they had about it. [Encounter.Direct] passes the inverse of
+		// its own Provokes, because being MOVED is the thing it knows and
+		// this loop does not.
 		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Forced: forced}
 		if merr := e.mover.Move(ctx, e, step); merr != nil {
 			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked

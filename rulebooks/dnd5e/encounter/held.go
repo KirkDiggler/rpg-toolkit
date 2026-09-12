@@ -307,11 +307,12 @@ func (e *Encounter) ResumeDirective(ctx context.Context) (DirectOutput, error) {
 // walkHeld takes the announced cell by hand and walks the rest of the held
 // route, returning the walk's own result for the resumed half alone.
 //
-// The hand-taken step is [Encounter.finishPausedIntent]'s, with the one line
-// that file does not need: `action.cause = h.cause`. A turn's walk has no
-// cause, so the paused turn sets none; a directive's has one on every other
-// cell, and a first resumed cell missing it is a single beat in N claiming the
-// creature walked away of its own accord.
+// The hand-taken step is [Encounter.finishPausedIntent]'s, and since [Routed]
+// gave a TURN's walk a cause too, the two now do the same thing with it: a
+// first resumed cell missing the cause is a single beat in N claiming the
+// creature walked away of its own accord. What still differs is that a
+// directive's cause is required and a turn's is the zero Ref unless something
+// routed it.
 func (e *Encounter) walkHeld(ctx context.Context, h *heldDirective, m *memberRecord) (walkResult, error) {
 	action, stepped := e.stepTo(m, h.to)
 	action.cause = h.cause
