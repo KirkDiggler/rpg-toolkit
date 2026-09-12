@@ -271,6 +271,28 @@ rounds, and encounters; the payer's existing refresh number is insufficient.
 Consumer tests must prove that identity using actual clock transitions, as well
 as offer/execution agreement, saved continuation, and failed-payment behavior.
 
+### Healing Word content provider (after #1700)
+
+#1700 merged as `412f3dc7` and released rulebook `v0.161.0`. The next provider
+adds Healing Word's level-one content: one bonus action and one first-level
+slot, one creature at 60 feet, 1d4 plus existing sourced healing modifiers,
+and the settled undead/construct exclusions. The profile accepts single-target
+ranged healing; resolution must still implement sight/range and healing-life-state
+validation, including self and dying recipients, before the session enables it.
+
+Every executable spell now declares `combat.SpellCasting` alongside its content.
+Do not derive classification from payment: free spells still obey casting rules.
+The older `SpellData` table is incomplete for working Bard cantrips, so it is
+not a prerequisite for compiling cast content. An absent profile classification
+remains explicitly unclassified; it must never be interpreted as a free action
+cantrip by the upcoming consumer. Existing profile validation accepts older
+unclassified declarations; the live enforcement contract is still pending.
+
+Cleric/Bard acquisition lists remain unchanged. After this provider releases,
+resolution must adopt its real tag and wire classification plus explicit turn
+identity into spell payment and ranged healing. Session follows with offers,
+execution, and real clock transition tests. No adjacent repository pins change.
+
 ### Supported spell acquisition (2026-09-12)
 
 The user authorized reusing Bard's creation/known-spell pipeline while full

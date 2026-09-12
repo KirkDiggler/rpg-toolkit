@@ -179,3 +179,21 @@ This is a provider checkpoint, not live Healing Word support. Spell content,
 actual clock identity wiring, ranged healing, session offers and execution
 remain to be implemented and verified in the sequence in `plan.md`. No consumer
 pins or external repositories have been changed.
+
+### Healing Word content provider (after #1700)
+
+Built on main `412f3dc7` / rulebook `v0.161.0`. Healing Word compiles to a
+bonus-action, first-level-slot price and single-creature 60-foot healing profile.
+Existing character compilation supplies Wisdom/Charisma and Disciple of Life
+modifiers, with the same exclusions as Cure Wounds. No acquisition list changed.
+
+Compiled spells carry explicit level and casting time, separately from price.
+Tests cover all eleven executable spells, classification passed to the shared
+same-turn rule, ranged healing profile validation, JSON/clone isolation, and
+ordinary Cleric, Life Cleric, and Bard healing modifiers. Existing Bard cantrips
+remain executable even where the older spell-data catalog has no entry.
+
+Affected spells, actions, character and choices tests pass locally, as do vet
+and module tidy. Full module/CI evidence is recorded on the provider PR. This
+is content support only; live target validation, spell payment wiring and
+session integration remain pending in the sequence in `plan.md`.

@@ -10,6 +10,7 @@ import (
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -25,6 +26,68 @@ type CastContentSuite struct {
 
 func TestCastContentSuite(t *testing.T) {
 	suite.Run(t, new(CastContentSuite))
+}
+
+func (s *CastContentSuite) TestHealingWordDeclaresRangedBonusActionHealing() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(*refs.Spells.HealingWord(), d.Ref)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	s.Zero(d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(&combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction}, d.Cast.Casting)
+	s.Equal(60, d.Cast.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, d.Cast.Target)
+	s.Equal(1, d.Cast.MinTargets)
+	s.Equal(1, d.Cast.MaxTargets)
+	s.Require().NotNil(d.Cast.Healing)
+	s.Equal("1d4", d.Cast.Healing.Dice)
+	s.Equal([]string{"undead", "construct"}, d.Cast.HealingExcludes)
+	s.Nil(d.Cast.Save)
+	s.Nil(d.Cast.Concentration)
+	s.Empty(d.Cast.Damage)
+	s.Empty(d.Cast.Effects)
+	// Neither callers nor a cloned definition can alter future compilations.
+	clone := d.Clone()
+	clone.Cast.Casting.Time = combat.SpellCastingReaction
+	clone.Cast.Healing.Dice = "9d9"
+	clone.Cost.Slots[coreCombat.ActionBonus] = 0
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+	s.Equal("1d4", d.Cast.Healing.Dice)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	d.Cast.Casting.Level = 9
+	again := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
+	s.Equal(1, again.Cast.Casting.Level)
+}
+
+func (s *CastContentSuite) TestEveryCompiledSpellCarriesRuleClassification() {
+	for id, level := range map[spells.Spell]int{
+		spells.HealingWord: 1, spells.CureWounds: 1, spells.Bane: 1,
+		spells.Thunderwave: 1, spells.DissonantWhispers: 1, spells.Command: 1,
+		spells.SacredFlame: 0, spells.BladeWard: 0, spells.TrueStrike: 0,
+		spells.ViciousMockery: 0, spells.Thunderclap: 0,
+	} {
+		d := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
+		s.Require().NotNil(d, "%s", id)
+		s.Require().NoError(d.Validate(), "%s", id)
+		s.Require().NotNil(d.Cast.Casting, "%s", id)
+		s.Equal(level, d.Cast.Casting.Level, "%s", id)
+		if id == spells.HealingWord {
+			s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+		} else {
+			s.Equal(combat.SpellCastingAction, d.Cast.Casting.Time, "%s", id)
+		}
+	}
+	bonus := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord}).Cast.Casting
+	state, err := (combat.SpellTurnState{}).AfterCast("turn", *bonus)
+	s.Require().NoError(err)
+	cantrip := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.SacredFlame}).Cast.Casting
+	_, err = state.AfterCast("turn", *cantrip)
+	s.NoError(err)
+	leveled := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.CureWounds}).Cast.Casting
+	_, err = state.AfterCast("turn", *leveled)
+	s.ErrorIs(err, combat.ErrBonusActionSpell)
 }
 
 func (s *CastContentSuite) TestBaneCompilesItsCompleteLevelOneProfile() {

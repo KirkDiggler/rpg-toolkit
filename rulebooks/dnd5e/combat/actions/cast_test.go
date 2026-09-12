@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -51,6 +52,32 @@ func (l *castLedger) BankCapacity(combat.CapacityType, int) {}
 
 func TestCastProfileSuite(t *testing.T) {
 	suite.Run(t, new(CastProfileSuite))
+}
+
+func (s *CastProfileSuite) TestHealingProfileSupportsOneRangedRecipientOnly() {
+	p := actions.CastProfile{RangeFeet: 60, Target: actions.CastTargetOneCreature,
+		MinTargets: 1, MaxTargets: 1, Healing: &healing.Declaration{Dice: "1d4"},
+		Casting: &combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction}}
+	s.Require().NoError(p.Validate())
+	encoded, err := json.Marshal(p)
+	s.Require().NoError(err)
+	var loaded actions.CastProfile
+	s.Require().NoError(json.Unmarshal(encoded, &loaded))
+	s.Equal(p, loaded)
+	for _, mutate := range []func(*actions.CastProfile){
+		func(p *actions.CastProfile) { p.MaxTargets = 2 },
+		func(p *actions.CastProfile) { p.Damage = []damage.Damage{{Dice: "1d4", Type: damage.Fire}} },
+		func(p *actions.CastProfile) { p.Target = actions.CastTargetSelf; p.MinTargets = 0; p.MaxTargets = 0 },
+		func(p *actions.CastProfile) { p.Casting.Time = "" },
+		func(p *actions.CastProfile) { p.Casting.Level = -1 },
+	} {
+		invalid := p.Clone()
+		mutate(&invalid)
+		s.Error(invalid.Validate())
+	}
+	legacy := p.Clone()
+	legacy.Casting = nil
+	s.NoError(legacy.Validate(), "absence remains unclassified, not a fabricated casting time")
 }
 
 func conditionRef(id string) core.Ref {

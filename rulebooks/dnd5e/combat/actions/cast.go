@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -79,6 +80,11 @@ const (
 // declaration, because the same profile is free for a monster's innate cast and
 // an action for a player's.
 type CastProfile struct {
+	// Casting classifies the spell for same-turn casting rules independently
+	// of its price. Nil means unclassified, never an assumed action cantrip.
+	// Compiled spell content always supplies it; older hand-built profiles may
+	// omit it until their casting-rule consumer is upgraded.
+	Casting *combat.SpellCasting `json:"casting,omitempty"`
 	// Healing is an immediate HP consequence, never a stored condition.
 	Healing *healing.Declaration `json:"healing,omitempty"`
 	// HealingExcludes names creature types on which this healing has no effect.
@@ -236,6 +242,11 @@ type CastEffect struct {
 // no-op: it would mint a row at the door that delivered nothing, which is the
 // affordance-with-nothing-behind-it this stack keeps finding.
 func (p CastProfile) Validate() error {
+	if p.Casting != nil {
+		if err := p.Casting.Validate(); err != nil {
+			return fmt.Errorf("cast classification: %w", err)
+		}
+	}
 	if p.RangeFeet <= 0 {
 		return fmt.Errorf("cast must declare a positive range")
 	}
@@ -313,8 +324,10 @@ func (p CastProfile) Validate() error {
 	}
 
 	if p.Healing != nil {
-		if p.Save != nil || len(p.Damage) > 0 || len(p.Effects) > 0 || p.Target != CastTargetTouch {
-			return fmt.Errorf("healing delivery currently requires an unopposed touch cast without other effects")
+		if p.Save != nil || len(p.Damage) > 0 || len(p.Effects) > 0 ||
+			(p.Target != CastTargetTouch && p.Target != CastTargetOneCreature) ||
+			p.MinTargets != 1 || p.MaxTargets != 1 {
+			return fmt.Errorf("healing delivery requires an unopposed single-creature cast without other effects")
 		}
 		if err := p.Healing.Validate(); err != nil {
 			return fmt.Errorf("cast healing: %w", err)
@@ -382,6 +395,10 @@ func (p CastProfile) Validate() error {
 // declarations.
 func (p CastProfile) Clone() CastProfile {
 	clone := p
+	if p.Casting != nil {
+		casting := *p.Casting
+		clone.Casting = &casting
+	}
 	if p.Healing != nil {
 		declaration := p.Healing.Clone()
 		clone.Healing = &declaration

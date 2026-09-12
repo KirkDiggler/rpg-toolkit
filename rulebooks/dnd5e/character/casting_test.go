@@ -17,30 +17,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCureWoundsUsesLoadedClassAbilityAndLifeDomain(t *testing.T) {
-	for _, tc := range []struct {
-		class                classes.Class
-		subclass             classes.Subclass
-		modifier, components int
-	}{
-		{classes.Cleric, "", 3, 1}, {classes.Cleric, classes.LifeDomain, 3, 2}, {classes.Bard, "", -1, 1},
-	} {
-		data := &Data{ID: "caster", Name: "Caster", Level: 1, ClassID: tc.class, SubclassID: tc.subclass,
-			AbilityScores: shared.AbilityScores{abilities.WIS: 16, abilities.CHA: 8}, HitPoints: 10, MaxHitPoints: 10}
-		ch, err := Load(context.Background(), data)
-		require.NoError(t, err)
-		definition := ch.CastDefinition(spells.CureWounds)
-		require.NotNil(t, definition)
-		require.NoError(t, definition.Validate())
-		require.Len(t, definition.Cast.Healing.Modifiers, tc.components)
-		require.Equal(t, tc.modifier, definition.Cast.Healing.Modifiers[0].Amount)
-		require.Nil(t, definition.Cast.Save)
-		require.Nil(t, definition.Cast.Concentration)
-		clone := definition.Clone()
-		clone.Cast.Healing.Modifiers[0].Source.Ref.ID = "changed"
-		clone.Cast.HealingExcludes[0] = "changed"
-		require.NotEqual(t, "changed", definition.Cast.Healing.Modifiers[0].Source.Ref.ID)
-		require.Equal(t, "undead", definition.Cast.HealingExcludes[0])
+func TestHealingSpellsUseLoadedClassAbilityAndLifeDomain(t *testing.T) {
+	for _, spell := range []spells.Spell{spells.CureWounds, spells.HealingWord} {
+		for _, tc := range []struct {
+			class                classes.Class
+			subclass             classes.Subclass
+			modifier, components int
+		}{
+			{classes.Cleric, "", 3, 1}, {classes.Cleric, classes.LifeDomain, 3, 2}, {classes.Bard, "", -1, 1},
+		} {
+			data := &Data{ID: "caster", Name: "Caster", Level: 1, ClassID: tc.class, SubclassID: tc.subclass,
+				AbilityScores: shared.AbilityScores{abilities.WIS: 16, abilities.CHA: 8}, HitPoints: 10, MaxHitPoints: 10}
+			ch, err := Load(context.Background(), data)
+			require.NoError(t, err)
+			definition := ch.CastDefinition(spell)
+			require.NotNil(t, definition)
+			require.NoError(t, definition.Validate())
+			require.Len(t, definition.Cast.Healing.Modifiers, tc.components)
+			require.Equal(t, tc.modifier, definition.Cast.Healing.Modifiers[0].Amount)
+			if tc.components == 2 {
+				require.Equal(t, 3, definition.Cast.Healing.Modifiers[1].Amount)
+			}
+			require.Nil(t, definition.Cast.Save)
+			require.Nil(t, definition.Cast.Concentration)
+			clone := definition.Clone()
+			clone.Cast.Healing.Modifiers[0].Source.Ref.ID = "changed"
+			clone.Cast.HealingExcludes[0] = "changed"
+			require.NotEqual(t, "changed", definition.Cast.Healing.Modifiers[0].Source.Ref.ID)
+			require.Equal(t, "undead", definition.Cast.HealingExcludes[0])
+		}
 	}
 }
 

@@ -213,9 +213,10 @@ var BardCantrips = []Spell{
 // castProfileBuilder is one spell's compiled cast content and price, with the
 // caster's own save DC supplied later because it is not a property of the spell.
 type castProfileBuilder struct {
-	name  string
-	cost  *combat.SpendProfile
-	build func(spellSaveDC int) actions.CastProfile
+	casting combat.SpellCasting
+	name    string
+	cost    *combat.SpendProfile
+	build   func(spellSaveDC int) actions.CastProfile
 }
 
 func cantripCost() *combat.SpendProfile {
@@ -242,17 +243,33 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
 var castContent = map[Spell]castProfileBuilder{
+	HealingWord: {
+		name:    "Healing Word",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
+		cost: &combat.SpendProfile{
+			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
+			Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
+		},
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 60, Target: actions.CastTargetOneCreature, MinTargets: 1, MaxTargets: 1,
+				Healing: &healing.Declaration{Dice: "1d4"}, HealingExcludes: []string{"undead", "construct"},
+			}
+		},
+	},
 	CureWounds: {
-		name: "Cure Wounds",
-		cost: slotCost(resources.SpellSlotLevel1),
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		name:    "Cure Wounds",
+		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{RangeFeet: 5, Target: actions.CastTargetTouch, MinTargets: 1, MaxTargets: 1,
 				Healing: &healing.Declaration{Dice: "1d8"}, HealingExcludes: []string{"undead", "construct"}}
 		},
 	},
 	Bane: {
-		name: "Bane",
-		cost: slotCost(resources.SpellSlotLevel1),
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		name:    "Bane",
+		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet:  BaneRangeFeet,
@@ -277,8 +294,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	Thunderclap: {
-		name: "Thunderclap",
-		cost: cantripCost(),
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Thunderclap",
+		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				// The range and the radius are the same number: a burst
@@ -309,8 +327,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	Thunderwave: {
-		name: "Thunderwave",
-		cost: slotCost(resources.SpellSlotLevel1),
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		name:    "Thunderwave",
+		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				// The range and the cube's edge are the same number: a wave
@@ -359,8 +378,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	DissonantWhispers: {
-		name: "Dissonant Whispers",
-		cost: slotCost(resources.SpellSlotLevel1),
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		name:    "Dissonant Whispers",
+		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet:  DissonantWhispersRangeFeet,
@@ -397,8 +417,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	Command: {
-		name: "Command",
-		cost: slotCost(resources.SpellSlotLevel1),
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		name:    "Command",
+		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet:  CommandRangeFeet,
@@ -467,8 +488,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	SacredFlame: {
-		name: "Sacred Flame",
-		cost: cantripCost(),
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Sacred Flame",
+		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet:  SacredFlameRangeFeet,
@@ -486,8 +508,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	BladeWard: {
-		name: "Blade Ward",
-		cost: cantripCost(),
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Blade Ward",
+		cost:    cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet: BladeWardRangeFeet,
@@ -516,8 +539,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	TrueStrike: {
-		name: "True Strike",
-		cost: cantripCost(),
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "True Strike",
+		cost:    cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet:  TrueStrikeRangeFeet,
@@ -541,8 +565,9 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	ViciousMockery: {
-		name: "Vicious Mockery",
-		cost: cantripCost(),
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Vicious Mockery",
+		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet:  ViciousMockeryRangeFeet,
@@ -610,6 +635,8 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 	}
 
 	profile := content.build(input.SpellSaveDC)
+	casting := content.casting
+	profile.Casting = &casting
 	if profile.Healing != nil {
 		profile.Healing.Modifiers = input.HealingModifiers
 		declaration := profile.Healing.Clone()
