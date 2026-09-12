@@ -277,6 +277,6 @@ Things the shape did not know before there was code.
 
 Their `act` package is the seam we wanted, and its one invariant — a target is
 a *name*, never an entity id — is kept whole. What it did not have, because no
-fixture had asked: positional intents, a resolution against belief rather than
+use case had asked: positional intents, a resolution against belief rather than
 truth, a self, commitment, contacts in the decision, and the deed loop. Every
-one of those is a fixture above.
+one of those is a use case above.
