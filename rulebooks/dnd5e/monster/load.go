@@ -88,6 +88,7 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 	}
 
 	m := &Monster{
+		creatureType:     d.CreatureType,
 		id:               d.ID,
 		name:             d.Name,
 		ref:              d.Ref,

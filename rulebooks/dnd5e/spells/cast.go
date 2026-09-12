@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -241,6 +242,14 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
 var castContent = map[Spell]castProfileBuilder{
+	CureWounds: {
+		name: "Cure Wounds",
+		cost: slotCost(resources.SpellSlotLevel1),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{RangeFeet: 5, Target: actions.CastTargetTouch, MinTargets: 1, MaxTargets: 1,
+				Healing: &healing.Declaration{Dice: "1d8"}, HealingExcludes: []string{"undead", "construct"}}
+		},
+	},
 	Bane: {
 		name: "Bane",
 		cost: slotCost(resources.SpellSlotLevel1),
@@ -569,8 +578,9 @@ var castContent = map[Spell]castProfileBuilder{
 // compile one spell definition. SpellSaveDC is a difficulty class, not a
 // spell, slot, or character level.
 type CastDefinitionInput struct {
-	Spell       Spell
-	SpellSaveDC int
+	HealingModifiers []healing.Modifier
+	Spell            Spell
+	SpellSaveDC      int
 }
 
 // CastDefinition returns the action definition for one spell, with SpellSaveDC
@@ -600,6 +610,11 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 	}
 
 	profile := content.build(input.SpellSaveDC)
+	if profile.Healing != nil {
+		profile.Healing.Modifiers = input.HealingModifiers
+		declaration := profile.Healing.Clone()
+		profile.Healing = &declaration
+	}
 	return &actions.Definition{
 		Ref:  *ref,
 		Name: content.name,

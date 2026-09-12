@@ -100,6 +100,7 @@ var reinforcementCells = []string{"[1,4]", "[2,4]", "[1,5]"}
 // when a line to remove is not there exactly once, so an edit to the fixture
 // cannot silently turn this into the unstripped file.
 func stepASource(t *testing.T, source string) string {
+	source = strings.ReplaceAll(source, "\r\n", "\n")
 	t.Helper()
 	require.Equal(t, 1, strings.Count(source, letterArrives), "the letter's arrives appears once")
 	source = strings.Replace(source, letterArrives, " }", 1)

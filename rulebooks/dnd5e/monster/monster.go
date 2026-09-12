@@ -23,6 +23,7 @@ import (
 // Monster represents a hostile creature for combat encounters.
 // This is the runtime representation with event bus wiring.
 type Monster struct {
+	creatureType string
 	// Identity
 	id   string
 	name string
@@ -69,6 +70,7 @@ type Monster struct {
 
 // Config provides initialization values for creating a monster
 type Config struct {
+	CreatureType     string
 	ID               string
 	Name             string
 	Ref              *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
@@ -85,6 +87,7 @@ func New(config Config) *Monster {
 		profBonus = 2 // Default for low CR monsters
 	}
 	return &Monster{
+		creatureType:     config.CreatureType,
 		id:               config.ID,
 		name:             config.Name,
 		ref:              config.Ref,
@@ -514,6 +517,10 @@ func (m *Monster) onHealingReceived(
 		return nil
 	}
 
+	if event.Amount < 0 {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "healing amount cannot be negative")
+	}
+
 	// A calculation-bearing publisher must agree with itself before this sheet
 	// moves: the trace is validated and the requested amount must equal the
 	// calculation's authoritative total. Both checks precede every mutation so
@@ -695,6 +702,7 @@ func (m *Monster) onConditionStateChanged(
 // ToData converts the monster to its persistent data form
 func (m *Monster) ToData() *Data {
 	data := &Data{
+		CreatureType:     m.creatureType,
 		ID:               m.id,
 		Name:             m.name,
 		Ref:              m.ref,

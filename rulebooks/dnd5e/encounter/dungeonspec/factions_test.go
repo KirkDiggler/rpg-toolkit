@@ -32,7 +32,8 @@ func campSource(t *testing.T) string {
 	t.Helper()
 	raw, err := os.ReadFile(raiderCampPath)
 	require.NoError(t, err)
-	return string(raw)
+	// Fixture edits match logical lines in both local checkouts and module archives.
+	return strings.ReplaceAll(string(raw), "\r\n", "\n")
 }
 
 // edited is the camp with exactly one line changed — refused when the line

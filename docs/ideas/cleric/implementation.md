@@ -76,3 +76,55 @@ does not receive geometric cover; the cast profile has no cover-exception flag.
 This establishes neither general cover bonuses nor Sacred Flame's explicit
 exception. Visibility/total-cover acceptance remains unverified here. Keep those
 rules, higher-level scaling and #1582 open before claiming full Sacred Flame support.
+
+
+## Cure Wounds development (2026-09-12)
+
+Implemented against main `fd4cdade`, with local module overrides for the combined
+walk. No overrides belong in the publication commits.
+
+The root module declares immediate healing on CastProfile, compiles first-level
+Cure Wounds with its existing action/slot price, and provides reusable sourced
+healing arithmetic. Character.CastDefinition binds the class casting ability and
+Life Domain's feature-owned contribution from persisted class/subclass facts.
+Healing is never stored as a condition. Monster family can be read from catalogue
+identity on older sheets without changing their serialized shape; custom types
+survive load/save. Recipient handlers refuse negative incoming healing.
+
+Encounter exposes value-only boundary reads from its live, read-only canvas.
+Resolution preflights healing recipients and physical touch, then rolls and
+publishes through the existing Gather and healing collector after payment.
+Session projects provider target answers and existing healing result records.
+Known targets need not currently be seen, and the caster is selectable.
+
+Acceptance now covers sourced ordinary/Life healing, self and another creature,
+clamping/full HP, dying/stabilized recovery, paid no-effect undead/constructs,
+negative sums, stale access/modifiers, exhausted costs, physical barriers,
+darkness, concentration preservation, slot recovery and exact JSON/story reload.
+Dice failures persist no changes; encounter-save failures can leave character
+writes durable and report that partial state. Stream delivery failure leaves a
+recoverable story. A late bus subscriber failure does not undo a live HP write.
+
+The full session, resolution and encounter suites pass in the combined local
+workspace. Their fixture readers normalize CRLF only before test string edits;
+no game data or production line-ending behavior is normalized. The full root suite also passes independently with `GOWORK=off`; an initial
+Windows Application Control block did not recur on the independent run.
+Consumer validation against pushed pins and CI evidence follow publication;
+local overrides are not the release graph.
+
+### Resolution follow-up after provider releases (2026-09-12)
+
+PR #1695 now consumes rulebook v0.159.0 and encounter v0.76.0. The user corrected
+the missing-type policy: an untyped monster remains selectable and receives
+healing; only a known matching type triggers the spell's no-effect exclusion.
+Regression cases cover missing refs/types, unknown custom refs, explicit and
+catalogue undead/construct types, target projection, payment, HP output, and
+concentration preservation. The full resolution suite and vet pass with the
+released pins and no workspace override. Session #1696 still needs its released
+resolution pin, removal of the unused target-query exclusion argument, and
+selection/healing/persistence acceptance for an untyped custom monster. It has
+not been advanced as part of this resolution update.
+
+See [healing-rules.md](healing-rules.md) for rules sources, model decisions and
+explicit scope limits. Preparation, automatic grants, upcasting, out-of-combat
+casting and external repository pins remain deferred.
