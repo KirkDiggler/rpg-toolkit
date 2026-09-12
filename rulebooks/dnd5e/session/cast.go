@@ -426,7 +426,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
-	if err := m.adopt(scope, out.World); err != nil {
+	if err := m.adopt(ctx, scope, out.World); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {
@@ -622,6 +622,16 @@ func castTargets(
 // row, so the words judged here are the words the cast is about to run.
 // [Declaration.Options] is the projection of that same menu, which is how the
 // caller knew what to send.
+//
+// # Resolution re-checks this, and the door still belongs here
+//
+// An offer is a compiled snapshot and a definition is what runs, so the layer
+// that runs it makes the same judgement again — deleting this function leaves
+// every refusal above still happening, one layer down. What is lost is the
+// SENTENCE: a host that sent the wrong word gets this package's own account of
+// which spell offered what, in the vocabulary of the declaration it was handed,
+// rather than a translated inner error about a definition it never saw. The
+// tests pin the sentence for that reason.
 func castOption(definition *combatActions.Definition, option string) error {
 	profile := definition.Cast
 	if profile == nil {

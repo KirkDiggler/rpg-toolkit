@@ -456,10 +456,17 @@ func TestACommandedMemberIsDrivenWhoeverTheyAre(t *testing.T) {
 	require.True(t, snapshot.views["fighter"].attackTarget)
 }
 
-// TestADyingCommandedMemberStillAutoPasses is the ordering ruling made real.
-// Driven narrows Wait alone, so a fighter who is dying when the clock reaches
-// him dies on schedule rather than being marched across the room.
-func TestADyingCommandedMemberStillAutoPasses(t *testing.T) {
+// TestAMemberWhoIsNotUpIsNeverDriven is the ordering ruling made real, and the
+// DYING row is the one the design did not see coming.
+//
+// AutoPass and Remove outrank a compulsion, which the design said. A dying
+// player is neither: they WAIT, because their turn is the death save they have
+// to roll, so the Wait narrowing alone would have marched a body across the
+// room and skipped the save. The gate is whether the member can act at all.
+func TestAMemberWhoIsNotUpIsNeverDriven(t *testing.T) {
+	dying := dwarfCharacterRecord("dying", 0)
+	dying.DeathSaveState = &saves.DeathSaveState{Successes: 1, Failures: 1}
+	dying.Conditions = []json.RawMessage{commandedBlob(t, "dying", "bard", "approach")}
 	stabilized := dwarfCharacterRecord("stabilized", 0)
 	stabilized.DeathSaveState = &saves.DeathSaveState{Successes: 3, Stabilized: true}
 	stabilized.Conditions = []json.RawMessage{commandedBlob(t, "stabilized", "bard", "grovel")}
@@ -470,20 +477,23 @@ func TestADyingCommandedMemberStillAutoPasses(t *testing.T) {
 	seam := standingSeam{
 		ctx: context.Background(),
 		chars: participationCharacterStore{byID: map[string]*character.Data{
-			"stabilized": stabilized, "dead": dead,
+			"dying": dying, "stabilized": stabilized, "dead": dead,
 		}},
 		kinds: map[string]encounter.MemberKind{
-			"stabilized": encounter.KindPlayer, "dead": encounter.KindPlayer,
+			"dying": encounter.KindPlayer, "stabilized": encounter.KindPlayer,
+			"dead": encounter.KindPlayer,
 		},
 	}
 
-	snapshot, err := seam.participation([]encounter.MemberID{"stabilized", "dead"})
+	snapshot, err := seam.participation(
+		[]encounter.MemberID{"dying", "stabilized", "dead"})
 	require.NoError(t, err)
 	require.Equal(t, []encounter.MemberParticipation{
+		{Member: "dying", Down: true, Turn: encounter.TurnParticipationWait},
 		{Member: "stabilized", Down: true, Turn: encounter.TurnParticipationAutoPass},
 		{Member: "dead", Down: true, Turn: encounter.TurnParticipationRemove},
 	}, snapshot.assessment.Members,
-		"AutoPass and Remove both outrank a compulsion")
+		"a member who cannot act normally is never compelled to")
 }
 
 // TestAnUnreadableConditionIsNotACompulsion pins the ruling this module

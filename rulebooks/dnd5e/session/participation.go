@@ -185,15 +185,20 @@ func storedConditionsOf(characters, monsters []resolution.Participant) map[strin
 // encounter's scheduling word, and adds the one thing the rulebook's fact
 // cannot say: that somebody else is taking this turn.
 //
-// # Driven is a narrowing of Wait, and only of Wait
+// # Driven is a narrowing of Wait, and only of an UPRIGHT Wait
 //
-// A member who would have been waited for, and holds a compulsion, is Driven:
-// the slot is kept and the turn is taken by the TurnDriver whoever the member
-// is. AutoPass and Remove both OUTRANK it, and that ordering is the ruling
-// rather than an implementation detail — a dying commanded fighter still dies
-// on schedule, and a member the fight has removed is not brought back to be
-// marched around. The design says so in §5.1; the switch below is where it is
-// true.
+// A member who would have been waited for, is up, and holds a compulsion, is
+// Driven: the slot is kept and the turn is taken by the TurnDriver whoever the
+// member is. AutoPass and Remove both OUTRANK it — a member the fight removed
+// is not brought back to be marched around.
+//
+// The design (§5.1) said AutoPass and Remove were the whole of that ordering,
+// and in this module they are not enough. A DYING player Waits rather than
+// auto-passing, because their turn is the death save they have to roll; a
+// compulsion that reached them would march a body across the room and skip the
+// save. So the gate is the same fact the rest of the row is built from — can
+// this member act normally — and the design's sentence is true again through
+// it: a dying commanded fighter still dies on schedule.
 //
 // WHAT THIS FUNCTION DOES NOT DO is decide what the compulsion means. It asks
 // the conditions package whether the sheet holds one ref, which is a lookup;
@@ -233,7 +238,7 @@ func encounterParticipation(
 	default:
 		member.Turn = encounter.TurnParticipationRemove
 	}
-	if member.Turn == encounter.TurnParticipationWait && holdsCompulsion(stored) {
+	if member.Turn == encounter.TurnParticipationWait && member.Contact && holdsCompulsion(stored) {
 		member.Turn = encounter.TurnParticipationDriven
 	}
 	if member.Turn == encounter.TurnParticipationRemove && member.Contact {

@@ -1299,11 +1299,12 @@ func (s *CastSuite) TestAMadeSaveLeavesNoCompulsion() {
 // Each refusal spends neither the RNG nor the slot, which is what makes it a
 // door rather than a rollback.
 func (s *CastSuite) TestAMenuMustBeAnsweredAndAnsweredFromTheMenu() {
-	for name, option := range map[string]string{
-		"no word at all":       "",
-		"a word off the menu":  "halt",
-		"a word with no spell": "APPROACH",
+	for name, tc := range map[string]struct{ option, says string }{
+		"no word at all":       {"", "offers 3 options and the cast chose none"},
+		"a word off the menu":  {"halt", `does not offer the option "halt"`},
+		"a word with no spell": {"APPROACH", `does not offer the option "APPROACH"`},
 	} {
+		option, says := tc.option, tc.says
 		s.Run(name, func() {
 			s.scene(castingBardWithSpells("bard", spells.Command), 2, 1)
 			beforeRolls := s.dice.next
@@ -1314,6 +1315,17 @@ func (s *CastSuite) TestAMenuMustBeAnsweredAndAnsweredFromTheMenu() {
 				Targets: []string{"skeleton"}, Option: option,
 			})
 			s.ErrorIs(err, session.ErrBadCast)
+			// WHICH LAYER REFUSED IT, not just that something did. Resolution
+			// judges the option again one layer down and says so in its own
+			// message, so a door deleted from here would still refuse the
+			// cast — and a test that only checked the sentinel would not
+			// notice. What a host loses is this package's own account of which
+			// spell offered what, in the vocabulary of the row it was handed.
+			s.Contains(err.Error(), says)
+			s.Contains(err.Error(), refs.Spells.Command().String(),
+				"a refusal that does not name the spell teaches nothing")
+			s.NotContains(err.Error(), "resolution",
+				"this door refused it; the layer below never had to")
 			s.Equal(beforeRolls, s.dice.next, "a refused cast rolls nothing")
 			s.Equal(beforePool,
 				s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current,
@@ -1337,5 +1349,8 @@ func (s *CastSuite) TestAWordSentToASpellWithNoMenuIsRefused() {
 		Targets: []string{"skeleton"}, Option: spells.CommandWordFlee,
 	})
 	s.ErrorIs(err, session.ErrBadCast)
+	s.Contains(err.Error(), "offers no options")
+	s.Contains(err.Error(), refs.Spells.Bane().String())
+	s.NotContains(err.Error(), "resolution", "this door refused it, not the layer below")
 	s.Equal(beforeRolls, s.dice.next)
 }
