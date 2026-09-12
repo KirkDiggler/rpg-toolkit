@@ -127,7 +127,7 @@ func newArrivalMemoryEncounter(
 	// Ranged rather than indexed: the subject key is play/intel's own type,
 	// which this package no longer names (rpg-toolkit#1691), and perception's
 	// charter is what makes the persisted map readable here at all.
-	seeded := data.Intel.Intel.Holdings[propagationGoblin]
+	seeded := data.Perception.Intel.Holdings[propagationGoblin]
 	var present bool
 	for subject, holding := range seeded {
 		if string(subject) != string(propagationSubject) {

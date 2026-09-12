@@ -36,10 +36,16 @@ type EncounterData struct {
 	// additively. There is no identifier per bubble on purpose — a bubble is
 	// reached through a member (R6), never addressed by name.
 	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
-	Intel   perception.Data  `json:"intel"`
-	Log     record.LogData   `json:"log"`
-	Field   FieldData        `json:"field"`
-	Members []MemberData     `json:"members"`
+	// Perception is what each member HOLDS — channel-sourced testimony, its
+	// currency, and its stamps. Named for mind/perception rather than for
+	// play/intel underneath it (rpg-toolkit#1691): the store is perception's
+	// business, and this composition stopped knowing it exists. The inner
+	// "intel" key inside this value is perception's own shape, which its
+	// charter admits is intel's Data verbatim.
+	Perception perception.Data `json:"perception"`
+	Log        record.LogData  `json:"log"`
+	Field      FieldData       `json:"field"`
+	Members    []MemberData    `json:"members"`
 	// Doors are the field's doors and the state each is in RIGHT NOW
 	// (rpg-toolkit#1123). Top level rather than inside Field, beside Members
 	// and for the same reason: a door's edges are construction truth but its
@@ -1331,7 +1337,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Outcome:     outcomeData,
 		Clock:       e.clock.ToData(),
 		Bubbles:     bubblesData,
-		Intel:       e.intelLog.ToData(),
+		Perception:  e.intelLog.ToData(),
 		Log:         e.story.ToData(),
 		Field:       fieldData,
 		Members:     membersData,
@@ -2109,11 +2115,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			data.HeldDirective.Member, ErrInvalidData)
 	}
 
-	if err = refuseRoomLocalSightings(data.Intel); err != nil {
+	if err = refuseRoomLocalSightings(data.Perception); err != nil {
 		return nil, err
 	}
 
-	loadedIntel, err := perception.Load(data.Intel)
+	loadedIntel, err := perception.Load(data.Perception)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter intel: %w: %w", ErrInvalidData, err)
 	}

@@ -123,7 +123,7 @@ func newDrivenArrivalEncounter(
 		rememberedSubjects = []encounter.MemberID{billy}
 	}
 	for _, observer := range []encounter.MemberID{goblin, "ogre"} {
-		holdings, present := data.Intel.Intel.Holdings[observer]
+		holdings, present := data.Perception.Intel.Holdings[observer]
 		if !present {
 			continue
 		}
@@ -654,7 +654,7 @@ func editGoblinHolding(
 	t *testing.T, data encounter.EncounterData, subject encounter.MemberID, payload []byte,
 ) {
 	t.Helper()
-	holdings := data.Intel.Intel.Holdings[goblin]
+	holdings := data.Perception.Intel.Holdings[goblin]
 	for key, holding := range holdings {
 		if string(key) != string(subject) {
 			continue

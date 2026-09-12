@@ -122,7 +122,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// after the scene opens and before the fight it causes (sightedbeat.go).
 	// The holdings above are untouched by them: a sighting beat reports a
 	// change in intel, it does not make one.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"intel":{"intel":{"holdings":{"g1":{"p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3fQ==","channel":"sight","confirmed":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjd9","channel":"sight","confirmed":1,"current_via":["sight"]}}}}},"log":{"next_seq":7,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdfQ=="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdfQ=="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"perception":{"intel":{"holdings":{"g1":{"p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3fQ==","channel":"sight","confirmed":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjd9","channel":"sight","confirmed":1,"current_via":["sight"]}}}}},"log":{"next_seq":7,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdfQ=="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdfQ=="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -692,7 +692,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 		// renamed tag fails this where a decoded comparison would not.
 		// (log carries the opening beat: a fresh encounter is born with
 		// its first story entry; clock/intel marshal {} per leaf laws.)
-		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{"intel":{}},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":1,"y":2}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"clock":{"budgets":{"p1":0}},"perception":{"intel":{}},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":1,"y":2}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -757,7 +757,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// blob written before the flip lands nowhere on today's shape and is
 		// refused by name rather than read in the wrong frame (see
 		// dialect_test.go).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{"intel":{}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="},{"seq":4,"at":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0IjoiZW5kZWQiLCJlbmRpbmciOiJkb25lIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"perception":{"intel":{}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="},{"seq":4,"at":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0IjoiZW5kZWQiLCJlbmRpbmciOiJkb25lIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -903,9 +903,9 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		// Surgical belief edit: alice's holding of the goblin becomes a
 		// ghost (CurrentVia cleared) — legal intel data, divergent from
 		// the clear-LoS geometry.
-		holding := data.Intel.Intel.Holdings["playerA"]["goblin"]
+		holding := data.Perception.Intel.Holdings["playerA"]["goblin"]
 		holding.CurrentVia = nil
-		data.Intel.Intel.Holdings["playerA"]["goblin"] = holding
+		data.Perception.Intel.Holdings["playerA"]["goblin"] = holding
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
@@ -1190,7 +1190,7 @@ func setSightHolding(t *testing.T, data *encounter.EncounterData, payload []byte
 	// The minimal fixture has no intel holdings, so use one deterministic
 	// observer/subject pair when the caller asks to add a testimony. Existing
 	// holdings are preserved if a richer fixture supplies them.
-	for observer, subjects := range data.Intel.Intel.Holdings {
+	for observer, subjects := range data.Perception.Intel.Holdings {
 		for subject, holding := range subjects {
 			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
@@ -1200,7 +1200,7 @@ func setSightHolding(t *testing.T, data *encounter.EncounterData, payload []byte
 			if current {
 				holding.CurrentVia = append(holding.CurrentVia, "sight")
 			}
-			data.Intel.Intel.Holdings[observer][subject] = holding
+			data.Perception.Intel.Holdings[observer][subject] = holding
 			return
 		}
 	}
@@ -1223,7 +1223,7 @@ func setSightHolding(t *testing.T, data *encounter.EncounterData, payload []byte
 		},
 	})
 	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(wire, &data.Intel.Intel))
+	require.NoError(t, json.Unmarshal(wire, &data.Perception.Intel))
 }
 
 // TestLoadNilInputRejected pins the guard the Input signature introduced (#976).
@@ -1619,10 +1619,11 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		s.Require().NoError(err)
 		s.Require().Len(ctrlView, 1, "control: p1 holds p2")
 
-		// Substitute B's (empty) Intel into A's data: the loaded aggregate
-		// must reflect the LOADED intel — empty — proving the Intel field
-		// is genuinely consumed, never re-derived from the field.
-		dataA.Intel = dataB.Intel
+		// Substitute B's (empty) perception into A's data: the loaded
+		// aggregate must reflect the LOADED holdings — empty — proving the
+		// Perception field is genuinely consumed, never re-derived from the
+		// field.
+		dataA.Perception = dataB.Perception
 		swapped, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
 			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: dataA})
