@@ -15,10 +15,13 @@ import (
 //
 // A VALUE BUILT FOR ONE PASS, not a field on [Encounter]. Every term in it is
 // a READING — where everybody stands, how far each of them can see this
-// refresh — and C8's rule is that one pass is bounded by one reading of the
-// world. A reach that outlived its pass would be the smallest possible
-// version of the dual state [Sight] exists to avoid; see
-// [Encounter.rebuildPercepts] for why the capability is asked once per pass.
+// refresh — and a reach assembled from readings taken at different moments
+// would be internally inconsistent: a stale distance judged against a world
+// that has since moved on. That internal consistency is the property that
+// matters; nothing here bounds how many times the capability may be asked,
+// only that the readings inside one pass agree with each other. A reach that
+// outlived its own pass would be the smallest possible version of the dual
+// state [Sight] exists to avoid.
 //
 // Positions are looked up ONCE PER MEMBER, before the pass, rather than once
 // per (observer, subject) pair — the N² that rpg-toolkit#1691 removed.
