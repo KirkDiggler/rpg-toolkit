@@ -43,16 +43,20 @@ func TestHealingPublicationFailureDoesNotPromiseRollback(t *testing.T) {
 
 func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 	for _, tc := range []struct {
-		name     string
-		ref      *core.Ref
-		amount   int
-		noEffect bool
-		invalid  bool
+		name         string
+		ref          *core.Ref
+		creatureType string
+		amount       int
+		noEffect     bool
 	}{
 		{name: "beast", ref: refs.Monsters.Wolf(), amount: 8},
 		{name: "undead", ref: refs.Monsters.Skeleton(), noEffect: true},
 		{name: "construct", ref: refs.Monsters.AnimatedArmor(), noEffect: true},
-		{name: "unknown family", invalid: true},
+		{name: "missing ref and type", amount: 8},
+		{name: "unknown custom ref", ref: &core.Ref{Module: "custom", Type: "monsters", ID: "friend"}, amount: 8},
+		{name: "explicit undead", creatureType: "undead", noEffect: true},
+		{name: "explicit construct", creatureType: "construct", noEffect: true},
+		{name: "explicit beast", creatureType: "beast", amount: 8},
 	} {
 		s.Run(tc.name, func() {
 			f := s.fixtures()
@@ -66,17 +70,11 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 			s.Require().NoError(err)
 			target := f.wolfData()
 			target.Ref = tc.ref
+			target.CreatureType = tc.creatureType
 			target.HitPoints = 1
 			out, err := Resolve(s.ctx, &Input{World: f.world(), Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: target}}, Machine: machine,
 				Cost:       &Cost{PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
 				Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller()})
-			if tc.invalid {
-				s.Error(err)
-				s.Nil(out)
-				s.Zero(roll.calls)
-				s.Equal(2, caster.Resources[resources.SpellSlotLevel1].Current)
-				return
-			}
 			s.Require().NoError(err)
 			outcome := s.castOutcome(out)
 			s.Require().Len(outcome.Targets, 1)
@@ -91,6 +89,9 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 				s.Zero(roll.calls)
 			} else {
 				s.Equal(1, roll.calls)
+				s.Require().Len(out.DirtyMonsters, 1)
+				s.Equal(1+tc.amount, out.DirtyMonsters[0].HitPoints)
+				s.Equal(tc.creatureType, out.DirtyMonsters[0].CreatureType, "healing does not invent classification")
 			}
 			paid := f.sheet(out, bardID)
 			s.Equal(1, paid.Resources[resources.SpellSlotLevel1].Current)
@@ -118,6 +119,39 @@ func (s *CastActionTestSuite) TestCureWoundsPhysicalBarrierRefusesBeforePayment(
 	s.Nil(out)
 	s.Zero(roll.calls)
 	s.Equal(2, caster.Resources[resources.SpellSlotLevel1].Current)
+}
+
+func (s *CastActionTestSuite) TestHealingTargetsDoesNotRequireCreatureClassification() {
+	for _, tc := range []struct {
+		name string
+		ref  *core.Ref
+		hp   int
+		want bool
+	}{
+		{name: "untyped custom monster", hp: 1, want: true},
+		{name: "unknown ref", ref: &core.Ref{Module: "custom", Type: "monsters", ID: "friend"}, hp: 1, want: true},
+		{name: "undead remains a valid paid declaration", ref: refs.Monsters.Skeleton(), hp: 1, want: true},
+		{name: "construct remains a valid paid declaration", ref: refs.Monsters.AnimatedArmor(), hp: 1, want: true},
+		{name: "defeated untyped monster", hp: 0},
+	} {
+		s.Run(tc.name, func() {
+			f := s.fixtures()
+			target := f.wolfData()
+			target.Ref = tc.ref
+			target.CreatureType = ""
+			target.HitPoints = tc.hp
+			room := spatial.NewBasicRoom(spatial.BasicRoomConfig{ID: "healing-targets", Grid: spatial.NewHexGrid(spatial.HexGridConfig{Width: 8, Height: 8})})
+			s.Require().NoError(room.PlaceEntity(activationTestEntity{id: bardID}, spatial.Position{X: 2, Y: 1}))
+			s.Require().NoError(room.PlaceEntity(activationTestEntity{id: wolfID}, spatial.Position{X: 3, Y: 1}))
+			answers, err := HealingTargets(s.ctx, &HealingTargetsInput{Room: room, CasterID: bardID, Candidates: []string{wolfID}, Participants: []Participant{{Character: baneCaster(1, 2)}, {Monster: target}}})
+			s.Require().NoError(err)
+			if tc.want {
+				s.Equal(map[string]bool{wolfID: true}, answers)
+			} else {
+				s.Empty(answers)
+			}
+		})
+	}
 }
 
 func TestTouchReachUsesPhysicalBoundaryWithoutSightPredicate(t *testing.T) {

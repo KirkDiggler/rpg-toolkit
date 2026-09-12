@@ -14,7 +14,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -40,10 +39,8 @@ func (h *preparedHealing) prepare(cast *Participants) (string, error) {
 	if !combat.CanReceiveHealing(state) {
 		return "", fmt.Errorf("%w: target cannot receive healing", ErrBadAction)
 	}
-	if len(h.excludes) > 0 && creatureType == "" {
-		return "", fmt.Errorf("%w: healing recipient has no creature type", ErrBadAction)
-	}
-	if slices.Contains(h.excludes, creatureType) {
+	// Missing classification is not an exclusion match.
+	if creatureType != "" && slices.Contains(h.excludes, creatureType) {
 		return "No effect on " + creatureType, nil
 	}
 	return "", nil
@@ -133,20 +130,6 @@ func HealingTargets(ctx context.Context, input *HealingTargetsInput) (map[string
 	for _, member := range view.Members {
 		states[member.Member] = member.Participation.State
 	}
-	if len(input.Excludes) > 0 {
-		for _, participant := range input.Participants {
-			if participant.Monster == nil {
-				continue
-			}
-			sheet, err := monster.Load(ctx, participant.Monster)
-			if err != nil {
-				return nil, err
-			}
-			if sheet.CreatureType() == "" {
-				delete(states, participant.ID())
-			}
-		}
-	}
 	out := map[string]bool{}
 	for _, id := range input.Candidates {
 		if !combat.CanReceiveHealing(states[id]) {
@@ -161,12 +144,12 @@ func HealingTargets(ctx context.Context, input *HealingTargetsInput) (map[string
 	return out, nil
 }
 
-// HealingTargetsInput supplies encounter facts, known identities and the
-// content's type exclusions. An unknown family cannot satisfy those exclusions.
+// HealingTargetsInput supplies encounter facts and known candidate identities.
+// Creature type does not restrict declaration: matching exclusions produce a
+// paid no-effect result during delivery, and missing types receive healing.
 type HealingTargetsInput struct {
 	Room         spatial.Room
 	CasterID     string
 	Candidates   []string
 	Participants []Participant
-	Excludes     []string
 }

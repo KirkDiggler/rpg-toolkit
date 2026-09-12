@@ -112,6 +112,19 @@ Windows Application Control block did not recur on the independent run.
 Consumer validation against pushed pins and CI evidence follow publication;
 local overrides are not the release graph.
 
+### Resolution follow-up after provider releases (2026-09-12)
+
+PR #1695 now consumes rulebook v0.159.0 and encounter v0.76.0. The user corrected
+the missing-type policy: an untyped monster remains selectable and receives
+healing; only a known matching type triggers the spell's no-effect exclusion.
+Regression cases cover missing refs/types, unknown custom refs, explicit and
+catalogue undead/construct types, target projection, payment, HP output, and
+concentration preservation. The full resolution suite and vet pass with the
+released pins and no workspace override. Session #1696 still needs its released
+resolution pin, removal of the unused target-query exclusion argument, and
+selection/healing/persistence acceptance for an untyped custom monster. It has
+not been advanced as part of this resolution update.
+
 See [healing-rules.md](healing-rules.md) for rules sources, model decisions and
 explicit scope limits. Preparation, automatic grants, upcasting, out-of-combat
 casting and external repository pins remain deferred.
