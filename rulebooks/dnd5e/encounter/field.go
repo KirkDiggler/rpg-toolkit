@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -1739,7 +1739,7 @@ type ExitOutput struct {
 	Outcome MemberOutcome
 
 	// Carry contains the exiting member's holdings at the time of exit (copy-out).
-	Carry []intel.Holding
+	Carry []perception.Holding
 
 	// IntelDeltas maps member IDs to their updated percepts after any driven
 	// monster turns and remaining-member refresh caused by the exit.

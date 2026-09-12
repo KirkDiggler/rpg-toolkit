@@ -19,7 +19,7 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 | The roster and where each member stands | [`Member`, field.go:1302](./field.go#L1302); [`Members()`, encounter.go:975](./encounter.go#L975) | `placementOf` ([encounter.go:1003](./encounter.go#L1003)) is the ONE projection every member read goes through, so two reads cannot disagree about a position. |
 | The live map | [`canvas.go`](./canvas.go) | `Canvas()` hands out the actual `spatial.Room`, behind a view that refuses every write by name. |
 | Walls, doors, props, scenery, sealed cells | [`atlas.go`](./atlas.go), [`door.go`](./door.go), [`field.go`](./field.go) | Standable is what an owner grants minus what a wall takes away. |
-| What each member KNOWS about location | [`sight.go`](./sight.go), [`projection.go`](./projection.go), [`conceal.go`](./conceal.go) | `play/intel` stores testimony opaquely; this module gives it its `Known(position)`/`Unknown` meaning ([ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md)). |
+| What each member KNOWS about location | [`sight.go`](./sight.go), [`sightreach.go`](./sightreach.go), [`projection.go`](./projection.go), [`conceal.go`](./conceal.go) | `mind/perception` holds testimony opaquely; this module gives it its `Known(position)`/`Unknown` meaning ([ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md)). |
 | The clock topology | [`clocks.go`](./clocks.go) | Every member is on exactly one clock (R6). The world tick is the default; a fight is a turn bubble. `ClockOf` ([clocks.go:81](./clocks.go#L81)) answers per member. |
 | Factions and stance | [`disposition.go`](./disposition.go), [`world.go`](./world.go) | Nothing stores a stance. It is derived on every question from the declaration plus the known facts. |
 | The story, and endings | [`record`-backed `Story`](./encounter.go#L1091), [`trigger.go`](./trigger.go) | Beats are audienced; an ending is an authored predicate, not a threshold inferred here. |
@@ -28,7 +28,7 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 ## What it must never learn
 
 - **Hit points, classes, spells, conditions, damage types, what a `Ref` means.**
-  [`go.mod`](./go.mod) requires `core`, `dice`, `play/clock`, `play/intel`, `play/record`,
+  [`go.mod`](./go.mod) requires `core`, `dice`, `mind/perception`, `play/clock`, `play/record`,
   `tools/spatial` and `world` — and no `rulebooks/dnd5e`. C1 forbids adding one
   ([design.md §C1](../../../docs/ideas/encounter/design.md)). Everything the rulebook knows is a
   fact this module is TOLD: `Member.Name`, `ActionView.Kind`, `AttackIdentity.DamageType` are all
@@ -204,7 +204,7 @@ this.**
 | an effect that MOVES a creature — a push, a pull, a rout | a directive ([`directive.go`](./directive.go)) | `resolution` describes the move (policy, anchor, budget); [`Route`](./directive.go) finds the cells through the same fold a step reads; [`Direct`](./directive.go) walks them through the same [`Mover`](./turndriver.go) seam, off the mover's own turn and charging no turn budget. Every beat it appends carries the cause, because an observer who cannot tell a shove from a stride was told something false by omission. `MoveStep.Forced` says the same thing to the `Mover`, and its ZERO VALUE is the ordinary walk — so nothing can suppress an opportunity attack by forgetting a field. A push built inside the spell is the shortcut that forecloses Flee ([rpg-project#430](https://github.com/KirkDiggler/rpg-project/issues/430)). A directive that PROVOKES can be interrupted by a player reactor, and the remainder is held in [`held.go`](./held.go) beside the held turn rather than refused. |
 | a new fact the world needs but cannot compute | a capability interface, supplied at `NewEncounter` and refused when absent | C1 keeps rulebook facts out of this go.mod; #1033 keeps them from being defaulted in. |
 | a new rule about what a fact MEANS | the rulebook — `resolution`, `conditions`, `combat` | C1. This module carries `Kind`, `Ref`, `DamageType` and never reads them. |
-| a new rule about what a LOCATION fact means | here | [ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md): `play/intel` is opaque; this composition is the only place sight testimony gets its meaning. |
+| a new rule about what a LOCATION fact means | here | [ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md): `mind/perception` is opaque; this composition is the only place sight testimony gets its meaning. |
 | a new host verb — IDs in, IDs out, load-act-save | [`../session`](../session) | The seam owns no rules; if your verb needs one, the rule lands in `resolution` and the verb calls it. |
 | a persistent area that outlives the action that made it | **nobody, today** | Regions are the only persistent footprint and they are authored-only (see Traps). A runtime-minted area needs a decision before it needs code. |
 | a new authored field shape | [`dungeonspec/`](./dungeonspec) then [`compilefield.go`](./compilefield.go) | One conversion, at construction, in one place — W4's surviving half. |

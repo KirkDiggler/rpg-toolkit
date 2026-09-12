@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -24,20 +23,23 @@ const (
 	withdrawEnding = "withdrew"
 )
 
-// seen decodes a member's holding of a subject, requiring it to exist.
-func seen(t *testing.T, enc *encounter.Encounter, observer core.EntityID, subject core.EntityID) (intel.Status, encounter.SightPayload) {
+// seen decodes a member's holding of a subject, requiring it to exist, and
+// reports whether it is CURRENT — false is the ghost.
+func seen(
+	t *testing.T, enc *encounter.Encounter, observer core.EntityID, subject core.EntityID,
+) (bool, encounter.SightPayload) {
 	t.Helper()
 	view, err := enc.View(&encounter.ViewInput{Member: observer})
 	require.NoError(t, err)
 	for _, h := range view {
-		if h.Subject == intel.Subject(subject) {
+		if h.Subject == subject {
 			var p encounter.SightPayload
 			require.NoError(t, json.Unmarshal(h.Payload, &p))
-			return h.Status, p
+			return h.Current, p
 		}
 	}
 	t.Fatalf("%s holds nothing on %s", observer, subject)
-	return "", encounter.SightPayload{}
+	return false, encounter.SightPayload{}
 }
 
 // TestTombWatch is AC1: ONE continuous scene from first light to the
@@ -75,12 +77,12 @@ func TestTombWatch(t *testing.T) {
 	})
 	require.NoError(t, err, "beat 1: the crypt assembles")
 
-	st, _ := seen(t, enc, alice, goblin)
-	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open crypt")
-	st, _ = seen(t, enc, bella, goblin)
-	require.Equal(t, intel.Current, st, "beat 1: bella sees it too")
-	st, _ = seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees them back — intel is symmetric, nobody wall-hacks")
+	current, _ := seen(t, enc, alice, goblin)
+	require.True(t, current, "beat 1: alice sees the goblin across the open crypt")
+	current, _ = seen(t, enc, bella, goblin)
+	require.True(t, current, "beat 1: bella sees it too")
+	current, _ = seen(t, enc, goblin, alice)
+	require.True(t, current, "beat 1: and the goblin sees them back — intel is symmetric, nobody wall-hacks")
 
 	// Seeing each other started the fight (rpg-toolkit#964). The party breaks
 	// off to keep watching rather than trading blows — the watch is the scene.
@@ -112,15 +114,15 @@ func TestTombWatch(t *testing.T) {
 	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(6, 2)})
 	require.NoError(t, err, "beat 3: alice slips behind the wall")
 
-	st, p = seen(t, enc, alice, goblin)
-	require.Equal(t, intel.Held, st, "beat 3: alice's sight of the goblin fades — the ghost forms")
+	current, p = seen(t, enc, alice, goblin)
+	require.False(t, current, "beat 3: alice's sight of the goblin fades — the ghost forms")
 	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y},
 		"beat 3: her ghost holds the goblin at last-seen (6,10)")
-	st, p = seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Held, st, "beat 3: the goblin loses her too — symmetric")
+	current, p = seen(t, enc, goblin, alice)
+	require.False(t, current, "beat 3: the goblin loses her too — symmetric")
 	require.Equal(t, cellAt(2, 6), spatial.Position{X: p.X, Y: p.Y}, "beat 3: its ghost of alice is at (2,6) — it never saw her arrive at (6,2)")
-	st, _ = seen(t, enc, bella, goblin)
-	require.Equal(t, intel.Current, st, "beat 3: bella, off the blocked file, still sees the goblin plainly")
+	current, _ = seen(t, enc, bella, goblin)
+	require.True(t, current, "beat 3: bella, off the blocked file, still sees the goblin plainly")
 
 	// ---- Beat 4: the pause (pause is free) -------------------------
 	// The table closes the Discord activity. The host persists ONE
@@ -137,11 +139,11 @@ func TestTombWatch(t *testing.T) {
 	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
-	st, p = seen(t, enc, alice, goblin)
-	require.Equal(t, intel.Held, st, "beat 4: the ghost survived the reload")
+	current, p = seen(t, enc, alice, goblin)
+	require.False(t, current, "beat 4: the ghost survived the reload")
 	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 4: still at last-seen (6,10) — loading never re-derives sight")
-	st, _ = seen(t, enc, bella, goblin)
-	require.Equal(t, intel.Current, st, "beat 4: bella's live sight survived too")
+	current, _ = seen(t, enc, bella, goblin)
+	require.True(t, current, "beat 4: bella's live sight survived too")
 
 	// ---- Beat 5: the reinforcement ---------------------------------
 	// Cormac connects late — the ambient is always there to join.
@@ -152,15 +154,15 @@ func TestTombWatch(t *testing.T) {
 	})
 	require.NoError(t, err, "beat 5: cormac joins the delve")
 	require.NotZero(t, joinOut.Seq, "beat 5: his arrival is a story beat")
-	st, _ = seen(t, enc, cormac, goblin)
-	require.Equal(t, intel.Current, st, "beat 5: from (10,2) the wall doesn't block him — first light lands")
-	st, _ = seen(t, enc, goblin, cormac)
-	require.Equal(t, intel.Current, st, "beat 5: the goblin notices the newcomer")
+	current, _ = seen(t, enc, cormac, goblin)
+	require.True(t, current, "beat 5: from (10,2) the wall doesn't block him — first light lands")
+	current, _ = seen(t, enc, goblin, cormac)
+	require.True(t, current, "beat 5: the goblin notices the newcomer")
 	require.NotNil(t, joinOut.Formed, "beat 5: noticing each other IS the fight starting")
 	require.Greater(t, joinOut.Formed.Seq, joinOut.Seq,
 		"beat 5: he arrives, THEN the fight starts — the story never runs backwards")
-	st, _ = seen(t, enc, alice, goblin)
-	require.Equal(t, intel.Held, st, "beat 5: the join's refresh does not disturb alice's ghost")
+	current, _ = seen(t, enc, alice, goblin)
+	require.False(t, current, "beat 5: the join's refresh does not disturb alice's ghost")
 
 	// ---- Beat 6: the departure -------------------------------------
 	// Bella heads back to town. Members exit; encounters close — her
@@ -173,8 +175,8 @@ func TestTombWatch(t *testing.T) {
 		"beat 6: her carry-forward records where she left")
 	require.NotEmpty(t, exitOut.Carry, "beat 6: and what she believed — her holdings travel with her")
 
-	st, p = seen(t, enc, goblin, bella)
-	require.Equal(t, intel.Held, st, "beat 6: the goblin's sight of bella fades to a ghost")
+	current, p = seen(t, enc, goblin, bella)
+	require.False(t, current, "beat 6: the goblin's sight of bella fades to a ghost")
 	require.Equal(t, cellAt(3, 2), spatial.Position{X: p.X, Y: p.Y}, "beat 6: at the door where it last saw her")
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: bella})

@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -73,12 +72,13 @@ func (s *propagationStanding) reported(members []MemberID) []MemberID {
 	return out
 }
 
-// newCorrectionPropagationEncounter builds the one real driven-arrival state
-// every propagation surface below needs. Setup first creates lawful holdings
-// without forming a fight by giving every seed member the same kind; the saved
-// roster is then assigned its runtime kinds and the goblin's current sight
-// testimony is changed into held testimony at the arrival cell before load.
-func newCorrectionPropagationEncounter(
+// newArrivalMemoryEncounter builds the one real driven-arrival state every
+// enclosing caller below needs. Setup first creates lawful holdings without
+// forming a fight by giving every seed member the same kind; the saved roster
+// is then assigned its runtime kinds and the goblin's current sight testimony
+// is changed into held testimony at the arrival cell before load — so the
+// goblin walks onto a cell it remembers somebody standing on.
+func newArrivalMemoryEncounter(
 	t *testing.T,
 	withBubble bool,
 ) (*Encounter, *propagationStanding) {
@@ -124,11 +124,21 @@ func newCorrectionPropagationEncounter(
 		State: LocationKnown, Position: propagationArrival,
 	})
 	require.NoError(t, err)
-	holding, present := data.Intel.Holdings[propagationGoblin][intel.Subject(propagationSubject)]
+	// Ranged rather than indexed: the subject key is play/intel's own type,
+	// which this package no longer names (rpg-toolkit#1691), and perception's
+	// charter is what makes the persisted map readable here at all.
+	seeded := data.Perception.Intel.Holdings[propagationGoblin]
+	var present bool
+	for subject, holding := range seeded {
+		if string(subject) != string(propagationSubject) {
+			continue
+		}
+		holding.Payload = known
+		holding.CurrentVia = nil
+		seeded[subject] = holding
+		present = true
+	}
 	require.True(t, present, "seed must give the driven goblin sight testimony")
-	holding.Payload = known
-	holding.CurrentVia = nil
-	data.Intel.Holdings[propagationGoblin][intel.Subject(propagationSubject)] = holding
 
 	standing := &propagationStanding{}
 	driver := &propagationDriver{intents: []TurnIntent{
@@ -152,35 +162,45 @@ func newCorrectionPropagationEncounter(
 	return enc, standing
 }
 
-func requireSurfacedPropagationCorrection(
+// requireArrivalMemoryUntouched pins the ghost the driven goblin walked
+// through: still held, still naming the cell it was last seen on.
+//
+// THE MEMORY IS HONEST AND STALE, AND THAT IS THE POINT (rpg-toolkit#1691).
+// This used to assert the opposite — the goblin arriving on the cell rewrote
+// its own memory of whoever it remembered standing there to
+// [LocationUnknown], and every row below pinned that rewrite reaching the
+// enclosing verb's output as an IntelDelta category of its own. Adopting
+// mind/perception deleted it: the module exposes no way to write one
+// observer's testimony behind a pass, and a system that edits a player's
+// memory to patch staleness is the wrong system. How to draw a memory the
+// world has moved past is the client's decision.
+func requireArrivalMemoryUntouched(
 	t *testing.T,
 	enc *Encounter,
-	deltas map[MemberID]*IntelDelta,
+	_ map[MemberID]*IntelDelta,
 ) {
 	t.Helper()
-	delta := deltas[propagationGoblin]
-	require.NotNil(t, delta, "enclosing output must surface the nested driven correction")
-	require.Contains(t, delta.Corrected, intel.Subject(propagationSubject))
 
 	holdings, err := enc.View(&ViewInput{Member: propagationGoblin})
 	require.NoError(t, err)
 	for _, holding := range holdings {
-		if holding.Subject != intel.Subject(propagationSubject) {
+		if holding.Subject != propagationSubject {
 			continue
 		}
-		require.Equal(t, intel.Held, holding.Status)
+		require.False(t, holding.Current, "the remembered player is still a ghost")
 		location, ok := DecodeSightTestimony(holding.Payload)
 		require.True(t, ok)
-		require.Equal(t, LocationUnknown, location.State)
+		require.Equal(t, LocationKnown, location.State)
+		require.Equal(t, propagationArrival, location.Position)
 		return
 	}
-	require.Fail(t, "corrected holding not found")
+	require.Fail(t, "the remembered player's holding is gone entirely")
 }
 
-// TestDrivenArrivalCorrectionPropagationMatrix pins every distinct caller or
-// output category that can enclose a driven turn. Removing one output merge
-// must fail that row even though the underlying holding still mutates.
-func TestDrivenArrivalCorrectionPropagationMatrix(t *testing.T) {
+// TestDrivenArrivalLeavesTheMemoryAlone pins every distinct caller that can
+// enclose a driven turn: none of them edits the mover's memory of the cell it
+// arrived on.
+func TestDrivenArrivalLeavesTheMemoryAlone(t *testing.T) {
 	tests := []struct {
 		name       string
 		withBubble bool
@@ -266,13 +286,13 @@ func TestDrivenArrivalCorrectionPropagationMatrix(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			enc, standing := newCorrectionPropagationEncounter(t, test.withBubble)
+			enc, standing := newArrivalMemoryEncounter(t, test.withBubble)
 			if test.noticeDown {
 				standing.down = []MemberID{propagationActive}
 			}
 
 			deltas := test.act(t, enc)
-			requireSurfacedPropagationCorrection(t, enc, deltas)
+			requireArrivalMemoryUntouched(t, enc, deltas)
 		})
 	}
 }

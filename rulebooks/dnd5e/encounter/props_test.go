@@ -32,7 +32,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -117,13 +116,14 @@ func (s *PropsSuite) sees(enc *encounter.Encounter, observer, subject core.Entit
 	view, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
 	for _, h := range view {
-		if h.Subject != intel.Subject(subject) {
+		if h.Subject != subject {
 			continue
 		}
-		for _, via := range h.CurrentVia {
-			if via == intel.Sight {
-				return true
-			}
+		// Channel-blind, because [perception.Holding] carries no per-channel
+		// list: a holding is current when ANY channel sustains it, and sight
+		// is the only channel this composition ever writes.
+		if h.Current {
+			return true
 		}
 	}
 

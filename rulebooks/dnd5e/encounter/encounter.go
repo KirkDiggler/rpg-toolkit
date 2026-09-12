@@ -10,8 +10,8 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -104,7 +104,7 @@ type Encounter struct {
 	// belongs to at most one clock"). Inventing an ID would create a second
 	// thing to keep true.
 	bubbles     []*clock.Turn
-	intelLog    *intel.Intel
+	intelLog    *perception.Perception
 	story       *record.Log
 	members     map[MemberID]*memberRecord
 	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
@@ -805,7 +805,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter clock: %w", err)
 	}
 
-	e.intelLog, err = intel.NewIntel()
+	e.intelLog, err = perception.New()
 	if err != nil {
 		return nil, fmt.Errorf("newencounter intel: %w", err)
 	}
@@ -964,7 +964,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 // View returns the member's current intel holdings.
 // Returns ErrNotMember if the member is not part of this encounter.
-func (e *Encounter) View(in *ViewInput) ([]intel.Holding, error) {
+func (e *Encounter) View(in *ViewInput) ([]perception.Holding, error) {
 	if in == nil {
 		return nil, fmt.Errorf("view: %w", ErrNilInput)
 	}
@@ -973,7 +973,7 @@ func (e *Encounter) View(in *ViewInput) ([]intel.Holding, error) {
 		return nil, fmt.Errorf("view: %w", ErrNotMember)
 	}
 
-	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: in.Member})
+	holdings, err := e.intelLog.Held(in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", err)
 	}
@@ -1613,11 +1613,11 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			return nil, fmt.Errorf("pump snapshot position: %w", ErrBadPlacement)
 		}
 
-		// The monster's own holdings and nothing else (C2). HeldBy's
-		// copy-out is intel's documented contract (pinned in play/intel)
-		// — no redundant defensive copy here; the mutating-decider
-		// integration test pins the composed guarantee.
-		ownHoldings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
+		// The monster's own holdings and nothing else (C2). Held's
+		// copy-out is intel's documented contract, carried through
+		// mind/perception — no redundant defensive copy here; the
+		// mutating-decider integration test pins the composed guarantee.
+		ownHoldings, err := e.intelLog.Held(m.ID)
 		if err != nil {
 			return nil, fmt.Errorf("pump held_by: %w", err)
 		}
@@ -1866,19 +1866,40 @@ func (e *Encounter) refreshSightDeclaring(
 	return deltas, formed, nil
 }
 
-// rebuildPercepts rebuilds the complete percept for all given observers,
-// surveils each, and returns a map of member IDs to encounter-owned intel
-// deltas.
-// The current clock reading is stamped on each Surveil call.
+// encodeSighting is the encoder one pass runs, once per placed member.
+//
+// INDIRECTED THROUGH A VARIABLE so a test can count the calls (#1691). The
+// whole point of moving the loop into mind/perception is that the count is N
+// for N members rather than N² — identical bytes, encoded once, handed to
+// every observer who perceives them — and a cost nothing asserts is a cost
+// that comes back the next time somebody reaches for a nested loop. Nothing
+// but a test ever assigns this.
+var encodeSighting = EncodeSightTestimony
+
+// rebuildPercepts rebuilds the complete percept for all given observers and
+// returns a map of member IDs to encounter-owned intel deltas. The current
+// clock reading is stamped on the pass.
+//
+// ONE PAYLOAD PER MEMBER, ONCE (rpg-toolkit#1691). This was a nested loop
+// that encoded a subject's testimony once per observer who could see them —
+// N² encodes for N members, of bytes that are identical every time, because
+// what a member looks like is a fact about THEM and not about who is
+// looking. mind/perception owns the loop now: this function assembles the
+// presences, supplies the geometry as a [sightReach], and hands over one
+// pass.
+//
+// The payload stays encoded HERE and stays opaque there, which is the whole
+// reason an illusion is still expressible: perception carries bytes it
+// cannot read, so this composition remains the only thing that knows what a
+// sighting means (see [SightTestimony]).
 func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDelta, error) {
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReading := uint64(clockReadingInt)
-	deltas := make(map[MemberID]*IntelDelta)
 
 	// Asked ONCE per refresh and never carried between them — see [Sight] for
 	// why remembering the answer would be the smallest possible version of the
-	// dual state the capability exists to avoid. Asked BEFORE the loop rather
+	// dual state the capability exists to avoid. Asked BEFORE the pass rather
 	// than inside it so that every observer in one refresh is bounded by the
 	// same reading of the world (C8), and so that a rulebook is consulted once
 	// per pass rather than once per member.
@@ -1888,7 +1909,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	}
 
 	// Asked once per refresh for the same C8 reason, and beside sight rather
-	// than inside the loop so that one pass writes one consistent reading of the
+	// than inside the pass so that one pass writes one consistent reading of the
 	// world into every observer's testimony. What a member holds is a fact an
 	// observer can be WRONG about later, which is why it is snapshotted here
 	// rather than read when somebody asks — see [SightTestimony].
@@ -1897,120 +1918,115 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		return nil, err
 	}
 
+	// SORTED, because a roster read off a map has no order at all — and every
+	// list downstream inherits whatever order it had. perception reports
+	// FirstContact and Refreshed in percept order, those reach a host as
+	// Discovered, and the sighting beat names them in a story that is supposed
+	// to be a transcript. Two runs of one scene were producing
+	// gained:["captain","alice"] and gained:["alice","captain"], which CI
+	// caught and a local run did not. perception sorts its own presences by ID
+	// as well (R6); this sort is what makes the ERRORS deterministic too — a
+	// roster with two unencodable members must name the same one every run.
+	roster := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		roster = append(roster, id)
+	}
+	sort.Slice(roster, func(i, j int) bool { return roster[i] < roster[j] })
+
+	// Every PLACED member is one presence, encoded once. An unplaced member is
+	// nobody to see, exactly as the old loop's skip said.
+	positions := make(map[MemberID]spatial.Position, len(roster))
+	presences := make([]perception.Presence, 0, len(roster))
+	for _, subjectID := range roster {
+		cell, ok := e.canvas.GetEntityPosition(string(subjectID))
+		if !ok {
+			continue // Not placed
+		}
+		positions[subjectID] = cell
+
+		// Down is deliberately NOT set here yet. Standing is a fact an
+		// observer can be wrong about and therefore belongs in this
+		// snapshot — but the composition may ask its participation
+		// capability exactly once per pass (C8), and this choke point has
+		// no pass-scoped reading to draw on. Asking here is a second
+		// question, which the contract refuses. Nil is the honest value
+		// meanwhile: this build did not observe standing. See rpg-toolkit#1615.
+		payload, perr := encodeSighting(SightTestimony{
+			State:     LocationKnown,
+			Position:  cell,
+			Equipment: hands[subjectID],
+		})
+		if perr != nil {
+			return nil, fmt.Errorf("encode sight testimony: %w", perr)
+		}
+		presences = append(presences, perception.Presence{ID: subjectID, Payload: payload})
+	}
+
+	// UNPLACED OBSERVERS AND NON-MEMBERS ARE FILTERED OUT, and this is the one
+	// line of the adoption that could change ghost semantics in silence.
+	//
+	// The nested loop `continue`d on an observer it could not place: no
+	// Surveil, so nothing of theirs faded. perception's rule 4 says an
+	// observer that IS in the pass and reaches nothing lands a complete empty
+	// percept and fades EVERYTHING — which is the right rule, and the exact
+	// opposite behaviour. Rule 5 is the other half: an observer absent from
+	// the pass is not touched at all. So "not placed" has to mean ABSENT, not
+	// "present with no reach", and it has to mean it here rather than in
+	// [sightReach.Reaches], which cannot tell the two apart.
+	observerIDs := make([]core.EntityID, 0, len(observers))
 	for _, observerID := range observers {
 		if _, ok := e.members[observerID]; !ok {
 			continue // Skip if not found
 		}
-
-		observerCell, ok := e.canvas.GetEntityPosition(string(observerID))
-		if !ok {
+		if _, placed := positions[observerID]; !placed {
 			continue // Observer not placed
 		}
+		observerIDs = append(observerIDs, observerID)
+	}
 
-		// Every OTHER member on the map, kept or dropped by GEOMETRY ALONE.
-		//
-		// There was a room-membership test here, immediately before the line of
-		// sight check, and it decided almost everything: two members in
-		// different chambers never saw each other, however close, and the check
-		// below never ran for them. It was not a range rule, it was the ONLY
-		// visibility rule — standing in for the walls the composition could not
-		// express (rpg-toolkit#1105/#1106). With one canvas and real walls it
-		// has nothing left to say, so it is gone and the geometry answers.
-		//
-		// AND BOUNDED BY A DISTANCE THIS MODULE WAS TOLD (rpg-toolkit#1111).
-		// The room label was quietly doing that job too: with it gone, the
-		// reference tomb's longest unobstructed run — three doorways on one
-		// row, 27 cells, 135 feet — was a sighting, and a sighting forms a
-		// fight. What was missing there was never a number this module could
-		// pick. It was a LIGHT model, and light is per-creature and
-		// per-light-source: the dwarf with darkvision and the human holding
-		// her torch answer differently on the same cell.
-		//
-		// So the term is SUPPLIED, and supplied per member. [Sight] is asked
-		// how far each of them can see, this refresh, and the answer bounds
-		// what lands in the percept. The light model 5e states arrives later
-		// as a better ANSWER — with nothing here moving — which is exactly the
-		// promise [Standing] makes about hit points.
-		//
-		// Two members can answer differently, so A may see B without B seeing
-		// A. That asymmetry is real and it is NOT rpg-toolkit#1020: geometry
-		// stays mutual (spatial v0.9.1 pins it), and what differs is reach.
-		// What it does do is give [Encounter.classify]'s spotted and drop arms
-		// their first producible input, and 5e surprise with them, without
-		// changing a line of how percepts are CONSUMED.
-		// SORTED, because a percept built by ranging a map has no order at
-		// all — and every list downstream inherits whatever order it had.
-		// play/intel reports FirstContact and Refreshed in percept order,
-		// those reach a host as Discovered, and the sighting beat names
-		// them in a story that is supposed to be a transcript. Two runs of
-		// one scene were producing gained:["captain","alice"] and
-		// gained:["alice","captain"], which CI caught and a local run did
-		// not. The randomness was always here; nothing had asked it for an
-		// order before.
-		subjects := make([]MemberID, 0, len(e.members))
-		for id := range e.members {
-			subjects = append(subjects, id)
-		}
-		sort.Slice(subjects, func(i, j int) bool { return subjects[i] < subjects[j] })
+	// Every OTHER member on the map, kept or dropped by GEOMETRY ALONE.
+	//
+	// There was a room-membership test in the loop this replaced, immediately
+	// before the line of sight check, and it decided almost everything: two
+	// members in different chambers never saw each other, however close, and
+	// the check below never ran for them. It was not a range rule, it was the
+	// ONLY visibility rule — standing in for the walls the composition could
+	// not express (rpg-toolkit#1105/#1106). With one canvas and real walls it
+	// has nothing left to say, so it is gone and the geometry answers.
+	//
+	// AND BOUNDED BY A DISTANCE THIS MODULE WAS TOLD (rpg-toolkit#1111). The
+	// room label was quietly doing that job too: with it gone, the reference
+	// tomb's longest unobstructed run — three doorways on one row, 27 cells,
+	// 135 feet — was a sighting, and a sighting forms a fight. What was
+	// missing there was never a number this module could pick. It was a LIGHT
+	// model, and light is per-creature and per-light-source: the dwarf with
+	// darkvision and the human holding her torch answer differently on the
+	// same cell.
+	//
+	// So the term is SUPPLIED, and supplied per member. [Sight] is asked how
+	// far each of them can see, this refresh, and the answer bounds what lands
+	// in the percept. The light model 5e states arrives later as a better
+	// ANSWER — with nothing here moving — which is exactly the promise
+	// [Standing] makes about hit points. All of it lives in [sightReach] now,
+	// which is the only thing in this pass that knows what a wall is.
+	perceived, err := e.intelLog.Observe(perception.Pass{
+		At:        clockReading,
+		Channel:   perception.Sight,
+		Presences: presences,
+		Observers: observerIDs,
+		Reach: sightReach{
+			positions: positions,
+			cells:     reach,
+			canvas:    e.canvas,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("refreshsight observe: %w", err)
+	}
 
-		var percept []intel.Report
-		for _, subjectID := range subjects {
-			otherMember := e.members[subjectID]
-			if otherMember.ID == observerID {
-				continue // Skip self
-			}
-
-			otherCell, ok := e.canvas.GetEntityPosition(string(otherMember.ID))
-			if !ok {
-				continue // Not placed
-			}
-
-			// Too far BEFORE blocked: both filters are geometric, and this
-			// one is arithmetic while the next one walks a ray. Order is a
-			// cost decision, not a correctness one — either filter alone
-			// drops the subject. Strictly greater, because a member exactly
-			// at the edge of your sight is inside it.
-			if e.canvas.GetGrid().Distance(observerCell, otherCell) > float64(reach[observerID]) {
-				continue // Beyond how far this observer can see
-			}
-
-			if e.canvas.IsLineOfSightBlocked(observerCell, otherCell) {
-				continue // A wall, or something standing in the way
-			}
-
-			// Down is deliberately NOT set here yet. Standing is a fact an
-			// observer can be wrong about and therefore belongs in this
-			// snapshot — but the composition may ask its participation
-			// capability exactly once per pass (C8), and this choke point has
-			// no pass-scoped reading to draw on. Asking here is a second
-			// question, which the contract refuses. Nil is the honest value
-			// meanwhile: this build did not observe standing. See rpg-toolkit#1615.
-			testimony := SightTestimony{
-				State:     LocationKnown,
-				Position:  otherCell,
-				Equipment: hands[otherMember.ID],
-			}
-			payload, err := EncodeSightTestimony(testimony)
-			if err != nil {
-				return nil, fmt.Errorf("encode sight testimony: %w", err)
-			}
-			percept = append(percept, intel.Report{
-				Subject: intel.Subject(otherMember.ID),
-				Payload: payload,
-			})
-		}
-
-		// Surveil with the complete percept and current clock reading
-		out, serr := e.intelLog.Surveil(&intel.SurveilInput{
-			Observer: observerID,
-			Channel:  intel.Sight,
-			Percept:  percept,
-			At:       clockReading,
-		})
-		if serr != nil {
-			return nil, fmt.Errorf("refreshsight surveil: %w", serr)
-		}
-		deltas[observerID] = intelDeltaFromSurveil(out)
+	deltas := make(map[MemberID]*IntelDelta, len(perceived))
+	for observerID, delta := range perceived {
+		deltas[observerID] = intelDeltaFromPerception(delta)
 	}
 
 	return deltas, nil
@@ -2318,7 +2334,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	finalRegion, _ := e.RegionAt(finalCell)
 
 	// Capture the exiting member's holdings (carry-forward)
-	carry, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: in.Member})
+	carry, err := e.intelLog.Held(in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("exit held_by: %w", err)
 	}

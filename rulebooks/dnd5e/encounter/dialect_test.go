@@ -32,7 +32,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -80,7 +79,7 @@ func (s *DialectSuite) closedBlob() encounter.EncounterData {
 
 	data := enc.ToData()
 	s.Require().NotNil(data.Outcome, "the scene closed, so the blob has an outcome to age")
-	s.Require().Len(data.Intel.Holdings, 3, "each of them is in plain sight of the other two")
+	s.Require().Len(data.Perception.Intel.Holdings, 3, "each of them is in plain sight of the other two")
 	return data
 }
 
@@ -121,9 +120,9 @@ func (s *DialectSuite) TestARoomBearingSightPayloadIsRefused() {
 	} {
 		s.Run(payload, func() {
 			data := s.closedBlob()
-			holding := data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")]
+			holding := data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"]
 			holding.Payload = []byte(payload)
-			data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")] = holding
+			data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"] = holding
 
 			err := s.load(data)
 			s.Require().Error(err, "a sighting that names a room must not load")
@@ -160,11 +159,14 @@ func (s *DialectSuite) TestARoomLocalOutcomeIsRefused() {
 // mean something entirely reasonable.
 func (s *DialectSuite) TestAnotherChannelsPayloadIsNotOurs() {
 	data := s.closedBlob()
-	holding := data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")]
-	holding.Channel = intel.Channel("hearsay")
-	holding.CurrentVia = []intel.Channel{intel.Channel("hearsay")}
+	// Written with untyped constants: the channel type is play/intel's, which
+	// encounter no longer names (rpg-toolkit#1691), and perception's charter —
+	// Data.Intel is intel.Data verbatim — is what makes the map reachable here.
+	holding := data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"]
+	holding.Channel = "hearsay"
+	holding.CurrentVia = append(holding.CurrentVia[:0], "hearsay")
 	holding.Payload = []byte(aRoomBearingSighting)
-	data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")] = holding
+	data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"] = holding
 
 	s.Require().NoError(s.load(data),
 		"a channel this composition never writes is not this composition's business")
@@ -180,10 +182,10 @@ func (s *DialectSuite) TestAnotherChannelsPayloadIsNotOurs() {
 // to be true.
 func (s *DialectSuite) TestTheRefusalNamesTheSameSightingEveryTime() {
 	data := s.closedBlob()
-	for observer, subjects := range data.Intel.Holdings {
+	for observer, subjects := range data.Perception.Intel.Holdings {
 		for subject, holding := range subjects {
 			holding.Payload = []byte(aRoomBearingSighting)
-			data.Intel.Holdings[observer][subject] = holding
+			data.Perception.Intel.Holdings[observer][subject] = holding
 		}
 	}
 

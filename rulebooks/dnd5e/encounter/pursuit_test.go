@@ -96,10 +96,11 @@ func (s *PursuitSuite) SetupTest() {
 	s.enc = enc
 }
 
-// sightOf decodes what one member currently believes about another.
-func (s *PursuitSuite) sightOf(observer, subject core.EntityID) (string, spatial.Position) {
-	status, payload := seen(s.T(), s.enc, observer, subject)
-	return string(status), spatial.Position{X: payload.X, Y: payload.Y}
+// sightOf decodes what one member currently believes about another, and
+// whether that belief is a live sighting rather than a memory.
+func (s *PursuitSuite) sightOf(observer, subject core.EntityID) (bool, spatial.Position) {
+	current, payload := seen(s.T(), s.enc, observer, subject)
+	return current, spatial.Position{X: payload.X, Y: payload.Y}
 }
 
 // TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne is the whole slice in one
@@ -116,8 +117,8 @@ func (s *PursuitSuite) sightOf(observer, subject core.EntityID) (string, spatial
 // boundary; she stays visible standing IN the opening, exactly as she would at
 // a table, and it takes the wall beside it to hide her.
 func (s *PursuitSuite) TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne() {
-	status, at := s.sightOf(hunter, hunted)
-	s.Require().Equal("current", status, "first light: the goblin sees her across the room")
+	current, at := s.sightOf(hunter, hunted)
+	s.Require().True(current, "first light: the goblin sees her across the room")
 	s.Equal(westThreshold, at, "and sees her ON THE MAP, at the west room's threshold cell")
 
 	// Contact started a fight, as it must — sight is what forms a bubble, and
@@ -133,8 +134,8 @@ func (s *PursuitSuite) TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne() {
 	s.Require().Len(out.Doors, 1, "the door is named, and decides nothing")
 	s.Equal(encounter.DoorID(gateway), out.Doors[0].ID)
 
-	status, at = s.sightOf(hunter, hunted)
-	s.Require().Equal("current", status, "standing in the opening, she is still in plain sight")
+	current, at = s.sightOf(hunter, hunted)
+	s.Require().True(current, "standing in the opening, she is still in plain sight")
 	s.Equal(eastThreshold, at, "on the far side of it, on the same map")
 
 	// And then out of its line, behind the wall the west chamber drew along
@@ -142,8 +143,8 @@ func (s *PursuitSuite) TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne() {
 	_, err = s.enc.Step(&encounter.StepInput{Member: hunted, To: eastCorner})
 	s.Require().NoError(err)
 
-	status, ghost := s.sightOf(hunter, hunted)
-	s.Require().Equal("held", status, "the wall takes her; the sighting becomes a memory")
+	current, ghost := s.sightOf(hunter, hunted)
+	s.Require().False(current, "the wall takes her; the sighting becomes a memory")
 	s.Equal(eastThreshold, ghost, "the ghost stands where she was last seen — in the doorway")
 
 	// The pump: the goblin walks to the ghost's cell, which is on the far side
@@ -156,8 +157,8 @@ func (s *PursuitSuite) TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne() {
 	s.Equal(eastThreshold, first.MonsterMoves[0].To, "through the doorway, in one ordinary step")
 
 	// And it can see her again, from the chamber it has just entered.
-	status, found := s.sightOf(hunter, hunted)
-	s.Equal("current", status, "the hunt closes: she is in sight again")
+	current, found := s.sightOf(hunter, hunted)
+	s.True(current, "the hunt closes: she is in sight again")
 	s.Equal(eastCorner, found, "in the corner she ran to, on the same map")
 }
 

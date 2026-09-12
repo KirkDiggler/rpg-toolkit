@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -184,7 +184,7 @@ func heldSightOf(t *testing.T, enc *encounter.Encounter, observer, subject encou
 	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
 	require.NoError(t, err)
 	for _, h := range holdings {
-		if h.Channel != intel.Sight || h.Subject != intel.Subject(subject) {
+		if h.Channel != perception.Sight || h.Subject != subject {
 			continue
 		}
 		got, ok := encounter.DecodeSightTestimony(h.Payload)

@@ -595,7 +595,7 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	// reveals what a step reveals: the mover is somewhere else now, and who
 	// can see whom changed with them. A walk that stopped half way still
 	// walked its half (clocks.go's own note on settling at a pause).
-	deltas, serr := e.settleWalk(in.Mover, audience, res.moved)
+	deltas, serr := e.settleWalk(audience, res.moved)
 	if serr != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, serr)
 	}

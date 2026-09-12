@@ -3,47 +3,62 @@
 
 package encounter
 
-import "github.com/KirkDiggler/rpg-toolkit/play/intel"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+)
 
-// IntelDelta is the encounter-owned projection of one observer's intel
+// IntelDelta is the encounter-owned projection of one observer's perception
 // changes. The encounter deliberately owns this contract so later encounter
-// corrections can be reported alongside the play/intel transitions without
-// changing play/intel's payload-opaque API.
+// additions can be reported alongside the mind/perception transitions without
+// changing perception's payload-opaque API.
 type IntelDelta struct {
-	FirstContact []intel.Report
-	Refreshed    []intel.Subject
-	Faded        []intel.Subject
+	FirstContact []perception.Presence
+	Refreshed    []core.EntityID
+	Faded        []core.EntityID
+
+	// Changed is every subject this observer already held whose TESTIMONY is
+	// different this pass — somebody moved, or swapped what is in their
+	// hands, where the observer could see it.
+	//
+	// It REFINES Refreshed and does not partition it, exactly as Reacquired
+	// does below: a changed subject appears in both. The comparison is the
+	// store's own, made at landing and reported rather than re-derived
+	// (mind/perception R7) — which is what keeps it correct for a caller that
+	// reuses a clock reading across two passes.
+	Changed []core.EntityID
 
 	// Reacquired is every subject who was a GHOST to this observer and is
 	// in view again — the exact inverse of Faded, and the moment
 	// [Encounter.appendSightedBeats] means by "they came back".
 	//
-	// It REFINES Refreshed and does not partition it (play/intel's own doc
-	// says why): a re-acquired subject appears in both, so anything reading
-	// FirstContact ∪ Refreshed as "everything perceived this pass" — which
-	// correctArrivedLocations does — keeps the answer it always had.
-	Reacquired []intel.Subject
-
-	Corrected []intel.Subject
+	// It REFINES Refreshed and does not partition it (mind/perception's own
+	// doc says why): a re-acquired subject appears in both, so anything
+	// reading FirstContact ∪ Refreshed as "everything perceived this pass"
+	// keeps the answer it always had.
+	Reacquired []core.EntityID
 }
 
-func intelDeltaFromSurveil(in *intel.SurveilOutput) *IntelDelta {
+// intelDeltaFromPerception projects one observer's [perception.Delta] into
+// the encounter-owned shape.
+func intelDeltaFromPerception(in *perception.Delta) *IntelDelta {
 	if in == nil {
 		return nil
 	}
 
 	return &IntelDelta{
-		FirstContact: cloneIntelReports(in.FirstContact),
-		Refreshed:    cloneIntelSubjects(in.Refreshed),
-		Faded:        cloneIntelSubjects(in.Faded),
-		Reacquired:   cloneIntelSubjects(in.Reacquired),
+		FirstContact: clonePresences(in.FirstContact),
+		Refreshed:    cloneSubjects(in.Refreshed),
+		Faded:        cloneSubjects(in.Faded),
+		Changed:      cloneSubjects(in.Changed),
+		Reacquired:   cloneSubjects(in.Reacquired),
 	}
 }
 
 // mergeIntelDeltas merges src into dst by observer. Each category is an
 // independent fact stream: duplicates are removed within that category while
 // preserving the first occurrence's order and value. In particular, Faded
-// and Corrected are intentionally not compared with one another.
+// and Changed are intentionally not compared with one another.
 func mergeIntelDeltas(dst, src map[MemberID]*IntelDelta) map[MemberID]*IntelDelta {
 	if dst == nil {
 		if src == nil {
@@ -73,11 +88,11 @@ func mergeIntelDeltas(dst, src map[MemberID]*IntelDelta) map[MemberID]*IntelDelt
 		}
 
 		dst[observer] = &IntelDelta{
-			FirstContact: mergeIntelReports(existing.FirstContact, incoming.FirstContact),
-			Refreshed:    mergeIntelSubjects(existing.Refreshed, incoming.Refreshed),
-			Faded:        mergeIntelSubjects(existing.Faded, incoming.Faded),
-			Reacquired:   mergeIntelSubjects(existing.Reacquired, incoming.Reacquired),
-			Corrected:    mergeIntelSubjects(existing.Corrected, incoming.Corrected),
+			FirstContact: mergePresences(existing.FirstContact, incoming.FirstContact),
+			Refreshed:    mergeSubjects(existing.Refreshed, incoming.Refreshed),
+			Faded:        mergeSubjects(existing.Faded, incoming.Faded),
+			Changed:      mergeSubjects(existing.Changed, incoming.Changed),
+			Reacquired:   mergeSubjects(existing.Reacquired, incoming.Reacquired),
 		}
 	}
 
@@ -90,35 +105,35 @@ func cloneIntelDelta(in *IntelDelta) *IntelDelta {
 	}
 
 	return &IntelDelta{
-		FirstContact: cloneIntelReports(in.FirstContact),
-		Refreshed:    cloneIntelSubjects(in.Refreshed),
-		Faded:        cloneIntelSubjects(in.Faded),
-		Reacquired:   cloneIntelSubjects(in.Reacquired),
-		Corrected:    cloneIntelSubjects(in.Corrected),
+		FirstContact: clonePresences(in.FirstContact),
+		Refreshed:    cloneSubjects(in.Refreshed),
+		Faded:        cloneSubjects(in.Faded),
+		Changed:      cloneSubjects(in.Changed),
+		Reacquired:   cloneSubjects(in.Reacquired),
 	}
 }
 
-func cloneIntelReports(in []intel.Report) []intel.Report {
+func clonePresences(in []perception.Presence) []perception.Presence {
 	if in == nil {
 		return nil
 	}
 
-	out := make([]intel.Report, len(in))
-	for i, report := range in {
-		out[i] = intel.Report{
-			Subject: report.Subject,
-			Payload: cloneIntelPayload(report.Payload),
+	out := make([]perception.Presence, len(in))
+	for i, presence := range in {
+		out[i] = perception.Presence{
+			ID:      presence.ID,
+			Payload: cloneIntelPayload(presence.Payload),
 		}
 	}
 	return out
 }
 
-func cloneIntelSubjects(in []intel.Subject) []intel.Subject {
+func cloneSubjects(in []core.EntityID) []core.EntityID {
 	if in == nil {
 		return nil
 	}
 
-	out := make([]intel.Subject, len(in))
+	out := make([]core.EntityID, len(in))
 	copy(out, in)
 	return out
 }
@@ -133,43 +148,43 @@ func cloneIntelPayload(in []byte) []byte {
 	return out
 }
 
-func mergeIntelReports(dst, src []intel.Report) []intel.Report {
+func mergePresences(dst, src []perception.Presence) []perception.Presence {
 	if dst == nil && src == nil {
 		return nil
 	}
 
-	out := make([]intel.Report, 0, len(dst)+len(src))
-	seen := make(map[intel.Subject]struct{}, len(dst)+len(src))
-	for _, report := range dst {
-		if _, exists := seen[report.Subject]; exists {
+	out := make([]perception.Presence, 0, len(dst)+len(src))
+	seen := make(map[core.EntityID]struct{}, len(dst)+len(src))
+	for _, presence := range dst {
+		if _, exists := seen[presence.ID]; exists {
 			continue
 		}
-		seen[report.Subject] = struct{}{}
-		out = append(out, intel.Report{
-			Subject: report.Subject,
-			Payload: cloneIntelPayload(report.Payload),
+		seen[presence.ID] = struct{}{}
+		out = append(out, perception.Presence{
+			ID:      presence.ID,
+			Payload: cloneIntelPayload(presence.Payload),
 		})
 	}
-	for _, report := range src {
-		if _, exists := seen[report.Subject]; exists {
+	for _, presence := range src {
+		if _, exists := seen[presence.ID]; exists {
 			continue
 		}
-		seen[report.Subject] = struct{}{}
-		out = append(out, intel.Report{
-			Subject: report.Subject,
-			Payload: cloneIntelPayload(report.Payload),
+		seen[presence.ID] = struct{}{}
+		out = append(out, perception.Presence{
+			ID:      presence.ID,
+			Payload: cloneIntelPayload(presence.Payload),
 		})
 	}
 	return out
 }
 
-func mergeIntelSubjects(dst, src []intel.Subject) []intel.Subject {
+func mergeSubjects(dst, src []core.EntityID) []core.EntityID {
 	if dst == nil && src == nil {
 		return nil
 	}
 
-	out := make([]intel.Subject, 0, len(dst)+len(src))
-	seen := make(map[intel.Subject]struct{}, len(dst)+len(src))
+	out := make([]core.EntityID, 0, len(dst)+len(src))
+	seen := make(map[core.EntityID]struct{}, len(dst)+len(src))
 	for _, subject := range dst {
 		if _, exists := seen[subject]; exists {
 			continue

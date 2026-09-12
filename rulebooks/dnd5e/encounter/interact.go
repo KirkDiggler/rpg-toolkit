@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -151,20 +150,20 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 // contactBetween already apply: a subject once seen but not seen now (a
 // Held ghost) does not count, the same as one never seen at all.
 //
-// CHANNEL-BLIND ON PURPOSE, matching those same two functions: Status is
-// Current whenever ANY channel in CurrentVia currently confirms it, and this
-// does not ask which one. Today that is a distinction without a difference —
-// grepped every Channel: assignment in this package, and intel.Sight is the
-// only channel anything here ever writes — so discriminating by channel now
-// would guard against an input this package cannot yet produce. Revisit if
-// a second channel (sound, say) ever arrives (Copilot, PR #1412 review).
+// CHANNEL-BLIND ON PURPOSE, matching those same two functions: a holding is
+// current whenever ANY channel confirms it right now, and this does not ask
+// which one. Today that is a distinction without a difference — grepped every
+// Channel: assignment in this package, and sight is the only channel anything
+// here ever writes — so discriminating by channel now would guard against an
+// input this package cannot yet produce. Revisit if a second channel (sound,
+// say) ever arrives (Copilot, PR #1412 review).
 func (e *Encounter) currentlyPerceives(observer, subject MemberID) (bool, error) {
-	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: observer})
+	holdings, err := e.intelLog.Held(observer)
 	if err != nil {
 		return false, fmt.Errorf("held by %q: %w", observer, err)
 	}
 	for _, h := range holdings {
-		if h.Status == intel.Current && MemberID(h.Subject) == subject {
+		if h.Current && h.Subject == subject {
 			return true, nil
 		}
 	}

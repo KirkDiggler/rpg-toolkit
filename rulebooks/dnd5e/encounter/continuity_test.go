@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -292,10 +291,10 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	alicePath = append(alicePath, proj.project(string(alice), "start", "corridor", spatial.Position{X: 6, Y: 5}))
 	goblinPath = append(goblinPath, proj.project(string(goblin), "start", "corridor", spatial.Position{X: 9, Y: 4}))
 
-	st, _ := seen(t, enc, alice, goblin)
-	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open corridor")
-	st, _ = seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees her back")
+	current, _ := seen(t, enc, alice, goblin)
+	require.True(t, current, "beat 1: alice sees the goblin across the open corridor")
+	current, _ = seen(t, enc, goblin, alice)
+	require.True(t, current, "beat 1: and the goblin sees her back")
 
 	// Seeing each other started the fight (rpg-toolkit#964); she breaks off
 	// before she runs.
@@ -337,8 +336,8 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	// the gate is what makes possible: a room boundary hid nothing here
 	// (rpg-toolkit#1106), and without a wall on the seam the vault would be in
 	// plain view from the corridor and there would be nowhere to disappear to.
-	st, p := seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — the wall took her")
+	current, p := seen(t, enc, goblin, alice)
+	require.False(t, current, "beat 2: the goblin's sight of alice fades — the wall took her")
 
 	// ---- Beat 3: the pause (pause is free) --------------------------------
 	// The projected path must survive the reload — the SAME claim T3 pinned
@@ -355,8 +354,8 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	enc = enc2
 	proj.useEncounter(enc) // SAME projector, reloaded enc — the transcript keeps accumulating
 
-	st, pAfter := seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Held, st, "beat 3: the ghost survived the reload")
+	current, pAfter := seen(t, enc, goblin, alice)
+	require.False(t, current, "beat 3: the ghost survived the reload")
 	require.Equal(t, p, pAfter, "beat 3: at the same cell — loading never re-derives sight")
 
 	// Re-project alice's CURRENT position on the reloaded encounter — it

@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -22,12 +21,12 @@ func tell(enc *encounter.Encounter, who, about core.EntityID) {
 		return
 	}
 	for _, h := range view {
-		if h.Subject != intel.Subject(about) {
+		if h.Subject != about {
 			continue
 		}
 		var p encounter.SightPayload
 		_ = json.Unmarshal(h.Payload, &p)
-		if h.Status == intel.Current {
+		if h.Current {
 			fmt.Printf("%s sees %s at (%g,%g)\n", who, about, p.X, p.Y)
 		} else {
 			fmt.Printf("%s holds a GHOST of %s at last-seen (%g,%g)\n", who, about, p.X, p.Y)

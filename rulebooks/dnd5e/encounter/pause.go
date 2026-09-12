@@ -703,7 +703,7 @@ func (e *Encounter) finishPausedIntent(
 	}
 
 	p.budget.MovementFeet -= res.moved * FeetPerCell
-	deltas, serr := e.settleWalk(p.member, p.audience, res.moved)
+	deltas, serr := e.settleWalk(p.audience, res.moved)
 	if serr != nil {
 		return 0, deltas, false, serr
 	}

@@ -6,13 +6,14 @@ package encounter
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
@@ -35,10 +36,16 @@ type EncounterData struct {
 	// additively. There is no identifier per bubble on purpose — a bubble is
 	// reached through a member (R6), never addressed by name.
 	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
-	Intel   intel.Data       `json:"intel"`
-	Log     record.LogData   `json:"log"`
-	Field   FieldData        `json:"field"`
-	Members []MemberData     `json:"members"`
+	// Perception is what each member HOLDS — channel-sourced testimony, its
+	// currency, and its stamps. Named for mind/perception rather than for
+	// play/intel underneath it (rpg-toolkit#1691): the store is perception's
+	// business, and this composition stopped knowing it exists. The inner
+	// "intel" key inside this value is perception's own shape, which its
+	// charter admits is intel's Data verbatim.
+	Perception perception.Data `json:"perception"`
+	Log        record.LogData  `json:"log"`
+	Field      FieldData       `json:"field"`
+	Members    []MemberData    `json:"members"`
 	// Doors are the field's doors and the state each is in RIGHT NOW
 	// (rpg-toolkit#1123). Top level rather than inside Field, beside Members
 	// and for the same reason: a door's edges are construction truth but its
@@ -1330,7 +1337,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Outcome:     outcomeData,
 		Clock:       e.clock.ToData(),
 		Bubbles:     bubblesData,
-		Intel:       e.intelLog.ToData(),
+		Perception:  e.intelLog.ToData(),
 		Log:         e.story.ToData(),
 		Field:       fieldData,
 		Members:     membersData,
@@ -2108,11 +2115,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			data.HeldDirective.Member, ErrInvalidData)
 	}
 
-	if err = refuseRoomLocalSightings(data.Intel); err != nil {
+	if err = refuseRoomLocalSightings(data.Perception); err != nil {
 		return nil, err
 	}
 
-	loadedIntel, err := intel.LoadIntel(data.Intel)
+	loadedIntel, err := perception.Load(data.Perception)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter intel: %w: %w", ErrInvalidData, err)
 	}
@@ -2442,26 +2449,26 @@ func endingTriggerFromData(ed EndingData) Trigger {
 // Kirk's ruling, 2026-08-17: fail loudly, no migration. The only blobs in
 // existence are dev and workbench saves, so a stale one is refused by name and
 // recreated rather than silently reinterpreted.
-func refuseRoomLocalSightings(data intel.Data) error {
+//
+// It reads the persisted holdings through [perception.Data.Intel], which is
+// the store's own Data verbatim — perception states that in its charter
+// rather than hiding it, because hiding persistence would cost more than
+// admitting it. This is the one place the composition still looks at those
+// shapes (rpg-toolkit#1691), and it never NAMES one: the subject key's type
+// is inferred and the channel converts, so the admission stays an admission
+// rather than turning back into an import.
+func refuseRoomLocalSightings(data perception.Data) error {
 	// Sorted, so a blob holding several stale sightings names the same one on
 	// every run — a rejection that moves under map iteration is a rejection
 	// nobody can write a test against.
-	observers := make([]core.EntityID, 0, len(data.Holdings))
-	for observer := range data.Holdings {
-		observers = append(observers, observer)
-	}
-	slices.Sort(observers)
+	observers := slices.Sorted(maps.Keys(data.Intel.Holdings))
 
 	for _, observer := range observers {
-		subjects := make([]intel.Subject, 0, len(data.Holdings[observer]))
-		for subject := range data.Holdings[observer] {
-			subjects = append(subjects, subject)
-		}
-		slices.Sort(subjects)
+		subjects := slices.Sorted(maps.Keys(data.Intel.Holdings[observer]))
 
 		for _, subject := range subjects {
-			holding := data.Holdings[observer][subject]
-			if holding.Channel != intel.Sight {
+			holding := data.Intel.Holdings[observer][subject]
+			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
 			}
 			// Check the old room-bearing dialect first so stale saves receive the

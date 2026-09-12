@@ -208,7 +208,7 @@ func (s *SightedBeatTestSuite) TestSteppingOutOfViewIsLost() {
 // THE RETURN. A ghost becoming real again is its own beat, and this is the
 // case the whole slice was built for — Kirk's "when the ghost becomes a
 // reality again, how do I know what they're holding?". Without
-// intel.SurveilOutput.Reacquired this pass is an ordinary refresh and says
+// perception.Delta.Reacquired this pass is an ordinary refresh and says
 // nothing at all.
 func (s *SightedBeatTestSuite) TestSteppingBackIntoViewIsGainedAgain() {
 	enc := s.blocked()
@@ -428,8 +428,8 @@ func (s *SightedBeatTestSuite) TestThePerceptItselfIsOrdered() {
 		s.Require().NotNil(delta, "she stepped past the wall and met two people")
 
 		names := make([]string, 0, len(delta.FirstContact))
-		for _, report := range delta.FirstContact {
-			names = append(names, string(report.Subject))
+		for _, presence := range delta.FirstContact {
+			names = append(names, string(presence.ID))
 		}
 		return names
 	}
