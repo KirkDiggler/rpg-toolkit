@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -20,6 +21,8 @@ import (
 type CastTargetRule string
 
 const (
+	// CastTargetTouch selects one creature, including the caster, within touch.
+	CastTargetTouch CastTargetRule = "touch"
 	// CastTargetSelf is a cast with no target but the caster.
 	CastTargetSelf CastTargetRule = "self"
 
@@ -76,6 +79,10 @@ const (
 // declaration, because the same profile is free for a monster's innate cast and
 // an action for a player's.
 type CastProfile struct {
+	// Healing is an immediate HP consequence, never a stored condition.
+	Healing *healing.Declaration `json:"healing,omitempty"`
+	// HealingExcludes names creature types on which this healing has no effect.
+	HealingExcludes []string `json:"healing_excludes,omitempty"`
 	// RangeFeet is how far the cast reaches. A self-targeted cast still
 	// declares one, because the range is what a UI draws.
 	RangeFeet int `json:"range_feet"`
@@ -238,6 +245,10 @@ func (p CastProfile) Validate() error {
 		if p.MinTargets != 0 || p.MaxTargets != 0 {
 			return fmt.Errorf("self-targeted cast must declare zero targets")
 		}
+	case CastTargetTouch:
+		if p.MinTargets != 1 || p.MaxTargets != 1 || p.RangeFeet != 5 {
+			return fmt.Errorf("touch cast must select one creature within five feet")
+		}
 	case CastTargetOneCreature:
 		if p.MinTargets < 1 {
 			return fmt.Errorf("creature-targeted cast must require at least one target")
@@ -301,7 +312,17 @@ func (p CastProfile) Validate() error {
 		}
 	}
 
-	if len(p.Damage) == 0 && len(p.Effects) == 0 {
+	if p.Healing != nil {
+		if p.Save != nil || len(p.Damage) > 0 || len(p.Effects) > 0 || p.Target != CastTargetTouch {
+			return fmt.Errorf("healing delivery currently requires an unopposed touch cast without other effects")
+		}
+		if err := p.Healing.Validate(); err != nil {
+			return fmt.Errorf("cast healing: %w", err)
+		}
+	} else if len(p.HealingExcludes) > 0 {
+		return fmt.Errorf("healing exclusions require healing")
+	}
+	if len(p.Damage) == 0 && len(p.Effects) == 0 && p.Healing == nil {
 		return fmt.Errorf("cast must declare damage or a delivered condition")
 	}
 	if len(p.Damage) > 0 {
@@ -361,6 +382,11 @@ func (p CastProfile) Validate() error {
 // declarations.
 func (p CastProfile) Clone() CastProfile {
 	clone := p
+	if p.Healing != nil {
+		declaration := p.Healing.Clone()
+		clone.Healing = &declaration
+	}
+	clone.HealingExcludes = append([]string(nil), p.HealingExcludes...)
 	if p.Save != nil {
 		save := *p.Save
 		save.Abilities = append([]abilities.Ability(nil), p.Save.Abilities...)

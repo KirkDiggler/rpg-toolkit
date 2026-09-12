@@ -14,6 +14,8 @@ import (
 // Data represents the serializable form of a monster.
 // This is what gets stored in the database - pure JSON, no logic.
 type Data struct {
+	// CreatureType is the creature family. Older catalogue sheets derive it from Ref.
+	CreatureType string `json:"creature_type,omitempty"`
 	// Identity
 	ID   string    `json:"id"`
 	Name string    `json:"name"`
