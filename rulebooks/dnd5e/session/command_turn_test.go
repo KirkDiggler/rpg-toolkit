@@ -435,12 +435,33 @@ func (s *CommandTurnSuite) TestACommandedPlayerIsDrivenAndCannotActAfterwards() 
 // TestADefeatedCommandedCreatureTakesNoCompelledTurn is acceptance 10 from the
 // monster side: a creature the fight has removed is not brought back to be
 // marched around, and the compulsion expires unused.
+//
+// # Grovel is the probe, and that is the whole point of the word choice
+//
+// Approach would prove only that nobody walked, which a broken driver that
+// asked resolution and then dropped the answer would also satisfy. Grovel
+// APPLIES a condition and the condition is persisted, so an absent Prone is
+// the observable form of "Obey never ran" — there is no path by which the word
+// could have been obeyed and left the sheet clean.
+//
+// The participation half of the same ruling is pinned one layer down, in
+// TestAMemberWhoIsNotUpIsNeverDriven: the assessment answers AutoPass or
+// Remove for these members and never Driven.
+//
+// WHAT THIS TEST CANNOT CATCH, stated so nobody reads more into it: forcing
+// Driven onto a REMOVED member leaves it still passing, because the
+// composition drops a removed member's slot whatever this seam says. The
+// mutation-sensitive sibling is
+// TestADyingCommandedPlayerGetsTheirDeathSaveTurn, where the member really is
+// on the clock and only this seam's answer keeps the turn theirs.
 func (s *CommandTurnSuite) TestADefeatedCommandedCreatureTakesNoCompelledTurn() {
 	s.duel()
 	before := s.where("skeleton")
 
-	_, err := s.command("skeleton", spells.CommandWordApproach)
+	_, err := s.command("skeleton", spells.CommandWordGrovel)
 	s.Require().NoError(err)
+	s.Require().True(s.holdsRef("skeleton", refs.Conditions.Commanded().String()),
+		"the order landed before the creature fell")
 
 	for i := range s.sessions.byID["sess"].NPCs {
 		if s.sessions.byID["sess"].NPCs[i].ID == "skeleton" {
@@ -449,9 +470,51 @@ func (s *CommandTurnSuite) TestADefeatedCommandedCreatureTakesNoCompelledTurn() 
 	}
 
 	s.Require().NoError(s.endTurn("bard"))
+	s.False(s.holdsRef("skeleton", refs.Conditions.Prone().String()),
+		"the word was never obeyed: a Prone here would be Obey having run for a removed member")
 	s.Equal(before, s.where("skeleton"), "a felled creature obeys nothing")
 	s.Zero(s.walkedCells("skeleton"))
 	s.Empty(s.viewsOf("skeleton"))
+}
+
+// TestADyingCommandedPlayerGetsTheirDeathSaveTurn is the same ruling from the
+// side the design did not see, and the reason the gate is "can this member act"
+// rather than "is this member waited for".
+//
+// A DYING player Waits — their turn is the death save they have to roll — so a
+// compulsion that narrowed Wait alone would have marched a body across the room
+// and skipped the save. Here the clock RESTS on the fighter, which is the
+// observable difference between a turn taken for somebody and a turn that is
+// still theirs to take.
+//
+// Grovel again, for the test above's reason: a clean sheet is the only way to
+// see that Obey was never asked.
+func (s *CommandTurnSuite) TestADyingCommandedPlayerGetsTheirDeathSaveTurn() {
+	s.scene(
+		[]*character.Data{commandingBard("bard"), armedFighter("fighter")},
+		map[string]spatial.Position{"bard": hexCell(0, 0), "fighter": hexCell(4, 0)},
+		hexCell(8, 0),
+	)
+	before := s.where("fighter")
+
+	_, err := s.command("fighter", spells.CommandWordGrovel)
+	s.Require().NoError(err)
+	s.Require().True(s.holdsRef("fighter", refs.Conditions.Commanded().String()))
+
+	s.characters.byID["fighter"].HitPoints = 0
+	s.Require().NoError(s.endTurn("bard"))
+
+	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{
+		Session: "sess", Member: "fighter",
+	})
+	s.Require().NoError(err)
+	s.Equal("fighter", turn.Active,
+		"the clock rests on him: this turn is his death save, not somebody else's order")
+
+	s.False(s.holdsRef("fighter", refs.Conditions.Prone().String()),
+		"the word was never obeyed; a Prone here would be a body grovelling instead of saving")
+	s.Equal(before, s.where("fighter"))
+	s.Zero(s.walkedCells("fighter"))
 }
 
 // TestACompelledWalkThatProvokesHoldsTheTurnAndResumesOnTheAnswer is
