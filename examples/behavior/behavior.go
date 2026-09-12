@@ -13,13 +13,14 @@
 // folded by its own mind, its [Self], and a stamp. Nothing about anyone else
 // that did not arrive through a channel.
 //
-// A [Mind] is three judgments and no state of its own. Judge is the reconciler
+// A [Mind] is a few judgments and no state of its own. Judge is the reconciler
 // perception already has — which tracks are one thing. Name is what the actor
-// calls a contact. Rank is which contact it would rather deal with first. A
-// behaviour author writes one type.
+// calls a contact. Rank is which contact it would rather deal with first. Keep
+// is how close it lets things get. A behaviour author writes one type.
 //
-// [Decide] is the ladder, and it is not the mind's to change: attack a live
-// named contact in reach, else pass. Rungs arrive with the fixtures that pay
+// [Decide] is the ladder, and it is not the mind's to change: step away from
+// what is too close, attack a live named creature in reach, walk toward what
+// the mind ranks first, else pass. Rungs arrived with the fixtures that paid
 // for them; see README.md.
 //
 // # You cannot aim at what you have not named
@@ -109,12 +110,46 @@ func (c Contact) FirstObserved() testimony.Stamp {
 	return first
 }
 
+// Sheet is what an actor knows about itself that does not change turn to
+// turn: what it is armed with.
+type Sheet struct {
+	// Reach is how many regions away this actor can strike. Zero is melee —
+	// the same region — and one is a bow. This spike's whole geometry is
+	// region grain.
+	Reach int
+}
+
 // Self is the part of a situation that is not perception: the actor's own
-// sheet. The knowledge-only contract is about OTHERS; your own position is
-// yours to read.
+// sheet, where it stands, and where it could step. The knowledge-only contract
+// is about OTHERS; your own position and your own dungeon's static topology
+// are yours to read.
 type Self struct {
+	Sheet
 	// Where is the region the actor stands in.
 	Where string
+	// Adjacent is every region one step from Where. Static topology, known
+	// at construction — a monster knows its own dungeon's doors. It does not
+	// know who is behind them.
+	Adjacent []string
+}
+
+// Beyond is the distance this spike cannot measure: not here, not next door.
+const Beyond = 2
+
+// Distance is how many steps a place is from the actor: 0 here, 1 next door,
+// [Beyond] otherwise. An unplaced contact ("" — known to be there, not known
+// where) is Beyond.
+func (s Self) Distance(where string) int {
+	switch {
+	case where == "":
+		return Beyond
+	case where == s.Where:
+		return 0
+	case slices.Contains(s.Adjacent, where):
+		return 1
+	default:
+		return Beyond
+	}
 }
 
 // Situation is everything one actor has to go on.
@@ -133,6 +168,12 @@ const (
 	Pass Verb = iota
 	// Attack strikes a named contact the actor can currently perceive in reach.
 	Attack
+	// Toward steps one region closer to where the actor believes a named
+	// contact is. A walk toward a ghost goes where the ghost was last placed.
+	Toward
+	// Away steps one region further from where the actor believes a named
+	// contact is. It is the whole of keeping range, and of fleeing.
+	Away
 )
 
 // String names a verb for a test's benefit.
@@ -142,6 +183,10 @@ func (v Verb) String() string {
 		return "pass"
 	case Attack:
 		return "attack"
+	case Toward:
+		return "toward"
+	case Away:
+		return "away"
 	default:
 		return "verb(?)"
 	}
@@ -167,27 +212,60 @@ type Mind interface {
 	// Rank orders the situation's contacts by preference, most preferred
 	// first. It may drop contacts it would never act on.
 	Rank(s Situation) []Contact
+
+	// Keep is how close this mind lets a live creature get before it would
+	// rather step away: 0 means it stands and fights, 1 means it keeps a
+	// region between them. It is a judgment, not a sheet fact — a cornered
+	// archer may decide to keep nothing.
+	Keep(s Situation) int
 }
 
 // Decide is the ladder. It is fixed, and the mind is consulted only where the
-// ladder cannot answer alone.
+// ladder cannot answer alone: what it prefers, and how close it lets things
+// get.
 //
-//  1. a live named contact is a creature in reach → Attack
-//  2. nothing to act on → Pass
+//  0. a live named creature is nearer than the mind keeps, and there is
+//     somewhere to step → Away
+//  1. a live named creature is within reach → Attack
+//  2. a ranked named contact, live or ghost, is placed and not here → Toward
+//  3. nothing to act on → Pass
 //
-// Live beats remembered: a ghost is never attacked, however the mind ranks it.
-// In reach is the same region, this spike's whole geometry.
+// Live beats remembered: a ghost is never attacked and never fled, however the
+// mind ranks it — you cannot hit a memory and it cannot hit you. Rung 2 is
+// where the mind's ranking decides between a live target ahead and a ghost
+// behind, and the ladder does not second-guess it.
 func Decide(s Situation, m Mind) Intent {
-	for _, c := range m.Rank(s) {
+	ranked := m.Rank(s)
+	keep := m.Keep(s)
+
+	if len(s.Self.Adjacent) > 0 {
+		for _, c := range ranked {
+			if !c.Named || !c.Current() || !c.Creature() {
+				continue
+			}
+
+			if s.Self.Distance(c.Where()) < keep {
+				return Intent{Verb: Away, Target: c.Name}
+			}
+		}
+	}
+
+	for _, c := range ranked {
 		if !c.Named || !c.Current() || !c.Creature() {
 			continue
 		}
 
-		if c.Where() != s.Self.Where {
+		if s.Self.Distance(c.Where()) <= s.Self.Reach {
+			return Intent{Verb: Attack, Target: c.Name}
+		}
+	}
+
+	for _, c := range ranked {
+		if !c.Named || c.Where() == "" || c.Where() == s.Self.Where {
 			continue
 		}
 
-		return Intent{Verb: Attack, Target: c.Name}
+		return Intent{Verb: Toward, Target: c.Name}
 	}
 
 	return Intent{Verb: Pass}

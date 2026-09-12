@@ -45,30 +45,37 @@ contacts as folded by its *own* mind, its self, and a stamp. Built from
 perception's read surface. Nothing about anyone else that did not arrive
 through a channel.
 
-**Self** — the part of a situation that is not perception: own locus, fences,
-whether the reaction is spent, and the current commitment. The knowledge-only
-contract is about *others*. Your own sheet is yours to read.
+**Self** — the part of a situation that is not perception: own locus, the
+regions one step away (static topology, construction truth), what the sheet
+says it is armed with, fences, whether the reaction is spent, and the current
+commitment. The knowledge-only contract is about *others*. Your own sheet and
+your own dungeon's doors are yours to read; who stands behind them is not.
 
-**Mind** — three judgments and no state of its own:
+**Mind** — four judgments and no state of its own:
 
 | judgment | question | zombie | captain | archer |
 |---|---|---|---|---|
-| Judge | are these tracks one thing? | never | cross-channel and sign rules | as captain |
-| Name | what do I call this contact? | "thing N", reflexive | recognised name, else reflexive | reflexive |
-| Rank | which named contact first? | nearest live, then any ghost, forever | the healer over others; drops a ghost older than N | ranged targets; prefers a region away |
+| Judge | are these tracks one thing? | never | a chant is the one robed figure; a deed is who I saw do it | never |
+| Name | what do I call this contact? | "thing N", reflexive | by how it looks | reflexive |
+| Rank | which named contact first? | whatever I noticed first | the healer, then the chanter, then first noticed | whatever I noticed first |
+| Keep | how close do I let a live creature get? | 0 | 0 | 1 |
 
 Judge is the reconciler perception already has. A mind *is* a reconciler plus
-two more questions, so a behaviour author writes one type.
+three more questions, so a behaviour author writes one type. The archer is a
+zombie with a bow on its sheet and `Keep` returning 1 — kiting is one number.
 
 **Ladder** — fixed, and not the mind's to change:
 
-1. a **live** named contact is in reach and an attack is left → `Attack{Name}`
-2. movement left → `Toward`/`Away` whatever Rank puts first across live
-   contacts **and ghosts**, honouring commitment
+0. a **live** named creature is nearer than the mind keeps, and there is
+   somewhere to step → `Away{Name}`
+1. a **live** named creature is within reach → `Attack{Name}`
+2. a ranked named contact, live **or ghost**, is placed and not here →
+   `Toward{Name}`, honouring commitment
 3. nothing to pursue → `Pass`
 
-Live beats remembered. Fences are read from self; the ladder respects them and
-never offers them to the mind as a choice.
+Live beats remembered: a ghost is never attacked and never fled. Fences are
+read from self; the ladder respects them and never offers them to the mind as
+a choice.
 
 **Intent** — sealed: `Attack{Name}`, `Toward{Name}`, `Away{Name}`, `Pass`. The
 target is always a name the actor gave. **You cannot aim at what you have not
@@ -112,7 +119,7 @@ needs it.
 |---|---|---|---|
 | 1 | zombie and captain, one situation, two targets | contacts in the ladder; Name and Rank | **yes** |
 | 2 | a heal in sight retargets the captain; the same heal out of sight does not | deeds as testimony | **yes** |
-| 3 | archer fires from the next region, steps `Away` when someone enters its own | `Away`; Recall | no |
+| 3 | archer fires from the next region, steps `Away` when someone enters its own | `Away`; Recall; rungs 0 and 2 | **yes** |
 | 4 | intimidated goblin cannot go `Toward` the intimidator; shoots if it can, flees if it cannot | fences on self | no |
 | 5 | zombie walks to a stale ghost forever; captain drops it after N and returns to post | Rank over ghost age; commitment | no |
 
@@ -162,6 +169,28 @@ Things the shape did not know before there was code.
    verb + actor + target, so a second identical heal extends the watermark
    rather than appending. What the witness knows has not changed; only how
    recently it was confirmed.
+10. **Keeping range is a distance, not a rank.** The open question was
+    whether Rank needed the actor's own locus. It does not: *how close do I
+    let things get* is its own judgment, `Keep`, and the ladder reads it as
+    rung 0 before it considers attacking. The archer is a zombie with a bow
+    and `Keep` returning 1. A mutant returning 0 stands in the corridor and
+    shoots point-blank; the test kills it.
+11. **What you are armed with is a sheet fact; what you want is a mind
+    fact.** `Sheet.Reach` says how far the bow shoots. `Keep` says how far the
+    archer would rather stand. A cornered archer may decide to keep nothing,
+    and the sheet does not change.
+12. **A walk resolves against belief; a swing resolves against truth.**
+    `Recall` reads only the situation and `Aim` never enters a walk. The
+    first draft of `Recall` had two branches — the live placement, else the
+    freshest memory — and a mutant that disabled the live branch *survived*.
+    It was equivalent: a current track's latest entry is its placement, so
+    the memory rule already answers for a live contact. The branch was
+    deleted. A ghost is not a special case of recall, only an older one.
+13. **Region grain cannot tell direction.** `Away` picks any adjacent region
+    that is not where the target is believed to be. With the knight in the
+    corridor and exits on both sides, the archer may back into the room the
+    knight came from. That is a real limit of the grain and not a bug; cells
+    and distance are the shipped encounter's business.
 
 ## What the spike simplifies, on purpose
 
@@ -176,9 +205,6 @@ Things the shape did not know before there was code.
 
 ## What we do not know yet
 
-- Whether Rank wants the whole situation or only the named contacts. The
-  archer's *prefer a region away* is a ranking over *my own* locus, which is
-  self, not a contact.
 - Whether a fence is a rule the stage derives from a condition, or a deed the
   mind reads (*that one intimidated me*). Probably both: the fence is the rule,
   the deed is how the mind knows who.

@@ -8,11 +8,11 @@
 // resolved against what is really there — and it is deliberately a separate
 // package, so nothing that decides can import it.
 //
-// There will be two resolutions here, and they read different things. Aim
-// binds a name to the truth surface, for a swing: an illusion binds to nothing.
-// Recall will bind a name to the actor's own remembered locus, for a walk: a
-// walk toward a ghost never consults truth. Recall arrives with the fixture
-// that pays for it.
+// There are two resolutions here, and they read different things. Aim binds a
+// name to the truth surface, for a swing: an illusion binds to nothing. Recall
+// binds a name to the actor's own remembered locus, for a walk: a walk toward
+// a ghost never consults truth, so a monster searching the wrong room is
+// correct behaviour and never leaks a position.
 package stage
 
 import (
@@ -20,6 +20,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/deed"
+	"github.com/KirkDiggler/rpg-toolkit/examples/perception/belief"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/projection"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
 )
@@ -123,4 +124,74 @@ func Aim(in projection.Input, s behavior.Situation, intent behavior.Intent) stri
 	}
 
 	return ""
+}
+
+// Recall is where the actor believes a named contact is: the freshest placed
+// testimony across the contact's tracks. It reads the situation and nothing
+// else. False means the actor has no idea — known to be there, not known
+// where.
+//
+// There is deliberately no separate rule for a live contact. A current track's
+// latest entry IS its placement, so "where a channel puts it now" and "where
+// it was last placed" are one question with one answer; a first draft had two
+// branches and a mutant proved them equivalent. A ghost is not a special case
+// of recall, only an older one.
+//
+// A walk resolves through Recall and never through Aim. That asymmetry is the
+// whole point: a swing has to meet what is really there, but where you choose
+// to walk is entirely a matter of what you believe.
+func Recall(s behavior.Situation, name belief.Name) (string, bool) {
+	for _, c := range s.Contacts {
+		if !c.Named || c.Name != name {
+			continue
+		}
+
+		var (
+			where string
+			at    testimony.Stamp
+			found bool
+		)
+
+		for _, v := range c.Tracks {
+			if v.Locus.Where != "" && (!found || at.Before(v.Confirmed)) {
+				where, at, found = v.Locus.Where, v.Confirmed, true
+			}
+		}
+
+		return where, found
+	}
+
+	return "", false
+}
+
+// Step is where a walking intent takes the actor, at region grain: one step,
+// this turn. Toward goes to the recalled region if it is next door. Away goes
+// to any adjacent region that is not the recalled one. False means the intent
+// cannot be walked from here, which the ladder should already have known.
+func Step(s behavior.Situation, intent behavior.Intent) (string, bool) {
+	where, recalled := Recall(s, intent.Target)
+	if !recalled {
+		return "", false
+	}
+
+	switch intent.Verb {
+	case behavior.Toward:
+		if slices.Contains(s.Self.Adjacent, where) {
+			return where, true
+		}
+
+		return "", false
+	case behavior.Away:
+		for _, next := range s.Self.Adjacent {
+			if next != where {
+				return next, true
+			}
+		}
+
+		return "", false
+	case behavior.Attack, behavior.Pass:
+		return "", false
+	default:
+		return "", false
+	}
 }

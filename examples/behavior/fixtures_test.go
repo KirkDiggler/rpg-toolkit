@@ -26,9 +26,11 @@ const (
 
 	room     = "room"
 	corridor = "corridor"
+	hall     = "hall"
 
 	zombie  testimony.Observer = "zombie"
 	captain testimony.Observer = "captain"
+	archer  testimony.Observer = "archer"
 
 	// Ledger handles. They never leave the projection; the test is the game
 	// master and may mint track handles from them to assert with.
@@ -49,7 +51,13 @@ func says(kind content.Kind, of, note, where string) projection.Says {
 // monsters in these fixtures do not perceive each other; a presence that says
 // nothing to any channel is how that is spelled.
 func standing(source string) projection.Presence {
-	return projection.Presence{Source: source, Where: room}
+	return standingAt(source, room)
+}
+
+// standingAt puts an actor somewhere on the truth surface where nothing
+// perceives it.
+func standingAt(source, where string) projection.Presence {
+	return projection.Presence{Source: source, Where: where}
 }
 
 // figure is somebody in the room, seen, and heard if chanting.
@@ -286,4 +294,76 @@ func TestFixture2_TheSameHealOutOfSightChangesNothing(t *testing.T) {
 
 	_, held := bundleOf(cs, projection.Handle(deed.Channel, cleric))
 	assert.False(t, held, "it never learned a heal happened")
+}
+
+// TestFixture3_TheArcherKeepsItsRange: three regions in a line. The archer
+// shoots the knight from the next region; when the knight closes, it steps
+// away rather than shooting; from its new region it shoots again. The zombie
+// beside it walks in and swings. The archer's whole difference from the zombie
+// is one number its mind returns, and a bow on its sheet.
+func TestFixture3_TheArcherKeepsItsRange(t *testing.T) {
+	g := behavior.New()
+	g.Connect(room, corridor)
+	g.Connect(corridor, hall)
+	g.Mind(archer, minds.Archer{})
+	g.Sheet(archer, behavior.Sheet{Reach: 1})
+	g.Mind(zombie, minds.Zombie{})
+
+	everywhere := []string{room, corridor, hall}
+
+	// Both stand in the corridor; the knight is in the room next door.
+	in := projection.Input{
+		Presences: []projection.Presence{
+			standingAt(string(archer), corridor), standingAt(string(zombie), corridor),
+			figureAt(knight, room, "armoured", false),
+		},
+		Senses: reaching(everywhere, archer, zombie),
+		At:     moment(1),
+	}
+	require.NoError(t, g.Tick(in))
+
+	ai, as, err := g.Turn(archer, moment(1))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Attack, ai.Verb, "it fires from the next region")
+	assert.Equal(t, knight, stage.Aim(in, as, ai))
+
+	zi, zs, err := g.Turn(zombie, moment(1))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Toward, zi.Verb, "the zombie has to walk")
+
+	to, ok := stage.Step(zs, zi)
+	require.True(t, ok)
+	assert.Equal(t, room, to)
+
+	// The knight steps into the corridor with them.
+	in.Presences[2] = figureAt(knight, corridor, "armoured", false)
+	in.At = moment(2)
+	require.NoError(t, g.Tick(in))
+
+	ai, as, err = g.Turn(archer, moment(2))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Away, ai.Verb, "too close to shoot: it steps away first")
+
+	to, ok = stage.Step(as, ai)
+	require.True(t, ok)
+
+	believed, _ := stage.Recall(as, ai.Target)
+	assert.Equal(t, corridor, believed, "it steps away from where it believes the knight is")
+	assert.NotEqual(t, corridor, to)
+	assert.Contains(t, everywhere, to)
+
+	zi, zs, err = g.Turn(zombie, moment(2))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Attack, zi.Verb, "the zombie, same situation, swings")
+	assert.Equal(t, knight, stage.Aim(in, zs, zi))
+
+	// The archer is where it stepped; the knight is still in the corridor.
+	in.Presences[0] = standingAt(string(archer), to)
+	in.At = moment(3)
+	require.NoError(t, g.Tick(in))
+
+	ai, as, err = g.Turn(archer, moment(3))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Attack, ai.Verb, "and shoots again from the next region")
+	assert.Equal(t, knight, stage.Aim(in, as, ai))
 }

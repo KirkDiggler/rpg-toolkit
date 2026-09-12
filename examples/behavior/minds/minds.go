@@ -112,6 +112,9 @@ func (Zombie) Rank(s behavior.Situation) []behavior.Contact {
 	return byFirstSeen(s.Contacts)
 }
 
+// Keep is nothing. A zombie lets everything get as close as it likes.
+func (Zombie) Keep(behavior.Situation) int { return 0 }
+
 // Captain merges a chant into the one robed figure standing where the chant
 // is, names what it sees by how it looks, and goes for the caster first.
 //
@@ -223,6 +226,9 @@ func (Captain) Rank(s behavior.Situation) []behavior.Contact {
 	return ordered
 }
 
+// Keep is nothing. A captain stands and fights.
+func (Captain) Keep(behavior.Situation) int { return 0 }
+
 func preference(c behavior.Contact) int {
 	switch {
 	case did(c, Heal):
@@ -233,3 +239,25 @@ func preference(c behavior.Contact) int {
 		return 0
 	}
 }
+
+// Archer never merges, names reflexively, goes for whatever it noticed first —
+// and keeps a region between itself and anything alive.
+//
+// It is a zombie with a bow and one preference. That is deliberate: kiting is
+// not cleverness, it is a single number the ladder reads. The archer's whole
+// difference from the zombie is Keep returning 1, and what it is armed with
+// lives on its sheet, not in its mind.
+type Archer struct{}
+
+// Judge claims nothing.
+func (Archer) Judge([]reconcile.TrackView, testimony.Stamp) []reconcile.Judgment { return nil }
+
+// Name calls a contact "thing" and its first handle.
+func (Archer) Name(c behavior.Contact) (belief.Name, bool) { return Zombie{}.Name(c) }
+
+// Rank prefers whatever it noticed first.
+func (Archer) Rank(s behavior.Situation) []behavior.Contact { return byFirstSeen(s.Contacts) }
+
+// Keep is one region. Anything that closes to the archer's own region is
+// something to step away from before it is something to shoot.
+func (Archer) Keep(behavior.Situation) int { return 1 }

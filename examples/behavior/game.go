@@ -29,7 +29,9 @@ var ErrNoSelf = errors.New("behavior: the actor is not on the truth surface")
 type Game struct {
 	p      *perception.Game
 	minds  map[testimony.Observer]Mind
+	sheets map[testimony.Observer]Sheet
 	selves map[testimony.Observer]Self
+	doors  map[string][]string
 }
 
 // New builds an empty game.
@@ -37,8 +39,22 @@ func New() *Game {
 	return &Game{
 		p:      perception.NewGame(),
 		minds:  make(map[testimony.Observer]Mind),
+		sheets: make(map[testimony.Observer]Sheet),
 		selves: make(map[testimony.Observer]Self),
+		doors:  make(map[string][]string),
 	}
+}
+
+// Connect declares two regions adjacent. Static topology is construction
+// truth and every actor may know it; who stands where is not.
+func (g *Game) Connect(a, b string) {
+	g.doors[a] = append(g.doors[a], b)
+	g.doors[b] = append(g.doors[b], a)
+}
+
+// Sheet gives an actor what it is armed with. Unset is melee.
+func (g *Game) Sheet(o testimony.Observer, sheet Sheet) {
+	g.sheets[o] = sheet
 }
 
 // Mind gives an observer a mind. Its Judge becomes that observer's reconciler
@@ -58,7 +74,7 @@ func (g *Game) Tick(in projection.Input) error {
 	for o := range g.minds {
 		for _, p := range in.Presences {
 			if p.Source == string(o) {
-				g.selves[o] = Self{Where: p.Where}
+				g.selves[o] = Self{Sheet: g.sheets[o], Where: p.Where, Adjacent: g.doors[p.Where]}
 			}
 		}
 	}
