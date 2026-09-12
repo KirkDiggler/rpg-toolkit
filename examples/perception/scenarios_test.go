@@ -39,6 +39,7 @@ const (
 	// minted from them.
 	goblinOne   = "goblin-1"
 	silentImage = "silent-image-1"
+	charmOnPip  = "charm-on-pip"
 )
 
 // says builds what one channel reports. Where is what THIS channel can place —
@@ -60,6 +61,12 @@ func senses(channel testimony.Channel, reach []string, observers ...testimony.Ob
 	}
 
 	return out
+}
+
+// moment is a point in one run's order. Seq stays zero because nothing in these
+// stories touches the world's journal — a whole run can sit at one Seq.
+func moment(tick uint64) testimony.Stamp {
+	return testimony.Stamp{Tick: tick}
 }
 
 func read(t *testing.T, track testimony.Track) content.Percept {
@@ -132,7 +139,7 @@ func TestTheDoor(t *testing.T) {
 		Senses: append(
 			senses(sight, []string{hall}, pip, bram),
 			senses(hearing, []string{hall, room}, pip, bram)...),
-		At: 1,
+		At: moment(1),
 	})
 	require.NoError(t, err)
 
@@ -159,7 +166,7 @@ func TestTheDoor(t *testing.T) {
 		Senses: append(
 			senses(sight, []string{hall, room}, pip, bram),
 			senses(hearing, []string{hall, room}, pip, bram)...),
-		At: 2,
+		At: moment(2),
 	})
 	require.NoError(t, err)
 
@@ -178,7 +185,7 @@ func TestTheDoor(t *testing.T) {
 	assertBundles(t, [][]testimony.TrackID{{heard, seen}}, g.Contacts(bram))
 	rel, at := g.Relation(bram, heard, seen)
 	assert.Equal(t, belief.Same, rel)
-	assert.Equal(t, testimony.Stamp(2), at, "the claim is stamped with when it was made")
+	assert.Equal(t, moment(2), at, "the claim is stamped with when it was made")
 }
 
 // TestSilentImage proves the lie lives in the projection and never in the truth
@@ -213,7 +220,7 @@ func TestSilentImage(t *testing.T) {
 		Senses: append(
 			senses(sight, []string{room}, bram),
 			senses(hearing, []string{room}, bram)...),
-		At: 1,
+		At: moment(1),
 	}
 
 	_, err := g.Tick(in)
@@ -284,7 +291,7 @@ func TestTheWrongMerge(t *testing.T) {
 		Presences: []projection.Presence{goblin},
 		Forgeries: []projection.Forgery{illusion},
 		Senses:    both,
-		At:        1,
+		At:        moment(1),
 	})
 	require.NoError(t, err)
 
@@ -299,7 +306,7 @@ func TestTheWrongMerge(t *testing.T) {
 	_, err = g.Tick(projection.Input{
 		Presences: []projection.Presence{goblin},
 		Senses:    both,
-		At:        2,
+		At:        moment(2),
 	})
 	require.NoError(t, err)
 
@@ -313,8 +320,8 @@ func TestTheWrongMerge(t *testing.T) {
 	assertBundles(t, [][]testimony.TrackID{{dragon, seen, heard}}, g.Contacts(bram))
 
 	// Bram works it out and takes it apart himself. Ruling it out is a write.
-	require.NoError(t, g.Claim(bram, dragon, heard, belief.Distinct, 3))
-	require.NoError(t, g.Claim(bram, dragon, seen, belief.Distinct, 3))
+	require.NoError(t, g.Claim(bram, dragon, heard, belief.Distinct, moment(3)))
+	require.NoError(t, g.Claim(bram, dragon, seen, belief.Distinct, moment(3)))
 
 	assertBundles(t, [][]testimony.TrackID{{dragon}, {seen, heard}}, g.Contacts(bram))
 
@@ -327,7 +334,7 @@ func TestTheWrongMerge(t *testing.T) {
 	_, err = g.Tick(projection.Input{
 		Presences: []projection.Presence{goblin},
 		Senses:    both,
-		At:        4,
+		At:        moment(4),
 	})
 	require.NoError(t, err)
 	assertBundles(t, [][]testimony.TrackID{{dragon}, {seen, heard}}, g.Contacts(bram))
@@ -354,7 +361,7 @@ func TestTwoObserversContradict(t *testing.T) {
 	// Hearing is untouched, so pip still hears the blade.
 	charm := projection.Forgery{
 		Where:     room,
-		Source:    "charm-on-pip",
+		Source:    charmOnPip,
 		Observers: []testimony.Observer{pip},
 		Says: map[testimony.Channel]projection.Says{
 			sight: says(content.Creature, "goblin", "holding a toy", room),
@@ -369,11 +376,11 @@ func TestTwoObserversContradict(t *testing.T) {
 		Senses: append(
 			senses(sight, []string{room}, pip, bram),
 			senses(hearing, []string{room}, pip, bram)...),
-		At: 1,
+		At: moment(1),
 	})
 	require.NoError(t, err)
 
-	toy := handle(sight, "charm-on-pip")
+	toy := handle(sight, charmOnPip)
 	sword := handle(sight, goblinOne)
 	heard := handle(hearing, goblinOne)
 
@@ -416,11 +423,11 @@ func TestStaleness(t *testing.T) {
 	watching := senses(sight, []string{room}, bram)
 
 	// Three passes of the same thing.
-	for at := testimony.Stamp(1); at <= 3; at++ {
+	for tick := uint64(1); tick <= 3; tick++ {
 		_, err := g.Tick(projection.Input{
 			Presences: []projection.Presence{standing},
 			Senses:    watching,
-			At:        at,
+			At:        moment(tick),
 		})
 		require.NoError(t, err)
 	}
@@ -430,8 +437,8 @@ func TestStaleness(t *testing.T) {
 	held, ok := g.Track(bram, seen)
 	require.True(t, ok)
 	require.Equal(t, 1, len(held.Entries), "identical content does not append")
-	assert.Equal(t, testimony.Stamp(1), held.Entries[0].Observed)
-	assert.Equal(t, testimony.Stamp(3), held.Entries[0].Confirmed,
+	assert.Equal(t, moment(1), held.Entries[0].Observed)
+	assert.Equal(t, moment(3), held.Entries[0].Confirmed,
 		"first seen at 1, still saying the same thing at 3")
 
 	// It draws a blade. New content, so a new entry — the old one stands.
@@ -443,7 +450,7 @@ func TestStaleness(t *testing.T) {
 	landings, err := g.Tick(projection.Input{
 		Presences: []projection.Presence{drawn},
 		Senses:    watching,
-		At:        4,
+		At:        moment(4),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []testimony.TrackID{seen}, landings[0].Delta.Changed,
@@ -452,27 +459,27 @@ func TestStaleness(t *testing.T) {
 	held, ok = g.Track(bram, seen)
 	require.True(t, ok)
 	require.Equal(t, 2, len(held.Entries))
-	assert.Equal(t, testimony.Stamp(1), held.Entries[0].Observed)
-	assert.Equal(t, testimony.Stamp(3), held.Entries[0].Confirmed)
+	assert.Equal(t, moment(1), held.Entries[0].Observed)
+	assert.Equal(t, moment(3), held.Entries[0].Confirmed)
 	assert.Equal(t, "standing", mustRead(t, held.Entries[0].Payload).Note,
 		"what it was doing at 1 through 3 is still held")
-	assert.Equal(t, testimony.Stamp(4), held.Entries[1].Observed)
+	assert.Equal(t, moment(4), held.Entries[1].Observed)
 
 	// Bram looks away. Complete percept with nothing in it is a write.
 	landings, err = g.Tick(projection.Input{
 		Presences: []projection.Presence{drawn},
 		Senses:    senses(sight, nil, bram),
-		At:        5,
+		At:        moment(5),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []testimony.TrackID{seen}, landings[0].Delta.Faded)
 
 	// Two more passes with the goblin still there and bram still looking away.
-	for at := testimony.Stamp(6); at <= 7; at++ {
+	for tick := uint64(6); tick <= 7; tick++ {
 		_, err = g.Tick(projection.Input{
 			Presences: []projection.Presence{drawn},
 			Senses:    senses(sight, nil, bram),
-			At:        at,
+			At:        moment(tick),
 		})
 		require.NoError(t, err)
 	}
@@ -480,7 +487,7 @@ func TestStaleness(t *testing.T) {
 	held, ok = g.Track(bram, seen)
 	require.True(t, ok, "the ghost keeps what was last seen")
 	assert.False(t, held.Current)
-	assert.Equal(t, testimony.Stamp(4), held.Latest().Confirmed,
+	assert.Equal(t, moment(4), held.Latest().Confirmed,
 		"last confirmed at 4 — and nothing here says whether it still holds")
 }
 
@@ -511,7 +518,7 @@ func TestFootprints(t *testing.T) {
 	_, err := g.Tick(projection.Input{
 		Presences: []projection.Presence{wolfSign, goblins},
 		Senses:    senses(sight, []string{mud}, pip, nan, bram),
-		At:        1,
+		At:        moment(1),
 	})
 	require.NoError(t, err)
 
@@ -534,7 +541,7 @@ func TestFootprints(t *testing.T) {
 	assertBundles(t, [][]testimony.TrackID{{tracks}, {goblin}}, g.Contacts(bram))
 	rel, at := g.Relation(bram, tracks, goblin)
 	assert.Equal(t, belief.Distinct, rel, "ruled out, not merely undecided")
-	assert.Equal(t, testimony.Stamp(1), at)
+	assert.Equal(t, moment(1), at)
 }
 
 // TestTheRangerCannotRuleIn proves the asymmetry: matching sign is consistent,
@@ -561,7 +568,7 @@ func TestTheRangerCannotRuleIn(t *testing.T) {
 	_, err := g.Tick(projection.Input{
 		Presences: []projection.Presence{goblinSign, goblins},
 		Senses:    senses(sight, []string{mud}, bram),
-		At:        1,
+		At:        moment(1),
 	})
 	require.NoError(t, err)
 

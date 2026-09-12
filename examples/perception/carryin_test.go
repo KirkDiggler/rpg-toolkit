@@ -18,11 +18,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
 )
 
-const (
+var (
 	// learnedAt is the run where bram first found the band.
-	learnedAt testimony.Stamp = 10
+	learnedAt = moment(10)
 	// returnedAt is the much later run he walks back in on.
-	returnedAt testimony.Stamp = 50
+	returnedAt = moment(50)
 )
 
 // whatBramTookHome runs one dungeon, has bram name the band on both channels,

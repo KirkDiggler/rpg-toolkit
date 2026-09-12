@@ -30,7 +30,7 @@ func TestTheStoreCannotReadAPayload(t *testing.T) {
 	track := testimony.TrackID("t-noise")
 
 	first, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 1,
+		Observer: bram, Channel: sight, At: moment(1),
 		Reports: []testimony.Report{{
 			Track: track, Payload: []byte(`{"kind":"creature","of":"goblin"}`), ChangeKey: "k1",
 		}},
@@ -40,7 +40,7 @@ func TestTheStoreCannotReadAPayload(t *testing.T) {
 
 	// Different bytes. Same declared key.
 	second, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 2,
+		Observer: bram, Channel: sight, At: moment(2),
 		Reports: []testimony.Report{{
 			Track: track, Payload: []byte(`{"of":"goblin","kind":"creature"}`), ChangeKey: "k1",
 		}},
@@ -52,12 +52,12 @@ func TestTheStoreCannotReadAPayload(t *testing.T) {
 	held, ok := s.Track(bram, track)
 	require.True(t, ok)
 	assert.Equal(t, 1, len(held.Entries), "same key, same content, no new entry")
-	assert.Equal(t, testimony.Stamp(2), held.Entries[0].Confirmed)
+	assert.Equal(t, moment(2), held.Entries[0].Confirmed)
 
 	// And the inverse: identical bytes under a new key DO append, proving the
 	// key is the whole of the test.
 	third, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 3,
+		Observer: bram, Channel: sight, At: moment(3),
 		Reports: []testimony.Report{{
 			Track: track, Payload: []byte(`{"of":"goblin","kind":"creature"}`), ChangeKey: "k2",
 		}},
@@ -83,7 +83,7 @@ func TestNothingIsNotAnEntry(t *testing.T) {
 
 	// An empty percept from an observer with no testimony must not bring an
 	// observer into existence.
-	delta, err := s.Surveil(testimony.Percept{Observer: pip, Channel: sight, At: 1})
+	delta, err := s.Surveil(testimony.Percept{Observer: pip, Channel: sight, At: moment(1)})
 	require.NoError(t, err)
 	assert.Empty(t, delta.Faded)
 	assert.Nil(t, s.Held(pip), "looking at nothing, having never seen anything, is nothing")
@@ -96,7 +96,7 @@ func TestAbsenceIsNotANegativeClaim(t *testing.T) {
 	s := testimony.New()
 
 	_, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 1,
+		Observer: bram, Channel: sight, At: moment(1),
 		Reports: []testimony.Report{{Track: "t-lit-room", Payload: []byte(`{}`), ChangeKey: "k"}},
 	})
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestValidationHappensBeforeAnyMutation(t *testing.T) {
 	s := testimony.New()
 
 	_, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 1,
+		Observer: bram, Channel: sight, At: moment(1),
 		Reports: []testimony.Report{{Track: "t-good", Payload: []byte(`{}`), ChangeKey: "k1"}},
 	})
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestValidationHappensBeforeAnyMutation(t *testing.T) {
 
 	// A valid report ahead of an invalid one must not land.
 	_, err = s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 2,
+		Observer: bram, Channel: sight, At: moment(2),
 		Reports: []testimony.Report{
 			{Track: "t-good", Payload: []byte(`{}`), ChangeKey: "k2"},
 			{Track: "t-bad", Payload: []byte(`{}`)},
@@ -150,13 +150,13 @@ func TestTracksBelongToOneChannel(t *testing.T) {
 	s := testimony.New()
 
 	_, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 1,
+		Observer: bram, Channel: sight, At: moment(1),
 		Reports: []testimony.Report{{Track: "t-shared", Payload: []byte(`{}`), ChangeKey: "k1"}},
 	})
 	require.NoError(t, err)
 
 	_, err = s.Surveil(testimony.Percept{
-		Observer: bram, Channel: hearing, At: 2,
+		Observer: bram, Channel: hearing, At: moment(2),
 		Reports: []testimony.Report{{Track: "t-shared", Payload: []byte(`{}`), ChangeKey: "k2"}},
 	})
 	require.ErrorIs(t, err, testimony.ErrChannelMismatch)
@@ -169,13 +169,13 @@ func TestTimeOnlyMovesOneWay(t *testing.T) {
 	s := testimony.New()
 
 	_, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 10,
+		Observer: bram, Channel: sight, At: moment(10),
 		Reports: []testimony.Report{{Track: "t-x", Payload: []byte(`{}`), ChangeKey: "k1"}},
 	})
 	require.NoError(t, err)
 
 	_, err = s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 9,
+		Observer: bram, Channel: sight, At: moment(9),
 		Reports: []testimony.Report{{Track: "t-x", Payload: []byte(`{}`), ChangeKey: "k2"}},
 	})
 	require.ErrorIs(t, err, testimony.ErrStampRegress)
@@ -188,7 +188,7 @@ func TestNoObserverCanReadAnother(t *testing.T) {
 	s := testimony.New()
 
 	_, err := s.Surveil(testimony.Percept{
-		Observer: bram, Channel: sight, At: 1,
+		Observer: bram, Channel: sight, At: moment(1),
 		Reports: []testimony.Report{{Track: "t-y", Payload: []byte(`{}`), ChangeKey: "k1"}},
 	})
 	require.NoError(t, err)
@@ -215,13 +215,13 @@ func TestADisagreementIsReturnedWhole(t *testing.T) {
 		p := content.Percept{Kind: content.Creature, Of: r.of}
 
 		_, err := s.Surveil(testimony.Percept{
-			Observer: bram, Channel: sight, At: 1,
+			Observer: bram, Channel: sight, At: moment(1),
 			Reports: []testimony.Report{{Track: r.track, Payload: content.Encode(p), ChangeKey: content.Key(p)}},
 		})
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, b.Assert(bram, dragon, goblin, belief.Same, 1))
+	require.NoError(t, b.Assert(bram, dragon, goblin, belief.Same, moment(1)))
 
 	contacts := b.Contacts(bram, []testimony.TrackID{dragon, goblin})
 	require.Equal(t, 1, len(contacts), "the observer holds them as one thing")
@@ -241,24 +241,24 @@ func TestADisagreementIsReturnedWhole(t *testing.T) {
 // TestATrackIsNotAPair rejects a claim about a track and itself.
 func TestATrackIsNotAPair(t *testing.T) {
 	b := belief.New()
-	require.ErrorIs(t, b.Assert(bram, "t-a", "t-a", belief.Same, 1), belief.ErrSameTrack)
+	require.ErrorIs(t, b.Assert(bram, "t-a", "t-a", belief.Same, moment(1)), belief.ErrSameTrack)
 }
 
 // TestRetractingIsNotRulingOut proves the three states are three, not two.
 func TestRetractingIsNotRulingOut(t *testing.T) {
 	b := belief.New()
 
-	require.NoError(t, b.Assert(bram, "t-a", "t-b", belief.Same, 1))
+	require.NoError(t, b.Assert(bram, "t-a", "t-b", belief.Same, moment(1)))
 	rel, _ := b.Relation(bram, "t-a", "t-b")
 	require.Equal(t, belief.Same, rel)
 
-	require.NoError(t, b.Assert(bram, "t-a", "t-b", belief.Unrelated, 2))
+	require.NoError(t, b.Assert(bram, "t-a", "t-b", belief.Unrelated, moment(2)))
 	rel, at := b.Relation(bram, "t-a", "t-b")
 	assert.Equal(t, belief.Unrelated, rel, "retracted to no claim")
 	assert.Zero(t, at, "no claim has no date, because nobody is claiming anything")
 
-	require.NoError(t, b.Assert(bram, "t-a", "t-b", belief.Distinct, 3))
+	require.NoError(t, b.Assert(bram, "t-a", "t-b", belief.Distinct, moment(3)))
 	rel, at = b.Relation(bram, "t-a", "t-b")
 	assert.Equal(t, belief.Distinct, rel)
-	assert.Equal(t, testimony.Stamp(3), at, "ruling out is an act, and it is dated")
+	assert.Equal(t, moment(3), at, "ruling out is an act, and it is dated")
 }

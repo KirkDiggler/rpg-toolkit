@@ -64,14 +64,14 @@ func aRunWhereBramFindsGoblins(t *testing.T, at testimony.Stamp) *perception.Gam
 // TestTheDistillation proves what leaves a finished run: a conclusion keyed to
 // a name, held and not current, with the raw run-local handles left behind.
 func TestTheDistillation(t *testing.T) {
-	g := aRunWhereBramFindsGoblins(t, 10)
+	g := aRunWhereBramFindsGoblins(t, moment(10))
 
 	seen := handle(sight, goblinBand)
 	heard := handle(hearing, goblinBand)
 
 	// Bram works out what he is looking at. Both channels, one name.
-	require.NoError(t, g.Identify(bram, seen, easternName, 10))
-	require.NoError(t, g.Identify(bram, heard, easternName, 10))
+	require.NoError(t, g.Identify(bram, seen, easternName, moment(10)))
+	require.NoError(t, g.Identify(bram, heard, easternName, moment(10)))
 
 	out := carry.Out(carry.Input{Observer: bram, Tracks: g.Held(bram), Names: g})
 	assert.Empty(t, out.Unnamed)
@@ -92,7 +92,7 @@ func TestTheDistillation(t *testing.T) {
 	assert.False(t, carriedSight.Current,
 		"a carried memory is a ghost, because that is exactly what it is")
 	assert.Equal(t, "a dozen of them", mustRead(t, carriedSight.Latest().Payload).Note)
-	assert.Equal(t, testimony.Stamp(10), carriedSight.Latest().Confirmed,
+	assert.Equal(t, moment(10), carriedSight.Latest().Confirmed,
 		"it is as old as it really is")
 
 	carriedHearing, ok := keeping.Track(playerBram, carry.Handle(easternName, hearing))
@@ -110,13 +110,13 @@ func TestTheDistillation(t *testing.T) {
 // TestTheUnnamedCannotTravel proves naming is the gate. A contact with no word
 // for it has nothing to be filed under, and saying so is part of the result.
 func TestTheUnnamedCannotTravel(t *testing.T) {
-	g := aRunWhereBramFindsGoblins(t, 10)
+	g := aRunWhereBramFindsGoblins(t, moment(10))
 
 	seen := handle(sight, goblinBand)
 	heard := handle(hearing, goblinBand)
 
 	// He knows what he saw. He never worked out the chanting.
-	require.NoError(t, g.Identify(bram, seen, easternName, 10))
+	require.NoError(t, g.Identify(bram, seen, easternName, moment(10)))
 
 	out := carry.Out(carry.Input{Observer: bram, Tracks: g.Held(bram), Names: g})
 	assert.Equal(t, []testimony.TrackID{heard}, out.Unnamed,
@@ -131,7 +131,7 @@ func TestTheUnnamedCannotTravel(t *testing.T) {
 	assert.False(t, ok, "nothing invented a name for him")
 
 	// Naming it is the only thing that changes the answer.
-	require.NoError(t, g.Identify(bram, heard, easternName, 11))
+	require.NoError(t, g.Identify(bram, heard, easternName, moment(11)))
 
 	out = carry.Out(carry.Input{Observer: bram, Tracks: g.Held(bram), Names: g})
 	assert.Empty(t, out.Unnamed)
@@ -158,7 +158,7 @@ func TestCarryingDoesNotLaunderALie(t *testing.T) {
 	}
 	charm := projection.Forgery{
 		Where:     tunnels,
-		Source:    "charm-on-pip",
+		Source:    charmOnPip,
 		Observers: []testimony.Observer{pip},
 		Says: map[testimony.Channel]projection.Says{
 			sight: says(content.Creature, "goblin", "holding a toy", tunnels),
@@ -173,18 +173,18 @@ func TestCarryingDoesNotLaunderALie(t *testing.T) {
 		Senses: append(
 			senses(sight, []string{tunnels}, pip),
 			senses(hearing, []string{tunnels}, pip)...),
-		At: 20,
+		At: moment(20),
 	}
 
 	_, err := g.Tick(in)
 	require.NoError(t, err)
 
 	theChief := belief.Name("the goblin chief")
-	forged := handle(sight, "charm-on-pip")
+	forged := handle(sight, charmOnPip)
 	heard := handle(hearing, goblinBand)
 
-	require.NoError(t, g.Identify(pip, forged, theChief, 20))
-	require.NoError(t, g.Identify(pip, heard, theChief, 20))
+	require.NoError(t, g.Identify(pip, forged, theChief, moment(20)))
+	require.NoError(t, g.Identify(pip, heard, theChief, moment(20)))
 
 	out := carry.Out(carry.Input{Observer: pip, Tracks: g.Held(pip), Names: g})
 
@@ -233,7 +233,7 @@ func twoBandsOneName(t *testing.T, seenBoth bool) carry.Result {
 	_, err := g.Tick(projection.Input{
 		Presences: []projection.Presence{byFire},
 		Senses:    senses(sight, []string{tunnels}, bram),
-		At:        10,
+		At:        moment(10),
 	})
 	require.NoError(t, err)
 
@@ -245,12 +245,12 @@ func twoBandsOneName(t *testing.T, seenBoth bool) carry.Result {
 	_, err = g.Tick(projection.Input{
 		Presences: second,
 		Senses:    senses(sight, []string{tunnels}, bram),
-		At:        11,
+		At:        moment(11),
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, g.Identify(bram, handle(sight, "band-a"), easternName, 11))
-	require.NoError(t, g.Identify(bram, handle(sight, "band-b"), easternName, 11))
+	require.NoError(t, g.Identify(bram, handle(sight, "band-a"), easternName, moment(11)))
+	require.NoError(t, g.Identify(bram, handle(sight, "band-b"), easternName, moment(11)))
 
 	return carry.Out(carry.Input{Observer: bram, Tracks: g.Held(bram), Names: g})
 }
@@ -295,32 +295,32 @@ func TestAnUnresolvableCollapseCarriesNothing(t *testing.T) {
 func TestACarriedBeliefOnlyRefreshesByCarryingAgain(t *testing.T) {
 	keeping, kept := testimony.New(), belief.New()
 
-	first := aRunWhereBramFindsGoblins(t, 10)
-	require.NoError(t, first.Identify(bram, handle(sight, goblinBand), easternName, 10))
-	require.NoError(t, first.Identify(bram, handle(hearing, goblinBand), easternName, 10))
+	first := aRunWhereBramFindsGoblins(t, moment(10))
+	require.NoError(t, first.Identify(bram, handle(sight, goblinBand), easternName, moment(10)))
+	require.NoError(t, first.Identify(bram, handle(hearing, goblinBand), easternName, moment(10)))
 	require.NoError(t, carry.Land(keeping, kept, playerBram,
 		carry.Out(carry.Input{Observer: bram, Tracks: first.Held(bram), Names: first}).Carried))
 
 	held, ok := keeping.Track(playerBram, carry.Handle(easternName, sight))
 	require.True(t, ok)
-	require.Equal(t, testimony.Stamp(10), held.Latest().Confirmed)
+	require.Equal(t, moment(10), held.Latest().Confirmed)
 
 	// A whole second run happens. The player's store is untouched by it.
-	second := aRunWhereBramFindsGoblins(t, 50)
+	second := aRunWhereBramFindsGoblins(t, moment(50))
 
 	held, ok = keeping.Track(playerBram, carry.Handle(easternName, sight))
 	require.True(t, ok)
-	assert.Equal(t, testimony.Stamp(10), held.Latest().Confirmed,
+	assert.Equal(t, moment(10), held.Latest().Confirmed,
 		"perceiving it again did not refresh what the player holds")
 
 	// Only another distillation does.
-	require.NoError(t, second.Identify(bram, handle(sight, goblinBand), easternName, 50))
+	require.NoError(t, second.Identify(bram, handle(sight, goblinBand), easternName, moment(50)))
 	require.NoError(t, carry.Land(keeping, kept, playerBram,
 		carry.Out(carry.Input{Observer: bram, Tracks: second.Held(bram), Names: second}).Carried))
 
 	held, ok = keeping.Track(playerBram, carry.Handle(easternName, sight))
 	require.True(t, ok)
-	assert.Equal(t, testimony.Stamp(50), held.Latest().Confirmed)
+	assert.Equal(t, moment(50), held.Latest().Confirmed)
 	assert.Equal(t, 1, len(held.Entries),
 		"the same conclusion re-confirmed moves a watermark and appends nothing")
 	assert.False(t, held.Current, "still a memory, however recently confirmed")

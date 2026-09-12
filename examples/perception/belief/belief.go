@@ -172,7 +172,7 @@ func (b *Beliefs) Assert(o testimony.Observer, a, c testimony.TrackID, rel Relat
 func (b *Beliefs) Relation(o testimony.Observer, a, c testimony.TrackID) (Relation, testimony.Stamp) {
 	claim, ok := b.claims[o][keyOf(a, c)]
 	if !ok {
-		return Unrelated, 0
+		return Unrelated, testimony.Stamp{}
 	}
 
 	return claim.Rel, claim.At
@@ -340,7 +340,7 @@ func (b *Beliefs) Identify(o testimony.Observer, track testimony.TrackID, as Nam
 func (b *Beliefs) NameOf(o testimony.Observer, track testimony.TrackID) (Name, testimony.Stamp, bool) {
 	named, ok := b.names[o][track]
 	if !ok {
-		return "", 0, false
+		return "", testimony.Stamp{}, false
 	}
 
 	return named.Name, named.At, true

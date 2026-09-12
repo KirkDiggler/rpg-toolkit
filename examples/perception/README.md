@@ -4,7 +4,11 @@ A spike. It owes nothing to the shipped perception path and is not a migration
 of it — it exists to find out whether a four-layer shape survives contact with
 the scenarios that matter, before any of it is proposed as a module.
 
-Depends on nothing but testify.
+Depends on testify and `world/journal` — which itself imports `errors` and
+`slices` and nothing else, so taking it costs almost nothing. The full `world`
+composer is deliberately still out: it needs a Scenario, verbs and a Resolver
+standing up before a line of perception runs, and nothing here has needed an act
+loop yet.
 
 ## The shape
 
@@ -105,6 +109,12 @@ Six things the design did not know before there was code:
 10. **A reconciler has to know memory from live.** Two things you can perceive at
     once are two things; a memory and a percept on one channel may well be one.
     That difference is the whole of recognising a place you have been before.
+11. **A stamp needs two coordinates**, and carry-in is what forces it: a
+    world-stamped memory and a run-stamped percept land in one store and have to
+    be comparable. Ticks alone get it backwards.
+12. **The journal already refuses a belief**, and for its own reasons — but it is
+    incurious about truth, so the discipline lives in the projection having no
+    way to write.
 
 ## Leaving a run
 
@@ -176,12 +186,46 @@ package inventing a conclusion on the observer's behalf.
 
 ## What leaving a run also surfaced
 
-**It needs a clock that outlives the run.** A carried belief keeps its
-`Confirmed` stamp so staleness stays measurable afterwards — but only if that
-number still means something. Re-stamping to the moment of leaving would make
-nine-day-old knowledge look fresh, which is the exact staleness lie the two
-stamps exist to kill. Carrying the stamp out unchanged is the honest half; the
-other half is a clock above the run, and there isn't one.
+**It needed a coordinate that outlives the run — and that is order, not a clock
+that ticks.** A carried belief keeps its `Confirmed` stamp, so it is only honest
+if the number still means something afterwards.
+
+`play/clock` cannot supply it: its `HighWater` lives inside a clock instance the
+encounter creates and stores in its own `Data`, and it marks turn order, not a
+calendar. `journal.Fact.Seq` is documented as *the world's only clock* and is
+monotonic across the whole journal, which outlives every run.
+
+So a `Stamp` carries **both**: `Seq`, the world's order, which advances when
+something *happens* — a whole dungeon run sits at one Seq while a great deal goes
+on inside it — and `Tick`, which orders testimony within a run and means nothing
+outside it. `TestTheWorldsOrderOutlivesTheRun` is the proof, and it is sharper
+than it looks: the memory's tick is 2 and the new run's first tick is 1, so **on
+ticks alone a season-old memory reads as the fresher of the two.** Seq is what
+gets it right.
+
+## Fitting against the real journal
+
+| test | proves |
+|---|---|
+| `TestTheWorldsOrderOutlivesTheRun` | both halves of a stamp are load-bearing |
+| `TestABeliefCannotBecomeAFact` | `journal.Append` refuses a fact with no actor — and noticing has no actor |
+| `TestTheLedgerHoldsTheActNotTheBelief` | pip acts on a lie; the ledger records what he did and who saw it, never what he thought |
+
+**The journal enforces the crossing rule without knowing perception exists.**
+Every fact names an actor, because a fact is something somebody *did*; a track's
+latest entry is something somebody *noticed*, and noticing has nobody to name. So
+no shape of belief is acceptable to it.
+
+Be exact about what that does not buy, though. `Append`'s own doc says the
+journal "does not check that the entities exist, that the audience is plausible,
+**or that the fact is true**." It will record a lie. The rule that a lie never
+reaches the ledger therefore holds for a different reason: the projection is the
+only thing that authors one, and it has no path to `Append` at all.
+
+**One piece of friction worth naming:** `journal` speaks `EntityID` and
+perception speaks `Observer`. Both strings, different types, so the composition
+converts at the seam. That is correct — neither module should learn the other's
+vocabulary — but it is a conversion somebody owns.
 
 **A carried belief is only ever refreshed by carrying again.** Perceiving the
 same goblins in a later run mints new run-local handles and touches nothing a
@@ -190,7 +234,8 @@ store — but it means the two stores only ever meet at a distillation.
 
 ## Deliberately absent
 
-Persistence (`ToData`/`Load…`). Forgetting or compaction — a ghost is immortal
-here, which is probably correct and definitely unpaid-for. Any dependency on
-`world`, `encounter`, `spatial`, or `core` — the next move is testing the fit
-against real `world`, and that is when the testify-only property gets spent.
+Persistence (`ToData`/`Load…`), which play's contract requires of every leaf and
+this spike honours nowhere — "knowledge survives the run" is currently a claim
+about in-memory structs. Forgetting or compaction: a ghost is immortal here,
+which is probably correct and definitely unpaid-for. The `world` composer, the
+act loop, and any dependency on `encounter`, `spatial`, or `core`.

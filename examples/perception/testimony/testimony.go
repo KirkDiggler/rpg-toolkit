@@ -51,6 +51,7 @@
 package testimony
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -66,9 +67,47 @@ type Channel string
 // TrackID is a channel's opaque continuity handle. Never an entity id.
 type TrackID string
 
-// Stamp is a coordinate on the world clock. It orders testimony and nothing
-// else; this package never does arithmetic on it beyond comparison.
-type Stamp uint64
+// Stamp is where a piece of testimony sits in order.
+//
+// It carries two coordinates because there are two kinds of order and only one
+// of them survives a run.
+//
+// [Stamp.Seq] is the world's order — the append position of the last fact the
+// world recorded. It advances when something HAPPENS, not when time passes, so a
+// whole dungeon run can sit at one Seq while a great deal goes on inside it. It
+// is also the only half that means anything once the run is over, which is why a
+// carried belief keeps it.
+//
+// [Stamp.Tick] orders testimony inside one run, where the world's order stands
+// still. It means nothing outside the run that minted it, and comparing ticks
+// from two different runs is meaningless — which lexicographic ordering handles
+// on its own, since a different run is almost always a different Seq.
+//
+// This package never does arithmetic on either. It orders and compares, and has
+// no opinion about how much time any distance represents.
+type Stamp struct {
+	Seq  int
+	Tick uint64
+}
+
+// Before reports whether this stamp is earlier than another.
+func (s Stamp) Before(other Stamp) bool {
+	if s.Seq != other.Seq {
+		return s.Seq < other.Seq
+	}
+
+	return s.Tick < other.Tick
+}
+
+// After reports whether this stamp is later than another.
+func (s Stamp) After(other Stamp) bool {
+	return other.Before(s)
+}
+
+// Compare orders two stamps, for sorting.
+func (s Stamp) Compare(other Stamp) int {
+	return cmp.Or(cmp.Compare(s.Seq, other.Seq), cmp.Compare(s.Tick, other.Tick))
+}
 
 // Sentinel errors. Every returned error wraps exactly one.
 var (
@@ -314,8 +353,8 @@ func (s *Store) check(verb string, o Observer, channel Channel, reports []Report
 			return fmt.Errorf("%s %s: %w: %s", verb, r.Track, ErrChannelMismatch, existing.channel)
 		}
 
-		if latest := existing.entries[len(existing.entries)-1]; at < latest.Confirmed {
-			return fmt.Errorf("%s %s at %d: %w: %d", verb, r.Track, at, ErrStampRegress, latest.Confirmed)
+		if latest := existing.entries[len(existing.entries)-1]; at.Before(latest.Confirmed) {
+			return fmt.Errorf("%s %s at %v: %w: %v", verb, r.Track, at, ErrStampRegress, latest.Confirmed)
 		}
 	}
 

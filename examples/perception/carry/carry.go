@@ -62,7 +62,6 @@
 package carry
 
 import (
-	"cmp"
 	"hash/fnv"
 	"slices"
 	"strconv"
@@ -191,7 +190,7 @@ func resolve(key slot, tracks []testimony.Track) (*Portable, []testimony.TrackID
 
 	for _, track := range tracks[1:] {
 		switch at := track.Latest().Confirmed; {
-		case at > freshest:
+		case at.After(freshest):
 			freshest, tied = at, 1
 		case at == freshest:
 			tied++
@@ -260,7 +259,7 @@ func Land(s *testimony.Store, names Recorder, knower testimony.Observer, carried
 			return strings.Compare(string(a.channel), string(b.channel))
 		}
 
-		return cmp.Compare(a.at, b.at)
+		return a.at.Compare(b.at)
 	})
 
 	for _, key := range keys {
