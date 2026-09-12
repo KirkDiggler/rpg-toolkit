@@ -218,7 +218,7 @@ func validatePass(pass Pass) error {
 // presence that observer isn't (rule 3) and that Reach says this channel
 // reaches (rule 2).
 func percept(sorted []Presence, observer core.EntityID, channel Channel, reach Reach) []intel.Report {
-	var reports []intel.Report
+	reports := make([]intel.Report, 0, len(sorted))
 	for _, presence := range sorted {
 		if presence.ID == observer {
 			continue
