@@ -165,10 +165,16 @@ func Recall(s behavior.Situation, name belief.Name) (string, bool) {
 }
 
 // Step is where a walking intent takes the actor, at region grain: one step,
-// this turn. Toward goes to the recalled region if it is next door. Away goes
-// to any adjacent region that is not the recalled one. False means the intent
-// cannot be walked from here, which the ladder should already have known.
-func Step(s behavior.Situation, intent behavior.Intent) (string, bool) {
+// this turn, along the dungeon's doors. Toward takes the first step of the
+// way to the recalled region. Away takes the door that puts the most dungeon
+// between them, and refuses a dead end — fleeing into a corner is not
+// fleeing. False means the intent cannot be walked from here, and the actor
+// stays where it is.
+//
+// The route is the game's, because static topology is construction truth.
+// The destination is the actor's, because where you choose to walk is a
+// matter of what you believe.
+func Step(g *behavior.Game, s behavior.Situation, intent behavior.Intent) (string, bool) {
 	where, recalled := Recall(s, intent.Target)
 	if !recalled {
 		return "", false
@@ -176,19 +182,9 @@ func Step(s behavior.Situation, intent behavior.Intent) (string, bool) {
 
 	switch intent.Verb {
 	case behavior.Toward:
-		if slices.Contains(s.Self.Adjacent, where) {
-			return where, true
-		}
-
-		return "", false
+		return g.Route(s.Self.Where, where)
 	case behavior.Away:
-		for _, next := range s.Self.Adjacent {
-			if next != where {
-				return next, true
-			}
-		}
-
-		return "", false
+		return g.Farther(s.Self.Where, where)
 	case behavior.Attack, behavior.Pass:
 		return "", false
 	default:

@@ -32,6 +32,7 @@ type Game struct {
 	sheets map[testimony.Observer]Sheet
 	selves map[testimony.Observer]Self
 	doors  map[string][]string
+	fears  map[testimony.Observer][]testimony.TrackID
 }
 
 // New builds an empty game.
@@ -42,7 +43,19 @@ func New() *Game {
 		sheets: make(map[testimony.Observer]Sheet),
 		selves: make(map[testimony.Observer]Self),
 		doors:  make(map[string][]string),
+		fears:  make(map[testimony.Observer][]testimony.TrackID),
 	}
+}
+
+// Frighten puts the frightened condition on an actor: it may not willingly
+// move toward the source. The condition is a fact about the actor's own sheet
+// and arrives here as one, in ledger terms; it is translated into the actor's
+// own sight handle of the source so that nothing downstream ever sees an
+// entity id. Whether the actor can currently perceive that source is its own
+// problem — a fence on something you cannot place forbids nothing, which is
+// what being afraid of something you cannot see feels like.
+func (g *Game) Frighten(o testimony.Observer, source string) {
+	g.fears[o] = append(g.fears[o], projection.Handle(testimony.Sight, source))
 }
 
 // Connect declares two regions adjacent. Static topology is construction
@@ -50,6 +63,77 @@ func New() *Game {
 func (g *Game) Connect(a, b string) {
 	g.doors[a] = append(g.doors[a], b)
 	g.doors[b] = append(g.doors[b], a)
+}
+
+// Route is the first step from one region toward another along the dungeon's
+// doors, and false when there is no way. Static topology is construction
+// truth: a monster may know the way through its own dungeon. It may not know
+// who is standing in it.
+func (g *Game) Route(from, to string) (string, bool) {
+	dist := g.distances(to)
+
+	best, found := "", false
+
+	for _, next := range g.doors[from] {
+		if d, reachable := dist[next]; reachable && (!found || d < dist[best]) {
+			best, found = next, true
+		}
+	}
+
+	if !found || dist[best] >= dist[from] {
+		return "", false
+	}
+
+	return best, true
+}
+
+// Farther is one step that puts more of the dungeon between the actor and a
+// region, and false when every door leads closer or nowhere — a dead end.
+// Fleeing into a corner is not fleeing.
+func (g *Game) Farther(from, awayFrom string) (string, bool) {
+	dist := g.distances(awayFrom)
+
+	here, placed := dist[from]
+	if !placed {
+		return "", false
+	}
+
+	best, found := "", false
+
+	for _, next := range g.doors[from] {
+		d, reachable := dist[next]
+		if !reachable || d <= here {
+			continue
+		}
+
+		if !found || d > dist[best] {
+			best, found = next, true
+		}
+	}
+
+	return best, found
+}
+
+// distances is how many doors each region is from one region.
+func (g *Game) distances(from string) map[string]int {
+	dist := map[string]int{from: 0}
+	queue := []string{from}
+
+	for len(queue) > 0 {
+		here := queue[0]
+		queue = queue[1:]
+
+		for _, next := range g.doors[here] {
+			if _, seen := dist[next]; seen {
+				continue
+			}
+
+			dist[next] = dist[here] + 1
+			queue = append(queue, next)
+		}
+	}
+
+	return dist
 }
 
 // Sheet gives an actor what it is armed with. Unset is melee.
@@ -74,7 +158,12 @@ func (g *Game) Tick(in projection.Input) error {
 	for o := range g.minds {
 		for _, p := range in.Presences {
 			if p.Source == string(o) {
-				g.selves[o] = Self{Sheet: g.sheets[o], Where: p.Where, Adjacent: g.doors[p.Where]}
+				g.selves[o] = Self{
+					Sheet:    g.sheets[o],
+					Where:    p.Where,
+					Adjacent: g.doors[p.Where],
+					Fences:   g.fears[o],
+				}
 			}
 		}
 	}

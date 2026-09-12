@@ -69,13 +69,16 @@ zombie with a bow on its sheet and `Keep` returning 1 — kiting is one number.
 0. a **live** named creature is nearer than the mind keeps, and there is
    somewhere to step → `Away{Name}`
 1. a **live** named creature is within reach → `Attack{Name}`
-2. a ranked named contact, live **or ghost**, is placed and not here →
-   `Toward{Name}`, honouring commitment
-3. nothing to pursue → `Pass`
+2. a ranked named contact, live **or ghost**, is placed, not here, and not
+   fenced → `Toward{Name}`, honouring commitment
+3. a fenced live creature is placed and there is somewhere to step →
+   `Away{Name}`
+4. nothing to pursue → `Pass`
 
 Live beats remembered: a ghost is never attacked and never fled. Fences are
 read from self; the ladder respects them and never offers them to the mind as
-a choice.
+a choice. A fence forbids approach and nothing else: frightened is not
+disarmed.
 
 **Intent** — sealed: `Attack{Name}`, `Toward{Name}`, `Away{Name}`, `Pass`. The
 target is always a name the actor gave. **You cannot aim at what you have not
@@ -120,7 +123,7 @@ needs it.
 | 1 | zombie and captain, one situation, two targets | contacts in the ladder; Name and Rank | **yes** |
 | 2 | a heal in sight retargets the captain; the same heal out of sight does not | deeds as testimony | **yes** |
 | 3 | archer fires from the next region, steps `Away` when someone enters its own | `Away`; Recall; rungs 0 and 2 | **yes** |
-| 4 | intimidated goblin cannot go `Toward` the intimidator; shoots if it can, flees if it cannot | fences on self | no |
+| 4 | intimidated goblin cannot go `Toward` the intimidator; shoots if it can, flees if it cannot | fences on self; routing | **yes** |
 | 5 | zombie walks to a stale ghost forever; captain drops it after N and returns to post | Rank over ghost age; commitment | no |
 
 ## What the fixtures taught
@@ -186,11 +189,27 @@ Things the shape did not know before there was code.
     It was equivalent: a current track's latest entry is its placement, so
     the memory rule already answers for a live contact. The branch was
     deleted. A ghost is not a special case of recall, only an older one.
-13. **Region grain cannot tell direction.** `Away` picks any adjacent region
-    that is not where the target is believed to be. With the knight in the
-    corridor and exits on both sides, the archer may back into the room the
-    knight came from. That is a real limit of the grain and not a bug; cells
-    and distance are the shipped encounter's business.
+13. **Region grain cannot tell direction, but a map can tell distance.**
+    The first `Step` picked any adjacent region that was not the target's.
+    Fixture 4 needed a walk of two regions and could not take the first step,
+    so routing moved onto the game, where static topology already lived:
+    `Toward` takes the first door on the way, `Away` takes the door that puts
+    the most dungeon between them. On a tie the archer may still back into
+    the room the knight came from; that is the grain, and cells are the
+    shipped encounter's business.
+14. **A fence is a rule, and rules are the ladder's.** The frightened
+    condition arrives on the sheet in ledger terms and is translated once, at
+    the composition, into the actor's own sight handle of the source. From
+    there the ladder refuses `Toward` a fenced contact and flees instead;
+    `Attack` is untouched. The mind was never asked. A mutant that lets the
+    ladder approach a fenced contact is killed. How the *mind* comes to know
+    who frightened it is a deed like any other, and no fixture has paid for
+    it yet.
+15. **Fleeing into a corner is not fleeing.** `Away` refuses a dead end
+    rather than stepping closer. The goblin in the hall, afraid of a knight
+    two rooms off, has nowhere to go and stays; when the knight comes within
+    bowshot it shoots. The ladder cannot know the map, so an `Away` the
+    stage refuses is an actor that stays put — which is what cornered means.
 
 ## What the spike simplifies, on purpose
 
@@ -205,9 +224,9 @@ Things the shape did not know before there was code.
 
 ## What we do not know yet
 
-- Whether a fence is a rule the stage derives from a condition, or a deed the
-  mind reads (*that one intimidated me*). Probably both: the fence is the rule,
-  the deed is how the mind knows who.
+- How a mind comes to know who frightened it. The fence is on the sheet;
+  the deed (*that one intimidated me*) would land like a heal does, and a
+  mind could rank by it. No fixture has needed it.
 - Whether *return to post* is a fourth intent or `Toward` a name the monster
   gave its own post at spawn. The latter costs nothing, if a post is something
   a monster can perceive.

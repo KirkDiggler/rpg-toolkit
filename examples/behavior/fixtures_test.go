@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/minds"
 	"github.com/KirkDiggler/rpg-toolkit/examples/behavior/stage"
+	"github.com/KirkDiggler/rpg-toolkit/examples/perception/belief"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/content"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/projection"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
@@ -31,6 +32,7 @@ const (
 	zombie  testimony.Observer = "zombie"
 	captain testimony.Observer = "captain"
 	archer  testimony.Observer = "archer"
+	goblin  testimony.Observer = "goblin"
 
 	// Ledger handles. They never leave the projection; the test is the game
 	// master and may mint track handles from them to assert with.
@@ -331,7 +333,7 @@ func TestFixture3_TheArcherKeepsItsRange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, behavior.Toward, zi.Verb, "the zombie has to walk")
 
-	to, ok := stage.Step(zs, zi)
+	to, ok := stage.Step(g, zs, zi)
 	require.True(t, ok)
 	assert.Equal(t, room, to)
 
@@ -344,7 +346,7 @@ func TestFixture3_TheArcherKeepsItsRange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, behavior.Away, ai.Verb, "too close to shoot: it steps away first")
 
-	to, ok = stage.Step(as, ai)
+	to, ok = stage.Step(g, as, ai)
 	require.True(t, ok)
 
 	believed, _ := stage.Recall(as, ai.Target)
@@ -366,4 +368,72 @@ func TestFixture3_TheArcherKeepsItsRange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, behavior.Attack, ai.Verb, "and shoots again from the next region")
 	assert.Equal(t, knight, stage.Aim(in, as, ai))
+}
+
+// TestFixture4_TheIntimidatedGoblin: a goblin archer at the far end of the
+// line would walk toward the knight. Frightened of him, it will not: it
+// flees instead. When the knight comes within bowshot anyway, it shoots — a
+// fence forbids approach and nothing else. The rule lives in the ladder; the
+// mind was never asked.
+func TestFixture4_TheIntimidatedGoblin(t *testing.T) {
+	g := behavior.New()
+	g.Connect(room, corridor)
+	g.Connect(corridor, hall)
+	g.Mind(goblin, minds.Archer{})
+	g.Sheet(goblin, behavior.Sheet{Reach: 1})
+
+	everywhere := []string{room, corridor, hall}
+
+	// Goblin in the hall, knight two regions away in the room.
+	in := projection.Input{
+		Presences: []projection.Presence{
+			standingAt(string(goblin), hall),
+			figureAt(knight, room, "armoured", false),
+		},
+		Senses: reaching(everywhere, goblin),
+		At:     moment(1),
+	}
+	require.NoError(t, g.Tick(in))
+
+	gi, gs, err := g.Turn(goblin, moment(1))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Toward, gi.Verb, "unafraid, it closes to bowshot")
+
+	to, ok := stage.Step(g, gs, gi)
+	require.True(t, ok)
+	assert.Equal(t, corridor, to)
+
+	// The knight intimidates it. The condition lands on the sheet.
+	g.Frighten(goblin, knight)
+	in.At = moment(2)
+	require.NoError(t, g.Tick(in))
+
+	gi, gs, err = g.Turn(goblin, moment(2))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Away, gi.Verb, "afraid and out of reach, it will not approach: it flees")
+	assert.Equal(t, gi.Target, mustName(t, gs, projection.Handle(sight, knight)), "from him, specifically")
+
+	_, ok = stage.Step(g, gs, gi)
+	assert.False(t, ok, "but the hall is a dead end, so there is nowhere to go")
+
+	// The knight comes to the corridor: within bowshot.
+	in.Presences[1] = figureAt(knight, corridor, "armoured", false)
+	in.At = moment(3)
+	require.NoError(t, g.Tick(in))
+
+	gi, gs, err = g.Turn(goblin, moment(3))
+	require.NoError(t, err)
+	require.Equal(t, behavior.Attack, gi.Verb, "frightened is not disarmed: it shoots")
+	assert.Equal(t, knight, stage.Aim(in, gs, gi))
+}
+
+// mustName is what the actor calls the contact holding a track.
+func mustName(t *testing.T, s behavior.Situation, track testimony.TrackID) belief.Name {
+	t.Helper()
+
+	c, held := bundleOf(s, track)
+	require.True(t, held)
+	require.True(t, c.Named)
+
+	return c.Name
 }

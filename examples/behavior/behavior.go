@@ -131,6 +131,24 @@ type Self struct {
 	// at construction — a monster knows its own dungeon's doors. It does not
 	// know who is behind them.
 	Adjacent []string
+	// Fences is the tracks this actor may not willingly move toward: the
+	// frightened condition, spoken in the actor's own handles. A fence is a
+	// RULE on the sheet, not a belief — the ladder honours it and the mind is
+	// never offered it as a choice. Whether the mind also knows who frightened
+	// it is a separate matter, and arrives as a deed like any other.
+	Fences []testimony.TrackID
+}
+
+// Fenced reports whether this contact holds a track the actor may not
+// willingly approach.
+func (s Self) Fenced(c Contact) bool {
+	for _, v := range c.Tracks {
+		if slices.Contains(s.Fences, v.ID) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Beyond is the distance this spike cannot measure: not here, not next door.
@@ -227,18 +245,27 @@ type Mind interface {
 //  0. a live named creature is nearer than the mind keeps, and there is
 //     somewhere to step → Away
 //  1. a live named creature is within reach → Attack
-//  2. a ranked named contact, live or ghost, is placed and not here → Toward
-//  3. nothing to act on → Pass
+//  2. a ranked named contact, live or ghost, is placed, not here, and not
+//     fenced → Toward
+//  3. a fenced live creature is placed and there is somewhere to step → Away
+//  4. nothing to act on → Pass
 //
 // Live beats remembered: a ghost is never attacked and never fled, however the
 // mind ranks it — you cannot hit a memory and it cannot hit you. Rung 2 is
 // where the mind's ranking decides between a live target ahead and a ghost
 // behind, and the ladder does not second-guess it.
+//
+// A fence forbids only approach. A frightened archer with the source in reach
+// still shoots (rung 1); one that cannot reach it will not walk closer (rung
+// 2) and flees instead (rung 3). That is the frightened condition's rule, and
+// it lives here because a rule about which intents are open is the ladder's,
+// not the mind's.
 func Decide(s Situation, m Mind) Intent {
 	ranked := m.Rank(s)
 	keep := m.Keep(s)
+	canStep := len(s.Self.Adjacent) > 0
 
-	if len(s.Self.Adjacent) > 0 {
+	if canStep {
 		for _, c := range ranked {
 			if !c.Named || !c.Current() || !c.Creature() {
 				continue
@@ -261,11 +288,21 @@ func Decide(s Situation, m Mind) Intent {
 	}
 
 	for _, c := range ranked {
-		if !c.Named || c.Where() == "" || c.Where() == s.Self.Where {
+		if !c.Named || c.Where() == "" || c.Where() == s.Self.Where || s.Self.Fenced(c) {
 			continue
 		}
 
 		return Intent{Verb: Toward, Target: c.Name}
+	}
+
+	if canStep {
+		for _, c := range ranked {
+			if !c.Named || !c.Current() || !c.Creature() || c.Where() == "" || !s.Self.Fenced(c) {
+				continue
+			}
+
+			return Intent{Verb: Away, Target: c.Name}
+		}
 	}
 
 	return Intent{Verb: Pass}
