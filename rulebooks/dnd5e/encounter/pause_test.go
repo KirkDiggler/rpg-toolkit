@@ -696,3 +696,44 @@ func (s *PauseTestSuite) TestAMovePausedTurnStillResumesIntoAnotherAct() {
 	s.Require().NoError(err)
 	s.Greater(len(driver.calls), 1, "the turn had intents left and the driver was asked for them")
 }
+
+// TestAPausedTurnTakesNoSecondStepWhileItsWindowIsOpen is the regression for
+// a bug older than the Routed intent that exposed it: the drive loop carried
+// on past one of its own paused turns.
+//
+// The clock has not advanced while a window is open, so the paused member was
+// still the active one. The next iteration of the loop built a fresh view for
+// them, asked their driver for a turn they were already mid-way through, and
+// took the answer: a SECOND step announced and walked while the reactor was
+// still being asked about the first, charged against a fresh full budget. The
+// stored pause was then a lie — it described a walk from a cell the mover had
+// already left, still owing an announced step into the cell it was standing
+// on.
+//
+// The teeth are the three facts a caller or a reload can see: one Move
+// announcement, the mover still on the cell before the announced one, and a
+// stored pause whose `from` is where the mover actually stands. A driver that
+// keeps asking for cells is what makes the second step available to be taken.
+func (s *PauseTestSuite) TestAPausedTurnTakesNoSecondStepWhileItsWindowIsOpen() {
+	driver := &spinningWalker{}
+	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+	enc := s.sceneWithDriver(mover, &downList{}, driver)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused())
+
+	s.Len(mover.calls, 1, "exactly one step is announced, and it is not taken")
+	s.Equal(cellAt(6, 2), s.positionOf(enc, goblin),
+		"the mover has not moved: the announced step is what the window is about")
+
+	data := enc.ToData()
+	s.Require().NotNil(data.PausedTurn)
+	s.Equal(posData(cellAt(6, 2)), data.PausedTurn.From,
+		"the stored pause says the mover stands where it actually stands")
+	s.Equal(posData(cellAt(5, 2)), data.PausedTurn.To)
+	s.Equal(30, data.PausedTurn.Budget.MovementFeet, "and owes its whole turn's movement")
+
+	s.Equal([]string{"scene-opened", "bubble-formed", "turn-ended", encounter.BeatWindowOpened},
+		s.beats(enc, alice), "no cell is narrated as walked, because none was")
+}

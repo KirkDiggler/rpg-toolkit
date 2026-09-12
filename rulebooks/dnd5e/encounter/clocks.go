@@ -348,16 +348,30 @@ func (e *Encounter) driveTurnsWithParticipation(
 	}
 
 	for i := 0; i < len(order); i++ {
-		// THE PAUSE GUARD AGAIN, PER ITERATION. The guard at the top of this
-		// function stops a drive that STARTS on a waiting fight; this one
-		// stops the same loop from carrying on after one of its own turns
-		// paused. The clock has not advanced — the paused member still holds
-		// the active slot — so the next iteration would build a view for the
-		// member who is mid-step and ask their driver for a turn they are
-		// already taking. The answer was always discarded (runTurnIntents
-		// returns on the pause before it can be acted on), which is why this
-		// was invisible until a driver that must be asked exactly once per
-		// turn arrived ([Routed], and the compelled driver above it).
+		// THE PAUSE GUARD AGAIN, PER ITERATION, AND IT IS A BUG FIX. The
+		// guard at the top of this function stops a drive that STARTS on a
+		// waiting fight; this one stops the same loop from carrying on after
+		// one of its own turns paused.
+		//
+		// WHAT HAPPENED WITHOUT IT. The clock has not advanced — the paused
+		// member still holds the active slot — so the next iteration built a
+		// fresh view for the member who is mid-step, asked their driver for a
+		// turn they are already taking, and EXECUTED the answer: a second
+		// step announced to the [Mover] and taken while the reactor's window
+		// was still open, charged against a fresh full budget rather than the
+		// one the pause had stored. The stored pause then described a walk
+		// from a cell its mover had already left, still owing the announced
+		// step into a cell it was already standing on. The outer loop could
+		// do that once per remaining iteration.
+		//
+		// It is not [Routed]'s bug and it did not arrive with Command; it is
+		// as old as the mid-walk pause. Command is only what made it visible,
+		// because a compelled driver must be asked exactly once per turn.
+		//
+		// The guard asks `e.pausedTurn` rather than [Encounter.Paused]
+		// because a held DIRECTIVE is not this loop's to care about: the door
+		// guard above already refused entry on one, and nothing inside a
+		// driven turn can create one.
 		if e.pausedTurn != nil {
 			return wrapped, lastSeq, deltas, nil
 		}
