@@ -1108,28 +1108,28 @@ func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
 	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Baned()))
 }
 
-// TWO CASTERS NOW EACH HOLD THEIR OWN COMMAND, AND THE DESIGN SAYS OTHERWISE.
+// TWO CASTERS EACH KEEP THEIR OWN COMMAND, and this is the rule rather than a
+// consequence somebody noticed.
 //
-// This pins what the code does; it does not endorse it. Design §4 says applying
-// a second Commanded to a member that holds one removes the first, because "two
-// words on one creature is not a state this design allows". That was true while
-// Commanded had no source of its own. It stopped being true when Commanded
-// gained a ConditionAddressProvider carrying its caster: two casters are two
-// addresses, so the replacement rule correctly leaves both standing.
+// Command is per CASTER, exactly as Bane is (design §2 and §4, ruled
+// 2026-09-12 off a walk finding). The condition's identity includes the caster
+// who gave the order, so a second caster's word is a different instance at a
+// different address and the replacement rule correctly leaves both standing.
+// Nobody's spell is taken off to make room for anybody else's — which is the
+// guarantee, and the thing ref-keying would have broken.
 //
-// The consequence reaches the next PR. The compelled driver looks the
-// compulsion up with conditions.DecodeCommanded, which answers with ONE record,
-// so a creature holding two orders obeys whichever the decoder happens to reach
-// and the other word is invisible. Nothing is corrupt and nothing crashes — it
-// is a silent arbitrary choice, which is the shape this stack keeps finding.
+// A SAME-caster recast still replaces, because that is the same address; that
+// is TestASecondCommandReplacesTheFirst, one scene up.
 //
-// THE RULING IS OPEN, and it is not this package's to make: is Command per
-// caster, like Bane, or per member, as §4 says? If per member, Commanded should
-// not carry a source and the two addresses collapse back into one. If per
-// caster, §4 needs rewriting and the driver needs a rule for which order wins.
-// Either way this test changes, which is why it is named for the disagreement
-// rather than for a behaviour.
-func (s *CastActionTestSuite) TestTwoCastersEachHoldTheirOwnCommandAndTheDesignSaysOtherwise() {
+// # The newest word is the one obeyed, and the sheet order is how
+//
+// The compelled turn obeys the newest word on the sheet. That rule rests on
+// something THIS package decides: the keeper appends the newly applied
+// instance after the one already there, so the newer order is last. The
+// assertion below pins it, because the driver in session reads the last blob
+// and a silently reordered sheet would make it obey the older order with
+// nothing looking wrong.
+func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheNewestIsLast() {
 	fixtures := s.fixtures()
 	target := fixtures.saver(14, commandedConditionJSON(s, heroID, wolfID, spells.CommandWordFlee))
 	bus := events.NewEventBus()
@@ -1151,7 +1151,31 @@ func (s *CastActionTestSuite) TestTwoCastersEachHoldTheirOwnCommandAndTheDesignS
 	s.Require().NoError(err)
 
 	s.Equal([]string{"applied:" + heroID}, *traffic,
-		"the wolf's order was not taken off to make room for the bard's")
-	s.Equal(2, s.countingRef(fixtures.sheet(out, heroID).Conditions, refs.Conditions.Commanded()),
-		"two casters, two addresses, two orders on one creature")
+		"no removal: nobody's spell comes off to make room for another caster's")
+
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(2, s.countingRef(sheet.Conditions, refs.Conditions.Commanded()),
+		"two casters, two addresses, two orders standing on one creature")
+
+	orders := s.commandedInOrder(sheet.Conditions)
+	s.Equal([]string{spells.CommandWordFlee, spells.CommandWordGrovel}, orders,
+		"the newest word is LAST on the sheet, which is how the compelled turn picks it")
+}
+
+// commandedInOrder is every order a sheet is carrying, in the order the sheet
+// carries them. The sequence is the assertion: the driver reads the newest.
+func (s *CastActionTestSuite) commandedInOrder(stored []json.RawMessage) []string {
+	words := make([]string, 0, len(stored))
+	for _, raw := range stored {
+		var peek struct {
+			Ref  core.Ref `json:"ref"`
+			Word string   `json:"word"`
+		}
+		s.Require().NoError(json.Unmarshal(raw, &peek))
+		if peek.Ref.Equals(refs.Conditions.Commanded()) {
+			words = append(words, peek.Word)
+		}
+	}
+
+	return words
 }
