@@ -1,5 +1,18 @@
 .PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all check-versions tag-module release-module freeroam verify
 
+# Developer tool versions. Pinned for the same reason golangci-lint is pinned in
+# .golangci-version: an unpinned tool is a gate that changes under you.
+#
+# These were `@latest`, and it broke CI. golang.org/x/tools v0.50.0 started
+# requiring go >= 1.26 while CI pins Go 1.25.x with GOTOOLCHAIN=local, so
+# `install-tools` began failing on every main push — taking `lint-all` and
+# `test-all` down with it, since they run in the same job after it.
+#
+# v0.49.0 is the last x/tools release that supports Go 1.25. Raise these
+# deliberately when the Go version moves, not silently when upstream tags.
+GOIMPORTS_VERSION ?= v0.49.0
+GOSEC_VERSION ?= v2.29.0
+
 # Default target
 help:
 	@echo "Available targets:"
@@ -34,7 +47,7 @@ test:
 # Run linter
 lint:
 	@echo "Running linter..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1)
+	@./scripts/install-golangci-lint.sh
 	@echo "→ Linting core module..."
 	cd core && golangci-lint run ./...
 	@echo "→ Linting events module..."
@@ -122,9 +135,9 @@ pre-commit:
 # Install development tools
 install-tools:
 	@echo "Installing development tools..."
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1
-	go install golang.org/x/tools/cmd/goimports@latest
-	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	./scripts/install-golangci-lint.sh
+	go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+	go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 	@echo "✅ Tools installed successfully"
 
 # Install git hooks
@@ -145,7 +158,7 @@ test-all:
 # Lint all modules (dynamic discovery)
 lint-all:
 	@echo "Running linter on all modules..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1)
+	@./scripts/install-golangci-lint.sh
 	@find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do \
 		dir=$$(dirname "$$modfile"); \
 		echo "→ Linting $$dir..."; \

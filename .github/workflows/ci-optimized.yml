@@ -62,10 +62,31 @@ jobs:
         
         # Get list of changed files
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.go$' || true)
+          ALL_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
         else
-          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '\.go$' || true)
+          ALL_CHANGED=$(git diff --name-only HEAD^ HEAD)
         fi
+
+        # Some files are not IN a module but change what checking a module
+        # MEANS: the lint config, the pinned linter version, the workflow, the
+        # Makefile targets CI calls, and the scripts behind them.
+        #
+        # Matching only '\.go$' made those changes invisible. A pull request
+        # touching just .golangci.yml detected no modules, skipped every check,
+        # and reported ci-status SUCCESS — a green that had run nothing. PR
+        # #1635 rewrites the lint config for all 26 modules and was never once
+        # linted by CI for exactly this reason.
+        #
+        # Fail LOUD instead: an infrastructure change checks everything.
+        INFRA_CHANGED=$(echo "$ALL_CHANGED" | grep -E '(^|/)\.golangci\.ya?ml$|^\.golangci-version$|^\.github/workflows/|^Makefile$|^scripts/' || true)
+        if [[ -n "$INFRA_CHANGED" ]]; then
+          echo "should_run_all=true" >> $GITHUB_OUTPUT
+          echo "Running all checks — lint/CI infrastructure changed:"
+          echo "$INFRA_CHANGED"
+          exit 0
+        fi
+
+        CHANGED_FILES=$(echo "$ALL_CHANGED" | grep '\.go$' || true)
         
         if [[ -z "$CHANGED_FILES" ]]; then
           echo "No Go files changed"
@@ -143,8 +164,8 @@ jobs:
         go mod tidy
         
         echo "→ Installing golangci-lint..."
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.3.1
-        
+        "$GITHUB_WORKSPACE/scripts/install-golangci-lint.sh"
+
         echo "→ Running linter..."
         golangci-lint run ./...
         
