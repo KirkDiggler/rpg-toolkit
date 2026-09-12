@@ -138,10 +138,17 @@ type MoveDirective struct {
 	// board where the anchor is.
 	AnchorID string
 
-	// Cells is a fixed budget, and Speed says the budget is the mover's own
-	// speed instead. Exactly one of the two, as the declaration requires.
+	// Cells is a fixed budget, Speed says the budget is the mover's own speed
+	// instead, and Turn says it is whatever movement the mover has left on its
+	// own turn. Exactly one of the three, as the declaration requires.
 	Cells int
 	Speed bool
+
+	// Turn is the third budget, and it is only meaningful when the move IS the
+	// mover's turn — which is what [Obey] produces and what no cast declares.
+	// Whoever owns the board reads the remaining movement off the turn it is
+	// already tracking.
+	Turn bool
 
 	// Pays is what being moved costs the creature that is moved. Zero is
 	// nothing, which is the push.
@@ -386,7 +393,7 @@ func conditionDescription(ref core.Ref) string {
 
 func publishPreparedCondition(
 	prepared preparedCondition, cast *Participants, targetID string,
-	source dnd5eEvents.ConditionSource, next func() (Step, error),
+	source dnd5eEvents.ConditionSource, next func(replaced []ImposedEffect) (Step, error),
 ) Gather {
 	return Gather{
 		name: "impose " + conditionDescription(prepared.declaration.Ref),
@@ -395,12 +402,137 @@ func publishPreparedCondition(
 			if err != nil {
 				return nil, err
 			}
+			landing := conditions.ConditionAddressOf(targetID, prepared.behavior)
+			replaced, err := replaceSameAddress(ctx, bus, cast, targetID, landing)
+			if err != nil {
+				return nil, err
+			}
+			// The removal is already durable when the application is attempted,
+			// and a failure here leaves the member holding neither. That is
+			// deliberate rather than overlooked: a publish that fails has
+			// already put subscribers in an unknown state, so re-applying the
+			// old instance would be inventing a third outcome on top of two
+			// half-finished ones. The step fails, the verb fails, and the host
+			// reloads from what was persisted.
 			if err := publishCondition(ctx, bus, prepared, target, source); err != nil {
 				return nil, err
 			}
-			return next()
+			return next(replaced)
 		},
 	}
+}
+
+// replaceSameAddress takes off whatever the recipient already holds at the
+// ADDRESS about to land, and hands back the effects that say so.
+//
+// # One instance per address per member
+//
+// A condition's address is member, ref and source (dnd5eEvents.ConditionAddress).
+// A second instance arriving at an address already occupied replaces what is
+// there: two Commands on one creature is not a state anything can obey, and
+// Command's second word replacing the first is the use case that brought this
+// rule.
+//
+// # The address is the key, and the ref is NOT
+//
+// THIS PARAGRAPH RECORDS A MISTAKE, because the mistake is the reason the key
+// is what it is. The design and the plan both claimed that Bane from two
+// casters stacked two −1d4 and that the first to end took both off, and offered
+// that as the general stacking bug this rule would fix. Both halves were false,
+// and a reviewer proved it against the tree:
+//
+//   - conditions.BanedContributionGroup already makes equal-potency Banes
+//     non-stacking — DescribeSelectedRollContributions takes the oldest
+//     provider in the group and skips the rest, so two Banes contributed one
+//     −1d4 before this rule existed.
+//   - Removal already compares the FULL address (character.onConditionRemoved),
+//     and BanedCondition carries its caster as the source, so the first Bane to
+//     end took off only itself.
+//
+// Keying this rule on the ref instead would have done real damage: a second
+// caster's Bane would strip the first caster's instance, whose owner would find
+// its child list empty and END THAT CASTER'S CONCENTRATION. One player's cast
+// would silently free another player's spell. RAW 2014 says the opposite — the
+// same spell cast twice keeps both durations and applies the most potent — which
+// is exactly what the stacking group already implements.
+//
+// So the key is the address. For every condition with no source of its own —
+// Commanded, Prone, Vicious Mockery — the two keys are the same thing, and
+// those are the conditions this rule exists for: two entries sharing one
+// address is what makes a single removal strip both.
+//
+// # It governs less than "every condition"
+//
+// Only what flows through publishPreparedCondition: the gated cast's
+// imposition, a strike's save-less condition, and Obey's grovel. The GATELESS
+// cast path publishes at activationMachine.deliverCast and never reaches here,
+// so a gateless self-cast twice — Blade Ward is the live example — still puts
+// two instances on one sheet. That is a shelf rather than an omission: no use
+// case has asked for it, and the day a gateless spell needs it the rule moves
+// down into publishCondition, which both paths share.
+//
+// # Removed first, applied second, and the order is the rule
+//
+// The keeper strips by address off the same list it is about to append to. A
+// removal published after the new condition landed would find two entries at
+// one address and take off whichever it reached first, which is a coin toss
+// between replacing the old one and undoing the new one.
+//
+// It ranges over the RECIPIENT's own sheet and nobody else's: this is a pointed
+// question about one member, not a set derived from what happened to be loaded.
+// The slice it walks is the sheet's LIVE one, and the keeper reassigns that
+// field while this loop runs — safe only because onConditionRemoved builds a
+// fresh filtered slice rather than compacting in place. A future keeper that
+// compacted in place would corrupt this iteration, so it would have to hand
+// back a copy here.
+func replaceSameAddress(
+	ctx context.Context, bus events.EventBus, cast *Participants, targetID string,
+	landing dnd5eEvents.ConditionAddress,
+) ([]ImposedEffect, error) {
+	var replaced []ImposedEffect
+	for _, held := range heldConditions(cast, targetID) {
+		address := conditions.ConditionAddressOf(targetID, held)
+		if address != landing {
+			continue
+		}
+		if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(
+			ctx, dnd5eEvents.ConditionRemovedEvent{
+				MemberID:     address.MemberID,
+				ConditionRef: address.ConditionRef,
+				SourceID:     address.SourceID,
+				Reason:       ConditionReplacedReason,
+			}); err != nil {
+			return nil, fmt.Errorf("replace %s on %q: %w", address.ConditionRef, targetID, err)
+		}
+		effect := removalEffect(address, ConditionReplacedReason)
+		effect.Description = fmt.Sprintf("%s replaced by a newer instance", address.ConditionRef)
+		replaced = append(replaced, effect)
+	}
+
+	return replaced, nil
+}
+
+// ConditionReplacedReason is why a condition came off when a second instance
+// landed at its address. It travels on the removal so a listener can tell a
+// replacement from an expiry, a dispel, or a concentration break.
+const ConditionReplacedReason = "replaced"
+
+// heldConditions is what one member's sheet is currently carrying, and an
+// absent member carries nothing.
+//
+// Nil for somebody who is not in the cast, rather than an error, because every
+// caller is asking a question that has the same answer either way: a member
+// with no sheet here holds no condition this interaction can see. The callers
+// that need a member to EXIST ask cast.entity, which refuses.
+func heldConditions(cast *Participants, memberID string) []dnd5eEvents.ConditionBehavior {
+	if character, ok := cast.Character(memberID); ok {
+		return character.GetConditions()
+	}
+	if monster, ok := cast.Monster(memberID); ok {
+		return monster.GetConditions()
+	}
+
+	return nil
 }
 
 // publishCondition is the one place a built condition reaches the bus.
@@ -563,7 +695,7 @@ func applyPreparedDamage(
 func validateMove(directive *MoveDirective) error {
 	declared := combatActions.CastMove{
 		Policy: directive.Policy, Cells: directive.Cells, Speed: directive.Speed,
-		Pays: directive.Pays, Provokes: directive.Provokes,
+		Turn: directive.Turn, Pays: directive.Pays, Provokes: directive.Provokes,
 	}
 	if err := declared.Validate(); err != nil {
 		return fmt.Errorf("%w: contest move: %w", ErrBadAction, err)
@@ -584,8 +716,11 @@ func validateMove(directive *MoveDirective) error {
 // third might too.
 func describeMove(directive MoveDirective) string {
 	budget := fmt.Sprintf("%d cells", directive.Cells)
-	if directive.Speed {
+	switch {
+	case directive.Speed:
 		budget = "their own speed"
+	case directive.Turn:
+		budget = "their own turn's movement"
 	}
 
 	return fmt.Sprintf("%s %s move of %s", articleFor(string(directive.Policy)), directive.Policy, budget)
@@ -1185,7 +1320,12 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 
 		return publishPreparedCondition(
 			m.prepared, m.cast, m.in.SaverID, conditionSourceFor(m.in.Cause),
-			func() (Step, error) {
+			func(replaced []ImposedEffect) (Step, error) {
+				// Replacement before application, in the trace as on the bus:
+				// the record reads in the order the rules happened, and a
+				// reader that met the new condition first would be reading an
+				// instant where the creature held both.
+				outcome.Imposed = append(outcome.Imposed, replaced...)
 				outcome.Imposed = append(outcome.Imposed, m.prepared.atStake(m.in.SaverID))
 				return deliverRemoval()
 			},

@@ -608,3 +608,84 @@ func resolveStrikeAgainstDeathSaveTarget(
 	}
 	return Resolve(context.Background(), in)
 }
+
+// A claw that knocks down an already-prone target goes through the same
+// replacement every other condition goes through: the sheet ends with ONE
+// prone rather than two entries sharing one address, which is what made a
+// single later removal strip both.
+//
+// The STRIKE'S OWN SUMMARY says nothing about it, and that is the documented
+// choice rather than an oversight: ConditionOutcome reports per declared
+// condition whether it landed, and a replacement has no lane in that
+// vocabulary. The bus fact still goes out, which is what this pins — the sheet
+// and every listener are right even while the summary is silent.
+func TestKnockingDownAnAlreadyProneTargetLeavesOneProne(t *testing.T) {
+	definition := validMeleeDefinition()
+	definition.Attack.Damage = nil
+	definition.Attack.OnHit = []combatActions.ConditionApplication{{Ref: *refs.Conditions.Prone()}}
+	standing, err := conditions.NewProneCondition(heroID).ToJSON()
+	require.NoError(t, err)
+	hero := actionHero()
+	hero.Conditions = []json.RawMessage{standing}
+
+	bus := events.NewEventBus()
+	var removals []string
+	_, err = dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(context.Background(),
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removals = append(removals, event.ConditionRef+":"+event.Reason)
+			return nil
+		})
+	require.NoError(t, err)
+
+	machine, err := NewAction(&ActionInput{
+		Definition: definition, AttackerID: wolfID, TargetID: heroID,
+		// A pair, because the target is already on the floor and the wolf is
+		// standing over them: prone's own second rule gives the attacker
+		// advantage, which is the scene this test is about.
+		Roller: &actionRoller{pairs: [][]int{{20, 20}}},
+	})
+	require.NoError(t, err)
+	out, err := resolveOn(context.Background(), &Input{
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}},
+		Machine:      machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+	}, newSurface(bus))
+	require.NoError(t, err)
+
+	require.Equal(t, []string{refs.Conditions.Prone().String() + ":" + ConditionReplacedReason}, removals,
+		"the one they were already carrying came off on the bus")
+
+	outcome := out.Outcome.(StrikeOutcome)
+	require.Len(t, outcome.Conditions, 1)
+	require.True(t, outcome.Conditions[0].Applied,
+		"the summary reports the declared condition landing and says nothing about the replacement")
+
+	prone := 0
+	for _, raw := range sheetFor(t, out, heroID).Conditions {
+		var peek struct {
+			Ref core.Ref `json:"ref"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &peek))
+		if peek.Ref.Equals(refs.Conditions.Prone()) {
+			prone++
+		}
+	}
+	require.Equal(t, 1, prone, "one instance per address per member")
+}
+
+// sheetFor is the dirty character this scene is about, and it fails rather than
+// returning nil: a target that never came back to be saved is a missing
+// assertion, not an absent one.
+func sheetFor(t *testing.T, out *Output, id string) *character.Data {
+	t.Helper()
+	for _, data := range out.DirtyCharacters {
+		if data.ID == id {
+			return data
+		}
+	}
+	require.FailNowf(t, "no dirty sheet", "%q did not come back to be saved", id)
+
+	return nil
+}

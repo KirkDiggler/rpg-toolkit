@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -20,9 +21,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -740,4 +743,447 @@ func (s *CastActionTestSuite) TestAContestWithNoSpellCauseStillSaysDamage() {
 	s.Require().Len(out.Outcome.(ContestOutcome).Imposed, 1)
 
 	s.Require().Equal(dnd5eEvents.ConditionSourceDamage, seen[dnd5eEvents.ConditionProne])
+}
+
+// commandDefinition is Command as content compiles it: a WIS gate, a menu of
+// three words, and one effect that reads both the caster and the word.
+func commandDefinition() *combatActions.Definition {
+	return spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Command, SpellSaveDC: spellSaveDC})
+}
+
+func commandCost() *Cost {
+	return &Cost{
+		PayerID: bardID,
+		Profile: commandDefinition().Cost,
+		Turn:    &Turn{Number: mockeryTurn, Speed: mockerySpeed},
+	}
+}
+
+// THE HEADLINE FOR THE OPTION. Command is the first spell whose parameters are
+// not fully written by content: the caster comes from the cast and the WORD
+// comes from the player, and both have to be on the sheet for the compulsion to
+// mean anything.
+//
+// Asserted on a GATED cast, which is the half that nearly lost the binding: the
+// contest builds its one application through a different branch from the
+// gateless delivery's loop, so a binding wired on one path only would resolve
+// Command with an empty word and still look fine.
+func (s *CastActionTestSuite) TestTheChosenWordIsWrittenOnAGatedCast() {
+	for _, word := range []string{spells.CommandWordApproach, spells.CommandWordFlee, spells.CommandWordGrovel} {
+		s.Run(word, func() {
+			fixtures := s.fixtures()
+			machine, err := NewAction(&ActionInput{
+				Definition: *commandDefinition(), AttackerID: bardID,
+				TargetIDs: []string{heroID}, Option: word,
+				Roller: facedRoller{d20: 1, other: psychicFace},
+			})
+			s.Require().NoError(err)
+
+			out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+			s.Require().NoError(err)
+			outcome := s.castOutcome(out)
+			s.Require().Len(outcome.Targets, 1)
+			s.Require().False(outcome.Targets[0].Save.Succeeded, "a 1 misses a DC 13 Wisdom save")
+
+			stored := s.castParams(fixtures.sheet(out, heroID), refs.Conditions.Commanded().String())
+			s.Equal(word, stored[spells.CommandWordParameter], "the word the player chose")
+			s.Equal(bardID, stored[spells.CommandCasterParameter], "the caster the words are measured from")
+		})
+	}
+}
+
+// A made save leaves nothing behind, so there is no word on any sheet: the
+// option is bound at construction and the gate still decides whether it lands.
+func (s *CastActionTestSuite) TestAMadeSaveLeavesNoWordBehind() {
+	fixtures := s.fixtures()
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 20, other: psychicFace},
+	})
+	s.Require().NoError(err)
+
+	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+	s.Require().NoError(err)
+	s.Require().True(s.castOutcome(out).Targets[0].Save.Succeeded)
+	s.Empty(s.castOutcome(out).Targets[0].Applied, "Command has no damage, so a made save delivers nothing")
+	for _, data := range out.DirtyCharacters {
+		s.NotContains(fixtures.conditionRefs(data), refs.Conditions.Commanded().String(),
+			"%s came back to be saved carrying a compulsion nobody imposed", data.ID)
+	}
+}
+
+// The menu is re-checked HERE even though the host checked it against the offer
+// it drew, and each of these is a different way for the choice to go missing.
+func (s *CastActionTestSuite) TestACastIsRefusedForAChoiceItsProfileDoesNotOffer() {
+	for _, tc := range []struct {
+		name       string
+		definition *combatActions.Definition
+		option     string
+		contains   string
+	}{
+		{
+			name: "a menu and no choice", definition: commandDefinition(), option: "",
+			contains: "chose none",
+		},
+		{
+			name: "a word the spell does not know", definition: commandDefinition(), option: "halt",
+			contains: `does not offer the option "halt"`,
+		},
+		{
+			name: "a choice for a spell with no menu", definition: baneDefinition(),
+			option: spells.CommandWordFlee, contains: `does not offer the option "flee"`,
+		},
+	} {
+		s.Run(tc.name, func() {
+			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: psychicFace}}
+			machine, err := NewAction(&ActionInput{
+				Definition: *tc.definition, AttackerID: bardID,
+				TargetIDs: []string{heroID}, Option: tc.option, Roller: roller,
+			})
+			s.Require().ErrorIs(err, ErrBadAction)
+			s.Require().Contains(err.Error(), tc.contains)
+			s.Nil(machine)
+			s.Zero(roller.calls, "a choice the profile cannot answer for is refused before any die")
+		})
+	}
+}
+
+// The option key, like the counterpart key, is content's own: an effect that
+// names none keeps exactly the parameters it was authored with.
+func (s *CastActionTestSuite) TestTheOptionKeyIsWrittenWhereContentSaidAndNowhereElse() {
+	command := commandDefinition().Cast.Effects[0]
+
+	s.Run("both bindings land on one configuration", func() {
+		bound, err := bindCast(command, bardID, spells.CommandWordFlee)
+		s.Require().NoError(err)
+
+		var fields map[string]any
+		s.Require().NoError(json.Unmarshal(bound, &fields))
+		s.Equal(bardID, fields[spells.CommandCasterParameter])
+		s.Equal(spells.CommandWordFlee, fields[spells.CommandWordParameter])
+		s.Equal(float64(spells.CommandTurnEnds), fields["turn_ends"],
+			"content's own parameters survive both bindings")
+	})
+
+	s.Run("an effect that reads no option is untouched", func() {
+		mockery := combatActions.CastEffect{
+			Recipient: combatActions.CastRecipientTarget, Ref: *refs.Conditions.ViciousMockery(),
+			CounterpartKey: spells.ViciousMockeryCasterParameter,
+		}
+		bound, err := bindCast(mockery, bardID, spells.CommandWordFlee)
+		s.Require().NoError(err)
+		s.JSONEq(fmt.Sprintf(`{%q:%q}`, spells.ViciousMockeryCasterParameter, bardID), string(bound))
+	})
+
+	s.Run("an effect that reads the option and gets none is refused", func() {
+		_, err := bindOption(command, json.RawMessage(`{}`), "")
+		s.Require().Error(err)
+		s.Require().Contains(err.Error(), "the cast's chosen option")
+	})
+}
+
+// conditionTraffic is an ordered log of what landed and what came off, so the
+// ORDER of a replacement can be asserted rather than assumed.
+func (s *CastActionTestSuite) conditionTraffic(bus events.EventBus, ref *core.Ref) *[]string {
+	log := &[]string{}
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			if event.ConditionRef == ref.String() {
+				*log = append(*log, "removed:"+event.MemberID+":"+event.SourceID+":"+event.Reason)
+			}
+			return nil
+		})
+	s.Require().NoError(err)
+	_, err = dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			if event.Type == dnd5eEvents.ConditionType(ref.ID) {
+				*log = append(*log, "applied:"+event.Target.GetID())
+			}
+			return nil
+		})
+	s.Require().NoError(err)
+
+	return log
+}
+
+// countingRef is how many instances of one ref a sheet came back carrying. The
+// rule under test is "one per member", so the number IS the claim.
+func (s *CastActionTestSuite) countingRef(stored []json.RawMessage, ref *core.Ref) int {
+	found := 0
+	for _, raw := range stored {
+		var peek struct {
+			Ref core.Ref `json:"ref"`
+		}
+		s.Require().NoError(json.Unmarshal(raw, &peek))
+		if peek.Ref.Equals(ref) {
+			found++
+		}
+	}
+
+	return found
+}
+
+// commandedConditionJSON is one creature already under an order.
+func commandedConditionJSON(s *CastActionTestSuite, memberID, casterID, word string) json.RawMessage {
+	condition, err := conditions.NewCommandedCondition(
+		memberID, refs.Spells.Command().String(), casterID, word, spells.CommandTurnEnds)
+	s.Require().NoError(err)
+	stored, err := condition.ToJSON()
+	s.Require().NoError(err)
+
+	return stored
+}
+
+// THE HEADLINE FOR THE REPLACEMENT, and Command is the use case that brought
+// the rule: two words on one creature is not a state anything can obey.
+func (s *CastActionTestSuite) TestASecondCommandReplacesTheFirst() {
+	fixtures := s.fixtures()
+	target := fixtures.saver(14, commandedConditionJSON(s, heroID, bardID, spells.CommandWordFlee))
+	bus := events.NewEventBus()
+	traffic := s.conditionTraffic(bus, refs.Conditions.Commanded())
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 1, other: psychicFace},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: commandCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"removed:" + heroID + ":" + bardID + ":replaced", "applied:" + heroID}, *traffic,
+		"the old order comes off BEFORE the new one lands, at its full address")
+
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Commanded()),
+		"one instance per address per member")
+	s.Equal(spells.CommandWordGrovel,
+		s.castParams(sheet, refs.Conditions.Commanded().String())[spells.CommandWordParameter],
+		"and the word that stands is the newer one")
+
+	imposed := s.castOutcome(out).Targets[0].Applied
+	s.Require().Len(imposed, 2, "the trace says the replacement happened as well as the application")
+	s.Equal(ImposedConditionRemoved, imposed[0].Kind)
+	s.Contains(imposed[0].Description, "replaced by a newer instance")
+	s.Equal(ImposedCondition, imposed[1].Kind)
+}
+
+// A monster's sheet is the same sheet for this rule. The check reads whatever
+// the recipient is holding, and nothing about it knows which kind of sheet it
+// came off.
+func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
+	fixtures := s.fixtures()
+	wolf := fixtures.wolfData()
+	wolf.Conditions = []json.RawMessage{commandedConditionJSON(s, wolfID, bardID, spells.CommandWordFlee)}
+	bus := events.NewEventBus()
+	traffic := s.conditionTraffic(bus, refs.Conditions.Commanded())
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{wolfID}, Option: spells.CommandWordApproach,
+		Roller: facedRoller{d20: 1, other: psychicFace},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: commandCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"removed:" + wolfID + ":" + bardID + ":replaced", "applied:" + wolfID}, *traffic)
+	s.Equal(1, s.countingRef(s.monsterSheet(out, wolfID).Conditions, refs.Conditions.Commanded()),
+		"one instance per address per member, on a monster's sheet too")
+}
+
+// monsterSheet is the monster half of the damage suite's sheet lookup, and it
+// fails rather than skipping: a recipient that never came back to be saved is a
+// missing assertion, not an absent one.
+func (s *CastActionTestSuite) monsterSheet(out *Output, id string) *monster.Data {
+	for _, data := range out.DirtyMonsters {
+		if data.ID == id {
+			return data
+		}
+	}
+	s.Require().Failf("no dirty sheet", "%q did not come back to be saved", id)
+
+	return nil
+}
+
+// THE KEY IS THE ADDRESS AND NOT THE REF, and Bane is the whole reason.
+//
+// Bane is the one condition in content that carries its caster as its own
+// source, so two casters' Banes sit at two addresses. Keyed on the ref, this
+// rule would have stripped the wolf's instance when the bard's landed — and its
+// owner, finding its child list empty, would have ENDED THE WOLF'S
+// CONCENTRATION. One player's cast silently freeing another player's spell is
+// not a detail, and the stacking group the conditions package already ships
+// resolves the overlap correctly without anybody being robbed.
+func (s *CastActionTestSuite) TestTwoCastersBanesBothStandAndBothConcentrationsHold() {
+	fixtures := s.fixtures()
+	wolfChild := dnd5eEvents.ConditionAddress{
+		MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: wolfID,
+	}
+	target := fixtures.saver(14, baneConditionJSON(s.T(), heroID, wolfID))
+	holder := fixtures.wolfData()
+	holder.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), wolfID, 7, wolfChild)}
+
+	bus := events.NewEventBus()
+	var removals []string
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removals = append(removals, event.ConditionRef+":"+event.SourceID+":"+event.Reason)
+			return nil
+		})
+	s.Require().NoError(err)
+
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: target}, {Monster: holder}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: baneCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Empty(removals, "nothing of the wolf's was taken off to make room for the bard's")
+	s.Empty(out.ConcentrationBreaks, "and no hold was broken")
+
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(2, s.countingRef(sheet.Conditions, refs.Conditions.Baned()),
+		"two casters, two addresses, two instances — the stacking group decides which one applies")
+	for _, dirty := range out.DirtyMonsters {
+		s.NotEqual(wolfID, dirty.ID, "the wolf's own hold and its seven-turn clock are untouched")
+	}
+}
+
+// Replacement is by REF and only by ref. A creature holding somebody else's
+// spell keeps it when a different one lands, which is what makes this a rule
+// about one spell rather than about conditions in general.
+func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
+	fixtures := s.fixtures()
+	mockery := conditions.NewViciousMockeryCondition(heroID, bardID, refs.Spells.ViciousMockery().String())
+	stored, err := mockery.ToJSON()
+	s.Require().NoError(err)
+
+	bus := events.NewEventBus()
+	removals := 0
+	_, err = dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(s.ctx,
+		func(context.Context, dnd5eEvents.ConditionRemovedEvent) error { removals++; return nil })
+	s.Require().NoError(err)
+
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: fixtures.saver(14, stored)}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: baneCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Zero(removals, "Bane landing takes nothing else off")
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.ViciousMockery()))
+	s.Equal(1, s.countingRef(sheet.Conditions, refs.Conditions.Baned()))
+}
+
+// TWO CASTERS EACH KEEP THEIR OWN COMMAND, AND THE FIRST ONE APPLIED IS THE ONE
+// OBEYED.
+//
+// Command is per CASTER, exactly as Bane is (design §2 and §4, ruled
+// 2026-09-12). The condition's identity includes the caster who gave the order,
+// so a second caster's word is a different instance at a different address and
+// the replacement rule correctly leaves both standing. Nobody's spell is taken
+// off to make room for anybody else's — that is the guarantee, and the thing
+// ref-keying would have broken.
+//
+// A SAME-caster recast still replaces, because that is the same address; that
+// is TestASecondCommandReplacesTheFirst, one scene up.
+//
+// # First applied wins, and Bane's group is the precedent
+//
+// Two orders coexisting need a rule for which one the creature obeys, and it is
+// the one that got there first — the same rule conditions.BanedContributionGroup
+// already runs for Bane, where DescribeSelectedRollContributions takes the
+// OLDEST applicable provider in the group and skips the rest. One rule across
+// the tree rather than a second answer for compulsions.
+//
+// # The sheet's order is what "first" means, and this package decides it
+//
+// The keeper appends each newly applied instance after the one already there,
+// so the sheet reads in application order and the first word applied is FIRST.
+// The assertion below pins that sequence, because the compelled turn reads the
+// order off the sheet: silently reorder it and a creature obeys the wrong
+// caster with nothing looking wrong.
+func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheFirstAppliedWins() {
+	fixtures := s.fixtures()
+	target := fixtures.saver(14, commandedConditionJSON(s, heroID, wolfID, spells.CommandWordFlee))
+	bus := events.NewEventBus()
+	traffic := s.conditionTraffic(bus, refs.Conditions.Commanded())
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 1, other: psychicFace},
+	})
+	s.Require().NoError(err)
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: commandCost(),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"applied:" + heroID}, *traffic,
+		"no removal: nobody's spell comes off to make room for another caster's")
+
+	sheet := fixtures.sheet(out, heroID)
+	s.Equal(2, s.countingRef(sheet.Conditions, refs.Conditions.Commanded()),
+		"two casters, two addresses, two orders standing on one creature")
+
+	orders := s.commandedInOrder(sheet.Conditions)
+	s.Equal([]string{spells.CommandWordFlee, spells.CommandWordGrovel}, orders,
+		"the sheet reads in application order, so the word that got there first is FIRST")
+}
+
+// commandedInOrder is every order a sheet is carrying, in the order the sheet
+// carries them. The sequence is the assertion: the first applied is the one
+// obeyed.
+func (s *CastActionTestSuite) commandedInOrder(stored []json.RawMessage) []string {
+	words := make([]string, 0, len(stored))
+	for _, raw := range stored {
+		var peek struct {
+			Ref  core.Ref `json:"ref"`
+			Word string   `json:"word"`
+		}
+		s.Require().NoError(json.Unmarshal(raw, &peek))
+		if peek.Ref.Equals(refs.Conditions.Commanded()) {
+			words = append(words, peek.Word)
+		}
+	}
+
+	return words
 }

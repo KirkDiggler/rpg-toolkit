@@ -826,7 +826,13 @@ func (m *strikeMachine) nextCondition(index int) (Step, error) {
 	if application.Save == nil {
 		return publishPreparedCondition(
 			prepared, m.cast, m.in.TargetID, dnd5eEvents.ConditionSourceDamage,
-			func() (Step, error) {
+			// A replaced instance went out on the bus, so the sheet and every
+			// listener are right; a strike's own summary says nothing about it,
+			// because [ConditionOutcome] reports per DECLARED condition whether
+			// it landed and a same-ref replacement is invisible in that
+			// vocabulary. The day a strike needs to report one, this outcome
+			// grows a lane rather than this call growing a translation.
+			func(_ []ImposedEffect) (Step, error) {
 				m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
 					Ref: application.Ref, Applied: true,
 				})
