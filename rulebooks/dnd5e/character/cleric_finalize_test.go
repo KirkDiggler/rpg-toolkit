@@ -35,7 +35,7 @@ func (s *ClericFinalizeSuite) classInput() *SetClassInput {
 		Choices: ClassChoices{
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
-			Spells:   []spells.Spell{spells.Bane, spells.Command, spells.CureWounds},
+			Spells:   []spells.Spell{spells.Bane, spells.Command, spells.CureWounds, spells.HealingWord},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
 				{ChoiceID: choices.ClericArmor, OptionID: choices.ClericArmorChainMail},
@@ -101,7 +101,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.ElementsMatch([]string{
 		refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
 	}, data.KnownCantrips)
-	s.ElementsMatch([]string{refs.Spells.Bane().String(), refs.Spells.Command().String(), refs.Spells.CureWounds().String()}, data.KnownSpells)
+	s.ElementsMatch([]string{refs.Spells.Bane().String(), refs.Spells.Command().String(), refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String()}, data.KnownSpells)
 	encoded, err = json.Marshal(data)
 	s.Require().NoError(err)
 	var stored Data

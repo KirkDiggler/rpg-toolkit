@@ -296,6 +296,21 @@ After this session release, the next root-only slice can expose Healing Word
 in acquisition. This PR does not change preparation, acquisition, or external
 repository pins.
 
+### Healing Word acquisition (after #1705)
+
+#1705 merged as `9fbfba45` and released session `v0.79.0`. The root-module
+acquisition slice adds Healing Word to the existing Cleric and Bard options.
+Cleric continues to select all supported first-level spells while preparation
+is deferred (now four). Bard keeps the existing four-known-spell limit and
+chooses four of five supported options. No automatic grant is added to loading
+an existing sheet, and existing Bard selections remain valid. An unfinished
+Cleric draft must refresh its spell selection to include the new supported entry.
+
+Validate accepted selections through finalization and JSON reload, preserve
+spent slots on load, and retain rejection of duplicates, unsupported entries,
+and incorrect counts. Slot initialization, casting mechanics, preparation,
+domain grants, and adjacent repository pins do not change in this slice.
+
 ### Healing Word content provider (after #1700)
 
 #1700 merged as `412f3dc7` and released rulebook `v0.161.0`. The next provider
