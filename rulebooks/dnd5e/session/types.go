@@ -521,12 +521,13 @@ type MemberOutcome struct {
 // known; malformed or current-unknown sight testimony is rejected while the
 // encounter loads, before this package projects it.
 //
-// On [Report] this is weaker (Copilot review, PR #1159): intel.Report carries
-// no Channel of its own, so a Report's Seen is inferred by decoding its
-// payload rather than gated on provenance — see projectReportSeen's own
-// comment in convert.go. It is not yet an authoritative "this was sight"
-// discriminator on a Report the way it is on a Sighting; do not treat it as
-// one until a second channel exists to prove the distinction matters.
+// On [Report] this is weaker (Copilot review, PR #1159): a first-contact
+// presence carries no Channel of its own, so a Report's Seen is inferred by
+// decoding its payload rather than gated on provenance — see
+// projectReportSeen's own comment in convert.go. It is not yet an
+// authoritative "this was sight" discriminator on a Report the way it is on
+// a Sighting; do not treat it as one until a second channel exists to prove
+// the distinction matters.
 //
 // ADR-0041: channel-keyed typed sub-structs on Sighting/Report. A future
 // channel (hearing, tremorsense) gets its own sub-struct with the facts that
@@ -537,19 +538,24 @@ type Seen struct {
 	// Position is the sighted subject's cell, dungeon-absolute.
 	Position spatial.Position `json:"position"`
 
-	// Standing is whether the sighted subject is on their feet.
-	// SIGHT-CHANNEL KNOWLEDGE, not roster truth: an observer who can see a
-	// member can see whether they are standing, which is why it belongs
-	// inside Seen and not on a roster read this seam deliberately lacks.
-	// Lands with rpg-toolkit#1137.
+	// Standing is whether the sighted subject was observed to be on their
+	// feet, read out of the observer's own snapshot rather than from a live
+	// roster consult. SIGHT-CHANNEL KNOWLEDGE, not roster truth: an observer
+	// who can see a member can see whether they are standing, which is why
+	// it belongs inside Seen and not on a roster read this seam deliberately
+	// lacks. Lands with rpg-toolkit#1137.
 	//
-	// KNOWN DEFECT: this is read LIVE from the roster and stamped onto every
-	// holding including memories, so a ghost currently discloses a standing
-	// change it never witnessed. It should keep the standing it last saw,
-	// exactly as Position does; closing that needs the composition to
-	// snapshot standing into the sight testimony, which needs a pass-scoped
-	// participation reading it does not have yet. rpg-toolkit#1615.
-	Standing Standing `json:"standing"`
+	// A memory keeps the standing it last saw and cannot disclose a change it
+	// never witnessed — and because it is a snapshot rather than a live read
+	// it can be WRONG, which is what illusion and enchantment need
+	// (rpg-toolkit#1615).
+	//
+	// NIL MEANS NOT OBSERVED: testimony older than this field, or a channel
+	// that does not report it. It is not the same claim as "seen standing" —
+	// collapsing it to StandingUp would assert something nobody observed,
+	// the exact defect this field closes (rpg-toolkit#1697, #1702). Observed
+	// carries a present value naming StandingUp or StandingDowned.
+	Standing *Standing `json:"standing,omitempty"`
 
 	// Equipment is what the sighted subject was observed holding, read out of
 	// the observer's own snapshot rather than from the subject. A memory keeps
@@ -672,17 +678,6 @@ const (
 	// coordinate.
 	LocationUnknown LocationState = "unknown"
 )
-
-// IntelCorrection reports that an observer corrected a subject's location
-// knowledge. It mirrors encounter-owned correction deltas by identifier only,
-// never exposes concealed truth, and does not ask session to decide behavior.
-type IntelCorrection struct {
-	// Observer is the member whose own location knowledge changed.
-	Observer string `json:"observer"`
-	// Subject is the member whose location is now explicitly unknown to the
-	// observer.
-	Subject string `json:"subject"`
-}
 
 // EventKind names what an event reports.
 //
@@ -2707,11 +2702,10 @@ type RecheckInput struct {
 
 // RecheckOutput reports what the re-look saved and delivered.
 type RecheckOutput struct {
-	// Discovered and Corrected are the intel movement the refresh produced,
-	// the same shape every other verb reports it in. A re-look ordinarily
-	// produces neither: nobody moved.
+	// Discovered is the perception movement the refresh produced, the same
+	// shape every other verb reports it in. A re-look ordinarily produces
+	// none: nobody moved.
 	Discovered map[string]Discovery
-	Corrected  []IntelCorrection
 	// Saved and Delivery are the persistence and stream reports every
 	// changing verb returns.
 	Saved    SaveReport

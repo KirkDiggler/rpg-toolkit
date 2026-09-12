@@ -98,9 +98,6 @@ type OpenDoorOutput struct {
 	// an opened door is the whole reason the verb refreshes sight.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
 
-	// Corrected reports location-belief corrections made by driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
-
 	// Formed is present when what the door revealed started a fight.
 	Formed *Formed `json:"formed,omitempty"`
 
@@ -144,11 +141,6 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 		return nil, fmt.Errorf("opendoor: %w", translate(err))
 	}
 
-	down, err := discoveryStanding(scope)
-	if err != nil {
-		return nil, fmt.Errorf("opendoor: %w", err)
-	}
-
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("opendoor: %w", err)
@@ -156,8 +148,7 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 
 	return &OpenDoorOutput{
 		Door:       Door{ID: opened.Door, State: string(opened.State)},
-		Discovered: projectDiscoveries(opened.IntelDeltas, down),
-		Corrected:  projectIntelCorrections(opened.IntelDeltas),
+		Discovered: projectDiscoveries(opened.IntelDeltas),
 		Formed:     projectFormedFor(scope, in.Member, opened.Formed),
 		Seq:        scope.deliveredSeq(in.Member, opened.Seq),
 		Saved:      report,
@@ -205,9 +196,6 @@ type UnlockOutput struct {
 
 	// Discovered is what a beaten lock brought into view.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
-
-	// Corrected reports location-belief corrections made by driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
 
 	// Formed is present when what the opened door revealed started a fight.
 	Formed *Formed `json:"formed,omitempty"`
@@ -291,11 +279,6 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		return nil, fmt.Errorf("unlock: %w", translate(err))
 	}
 
-	down, err := discoveryStanding(scope)
-	if err != nil {
-		return nil, fmt.Errorf("unlock: %w", err)
-	}
-
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w", err)
@@ -307,8 +290,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		DC:         unlocked.Applied.DC,
 		Applied:    projectApproach(unlocked.Applied),
 		Door:       Door{ID: unlocked.Door, State: string(unlocked.State)},
-		Discovered: projectDiscoveries(unlocked.IntelDeltas, down),
-		Corrected:  projectIntelCorrections(unlocked.IntelDeltas),
+		Discovered: projectDiscoveries(unlocked.IntelDeltas),
 		Formed:     projectFormedFor(scope, in.Member, unlocked.Formed),
 		Seq:        scope.deliveredSeq(in.Member, unlocked.Seq),
 		Saved:      report,

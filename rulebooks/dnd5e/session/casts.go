@@ -10,7 +10,7 @@ import (
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -61,7 +61,7 @@ func (m *Manager) buildCastOffers(
 	sheet *character.Character,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 	participants []resolution.Participant,
 	dependencyFailures []resolutionDependencyFailure,
 ) ([]compiledOffer, error) {
@@ -122,7 +122,7 @@ type compileCastOfferInput struct {
 	Definition         combatActions.Definition
 	Roster             []encounter.Member
 	Positions          map[string]spatial.Position
-	Holdings           []intel.Holding
+	Holdings           []perception.Holding
 	Participants       []resolution.Participant
 	DependencyFailures []resolutionDependencyFailure
 }

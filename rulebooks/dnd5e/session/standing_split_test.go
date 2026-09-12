@@ -114,7 +114,7 @@ func (s *StandingSplitSuite) TestACorruptNPCIsCorruptSessionState() {
 	s.spawnSkeleton()
 	s.corruptNPC("skeleton")
 
-	_, err := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "alice"})
+	_, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
 
 	s.Require().Error(err)
 	s.Assert().ErrorIs(err, session.ErrInvalidSession,
@@ -137,7 +137,7 @@ func (s *StandingSplitSuite) TestAnUnusableCharacterRecordIsACharacterProblem() 
 		Scalp: &customization.StyleSelection{Kind: "unknown"},
 	}}
 
-	_, err := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "skeleton"})
+	_, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "skeleton"})
 
 	s.Require().Error(err)
 	s.Assert().ErrorIs(err, session.ErrBadCharacter,
@@ -147,21 +147,26 @@ func (s *StandingSplitSuite) TestAnUnusableCharacterRecordIsACharacterProblem() 
 }
 
 // downSeenBy asks a read verb that consults standing over the WHOLE roster,
-// and reports who the given observer sees as downed.
+// and reports who the given observer's fight sees as downed.
 //
-// View is the verb because it batches the standing question over every member
-// rather than the observer alone, so one call runs both halves of the split
-// whatever it ends up showing.
+// Turn is the verb because it batches the standing question over every
+// member of the caller's clock.Order rather than the caller alone
+// (participantsFor), so one call still runs both halves of the split
+// whatever it ends up showing. This used to be View, but View no longer
+// consults standing at all (rpg-toolkit#1702): Seen.Standing is read from
+// the sight testimony's own snapshot now, not from a live roster answer, so
+// a corrupt sheet behind a merely-sighted subject can no longer surface
+// here — the split itself is unaffected, only which verb exercises it.
 func (s *StandingSplitSuite) downSeenBy(observer string) []string {
 	s.T().Helper()
 
-	sightings, err := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: observer})
+	out, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: observer})
 	s.Require().NoError(err)
 
 	var down []string
-	for _, sighting := range sightings {
-		if sighting.Seen.Standing == session.StandingDowned {
-			down = append(down, sighting.Subject)
+	for _, participant := range out.Participants {
+		if participant.Standing == session.StandingDowned {
+			down = append(down, participant.Member)
 		}
 	}
 

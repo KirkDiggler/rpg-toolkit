@@ -39,8 +39,9 @@ func TestBehaviorRoundTripsRememberedRoute(t *testing.T) {
 
 // task6ArrivalFixture starts a real session fight, then arranges a persisted
 // held-known sighting whose remembered cell is the skeleton's next step. The
-// fighter's live cell is moved out of sight in the persisted encounter so the
-// driven arrival must correct the stale testimony rather than refresh it.
+// fighter's live cell is moved out of sight in the persisted encounter, so the
+// driven arrival cannot refresh the stale testimony — it stays exactly what
+// the ghost last observed rather than being rewritten (encounter#1691/#1692).
 func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncounters, *fakeStream) {
 	t.Helper()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
@@ -74,7 +75,7 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 		State: encounter.LocationKnown, Position: oldCell,
 	})
 	require.NoError(t, err)
-	holdings := data.Intel.Holdings[core.EntityID("skel-1")]
+	holdings := data.Perception.Intel.Holdings[core.EntityID("skel-1")]
 	holding, ok := holdings[intel.Subject("fighter")]
 	require.True(t, ok, "fight-time skeleton must hold sight testimony for fighter")
 	holding.Payload, holding.CurrentVia = payload, nil
@@ -93,7 +94,7 @@ func task6StoredLocation(t *testing.T, encounters *fakeEncounters) encounter.Sig
 	t.Helper()
 	data, err := encounters.GetEncounter(context.Background(), "world")
 	require.NoError(t, err)
-	holding := data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
+	holding := data.Perception.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
 	location, ok := encounter.DecodeSightTestimony(holding.Payload)
 	require.True(t, ok, "stored sight testimony must be canonical")
 	return location
@@ -125,21 +126,33 @@ func TestSessionMonsterArrivalSaveFailureRollsBackCorrection(t *testing.T) {
 }
 
 // TestSessionMonsterArrivalPersistsCorrection proves the success twin through
-// the same load-act-save path and exposes only the correction's identities.
+// the same load-act-save path, and its expectation flipped from this issue's
+// own (encounter#1691/#1692, adopted here by the rpg-toolkit#1702 version
+// bump): a ghost standing on the mover's own arrival cell no longer gets
+// rewritten to LocationUnknown. It keeps the last position it actually
+// observed — an honest, stale memory rather than an engine editing a
+// player's belief to patch staleness — so a successful driven arrival now
+// persists the SAME known, stale cell the rolled-back save above already
+// pins, and this test is what proves a real commit does not disturb it.
+// Session no longer reports a correction of its own either: IntelCorrection
+// is gone (rpg-toolkit#1702 deleted that dead reporting surface — encounter
+// stopped producing Corrected deltas back at #1691, so nothing was left to
+// report).
 func TestSessionMonsterArrivalPersistsCorrection(t *testing.T) {
 	mgr, _, encounters, _ := task6ArrivalFixture(t)
-	out, err := mgr.EndTurn(context.Background(), &session.EndTurnInput{
+	_, err := mgr.EndTurn(context.Background(), &session.EndTurnInput{
 		Session: "sess", Member: "fighter",
 		DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter"),
 	})
 	require.NoError(t, err)
-	require.Equal(t, []session.IntelCorrection{{Observer: "skel-1", Subject: "fighter"}}, out.Corrected)
 	location := task6StoredLocation(t, encounters)
-	require.Equal(t, encounter.LocationUnknown, location.State)
+	require.Equal(t, encounter.LocationKnown, location.State,
+		"the ghost keeps the stale cell it actually observed rather than being rewritten to unknown")
+	require.Equal(t, spatial.Position{X: 0, Y: 0}, location.Position)
 	data, err := encounters.GetEncounter(context.Background(), "world")
 	require.NoError(t, err)
-	holding := data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
-	require.Empty(t, holding.CurrentVia, "persisted corrected sight holding must remain Held")
+	holding := data.Perception.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
+	require.Empty(t, holding.CurrentVia, "persisted stale sight holding must remain Held")
 }
 
 // TestMalformedSightTestimonyFailsSessionLoadBeforeProjection proves a
@@ -149,9 +162,9 @@ func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
 	_, sessions, encounters, _ := task6ArrivalFixture(t)
 	data, err := encounters.GetEncounter(context.Background(), "world")
 	require.NoError(t, err)
-	holding := data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
+	holding := data.Perception.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
 	holding.Payload = nil
-	data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")] = holding
+	data.Perception.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")] = holding
 	require.NoError(t, encounters.SaveEncounter(context.Background(), "world", data))
 
 	// Use a fresh manager to make this a load-path assertion, not an in-memory
@@ -943,25 +956,13 @@ func persistedMonsterPosition(t *testing.T, repo *fakeEncounters, id string) spa
 	return spatial.Position{}
 }
 
-func requireUnknownStoredLocation(t *testing.T, repo *fakeEncounters, observer, subject string) {
-	t.Helper()
-	data, err := repo.GetEncounter(context.Background(), "world")
-	require.NoError(t, err)
-	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
-	require.True(t, ok, "persisted %s testimony for %s must remain held", observer, subject)
-	require.Empty(t, holding.CurrentVia)
-	location, ok := encounter.DecodeSightTestimony(holding.Payload)
-	require.True(t, ok, "persisted testimony must remain canonical")
-	require.Equal(t, encounter.LocationUnknown, location.State)
-}
-
 func requireHeldKnownStoredLocation(
 	t *testing.T, repo *fakeEncounters, observer, subject string, want spatial.Position,
 ) {
 	t.Helper()
 	data, err := repo.GetEncounter(context.Background(), "world")
 	require.NoError(t, err)
-	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
+	holding, ok := data.Perception.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
 	require.Empty(t, holding.CurrentVia, "broken sight must leave held testimony")
 	location, ok := encounter.DecodeSightTestimony(holding.Payload)
@@ -974,7 +975,7 @@ func persistedKnownLocation(t *testing.T, repo *fakeEncounters, observer, subjec
 	t.Helper()
 	data, err := repo.GetEncounter(context.Background(), "world")
 	require.NoError(t, err)
-	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
+	holding, ok := data.Perception.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
 	require.NotEmpty(t, holding.CurrentVia, "initial testimony must be current")
 	location, ok := encounter.DecodeSightTestimony(holding.Payload)
@@ -1092,11 +1093,18 @@ func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
 	require.NoError(t, err)
 	requireHeldKnownStoredLocation(t, repo, "goblin", "billy", carpet)
 
-	// Drive until the stale carpet is reached and corrected. The bounded loop
-	// is only a safety guard; every assertion below is a narrative milestone,
+	// Drive until the goblin reaches the stale carpet. The bounded loop is
+	// only a safety guard; every assertion below is a narrative milestone,
 	// not a prescribed turn count.
+	//
+	// The loop no longer waits for the stale testimony to flip to
+	// LocationUnknown — a ghost standing on the mover's own arrival cell no
+	// longer gets rewritten that way (encounter#1691/#1692, adopted here by
+	// the rpg-toolkit#1702 version bump). It stays exactly what the goblin
+	// last observed, so arrival itself, not a testimony transition, is the
+	// signal this loop drives toward.
 	finalRememberedMoveAt := -1
-	for i := 0; i < 12; i++ {
+	for i := 0; i < 12 && persistedMonsterPosition(t, repo, "goblin") != carpet; i++ {
 		viewOffset := len(recorder.views)
 		_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
 			Session: "sess", Member: "billy", DeclarationID: currentEndTurnID(t, mgr, "sess", "billy"),
@@ -1110,13 +1118,6 @@ func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
 				finalRememberedMoveAt = call
 			}
 		}
-		data, loadErr := repo.GetEncounter(ctx, "world")
-		require.NoError(t, loadErr)
-		location, ok := encounter.DecodeSightTestimony(data.Intel.Holdings[core.EntityID("goblin")][intel.Subject("billy")].Payload)
-		require.True(t, ok)
-		if location.State == encounter.LocationUnknown {
-			break
-		}
 	}
 	ghostView := requireRecordedView(t, recorder.views, func(view session.MonsterView) bool {
 		return rememberedAt(view, "billy", carpet) && !seen(view, "billy")
@@ -1129,16 +1130,26 @@ func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
 		}
 	}
 	require.Equal(t, carpet, persistedMonsterPosition(t, repo, "goblin"))
-	requireUnknownStoredLocation(t, repo, "goblin", "billy")
+	// The goblin now stands exactly where its stale memory of billy still
+	// points — the "impossible" case correctArrivedLocations used to erase to
+	// LocationUnknown. It is honest and stale instead (encounter#1691/#1692):
+	// the same LocationKnown/carpet ghost asserted before the chase began.
+	requireHeldKnownStoredLocation(t, repo, "goblin", "billy", carpet)
 	require.NotEqual(t, -1, finalRememberedMoveAt, "one remembered-directed move must arrive on the exact carpet")
 	postArrivalAt := finalRememberedMoveAt + 1
 	require.Less(t, postArrivalAt, len(recorder.views), "arrival correction must be followed by a new driver decision")
 	postArrival := recorder.views[postArrivalAt]
 	require.Equal(t, carpet, postArrival.Position, "the post-correction decision must be recorded from the arrived carpet cell")
 	require.False(t, seen(postArrival, "billy"), "the arrived view must not regain concealed Billy")
-	require.False(t, remembered(postArrival, "billy"), "the arrived view must not repeat the resolved ghost")
+	// The ghost is STILL remembered here, and that is the intended behaviour
+	// change (encounter#1691/#1692): the composition no longer erases a
+	// stale memory just because the observer now stands where it points —
+	// "the memory is honest and stale; how to draw it is the client's
+	// decision." The driver is that client, and its own decision is still to
+	// Pass rather than loop a zero-distance chase against its own cell.
+	require.True(t, remembered(postArrival, "billy"), "the ghost is honest and stale, not erased by arriving on its cell")
 	_, passed := recorder.intents[postArrivalAt].(session.Pass)
-	require.True(t, passed, "the immediate post-correction decision must pass instead of pursuing the carpet again")
+	require.True(t, passed, "the driver must not loop pursuing a memory that points at its own current cell")
 	requireNeverContainsPosition(t, recorder.views, "billy", hiddenRightCell)
 	requireNeverContainsIntentPosition(t, recorder.intents, hiddenRightCell)
 }

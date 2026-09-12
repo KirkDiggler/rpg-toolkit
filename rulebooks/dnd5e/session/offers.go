@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -84,7 +84,7 @@ type compiledOffer struct {
 type targetPreflightFunc func(
 	enc *encounter.Encounter,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 	member string,
 	maxRangeFeet int,
 ) ([]targetPreflight, error)
@@ -238,7 +238,7 @@ func (m *Manager) compileOffersFor(
 	var (
 		roster    []encounter.Member
 		positions map[string]spatial.Position
-		holdings  []intel.Holding
+		holdings  []perception.Holding
 	)
 	if requested[VerbAttack] || requested[VerbActivate] || requested[VerbCast] {
 		var err error
@@ -674,8 +674,8 @@ func blockedCompiledOffer(verb Verb, kind TargetKind, why Shortfall) compiledOff
 // buildTargetPreflight's own fail-closed law would catch downstream) is
 // left in rather than silently dropped here; this function's only job is
 // the one exclusion it is named for.
-func excludeWorldNPCs(holdings []intel.Holding, kinds map[string]MemberKind) []intel.Holding {
-	out := make([]intel.Holding, 0, len(holdings))
+func excludeWorldNPCs(holdings []perception.Holding, kinds map[string]MemberKind) []perception.Holding {
+	out := make([]perception.Holding, 0, len(holdings))
 	for _, h := range holdings {
 		if kinds[string(h.Subject)] == KindWorld {
 			continue
@@ -686,8 +686,8 @@ func excludeWorldNPCs(holdings []intel.Holding, kinds map[string]MemberKind) []i
 }
 
 // buildTargetPreflight enumerates the ruled candidate universe for one
-// compiled Attack: every live CurrentVia-nonempty holding except the actor,
-// exactly once, sorted by member ID. Stale memories (empty CurrentVia) and
+// compiled Attack: every currently-sustained holding except the actor,
+// exactly once, sorted by member ID. Stale memories (Current false) and
 // the actor are excluded. A live candidate whose position is missing from the
 // roster is an internal inconsistency this read fails closed on rather than
 // silently omitting.
@@ -701,7 +701,7 @@ func excludeWorldNPCs(holdings []intel.Holding, kinds map[string]MemberKind) []i
 func buildTargetPreflight(
 	enc *encounter.Encounter,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 	member string,
 	maxRangeFeet int,
 ) ([]targetPreflight, error) {
@@ -710,7 +710,7 @@ func buildTargetPreflight(
 	candidateIDs := make([]string, 0, len(holdings))
 	for _, h := range holdings {
 		subject := string(h.Subject)
-		if subject == member || len(h.CurrentVia) == 0 {
+		if subject == member || !h.Current {
 			continue
 		}
 		candidateIDs = append(candidateIDs, subject)
