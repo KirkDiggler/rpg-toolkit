@@ -29,7 +29,10 @@ belief               the observer's own claims. contacts are folded from
     |                claims, never stored.
     v
 carry                what crosses a run's edge, in either direction: re-keyed
-                     onto a name, arriving as a ghost.
+    |                onto a name, arriving as a ghost.
+    v
+act / stage          a belief becomes a deed: act sees only beliefs, stage
+                     resolves them against the world.
 ```
 
 The arrows are the design. Nothing reads truth to answer a question about an
@@ -118,6 +121,14 @@ Six things the design did not know before there was code:
 13. **A store's load checks are a list of what it cannot do.** Writing them is
     the fastest way to find out whether the invariants were ever real, because
     each one has to name a state the writer could not have produced.
+14. **Aiming at a name is the whole of "act on what you hold".** It is one field
+    on one struct, and it makes targeting something you never perceived
+    unexpressible rather than forbidden.
+15. **Binding is a pure function of the truth surface**, so forgeries are absent
+    from it by construction. Nobody had to write a rule saying that attacking an
+    illusion hits nothing.
+16. **Witnessing and perceiving are one decision**, so they are made once. Two
+    answers to "who was there" is two chances to disagree.
 
 ## Leaving a run
 
@@ -275,9 +286,58 @@ between *still true* and *true again* is the whole reason there are two stamps.
 `TestNothingHeldIsNothingStored` keeps the common case free at rest too,
 including a claim made and then retracted: it leaves nothing behind to store.
 
+## Acting on what you hold
+
+The last line of the original list, and the composer is what closes it. `world`
+comes in for real: one verb, a resolver with no dice in it, and a `Witness` that
+is the projection's own senses.
+
+```
+act        a Decider sees ONE actor's holdings and nothing else, and
+  |        returns an Intent whose Target is a NAME. Imports no world.
+  v
+stage      Aim resolves that name against what is really there.
+  |        Watcher answers who witnessed it, from the same senses.
+  v
+world      Act records the deed.
+```
+
+**A decider is handed one actor's own holdings and nothing else** — no world, no
+roster, no truth surface, not even another observer's beliefs. A decider that
+could see the world would act on the world, and every wrong belief beneath it
+would stop mattering.
+
+**`Intent.Target` is a name, never an entity id.** An actor that could name an
+id would be reaching past its own senses to do it. So a target only exists once
+the actor has perceived something *and* worked out what to call it —
+`TestYouCannotAimAtWhatYouHaveNotNamed` has bram looking straight at the band
+with no word for them and therefore nothing to aim at.
+
+**And acting on a lie needed no rule.** `projection.Bind` is a pure function of
+the truth surface, so a forged track is absent from it by construction. Pip names
+the dragon, swings at it in perfect good faith, and `Aim` returns nothing. The
+world records an attack on nobody, the ledger never mentions the illusion, and
+pip still believes it afterwards — swinging taught him nothing.
+
+| test | proves |
+|---|---|
+| `TestActingOnWhatYouHold` | belief → intent → aim → deed, with the audience from the same senses |
+| `TestActingOnALie` | the swing is real, the target is not, and nothing special-cased it |
+| `TestYouCannotAimAtWhatYouHaveNotNamed` | naming is the gate on acting, as it is on carrying |
+| `TestBehaviourSeesOnlyBeliefs` | two behaviours, one situation, and one of them waits because it has only *heard* |
+| `TestAnActorNobodyCanSeeIsAWiringFault` | an empty audience is a perfect sneak, so a missing actor fails loudly |
+
+**The witness and the perception pass are one decision.** A `Watcher` and a pass
+built from the same `projection.Input` cannot disagree about who was there, which
+is why witnessing lives here rather than being answered twice.
+
+**For behaviour authors:** `act` imports no world. A monster's behaviour is about
+what the monster thinks, and writing one should not require knowing what a verb
+or a journal is. `TestBehaviourSeesOnlyBeliefs` writes a cautious NPC in six
+lines — it will not commit to something it has only heard — and touches nothing
+but the situation it was handed.
+
 ## Deliberately absent
 
 Forgetting or compaction — a ghost is immortal here, which is probably correct
-and definitely unpaid-for. The `world` composer and the act loop, so nothing yet
-proves *acting* on a belief that is wrong. Any dependency on `encounter`,
-`spatial`, or `core`.
+and definitely unpaid-for. Any dependency on `encounter`, `spatial`, or `core`.

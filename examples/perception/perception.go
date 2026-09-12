@@ -23,6 +23,7 @@ package perception
 import (
 	"slices"
 
+	"github.com/KirkDiggler/rpg-toolkit/examples/perception/act"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/belief"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/carry"
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/projection"
@@ -151,6 +152,37 @@ func (g *Game) Contacts(o testimony.Observer) []belief.Contact {
 // Relation is what this observer claims about a pair of their tracks.
 func (g *Game) Relation(o testimony.Observer, a, b testimony.TrackID) (belief.Relation, testimony.Stamp) {
 	return g.belie.Relation(o, a, b)
+}
+
+// Situation is everything one actor has to go on: their own testimony, their
+// own claims, and their own words for things.
+//
+// It is the whole input to a decision, and it is assembled here rather than
+// handed out piecemeal so that a decider cannot reach past it. Nothing in the
+// returned value can answer a question about the world, about another observer,
+// or about whether any of this is true.
+func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) act.Situation {
+	tracks := g.held.Held(o)
+	views := reconcile.ViewsOf(tracks)
+
+	holds := make([]act.Held, 0, len(views))
+
+	for _, view := range views {
+		name, _, named := g.belie.NameOf(o, view.ID)
+		holds = append(holds, act.Held{TrackView: view, Name: name, Named: named})
+	}
+
+	ids := make([]testimony.TrackID, 0, len(tracks))
+	for _, t := range tracks {
+		ids = append(ids, t.ID)
+	}
+
+	return act.Situation{
+		Actor:    o,
+		Holds:    holds,
+		Contacts: g.belie.Contacts(o, ids),
+		At:       at,
+	}
 }
 
 // Remember lodges beliefs carried in from somewhere else with an observer in

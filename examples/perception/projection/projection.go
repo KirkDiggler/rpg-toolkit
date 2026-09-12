@@ -224,6 +224,28 @@ func (in Input) deceive(sense Sense, reach map[string]struct{}) (map[string]stru
 	return hidden, forged
 }
 
+// Bind answers what is REALLY behind a track handle, for the composition that
+// has to resolve somebody's intent against the world.
+//
+// It is a pure function of the truth surface and it never consults an observer,
+// so it is not a question about what anybody knows — it is the inverse of
+// minting, and only the composition ever asks it.
+//
+// Forgeries are absent from the result, and that absence is the whole mechanism:
+// a track an illusion wrote binds to nothing, so acting on it reaches nothing.
+// Nobody had to write a rule for that.
+func Bind(in Input) map[testimony.TrackID]string {
+	out := make(map[testimony.TrackID]string)
+
+	for _, p := range in.Presences {
+		for channel := range p.Says {
+			out[Handle(channel, p.Source)] = p.Source
+		}
+	}
+
+	return out
+}
+
 // Handle mints a channel's opaque continuity handle for a source.
 //
 // It is stable across passes, so the same noise stays one track, and it carries
