@@ -446,9 +446,51 @@ func (s *Store) Report(in Recollection) (Delta, error) {
 	return out, nil
 }
 
-// Held is every track this observer holds, sorted by handle, deep-copied. An
-// observer who has never perceived anything holds nothing — an empty slice, not
-// a slice of empty tracks.
+// Head is one track and the last thing it said.
+//
+// It exists because almost nothing wants the log. A decider asks what an actor
+// believes NOW, and a reconciler compares the latest testimony of one track
+// against another's — neither needs the trail, and copying it to reach the tip
+// is the difference between a pass that costs what it should and one that pays
+// for every tick that ever happened.
+//
+// The trail is still there and still immutable. This is a cheaper question, not
+// a smaller memory.
+type Head struct {
+	ID      TrackID
+	Channel Channel
+	Entry   Entry
+	Current bool
+}
+
+// Heads is the last thing each of this observer's tracks said, sorted by
+// handle. Use it for anything that does not need history; use [Store.Held] when
+// the trail itself is the point.
+func (s *Store) Heads(o Observer) []Head {
+	held := s.tracks[o]
+	if len(held) == 0 {
+		return nil
+	}
+
+	out := make([]Head, 0, len(held))
+
+	for id, t := range held {
+		latest := t.entries[len(t.entries)-1]
+		latest.Payload = bytesCopy(latest.Payload)
+
+		out = append(out, Head{ID: id, Channel: t.channel, Entry: latest, Current: t.current})
+	}
+
+	slices.SortFunc(out, func(a, b Head) int {
+		return cmpID(a.ID, b.ID)
+	})
+
+	return out
+}
+
+// Held is every track this observer holds, sorted by handle, deep-copied,
+// trail and all. An observer who has never perceived anything holds nothing —
+// an empty slice, not a slice of empty tracks.
 func (s *Store) Held(o Observer) []Track {
 	held := s.tracks[o]
 	if len(held) == 0 {

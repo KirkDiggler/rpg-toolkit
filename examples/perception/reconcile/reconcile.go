@@ -68,22 +68,26 @@ type Reconciler interface {
 	Judge(views []TrackView, at testimony.Stamp) []Judgment
 }
 
-// ViewsOf builds reconciler input from held testimony. It is the only bridge
-// between the store and a reconciler, and it deliberately carries nothing the
-// store did not already hold.
-func ViewsOf(tracks []testimony.Track) []TrackView {
-	out := make([]TrackView, 0, len(tracks))
+// ViewsOf builds reconciler input from the head of each track. It is the only
+// bridge between the store and a reconciler, and it deliberately carries
+// nothing the store did not already hold.
+//
+// It takes heads rather than whole tracks because a reconciler compares what
+// tracks say NOW. The trail is not withheld from it as a matter of policy — it
+// simply is not the question being asked, and asking the cheaper question is
+// free.
+func ViewsOf(heads []testimony.Head) []TrackView {
+	out := make([]TrackView, 0, len(heads))
 
-	for _, t := range tracks {
-		latest := t.Latest()
+	for _, h := range heads {
 		out = append(out, TrackView{
-			ID:        t.ID,
-			Channel:   t.Channel,
-			Payload:   latest.Payload,
-			Locus:     latest.Locus,
-			Observed:  latest.Observed,
-			Confirmed: latest.Confirmed,
-			Current:   t.Current,
+			ID:        h.ID,
+			Channel:   h.Channel,
+			Payload:   h.Entry.Payload,
+			Locus:     h.Entry.Locus,
+			Observed:  h.Entry.Observed,
+			Confirmed: h.Entry.Confirmed,
+			Current:   h.Current,
 		})
 	}
 

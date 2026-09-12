@@ -93,7 +93,7 @@ func (g *Game) Tick(in projection.Input) ([]Landing, error) {
 			continue
 		}
 
-		judged := g.unclaimed(o, mind.Judge(reconcile.ViewsOf(g.held.Held(o)), in.At))
+		judged := g.unclaimed(o, mind.Judge(reconcile.ViewsOf(g.held.Heads(o)), in.At))
 		if err := reconcile.Apply(g.belie, o, judged, in.At); err != nil {
 			return nil, err
 		}
@@ -139,11 +139,11 @@ func (g *Game) Track(o testimony.Observer, id testimony.TrackID) (testimony.Trac
 
 // Contacts is how this observer currently bundles their own tracks.
 func (g *Game) Contacts(o testimony.Observer) []belief.Contact {
-	tracks := g.held.Held(o)
+	heads := g.held.Heads(o)
 
-	ids := make([]testimony.TrackID, 0, len(tracks))
-	for _, t := range tracks {
-		ids = append(ids, t.ID)
+	ids := make([]testimony.TrackID, 0, len(heads))
+	for _, h := range heads {
+		ids = append(ids, h.ID)
 	}
 
 	return g.belie.Contacts(o, ids)
@@ -162,8 +162,8 @@ func (g *Game) Relation(o testimony.Observer, a, b testimony.TrackID) (belief.Re
 // returned value can answer a question about the world, about another observer,
 // or about whether any of this is true.
 func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) act.Situation {
-	tracks := g.held.Held(o)
-	views := reconcile.ViewsOf(tracks)
+	heads := g.held.Heads(o)
+	views := reconcile.ViewsOf(heads)
 
 	holds := make([]act.Held, 0, len(views))
 
@@ -172,9 +172,9 @@ func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) act.Situation
 		holds = append(holds, act.Held{TrackView: view, Name: name, Named: named})
 	}
 
-	ids := make([]testimony.TrackID, 0, len(tracks))
-	for _, t := range tracks {
-		ids = append(ids, t.ID)
+	ids := make([]testimony.TrackID, 0, len(heads))
+	for _, h := range heads {
+		ids = append(ids, h.ID)
 	}
 
 	return act.Situation{
