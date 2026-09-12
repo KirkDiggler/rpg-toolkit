@@ -51,17 +51,9 @@ import (
 // before the hash, so a DC that moved makes the offer stale rather than making
 // the click resolve against numbers the player never saw.
 //
-// # Every candidate rule is Attack's, and that is the finding rather than a
-// shortcut
-//
-// The design's R6 asks for "a member not the caster, held in the caster's
-// sight, within range", which is [Manager.targetPreflight] over the same
-// world-NPC-excluded holdings Attack uses, followed by the same participation
-// filter. There is no hostility predicate here, because [combatActions.CastProfile]
-// declares none: a session that decided True Strike may only be pointed at an
-// enemy would be deciding a content rule in the one place that cannot see the
-// content (ADR-0045), and RAW 2014 agrees with the profile — both cantrips
-// this build ships name "a creature", not "a hostile creature".
+// Creature casts retain their sight-and-range preflight. Touch healing uses
+// resolution's physical reach and living-recipient answers over known creatures,
+// including the caster. The seam does not infer eligibility from an attack rule.
 func (m *Manager) buildCastOffers(
 	ctx context.Context,
 	enc *encounter.Encounter,
@@ -78,12 +70,6 @@ func (m *Manager) buildCastOffers(
 		return nil, nil
 	}
 
-	// The caster answers its own DC once, before any spell is compiled: it is
-	// 8 + proficiency + spellcasting modifier, a property of the caster known
-	// before any machine starts (design R4), so it does not vary between two
-	// known spells on the same sheet.
-	dc := sheet.SpellSaveDC()
-
 	offers := make([]compiledOffer, 0, len(known))
 	for _, ref := range known {
 		if ref == nil {
@@ -94,9 +80,7 @@ func (m *Manager) buildCastOffers(
 			return nil, fmt.Errorf("member %q knows a spell with no ref: %w", member, ErrBadCharacter)
 		}
 
-		definition := spells.CastDefinition(spells.CastDefinitionInput{
-			Spell: spells.Spell(ref.ID), SpellSaveDC: dc,
-		})
+		definition := sheet.CastDefinition(spells.Spell(ref.ID))
 		if definition == nil {
 			// R9: this build has no cast content for the ref. Not an error,
 			// and not a row.
@@ -219,19 +203,25 @@ func (m *Manager) compileCastOffer(
 		}, nil
 	}
 
-	// The candidate universe, by Attack's own rules over this spell's range:
-	// every live sighting except the caster, within RangeFeet, world NPCs
-	// excluded, then the participation filter that removes the dead and the
-	// defeated while keeping the Dying and the Stabilized.
-	candidates, err := m.targetPreflight(
-		input.Encounter, input.Positions,
-		excludeWorldNPCs(input.Holdings, rosterKinds(input.Roster)),
-		input.Member, profile.RangeFeet,
-	)
-	if err != nil {
-		return compiledOffer{}, err
+	// The profile chooses physical touch or the established sight/range path.
+	// Both use provider eligibility; world NPCs have no healable sheet.
+	var candidates []targetPreflight
+	if profile.Target == combatActions.CastTargetTouch {
+		candidates, err = healingCandidates(ctx, input)
+	} else {
+		candidates, err = m.targetPreflight(
+			input.Encounter, input.Positions,
+			excludeWorldNPCs(input.Holdings, rosterKinds(input.Roster)),
+			input.Member, profile.RangeFeet,
+		)
+		if err != nil {
+			return compiledOffer{}, err
+		}
+		candidates, err = filterAttackTargets(ctx, candidates, input.Participants)
+		if err != nil {
+			return compiledOffer{}, err
+		}
 	}
-	candidates, err = filterAttackTargets(ctx, candidates, input.Participants)
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -390,4 +380,40 @@ func areaTargetKind(area *combatActions.CastArea) TargetKind {
 		return TargetCell
 	}
 	return TargetArea
+}
+
+// healingCandidates projects provider answers over known creatures, including
+// the caster. A lost sighting is not itself an inability to touch somebody.
+func healingCandidates(ctx context.Context, input *compileCastOfferInput) ([]targetPreflight, error) {
+	ids := []string{input.Member}
+	seen := map[string]bool{input.Member: true}
+	for _, holding := range excludeWorldNPCs(input.Holdings, rosterKinds(input.Roster)) {
+		id := string(holding.Subject)
+		if _, present := input.Positions[id]; present && !seen[id] {
+			ids = append(ids, id)
+			seen[id] = true
+		}
+	}
+	sort.Strings(ids)
+	room, err := input.Encounter.Canvas()
+	if err != nil {
+		return nil, err
+	}
+	answers, err := resolution.HealingTargets(ctx, &resolution.HealingTargetsInput{Room: room, CasterID: input.Member, Candidates: ids, Participants: input.Participants, Excludes: input.Definition.Cast.HealingExcludes})
+	if err != nil {
+		return nil, translateResolution(err)
+	}
+	out := make([]targetPreflight, 0, len(answers))
+	for _, id := range ids {
+		reachable, eligible := answers[id]
+		if !eligible {
+			continue
+		}
+		candidate := targetPreflight{member: id, available: reachable}
+		if !reachable {
+			candidate.why = &Shortfall{Reason: ShortfallTargetOutOfReach, Text: "Target is not within touch"}
+		}
+		out = append(out, candidate)
+	}
+	return out, nil
 }

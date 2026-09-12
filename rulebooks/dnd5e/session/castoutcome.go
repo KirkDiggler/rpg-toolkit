@@ -175,6 +175,8 @@ func imposedResult(
 			},
 			Name: imposed.Description,
 		}, nil
+	case resolution.ImposedHealing:
+		return encounter.ActivationResult{Kind: encounter.ResultHealingApplied, Target: encounter.MemberID(imposed.RecipientID), Ref: imposed.Ref.String(), Name: imposed.Description, Amount: imposed.Amount, Requested: imposed.Requested, Before: imposed.Before, After: imposed.After, Calculation: rollCalculationFor(imposed.Calculation)}, nil
 	case resolution.ImposedDamage:
 		if len(imposed.Components) == 0 {
 			// Damage with no components has no type to report, and the
