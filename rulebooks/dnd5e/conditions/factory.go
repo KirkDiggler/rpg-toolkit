@@ -112,6 +112,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createBladeWard(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.ViciousMockery().ID:
 		condition, err = createViciousMockery(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.Commanded().ID:
+		condition, err = createCommanded(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Concentrating().ID:
 		condition, err = createConcentrating(input.Config, input.MemberID, input.SourceRef)
 	default:
@@ -418,6 +420,34 @@ func createBladeWard(config json.RawMessage, memberID, sourceRef string) (*Blade
 	}
 
 	return NewBladeWardCondition(memberID, sourceRef, cfg.TurnEnds), nil
+}
+
+// commandedConfig is the config structure for the commanded condition. The
+// caster and the word both arrive by binding — the caster under the cast
+// effect's CounterpartKey, the word under its OptionKey — so a missing one is
+// a binding that did not happen rather than an omission content made.
+type commandedConfig struct {
+	CasterID string `json:"caster_id"`
+	Word     string `json:"word"`
+	TurnEnds int    `json:"turn_ends"`
+}
+
+// createCommanded creates a commanded condition from config. The member is the
+// creature that failed its save.
+//
+// Every field is REFUSED rather than defaulted, which is the whole of what this
+// function adds over the constructor: two of the three are written here by the
+// engine rather than by content, and a default would turn a binding that
+// silently failed into a compulsion that looks fine and walks at nobody.
+func createCommanded(config json.RawMessage, memberID, sourceRef string) (*CommandedCondition, error) {
+	var cfg commandedConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse commanded config")
+		}
+	}
+
+	return NewCommandedCondition(memberID, sourceRef, cfg.CasterID, cfg.Word, cfg.TurnEnds)
 }
 
 // viciousMockeryConfig is the config structure for the vicious mockery

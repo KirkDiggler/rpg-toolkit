@@ -364,3 +364,95 @@ func (s *CastContentSuite) TestEveryLevelOneSpellSpendsTheSameSlot() {
 		s.Len(definition.Cost.Pools, 1, "%s spends one pool and no other", id)
 	}
 }
+
+// TestCommandCarriesItsMenuAndBindsBothKeys — Command is the first spell whose
+// caster makes a choice at cast time, and the first whose delivered condition
+// needs two things filled in by the engine: who cast it, and which word was
+// picked.
+func (s *CastContentSuite) TestCommandCarriesItsMenuAndBindsBothKeys() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Command, SpellSaveDC: 13})
+
+	s.Require().NotNil(definition, "a spell missing from the byID map mints a nil definition, silently")
+	s.Equal(*refs.Spells.Command(), definition.Ref)
+	s.Require().NoError(definition.Validate())
+
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, definition.Cost.Pools[resources.SpellSlotLevel1], "a levelled spell spends a level-1 slot")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(spells.CommandRangeFeet, profile.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, profile.Target)
+	s.Equal(1, profile.MinTargets, "one creature, named by the caster")
+	s.Equal(1, profile.MaxTargets)
+	s.Nil(profile.Area, "a named creature is not an area")
+	s.Nil(profile.Move, "the spell moves nobody: the condition it leaves is what drives the turn")
+	s.Empty(profile.Damage, "a one-word command deals none")
+
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.WIS}, profile.Save.Abilities)
+	s.Equal(13, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess, "you obey or you do not; there is no half a word")
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence, "one save, at the moment it lands")
+
+	// THE PAIRING, not just the presence. An id and the label beside it are
+	// two halves of one word: the picker draws the label and the condition
+	// stores the id, which the layer driving the compelled turn switches on.
+	// Swap two ids and every other assertion here still passes, while a player
+	// pressing Approach gets a creature that runs. Asserted as the whole slice
+	// because the ORDER is what a picker draws top to bottom.
+	s.Equal([]actions.CastOption{
+		{ID: spells.CommandWordApproach, Label: "Approach"},
+		{ID: spells.CommandWordFlee, Label: "Flee"},
+		{ID: spells.CommandWordGrovel, Label: "Grovel"},
+	}, profile.Options)
+	s.Equal("approach", spells.CommandWordApproach, "the id the request sends back and the condition stores")
+	s.Equal("flee", spells.CommandWordFlee)
+	s.Equal("grovel", spells.CommandWordGrovel)
+
+	s.True(profile.HasOption(spells.CommandWordApproach))
+	s.True(profile.HasOption(spells.CommandWordFlee))
+	s.True(profile.HasOption(spells.CommandWordGrovel))
+	s.False(profile.HasOption("halt"),
+		"Halt is a one-row addition and is not in this slice: it is the word with no route and no effect")
+
+	s.Require().Len(profile.Effects, 1)
+	effect := profile.Effects[0]
+	s.Equal(actions.CastRecipientTarget, effect.Recipient, "the compulsion lands on whoever failed")
+	s.Equal(*refs.Conditions.Commanded(), effect.Ref)
+	s.Equal(spells.CommandCasterParameter, effect.CounterpartKey,
+		"resolution writes the caster here, because Approach and Flee measure from them")
+	s.Equal(spells.CommandWordParameter, effect.OptionKey,
+		"and the door writes the chosen word here")
+}
+
+// TestEveryCommandOptionIsLabelledForAPersonToRead — the client draws what it
+// was sent and infers nothing, so a missing label is a blank button and a
+// derived one would be this spell's words written somewhere that does not own
+// them.
+func (s *CastContentSuite) TestEveryCommandOptionIsLabelledForAPersonToRead() {
+	profile := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Command, SpellSaveDC: 13}).Cast
+
+	for _, option := range profile.Options {
+		s.NotEmpty(option.ID, "an option the request could not name")
+		s.NotEmpty(option.Label, "%s has nothing to draw on a button", option.ID)
+	}
+}
+
+// TestOnlyCommandOffersAMenu — the option is a cast-time input that every other
+// profile leaves at its zero value, and this is the assertion that would catch
+// a menu leaking into a spell by a shared helper or a copied row.
+func (s *CastContentSuite) TestOnlyCommandOffersAMenu() {
+	for id := range spells.SpellData {
+		definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
+		if definition == nil || id == spells.Command {
+			continue
+		}
+		s.Require().NotNil(definition.Cast, "%s minted a definition with no cast profile", id)
+		s.Empty(definition.Cast.Options, "%s declares a menu nobody asked it for", id)
+		for _, effect := range definition.Cast.Effects {
+			s.Empty(effect.OptionKey, "%s reads an option it never offers", id)
+		}
+	}
+}

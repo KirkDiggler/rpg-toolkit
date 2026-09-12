@@ -52,6 +52,11 @@ var (
 	conditionBaned          = &core.Ref{Module: Module, Type: TypeConditions, ID: "baned"}
 	conditionBladeWard      = &core.Ref{Module: Module, Type: TypeConditions, ID: "blade_ward"}
 
+	// Command (rpg-project ideas/spells/command): the compulsion the spell
+	// leaves on a creature that failed its save, holding the word it was
+	// given and the caster the word is measured from.
+	conditionCommanded = &core.Ref{Module: Module, Type: TypeConditions, ID: "commanded"}
+
 	// Concentration (rpg-project#407): the owner on the caster's sheet that
 	// holds what its spell left behind.
 	conditionConcentrating = &core.Ref{Module: Module, Type: TypeConditions, ID: "concentrating"}
@@ -161,6 +166,10 @@ func (n conditionsNS) Baned() *core.Ref { return conditionBaned }
 // BladeWard returns the ref for the BladeWardCondition, applied to the caster
 // by the Blade Ward cantrip and halving incoming weapon damage.
 func (n conditionsNS) BladeWard() *core.Ref { return conditionBladeWard }
+
+// Commanded returns the ref for the CommandedCondition, applied to the creature
+// that failed its save against Command and driving its next turn.
+func (n conditionsNS) Commanded() *core.Ref { return conditionCommanded }
 
 // Concentrating returns the ref for the ConcentratingCondition, applied to the
 // CASTER of a concentration spell and holding the addresses of the effects

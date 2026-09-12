@@ -53,7 +53,9 @@ func (s *BardCantripsSuite) bardDraft(charisma int, cantrips []shared.SelectionI
 			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:    []shared.SelectionID{"lute", "flute", "drum"},
 			Cantrips: cantrips,
-			Spells:   []spells.Spell{spells.Bane, spells.Thunderwave, spells.DissonantWhispers},
+			Spells: []spells.Spell{
+				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
+			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},

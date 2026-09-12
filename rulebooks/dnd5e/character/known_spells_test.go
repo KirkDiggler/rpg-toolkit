@@ -64,7 +64,9 @@ func (s *KnownSpellsSuite) bardDraftWithoutCantrips() *Draft {
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:  []shared.SelectionID{"lute", "flute", "drum"},
-			Spells: []spells.Spell{spells.Bane, spells.Thunderwave, spells.DissonantWhispers},
+			Spells: []spells.Spell{
+				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
+			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
@@ -108,6 +110,7 @@ func (s *KnownSpellsSuite) TestALevelOneBardFinalizesWithSupportedKnowledgeAndRe
 	s.Equal([]string{
 		refs.Spells.Bane().String(), refs.Spells.Thunderwave().String(),
 		refs.Spells.DissonantWhispers().String(),
+		refs.Spells.Command().String(),
 	}, spellRefsAsStrings(char.KnownSpells()), "every supported level-1 spell, not a pick between them")
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Maximum())
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Current())
@@ -136,6 +139,8 @@ func (s *KnownSpellsSuite) TestTheBardIsAskedForCantripsAndEveryLevelledSpellWeC
 		"the second levelled spell this build can cast, and the first that moves anybody")
 	s.Contains(requirements.Spellbook.Options, spells.DissonantWhispers,
 		"and the first that makes a creature move itself")
+	s.Contains(requirements.Spellbook.Options, spells.Command,
+		"and the first whose caster makes a choice as they cast")
 	s.Equal(len(requirements.Spellbook.Options), requirements.Spellbook.Count,
 		"and the bard learns all of them rather than picking between them")
 	s.NotNil(requirements.Skills)
@@ -157,7 +162,7 @@ func (s *KnownSpellsSuite) TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAnd
 	s.Require().NoError(err)
 	s.Equal([]string{
 		refs.Spells.Bane().String(), refs.Spells.Thunderwave().String(),
-		refs.Spells.DissonantWhispers().String(),
+		refs.Spells.DissonantWhispers().String(), refs.Spells.Command().String(),
 	}, spellRefsAsStrings(loaded.KnownSpells()))
 	s.Equal([]string{
 		refs.Spells.TrueStrike().String(), refs.Spells.ViciousMockery().String(),

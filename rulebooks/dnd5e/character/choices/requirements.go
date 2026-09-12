@@ -432,21 +432,25 @@ func getBardRequirements() *Requirements {
 		// option here compiles to a cast profile, because an option that
 		// produced nothing would be a choice with nothing behind it.
 		//
-		// COUNT TRACKS THE CATALOGUE — three today, four when the catalogue
-		// reaches the class progression (rpg-toolkit#1661). It is not a
-		// ration. While the catalogue is smaller than what a bard actually
-		// knows, asking them to pick a subset of it invents a restriction the
-		// class does not have and hides working content behind a radio button:
-		// a bard who picked Bane could never cast Thunderwave, for no reason
-		// but that only two spells had been written. The pick becomes a real
-		// choice when the catalogue overtakes the progression, and the count
-		// stops moving there.
+		// COUNT TRACKS THE CATALOGUE, and with Command it has arrived: four
+		// supported spells and four known at level one, which is where the
+		// count stops moving (rpg-toolkit#1661). It was never a ration. While
+		// the catalogue was smaller than what a bard actually knows, asking
+		// them to pick a subset of it invented a restriction the class does
+		// not have and hid working content behind a radio button: a bard who
+		// picked Bane could never cast Thunderwave, for no reason but that
+		// only two spells had been written.
+		//
+		// The next level-1 spell this build learns to cast is the one that
+		// makes this a real choice, and the count stays at four when it comes.
 		Spellbook: &SpellbookRequirement{
 			ID:         BardSpells1,
-			Count:      3,
+			Count:      4,
 			SpellLevel: 1,
-			Options:    []spells.Spell{spells.Bane, spells.Thunderwave, spells.DissonantWhispers},
-			Label:      "Choose 3 supported 1st-level spells",
+			Options: []spells.Spell{
+				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
+			},
+			Label: "Choose 4 supported 1st-level spells",
 		},
 
 		// Bards get expertise at level 3, not level 1

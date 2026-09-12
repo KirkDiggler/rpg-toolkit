@@ -131,6 +131,48 @@ type CastProfile struct {
 	// means nothing when the bool is false is a zero value that lies. Nil is
 	// "no concentration"; non-nil is the whole answer.
 	Concentration *CastConcentration `json:"concentration,omitempty"`
+
+	// Options is the menu a cast offers when the spell has one: Command's
+	// words. The choice is a cast-time input, the way an aimed cell is: the
+	// declaration lists the menu, the request carries one id, and the engine
+	// writes it into the parameters of every effect that names an OptionKey.
+	// Absent means the spell has no choice, which is every profile before
+	// Command.
+	//
+	// A MENU RATHER THAN A ROW PER WORD. A declaration per word puts the
+	// grouping in the client and forecloses every spell with two choices,
+	// where the rows become a grid. One row and one input is the shape the
+	// aimed cell already proved.
+	Options []CastOption `json:"options,omitempty"`
+}
+
+// CastOption is one entry on a cast's menu: what the request sends back, and
+// what a person reads.
+//
+// THE LABEL IS AUTHORED, NEVER DERIVED. A client that title-cased the id would
+// be writing the spell's words, and the day a word needs two of them —
+// "Fall prone" — the derivation is wrong everywhere at once.
+type CastOption struct {
+	// ID is what the request carries back, and what the engine writes into
+	// the parameters. Lowercase, stable, and the content's own word.
+	ID string `json:"id"`
+
+	// Label is the word a person reads on the picker.
+	Label string `json:"label"`
+}
+
+// HasOption reports whether the profile lists an option with this id.
+//
+// The door asks before it binds a request's word: an id nobody declared must
+// not reach the parameters, because the condition would then be built around a
+// word this spell never offered.
+func (p CastProfile) HasOption(id string) bool {
+	for _, option := range p.Options {
+		if option.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // CastConcentration is what a concentration cast declares: how long the caster
@@ -173,6 +215,11 @@ type CastEffect struct {
 	// Vicious Mockery records the bard who imposed it ("source_id"). A
 	// convention that guessed one key would silently drop the other.
 	CounterpartKey string `json:"counterpart_key,omitempty"`
+
+	// OptionKey names the parameter the chosen option is written under, the
+	// way CounterpartKey names the other party's. Empty means the effect does
+	// not read the option.
+	OptionKey string `json:"option_key,omitempty"`
 }
 
 // Validate reports whether the profile declares a reachable range, a known
@@ -268,10 +315,35 @@ func (p CastProfile) Validate() error {
 		}
 	}
 
+	seen := make(map[string]struct{}, len(p.Options))
+	for index, option := range p.Options {
+		if option.ID == "" {
+			return fmt.Errorf("cast option %d must declare an id", index)
+		}
+		if option.Label == "" {
+			return fmt.Errorf("cast option %q must declare a label", option.ID)
+		}
+		if _, already := seen[option.ID]; already {
+			return fmt.Errorf("cast declares duplicate option id %q", option.ID)
+		}
+		seen[option.ID] = struct{}{}
+	}
+
+	reads := false
 	for index, effect := range p.Effects {
-		if err := effect.validate(p.Target); err != nil {
+		if err := effect.validate(p.Target, len(p.Options) > 0); err != nil {
 			return fmt.Errorf("cast effect %d is invalid: %w", index, err)
 		}
+		if effect.OptionKey != "" {
+			reads = true
+		}
+	}
+	// The menu and the key are bound in both directions. A menu no effect
+	// reads is an affordance with nothing behind it: a client would draw the
+	// picker and the answer would land nowhere. The other direction is refused
+	// where the effect is validated, because that is where the key is.
+	if len(p.Options) > 0 && !reads {
+		return fmt.Errorf("cast declares options but no effect reads it")
 	}
 
 	if p.Concentration != nil && p.Concentration.TurnEnds <= 0 {
@@ -319,12 +391,15 @@ func (p CastProfile) Clone() CastProfile {
 		concentration := *p.Concentration
 		clone.Concentration = &concentration
 	}
+	if p.Options != nil {
+		clone.Options = append([]CastOption(nil), p.Options...)
+	}
 	return clone
 }
 
 // validate reports whether this effect names a D&D 5e condition, a known
-// recipient, and a binding the cast's target rule can actually satisfy.
-func (e CastEffect) validate(target CastTargetRule) error {
+// recipient, and bindings the cast's target rule and menu can actually satisfy.
+func (e CastEffect) validate(target CastTargetRule, hasOptions bool) error {
 	switch e.Recipient {
 	case CastRecipientCaster, CastRecipientTarget:
 	default:
@@ -346,6 +421,12 @@ func (e CastEffect) validate(target CastTargetRule) error {
 	}
 	if len(e.Parameters) > 0 && !json.Valid(e.Parameters) {
 		return fmt.Errorf("condition parameters must be valid JSON")
+	}
+	// An option key on a cast with no menu is a parameter nothing can ever
+	// fill, so the condition would be built with the field its content
+	// promised left empty — which is the quiet half of the binding.
+	if e.OptionKey != "" && !hasOptions {
+		return fmt.Errorf("effect names option key %q but the cast declares no options", e.OptionKey)
 	}
 	return nil
 }

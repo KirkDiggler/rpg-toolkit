@@ -190,6 +190,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return vm, nil
 	},
+	refs.Conditions.Commanded().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		cmd := &CommandedCondition{}
+		if err := cmd.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load commanded condition")
+		}
+		return cmd, nil
+	},
 	refs.Conditions.Concentrating().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		cc := &ConcentratingCondition{}
 		if err := cc.loadJSON(data); err != nil {
