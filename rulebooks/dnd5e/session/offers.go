@@ -283,7 +283,7 @@ func (m *Manager) compileOffersFor(
 	if requested[VerbCast] {
 		var err error
 		casts, err = m.buildCastOffers(
-			ctx, enc, sessionID, member, sheet,
+			ctx, enc, sessionID, member, spellTurnIdentity(sessionID, data.Encounter, clock), sheet,
 			roster, positions, holdings, resolutionCast, dependencyFailures,
 		)
 		if err != nil {

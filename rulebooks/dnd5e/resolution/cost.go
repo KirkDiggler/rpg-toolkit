@@ -45,6 +45,12 @@ type Cost struct {
 	// Profile is the price, compiled. Nil charges nothing.
 	Profile *combat.SpendProfile
 
+	// SpellTurn identifies the active creature's turn for a costed cast, even
+	// when Profile is nil (a free spell). Required for casts; unused by other
+	// machines. It must distinguish encounters and successive creature turns.
+	// This does not refresh resources: Turn separately controls that operation.
+	SpellTurn string
+
 	// Turn is the turn the payer is acting in, so a bank left over from an
 	// earlier one can be refilled before it is charged. Nil refreshes nothing
 	// and charges the bank exactly as it was stored.
@@ -169,6 +175,45 @@ func payAtTheDoor(ctx context.Context, cost *Cost, cast *Participants) error {
 		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
 	}
 
+	return nil
+}
+
+// payForMachine enforces casting rules at the runner's payment boundary.
+// Classification comes from the machine's cloned definition, never from a
+// second caller-authored copy in the price. Nil Cost retains the explicitly
+// ungated mechanical-resolution API; a free combat spell supplies a Cost with
+// a nil Profile so that its casting history is still recorded.
+func payForMachine(ctx context.Context, cost *Cost, machine Machine, cast *Participants) error {
+	spell, ok := machine.(*castMachine)
+	if !ok || cost == nil {
+		return payAtTheDoor(ctx, cost, cast)
+	}
+	if cost.PayerID != spell.casterID {
+		return fmt.Errorf("%w: spell payer must be its caster", ErrBadCost)
+	}
+	if spell.profile.Casting == nil {
+		return fmt.Errorf("%w: spell casting classification is required", ErrBadCost)
+	}
+	// Check declaration completeness before refreshing any economy.
+	if _, err := (combat.SpellTurnState{}).AfterCast(cost.SpellTurn, *spell.profile.Casting); err != nil {
+		return fmt.Errorf("%w: %w", ErrBadCost, err)
+	}
+	payer, err := ledgerFor(cast, cost.PayerID)
+	if err != nil {
+		return err
+	}
+	if cost.Turn != nil {
+		if _, err := payer.RefreshForTurn(ctx, &character.RefreshForTurnInput{
+			TurnNumber: cost.Turn.Number, Speed: cost.Turn.Speed,
+		}); err != nil {
+			return err
+		}
+	}
+	if err := payer.PaySpell(character.SpellPayment{
+		Turn: cost.SpellTurn, Casting: *spell.profile.Casting, Price: cost.Profile,
+	}); err != nil {
+		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
+	}
 	return nil
 }
 

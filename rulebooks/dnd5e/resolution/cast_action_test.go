@@ -71,7 +71,7 @@ func oneAction() *combat.SpendProfile {
 }
 
 func castCost() *Cost {
-	return &Cost{
+	return &Cost{SpellTurn: "scene/round-1/bard",
 		PayerID: bardID,
 		Profile: oneAction(),
 		Turn:    &Turn{Number: mockeryTurn, Speed: mockerySpeed},
@@ -143,7 +143,7 @@ func baneDefinition() *combatActions.Definition {
 }
 
 func baneCost() *Cost {
-	return &Cost{
+	return &Cost{SpellTurn: "scene/round-1/bard",
 		PayerID: bardID,
 		Profile: baneDefinition().Cost,
 		Turn:    &Turn{Number: mockeryTurn, Speed: mockerySpeed},
@@ -752,7 +752,7 @@ func commandDefinition() *combatActions.Definition {
 }
 
 func commandCost() *Cost {
-	return &Cost{
+	return &Cost{SpellTurn: "scene/round-1/bard",
 		PayerID: bardID,
 		Profile: commandDefinition().Cost,
 		Turn:    &Turn{Number: mockeryTurn, Speed: mockerySpeed},

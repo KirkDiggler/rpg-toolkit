@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -51,13 +52,13 @@ import (
 // before the hash, so a DC that moved makes the offer stale rather than making
 // the click resolve against numbers the player never saw.
 //
-// Creature casts retain their sight-and-range preflight. Touch healing uses
-// resolution's physical reach and living-recipient answers over known creatures,
-// including the caster. The seam does not infer eligibility from an attack rule.
+// Healing uses resolution's reach and living-recipient answers over known
+// creatures, including the caster. Other creature casts retain their attack
+// eligibility preflight. The seam does not infer healing eligibility from it.
 func (m *Manager) buildCastOffers(
 	ctx context.Context,
 	enc *encounter.Encounter,
-	session, member string,
+	session, member, spellTurn string,
 	sheet *character.Character,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
@@ -95,7 +96,7 @@ func (m *Manager) buildCastOffers(
 				member, ref.String(), ErrBadCharacter)
 		}
 		offer, err := m.compileCastOffer(ctx, &compileCastOfferInput{
-			Encounter: enc, SessionID: session, Member: member, Sheet: sheet,
+			Encounter: enc, SessionID: session, Member: member, Sheet: sheet, SpellTurn: spellTurn,
 			Definition: *definition, Roster: roster, Positions: positions, Holdings: holdings,
 			Participants: participants, DependencyFailures: dependencyFailures,
 		})
@@ -117,6 +118,7 @@ func (m *Manager) buildCastOffers(
 type compileCastOfferInput struct {
 	Encounter          *encounter.Encounter
 	SessionID          string
+	SpellTurn          string
 	Member             string
 	Sheet              *character.Character
 	Definition         combatActions.Definition
@@ -125,6 +127,14 @@ type compileCastOfferInput struct {
 	Holdings           []perception.Holding
 	Participants       []resolution.Participant
 	DependencyFailures []resolutionDependencyFailure
+}
+
+// spellTurnIdentity scopes the active turn to its table and world. The active
+// member distinguishes turns in the same round; combat exit clears the sheet's
+// spell history before another fight can reuse a round number. Offers and the
+// resolution payment door must use the same identity across repository reloads.
+func spellTurnIdentity(sessionID, encounterID string, clock *encounter.ClockOfOutput) string {
+	return fmt.Sprintf("%q/%q/%d/%q", sessionID, encounterID, clock.Round, clock.Active)
 }
 
 // compileCastOffer applies the shared budget, dependency, candidate, selector
@@ -137,10 +147,21 @@ func (m *Manager) compileCastOffer(
 	profile := definition.Cast
 	slot := slotOf(definition.Cost)
 
-	budgetOK := combat.CanPay(input.Sheet, definition.Cost)
+	if profile.Casting == nil {
+		return compiledOffer{}, fmt.Errorf("spell %q has no casting metadata: %w", definition.Ref.String(), ErrBadCast)
+	}
+	paymentErr := input.Sheet.CanPaySpell(character.SpellPayment{
+		Turn: input.SpellTurn, Casting: *profile.Casting, Price: definition.Cost,
+	})
+	budgetOK := paymentErr == nil
 	var budgetWhy *Shortfall
 	if !budgetOK {
 		shortfall := shortfallForPay(input.Sheet, definition.Cost, slot)
+		if errors.Is(paymentErr, combat.ErrBonusActionSpell) {
+			shortfall = Shortfall{Reason: ShortfallUnavailable, Text: paymentErr.Error()}
+		} else if combat.CanPay(input.Sheet, definition.Cost) {
+			return compiledOffer{}, fmt.Errorf("spell %q: %w: %v", definition.Ref.String(), ErrBadCost, paymentErr)
+		}
 		budgetWhy = &shortfall
 	}
 
@@ -206,7 +227,7 @@ func (m *Manager) compileCastOffer(
 	// The profile chooses physical touch or the established sight/range path.
 	// Both use provider eligibility; world NPCs have no healable sheet.
 	var candidates []targetPreflight
-	if profile.Target == combatActions.CastTargetTouch {
+	if profile.Healing != nil {
 		candidates, err = healingCandidates(ctx, input)
 	} else {
 		candidates, err = m.targetPreflight(
@@ -383,7 +404,7 @@ func areaTargetKind(area *combatActions.CastArea) TargetKind {
 }
 
 // healingCandidates projects provider answers over known creatures, including
-// the caster. A lost sighting is not itself an inability to touch somebody.
+// the caster. The provider distinguishes touch from ranged sight requirements.
 func healingCandidates(ctx context.Context, input *compileCastOfferInput) ([]targetPreflight, error) {
 	ids := []string{input.Member}
 	seen := map[string]bool{input.Member: true}
@@ -399,7 +420,15 @@ func healingCandidates(ctx context.Context, input *compileCastOfferInput) ([]tar
 	if err != nil {
 		return nil, err
 	}
-	answers, err := resolution.HealingTargets(ctx, &resolution.HealingTargetsInput{Room: room, CasterID: input.Member, Candidates: ids, Participants: input.Participants})
+	targets := resolution.HealingTargetsInput{Room: room, CasterID: input.Member, Candidates: ids, Participants: input.Participants}
+	var answers map[string]bool
+	if input.Definition.Cast.Target == combatActions.CastTargetTouch {
+		answers, err = resolution.HealingTargets(ctx, &targets)
+	} else {
+		answers, err = resolution.RangedHealingTargets(ctx, &resolution.RangedHealingTargetsInput{
+			HealingTargetsInput: targets, Encounter: input.Encounter, RangeFeet: input.Definition.Cast.RangeFeet,
+		})
+	}
 	if err != nil {
 		return nil, translateResolution(err)
 	}
@@ -412,6 +441,9 @@ func healingCandidates(ctx context.Context, input *compileCastOfferInput) ([]tar
 		candidate := targetPreflight{member: id, available: reachable}
 		if !reachable {
 			candidate.why = &Shortfall{Reason: ShortfallTargetOutOfReach, Text: "Target is not within touch"}
+			if input.Definition.Cast.Target != combatActions.CastTargetTouch {
+				candidate.why.Text = "Target is not within sight and range"
+			}
 		}
 		out = append(out, candidate)
 	}

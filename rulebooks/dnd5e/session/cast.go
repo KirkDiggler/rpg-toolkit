@@ -193,12 +193,12 @@ type CastSaveReport struct {
 // what the Afford row already showed, because the offer this verb regenerates
 // is the offer that was priced.
 //
-// # A second cast in one turn is refused by the ledger, not by a rule here
+// # The rulebook answers whether another cast is legal and affordable
 //
-// Nothing in this verb counts casts. The first one spends the action, the
-// regenerated offer for the second one reads the same ledger and compiles
-// unavailable, and the selector is refused as stale — which is how a client
-// finds out before the click, and how the door finds out after it.
+// Offers consult the sheet's spell payment gate; resolution pays through that
+// same gate using the same explicit turn identity. An unavailable selector is
+// refused as stale before payment. Session carries the answer without owning
+// the bonus-action spell restriction or treating every second cast as illegal.
 //
 // # Everyone is in the cast
 //
@@ -401,9 +401,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		// compiled into the definition the offer was hashed from, cloned so
 		// the selector material and the charge cannot alias.
 		Cost: &resolution.Cost{
-			PayerID: in.Member,
-			Profile: combatActions.CloneSpendProfile(definition.Cost),
-			Turn:    &resolution.Turn{Number: clock.Round},
+			PayerID:   in.Member,
+			Profile:   combatActions.CloneSpendProfile(definition.Cost),
+			SpellTurn: spellTurnIdentity(scope.session, scope.data.Encounter, clock),
+			Turn:      &resolution.Turn{Number: clock.Round},
 		},
 		Roller: &diceSeam{roller: m.dice},
 	})

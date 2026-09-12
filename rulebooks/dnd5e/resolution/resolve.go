@@ -473,7 +473,8 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, errors.Join(startErr, surf.teardown(ctx))
 	}
 
-	if payErr := payAtTheDoor(ctx, in.Cost, cast); payErr != nil {
+	// Costed casts also validate classification and record same-turn history.
+	if payErr := payForMachine(ctx, in.Cost, in.Machine, cast); payErr != nil {
 		return nil, errors.Join(payErr, surf.teardown(ctx))
 	}
 
