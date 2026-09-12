@@ -3,7 +3,7 @@
 
 // Package minds is the worked examples: the types a behaviour author copies.
 //
-// Each mind is three judgments and no state. The difference between a zombie
+// Each mind is a few judgments and no state. The difference between a zombie
 // and a captain is entirely in what each makes of the same testimony — the
 // bytes are identical, and the minds are not.
 //
@@ -109,6 +109,12 @@ func says(c behavior.Contact, kind content.Kind, note string) bool {
 	return false
 }
 
+// reflexive is the name a mind with no words gives everything: "thing" and a
+// handle. It has a word for everything and it is the same word.
+func reflexive(c behavior.Contact) *behavior.NameOutput {
+	return &behavior.NameOutput{Name: belief.Name("thing " + string(c.Tracks[0].ID)), Named: true}
+}
+
 // Zombie never merges, names everything reflexively, and goes for whatever it
 // noticed first.
 //
@@ -120,32 +126,34 @@ type Zombie struct{}
 // Judge claims nothing, ever.
 func (Zombie) Judge([]reconcile.TrackView, testimony.Stamp) []reconcile.Judgment { return nil }
 
-// Name calls a contact "thing" and its first handle. A zombie has a word for
-// everything and it is the same word.
-func (Zombie) Name(c behavior.Contact) (belief.Name, bool) {
-	return belief.Name("thing " + string(c.Tracks[0].ID)), true
+// Name calls a contact "thing" and its first handle.
+func (Zombie) Name(in *behavior.NameInput) (*behavior.NameOutput, error) {
+	return reflexive(in.Contact), nil
 }
 
 // Rank prefers whatever it noticed first, and never lets go: a ghost from an
 // hour ago ranks exactly as it did when it was fresh. A post means nothing to
 // it, so it never goes anywhere on purpose.
-func (Zombie) Rank(s behavior.Situation) []behavior.Contact {
-	out := make([]behavior.Contact, 0, len(s.Contacts))
+func (Zombie) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) {
+	out := make([]behavior.Contact, 0, len(in.Situation.Contacts))
 
-	for _, c := range s.Contacts {
+	for _, c := range in.Situation.Contacts {
 		if c.Kind() != PostKind {
 			out = append(out, c)
 		}
 	}
 
-	return byFirstSeen(out)
+	return &behavior.RankOutput{Ranked: byFirstSeen(out)}, nil
 }
 
 // Keep is nothing. A zombie lets everything get as close as it likes.
-func (Zombie) Keep(behavior.Situation) int { return 0 }
+func (Zombie) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
+	return &behavior.KeepOutput{Regions: 0}, nil
+}
 
 // Captain merges a chant into the one robed figure standing where the chant
-// is, names what it sees by how it looks, and goes for the caster first.
+// is, attaches a deed to who it saw do it, names what it sees by how it looks,
+// and goes for the healer first, then the caster.
 //
 // Every one of those is a judgment it can be wrong about. The chant might be
 // coming from the armoured one. Nothing the captain holds could tell it so, and
@@ -213,11 +221,13 @@ func (Captain) Judge(views []reconcile.TrackView, _ testimony.Stamp) []reconcile
 	return out
 }
 
-// Name calls a creature by how it looks, and a noise by what it sounds like.
-func (Captain) Name(c behavior.Contact) (belief.Name, bool) {
+// Name calls a creature by how it looks, a noise by what it sounds like, and
+// its post "my post". A mark on the floor gets no word: it is not something
+// the captain will act on, so it stays unnamed.
+func (Captain) Name(in *behavior.NameInput) (*behavior.NameOutput, error) {
 	var noise content.Percept
 
-	for _, v := range c.Tracks {
+	for _, v := range in.Contact.Tracks {
 		p, err := content.Decode(v.Payload)
 		if err != nil {
 			continue
@@ -225,22 +235,20 @@ func (Captain) Name(c behavior.Contact) (belief.Name, bool) {
 
 		switch p.Kind {
 		case content.Creature:
-			return belief.Name("the " + p.Note + " " + p.Of), true
+			return &behavior.NameOutput{Name: belief.Name("the " + p.Note + " " + p.Of), Named: true}, nil
 		case content.Noise:
 			noise = p
 		case PostKind:
-			return "my post", true
+			return &behavior.NameOutput{Name: "my post", Named: true}, nil
 		case content.Trace:
-			// A captain has no word for a mark on the floor. It is not
-			// something it will act on, so it stays unnamed.
 		}
 	}
 
 	if noise.Kind == content.Noise {
-		return belief.Name("the " + noise.Note), true
+		return &behavior.NameOutput{Name: belief.Name("the " + noise.Note), Named: true}, nil
 	}
 
-	return "", false
+	return &behavior.NameOutput{}, nil
 }
 
 // Rank puts whoever it has seen heal first, then whoever is chanting, then
@@ -251,7 +259,8 @@ func (Captain) Name(c behavior.Contact) (belief.Name, bool) {
 // A ghost older than [Patience] is dropped. The captain will walk to where it
 // last saw somebody, but not to where it saw somebody an age ago — and with
 // nothing left worth pursuing, the post is what remains, so it goes back.
-func (Captain) Rank(s behavior.Situation) []behavior.Contact {
+func (Captain) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) {
+	s := in.Situation
 	kept := make([]behavior.Contact, 0, len(s.Contacts))
 
 	for _, c := range s.Contacts {
@@ -268,11 +277,13 @@ func (Captain) Rank(s behavior.Situation) []behavior.Contact {
 		return preference(b) - preference(a)
 	})
 
-	return ordered
+	return &behavior.RankOutput{Ranked: ordered}, nil
 }
 
 // Keep is nothing. A captain stands and fights.
-func (Captain) Keep(behavior.Situation) int { return 0 }
+func (Captain) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
+	return &behavior.KeepOutput{Regions: 0}, nil
+}
 
 func preference(c behavior.Contact) int {
 	switch {
@@ -300,11 +311,17 @@ type Archer struct{}
 func (Archer) Judge([]reconcile.TrackView, testimony.Stamp) []reconcile.Judgment { return nil }
 
 // Name calls a contact "thing" and its first handle.
-func (Archer) Name(c behavior.Contact) (belief.Name, bool) { return Zombie{}.Name(c) }
+func (Archer) Name(in *behavior.NameInput) (*behavior.NameOutput, error) {
+	return reflexive(in.Contact), nil
+}
 
 // Rank prefers whatever it noticed first.
-func (Archer) Rank(s behavior.Situation) []behavior.Contact { return byFirstSeen(s.Contacts) }
+func (Archer) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) {
+	return Zombie{}.Rank(in)
+}
 
 // Keep is one region. Anything that closes to the archer's own region is
 // something to step away from before it is something to shoot.
-func (Archer) Keep(behavior.Situation) int { return 1 }
+func (Archer) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
+	return &behavior.KeepOutput{Regions: 1}, nil
+}

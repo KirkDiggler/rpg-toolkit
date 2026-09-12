@@ -14,11 +14,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
 )
 
-// ErrNoSelf reports a turn for an actor the truth surface has nowhere. It
-// fails loudly: an actor with no position would find nothing in reach and pass
-// forever, which would look like a very cautious monster rather than a wiring
-// fault.
-var ErrNoSelf = errors.New("behavior: the actor is not on the truth surface")
+// Sentinel errors. Every returned error wraps exactly one.
+var (
+	// ErrNoSelf reports a turn for an actor the truth surface has nowhere. It
+	// fails loudly: an actor with no position would find nothing in reach and
+	// pass forever, which would look like a very cautious monster rather than
+	// a wiring fault.
+	ErrNoSelf = errors.New("behavior: the actor is not on the truth surface")
+	// ErrNoMind reports a turn for an actor nobody gave a mind.
+	ErrNoMind = errors.New("behavior: the actor has no mind")
+)
 
 // Game is the composition: a perception game, plus who has which mind and
 // where each of them stands.
@@ -47,60 +52,76 @@ func New() *Game {
 	}
 }
 
-// Frighten puts the frightened condition on an actor: it may not willingly
-// move toward the source. The condition is a fact about the actor's own sheet
-// and arrives here as one, in ledger terms; it is translated into the actor's
-// own sight handle of the source so that nothing downstream ever sees an
-// entity id. Whether the actor can currently perceive that source is its own
-// problem — a fence on something you cannot place forbids nothing, which is
-// what being afraid of something you cannot see feels like.
-func (g *Game) Frighten(o testimony.Observer, source string) {
-	g.fears[o] = append(g.fears[o], projection.Handle(testimony.Sight, source))
+// ConnectInput is two regions with a door between them.
+type ConnectInput struct {
+	A, B string
 }
 
 // Connect declares two regions adjacent. Static topology is construction
 // truth and every actor may know it; who stands where is not.
-func (g *Game) Connect(a, b string) {
-	g.doors[a] = append(g.doors[a], b)
-	g.doors[b] = append(g.doors[b], a)
+func (g *Game) Connect(in *ConnectInput) {
+	g.doors[in.A] = append(g.doors[in.A], in.B)
+	g.doors[in.B] = append(g.doors[in.B], in.A)
+}
+
+// RouteInput is where an actor is and where it wants to be.
+type RouteInput struct {
+	From, To string
+}
+
+// RouteOutput is the first step, if there is a way.
+type RouteOutput struct {
+	Next  string
+	Found bool
 }
 
 // Route is the first step from one region toward another along the dungeon's
-// doors, and false when there is no way. Static topology is construction
-// truth: a monster may know the way through its own dungeon. It may not know
-// who is standing in it.
-func (g *Game) Route(from, to string) (string, bool) {
-	dist := g.distances(to)
+// doors. Static topology is construction truth: a monster may know the way
+// through its own dungeon. It may not know who is standing in it.
+func (g *Game) Route(in *RouteInput) (*RouteOutput, error) {
+	dist := g.distances(in.To)
 
 	best, found := "", false
 
-	for _, next := range g.doors[from] {
+	for _, next := range g.doors[in.From] {
 		if d, reachable := dist[next]; reachable && (!found || d < dist[best]) {
 			best, found = next, true
 		}
 	}
 
-	if !found || dist[best] >= dist[from] {
-		return "", false
+	if !found || dist[best] >= dist[in.From] {
+		return &RouteOutput{}, nil
 	}
 
-	return best, true
+	return &RouteOutput{Next: best, Found: true}, nil
+}
+
+// FartherInput is where an actor is and what it wants more distance from.
+type FartherInput struct {
+	From, AwayFrom string
+}
+
+// FartherOutput is the step that puts the most dungeon between them, if any
+// door leads farther.
+type FartherOutput struct {
+	Next  string
+	Found bool
 }
 
 // Farther is one step that puts more of the dungeon between the actor and a
-// region, and false when every door leads closer or nowhere — a dead end.
+// region, and nothing when every door leads closer or nowhere — a dead end.
 // Fleeing into a corner is not fleeing.
-func (g *Game) Farther(from, awayFrom string) (string, bool) {
-	dist := g.distances(awayFrom)
+func (g *Game) Farther(in *FartherInput) (*FartherOutput, error) {
+	dist := g.distances(in.AwayFrom)
 
-	here, placed := dist[from]
+	here, placed := dist[in.From]
 	if !placed {
-		return "", false
+		return &FartherOutput{}, nil
 	}
 
 	best, found := "", false
 
-	for _, next := range g.doors[from] {
+	for _, next := range g.doors[in.From] {
 		d, reachable := dist[next]
 		if !reachable || d <= here {
 			continue
@@ -111,7 +132,7 @@ func (g *Game) Farther(from, awayFrom string) (string, bool) {
 		}
 	}
 
-	return best, found
+	return &FartherOutput{Next: best, Found: found}, nil
 }
 
 // distances is how many doors each region is from one region.
@@ -136,17 +157,46 @@ func (g *Game) distances(from string) map[string]int {
 	return dist
 }
 
-// Sheet gives an actor what it is armed with. Unset is melee.
-func (g *Game) Sheet(o testimony.Observer, sheet Sheet) {
-	g.sheets[o] = sheet
+// SheetInput is an actor and what it is armed with.
+type SheetInput struct {
+	Actor testimony.Observer
+	Sheet Sheet
 }
 
-// Mind gives an observer a mind. Its Judge becomes that observer's reconciler
-// in the perception game, so a mind's first judgment lands where every other
+// Sheet gives an actor what it is armed with. Unset is melee.
+func (g *Game) Sheet(in *SheetInput) {
+	g.sheets[in.Actor] = in.Sheet
+}
+
+// MindInput is an actor and the mind it gets.
+type MindInput struct {
+	Actor testimony.Observer
+	Mind  Mind
+}
+
+// Mind gives an actor a mind. Its Judge becomes that actor's reconciler in
+// the perception game, so a mind's first judgment lands where every other
 // claim does.
-func (g *Game) Mind(o testimony.Observer, m Mind) {
-	g.minds[o] = m
-	g.p.Mind(o, m)
+func (g *Game) Mind(in *MindInput) {
+	g.minds[in.Actor] = in.Mind
+	g.p.Mind(in.Actor, in.Mind)
+}
+
+// FrightenInput is an actor and the ledger handle of what frightened it.
+type FrightenInput struct {
+	Actor  testimony.Observer
+	Source string
+}
+
+// Frighten puts the frightened condition on an actor: it may not willingly
+// move toward the source. The condition is a fact about the actor's own sheet
+// and arrives here as one, in ledger terms; it is translated into the actor's
+// own sight handle of the source so that nothing downstream ever sees an
+// entity id. Whether the actor can currently perceive that source is its own
+// problem — a fence on something you cannot place forbids nothing, which is
+// what being afraid of something you cannot see feels like.
+func (g *Game) Frighten(in *FrightenInput) {
+	g.fears[in.Actor] = append(g.fears[in.Actor], projection.Handle(testimony.Sight, in.Source))
 }
 
 // Tick runs one perception pass and notes where each minded actor stands.
@@ -171,29 +221,35 @@ func (g *Game) Tick(in projection.Input) error {
 	return nil
 }
 
+// SituationInput is whose situation, and when.
+type SituationInput struct {
+	Actor testimony.Observer
+	At    testimony.Stamp
+}
+
 // Situation assembles everything one actor has to go on, naming as it goes.
 //
 // A contact the actor has no word for is offered to its mind. A name the mind
 // gives is recorded as that actor's own identification, on one track of the
 // contact, so it persists the way every claim does and the next situation
 // finds it already there.
-func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) (Situation, error) {
-	mind, minded := g.minds[o]
+func (g *Game) Situation(in *SituationInput) (*Situation, error) {
+	mind, minded := g.minds[in.Actor]
 	if !minded {
-		return Situation{}, fmt.Errorf("behavior: %s has no mind", o)
+		return nil, fmt.Errorf("%w: %s", ErrNoMind, in.Actor)
 	}
 
-	self, placed := g.selves[o]
+	self, placed := g.selves[in.Actor]
 	if !placed {
-		return Situation{}, fmt.Errorf("%w: %s", ErrNoSelf, o)
+		return nil, fmt.Errorf("%w: %s", ErrNoSelf, in.Actor)
 	}
 
 	views := make(map[testimony.TrackID]reconcile.TrackView)
-	for _, v := range reconcile.ViewsOf(g.p.Held(o)) {
+	for _, v := range reconcile.ViewsOf(g.p.Held(in.Actor)) {
 		views[v.ID] = v
 	}
 
-	bundles := g.p.Contacts(o)
+	bundles := g.p.Contacts(in.Actor)
 	contacts := make([]Contact, 0, len(bundles))
 
 	for _, b := range bundles {
@@ -203,7 +259,7 @@ func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) (Situation, e
 		}
 
 		for _, id := range b.Tracks {
-			if name, _, named := g.p.NameOf(o, id); named {
+			if name, _, named := g.p.NameOf(in.Actor, id); named {
 				c.Name, c.Named, c.Bearer = name, true, id
 
 				break
@@ -211,20 +267,25 @@ func (g *Game) Situation(o testimony.Observer, at testimony.Stamp) (Situation, e
 		}
 
 		if !c.Named {
-			if name, ok := mind.Name(c); ok {
+			named, err := mind.Name(&NameInput{Contact: c})
+			if err != nil {
+				return nil, err
+			}
+
+			if named.Named {
 				id := bearer(c)
-				if err := g.p.Identify(o, id, name, at); err != nil {
-					return Situation{}, err
+				if err := g.p.Identify(in.Actor, id, named.Name, in.At); err != nil {
+					return nil, err
 				}
 
-				c.Name, c.Named, c.Bearer = name, true, id
+				c.Name, c.Named, c.Bearer = named.Name, true, id
 			}
 		}
 
 		contacts = append(contacts, c)
 	}
 
-	return Situation{Actor: o, Contacts: contacts, Self: self, At: at}, nil
+	return &Situation{Actor: in.Actor, Contacts: contacts, Self: self, At: in.At}, nil
 }
 
 // bearer is the track a contact's name is recorded on: a current creature if
@@ -257,12 +318,30 @@ func (g *Game) Held(o testimony.Observer) []testimony.Track {
 	return g.p.Held(o)
 }
 
+// TurnInput is whose turn, and when.
+type TurnInput struct {
+	Actor testimony.Observer
+	At    testimony.Stamp
+}
+
+// TurnOutput is what the actor decided, and the situation it decided it in —
+// the stage needs both to resolve the one against the other.
+type TurnOutput struct {
+	Intent    Intent
+	Situation Situation
+}
+
 // Turn is one actor's decision: build the situation, climb the ladder.
-func (g *Game) Turn(o testimony.Observer, at testimony.Stamp) (Intent, Situation, error) {
-	s, err := g.Situation(o, at)
+func (g *Game) Turn(in *TurnInput) (*TurnOutput, error) {
+	s, err := g.Situation(&SituationInput{Actor: in.Actor, At: in.At})
 	if err != nil {
-		return Intent{}, Situation{}, err
+		return nil, err
 	}
 
-	return Decide(s, g.minds[o]), s, nil
+	decided, err := Decide(&DecideInput{Situation: *s, Mind: g.minds[in.Actor]})
+	if err != nil {
+		return nil, err
+	}
+
+	return &TurnOutput{Intent: decided.Intent, Situation: *s}, nil
 }

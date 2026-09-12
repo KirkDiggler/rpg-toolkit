@@ -87,7 +87,7 @@ somebody performs on the monster's behalf.
 
 **Commitment** — *not built*, and deliberately. The design expected a monster
 between two ghosts of similar distance to dither, and a sticky target to fix
-it. No fixture produced the dither: every mind here ranks by *first noticed*,
+it. No use case produced the dither: every mind here ranks by *first noticed*,
 which is stable across turns, so a re-rank each turn picks the same target.
 Dithering needs a mind that ranks by distance, and none has been asked for.
 When one is, commitment is the primitive it pays for, and the shape on record
@@ -118,10 +118,13 @@ was refused because it forecloses the dumb monster and the illusion in one move.
 
 ## What it proves, in order
 
-Each fixture pays for one primitive. Nothing is built before the fixture that
-needs it.
+Each use case pays for one primitive. Nothing is built before the use case
+that needs it. The proofs are `usecases_test.go`, one per row, written in the
+vocabulary of `scene_test.go` so each reads as the story it measures: the
+game master places figures and lets everyone look, then asks an actor what
+it means to do and where that really lands.
 
-| # | fixture | pays for | built? |
+| # | use case | pays for | built? |
 |---|---|---|---|
 | 1 | zombie and captain, one situation, two targets | contacts in the ladder; Name and Rank | **yes** |
 | 2 | a heal in sight retargets the captain; the same heal out of sight does not | deeds as testimony | **yes** |
@@ -129,7 +132,16 @@ needs it.
 | 4 | intimidated goblin cannot go `Toward` the intimidator; shoots if it can, flees if it cannot | fences on self; routing | **yes** |
 | 5 | zombie walks to a stale ghost forever; captain drops it after N and returns to post | Rank over ghost age; a post as a named thing | **yes** |
 
-## What the fixtures taught
+## Inputs and outputs
+
+Every function that takes more than one thing takes one `Input`; every
+function that answers more than one thing answers one `Output`, and an error.
+`Mind.Name`, `Rank` and `Keep`, `Decide`, `Game.Turn`, and every stage verb
+follow it. That is the toolkit's convention, kept here so the example reads
+like the engine it is an example for, and so a behaviour author's first mind
+compiles against the same shape the real seam will have.
+
+## What the use cases taught
 
 Things the shape did not know before there was code.
 
@@ -194,7 +206,7 @@ Things the shape did not know before there was code.
     deleted. A ghost is not a special case of recall, only an older one.
 13. **Region grain cannot tell direction, but a map can tell distance.**
     The first `Step` picked any adjacent region that was not the target's.
-    Fixture 4 needed a walk of two regions and could not take the first step,
+    Use case 4 needed a walk of two regions and could not take the first step,
     so routing moved onto the game, where static topology already lived:
     `Toward` takes the first door on the way, `Away` takes the door that puts
     the most dungeon between them. On a tie the archer may still back into
@@ -206,7 +218,7 @@ Things the shape did not know before there was code.
     there the ladder refuses `Toward` a fenced contact and flees instead;
     `Attack` is untouched. The mind was never asked. A mutant that lets the
     ladder approach a fenced contact is killed. How the *mind* comes to know
-    who frightened it is a deed like any other, and no fixture has paid for
+    who frightened it is a deed like any other, and no use case has paid for
     it yet.
 15. **Fleeing into a corner is not fleeing.** `Away` refuses a dead end
     rather than stepping closer. The goblin in the hall, afraid of a knight
@@ -215,7 +227,7 @@ Things the shape did not know before there was code.
     stage refuses is an actor that stays put — which is what cornered means.
 16. **A ghost has a place, and it is the same rule as a live one.**
     `Contact.Where` first read only current tracks, so a ghost had no place
-    and rung 2 could never walk toward a memory — both fixture 5 tests
+    and rung 2 could never walk toward a memory — both use case 5 tests
     passed on the wrong verb. The rule is now the freshest placed testimony
     across the contact's tracks, live or not, which is exactly the rule a
     survived mutant had already shown in `Recall`. One rule, two callers.
@@ -253,13 +265,13 @@ Things the shape did not know before there was code.
 
 - How a mind comes to know who frightened it. The fence is on the sheet;
   the deed (*that one intimidated me*) would land like a heal does, and a
-  mind could rank by it. No fixture has needed it.
+  mind could rank by it. No use case has needed it.
 - Commitment. See the nouns: unpaid until a mind ranks by distance.
 - Absence as testimony. The zombie in the empty room still holds the knight
   *at the room*, because nothing here downgrades a ghost's place on arrival.
   The ladder's *here → skip* covers this spike; the shipped design
   (`ideas/monster-intel/design.md` §5a) wants the belief itself to become
-  position-unknown, and that is a perception change no fixture has paid for.
+  position-unknown, and that is a perception change no use case has paid for.
 
 ## What the perception team's decider taught us
 

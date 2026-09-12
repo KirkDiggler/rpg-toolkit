@@ -20,7 +20,7 @@
 //
 // [Decide] is the ladder, and it is not the mind's to change: step away from
 // what is too close, attack a live named creature in reach, walk toward what
-// the mind ranks first, else pass. Rungs arrived with the fixtures that paid
+// the mind ranks first, else pass. Rungs arrived with the use cases that paid
 // for them; see README.md.
 //
 // # You cannot aim at what you have not named
@@ -29,6 +29,13 @@
 // handle. A target exists only once the actor has perceived something and
 // worked out what to call it, which is why naming is a judgment of the mind and
 // not a step somebody performs on the monster's behalf.
+//
+// # Inputs and outputs
+//
+// Every function that takes more than one thing takes one Input; every function
+// that answers more than one thing answers one Output, and an error. That is
+// the toolkit's convention and it is kept here so the example reads like the
+// engine it is an example for.
 package behavior
 
 import (
@@ -90,10 +97,9 @@ func (c Contact) Creature() bool {
 // there, not known where.
 //
 // There is one rule and not two, on purpose. A first draft read only current
-// tracks, and fixture 5 found that a ghost then had no place at all, so the
+// tracks, and use case 5 found that a ghost then had no place at all, so the
 // ladder could never walk toward a memory. A current track's latest entry IS
-// its placement, so the memory rule already answers for a live contact — the
-// same equivalence a survived mutant showed in the stage's Recall.
+// its placement, so the memory rule already answers for a live contact.
 func (c Contact) Where() string {
 	var (
 		where string
@@ -258,26 +264,64 @@ type Intent struct {
 	Target belief.Name
 }
 
+// NameInput is a contact the mind has no word for yet.
+type NameInput struct {
+	Contact Contact
+}
+
+// NameOutput is what the mind calls it. Named is false when it still has no
+// word, and the contact cannot be aimed at.
+type NameOutput struct {
+	Name  belief.Name
+	Named bool
+}
+
+// RankInput is the situation to rank.
+type RankInput struct {
+	Situation Situation
+}
+
+// RankOutput is the situation's contacts by preference, most preferred first.
+// A mind may drop contacts it would never act on.
+type RankOutput struct {
+	Ranked []Contact
+}
+
+// KeepInput is the situation to judge distance in.
+type KeepInput struct {
+	Situation Situation
+}
+
+// KeepOutput is how close this mind lets a live creature get before it would
+// rather step away: 0 means it stands and fights, 1 means it keeps a region
+// between them.
+type KeepOutput struct {
+	Regions int
+}
+
 // Mind is what makes one monster different from another. It embeds the
 // perception spike's reconciler because judging which tracks are one thing IS
-// the first act of a mind, and adds the two questions a decision needs.
+// the first act of a mind, and adds the questions a decision needs.
+//
+// Keep is a judgment, not a sheet fact — a cornered archer may decide to keep
+// nothing.
 type Mind interface {
 	reconcile.Reconciler
 
-	// Name is what this mind would call a contact it has no word for yet.
-	// Returning false means it still has no word, and the contact cannot be
-	// aimed at.
-	Name(c Contact) (belief.Name, bool)
+	Name(in *NameInput) (*NameOutput, error)
+	Rank(in *RankInput) (*RankOutput, error)
+	Keep(in *KeepInput) (*KeepOutput, error)
+}
 
-	// Rank orders the situation's contacts by preference, most preferred
-	// first. It may drop contacts it would never act on.
-	Rank(s Situation) []Contact
+// DecideInput is one actor's situation and the mind that reads it.
+type DecideInput struct {
+	Situation Situation
+	Mind      Mind
+}
 
-	// Keep is how close this mind lets a live creature get before it would
-	// rather step away: 0 means it stands and fights, 1 means it keeps a
-	// region between them. It is a judgment, not a sheet fact — a cornered
-	// archer may decide to keep nothing.
-	Keep(s Situation) int
+// DecideOutput is what the actor means to do.
+type DecideOutput struct {
+	Intent Intent
 }
 
 // Decide is the ladder. It is fixed, and the mind is consulted only where the
@@ -302,50 +346,60 @@ type Mind interface {
 // 2) and flees instead (rung 3). That is the frightened condition's rule, and
 // it lives here because a rule about which intents are open is the ladder's,
 // not the mind's.
-func Decide(s Situation, m Mind) Intent {
-	ranked := m.Rank(s)
-	keep := m.Keep(s)
+func Decide(in *DecideInput) (*DecideOutput, error) {
+	s := in.Situation
+
+	ranked, err := in.Mind.Rank(&RankInput{Situation: s})
+	if err != nil {
+		return nil, err
+	}
+
+	keep, err := in.Mind.Keep(&KeepInput{Situation: s})
+	if err != nil {
+		return nil, err
+	}
+
 	canStep := len(s.Self.Adjacent) > 0
 
 	if canStep {
-		for _, c := range ranked {
+		for _, c := range ranked.Ranked {
 			if !c.Named || !c.Current() || !c.Creature() {
 				continue
 			}
 
-			if s.Self.Distance(c.Where()) < keep {
-				return Intent{Verb: Away, Target: c.Name}
+			if s.Self.Distance(c.Where()) < keep.Regions {
+				return &DecideOutput{Intent: Intent{Verb: Away, Target: c.Name}}, nil
 			}
 		}
 	}
 
-	for _, c := range ranked {
+	for _, c := range ranked.Ranked {
 		if !c.Named || !c.Current() || !c.Creature() {
 			continue
 		}
 
 		if s.Self.Distance(c.Where()) <= s.Self.Reach {
-			return Intent{Verb: Attack, Target: c.Name}
+			return &DecideOutput{Intent: Intent{Verb: Attack, Target: c.Name}}, nil
 		}
 	}
 
-	for _, c := range ranked {
+	for _, c := range ranked.Ranked {
 		if !c.Named || c.Where() == "" || c.Where() == s.Self.Where || s.Self.Fenced(c) {
 			continue
 		}
 
-		return Intent{Verb: Toward, Target: c.Name}
+		return &DecideOutput{Intent: Intent{Verb: Toward, Target: c.Name}}, nil
 	}
 
 	if canStep {
-		for _, c := range ranked {
+		for _, c := range ranked.Ranked {
 			if !c.Named || !c.Current() || !c.Creature() || c.Where() == "" || !s.Self.Fenced(c) {
 				continue
 			}
 
-			return Intent{Verb: Away, Target: c.Name}
+			return &DecideOutput{Intent: Intent{Verb: Away, Target: c.Name}}, nil
 		}
 	}
 
-	return Intent{Verb: Pass}
+	return &DecideOutput{Intent: Intent{Verb: Pass}}, nil
 }
