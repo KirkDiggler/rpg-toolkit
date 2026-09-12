@@ -170,6 +170,12 @@ var SpellData = map[Spell]*Data{
 		Name:        "Dissonant Whispers",
 		Description: "A discordant whisper deals 3d6 psychic damage and sends the target fleeing",
 	},
+	Command: {
+		ID:          Command,
+		Level:       1,
+		Name:        "Command",
+		Description: "One word a creature must obey on its next turn unless it succeeds on a Wisdom save",
+	},
 	IceKnife: {
 		ID:          IceKnife,
 		Level:       1,

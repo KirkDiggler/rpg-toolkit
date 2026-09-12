@@ -37,6 +37,7 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 	s.Contains(req.Options, spells.Bane)
 	s.Contains(req.Options, spells.Thunderwave)
 	s.Contains(req.Options, spells.DissonantWhispers)
+	s.Contains(req.Options, spells.Command)
 	for _, option := range req.Options {
 		s.True(spells.HasCastProfile(option),
 			"%s is offered as a levelled pick and must compile to a cast", option)
@@ -45,13 +46,19 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 		s.Equal(req.SpellLevel, data.Level, "%s is offered as a level-%d pick", option, req.SpellLevel)
 	}
 	// The count is asserted against the catalogue rather than against a
-	// number. A literal here would be the thing somebody bumps to 4 with the
-	// next spell instead of deleting, and it pins nothing this line does not:
-	// the bard learns every level-1 spell this build can cast.
+	// number. A literal here would be the thing somebody bumps with the next
+	// spell instead of deleting, and it pins nothing this line does not: the
+	// bard learns every level-1 spell this build can cast.
 	s.Equal(len(req.Options), req.Count,
 		"and knows all of them: the count tracks the supported catalogue rather than rationing it")
 	s.Equal(4, classes.ClassData[classes.Bard].SpellsKnown,
 		"the supported choice count must not rewrite factual class progression")
+	// With Command the catalogue has reached the progression. From here the
+	// count stops moving and the pick becomes a real choice, so a catalogue
+	// that grew past four without the count staying put would be rationing
+	// the bard rather than offering them everything.
+	s.LessOrEqual(req.Count, classes.ClassData[classes.Bard].SpellsKnown,
+		"a bard may not be asked to know more level-1 spells than the class grants")
 }
 
 func (s *RequirementsDetailTestSuite) TestFighterEquipmentItemsHaveDetails() {

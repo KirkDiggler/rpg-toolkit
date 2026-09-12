@@ -5,6 +5,7 @@ package spells
 
 import (
 	"encoding/json"
+	"strconv"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -106,6 +107,54 @@ const DissonantWhispersDamage = "3d6"
 // it counts cells. The footprint beside it is in feet because it is a shape
 // content authors against no grid at all — the two units are the two questions.
 const ThunderwavePushCells = 2
+
+// CommandRangeFeet is how far a caster may point Command: sixty feet, the same
+// reach as the two whispers. A word carries as far as a taunt does.
+const CommandRangeFeet = 60
+
+// CommandTurnEnds is how long the compulsion lasts, in the COMMANDED
+// creature's own turn ends.
+//
+// One, and the reason is the opposite of True Strike's two. The spell says
+// "on its next turn", and the condition lands on somebody whose turn has not
+// begun — so the first turn end it will ever see with its own subject id is
+// the end of the turn the word was meant for. A second count would carry the
+// compulsion into a turn the spell never bought.
+const CommandTurnEnds = 1
+
+// The three words this slice ships, as the ids the request sends back and the
+// Commanded condition stores. Constants because the layer that drives a
+// compelled turn switches on them, and a string typed twice is a word that
+// silently stops being obeyed.
+const (
+	// CommandWordApproach walks the creature to the caster and stops it there.
+	CommandWordApproach = "approach"
+
+	// CommandWordFlee walks the creature as far from the caster as its legs
+	// carry it.
+	CommandWordFlee = "flee"
+
+	// CommandWordGrovel puts the creature prone and ends its turn.
+	CommandWordGrovel = "grovel"
+)
+
+// commandedParameters is the compulsion's clock, the one parameter content can
+// fill in: the caster and the word both arrive by binding.
+//
+// Derived from [CommandTurnEnds] rather than typed out a second time beside
+// it, so the constant the rest of the module reads and the JSON the factory
+// reads cannot drift apart.
+var commandedParameters = json.RawMessage(`{"turn_ends":` + strconv.Itoa(CommandTurnEnds) + `}`)
+
+// CommandCasterParameter is the Commanded condition's parameter naming the
+// caster who said the word. Bound by the cast effect's CounterpartKey, because
+// Approach and Flee are measured from a creature rather than from a spell.
+const CommandCasterParameter = "caster_id"
+
+// CommandWordParameter is the Commanded condition's parameter naming which
+// word was chosen. Bound by the cast effect's OptionKey from what the request
+// carried, which is the first cast-time choice in this catalogue.
+const CommandWordParameter = "word"
 
 // SacredFlameRangeFeet is Sacred Flame's range in the 2014 Basic Rules.
 const SacredFlameRangeFeet = 60
@@ -335,6 +384,76 @@ var castContent = map[Spell]castProfileBuilder{
 					Pays:     actions.PaysReaction,
 					Provokes: true,
 				},
+			}
+		},
+	},
+	Command: {
+		name: "Command",
+		cost: slotCost(resources.SpellSlotLevel1),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet:  CommandRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
+				Save: &saves.SaveGate{
+					Abilities: []abilities.Ability{abilities.WIS},
+					DC:        saves.DCStatic(spellSaveDC),
+					// NEGATED, and there is no other word for it. A made save
+					// hears the command and ignores it; half of a compulsion
+					// is not a shorter walk, it is nothing anybody can write
+					// down.
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				// THE MENU, and this spell is the reason the field exists. The
+				// caster picks the word as they cast, the way Thunderwave's
+				// caster picks a cell, and the id travels to the condition
+				// under OptionKey below.
+				//
+				// Three words in the first slice, chosen because they are the
+				// three different mechanisms: Approach walks toward, Flee
+				// walks away, Grovel imposes a condition and stops.
+				//
+				// HALT is not here and is a ONE-ROW ADDITION whenever it is
+				// wanted: it is the word with no route and no effect, so it
+				// proves nothing the other three do not, and shipping it now
+				// would be filler.
+				//
+				// DROP waits on three things in order, and the first of them
+				// is not a spell problem: a monster that visibly HOLDS a
+				// weapon, a holdable weapon prop delivered to its hand, and a
+				// drop primitive distinct from unequip that puts an item on
+				// the floor rather than into a bag. On every creature in the
+				// sandbox today Drop would be Halt with extra words.
+				//
+				// UNDEAD are a DIVERGENCE, ruled rather than overlooked. The
+				// letter exempts them; no creature type exists on a monster
+				// definition, and every tomb monster is undead, so honouring
+				// the letter would make this spell unwalkable. It works on
+				// anything with a Wisdom save until goblins arrive and the
+				// clause has something to spare.
+				//
+				// LANGUAGE is DEFERRED for a simpler reason: no language
+				// exists anywhere in this stack, so "if it doesn't understand
+				// your language" has nothing to read. No shelf is carved,
+				// because nothing else wants one.
+				Options: []actions.CastOption{
+					{ID: CommandWordApproach, Label: "Approach"},
+					{ID: CommandWordFlee, Label: "Flee"},
+					{ID: CommandWordGrovel, Label: "Grovel"},
+				},
+				Effects: []actions.CastEffect{{
+					Recipient: actions.CastRecipientTarget,
+					Ref:       *refs.Conditions.Commanded(),
+					// The clock is the only parameter content can fill. The
+					// other two are bindings: the caster arrives under
+					// CounterpartKey and the word under OptionKey, neither of
+					// which a spell can know when it is written.
+					Parameters:     commandedParameters,
+					CounterpartKey: CommandCasterParameter,
+					OptionKey:      CommandWordParameter,
+				}},
 			}
 		},
 	},

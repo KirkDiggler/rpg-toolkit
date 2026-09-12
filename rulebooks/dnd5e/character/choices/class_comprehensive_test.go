@@ -288,7 +288,7 @@ func (s *ClassComprehensiveSuite) TestBardSpellSelectionRejectsWrongCountsAndUns
 		{
 			name: "too many",
 			values: []shared.SelectionID{
-				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Bane,
+				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command, spells.Bane,
 			},
 		},
 		{name: "unsupported", values: []shared.SelectionID{spells.HealingWord}},
@@ -1002,14 +1002,15 @@ func (s *ClassComprehensiveSuite) createBardTestData() *ClassTestData {
 		Name:       "bard",
 		HitDie:     8,
 		SkillCount: 3,
-		// The supported catalog is intentionally narrower than the factual
-		// four-spell class progression, and the bard learns all of it: three
-		// executable level-1 spells today, Bane, Thunderwave and Dissonant
-		// Whispers.
+		// The supported catalog has caught up with the factual four-spell
+		// class progression, and the bard learns all of it: Bane,
+		// Thunderwave, Dissonant Whispers and Command. The next level-1 spell
+		// this build can cast is the one that makes the pick a real choice,
+		// and this count stays at four when it comes.
 		HasCantrips:  true,
 		CantripCount: 2,
 		HasSpells:    true,
-		SpellCount:   3,
+		SpellCount:   4,
 		HasTools:     true,
 		ToolCount:    3,
 		// Bards can choose ANY 3 skills (no restricted list)
@@ -1077,7 +1078,9 @@ func (s *ClassComprehensiveSuite) createBardValidBase() *choices.Submissions {
 		Category: shared.ChoiceSpells,
 		Source:   shared.SourceClass,
 		ChoiceID: choices.BardSpells1,
-		Values:   []shared.SelectionID{spells.Bane, spells.Thunderwave, spells.DissonantWhispers},
+		Values: []shared.SelectionID{
+			spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
+		},
 	})
 
 	// Weapon choice - rapier

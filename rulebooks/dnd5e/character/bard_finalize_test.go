@@ -61,7 +61,9 @@ func (s *BardFinalizeSuite) bardDraft(charisma int, instruments []shared.Selecti
 			Skills:   []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 			Tools:    instruments,
 			Cantrips: []shared.SelectionID{spells.TrueStrike, spells.ViciousMockery},
-			Spells:   []spells.Spell{spells.Bane, spells.Thunderwave, spells.DissonantWhispers},
+			Spells: []spells.Spell{
+				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
+			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.BardWeaponsPrimary, OptionID: choices.BardWeaponRapier},
 				{ChoiceID: choices.BardPack, OptionID: choices.BardPackDiplomat},
