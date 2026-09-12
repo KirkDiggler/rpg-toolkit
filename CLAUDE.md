@@ -442,6 +442,37 @@ Published branches describe the issue/feature/module (for example,
 
 ## AI Assistant Guidelines
 
+### Project coordination and explicit user direction
+
+This repository participates in `KirkDiggler/rpg-project`. Respect the ownership
+and handoff boundaries described in its team role documents, including
+[the API protos role](https://github.com/KirkDiggler/rpg-project/blob/main/docs/teams/roles/rpg-api-protos-member/prompt.md).
+Apply role-specific tooling requirements only to their owning repository.
+Toolkit owns game mechanics, API owns server orchestration, and protos owns wire
+contracts. Report adjacent work before taking it on. Review the assigned change
+and state remaining release prerequisites honestly; passing checks alone does
+not make a change merge-ready. Do not merge PRs on the user's behalf without
+explicit authorization.
+
+For this user's work, correctness and controlled sequencing take priority over
+speed. Their explicit release direction overrides the general pseudo-version
+development allowance above: advance one PR at a time, wait for the provider to
+merge and CI to publish its actual module tag, then update and verify the next
+consumer against that release. Do not introduce temporary dependency versions
+or publish a parallel dependent PR stack to accelerate delivery. Do not rewrite
+published branch history as a workflow shortcut.
+
+The Cure Wounds handoff sequence is recorded in `docs/ideas/cleric/plan.md`.
+
+Include the user before deciding gameplay eligibility, missing-data defaults,
+backward-compatibility behavior, or scope that introduces prerequisites in other
+systems. Explain the concrete behavior and tradeoff and obtain their direction
+before implementation. These are product/rules decisions, not routine coding
+choices. Once the user decides, record and implement that decision without
+repeated confirmation. For Cure Wounds, missing creature type does not match an
+exclusion and must not prevent selection or healing; broader classification is
+outside the Cleric slice.
+
 **CRITICAL: NO ASSUMPTIONS WITHOUT VERIFICATION**
 
 1. **Research Before Acting**

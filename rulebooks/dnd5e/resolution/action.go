@@ -200,7 +200,7 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 		if profile.Save != nil {
 			inner, err = newGatedCast(definition, casterID, targetID, in.Option, cause, in.Roller)
 		} else {
-			inner, err = newGatelessCast(definition, casterID, targetID, in.Option)
+			inner, err = newGatelessCast(definition, casterID, targetID, in.Option, in.Roller)
 		}
 		if err != nil {
 			return nil, err
@@ -302,7 +302,9 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 		}
 		if target.targetID != "" {
 			var err error
-			if m.derivedTargets {
+			if m.profile.Target == combatActions.CastTargetTouch {
+				err = validateTouchTarget(ctx, m.casterID, target.targetID)
+			} else if m.derivedTargets {
 				err = castRecipientIsEligible(cast, target.targetID)
 			} else {
 				err = validateCastTarget(ctx, cast, m.casterID, target.targetID, m.profile.RangeFeet)
@@ -476,7 +478,7 @@ func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutco
 		if m.profile.Save != nil {
 			return CastTargetOutcome{}, fmt.Errorf("%w: %s has a gate and delivered without contesting it", ErrBadStep, m.spell.String())
 		}
-		applied, err := deliveredConditions(m.spell, inner.Effects)
+		applied, err := deliveredEffects(m.spell, inner.Effects)
 		if err != nil {
 			return CastTargetOutcome{}, err
 		}
@@ -490,16 +492,21 @@ func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutco
 // deliveredConditions reads the gateless delivery's captured facts back as the
 // cast's applied effects.
 //
-// The collector is what validated each condition's identity against the display
-// catalog, so this re-parses a ref it already knows is good rather than trusting
-// an unchecked one. A kind other than a condition means the delivery published
-// something a gateless cast cannot deliver, and it is refused rather than
-// dropped from the record.
-func deliveredConditions(spell core.Ref, effects []ActivationEffect) ([]ImposedEffect, error) {
+// The activation collector validates and owns the applied facts. Translate each
+// supported kind without reducing healing to a condition or losing its trace.
+func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffect, error) {
 	applied := make([]ImposedEffect, 0, len(effects))
 	for _, effect := range effects {
+		if effect.Kind == EffectHealingApplied {
+			ref, err := core.ParseString(effect.Ref)
+			if err != nil {
+				return nil, err
+			}
+			applied = append(applied, ImposedEffect{Kind: ImposedHealing, Ref: ref, Description: effect.Name, RecipientID: effect.TargetID, Amount: effect.Amount, Requested: effect.Requested, Before: effect.Before, After: effect.After, Calculation: dnd5eEvents.CloneRollCalculation(effect.Calculation)})
+			continue
+		}
 		if effect.Kind != EffectConditionApplied {
-			return nil, fmt.Errorf("%w: %s delivered %q, and a gateless cast delivers conditions",
+			return nil, fmt.Errorf("%w: %s delivered %q, and a gateless cast delivers conditions or healing",
 				ErrBadStep, spell.String(), effect.Kind)
 		}
 		ref, err := core.ParseString(effect.Ref)
@@ -719,7 +726,7 @@ func directiveFor(declared *combatActions.CastMove, casterID string) *MoveDirect
 // either contested or a condition, and a branch that silently dropped a
 // declared damage pool would be the affordance-with-nothing-behind-it this
 // stack keeps finding.
-func newGatelessCast(definition combatActions.Definition, casterID, targetID, option string) (Machine, error) {
+func newGatelessCast(definition combatActions.Definition, casterID, targetID, option string, roller dice.Roller) (Machine, error) {
 	profile := definition.Cast
 	if len(profile.Damage) > 0 {
 		return nil, fmt.Errorf("%w: %s deals damage with no save, which this module cannot yet deliver",
@@ -746,10 +753,18 @@ func newGatelessCast(definition combatActions.Definition, casterID, targetID, op
 		deliveries = append(deliveries, preparedDelivery{condition: prepared, recipientID: recipientID})
 	}
 
+	prepared := &preparedCast{source: definition.Ref, conditions: deliveries}
+	if profile.Healing != nil {
+		if roller == nil {
+			return nil, fmt.Errorf("%w: healing requires a roller", ErrBadAction)
+		}
+		ref := definition.Ref
+		prepared.healing = &preparedHealing{declaration: profile.Healing.Clone(), targetID: targetID, source: dnd5eEvents.RollSource{Ref: &ref, Name: definition.Name, SourceID: casterID}, excludes: append([]string(nil), profile.HealingExcludes...), roller: roller}
+	}
 	return NewActivation(&ActivationInput{
 		MemberID: casterID,
 		TargetID: targetID,
-		cast:     &preparedCast{source: definition.Ref, conditions: deliveries},
+		cast:     prepared,
 	})
 }
 

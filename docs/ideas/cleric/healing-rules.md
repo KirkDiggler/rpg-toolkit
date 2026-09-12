@@ -13,6 +13,6 @@ The following are explicit implementation decisions, not additional printed spel
 - Living, full-HP targets remain valid and pay normally. Their requested roll is retained even when zero HP is restored.
 - Ordinary healing accepts dying or stabilized characters but does not revive dead characters or defeated monsters, following this toolkit's life-state model.
 - Negative healing sums restore zero. The trace retains the negative casting modifier and an explicit adjustment to zero; recipient handlers also reject negative incoming amounts.
-- Catalogue monster family is derived from its canonical ref when an older sheet lacks a type. Custom sheets can declare a type. Unknown family data cannot establish eligibility for a spell with type exclusions; loading does not rewrite old records just to add derived metadata.
+- Catalogue monster family is derived from its canonical ref when an older sheet lacks a type. Custom sheets can declare a type. Per the user's decision, missing/unknown family data does not match an exclusion: the creature remains selectable and healing proceeds normally. Only a known excluded type produces the paid no-effect result. Loading does not rewrite old records just to add derived metadata. Broad creature-type adoption is outside the Cleric slice.
 
 Components/focus enforcement, preparation, upcasting, world-clock casting and other-repository adoption remain outside this slice.

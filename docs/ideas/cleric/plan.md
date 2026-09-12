@@ -12,6 +12,31 @@ Companions: [design.md](design.md), [implementation.md](implementation.md),
 
 ## North star
 
+### Release handoff correction (2026-09-12)
+
+The user requires one PR at a time with actual released dependency tags.
+Rulebook PR #1693 goes first, followed by encounter #1694, resolution #1695,
+and session #1696. Leave the already opened downstream PRs in place; do not
+advance or repin them together. After each provider merges, verify its CI-issued
+module tag before updating and validating the next consumer. Existing temporary
+pins in downstream PRs are outstanding release work, not an approved pattern
+to repeat. The user controls merging. No other-repository dependency bumps are
+authorized. Verify live PR and release state when resuming; this sequence is
+not evidence that any PR has merged.
+
+Provider releases verified: #1693 is `rulebooks/dnd5e/v0.159.0`; #1694 is
+`rulebooks/dnd5e/encounter/v0.76.0`. Resolution #1695 consumes those real tags.
+
+The user decided that missing creature type must not block selection or healing.
+Only a known excluded type receives a paid no-effect result. Include the user
+before settling eligibility, missing-data defaults, compatibility, or new scope.
+Broad creature classification remains outside this slice. When advancing #1696,
+remove its now-unneeded `HealingTargetsInput.Excludes` argument and verify an
+untyped custom monster can be selected, healed, and saved using the resolution
+release. That session work remains pending until #1695 merges and is tagged.
+
+### Intended behavior
+
 A level-one 2014 Cleric with explicit access to Cure Wounds can, during initiative,
 choose themself or another creature they can touch, spend one action and one
 first-level slot, and restore HP through the existing Cast path. The story explains
@@ -95,7 +120,8 @@ Do not fabricate HP support for world-kind NPCs that have no healable sheet.
 
 ## Implementation route
 
-These are dependency steps, not a mandatory PR count or a sequence of merge gates.
+These describe implementation responsibilities; the release handoff above governs
+the one-PR-at-a-time publication sequence.
 
 1. **Define the acceptance scene and narrow contracts.** Start with a Cleric,
    another injured character, an undead and a construct. Record the expected
@@ -177,11 +203,11 @@ is a later explicit slice, not a hidden assumption in combat acceptance.
 
 ## Development, review and publication
 
-Develop on the Cure Wounds branch. Use scoped local overrides where appropriate or
-pushed provider commits with resolvable pseudo-versions; never commit local overrides.
-Prove the whole toolkit consumer path before merging anything. Publish inside-out
-only after the wave is demonstrated, replacing development pins with released tags.
-Merging is not a prerequisite for discovering whether the implementation works.
+Advance one owning-module PR at a time using actual released provider tags.
+Do not introduce temporary dependency pins or committed local overrides. Verify
+the current PR before handoff; the user merges it, CI issues the module tag, and
+only then update and verify the next consumer. Keep pending consumer acceptance
+distinct from evidence already established for the current module.
 
 Run formatting, tidy and meaningful tests in owning modules. On Windows, keep
 unrelated line-ending changes out of the diff. Report local tooling limits honestly;
