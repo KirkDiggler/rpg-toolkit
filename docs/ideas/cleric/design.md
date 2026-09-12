@@ -2,9 +2,10 @@
 
 Status: creation merged in toolkit #1585 on 2026-09-08, released as D&D v0.150.0.
 The gameplay milestone remains open. The refreshed [plan.md](plan.md) is based
-on merged toolkit main `b2f3b88d` and supersedes the historical dependency
-assumptions below. Shared casting and concentration have now merged; Sacred
-Flame should extend that path. Results are in [implementation.md](implementation.md).
+on merged toolkit main `fd4cdade` (2026-09-12) and supersedes the historical dependency
+assumptions below. Sacred Flame content and session acceptance are merged. The
+user has authorized the bounded combat Cure Wounds + Life healing slice proposed
+in toolkit #1643. Results are in [implementation.md](implementation.md).
 No upstream adoption or live-play support is claimed. Acceptance checks are in
 [plan.md](plan.md); dated rules evidence is in [source-index.json](source-index.json).
 
