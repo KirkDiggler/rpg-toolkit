@@ -30,6 +30,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/perception/testimony"
 )
 
+// The verbs the worked deciders in this file use. They are an EXAMPLE
+// vocabulary and deliberately unexported: [Intent.Verb] is a plain string
+// precisely so a rulebook can name its own actions without this package ever
+// learning them, and a behaviour author should name their own rather than reach
+// for these.
+const (
+	attack   = "attack"
+	approach = "approach"
+	flee     = "flee"
+)
+
 // Held is one track as its holder sees it: the testimony, and what they call it
 // if they have worked that out.
 type Held struct {
@@ -101,6 +112,76 @@ type Idle struct{}
 // Decide returns no intent, ever.
 func (Idle) Decide(Situation) (Intent, bool) { return Intent{}, false }
 
+// Cautious will not commit to something it has only heard. It is the same
+// situation as [Aggressive] reaching a different answer, and the difference is
+// one field: which channel the testimony arrived on.
+type Cautious struct{}
+
+// Decide attacks the first named thing it can currently SEE.
+func (Cautious) Decide(s Situation) (Intent, bool) {
+	for _, h := range s.Named() {
+		if h.Channel != testimony.Sight || !h.Current {
+			continue
+		}
+
+		return Intent{Verb: attack, Target: h.Name}, true
+	}
+
+	return Intent{}, false
+}
+
+// Wary tells a memory from a sighting and does something different with each:
+// it attacks what is in front of it, and goes to look at what it only
+// remembers.
+//
+// Nothing here asks whether the memory is still true, because nothing an actor
+// holds could answer that. Going to look IS the answer, and it is a decision
+// rather than a correction.
+type Wary struct{}
+
+// Decide attacks what it can see, or approaches what it remembers.
+func (Wary) Decide(s Situation) (Intent, bool) {
+	var remembered Intent
+
+	for _, h := range s.Named() {
+		if h.Current {
+			return Intent{Verb: attack, Target: h.Name}, true
+		}
+
+		if remembered.Target == "" {
+			remembered = Intent{Verb: approach, Target: h.Name}
+		}
+	}
+
+	return remembered, remembered.Target != ""
+}
+
+// Cowardly runs when it can currently perceive more named things than it can
+// stand. Tolerates is how many it will put up with before bolting.
+//
+// The intent it returns has no target, because fleeing is not aimed at
+// anything — which is the honest shape, not a gap.
+type Cowardly struct {
+	Tolerates int
+}
+
+// Decide bolts when outnumbered by what it can perceive right now.
+func (c Cowardly) Decide(s Situation) (Intent, bool) {
+	facing := 0
+
+	for _, h := range s.Named() {
+		if h.Current {
+			facing++
+		}
+	}
+
+	if facing > c.Tolerates {
+		return Intent{Verb: flee}, true
+	}
+
+	return Intent{}, false
+}
+
 // Aggressive attacks the first thing it can currently perceive and name.
 //
 // It is deliberately credulous: it does not ask whether what it is looking at
@@ -114,7 +195,7 @@ func (Aggressive) Decide(s Situation) (Intent, bool) {
 			continue
 		}
 
-		return Intent{Verb: "attack", Target: h.Name}, true
+		return Intent{Verb: attack, Target: h.Name}, true
 	}
 
 	return Intent{}, false

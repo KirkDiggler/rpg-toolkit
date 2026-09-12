@@ -64,6 +64,12 @@ type Observer string
 // vocabulary is open and this package treats every channel identically.
 type Channel string
 
+// Sight is the one predeclared channel, for the same reason the shipped store
+// predeclares it: enough code needs to say "the visual one" that spelling it as
+// a literal in every caller is worse than naming it once. It gets no special
+// handling anywhere — a channel is a channel.
+const Sight Channel = "sight"
+
 // TrackID is a channel's opaque continuity handle. Never an entity id.
 type TrackID string
 

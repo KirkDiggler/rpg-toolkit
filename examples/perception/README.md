@@ -331,11 +331,18 @@ pip still believes it afterwards — swinging taught him nothing.
 built from the same `projection.Input` cannot disagree about who was there, which
 is why witnessing lives here rather than being answered twice.
 
-**For behaviour authors:** `act` imports no world. A monster's behaviour is about
-what the monster thinks, and writing one should not require knowing what a verb
-or a journal is. `TestBehaviourSeesOnlyBeliefs` writes a cautious NPC in six
-lines — it will not commit to something it has only heard — and touches nothing
-but the situation it was handed.
+**For behaviour authors: start at [`act/README.md`](act/README.md).** `act`
+imports no world. A monster's behaviour is about what the monster thinks, and
+writing one should not require knowing what a verb or a journal is.
+
+Five worked deciders show the range — one that swings at a noise, one that will
+not commit to something it has only heard, one that goes to *look at* what it
+only remembers, one that counts what is actually in front of it before bolting.
+Every difference between them is something the actor holds.
+
+And `act/decider_test.go` is the how-to: every test there builds a situation by
+hand, with no game, no projection, no world and no journal anywhere. A behaviour
+is a pure function of holdings, so testing one needs nothing but holdings.
 
 ## Deliberately absent
 
