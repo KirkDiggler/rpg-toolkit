@@ -54,7 +54,7 @@ func HoldsRef(stored []json.RawMessage, ref *core.Ref) (bool, error) {
 	return false, nil
 }
 
-// DecodeCommanded returns the data of the first Commanded blob on a sheet, and
+// DecodeCommanded returns the data of the NEWEST Commanded blob on a sheet, and
 // whether there was one.
 //
 // This is the driver's read: the anchor and the word are the two facts the
@@ -63,12 +63,20 @@ func HoldsRef(stored []json.RawMessage, ref *core.Ref) (bool, error) {
 // the only thing a live condition adds is the clock, which is not this reader's
 // question.
 //
-// The FIRST is deliberate rather than arbitrary: resolution removes an existing
-// Commanded before publishing a new one, so a sheet holding two would be a bug
-// upstream, and picking one silently is how that bug would stay invisible.
-// Taking the first at least makes the second inert rather than blending them.
+// THE NEWEST, because a sheet may legitimately hold two. The caster is part of
+// this condition's identity (see [CommandedCondition.ConditionAddress]), so two
+// casters' Commands stand side by side rather than displacing each other —
+// nothing removes another caster's spell. One turn cannot obey two words, and
+// the one it obeys is the one said last, which is the last a sheet appended.
+// Both conditions still end on their own clocks; only the driver picks.
+//
+// Every blob is read, so an unreadable one anywhere on the sheet is reported
+// even when a valid compulsion was found before it. That is the same judgement
+// [HoldsRef] makes: a sheet whose conditions cannot all be read is a sheet
+// nobody should be deciding turns from.
 func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, error) {
 	want := refs.Conditions.Commanded().String()
+	var newest *CommandedConditionData
 	for index, blob := range stored {
 		var named storedRef
 		if err := json.Unmarshal(blob, &named); err != nil {
@@ -81,7 +89,10 @@ func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, e
 		if err := json.Unmarshal(blob, &data); err != nil {
 			return nil, false, rpgerr.Wrapf(err, "failed to read stored commanded condition %d", index)
 		}
-		return &data, true, nil
+		newest = &data
 	}
-	return nil, false, nil
+	if newest == nil {
+		return nil, false, nil
+	}
+	return newest, true, nil
 }

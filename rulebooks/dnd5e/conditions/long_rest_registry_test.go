@@ -261,10 +261,13 @@ var longRestCases = map[string]longRestCase{
 			"member_id":"member-1","source_ref":"dnd5e:spells:command",
 			"caster_id":"bard-1","word":"flee","turn_ends_left":1
 		}`),
-		ownerID:       "member-1",
-		expectedRef:   refs.Conditions.Commanded(),
-		outcome:       longRestRemove,
-		removalReason: "long rest",
+		ownerID:     "member-1",
+		expectedRef: refs.Conditions.Commanded(),
+		// Source-qualified like Baned: the caster is part of this condition's
+		// identity, so the removal the rest publishes names them too.
+		expectedSourceID: "bard-1",
+		outcome:          longRestRemove,
+		removalReason:    "long rest",
 	},
 	refs.Conditions.Concentrating().String(): {
 		data: json.RawMessage(`{

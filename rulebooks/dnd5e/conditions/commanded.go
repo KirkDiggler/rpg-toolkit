@@ -102,6 +102,27 @@ var _ dnd5eEvents.ConditionBehavior = (*CommandedCondition)(nil)
 // its ToJSON embeds and its loader routes on.
 func (c *CommandedCondition) Ref() *core.Ref { return refs.Conditions.Commanded() }
 
+// ConditionAddress derives this condition's exact identity from its persisted
+// state: the owner, the ref, and THE CASTER.
+//
+// The caster is part of the identity for exactly [BanedCondition]'s reason.
+// Two casters may command one creature, and an address that named only the
+// owner and the ref would make the second Command the same instance as the
+// first — so the second would displace a spell it never touched, and a keeper
+// dropping one would drop both. With the caster in it, the two stand side by
+// side and each ends on its own clock.
+//
+// The beat is the visible half: session copies this SourceID into the
+// condition-applied fact, so without it the story says a creature was
+// commanded and cannot say by whom.
+func (c *CommandedCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
+	return dnd5eEvents.ConditionAddress{
+		MemberID:     c.memberID,
+		ConditionRef: c.Ref().String(),
+		SourceID:     c.casterID,
+	}
+}
+
 // CasterID returns the creature the word is measured from: the anchor Approach
 // walks toward and Flee walks away from.
 func (c *CommandedCondition) CasterID() string { return c.casterID }
@@ -183,7 +204,7 @@ func (c *CommandedCondition) Apply(ctx context.Context, bus events.EventBus) err
 	// other spell-delivered condition in this package ends there for the same
 	// reason.
 	restSub, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
-		Address: ConditionAddressOf(c.memberID, c), Remove: c.Remove,
+		Address: c.ConditionAddress(), Remove: c.Remove,
 	})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
@@ -243,14 +264,22 @@ func (c *CommandedCondition) onCombatEnd(ctx context.Context, event dnd5eEvents.
 // end publishes the removal and detaches. The publish comes first so the
 // removal is on the bus while this condition still owns the compulsion, which
 // is what an activation's effect collector reads.
+//
+// The removal carries THE WHOLE ADDRESS, caster included. A keeper drops a
+// condition by comparing its address to the removal's, so one published
+// without the caster would match nothing on a sheet that holds this — and the
+// compulsion would stay there, driving turns after the spell that bought them
+// had ended.
 func (c *CommandedCondition) end(ctx context.Context, reason string) error {
 	if c.bus == nil {
 		return nil
 	}
 	bus := c.bus
+	address := c.ConditionAddress()
 	if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     c.memberID,
-		ConditionRef: refs.Conditions.Commanded().String(),
+		MemberID:     address.MemberID,
+		ConditionRef: address.ConditionRef,
+		SourceID:     address.SourceID,
 		Reason:       reason,
 	}); err != nil {
 		return rpgerr.Wrapf(err, "failed to publish commanded removal for member %s", c.memberID)

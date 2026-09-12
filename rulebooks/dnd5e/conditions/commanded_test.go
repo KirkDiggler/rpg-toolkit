@@ -96,6 +96,52 @@ func (s *CommandedConditionSuite) TestCombatEndTakesIt() {
 	s.Equal("combat ended", s.removals[0].Reason)
 }
 
+// TestTheCasterIsPartOfItsIdentity — the address is the three-field identity a
+// keeper matches removals against and a beat names its source from, and the
+// caster belongs in it for exactly Bane's reason: two casters may command one
+// creature, and without the source in the address the second Command would
+// address the same instance as the first.
+//
+// Drop the SourceID line and the condition-applied beat shows an empty source:
+// session copies Address.SourceID into it, so a blank there is a beat that
+// cannot say who commanded.
+func (s *CommandedConditionSuite) TestTheCasterIsPartOfItsIdentity() {
+	condition := s.commanded("flee")
+
+	s.Equal(dnd5eEvents.ConditionAddress{
+		MemberID:     commandedID,
+		ConditionRef: refs.Conditions.Commanded().String(),
+		SourceID:     commanderID,
+	}, condition.ConditionAddress())
+
+	s.Equal(condition.ConditionAddress(), ConditionAddressOf(commandedID, condition),
+		"and the shared deriver finds it, rather than falling back to an empty source")
+}
+
+// TestEveryRemovalCarriesTheSameAddressItWasAppliedUnder — the half that would
+// otherwise rot silently. A keeper drops a condition by comparing its address
+// to the removal's, so a removal published without the caster matches nothing
+// and the compulsion stays on the sheet forever, driving turns nobody ordered.
+func (s *CommandedConditionSuite) TestEveryRemovalCarriesTheSameAddressItWasAppliedUnder() {
+	s.Run("expired", func() {
+		condition := s.commanded("flee")
+		s.endTurn(commandedID)
+
+		s.Require().Len(s.removals, 1)
+		s.Equal(condition.ConditionAddress(), s.removals[0].Address())
+	})
+
+	s.Run("combat ended", func() {
+		s.SetupTest()
+		condition := s.commanded("approach")
+		s.Require().NoError(dnd5eEvents.CombatEndTopic.On(s.bus).Publish(s.ctx,
+			dnd5eEvents.CombatEndEvent{SubjectID: commandedID}))
+
+		s.Require().Len(s.removals, 1)
+		s.Equal(condition.ConditionAddress(), s.removals[0].Address())
+	})
+}
+
 func (s *CommandedConditionSuite) TestApplyingItTwiceIsRefused() {
 	condition := s.commanded("flee")
 	s.Require().Error(condition.Apply(s.ctx, s.bus))
@@ -318,6 +364,39 @@ func (s *HoldsRefSuite) TestDecodeCommandedReturnsTheAnchorAndTheWord() {
 	s.Equal("bard-1", data.CasterID)
 	s.Equal("flee", data.Word)
 	s.Equal("skeleton-1", data.MemberID)
+}
+
+// TestDecodeCommandedTakesTheNewestWord — with the caster in the condition's
+// identity, two casters' Commands both stand on one creature: neither removes
+// the other's spell, and the sheet holds two. The compelled turn obeys the
+// word said last, which is the one at the end of the stored order.
+func (s *HoldsRefSuite) TestDecodeCommandedTakesTheNewestWord() {
+	stored := []json.RawMessage{
+		json.RawMessage(`{"ref":"dnd5e:conditions:commanded","member_id":"skeleton-1",` +
+			`"caster_id":"bard-1","word":"flee","turn_ends_left":1}`),
+		json.RawMessage(`{"ref":"dnd5e:conditions:prone","member_id":"skeleton-1"}`),
+		json.RawMessage(`{"ref":"dnd5e:conditions:commanded","member_id":"skeleton-1",` +
+			`"caster_id":"cleric-2","word":"grovel","turn_ends_left":1}`),
+	}
+
+	data, found, err := DecodeCommanded(stored)
+	s.Require().NoError(err)
+	s.Require().True(found)
+	s.Equal("cleric-2", data.CasterID, "the second caster's word is the one in force")
+	s.Equal("grovel", data.Word)
+}
+
+// TestDecodeCommandedReportsACorruptBlobBeforeAGoodOne — an unreadable blob is
+// an error rather than a skip, and finding a valid compulsion later does not
+// excuse it: a sheet whose conditions cannot all be read is a sheet nobody
+// should be deciding turns from.
+func (s *HoldsRefSuite) TestDecodeCommandedReportsACorruptBlobBeforeAGoodOne() {
+	_, _, err := DecodeCommanded([]json.RawMessage{
+		json.RawMessage(`{"ref":`),
+		json.RawMessage(`{"ref":"dnd5e:conditions:commanded","member_id":"skeleton-1",` +
+			`"caster_id":"bard-1","word":"flee","turn_ends_left":1}`),
+	})
+	s.Require().Error(err)
 }
 
 func (s *HoldsRefSuite) TestDecodeCommandedFindsNothingOnASheetWithoutIt() {
