@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -66,6 +67,7 @@ const thunderFace = 4
 // with a move on it, and the profile is the whole of what it may know.
 func shoveProfile(move *combatActions.CastMove) *combatActions.CastProfile {
 	return &combatActions.CastProfile{
+		Casting:    &combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		RangeFeet:  30,
 		Target:     combatActions.CastTargetOneCreature,
 		MinTargets: 1,

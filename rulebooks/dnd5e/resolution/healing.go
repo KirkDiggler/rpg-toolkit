@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
@@ -152,4 +153,96 @@ type HealingTargetsInput struct {
 	CasterID     string
 	Candidates   []string
 	Participants []Participant
+}
+
+// RangedHealingTargetsInput supplies the same candidate universe as touch
+// healing, plus the encounter's current sight holdings and the spell's range.
+type RangedHealingTargetsInput struct {
+	HealingTargetsInput
+	Encounter *encounter.Encounter
+	RangeFeet int
+}
+
+// RangedHealingTargets projects healing eligibility with current sight and
+// range. It does not use attack eligibility, which would exclude dying targets.
+// Creature-type exclusions remain paid no-effect outcomes, not target filters.
+func RangedHealingTargets(ctx context.Context, input *RangedHealingTargetsInput) (map[string]bool, error) {
+	if input == nil {
+		return nil, ErrNilInput
+	}
+	view, err := Participation(ctx, &ParticipationInput{Participants: input.Participants})
+	if err != nil {
+		return nil, err
+	}
+	states := make(map[string]combat.LifeState, len(view.Members))
+	for _, member := range view.Members {
+		states[member.Member] = member.Participation.State
+	}
+	out := make(map[string]bool, len(input.Candidates))
+	for _, id := range input.Candidates {
+		if !combat.CanReceiveHealing(states[id]) {
+			continue
+		}
+		reach, err := rangedHealingReach(input.Room, input.Encounter, input.CasterID, id, input.RangeFeet)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = reach
+	}
+	return out, nil
+}
+
+func validateRangedHealingTarget(ctx context.Context, casterID, targetID string, rangeFeet int) error {
+	room, err := gamectx.RequireRoom(ctx)
+	if err != nil {
+		return err
+	}
+	view, ok := gamectx.CastOf(ctx)
+	if !ok {
+		return fmt.Errorf("%w: ranged healing requires the encounter cast", ErrBadWorld)
+	}
+	live, ok := view.(*castView)
+	if !ok {
+		return fmt.Errorf("%w: ranged healing requires the encounter view", ErrBadWorld)
+	}
+	reachable, err := rangedHealingReach(room, live.run, casterID, targetID, rangeFeet)
+	if err != nil {
+		return err
+	}
+	if !reachable {
+		return fmt.Errorf("%w: healing target is not visible within range", ErrOutOfRange)
+	}
+	return nil
+}
+
+func rangedHealingReach(room spatial.Room, run *encounter.Encounter, casterID, targetID string, rangeFeet int) (bool, error) {
+	if room == nil || run == nil || rangeFeet <= 0 {
+		return false, fmt.Errorf("%w: ranged healing requires a room, encounter and positive range", ErrBadWorld)
+	}
+	from, ok := room.GetEntityPosition(casterID)
+	if !ok {
+		return false, fmt.Errorf("%w: caster has no position", ErrBadWorld)
+	}
+	to, ok := room.GetEntityPosition(targetID)
+	if !ok {
+		return false, fmt.Errorf("%w: target has no position", ErrBadWorld)
+	}
+	if room.GetGrid().Distance(from, to) > float64(encounter.CellsFromFeet(rangeFeet)) || room.IsLineOfSightBlocked(from, to) {
+		return false, nil
+	}
+	// Encounter sight holdings describe other members; self-targeting must
+	// not depend on a self-sighting that the perception pass never creates.
+	if casterID == targetID {
+		return true, nil
+	}
+	holdings, err := run.View(&encounter.ViewInput{Member: encounter.MemberID(casterID)})
+	if err != nil {
+		return false, err
+	}
+	for _, holding := range holdings {
+		if string(holding.Subject) == targetID && len(holding.CurrentVia) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }

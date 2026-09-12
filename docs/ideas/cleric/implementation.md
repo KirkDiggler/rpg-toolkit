@@ -197,3 +197,22 @@ Affected spells, actions, character and choices tests pass locally, as do vet
 and module tidy. Full module/CI evidence is recorded on the provider PR. This
 is content support only; live target validation, spell payment wiring and
 session integration remain pending in the sequence in `plan.md`.
+
+### Healing Word resolution integration (after #1701)
+
+Resolution consumes rulebook `v0.162.0` and retains encounter `v0.76.0`.
+Costed cast payment now requires profile classification, a matching caster/payer,
+and an explicit spell-turn identity. Existing cast fixtures were updated to
+supply those facts. Ordinary action payment remains unchanged.
+
+The full resolution suite and vet pass locally. New integration cases cover
+both casting orders with JSON reload, one-action cantrips, missing declarations,
+free-spell history, same-turn reactions, turn changes without reaction refresh,
+failed-payment history preservation, ranged dying recovery, self/unknown-type
+target projection, and stale sight/wall/range refusal before payment or RNG.
+The existing Cure Wounds and Bard suites remain green. Linux CI evidence is
+recorded on the resolution PR.
+
+Session is still pinned to the old resolution release. Its next PR must update
+casting plumbing and its pin together, as the user explicitly authorized, and
+prove the actual clock and persistence flow before enabling Healing Word.

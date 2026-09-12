@@ -304,6 +304,8 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 			var err error
 			if m.profile.Target == combatActions.CastTargetTouch {
 				err = validateTouchTarget(ctx, m.casterID, target.targetID)
+			} else if m.profile.Healing != nil {
+				err = validateRangedHealingTarget(ctx, m.casterID, target.targetID, m.profile.RangeFeet)
 			} else if m.derivedTargets {
 				err = castRecipientIsEligible(cast, target.targetID)
 			} else {
