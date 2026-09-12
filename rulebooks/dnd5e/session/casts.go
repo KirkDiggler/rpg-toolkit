@@ -199,19 +199,17 @@ func (m *Manager) compileCastOffer(
 	// and wrong here: casting a thunderclap in an empty room is legal, spends
 	// the action, and catches nobody, which the beat reports honestly.
 	//
-	// So availability is the budget alone. There is deliberately no "your
-	// footprint is empty" verdict: a derived cast has no candidate list by
-	// construction, nothing needs the preview yet, and an offer cannot say it
-	// without Declaration growing a field for it. When a client wants to draw
-	// the ring with the caught members lit up, that field arrives with it —
-	// never by overloading Candidates, because a candidate is something you may
-	// CHOOSE and nobody chooses these.
+	// So availability is the budget alone. The footprint below is copied only
+	// for presentation: there is deliberately no "your footprint is empty"
+	// verdict and no covered-cell/member preview. A derived cast has no candidate
+	// list by construction, because a candidate is something you may CHOOSE and
+	// nobody chooses these.
 	if profile.Target == combatActions.CastTargetArea {
 		declaration := Declaration{
 			Verb: VerbCast, Slot: slot, Available: budgetOK, Why: budgetWhy, ID: id,
 			Spell: &spellRef, TargetKind: areaTargetKind(profile.Area), Candidates: []TargetCandidate{},
 			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets,
-			Options: castOptions(profile), Cost: cost,
+			Options: castOptions(profile), Cost: cost, Footprint: castFootprint(profile.Area),
 		}
 		return compiledOffer{
 			declaration: declaration, spell: &definition, sheet: input.Sheet,
@@ -291,6 +289,21 @@ func (m *Manager) compileCastOffer(
 		spell: &definition, targets: targets, sheet: input.Sheet,
 		cast: input.Participants, verb: VerbCast, slot: slot, variant: variant,
 	}, nil
+}
+
+// castFootprint projects provider-authored area presentation onto the seam's
+// own S2-safe twin. Definition validation has already established the closed
+// shape/origin pair and positive size before this is called; copying it here
+// deliberately adds no second validation or spell-specific mapping table.
+func castFootprint(area *combatActions.CastArea) *Footprint {
+	if area == nil {
+		return nil
+	}
+	return &Footprint{
+		Shape:    FootprintShape(area.Footprint.Shape),
+		SizeFeet: area.Footprint.SizeFeet,
+		Origin:   FootprintOrigin(area.Footprint.Origin),
+	}
 }
 
 // castOptions projects the content's menu onto the seam's own twin, in the

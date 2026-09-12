@@ -156,6 +156,49 @@ type CostComponent struct {
 	Label string `json:"label,omitempty"`
 }
 
+// FootprintShape names a provider-authored two-dimensional outline. It is
+// presentation, not a covered-cell or affected-member calculation.
+type FootprintShape string
+
+const (
+	// FootprintShapeRadius is a circle whose SizeFeet is its radius.
+	FootprintShapeRadius FootprintShape = "radius"
+
+	// FootprintShapeBox is an equal-width-and-depth floor outline whose
+	// SizeFeet is one full edge, not a half-extent. It declares no height.
+	FootprintShapeBox FootprintShape = "box"
+)
+
+// FootprintOrigin says how a provider-authored outline is placed relative to
+// the caster. It does not identify affected creatures or grant targeting
+// permission.
+type FootprintOrigin string
+
+const (
+	// FootprintOriginCaster centres a radius footprint on the caster's cell.
+	FootprintOriginCaster FootprintOrigin = "caster"
+
+	// FootprintOriginCasterEdge places a box's near-edge midpoint on the
+	// caster cell's boundary along the bearing toward the aimed cell.
+	FootprintOriginCasterEdge FootprintOrigin = "caster-edge"
+)
+
+// Footprint is seam-owned area presentation copied from the provider's cast
+// content. It says where an outline goes, never who the cast catches.
+// Consumers may place and draw it but must not derive affected cells, targets,
+// exclusions, obstruction, or legality from it.
+type Footprint struct {
+	// Shape is the provider-authored outline kind.
+	Shape FootprintShape `json:"shape"`
+
+	// SizeFeet is the positive provider-authored extent in feet: a radius for
+	// FootprintShapeRadius or one full edge for FootprintShapeBox.
+	SizeFeet int `json:"size_feet"`
+
+	// Origin is how the outline is anchored relative to the caster.
+	Origin FootprintOrigin `json:"origin"`
+}
+
 // Declaration is one server-compiled action/cost variant a member could
 // still declare this turn, and whether every gate applicable to it currently
 // passes. Mirrors the merged proto's Declaration (rpg-project#272/273).
@@ -306,6 +349,18 @@ type Declaration struct {
 	// Cost is generic provider-authored display data copied from the executable
 	// spend profile. Private resource keys never cross this seam.
 	Cost []CostComponent `json:"cost"`
+
+	// Footprint is provider-authored area presentation. It is present on every
+	// compiled area offer, including an unavailable one, and absent on non-area
+	// offers and early blockers that compiled no content. Absence is not a
+	// zero-sized footprint, and consumers must not infer one from Spell or
+	// TargetKind.
+	//
+	// This is display data, not cast input or an affected-cell preview. The
+	// client still sends the existing selector/reference inputs, and the engine
+	// remains the only source of coverage, exclusions, obstruction, and
+	// legality.
+	Footprint *Footprint `json:"footprint,omitempty"`
 }
 
 // AffordOutput is what one member can still declare this turn.
