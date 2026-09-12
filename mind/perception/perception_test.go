@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 )
 
 // reachAll is a Reach that connects every observer to every subject on
@@ -318,8 +319,8 @@ func (s *PerceptionSuite) TestUnsortedPresencesAreDeterministic() {
 	s.Equal(deltasA[alice], deltasB[alice], "two identical passes, presences supplied unsorted, must match exactly")
 }
 
-// Case 12: nil Reach, empty channel, empty ids → the matching sentinel
-// error, and nothing written.
+// Case 12: nil Reach, empty channel, empty ids, duplicate ids → the
+// matching sentinel error, and nothing written.
 func (s *PerceptionSuite) TestValidationOrderAndNothingWritten() {
 	const (
 		alice  = core.EntityID("alice")
@@ -364,7 +365,43 @@ func (s *PerceptionSuite) TestValidationOrderAndNothingWritten() {
 	})
 	s.Require().ErrorIs(err, perception.ErrNoObserver)
 
-	// None of the four failed calls wrote anything, even though alice was a
+	// A duplicate Presence ID beats a duplicate Observer, and both duplicate
+	// checks run only once every empty-ID check has cleared the whole Pass —
+	// so a duplicate presence layered on top of the same empty-observer slot
+	// used above still resolves to ErrNoObserver, not ErrDuplicateSubject.
+	_, err = s.p.Observe(perception.Pass{
+		Channel: perception.Sight,
+		Presences: []perception.Presence{
+			{ID: goblin, Payload: payload},
+			{ID: goblin, Payload: []byte("different")},
+		},
+		Observers: []core.EntityID{alice, ""},
+		Reach:     reachAll{},
+	})
+	s.Require().ErrorIs(err, perception.ErrNoObserver)
+
+	// The duplicate presence, alone, with every observer valid.
+	_, err = s.p.Observe(perception.Pass{
+		Channel: perception.Sight,
+		Presences: []perception.Presence{
+			{ID: goblin, Payload: payload},
+			{ID: goblin, Payload: []byte("different")},
+		},
+		Observers: []core.EntityID{alice},
+		Reach:     reachAll{},
+	})
+	s.Require().ErrorIs(err, perception.ErrDuplicateSubject)
+
+	// A duplicate Observer, alone, with everything else valid.
+	_, err = s.p.Observe(perception.Pass{
+		Channel:   perception.Sight,
+		Presences: []perception.Presence{{ID: goblin, Payload: payload}},
+		Observers: []core.EntityID{alice, alice},
+		Reach:     reachAll{},
+	})
+	s.Require().ErrorIs(err, perception.ErrDuplicateObserver)
+
+	// None of the six failed calls wrote anything, even though alice was a
 	// valid observer in every one of them.
 	held, err := s.p.Held(alice)
 	s.Require().NoError(err)
@@ -409,4 +446,62 @@ func (s *PerceptionSuite) TestToDataLoadRoundTrip() {
 	held, err := loaded.Held(alice)
 	s.Require().NoError(err)
 	s.Len(held, 2)
+}
+
+// Regression (review of PR #1686, Important #1): rule 7 used to derive
+// Changed by comparing a holding's Observed to the pass's At, which was only
+// correct while At strictly increased. Three passes sharing the same At and
+// an identical payload used to report Changed on the second and third pass
+// anyway. Consuming intel v0.4.0's own Changed field — the comparison the
+// store already makes at landing — makes that impossible by construction.
+func (s *PerceptionSuite) TestSameAtNeverForcesChanged() {
+	const (
+		alice  = core.EntityID("alice")
+		goblin = core.EntityID("goblin-1")
+	)
+	payload := []byte("wounded")
+	presences := []perception.Presence{{ID: goblin, Payload: payload}}
+
+	_, err := s.observe(5, presences, []core.EntityID{alice}, reachAll{})
+	s.Require().NoError(err)
+
+	for i := 0; i < 2; i++ {
+		deltas, err := s.observe(5, presences, []core.EntityID{alice}, reachAll{})
+		s.Require().NoError(err)
+		s.Equal([]core.EntityID{goblin}, deltas[alice].Refreshed)
+		s.Empty(deltas[alice].Changed, "identical payload at a repeated At must never read as changed")
+	}
+}
+
+// Load rejects whatever intel.LoadIntel rejects, wrapped. A nil inner map
+// for a named observer is unreachable state intel.LoadIntel itself refuses
+// to construct; perception.Data.Intel is intel.Data verbatim (the charter's
+// documented persistence exception), so building one directly here is
+// exercising the public shape, not reaching past it.
+func (s *PerceptionSuite) TestLoadRejectsInvalidData() {
+	_, err := perception.Load(perception.Data{})
+	s.Require().NoError(err, "a zero Data is the idle state, not an error")
+
+	bad := perception.Data{
+		Intel: intel.Data{
+			Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+				"alice": nil,
+			},
+		},
+	}
+	_, err = perception.Load(bad)
+	s.Require().Error(err)
+}
+
+// Held and On validate their own empty-ID arguments, independent of any
+// Pass.
+func (s *PerceptionSuite) TestHeldAndOnValidateEmptyIDs() {
+	_, err := s.p.Held("")
+	s.Require().ErrorIs(err, perception.ErrNoObserver)
+
+	_, err = s.p.On("", "goblin-1")
+	s.Require().ErrorIs(err, perception.ErrNoObserver)
+
+	_, err = s.p.On("alice", "")
+	s.Require().ErrorIs(err, perception.ErrNoSubject)
 }

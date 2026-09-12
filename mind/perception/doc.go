@@ -4,7 +4,9 @@
 // Package perception is what an observer holds: channel-sourced testimony
 // that may be false and may be stale. It never sees the world. It is handed
 // what is true as values and cannot ask a question of its own, which is what
-// lets it hold a lie. play/intel is its store; callers never see it.
+// lets it hold a lie. play/intel is its store; callers never see it — except
+// in persistence, where that would cost more to hide than to admit: Load's
+// errors wrap intel.ErrInvalidData, and Data.Intel is intel.Data verbatim.
 //
 // A caller assembles one payload per member, once, per pass — encoded before
 // the pass, opaque to this package, and identical for every observer who
@@ -14,5 +16,8 @@
 // reimplemented: this package supplies the loop and the geometry-free
 // contract around it, not the store.
 //
-// Leaf module: depends only on core and play/intel.
+// Design contract: docs/ideas/mind/perception/design.md (R1–R9). Composition
+// module, not a leaf: depends on core and play/intel (play/README.md's leaf
+// promise is "depends only on core", which this deliberately is not — it is
+// one layer above a play primitive, not another one).
 package perception

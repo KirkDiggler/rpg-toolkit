@@ -75,10 +75,13 @@ type Delta struct {
 	// re-perceived this pass — on every pass, for everything perceived.
 	Refreshed []core.EntityID
 	// Changed refines Refreshed to the subjects whose content is actually
-	// new this pass (rule 7).
+	// new this pass — intel's own comparison at landing, reported rather
+	// than re-derived (rule 7).
 	Changed []core.EntityID
-	// Faded is every subject that stopped being delivered this pass. The
-	// holding survives — the ghost goblin.
+	// Faded is every subject that stopped being current via any channel
+	// this pass — not merely absent from this one. A subject still
+	// sustained by another channel is not Faded. The holding survives —
+	// the ghost goblin.
 	Faded []core.EntityID
 	// Reacquired is every subject that was a ghost at the top of this pass
 	// and is delivered again. It refines Refreshed; a reacquired subject
@@ -109,10 +112,13 @@ func New() (*Perception, error) {
 // still lands a complete empty percept, so everything it held fades (rule
 // 4); skipping that call is how ghosts stay falsely current forever.
 //
-// Validates before any mutation, in order: nil Reach (ErrNoReach), empty
-// Channel (ErrNoChannel), an empty ID on any Presence (ErrNoSubject), an
-// empty ID on any Observer (ErrNoObserver). On a non-nil error, nothing is
-// written.
+// Validates before any mutation, in order (rule 8): nil Reach (ErrNoReach),
+// empty Channel (ErrNoChannel), an empty ID on any Presence (ErrNoSubject),
+// an empty ID on any Observer (ErrNoObserver), a duplicate Presence ID
+// (ErrDuplicateSubject), a duplicate Observer (ErrDuplicateObserver). On a
+// validation error, nothing is written — true today because Surveil itself
+// has no error path once past its own validation, not because this package
+// guarantees atomicity beyond that boundary.
 func (p *Perception) Observe(pass Pass) (map[core.EntityID]*Delta, error) {
 	if err := validatePass(pass); err != nil {
 		return nil, fmt.Errorf("observe: %w", err)
@@ -120,8 +126,9 @@ func (p *Perception) Observe(pass Pass) (map[core.EntityID]*Delta, error) {
 
 	// Rule 6: presences are processed in sorted ID order, which is what
 	// makes every Delta below sorted too — intel.Surveil lands FirstContact,
-	// Refreshed, and Reacquired in percept order, and derives Faded sorted
-	// on its own.
+	// Refreshed, Changed, and Reacquired in percept order, and derives Faded
+	// sorted on its own. validatePass has already rejected duplicate IDs, so
+	// this sort has nothing ambiguous left to order.
 	sorted := make([]Presence, len(pass.Presences))
 	copy(sorted, pass.Presences)
 	slices.SortFunc(sorted, func(a, b Presence) int {
@@ -140,11 +147,7 @@ func (p *Perception) Observe(pass Pass) (map[core.EntityID]*Delta, error) {
 			return nil, fmt.Errorf("observe: %w", err)
 		}
 
-		delta, err := p.deltaFrom(observer, out, pass.At)
-		if err != nil {
-			return nil, fmt.Errorf("observe: %w", err)
-		}
-		deltas[observer] = delta
+		deltas[observer] = deltaFrom(out)
 	}
 
 	return deltas, nil
@@ -193,7 +196,16 @@ func (p *Perception) On(observer, subject core.EntityID) (Holding, error) {
 
 // validatePass checks a Pass before any mutation, in the order rule 8
 // requires: nil Reach, empty Channel, an empty Presence ID, an empty
-// Observer ID.
+// Observer ID, a duplicate Presence ID, a duplicate Observer. Duplicates are
+// checked only once every empty-ID check has cleared the whole Pass, so
+// which violation is reported never depends on where in either slice it
+// sits — an empty ID anywhere always outranks a duplicate anywhere.
+//
+// Duplicates matter because rule 6's determinism promise depends on
+// Presences forming a set once sorted by ID: slices.SortFunc is not stable,
+// so which of two same-ID presences survives intel's last-wins dedupe would
+// otherwise depend on input order. Rather than let that ride, both a
+// repeated Presence ID and a repeated Observer are rejected as caller bugs.
 func validatePass(pass Pass) error {
 	if pass.Reach == nil {
 		return ErrNoReach
@@ -210,6 +222,22 @@ func validatePass(pass Pass) error {
 		if observer == "" {
 			return ErrNoObserver
 		}
+	}
+
+	seen := make(map[core.EntityID]struct{}, len(pass.Presences))
+	for _, presence := range pass.Presences {
+		if _, dup := seen[presence.ID]; dup {
+			return ErrDuplicateSubject
+		}
+		seen[presence.ID] = struct{}{}
+	}
+
+	seen = make(map[core.EntityID]struct{}, len(pass.Observers))
+	for _, observer := range pass.Observers {
+		if _, dup := seen[observer]; dup {
+			return ErrDuplicateObserver
+		}
+		seen[observer] = struct{}{}
 	}
 	return nil
 }
@@ -234,11 +262,14 @@ func percept(sorted []Presence, observer core.EntityID, channel Channel, reach R
 	return reports
 }
 
-// deltaFrom converts one intel.SurveilOutput into this package's Delta and
-// derives Changed (rule 7): a subject in Refreshed whose holding now reads
-// Observed == at is one whose content just moved; that is exactly what
-// intel's two stamps buy.
-func (p *Perception) deltaFrom(observer core.EntityID, out *intel.SurveilOutput, at uint64) (*Delta, error) {
+// deltaFrom converts one intel.SurveilOutput into this package's Delta.
+// Changed (rule 7) is intel's own field since play/intel v0.4.0 — the
+// bytes.Equal comparison the store already makes at landing, reported
+// directly rather than reconstructed from stamps. The old reconstruction
+// compared a holding's Observed to the pass's At, which was only correct
+// while At strictly increased; consuming intel's answer makes that trap
+// impossible by construction instead of documenting it.
+func deltaFrom(out *intel.SurveilOutput) *Delta {
 	delta := &Delta{}
 
 	for _, report := range out.FirstContact {
@@ -247,6 +278,12 @@ func (p *Perception) deltaFrom(observer core.EntityID, out *intel.SurveilOutput,
 			Payload: report.Payload,
 		})
 	}
+	for _, subject := range out.Refreshed {
+		delta.Refreshed = append(delta.Refreshed, core.EntityID(subject))
+	}
+	for _, subject := range out.Changed {
+		delta.Changed = append(delta.Changed, core.EntityID(subject))
+	}
 	for _, subject := range out.Faded {
 		delta.Faded = append(delta.Faded, core.EntityID(subject))
 	}
@@ -254,20 +291,7 @@ func (p *Perception) deltaFrom(observer core.EntityID, out *intel.SurveilOutput,
 		delta.Reacquired = append(delta.Reacquired, core.EntityID(subject))
 	}
 
-	for _, subject := range out.Refreshed {
-		id := core.EntityID(subject)
-		delta.Refreshed = append(delta.Refreshed, id)
-
-		holding, err := p.intel.On(&intel.OnInput{Observer: observer, Subject: subject})
-		if err != nil {
-			return nil, err
-		}
-		if holding.Observed == at {
-			delta.Changed = append(delta.Changed, id)
-		}
-	}
-
-	return delta, nil
+	return delta
 }
 
 // fromIntelHolding converts an intel.Holding into this package's Holding.

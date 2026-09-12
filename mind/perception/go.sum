@@ -1,7 +1,7 @@
 github.com/KirkDiggler/rpg-toolkit/core v0.11.0 h1:VnGI17Bnm6cLqI7Rn3RukUZHVfTAPUKTdoKTYqbGRtk=
 github.com/KirkDiggler/rpg-toolkit/core v0.11.0/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
-github.com/KirkDiggler/rpg-toolkit/play/intel v0.3.0 h1:0E5ZVAGJCUbCp7U5gARp/HbVe0SpYMf3eyemoTEbfeo=
-github.com/KirkDiggler/rpg-toolkit/play/intel v0.3.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0 h1:yX/5HaPKYJTIlGEywEKnQiQ+Vm/gGNOyHggxi0aJoOg=
+github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

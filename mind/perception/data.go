@@ -13,7 +13,7 @@ import (
 // intel's own Data verbatim — perception adds no state of its own, so the
 // JSON shape is free.
 type Data struct {
-	Intel intel.Data `json:"intel,omitempty"`
+	Intel intel.Data `json:"intel"`
 }
 
 // ToData returns a persistent snapshot of this Perception.
