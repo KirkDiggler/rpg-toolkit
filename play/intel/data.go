@@ -17,14 +17,17 @@ type Data struct {
 }
 
 // HoldingData is the persistent representation of a single holding.
-// Payload is the opaque testimony. Channel and At are provenance.
-// CurrentVia lists channels currently sustaining this holding.
-// All fields are omitempty: nil payload marshals to omitted field,
-// and empty CurrentVia marshals to omitted (since it's never an empty non-nil slice).
+// Payload is the opaque testimony. Channel is provenance. Observed is when
+// this payload was first seen; Confirmed is when it was last landed,
+// whether or not the content changed. CurrentVia lists channels currently
+// sustaining this holding. All fields are omitempty: nil payload marshals
+// to omitted field, and empty CurrentVia marshals to omitted (since it's
+// never an empty non-nil slice).
 type HoldingData struct {
 	Payload    []byte    `json:"payload,omitempty"`
 	Channel    Channel   `json:"channel,omitempty"`
-	At         uint64    `json:"at,omitempty"`
+	Observed   uint64    `json:"observed,omitempty"`
+	Confirmed  uint64    `json:"confirmed,omitempty"`
 	CurrentVia []Channel `json:"current_via,omitempty"`
 }
 
@@ -77,7 +80,8 @@ func (i *Intel) ToData() Data {
 			subjectMap[subj] = HoldingData{
 				Payload:    payloadCopy,
 				Channel:    h.channel,
-				At:         h.at,
+				Observed:   h.observed,
+				Confirmed:  h.confirmed,
 				CurrentVia: currentViaCopy,
 			}
 		}
@@ -91,11 +95,14 @@ func (i *Intel) ToData() Data {
 // Returns (*Intel, error). On error, returns nil Intel and error wrapping ErrInvalidData.
 // Validates every holding: within a single holding the checks run in a fixed
 // order (observer key, nil/empty inner map, subject key, channel, CurrentVia
-// including empty-channel and duplicate detection), but observers and subjects
-// are visited in Go map order — which defect of a multi-defect Data is hit
-// first is NOT deterministic. That is unobservable by design: every rejection
-// is the same wrapped ErrInvalidData with no defect detail, and no partial
-// state is constructed (R5). All validation completes before any construction.
+// including empty-channel and duplicate detection, then Confirmed < Observed),
+// but observers and subjects are visited in Go map order — which defect of a
+// multi-defect Data is hit first is NOT deterministic. Every rejection wraps
+// ErrInvalidData with no partial state constructed (R5); all but the last
+// check carry no further defect detail, while a rejected Confirmed < Observed
+// also names the offending observer and subject, since a memory re-confirmed
+// before it was made is a data-integrity defect worth locating. All
+// validation completes before any construction.
 // Payload nil is legal (see HoldingData doc).
 // Deep-copies all data: mutating the caller's Data after LoadIntel will not
 // affect the loaded Intel (R4).
@@ -141,6 +148,12 @@ func LoadIntel(data Data) (*Intel, error) {
 					}
 					seen[ch] = struct{}{}
 				}
+
+				// A memory cannot be re-confirmed before it was made: no
+				// write can produce Confirmed < Observed.
+				if hd.Confirmed < hd.Observed {
+					return nil, fmt.Errorf("load intel: observer %s subject %s: %w", obs, subj, ErrInvalidData)
+				}
 			}
 		}
 	}
@@ -170,7 +183,8 @@ func LoadIntel(data Data) (*Intel, error) {
 				intel.holdings[obs][subj] = &holding{
 					payload:    payloadCopy,
 					channel:    hd.Channel,
-					at:         hd.At,
+					observed:   hd.Observed,
+					confirmed:  hd.Confirmed,
 					currentVia: currentVia,
 				}
 			}
