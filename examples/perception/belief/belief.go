@@ -243,7 +243,7 @@ func (b *Beliefs) Contacts(o testimony.Observer, tracks []testimony.TrackID) []C
 
 	seen := make(map[testimony.TrackID]struct{}, len(ordered))
 
-	var out []Contact
+	out := make([]Contact, 0, len(ordered))
 
 	for _, start := range ordered {
 		if _, done := seen[start]; done {

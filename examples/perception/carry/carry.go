@@ -206,10 +206,9 @@ func resolve(key slot, tracks []testimony.Track) (*Portable, []testimony.TrackID
 		return nil, nil, ambiguous
 	}
 
-	var (
-		winner     testimony.Track
-		superseded []testimony.TrackID
-	)
+	var winner testimony.Track
+
+	superseded := make([]testimony.TrackID, 0, len(tracks)-1)
 
 	for _, track := range tracks {
 		if track.Latest().Confirmed == freshest {

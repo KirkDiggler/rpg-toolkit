@@ -193,7 +193,7 @@ func Project(in Input) []testimony.Percept {
 func (in Input) deceive(sense Sense, reach map[string]struct{}) (map[string]struct{}, []testimony.Report) {
 	hidden := make(map[string]struct{})
 
-	var forged []testimony.Report
+	forged := make([]testimony.Report, 0, len(in.Forgeries))
 
 	for _, f := range in.Forgeries {
 		if _, within := reach[f.Where]; !within {
