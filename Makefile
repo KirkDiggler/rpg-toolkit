@@ -1,5 +1,18 @@
 .PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all check-versions tag-module release-module freeroam verify
 
+# Developer tool versions. Pinned for the same reason golangci-lint is pinned in
+# .golangci-version: an unpinned tool is a gate that changes under you.
+#
+# These were `@latest`, and it broke CI. golang.org/x/tools v0.50.0 started
+# requiring go >= 1.26 while CI pins Go 1.25.x with GOTOOLCHAIN=local, so
+# `install-tools` began failing on every main push — taking `lint-all` and
+# `test-all` down with it, since they run in the same job after it.
+#
+# v0.49.0 is the last x/tools release that supports Go 1.25. Raise these
+# deliberately when the Go version moves, not silently when upstream tags.
+GOIMPORTS_VERSION ?= v0.49.0
+GOSEC_VERSION ?= v2.29.0
+
 # Default target
 help:
 	@echo "Available targets:"
@@ -123,8 +136,8 @@ pre-commit:
 install-tools:
 	@echo "Installing development tools..."
 	./scripts/install-golangci-lint.sh
-	go install golang.org/x/tools/cmd/goimports@latest
-	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+	go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 	@echo "✅ Tools installed successfully"
 
 # Install git hooks
