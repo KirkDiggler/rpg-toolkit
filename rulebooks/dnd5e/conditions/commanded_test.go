@@ -172,6 +172,42 @@ func (s *CommandedConditionSuite) TestTheConstructorRefusesACompulsionNobodyCoul
 	})
 }
 
+// TestTheLoaderRefusesABlobTheConstructorWouldHaveRefused — the loader is the
+// other door onto this type, and one that admitted what the constructor turns
+// away would leave that refusal guarding nothing. Each of these loads clean
+// and attaches clean without the guards, and only shows up later: a creature
+// walked at nobody, a turn nothing knows how to drive, or a compulsion that
+// expires by neither of its clocks because both key on the owner.
+func (s *CommandedConditionSuite) TestTheLoaderRefusesABlobTheConstructorWouldHaveRefused() {
+	for name, blob := range map[string]string{
+		"no member to own the clocks": `{"ref":"dnd5e:conditions:commanded",
+			"source_ref":"dnd5e:spells:command","caster_id":"bard-1","word":"flee","turn_ends_left":1}`,
+		"no caster to measure from": `{"ref":"dnd5e:conditions:commanded",
+			"member_id":"skeleton-1","source_ref":"dnd5e:spells:command","word":"flee","turn_ends_left":1}`,
+		"no word to obey": `{"ref":"dnd5e:conditions:commanded",
+			"member_id":"skeleton-1","source_ref":"dnd5e:spells:command","caster_id":"bard-1","turn_ends_left":1}`,
+	} {
+		s.Run(name, func() {
+			_, err := LoadJSON(json.RawMessage(blob))
+			s.Require().Error(err)
+		})
+	}
+}
+
+// TestTheLoaderKeepsASpentClock — the one field NOT re-checked on the way in,
+// and the reason it is not: a persisted zero is what a compulsion that has
+// already been spent looks like on its way to being dropped, so refusing it
+// would turn an ordinary sheet into an unloadable one.
+func (s *CommandedConditionSuite) TestTheLoaderKeepsASpentClock() {
+	loaded, err := LoadJSON(json.RawMessage(`{
+		"ref":"dnd5e:conditions:commanded",
+		"member_id":"skeleton-1","source_ref":"dnd5e:spells:command",
+		"caster_id":"bard-1","word":"flee","turn_ends_left":0
+	}`))
+	s.Require().NoError(err)
+	s.Equal("flee", loaded.(*CommandedCondition).Word())
+}
+
 // TestTheFactoryRefusesEachMissingFieldRatherThanDefaultingIt — the factory is
 // the path resolution takes, where the caster arrives by CounterpartKey and
 // the word by OptionKey. A default here would put a ruling in the factory and
@@ -254,9 +290,19 @@ func (s *HoldsRefSuite) TestGarbageIsAnErrorRatherThanANo() {
 	s.Require().Error(err)
 }
 
+// TestItRefusesToLookForNothing — a nil ref is refused rather than
+// dereferenced. core.Ref's String is on the pointer, so without the guard this
+// panics on its own argument before it reads a blob, and a panic in the seam
+// that decides how a member takes its turn is not an answer anybody can act
+// on. The sheet below is non-empty so the call would reach the comparison if
+// it got that far.
 func (s *HoldsRefSuite) TestItRefusesToLookForNothing() {
-	_, err := HoldsRef(nil, nil)
-	s.Require().Error(err, "a nil ref would match the first blob with no ref at all")
+	stored := []json.RawMessage{
+		json.RawMessage(`{"ref":"dnd5e:conditions:commanded","member_id":"skeleton-1"}`),
+	}
+
+	_, err := HoldsRef(stored, nil)
+	s.Require().Error(err)
 }
 
 func (s *HoldsRefSuite) TestDecodeCommandedReturnsTheAnchorAndTheWord() {

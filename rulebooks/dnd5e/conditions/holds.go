@@ -30,10 +30,16 @@ type storedRef struct {
 // differ: a sheet that does not hold the condition is an ordinary turn, and a
 // sheet whose conditions cannot be read is a sheet nobody should be deciding
 // turns from.
+//
+// A nil ref is refused for a plainer reason than either: there is nothing to
+// compare against. core.Ref's String is on the pointer and dereferences, so
+// without this the call panics on its own argument before it reads a single
+// blob — and a panic in the seam that decides how a member takes its turn is
+// not an answer anybody can act on.
 func HoldsRef(stored []json.RawMessage, ref *core.Ref) (bool, error) {
 	if ref == nil {
 		return false, rpgerr.New(rpgerr.CodeInvalidArgument,
-			"a nil ref matches the first blob that names nothing, so it is refused rather than answered")
+			"cannot look for a nil condition ref: there is nothing to compare a stored blob against")
 	}
 	want := ref.String()
 	for index, blob := range stored {

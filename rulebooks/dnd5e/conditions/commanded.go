@@ -272,16 +272,28 @@ func (c *CommandedCondition) ToJSON() (json.RawMessage, error) {
 
 // loadJSON loads commanded condition state from JSON.
 //
-// It refuses the same two missing fields [NewCommandedCondition] does. The
-// loader is the other door onto this type, and a door that admitted state the
-// constructor refuses would leave that refusal guarding nothing: a blob with no
-// anchor loads clean, attaches clean, and only shows up as a creature walked at
-// nobody. The clock is NOT re-checked, because a persisted zero is how a
-// compulsion that has already been spent looks on its way to being dropped.
+// It refuses the missing fields [NewCommandedCondition] does, and the owner as
+// well. The loader is the other door onto this type, and a door that admitted
+// state the constructor refuses would leave that refusal guarding nothing: a
+// blob with no anchor loads clean, attaches clean, and only shows up as a
+// creature walked at nobody.
+//
+// The OWNER is refused here even though the constructor leaves it to
+// [CreateFromRef], which already requires one on the live path. Both of this
+// condition's clocks key on it — onTurnEnd and onCombatEnd each compare a
+// subject against it — so a blob with no member expires by neither, and sits
+// on a sheet compelling a turn forever. It is the one zero value in this type
+// that could lie.
+//
+// The clock is NOT re-checked, because a persisted zero is how a compulsion
+// that has already been spent looks on its way to being dropped.
 func (c *CommandedCondition) loadJSON(data json.RawMessage) error {
 	var stored CommandedConditionData
 	if err := json.Unmarshal(data, &stored); err != nil {
 		return rpgerr.Wrap(err, "failed to unmarshal commanded data")
+	}
+	if stored.MemberID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "stored commanded condition has no member id")
 	}
 	if stored.CasterID == "" {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "stored commanded condition has no caster id")

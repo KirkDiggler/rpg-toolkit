@@ -396,9 +396,24 @@ func (s *CastContentSuite) TestCommandCarriesItsMenuAndBindsBothKeys() {
 	s.Equal(saves.Negated, profile.Save.OnSuccess, "you obey or you do not; there is no half a word")
 	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence, "one save, at the moment it lands")
 
-	s.True(profile.HasOption("approach"))
-	s.True(profile.HasOption("flee"))
-	s.True(profile.HasOption("grovel"))
+	// THE PAIRING, not just the presence. An id and the label beside it are
+	// two halves of one word: the picker draws the label and the condition
+	// stores the id, which the layer driving the compelled turn switches on.
+	// Swap two ids and every other assertion here still passes, while a player
+	// pressing Approach gets a creature that runs. Asserted as the whole slice
+	// because the ORDER is what a picker draws top to bottom.
+	s.Equal([]actions.CastOption{
+		{ID: spells.CommandWordApproach, Label: "Approach"},
+		{ID: spells.CommandWordFlee, Label: "Flee"},
+		{ID: spells.CommandWordGrovel, Label: "Grovel"},
+	}, profile.Options)
+	s.Equal("approach", spells.CommandWordApproach, "the id the request sends back and the condition stores")
+	s.Equal("flee", spells.CommandWordFlee)
+	s.Equal("grovel", spells.CommandWordGrovel)
+
+	s.True(profile.HasOption(spells.CommandWordApproach))
+	s.True(profile.HasOption(spells.CommandWordFlee))
+	s.True(profile.HasOption(spells.CommandWordGrovel))
 	s.False(profile.HasOption("halt"),
 		"Halt is a one-row addition and is not in this slice: it is the word with no route and no effect")
 
@@ -434,6 +449,7 @@ func (s *CastContentSuite) TestOnlyCommandOffersAMenu() {
 		if definition == nil || id == spells.Command {
 			continue
 		}
+		s.Require().NotNil(definition.Cast, "%s minted a definition with no cast profile", id)
 		s.Empty(definition.Cast.Options, "%s declares a menu nobody asked it for", id)
 		for _, effect := range definition.Cast.Effects {
 			s.Empty(effect.OptionKey, "%s reads an option it never offers", id)
