@@ -27,6 +27,34 @@ const savesPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 // conditionsPath is the package that owns the concentrating condition itself.
 const conditionsPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 
+// conditionReaders are the only names this module may reach in the conditions
+// package: pure functions over the opaque blobs a sheet already carries, and
+// the shape one of them returns. Nothing here constructs a condition, attaches
+// one to a bus, or lets one run.
+//
+// # Why the ban became an allow-list
+//
+// The first form of this pin refused the import outright, and its reason was
+// the concentrating condition: it ends itself and strips its own children, so
+// a seam holding one would be holding a rule. That reason is about HOLDING a
+// condition, and it is still enforced below — every other name in the package
+// fails this test.
+//
+// Command made the difference visible (rpg-project ideas/spells/command §5.1).
+// A compulsion is a condition on a sheet, and the module that reads sheets is
+// this one, so somebody here has to answer "does this member hold one, and
+// what does it say". The alternative considered was the peek holdsInspiration
+// makes — unmarshal a private struct with the field names copied by hand —
+// and that is worse in the way this codebase cares about most: a rename in the
+// conditions package would leave this module compiling and silently answering
+// no. A named function is a compile-time contract. A copied JSON tag is a
+// guess that fails quietly.
+var conditionReaders = map[string]bool{
+	"HoldsRef":               true,
+	"DecodeCommanded":        true,
+	"CommandedConditionData": true,
+}
+
 // checkMachinery are the entries in the rulebook's events package that stand a
 // concentration check up: the fact it triggers on, the event carrying it, the
 // follow-up a condition answers with, and the trigger word the save is asked
@@ -109,12 +137,11 @@ func TestSessionConstructsNoCheck(t *testing.T) {
 		if parseErr != nil {
 			return parseErr
 		}
+		conditionImports = append(conditionImports, conditionRulesReachedBy(t, path)...)
+
 		for _, spec := range file.Imports {
-			switch spec.Path.Value {
-			case `"` + savesPath + `"`:
+			if spec.Path.Value == `"`+savesPath+`"` {
 				saveImports = append(saveImports, fset.Position(spec.Pos()).String())
-			case `"` + conditionsPath + `"`:
-				conditionImports = append(conditionImports, fset.Position(spec.Pos()).String())
 			}
 		}
 		return nil
@@ -133,9 +160,88 @@ func TestSessionConstructsNoCheck(t *testing.T) {
 			"else got")
 
 	require.Empty(t, conditionImports,
-		"a non-test file in this module imports the conditions package. The concentrating "+
-			"condition ends itself and strips its own children; a seam holding it would be "+
-			"holding a rule")
+		"a non-test file in this module reaches a name in the conditions package that is not "+
+			"one of the pure readers conditionReaders lists. The concentrating condition ends "+
+			"itself and strips its own children; a seam holding one would be holding a rule. "+
+			"Asking a blob what ref it names is a lookup, which is this package's job; "+
+			"building, attaching or running a condition is not")
+}
+
+// TestTheConditionEscapeIsCaught runs the narrowed pin over both shapes that
+// matter, so the allow-list is a passing test rather than a claim: a
+// constructor is still refused through an alias, and a reader is still let
+// through.
+func TestTheConditionEscapeIsCaught(t *testing.T) {
+	dir := t.TempDir()
+
+	held := filepath.Join(dir, "held.go")
+	require.NoError(t, os.WriteFile(held, []byte(`package session
+
+import cond "`+conditionsPath+`"
+
+var _ = cond.NewDodgingCondition
+`), 0o600))
+	require.NotEmpty(t, conditionRulesReachedBy(t, held),
+		"a session file that stands a condition up must not walk past this pin, "+
+			"whatever the import is called locally")
+
+	read := filepath.Join(dir, "read.go")
+	require.NoError(t, os.WriteFile(read, []byte(`package session
+
+import cond "`+conditionsPath+`"
+
+var _ = cond.HoldsRef
+`), 0o600))
+	require.Empty(t, conditionRulesReachedBy(t, read),
+		"and asking a stored blob what ref it names is the lookup this package exists to do")
+}
+
+// conditionRulesReachedBy reports every name the file reaches in the
+// conditions package that is not one of the pure readers, however that package
+// is named locally. Written as checkMachineryReachedBy is written, and for the
+// same reason: a resolved import cannot be dodged by an alias.
+func conditionRulesReachedBy(t *testing.T, path string) []string {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	require.NoError(t, err)
+
+	local := ""
+	for _, spec := range file.Imports {
+		if spec.Path.Value != `"`+conditionsPath+`"` {
+			continue
+		}
+		if spec.Name == nil {
+			local = "conditions"
+			continue
+		}
+		if spec.Name.Name == "." {
+			require.Failf(t, "dot-import of the conditions package",
+				"%s dot-imports %s. This pin cannot tell a bare NewDodgingCondition from any "+
+					"other identifier, so the import shape itself is refused",
+				path, conditionsPath)
+		}
+		local = spec.Name.Name
+	}
+	if local == "" {
+		return nil
+	}
+
+	var reached []string
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pkg, ok := selector.X.(*ast.Ident)
+		if !ok || pkg.Name != local || conditionReaders[selector.Sel.Name] {
+			return true
+		}
+		reached = append(reached, fset.Position(selector.Pos()).String()+": "+selector.Sel.Name)
+		return true
+	})
+	return reached
 }
 
 // TestTheCheckEscapeIsCaught runs this pin over the shape it exists to refuse,

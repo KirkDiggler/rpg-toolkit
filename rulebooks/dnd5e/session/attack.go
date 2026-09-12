@@ -374,7 +374,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	}
 
 	// The world that came back is the only true one now.
-	if err := m.adopt(scope, out.World); err != nil {
+	if err := m.adopt(ctx, scope, out.World); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
@@ -446,7 +446,7 @@ func (m *Manager) poseAttackWindow(
 		return nil, fmt.Errorf("attack: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
 	}
 
-	if err := m.adopt(scope, out.World); err != nil {
+	if err := m.adopt(ctx, scope, out.World); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {

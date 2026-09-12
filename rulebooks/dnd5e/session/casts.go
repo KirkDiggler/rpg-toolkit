@@ -180,7 +180,8 @@ func (m *Manager) compileCastOffer(
 		declaration := Declaration{
 			Verb: VerbCast, Slot: slot, Available: budgetOK, Why: budgetWhy, ID: id,
 			Spell: &spellRef, TargetKind: TargetNone, Candidates: []TargetCandidate{},
-			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets, Cost: cost,
+			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets,
+			Options: castOptions(profile), Cost: cost,
 		}
 		return compiledOffer{
 			declaration: declaration, spell: &definition, sheet: input.Sheet,
@@ -209,7 +210,8 @@ func (m *Manager) compileCastOffer(
 		declaration := Declaration{
 			Verb: VerbCast, Slot: slot, Available: budgetOK, Why: budgetWhy, ID: id,
 			Spell: &spellRef, TargetKind: areaTargetKind(profile.Area), Candidates: []TargetCandidate{},
-			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets, Cost: cost,
+			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets,
+			Options: castOptions(profile), Cost: cost,
 		}
 		return compiledOffer{
 			declaration: declaration, spell: &definition, sheet: input.Sheet,
@@ -283,11 +285,36 @@ func (m *Manager) compileCastOffer(
 		declaration: Declaration{
 			Verb: VerbCast, Slot: slot, Available: available, Why: why, ID: id,
 			Spell: &spellRef, TargetKind: TargetMember, Candidates: projectCandidates(candidates),
-			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets, Cost: cost,
+			MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets,
+			Options: castOptions(profile), Cost: cost,
 		},
 		spell: &definition, targets: targets, sheet: input.Sheet,
 		cast: input.Participants, verb: VerbCast, slot: slot, variant: variant,
 	}, nil
+}
+
+// castOptions projects the content's menu onto the seam's own twin, in the
+// content's order. That order is the only one there is: a picker draws the
+// words in the order the spell authored them, and sorting them here would
+// invent a ranking no one wrote down.
+//
+// A fresh slice per row rather than the profile's own, for the reason every
+// offer clones its candidate annotations: two compiled rows share the same
+// catalog definition and must not share a slice header into it.
+func castOptions(profile *combatActions.CastProfile) []CastOption {
+	if len(profile.Options) == 0 {
+		// Nil, which the omitempty tag on Declaration.Options renders exactly
+		// as an empty slice would — the two are the same answer on the wire,
+		// and an earlier version of this comment claimed a distinction the
+		// encoding does not make. Returning nil allocates nothing for the many
+		// rows that offer no choice.
+		return nil
+	}
+	out := make([]CastOption, 0, len(profile.Options))
+	for _, option := range profile.Options {
+		out = append(out, CastOption{ID: option.ID, Label: option.Label})
+	}
+	return out
 }
 
 // castCostComponents projects the executable slot and pool price without

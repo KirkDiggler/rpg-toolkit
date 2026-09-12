@@ -164,6 +164,10 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 		Standing:   standing,
 		Sight:      &sightSeam{members: worldMembers(*world)},
 		Equipment:  equipmentBeside(standing),
+		// The plain seam, for the reason the Striker below gives: an authored
+		// world is loaded to be inspected and re-serialized, so no clock
+		// advances and no turn is ever driven here. A compelled driver would
+		// also have no scope to save what an obeyed word left behind.
 		TurnDriver: m.turnDriver,
 		Striker:    encounter.RefusingStriker{},
 		// An authored world is walked by nobody: it is loaded to be inspected

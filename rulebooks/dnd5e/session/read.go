@@ -501,7 +501,12 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
 	enc, _, _, err := m.loadWorldWithBaseline(
 		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{}, encounter.RefusingAnnouncer{},
-		&sightSeam{}, refusingCheckResolver{}, refusingWitness{})
+		&sightSeam{}, refusingCheckResolver{}, refusingWitness{},
+		// The plain seam, not a compelled driver. A read advances no clock —
+		// the three refusing capabilities above are what says so — and a
+		// compelled driver here would have no scope to save the condition an
+		// obeyed word can leave behind.
+		m.turnDriver)
 	return enc, err
 }
 
@@ -530,7 +535,7 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 func (m *Manager) loadWorldWithBaseline(
 	ctx context.Context, data *SessionData,
 	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer, sight *sightSeam,
-	resolver encounter.CheckResolver, witness encounter.Witness,
+	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.TurnDriver,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
 	encID := data.Encounter
 
@@ -557,7 +562,13 @@ func (m *Manager) loadWorldWithBaseline(
 		Standing:   standing,
 		Sight:      sight,
 		Equipment:  equipmentBeside(standing),
-		TurnDriver: m.turnDriver,
+		// And the same, one capability over: a compelledDriver bound to a
+		// write verb's scope, or the plain seam for a read that advances no
+		// clock. A compulsion is read off a SHEET, so the thing that takes a
+		// commanded member's turn has to be built where the sheets are — and
+		// it has to be able to save what the word left behind, which is the
+		// scope this function has not got. See [compelledDriver].
+		TurnDriver: driver,
 		// The caller says which: a real one bound to a write verb's own
 		// scope, or RefusingStriker{} for a read that must never drive a
 		// turn. See [Manager.loadWorld] and [Manager.openForWrite].

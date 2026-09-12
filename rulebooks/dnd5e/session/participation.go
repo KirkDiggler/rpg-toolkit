@@ -4,11 +4,14 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
@@ -69,6 +72,12 @@ func (s standingSeam) participation(
 
 	facts := make(map[string]resolution.ParticipantParticipation, len(members))
 
+	// The same records, read for a second fact resolution's projection does not
+	// carry: what each member is holding. A compulsion is a condition on a
+	// sheet, and the sheet is already in hand — fetching it again would be a
+	// second snapshot free to disagree with the one the life state came from.
+	stored := storedConditionsOf(characters, monsters)
+
 	characterParticipation, err := resolution.Participation(s.ctx, &resolution.ParticipationInput{
 		Participants: characters,
 	})
@@ -113,7 +122,7 @@ func (s standingSeam) participation(
 			}
 		}
 
-		mapped, err := encounterParticipation(id, fact.Participation)
+		mapped, err := encounterParticipation(id, fact.Participation, stored[string(id)])
 		if err != nil {
 			return nil, err
 		}
@@ -153,8 +162,68 @@ func neutralWorldNPCParticipation(
 	}, participantView{LifeState: LifeStateUnknown}
 }
 
+// storedConditionsOf indexes the condition blobs the records already carry, by
+// member. Both shapes hold the same field for the same reason, and neither is
+// read here: a blob is opaque bytes until somebody who owns the condition
+// decodes it.
+func storedConditionsOf(characters, monsters []resolution.Participant) map[string][]json.RawMessage {
+	out := make(map[string][]json.RawMessage, len(characters)+len(monsters))
+	for _, participant := range characters {
+		if participant.Character != nil {
+			out[participant.Character.ID] = participant.Character.Conditions
+		}
+	}
+	for _, participant := range monsters {
+		if participant.Monster != nil {
+			out[participant.Monster.ID] = participant.Monster.Conditions
+		}
+	}
+	return out
+}
+
+// encounterParticipation maps the rulebook's participation fact onto the
+// encounter's scheduling word, and adds the one thing the rulebook's fact
+// cannot say: that somebody else is taking this turn.
+//
+// # Driven is a narrowing of Wait, and only of an UPRIGHT Wait
+//
+// A member who would have been waited for, is up, and holds a compulsion, is
+// Driven: the slot is kept and the turn is taken by the TurnDriver whoever the
+// member is. AutoPass and Remove both OUTRANK it — a member the fight removed
+// is not brought back to be marched around.
+//
+// The design (§5.1) said AutoPass and Remove were the whole of that ordering,
+// and in this module they are not enough. A DYING player Waits rather than
+// auto-passing, because their turn is the death save they have to roll; a
+// compulsion that reached them would march a body across the room and skip the
+// save. So the gate is the same fact the rest of the row is built from — can
+// this member act normally — and the design's sentence is true again through
+// it: a dying commanded fighter still dies on schedule.
+//
+// WHAT THIS FUNCTION DOES NOT DO is decide what the compulsion means. It asks
+// the conditions package whether the sheet holds one ref, which is a lookup;
+// the word inside it, the anchor it measures from and the walk it produces all
+// belong to the layers that own rules.
+//
+// # A blob nobody can read is not a compulsion
+//
+// The plan asked for an error here, reasoning that answering Wait could hand a
+// human a turn somebody else was taking. That reasoning does not survive
+// contact with what the rest of this module already decided, twice: the
+// character loader DROPS a condition it cannot parse and logs a warning
+// (TestACorruptConditionIsDroppedRatherThanRejected), and a member whose sheet
+// cannot be read refuses that member's OFFERS with ShortfallUnreadable rather
+// than the whole read
+// (TestUnreadableTargetAndParticipantBlockAffordBeforeUnchangedAttack).
+//
+// So a blob this build cannot read is already not on the sheet: it is never
+// attached, never runs, and compels nobody. Answering Wait agrees with the
+// sheet the fight is actually using. Erroring would make this function
+// STRICTER than the record it is describing, which is the disagreement between
+// two readers of one record that the snapshot above exists to prevent — and it
+// would stop a whole fight over a byte the loader had already thrown away.
 func encounterParticipation(
-	id encounter.MemberID, participation combat.Participation,
+	id encounter.MemberID, participation combat.Participation, stored []json.RawMessage,
 ) (encounter.MemberParticipation, error) {
 	member := encounter.MemberParticipation{
 		Member: id, Down: participation.Down,
@@ -169,12 +238,43 @@ func encounterParticipation(
 	default:
 		member.Turn = encounter.TurnParticipationRemove
 	}
+	if member.Turn == encounter.TurnParticipationWait && member.Contact && holdsCompulsion(stored) {
+		member.Turn = encounter.TurnParticipationDriven
+	}
 	if member.Turn == encounter.TurnParticipationRemove && member.Contact {
 		return encounter.MemberParticipation{}, fmt.Errorf(
 			"participation: member %q cannot be removed while remaining in contact: %w",
 			id, ErrInvalidSession)
 	}
 	return member, nil
+}
+
+// holdsCompulsion reports whether any blob on the sheet is a Commanded, asking
+// the conditions package one blob at a time.
+//
+// ONE AT A TIME, because HoldsRef stops at the first blob whose ref it cannot
+// read and answers with an error for the whole list — so a corrupt entry
+// sitting ahead of a real compulsion would hide it, and the member it hid would
+// be handed back a turn somebody else was taking. Asked per blob, an unreadable
+// one costs exactly itself.
+//
+// DEFENCE IN DEPTH RATHER THAN A REACHABLE CASE, which this comment used to
+// overstate. Resolution's attach refuses a record carrying an unreadable
+// condition one seam later, so a sheet in that state does not survive the live
+// path to reach a compelled turn. What is kept here is the shape: this function
+// agrees with the character loader's own rule — drop what cannot be parsed,
+// keep what can, and warn — so it is never stricter about a record than the
+// loader that produced it, whatever the layer above decides to do. See
+// [encounterParticipation], and [commandedIn], which keeps the same rule for
+// the driver's own lookup.
+func holdsCompulsion(stored []json.RawMessage) bool {
+	commanded := refs.Conditions.Commanded()
+	for _, raw := range stored {
+		if held, err := conditions.HoldsRef([]json.RawMessage{raw}, commanded); err == nil && held {
+			return true
+		}
+	}
+	return false
 }
 
 func projectDeathSaveProgress(in *character.DeathSaveProgress) *DeathSaveProgress {

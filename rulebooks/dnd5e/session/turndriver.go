@@ -192,6 +192,62 @@ type Move struct {
 // isTurnIntent marks Move as a TurnIntent.
 func (Move) isTurnIntent() {}
 
+// MovePolicy is how a route is measured when a driver hands over a policy
+// instead of a path — this package's own twin of the composition's word.
+//
+// A STRING ENUM RATHER THAN A MIRROR OF THE COMPOSITION'S, for [MemberKind]'s
+// reason: it crosses to a host, and a word added later must be a compatible
+// change. The set is the composition's to grow; a word it does not walk is
+// refused there rather than filtered here, so this package never becomes a
+// second opinion about what can be walked.
+type MovePolicy string
+
+const (
+	// MoveToward routes to a cell beside the anchor and stops there, as far as
+	// the budget reaches.
+	MoveToward MovePolicy = "toward"
+
+	// MoveAway routes to the reachable cell farthest from the anchor.
+	MoveAway MovePolicy = "away"
+)
+
+// Routed asks the composition to find the path and walk it, then end the turn.
+//
+// WHERE Move HANDS OVER A PATH, THIS HANDS OVER A POLICY AND AN ANCHOR:
+// "toward that member, as far as this turn's movement reaches." The
+// composition routes it, walks the cells through the same step a Move's walk
+// takes — so it provokes, pauses for a player's window, and resumes — and ends
+// the turn when the walk stops for any reason.
+//
+// TERMINAL, which is the difference worth knowing before wiring one: a driver
+// that wants to walk and then act hands a path to [Move] as before. The
+// customers for a whole turn spent walking are a compelled creature, whose turn
+// IS the walk, and a monster that decides to run.
+//
+// It is the one intent that carries a Cause, because it is the one intent the
+// member did not decide. See [Routed.Cause].
+type Routed struct {
+	// Policy is how the route is measured: "toward" or "away", the
+	// composition's own words. An unsupported one is refused rather than
+	// walked some other way.
+	Policy MovePolicy
+
+	// Anchor is the member the policy is measured from — the thing approached,
+	// or the thing fled. A member nobody can find ends the turn, as Pass
+	// would; their cell is read at execution rather than carried, because the
+	// anchor may have moved since whatever decided this.
+	Anchor string
+
+	// Cause is what routed them, as a core.Ref string, and it travels on every
+	// beat this walk appends. REQUIRED: a creature whose whole turn was spent
+	// walking somewhere it did not choose, narrated with no cause, is an
+	// observer being told it walked off of its own accord.
+	Cause string
+}
+
+// isTurnIntent marks Routed as a TurnIntent.
+func (Routed) isTurnIntent() {}
+
 // turnDriverSeam adapts the host's TurnDriver to the composition's, both
 // directions: encounter.MonsterView projects onto this package's own
 // MonsterView on the way in, and this package's own TurnIntent projects onto
@@ -222,6 +278,10 @@ func (s turnDriverSeam) Act(view encounter.MonsterView) (encounter.TurnIntent, e
 		return encounter.Move{Path: it.Path}, nil
 	case *Move:
 		return encounter.Move{Path: it.Path}, nil
+	case Routed:
+		return routedToEncounter(view.Self, it)
+	case *Routed:
+		return routedToEncounter(view.Self, *it)
 	default:
 		return nil, fmt.Errorf("turn driver %q: %w: %T", view.Self, ErrBadTurnOutcome, intent)
 	}
@@ -240,6 +300,32 @@ func attackToEncounter(self encounter.MemberID, it Attack) (encounter.TurnIntent
 		return nil, fmt.Errorf("turn driver %q: %w: action %q: %v", self, ErrBadTurnOutcome, it.Action, err)
 	}
 	return encounter.Attack{Target: encounter.MemberID(it.Target), Action: *ref}, nil
+}
+
+// routedToEncounter parses a Routed's Cause back into the core.Ref the
+// composition speaks, the reverse of the string this package publishes.
+//
+// A cause that will not parse is the same fact [attackToEncounter] reports
+// about an action string: an outcome this seam cannot translate. It is refused
+// here rather than passed on empty, because the composition's own refusal
+// would name a missing cause and the truth is a malformed one — and a driver
+// author reading "no cause" while looking at the cause they wrote has been
+// told the wrong thing.
+//
+// The POLICY is crossed as-is rather than parsed. Unlike the cause it is not
+// this package's string to re-derive: [MovePolicy] is the composition's own
+// vocabulary projected here, and the composition refuses a word it does not
+// walk.
+func routedToEncounter(self encounter.MemberID, it Routed) (encounter.TurnIntent, error) {
+	cause, err := core.ParseString(it.Cause)
+	if err != nil {
+		return nil, fmt.Errorf("turn driver %q: %w: cause %q: %v", self, ErrBadTurnOutcome, it.Cause, err)
+	}
+	return encounter.Routed{
+		Policy: encounter.MovePolicy(it.Policy),
+		Anchor: encounter.MemberID(it.Anchor),
+		Cause:  *cause,
+	}, nil
 }
 
 // compile-time proof the adapter satisfies what it is handed to.

@@ -282,7 +282,7 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		return nil, fmt.Errorf("activate: %w: activation produced %T", ErrInvalidWorld, out.Outcome)
 	}
 
-	if err := m.adopt(scope, out.World); err != nil {
+	if err := m.adopt(ctx, scope, out.World); err != nil {
 		return nil, fmt.Errorf("activate: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {

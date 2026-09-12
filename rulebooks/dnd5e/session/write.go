@@ -995,7 +995,8 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	enc, baseline, standing, err := m.loadWorldWithBaseline(
 		ctx, data, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
 		announcerSeam{m: m, scope: scope}, scope.sight,
-		checkSeam{m: m, scope: scope}, witnessSeam{scope: scope})
+		checkSeam{m: m, scope: scope}, witnessSeam{scope: scope},
+		m.compelledDriverFor(ctx, scope))
 	if err != nil {
 		return nil, err
 	}
@@ -1170,7 +1171,13 @@ func (s *writeScope) deliveredSeq(member string, seq uint64) uint64 {
 // It is a named method rather than an assignment inlined in the verb so the
 // next verb that resolves through data reuses this instead of hand-rolling the
 // swap, and so the novelty has exactly one home to document.
-func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error {
+//
+// It takes the verb's CONTEXT because one of the capabilities it rebinds needs
+// one: a compelled turn reads sheets and resolves a word, both of which happen
+// inside the call this is running in. Passed rather than lifted off a seam
+// that already captured one, so there is a single obvious answer to which call
+// a driven turn belongs to.
+func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.EncounterData) error {
 	// PLACED AND WAITING (reserve.go, worldMembers): the roster snapshot
 	// resolution returned, and the reserve behind it. The outcome recorded on
 	// this encounter a moment later may be the blow that fells the member the
@@ -1191,7 +1198,11 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		Standing:   scope.standing,
 		Sight:      scope.sight,
 		Equipment:  equipmentBeside(scope.standing),
-		TurnDriver: m.turnDriver,
+		// Rebound here for the reason the Striker below is: this replaces
+		// scope.enc, and a compelled turn is driven from inside the
+		// composition's own verbs, so the driver the new encounter carries
+		// must be the one that reads this scope.
+		TurnDriver: m.compelledDriverFor(ctx, scope),
 		// Bound to the SAME scope, not rebuilt: this replaces scope.enc, and
 		// strikerSeam only ever reads scope.enc from inside a later Strike
 		// call, well after this assignment lands (rpg-project#254).

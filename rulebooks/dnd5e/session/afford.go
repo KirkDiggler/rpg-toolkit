@@ -291,6 +291,18 @@ type Declaration struct {
 	MinTargets int `json:"min_targets"`
 	MaxTargets int `json:"max_targets"`
 
+	// Options is the menu this row offers when the spell declares one, in the
+	// content's own order — which is the order a picker draws. Empty on every
+	// row that offers no choice, which is every verb but Cast and every spell
+	// but Command today.
+	//
+	// Present and empty mean different things to the caller in exactly one
+	// respect: a row listing options REQUIRES one back in CastInput.Option and
+	// a row listing none REFUSES one. That is the same shape [TargetKind]
+	// already has for the aimed cell — the offer says what the request must
+	// bring — rather than a second selector the client assembles.
+	Options []CastOption `json:"options,omitempty"`
+
 	// Cost is generic provider-authored display data copied from the executable
 	// spend profile. Private resource keys never cross this seam.
 	Cost []CostComponent `json:"cost"`

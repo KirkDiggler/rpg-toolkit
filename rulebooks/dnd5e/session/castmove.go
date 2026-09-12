@@ -225,7 +225,7 @@ func walkCastPushes(
 // routePolicy maps the content's word for how a creature is moved onto the
 // composition's.
 //
-// TWO CLOSED SETS WITH TWO MEMBERS EACH, and the crossing is spelled out rather
+// TWO CLOSED SETS OF THE SAME SIZE, and the crossing is spelled out rather
 // than converted by a cast between two string types. They are the same words
 // today and they are not the same vocabulary: content says what a spell does
 // and the composition says what it can walk, and the day one of them learns a
@@ -237,6 +237,8 @@ func routePolicy(policy combatActions.MovePolicy) (encounter.MovePolicy, bool) {
 		return encounter.MoveLine, true
 	case combatActions.MoveAway:
 		return encounter.MoveAway, true
+	case combatActions.MoveToward:
+		return encounter.MoveToward, true
 	default:
 		return "", false
 	}

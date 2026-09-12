@@ -110,7 +110,7 @@ func (m *Manager) answerPostRoll(
 		return nil, fmt.Errorf("react: %w: resumed strike produced %T", ErrInvalidWorld, out.Outcome)
 	}
 
-	if err := m.adopt(scope, out.World); err != nil {
+	if err := m.adopt(ctx, scope, out.World); err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {
