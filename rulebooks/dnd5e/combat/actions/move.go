@@ -15,10 +15,11 @@ import "fmt"
 //
 // EVERY VALUE HERE IS ONE SOMETHING CAN WALK. A policy arrives with the spell
 // that brings its executor and not one line before: "line" came with
-// Thunderwave, "away" with Dissonant Whispers, and "toward" waits for Thorn
-// Whip (rpg-project#431 §0). A policy named here ahead of its executor would
-// validate clean in content and then fail at the moment of the shove, which
-// moves the refusal from the author to the table.
+// Thunderwave, "away" with Dissonant Whispers, and "toward" with Command,
+// whose Approach is the first thing in the catalogue that walks a creature at
+// somebody rather than away from them. A policy named here ahead of its
+// executor would validate clean in content and then fail at the moment of the
+// shove, which moves the refusal from the author to the table.
 type MovePolicy string
 
 const (
@@ -33,6 +34,16 @@ const (
 	// run. The executor is encounter's Route, which floods from the mover and
 	// measures every reached cell against the anchor.
 	MoveAway MovePolicy = "away"
+
+	// MoveToward sends the mover along the shortest walking route to a cell
+	// ADJACENT to the anchor, and stops it there: Command's Approach is
+	// "moves toward you by the shortest and most direct route", and what it
+	// wants is a creature standing in front of the caster, not one standing
+	// on them. When no such cell is reachable within the budget the mover
+	// ends on the reached cell nearest the anchor by the ruler, which is the
+	// blocked-corridor case: it closed as far as the walls let it. The
+	// executor is encounter's Route, which owns the map.
+	MoveToward MovePolicy = "toward"
 )
 
 // MovePays is what the moved creature spends to be moved.
@@ -78,6 +89,14 @@ type CastMove struct {
 	// horse different distances.
 	Speed bool `json:"speed,omitempty"`
 
+	// Turn says the budget is the mover's REMAINING movement on its own turn,
+	// which is a different number from its speed the moment it has already
+	// walked. Only meaningful when the move IS the mover's turn — resolution's
+	// Obey produces one and no cast does — so it is a third budget rather than
+	// a flag on Speed: the two answer different questions and a spell that
+	// asked for both would have no rule for picking between them.
+	Turn bool `json:"turn,omitempty"`
+
 	// Pays is what the move costs the creature being moved. Zero is nothing.
 	Pays MovePays `json:"pays,omitempty"`
 
@@ -87,11 +106,11 @@ type CastMove struct {
 	Provokes bool `json:"provokes,omitempty"`
 }
 
-// Validate reports whether the move declares a known policy, exactly one
-// budget, and a known price.
+// Validate reports whether the move declares a known policy, exactly one of
+// the three budgets, and a known price.
 func (m CastMove) Validate() error {
 	switch m.Policy {
-	case MoveLine, MoveAway:
+	case MoveLine, MoveAway, MoveToward:
 	default:
 		return fmt.Errorf("unknown move policy %q", m.Policy)
 	}
@@ -102,12 +121,25 @@ func (m CastMove) Validate() error {
 	if m.Cells < 0 {
 		return fmt.Errorf("move budget in cells must not be negative, got %d", m.Cells)
 	}
-	// Both halves are refused for the same reason and in one sentence: no
-	// budget at all would move a creature zero cells and record that it moved,
-	// and a fixed count beside the mover's own speed is two answers to one
-	// question with no rule for picking between them.
-	if (m.Cells > 0) == m.Speed {
-		return fmt.Errorf("move must declare exactly one budget, a positive cell count or the mover's speed")
+	// Every combination but one is refused for the same reason and in one
+	// sentence: no budget at all would move a creature zero cells and record
+	// that it moved, and any two of the three are two answers to one question
+	// with no rule for picking between them. Counted rather than compared,
+	// because a boolean expression over three budgets stops reading as the
+	// rule it enforces.
+	budgets := 0
+	if m.Cells > 0 {
+		budgets++
+	}
+	if m.Speed {
+		budgets++
+	}
+	if m.Turn {
+		budgets++
+	}
+	if budgets != 1 {
+		return fmt.Errorf(
+			"move must declare exactly one budget, a positive cell count or the mover's speed or its turn")
 	}
 
 	switch m.Pays {

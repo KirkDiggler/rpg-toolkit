@@ -54,13 +54,28 @@ func (s *MoveSuite) TestAMoveDeclaresExactlyOneBudget() {
 	s.Run("the mover's own speed is a budget", func() {
 		s.NoError((&actions.CastMove{Policy: actions.MoveLine, Speed: true}).Validate())
 	})
-	s.Run("neither is refused", func() {
+	s.Run("the mover's own turn is a budget", func() {
+		s.NoError((&actions.CastMove{Policy: actions.MoveToward, Turn: true}).Validate())
+	})
+	s.Run("none of the three is refused", func() {
 		err := (&actions.CastMove{Policy: actions.MoveLine}).Validate()
 		s.Require().Error(err)
 		s.Contains(err.Error(), "budget")
 	})
-	s.Run("both is refused", func() {
-		err := (&actions.CastMove{Policy: actions.MoveLine, Cells: 2, Speed: true}).Validate()
+	s.Run("any two of the three is refused", func() {
+		pairs := []actions.CastMove{
+			{Policy: actions.MoveLine, Cells: 2, Speed: true},
+			{Policy: actions.MoveLine, Cells: 2, Turn: true},
+			{Policy: actions.MoveLine, Speed: true, Turn: true},
+		}
+		for _, pair := range pairs {
+			err := pair.Validate()
+			s.Require().Error(err, "%+v", pair)
+			s.Contains(err.Error(), "budget")
+		}
+	})
+	s.Run("all three is refused", func() {
+		err := (&actions.CastMove{Policy: actions.MoveLine, Cells: 2, Speed: true, Turn: true}).Validate()
 		s.Require().Error(err)
 		s.Contains(err.Error(), "budget")
 	})
@@ -85,17 +100,14 @@ func (s *MoveSuite) TestTheVocabularyIsClosed() {
 		s.Require().Error(err)
 		s.Contains(err.Error(), "unknown move price")
 	})
-	s.Run("a policy nothing can walk is refused, not reserved", func() {
-		// "toward" is the next policy this stack will have, and naming it here
-		// would be the whole mistake: content could declare it, validate
-		// clean, and fail at the moment of the shove instead of the moment it
-		// was written. It arrives with Thorn Whip, which brings its executor
-		// (rpg-project#431). "away" left this list when Dissonant Whispers
-		// brought encounter's Route for it.
-		for _, reserved := range []actions.MovePolicy{"toward"} {
-			err := (&actions.CastMove{Policy: reserved, Cells: 2}).Validate()
-			s.Require().Error(err, "%s", reserved)
-			s.Contains(err.Error(), "unknown move policy")
+	s.Run("every policy named here is one something can walk", func() {
+		// The reserved list is empty now. "line" came with Thunderwave,
+		// "away" with Dissonant Whispers, and "toward" with Command, each one
+		// arriving the same day its executor did. A policy named ahead of its
+		// executor would validate clean in content and then fail at the
+		// moment of the shove, which is why nothing sits here waiting.
+		for _, walkable := range []actions.MovePolicy{actions.MoveLine, actions.MoveAway, actions.MoveToward} {
+			s.NoError((&actions.CastMove{Policy: walkable, Cells: 2}).Validate(), "%s", walkable)
 		}
 	})
 }

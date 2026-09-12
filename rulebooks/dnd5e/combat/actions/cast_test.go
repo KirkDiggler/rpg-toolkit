@@ -357,3 +357,100 @@ func (s *CastProfileSuite) TestCloningACastDefinitionAliasesNothing() {
 }
 
 func ptr(profile actions.CastProfile) *actions.CastProfile { return &profile }
+
+// commandProfile is Command's shape: a gate, a menu, and one condition whose
+// parameters are filled from the word the caster chose.
+func commandProfile() actions.CastProfile {
+	return actions.CastProfile{
+		RangeFeet:  60,
+		Target:     actions.CastTargetOneCreature,
+		MinTargets: 1,
+		MaxTargets: 1,
+		Save:       saves.NewSaveGate(abilities.WIS, 13),
+		Options: []actions.CastOption{
+			{ID: "approach", Label: "Approach"},
+			{ID: "flee", Label: "Flee"},
+		},
+		Effects: []actions.CastEffect{{
+			Recipient:      actions.CastRecipientTarget,
+			Ref:            conditionRef("commanded"),
+			CounterpartKey: "caster_id",
+			OptionKey:      "word",
+		}},
+	}
+}
+
+// TestACastWithAMenuValidates — the menu is a cast-time input the way an aimed
+// cell is, so a profile carrying one is an ordinary profile with one more
+// field, not a new kind of cast.
+func (s *CastProfileSuite) TestACastWithAMenuValidates() {
+	s.Require().NoError(commandProfile().Validate())
+	s.Empty(gatelessProfile().Options, "and a spell with no choice to make declares nothing")
+}
+
+// TestTheMenuAndTheKeyAreBoundInBothDirections — each half is useless without
+// the other, and each failure is silent rather than loud without this refusal.
+// A menu no effect reads is an affordance with nothing behind it: the client
+// would draw a picker and the choice would land nowhere. A key on a profile
+// with no menu is a parameter that can never be filled, so the condition would
+// be built with the field the content promised left empty.
+func (s *CastProfileSuite) TestTheMenuAndTheKeyAreBoundInBothDirections() {
+	s.Run("a menu nothing reads is refused", func() {
+		profile := commandProfile()
+		profile.Effects[0].OptionKey = ""
+		s.Require().ErrorContains(profile.Validate(), "no effect reads it")
+	})
+
+	s.Run("a key with no menu is refused", func() {
+		profile := commandProfile()
+		profile.Options = nil
+		s.Require().ErrorContains(profile.Validate(), "option key")
+	})
+}
+
+// TestTheMenuIsRefusedWhenTheClientCouldNotDrawIt — every id is what the
+// request sends back and every label is what a person reads, so neither may be
+// missing and no two rows may answer to the same id.
+func (s *CastProfileSuite) TestTheMenuIsRefusedWhenTheClientCouldNotDrawIt() {
+	s.Run("an empty id", func() {
+		profile := commandProfile()
+		profile.Options[1].ID = ""
+		s.Require().ErrorContains(profile.Validate(), "id")
+	})
+
+	s.Run("an empty label", func() {
+		profile := commandProfile()
+		profile.Options[1].Label = ""
+		s.Require().ErrorContains(profile.Validate(), "label")
+	})
+
+	s.Run("two rows with one id", func() {
+		profile := commandProfile()
+		profile.Options[1].ID = "approach"
+		s.Require().ErrorContains(profile.Validate(), "duplicate")
+	})
+}
+
+// TestHasOptionAnswersOnlyForIdsTheProfileListed is the check the door makes
+// before it binds a request's word: an id nobody declared must not reach the
+// parameters, because the condition would then be built around a word the
+// spell never offered.
+func (s *CastProfileSuite) TestHasOptionAnswersOnlyForIdsTheProfileListed() {
+	profile := commandProfile()
+	s.True(profile.HasOption("approach"))
+	s.True(profile.HasOption("flee"))
+	s.False(profile.HasOption("grovel"), "a word this profile did not list is not one of its options")
+	s.False(profile.HasOption(""), "and neither is nothing at all")
+	s.False(gatelessProfile().HasOption("approach"), "a profile with no menu offers no option")
+}
+
+// TestCloningACastProfileCopiesItsMenu — Clone exists so a running interaction
+// cannot be rewritten through the definition it came from, and a slice left
+// shared would be exactly that hole.
+func (s *CastProfileSuite) TestCloningACastProfileCopiesItsMenu() {
+	original := commandProfile()
+	clone := original.Clone()
+
+	clone.Options[0].Label = "Grovel"
+	s.Equal("Approach", original.Options[0].Label, "editing a clone must not reach the original")
+}
