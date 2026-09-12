@@ -175,6 +175,7 @@ const (
 	WizardCantrips1   ChoiceID = "wizard-cantrips-1"
 	WizardSpells1     ChoiceID = "wizard-spells-1"
 	ClericCantrips1   ChoiceID = "cleric-cantrips-1"
+	ClericSpells1     ChoiceID = "cleric-spells-1"
 	BardCantrips1     ChoiceID = "bard-cantrips-1"
 	BardSpells1       ChoiceID = "bard-spells-1"
 	DruidCantrips1    ChoiceID = "druid-cantrips-1"

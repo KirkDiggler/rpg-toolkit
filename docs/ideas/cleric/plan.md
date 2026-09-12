@@ -225,6 +225,23 @@ asking for the same approval again. Material scope changes should be surfaced cl
 
 ## After this slice
 
+### Supported spell acquisition (2026-09-12)
+
+The user authorized reusing Bard's creation/known-spell pipeline while full
+preparation is designed separately. Offer all currently supported first-level
+Cleric spells: Bane, Command, Cure Wounds. `ClericSpells1` requires each once;
+the shared validator must reject duplicates (#1662). Existing cantrip choices
+remain unchanged. This is temporary spell access, not a Wizard spellbook,
+prepared-spell limit, or automatic domain grant.
+
+Finalization seeds the existing first-level slot resource from Cleric's class
+table (two slots), sharing Bard's initialization and long-rest recovery.
+Creation tests cover draft/character persistence, executable definitions,
+slot spending/reload/rest, invalid picks, and class changes. Existing finalized
+sheets are not backfilled during load. Unfinished drafts must supply the new
+spell choice before finalizing; API/UI adoption must expose that requirement.
+No consumer pins or preparation/rest selection flows change in this rulebook PR.
+
 Next candidate is Bless using Bane's contributed dice and source-qualified ownership,
 including selected-self targeting and overlapping-caster acceptance. Preparation/domain
 grants and out-of-combat casting remain separately scheduled work. The eventual API/web

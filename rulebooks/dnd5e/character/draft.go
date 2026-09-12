@@ -2058,6 +2058,18 @@ func calculateBarbarianRageUses(level int) int {
 // initializeClassResources adds class-specific resources to the character.
 // Called during ToCharacter after the character struct is created.
 func (d *Draft) initializeClassResources(char *Character) {
+	// Bard and Cleric share the existing first-level slot resource. This
+	// creation slice reads starting capacity from the class table; it does
+	// not implement higher-level progression or preparation.
+	if d.class == classes.Bard || d.class == classes.Cleric {
+		classData := classes.ClassData[d.class]
+		if len(classData.SpellSlots) > 0 && classData.SpellSlots[0] > 0 {
+			char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID: string(resources.SpellSlotLevel1), Maximum: classData.SpellSlots[0],
+				CharacterID: char.id, ResetType: coreResources.ResetLongRest,
+			})
+		}
+	}
 	level := char.level
 
 	switch d.class {
@@ -2090,19 +2102,6 @@ func (d *Draft) initializeClassResources(char *Character) {
 			CharacterID: char.id,
 			ResetType:   coreResources.ResetLongRest,
 		})
-
-		// Seed only the level-1 Bard pool supported by this slice. The class
-		// table remains progression source data; Resources is the one mutable
-		// authority after finalization.
-		classData := classes.ClassData[classes.Bard]
-		if len(classData.SpellSlots) > 0 && classData.SpellSlots[0] > 0 {
-			char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-				ID:          string(resources.SpellSlotLevel1),
-				Maximum:     classData.SpellSlots[0],
-				CharacterID: char.id,
-				ResetType:   coreResources.ResetLongRest,
-			})
-		}
 
 	case classes.Monk:
 		// Ki points - equal to monk level, recovered on short or long rest.

@@ -609,10 +609,18 @@ func (v *Validator) validateSpellbook(req *SpellbookRequirement, submissions *Su
 
 	found := false
 	totalChosen := 0
+	seen := make(map[spells.Spell]bool)
 	for _, sub := range spellSubs {
 		if sub.ChoiceID == req.ID {
 			found = true
 			totalChosen += len(sub.Values)
+			for _, spell := range sub.Values {
+				if seen[spell] {
+					return &ValidationError{Category: shared.ChoiceSpells, ChoiceID: req.ID,
+						Message: fmt.Sprintf("Spell '%s' was chosen more than once", spell)}
+				}
+				seen[spell] = true
+			}
 
 			// Validate chosen spells are in the allowed options
 			if len(req.Options) > 0 {

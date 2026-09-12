@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -34,6 +35,7 @@ func (s *ClericFinalizeSuite) classInput() *SetClassInput {
 		Choices: ClassChoices{
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
+			Spells:   []spells.Spell{spells.Bane, spells.Command, spells.CureWounds},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
 				{ChoiceID: choices.ClericArmor, OptionID: choices.ClericArmorChainMail},
@@ -72,6 +74,9 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Require().NoError(json.Unmarshal(encoded, &saved))
 	char, err := LoadDraftFromData(&saved).ToCharacter(context.Background(), "cleric-1", events.NewEventBus())
 	s.Require().NoError(err)
+	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Current())
+	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Maximum())
+	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
 	data := char.ToData()
 	s.Equal(classes.LifeDomain, data.SubclassID)
 	s.ElementsMatch([]proficiencies.Armor{
@@ -96,6 +101,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.ElementsMatch([]string{
 		refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
 	}, data.KnownCantrips)
+	s.ElementsMatch([]string{refs.Spells.Bane().String(), refs.Spells.Command().String(), refs.Spells.CureWounds().String()}, data.KnownSpells)
 	encoded, err = json.Marshal(data)
 	s.Require().NoError(err)
 	var stored Data
@@ -109,8 +115,30 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Equal(data.WeaponProficiencies, back.WeaponProficiencies)
 	s.Equal(data.Inventory, back.Inventory)
 	s.Equal(data.KnownCantrips, back.KnownCantrips)
+	s.Equal(data.KnownSpells, back.KnownSpells)
+	for _, spell := range loaded.KnownSpells() {
+		definition := loaded.CastDefinition(spells.Spell(spell.ID))
+		s.Require().NotNil(definition)
+		s.Require().NoError(definition.Validate())
+	}
 	s.Equal(data.Resources, back.Resources)
 	s.Equal(4, back.HitPoints, "loading is not a rest")
+	s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current())
+	s.Require().NoError(loaded.LongRest(context.Background()))
+	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
+	s.Equal(data.KnownSpells, loaded.ToData().KnownSpells, "rest restores slots without choosing spells")
+}
+
+func (s *ClericFinalizeSuite) TestExistingSheetDoesNotReceiveImplicitSpellGrantsOnLoad() {
+	char, err := s.draft(s.classInput()).ToCharacter(context.Background(), "older-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	data := char.ToData()
+	data.KnownSpells = nil
+	delete(data.Resources, resources.SpellSlotLevel1)
+	loaded, err := Load(context.Background(), data)
+	s.Require().NoError(err)
+	s.Empty(loaded.KnownSpells())
+	s.NotContains(loaded.ToData().Resources, resources.SpellSlotLevel1)
 }
 
 func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReload() {
@@ -145,6 +173,11 @@ func (s *ClericFinalizeSuite) TestInvalidChoicesCannotFinalize() {
 		{"missing domain", func(in *SetClassInput) { in.SubclassID = "" }},
 		{"wrong class domain", func(in *SetClassInput) { in.SubclassID = classes.Subclass("champion") }},
 		{"missing cantrip", func(in *SetClassInput) { in.Choices.Cantrips = in.Choices.Cantrips[:2] }},
+		{"missing spells", func(in *SetClassInput) { in.Choices.Spells = nil }},
+		{"missing spell", func(in *SetClassInput) { in.Choices.Spells = in.Choices.Spells[:2] }},
+		{"unsupported spell", func(in *SetClassInput) { in.Choices.Spells[0] = spells.Bless }},
+		{"wrong class spell", func(in *SetClassInput) { in.Choices.Spells[0] = spells.Thunderwave }},
+		{"duplicate spell", func(in *SetClassInput) { in.Choices.Spells[1] = in.Choices.Spells[0] }},
 		{"wrong class cantrip", func(in *SetClassInput) { in.Choices.Cantrips[0] = spells.FireBolt }},
 		{"invalid skill", func(in *SetClassInput) { in.Choices.Skills[0] = skills.Athletics }},
 		{"duplicate skill", func(in *SetClassInput) { in.Choices.Skills[1] = in.Choices.Skills[0] }},

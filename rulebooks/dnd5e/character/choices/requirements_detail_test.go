@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
@@ -16,6 +17,31 @@ type RequirementsDetailTestSuite struct {
 
 func TestRequirementsDetailSuite(t *testing.T) {
 	suite.Run(t, new(RequirementsDetailTestSuite))
+}
+
+func (s *RequirementsDetailTestSuite) TestClericAcquiresAllSupportedFirstLevelSpells() {
+	req := GetClassRequirements(classes.Cleric).Spellbook
+	s.Require().NotNil(req)
+	s.Equal(ClericSpells1, req.ID)
+	s.Equal(1, req.SpellLevel)
+	s.Equal([]spells.Spell{spells.Bane, spells.Command, spells.CureWounds}, req.Options)
+	s.Equal(len(req.Options), req.Count)
+	for _, option := range req.Options {
+		s.True(spells.HasCastProfile(option))
+		s.Require().NotNil(spells.GetData(option))
+		s.Equal(1, spells.GetData(option).Level)
+	}
+}
+
+func (s *RequirementsDetailTestSuite) TestSpellChoicesCannotRepeatAcrossSubmissions() {
+	req := &SpellbookRequirement{ID: ClericSpells1, Count: 2, Options: []spells.Spell{spells.Bane, spells.Command}}
+	subs := NewSubmissions()
+	for i := 0; i < 2; i++ {
+		subs.Add(Submission{Category: shared.ChoiceSpells, Source: shared.SourceClass, ChoiceID: ClericSpells1, Values: []shared.SelectionID{spells.Bane}})
+	}
+	err := NewValidator().validateSpellbook(req, subs)
+	s.Require().NotNil(err)
+	s.Contains(err.Message, "more than once")
 }
 
 // TestBardSpells1OffersOnlySpellsThisBuildCanCast catches widening the
