@@ -366,11 +366,16 @@ func (s *HoldsRefSuite) TestDecodeCommandedReturnsTheAnchorAndTheWord() {
 	s.Equal("skeleton-1", data.MemberID)
 }
 
-// TestDecodeCommandedTakesTheNewestWord — with the caster in the condition's
-// identity, two casters' Commands both stand on one creature: neither removes
-// the other's spell, and the sheet holds two. The compelled turn obeys the
-// word said last, which is the one at the end of the stored order.
-func (s *HoldsRefSuite) TestDecodeCommandedTakesTheNewestWord() {
+// TestDecodeCommandedKeepsTheWordAlreadyInForce — with the caster in the
+// condition's identity, two casters' Commands both stand on one creature:
+// neither removes the other's spell, and the sheet holds two. The compelled
+// turn obeys the word already in force, which is the first in stored order.
+//
+// The same answer the rulebook already gives for a roll: a second Bane on one
+// creature contributes nothing while the first stands, because
+// DescribeSelectedRollContributions takes the oldest provider in the group. A
+// turn is that question asked of a turn rather than a die.
+func (s *HoldsRefSuite) TestDecodeCommandedKeepsTheWordAlreadyInForce() {
 	stored := []json.RawMessage{
 		json.RawMessage(`{"ref":"dnd5e:conditions:commanded","member_id":"skeleton-1",` +
 			`"caster_id":"bard-1","word":"flee","turn_ends_left":1}`),
@@ -382,8 +387,8 @@ func (s *HoldsRefSuite) TestDecodeCommandedTakesTheNewestWord() {
 	data, found, err := DecodeCommanded(stored)
 	s.Require().NoError(err)
 	s.Require().True(found)
-	s.Equal("cleric-2", data.CasterID, "the second caster's word is the one in force")
-	s.Equal("grovel", data.Word)
+	s.Equal("bard-1", data.CasterID, "the caster who got there first keeps the creature")
+	s.Equal("flee", data.Word)
 }
 
 // TestDecodeCommandedReportsACorruptBlobBeforeAGoodOne — an unreadable blob is
@@ -395,6 +400,21 @@ func (s *HoldsRefSuite) TestDecodeCommandedReportsACorruptBlobBeforeAGoodOne() {
 		json.RawMessage(`{"ref":`),
 		json.RawMessage(`{"ref":"dnd5e:conditions:commanded","member_id":"skeleton-1",` +
 			`"caster_id":"bard-1","word":"flee","turn_ends_left":1}`),
+	})
+	s.Require().Error(err)
+}
+
+// TestDecodeCommandedReportsACorruptBlobAfterAGoodOne — the half that keeps
+// the whole-list read honest. Taking the first word in force does not mean
+// stopping at it: an early return would find the compulsion, never look
+// further, and hand a driver a turn off a sheet with an unreadable condition
+// still on it. Every blob is read even though only the first Commanded one is
+// returned.
+func (s *HoldsRefSuite) TestDecodeCommandedReportsACorruptBlobAfterAGoodOne() {
+	_, _, err := DecodeCommanded([]json.RawMessage{
+		json.RawMessage(`{"ref":"dnd5e:conditions:commanded","member_id":"skeleton-1",` +
+			`"caster_id":"bard-1","word":"flee","turn_ends_left":1}`),
+		json.RawMessage(`{"ref":`),
 	})
 	s.Require().Error(err)
 }

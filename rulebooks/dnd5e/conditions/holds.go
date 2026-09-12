@@ -54,7 +54,7 @@ func HoldsRef(stored []json.RawMessage, ref *core.Ref) (bool, error) {
 	return false, nil
 }
 
-// DecodeCommanded returns the data of the NEWEST Commanded blob on a sheet, and
+// DecodeCommanded returns the data of the FIRST Commanded blob on a sheet, and
 // whether there was one.
 //
 // This is the driver's read: the anchor and the word are the two facts the
@@ -63,20 +63,30 @@ func HoldsRef(stored []json.RawMessage, ref *core.Ref) (bool, error) {
 // the only thing a live condition adds is the clock, which is not this reader's
 // question.
 //
-// THE NEWEST, because a sheet may legitimately hold two. The caster is part of
-// this condition's identity (see [CommandedCondition.ConditionAddress]), so two
-// casters' Commands stand side by side rather than displacing each other —
-// nothing removes another caster's spell. One turn cannot obey two words, and
-// the one it obeys is the one said last, which is the last a sheet appended.
-// Both conditions still end on their own clocks; only the driver picks.
+// THE FIRST, because two casters' effects COEXIST and the one already in force
+// stays in force. The caster is part of this condition's identity (see
+// [CommandedCondition.ConditionAddress]), so a second Command stands beside the
+// first rather than displacing it — nothing removes another caster's spell —
+// and a creature already obeying a word does not switch words because somebody
+// else shouted later. Both conditions still end on their own clocks; only the
+// driver picks, and it picks the oldest.
 //
-// Every blob is read, so an unreadable one anywhere on the sheet is reported
-// even when a valid compulsion was found before it. That is the same judgement
-// [HoldsRef] makes: a sheet whose conditions cannot all be read is a sheet
-// nobody should be deciding turns from.
+// THE RULE IS THE RULEBOOK'S, NOT THIS FUNCTION'S.
+// [DescribeSelectedRollContributions] already decides it the same way for a
+// roll: it walks the recipient's conditions in persisted order and takes the
+// oldest applicable provider in each stacking group, which is why a second
+// Bane on one creature contributes nothing while it stands. A turn is the same
+// question asked of a turn instead of a die, and answering it the other way
+// would mean the engine had two rules for "who wins when two spells overlap"
+// depending on what was overlapping.
+//
+// Every blob is still read, so an unreadable one anywhere on the sheet is
+// reported even when a valid compulsion was found before it. That is the same
+// judgement [HoldsRef] makes: a sheet whose conditions cannot all be read is a
+// sheet nobody should be deciding turns from.
 func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, error) {
 	want := refs.Conditions.Commanded().String()
-	var newest *CommandedConditionData
+	var oldest *CommandedConditionData
 	for index, blob := range stored {
 		var named storedRef
 		if err := json.Unmarshal(blob, &named); err != nil {
@@ -89,10 +99,12 @@ func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, e
 		if err := json.Unmarshal(blob, &data); err != nil {
 			return nil, false, rpgerr.Wrapf(err, "failed to read stored commanded condition %d", index)
 		}
-		newest = &data
+		if oldest == nil {
+			oldest = &data
+		}
 	}
-	if newest == nil {
+	if oldest == nil {
 		return nil, false, nil
 	}
-	return newest, true, nil
+	return oldest, true, nil
 }
