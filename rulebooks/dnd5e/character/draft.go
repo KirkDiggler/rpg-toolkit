@@ -2077,6 +2077,8 @@ func (d *Draft) initializeClassResources(char *Character) {
 		}
 
 	case classes.Bard:
+		d.initializeStartingSpellSlots(char)
+
 		// Bardic Inspiration uses - Charisma modifier, minimum one, recovered
 		// on long rest. The minimum is RAW and is what keeps a bard with a
 		// Charisma of 10 from carrying a pool nothing can ever spend.
@@ -2091,18 +2093,8 @@ func (d *Draft) initializeClassResources(char *Character) {
 			ResetType:   coreResources.ResetLongRest,
 		})
 
-		// Seed only the level-1 Bard pool supported by this slice. The class
-		// table remains progression source data; Resources is the one mutable
-		// authority after finalization.
-		classData := classes.ClassData[classes.Bard]
-		if len(classData.SpellSlots) > 0 && classData.SpellSlots[0] > 0 {
-			char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-				ID:          string(resources.SpellSlotLevel1),
-				Maximum:     classData.SpellSlots[0],
-				CharacterID: char.id,
-				ResetType:   coreResources.ResetLongRest,
-			})
-		}
+	case classes.Cleric:
+		d.initializeStartingSpellSlots(char)
 
 	case classes.Monk:
 		// Ki points - equal to monk level, recovered on short or long rest.
@@ -2127,6 +2119,22 @@ func (d *Draft) initializeClassResources(char *Character) {
 		Level:       level,
 	})
 	char.resources[resources.HitDice] = hitDiceResource
+}
+
+// initializeStartingSpellSlots seeds the existing first-level resource from
+// starting class data. Class cases opt into it; higher-level progression,
+// preparation, and Pact Magic are separate responsibilities.
+func (d *Draft) initializeStartingSpellSlots(char *Character) {
+	classData := classes.ClassData[d.class]
+	if len(classData.SpellSlots) == 0 || classData.SpellSlots[0] <= 0 {
+		return
+	}
+	char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          string(resources.SpellSlotLevel1),
+		Maximum:     classData.SpellSlots[0],
+		CharacterID: char.id,
+		ResetType:   coreResources.ResetLongRest,
+	})
 }
 
 // initializeStandardCombatAbilities adds universal combat abilities to the character.

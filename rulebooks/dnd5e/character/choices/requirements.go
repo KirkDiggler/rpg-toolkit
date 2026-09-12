@@ -700,6 +700,10 @@ func getWarlockRequirements() *Requirements {
 }
 
 func getClericRequirements() *Requirements {
+	// Temporary spell access while preparation is deferred. These supported
+	// class spells use the existing choice pipeline; this is not a spellbook
+	// or a domain grant, and does not implement a prepared-spell limit.
+	supported := []spells.Spell{spells.Bane, spells.Command, spells.CureWounds}
 	return &Requirements{
 		Skills: &SkillRequirement{
 			ID:      getSkillChoiceID(classes.Cleric),
@@ -725,8 +729,13 @@ func getClericRequirements() *Requirements {
 			},
 			Label: "Choose 3 cantrips",
 		},
-		// Note: Clerics prepare spells, they don't have a spellbook
-		// Domain spells are automatically prepared and don't count against the limit
+		Spellbook: &SpellbookRequirement{
+			ID:         ClericSpells1,
+			Count:      len(supported),
+			SpellLevel: 1,
+			Options:    supported,
+			Label:      "Select all supported 1st-level Cleric spells",
+		},
 	}
 }
 

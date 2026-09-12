@@ -1,5 +1,23 @@
 # Cleric creation implementation
 
+## Supported spell acquisition follow-up (2026-09-12, PR #1698)
+
+Creation now asks for Bane, Command, and Cure Wounds through the existing
+leveled-spell selection field and persists their refs in KnownSpells. Cleric
+finalization seeds the existing two-slot first-level resource from class data,
+using the same initialization as Bard. Preparation and domain grants remain
+deferred. The shared spell-choice validator rejects repeated picks, including
+duplicates split across submissions (#1662).
+
+Tests cover executable spell profiles, draft and character JSON round trips,
+slot spending/reload/rest, invalid selections, class replacement, and loading
+older finalized sheets without implicit grants. Character/choice tests passed
+locally before the final rest/compatibility assertions; Windows Application
+Control blocked the updated character test executable, so final execution is
+delegated to Linux CI. Vet and dependency hygiene passed. No dependency pins
+changed. New or unfinished drafts need the new spell choice; existing finalized
+characters are not migrated, and API/UI adoption remains a separate release step.
+
 The first contribution to [rpg-project#406](https://github.com/KirkDiggler/rpg-project/issues/406)
 repairs level-one Cleric character creation. [PR #1585](https://github.com/KirkDiggler/rpg-toolkit/pull/1585)
 merged as `b2f3b88d` on 2026-09-08 and is released as D&D `v0.150.0`.
