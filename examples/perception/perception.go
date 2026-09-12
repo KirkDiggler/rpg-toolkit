@@ -152,6 +152,18 @@ func (g *Game) Relation(o testimony.Observer, a, b testimony.TrackID) (belief.Re
 	return g.belie.Relation(o, a, b)
 }
 
+// Identify records what this observer calls a track. The composition satisfies
+// carry.Namer through this pair, because deciding what you call a thing is a
+// game decision and not a storage one.
+func (g *Game) Identify(o testimony.Observer, track testimony.TrackID, as belief.Name, at testimony.Stamp) error {
+	return g.belie.Identify(o, track, as, at)
+}
+
+// NameOf is what this observer calls a track, if they have a word for it.
+func (g *Game) NameOf(o testimony.Observer, track testimony.TrackID) (belief.Name, testimony.Stamp, bool) {
+	return g.belie.NameOf(o, track)
+}
+
 // Claim records a judgment the observer made themselves, rather than one their
 // mind reached. A player merging two contacts by hand comes through here.
 func (g *Game) Claim(o testimony.Observer, a, b testimony.TrackID, rel belief.Relation, at testimony.Stamp) error {

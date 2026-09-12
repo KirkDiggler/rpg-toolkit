@@ -31,10 +31,25 @@
 // therefore costs an observer nothing but the claim — their memories were never
 // at risk from their own inference.
 //
-// # No identity anywhere
+// # Two claims, not one
 //
-// A [Contact] has no id and no name. "These tracks are one thing" and "that
-// thing is Bob" are two different claims, and only the first one is built here.
+// "These tracks are one thing" and "that thing is the goblin chief" are
+// different claims, and a [Contact] still has no id and no name of its own.
+// Naming is [Beliefs.Identify], and it attaches to a TRACK rather than a
+// contact, because tracks are the only stable handles an observer has — a
+// contact is folded fresh from claims every time it is asked for.
+//
+// That has a consequence worth wanting: merging two differently-named tracks
+// leaves an observer holding one thing under two names. It is a contradiction,
+// it is theirs, and nothing resolves it for them.
+//
+// # Why naming exists at all
+//
+// It is what makes a belief portable. A track handle is minted inside one run
+// and means nothing outside it, so a belief can only leave a run if it has been
+// re-keyed onto something that means something elsewhere. You can carry out
+// "there are goblins in the eastern tunnels"; you cannot carry out "something
+// is through that door", because there is nothing to file it under.
 package belief
 
 import (
@@ -105,11 +120,15 @@ type pair struct {
 // Beliefs is every observer's claims. Not safe for concurrent use.
 type Beliefs struct {
 	claims map[testimony.Observer]map[pair]Claim
+	names  map[testimony.Observer]map[testimony.TrackID]Identification
 }
 
 // New builds an empty set of beliefs.
 func New() *Beliefs {
-	return &Beliefs{claims: make(map[testimony.Observer]map[pair]Claim)}
+	return &Beliefs{
+		claims: make(map[testimony.Observer]map[pair]Claim),
+		names:  make(map[testimony.Observer]map[testimony.TrackID]Identification),
+	}
 }
 
 // Assert records an observer's judgment about a pair of tracks, replacing any
@@ -274,4 +293,74 @@ func cmpID(a, b testimony.TrackID) int {
 	default:
 		return 0
 	}
+}
+
+// Name is a handle that means something OUTSIDE the run that produced it: a
+// place, a faction, a creature somebody could speak about later. It is the
+// observer's own word for a thing and carries no guarantee of being right.
+type Name string
+
+// Identification is one observer's claim that a track is of a named thing.
+type Identification struct {
+	Track testimony.TrackID
+	Name  Name
+	At    testimony.Stamp
+}
+
+// Identify records what this observer calls a track, replacing whatever they
+// called it before. An empty name retracts the claim: they no longer have a word
+// for it, which is different from having decided it is nothing.
+func (b *Beliefs) Identify(o testimony.Observer, track testimony.TrackID, as Name, at testimony.Stamp) error {
+	if o == "" {
+		return fmt.Errorf("identify: %w", ErrNoObserver)
+	}
+
+	if track == "" {
+		return fmt.Errorf("identify: %w", ErrNoTrack)
+	}
+
+	if b.names[o] == nil {
+		b.names[o] = make(map[testimony.TrackID]Identification)
+	}
+
+	if as == "" {
+		delete(b.names[o], track)
+
+		return nil
+	}
+
+	b.names[o][track] = Identification{Track: track, Name: as, At: at}
+
+	return nil
+}
+
+// NameOf is what this observer calls a track, and when they decided. The final
+// return is false when they have no word for it — which says nothing about
+// whether the thing has one.
+func (b *Beliefs) NameOf(o testimony.Observer, track testimony.TrackID) (Name, testimony.Stamp, bool) {
+	named, ok := b.names[o][track]
+	if !ok {
+		return "", 0, false
+	}
+
+	return named.Name, named.At, true
+}
+
+// Named is every identification this observer has made, ordered by track.
+func (b *Beliefs) Named(o testimony.Observer) []Identification {
+	held := b.names[o]
+	if len(held) == 0 {
+		return nil
+	}
+
+	out := make([]Identification, 0, len(held))
+	for _, named := range held {
+		out = append(out, named)
+	}
+
+	slices.SortFunc(out, func(x, y Identification) int {
+		return cmpID(x.Track, y.Track)
+	})
+
+	return out
 }

@@ -22,7 +22,10 @@ reconcile            merge / rule-out. sees ONLY testimony, which is the
     |                only reason it can be wrong.
     v
 belief               the observer's own claims. contacts are folded from
-                     claims, never stored.
+    |                claims, never stored.
+    v
+carry                the distillation: what leaves a finished run, re-keyed
+                     onto a name, landing with a player as a ghost.
 ```
 
 The arrows are the design. Nothing reads truth to answer a question about an
@@ -41,8 +44,9 @@ nothing here has an opinion about whether a memory still holds.
 state is *unmerged*, so "never merge two things the person hasn't merged" is not
 a rule anybody enforces — it is what happens when nobody acts.
 
-**Identification** — *that contact is Bob*. Deliberately not built. No use case
-has paid for it.
+**Identification** — *that contact is the goblin chief*. It attaches to a track,
+not a contact, because tracks are the only stable handles; a contact is folded
+fresh every time it is asked for. **Carry-out is what pays for it** — see below.
 
 ## What the tests prove
 
@@ -91,9 +95,67 @@ Six things the design did not know before there was code:
    the merge happens with nobody deciding.
 6. **Ruling out and ruling in are not symmetric.** Woodwise can say "those are
    not goblin tracks" and cannot say "those are these goblins."
+7. **Carry-out is what pays for identification**, and an unnameable contact
+   simply cannot leave a run.
+8. **The distillation must fail closed on a tie.** Two tracks under one name,
+   equally fresh, have no answer, and the arbitrary one is worse than none.
+
+## Leaving a run
+
+A dungeon run is ephemeral and so is the party, so raw testimony belongs to the
+run — an append-only log keyed by handles the projection minted inside it. What
+leaves is a conclusion, not the evidence, and it goes to a **player**.
+
+**You can only carry out what you can name.** A track handle means nothing
+outside the run that minted it — that opacity is what stops observers merging
+channels by string comparison — so a belief travels only once it has been
+re-keyed onto a name somebody could speak about later. *"There are goblins in
+the eastern tunnels"* travels. *"Something is through that door"* does not, and
+`Result.Unnamed` says so out loud. This is the use case that pays for
+identification; before it, naming had none.
+
+**It arrives as a ghost**, through the discrete `Report` verb: held, never
+current — something you know and are not currently perceiving. The store already
+had that state, so a carried memory needs no new one, and it stays exactly as
+falsifiable as it was inside. Carrying a lie out carries the lie.
+
+**A run has two exports, and they are not the same mechanism.** Facts reach the
+world journal through a verb, with an actor and an audience, because you cannot
+be wrong about what happened. Beliefs reach a player through a naming and a
+distillation, because you can absolutely be wrong about what you learned. Same
+falsifiability line, doing real work.
+
+| test | proves |
+|---|---|
+| `TestTheDistillation` | a named conclusion travels on both channels; the run-local handles do not |
+| `TestTheUnnamedCannotTravel` | naming is the gate, and the refusal is reported |
+| `TestCarryingDoesNotLaunderALie` | the charmed belief crosses intact while truth still holds a sword |
+| `TestTheCollapseNamesItsLoser` | the freshest wins and the loser is named |
+| `TestAnUnresolvableCollapseCarriesNothing` | a tie carries **nothing** rather than guessing |
+| `TestACarriedBeliefOnlyRefreshesByCarryingAgain` | perceiving again does not touch what a player holds |
+
+`carry` is the one place folding is legitimate — deciding what you took away is
+an authored act, not a read. It still refuses a tie: two tracks under one name,
+equally fresh, would have to be separated by handle order, and that would be the
+package inventing a conclusion on the observer's behalf.
+
+## What leaving a run also surfaced
+
+**It needs a clock that outlives the run.** A carried belief keeps its
+`Confirmed` stamp so staleness stays measurable afterwards — but only if that
+number still means something. Re-stamping to the moment of leaving would make
+nine-day-old knowledge look fresh, which is the exact staleness lie the two
+stamps exist to kill. Carrying the stamp out unchanged is the honest half; the
+other half is a clock above the run, and there isn't one.
+
+**Carry-in is unbuilt.** A carried belief is only ever refreshed by carrying
+again — perceiving the same goblins in a later run mints new run-local handles
+and touches nothing a player holds. Entering a dungeon *already believing*
+something is the inverse move and the obvious next gap.
 
 ## Deliberately absent
 
-Identification. Persistence. Forgetting or compaction — a ghost is immortal here,
-which is probably correct and definitely unpaid-for. Any dependency on `world`,
-`encounter`, `spatial`, or `core`.
+Persistence (`ToData`/`Load…`). Forgetting or compaction — a ghost is immortal
+here, which is probably correct and definitely unpaid-for. Any dependency on
+`world`, `encounter`, `spatial`, or `core` — the next move is testing the fit
+against real `world`, and that is when the testify-only property gets spent.

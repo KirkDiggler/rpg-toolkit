@@ -193,38 +193,11 @@ func New() *Store {
 // Validation happens before any mutation, so a rejected percept leaves the
 // store untouched.
 func (s *Store) Surveil(p Percept) (Delta, error) {
-	if p.Observer == "" {
-		return Delta{}, fmt.Errorf("surveil: %w", ErrNoObserver)
-	}
-
-	if p.Channel == "" {
-		return Delta{}, fmt.Errorf("surveil: %w", ErrNoChannel)
+	if err := s.check("surveil", p.Observer, p.Channel, p.Reports, p.At); err != nil {
+		return Delta{}, err
 	}
 
 	held := s.tracks[p.Observer]
-
-	for _, r := range p.Reports {
-		if r.Track == "" {
-			return Delta{}, fmt.Errorf("surveil: %w", ErrNoTrack)
-		}
-
-		if r.ChangeKey == "" {
-			return Delta{}, fmt.Errorf("surveil %s: %w", r.Track, ErrNoChangeKey)
-		}
-
-		existing, ok := held[r.Track]
-		if !ok {
-			continue
-		}
-
-		if existing.channel != p.Channel {
-			return Delta{}, fmt.Errorf("surveil %s: %w: %s", r.Track, ErrChannelMismatch, existing.channel)
-		}
-
-		if latest := existing.entries[len(existing.entries)-1]; p.At < latest.Confirmed {
-			return Delta{}, fmt.Errorf("surveil %s at %d: %w: %d", r.Track, p.At, ErrStampRegress, latest.Confirmed)
-		}
-	}
 
 	var out Delta
 
@@ -305,6 +278,120 @@ func (s *Store) Surveil(p Percept) (Delta, error) {
 		if wasGhost {
 			out.Reacquired = append(out.Reacquired, r.Track)
 		}
+	}
+
+	return out, nil
+}
+
+// check validates a landing before anything mutates, so a rejected delivery
+// leaves the store exactly as it was.
+func (s *Store) check(verb string, o Observer, channel Channel, reports []Report, at Stamp) error {
+	if o == "" {
+		return fmt.Errorf("%s: %w", verb, ErrNoObserver)
+	}
+
+	if channel == "" {
+		return fmt.Errorf("%s: %w", verb, ErrNoChannel)
+	}
+
+	held := s.tracks[o]
+
+	for _, r := range reports {
+		if r.Track == "" {
+			return fmt.Errorf("%s: %w", verb, ErrNoTrack)
+		}
+
+		if r.ChangeKey == "" {
+			return fmt.Errorf("%s %s: %w", verb, r.Track, ErrNoChangeKey)
+		}
+
+		existing, ok := held[r.Track]
+		if !ok {
+			continue
+		}
+
+		if existing.channel != channel {
+			return fmt.Errorf("%s %s: %w: %s", verb, r.Track, ErrChannelMismatch, existing.channel)
+		}
+
+		if latest := existing.entries[len(existing.entries)-1]; at < latest.Confirmed {
+			return fmt.Errorf("%s %s at %d: %w: %d", verb, r.Track, at, ErrStampRegress, latest.Confirmed)
+		}
+	}
+
+	return nil
+}
+
+// Recollection is discrete testimony: what somebody says they know, rather than
+// what a channel is currently delivering.
+type Recollection struct {
+	Observer Observer
+	Channel  Channel
+	Reports  []Report
+	At       Stamp
+}
+
+// Report lands discrete testimony as HELD and never as current.
+//
+// It is the verb for knowledge that arrives without a channel sustaining it: a
+// rumour, a warning, a map somebody drew — and a belief carried out of a run
+// that is over. All of those are things you know and are not currently
+// perceiving, which is precisely a ghost, so they arrive as one. No pass is
+// implied, so nothing fades: reporting one thing says nothing about any other.
+func (s *Store) Report(in Recollection) (Delta, error) {
+	if err := s.check("report", in.Observer, in.Channel, in.Reports, in.At); err != nil {
+		return Delta{}, err
+	}
+
+	if len(in.Reports) == 0 {
+		return Delta{}, nil
+	}
+
+	if s.tracks[in.Observer] == nil {
+		s.tracks[in.Observer] = make(map[TrackID]*track)
+	}
+
+	held := s.tracks[in.Observer]
+
+	var out Delta
+
+	for _, r := range in.Reports {
+		t, exists := held[r.Track]
+		if !exists {
+			held[r.Track] = &track{
+				channel: in.Channel,
+				entries: []Entry{{
+					Payload:   bytesCopy(r.Payload),
+					ChangeKey: r.ChangeKey,
+					Locus:     r.Locus,
+					Observed:  in.At,
+					Confirmed: in.At,
+				}},
+				current: false,
+			}
+			out.FirstContact = append(out.FirstContact, r.Track)
+
+			continue
+		}
+
+		// Currency is left exactly as it was: being told about something does
+		// not mean you can see it, and it does not mean you have stopped.
+		last := len(t.entries) - 1
+		if t.entries[last].ChangeKey == r.ChangeKey && t.entries[last].Locus == r.Locus {
+			t.entries[last].Confirmed = in.At
+			out.Confirmed = append(out.Confirmed, r.Track)
+
+			continue
+		}
+
+		t.entries = append(t.entries, Entry{
+			Payload:   bytesCopy(r.Payload),
+			ChangeKey: r.ChangeKey,
+			Locus:     r.Locus,
+			Observed:  in.At,
+			Confirmed: in.At,
+		})
+		out.Changed = append(out.Changed, r.Track)
 	}
 
 	return out, nil
