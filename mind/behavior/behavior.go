@@ -329,6 +329,12 @@ type DecideOutput struct {
 // is where the mind's ranking decides between a live target ahead and a
 // ghost behind, and the ladder does not second-guess it.
 //
+// Every rung skips a contact with no place. Known to be there, not known
+// where, is not nearer than anything and not within reach of anything, and
+// an intent to step away from it could not be walked: a flee the stage
+// refuses would spend the turn on nothing while a placed enemy in reach went
+// unanswered.
+//
 // A fence forbids only approach (R8). A frightened archer with the source in
 // reach still shoots (rung 1); one that cannot reach it will not walk closer
 // (rung 2) and flees instead (rung 3). That is the frightened condition's
@@ -351,7 +357,7 @@ func Decide(in *DecideInput) (*DecideOutput, error) {
 
 	if canStep {
 		for _, c := range ranked.Ranked {
-			if !c.Named || !c.Creature() {
+			if !c.Named || !c.Creature() || c.Where() == "" {
 				continue
 			}
 
@@ -362,7 +368,7 @@ func Decide(in *DecideInput) (*DecideOutput, error) {
 	}
 
 	for _, c := range ranked.Ranked {
-		if !c.Named || !c.Creature() {
+		if !c.Named || !c.Creature() || c.Where() == "" {
 			continue
 		}
 

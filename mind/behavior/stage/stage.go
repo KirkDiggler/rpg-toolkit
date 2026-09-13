@@ -16,11 +16,19 @@
 package stage
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
+
+// ErrNoActor reports a deed with nobody doing it. The actor keys the subject
+// the deed is held under; without one every actorless deed would land on the
+// same subject and overwrite the last. A deed nobody did is a wiring fault.
+var ErrNoActor = errors.New("stage: a deed has no actor")
 
 // Truth is the one question a swing may ask of the world: is that subject
 // really there. It is the caller's, the way perception's Reach is — the
@@ -178,6 +186,7 @@ type LandInput struct {
 }
 
 // Land tells every witness what they saw, in their own terms (R9).
+// ErrNoActor if the deed has no actor.
 //
 // The deed's actor and target are named to each witness only if the witness
 // currently holds them on sight: a witness who could not see the healer
@@ -187,6 +196,10 @@ type LandInput struct {
 // witness's mind like everything else, and the store cannot tell it from a
 // lie. Nothing here writes to anybody's sight holding.
 func Land(in *LandInput) error {
+	if in.Deed.Actor == "" {
+		return fmt.Errorf("land: %w", ErrNoActor)
+	}
+
 	for _, witness := range in.Witnesses {
 		held, err := in.Game.Held(witness)
 		if err != nil {

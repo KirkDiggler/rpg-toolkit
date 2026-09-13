@@ -54,6 +54,11 @@ like any other, unpaid). Each arrives with the use case that pays for it.
   current creature holding if there is one, else the first — and the next
   situation that bundles that subject finds the word already there. A
   contact is folded fresh; the bearer is what a name has to hold on to.
+  When a mind later bundles two subjects that each carry a name, the
+  contact wears the name of the first in subject order and the mind is not
+  asked again; the other name stays recorded and unreachable until the
+  bundle comes apart. Deterministic, unexercised, and open to a use case
+  that merges two named contacts.
 - **R5** — You cannot aim at what you have not named. `Intent.Target` is a
   `Name`, never a subject. A contact the mind gives no word to cannot be
   attacked, walked toward, or fled.
@@ -72,7 +77,9 @@ like any other, unpaid). Each arrives with the use case that pays for it.
      `Away`
   4. nothing to act on → `Pass`
 
-  Live beats remembered: a ghost is never attacked and never fled. Rung 2 is
+  Every rung skips a contact with no place: not known where is not nearer
+  than anything, not within reach of anything, and not something a step
+  could be walked from. Live beats remembered: a ghost is never attacked and never fled. Rung 2 is
   where the mind's ranking decides between a live target ahead and a ghost
   behind, and the ladder does not second-guess it.
 - **R8** — A fence forbids approach and nothing else. The frightened
@@ -82,11 +89,15 @@ like any other, unpaid). Each arrives with the use case that pays for it.
   never offered a fence as a choice.
 - **R9** — A deed lands on its own channel through perception's `Report`,
   under a subject qualified by channel (`deed.Subject(actor)`), one per
-  figure the witness saw act. It is said in each witness's terms: actor and
-  target are named only if the witness currently holds them on sight, so a
-  witness who could not see the healer learns a heal happened and not who
-  did it. A deed is never current. Only a mind's `Judge` attaches it to a
-  figure. Nothing is written to anybody's sight holding.
+  figure the witness saw act, so a witness holds an actor's latest deed
+  and nothing before it. The payload is said in each witness's terms: actor
+  and target are named only if the witness currently holds them on sight.
+  The subject is not — it carries the actor's identity because attaching a
+  deed is the claim that `deeds|X` and `X` are one thing, and a mind cannot
+  make that claim without the `X`; what the payload vouches for and what the
+  store files under are different questions. A deed is never current. Only
+  a mind's `Judge` attaches it to a figure. Nothing is written to anybody's
+  sight holding. A deed with no actor is refused (`stage.ErrNoActor`).
 - **R10** — A walk resolves against belief; a swing resolves against truth.
   `Recall` reads the situation only, so a monster searching the wrong room
   is correct behaviour and never leaks a position. `Aim` asks `Truth` which
@@ -101,7 +112,8 @@ like any other, unpaid). Each arrives with the use case that pays for it.
 - **R12** — `Self` is handed as values: `Place` for where the actor stands,
   `Connect` for its dungeon's doors, `Sheet` for what it is armed with,
   `Frighten` for what it may not approach. Nothing in behaviour reads the
-  world.
+  world, and nothing a caller does to a `Situation` reaches the game: what
+  a situation reports is copied out, never aliased.
 - **R13** — Errors wrap exactly one sentinel and callers dispatch with
   `errors.Is`: `ErrNoReader` from `New`; `ErrNoMind` and `ErrNoSelf` from
   `Situation` and `Turn`. An actor nobody placed fails loudly rather than
@@ -173,6 +185,7 @@ the stage to say a deed in a witness's terms.
 | `ErrNoReader` | `New` without a `Reader` | `New` |
 | `ErrNoMind` | the actor was never given a mind | `Situation`, `Turn` |
 | `ErrNoSelf` | the actor was never placed | `Situation`, `Turn` |
+| `stage.ErrNoActor` | a deed with no actor | `stage.Land` |
 
 Perception's own errors pass through `Observe`, `Report`, and `Held`
 unwrapped; they are perception's vocabulary and a caller already imports it
@@ -195,6 +208,9 @@ asks an actor what it means to do and where that really lands.
 | 5 | The ghost worth walking to — both walk to where they last saw him; the captain goes back to its post, the zombie stands there for as long as anyone ticks | R6, R7 rung 2 |
 | 5b | The ghost not worth walking to — patience is the captain's, and the zombie has none | R7 |
 | — | Wiring faults fail loudly | R13 |
+| — | A creature of unknown place is never fled | R7 |
+| — | A situation does not alias the game | R12 |
+| — | A deed with no actor is refused | R9 |
 
 The worked minds — a zombie, a captain, an archer — and the content
 vocabulary they speak live in the module's tests. They read a payload

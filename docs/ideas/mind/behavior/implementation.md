@@ -93,6 +93,33 @@ person. No use case has, and the design says so.
   what "never current" means, and `Land` is a loop over witnesses and
   nothing else.
 
+## What the independent review changed
+
+Reviewed at `5fcfa3d1` by a session that did not implement the change,
+with every gate and two mutants reproduced there. Every finding was
+verified against the code before it was answered; each thread on the PR
+records the reasoning.
+
+- **Accepted, fixed.** `Self.Adjacent` and `Self.Fences` aliased the game's
+  own slices; a consumer sorting a situation would have rewritten the
+  dungeon. Cloned, and R12 now says a situation is copied out. Rung 0 fled
+  a creature of unknown place when `Keep` exceeded the grain's ceiling;
+  every rung now skips the unplaced, as rungs 2 and 3 already did. `Deed`'s
+  doc described the per-witness payload and not `Land`'s input, and an
+  empty input actor would have collided every actorless deed on one
+  subject; the doc says both readings and `Land` refuses an empty actor.
+  Each has a proof.
+- **Accepted, recorded.** The R9 claim that a witness learns "a heal
+  happened and not who did it" held only against payload-readers: the
+  subject `deeds|cleric` carries the actor because attachment needs it. R9
+  now says which question the payload answers and which the subject does.
+  Last deed wins per actor, and a merged contact wears the first name in
+  subject order — both are consequences of the chosen shapes, stated in the
+  deed doc and R4, and left for the use case that pays to change them.
+- **Declined.** Nothing. Every finding was correct as stated; the only
+  judgment was fix versus record, and the line was whether a use case
+  already paid for the mechanism.
+
 ## Left for a later rung
 
 - Persistence: names and fears alongside perception's `Data`. The

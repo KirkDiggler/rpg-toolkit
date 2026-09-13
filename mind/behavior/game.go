@@ -244,7 +244,9 @@ type SituationInput struct {
 
 // Situation assembles everything one actor has to go on: reads every
 // holding, asks the mind which are one thing, folds them, and names as it
-// goes.
+// goes. Everything in it is the caller's to keep: the situation copies what
+// it reports, so nothing a consumer does to it reaches the game's own
+// topology or sheets.
 //
 // A contact the actor has no word for is offered to its mind. A name the
 // mind gives is recorded on the contact's bearer and the next situation
@@ -284,8 +286,8 @@ func (g *Game) Situation(in *SituationInput) (*Situation, error) {
 		Self: Self{
 			Sheet:    g.sheets[in.Actor],
 			Where:    where,
-			Adjacent: g.doors[where],
-			Fences:   g.fears[in.Actor],
+			Adjacent: slices.Clone(g.doors[where]),
+			Fences:   slices.Clone(g.fears[in.Actor]),
 		},
 		At: in.At,
 	}, nil

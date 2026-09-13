@@ -267,3 +267,15 @@ type archerMind struct{ zombieMind }
 func (archerMind) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
 	return &behavior.KeepOutput{Regions: 1}, nil
 }
+
+// keeps is any mind with a different Keep: the one knob the ladder reads
+// that the worked minds set to 0 or 1.
+type keeps struct {
+	behavior.Mind
+	regions int
+}
+
+// Keep is whatever the test says.
+func (k keeps) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
+	return &behavior.KeepOutput{Regions: k.regions}, nil
+}

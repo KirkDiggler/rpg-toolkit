@@ -9,8 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/stage"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
 
 // The use cases in docs/ideas/mind/behavior/design.md, in order, each
@@ -270,4 +273,59 @@ func TestWiringFaultsFailLoudly(t *testing.T) {
 
 	_, err = g.Turn(&behavior.TurnInput{Actor: zombie})
 	require.ErrorIs(t, err, behavior.ErrNoSelf)
+}
+
+// A creature of unknown place is never fled and never attacked. Known to be
+// there, not known where, is not nearer than anything: a mind that keeps
+// more distance than the grain can measure must not spend its turn fleeing
+// something the stage could not walk away from.
+func TestACreatureOfUnknownPlaceIsNeverFled(t *testing.T) {
+	skittish := keeps{zombieMind{}, 3}
+	unplaced := behavior.Contact{
+		Holdings: []behavior.Holding{{
+			Holding: perception.Holding{Subject: knight, CurrentVia: []perception.Channel{sight}},
+			Reading: behavior.Reading{Creature: true},
+		}},
+		Name: "thing knight", Named: true, Bearer: knight,
+	}
+
+	out, err := behavior.Decide(&behavior.DecideInput{
+		Situation: behavior.Situation{
+			Contacts: []behavior.Contact{unplaced},
+			Self:     behavior.Self{Where: room, Adjacent: []string{corridor}},
+		},
+		Mind: skittish,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, behavior.Pass, out.Intent.Verb, "nothing it can act on")
+}
+
+// A situation is the caller's to keep. Sorting or growing what it reports
+// must not reach the game's own dungeon.
+func TestASituationDoesNotAliasTheGame(t *testing.T) {
+	s := newScene(t)
+	s.doors(door(room, corridor), door(room, hall))
+	s.mind(zombie, zombieMind{}, room)
+	s.frightens(zombie, knight)
+
+	first := s.turn(zombie).out.Situation.Self
+	first.Adjacent[0], first.Adjacent[1] = first.Adjacent[1], first.Adjacent[0]
+	first.Fences[0] = mage
+
+	second := s.turn(zombie).out.Situation.Self
+	assert.Equal(t, []string{corridor, hall}, second.Adjacent, "the dungeon is what it was")
+	assert.Equal(t, []core.EntityID{knight}, second.Fences, "and so is the fear")
+}
+
+// A deed nobody did is a wiring fault, not a rumour.
+func TestADeedWithNoActorIsRefused(t *testing.T) {
+	s := newScene(t)
+	s.mind(zombie, zombieMind{}, room)
+
+	err := stage.Land(&stage.LandInput{
+		Game:      s.g,
+		Deed:      deed.Deed{Verb: heal, Where: room},
+		Witnesses: []core.EntityID{zombie},
+	})
+	require.ErrorIs(t, err, stage.ErrNoActor)
 }
