@@ -259,7 +259,10 @@ func (s *ClericFinalizeSuite) TestStabilizationRejectsIneligibleRecipientsWithou
 			out, err := char.Stabilize()
 			s.Require().Error(err)
 			s.Nil(out)
-			s.Equal(before, char.ToData())
+			after := char.ToData()
+			// ToData stamps serialization time even when no game state changed.
+			after.UpdatedAt = before.UpdatedAt
+			s.Equal(before, after)
 			s.False(char.IsDirty())
 		})
 	}
