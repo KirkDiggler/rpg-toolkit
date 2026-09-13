@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -140,8 +141,8 @@ func mindedView(t *testing.T, at uint64, extra ...session.Holding) session.Monst
 
 	bow, blade := mindedBow.String(), mindedBlade.String()
 	holdings := []session.Holding{
-		mindedSighting(t, "alice", mindedAliceAt, at),
-		mindedSighting(t, "bob", mindedBobAt, at),
+		mindedSighting(t, "alice", mindedAliceAt, at, weapons.LightCrossbow),
+		mindedSighting(t, "bob", mindedBobAt, at, weapons.Longsword),
 	}
 	holdings = append(holdings, extra...)
 
@@ -174,12 +175,15 @@ func mindedView(t *testing.T, at uint64, extra ...session.Holding) session.Monst
 	}
 }
 
-// mindedSighting is sustained sight testimony, the shape a pass leaves behind.
-func mindedSighting(t *testing.T, who string, at spatial.Position, when uint64) session.Holding {
+// mindedSighting is sustained sight testimony, the shape a pass leaves behind:
+// where the figure was, and what was seen in their hands, which is what a
+// grudge turns on now that it is a weapon rule first.
+func mindedSighting(t *testing.T, who string, at spatial.Position, when uint64, mainHand string) session.Holding {
 	t.Helper()
 
 	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
 		State: encounter.LocationKnown, Position: at,
+		Equipment: &encounter.HeldEquipment{MainHand: mainHand},
 	})
 	require.NoError(t, err)
 
