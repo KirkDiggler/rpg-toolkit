@@ -243,6 +243,20 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
 var castContent = map[Spell]castProfileBuilder{
+	Bless: {
+		name:    "Bless",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		cost:    slotCost(resources.SpellSlotLevel1),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 30, Target: actions.CastTargetKnownCreature, MinTargets: 1, MaxTargets: 3,
+				Effects: []actions.CastEffect{{
+					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Blessed(), CounterpartKey: "source_id",
+				}},
+				Concentration: &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true},
+			}
+		},
+	},
 	HealingWord: {
 		name:    "Healing Word",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},

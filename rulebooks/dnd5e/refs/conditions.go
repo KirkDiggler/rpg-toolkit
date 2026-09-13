@@ -50,6 +50,7 @@ var (
 	conditionTrueStrike     = &core.Ref{Module: Module, Type: TypeConditions, ID: "true_strike"}
 	conditionViciousMockery = &core.Ref{Module: Module, Type: TypeConditions, ID: "vicious_mockery"}
 	conditionBaned          = &core.Ref{Module: Module, Type: TypeConditions, ID: "baned"}
+	conditionBlessed        = &core.Ref{Module: Module, Type: TypeConditions, ID: "blessed"}
 	conditionBladeWard      = &core.Ref{Module: Module, Type: TypeConditions, ID: "blade_ward"}
 
 	// Command (rpg-project ideas/spells/command): the compulsion the spell
@@ -162,6 +163,9 @@ func (n conditionsNS) ViciousMockery() *core.Ref { return conditionViciousMocker
 
 // Baned returns the ref for the source-qualified penalty imposed by Bane.
 func (n conditionsNS) Baned() *core.Ref { return conditionBaned }
+
+// Blessed returns the ref for the source-qualified bonus imposed by Bless.
+func (n conditionsNS) Blessed() *core.Ref { return conditionBlessed }
 
 // BladeWard returns the ref for the BladeWardCondition, applied to the caster
 // by the Blade Ward cantrip and halving incoming weapon damage.

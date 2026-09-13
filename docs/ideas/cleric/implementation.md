@@ -252,3 +252,24 @@ unsupported entries remain rejected. Existing sheets receive no implicit grants.
 
 Full root-module and Linux CI validation evidence is recorded on the acquisition
 PR. This is a root-module-only change with no dependency pin updates.
+
+### Bless root provider
+
+Blessed is a source-qualified condition registered for loading, display, and
+long-rest cleanup. It describes an unresolved additive d4 for attack and save
+rolls in its own non-stacking group. Existing selection retains one Bless per
+recipient while allowing Bane to contribute independently. Existing concentration
+owners hold and remove the exact per-caster child addresses.
+
+The level-one content declares one action/slot, one-to-three known creatures at
+30 feet, and ten subsequent concentration turn ends. The new target contract
+records the user's selected-self/dying/no-current-sight behavior for the next
+consumer. Root declares that contract; resolution and session still need to
+implement it and acquisition remains unchanged.
+
+Focused provider tests pass for canonical registration/round-trip/display,
+malformed source refusal, attacks/saves only, non-stacking and Bane coexistence,
+generic long-rest registry cleanup, a real character death save after JSON
+reload, and one concentration owner ending without removing another caster's
+Bless. Content validation, classification, cardinality, and clone isolation are
+covered. Full-module and CI evidence is recorded on the provider PR.
