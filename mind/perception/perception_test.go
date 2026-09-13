@@ -146,7 +146,7 @@ func (s *PerceptionSuite) TestOutOfReachFadesButHoldingSurvives() {
 	s.Equal([]core.EntityID{goblin}, deltas[alice].Faded)
 
 	h := s.holdingOn(goblin)
-	s.False(h.Current)
+	s.False(h.CurrentOn(perception.Sight))
 	s.Equal(payload, h.Payload)
 }
 
@@ -173,7 +173,7 @@ func (s *PerceptionSuite) TestReacquiredKeepsOriginalObserved() {
 	s.Empty(deltas[alice].Changed, "same payload: reacquired, not changed")
 
 	h := s.holdingOn(goblin)
-	s.True(h.Current)
+	s.True(h.CurrentOn(perception.Sight))
 	s.Equal(uint64(1), h.Observed, "original first-contact timestamp survives reacquisition")
 	s.Equal(uint64(3), h.Confirmed)
 }
@@ -217,7 +217,7 @@ func (s *PerceptionSuite) TestObserverReachingNothingFadesEverything() {
 	s.Equal([]core.EntityID{goblin}, deltas[alice].Faded)
 
 	h := s.holdingOn(goblin)
-	s.False(h.Current)
+	s.False(h.CurrentOn(perception.Sight))
 }
 
 // Case 8: observer absent from Observers → its holdings are untouched,
@@ -239,7 +239,7 @@ func (s *PerceptionSuite) TestObserverAbsentFromObserversIsUntouched() {
 	s.NotContains(deltas, alice, "alice was not in Observers this pass")
 
 	h := s.holdingOn(goblin)
-	s.True(h.Current, "untouched: still current from pass 1")
+	s.True(h.CurrentOn(perception.Sight), "untouched: still current from pass 1")
 	s.Equal(uint64(1), h.Confirmed, "untouched: pass 2 never re-confirmed alice's holding")
 }
 
@@ -429,8 +429,8 @@ func (s *PerceptionSuite) TestToDataLoadRoundTrip() {
 
 	beforeGoblin := s.holdingOn(goblin)
 	beforeSpider := s.holdingOn(spider)
-	s.True(beforeGoblin.Current)
-	s.False(beforeSpider.Current)
+	s.True(beforeGoblin.CurrentOn(perception.Sight))
+	s.False(beforeSpider.CurrentOn(perception.Sight))
 
 	loaded, err := perception.Load(s.p.ToData())
 	s.Require().NoError(err)
@@ -504,4 +504,230 @@ func (s *PerceptionSuite) TestHeldAndOnValidateEmptyIDs() {
 
 	_, err = s.p.On("alice", "")
 	s.Require().ErrorIs(err, perception.ErrNoSubject)
+}
+
+// --- Report: discrete testimony -------------------------------------------
+
+// deeds and hearing are test channels. Only Sight is predeclared; the
+// vocabulary is open, which is the point of these.
+const (
+	deeds   = perception.Channel("deeds")
+	hearing = perception.Channel("hearing")
+)
+
+// report lands discrete testimony on alice, the observer every holding
+// assertion in this file is written from, on the deeds channel. Tests that
+// need another channel call Report directly.
+func (s *PerceptionSuite) report(at uint64, reports []perception.Presence) *perception.ReportOutput {
+	out, err := s.p.Report(perception.ReportInput{
+		Observer: "alice", Channel: deeds, Reports: reports, At: at,
+	})
+	s.Require().NoError(err)
+	return out
+}
+
+// A reported subject is held and sustained by nothing. This is the whole
+// difference from Observe: being told something is not perceiving it, so
+// there is no channel delivering it and CurrentOn is false everywhere —
+// including on the very channel that reported it.
+func (s *PerceptionSuite) TestReportLandsHeldAndSustainsNothing() {
+	out := s.report(1, []perception.Presence{{ID: "heal-1", Payload: []byte("cleric healed knight")}})
+
+	s.Require().Len(out.FirstContact, 1)
+	s.Equal(core.EntityID("heal-1"), out.FirstContact[0].ID)
+	s.Empty(out.Updated, "a brand new subject is first contact, not an update")
+	s.Empty(out.Changed, "first contact is never Changed")
+
+	h := s.holdingOn("heal-1")
+	s.Equal([]byte("cleric healed knight"), h.Payload)
+	s.Equal(deeds, h.Channel, "provenance is the channel that reported it")
+	s.Empty(h.CurrentVia, "discrete testimony sustains nothing")
+	s.False(h.CurrentOn(deeds), "not even the reporting channel is delivering it")
+	s.False(h.CurrentOn(perception.Sight))
+	s.Equal(uint64(1), h.Observed)
+	s.Equal(uint64(1), h.Confirmed)
+}
+
+// A later complete sight pass must not retire a reported holding. A Pass is
+// a complete statement about ONE channel, and a deed was never on it — so
+// omission from the sight percept says nothing about the deed. Without this,
+// every deed would arrive and then immediately announce itself as Faded.
+func (s *PerceptionSuite) TestReportedSubjectIsNotFadedByALaterPass() {
+	s.report(1, []perception.Presence{{ID: "heal-1", Payload: []byte("a heal happened")}})
+
+	deltas, err := s.observe(2, []perception.Presence{{ID: "goblin", Payload: []byte("here")}},
+		[]core.EntityID{"alice"}, reachAll{})
+	s.Require().NoError(err)
+
+	s.NotContains(deltas["alice"].Faded, core.EntityID("heal-1"),
+		"a sight pass cannot retire testimony that was never sight")
+	s.Equal([]byte("a heal happened"), s.holdingOn("heal-1").Payload, "and it is still held")
+}
+
+// The defect a Current bool could not express, and the reason v0.2.0 exists.
+//
+// Alice currently SEES the goblin. A deed is then reported about that same
+// goblin on another channel. intel moves Channel to the reporting channel
+// and deliberately leaves CurrentVia alone — a rumour is not a sighting — so
+// provenance and currency now disagree. A consumer holding only a bool plus
+// Channel would read this as "current via deeds": current on a channel that
+// delivers nothing. CurrentVia says what is actually true.
+func (s *PerceptionSuite) TestReportMovesProvenanceWithoutSustainingItsChannel() {
+	_, err := s.observe(1, []perception.Presence{{ID: "goblin", Payload: []byte("standing")}},
+		[]core.EntityID{"alice"}, reachAll{})
+	s.Require().NoError(err)
+	s.Require().True(s.holdingOn("goblin").CurrentOn(perception.Sight))
+
+	s.report(2, []perception.Presence{{ID: "goblin", Payload: []byte("it killed your brother")}})
+
+	h := s.holdingOn("goblin")
+	s.Equal(deeds, h.Channel, "provenance moved to the latest landing")
+	s.Equal([]perception.Channel{perception.Sight}, h.CurrentVia, "but sight alone is still delivering")
+	s.False(h.CurrentOn(deeds), "the reporting channel sustains nothing, and the pair now disagree")
+	s.True(h.CurrentOn(perception.Sight))
+}
+
+// One payload per (observer, subject): a report about a subject already held
+// on another channel OVERWRITES rather than merges, and is not refused. The
+// store has no second slot, and deciding that these are one thing was the
+// caller's doing the moment it reused the id (R11). Stated as a test because
+// it is the cost of R11 going unheeded, and silent costs should be visible.
+func (s *PerceptionSuite) TestReportOverwritesAnUnqualifiedSubject() {
+	_, err := s.observe(1, []perception.Presence{{ID: "goblin", Payload: []byte("standing")}},
+		[]core.EntityID{"alice"}, reachAll{})
+	s.Require().NoError(err)
+
+	out := s.report(2, []perception.Presence{{ID: "goblin", Payload: []byte("a deed")}})
+
+	s.Equal([]core.EntityID{"goblin"}, out.Updated)
+	s.Equal([]core.EntityID{"goblin"}, out.Changed)
+	s.Equal([]byte("a deed"), s.holdingOn("goblin").Payload, "the sighting payload is gone, not kept beside it")
+}
+
+// R11 in practice: qualify the id by channel and the store cannot merge
+// them. Two holdings, each sustained by its own channel, both payloads
+// intact — the shape every caller should be writing.
+func (s *PerceptionSuite) TestQualifiedIDsKeepBothChannelsIntact() {
+	_, err := s.observe(1, []perception.Presence{{ID: "goblin", Payload: []byte("standing")}},
+		[]core.EntityID{"alice"}, reachAll{})
+	s.Require().NoError(err)
+
+	s.report(2, []perception.Presence{{ID: "deeds|goblin", Payload: []byte("a deed")}})
+
+	sight := s.holdingOn("goblin")
+	s.Equal([]byte("standing"), sight.Payload)
+	s.True(sight.CurrentOn(perception.Sight))
+
+	deed := s.holdingOn("deeds|goblin")
+	s.Equal([]byte("a deed"), deed.Payload)
+	s.Empty(deed.CurrentVia)
+}
+
+// Two channels genuinely sustaining one subject: CurrentVia carries both,
+// sorted, and CurrentOn answers each. This is what the bool could not say,
+// and what hearing needs. The surviving payload is the last channel to land
+// — the same one-payload rule as above, here between two live channels.
+func (s *PerceptionSuite) TestTwoChannelsSustainOneSubject() {
+	_, err := s.observe(1, []perception.Presence{{ID: "goblin", Payload: []byte("seen")}},
+		[]core.EntityID{"alice"}, reachAll{})
+	s.Require().NoError(err)
+
+	_, err = s.p.Observe(perception.Pass{
+		At: 2, Channel: hearing,
+		Presences: []perception.Presence{{ID: "goblin", Payload: []byte("heard")}},
+		Observers: []core.EntityID{"alice"}, Reach: reachAll{},
+	})
+	s.Require().NoError(err)
+
+	h := s.holdingOn("goblin")
+	s.Equal([]perception.Channel{hearing, perception.Sight}, h.CurrentVia, "sorted, both sustaining")
+	s.True(h.CurrentOn(perception.Sight))
+	s.True(h.CurrentOn(hearing))
+	s.False(h.CurrentOn("tremorsense"), "a channel nobody ran is not delivering anything")
+}
+
+// Losing one of two sustaining channels is not a fade. Alice stops hearing
+// the goblin but still sees it: the hearing pass retires only its own
+// channel, and the subject is still current on sight.
+func (s *PerceptionSuite) TestLosingOneChannelOfTwoIsNotAFade() {
+	_, err := s.observe(1, []perception.Presence{{ID: "goblin", Payload: []byte("seen")}},
+		[]core.EntityID{"alice"}, reachAll{})
+	s.Require().NoError(err)
+	_, err = s.p.Observe(perception.Pass{
+		At: 2, Channel: hearing,
+		Presences: []perception.Presence{{ID: "goblin", Payload: []byte("heard")}},
+		Observers: []core.EntityID{"alice"}, Reach: reachAll{},
+	})
+	s.Require().NoError(err)
+
+	deltas, err := s.p.Observe(perception.Pass{
+		At: 3, Channel: hearing,
+		Presences: []perception.Presence{{ID: "goblin", Payload: []byte("heard")}},
+		Observers: []core.EntityID{"alice"}, Reach: reachNone{},
+	})
+	s.Require().NoError(err)
+
+	s.Empty(deltas["alice"].Faded, "still sustained by sight, so nothing faded")
+	h := s.holdingOn("goblin")
+	s.Equal([]perception.Channel{perception.Sight}, h.CurrentVia)
+	s.False(h.CurrentOn(hearing))
+	s.True(h.CurrentOn(perception.Sight))
+}
+
+// Report's sentinels, each from a call that actually returns it, in the
+// order R8 requires: channel, then subjects, then observer. Every violation
+// is present in the first input, so the assertions prove precedence rather
+// than merely that each check exists.
+func (s *PerceptionSuite) TestReportValidationOrderAndNothingWritten() {
+	empty := []perception.Presence{{ID: "", Payload: []byte("x")}}
+
+	_, err := s.p.Report(perception.ReportInput{Observer: "", Channel: "", Reports: empty})
+	s.Require().ErrorIs(err, perception.ErrNoChannel, "channel outranks both")
+
+	_, err = s.p.Report(perception.ReportInput{Observer: "", Channel: deeds, Reports: empty})
+	s.Require().ErrorIs(err, perception.ErrNoSubject, "an empty subject outranks an empty observer")
+
+	_, err = s.p.Report(perception.ReportInput{
+		Observer: "", Channel: deeds, Reports: []perception.Presence{{ID: "heal-1"}},
+	})
+	s.Require().ErrorIs(err, perception.ErrNoObserver)
+
+	held, err := s.p.Held("alice")
+	s.Require().NoError(err)
+	s.Empty(held, "no rejected report wrote anything")
+}
+
+// Updated and Changed refine rather than partition, exactly as Delta's do: a
+// re-report with identical content updates without changing, and moves only
+// Confirmed. A report with new content moves both stamps.
+func (s *PerceptionSuite) TestReportUpdatedRefinesIntoChanged() {
+	s.report(1, []perception.Presence{{ID: "heal-1", Payload: []byte("same")}})
+
+	out := s.report(2, []perception.Presence{{ID: "heal-1", Payload: []byte("same")}})
+	s.Equal([]core.EntityID{"heal-1"}, out.Updated)
+	s.Empty(out.Changed, "identical content is confirmed, not changed")
+	h := s.holdingOn("heal-1")
+	s.Equal(uint64(1), h.Observed, "unchanged content leaves Observed where it was")
+	s.Equal(uint64(2), h.Confirmed)
+
+	out = s.report(3, []perception.Presence{{ID: "heal-1", Payload: []byte("different")}})
+	s.Equal([]core.EntityID{"heal-1"}, out.Updated)
+	s.Equal([]core.EntityID{"heal-1"}, out.Changed, "Changed refines Updated, never partitions it")
+	h = s.holdingOn("heal-1")
+	s.Equal(uint64(3), h.Observed, "new content is a new thing: Observed moves")
+	s.Equal(uint64(3), h.Confirmed)
+}
+
+// A Pass rejects a repeated subject; a Report does not, and the difference
+// is not an oversight. The Pass rejection exists because sorting makes
+// last-wins dedupe depend on an unstable sort. Report does not sort, so
+// last-wins is already deterministic and there is nothing to protect.
+func (s *PerceptionSuite) TestReportDedupesLastWinsRatherThanRejecting() {
+	out := s.report(1, []perception.Presence{
+		{ID: "heal-1", Payload: []byte("first")},
+		{ID: "heal-1", Payload: []byte("last")},
+	})
+
+	s.Require().Len(out.FirstContact, 1, "one subject, however many times it was named")
+	s.Equal([]byte("last"), s.holdingOn("heal-1").Payload)
 }

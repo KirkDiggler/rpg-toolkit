@@ -16,7 +16,14 @@
 // reimplemented: this package supplies the loop and the geometry-free
 // contract around it, not the store.
 //
-// Design contract: docs/ideas/mind/perception/design.md (R1–R9). Composition
+// Two verbs write, and the difference between them is what they claim. A
+// Pass is a complete statement about one channel at one moment: everything
+// delivered, and by omission everything no longer delivered, which is what
+// lets a holding fade. A Report is discrete testimony to one observer — what
+// it was told — which sustains nothing and retires nothing. A subject known
+// only from a Report is current on no channel at all.
+//
+// Design contract: docs/ideas/mind/perception/design.md (R1–R11). Composition
 // module, not a leaf: depends on core and play/intel (play/README.md's leaf
 // promise is "depends only on core", which this deliberately is not — it is
 // one layer above a play primitive, not another one).
