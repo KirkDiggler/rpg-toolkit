@@ -426,29 +426,15 @@ func getBardRequirements() *Requirements {
 			Options: spells.Castable(spells.BardCantrips),
 			Label:   "Choose 2 cantrips",
 		},
-		// The supported acquisition catalog is intentionally narrower than
-		// the factual four-known-spells class progression. These are the
-		// levelled spells this build can carry forward to casting: every
-		// option here compiles to a cast profile, because an option that
-		// produced nothing would be a choice with nothing behind it.
-		//
-		// COUNT TRACKS THE CATALOGUE, and with Command it has arrived: four
-		// supported spells and four known at level one, which is where the
-		// count stops moving (rpg-toolkit#1661). It was never a ration. While
-		// the catalogue was smaller than what a bard actually knows, asking
-		// them to pick a subset of it invented a restriction the class does
-		// not have and hid working content behind a radio button: a bard who
-		// picked Bane could never cast Thunderwave, for no reason but that
-		// only two spells had been written.
-		//
-		// The next level-1 spell this build learns to cast is the one that
-		// makes this a real choice, and the count stays at four when it comes.
+		// Each option has an executable cast profile. The level-one known-spell
+		// count remains four as the supported catalog grows (rpg-toolkit#1661).
 		Spellbook: &SpellbookRequirement{
 			ID:         BardSpells1,
 			Count:      4,
 			SpellLevel: 1,
 			Options: []spells.Spell{
 				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
+				spells.HealingWord,
 			},
 			Label: "Choose 4 supported 1st-level spells",
 		},
@@ -703,7 +689,7 @@ func getClericRequirements() *Requirements {
 	// Temporary spell access while preparation is deferred. These supported
 	// class spells use the existing choice pipeline; this is not a spellbook
 	// or a domain grant, and does not implement a prepared-spell limit.
-	supported := []spells.Spell{spells.Bane, spells.Command, spells.CureWounds}
+	supported := []spells.Spell{spells.Bane, spells.Command, spells.CureWounds, spells.HealingWord}
 	return &Requirements{
 		Skills: &SkillRequirement{
 			ID:      getSkillChoiceID(classes.Cleric),

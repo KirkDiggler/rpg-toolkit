@@ -185,9 +185,13 @@ func (s *CastActionTestSuite) TestHealingWordRejectsUnseenOrOutOfRangeBeforePaym
 			definition := ch.CastDefinition(spells.HealingWord)
 			switch reason {
 			case "stale sight":
-				holding := world.Intel.Holdings[bardID][heroID]
+				// Persisted testimony still names channels: EncounterData's
+				// field is perception.Data, whose own Intel is the store
+				// underneath. perception.Holding collapsed CurrentVia into a
+				// bool for READERS; the persistence shape kept the list.
+				holding := world.Perception.Intel.Holdings[bardID][heroID]
 				holding.CurrentVia = nil
-				world.Intel.Holdings[bardID][heroID] = holding
+				world.Perception.Intel.Holdings[bardID][heroID] = holding
 			case "out of range":
 				definition.Cast.RangeFeet = 5
 			case "wall":
