@@ -350,6 +350,9 @@ func TestStatusViewConditionsSortedByRef(t *testing.T) {
 
 	condRefs := refStrings(conditionsToRefs(out.View.Conditions))
 	require.Equal(t, sortedCopy(condRefs), condRefs, "conditions sorted by ref string")
+	for _, condition := range out.View.Conditions {
+		require.Nil(t, condition.SourceMember, "unqualified conditions have no source")
+	}
 }
 
 // TestStatusViewResourcesSortedByKey confirms resources are sorted by key.

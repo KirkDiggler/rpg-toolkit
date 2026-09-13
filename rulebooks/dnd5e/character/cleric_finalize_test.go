@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -127,6 +128,62 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Require().NoError(loaded.LongRest(context.Background()))
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
 	s.Equal(data.KnownSpells, loaded.ToData().KnownSpells, "rest restores slots without choosing spells")
+}
+
+func (s *ClericFinalizeSuite) TestStatusProjectionAfterFinalizationAndReload() {
+	char, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-status", events.NewEventBus())
+	s.Require().NoError(err)
+	out, err := char.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	s.Equal([]ResourceView{
+		{Key: resources.HitDice, Name: "Hit Dice", Current: 1, Maximum: 1},
+		{Key: resources.SpellSlotLevel1, Name: "1st-level Spell Slots", Current: 2, Maximum: 2},
+	}, out.View.Resources)
+
+	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
+	for _, source := range []string{"caster-a", "caster-b"} {
+		blessed, createErr := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+			MemberID: char.GetID(), SourceID: source, SourceRef: refs.Spells.Bless(),
+		})
+		s.Require().NoError(createErr)
+		char.conditions = append(char.conditions, blessed)
+	}
+	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+		MemberID: char.GetID(), SourceID: "caster-c", SourceRef: refs.Spells.Bane(),
+	})
+	s.Require().NoError(err)
+	char.conditions = append(char.conditions, baned)
+	encoded, err := json.Marshal(char.ToData())
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(encoded, &stored))
+	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
+	s.Require().NoError(err)
+	out, err = loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	s.Equal(1, out.View.Resources[1].Current, "projection preserves spent slots")
+	sources := map[string][]string{}
+	for _, condition := range out.View.Conditions {
+		s.Require().NotNil(condition.SourceMember)
+		sources[condition.Ref.String()] = append(sources[condition.Ref.String()], *condition.SourceMember)
+	}
+	s.ElementsMatch([]string{"caster-a", "caster-b"}, sources[refs.Conditions.Blessed().String()])
+	s.Equal([]string{"caster-c"}, sources[refs.Conditions.Baned().String()])
+	s.Require().NoError(loaded.LongRest(context.Background()))
+	rested, err := loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	s.Equal(2, rested.View.Resources[1].Current)
+	s.Empty(rested.View.Conditions)
+	s.Equal(1, out.View.Resources[1].Current, "prior projection is detached")
+}
+
+func (s *ClericFinalizeSuite) TestStatusProjectionStillRejectsCrossClassResources() {
+	char, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-invalid-resource", events.NewEventBus())
+	s.Require().NoError(err)
+	char.resources[resources.Inspiration] = char.resources[resources.HitDice]
+	out, err := char.StatusView(&StatusViewInput{})
+	s.Require().ErrorContains(err, "not in the cleric status-view owner catalog")
+	s.Nil(out, "invalid resources must not produce a partial sheet")
 }
 
 func (s *ClericFinalizeSuite) TestExistingSheetDoesNotReceiveImplicitSpellGrantsOnLoad() {

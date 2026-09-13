@@ -89,10 +89,10 @@ type ResourceView struct {
 // level, hit points, base speed, features, conditions, and resources. It is
 // built from the live sheet and feature Status reports — never from
 // persistence JSON — and excludes legacy class resources by construction. Its
-// resource catalog is closed to the current five builds: Barbarian
+// resource catalog is closed to the current six builds: Barbarian
 // (RageCharges/HitDice), Fighter (HitDice plus private Second Wind and Action
-// Surge), Monk (Ki/HitDice), Rogue (HitDice), and Bard
-// (Inspiration/SpellSlotLevel1/HitDice).
+// Surge), Monk (Ki/HitDice), Rogue (HitDice), Bard
+// (Inspiration/SpellSlotLevel1/HitDice), and Cleric (SpellSlotLevel1/HitDice).
 type StatusView struct {
 	// Level is the character's level.
 	Level int
@@ -397,6 +397,8 @@ func ownerResourceAllowed(class classes.Class, key coreResources.ResourceKey) bo
 		return key == resources.Ki || key == resources.HitDice
 	case classes.Bard:
 		return key == resources.Inspiration || key == resources.SpellSlotLevel1 || key == resources.HitDice
+	case classes.Cleric:
+		return key == resources.SpellSlotLevel1 || key == resources.HitDice
 	default:
 		// A CLASS WITH NO ARM PROJECTS NO STATUS AT ALL, which is why a
 		// missing one is not a cosmetic gap: the whole view is refused, and
@@ -476,11 +478,14 @@ func featureID(f features.Feature) string {
 	return "<unknown>"
 }
 
-// conditionSourceMember returns the optional party-member ID a condition names
-// as its source, or nil for self-owned class conditions. No current condition
-// in the four-build set names an external source, so this is nil today; the
-// seam exists so a future condition (e.g. Helped) can opt in without changing
-// the projection's shape.
-func conditionSourceMember(_ dnd5eEvents.ConditionBehavior) *string {
+// conditionSourceMember returns a detached source identity for source-qualified
+// conditions. Unqualified conditions have no source. Hosts must apply their
+// observability policy before exposing member identities to players.
+func conditionSourceMember(condition dnd5eEvents.ConditionBehavior) *string {
+	if addressed, ok := condition.(dnd5eEvents.ConditionAddressProvider); ok {
+		if source := addressed.ConditionAddress().SourceID; source != "" {
+			return &source
+		}
+	}
 	return nil
 }
