@@ -1,0 +1,167 @@
+{
+  "id": "cleric",
+  "player_id": "player-1",
+  "name": "Mercy",
+  "level": 1,
+  "proficiency_bonus": 2,
+  "race_id": "human",
+  "class_id": "cleric",
+  "subclass_id": "life-domain",
+  "background_id": "hermit",
+  "ability_scores": {
+    "cha": 13,
+    "con": 14,
+    "dex": 11,
+    "int": 9,
+    "str": 15,
+    "wis": 16
+  },
+  "hit_points": 10,
+  "max_hit_points": 10,
+  "armor_class": 10,
+  "skills": {
+    "medicine": 1,
+    "religion": 1
+  },
+  "saving_throws": {
+    "cha": 1,
+    "wis": 1
+  },
+  "languages": [
+    "common",
+    "dwarvish"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "shields",
+    "heavy"
+  ],
+  "weapon_proficiencies": [
+    "simple"
+  ],
+  "tool_proficiencies": [
+    "herbalism-kit"
+  ],
+  "inventory": [
+    {
+      "type": "armor",
+      "id": "shield",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "case-map",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "blanket",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "clothes-common",
+      "quantity": 1
+    },
+    {
+      "type": "tool",
+      "id": "herbalism-kit",
+      "quantity": 1
+    },
+    {
+      "type": "weapon",
+      "id": "mace",
+      "quantity": 1
+    },
+    {
+      "type": "armor",
+      "id": "chain-mail",
+      "quantity": 1
+    },
+    {
+      "type": "weapon",
+      "id": "light-crossbow",
+      "quantity": 1
+    },
+    {
+      "type": "ammunition",
+      "id": "bolts-20",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "backpack",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "bedroll",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "mess-kit",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "tinderbox",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "torch",
+      "quantity": 10
+    },
+    {
+      "type": "item",
+      "id": "rations",
+      "quantity": 10
+    },
+    {
+      "type": "item",
+      "id": "waterskin",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "hempen-rope",
+      "quantity": 1
+    },
+    {
+      "type": "item",
+      "id": "holy-symbol",
+      "quantity": 1
+    }
+  ],
+  "wallet": {
+    "copper": 500
+  },
+  "known_cantrips": [
+    "dnd5e:spells:sacred-flame",
+    "dnd5e:spells:guidance",
+    "dnd5e:spells:spare-the-dying"
+  ],
+  "known_spells": [
+    "dnd5e:spells:bane",
+    "dnd5e:spells:bless",
+    "dnd5e:spells:command",
+    "dnd5e:spells:cure-wounds",
+    "dnd5e:spells:healing-word"
+  ],
+  "resources": {
+    "hit_dice": {
+      "current": 1,
+      "maximum": 1,
+      "reset_type": "long_rest"
+    },
+    "spell_slot_level_1": {
+      "current": 2,
+      "maximum": 2,
+      "reset_type": "long_rest"
+    }
+  },
+  "created_at": "2026-09-13T16:04:28.1656803-04:00",
+  "updated_at": "2026-09-13T16:04:28.1656803-04:00"
+}

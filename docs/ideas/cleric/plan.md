@@ -52,9 +52,11 @@ A normally finalized Cleric chooses it through the draft path, reloads draft and
 character JSON, compiles the definition, retains both slots and reads private
 status. This is acquisition/content evidence, not a public session cast.
 
-After this root release, the next session-only PR adopts its real tag and runs
-public `Afford` → `Cast` acceptance using a finalized Cleric, including stable
-turn behavior and private status after reload. Hosts adopting the enabled root
+Root #1742 merged as `9c99b7e8`, publishing `v0.168.0`. The final session-only
+slice adopts that tag and verifies public `Afford` → `Cast` using saved output
+from a normally finalized Cleric, including stable turn behavior and private
+status after reload. Fixture provenance is recorded alongside the session test.
+Hosts adopting the enabled root
 content need at least session `v0.86.0`, resolution `v0.48.0`, and encounter
 `v0.82.0`; the upcoming session release will pin the complete tested combination.
 Protos/API/web result adoption remains pending. Preparation, monster saving and
