@@ -457,7 +457,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// composition's own rule (rpg-project#375, R4), and nothing about the
 	// players' side is authorable — see SpawnInput.Faction.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil, "", nil)
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", "", false, nil, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -601,7 +601,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// to make it.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
-		sheet.Targeting.String(), false, in.Holds, in.Faction, in.Arrives)
+		sheet.Targeting.String(), sheet.Mind.String(), false, in.Holds, in.Faction, in.Arrives)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -683,13 +683,13 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	scope.touched = true
 
 	// A world NPC is stationary and non-acting by construction (design.md
-	// N4): zero speed/sight, no actions, no targeting strategy. encounter
-	// enforces the one real rule (no decider) itself; place() never sets
-	// one for either existing caller.
+	// N4): zero speed/sight, no actions, no targeting strategy and no
+	// mind. encounter enforces the one real rule (no decider) itself;
+	// place() never sets one for either existing caller.
 	// No faction: a world NPC is never a side (rpg-toolkit#1404), and the
 	// composition puts a member of this kind in no faction at all.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "", blocksMovement, nil, "", nil)
+		0, 0, nil, "", "", blocksMovement, nil, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -723,7 +723,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 // kills the pins on both. Same reasoning, one layer up.
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
-	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
+	speedFeet, sightFeet int, actions []encounter.ActionView, targeting, mind string, blocksMovement bool,
 	holds []string, faction string, arrives Arrival,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
@@ -764,10 +764,15 @@ func place(
 		// playing them. Both callers (Join, Spawn) compute these off the
 		// sheet or catalog content they just loaded and hand them straight
 		// through; see each verb's own doc for where its values come from.
-		SpeedFeet:      speedFeet,
-		SightFeet:      sightFeet,
-		Actions:        actions,
-		Targeting:      targeting,
+		SpeedFeet: speedFeet,
+		SightFeet: sightFeet,
+		Actions:   actions,
+		Targeting: targeting,
+		// The mind the sheet names, forwarded as the word it was written
+		// (rpg-toolkit#1725, rule A5) — opaque here exactly as Targeting is.
+		// A member whose sheet names none crosses empty, and the driver
+		// alone decides what an unnamed mind means.
+		Mind:           mind,
 		BlocksMovement: blocksMovement,
 		// The author's placed records, converted at the boundary and nowhere
 		// else — a []string in, the composition's own IntelID out (S2: no

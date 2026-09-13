@@ -92,7 +92,13 @@ type Config struct {
 	// ahead of it just ended their own turn. What that member does is a game
 	// rule, so it is asked for rather than assumed, exactly as Dice is
 	// (rpg-toolkit#1162). Wire session.Pass{} for v1's whole behavior — every
-	// unplayed member's turn ends the moment the clock reaches it.
+	// unplayed member's turn ends the moment the clock reaches it —
+	// session.Behavior() for the reference driver, or session.Minded() for
+	// one that gives each member the mind its sheet names and falls back to
+	// the reference driver for a member that names none (rpg-toolkit#1725).
+	//
+	// A minded driver REMEMBERS across turns, so a host that wires one wires
+	// one per session and keeps it, where it would have kept a Behavior().
 	TurnDriver TurnDriver
 }
 
