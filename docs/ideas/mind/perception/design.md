@@ -107,10 +107,31 @@ arrives with the use case that pays for it, not before.
   **decided those are one thing**, and no observer gets to be wrong about
   it. Merging is the observer's judgment — the whole reason a mind has one —
   so a caller perceiving a figure on a second channel qualifies the id by
-  channel (`hearing|goblin`), and the store then cannot merge them. R10 is
-  what happens when this goes unheeded. Stated as an instruction rather than
-  a warning: qualification is the thing to do, not merely the hazard to
-  avoid.
+  channel, and the store then cannot merge them. R10 is what happens when
+  this goes unheeded. Stated as an instruction rather than a warning:
+  qualification is the thing to do, not merely the hazard to avoid.
+
+  **`Qualify(channel, subject)` is how.** v0.2.0 shipped R11 as an
+  instruction with nothing to follow it with, and the first consumer paid for
+  that immediately: `mind/behavior` v0.1.0 wrote `channel + "|" + id` twice,
+  in `deed.Subject` and in its scene's `hearingOf`, agreeing only because one
+  author wrote both. The separator now has one owner. A rule whose every
+  caller reimplements it is a rule that holds until two callers disagree, and
+  the disagreement is silent — two subjects for one thing, both held, nothing
+  failing.
+
+  `Qualify` guards nothing, and that is safe on one condition: **a channel
+  name must not contain the separator.** Subjects may — the channel prefix
+  disambiguates them — but a channel that contains it collides silently
+  (`Qualify("a|b", "c")` and `Qualify("a", "b|c")` are both `a|b|c`), which
+  is this very rule's failure re-entering through its own tool. Stated here
+  because a constraint nobody wrote down is one the next channel author
+  cannot honour.
+
+  There is deliberately no `Unqualify`. Nothing needs it: a `Holding.Channel`
+  already says which channel filed a subject, which is how behaviour's minds
+  tell a deed from a sighting. It arrives when a caller must answer "what
+  entity is this subject about" without already knowing.
 
 ## Types
 
@@ -125,8 +146,11 @@ arrives with the use case that pays for it, not before.
   []core.EntityID, Reach Reach}`. One complete perception cycle on one
   channel.
 - `Holding` — `{Subject core.EntityID, Payload []byte, Channel Channel,
-  Observed uint64, Confirmed uint64, Current bool}`. What one observer
-  holds about one subject (R9).
+  Observed uint64, Confirmed uint64, CurrentVia []Channel}`, plus the
+  `CurrentOn(channel)` method. What one observer holds about one subject
+  (R9). This entry said `Current bool` until #1722 — v0.2.0 removed the
+  bool and updated R9 but not this list, so the two halves of the same
+  document disagreed about the struct for a release.
 - `Delta` — `{FirstContact []Presence, Refreshed []core.EntityID, Changed
   []core.EntityID, Faded []core.EntityID, Reacquired []core.EntityID}`.
   What one pass did to one observer's knowledge, matching
@@ -230,5 +254,13 @@ there is nothing here worth hiding intel behind.
 - `TestReportValidationOrderAndNothingWritten` proves `Report`'s ordering
   with every violation present at once, and that a rejected report writes
   nothing.
+- `TestQualifyDistinguishesChannelsAndTheBareID` proves `Qualify` varies
+  with both halves: the same entity on two channels yields two subjects,
+  two entities on one channel yield two subjects, and neither is the bare
+  entity id.
+- `TestQualifiedSubjectFormatIsPinnedBecauseItPersists` pins the literal
+  format and round-trips it through `ToData`/`Load`. It exists to FAIL if
+  the separator is ever edited, because qualified subjects are persisted
+  and a change would orphan stored holdings silently.
 - `gofmt`, `go vet`, and `golangci-lint` (CI's pinned version) all clean;
   `go test -race` clean.

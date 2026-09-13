@@ -112,3 +112,49 @@ is carried forward for the encounter-adoption PR, not addressed here.
 Encounter adoption, and everything the "Do not add" section of #1685 named
 (`Report`, a second channel, forgery, contacts, naming), remain outside this
 module, as scoped from the start.
+
+## Independent review, v0.3.0 (`Qualify`) — and what it changed
+
+Second round, on `feat/perception-qualify` at `4cb5857`, from a session that
+did not implement the change. Verdict was 0 Critical, 0 Important, 2 Minor
+inline plus 2 spec-level notes. **All four accepted and fixed; nothing
+declined.** Each was checked against the code before being taken.
+
+**Minor 1 — a tautological assertion (accepted, fixed).**
+`s.Equal(Qualify(deeds, bare), Qualify(deeds, bare))` compares a pure
+expression to itself: it cannot fail for any deterministic implementation, so
+it pinned nothing while reading like it did. The review offered delete-or-
+replace; **replaced**, with subject injectivity (`Qualify(deeds, "goblin") !=
+Qualify(deeds, "orc")`), which is a property that can fail. Confirmed the
+stronger choice: a fifth mutant — `Qualify` dropping the subject entirely —
+now dies, and it survived the original four-mutant suite. 5/5 killed.
+
+**Minor 2 — the totality rationale over-claimed (accepted, fixed).** The
+godoc said an unguarded caller bug would be "left visible". Verified false for
+the one input that matters, by running it: `Qualify("a|b", "c")` and
+`Qualify("a", "b|c")` both produce `"a|b|c"`, so one channel's testimony lands
+on another's subject with nothing failing — R11's own merge, re-entering
+through R11's tool. The review's narrower invariant is the correct one and
+was confirmed too: it is specifically a **channel** containing the separator
+that breaks injectivity (`Qualify("sight", "a|b")` collides with
+`Qualify("sight|a", "b")`), while subjects containing it are fine because the
+channel prefix disambiguates. Named as a stated constraint in the godoc and
+mirrored in design.md's R11. No guard added — the review agreed one was not
+the ask, and guards stay off while the multi-channel shape is open.
+
+**Spec 1 — design.md contradicted itself about `Holding` (accepted, fixed).**
+The Types list still carried `Current bool`. v0.2.0 removed the field and
+rewrote R9 to explain why, but never updated the list, so two halves of one
+document disagreed about the struct for an entire release. Pre-existing on
+main; fixed here because this PR edits that file, with a note recording that
+it was wrong rather than silently correcting it.
+
+**Spec 2 — acceptance criteria did not record this PR's tests (accepted,
+fixed).** Both new tests added, with the persistence one stating plainly that
+its job is to FAIL when the separator is edited.
+
+The lesson worth carrying: the tautological assertion and the over-claimed
+rationale are the same defect in two forms — **a claim that reads as evidence
+while resting on nothing.** Mutation testing caught neither, because neither
+is a behaviour: one was an assertion that could not fail, the other a comment.
+Only a reader who checked the claim against the code found them.
