@@ -13,11 +13,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
 
-// Game is the composition: a perception, a reader, a space, and who has
-// which mind and stands where. It is the one place that holds a perception,
-// and it writes to it only through perception's own doors (R1).
+// Game is the composition: a reader, a space, and who has which mind and
+// stands where. It holds no perception of its own: the store belongs to
+// whoever runs the passes, and what an actor holds arrives here as values
+// (R1).
 type Game struct {
-	p      *perception.Perception
 	reader Reader
 	space  Space
 	minds  map[core.EntityID]Mind
@@ -45,13 +45,7 @@ func New(in *NewInput) (*Game, error) {
 		return nil, fmt.Errorf("new: %w", ErrNoSpace)
 	}
 
-	p, err := perception.New()
-	if err != nil {
-		return nil, fmt.Errorf("new: %w", err)
-	}
-
 	return &Game{
-		p:      p,
 		reader: in.Reader,
 		space:  in.Space,
 		minds:  make(map[core.EntityID]Mind),
@@ -111,37 +105,12 @@ func (g *Game) Frighten(in *FrightenInput) {
 	g.fears[in.Actor] = append(g.fears[in.Actor], in.Source)
 }
 
-// Observe runs one perception pass. It is perception's own door, passed
-// through; behaviour adds nothing to what may be perceived.
-func (g *Game) Observe(pass perception.Pass) error {
-	if _, err := g.p.Observe(pass); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Report lands discrete testimony on one actor — the stage uses it to tell a
-// witness what they saw somebody do. It is perception's own door, passed
-// through; behaviour adds nothing to what may be said.
-func (g *Game) Report(in perception.ReportInput) error {
-	if _, err := g.p.Report(in); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Held is everything one actor holds, as perception holds it. The stage
-// reads it to say a deed in the witness's own terms.
-func (g *Game) Held(observer core.EntityID) ([]perception.Holding, error) {
-	return g.p.Held(observer)
-}
-
-// SituationInput is whose situation, and when.
+// SituationInput is whose situation, when, and everything they hold — as
+// values, from whoever owns the store.
 type SituationInput struct {
-	Actor core.EntityID
-	At    uint64
+	Actor    core.EntityID
+	At       uint64
+	Holdings []perception.Holding
 }
 
 // Situation assembles everything one actor has to go on: reads every
@@ -164,7 +133,7 @@ func (g *Game) Situation(in *SituationInput) (*Situation, error) {
 		return nil, fmt.Errorf("situation: %w: %s", ErrNoSelf, in.Actor)
 	}
 
-	holdings, err := g.read(in.Actor)
+	holdings, err := g.read(in.Holdings)
 	if err != nil {
 		return nil, err
 	}
@@ -194,15 +163,9 @@ func (g *Game) Situation(in *SituationInput) (*Situation, error) {
 	}, nil
 }
 
-// read is everything one actor holds, with what behaviour could read from
-// each: its own deeds channel itself, everything else through the reader
-// (R2).
-func (g *Game) read(actor core.EntityID) ([]Holding, error) {
-	held, err := g.p.Held(actor)
-	if err != nil {
-		return nil, err
-	}
-
+// read is what behaviour could read from each holding: its own deeds
+// channel itself, everything else through the reader (R2).
+func (g *Game) read(held []perception.Holding) ([]Holding, error) {
 	out := make([]Holding, 0, len(held))
 
 	for _, h := range held {
@@ -330,10 +293,11 @@ func fold(holdings []Holding, same []Pair) []Contact {
 	return out
 }
 
-// TurnInput is whose turn, and when.
+// TurnInput is whose turn, when, and everything they hold.
 type TurnInput struct {
-	Actor core.EntityID
-	At    uint64
+	Actor    core.EntityID
+	At       uint64
+	Holdings []perception.Holding
 }
 
 // TurnOutput is what the actor decided, and the situation it decided it in —
@@ -345,7 +309,7 @@ type TurnOutput struct {
 
 // Turn is one actor's decision: build the situation, climb the ladder.
 func (g *Game) Turn(in *TurnInput) (*TurnOutput, error) {
-	s, err := g.Situation(&SituationInput{Actor: in.Actor, At: in.At})
+	s, err := g.Situation(&SituationInput{Actor: in.Actor, At: in.At, Holdings: in.Holdings})
 	if err != nil {
 		return nil, err
 	}

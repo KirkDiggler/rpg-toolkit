@@ -56,11 +56,14 @@ type figure struct {
 	chants bool
 }
 
-// scene is one truth surface, one game, and a clock. Every verb on it is
+// scene is one truth surface, one perception store, one game, and a clock.
+// The scene owns the store and runs its passes, the way a real board does;
+// the game is handed what each actor holds. Every verb on the scene is
 // something the game master does; every question is asked of an actor.
 type scene struct {
 	t       *testing.T
 	g       *behavior.Game
+	p       *perception.Perception
 	rooms   *rooms
 	figures map[core.EntityID]figure
 	senses  map[core.EntityID][]string
@@ -76,9 +79,13 @@ func newScene(t *testing.T) *scene {
 	g, err := behavior.New(&behavior.NewInput{Reader: reader{}, Space: r})
 	require.NoError(t, err)
 
+	p, err := perception.New()
+	require.NoError(t, err)
+
 	return &scene{
 		t:       t,
 		g:       g,
+		p:       p,
 		rooms:   r,
 		figures: make(map[core.EntityID]figure),
 		senses:  make(map[core.EntityID][]string),
@@ -283,7 +290,8 @@ func (s *scene) look() {
 		{At: s.tick, Channel: sight, Presences: seen, Observers: s.actors, Reach: r},
 		{At: s.tick, Channel: hearing, Presences: heard, Observers: s.actors, Reach: r},
 	} {
-		require.NoError(s.t, s.g.Observe(pass))
+		_, err := s.p.Observe(pass)
+		require.NoError(s.t, err)
 	}
 }
 
@@ -309,7 +317,7 @@ func (s *scene) happens(actor core.EntityID, verb string, target core.EntityID, 
 	}
 
 	require.NoError(s.t, stage.Land(&stage.LandInput{
-		Game:      s.g,
+		Store:     s.p,
 		Deed:      deed.Deed{Actor: actor, Target: target, Verb: verb, Where: where},
 		Witnesses: witnesses,
 		At:        s.tick,
@@ -325,7 +333,10 @@ func (s *scene) frightens(who, of core.EntityID) {
 func (s *scene) turn(who core.EntityID) *turn {
 	s.t.Helper()
 
-	out, err := s.g.Turn(&behavior.TurnInput{Actor: who, At: s.tick})
+	held, err := s.p.Held(who)
+	require.NoError(s.t, err)
+
+	out, err := s.g.Turn(&behavior.TurnInput{Actor: who, At: s.tick, Holdings: held})
 	require.NoError(s.t, err)
 
 	return &turn{s: s, who: who, out: out}

@@ -9,8 +9,11 @@
 // You cannot aim at what you have not named.
 //
 // Perception is a tool behaviour holds. This package imports mind/perception
-// and reads what an actor holds; perception never learns an intent exists.
-// That is the whole of the layering, and the arrow points one way (R1).
+// and reads what an actor holds — handed in as values by whoever owns the
+// store and runs its passes; behaviour never runs one, and writes only
+// through the store's own door to land a deed. Perception never learns an
+// intent exists. That is the whole of the layering, and the arrow points one
+// way (R1).
 //
 // # The nouns
 //

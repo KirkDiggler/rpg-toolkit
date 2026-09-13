@@ -174,12 +174,21 @@ func Step(in *StepInput) (*StepOutput, error) {
 	}
 }
 
-// LandInput is a deed, the game whose actors witnessed it, who did, and
+// Store is what Land needs of a perception: exactly the two methods
+// [perception.Perception] has, so the caller hands its own store and
+// nothing wraps it. The store belongs to whoever runs the passes; the stage
+// only tells it what somebody saw.
+type Store interface {
+	Held(observer core.EntityID) ([]perception.Holding, error)
+	Report(in perception.ReportInput) (*perception.ReportOutput, error)
+}
+
+// LandInput is a deed, the store whose observers witnessed it, who did, and
 // when. Who witnessed it is the caller's: a deed happens at a place, and
 // whose senses reached that place is the physics perception also leaves to
 // the caller.
 type LandInput struct {
-	Game      *behavior.Game
+	Store     Store
 	Deed      deed.Deed
 	Witnesses []core.EntityID
 	At        uint64
@@ -201,7 +210,7 @@ func Land(in *LandInput) error {
 	}
 
 	for _, witness := range in.Witnesses {
-		held, err := in.Game.Held(witness)
+		held, err := in.Store.Held(witness)
 		if err != nil {
 			return err
 		}
@@ -210,7 +219,7 @@ func Land(in *LandInput) error {
 		saw.Actor = seen(held, in.Deed.Actor)
 		saw.Target = seen(held, in.Deed.Target)
 
-		err = in.Game.Report(perception.ReportInput{
+		_, err = in.Store.Report(perception.ReportInput{
 			Observer: witness,
 			Channel:  deed.Channel,
 			Reports:  []perception.Presence{{ID: deed.Subject(in.Deed.Actor), Payload: deed.Encode(saw)}},

@@ -156,10 +156,21 @@ the issue was corrected, the code is the party that was right; a stale
 nothing. The arrow was also corrected on Kirk's word in the same commit:
 the mind that changes is the skeleton's, not the weapon.
 
+## v0.3.0 — the store is the caller's (#1725, PR 1 of the adoption)
+
+The encounter already owns a `perception.Perception` and runs its passes;
+v0.2.0's `Game` built a second one. Two stores would be a lie about who
+holds what, so the game stopped holding one. `Turn` and `Situation` take
+`Holdings` as values; `Observe`, `Report`, and `Held` left the game;
+`stage.Land` takes a `Store` — exactly perception's two methods — so the
+caller hands its own store and nothing wraps it. The proofs' scene now
+owns the store and runs the passes, the way a real board does, and every
+proof passes with the same assertions. R1 says it: behaviour never runs a
+pass. The adoption's own rules are in [adoption.md](adoption.md).
+
 ## Left for a later rung
 
-- Persistence: names and fears alongside perception's `Data`. The
-  encounter integration pays for it.
+- Persistence: names and fears. The encounter integration pays for it.
 - The encounter's `Reader`, `Truth`, and `Space` (its canvas and
   pathfinder), and a `Reach` that answers the deeds question ("whose senses
   reached this place") so `Land`'s caller does not compute witnesses by

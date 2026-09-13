@@ -342,7 +342,7 @@ func TestADeedWithNoActorIsRefused(t *testing.T) {
 	s.mind(zombie, zombieMind{}, room)
 
 	err := stage.Land(&stage.LandInput{
-		Game:      s.g,
+		Store:     s.p,
 		Deed:      deed.Deed{Verb: heal, Where: room},
 		Witnesses: []core.EntityID{zombie},
 	})

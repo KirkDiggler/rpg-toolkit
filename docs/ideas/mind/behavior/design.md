@@ -10,6 +10,7 @@ the spike that proved the five use cases on the perception example. Its
 README holds the nineteen lessons that shaped these rules.
 **What happened:** [implementation.md](implementation.md).
 **v0.2.0:** [rpg-toolkit#1723](https://github.com/KirkDiggler/rpg-toolkit/issues/1723) — geometry became the caller's `Space`.
+**v0.3.0:** [rpg-toolkit#1725](https://github.com/KirkDiggler/rpg-toolkit/issues/1725) — the store became the caller's; see [adoption.md](adoption.md).
 
 ## The arrow
 
@@ -46,9 +47,10 @@ like any other, unpaid). Each arrives with the use case that pays for it.
 
 ## Rules
 
-- **R1** — Perception is a tool. `Game.Observe` and `Game.Report` are
-  perception's own doors passed through; the game holds one `Perception`
-  and writes to it nowhere else. Nothing about an intent crosses back.
+- **R1** — Perception is a tool. The store belongs to whoever runs the
+  passes; behaviour never runs one. What an actor holds arrives on a turn
+  as values, and behaviour writes to the store only through its own door,
+  to land a deed (`stage.Store`). Nothing about an intent crosses back.
 - **R2** — Payloads are read by the caller's `Reader`, the mirror of
   perception's `Reach`: behaviour holds no vocabulary for what a sighting
   says. A `Where` is a place in whatever unit the caller's `Space` measures;
@@ -166,7 +168,8 @@ like any other, unpaid). Each arrives with the use case that pays for it.
   `NameInput{Contact}` → `NameOutput{Name, Named}`;
   `RankInput{Situation}` → `RankOutput{Ranked []Contact}`;
   `KeepInput{Situation}` → `KeepOutput{Steps int}`.
-- `Game` — the composition. Zero value not usable; construct via `New`.
+- `Game` — the composition: reader, space, minds, sheets, places, fears,
+  names. It holds no perception. Zero value not usable; construct via `New`.
 
 `package deed`
 
@@ -179,24 +182,21 @@ like any other, unpaid). Each arrives with the use case that pays for it.
 
 - `Truth` — `interface { Present(subject core.EntityID) bool }`. The one
   question a swing may ask of the world.
+- `Store` — `interface { Held; Report }`, exactly `perception.Perception`'s
+  two methods, so a caller hands its own store and nothing wraps it (R1).
 
 ## Verbs
 
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
 | `Decide` | `DecideInput{Situation, Mind, Space}` | `(*DecideOutput{Intent}, error)` | R7. |
-| `Game.Turn` | `TurnInput{Actor, At}` | `(*TurnOutput{Intent, Situation}, error)` | `Situation` then `Decide`. Both come back because the stage resolves the one against the other. |
-| `Game.Situation` | `SituationInput{Actor, At}` | `(*Situation, error)` | R2–R4, R12, R13. Reads every holding, asks `Judge`, folds, names. |
-| `Game.Observe` | `perception.Pass` | `error` | R1. Perception's door. |
-| `Game.Report` | `perception.ReportInput` | `error` | R1. Perception's door. |
+| `Game.Turn` | `TurnInput{Actor, At, Holdings}` | `(*TurnOutput{Intent, Situation}, error)` | `Situation` then `Decide`. Both come back because the stage resolves the one against the other. |
+| `Game.Situation` | `SituationInput{Actor, At, Holdings}` | `(*Situation, error)` | R1–R4, R12, R13. Reads every holding handed in, asks `Judge`, folds, names. |
 | `Game.Sheet` / `Mind` / `Place` / `Frighten` | one `Input` each | — | R12. Sheet facts, handed as values. |
 | `stage.Aim` | `AimInput{Truth, Situation, Intent}` | `(*AimOutput{Source}, error)` | R10. `""` is a swing at nothing, not an error. |
 | `stage.Recall` | `RecallInput{Situation, Name}` | `(*RecallOutput{Where, Placed}, error)` | R10. Belief only. |
 | `stage.Step` | `StepInput{Space, Situation, Intent}` | `(*StepOutput{To, Moved}, error)` | R11. One step, this turn, in the caller's space. |
-| `stage.Land` | `LandInput{Game, Deed, Witnesses, At}` | `error` | R9. Who witnessed is the caller's: a deed happens at a place, and whose senses reached it is the physics perception also leaves to the caller. |
-
-`Game.Held(observer)` is a fixed-arity read of perception's holdings, for
-the stage to say a deed in a witness's terms.
+| `stage.Land` | `LandInput{Store, Deed, Witnesses, At}` | `error` | R1, R9. Who witnessed is the caller's: a deed happens at a place, and whose senses reached it is the physics perception also leaves to the caller. |
 
 ## Errors
 
@@ -208,9 +208,8 @@ the stage to say a deed in a witness's terms.
 | `ErrNoSelf` | the actor was never placed | `Situation`, `Turn` |
 | `stage.ErrNoActor` | a deed with no actor | `stage.Land` |
 
-Perception's own errors pass through `Observe`, `Report`, and `Held`
-unwrapped; they are perception's vocabulary and a caller already imports it
-to build a `Pass`. A `Reader`'s and a `Space`'s errors pass through the
+A `Store`'s errors pass through `stage.Land` unwrapped; they are
+perception's vocabulary and the caller owns the store. A `Reader`'s and a `Space`'s errors pass through the
 same way, from `Situation`, `Decide`, `Turn`, and `stage.Step`: they are
 the caller's vocabulary, and a pathfinder that fails is the pathfinder's
 to explain, not this module's.
