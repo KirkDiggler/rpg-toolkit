@@ -57,12 +57,22 @@ type Minded struct {
 	board    *board
 	game     *behavior.Game
 	patience uint64
+	ranged   func(item string) bool
 	minded   map[core.EntityID]struct{}
 }
 
 // NewMindedInput configures the driver. Patience 0 means DefaultPatience.
 type NewMindedInput struct {
+	// Patience is how many clock ticks old an attack deed may be and still
+	// be answered by a mind that holds grudges. 0 means DefaultPatience.
 	Patience uint64
+
+	// Ranged says whether an item id names a weapon that can shoot back —
+	// the first authoring knob a mind takes, and it is really just data: the
+	// same Retaliator answers a crossbow or shrugs off a thrown dagger
+	// depending on what the driver was handed. Nil means the rulebook's own
+	// weapon catalog.
+	Ranged func(item string) bool
 }
 
 // NewMinded builds a driver with no minds assigned yet; minds are assigned
@@ -80,10 +90,16 @@ func NewMinded(in *NewMindedInput) (*Minded, error) {
 		patience = in.Patience
 	}
 
+	var ranged func(item string) bool
+	if in != nil {
+		ranged = in.Ranged
+	}
+
 	return &Minded{
 		board:    b,
 		game:     game,
 		patience: patience,
+		ranged:   ranged,
 		minded:   make(map[core.EntityID]struct{}),
 	}, nil
 }
@@ -136,7 +152,7 @@ func (d *Minded) assign(view encounter.MonsterView) error {
 func (d *Minded) mindFor(name string) (behavior.Mind, error) {
 	switch name {
 	case MindRetaliator:
-		return &Retaliator{Space: d.board, Patience: d.patience}, nil
+		return &Retaliator{Space: d.board, Patience: d.patience, Ranged: d.ranged}, nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownMind, name)
 	}
