@@ -58,6 +58,20 @@ var projectedPairs = []struct {
 	{"Member", encounter.Member{}, session.Member{}},
 	{"MemberOutcome", encounter.MemberOutcome{}, session.MemberOutcome{}},
 	{"Sighting", perception.Holding{}, session.Sighting{}},
+	// THE DRIVER-FACING TWINS, audited for the same reason the client-facing
+	// ones are, and added the moment the composition grew four fields for a
+	// mind to read (rpg-toolkit#1725): a hand-written projection drops a new
+	// field silently, and the one consumer that would notice — a monster
+	// deciding its own turn — reports it by standing still rather than by
+	// failing. session.Holding is a SECOND twin of perception.Holding beside
+	// Sighting, answering a driver's question rather than a client's; see its
+	// own doc for why the two are not folded.
+	{"MonsterView", encounter.MonsterView{}, session.MonsterView{}},
+	{"SeenMember", encounter.SeenMember{}, session.SeenMember{}},
+	{"RememberedMember", encounter.RememberedMember{}, session.RememberedMember{}},
+	{"ActionView", encounter.ActionView{}, session.ActionView{}},
+	{"TurnBudget", encounter.TurnBudget{}, session.TurnBudget{}},
+	{"Holding", perception.Holding{}, session.Holding{}},
 	// An Event, not a StoryEntry: rpg-api-protos#239 deleted StoryEntry, and
 	// Manager.Story now returns the SAME Event projectEvents builds for the
 	// live stream (projectEntry, events.go) — one projection, audited once.
@@ -125,7 +139,8 @@ var omitted = map[string]string{
 	"encounter.Member.Faction":       "carried on the roster row, PublicMember.Faction; a placement answers a cell",
 	"encounter.MemberOutcome.Region": "a region id; the composition's own bookkeeping — Position already names the cell on the map",
 
-	// SpeedFeet, SightFeet, Actions and Targeting (rpg-project#254) are a
+	// SpeedFeet, SightFeet, Actions, Targeting and Mind (rpg-project#254,
+	// rpg-toolkit#1725) are a
 	// member's static facts for the ONE consumer that reads them: a
 	// TurnDriver, through session.MonsterView — already fully projected
 	// there (see projectMonsterView). A roster listing is a different
@@ -140,6 +155,7 @@ var omitted = map[string]string{
 		"MonsterView.Seen, and a roster listing has no use for the raw range itself",
 	"encounter.Member.Actions":   "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Actions",
 	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
+	"encounter.Member.Mind":      "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Mind",
 
 	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
 	// occupancy check at Join/Step time — it decides whether an arrival is

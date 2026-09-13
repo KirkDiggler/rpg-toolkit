@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -48,6 +49,23 @@ type MonsterView struct {
 	// "closest" means already knows.
 	Targeting string
 
+	// Mind is the mind this member's sheet names, verbatim; empty when it
+	// names none. Opaque here for Targeting's own reason (S2): the
+	// rulebook that authored the word is the one that looks it up
+	// (rpg-toolkit#1725, rule A5).
+	Mind string
+
+	// Holdings is everything this member holds, on every channel, as
+	// values — the raw testimony Seen and Remembered are decoded from,
+	// plus what they drop (a deeds-channel holding, for one). A driver
+	// that reads testimony itself reads it here; the store stays the
+	// encounter's (rule A1), and nothing on this slice reaches it.
+	Holdings []Holding
+
+	// At is the clock's high-water when this view was built: the same
+	// stamp every holding above was landed at, so a driver can age them.
+	At uint64
+
 	// Seen are the other members this member currently, actively holds
 	// sight intel on.
 	Seen []SeenMember
@@ -82,6 +100,41 @@ type RememberedMember struct {
 	// Path is the exact-cell route toward Position; it is empty or nil when the
 	// remembered cell is unreachable.
 	Path []spatial.Position
+}
+
+// Holding is this package's own twin of perception.Holding (S2): one piece
+// of testimony a member holds, on one channel, as a value.
+//
+// A SECOND TWIN of the same inner type, beside [Sighting], and deliberately
+// so. Sighting answers a client's question — "what does this member know
+// about that one, and is it fresh" — and folds the channel list into a
+// status word. This one answers a driver's: the record as the store holds
+// it, every field, so a mind that reads a channel this SDK has not typed
+// can. Folding the two would make one of the two questions answer the
+// other's shape.
+type Holding struct {
+	// Subject is what this testimony is about — a member id on the sight
+	// channel, a qualified id on another (mind/perception's rule 11).
+	Subject string
+
+	// Payload is the testimony itself, in its channel's own encoding.
+	Payload []byte
+
+	// Channel is what delivered it: "sight", "deeds", and whatever else
+	// the rulebook lands. Opaque here for Targeting's reason.
+	Channel string
+
+	// Observed is the clock reading this payload was FIRST perceived at.
+	Observed uint64
+
+	// Confirmed is the clock reading it was last landed at, whether or not
+	// it changed — what a driver ages a memory against.
+	Confirmed uint64
+
+	// CurrentVia is every channel delivering this subject right now. Empty
+	// means nothing sustains it: a ghost, or discrete testimony like a
+	// deed, which is always in the past the moment it exists.
+	CurrentVia []string
 }
 
 // ActionView is this package's own twin of encounter.ActionView: a static
@@ -136,6 +189,14 @@ type SeenMember struct {
 	// unreachable, or when this member is already within reach without
 	// moving at all.
 	Path []spatial.Position
+
+	// AwayPath is one step that puts more of the board between this member
+	// and the seen one — the composition's own answer, budget one cell —
+	// or empty when every step leads closer or nowhere. A driver that
+	// keeps its distance reads it rather than reaching for the canvas
+	// (rule A2): fleeing into a corner is not fleeing, and the board is
+	// what knows where the corners are.
+	AwayPath []spatial.Position
 }
 
 // TurnBudget is this package's own twin of encounter.TurnBudget: what
@@ -354,6 +415,7 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 			DistanceCells: sm.DistanceCells,
 			InReach:       inReach,
 			Path:          append([]spatial.Position(nil), sm.Path...),
+			AwayPath:      append([]spatial.Position(nil), sm.AwayPath...),
 		}
 	}
 	remembered := make([]RememberedMember, len(view.Remembered))
@@ -367,14 +429,72 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 		}
 	}
 
+	var holdings []Holding
+	if len(view.Holdings) > 0 {
+		holdings = make([]Holding, len(view.Holdings))
+		for i, h := range view.Holdings {
+			holdings[i] = projectHolding(h)
+		}
+	}
+
 	return MonsterView{
 		Self:       string(view.Self),
 		Position:   view.Position,
 		Actions:    actions,
 		Targeting:  view.Targeting,
+		Mind:       view.Mind,
+		Holdings:   holdings,
+		At:         view.At,
 		Seen:       seen,
 		Remembered: remembered,
 		Budget:     TurnBudget{AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet},
 		Round:      view.Round,
+	}
+}
+
+// projectHolding turns one piece of the composition's own testimony into
+// this package's twin — ids and channels as the strings S2 crosses, the
+// payload untouched because only its own channel can read it.
+func projectHolding(h perception.Holding) Holding {
+	// NOTHING IS INVENTED WHERE THERE WAS NOTHING. An absent channel list
+	// stays absent rather than becoming an empty one, because a deed is
+	// current on nothing by construction and the two seams have to agree
+	// about what its holding looks like on the way back.
+	var via []string
+	if len(h.CurrentVia) > 0 {
+		via = make([]string, len(h.CurrentVia))
+		for i, c := range h.CurrentVia {
+			via[i] = string(c)
+		}
+	}
+
+	return Holding{
+		Subject:    string(h.Subject),
+		Payload:    append([]byte(nil), h.Payload...),
+		Channel:    string(h.Channel),
+		Observed:   h.Observed,
+		Confirmed:  h.Confirmed,
+		CurrentVia: via,
+	}
+}
+
+// unprojectHolding is projectHolding's exact reverse, for the seams that
+// hand a view back to a driver written against the composition's own types.
+func unprojectHolding(h Holding) perception.Holding {
+	var via []perception.Channel
+	if len(h.CurrentVia) > 0 {
+		via = make([]perception.Channel, len(h.CurrentVia))
+		for i, c := range h.CurrentVia {
+			via[i] = perception.Channel(c)
+		}
+	}
+
+	return perception.Holding{
+		Subject:    core.EntityID(h.Subject),
+		Payload:    append([]byte(nil), h.Payload...),
+		Channel:    perception.Channel(h.Channel),
+		Observed:   h.Observed,
+		Confirmed:  h.Confirmed,
+		CurrentVia: via,
 	}
 }

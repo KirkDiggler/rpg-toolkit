@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -61,6 +62,82 @@ func (basicSeam) Act(view MonsterView) (TurnIntent, error) {
 		return nil, err
 	}
 
+	return intentFromEncounter(view.Self, intent)
+}
+
+// Minded returns a TurnDriver backed by behavior.Minded: each member gets the
+// mind its sheet names (rule A5), a member naming none is driven as Behavior()
+// drives it, and an unknown name fails loudly.
+//
+// The value is STATEFUL, where a Behavior() is not: it keeps per-member names
+// across turns, and it is not safe for concurrent use. Config.TurnDriver is
+// read once at NewManager, so one of these serves every session that Manager
+// serves — the host is what guards it (rpg-api#980 holds a single driver
+// behind a mutex, with the cross-session member-id caveat written down
+// beside it). A driver per session or per encounter needs a seam this
+// package does not have yet; rpg-toolkit#1734.
+func Minded(in *MindedInput) (TurnDriver, error) {
+	var patience uint64
+	if in != nil {
+		patience = in.Patience
+	}
+
+	driver, err := behavior.NewMinded(&behavior.NewMindedInput{Patience: patience})
+	if err != nil {
+		return nil, fmt.Errorf("minded driver: %w", err)
+	}
+
+	return mindedSeam{driver: driver}, nil
+}
+
+// MindedInput configures the minded driver.
+type MindedInput struct {
+	// Patience is how many clock ticks old a witnessed deed may be before a
+	// mind stops holding a grudge over it. Zero takes the rulebook's own
+	// default — a feel number the first walk tunes, and not one a host
+	// should have to name to get a working driver.
+	Patience uint64
+}
+
+// mindedSeam adapts behavior.Minded to this package's own TurnDriver,
+// exactly as basicSeam adapts behavior.Basic — same round trip, same
+// reasons (see basicSeam's own doc).
+//
+// STATEFUL, which basicSeam is not: behavior.Minded remembers which mind
+// each member was given, so this value outlives any one turn and is not safe
+// for concurrent use. One of these serves every session its Manager serves,
+// because Config.TurnDriver is read once at NewManager — so the host that
+// wires it is the one that has to serialize turns through it.
+type mindedSeam struct {
+	driver *behavior.Minded
+}
+
+// compile-time proof the adapter satisfies what it is handed to.
+var _ TurnDriver = mindedSeam{}
+
+// Act translates one member's view and intent across the boundary.
+func (s mindedSeam) Act(view MonsterView) (TurnIntent, error) {
+	encView, err := unprojectMonsterView(view)
+	if err != nil {
+		return nil, fmt.Errorf("behavior driver %q: %w: %v", view.Self, ErrBadTurnOutcome, err)
+	}
+
+	intent, err := s.driver.Act(encView)
+	if err != nil {
+		return nil, err
+	}
+
+	return intentFromEncounter(view.Self, intent)
+}
+
+// intentFromEncounter maps the composition's own answer onto this package's,
+// shared by every seam that wraps a driver written one layer down.
+//
+// ONE MAPPING, not one per seam: a driver added here that quietly handled a
+// different set of intents than the reference one would be a second opinion
+// about what a turn can be, and the first anybody would hear of it is a
+// monster doing nothing on a board where another monster acts.
+func intentFromEncounter(self string, intent encounter.TurnIntent) (TurnIntent, error) {
 	switch it := intent.(type) {
 	case encounter.Pass:
 		return Pass{}, nil
@@ -69,7 +146,7 @@ func (basicSeam) Act(view MonsterView) (TurnIntent, error) {
 	case encounter.Move:
 		return Move{Path: it.Path}, nil
 	default:
-		return nil, fmt.Errorf("behavior driver %q: %w: %T", view.Self, ErrBadTurnOutcome, intent)
+		return nil, fmt.Errorf("behavior driver %q: %w: %T", self, ErrBadTurnOutcome, intent)
 	}
 }
 
@@ -112,6 +189,7 @@ func unprojectMonsterView(view MonsterView) (encounter.MonsterView, error) {
 			DistanceCells: sm.DistanceCells,
 			InReach:       inReach,
 			Path:          append([]spatial.Position(nil), sm.Path...),
+			AwayPath:      append([]spatial.Position(nil), sm.AwayPath...),
 		}
 	}
 	remembered := make([]encounter.RememberedMember, len(view.Remembered))
@@ -125,11 +203,22 @@ func unprojectMonsterView(view MonsterView) (encounter.MonsterView, error) {
 		}
 	}
 
+	var holdings []perception.Holding
+	if len(view.Holdings) > 0 {
+		holdings = make([]perception.Holding, len(view.Holdings))
+		for i, h := range view.Holdings {
+			holdings[i] = unprojectHolding(h)
+		}
+	}
+
 	return encounter.MonsterView{
 		Self:       encounter.MemberID(view.Self),
 		Position:   view.Position,
 		Actions:    actions,
 		Targeting:  view.Targeting,
+		Mind:       view.Mind,
+		Holdings:   holdings,
+		At:         view.At,
 		Seen:       seen,
 		Remembered: remembered,
 		Budget: encounter.TurnBudget{

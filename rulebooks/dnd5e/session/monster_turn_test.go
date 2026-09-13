@@ -813,10 +813,17 @@ func (r *recordingBehavior) Act(view session.MonsterView) (session.TurnIntent, e
 func cloneMonsterView(in session.MonsterView) session.MonsterView {
 	out := in
 	out.Actions = append([]session.ActionView(nil), in.Actions...)
+	out.Holdings = make([]session.Holding, len(in.Holdings))
+	for i, holding := range in.Holdings {
+		out.Holdings[i] = holding
+		out.Holdings[i].Payload = append([]byte(nil), holding.Payload...)
+		out.Holdings[i].CurrentVia = append([]string(nil), holding.CurrentVia...)
+	}
 	out.Seen = make([]session.SeenMember, len(in.Seen))
 	for i, member := range in.Seen {
 		out.Seen[i] = member
 		out.Seen[i].Path = append([]spatial.Position(nil), member.Path...)
+		out.Seen[i].AwayPath = append([]spatial.Position(nil), member.AwayPath...)
 		out.Seen[i].InReach = make(map[string]bool, len(member.InReach))
 		for ref, reachable := range member.InReach {
 			out.Seen[i].InReach[ref] = reachable
