@@ -284,10 +284,17 @@ func TestMindedPatienceIsTheHostsToSet(t *testing.T) {
 		"a one-tick patience does not, and the host is what chose that")
 }
 
-// The driver a host wires is ONE driver for the whole session, and it
-// remembers across turns — which is the reason Minded returns a value rather
-// than a function.
-func TestMindedRemembersAcrossTurns(t *testing.T) {
+// One driver, the same view twice, the same answer — the driver's answer is
+// stable across calls.
+//
+// What this does NOT prove is that anything was REMEMBERED. No mind shipped
+// here has memory that shows up in an answer: the retaliator names its
+// contact off the view it was handed, so a driver that registered a fresh
+// mind on every call would pass this test identically. Minded returns a
+// value rather than a function because the driver holds state — a game with
+// per-member sheets, places and names — and is not safe for concurrent use,
+// which is true whether or not that state is observable from out here.
+func TestMindedAnswersAreStableAcrossCalls(t *testing.T) {
 	driver, err := session.Minded(nil)
 	require.NoError(t, err)
 
@@ -295,5 +302,5 @@ func TestMindedRemembersAcrossTurns(t *testing.T) {
 	require.NoError(t, err)
 	second, err := driver.Act(mindedView(t, 4, mindedShotBy("alice", 3)))
 	require.NoError(t, err)
-	require.Equal(t, first, second, "still alice, one tick later")
+	require.Equal(t, first, second, "the same driver, asked again one tick later, answers the same")
 }

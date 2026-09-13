@@ -93,12 +93,18 @@ type Config struct {
 	// rule, so it is asked for rather than assumed, exactly as Dice is
 	// (rpg-toolkit#1162). Wire session.Pass{} for v1's whole behavior — every
 	// unplayed member's turn ends the moment the clock reaches it —
-	// session.Behavior() for the reference driver, or session.Minded() for
+	// session.Behavior() for the reference driver, or session.Minded(nil) for
 	// one that gives each member the mind its sheet names and falls back to
 	// the reference driver for a member that names none (rpg-toolkit#1725).
 	//
-	// A minded driver REMEMBERS across turns, so a host that wires one wires
-	// one per session and keeps it, where it would have kept a Behavior().
+	// This field is read once, at NewManager, and the Manager built from it
+	// serves every session in the process: there is ONE driver per Manager
+	// today, not one per session. A session.Minded(nil) is stateful and not
+	// safe for concurrent use, so the host that wires one guards it —
+	// rpg-api#980 holds a single driver behind a mutex and writes the
+	// cross-session member-id caveat down beside it. Wiring a driver per
+	// session or per encounter needs a seam this package does not have yet;
+	// seam to be filed.
 	TurnDriver TurnDriver
 }
 

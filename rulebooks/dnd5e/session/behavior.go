@@ -67,9 +67,15 @@ func (basicSeam) Act(view MonsterView) (TurnIntent, error) {
 
 // Minded returns a TurnDriver backed by behavior.Minded: each member gets the
 // mind its sheet names (rule A5), a member naming none is driven as Behavior()
-// drives it, and an unknown name fails loudly. The driver keeps per-member
-// names across turns, so a host wires one per session, where it wires
-// Behavior() today.
+// drives it, and an unknown name fails loudly.
+//
+// The value is STATEFUL, where a Behavior() is not: it keeps per-member names
+// across turns, and it is not safe for concurrent use. Config.TurnDriver is
+// read once at NewManager, so one of these serves every session that Manager
+// serves — the host is what guards it (rpg-api#980 holds a single driver
+// behind a mutex, with the cross-session member-id caveat written down
+// beside it). A driver per session or per encounter needs a seam this
+// package does not have yet; seam to be filed.
 func Minded(in *MindedInput) (TurnDriver, error) {
 	var patience uint64
 	if in != nil {
@@ -98,9 +104,10 @@ type MindedInput struct {
 // reasons (see basicSeam's own doc).
 //
 // STATEFUL, which basicSeam is not: behavior.Minded remembers which mind
-// each member was given, so this value is the session's for as long as the
-// session has one driver. One driver serves one encounter, one turn at a
-// time; it is not safe for concurrent use.
+// each member was given, so this value outlives any one turn and is not safe
+// for concurrent use. One of these serves every session its Manager serves,
+// because Config.TurnDriver is read once at NewManager — so the host that
+// wires it is the one that has to serialize turns through it.
 type mindedSeam struct {
 	driver *behavior.Minded
 }
