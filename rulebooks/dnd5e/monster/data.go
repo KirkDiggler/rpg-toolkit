@@ -51,6 +51,9 @@ type Data struct {
 
 	// AI behavior
 	Targeting TargetingStrategy `json:"targeting,omitempty"`
+	// Mind names the mind the monster thinks with; "" when the definition
+	// named none (MindUnspecified).
+	Mind Mind `json:"mind,omitempty"`
 
 	// ReactionSpent is the one reaction meter a monster has: true from the
 	// moment something bills it until the monster's next turn start or a long
