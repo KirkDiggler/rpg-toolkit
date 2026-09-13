@@ -634,7 +634,8 @@ func (s *PerceptionSuite) TestQualifyDistinguishesChannelsAndTheBareID() {
 	s.NotEqual(bare, perception.Qualify(perception.Sight, bare))
 	s.NotEqual(perception.Qualify(hearing, bare), perception.Qualify(deeds, bare),
 		"two channels must file the same entity under two subjects")
-	s.Equal(perception.Qualify(deeds, bare), perception.Qualify(deeds, bare), "and it is a function")
+	s.NotEqual(perception.Qualify(deeds, "goblin"), perception.Qualify(deeds, "orc"),
+		"and two entities on one channel must file under two subjects")
 }
 
 // The qualified format is PERSISTED: subjects go through ToData into

@@ -64,10 +64,19 @@ const qualifier = "|"
 // to answer "what entity is this subject about" without already knowing —
 // and not before.
 //
-// The function is total and guards nothing. An empty channel or subject
-// produces a subject with an empty half, which is a caller bug this package
-// would rather leave visible than adjudicate while the multi-channel shape
-// is still open.
+// The function is total and guards nothing, which is safe on one condition:
+// A CHANNEL NAME MUST NOT CONTAIN THE SEPARATOR. Subjects may — the channel
+// prefix still disambiguates them — but a channel that contains it destroys
+// the property this function exists for, and does it silently:
+// Qualify("a|b", "c") and Qualify("a", "b|c") are both "a|b|c", so one
+// channel's testimony lands on another's subject with nothing failing. That
+// is the R11 merge this function prevents, re-entering through its own
+// input, which is why the constraint is stated rather than left implied.
+//
+// An empty channel or subject is a different case and genuinely is left
+// visible: it produces a subject with an empty half, wrong on sight to
+// anyone reading the ledger, and not worth adjudicating while the
+// multi-channel shape is still open.
 func Qualify(channel Channel, subject core.EntityID) core.EntityID {
 	return core.EntityID(string(channel) + qualifier + string(subject))
 }
