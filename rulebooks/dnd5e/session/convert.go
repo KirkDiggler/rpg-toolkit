@@ -219,19 +219,30 @@ func projectSightings(
 	return out
 }
 
-// sightingStatus derives Sighting's compatibility Status/CurrentVia pair from
-// perception.Holding.Current — the single bool intel's own Current/Held
-// Status enum and per-channel CurrentVia list collapsed into once a holding
-// could only ever be sustained by the one channel that produced it
-// (mind/perception's own Holding, unlike play/intel's, carries no per-channel
-// breakdown to report). "current"/"held" are intel's own wire words, kept
-// verbatim so an existing host's Status comparison does not have to change
-// for this migration.
+// sightingStatus copies Sighting's Status/CurrentVia pair out of
+// perception.Holding.CurrentVia. "current"/"held" are intel's own wire
+// words, kept verbatim so an existing host's Status comparison does not have
+// to change.
+//
+// It used to RECONSTRUCT that pair, because mind/perception v0.1.0 carried
+// no per-channel breakdown to report — a Current bool paired with
+// Holding.Channel. That reconstruction could lie, and v0.2.0 exists partly
+// to stop it. Channel is the provenance of the latest landing, and Report
+// moves it without sustaining anything ("a rumour is not a sighting"), so a
+// deed reported about a currently-sighted subject would have gone out as
+// {"current", ["deeds"]}: current via a channel that delivers nothing, on
+// the wire, to a host with no way to tell. The store's own answer is copied
+// now, never derived.
 func sightingStatus(h perception.Holding) (status string, via []string) {
-	if h.Current {
-		return "current", []string{string(h.Channel)}
+	if len(h.CurrentVia) == 0 {
+		return "held", nil
 	}
-	return "held", nil
+
+	via = make([]string, 0, len(h.CurrentVia))
+	for _, channel := range h.CurrentVia {
+		via = append(via, string(channel))
+	}
+	return "current", via
 }
 
 // projectSeen copies the sight channel's typed knowledge into Seen (ADR-0041,

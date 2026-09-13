@@ -5,15 +5,15 @@ go 1.24.1
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
-	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.1-0.20260913022359-67896d528ec3
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.164.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.79.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.46.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.79.1-0.20260913022811-798d27151b2d
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.46.1-0.20260913022942-690007e0d462
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.13.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/stretchr/testify v1.11.1

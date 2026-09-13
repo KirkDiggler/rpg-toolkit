@@ -349,7 +349,10 @@ func allyCandidates(
 	seen := make([]string, 0, len(holdings))
 	for _, h := range holdings {
 		subject := string(h.Subject)
-		if subject == member || !h.Current {
+		// SIGHT, named — the variable is called seen, and now it is true
+		// by construction rather than because sight is the only channel
+		// anything writes.
+		if subject == member || !h.CurrentOn(perception.Sight) {
 			continue
 		}
 		if kinds[subject] != own {
