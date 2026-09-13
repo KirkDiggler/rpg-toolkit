@@ -165,8 +165,18 @@ holds what, so the game stopped holding one. `Turn` and `Situation` take
 `stage.Land` takes a `Store` — exactly perception's two methods — so the
 caller hands its own store and nothing wraps it. The proofs' scene now
 owns the store and runs the passes, the way a real board does, and every
-proof passes with the same assertions. R1 says it: behaviour never runs a
-pass. The adoption's own rules are in [adoption.md](adoption.md).
+prior proof passes with the same assertions. R1 says it: behaviour never
+runs a pass. The adoption's own rules are in [adoption.md](adoption.md).
+
+One rule was amended on the way, found by the encounter's first deed
+proof. An observer never perceives itself, so a witness holds no sight of
+itself — and `Land` named actor and target only from what the witness held
+on sight, so a deed done TO the witness named nobody. The bow skeleton
+could never have believed it was shot at, and the adoption's Retaliator
+ranks on exactly that. R9 now says a witness knows itself: `Land` names
+the witness whenever it is the actor or the target. The proof is
+`TestAWitnessKnowsItWasTheTarget`, and removing the shortcut in `seen`
+fails it on "knows the knight attacked IT".
 
 ## Left for a later rung
 
