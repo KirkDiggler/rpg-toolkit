@@ -612,15 +612,46 @@ func (s *PerceptionSuite) TestQualifiedIDsKeepBothChannelsIntact() {
 		[]core.EntityID{"alice"}, reachAll{})
 	s.Require().NoError(err)
 
-	s.report(2, []perception.Presence{{ID: "deeds|goblin", Payload: []byte("a deed")}})
+	s.report(2, []perception.Presence{{ID: perception.Qualify(deeds, "goblin"), Payload: []byte("a deed")}})
 
 	sight := s.holdingOn("goblin")
 	s.Equal([]byte("standing"), sight.Payload)
 	s.True(sight.CurrentOn(perception.Sight))
 
-	deed := s.holdingOn("deeds|goblin")
+	deed := s.holdingOn(perception.Qualify(deeds, "goblin"))
 	s.Equal([]byte("a deed"), deed.Payload)
 	s.Empty(deed.CurrentVia)
+}
+
+// Qualify is R11's tool, and this is the property that makes it one: the
+// same entity on two channels yields two subjects, and neither is the bare
+// entity id. Fails if Qualify ever returns its subject unchanged, or stops
+// varying with the channel — either of which would hand the store back the
+// merge R11 takes away from it.
+func (s *PerceptionSuite) TestQualifyDistinguishesChannelsAndTheBareID() {
+	bare := core.EntityID("goblin")
+
+	s.NotEqual(bare, perception.Qualify(perception.Sight, bare))
+	s.NotEqual(perception.Qualify(hearing, bare), perception.Qualify(deeds, bare),
+		"two channels must file the same entity under two subjects")
+	s.Equal(perception.Qualify(deeds, bare), perception.Qualify(deeds, bare), "and it is a function")
+}
+
+// The qualified format is PERSISTED: subjects go through ToData into
+// intel.Data and come back through Load, so changing the separator silently
+// orphans every stored holding whose subject used the old one. Pinned here
+// deliberately — this assertion is meant to fail loudly if anyone edits the
+// separator, so the migration is a decision rather than an accident.
+func (s *PerceptionSuite) TestQualifiedSubjectFormatIsPinnedBecauseItPersists() {
+	s.Equal(core.EntityID("deeds|goblin"), perception.Qualify(deeds, "goblin"))
+
+	s.report(1, []perception.Presence{{ID: perception.Qualify(deeds, "goblin"), Payload: []byte("a deed")}})
+	loaded, err := perception.Load(s.p.ToData())
+	s.Require().NoError(err)
+
+	h, err := loaded.On("alice", perception.Qualify(deeds, "goblin"))
+	s.Require().NoError(err)
+	s.Equal([]byte("a deed"), h.Payload, "a qualified subject survives a round trip through persistence")
 }
 
 // Two channels genuinely sustaining one subject: CurrentVia carries both,

@@ -107,10 +107,23 @@ arrives with the use case that pays for it, not before.
   **decided those are one thing**, and no observer gets to be wrong about
   it. Merging is the observer's judgment — the whole reason a mind has one —
   so a caller perceiving a figure on a second channel qualifies the id by
-  channel (`hearing|goblin`), and the store then cannot merge them. R10 is
-  what happens when this goes unheeded. Stated as an instruction rather than
-  a warning: qualification is the thing to do, not merely the hazard to
-  avoid.
+  channel, and the store then cannot merge them. R10 is what happens when
+  this goes unheeded. Stated as an instruction rather than a warning:
+  qualification is the thing to do, not merely the hazard to avoid.
+
+  **`Qualify(channel, subject)` is how.** v0.2.0 shipped R11 as an
+  instruction with nothing to follow it with, and the first consumer paid for
+  that immediately: `mind/behavior` v0.1.0 wrote `channel + "|" + id` twice,
+  in `deed.Subject` and in its scene's `hearingOf`, agreeing only because one
+  author wrote both. The separator now has one owner. A rule whose every
+  caller reimplements it is a rule that holds until two callers disagree, and
+  the disagreement is silent — two subjects for one thing, both held, nothing
+  failing.
+
+  There is deliberately no `Unqualify`. Nothing needs it: a `Holding.Channel`
+  already says which channel filed a subject, which is how behaviour's minds
+  tell a deed from a sighting. It arrives when a caller must answer "what
+  entity is this subject about" without already knowing.
 
 ## Types
 

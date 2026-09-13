@@ -39,6 +39,39 @@ type Presence struct {
 	Payload []byte
 }
 
+// qualifier separates a channel from an entity in a qualified subject. It
+// is unexported because the format is this package's business: a caller that
+// hard-codes it has re-created the problem Qualify exists to solve.
+const qualifier = "|"
+
+// Qualify returns the subject one channel's testimony about an entity is
+// held under, so the store cannot merge it with another channel's testimony
+// about that same entity (rule 11).
+//
+// This is R11's tool, and it exists because the rule alone was not enough.
+// R11 shipped in v0.2.0 as an instruction — qualify your ids and the store
+// cannot merge for you — with nothing to qualify them WITH. Its first
+// consumer, mind/behavior v0.1.0, wrote the same two-line concatenation
+// twice, once for deeds and once for hearing, and the two agreed only
+// because one author wrote both. A third writer choosing ":" would land a
+// SECOND subject for the same thing, held happily beside the first, with
+// nothing failing anywhere — which is the silent merge R11 exists to
+// prevent, re-created one layer up.
+//
+// Nothing here parses the result back. No caller has needed to: a Holding's
+// Channel already says which channel filed it, which is how behaviour's
+// minds tell a deed from a sighting. An Unqualify arrives when a caller has
+// to answer "what entity is this subject about" without already knowing —
+// and not before.
+//
+// The function is total and guards nothing. An empty channel or subject
+// produces a subject with an empty half, which is a caller bug this package
+// would rather leave visible than adjudicate while the multi-channel shape
+// is still open.
+func Qualify(channel Channel, subject core.EntityID) core.EntityID {
+	return core.EntityID(string(channel) + qualifier + string(subject))
+}
+
 // Reach answers whether an observer's channel reaches a subject this pass.
 // It is the whole of the physics, and this package supplies none of it —
 // range, blocking, lighting, and cover all collapse into the one yes or no
