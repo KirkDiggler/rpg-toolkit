@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -119,7 +120,7 @@ func (s *TombDoorSuite) sees(observer, subject core.EntityID) bool {
 		// Channel-blind, because [perception.Holding] carries no per-channel
 		// list: a holding is current when ANY channel sustains it, and sight
 		// is the only channel this composition ever writes.
-		if h.Current {
+		if h.CurrentOn(perception.Sight) {
 			return true
 		}
 	}

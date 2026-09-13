@@ -121,7 +121,7 @@ func (s *SightSuite) held(enc *encounter.Encounter, observer, subject core.Entit
 func (s *SightSuite) sees(enc *encounter.Encounter, observer, subject core.EntityID) bool {
 	h, ok := s.held(enc, observer, subject)
 
-	return ok && h.Current
+	return ok && h.CurrentOn(perception.Sight)
 }
 
 // TestAMemberBeyondYourSightIsNotInYourPerceptAndOneInsideItIs is the slice in
@@ -297,7 +297,7 @@ func (s *SightSuite) TestHowFarSheCanSeeIsAskedAgainEveryTime() {
 
 	ghost, ok := s.held(enc, alice, bob)
 	s.True(ok, "but she remembers where he was")
-	s.False(ghost.Current, "and it is a ghost, not a live sighting")
+	s.False(ghost.CurrentOn(perception.Sight), "and it is a ghost, not a live sighting")
 
 	// And it goes both ways: bob's own answer never changed, so he still sees
 	// her. Two members, two ranges, one geometry.

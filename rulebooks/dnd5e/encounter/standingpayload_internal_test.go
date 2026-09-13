@@ -186,7 +186,7 @@ func TestGhostDoesNotDiscloseAStandingChangeItNeverWitnessed(t *testing.T) {
 
 	firstLight, ok := holdingOn(t, enc, alice, bob)
 	require.True(t, ok)
-	require.True(t, firstLight.Current, "first light: she is watching him stand")
+	require.True(t, firstLight.CurrentOn(perception.Sight), "first light: she is watching him stand")
 	firstTestimony, decoded := DecodeSightTestimony(firstLight.Payload)
 	require.True(t, decoded)
 	require.NotNil(t, firstTestimony.Down)
@@ -201,7 +201,7 @@ func TestGhostDoesNotDiscloseAStandingChangeItNeverWitnessed(t *testing.T) {
 
 	ghost, ok := holdingOn(t, enc, alice, bob)
 	require.True(t, ok)
-	require.False(t, ghost.Current, "she is not watching him any more")
+	require.False(t, ghost.CurrentOn(perception.Sight), "she is not watching him any more")
 
 	// NOW he goes down — a fact she has no way to witness, because she still
 	// cannot see him.
@@ -214,7 +214,7 @@ func TestGhostDoesNotDiscloseAStandingChangeItNeverWitnessed(t *testing.T) {
 
 	ghostAfter, ok := holdingOn(t, enc, alice, bob)
 	require.True(t, ok)
-	require.False(t, ghostAfter.Current)
+	require.False(t, ghostAfter.CurrentOn(perception.Sight))
 	require.Equal(t, ghost.Payload, ghostAfter.Payload,
 		"the ghost's payload is unchanged: she still remembers him standing")
 	require.Equal(t, ghost.Confirmed, ghostAfter.Confirmed, "confirmed has not moved")

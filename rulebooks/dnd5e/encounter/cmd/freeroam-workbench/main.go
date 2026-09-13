@@ -45,6 +45,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -311,7 +312,7 @@ func beliefGrid(
 		}
 		// Sight payloads are dungeon-absolute; mark drops anything off
 		// this pane.
-		p.mark(grid, spatial.Position{X: sp.X, Y: sp.Y}, initialOf(string(h.Subject), h.Current))
+		p.mark(grid, spatial.Position{X: sp.X, Y: sp.Y}, initialOf(string(h.Subject), h.CurrentOn(perception.Sight)))
 	}
 	for _, m := range members {
 		if m.ID == who {

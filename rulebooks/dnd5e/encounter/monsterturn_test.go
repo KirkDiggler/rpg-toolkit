@@ -183,14 +183,14 @@ func (s *MonsterTurnTestSuite) TestRememberedArrivalLeavesHeldKnownLocationAlone
 	enc := s.drivenArrivalEncounter(driver, &sightList{fallback: 0}, arrival, cellAt(7, 7), false)
 
 	before := requireHolding(s.T(), enc, goblin, billy)
-	s.Require().False(before.Current)
+	s.Require().False(before.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), before.Payload, arrival)
 
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
 	after := requireHolding(s.T(), enc, goblin, billy)
-	s.Require().False(after.Current)
+	s.Require().False(after.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), after.Payload, arrival)
 }
 
@@ -223,7 +223,7 @@ func (s *MonsterTurnTestSuite) TestRecordDrivingAMonsterLeavesItsMemoryAlone() {
 	s.Require().NotNil(out.IntelDeltas[goblin], "Record must surface the nested drive")
 
 	after := requireHolding(s.T(), enc, goblin, billy)
-	s.Require().False(after.Current)
+	s.Require().False(after.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), after.Payload, arrival)
 }
 
@@ -243,7 +243,7 @@ func (s *MonsterTurnTestSuite) TestRememberedArrivalStoppingShortKeepsTheStaleTe
 	s.Require().NoError(err)
 
 	holding := requireHolding(s.T(), enc, goblin, billy)
-	s.Require().False(holding.Current)
+	s.Require().False(holding.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), holding.Payload, remembered)
 }
 
@@ -263,7 +263,7 @@ func (s *MonsterTurnTestSuite) TestRememberedArrivalCompletePerceptWins() {
 	s.Require().NoError(err)
 
 	holding := requireHolding(s.T(), enc, goblin, billy)
-	s.Require().True(holding.Current)
+	s.Require().True(holding.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), holding.Payload, billyCell)
 }
 
@@ -282,10 +282,10 @@ func (s *MonsterTurnTestSuite) TestRememberedArrivalLeavesEveryObserversMemoryAl
 	s.Require().NoError(err)
 
 	goblinHolding := requireHolding(s.T(), enc, goblin, billy)
-	s.Require().False(goblinHolding.Current)
+	s.Require().False(goblinHolding.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), goblinHolding.Payload, arrival)
 	ogreHolding := requireHolding(s.T(), enc, "ogre", billy)
-	s.Require().False(ogreHolding.Current)
+	s.Require().False(ogreHolding.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), ogreHolding.Payload, arrival)
 }
 
@@ -302,7 +302,7 @@ func (s *MonsterTurnTestSuite) TestRememberedArrivalLeavesEveryAbsentSubjectAlon
 
 	for _, subject := range []encounter.MemberID{billy, carol} {
 		before := requireHolding(s.T(), enc, goblin, subject)
-		s.Require().False(before.Current)
+		s.Require().False(before.CurrentOn(perception.Sight))
 		requireKnownLocation(s.T(), before.Payload, arrival)
 	}
 
@@ -311,7 +311,7 @@ func (s *MonsterTurnTestSuite) TestRememberedArrivalLeavesEveryAbsentSubjectAlon
 
 	for _, subject := range []encounter.MemberID{billy, carol} {
 		after := requireHolding(s.T(), enc, goblin, subject)
-		s.Require().False(after.Current)
+		s.Require().False(after.CurrentOn(perception.Sight))
 		requireKnownLocation(s.T(), after.Payload, arrival)
 	}
 }

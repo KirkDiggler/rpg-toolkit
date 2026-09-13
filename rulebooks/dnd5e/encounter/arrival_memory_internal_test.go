@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -187,7 +188,7 @@ func requireArrivalMemoryUntouched(
 		if holding.Subject != propagationSubject {
 			continue
 		}
-		require.False(t, holding.Current, "the remembered player is still a ghost")
+		require.False(t, holding.CurrentOn(perception.Sight), "the remembered player is still a ghost")
 		location, ok := DecodeSightTestimony(holding.Payload)
 		require.True(t, ok)
 		require.Equal(t, LocationKnown, location.State)

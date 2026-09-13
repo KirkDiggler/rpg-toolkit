@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"maps"
 	"slices"
 	"testing"
@@ -65,7 +66,7 @@ func heldBy(t *testing.T, enc *Encounter, observer, subject MemberID) (SightTest
 		}
 		testimony, ok := DecodeSightTestimony(h.Payload)
 		require.True(t, ok, "the composition must decode its own testimony")
-		return testimony, h.Current, true
+		return testimony, h.CurrentOn(perception.Sight), true
 	}
 	return SightTestimony{}, false, false
 }

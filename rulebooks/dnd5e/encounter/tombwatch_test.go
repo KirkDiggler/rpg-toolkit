@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,7 +36,7 @@ func seen(
 		if h.Subject == subject {
 			var p encounter.SightPayload
 			require.NoError(t, json.Unmarshal(h.Payload, &p))
-			return h.Current, p
+			return h.CurrentOn(perception.Sight), p
 		}
 	}
 	t.Fatalf("%s holds nothing on %s", observer, subject)

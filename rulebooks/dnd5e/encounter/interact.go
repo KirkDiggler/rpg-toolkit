@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -150,20 +151,21 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 // contactBetween already apply: a subject once seen but not seen now (a
 // Held ghost) does not count, the same as one never seen at all.
 //
-// CHANNEL-BLIND ON PURPOSE, matching those same two functions: a holding is
-// current whenever ANY channel confirms it right now, and this does not ask
-// which one. Today that is a distinction without a difference — grepped every
-// Channel: assignment in this package, and sight is the only channel anything
-// here ever writes — so discriminating by channel now would guard against an
-// input this package cannot yet produce. Revisit if a second channel (sound,
-// say) ever arrives (Copilot, PR #1412 review).
+// SIGHT, NAMED. This used to be channel-blind on purpose — a holding was
+// current whenever any channel confirmed it, and with sight the only channel
+// this package writes, discriminating would have guarded against an input
+// nothing could produce. The comment said "revisit if a second channel
+// (sound, say) ever arrives" (Copilot, PR #1412 review), and mind/perception
+// v0.2.0 is that arrival: currency is per-channel, and interacting is a
+// thing you do with something you can SEE. Hearing a goblin behind a door is
+// not reaching it.
 func (e *Encounter) currentlyPerceives(observer, subject MemberID) (bool, error) {
 	holdings, err := e.intelLog.Held(observer)
 	if err != nil {
 		return false, fmt.Errorf("held by %q: %w", observer, err)
 	}
 	for _, h := range holdings {
-		if h.Current && h.Subject == subject {
+		if h.CurrentOn(perception.Sight) && h.Subject == subject {
 			return true, nil
 		}
 	}

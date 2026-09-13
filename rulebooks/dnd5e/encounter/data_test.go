@@ -421,7 +421,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		for _, h := range holdings {
 			if h.Subject == "goblin" {
 				foundGoblin = true
-				s.False(h.Current, "reloaded ghost should still be held as ghost")
+				s.False(h.CurrentOn(perception.Sight), "reloaded ghost should still be held as ghost")
 				break
 			}
 		}
@@ -920,7 +920,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		view, err := enc2.View(&encounter.ViewInput{Member: "playerA"})
 		s.Require().NoError(err)
 		s.Require().Len(view, 1)
-		s.False(view[0].Current,
+		s.False(view[0].CurrentOn(perception.Sight),
 			"the loaded belief (a ghost) must survive verbatim — a load that re-surveils would resurrect it to Current")
 	})
 }
@@ -1683,7 +1683,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		var goblinCurrentBefore bool
 		for _, h := range holdings1 {
 			if h.Subject == "goblin" {
-				goblinCurrentBefore = h.Current
+				goblinCurrentBefore = h.CurrentOn(perception.Sight)
 				break
 			}
 		}
@@ -1697,7 +1697,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		var goblinCurrentAfter bool
 		for _, h := range holdings2 {
 			if h.Subject == "goblin" {
-				goblinCurrentAfter = h.Current
+				goblinCurrentAfter = h.CurrentOn(perception.Sight)
 				break
 			}
 		}
@@ -1772,7 +1772,7 @@ func (s *DataTestSuite) TestRememberedArrivalTestimonyPersists() {
 	s.Require().NoError(err)
 
 	holding := requireHolding(s.T(), loaded, goblin, billy)
-	s.Require().False(holding.Current)
+	s.Require().False(holding.CurrentOn(perception.Sight))
 	requireKnownLocation(s.T(), holding.Payload, arrival)
 
 	// Walk the persisted bubble back to Alice's turn. The next driven view is
