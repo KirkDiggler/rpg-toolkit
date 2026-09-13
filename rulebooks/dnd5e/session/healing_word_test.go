@@ -277,10 +277,14 @@ func (s *CastSuite) TestHealingWordRevalidatesSightAndTargetsBeforePayment() {
 			target := "skeleton"
 			switch invalid {
 			case "stale sight":
+				// Persisted testimony still names channels: EncounterData's
+				// field is perception.Data, whose own Intel is the store
+				// underneath. perception.Holding collapsed CurrentVia into a
+				// bool for READERS; the persistence shape kept the list.
 				for _, world := range s.encounters.byID {
-					holding := world.Intel.Holdings["cleric"]["skeleton"]
+					holding := world.Perception.Intel.Holdings["cleric"]["skeleton"]
 					holding.CurrentVia = nil
-					world.Intel.Holdings["cleric"]["skeleton"] = holding
+					world.Perception.Intel.Holdings["cleric"]["skeleton"] = holding
 				}
 			case "wall":
 				for _, world := range s.encounters.byID {
