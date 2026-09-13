@@ -174,12 +174,21 @@ func Step(in *StepInput) (*StepOutput, error) {
 	}
 }
 
-// LandInput is a deed, the game whose actors witnessed it, who did, and
+// Store is what Land needs of a perception: exactly the two methods
+// [perception.Perception] has, so the caller hands its own store and
+// nothing wraps it. The store belongs to whoever runs the passes; the stage
+// only tells it what somebody saw.
+type Store interface {
+	Held(observer core.EntityID) ([]perception.Holding, error)
+	Report(in perception.ReportInput) (*perception.ReportOutput, error)
+}
+
+// LandInput is a deed, the store whose observers witnessed it, who did, and
 // when. Who witnessed it is the caller's: a deed happens at a place, and
 // whose senses reached that place is the physics perception also leaves to
 // the caller.
 type LandInput struct {
-	Game      *behavior.Game
+	Store     Store
 	Deed      deed.Deed
 	Witnesses []core.EntityID
 	At        uint64
@@ -189,8 +198,9 @@ type LandInput struct {
 // ErrNoActor if the deed has no actor.
 //
 // The deed's actor and target are named to each witness only if the witness
-// currently holds them on sight: a witness who could not see the healer
-// learns that a heal happened and not who did it. The deed lands on the
+// currently holds them on sight, or is them: a witness who could not see the
+// healer learns that a heal happened and not who did it, and a witness that
+// was the target knows it was. The deed lands on the
 // deeds channel, one qualified subject per figure, through perception's
 // Report door — so it is held and never current, it is judged by the
 // witness's mind like everything else, and the store cannot tell it from a
@@ -201,16 +211,16 @@ func Land(in *LandInput) error {
 	}
 
 	for _, witness := range in.Witnesses {
-		held, err := in.Game.Held(witness)
+		held, err := in.Store.Held(witness)
 		if err != nil {
 			return err
 		}
 
 		saw := in.Deed
-		saw.Actor = seen(held, in.Deed.Actor)
-		saw.Target = seen(held, in.Deed.Target)
+		saw.Actor = seen(held, witness, in.Deed.Actor)
+		saw.Target = seen(held, witness, in.Deed.Target)
 
-		err = in.Game.Report(perception.ReportInput{
+		_, err = in.Store.Report(perception.ReportInput{
 			Observer: witness,
 			Channel:  deed.Channel,
 			Reports:  []perception.Presence{{ID: deed.Subject(in.Deed.Actor), Payload: deed.Encode(saw)}},
@@ -225,8 +235,15 @@ func Land(in *LandInput) error {
 }
 
 // seen is the subject if the witness currently holds it on sight, else
-// nothing.
-func seen(held []perception.Holding, subject core.EntityID) core.EntityID {
+// nothing — except the witness itself, which it always knows. An observer
+// never perceives itself, so a witness holds no sight of itself, and
+// without this a deed done TO the witness would name nobody. You know when
+// you have been shot at, and you know when you did the shooting.
+func seen(held []perception.Holding, witness, subject core.EntityID) core.EntityID {
+	if subject == witness {
+		return subject
+	}
+
 	for _, h := range held {
 		if h.Subject == subject && h.CurrentOn(perception.Sight) {
 			return subject

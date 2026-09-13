@@ -156,10 +156,31 @@ the issue was corrected, the code is the party that was right; a stale
 nothing. The arrow was also corrected on Kirk's word in the same commit:
 the mind that changes is the skeleton's, not the weapon.
 
+## v0.3.0 — the store is the caller's (#1725, PR 1 of the adoption)
+
+The encounter already owns a `perception.Perception` and runs its passes;
+v0.2.0's `Game` built a second one. Two stores would be a lie about who
+holds what, so the game stopped holding one. `Turn` and `Situation` take
+`Holdings` as values; `Observe`, `Report`, and `Held` left the game;
+`stage.Land` takes a `Store` — exactly perception's two methods — so the
+caller hands its own store and nothing wraps it. The proofs' scene now
+owns the store and runs the passes, the way a real board does, and every
+prior proof passes with the same assertions. R1 says it: behaviour never
+runs a pass. The adoption's own rules are in [adoption.md](adoption.md).
+
+One rule was amended on the way, found by the encounter's first deed
+proof. An observer never perceives itself, so a witness holds no sight of
+itself — and `Land` named actor and target only from what the witness held
+on sight, so a deed done TO the witness named nobody. The bow skeleton
+could never have believed it was shot at, and the adoption's Retaliator
+ranks on exactly that. R9 now says a witness knows itself: `Land` names
+the witness whenever it is the actor or the target. The proof is
+`TestAWitnessKnowsItWasTheTarget`, and removing the shortcut in `seen`
+fails it on "knows the knight attacked IT".
+
 ## Left for a later rung
 
-- Persistence: names and fears alongside perception's `Data`. The
-  encounter integration pays for it.
+- Persistence: names and fears. The encounter integration pays for it.
 - The encounter's `Reader`, `Truth`, and `Space` (its canvas and
   pathfinder), and a `Reach` that answers the deeds question ("whose senses
   reached this place") so `Land`'s caller does not compute witnesses by
