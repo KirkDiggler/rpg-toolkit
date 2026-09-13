@@ -285,6 +285,34 @@ func (s *ClericFinalizeSuite) TestExistingSheetDoesNotReceiveImplicitSpellGrants
 	s.NotContains(loaded.ToData().Resources, resources.SpellSlotLevel1)
 }
 
+func (s *ClericFinalizeSuite) TestChosenSpareTheDyingCompilesAfterDraftAndCharacterReload() {
+	input := s.classInput()
+	input.Choices.Cantrips = []spells.Spell{spells.SacredFlame, spells.SpareTheDying, spells.Guidance}
+	draft := s.draft(input)
+	raw, err := json.Marshal(draft.ToData())
+	s.Require().NoError(err)
+	var storedDraft DraftData
+	s.Require().NoError(json.Unmarshal(raw, &storedDraft))
+	char, err := LoadDraftFromData(&storedDraft).ToCharacter(context.Background(), "stabilizing-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	raw, err = json.Marshal(char.ToData())
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(raw, &stored))
+	loaded, err := Load(context.Background(), &stored)
+	s.Require().NoError(err)
+	s.Len(loaded.KnownCantrips(), 3)
+	s.Contains(stored.KnownCantrips, refs.Spells.SpareTheDying().String())
+	definition := loaded.CastDefinition(spells.SpareTheDying)
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.True(definition.Cast.Stabilize)
+	s.Empty(definition.Cost.Pools)
+	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
+	_, err = loaded.StatusView(&StatusViewInput{})
+	s.NoError(err, "private-sheet projection accepts the normally finalized cleric")
+}
+
 func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReload() {
 	draft := s.draft(s.classInput())
 	char, err := draft.ToCharacter(context.Background(), "sacred-flame-cleric", events.NewEventBus())

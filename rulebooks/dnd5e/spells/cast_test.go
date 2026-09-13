@@ -4,6 +4,7 @@
 package spells_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -98,7 +99,7 @@ func (s *CastContentSuite) TestEveryCompiledSpellCarriesRuleClassification() {
 	for id, level := range map[spells.Spell]int{
 		spells.HealingWord: 1, spells.CureWounds: 1, spells.Bane: 1, spells.Bless: 1,
 		spells.Thunderwave: 1, spells.DissonantWhispers: 1, spells.Command: 1,
-		spells.SacredFlame: 0, spells.BladeWard: 0, spells.TrueStrike: 0,
+		spells.SacredFlame: 0, spells.SpareTheDying: 0, spells.BladeWard: 0, spells.TrueStrike: 0,
 		spells.ViciousMockery: 0, spells.Thunderclap: 0,
 	} {
 		d := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
@@ -182,8 +183,37 @@ func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {
 }
 
 func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantrips() {
-	s.Equal([]spells.Spell{spells.SacredFlame},
+	s.Equal([]spells.Spell{spells.SacredFlame, spells.SpareTheDying},
 		spells.Castable([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.Light, spells.SpareTheDying}))
+}
+
+func (s *CastContentSuite) TestSpareTheDyingDeclaresOnlyAnActionAndTouchStabilization() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.SpareTheDying, SpellSaveDC: 14})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(*refs.Spells.SpareTheDying(), d.Ref)
+	s.Equal("Spare the Dying", d.Name)
+	s.Equal(&combat.SpendProfile{Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}}, d.Cost)
+	s.Equal(&actions.CastProfile{
+		Casting:   &combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		RangeFeet: 5, Target: actions.CastTargetTouch, MinTargets: 1, MaxTargets: 1, Stabilize: true,
+	}, d.Cast)
+	raw, err := json.Marshal(d)
+	s.Require().NoError(err)
+	var reloaded actions.Definition
+	s.Require().NoError(json.Unmarshal(raw, &reloaded))
+	s.Require().NoError(reloaded.Validate())
+	s.Equal(d, &reloaded)
+	clone := d.Clone()
+	clone.Cast.Stabilize = false
+	clone.Cast.Casting.Level = 1
+	clone.Cost.Slots[coreCombat.ActionStandard] = 0
+	s.Equal(d, spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.SpareTheDying}))
+	bonus := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
+	turn, err := (combat.SpellTurnState{}).AfterCast("turn", *bonus.Cast.Casting)
+	s.Require().NoError(err)
+	_, err = turn.AfterCast("turn", *d.Cast.Casting)
+	s.NoError(err, "one-action cantrip remains legal after a bonus-action spell")
 }
 
 func (s *CastContentSuite) TestViciousMockeryCarriesItsSaveGateAndDamage() {

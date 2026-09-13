@@ -1,5 +1,22 @@
 # Cleric creation implementation
 
+## Spare the Dying: executable content
+
+With session `v0.86.0`, resolution `v0.48.0` and encounter `v0.82.0` published,
+the root catalog registers Spare the Dying's existing generic stabilization
+profile. Its price is one action with no slot; its delivery is one touch target
+with no roll, save, healing, stored condition or concentration. No acquisition
+list or existing-character grants change, and this PR changes no module pins.
+
+Content tests verify the complete price/profile, supported cantrip filtering,
+detached clones, JSON round-trip and the one-action-cantrip exception after a
+bonus-action spell. A normally finalized Cleric selects Spare the Dying, reloads
+draft and character JSON, compiles the executable definition, retains both
+level-one slots and successfully reads private status. Public session casting
+and proto/API/web acceptance remain pending the consumer adoption slice.
+Full root-module Windows tests, vet and Linux lint pass. Root-only formatting
+and module tidy introduce no dependency changes.
+
 ## Spare the Dying: session integration
 
 Session adopts encounter `v0.82.0`, resolution `v0.48.0` and root `v0.167.0`.
