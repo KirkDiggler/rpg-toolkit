@@ -323,6 +323,7 @@ func (s *BasicTestSuite) TestBasicEndToEndAgainstARealEncounter() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: behavior.Basic{}, Striker: striker, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Mover: quietMover{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{behaviorTestRegion("room-1", 10, 10)},
@@ -384,6 +385,32 @@ func (everyoneSeesTheWholeMap) Sight(members []encounter.MemberID) (map[encounte
 type everyoneStanding struct{}
 
 func (everyoneStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) { return nil, nil }
+
+// Assess implements encounter.Participation: everyone is in contact,
+// conscious, and waiting on the turn order.
+func (everyoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		assessment.Members = append(assessment.Members, encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		})
+	}
+	return assessment, nil
+}
+
+type noHandsAreObserved struct{}
+
+func (noHandsAreObserved) Equipment(members []encounter.MemberID) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
+	out := make(map[encounter.MemberID]*encounter.HeldEquipment, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
+}
+
+type quietMover struct{}
+
+func (quietMover) Move(context.Context, *encounter.Encounter, encounter.MoveStep) error { return nil }
 
 type orderAsGiven struct{}
 
