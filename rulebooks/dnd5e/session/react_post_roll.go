@@ -88,7 +88,7 @@ func (m *Manager) answerPostRoll(
 		Standing:      scope.standing,
 		Sight:         &sightSeam{members: worldMembers(world)},
 		Equipment:     equipmentBeside(scope.standing),
-		TurnDriver:    m.turnDriver,
+		TurnDriver:    scope.driver,
 		CheckResolver: checkSeam{m: m, scope: scope},
 		Witness:       witnessSeam{scope: scope},
 		Machine:       machine,

@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -84,28 +85,48 @@ type Config struct {
 	// each recipient keeps its own numeric sequence.
 	PresentationIDs PresentationIDGenerator
 
-	// TurnDriver decides what a member with no player does when a fight's
-	// clock lands on their turn. Required.
+	// TurnDriver is the ONE driver that serves EVERY session this Manager
+	// serves. Wire it when the driver is stateless; wire TurnDrivers instead
+	// when it is not. Exactly one of the two, and NewManager refuses both or
+	// neither.
 	//
 	// A fight can form — or a turn can end — with the clock landing on a
 	// member nobody plays: initiative rolled the monster first, or the human
 	// ahead of it just ended their own turn. What that member does is a game
 	// rule, so it is asked for rather than assumed, exactly as Dice is
-	// (rpg-toolkit#1162). Wire session.Pass{} for v1's whole behavior — every
-	// unplayed member's turn ends the moment the clock reaches it —
-	// session.Behavior() for the reference driver, or session.Minded(nil) for
-	// one that gives each member the mind its sheet names and falls back to
-	// the reference driver for a member that names none (rpg-toolkit#1725).
+	// (rpg-toolkit#1162).
 	//
-	// This field is read once, at NewManager, and the Manager built from it
-	// serves every session in the process: there is ONE driver per Manager
-	// today, not one per session. A session.Minded(nil) is stateful and not
-	// safe for concurrent use, so the host that wires one guards it —
-	// rpg-api#980 holds a single driver behind a mutex and writes the
-	// cross-session member-id caveat down beside it. Wiring a driver per
-	// session or per encounter needs a seam this package does not have yet;
-	// rpg-toolkit#1734.
+	// The customers for this field are the drivers that hold nothing:
+	// session.Pass{} for v1's whole behavior — every unplayed member's turn
+	// ends the moment the clock reaches it — and session.Behavior() for the
+	// reference driver. One value answers every session's turns because
+	// neither of them remembers anything between two of them.
+	//
+	// A STATEFUL DRIVER WANTS TurnDrivers. session.Minded(nil) is a game with
+	// per-member names and memory, and it is not safe for concurrent use:
+	// wired here, one of them would serve every session in the process, and
+	// two parties running the same authored dungeon would share a skeleton's
+	// assigned mind and names (member ids are authored per dungeon, not minted
+	// per run — rpg-api#980's caveat, rpg-toolkit#1734).
 	TurnDriver TurnDriver
+
+	// TurnDrivers hands over ONE driver PER SESSION. Wire it when the driver
+	// is stateful; wire TurnDriver instead when it is not. Exactly one of the
+	// two, and NewManager refuses both or neither.
+	//
+	// It is asked once per verb, for the session that verb is about, and its
+	// answer serves that whole verb — writes and reads alike. An error fails
+	// the verb: there is no fallback to a reference driver, because a monster
+	// answered by somebody else's brain looks like a design choice rather than
+	// the wiring fault it is.
+	//
+	// The customer is session.Minded(nil) and every authored mind after it.
+	// The CACHE BEHIND IT IS THE HOST'S, deliberately: a session's lifetime is
+	// the host's (a Redis TTL, a run ending) and this Manager is stateless per
+	// verb with no session-end signal to evict on, so a cache here would have
+	// no owner. See [TurnDriverSource] and rule A6 in
+	// docs/ideas/mind/behavior/adoption.md.
+	TurnDrivers TurnDriverSource
 }
 
 // Manager is the host's single point of contact with the toolkit.
@@ -123,8 +144,14 @@ type Manager struct {
 	characters        CharacterRepository
 	events            EventStream
 	initiative        encounter.InitiativeRoller
-	turnDriver        encounter.TurnDriver
 	presentationIDs   PresentationIDGenerator
+
+	// turnDrivers is where a verb's driver comes from, and the Manager holds
+	// no driver of its own beside it. A host that wired the stateless
+	// Config.TurnDriver gets a [staticTurnDrivers] around it here, so "which
+	// driver serves this verb" is one question with one answer and no branch:
+	// see [Manager.resolveTurnDriver].
+	turnDrivers TurnDriverSource
 
 	// targetPreflight is the one shared target gate used by offer projection
 	// and regenerated Attack execution. It is a pure function seam rather than
@@ -167,7 +194,10 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Events", cfg.Events != nil},
 		{"Dice", cfg.Dice != nil},
 		{"PresentationIDs", cfg.PresentationIDs != nil},
-		{"TurnDriver", cfg.TurnDriver != nil},
+		// ONE ROW FOR THE PAIR, because either one satisfies the requirement
+		// and a row naming only the first would send a host that meant to wire
+		// the other to the wrong field.
+		{"TurnDriver or TurnDrivers", cfg.TurnDriver != nil || cfg.TurnDrivers != nil},
 	}
 	for _, dep := range required {
 		if !dep.present {
@@ -175,9 +205,27 @@ func NewManager(cfg *Config) (*Manager, error) {
 		}
 	}
 
+	// EXACTLY ONE OF THE TWO, and the second half of that law is its own
+	// refusal rather than a precedence rule. Two wired drivers are two answers
+	// to "what does a member with no player do", and picking either silently
+	// would leave a host watching the driver it did not mean to wire take
+	// every turn in the process.
+	if cfg.TurnDriver != nil && cfg.TurnDrivers != nil {
+		return nil, fmt.Errorf("newmanager: TurnDriver and TurnDrivers: %w", ErrAmbiguousConfig)
+	}
+
 	if cfg.StaleTargetPolicy != "" && cfg.StaleTargetPolicy != StaleTargetRefuse && cfg.StaleTargetPolicy != StaleTargetAttempt {
 		return nil, fmt.Errorf("newmanager: invalid StaleTargetPolicy: %w", ErrIncompleteConfig)
 	}
+
+	// One source either way: a host that wired the every-session driver gets
+	// the static source built around it here, so no verb downstream has to ask
+	// which of the two fields was set.
+	drivers := cfg.TurnDrivers
+	if drivers == nil {
+		drivers = staticTurnDrivers{driver: cfg.TurnDriver}
+	}
+
 	return &Manager{
 		staleTargetPolicy: cfg.StaleTargetPolicy,
 		sessions:          cfg.Sessions,
@@ -186,8 +234,36 @@ func NewManager(cfg *Config) (*Manager, error) {
 		events:            cfg.Events,
 		initiative:        initiativeSeam{dice: cfg.Dice},
 		dice:              cfg.Dice,
-		turnDriver:        turnDriverSeam{driver: cfg.TurnDriver},
+		turnDrivers:       drivers,
 		presentationIDs:   cfg.PresentationIDs,
 		targetPreflight:   buildTargetPreflight,
 	}, nil
+}
+
+// resolveTurnDriver asks the host which driver serves one session, and wraps
+// it in the seam the composition speaks.
+//
+// CALLED ONCE PER VERB, at the two places a world is loaded:
+// [Manager.openForWrite] for a write, which puts the answer on the scope every
+// capability then reads it from, and [Manager.loadWorld] for a read.
+// Resolution in two places rather than at each of the eleven sites that used
+// to reach for the Manager's own driver is the point of the shape: one verb,
+// one driver, and no way for two capabilities inside one call to be looking at
+// two different brains.
+//
+// FAIL CLOSED, BOTH WAYS. A source that errors fails the verb with its own
+// error wrapped — never a fallback to the reference driver, which would answer
+// a monster's turn with somebody else's brain and read as a design choice. A
+// source that reports success and hands over nothing has broken its contract,
+// and is refused here rather than wrapped into a seam that would panic several
+// frames later, in the middle of somebody's turn.
+func (m *Manager) resolveTurnDriver(ctx context.Context, sessionID string) (encounter.TurnDriver, error) {
+	driver, err := m.turnDrivers.DriverFor(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("turn driver for session %q: %w", sessionID, err)
+	}
+	if driver == nil {
+		return nil, fmt.Errorf("session %q: %w", sessionID, ErrNoTurnDriver)
+	}
+	return turnDriverSeam{driver: driver}, nil
 }

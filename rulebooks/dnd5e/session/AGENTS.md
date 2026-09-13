@@ -25,8 +25,12 @@ reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`, `View`, `Story`, `Where`
 only (S12), trading in data and never in domain objects (S3). They point OUTWARD:
 this package calls, the host implements. [`session.go`](./session.go) adds the
 four supplied capabilities the host wires once — `Events`, `Dice`,
-`PresentationIDs`, `TurnDriver` — and refuses to construct without any of them
-(S8, `NewManager`).
+`PresentationIDs`, and a turn driver — and refuses to construct without any of
+them (S8, `NewManager`). The last of those is a PAIR, and exactly one of the
+two is set: `TurnDriver` for a stateless driver that serves every session, or
+`TurnDrivers` for a host-owned source asked once per verb for the session that
+verb is about (rpg-toolkit#1734). A stateful driver — `session.Minded` and
+every authored mind after it — wants the second.
 
 **The compiled declaration and its selector.** [`afford.go`](./afford.go) prices
 the turn; [`offers.go`](./offers.go), [`casts.go`](./casts.go) and

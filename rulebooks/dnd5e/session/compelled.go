@@ -49,12 +49,22 @@ type compelledDriver struct {
 
 	m     *Manager
 	scope *writeScope
+}
 
-	// next is the host's driver, reached for every member holding no
-	// compulsion. It is the seam, not the host's own value: a monster's brain
-	// is consulted through exactly the boundary it was consulted through
-	// before this wrapper existed.
-	next encounter.TurnDriver
+// next is the driver reached for every member holding no compulsion: this
+// verb's own, off the scope ([writeScope.driver]).
+//
+// READ FROM THE SCOPE RATHER THAN COPIED ONTO THIS WRAPPER, now that the
+// driver is one per session (rpg-toolkit#1734). A field would be a second name
+// for the same value, and the only question a reader ever has here — is this
+// the same brain the rest of the verb is using — would be answered somewhere
+// other than where it is asked.
+//
+// It is the seam, not the host's own value: a monster's brain is consulted
+// through exactly the boundary it was consulted through before this wrapper
+// existed.
+func (d compelledDriver) next() encounter.TurnDriver {
+	return d.scope.driver
 }
 
 // compile-time proof the wrapper satisfies what it is handed to.
@@ -62,7 +72,7 @@ var _ encounter.TurnDriver = compelledDriver{}
 
 // compelledDriverFor wraps the host's driver for one write verb.
 func (m *Manager) compelledDriverFor(ctx context.Context, scope *writeScope) compelledDriver {
-	return compelledDriver{ctx: ctx, m: m, scope: scope, next: m.turnDriver}
+	return compelledDriver{ctx: ctx, m: m, scope: scope}
 }
 
 // Act takes the turn for a compelled member and delegates every other.
@@ -77,7 +87,7 @@ func (d compelledDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, 
 		return nil, err
 	}
 	if !held {
-		return d.next.Act(view)
+		return d.next().Act(view)
 	}
 
 	out, err := d.obey(view.Self, commanded)
@@ -212,12 +222,12 @@ func (d compelledDriver) obey(
 			Standing:     d.scope.standing,
 			Sight:        &sightSeam{members: worldMembers(world)},
 			Equipment:    equipmentBeside(d.scope.standing),
-			// The host's driver, NOT this wrapper. Resolution carries the
+			// This session's driver, NOT this wrapper. Resolution carries the
 			// capability without consulting it — no verb runs inside an
 			// interaction — and handing it a driver that would open a second
 			// interaction of its own is a loop waiting for the first caller
 			// who does.
-			TurnDriver:    d.m.turnDriver,
+			TurnDriver:    d.scope.driver,
 			CheckResolver: checkSeam{m: d.m, scope: d.scope},
 			Witness:       witnessSeam{scope: d.scope},
 			// Machine is deliberately absent: the word is the machine, and

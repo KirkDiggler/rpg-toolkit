@@ -45,6 +45,13 @@ before it:
   the actor's cell. A miss is still a shot at you.
 - **A5** — A mind is named on the sheet and looked up by the driver. A
   member that names none gets the basic driver's answer.
+- **A6** — The driver is one per session, and the host owns the cache.
+  `session.Config.TurnDrivers` is asked once per verb for the session
+  that verb is about; the stateless drivers keep `TurnDriver`, and
+  exactly one of the two is set. The cache lives in the host because a
+  session's lifetime does: the Manager is stateless per verb and gets no
+  session-end signal, so a cache inside it would have no owner to evict
+  it.
 
 ## Done when
 

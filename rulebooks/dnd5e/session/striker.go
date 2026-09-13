@@ -120,7 +120,7 @@ func (s strikerSeam) Strike(
 		Standing:     s.scope.standing,
 		Sight:        &sightSeam{members: worldMembers(world)},
 		Equipment:    equipmentBeside(s.scope.standing),
-		TurnDriver:   s.m.turnDriver,
+		TurnDriver:   s.scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:
 		// a concealed world refuses to reconstruct without them, and
