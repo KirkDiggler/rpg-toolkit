@@ -22,6 +22,7 @@ package encounter_test
 // under pointy-top, so what a scene is about is the only thing in it.
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -86,7 +87,7 @@ func (s *ScenerySuite) seesNow(enc *encounter.Encounter, observer, subject core.
 	s.Require().NoError(err)
 	for _, h := range view {
 		if h.Subject == subject {
-			return h.Current
+			return h.CurrentOn(perception.Sight)
 		}
 	}
 	return false

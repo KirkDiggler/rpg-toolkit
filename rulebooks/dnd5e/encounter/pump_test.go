@@ -1371,7 +1371,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinView, err := enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1)
-	s.True(goblinView[0].Current, "precondition: goblin must see alice before she leaves")
+	s.True(goblinView[0].CurrentOn(perception.Sight), "precondition: goblin must see alice before she leaves")
 
 	// Seeing each other started a fight (rpg-toolkit#964), and a fight member
 	// cannot free-roam. Alice breaks off before she runs — which is the story
@@ -1390,7 +1390,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinView, err = enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1, "the ghost is HELD, not gone")
-	s.False(goblinView[0].Current, "the wall took her — goblin's sight of her fades")
+	s.False(goblinView[0].CurrentOn(perception.Sight), "the wall took her — goblin's sight of her fades")
 	var ghostSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &ghostSeen))
 	s.Equal(cellAt(10, 5), spatial.Position{X: ghostSeen.X, Y: ghostSeen.Y}, "the ghost holds alice at the doorway's far cell, her last-seen one")
@@ -1410,7 +1410,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinView, err = enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1)
-	s.True(goblinView[0].Current, "the monster holds alice Current again, having come through the doorway")
+	s.True(goblinView[0].CurrentOn(perception.Sight), "the monster holds alice Current again, having come through the doorway")
 	var aliceSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &aliceSeen))
 	s.Equal(cellAt(13, 8), spatial.Position{X: aliceSeen.X, Y: aliceSeen.Y})

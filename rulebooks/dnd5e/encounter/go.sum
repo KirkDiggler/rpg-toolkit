@@ -8,6 +8,8 @@ github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbs
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.0 h1:VYIxuWfy186jAmLJA/DzRbLydPeH9cvlVmAXtzYv2cY=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.0/go.mod h1:oSmM7omgDmbPZNO3zPblmPQXbceVMQWxIcDJjm8EBqw=
+github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.1-0.20260913022359-67896d528ec3 h1:vCd6Qogh/l2AyWSc5sTvEw/AJB+8+VQ/CcWuByfJUas=
+github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.1-0.20260913022359-67896d528ec3/go.mod h1:oSmM7omgDmbPZNO3zPblmPQXbceVMQWxIcDJjm8EBqw=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0DkPBkSUwD/yX6bfK0i4XA=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0/go.mod h1:LRzXoz7Is2z6s4KWtVG6B68uunxJgE5qWdk14EtHlbk=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0 h1:yX/5HaPKYJTIlGEywEKnQiQ+Vm/gGNOyHggxi0aJoOg=

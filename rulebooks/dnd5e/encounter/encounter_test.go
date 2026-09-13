@@ -85,7 +85,7 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 
 		holding := aliceView[0]
 		s.Equal(goblin, holding.Subject, "holding subject should be goblin")
-		s.True(holding.Current, "holding should be current")
+		s.True(holding.CurrentOn(perception.Sight), "holding should be current")
 
 		// Decode position payload into SightPayload
 		var payload encounter.SightPayload
@@ -100,7 +100,7 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 
 		holding = goblinView[0]
 		s.Equal(alice, holding.Subject, "holding subject should be alice")
-		s.True(holding.Current, "holding should be current")
+		s.True(holding.CurrentOn(perception.Sight), "holding should be current")
 
 		// Decode position
 		err = json.Unmarshal(holding.Payload, &payload)
@@ -739,7 +739,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		aliceViewBefore, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Require().Len(aliceViewBefore, 1, "alice must initially see bob (geometry precondition)")
-		s.Require().True(aliceViewBefore[0].Current)
+		s.Require().True(aliceViewBefore[0].CurrentOn(perception.Sight))
 
 		_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(10, 2)})
 		s.Require().NoError(err)
@@ -748,7 +748,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Require().Len(aliceView, 1, "the ghost is HELD, not gone")
-		s.False(aliceView[0].Current, "alice's sight of bob must fade behind the wall")
+		s.False(aliceView[0].CurrentOn(perception.Sight), "alice's sight of bob must fade behind the wall")
 		var bobSeen encounter.SightPayload
 		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &bobSeen))
 		s.Equal(18.0, bobSeen.Y, "ghost holds bob at his last-seen position")
@@ -758,7 +758,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		bobView, err := enc.View(&encounter.ViewInput{Member: bob})
 		s.Require().NoError(err)
 		s.Require().Len(bobView, 1)
-		s.False(bobView[0].Current, "bob's sight of alice must fade too (symmetric)")
+		s.False(bobView[0].CurrentOn(perception.Sight), "bob's sight of alice must fade too (symmetric)")
 		var aliceSeen encounter.SightPayload
 		s.Require().NoError(json.Unmarshal(bobView[0].Payload, &aliceSeen))
 		s.Equal(cellAt(2, 2), spatial.Position{X: aliceSeen.X, Y: aliceSeen.Y}, "bob's ghost of alice is at her PRE-move position")
@@ -1315,7 +1315,7 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 
 	bobSees := s.holdingOf(enc, bob, alice)
 	s.Require().Len(bobSees, 1, "bob watches her from across room-a")
-	s.True(bobSees[0].Current)
+	s.True(bobSees[0].CurrentOn(perception.Sight))
 
 	// Into the opening. She is in room-b now, and bob is still looking at her
 	// straight down the doorway's row.
@@ -1325,7 +1325,7 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 
 	bobSees = s.holdingOf(enc, bob, alice)
 	s.Require().Len(bobSees, 1)
-	s.True(bobSees[0].Current, "a doorway is a window: crossing it does not hide her")
+	s.True(bobSees[0].CurrentOn(perception.Sight), "a doorway is a window: crossing it does not hide her")
 	var seen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(bobSees[0].Payload, &seen))
 	s.Equal(cellAt(10, 5), spatial.Position{X: seen.X, Y: seen.Y}, "and he sees her where she actually is, on the far side")
@@ -1339,7 +1339,7 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 
 	bobSees = s.holdingOf(enc, bob, alice)
 	s.Require().Len(bobSees, 1, "the ghost is HELD, not gone")
-	s.False(bobSees[0].Current)
+	s.False(bobSees[0].CurrentOn(perception.Sight))
 	s.Require().NoError(json.Unmarshal(bobSees[0].Payload, &seen))
 	s.Equal(cellAt(10, 5), spatial.Position{X: seen.X, Y: seen.Y}, "the ghost holds her last-seen cell — in the opening")
 }

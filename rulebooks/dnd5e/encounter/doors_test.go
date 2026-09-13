@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -138,7 +139,7 @@ func (s *DoorSuite) sees(enc *encounter.Encounter, observer, subject core.Entity
 		// Channel-blind, because [perception.Holding] carries no per-channel
 		// list: a holding is current when ANY channel sustains it, and sight
 		// is the only channel this composition ever writes.
-		if h.Current {
+		if h.CurrentOn(perception.Sight) {
 			return true
 		}
 	}
