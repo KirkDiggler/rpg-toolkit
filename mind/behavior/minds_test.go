@@ -279,3 +279,18 @@ type keeps struct {
 func (k keeps) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
 	return &behavior.KeepOutput{Steps: k.steps}, nil
 }
+
+// asked is any mind that counts how often it was asked for a word. A name
+// that persisted is a name the mind was not asked for twice, and counting
+// is the only way to see the difference from outside.
+type asked struct {
+	behavior.Mind
+	names int
+}
+
+// Name answers as the wrapped mind does, and remembers being asked.
+func (a *asked) Name(in *behavior.NameInput) (*behavior.NameOutput, error) {
+	a.names++
+
+	return a.Mind.Name(in)
+}
