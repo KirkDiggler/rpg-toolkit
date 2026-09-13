@@ -38,8 +38,8 @@ var ErrNotADeed = errors.New("deed: payload is not a deed")
 
 // Subject is the subject a figure's deeds are held under: the actor's id
 // qualified by channel, so it can never collide with the witness's sight
-// holding of the same figure. Perception's rule 11 says to qualify; this is
-// where behaviour does.
+// holding of the same figure. Perception's rule 11 says to qualify and its
+// Qualify owns the separator; this is where behaviour asks.
 //
 // The subject carries the actor's identity on purpose: attaching a deed to a
 // figure is a claim that deeds|X and X are one thing, and a mind cannot make
@@ -48,7 +48,7 @@ var ErrNotADeed = errors.New("deed: payload is not a deed")
 // files it under. A mind that reads handles as testimony is reading the
 // filing system, and the worked minds do not.
 func Subject(actor core.EntityID) core.EntityID {
-	return core.EntityID(string(Channel) + "|" + string(actor))
+	return perception.Qualify(Channel, actor)
 }
 
 // Deed is one figure doing one thing to another, somewhere.
@@ -72,7 +72,7 @@ type Deed struct {
 	Actor core.EntityID
 	// Target is who it was done to. Empty means nobody.
 	Target core.EntityID
-	// Where is the region it happened in.
+	// Where is the place it happened.
 	Where string
 }
 

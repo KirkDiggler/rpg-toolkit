@@ -1,7 +1,7 @@
 github.com/KirkDiggler/rpg-toolkit/core v0.11.0 h1:VnGI17Bnm6cLqI7Rn3RukUZHVfTAPUKTdoKTYqbGRtk=
 github.com/KirkDiggler/rpg-toolkit/core v0.11.0/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
-github.com/KirkDiggler/rpg-toolkit/mind/perception v0.2.0 h1:m6xrGxESUde5dRShV5HUTxdIm36JqwtTTBUtAp59HdY=
-github.com/KirkDiggler/rpg-toolkit/mind/perception v0.2.0/go.mod h1:oSmM7omgDmbPZNO3zPblmPQXbceVMQWxIcDJjm8EBqw=
+github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0 h1:6gQDtn+xaS/APEL9goWd+pWwUXeVrK1iAnqyQSbcM6A=
+github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0/go.mod h1:oSmM7omgDmbPZNO3zPblmPQXbceVMQWxIcDJjm8EBqw=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0 h1:yX/5HaPKYJTIlGEywEKnQiQ+Vm/gGNOyHggxi0aJoOg=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

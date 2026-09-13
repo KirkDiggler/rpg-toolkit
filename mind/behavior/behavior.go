@@ -23,8 +23,10 @@ type Reader interface {
 
 // Reading is what behaviour needs from a payload and nothing more.
 type Reading struct {
-	// Where is the region the testimony places its subject in. "" is known
-	// to be there, not known where.
+	// Where is the place the testimony puts its subject. What a place is —
+	// a room, a cell — is the caller's; behaviour only compares them and asks
+	// the caller's Space how far apart they are. "" is known to be there, not
+	// known where.
 	Where string
 	// Creature is whether a live thing is there: something that can be
 	// struck and can strike. A noise, a mark, a banner are not.
@@ -136,24 +138,19 @@ func (c Contact) FirstObserved() uint64 {
 // Sheet is what an actor knows about itself that does not change turn to
 // turn: what it is armed with.
 type Sheet struct {
-	// Reach is how many regions away this actor can strike. Zero is melee —
-	// the same region — and one is a bow. This module's whole geometry is
-	// region grain.
+	// Reach is how far away this actor can strike, in whatever unit the
+	// caller's Space measures. Zero is the same place — melee, at room grain.
 	Reach int
 }
 
 // Self is the part of a situation that is not perception: the actor's own
-// sheet, where it stands, and where it could step. The knowledge-only
-// contract is about OTHERS; your own position and your own dungeon's static
-// topology are yours, and they arrive as values (R12).
+// sheet, where it stands, and what it may not approach. The knowledge-only
+// contract is about OTHERS; your own position is yours, and it arrives as a
+// value (R12).
 type Self struct {
 	Sheet
-	// Where is the region the actor stands in.
+	// Where is the place the actor stands.
 	Where string
-	// Adjacent is every region one step from Where. Static topology, known
-	// at construction — a monster knows its own dungeon's doors. It does not
-	// know who is behind them.
-	Adjacent []string
 	// Fences is the subjects this actor may not willingly move toward: the
 	// frightened condition. A fence is a RULE on the sheet, not a belief —
 	// the ladder honours it and the mind is never offered it as a choice
@@ -168,24 +165,53 @@ func (s Self) Fenced(c Contact) bool {
 	return slices.ContainsFunc(c.Holdings, func(h Holding) bool { return slices.Contains(s.Fences, h.Subject) })
 }
 
-// Beyond is the distance region grain cannot measure: not here, not next
-// door.
-const Beyond = 2
+// DistanceInput is two places.
+type DistanceInput struct {
+	From, To string
+}
 
-// Distance is how many steps a place is from the actor: 0 here, 1 next door,
-// [Beyond] otherwise. An unplaced contact ("" — known to be there, not known
-// where) is Beyond.
-func (s Self) Distance(where string) int {
-	switch {
-	case where == "":
-		return Beyond
-	case where == s.Where:
-		return 0
-	case slices.Contains(s.Adjacent, where):
-		return 1
-	default:
-		return Beyond
-	}
+// DistanceOutput is how far apart they are, in the Space's own unit. Known
+// is false when the Space cannot say — no way between them, or a place it
+// has never heard of — and the ladder treats what it cannot measure as
+// neither near nor in reach.
+type DistanceOutput struct {
+	Steps int
+	Known bool
+}
+
+// TowardInput is where an actor is and where it wants to be.
+type TowardInput struct {
+	From, To string
+}
+
+// TowardOutput is where one step toward it lands, if there is a way.
+type TowardOutput struct {
+	Next  string
+	Found bool
+}
+
+// AwayInput is where an actor is and what it wants more distance from.
+type AwayInput struct {
+	From, AwayFrom string
+}
+
+// AwayOutput is where one step away lands. Found is false when every way
+// leads closer or nowhere — a dead end. Fleeing into a corner is not
+// fleeing, and it is the Space that knows where the corners are.
+type AwayOutput struct {
+	Next  string
+	Found bool
+}
+
+// Space is the caller's geometry: how far apart two places are, and where
+// one step toward or away from a place lands. It is the third caller-owned
+// seam after perception's Reach and this package's Reader, and for the same
+// reason: a monster may know the way through its own dungeon, and how the
+// dungeon is measured is the dungeon's business, not the mind's (R11).
+type Space interface {
+	Distance(in *DistanceInput) (*DistanceOutput, error)
+	Toward(in *TowardInput) (*TowardOutput, error)
+	Away(in *AwayInput) (*AwayOutput, error)
 }
 
 // Situation is everything one actor has to go on.
@@ -205,10 +231,10 @@ const (
 	// Attack strikes a named contact the actor can currently perceive in
 	// reach.
 	Attack
-	// Toward steps one region closer to where the actor believes a named
+	// Toward steps one step closer to where the actor believes a named
 	// contact is. A walk toward a ghost goes where the ghost was last placed.
 	Toward
-	// Away steps one region further from where the actor believes a named
+	// Away steps one step further from where the actor believes a named
 	// contact is. It is the whole of keeping range, and of fleeing.
 	Away
 )
@@ -282,10 +308,10 @@ type KeepInput struct {
 }
 
 // KeepOutput is how close this mind lets a live creature get before it would
-// rather step away: 0 means it stands and fights, 1 means it keeps a region
-// between them.
+// rather step away, in the space's own unit: 0 means it stands and fights, 1
+// means it keeps a step between them.
 type KeepOutput struct {
-	Regions int
+	Steps int
 }
 
 // Mind is what makes one monster different from another: four judgments and
@@ -301,10 +327,12 @@ type Mind interface {
 	Keep(in *KeepInput) (*KeepOutput, error)
 }
 
-// DecideInput is one actor's situation and the mind that reads it.
+// DecideInput is one actor's situation, the mind that reads it, and the
+// space it stands in.
 type DecideInput struct {
 	Situation Situation
 	Mind      Mind
+	Space     Space
 }
 
 // DecideOutput is what the actor means to do.
@@ -314,14 +342,15 @@ type DecideOutput struct {
 
 // Decide is the ladder (R7). It is fixed, and the mind is consulted only
 // where the ladder cannot answer alone: what it prefers, and how close it
-// lets things get.
+// lets things get. The space is consulted for what only a map can know: how
+// far, and whether there is anywhere to step.
 //
-//  0. a live named creature is nearer than the mind keeps, and there is
-//     somewhere to step → Away
+//  0. a live named creature is nearer than the mind keeps, and the space
+//     finds a step away → Away
 //  1. a live named creature is within reach → Attack
 //  2. a ranked named contact, live or ghost, is placed, not here, and not
 //     fenced → Toward
-//  3. a fenced live creature is placed and there is somewhere to step → Away
+//  3. a fenced live creature is placed → Away
 //  4. nothing to act on → Pass
 //
 // Live beats remembered: a ghost is never attacked and never fled, however
@@ -329,11 +358,14 @@ type DecideOutput struct {
 // is where the mind's ranking decides between a live target ahead and a
 // ghost behind, and the ladder does not second-guess it.
 //
-// Every rung skips a contact with no place. Known to be there, not known
-// where, is not nearer than anything and not within reach of anything, and
-// an intent to step away from it could not be walked: a flee the stage
-// refuses would spend the turn on nothing while a placed enemy in reach went
-// unanswered.
+// Every rung skips a contact with no place, and rungs 0 and 1 skip one the
+// space cannot measure. Known to be there, not known where, is not nearer
+// than anything and not within reach of anything.
+//
+// The two flights differ on purpose. Keeping range (rung 0) is a preference:
+// an archer that cannot step away stands and shoots. Fear (rung 3) is not:
+// a frightened creature with nowhere to go still means to flee, the stage
+// finds it nowhere, and it stays where it is — which is what cornered means.
 //
 // A fence forbids only approach (R8). A frightened archer with the source in
 // reach still shoots (rung 1); one that cannot reach it will not walk closer
@@ -353,17 +385,27 @@ func Decide(in *DecideInput) (*DecideOutput, error) {
 		return nil, err
 	}
 
-	canStep := len(s.Self.Adjacent) > 0
+	for _, c := range ranked.Ranked {
+		if !c.Named || !c.Creature() || c.Where() == "" {
+			continue
+		}
 
-	if canStep {
-		for _, c := range ranked.Ranked {
-			if !c.Named || !c.Creature() || c.Where() == "" {
-				continue
-			}
+		d, err := in.Space.Distance(&DistanceInput{From: s.Self.Where, To: c.Where()})
+		if err != nil {
+			return nil, err
+		}
 
-			if s.Self.Distance(c.Where()) < keep.Regions {
-				return &DecideOutput{Intent: Intent{Verb: Away, Target: c.Name}}, nil
-			}
+		if !d.Known || d.Steps >= keep.Steps {
+			continue
+		}
+
+		away, err := in.Space.Away(&AwayInput{From: s.Self.Where, AwayFrom: c.Where()})
+		if err != nil {
+			return nil, err
+		}
+
+		if away.Found {
+			return &DecideOutput{Intent: Intent{Verb: Away, Target: c.Name}}, nil
 		}
 	}
 
@@ -372,7 +414,12 @@ func Decide(in *DecideInput) (*DecideOutput, error) {
 			continue
 		}
 
-		if s.Self.Distance(c.Where()) <= s.Self.Reach {
+		d, err := in.Space.Distance(&DistanceInput{From: s.Self.Where, To: c.Where()})
+		if err != nil {
+			return nil, err
+		}
+
+		if d.Known && d.Steps <= s.Self.Reach {
 			return &DecideOutput{Intent: Intent{Verb: Attack, Target: c.Name}}, nil
 		}
 	}
@@ -385,14 +432,12 @@ func Decide(in *DecideInput) (*DecideOutput, error) {
 		return &DecideOutput{Intent: Intent{Verb: Toward, Target: c.Name}}, nil
 	}
 
-	if canStep {
-		for _, c := range ranked.Ranked {
-			if !c.Named || !c.Creature() || c.Where() == "" || !s.Self.Fenced(c) {
-				continue
-			}
-
-			return &DecideOutput{Intent: Intent{Verb: Away, Target: c.Name}}, nil
+	for _, c := range ranked.Ranked {
+		if !c.Named || !c.Creature() || c.Where() == "" || !s.Self.Fenced(c) {
+			continue
 		}
+
+		return &DecideOutput{Intent: Intent{Verb: Away, Target: c.Name}}, nil
 	}
 
 	return &DecideOutput{Intent: Intent{Verb: Pass}}, nil

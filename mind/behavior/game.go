@@ -13,29 +13,36 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
 
-// Game is the composition: a perception, a reader, and who has which mind
-// and stands where. It is the one place that holds a perception, and it
-// writes to it only through perception's own doors (R1).
+// Game is the composition: a perception, a reader, a space, and who has
+// which mind and stands where. It is the one place that holds a perception,
+// and it writes to it only through perception's own doors (R1).
 type Game struct {
 	p      *perception.Perception
 	reader Reader
+	space  Space
 	minds  map[core.EntityID]Mind
 	sheets map[core.EntityID]Sheet
 	places map[core.EntityID]string
-	doors  map[string][]string
 	fears  map[core.EntityID][]core.EntityID
 	names  map[core.EntityID]map[core.EntityID]Name
 }
 
-// NewInput is what a game is built from.
+// NewInput is what a game is built from: how to read a payload, and how to
+// measure the world.
 type NewInput struct {
 	Reader Reader
+	Space  Space
 }
 
-// New builds an empty game. ErrNoReader without a reader.
+// New builds an empty game. ErrNoReader without a reader, ErrNoSpace
+// without a space.
 func New(in *NewInput) (*Game, error) {
 	if in == nil || in.Reader == nil {
 		return nil, fmt.Errorf("new: %w", ErrNoReader)
+	}
+
+	if in.Space == nil {
+		return nil, fmt.Errorf("new: %w", ErrNoSpace)
 	}
 
 	p, err := perception.New()
@@ -46,25 +53,13 @@ func New(in *NewInput) (*Game, error) {
 	return &Game{
 		p:      p,
 		reader: in.Reader,
+		space:  in.Space,
 		minds:  make(map[core.EntityID]Mind),
 		sheets: make(map[core.EntityID]Sheet),
 		places: make(map[core.EntityID]string),
-		doors:  make(map[string][]string),
 		fears:  make(map[core.EntityID][]core.EntityID),
 		names:  make(map[core.EntityID]map[core.EntityID]Name),
 	}, nil
-}
-
-// ConnectInput is two regions with a door between them.
-type ConnectInput struct {
-	A, B string
-}
-
-// Connect declares two regions adjacent. Static topology is construction
-// truth and every actor may know it; who stands where is not (R11).
-func (g *Game) Connect(in *ConnectInput) {
-	g.doors[in.A] = append(g.doors[in.A], in.B)
-	g.doors[in.B] = append(g.doors[in.B], in.A)
 }
 
 // SheetInput is an actor and what it is armed with.
@@ -89,7 +84,7 @@ func (g *Game) Mind(in *MindInput) {
 	g.minds[in.Actor] = in.Mind
 }
 
-// PlaceInput is an actor and the region it stands in.
+// PlaceInput is an actor and the place it stands.
 type PlaceInput struct {
 	Actor core.EntityID
 	Where string
@@ -143,99 +138,6 @@ func (g *Game) Held(observer core.EntityID) ([]perception.Holding, error) {
 	return g.p.Held(observer)
 }
 
-// RouteInput is where an actor is and where it wants to be.
-type RouteInput struct {
-	From, To string
-}
-
-// RouteOutput is the first step, if there is a way.
-type RouteOutput struct {
-	Next  string
-	Found bool
-}
-
-// Route is the first step from one region toward another along the
-// dungeon's doors. A monster may know the way through its own dungeon. It
-// may not know who is standing in it.
-func (g *Game) Route(in *RouteInput) (*RouteOutput, error) {
-	dist := g.distances(in.To)
-
-	best, found := "", false
-
-	for _, next := range g.doors[in.From] {
-		if d, reachable := dist[next]; reachable && (!found || d < dist[best]) {
-			best, found = next, true
-		}
-	}
-
-	if !found || dist[best] >= dist[in.From] {
-		return &RouteOutput{}, nil
-	}
-
-	return &RouteOutput{Next: best, Found: true}, nil
-}
-
-// FartherInput is where an actor is and what it wants more distance from.
-type FartherInput struct {
-	From, AwayFrom string
-}
-
-// FartherOutput is the step that puts the most dungeon between them, if any
-// door leads farther.
-type FartherOutput struct {
-	Next  string
-	Found bool
-}
-
-// Farther is one step that puts more of the dungeon between the actor and a
-// region, and nothing when every door leads closer or nowhere — a dead end.
-// Fleeing into a corner is not fleeing (R11).
-func (g *Game) Farther(in *FartherInput) (*FartherOutput, error) {
-	dist := g.distances(in.AwayFrom)
-
-	here, placed := dist[in.From]
-	if !placed {
-		return &FartherOutput{}, nil
-	}
-
-	best, found := "", false
-
-	for _, next := range g.doors[in.From] {
-		d, reachable := dist[next]
-		if !reachable || d <= here {
-			continue
-		}
-
-		if !found || d > dist[best] {
-			best, found = next, true
-		}
-	}
-
-	return &FartherOutput{Next: best, Found: found}, nil
-}
-
-// distances is how many doors each region is from one region.
-func (g *Game) distances(from string) map[string]int {
-	dist := map[string]int{from: 0}
-	queue := []string{from}
-
-	for len(queue) > 0 {
-		here := queue[0]
-		queue = queue[1:]
-
-		for _, next := range g.doors[here] {
-			if _, seen := dist[next]; seen {
-				continue
-			}
-
-			dist[next] = dist[here] + 1
-			queue = append(queue, next)
-		}
-	}
-
-	return dist
-}
-
 // SituationInput is whose situation, and when.
 type SituationInput struct {
 	Actor core.EntityID
@@ -246,7 +148,7 @@ type SituationInput struct {
 // holding, asks the mind which are one thing, folds them, and names as it
 // goes. Everything in it is the caller's to keep: the situation copies what
 // it reports, so nothing a consumer does to it reaches the game's own
-// topology or sheets.
+// sheets.
 //
 // A contact the actor has no word for is offered to its mind. A name the
 // mind gives is recorded on the contact's bearer and the next situation
@@ -284,10 +186,9 @@ func (g *Game) Situation(in *SituationInput) (*Situation, error) {
 		Actor:    in.Actor,
 		Contacts: contacts,
 		Self: Self{
-			Sheet:    g.sheets[in.Actor],
-			Where:    where,
-			Adjacent: slices.Clone(g.doors[where]),
-			Fences:   slices.Clone(g.fears[in.Actor]),
+			Sheet:  g.sheets[in.Actor],
+			Where:  where,
+			Fences: slices.Clone(g.fears[in.Actor]),
 		},
 		At: in.At,
 	}, nil
@@ -449,7 +350,7 @@ func (g *Game) Turn(in *TurnInput) (*TurnOutput, error) {
 		return nil, err
 	}
 
-	decided, err := Decide(&DecideInput{Situation: *s, Mind: g.minds[in.Actor]})
+	decided, err := Decide(&DecideInput{Situation: *s, Mind: g.minds[in.Actor], Space: g.space})
 	if err != nil {
 		return nil, err
 	}

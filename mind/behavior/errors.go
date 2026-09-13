@@ -12,6 +12,9 @@ var (
 	// know where anything is without one, and a game that silently read
 	// nothing would pass forever.
 	ErrNoReader = errors.New("behavior: no reader")
+	// ErrNoSpace reports a game built without a Space. Behaviour holds no
+	// map of its own; without one no distance is known and no step exists.
+	ErrNoSpace = errors.New("behavior: no space")
 	// ErrNoMind reports a turn for an actor nobody gave a mind.
 	ErrNoMind = errors.New("behavior: the actor has no mind")
 	// ErrNoSelf reports a turn for an actor nobody placed. It fails loudly:

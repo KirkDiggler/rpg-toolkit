@@ -119,9 +119,9 @@ func Recall(in *RecallInput) (*RecallOutput, error) {
 }
 
 // StepInput is a walking intent, the situation it was formed in, and the
-// game whose doors it walks through.
+// space it walks through.
 type StepInput struct {
-	Game      *behavior.Game
+	Space     behavior.Space
 	Situation behavior.Situation
 	Intent    behavior.Intent
 }
@@ -133,15 +133,15 @@ type StepOutput struct {
 	Moved bool
 }
 
-// Step is where a walking intent takes the actor, at region grain: one step,
-// this turn, along the dungeon's doors. Toward takes the first step of the
-// way to the recalled region. Away takes the door that puts the most dungeon
-// between them, and refuses a dead end — fleeing into a corner is not
+// Step is where a walking intent takes the actor: one step, this turn, in
+// the caller's space. Toward is the space's first step to the recalled
+// place. Away is the space's step that puts the most of the world between
+// them, and the space refuses a dead end — fleeing into a corner is not
 // fleeing (R11).
 //
-// The route is the game's, because static topology is construction truth.
-// The destination is the actor's, because where you choose to walk is a
-// matter of what you believe.
+// The step is the space's, because the map is the caller's. The destination
+// is the actor's, because where you choose to walk is a matter of what you
+// believe.
 func Step(in *StepInput) (*StepOutput, error) {
 	recalled, err := Recall(&RecallInput{Situation: in.Situation, Name: in.Intent.Target})
 	if err != nil {
@@ -154,19 +154,19 @@ func Step(in *StepInput) (*StepOutput, error) {
 
 	switch in.Intent.Verb {
 	case behavior.Toward:
-		route, err := in.Game.Route(&behavior.RouteInput{From: in.Situation.Self.Where, To: recalled.Where})
+		toward, err := in.Space.Toward(&behavior.TowardInput{From: in.Situation.Self.Where, To: recalled.Where})
 		if err != nil {
 			return nil, err
 		}
 
-		return &StepOutput{To: route.Next, Moved: route.Found}, nil
+		return &StepOutput{To: toward.Next, Moved: toward.Found}, nil
 	case behavior.Away:
-		far, err := in.Game.Farther(&behavior.FartherInput{From: in.Situation.Self.Where, AwayFrom: recalled.Where})
+		away, err := in.Space.Away(&behavior.AwayInput{From: in.Situation.Self.Where, AwayFrom: recalled.Where})
 		if err != nil {
 			return nil, err
 		}
 
-		return &StepOutput{To: far.Next, Moved: far.Found}, nil
+		return &StepOutput{To: away.Next, Moved: away.Found}, nil
 	case behavior.Attack, behavior.Pass:
 		return &StepOutput{}, nil
 	default:
