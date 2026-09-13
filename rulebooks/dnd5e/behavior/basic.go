@@ -15,10 +15,20 @@
 // Basic is the first of them, and the Monster AI owner's starting point: a
 // real, working driver, small enough to read in one sitting and heavily
 // documented as exactly that — a foundation to extend, not a finished
-// decision system. The richer design (mode machines, disposition,
-// stimuli-and-memory perception) lives in rpg-project's own
-// ideas/monster-ai/design.md and is deliberately NOT built here; this
-// package only has to prove the seam works end to end.
+// decision system.
+//
+// Minded is the second, and it is where the monsters stop sharing one loop.
+// It gives each member the mind its sheet names and drives it through
+// mind/behavior: the mind judges what it is looking at, that module's fixed
+// ladder decides, and the driver maps the decision onto the encounter's
+// sealed intents. Retaliator is the first mind authored against that seam
+// (rpg-toolkit#1725), and NewMindedInput.Minds is the door a caller's own
+// comes through.
+//
+// The richer design — mode machines, disposition, stimuli-and-memory
+// perception — lives in rpg-project's own ideas/monster-ai/design.md and
+// remains deliberately unbuilt here. Each of the three waits on a use case
+// that pays for it, and a mind that needs one is how it will arrive.
 package behavior
 
 import (

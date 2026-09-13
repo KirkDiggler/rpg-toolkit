@@ -24,8 +24,15 @@ import (
 //
 // Four judgments and no state. Judge attaches an attack deed to the figure
 // the deed names — a claim, because the deed already says who and the mind
-// still has to believe it. Name is reflexive. Rank is the grudge, then the
-// distance. Keep is nothing: it stands and fights.
+// still has to believe it. Name is the member's own id. Rank is the grudge,
+// then the distance. Keep is nothing: it stands and fights.
+//
+// The grudge is kind-blind, by design: any attack deed against me counts,
+// whoever landed it. A non-creature attacker — a dominated ally, a
+// friendly-fire swing — therefore ranks first and is still never attacked,
+// because the ladder attacks only creatures, and the skeleton walks toward
+// it instead. No use case has paid for kind-filtering, and the dominated
+// case argues the blind grudge is right.
 //
 // # Why a weapon, and not only a clock
 //
@@ -74,10 +81,24 @@ func (r *Retaliator) Judge(in *behavior.JudgeInput) (*behavior.JudgeOutput, erro
 	return &behavior.JudgeOutput{Same: same}, nil
 }
 
-// Name calls a contact by its bearer's id. A monster has no words for the
-// people it fights; the id is the encounter's and never parsed.
+// Name calls a contact by the plain member id of the figure it is about. A
+// monster has no words for the people it fights; the id is the encounter's
+// and never parsed.
+//
+// Which id is not a detail. A contact's sorted-first subject is the deeds
+// handle whenever the bundle holds one and the member id sorts after it, and
+// a figure first met as a ghost would then be called by a handle for as long
+// as the deed lives — a word matching no member the encounter offers. So the
+// id comes from the testimony: sight's subject, else the actor the deed
+// names. A contact it cannot put an id to gets no word at all, and the ladder
+// declines to aim at what has no name.
 func (r *Retaliator) Name(in *behavior.NameInput) (*behavior.NameOutput, error) {
-	return &behavior.NameOutput{Name: behavior.Name(in.Contact.Holdings[0].Subject), Named: true}, nil
+	id, ok := memberID(in.Contact.Holdings)
+	if !ok {
+		return &behavior.NameOutput{}, nil
+	}
+
+	return &behavior.NameOutput{Name: behavior.Name(id), Named: true}, nil
 }
 
 // Rank puts whoever attacked ME, fresher than Patience, first; then the

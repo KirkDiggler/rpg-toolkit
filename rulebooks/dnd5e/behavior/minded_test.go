@@ -30,12 +30,18 @@ const (
 	skeleton = encounter.MemberID("skeleton")
 	alice    = encounter.MemberID("alice")
 	bob      = encounter.MemberID("bob")
+	// zara is alice with one property the others lack: an id that sorts
+	// AFTER "deeds|", so a bundle of her sighting and her deed puts the
+	// deed's handle first. Every id in this suite used to sort before it,
+	// which is why the suite could not see the ghost bug.
+	zara = encounter.MemberID("zara")
 )
 
 var (
 	skeletonAt = spatial.Position{X: 6, Y: 4}
 	aliceAt    = spatial.Position{X: 6, Y: 0} // far, with a bow
 	bobAt      = spatial.Position{X: 5, Y: 4} // next to the skeleton
+	zaraAt     = spatial.Position{X: 0, Y: 4} // across the room, with a bow
 )
 
 type MindedTestSuite struct {
@@ -112,11 +118,19 @@ func (s *MindedTestSuite) viewSeeing(at uint64, aliceSight []byte, extra ...perc
 }
 
 // shotBy is the deed the encounter lands when somebody attacks the
-// skeleton where it can see them.
+// skeleton where it can see them, from alice's spot.
 func shotBy(who encounter.MemberID, at uint64) perception.Holding {
+	return shotFrom(who, at, aliceAt)
+}
+
+// shotFrom is shotBy for a shooter standing somewhere else. The place is the
+// deed's own and not decoration: a contact takes its place from its freshest
+// placed holding, so a deed filed where its actor never stood would move the
+// figure it is bundled with.
+func shotFrom(who encounter.MemberID, at uint64, where spatial.Position) perception.Holding {
 	return perception.Holding{
 		Subject: deed.Subject(who), Channel: deed.Channel, Observed: at, Confirmed: at,
-		Payload: deed.Encode(deed.Deed{Verb: encounter.DeedAttack, Actor: who, Target: skeleton, Where: aliceAt.String()}),
+		Payload: deed.Encode(deed.Deed{Verb: encounter.DeedAttack, Actor: who, Target: skeleton, Where: where.String()}),
 	}
 }
 
@@ -314,6 +328,215 @@ func (s *MindedTestSuite) TestARememberedShooterIsStillRankedFirst() {
 	s.Require().NoError(err)
 	s.Require().Len(out.Ranked, 2)
 	s.Equal(core.EntityID(alice), out.Ranked[0].Bearer, "the remembered shooter, ahead of the man in its face")
+}
+
+// zaraView is the reviewer's own scene: one shooter, the crossbow she shot
+// with, and the deed she left behind. current says whether the skeleton can
+// see her this turn — false is the turn she spends as a ghost, true is her
+// return to the open.
+func (s *MindedTestSuite) zaraView(at uint64, current bool) encounter.MonsterView {
+	sight := perception.Holding{
+		Subject: zara, Channel: perception.Sight, Observed: 3, Confirmed: 3,
+		Payload: armed(s.T(), zaraAt, weapons.LightCrossbow, ""),
+	}
+
+	var seen []encounter.SeenMember
+
+	if current {
+		sight.Confirmed = at
+		sight.CurrentVia = []perception.Channel{perception.Sight}
+		seen = []encounter.SeenMember{{
+			ID: zara, Kind: encounter.KindPlayer, Standing: true, Position: zaraAt, DistanceCells: 6,
+			InReach: map[core.Ref]bool{bowRef: true, meleeRef: false},
+		}}
+	}
+
+	return encounter.MonsterView{
+		Self:     skeleton,
+		Position: skeletonAt,
+		Mind:     behavior.MindRetaliator,
+		Actions: []encounter.ActionView{
+			{Ref: meleeRef, RangeFeet: 5},
+			{Ref: bowRef, RangeFeet: 80},
+		},
+		Holdings: []perception.Holding{sight, shotFrom(zara, 3, zaraAt)},
+		At:       at,
+		Seen:     seen,
+		Budget:   encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+	}
+}
+
+// The ghost's return. The shooter was seen at the shot and gone by the time
+// the skeleton's turn came, so the first word it ever has for her is spoken
+// over a bundle whose sorted-first holding is the deed's own handle. When she
+// steps back into the open with the crossbow still up, in bowshot and inside
+// the grudge, the skeleton has to be able to aim at her.
+//
+// It can only do that by the plain member id. A name or a target taken from
+// the handle the store files deeds under matches no member the encounter ever
+// offers, and the skeleton stands still while its prey shoots it.
+func (s *MindedTestSuite) TestAShooterFirstMetAsAGhostIsStillAttackable() {
+	s.Require().Greater(string(zara), string(deed.Subject(zara)),
+		"this proof only bites while the member id sorts after its own deed handle")
+
+	d := s.driver()
+
+	first, err := d.Act(s.zaraView(3, false))
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.Pass{}, first, "a memory is no target, and the encounter offers no step toward one")
+
+	second, err := d.Act(s.zaraView(4, true))
+	s.Require().NoError(err)
+	s.Equal(encounter.Attack{Target: zara, Action: bowRef}, second, "back in the open, crossbow up, grudge fresh")
+}
+
+// What a mind calls a contact is a member id or nothing. The deeds handle is
+// the store's filing system, not testimony, and deed's own rule says a mind
+// does not read handles — so a contact it cannot put an id to is a contact it
+// has no word for yet, which the ladder then declines to aim at.
+func (s *MindedTestSuite) TestAContactIsNamedByItsMemberId() {
+	sight := mind.Holding{Holding: perception.Holding{
+		Subject: zara, Channel: perception.Sight, Observed: 3, Confirmed: 3,
+		Payload: armed(s.T(), zaraAt, weapons.LightCrossbow, ""),
+	}}
+
+	shot := func(actor encounter.MemberID) mind.Holding {
+		h := shotFrom(zara, 3, zaraAt)
+		h.Payload = deed.Encode(deed.Deed{
+			Verb: encounter.DeedAttack, Actor: actor, Target: skeleton, Where: zaraAt.String(),
+		})
+
+		return mind.Holding{Holding: h}
+	}
+
+	cases := []struct {
+		scene    string
+		holdings []mind.Holding
+		want     mind.Name
+		named    bool
+	}{
+		{
+			scene: "a ghost and the deed bundled onto her: the handle sorts first",
+			// The fold's own order, which is what Name is handed.
+			holdings: []mind.Holding{shot(zara), sight},
+			want:     mind.Name(zara),
+			named:    true,
+		},
+		{
+			scene:    "a deed alone, from somebody it was holding at the time",
+			holdings: []mind.Holding{shot(zara)},
+			want:     mind.Name(zara),
+			named:    true,
+		},
+		{
+			scene:    "a deed alone, from nobody it could see",
+			holdings: []mind.Holding{shot("")},
+			named:    false,
+		},
+	}
+
+	r := &behavior.Retaliator{Space: flatSpace{}, Patience: behavior.DefaultPatience}
+
+	for _, tc := range cases {
+		s.Run(tc.scene, func() {
+			out, err := r.Name(&mind.NameInput{Contact: mind.Contact{Holdings: tc.holdings}})
+			s.Require().NoError(err)
+			s.Equal(tc.named, out.Named)
+			s.Equal(tc.want, out.Name)
+		})
+	}
+}
+
+// skittish is an authored mind: the Retaliator with one judgment changed. It
+// is this test's mind and not the rulebook's, which is the point — it comes
+// in through the driver's door, the way a game's own mind would.
+//
+// Keep is the changed judgment, and the only thing that reaches the ladder's
+// rung 0. Two cells, so a figure standing next to it is nearer than it keeps.
+type skittish struct {
+	*behavior.Retaliator
+}
+
+// Keep says how much room it wants. The Retaliator keeps none.
+func (skittish) Keep(*mind.KeepInput) (*mind.KeepOutput, error) {
+	return &mind.KeepOutput{Steps: 2}, nil
+}
+
+// skittishDriver is a driver that answers the given word with the keeping
+// mind, and is otherwise the rulebook's own.
+func (s *MindedTestSuite) skittishDriver(word string) *behavior.Minded {
+	d, err := behavior.NewMinded(&behavior.NewMindedInput{
+		Minds: map[string]mind.Mind{word: skittish{&behavior.Retaliator{
+			Space:    flatSpace{bobAt.String(): 1},
+			Patience: behavior.DefaultPatience,
+		}}},
+	})
+	s.Require().NoError(err)
+
+	return d
+}
+
+// cornered is one live player standing next to the skeleton and nobody else:
+// the scene a mind that wants room has to answer. away is the step the
+// encounter precomputed, and nil is the corner — the encounter is what knows
+// where the walls are, and the driver never decides that for itself.
+func (s *MindedTestSuite) cornered(mindName string, away []spatial.Position) encounter.MonsterView {
+	return encounter.MonsterView{
+		Self:     skeleton,
+		Position: skeletonAt,
+		Mind:     mindName,
+		Actions: []encounter.ActionView{
+			{Ref: meleeRef, RangeFeet: 5},
+			{Ref: bowRef, RangeFeet: 80},
+		},
+		Holdings: []perception.Holding{{
+			Subject: bob, Channel: perception.Sight, Observed: 3, Confirmed: 3,
+			Payload:    armed(s.T(), bobAt, weapons.Longsword, ""),
+			CurrentVia: []perception.Channel{perception.Sight},
+		}},
+		At:     3,
+		Seen:   []encounter.SeenMember{seenPlayer(bob, bobAt, 1, nil, away)},
+		Budget: encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+	}
+}
+
+// A mind that keeps its distance steps away, and the step is the encounter's
+// own. This is the ladder's rung 0 reaching the driver's Away arm, which no
+// mind the rulebook ships can reach: the Retaliator keeps nothing.
+func (s *MindedTestSuite) TestAnAuthoredMindStepsAway() {
+	away := []spatial.Position{{X: 7, Y: 4}}
+
+	intent, err := s.skittishDriver("skittish").Act(s.cornered("skittish", away))
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: away}, intent, "one cell away from bob, the way the encounter laid it out")
+}
+
+// Cornered, the same mind fights. Rung 0 asks the encounter for a step away,
+// the encounter has none, and keeping range is a preference rather than a
+// compulsion — so it falls to rung 1 and swings at what it could not avoid.
+func (s *MindedTestSuite) TestAnAuthoredMindWithNowhereToGoFights() {
+	intent, err := s.skittishDriver("skittish").Act(s.cornered("skittish", nil))
+	s.Require().NoError(err)
+	s.Equal(encounter.Attack{Target: bob, Action: meleeRef}, intent, "no way out: it swings")
+}
+
+// An authored mind adds a word. The ones the rulebook ships still answer on
+// the same driver.
+func (s *MindedTestSuite) TestAnAuthoredMindDoesNotDisplaceTheBuiltIns() {
+	intent, err := s.skittishDriver("skittish").Act(s.view(3, shotBy(alice, 3)))
+	s.Require().NoError(err)
+	s.Equal(encounter.Attack{Target: alice, Action: bowRef}, intent, "still the rulebook's retaliator")
+}
+
+// An authored mind under a built-in's word wins it: a game tries its own
+// retaliator without waiting for a rulebook release.
+func (s *MindedTestSuite) TestAnAuthoredMindOverridesABuiltInWord() {
+	away := []spatial.Position{{X: 7, Y: 4}}
+	d := s.skittishDriver(behavior.MindRetaliator)
+
+	intent, err := d.Act(s.cornered(behavior.MindRetaliator, away))
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: away}, intent, "the caller's mind, under the rulebook's word")
 }
 
 // flatSpace answers distance from a table and nothing else. Rank is the only

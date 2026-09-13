@@ -6,10 +6,12 @@ package behavior
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
@@ -58,6 +60,7 @@ type Minded struct {
 	game     *behavior.Game
 	patience uint64
 	ranged   func(item string) bool
+	minds    map[string]behavior.Mind
 	minded   map[core.EntityID]struct{}
 }
 
@@ -73,6 +76,16 @@ type NewMindedInput struct {
 	// depending on what the driver was handed. Nil means the rulebook's own
 	// weapon catalog.
 	Ranged func(item string) bool
+
+	// Minds is the door an authored mind comes through: the word a member's
+	// sheet names, and the mind it means. The built-ins are what the rulebook
+	// ships and they stay — a caller adds to the vocabulary rather than
+	// replacing it — and an entry under a built-in's word wins, which is how
+	// a game tries its own Retaliator without a rulebook release.
+	//
+	// One mind answers for every member that names it. A mind is four
+	// judgments and no state, so that is the shape, not a limit.
+	Minds map[string]behavior.Mind
 }
 
 // NewMinded builds a driver with no minds assigned yet; minds are assigned
@@ -90,9 +103,14 @@ func NewMinded(in *NewMindedInput) (*Minded, error) {
 		patience = in.Patience
 	}
 
-	var ranged func(item string) bool
+	var (
+		ranged func(item string) bool
+		minds  map[string]behavior.Mind
+	)
+
 	if in != nil {
 		ranged = in.Ranged
+		minds = maps.Clone(in.Minds)
 	}
 
 	return &Minded{
@@ -100,6 +118,7 @@ func NewMinded(in *NewMindedInput) (*Minded, error) {
 		game:     game,
 		patience: patience,
 		ranged:   ranged,
+		minds:    minds,
 		minded:   make(map[core.EntityID]struct{}),
 	}, nil
 }
@@ -149,7 +168,13 @@ func (d *Minded) assign(view encounter.MonsterView) error {
 }
 
 // mindFor is the rulebook's registry: the sheet's word, the mind it means.
+// The caller's own minds are asked first, so an authored mind extends the
+// vocabulary and may override a word the rulebook ships.
 func (d *Minded) mindFor(name string) (behavior.Mind, error) {
+	if mind, ok := d.minds[name]; ok {
+		return mind, nil
+	}
+
 	switch name {
 	case MindRetaliator:
 		return &Retaliator{Space: d.board, Patience: d.patience, Ranged: d.ranged}, nil
@@ -159,9 +184,17 @@ func (d *Minded) mindFor(name string) (behavior.Mind, error) {
 }
 
 // intent maps the ladder's decision onto the encounter's sealed intents.
-// Attack goes at the contact's bearer with the first action that reaches;
-// Toward and Away take the one step the encounter precomputed; anything
-// the budget cannot pay for is a pass.
+// Attack goes at the member the contact is about with the first action that
+// reaches; Toward and Away take the one step the encounter precomputed;
+// anything the budget cannot pay for is a pass.
+//
+// The member is [memberID] and deliberately not the contact's Bearer. The
+// bearer is the subject mind/behavior recorded the name on, which for a
+// figure first met as a ghost-plus-deed is the deeds handle — no member of
+// this encounter — and it stays the bearer on every later turn that finds
+// the word already there. The name is likewise not read as an id: what a
+// mind calls a contact is its author's business, and this driver takes minds
+// from its caller.
 func (d *Minded) intent(view encounter.MonsterView, turn *behavior.TurnOutput) encounter.TurnIntent {
 	var target *behavior.Contact
 	for i := range turn.Situation.Contacts {
@@ -181,8 +214,13 @@ func (d *Minded) intent(view encounter.MonsterView, turn *behavior.TurnOutput) e
 			return encounter.Pass{}
 		}
 
+		id, ok := memberID(target.Holdings)
+		if !ok {
+			return encounter.Pass{}
+		}
+
 		for _, sm := range view.Seen {
-			if sm.ID != target.Bearer {
+			if sm.ID != id {
 				continue
 			}
 
@@ -219,6 +257,37 @@ func (d *Minded) intent(view encounter.MonsterView, turn *behavior.TurnOutput) e
 	default:
 		return encounter.Pass{}
 	}
+}
+
+// memberID is the plain encounter member id a set of bundled holdings is
+// about: the subject sight files a figure under, else the actor a deed names
+// as its own testimony. False is holdings about nobody this encounter can put
+// an id to.
+//
+// It is never the deeds handle, and that is the whole point of the function.
+// A handle is the store's filing system — deed's own rule is that a mind
+// reads testimony and not handles — and it is also the sorted-first subject
+// of a ghost-plus-deed bundle, so a name or a target taken from it matches no
+// member the encounter will ever offer. Both places that need an id for a
+// contact ask here.
+func memberID(holdings []behavior.Holding) (core.EntityID, bool) {
+	for _, h := range holdings {
+		if h.Channel == perception.Sight {
+			return h.Subject, true
+		}
+	}
+
+	for _, h := range holdings {
+		if h.Channel != deed.Channel {
+			continue
+		}
+
+		if d, err := deed.Decode(h.Payload); err == nil && d.Actor != "" {
+			return d.Actor, true
+		}
+	}
+
+	return "", false
 }
 
 // place is the string a cell is known by to the mind. It is never parsed:
