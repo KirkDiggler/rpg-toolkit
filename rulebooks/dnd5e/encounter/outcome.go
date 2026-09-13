@@ -728,6 +728,12 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// neither auto-passes that slot nor reconciles a retained one-sided bubble
 	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
 	// control until the eventual turn-settlement boundary.
+	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
+		if err := e.landAttack(in.Actor, targets); err != nil {
+			return nil, fmt.Errorf("record: %w", err)
+		}
+	}
+
 	pass := participationPassInput{}
 	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
 		pass.deferReconcile = true

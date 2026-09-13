@@ -834,6 +834,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			SightFeet:      mi.SightFeet,
 			Actions:        mi.Actions,
 			Targeting:      mi.Targeting,
+			Mind:           mi.Mind,
 			BlocksMovement: mi.BlocksMovement,
 			Faction:        mi.Faction,
 		}
@@ -1061,6 +1062,7 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		SightFeet:      record.SightFeet,
 		Actions:        record.Actions,
 		Targeting:      record.Targeting,
+		Mind:           record.Mind,
 		BlocksMovement: record.BlocksMovement,
 		Faction:        factionOf(record),
 	}, nil
@@ -2202,6 +2204,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		SightFeet:      in.SightFeet,
 		Actions:        in.Actions,
 		Targeting:      in.Targeting,
+		Mind:           in.Mind,
 		BlocksMovement: in.BlocksMovement,
 		Faction:        in.Faction,
 	}
@@ -2220,7 +2223,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 			Reserved: true,
 			Member: Member{
 				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
-				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting,
+				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting, Mind: in.Mind,
 				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
 			},
 		}, nil

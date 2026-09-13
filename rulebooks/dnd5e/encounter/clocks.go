@@ -1244,6 +1244,18 @@ func attackIsInReach(view MonsterView, intent Attack) bool {
 // sight intel, and the turn's remaining budget into the shape a [TurnDriver]
 // is allowed to see — the same anti-wall-hack contract [Decider]'s Snapshot
 // keeps (C2), extended to a turn's own questions.
+// cloneHoldings copies what the store handed back so the view stays plain
+// data end to end: a driver that keeps a payload keeps its own bytes.
+func cloneHoldings(in []perception.Holding) []perception.Holding {
+	out := make([]perception.Holding, len(in))
+	for i, h := range in {
+		h.Payload = append([]byte(nil), h.Payload...)
+		h.CurrentVia = append([]perception.Channel(nil), h.CurrentVia...)
+		out[i] = h
+	}
+	return out
+}
+
 func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round int) (MonsterView, error) {
 	ownCell, err := e.cellOf(m)
 	if err != nil {
@@ -1357,6 +1369,11 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			return e.Distance(cell, pos) <= float64(bestRangeCells)
 		})
 
+		var awayPath []spatial.Position
+		if away := e.routeAway(m.ID, ownCell, pos, 1); len(away.Path) > 0 {
+			awayPath = away.Path
+		}
+
 		seen = append(seen, SeenMember{
 			ID:            subjectID,
 			Kind:          other.Kind,
@@ -1365,6 +1382,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			DistanceCells: dist,
 			InReach:       inReach,
 			Path:          path,
+			AwayPath:      awayPath,
 		})
 	}
 	// C8: a driver asked twice against unchanged data must see the same
@@ -1377,6 +1395,9 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Position:   ownCell,
 		Actions:    m.Actions,
 		Targeting:  m.Targeting,
+		Mind:       m.Mind,
+		Holdings:   cloneHoldings(holdings),
+		At:         uint64(e.clock.ToData().HighWater),
 		Seen:       seen,
 		Remembered: remembered,
 		Budget:     budget,
