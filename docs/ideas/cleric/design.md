@@ -2,6 +2,13 @@
 
 ## Bless delivery decision
 
+Recording handoff: encounter accepts the supplied per-target miss fact and
+emits `cast_missed` in target order, carrying only actor, target and spell.
+It never decides whether a spell missed. Missed recipients cannot also carry
+a save or delivered effects; transaction validation rejects that contradiction
+before appending anything. Session will project resolution's miss onto this
+record contract when it adopts the released encounter provider.
+
 Bless uses the existing gateless condition delivery, contributed-dice selection,
 and source-qualified concentration ownership. It introduces a known-creature
 target contract: self and conscious/dying/stabilized creatures, with a known

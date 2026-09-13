@@ -1,6 +1,19 @@
 # Cleric contribution plan — Cure Wounds
 
-## Active Bless resolution slice
+## Bless resolution and recording handoff
+
+Resolution #1710 merged as `c893f5f5`, releasing `resolution v0.46.0`.
+Main also includes session #1690 (`v0.81.0`), which projects area footprints
+on declarations; preserve that behavior when integrating Bless.
+
+Session inspection found an additional provider prerequisite: encounter's
+`CastTargetResult` only records saves/effects and cannot represent the new miss.
+Ship an encounter-only additive `Missed` field and `cast_missed` story beat,
+then adopt its released tag alongside resolution `v0.46.0` in session. A miss
+carries actor, named target and spell identity, without coordinates or an
+invented save/effect. Contradictory miss-plus-save/effect data is rejected before
+any transaction beat is appended. Existing false/omitted miss values retain
+the existing recording behavior.
 
 Root provider #1708 is merged and released as `rulebooks/dnd5e v0.164.0`.
 Resolution adopts that tag with encounter `v0.78.0`. Known-creature casts use
@@ -17,7 +30,7 @@ the existing all-save behavior: it ends the previous hold and starts an empty
 hold with the declared duration.
 
 Session must carry the same policy through offers and execution and preserve
-the new per-target miss result when recording. That is the next module slice;
+the new per-target miss result when recording after that provider releases;
 Bless acquisition follows the session integration. External repository pins,
 preparation, and upcasting remain outside this slice.
 
