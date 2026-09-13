@@ -106,8 +106,11 @@ type MonsterView struct {
 	// (rule A1), and nothing on this slice reaches it.
 	Holdings []perception.Holding
 
-	// At is the clock's high-water when this view was built: the same
-	// stamp every holding above was landed at, so a mind can age them.
+	// At is the clock's high-water when this view was built: the stamp a
+	// mind subtracts each holding's Confirmed from to age it. The holdings
+	// above were landed on this same CLOCK, not at this same MOMENT — a
+	// holding is stamped when it happened and never restamped, so a
+	// round-one deed reads as two units old in a round-three view.
 	At uint64
 
 	// Seen are the OTHER members this monster currently, actively holds

@@ -1244,18 +1244,6 @@ func attackIsInReach(view MonsterView, intent Attack) bool {
 // sight intel, and the turn's remaining budget into the shape a [TurnDriver]
 // is allowed to see — the same anti-wall-hack contract [Decider]'s Snapshot
 // keeps (C2), extended to a turn's own questions.
-// cloneHoldings copies what the store handed back so the view stays plain
-// data end to end: a driver that keeps a payload keeps its own bytes.
-func cloneHoldings(in []perception.Holding) []perception.Holding {
-	out := make([]perception.Holding, len(in))
-	for i, h := range in {
-		h.Payload = append([]byte(nil), h.Payload...)
-		h.CurrentVia = append([]perception.Channel(nil), h.CurrentVia...)
-		out[i] = h
-	}
-	return out
-}
-
 func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round int) (MonsterView, error) {
 	ownCell, err := e.cellOf(m)
 	if err != nil {
@@ -1263,7 +1251,12 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	}
 
 	// The member's own holdings and nothing else (C2) — the same call
-	// Pump's own Decider consult makes for a Snapshot, one seam over.
+	// Pump's own Decider consult makes for a Snapshot, one seam over, and
+	// the view hands the result straight to the driver. Held's copy-out is
+	// intel's documented contract (HeldBy returns payloads deep-copied and
+	// CurrentVia rebuilt per call), carried through mind/perception — no
+	// redundant defensive copy here; TestPumpMutatingDeciderCannotCorrupt
+	// pins the composed guarantee.
 	holdings, err := e.intelLog.Held(m.ID)
 	if err != nil {
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
@@ -1396,7 +1389,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Actions:    m.Actions,
 		Targeting:  m.Targeting,
 		Mind:       m.Mind,
-		Holdings:   cloneHoldings(holdings),
+		Holdings:   holdings,
 		At:         uint64(e.clock.ToData().HighWater),
 		Seen:       seen,
 		Remembered: remembered,
