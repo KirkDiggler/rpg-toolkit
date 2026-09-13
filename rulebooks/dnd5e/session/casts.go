@@ -172,6 +172,12 @@ func (m *Manager) compileCastOffer(
 		return compiledOffer{}, err
 	}
 	spellRef := SpellRef{Ref: definition.Ref.String(), Name: definition.Name}
+	if profile.Target == combatActions.CastTargetKnownCreature {
+		id, variant, err = knownCastSelector(input, slot, variant, m.staleTargetPolicy)
+		if err != nil {
+			return compiledOffer{}, err
+		}
+	}
 	cost, err := castCostComponents(definition.Cost)
 	if err != nil {
 		return compiledOffer{}, err
@@ -225,7 +231,17 @@ func (m *Manager) compileCastOffer(
 	// The profile chooses physical touch or the established sight/range path.
 	// Both use provider eligibility; world NPCs have no healable sheet.
 	var candidates []targetPreflight
-	if profile.Healing != nil {
+	if profile.Target == combatActions.CastTargetKnownCreature && m.staleTargetPolicy == "" {
+		return compiledOffer{
+			declaration: Declaration{Verb: VerbCast, Slot: slot, ID: id, Spell: &spellRef,
+				TargetKind: TargetMember, Candidates: []TargetCandidate{}, MinTargets: profile.MinTargets, MaxTargets: profile.MaxTargets,
+				Cost: cost, Why: &Shortfall{Reason: ShortfallUnavailable, Text: missingStaleTargetPolicy}},
+			spell: &definition, sheet: input.Sheet, cast: input.Participants, verb: VerbCast, slot: slot, variant: variant,
+		}, nil
+	}
+	if profile.Target == combatActions.CastTargetKnownCreature {
+		candidates, err = knownCastCandidates(ctx, input, m.staleTargetPolicy)
+	} else if profile.Healing != nil {
 		candidates, err = healingCandidates(ctx, input)
 	} else {
 		candidates, err = m.targetPreflight(

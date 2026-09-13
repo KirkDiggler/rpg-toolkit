@@ -797,6 +797,9 @@ const (
 	// Vicious Mockery" rather than "you activated it".
 	EventCast EventKind = "cast"
 
+	// EventCastMissed reports a supplied miss against one named cast target.
+	EventCastMissed EventKind = "cast_missed"
+
 	// EventSaved reports one saving throw a cast's gate produced: who rolled,
 	// what they rolled with, the d20 and what it reached, the DC and whether
 	// they beat it.
@@ -1395,6 +1398,15 @@ type ActivatedBody struct {
 }
 
 func (ActivatedBody) isEventBody() {}
+
+// CastMissedBody reports a miss without exposing an aimed or actual position.
+type CastMissedBody struct {
+	Actor  string   `json:"actor"`
+	Target string   `json:"target"`
+	Spell  SpellRef `json:"spell"`
+}
+
+func (CastMissedBody) isEventBody() {}
 
 // CastBody is EventCast's typed body. Spell is copied from the selected
 // server-authored declaration; Session does not derive its name from its ref.

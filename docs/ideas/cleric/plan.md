@@ -1,5 +1,22 @@
 # Cleric contribution plan — Cure Wounds
 
+## Active session integration
+
+Session adopts released resolution `v0.46.0`, encounter `v0.79.0`, and root
+`v0.164.0`. The user selected optional host configuration: unset
+`Config.StaleTargetPolicy` leaves known-creature offers visible but disabled
+with an explicit reason; casting that offer returns `ErrIncompleteConfig`.
+Other spells remain usable. Invalid nonempty settings fail Manager construction.
+API/SDK setup should explicitly default to `StaleTargetRefuse`, with
+`StaleTargetAttempt` available as an override. No external repository changes
+are included here.
+
+Known-cast selectors include the policy, so changing it invalidates an old
+offer instead of silently changing whether it spends. Existing cast selectors
+retain their format and behavior. `MissedTargets` appears in CastOutput and
+`EventCastMissed`/`CastMissedBody` preserve the encounter beat for stream and
+story readers. Bless acquisition remains the next root-module slice.
+
 ## Bless resolution and recording handoff
 
 Resolution #1710 merged as `c893f5f5`, releasing `resolution v0.46.0`.

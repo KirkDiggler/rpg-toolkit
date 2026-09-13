@@ -2,6 +2,15 @@
 
 ## Bless delivery decision
 
+Host configuration decision: session accepts an optional `StaleTargetPolicy`.
+An absent setting disables only known-creature casts with an explicit offer
+reason and a prepayment configuration error on attempted execution. Invalid
+nonempty settings fail construction. The API/SDK should explicitly choose
+`StaleTargetRefuse` by default; `StaleTargetAttempt` remains an override.
+That external wiring is a later adoption task, not a toolkit default.
+The configured policy participates in known-cast selector identity, protecting
+an existing offer from changing its payment consequence after reconfiguration.
+
 Recording handoff: encounter accepts the supplied per-target miss fact and
 emits `cast_missed` in target order, carrying only actor, target and spell.
 It never decides whether a spell missed. Missed recipients cannot also carry

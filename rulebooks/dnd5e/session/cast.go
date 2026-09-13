@@ -103,6 +103,9 @@ type CastInput struct {
 // a caller told only "fine" could not tell a durable condition from one that
 // never reached disk.
 type CastOutput struct {
+	// MissedTargets names attempted recipients the cast did not reach, in
+	// caller order. Details also appear as EventCastMissed story entries.
+	MissedTargets []string `json:"missed_targets,omitempty"`
 	// Spell is the spell that was cast, echoed back — so a caller that
 	// dispatched by selector learns what the selector meant without parsing
 	// it.
@@ -304,6 +307,13 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 	selected, err := selectCompiledOffer(offers, VerbCast, in.DeclarationID)
 	if err != nil {
+		if m.staleTargetPolicy == "" {
+			for _, offer := range offers {
+				if offer.declaration.ID == in.DeclarationID && offer.spell != nil && offer.spell.Cast.Target == combatActions.CastTargetKnownCreature {
+					return nil, fmt.Errorf("cast: %s: %w", missingStaleTargetPolicy, ErrIncompleteConfig)
+				}
+			}
+		}
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 	if selected.declaration.Spell == nil || selected.spell == nil || selected.sheet == nil {
@@ -340,7 +350,8 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		// The chosen word, on its way to the parameters of whichever effect the
 		// content bound it to. Empty for every spell with no menu, and already
 		// refused above if it disagrees with the one this definition declares.
-		Option: in.Option,
+		Option:            in.Option,
+		StaleTargetPolicy: resolution.StaleTargetPolicy(m.staleTargetPolicy),
 		// Empty for every other arm. Derived recipients travel separately from
 		// named ones all the way down, so no gate has to guess which it holds.
 		AreaMembers: areaMemberIDs(caught),
@@ -483,17 +494,24 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 
 	var singleSave *encounter.CastSave
+	var missedTargets []string
+	for _, target := range targetResults {
+		if target.Missed {
+			missedTargets = append(missedTargets, string(target.Target))
+		}
+	}
 	if len(targetResults) == 1 {
 		singleSave = targetResults[0].Save
 	}
 	return &CastOutput{
-		Spell:     *selected.declaration.Spell,
-		Saved:     castSaveReport(singleSave),
-		Caught:    areaUnresolved(caught),
-		Seqs:      recorded.Seqs,
-		Paused:    paused,
-		Persisted: report,
-		Delivery:  delivery,
+		MissedTargets: missedTargets,
+		Spell:         *selected.declaration.Spell,
+		Saved:         castSaveReport(singleSave),
+		Caught:        areaUnresolved(caught),
+		Seqs:          recorded.Seqs,
+		Paused:        paused,
+		Persisted:     report,
+		Delivery:      delivery,
 	}, nil
 }
 

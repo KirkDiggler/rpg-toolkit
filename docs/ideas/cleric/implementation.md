@@ -1,5 +1,18 @@
 # Cleric creation implementation
 
+## Bless session integration (PR #1712)
+
+The session now uses the released provider target query, carries the configured
+policy into execution, and preserves missed recipients in CastOutput, encounter
+recording, typed live events, and story replay. Missing configuration produces
+an explicit disabled offer and a prepayment `ErrIncompleteConfig`; other spells
+retain their behavior. Policy changes alter only known-cast selectors.
+
+The full session suite passes with both policy paths, mixed paid results,
+no-policy offer/call failures, unchanged healing selectors, stale-policy
+rejection, and replay after repository JSON reload. Known dying/stabilized
+recipient and concentration persistence checks accompany this slice.
+
 ## Cast-miss recording prerequisite
 
 After #1710 released resolution `v0.46.0`, session inspection found that the
