@@ -52,9 +52,9 @@ import (
 // before the hash, so a DC that moved makes the offer stale rather than making
 // the click resolve against numbers the player never saw.
 //
-// Healing uses resolution's reach and living-recipient answers over known
-// creatures, including the caster. Other creature casts retain their attack
-// eligibility preflight. The seam does not infer healing eligibility from it.
+// Healing and stabilization use resolution's distinct eligibility and reach
+// answers over known creatures, including the caster. Other creature casts retain
+// their attack preflight. The seam does not infer recovery eligibility from it.
 func (m *Manager) buildCastOffers(
 	ctx context.Context,
 	enc *encounter.Encounter,
@@ -241,8 +241,8 @@ func (m *Manager) compileCastOffer(
 	}
 	if profile.Target == combatActions.CastTargetKnownCreature {
 		candidates, err = knownCastCandidates(ctx, input, m.staleTargetPolicy)
-	} else if profile.Healing != nil {
-		candidates, err = healingCandidates(ctx, input)
+	} else if profile.Healing != nil || profile.Stabilize {
+		candidates, err = recoveryCandidates(ctx, input)
 	} else {
 		candidates, err = m.targetPreflight(
 			input.Encounter, input.Positions,
@@ -432,9 +432,10 @@ func areaTargetKind(area *combatActions.CastArea) TargetKind {
 	return TargetArea
 }
 
-// healingCandidates projects provider answers over known creatures, including
-// the caster. The provider distinguishes touch from ranged sight requirements.
-func healingCandidates(ctx context.Context, input *compileCastOfferInput) ([]targetPreflight, error) {
+// recoveryCandidates projects healing or stabilization provider answers over
+// known creatures, including the caster. The provider distinguishes touch from
+// ranged sight requirements and supplies the appropriate recipient eligibility.
+func recoveryCandidates(ctx context.Context, input *compileCastOfferInput) ([]targetPreflight, error) {
 	ids := []string{input.Member}
 	seen := map[string]bool{input.Member: true}
 	for _, holding := range excludeWorldNPCs(input.Holdings, rosterKinds(input.Roster)) {
@@ -451,7 +452,11 @@ func healingCandidates(ctx context.Context, input *compileCastOfferInput) ([]tar
 	}
 	targets := resolution.HealingTargetsInput{Room: room, CasterID: input.Member, Candidates: ids, Participants: input.Participants}
 	var answers map[string]bool
-	if input.Definition.Cast.Target == combatActions.CastTargetTouch {
+	if input.Definition.Cast.Stabilize {
+		answers, err = resolution.StabilizationTargets(ctx, &resolution.StabilizationTargetsInput{
+			Room: room, CasterID: input.Member, Candidates: ids, Participants: input.Participants,
+		})
+	} else if input.Definition.Cast.Target == combatActions.CastTargetTouch {
 		answers, err = resolution.HealingTargets(ctx, &targets)
 	} else {
 		answers, err = resolution.RangedHealingTargets(ctx, &resolution.RangedHealingTargetsInput{

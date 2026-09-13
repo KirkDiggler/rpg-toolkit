@@ -38,6 +38,37 @@ below. Preparation is not a prerequisite for continuing this work.
 
 ## Spare the Dying wiring inspection
 
+### Session adoption after encounter recording
+
+Encounter #1740 merged as `d534145b`, publishing `encounter v0.82.0`.
+The session slice adopts that tag, resolution `v0.48.0`, and root `v0.167.0`.
+Stabilization profiles request candidates from `resolution.StabilizationTargets`
+over the same known-sheet universe used for touch healing. This preserves touch
+without requiring current sight, while eligibility comes from the stabilization
+provider rather than healing or attack rules.
+
+Both activation and cast result translation carry the authoritative stabilization
+detail into encounter recording. Live delivery and Story decoding expose
+`ActivationResultBody.Stabilized` with target/source identity, before/after
+`LifeState`, unchanged HP and `DeathSaveProgress`. Strict decoding rejects missing,
+null, duplicate or extraneous stabilization fields; other result kinds cannot
+carry stabilization detail. Existing host turn-driver configuration is preserved.
+
+The session regression uses a generic compiled profile because the published root
+catalog still disables Spare the Dying. It covers offer compilation, target
+selection, resolution, sheet saves, record/commit, live events and JSON Story
+reload. It is not yet a public `Afford` → `Cast` or native Cleric acceptance test.
+After this session release, enable executable root content in its own PR, then
+adopt that root release in session with public-verb acceptance. That test must use
+a normally finalized Cleric, check private status and stable turn behavior, and
+confirm damage/healing transitions remain intact.
+
+Protos needs a stabilization result arm matching `StabilizedBody`; API maps that
+arm for live events and Story and adopts the final toolkit releases. Existing
+private-sheet life/death-save fields are sufficient. Protos/API/web evidence is
+pending; no cross-repo changes are included here. Preparation, monster saving and
+timed natural recovery remain deferred.
+
 ### Resolution delivery after the provider release
 
 Resolution #1739 merged as `a0d4a5e5`, publishing `resolution v0.48.0`.

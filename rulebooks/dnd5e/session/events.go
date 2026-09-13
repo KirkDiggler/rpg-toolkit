@@ -821,6 +821,10 @@ func activationResultBody(payload []byte) EventBody {
 	_, movedPresent := fields["moved"]
 	_, stoppedByPresent := fields["stopped_by"]
 	calculationRaw, calculationPresent := fields["calculation"]
+	stabilizationRaw, stabilizationPresent := fields["stabilization"]
+	if result.Kind != encounter.ResultStabilized && stabilizationPresent {
+		return nil
+	}
 
 	healingNumericsPresent := amountPresent && requestedPresent && beforePresent && afterPresent &&
 		result.Amount != nil && result.Requested != nil && result.Before != nil && result.After != nil
@@ -856,6 +860,19 @@ func activationResultBody(payload []byte) EventBody {
 
 	body := ActivationResultBody{Actor: p.Actor}
 	switch result.Kind {
+	case encounter.ResultStabilized:
+		if !identityPresent || !stabilizationPresent || numericPresent || calculationPresent || descriptionPresent || reasonPresent {
+			return nil
+		}
+		if len(fields) != 5 {
+			return nil
+		}
+		stabilized, valid := decodeStabilization(stabilizationRaw)
+		if !valid {
+			return nil
+		}
+		stabilized.Target, stabilized.SourceRef, stabilized.SourceName = result.Target, *result.Ref, *result.Name
+		body.Stabilized = stabilized
 	case encounter.ResultHealingApplied:
 		if !identityPresent || !healingNumericsPresent || descriptionPresent || reasonPresent {
 			return nil

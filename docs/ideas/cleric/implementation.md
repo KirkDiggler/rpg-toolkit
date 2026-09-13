@@ -1,5 +1,28 @@
 # Cleric creation implementation
 
+## Spare the Dying: session integration
+
+Session adopts encounter `v0.82.0`, resolution `v0.48.0` and root `v0.167.0`.
+Stabilization uses provider-owned candidate eligibility and touch reach, with
+the existing selector, payment and persistence paths. Cast and activation
+translations retain the authoritative detail. The typed live/Story result adds
+`ActivationResultBody.Stabilized`, including source/target identity, before/after
+life state, unchanged HP and death-save progress. No rule thresholds are added.
+
+Tests drive a generic compiled stabilization profile through offer compilation,
+target selection, resolution, session save/record/commit, live delivery and
+repository JSON reload/Story. Dying and already-stable targets are covered; action
+payment leaves both level-one slots untouched and uses no dice. A healed/dead
+target or physical barrier invalidates selection. Decoder coverage rejects
+missing/null/duplicate/extra fields, inappropriate healing facts and stabilization
+detail on another result kind. Mapping returns detached values.
+
+Full session Windows tests/vet and Linux race tests pass; Linux lint reports zero
+issues. Module formatting and tidy are complete. The root catalog remains unenabled, so
+public `Afford` → `Cast`, normally finalized Cleric/private-sheet acceptance and
+proto/API/web adoption are explicitly pending the next releases. The generic
+profile test does not bypass the catalog in production or introduce local pins.
+
 ## Spare the Dying: encounter recording
 
 After resolution #1739 published `v0.48.0`, the encounter slice adds
