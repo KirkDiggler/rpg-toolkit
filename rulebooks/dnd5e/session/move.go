@@ -84,9 +84,6 @@ type MoveOutput struct {
 	// walk, keyed by observer.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
 
-	// Corrected reports location-belief corrections made during driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
-
 	// Outcome is present if an ending fired underfoot, which is also why the
 	// walk stopped.
 	Outcome *Outcome `json:"outcome,omitempty"`
@@ -320,7 +317,6 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	return &MoveOutput{
 		Steps:      res.steps,
 		Discovered: nilIfEmpty(res.discovered),
-		Corrected:  sortIntelCorrections(res.corrected),
 		Outcome:    res.outcome,
 		Formed:     res.formed,
 		Saved:      report,
@@ -397,7 +393,6 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 type walkResult struct {
 	steps      []Step
 	discovered map[string]Discovery
-	corrected  []IntelCorrection
 	outcome    *Outcome
 	formed     *Formed
 }
@@ -469,8 +464,9 @@ func (m *Manager) runWalk(
 		// ASKED PER CELL, and the batched once-per-walk answer this loop was
 		// handed no longer covers it. That batching rested on a move being
 		// unable to down anyone; announcing steps is precisely what made that
-		// false, so the answer is refreshed here and the fresh one carries
-		// into the discoveries the remaining steps produce.
+		// false, so the answer is refreshed here — the walker's own standing,
+		// nothing to do with what a Discovery reports, which now reads
+		// Seen.Standing from the sight testimony rather than this consult.
 		down, standingErr := discoveryStanding(scope)
 		if standingErr != nil {
 			return nil, standingErr
@@ -512,8 +508,7 @@ func (m *Manager) runWalk(
 			Seq:      stepped.Seq,
 		})
 		from = stepped.Stepped.To
-		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas, down))
-		res.corrected = append(res.corrected, projectIntelCorrections(stepped.IntelDeltas)...)
+		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
 
 		if stepped.Outcome != nil {
 			// The encounter ended underfoot. Every remaining step is abandoned:

@@ -315,9 +315,6 @@ type EndTurnOutput struct {
 	// numbering (stream.go) — the same number their event for it carries.
 	Seq uint64 `json:"seq"`
 
-	// Corrected reports location-belief corrections made by driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
-
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
 
@@ -394,7 +391,6 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 		Next:         string(ended.Next),
 		RoundWrapped: ended.RoundWrapped,
 		Seq:          scope.deliveredSeq(in.Member, ended.Seq),
-		Corrected:    projectIntelCorrections(ended.IntelDeltas),
 		Saved:        report,
 		Delivery:     delivery,
 	}, nil

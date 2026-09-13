@@ -308,10 +308,15 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	// unnoticed. bob is a player whose sheet was found holding nothing, so his
 	// hands were OBSERVED and observed empty — an empty object, distinct from
 	// the key being absent, which would mean nobody looked (rpg-toolkit#1615).
+	// "down" rides the same snapshot now (encounter#1697/#1699, adopted here
+	// by the rpg-toolkit#1702 version bump): bob was observed on his feet, so
+	// it is a present false, not an absent key — the same "observed, not
+	// inferred" discipline Equipment already keeps.
 	s.Equal(map[string]any{
 		"state":     string(encounter.LocationKnown),
 		"x":         bobsCell.X,
 		"y":         bobsCell.Y,
+		"down":      false,
 		"equipment": map[string]any{},
 	}, payload,
 		"bob's cell on the dungeon map — authored [42,21] as one axial cell")

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -57,7 +57,7 @@ var projectedPairs = []struct {
 	{"Outcome", encounter.Outcome{}, session.Outcome{}},
 	{"Member", encounter.Member{}, session.Member{}},
 	{"MemberOutcome", encounter.MemberOutcome{}, session.MemberOutcome{}},
-	{"Sighting", intel.Holding{}, session.Sighting{}},
+	{"Sighting", perception.Holding{}, session.Sighting{}},
 	// An Event, not a StoryEntry: rpg-api-protos#239 deleted StoryEntry, and
 	// Manager.Story now returns the SAME Event projectEvents builds for the
 	// live stream (projectEntry, events.go) — one projection, audited once.
@@ -81,6 +81,14 @@ var renamed = map[string]struct{ outer, reason string }{
 	"encounter.Atlas.Orientation": {outer: "Layout",
 		reason: "the frame an author typed in becomes the layout a client draws in — same " +
 			"two values, a different question, and a different name so they cannot be confused"},
+
+	// Confirmed is "when this payload was last landed, whether or not it
+	// changed" (mind/perception's own doc) — exactly what Sighting.At has
+	// always meant ("the clock reading when this knowledge was last
+	// refreshed"), carried through under the name this seam already owed a
+	// client before intel split one stamp into two (play/intel#1683).
+	"perception.Holding.Confirmed": {outer: "At",
+		reason: "same value, \"last refreshed\" — this seam's own name for what Confirmed means"},
 }
 
 // omitted lists inner fields deliberately not carried across, each with the
@@ -142,6 +150,23 @@ var omitted = map[string]string{
 	// TurnDriver. Add a projection when a real reader needs one, rather
 	// than widening this wire type on spec.
 	"encounter.Member.BlocksMovement": "an occupancy fact consulted at placement time; no roster-listing consumer reads it back yet",
+
+	// Observed is when a holding's payload was FIRST perceived — the other
+	// half of intel's Observed/Confirmed split (play/intel#1683). Nothing at
+	// this seam has asked "how long has this been true" yet; At already
+	// carries the one timestamp a client needs to know a sighting is fresh
+	// (Confirmed, above). Surfacing Observed too is exactly the "last seen
+	// N ago" feature rpg-toolkit#1702 named out of scope: add it when a
+	// caller actually asks, not on spec.
+	"perception.Holding.Observed": "first-observed timestamp; no caller asks how old a memory is yet (rpg-toolkit#1702's own out-of-scope note)",
+
+	// Current is the one bool intel's Current/Held Status enum and
+	// per-channel CurrentVia list collapsed into (a holding can only ever be
+	// sustained by the one channel that produced it). It is not carried
+	// verbatim — sightingStatus (convert.go) fans it out into Sighting's own
+	// Status/CurrentVia pair, kept for wire compatibility with hosts that
+	// already compare against intel's "current"/"held" words.
+	"perception.Holding.Current": "fans out into Status and CurrentVia (sightingStatus, convert.go), not a same-shaped passthrough",
 }
 
 // TestEveryInnerFieldIsCarriedOrJustified is the completeness check.
@@ -179,14 +204,14 @@ func (s *ConvertTestSuite) TestEveryInnerFieldIsCarriedOrJustified() {
 
 // TestSeenIsProjectedFromPayloadOnBothSightingAndReport pins ADR-0041's shape
 // outside the generic inner-field audit above, because Seen is not a
-// same-named passthrough of an intel field the way every other projected
+// same-named passthrough of a perception field the way every other projected
 // field is: it is a SECOND projection of Payload, decoded by the
-// composition's own encounter.DecodeSightPayload rather than renamed from or
-// dropped in favour of it. The generic audit above already requires Payload
-// itself to survive unchanged (matched by name on intel.Holding and
-// intel.Report — see the "Sighting" pair); this states the derived half
-// explicitly, so a future reviewer does not mistake Seen's absence from the
-// renamed/omitted maps above for an oversight.
+// composition's own encounter.DecodeSightTestimony rather than renamed from
+// or dropped in favour of it. The generic audit above already requires
+// Payload itself to survive unchanged (matched by name on perception.Holding
+// — see the "Sighting" pair); this states the derived half explicitly, so a
+// future reviewer does not mistake Seen's absence from the renamed/omitted
+// maps above for an oversight.
 func (s *ConvertTestSuite) TestSeenIsProjectedFromPayloadOnBothSightingAndReport() {
 	s.Contains(fieldNames(session.Sighting{}), "Seen",
 		"Sighting must carry the sight channel's typed knowledge (ADR-0041)")

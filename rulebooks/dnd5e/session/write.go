@@ -53,9 +53,6 @@ type JoinOutput struct {
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
 
-	// Corrected reports location-belief corrections made by driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
-
 	// Seq is the join beat's sequence IN THE JOINER'S OWN delivered
 	// numbering (stream.go) — the same number their event for it carries.
 	// The record's global sequence stays internal to the seam.
@@ -192,9 +189,6 @@ type SpawnOutput struct {
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
 
-	// Corrected reports location-belief corrections made by driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
-
 	// Seq is the story sequence of the recorded arrival — the RECORD's own
 	// numbering, because Spawn has no acting member to number for: the
 	// caller is the host, and the host's view is the whole record. Every
@@ -263,9 +257,6 @@ type PlaceNPCOutput struct {
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
 
-	// Corrected reports location-belief corrections made by driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
-
 	// Seq is the story sequence of the recorded arrival — the RECORD's own
 	// numbering, for the same reason SpawnOutput.Seq is (PlaceNPC has no
 	// acting member to number for either).
@@ -309,9 +300,6 @@ type ExitOutput struct {
 
 	// Discovered is what changed in remaining observers' perception.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
-
-	// Corrected reports location-belief corrections made by driven turns.
-	Corrected []IntelCorrection `json:"corrected,omitempty"`
 
 	// Seq is the exit beat's sequence IN THE DEPARTING MEMBER'S OWN
 	// delivered numbering (stream.go).
@@ -474,11 +462,6 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
-	down, err := discoveryStanding(scope)
-	if err != nil {
-		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
-	}
-
 	state := characterStateFrom(projected)
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -489,8 +472,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	return &JoinOutput{
 		Member:     projectMember(placed.Member),
 		Character:  state,
-		Discovered: projectDiscoveries(placed.IntelDeltas, down),
-		Corrected:  projectIntelCorrections(placed.IntelDeltas),
+		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        scope.deliveredSeq(in.Member, placed.Seq),
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormedFor(scope, in.Member, placed.Formed),
@@ -500,10 +482,18 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 }
 
 // discoveryStanding batches a down-check over the WHOLE roster this scope's
-// encounter now holds, for projecting Discovery/Sighting's Seen.Standing
-// (rpg-toolkit#1137): a discovery's first-contact reports can name anyone
-// the observer just perceived, so the safe set to ask about is everyone,
-// asked once per verb rather than once per report.
+// encounter now holds — who is down RIGHT NOW, for a caller that needs to
+// act on it mid-verb: a reaction that felled the mover stops a walk
+// (runWalk) or holds the remaining reaction windows (react.go) rather than
+// continuing to ask a body that cannot answer.
+//
+// It used to also feed Discovery/Sighting's Seen.Standing (rpg-toolkit#1137)
+// — asked once per verb rather than once per report — but that projection
+// now reads standing out of the sight testimony itself (rpg-toolkit#1702),
+// so callers whose only use was that projection ask this for nothing and
+// have stopped calling it. What is left is the live behavioral question:
+// this consult must never be reached from a projection that is supposed to
+// answer "what was seen", only from code deciding what happens next.
 //
 // Fetched BEFORE the encounter commit, deliberately: a failure here must not
 // persist the local encounter mutation. A first-admission Join may already have
@@ -616,11 +606,6 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
 
-	down, err := discoveryStanding(scope)
-	if err != nil {
-		return nil, fmt.Errorf("spawn: %w", err)
-	}
-
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
@@ -630,8 +615,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		Member:     projectMember(placed.Member),
 		Reserved:   placed.Reserved,
 		NPC:        projectMonster(sheet),
-		Discovered: projectDiscoveries(placed.IntelDeltas, down),
-		Corrected:  projectIntelCorrections(placed.IntelDeltas),
+		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
@@ -710,11 +694,6 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
 
-	down, err := discoveryStanding(scope)
-	if err != nil {
-		return nil, fmt.Errorf("place npc: %w", err)
-	}
-
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
@@ -722,8 +701,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 
 	return &PlaceNPCOutput{
 		Member:     projectMember(placed.Member),
-		Discovered: projectDiscoveries(placed.IntelDeltas, down),
-		Corrected:  projectIntelCorrections(placed.IntelDeltas),
+		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
@@ -895,10 +873,6 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", translate(err))
 	}
-	down, err := standingSet(scope.standing, rosterIDs(roster))
-	if err != nil {
-		return nil, fmt.Errorf("exit: %w", err)
-	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
@@ -907,9 +881,8 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 
 	return &ExitOutput{
 		Outcome:    projectMemberOutcome(left.Outcome),
-		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), down),
-		Discovered: projectDiscoveries(left.IntelDeltas, down),
-		Corrected:  projectIntelCorrections(left.IntelDeltas),
+		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster)),
+		Discovered: projectDiscoveries(left.IntelDeltas),
 		Seq:        scope.deliveredSeq(in.Member, left.Seq),
 		Closed:     projectOutcome(left.Closed),
 		Saved:      report,
@@ -1597,23 +1570,13 @@ func (m *Manager) Recheck(ctx context.Context, in *RecheckInput) (*RecheckOutput
 		return nil, fmt.Errorf("recheck: %w", translate(err))
 	}
 
-	roster, err := scope.enc.Members()
-	if err != nil {
-		return nil, fmt.Errorf("recheck: %w", translate(err))
-	}
-	down, err := standingSet(scope.standing, rosterIDs(roster))
-	if err != nil {
-		return nil, fmt.Errorf("recheck: %w", err)
-	}
-
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("recheck: %w", err)
 	}
 
 	return &RecheckOutput{
-		Discovered: projectDiscoveries(rechecked.IntelDeltas, down),
-		Corrected:  projectIntelCorrections(rechecked.IntelDeltas),
+		Discovered: projectDiscoveries(rechecked.IntelDeltas),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil

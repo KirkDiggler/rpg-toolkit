@@ -353,21 +353,19 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 		return nil, fmt.Errorf("view: %w", translate(err))
 	}
 
-	// Names and standing, batched over the whole roster rather than per
-	// sighting (rpg-toolkit#1137) — the observer might hold a sighting for
-	// anyone in it, live or memory.
+	// Names, batched over the whole roster rather than per sighting
+	// (rpg-toolkit#1137) — the observer might hold a sighting for anyone in
+	// it, live or memory. Standing needs no roster consult of its own any
+	// more: it is snapshotted into the sight testimony itself and decoded by
+	// projectSightings (rpg-toolkit#1697, #1702) — this read never asks the
+	// composition's live Standing capability, so a ghost cannot disclose a
+	// standing change it never witnessed.
 	roster, err := enc.Members()
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", translate(err))
 	}
-	down, err := standingSet(
-		m.standingFor(ctx, data, encounterRosterKinds(roster)), rosterIDs(roster),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("view: %w", err)
-	}
 
-	return projectSightings(holdings, rosterNames(roster), rosterKinds(roster), down), nil
+	return projectSightings(holdings, rosterNames(roster), rosterKinds(roster)), nil
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward

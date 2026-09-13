@@ -369,7 +369,8 @@ func (s *ReadTestSuite) TestViewCarriesNameAndStanding() {
 	s.Require().NotNil(skeleton, "alice must currently see the skeleton aFight spawned adjacent to her")
 	s.NotEmpty(skeleton.Name, "a spawned monster's catalog display name projects onto Sighting.Name")
 	s.Require().NotNil(skeleton.Seen, "a live sight-channel sighting carries Seen")
-	s.Equal(session.StandingUp, skeleton.Seen.Standing, "nothing has touched it yet")
+	s.Require().NotNil(skeleton.Seen.Standing, "a current sighting observes standing")
+	s.Equal(session.StandingUp, *skeleton.Seen.Standing, "nothing has touched it yet")
 }
 
 // twoObservedWorld is one open 6x6 hall with no occluders and unbounded
