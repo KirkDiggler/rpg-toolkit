@@ -75,7 +75,7 @@ func (basicSeam) Act(view MonsterView) (TurnIntent, error) {
 // serves — the host is what guards it (rpg-api#980 holds a single driver
 // behind a mutex, with the cross-session member-id caveat written down
 // beside it). A driver per session or per encounter needs a seam this
-// package does not have yet; seam to be filed.
+// package does not have yet; rpg-toolkit#1734.
 func Minded(in *MindedInput) (TurnDriver, error) {
 	var patience uint64
 	if in != nil {

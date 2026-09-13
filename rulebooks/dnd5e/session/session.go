@@ -104,7 +104,7 @@ type Config struct {
 	// rpg-api#980 holds a single driver behind a mutex and writes the
 	// cross-session member-id caveat down beside it. Wiring a driver per
 	// session or per encounter needs a seam this package does not have yet;
-	// seam to be filed.
+	// rpg-toolkit#1734.
 	TurnDriver TurnDriver
 }
 
