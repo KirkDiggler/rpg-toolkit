@@ -55,10 +55,10 @@ type Contact struct {
 	// no word for it yet, which is common and is not a defect.
 	Name  Name
 	Named bool
-	// Bearer is the one subject the name is recorded on. It matters which
-	// one: a swing at "the robed human" goes at the figure that was named,
-	// not at every subject the actor has since bundled with it. When a
-	// contact is a wrong merge, this is what keeps the swing honest (R10).
+	// Bearer is the one subject the name is recorded on (R4). A contact is
+	// folded fresh every time, so a name needs a stable handle to persist
+	// on, and the bearer is it: the next situation that bundles this
+	// subject finds the word already there.
 	Bearer core.EntityID
 }
 

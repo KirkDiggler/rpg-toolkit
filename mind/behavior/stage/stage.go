@@ -47,20 +47,27 @@ type AimOutput struct {
 // Aim resolves what an actor meant to hit against what is really there.
 //
 // It finds the contact the actor holds under the intent's name and asks the
-// truth whether the subject that BEARS the name is present. Only that
-// subject: a contact is the actor's claim that several subjects are one
-// thing, and the claim can be wrong. The swing goes at what was named. The
-// first use case found this the hard way — resolving through any subject in
-// the bundle sent a swing at a chant, and the chant was coming from someone
-// else.
+// truth which of its subjects is present. A contact is the actor's claim
+// that several subjects are one thing, and most of them cannot be hit: a
+// chant is held under a subject qualified by channel, a deed under the deeds
+// channel, and the truth knows neither — so a swing at "the chanting" lands
+// on nothing, and a swing at the robed figure the chant was bundled into
+// lands on the figure. The wrong merge costs the captain a claim; it never
+// costs it a swing at a noise.
+//
+// What this does not yet decide is a contact holding two LIVE figures — a
+// mind that believes two people are one. No use case has paid for that; when
+// one does, the name's bearer (R4) is the subject to prefer.
 func Aim(in *AimInput) (*AimOutput, error) {
 	for _, c := range in.Situation.Contacts {
 		if !c.Named || c.Name != in.Intent.Target {
 			continue
 		}
 
-		if in.Truth.Present(c.Bearer) {
-			return &AimOutput{Source: c.Bearer}, nil
+		for _, h := range c.Holdings {
+			if in.Truth.Present(h.Subject) {
+				return &AimOutput{Source: h.Subject}, nil
+			}
 		}
 
 		return &AimOutput{}, nil
