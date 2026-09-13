@@ -48,11 +48,11 @@ func boolPtr(b bool) *bool { return &b }
 // sight-channel holding decodes into Seen.Position.
 func TestProjectSightingsSightChannelGetsASeen(t *testing.T) {
 	holdings := []perception.Holding{{
-		Subject:   "skeleton-1",
-		Payload:   standingTestimonyBytes(t, 10, 3, boolPtr(false)),
-		Channel:   perception.Sight,
-		Confirmed: 5,
-		Current:   true,
+		Subject:    "skeleton-1",
+		Payload:    standingTestimonyBytes(t, 10, 3, boolPtr(false)),
+		Channel:    perception.Sight,
+		Confirmed:  5,
+		CurrentVia: []perception.Channel{perception.Sight},
 	}}
 
 	out := projectSightings(holdings, nil, nil)
@@ -99,11 +99,11 @@ func TestMonsterViewAdaptersCarryRememberedPathsByValue(t *testing.T) {
 // by sight".
 func TestProjectSightingsNonSightChannelGetsNoSeen(t *testing.T) {
 	holdings := []perception.Holding{{
-		Subject:   "goblin-1",
-		Payload:   sightPayloadBytes(t, 4, 4),
-		Channel:   perception.Channel("hearing"),
-		Confirmed: 5,
-		Current:   true,
+		Subject:    "goblin-1",
+		Payload:    sightPayloadBytes(t, 4, 4),
+		Channel:    perception.Channel("hearing"),
+		Confirmed:  5,
+		CurrentVia: []perception.Channel{perception.Channel("hearing")},
 	}}
 
 	out := projectSightings(holdings, nil, nil)
@@ -122,7 +122,6 @@ func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
 		Payload:   sightPayloadBytes(t, 6, 10),
 		Channel:   perception.Sight,
 		Confirmed: 3,
-		Current:   false, // faded: no channel currently sustains it
 	}}
 
 	out := projectSightings(holdings, nil, nil)
@@ -137,7 +136,7 @@ func TestHeldUnknownSightProjectsExplicitUnknownLocation(t *testing.T) {
 	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationUnknown})
 	require.NoError(t, err)
 	out := projectSightings([]perception.Holding{{
-		Subject: "billy", Payload: payload, Channel: perception.Sight, Current: false,
+		Subject: "billy", Payload: payload, Channel: perception.Sight,
 	}}, nil, nil)
 	require.Len(t, out, 1)
 	require.Equal(t, LocationUnknown, out[0].LocationState)
@@ -151,18 +150,18 @@ func TestHeldUnknownSightProjectsExplicitUnknownLocation(t *testing.T) {
 func TestProjectSightingsCarriesKindFromTheRoster(t *testing.T) {
 	holdings := []perception.Holding{
 		{
-			Subject:   "fighter",
-			Payload:   sightPayloadBytes(t, 1, 1),
-			Channel:   perception.Sight,
-			Confirmed: 1,
-			Current:   true,
+			Subject:    "fighter",
+			Payload:    sightPayloadBytes(t, 1, 1),
+			Channel:    perception.Sight,
+			Confirmed:  1,
+			CurrentVia: []perception.Channel{perception.Sight},
 		},
 		{
-			Subject:   "skeleton-1",
-			Payload:   sightPayloadBytes(t, 2, 2),
-			Channel:   perception.Sight,
-			Confirmed: 1,
-			Current:   true,
+			Subject:    "skeleton-1",
+			Payload:    sightPayloadBytes(t, 2, 2),
+			Channel:    perception.Sight,
+			Confirmed:  1,
+			CurrentVia: []perception.Channel{perception.Sight},
 		},
 	}
 	kinds := map[string]MemberKind{"fighter": KindPlayer, "skeleton-1": KindMonster}
@@ -191,7 +190,6 @@ func TestProjectSightingsHeldMemoryKeepsItsKind(t *testing.T) {
 		Payload:   sightPayloadBytes(t, 6, 10),
 		Channel:   perception.Sight,
 		Confirmed: 3,
-		Current:   false, // faded: no channel currently sustains it
 	}}
 	kinds := map[string]MemberKind{"goblin-1": KindMonster}
 
@@ -267,4 +265,48 @@ func TestProjectReportSeenCannotDistinguishSightFromALookalikePayload(t *testing
 	require.Equal(t, spatial.Position{X: 1, Y: 2}, got.Position)
 	require.NotNil(t, got.Standing)
 	require.Equal(t, StandingDowned, *got.Standing, "the testimony's own Down claim still projects even through the gap")
+}
+
+// TestSightingStatusReportsTheSustainingChannelNotTheProvenance is the defect
+// mind/perception v0.2.0 closed, pinned here because this seam is where it
+// would have reached a host.
+//
+// The shape is exactly what intel.Report produces: a deed lands about a
+// subject the observer currently SEES, so Channel (provenance of the latest
+// landing) moves to the reporting channel while CurrentVia (what is actually
+// delivering it) stays sight. Under v0.1.0 this seam had only a Current bool
+// and reconstructed the pair as {"current", [Channel]} — putting "deeds" on
+// the wire as a sustaining channel when deeds sustain nothing, by design.
+//
+// Fails if sightingStatus ever derives the channel list from Channel again.
+func TestSightingStatusReportsTheSustainingChannelNotTheProvenance(t *testing.T) {
+	out := projectSightings([]perception.Holding{{
+		Subject:    "goblin-1",
+		Payload:    sightPayloadBytes(t, 4, 4),
+		Channel:    perception.Channel("deeds"),
+		Confirmed:  9,
+		CurrentVia: []perception.Channel{perception.Sight},
+	}}, nil, nil)
+
+	require.Len(t, out, 1)
+	require.Equal(t, "current", out[0].Status)
+	require.Equal(t, []string{"sight"}, out[0].CurrentVia,
+		"the wire must name what is delivering the subject, never what last landed")
+	require.Equal(t, "deeds", out[0].Channel, "provenance is still reported, separately and honestly")
+}
+
+// A ghost carries no sustaining channel at all, and "held" is the wire word
+// for it. Fails if an empty CurrentVia ever projects as an empty-but-current
+// sighting.
+func TestSightingStatusReportsAGhostAsHeldWithNoChannels(t *testing.T) {
+	out := projectSightings([]perception.Holding{{
+		Subject:   "goblin-1",
+		Payload:   sightPayloadBytes(t, 4, 4),
+		Channel:   perception.Sight,
+		Confirmed: 9,
+	}}, nil, nil)
+
+	require.Len(t, out, 1)
+	require.Equal(t, "held", out[0].Status)
+	require.Empty(t, out[0].CurrentVia)
 }

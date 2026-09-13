@@ -710,7 +710,11 @@ func buildTargetPreflight(
 	candidateIDs := make([]string, 0, len(holdings))
 	for _, h := range holdings {
 		subject := string(h.Subject)
-		if subject == member || !h.Current {
+		// SIGHT, named. This loop applies no roster filter of its own, so
+		// it is the one place a holding from another channel would reach
+		// the candidate universe unchallenged. Targeting is a sight
+		// question; something merely heard is not a target.
+		if subject == member || !h.CurrentOn(perception.Sight) {
 			continue
 		}
 		candidateIDs = append(candidateIDs, subject)
