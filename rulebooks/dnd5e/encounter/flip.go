@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
@@ -201,14 +202,42 @@ func (e *Encounter) firedFact(id FactID, at uint64) error {
 	return nil
 }
 
-// noticeRounds evaluates every declared round ending at the one place a
-// round is noticed — the RoundStarted milestone a turn ending or a formation
-// crosses (design §3.8, R9: the fight's own clock, never the world's). An
-// advance that started no round notices nothing.
+// noticeRounds is the one place a round is noticed — the RoundStarted
+// milestone a turn ending or a formation crosses (design §3.8, R9: the
+// fight's own clock, never the world's). It advances time by the round, and
+// evaluates every declared round ending. An advance that started no round
+// notices nothing.
 func (e *Encounter) noticeRounds(ms []clock.Milestone) error {
 	for _, m := range ms {
 		if m.Kind != clock.RoundStarted || e.outcome != nil {
 			continue
+		}
+		// A FIGHT ROUND IS ONE UNIT OF TIME, the same unit a free-roam
+		// [Encounter.Pump] is — same driver, same displacement of one
+		// (rpg-toolkit#1725, walk 1). Every stamp this composition writes
+		// reads the world clock's high-water: a percept's Confirmed
+		// ([Encounter.rebuildPercepts]), a deed's At ([Encounter.landAttack]),
+		// an outcome's, a concealment sweep's. Until this line that high-water
+		// moved ONLY in Pump, so inside a fight nothing aged — a deed landed
+		// in round 1 was exactly as fresh in round 9, and a mind that waits
+		// out a grudge or a last-seen never got to. There is no second
+		// counter: a round is stamped by making the one clock later.
+		//
+		// ROUND 1 DOES NOT ADVANCE. It is the formation's own milestone —
+		// [Encounter.Form] announces SetOrder's, which starts at 1 — and
+		// forming a fight is not a round passing. Every RoundStarted above 1
+		// comes from the wrap in clock.Turn.End, the single place the round
+		// counter moves, so "round > 1" is exactly "a round wrapped".
+		//
+		// Advanced BEFORE the arrivals below: a straggler who was waiting for
+		// this round arrives in it, and is stamped at the round's own time.
+		if m.Round > 1 {
+			if _, err := e.clock.Advance(&clock.AdvanceInput{
+				Driver:       core.EntityID("world"),
+				Displacement: 1,
+			}); err != nil {
+				return fmt.Errorf("round %d advance: %w", m.Round, err)
+			}
 		}
 		// The round site (design §3.8, R9; reserve.go): whatever waited for
 		// this round of a fight arrives now, before the endings below. A

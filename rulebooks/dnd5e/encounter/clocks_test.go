@@ -539,7 +539,8 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	after := enc.ToData()
 	s.Empty(after.Bubbles, "a bubble exists only while a fight does")
 	s.Equal(0, after.Clock.Budgets[carl], "re-homed at zero")
-	s.Equal(1, after.Clock.Budgets[dana], "never left, kept her budget")
+	s.Equal(3, after.Clock.Budgets[dana],
+		"never left, so she kept everything time gave her: one pump, plus the fight's two rounds")
 
 	// The story heard it all — dana included, from the other side of the
 	// map. The clock-tagged transcript is the composition's analogue of the

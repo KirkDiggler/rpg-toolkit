@@ -863,6 +863,13 @@ type MemberInput struct {
 	// composition carries the string and never branches on it.
 	Targeting string
 
+	// Mind names the mind a driver gives this member when nobody is playing
+	// it — the rulebook's own word, "retaliator" today — and, like
+	// Targeting, empty for a player. Opaque here (C1): this composition
+	// carries the string and never branches on it; the driver looks it up
+	// (mind/behavior adoption, rpg-toolkit#1725, rule A5).
+	Mind string
+
 	// BlocksMovement says whether this member refuses a later arrival on
 	// its cell (rpg-toolkit#1434) — a bare fact, the same species as
 	// SpeedFeet and SightFeet: this composition carries it and never asks
@@ -1350,6 +1357,7 @@ type Member struct {
 	SightFeet int
 	Actions   []ActionView
 	Targeting string
+	Mind      string
 
 	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
 	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
@@ -1388,6 +1396,7 @@ type memberRecord struct {
 	SightFeet      int
 	Actions        []ActionView
 	Targeting      string
+	Mind           string
 	BlocksMovement bool
 
 	// Faction is the faction the caller NAMED, or empty for the kind's
@@ -1640,6 +1649,7 @@ type JoinInput struct {
 	SightFeet int
 	Actions   []ActionView
 	Targeting string
+	Mind      string
 
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.

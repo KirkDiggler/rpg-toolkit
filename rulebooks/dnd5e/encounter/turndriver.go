@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -92,6 +93,25 @@ type MonsterView struct {
 	// driver that cares what "closest" means already knows, because the
 	// rulebook that authored the string is the one reading it.
 	Targeting string
+
+	// Mind is the mind this member's sheet names, verbatim from
+	// [MemberInput.Mind]; empty when it names none. A driver that gives
+	// members minds looks it up here (rpg-toolkit#1725, rule A5).
+	Mind string
+
+	// Holdings is everything this member holds, on every channel, as values
+	// — the raw testimony Seen and Remembered are decoded from, plus what
+	// they drop (a deeds-channel holding, for one). A mind that reads
+	// testimony itself reads it here; the store stays the encounter's
+	// (rule A1), and nothing on this slice reaches it.
+	Holdings []perception.Holding
+
+	// At is the clock's high-water when this view was built: the stamp a
+	// mind subtracts each holding's Confirmed from to age it. The holdings
+	// above were landed on this same CLOCK, not at this same MOMENT — a
+	// holding is stamped when it happened and never restamped, so a
+	// round-one deed reads as two units old in a round-three view.
+	At uint64
 
 	// Seen are the OTHER members this monster currently, actively holds
 	// sight intel on — Status == [intel.Current] only. Current sight keeps
@@ -204,6 +224,14 @@ type SeenMember struct {
 	// acknowledged cost of keeping this a plain value rather than a lazy
 	// callback.
 	Path []spatial.Position
+
+	// AwayPath is one step that puts more of the board between this member
+	// and the seen one — the encounter's own routeAway answer, budget one
+	// cell — or nil when every step leads closer or nowhere. A driver that
+	// keeps its distance reads it rather than reaching for the canvas
+	// (rule A2): fleeing into a corner is not fleeing, and the board is
+	// what knows where the corners are.
+	AwayPath []spatial.Position
 }
 
 // TurnBudget is what remains of a member's turn.

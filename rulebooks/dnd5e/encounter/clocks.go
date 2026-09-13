@@ -1251,7 +1251,12 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	}
 
 	// The member's own holdings and nothing else (C2) — the same call
-	// Pump's own Decider consult makes for a Snapshot, one seam over.
+	// Pump's own Decider consult makes for a Snapshot, one seam over, and
+	// the view hands the result straight to the driver. Held's copy-out is
+	// intel's documented contract (HeldBy returns payloads deep-copied and
+	// CurrentVia rebuilt per call), carried through mind/perception — no
+	// redundant defensive copy here; TestPumpMutatingDeciderCannotCorrupt
+	// pins the composed guarantee.
 	holdings, err := e.intelLog.Held(m.ID)
 	if err != nil {
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
@@ -1357,6 +1362,11 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			return e.Distance(cell, pos) <= float64(bestRangeCells)
 		})
 
+		var awayPath []spatial.Position
+		if away := e.routeAway(m.ID, ownCell, pos, 1); len(away.Path) > 0 {
+			awayPath = away.Path
+		}
+
 		seen = append(seen, SeenMember{
 			ID:            subjectID,
 			Kind:          other.Kind,
@@ -1365,6 +1375,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			DistanceCells: dist,
 			InReach:       inReach,
 			Path:          path,
+			AwayPath:      awayPath,
 		})
 	}
 	// C8: a driver asked twice against unchanged data must see the same
@@ -1377,6 +1388,9 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Position:   ownCell,
 		Actions:    m.Actions,
 		Targeting:  m.Targeting,
+		Mind:       m.Mind,
+		Holdings:   holdings,
+		At:         uint64(e.clock.ToData().HighWater),
 		Seen:       seen,
 		Remembered: remembered,
 		Budget:     budget,

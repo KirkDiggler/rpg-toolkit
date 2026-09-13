@@ -381,6 +381,7 @@ type ReserveData struct {
 	SightFeet      int              `json:"sight_feet,omitempty"`
 	Actions        []ActionViewData `json:"actions,omitempty"`
 	Targeting      string           `json:"targeting,omitempty"`
+	Mind           string           `json:"mind,omitempty"`
 	BlocksMovement bool             `json:"blocks_movement,omitempty"`
 	Faction        FactionID        `json:"faction,omitempty"`
 	Holds          []IntelID        `json:"holds,omitempty"`
@@ -1082,6 +1083,7 @@ type MemberData struct {
 	SightFeet int              `json:"sight_feet,omitempty"`
 	Actions   []ActionViewData `json:"actions,omitempty"`
 	Targeting string           `json:"targeting,omitempty"`
+	Mind      string           `json:"mind,omitempty"`
 
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
@@ -1234,6 +1236,7 @@ func (e *Encounter) snapshot() EncounterData {
 			SightFeet:      m.SightFeet,
 			Actions:        actionViewDataFrom(m.Actions),
 			Targeting:      m.Targeting,
+			Mind:           m.Mind,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -1326,6 +1329,7 @@ func (e *Encounter) snapshot() EncounterData {
 			SightFeet:      rm.record.SightFeet,
 			Actions:        actionViewDataFrom(rm.record.Actions),
 			Targeting:      rm.record.Targeting,
+			Mind:           rm.record.Mind,
 			BlocksMovement: rm.record.BlocksMovement,
 			Faction:        rm.record.Faction,
 			Holds:          append([]IntelID(nil), rm.holds...),
@@ -2255,6 +2259,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			SightFeet:      m.SightFeet,
 			Actions:        actionViewsFrom(m.Actions),
 			Targeting:      m.Targeting,
+			Mind:           m.Mind,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}
@@ -2314,6 +2319,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				SightFeet:      r.SightFeet,
 				Actions:        actionViewsFrom(r.Actions),
 				Targeting:      r.Targeting,
+				Mind:           r.Mind,
 				BlocksMovement: r.BlocksMovement,
 				Faction:        r.Faction,
 			},
