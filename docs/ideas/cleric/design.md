@@ -1,5 +1,19 @@
 # Cleric level-one contribution assessment
 
+## Current scope
+
+The user has confirmed the initial Cleric slice, including Bless, healing,
+same-turn spell restrictions and private-sheet projection, works end to end.
+Continue expanding level-one Cleric play through concrete spells and explicitly
+scoped domain work. Preparation remains deferred and must not become a hidden
+prerequisite for that expansion. Existing supported-spell acquisition remains
+the temporary policy; do not silently grant spells to existing characters.
+
+The current direction and release evidence are in [plan.md](plan.md). Earlier
+milestone statements below are historical and do not override this scope.
+Inspect existing targeting, delivery, effects, projections and wire contracts
+for each next slice before proposing infrastructure or API/proto changes.
+
 ## Bless delivery decision
 
 Host configuration decision: session accepts an optional `StaleTargetPolicy`.

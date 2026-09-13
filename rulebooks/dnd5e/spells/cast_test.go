@@ -183,7 +183,7 @@ func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {
 
 func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantrips() {
 	s.Equal([]spells.Spell{spells.SacredFlame},
-		spells.Castable([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.Light}))
+		spells.Castable([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.Light, spells.SpareTheDying}))
 }
 
 func (s *CastContentSuite) TestViciousMockeryCarriesItsSaveGateAndDamage() {

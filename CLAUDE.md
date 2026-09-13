@@ -464,6 +464,27 @@ published branch history as a workflow shortcut.
 
 The Cure Wounds handoff sequence is recorded in `docs/ideas/cleric/plan.md`.
 
+### Cross-project acceptance evidence
+
+For a new class or player-facing mechanic, trace a normally created, unseeded
+character through acquisition, finalization, persistence, private sheet reads,
+offers, execution, results, and reload/rest. Creation and casting tests alone do
+not establish that the player can read their sheet. The character-package
+checklist in `rulebooks/dnd5e/character/CLAUDE.md` covers the provider checks.
+
+Keep ownership explicit in the handoff: toolkit owns rules and projections;
+protos owns wire shape and generated SDKs; API owns mapping, authorization and
+orchestration; web owns interaction and rendering. Inspect existing contracts
+before requesting new fields. Never repair a missing provider projection by
+loosening validation or reconstructing rules in a consumer.
+
+Report evidence by boundary and exact revision/version: toolkit regression,
+API contract test, and native browser acceptance are separate claims. Mark an
+unrun boundary pending. A seeded combat fixture, successful cast, or green
+provider suite does not prove native acquisition or private-sheet reads. Record
+unmerged PRs separately from published releases and consumer adoption. These
+checks complement the one-PR-at-a-time release policy above.
+
 Include the user before deciding gameplay eligibility, missing-data defaults,
 backward-compatibility behavior, or scope that introduces prerequisites in other
 systems. Explain the concrete behavior and tradeoff and obtain their direction

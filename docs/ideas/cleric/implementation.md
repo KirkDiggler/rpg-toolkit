@@ -1,5 +1,21 @@
 # Cleric creation implementation
 
+## Spare the Dying: first root provider
+
+The root provider adds a pure recipient eligibility query and authoritative
+character stabilization, plus a generic touch-only stabilization cast declaration.
+Already-stable characters at zero HP are accepted. Accepted stabilization resets
+both death-save counters without healing, dirties the sheet, and returns detached
+state for future result reporting. Dead/conscious/nil recipients are refused.
+
+Finalized-Cleric tests cover zero-HP private projection, persistence, repeated
+stabilization, damage restarting dying, healing recovery and unchanged resources.
+Profile validation and JSON/clone behavior are covered; the executable cantrip
+subset explicitly continues to omit Spare the Dying. Full root tests, vet, and
+Linux lint (zero issues) passed locally. This is provider evidence only: delivery,
+recording, session offers and proto/API/web adoption remain outstanding. No module
+pins changed; monsters and timed natural recovery remain deferred.
+
 ## Bless acquisition
 
 With session `v0.82.0` released, Cleric's supported first-level selection adds

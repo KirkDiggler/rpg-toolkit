@@ -37,6 +37,43 @@ type DeathSaveProgress struct {
 	Dead              bool
 }
 
+// StabilizeOutput reports an instantaneous character-owned stabilization.
+// HitPoints is unchanged; Progress is a detached value with both counters reset.
+type StabilizeOutput struct {
+	Before    combat.LifeState
+	After     combat.LifeState
+	HitPoints int
+	Progress  DeathSaveProgress
+}
+
+// CanStabilize reports whether the character is alive at exactly zero HP.
+// Already-stable characters remain eligible. Reach and payment belong to the
+// interaction delivering stabilization, not to this pure recipient check.
+func (c *Character) CanStabilize() bool {
+	if c == nil || c.hitPoints != 0 {
+		return false
+	}
+	state := c.lifeState()
+	return state == combat.LifeStateDying || state == combat.LifeStateStabilized
+}
+
+// Stabilize stops death saves without healing or restoring consciousness.
+// It resets death-save progress, preserves other conditions and resources, and
+// marks the recipient dirty. It neither rolls dice nor installs a duration.
+// Ineligible recipients are refused without mutation or partial output.
+func (c *Character) Stabilize() (*StabilizeOutput, error) {
+	if !c.CanStabilize() {
+		return nil, rpgerr.New(rpgerr.CodeInvalidState, "stabilization requires a living character at zero hit points")
+	}
+	before := c.lifeState()
+	c.deathSaveState = &saves.DeathSaveState{Stabilized: true}
+	c.dirty = true
+	return &StabilizeOutput{
+		Before: before, After: c.lifeState(), HitPoints: c.hitPoints,
+		Progress: deathSaveProgress(c.deathSaveState),
+	}, nil
+}
+
 // DeathSaveContinuation tells a turn runner what the ruled outcome means for
 // the currently active turn.
 type DeathSaveContinuation string
@@ -315,7 +352,7 @@ func (c *Character) GetDeathSaveState() *saves.DeathSaveState {
 }
 
 // ResetDeathSaveState is an inert compatibility shim. Progress resets only as
-// part of an authoritative recovery transition such as accepted healing,
+// part of an authoritative transition such as stabilization, accepted healing,
 // natural-20 recovery, or a long rest.
 //
 // Deprecated: use an authoritative recovery operation.

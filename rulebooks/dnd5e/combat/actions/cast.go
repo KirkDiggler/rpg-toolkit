@@ -93,6 +93,12 @@ type CastProfile struct {
 	Healing *healing.Declaration `json:"healing,omitempty"`
 	// HealingExcludes names creature types on which this healing has no effect.
 	HealingExcludes []string `json:"healing_excludes,omitempty"`
+	// Stabilize declares instantaneous stabilization of one living character
+	// at zero HP, including an already-stable character. It leaves HP unchanged
+	// and clears death-save progress. This delivery has no save or concentration;
+	// consumers must validate recipient eligibility and touch before payment.
+	// Monster stabilization and timed natural recovery are not part of this arm.
+	Stabilize bool `json:"stabilize,omitempty"`
 	// RangeFeet is how far the cast reaches. A self-targeted cast still
 	// declares one, because the range is what a UI draws.
 	RangeFeet int `json:"range_feet"`
@@ -242,7 +248,7 @@ type CastEffect struct {
 // Validate reports whether the profile declares a reachable range, a known
 // target rule, a contestable gate, and at least one consequence.
 //
-// A cast with no damage and no condition is refused rather than resolved into a
+// A cast with no declared consequence is refused rather than resolved into a
 // no-op: it would mint a row at the door that delivered nothing, which is the
 // affordance-with-nothing-behind-it this stack keeps finding.
 func (p CastProfile) Validate() error {
@@ -339,8 +345,14 @@ func (p CastProfile) Validate() error {
 	} else if len(p.HealingExcludes) > 0 {
 		return fmt.Errorf("healing exclusions require healing")
 	}
-	if len(p.Damage) == 0 && len(p.Effects) == 0 && p.Healing == nil {
-		return fmt.Errorf("cast must declare damage or a delivered condition")
+	if p.Stabilize {
+		if p.Target != CastTargetTouch || p.Save != nil || p.Healing != nil ||
+			len(p.Damage) > 0 || len(p.Effects) > 0 || p.Concentration != nil || p.Move != nil {
+			return fmt.Errorf("stabilization requires an unopposed touch cast without other effects or concentration")
+		}
+	}
+	if len(p.Damage) == 0 && len(p.Effects) == 0 && p.Healing == nil && !p.Stabilize {
+		return fmt.Errorf("cast must declare damage, a delivered condition, healing, or stabilization")
 	}
 	if len(p.Damage) > 0 {
 		if err := damage.Validate(p.Damage); err != nil {
