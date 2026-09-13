@@ -240,7 +240,13 @@ func rangedHealingReach(room spatial.Room, run *encounter.Encounter, casterID, t
 		return false, err
 	}
 	for _, holding := range holdings {
-		if string(holding.Subject) == targetID && len(holding.CurrentVia) > 0 {
+		// Current is perception's whole answer to "is a channel delivering this
+		// right now". It replaced intel's CurrentVia when encounter adopted
+		// mind/perception: one sustaining channel or none, rather than the list.
+		// Identical while sight is the only channel anybody writes — the day a
+		// second arrives, reach becomes a real question (seen, or merely heard?)
+		// and this line is where it has to be asked.
+		if string(holding.Subject) == targetID && holding.Current {
 			return true, nil
 		}
 	}
