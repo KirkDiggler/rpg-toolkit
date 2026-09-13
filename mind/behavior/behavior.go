@@ -60,7 +60,9 @@ type Contact struct {
 	// Bearer is the one subject the name is recorded on (R4). A contact is
 	// folded fresh every time, so a name needs a stable handle to persist
 	// on, and the bearer is it: the next situation that bundles this
-	// subject finds the word already there.
+	// subject finds the word already there. It is never a deeds handle
+	// while the contact holds anything else, so a caller may match a real
+	// figure on it.
 	Bearer core.EntityID
 }
 

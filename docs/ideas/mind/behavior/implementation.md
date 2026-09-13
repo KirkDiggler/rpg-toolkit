@@ -178,6 +178,46 @@ the witness whenever it is the actor or the target. The proof is
 `TestAWitnessKnowsItWasTheTarget`, and removing the shortcut in `seen`
 fails it on "knows the knight attacked IT".
 
+## v0.3.1 — a bearer is never a deed (#1732)
+
+Found by the independent review of the adoption's driver (#1729, finding
+1), which had already worked around it: the rulebook's `memberID` matched a
+seen member on the contact's plain subject and never on `Bearer`, because
+`Bearer` could not be trusted to be a figure.
+
+The defect was one rung missing from `bearer`. It took the current creature
+holding, else `Holdings[0]`. Holdings sort by subject and a deeds handle is
+`deeds|<id>` (R11), which sorts before most plain ids — so a contact first
+folded as ghost-plus-deed, the shooter who stepped out of sight after the
+shot, recorded its name on the deed. Nothing recovered from that: the
+handle is never present on any truth, so every later situation found the
+word under it, set `Bearer` to it, and `stage.Aim` landed the swing on
+nothing for as long as that actor lived.
+
+`bearer` now prefers a current creature holding, else the first holding
+that is not a deeds handle, else the first. The last rung is the real
+answer for a contact of deeds alone, not a fallback that fires by accident,
+and it has its own proof. The test is the subject's shape rather than the
+holding's `Channel`: `Channel` is the provenance of the latest accepted
+testimony and moves with it, while what makes a handle unreachable is that
+it is qualified. perception parses no qualified id back apart and says it
+will not until a caller needs the entity out of one, so the prefix is built
+with its own `Qualify` and the separator stays perception's.
+
+The proofs are `TestANameIsNeverBorneByADeed` — the captain is shot at,
+loses sight of zara before it ever takes a situation, and still names the
+figure and not the shot — and `TestAContactOfDeedsAloneBearsItsDeed`. The
+first also counts how often the mind is asked for a word, which is the only
+way from outside to see which subject the name was filed under.
+
+| Mutant | Killed by |
+|--------|-----------|
+| the middle rung removed, so `bearer` falls straight to `Holdings[0]` | `TestANameIsNeverBorneByADeed`, on both halves: `Bearer` was `deeds|zara` where `zara` was expected, and the second situation read the name back from under `deeds|zara` |
+
+#1729's `memberID` may now match on `Bearer` again. Whether it does is the
+driver's call and not this change's: the rulebook is a different module,
+and nothing there is wrong today.
+
 ## Left for a later rung
 
 - Persistence: names and fears. The encounter integration pays for it.

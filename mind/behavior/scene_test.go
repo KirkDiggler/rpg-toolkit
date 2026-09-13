@@ -38,6 +38,7 @@ const (
 	knight core.EntityID = "knight"
 	mage   core.EntityID = "mage"
 	cleric core.EntityID = "cleric"
+	zara   core.EntityID = "zara"
 	banner core.EntityID = "banner"
 
 	armoured = "armoured"
@@ -327,6 +328,21 @@ func (s *scene) happens(actor core.EntityID, verb string, target core.EntityID, 
 // frightens puts the frightened condition on an actor.
 func (s *scene) frightens(who, of core.EntityID) {
 	s.g.Frighten(&behavior.FrightenInput{Actor: who, Source: of})
+}
+
+// situation is everything an actor has to go on right now, without asking
+// it to decide anything. The proofs that measure what an actor KNOWS ask
+// for this; the ones that measure what it DOES ask for a turn.
+func (s *scene) situation(who core.EntityID) *behavior.Situation {
+	s.t.Helper()
+
+	held, err := s.p.Held(who)
+	require.NoError(s.t, err)
+
+	out, err := s.g.Situation(&behavior.SituationInput{Actor: who, At: s.tick, Holdings: held})
+	require.NoError(s.t, err)
+
+	return out
 }
 
 // turn asks an actor what it means to do right now.

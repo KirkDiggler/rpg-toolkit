@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
@@ -222,13 +223,40 @@ func (g *Game) name(actor core.EntityID, mind Mind, c *Contact) error {
 	return nil
 }
 
+// deedsHandle is what every deeds subject begins with. A deed is filed
+// under a channel-qualified subject (R11, deed.Subject), and perception
+// owns the separator between a channel and an entity — so this asks
+// Qualify for the prefix rather than spelling it here.
+var deedsHandle = string(perception.Qualify(deed.Channel, ""))
+
 // bearer is the subject a contact's name is recorded on: a current creature
-// if there is one, else the first. A name attaches to a subject because
-// subjects are the only stable handles; a contact is folded fresh every
-// time.
+// holding if there is one, else the first holding that is not a deeds
+// handle, else the first. A name attaches to a subject because subjects are
+// the only stable handles; a contact is folded fresh every time.
+//
+// The middle rung is what keeps a name reachable. Holdings sort by subject,
+// and a deeds handle sorts before most plain ids, so a contact first folded
+// as ghost-plus-deed — the shooter stepped out of sight after the shot —
+// would record its name on the deed. A deed is never present on any truth,
+// so a name recorded on one is unreachable: a swing at it lands on nothing
+// forever (stage.Aim), and a driver matching on Bearer never matches. A
+// contact of deeds alone has no other handle and bears its first deed.
+//
+// The test is the subject's shape and not the holding's Channel, which is
+// a different question: Channel is the provenance of the latest accepted
+// testimony and moves with it, while what makes a handle unreachable is
+// that it is qualified. perception parses no qualified id back apart, and
+// says so; until some caller needs the entity out of one, a prefix built
+// by Qualify is the whole of what this needs.
 func bearer(c Contact) core.EntityID {
 	for _, h := range c.Holdings {
 		if len(h.CurrentVia) > 0 && h.Creature {
+			return h.Subject
+		}
+	}
+
+	for _, h := range c.Holdings {
+		if !strings.HasPrefix(string(h.Subject), deedsHandle) {
 			return h.Subject
 		}
 	}

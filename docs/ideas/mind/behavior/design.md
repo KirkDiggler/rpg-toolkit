@@ -65,9 +65,12 @@ like any other, unpaid). Each arrives with the use case that pays for it.
   naming a subject the actor does not hold is ignored.
 - **R4** — A name persists. The mind is asked only for contacts the actor
   has no word for. A name is recorded on the contact's **bearer** — the
-  current creature holding if there is one, else the first — and the next
-  situation that bundles that subject finds the word already there. A
-  contact is folded fresh; the bearer is what a name has to hold on to.
+  current creature holding if there is one, else the first holding that is
+  not a deed, else the first — and the next situation that bundles that
+  subject finds the word already there. A contact is folded fresh; the
+  bearer is what a name has to hold on to. A deed is never present on any
+  truth, so a name borne by one is a word nobody can use: no swing lands
+  on it and no driver matching on the bearer ever matches.
   When a mind later bundles two subjects that each carry a name, the
   contact wears the name of the first in subject order and the mind is not
   asked again; the other name stays recorded and unreachable until the
