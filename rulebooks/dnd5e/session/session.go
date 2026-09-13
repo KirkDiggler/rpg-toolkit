@@ -22,6 +22,10 @@ import (
 // whereas removing one it has already implemented is not. They are therefore
 // introduced when something calls them, never in anticipation.
 type Config struct {
+	// StaleTargetPolicy enables known-creature casts. Empty leaves those
+	// offers explicitly unavailable; other spells remain usable. API/SDK
+	// setup should choose StaleTargetRefuse unless the host wants paid attempts.
+	StaleTargetPolicy StaleTargetPolicy
 	// Sessions persists session state. Required.
 	Sessions SessionRepository
 
@@ -101,13 +105,14 @@ type Config struct {
 // calls, which is what allows several servers to serve the same session with
 // no coordination.
 type Manager struct {
-	sessions        SessionRepository
-	encounters      EncounterRepository
-	characters      CharacterRepository
-	events          EventStream
-	initiative      encounter.InitiativeRoller
-	turnDriver      encounter.TurnDriver
-	presentationIDs PresentationIDGenerator
+	staleTargetPolicy StaleTargetPolicy
+	sessions          SessionRepository
+	encounters        EncounterRepository
+	characters        CharacterRepository
+	events            EventStream
+	initiative        encounter.InitiativeRoller
+	turnDriver        encounter.TurnDriver
+	presentationIDs   PresentationIDGenerator
 
 	// targetPreflight is the one shared target gate used by offer projection
 	// and regenerated Attack execution. It is a pure function seam rather than
@@ -158,15 +163,19 @@ func NewManager(cfg *Config) (*Manager, error) {
 		}
 	}
 
+	if cfg.StaleTargetPolicy != "" && cfg.StaleTargetPolicy != StaleTargetRefuse && cfg.StaleTargetPolicy != StaleTargetAttempt {
+		return nil, fmt.Errorf("newmanager: invalid StaleTargetPolicy: %w", ErrIncompleteConfig)
+	}
 	return &Manager{
-		sessions:        cfg.Sessions,
-		encounters:      cfg.Encounters,
-		characters:      cfg.Characters,
-		events:          cfg.Events,
-		initiative:      initiativeSeam{dice: cfg.Dice},
-		dice:            cfg.Dice,
-		turnDriver:      turnDriverSeam{driver: cfg.TurnDriver},
-		presentationIDs: cfg.PresentationIDs,
-		targetPreflight: buildTargetPreflight,
+		staleTargetPolicy: cfg.StaleTargetPolicy,
+		sessions:          cfg.Sessions,
+		encounters:        cfg.Encounters,
+		characters:        cfg.Characters,
+		events:            cfg.Events,
+		initiative:        initiativeSeam{dice: cfg.Dice},
+		dice:              cfg.Dice,
+		turnDriver:        turnDriverSeam{driver: cfg.TurnDriver},
+		presentationIDs:   cfg.PresentationIDs,
+		targetPreflight:   buildTargetPreflight,
 	}, nil
 }

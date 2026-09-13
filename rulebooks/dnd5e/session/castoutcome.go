@@ -77,7 +77,7 @@ func castOutcome(
 			results = append(results, result)
 		}
 		targets = append(targets, encounter.CastTargetResult{
-			Target: encounter.MemberID(target.TargetID), Save: save, Results: results,
+			Target: encounter.MemberID(target.TargetID), Missed: target.Missed, Save: save, Results: results,
 		})
 	}
 	return targets, pushes, nil

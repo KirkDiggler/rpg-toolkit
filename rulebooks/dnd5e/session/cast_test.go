@@ -276,7 +276,7 @@ func castCandidate(
 }
 
 func (s *CastSuite) TestUnsupportedKnownSpellMintsNoCastRow() {
-	s.scene(castingBardWithSpells("bard", spells.Bless), 2)
+	s.scene(castingBardWithSpells("bard", spells.DetectMagic), 2)
 	s.Empty(s.castRows(), "knowledge and executable rulebook content must intersect")
 }
 

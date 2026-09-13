@@ -147,6 +147,10 @@ func declarationID(input declarationIDInput) (string, error) {
 		return "", err
 	}
 
+	return declarationIDWithVariant(input, variant)
+}
+
+func declarationIDWithVariant(input declarationIDInput, variant json.RawMessage) (string, error) {
 	doc := selectorDocument{
 		Domain:  declarationDomain,
 		Session: input.Session,

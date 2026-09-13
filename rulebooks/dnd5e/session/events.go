@@ -265,6 +265,8 @@ func kindFor(beat string) EventKind {
 	// what it recorded (encounter's RecordCast), so they cross unchanged.
 	case "cast":
 		return EventCast
+	case "cast_missed":
+		return EventCastMissed
 	case "saved":
 		return EventSaved
 	// The break beat, and it crosses unchanged for the same reason the two
@@ -489,6 +491,12 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		}
 	case EventCast:
 		return castEventBody(payload)
+	case EventCastMissed:
+		var p CastMissedBody
+		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Target == "" || p.Spell.Ref == "" || p.Spell.Name == "" {
+			return nil
+		}
+		return p
 	case EventSaved:
 		return savedEventBody(payload)
 	case EventConcentrationEnded:
