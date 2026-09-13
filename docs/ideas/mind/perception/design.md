@@ -71,11 +71,46 @@ arrives with the use case that pays for it, not before.
   completes across the whole `Pass` before either duplicate check begins,
   so which violation is reported never depends on where in either slice it
   sits.
-- **R9** — `Holding.Current` maps from intel's `Status == Current`.
-  `Observed` and `Confirmed` pass through unchanged. This is also where the
-  "callers never see intel" charter admits its one exception: `Load`'s
-  errors wrap `intel.ErrInvalidData`, and `Data.Intel` is `intel.Data`
-  verbatim — persistence is intel's shape, stated rather than hidden.
+- **R9** — `Holding.CurrentVia` is intel's own per-channel list, retyped
+  and sorted as intel sorts it, and `CurrentOn(channel)` is how it is asked.
+  `Observed` and `Confirmed` pass through unchanged. intel's derived
+  `Status` is deliberately **not** carried over: it answers "is anything at
+  all delivering this", which is almost never the question a caller means.
+
+  v0.1.0 shipped a `Current bool` here instead, and it was wrong in a way
+  worth recording rather than quietly fixing. With one channel in existence
+  the bool read as "currently delivered" and every consumer meant *sight*;
+  seven call sites across `encounter`, `session` and `resolution` were
+  correct only because a subject id from another channel would fail some
+  unrelated roster lookup. Correct by accident is not correct. Worse,
+  `session/convert.go` had to reconstruct a per-channel answer it no longer
+  had, pairing the bool with `Holding.Channel` — and since `Report` moves
+  `Channel` without sustaining anything, that pair can say "current via
+  deeds" about a holding only sight is delivering. Removing the bool rather
+  than keeping it beside `CurrentVia` is the point: a caller now has to name
+  the channel it means, and cannot fall back to the fudge.
+
+  This is also where the "callers never see intel" charter admits its one
+  exception: `Load`'s errors wrap `intel.ErrInvalidData`, and `Data.Intel`
+  is `intel.Data` verbatim — persistence is intel's shape, stated rather
+  than hidden.
+- **R10** — One payload per `(observer, subject)`. The store has exactly one
+  slot, so a subject landed on a second channel **overwrites** the first
+  channel's payload and the loss is silent. `CurrentVia` can hold two
+  channels at once; the payload cannot. This is deliberately not refused:
+  the multi-channel shape is still open, and a refusal would wall off a
+  design before the use cases have finished arguing for one. The eventual
+  fix is intel keying by `(channel, subject)`, at which point R11 stops
+  being a discipline and becomes the store's own shape.
+- **R11** — `Presence.ID` is the unit of identity this package will not look
+  past. A caller that emits one figure under the same id on two channels has
+  **decided those are one thing**, and no observer gets to be wrong about
+  it. Merging is the observer's judgment — the whole reason a mind has one —
+  so a caller perceiving a figure on a second channel qualifies the id by
+  channel (`hearing|goblin`), and the store then cannot merge them. R10 is
+  what happens when this goes unheeded. Stated as an instruction rather than
+  a warning: qualification is the thing to do, not merely the hazard to
+  avoid.
 
 ## Types
 
@@ -111,6 +146,19 @@ arrives with the use case that pays for it, not before.
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
 | `Observe` | `Pass` | `(map[core.EntityID]*Delta, error)` | R2–R8. One `intel.Surveil` call per observer in `Pass.Observers`, on a percept built from `Pass.Presences` filtered by `Pass.Reach` and sorted by ID (R6). Returns one `Delta` per observer, keyed by observer ID. |
+| `Report` | `ReportInput` | `(*ReportOutput, error)` | Discrete testimony to exactly one observer (wraps `intel.Report`). Lands **held and sustaining nothing**: a reported subject is current on no channel, including the one that reported it. Retires nothing either — a report makes no claim about what the observer was *not* told, so it cannot fade a holding the way a complete percept does. Validates in `Observe`'s order: `ErrNoChannel`, `ErrNoSubject`, `ErrNoObserver`. Repeated subjects are **not** rejected (see below). |
+
+The two verbs differ in what they *claim*. A `Pass` is a complete statement
+about one channel at one moment — everything delivered, and by omission
+everything no longer delivered, which is what lets a holding fade. A
+`Report` is one observer being told something; it asserts only what it
+carries.
+
+That difference is also why `Report` does not reject a repeated subject when
+`Observe` does. `Observe`'s rejection (R6) exists because sorting a `Pass`
+makes intel's last-wins dedupe depend on an unstable sort. `Report` does not
+sort, so last-wins is already deterministic, and rejecting would be
+strictness with nothing behind it.
 
 ## Queries
 
@@ -131,9 +179,9 @@ All errors wrap one sentinel; `errors.Is` dispatch; messages user-facing.
 | Sentinel | Meaning | Returned by |
 |----------|---------|-------------|
 | `ErrNoReach` | nil `Pass.Reach` | `Observe` |
-| `ErrNoChannel` | empty `Pass.Channel` | `Observe` |
-| `ErrNoSubject` | empty `Presence.ID`, or an empty subject passed to `On` | `Observe`, `On` |
-| `ErrNoObserver` | empty observer ID, in a `Pass` or passed directly | `Observe`, `Held`, `On` |
+| `ErrNoChannel` | empty `Pass.Channel` or `ReportInput.Channel` | `Observe`, `Report` |
+| `ErrNoSubject` | empty `Presence.ID`, or an empty subject passed to `On` | `Observe`, `Report`, `On` |
+| `ErrNoObserver` | empty observer ID, in a `Pass`, a `ReportInput`, or passed directly | `Observe`, `Report`, `Held`, `On` |
 | `ErrDuplicateSubject` | two `Presence`s in one `Pass` sharing an ID | `Observe` |
 | `ErrDuplicateObserver` | the same observer named twice in one `Pass`'s `Observers` | `Observe` |
 | `ErrNotHeld` | the observer holds nothing on that subject (translated from `intel.ErrNotHeld`) | `On` |
@@ -163,5 +211,24 @@ there is nothing here worth hiding intel behind.
   nothing.
 - Every sentinel above is `errors.Is`-tested from a call that returns it,
   including `Load`'s and the two duplicate-ID sentinels.
+- `TestReportLandsHeldAndSustainsNothing` proves a reported subject is
+  current on nothing, including the channel that reported it.
+- `TestReportedSubjectIsNotFadedByALaterPass` proves a `Pass` on another
+  channel cannot retire reported testimony — the defect the deeds-through-
+  `Observe` workaround produced.
+- `TestReportMovesProvenanceWithoutSustainingItsChannel` proves R9's whole
+  point: after a report about a currently-sighted subject, `Channel` and
+  `CurrentVia` disagree, and only `CurrentVia` is true. Fails if `Holding`
+  reports currency as anything a caller can read without naming a channel.
+- `TestTwoChannelsSustainOneSubject` and
+  `TestLosingOneChannelOfTwoIsNotAFade` prove `CurrentVia` carries two live
+  channels and that losing one is not a fade — neither expressible under
+  v0.1.0's bool.
+- `TestReportOverwritesAnUnqualifiedSubject` and
+  `TestQualifiedIDsKeepBothChannelsIntact` prove R10's cost and R11's
+  remedy as a matched pair.
+- `TestReportValidationOrderAndNothingWritten` proves `Report`'s ordering
+  with every violation present at once, and that a rejected report writes
+  nothing.
 - `gofmt`, `go vet`, and `golangci-lint` (CI's pinned version) all clean;
   `go test -race` clean.

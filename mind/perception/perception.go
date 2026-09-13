@@ -21,10 +21,19 @@ type Channel string
 // Sight is the predeclared visual channel.
 const Sight Channel = "sight"
 
-// Presence is one thing that can be perceived this pass, and what it says.
-// The payload is opaque: this package never decodes it, only carries it —
-// encoded once by the caller before the pass, and identical for every
-// observer who perceives it (rule 1).
+// Presence is one subject and what it says about itself. The payload is
+// opaque: this package never decodes it, only carries it — encoded once by
+// the caller and identical for every observer who receives it (rule 1).
+//
+// Both verbs take it, and each reads the name differently. In a Pass it is
+// something present to be perceived, gated by Reach. In a Report it is
+// discrete testimony handed to the one observer named, gated by nothing — a
+// witness told what somebody did is not a thing standing in a room.
+//
+// ID is the unit of identity this package will not look past (rule 11): a
+// caller perceiving one figure on two channels qualifies the ID by channel,
+// and the store then cannot merge them. Merging is the observer's judgment,
+// which is the whole reason a mind has one.
 type Presence struct {
 	ID      core.EntityID
 	Payload []byte
@@ -50,15 +59,37 @@ type Pass struct {
 
 // Holding is what one observer holds about one subject. Observed is when
 // this content was first perceived; Confirmed is when it was last perceived
-// to still say the same thing. Current false is a ghost: still held, no
-// longer delivered.
+// to still say the same thing.
+//
+// Channel is the provenance of the latest accepted testimony, which is not
+// the same question as what is sustaining the holding now. Report moves
+// Channel without sustaining anything, so the two answers genuinely differ:
+// a rumour is not a sighting.
+//
+// CurrentVia is every channel delivering this subject right now, sorted, and
+// empty is a ghost — still held, no longer delivered. Ask it through
+// CurrentOn rather than testing its length: "is anything at all delivering
+// this" is almost never the question a caller means (rule 9).
 type Holding struct {
-	Subject   core.EntityID
-	Payload   []byte
-	Channel   Channel
-	Observed  uint64
-	Confirmed uint64
-	Current   bool
+	Subject    core.EntityID
+	Payload    []byte
+	Channel    Channel
+	Observed   uint64
+	Confirmed  uint64
+	CurrentVia []Channel
+}
+
+// CurrentOn reports whether the named channel is delivering this subject
+// right now. A ghost is current on nothing, and so is a subject held only
+// from a Report: discrete testimony sustains nothing, by construction.
+//
+// This is the whole reason v0.2.0 replaced a Current bool. With one channel
+// in existence the bool read as "currently delivered", and every consumer
+// meant sight; correctness rested on subject ids never colliding across
+// channels rather than on any caller saying which channel it meant. Naming
+// the channel is now the only way to ask.
+func (h Holding) CurrentOn(channel Channel) bool {
+	return slices.Contains(h.CurrentVia, channel)
 }
 
 // Delta is what one pass did to one observer's knowledge. The lists answer
@@ -151,6 +182,108 @@ func (p *Perception) Observe(pass Pass) (map[core.EntityID]*Delta, error) {
 	}
 
 	return deltas, nil
+}
+
+// ReportInput is discrete testimony landed on exactly one observer: what a
+// witness was told, or what it noticed in a way no pass models. Reports name
+// subjects the way a Pass does; Channel is their provenance, and At stamps
+// them like any other landing.
+//
+// Unlike a Pass this addresses one observer, so there is no Reach and no
+// reachability question: being told is the delivery. Nothing else is
+// touched — an observer not named here holds exactly what it held.
+type ReportInput struct {
+	Observer core.EntityID
+	Channel  Channel
+	Reports  []Presence
+	At       uint64
+}
+
+// ReportOutput is what one Report did to that observer's knowledge. Like
+// Delta, the lists refine rather than partition: Changed is the subset of
+// Updated whose content is actually new.
+type ReportOutput struct {
+	// FirstContact is every subject this observer had no holding for at
+	// all, now created by this report. The payload rides along because
+	// nothing the caller holds could supply it.
+	FirstContact []Presence
+	// Updated is every subject whose holding already existed and was
+	// landed on again by this report.
+	Updated []core.EntityID
+	// Changed refines Updated to the subjects whose content is actually
+	// new — intel's own comparison at landing, reported rather than
+	// re-derived (rule 7). First contact is never in Changed.
+	Changed []core.EntityID
+}
+
+// Report lands discrete testimony on one observer: held, and sustaining
+// nothing. A reported subject is never current on the channel that reported
+// it, which is the whole difference from Observe — a deed is in the past the
+// moment it exists, and a rumour was never a delivery. Nothing fades here
+// either: Report makes no claim about what the observer is not being told,
+// so it cannot retire a holding the way a complete percept does (rule 10).
+//
+// A subject this observer already holds on a DIFFERENT channel is overwritten
+// rather than merged — one payload per (observer, subject) is the store's
+// shape, and the last landing wins. That is not a hazard to remember so much
+// as the reason rule 11 exists: qualify a subject id by channel and the case
+// cannot arise. It is deliberately not refused. The shape of multi-channel
+// holdings is still open, and a refusal would wall off a design before the
+// use cases have finished arguing for one.
+//
+// Validates before any mutation, in Observe's order (rule 8): empty Channel
+// (ErrNoChannel), an empty ID on any report (ErrNoSubject), an empty
+// Observer (ErrNoObserver). Repeated subjects are NOT rejected the way a
+// Pass rejects them: that rejection exists because sorting a Pass makes
+// last-wins dedupe depend on an unstable sort, and Report does not sort, so
+// intel's dedupe is already deterministic — last wins, at the last
+// occurrence's position.
+func (p *Perception) Report(in ReportInput) (*ReportOutput, error) {
+	if in.Channel == "" {
+		return nil, fmt.Errorf("report: %w", ErrNoChannel)
+	}
+	for _, report := range in.Reports {
+		if report.ID == "" {
+			return nil, fmt.Errorf("report: %w", ErrNoSubject)
+		}
+	}
+	if in.Observer == "" {
+		return nil, fmt.Errorf("report: %w", ErrNoObserver)
+	}
+
+	reports := make([]intel.Report, 0, len(in.Reports))
+	for _, report := range in.Reports {
+		reports = append(reports, intel.Report{
+			Subject: intel.Subject(report.ID),
+			Payload: report.Payload,
+		})
+	}
+
+	out, err := p.intel.Report(&intel.ReportInput{
+		Observer: in.Observer,
+		Channel:  intel.Channel(in.Channel),
+		Reports:  reports,
+		At:       in.At,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("report: %w", err)
+	}
+
+	result := &ReportOutput{}
+	for _, report := range out.FirstContact {
+		result.FirstContact = append(result.FirstContact, Presence{
+			ID:      core.EntityID(report.Subject),
+			Payload: report.Payload,
+		})
+	}
+	for _, subject := range out.Updated {
+		result.Updated = append(result.Updated, core.EntityID(subject))
+	}
+	for _, subject := range out.Changed {
+		result.Changed = append(result.Changed, core.EntityID(subject))
+	}
+
+	return result, nil
 }
 
 // Held returns everything an observer holds, sorted by subject.
@@ -295,15 +428,29 @@ func deltaFrom(out *intel.SurveilOutput) *Delta {
 }
 
 // fromIntelHolding converts an intel.Holding into this package's Holding.
-// Observed and Confirmed pass through unchanged; Current maps from intel's
-// Status == Current (rule 9).
+// Observed and Confirmed pass through unchanged; CurrentVia is intel's own
+// per-channel list, which intel sorts, retyped one channel at a time (rule
+// 9). intel.Status is not carried over: it is derived from CurrentVia being
+// non-empty, and re-exporting a derived answer beside the thing it derives
+// from is how the Current bool happened in the first place.
+//
+// A holding sustained by nothing keeps a nil CurrentVia rather than an empty
+// slice, matching what intel returns, so a ghost compares equal to a ghost.
 func fromIntelHolding(h intel.Holding) Holding {
+	var via []Channel
+	if len(h.CurrentVia) > 0 {
+		via = make([]Channel, 0, len(h.CurrentVia))
+		for _, channel := range h.CurrentVia {
+			via = append(via, Channel(channel))
+		}
+	}
+
 	return Holding{
-		Subject:   core.EntityID(h.Subject),
-		Payload:   h.Payload,
-		Channel:   Channel(h.Channel),
-		Observed:  h.Observed,
-		Confirmed: h.Confirmed,
-		Current:   h.Status == intel.Current,
+		Subject:    core.EntityID(h.Subject),
+		Payload:    h.Payload,
+		Channel:    Channel(h.Channel),
+		Observed:   h.Observed,
+		Confirmed:  h.Confirmed,
+		CurrentVia: via,
 	}
 }
