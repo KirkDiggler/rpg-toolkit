@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -45,7 +45,7 @@ func (m *Manager) allyCandidatesFor(
 	standing encounter.Standing,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 	member string,
 ) ([]targetPreflight, error) {
 	if ability != nil && ability.ID == refs.Features.BardicInspiration().ID {
@@ -86,7 +86,7 @@ func (m *Manager) inspirationCandidates(
 	standing encounter.Standing,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 	member string,
 ) ([]targetPreflight, error) {
 	allies, err := allyCandidates(

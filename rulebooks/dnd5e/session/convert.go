@@ -5,9 +5,8 @@ package session
 
 import (
 	"fmt"
-	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -198,29 +197,41 @@ func projectStatus(in *encounter.Status) *Status {
 }
 
 func projectSightings(
-	in []intel.Holding, names map[string]string, kinds map[string]MemberKind, down map[string]bool,
+	in []perception.Holding, names map[string]string, kinds map[string]MemberKind,
 ) []Sighting {
 	out := make([]Sighting, 0, len(in))
 	for _, h := range in {
 		subject := string(h.Subject)
-		via := make([]string, 0, len(h.CurrentVia))
-		for _, c := range h.CurrentVia {
-			via = append(via, string(c))
-		}
+		status, via := sightingStatus(h)
 		out = append(out, Sighting{
 			Subject:       subject,
 			Name:          names[subject],
 			Kind:          kinds[subject],
-			Seen:          projectSeen(h.Channel, h.Payload, down[subject]),
+			Seen:          projectSeen(h.Channel, h.Payload),
 			LocationState: projectLocationState(h.Channel, h.Payload),
 			Payload:       append([]byte(nil), h.Payload...),
 			Channel:       string(h.Channel),
-			At:            h.At,
+			At:            h.Confirmed,
 			CurrentVia:    via,
-			Status:        string(h.Status),
+			Status:        status,
 		})
 	}
 	return out
+}
+
+// sightingStatus derives Sighting's compatibility Status/CurrentVia pair from
+// perception.Holding.Current — the single bool intel's own Current/Held
+// Status enum and per-channel CurrentVia list collapsed into once a holding
+// could only ever be sustained by the one channel that produced it
+// (mind/perception's own Holding, unlike play/intel's, carries no per-channel
+// breakdown to report). "current"/"held" are intel's own wire words, kept
+// verbatim so an existing host's Status comparison does not have to change
+// for this migration.
+func sightingStatus(h perception.Holding) (status string, via []string) {
+	if h.Current {
+		return "current", []string{string(h.Channel)}
+	}
+	return "held", nil
 }
 
 // projectSeen copies the sight channel's typed knowledge into Seen (ADR-0041,
@@ -230,53 +241,55 @@ func projectSightings(
 // Position would be worse than admitting to.
 //
 // The decode itself happens in encounter.DecodeSightTestimony, not here: this
-// package never calls encoding/json on a payload. h.Channel is intel's own
-// provenance field — a holding's last accepted testimony — so a held memory
-// (CurrentVia empty) still carries the channel and payload that produced it.
-// Known testimony gets Seen; explicit unknown testimony gets LocationState
-// without a stale coordinate.
+// package never calls encoding/json on a payload. h.Channel is perception's
+// own provenance field — a holding's last accepted testimony — so a held
+// memory (Current false) still carries the channel and payload that produced
+// it. Known testimony gets Seen; explicit unknown testimony gets
+// LocationState without a stale coordinate.
 //
-// # Equipment comes from the testimony, never from a live read
+// # Standing and Equipment both come from the testimony, never from a live read
 //
-// What a subject was seen holding is read out of the snapshot the observer
-// took, exactly as Position is. That is what makes a memory honest — a ghost
-// reports the hands it last saw and cannot disclose a swap it never witnessed
-// — and it is also what makes a LIE possible at all, since a fact resolved
-// live could only ever be true (Kirk, rpg-toolkit#1615).
+// What a subject was seen holding, and whether it was seen on its feet, are
+// read out of the snapshot the observer took, exactly as Position is
+// (rpg-toolkit#1697 landed Standing's own snapshot; Equipment already worked
+// this way). That is what makes a memory honest — a ghost reports what it
+// last saw and cannot disclose a change it never witnessed — and it is also
+// what makes a LIE possible at all, since a fact resolved live could only
+// ever be true (Kirk, rpg-toolkit#1615).
 //
-// Nil equipment means the hands were not observed: no sheet behind the
-// subject, or testimony older than the field. It does NOT mean empty hands,
-// which arrive as a present value with empty strings.
-//
-// downed is the caller's own batched Standing() answer for this subject —
-// asked once per verb over the whole roster (turn.go's own pattern), never
-// once per sighting, and passed in rather than looked up here so this stays
-// a pure projection.
-//
-// STANDING IS STILL THE LIVE ANSWER, and that is a known defect rather than a
-// design: this doc and [Seen.Standing] both claim a memory keeps the standing
-// it last saw, and it does not. Closing it needs the composition to snapshot
-// standing into the testimony beside equipment, which needs a pass-scoped
-// reading of participation it does not have yet (C8 allows exactly one Assess
-// per pass). Tracked on rpg-toolkit#1615; Position and Equipment are the
-// shapes to copy when it lands, never Standing.
-func projectSeen(channel intel.Channel, payload []byte, downed bool) *Seen {
-	if channel != intel.Sight {
+// Nil Standing or nil Equipment means the fact was not observed: testimony
+// older than the field, or (for Equipment) no sheet behind the subject at
+// all. Neither means "seen standing" or "seen empty-handed" — those arrive as
+// present values, never inferred from their absence (rpg-toolkit#1702).
+func projectSeen(channel perception.Channel, payload []byte) *Seen {
+	if channel != perception.Sight {
 		return nil
 	}
 	testimony, ok := encounter.DecodeSightTestimony(payload)
 	if !ok || testimony.State != encounter.LocationKnown {
 		return nil
 	}
-	standing := StandingUp
-	if downed {
-		standing = StandingDowned
-	}
 	return &Seen{
 		Position:  testimony.Position,
-		Standing:  standing,
+		Standing:  projectStanding(testimony.Down),
 		Equipment: projectSeenEquipment(testimony.Equipment),
 	}
+}
+
+// projectStanding maps the testimony's own Down claim onto the wire enum.
+// Nil in, nil out — testimony that never observed standing (predating
+// rpg-toolkit#1697, or a channel that does not report it) must not be read as
+// "seen standing"; that is exactly the live-read defect rpg-toolkit#1702
+// closed.
+func projectStanding(down *bool) *Standing {
+	if down == nil {
+		return nil
+	}
+	standing := StandingUp
+	if *down {
+		standing = StandingDowned
+	}
+	return &standing
 }
 
 // projectSeenEquipment copies observed hands across the seam, preserving the
@@ -289,8 +302,8 @@ func projectSeenEquipment(in *encounter.HeldEquipment) *SeenEquipment {
 	return &SeenEquipment{MainHand: in.MainHand, OffHand: in.OffHand}
 }
 
-func projectLocationState(channel intel.Channel, payload []byte) LocationState {
-	if channel != intel.Sight {
+func projectLocationState(channel perception.Channel, payload []byte) LocationState {
+	if channel != perception.Sight {
 		return ""
 	}
 	testimony, ok := encounter.DecodeSightTestimony(payload)
@@ -476,7 +489,7 @@ func projectOutcome(in *encounter.Outcome) *Outcome {
 // present key means "something changed for this observer", and manufacturing
 // empty entries for everyone who happened to be in the encounter would make
 // the map's size meaningless to a caller deciding whom to notify.
-func projectDiscoveries(in map[encounter.MemberID]*encounter.IntelDelta, down map[string]bool) map[string]Discovery {
+func projectDiscoveries(in map[encounter.MemberID]*encounter.IntelDelta) map[string]Discovery {
 	if len(in) == 0 {
 		return nil
 	}
@@ -485,7 +498,7 @@ func projectDiscoveries(in map[encounter.MemberID]*encounter.IntelDelta, down ma
 		if delta == nil {
 			continue
 		}
-		out[string(id)] = projectDiscovery(delta, down)
+		out[string(id)] = projectDiscovery(delta)
 	}
 	if len(out) == 0 {
 		return nil
@@ -493,12 +506,12 @@ func projectDiscoveries(in map[encounter.MemberID]*encounter.IntelDelta, down ma
 	return out
 }
 
-func projectDiscovery(in *encounter.IntelDelta, down map[string]bool) Discovery {
+func projectDiscovery(in *encounter.IntelDelta) Discovery {
 	out := Discovery{}
 	for _, r := range in.FirstContact {
 		out.FirstContact = append(out.FirstContact, Report{
-			Subject: string(r.Subject),
-			Seen:    projectReportSeen(r.Payload, down[string(r.Subject)]),
+			Subject: string(r.ID),
+			Seen:    projectReportSeen(r.Payload),
 			Payload: append([]byte(nil), r.Payload...),
 		})
 	}
@@ -511,65 +524,27 @@ func projectDiscovery(in *encounter.IntelDelta, down map[string]bool) Discovery 
 	return out
 }
 
-// projectIntelCorrections converts encounter-owned correction deltas into a
-// deterministic session-owned list. Observer and subject are the only facts
-// exposed; corrected payloads never cross this seam.
-func projectIntelCorrections(in map[encounter.MemberID]*encounter.IntelDelta) []IntelCorrection {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make([]IntelCorrection, 0)
-	for observer, delta := range in {
-		if delta == nil {
-			continue
-		}
-		for _, subject := range delta.Corrected {
-			out = append(out, IntelCorrection{Observer: string(observer), Subject: string(subject)})
-		}
-	}
-	return sortIntelCorrections(out)
-}
-
-func sortIntelCorrections(in []IntelCorrection) []IntelCorrection {
-	if len(in) == 0 {
-		return nil
-	}
-	out := append([]IntelCorrection(nil), in...)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Observer == out[j].Observer {
-			return out[i].Subject < out[j].Subject
-		}
-		return out[i].Observer < out[j].Observer
-	})
-	return out
-}
-
 // projectReportSeen decodes first-contact's Seen the same way projectSeen
-// does, but cannot gate on channel the way projectSeen does: intel.Report
-// carries no Channel of its own — a SurveilOutput is scoped to the one
-// Channel its Surveil call used, but that channel is not threaded back onto
-// each Report inside it. So this is decode-and-see rather than a channel
-// check.
+// does, but cannot gate on channel the way projectSeen does: a first-contact
+// presence carries no Channel of its own — a Surveil pass is scoped to the
+// one Channel its call used, but that channel is not threaded back onto each
+// presence inside it. So this is decode-and-see rather than a channel check.
 //
 // That is equivalent to projectSeen's guard ONLY as long as sight is the only
 // channel any composition surveils with — true today, since rebuildPercepts
-// (encounter.go, refreshSight) is the sole Surveil call site in this
-// codebase and always passes intel.Sight. The day a second channel starts
-// calling Surveil, an undecodable payload here stops meaning "not sight" and
-// starts meaning "channel this SDK has not typed yet OR truly bad bytes" —
-// indistinguishable from here.
+// (encounter.go, refreshSight) is the sole Observe call site in this
+// codebase and always passes perception.Sight. The day a second channel
+// starts calling Observe, an undecodable payload here stops meaning "not
+// sight" and starts meaning "channel this SDK has not typed yet OR truly bad
+// bytes" — indistinguishable from here.
 // TestProjectReportSeenCannotDistinguishSightFromALookalikePayload
 // (seen_internal_test.go) documents the risk rather than closing it: closing
-// it needs SurveilOutput (or the percept it is built from) to carry its own
-// channel, which is a play/intel change outside this PR's scope.
-func projectReportSeen(payload []byte, downed bool) *Seen {
-	pos, ok := encounter.DecodeSightPayload(payload)
-	if !ok {
+// it needs mind/perception's Delta (or the percept it is built from) to
+// carry its own channel, which is outside this PR's scope.
+func projectReportSeen(payload []byte) *Seen {
+	testimony, ok := encounter.DecodeSightTestimony(payload)
+	if !ok || testimony.State != encounter.LocationKnown {
 		return nil
 	}
-	standing := StandingUp
-	if downed {
-		standing = StandingDowned
-	}
-	return &Seen{Position: pos, Standing: standing}
+	return &Seen{Position: testimony.Position, Standing: projectStanding(testimony.Down)}
 }

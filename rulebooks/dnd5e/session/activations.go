@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -54,7 +54,7 @@ func (m *Manager) buildActivationOffers(
 	sheet *character.Character,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 ) ([]compiledOffer, error) {
 	available := sheet.AvailableAbilities()
 	economy := sheet.GetActionEconomy()
@@ -306,7 +306,7 @@ func helpCandidates(
 	standing encounter.Standing,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 	member string,
 ) ([]targetPreflight, error) {
 	return allyCandidates(enc, standing, roster, positions, holdings, member, helpReachFeet, "help")
@@ -324,7 +324,7 @@ func allyCandidates(
 	standing encounter.Standing,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
-	holdings []intel.Holding,
+	holdings []perception.Holding,
 	member string,
 	reachFeet int,
 	label string,
@@ -349,7 +349,7 @@ func allyCandidates(
 	seen := make([]string, 0, len(holdings))
 	for _, h := range holdings {
 		subject := string(h.Subject)
-		if subject == member || len(h.CurrentVia) == 0 {
+		if subject == member || !h.Current {
 			continue
 		}
 		if kinds[subject] != own {

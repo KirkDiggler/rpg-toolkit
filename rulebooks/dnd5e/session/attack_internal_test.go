@@ -14,7 +14,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -647,7 +647,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 
 	calls := 0
 	mgr.targetPreflight = func(
-		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, _ string, _ int,
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []perception.Holding, _ string, _ int,
 	) ([]targetPreflight, error) {
 		calls++
 		return nil, errors.New("injected Attack target preflight failure")
@@ -706,7 +706,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	injected := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "injected target refusal"}
 	calls := 0
 	mgr.targetPreflight = func(
-		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, member string, _ int,
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []perception.Holding, member string, _ int,
 	) ([]targetPreflight, error) {
 		calls++
 		require.Equal(t, "alice", member)
@@ -807,7 +807,7 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 
 	calls := 0
 	mgr.targetPreflight = func(
-		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, _ string, _ int,
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []perception.Holding, _ string, _ int,
 	) ([]targetPreflight, error) {
 		calls++
 		return []targetPreflight{{member: "bob", available: true}}, nil
