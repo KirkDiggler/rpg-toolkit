@@ -345,6 +345,25 @@ func prepareCondition(
 	if err := application.Validate(); err != nil {
 		return preparedCondition{}, fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
+	if application.Ref.Equals(refs.Conditions.Blessed()) {
+		var config struct {
+			SourceID string `json:"source_id"`
+		}
+		if err := json.Unmarshal(application.Parameters, &config); err != nil {
+			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: %w", targetID, err)
+		}
+		source, err := core.ParseString(sourceRef)
+		if err != nil {
+			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: source: %w", targetID, err)
+		}
+		condition, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+			MemberID: targetID, SourceID: config.SourceID, SourceRef: source,
+		})
+		if err != nil {
+			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: %w", targetID, err)
+		}
+		return preparedCondition{declaration: application.Clone(), behavior: condition}, nil
+	}
 	if application.Ref.Equals(refs.Conditions.Baned()) {
 		var config struct {
 			SourceID string `json:"source_id"`
@@ -405,19 +424,8 @@ func publishPreparedCondition(
 			if err != nil {
 				return nil, err
 			}
-			landing := conditions.ConditionAddressOf(targetID, prepared.behavior)
-			replaced, err := replaceSameAddress(ctx, bus, cast, targetID, landing)
+			replaced, err := publishCondition(ctx, bus, cast, prepared, target, source)
 			if err != nil {
-				return nil, err
-			}
-			// The removal is already durable when the application is attempted,
-			// and a failure here leaves the member holding neither. That is
-			// deliberate rather than overlooked: a publish that fails has
-			// already put subscribers in an unknown state, so re-applying the
-			// old instance would be inventing a third outcome on top of two
-			// half-finished ones. The step fails, the verb fails, and the host
-			// reloads from what was persisted.
-			if err := publishCondition(ctx, bus, prepared, target, source); err != nil {
 				return nil, err
 			}
 			return next(replaced)
@@ -466,13 +474,9 @@ func publishPreparedCondition(
 //
 // # It governs less than "every condition"
 //
-// Only what flows through publishPreparedCondition: the gated cast's
-// imposition, a strike's save-less condition, and Obey's grovel. The GATELESS
-// cast path publishes at activationMachine.deliverCast and never reaches here,
-// so a gateless self-cast twice — Blade Ward is the live example — still puts
-// two instances on one sheet. That is a shelf rather than an omission: no use
-// case has asked for it, and the day a gateless spell needs it the rule moves
-// down into publishCondition, which both paths share.
+// Every delivery through publishCondition uses this rule, including gated
+// impositions and gateless casts. Source-qualified addresses keep independent
+// casters' durations intact; only another instance at the exact address is replaced.
 //
 // # Removed first, applied second, and the order is the rule
 //
@@ -549,20 +553,28 @@ func heldConditions(cast *Participants, memberID string) []dnd5eEvents.Condition
 // The source is the caller's to state because the callers mean different things
 // by it, and none may guess for another.
 func publishCondition(
-	ctx context.Context, bus events.EventBus, prepared preparedCondition,
+	ctx context.Context, bus events.EventBus, cast *Participants, prepared preparedCondition,
 	target core.Entity, source dnd5eEvents.ConditionSource,
-) error {
-	err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+) ([]ImposedEffect, error) {
+	landing := conditions.ConditionAddressOf(target.GetID(), prepared.behavior)
+	replaced, err := replaceSameAddress(ctx, bus, cast, target.GetID(), landing)
+	if err != nil {
+		return nil, err
+	}
+	// Removal precedes application. If publication fails, the interaction
+	// fails and the host reloads persisted data; re-applying the old instance
+	// here would compound the subscribers' partially updated state.
+	err = dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    target,
 		Type:      dnd5eEvents.ConditionType(prepared.declaration.Ref.ID),
 		Source:    source,
 		Condition: prepared.behavior,
 	})
 	if err != nil {
-		return fmt.Errorf("apply %s to %q: %w", prepared.declaration.Ref.ID, target.GetID(), err)
+		return nil, fmt.Errorf("apply %s to %q: %w", prepared.declaration.Ref.ID, target.GetID(), err)
 	}
 
-	return nil
+	return replaced, nil
 }
 
 // halvedBySaveLabel is what the halving component calls itself on the roll

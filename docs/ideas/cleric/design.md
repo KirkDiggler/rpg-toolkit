@@ -1,5 +1,22 @@
 # Cleric level-one contribution assessment
 
+## Bless delivery decision
+
+Bless uses the existing gateless condition delivery, contributed-dice selection,
+and source-qualified concentration ownership. It introduces a known-creature
+target contract: self and conscious/dying/stabilized creatures, with a known
+location in range and a clear path, without requiring current sight. Creature
+type does not exclude Bless recipients.
+
+The host explicitly chooses the consequence of outdated location testimony.
+`StaleTargetRefuse` rejects the entire cast before payment; `StaleTargetAttempt`
+pays once, delivers to recipients still at their remembered locations, and
+reports a per-target miss otherwise. These options were requested by the user;
+neither is a silent default. Location knowledge remains the encounter's
+testimony; resolution interprets those facts without substituting hidden live
+positions. Session must carry the same policy through offers and execution and
+preserve misses in its record. This policy is separate from the spell's effect.
+
 Status: creation merged in toolkit #1585 on 2026-09-08, released as D&D v0.150.0.
 The gameplay milestone remains open. The refreshed [plan.md](plan.md) is based
 on merged toolkit main `fd4cdade` (2026-09-12) and supersedes the historical dependency
