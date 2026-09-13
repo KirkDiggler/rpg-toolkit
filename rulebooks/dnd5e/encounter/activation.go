@@ -27,6 +27,10 @@ const (
 	// applied any rulebook clamp.
 	ResultHealingApplied ActivationResultKind = "healing-applied"
 
+	// ResultStabilized records instantaneous stabilization supplied by the
+	// rulebook, without implying healing or a rolled death save.
+	ResultStabilized ActivationResultKind = "stabilized"
+
 	// ResultConditionApplied records a condition added to a member.
 	ResultConditionApplied ActivationResultKind = "condition-applied"
 
@@ -77,6 +81,23 @@ type ConditionAddress struct {
 	SourceID     string   `json:"source_id"`
 }
 
+// StabilizationDetail carries the authoritative life-state transition, unchanged
+// hit points and resulting death-save progress. Before and After are required
+// rulebook vocabulary, not encounter-owned enums. All values are carried verbatim;
+// eligibility, counter resets and the meaning of stability belong to the rulebook.
+// There is no roll or HP restoration in this result shape.
+type StabilizationDetail struct {
+	Before            string `json:"before"`
+	After             string `json:"after"`
+	HitPoints         int    `json:"hit_points"`
+	Successes         int    `json:"successes"`
+	Failures          int    `json:"failures"`
+	SuccessesNeeded   int    `json:"successes_needed"`
+	FailuresRemaining int    `json:"failures_remaining"`
+	Stabilized        bool   `json:"stabilized"`
+	Dead              bool   `json:"dead"`
+}
+
 // ActivationResult carries one result from a successful activation using only
 // primitives this composition can persist without importing the root D&D event
 // types that own the rule meaning.
@@ -91,8 +112,10 @@ type ConditionAddress struct {
 // Capacity-granted
 // requires Description. Moved requires Target, Ref and Name, and carries the
 // distance and the blocker. Fields outside a kind's shape — including a
-// calculation on any non-healing kind — are refused rather than silently
+// calculation on any non-healing/non-damage kind — are refused rather than silently
 // discarded.
+// Stabilized requires Target, Ref, Name and Stabilization; it refuses roll,
+// healing, condition and movement fields. Every other kind refuses Stabilization.
 //
 // Numeric values are rulebook facts. Encounter validates the calculation's
 // internal arithmetic and its pairing with Requested, and never checks or
@@ -107,6 +130,10 @@ type ActivationResult struct {
 	Address *ConditionAddress
 	Ref     string
 	Name    string
+
+	// Stabilization is required only for ResultStabilized. A pointer separates
+	// absent detail from meaningful zero HP and cleared counters.
+	Stabilization *StabilizationDetail
 
 	Amount    int
 	Requested int
@@ -198,6 +225,14 @@ type healingAppliedPayload struct {
 	Calculation *RollCalculation     `json:"calculation"`
 	Ref         string               `json:"ref"`
 	Name        string               `json:"name"`
+}
+
+type stabilizedPayload struct {
+	Kind          ActivationResultKind `json:"kind"`
+	Target        MemberID             `json:"target"`
+	Ref           string               `json:"ref"`
+	Name          string               `json:"name"`
+	Stabilization StabilizationDetail  `json:"stabilization"`
 }
 
 type damageAppliedPayload struct {
@@ -380,7 +415,7 @@ func (e *Encounter) prepareActivationResult(
 	verb string, index int, result ActivationResult,
 ) (interface{}, error) {
 	switch result.Kind {
-	case ResultHealingApplied, ResultDamageApplied,
+	case ResultHealingApplied, ResultDamageApplied, ResultStabilized,
 		ResultConditionApplied, ResultConditionRemoved, ResultCapacityGranted, ResultMoved:
 	default:
 		return nil, fmt.Errorf("%s: result %d kind %q: %w", verb, index, result.Kind, ErrInvalidData)
@@ -399,6 +434,9 @@ func (e *Encounter) prepareActivationResult(
 	if result.Kind != ResultDamageApplied && result.DamageType != "" {
 		return nil, forbiddenActivationResultField(verb, index, result.Kind, "damage type")
 	}
+	if result.Kind != ResultStabilized && result.Stabilization != nil {
+		return nil, forbiddenActivationResultField(verb, index, result.Kind, "stabilization")
+	}
 	if result.Kind != ResultConditionApplied && result.Kind != ResultConditionRemoved && result.Address != nil {
 		return nil, forbiddenActivationResultField(verb, index, result.Kind, "condition address")
 	}
@@ -415,6 +453,28 @@ func (e *Encounter) prepareActivationResult(
 	}
 
 	switch result.Kind {
+	case ResultStabilized:
+		if err := requireActivationIdentity(verb, index, result); err != nil {
+			return nil, err
+		}
+		if result.Stabilization == nil || result.Stabilization.Before == "" || result.Stabilization.After == "" {
+			return nil, fmt.Errorf("%s: result %d %s requires stabilization with before/after state: %w",
+				verb, index, result.Kind, ErrInvalidData)
+		}
+		if field := rollFactsActivationResultField(result); field != "" {
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, field)
+		}
+		if result.Description != "" {
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "description")
+		}
+		if result.Reason != "" {
+			return nil, forbiddenActivationResultField(verb, index, result.Kind, "reason")
+		}
+		return stabilizedPayload{
+			Kind: result.Kind, Target: result.Target, Ref: result.Ref, Name: result.Name,
+			Stabilization: *result.Stabilization,
+		}, nil
+
 	case ResultHealingApplied, ResultDamageApplied:
 		if err := requireActivationIdentity(verb, index, result); err != nil {
 			return nil, err

@@ -1,5 +1,27 @@
 # Cleric creation implementation
 
+## Spare the Dying: encounter recording
+
+After resolution #1739 published `v0.48.0`, the encounter slice adds
+`ResultStabilized` and a required primitive `StabilizationDetail` to the shared
+activation-result family. Casts and abilities use the existing transaction and
+audience path. Details carry before/after state, unchanged HP and resulting
+death-save progress verbatim; encounter does not interpret the life-state
+vocabulary or recompute the rulebook's answer. No new dependency or pin is needed.
+
+Tests assert exact zero-preserving payloads for dying and already-stable targets,
+source/recipient identity, result order, full-roster audience, caller-mutation
+isolation and JSON save/load/Story replay. Every required or forbidden field is
+checked through both recording verbs with an earlier valid result, proving
+refusal leaves the full encounter unchanged and does not call noticeDown. All
+other result kinds reject stabilization detail. Existing result-shape tests are
+updated explicitly. Full Windows tests/vet and Linux race tests pass; Linux lint
+reports zero issues. Module formatting/tidy adds no dependency changes.
+
+This is recording-provider evidence only. Session offers, execution mapping,
+live results, executable cantrip content, and proto/API/web adoption remain
+pending. Monsters and timed natural recovery remain deferred.
+
 ## Spare the Dying: resolution delivery
 
 Resolution adopts the published root `v0.167.0` from #1738. A generic stabilization

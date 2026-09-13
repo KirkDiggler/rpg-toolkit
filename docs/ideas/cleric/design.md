@@ -14,6 +14,24 @@ milestone statements below are historical and do not override this scope.
 Inspect existing targeting, delivery, effects, projections and wire contracts
 for each next slice before proposing infrastructure or API/proto changes.
 
+## Spare the Dying recording contract
+
+Instantaneous stabilization is an activation result, shared by cast and ability
+recording. Encounter carries `ResultStabilized` with a required neutral
+`StabilizationDetail`: before/after life-state strings, unchanged HP, and the
+resulting death-save counters, remaining thresholds, stabilized and dead flags.
+These are supplied rulebook facts; encounter validates presence and shape without
+recomputing eligibility, counter resets, or participation.
+
+The existing `activation-result` beat carries actor, target, source ref/name and
+the nested `stabilization` detail. Zero HP and counters remain explicit. It has no
+healing amount, calculation, death-save roll, or condition address. Other result
+kinds reject stabilization detail. Cast and ability transactions validate all
+results before any append, preserve order and use the existing audience policy.
+Session will map the authoritative resolution value to this recording and live
+result shape after the encounter release; protos/API need the corresponding
+result arm. Existing private-sheet state fields remain sufficient.
+
 ## Bless delivery decision
 
 Host configuration decision: session accepts an optional `StaleTargetPolicy`.
