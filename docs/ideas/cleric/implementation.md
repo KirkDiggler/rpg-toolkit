@@ -1,6 +1,6 @@
 # Cleric creation implementation
 
-## Bless resolution checkpoint
+## Bless resolution implementation (PR #1710)
 
 Resolution adopts released root `v0.164.0`. Blessed applications now use the
 existing gateless activation delivery and source-qualified concentration owner.
@@ -11,10 +11,16 @@ is exposed for session's later offer integration.
 
 Exact-address replacement now runs in shared condition publication, including
 gateless casts. Activation removal events survive the cast outcome conversion.
-Initial full resolution tests pass, including self, dying and monster targets,
+Full resolution tests and `go vet ./...` pass, including self, dying and monster targets,
 known but not currently seen recipients, mixed stale-target policies, invalid
 declarations, blocked/range/unknown-location refusals, and offer projection.
-Concentration/reload and overlapping-source verification is still in progress.
+Further tests run two actual casts, reload the delivered sheet, resolve attacks
+and saves with exactly one positive Bless die, and combine Bless with Bane.
+Recasting removes only the original caster's children; the other caster's
+persisted hold and bonus remain. Full duration expiry removes every child.
+Stabilized/dead eligibility, exact-address replacement outcomes, all-miss
+concentration, stale refusals and failed-payment protection are also covered.
+The initial draft CI run passed; final-head CI is required before review readiness.
 
 ## Supported spell acquisition follow-up (2026-09-12, PR #1698)
 

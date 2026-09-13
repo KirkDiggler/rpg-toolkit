@@ -428,13 +428,6 @@ func publishPreparedCondition(
 			if err != nil {
 				return nil, err
 			}
-			// The removal is already durable when the application is attempted,
-			// and a failure here leaves the member holding neither. That is
-			// deliberate rather than overlooked: a publish that fails has
-			// already put subscribers in an unknown state, so re-applying the
-			// old instance would be inventing a third outcome on top of two
-			// half-finished ones. The step fails, the verb fails, and the host
-			// reloads from what was persisted.
 			return next(replaced)
 		},
 	}
@@ -568,6 +561,9 @@ func publishCondition(
 	if err != nil {
 		return nil, err
 	}
+	// Removal precedes application. If publication fails, the interaction
+	// fails and the host reloads persisted data; re-applying the old instance
+	// here would compound the subscribers' partially updated state.
 	err = dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    target,
 		Type:      dnd5eEvents.ConditionType(prepared.declaration.Ref.ID),
