@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -240,13 +241,14 @@ func rangedHealingReach(room spatial.Room, run *encounter.Encounter, casterID, t
 		return false, err
 	}
 	for _, holding := range holdings {
-		// Current is perception's whole answer to "is a channel delivering this
-		// right now". It replaced intel's CurrentVia when encounter adopted
-		// mind/perception: one sustaining channel or none, rather than the list.
-		// Identical while sight is the only channel anybody writes — the day a
-		// second arrives, reach becomes a real question (seen, or merely heard?)
-		// and this line is where it has to be asked.
-		if string(holding.Subject) == targetID && holding.Current {
+		// SIGHT, and the question the previous comment here said would have
+		// to be asked one day: seen, or merely heard? mind/perception v0.2.0
+		// restored the per-channel answer intel always had, so this asks for
+		// the channel it means instead of trusting that sight is the only
+		// one. A ranged heal needs a target the caster can SEE — the range
+		// and line-of-sight checks above are about sight, and a target known
+		// only from another channel has not satisfied them.
+		if string(holding.Subject) == targetID && holding.CurrentOn(perception.Sight) {
 			return true, nil
 		}
 	}
