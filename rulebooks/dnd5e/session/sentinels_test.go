@@ -182,6 +182,8 @@ var sessionSentinels = map[string]error{
 	"ErrNilInput":             session.ErrNilInput,
 	"ErrNilConfig":            session.ErrNilConfig,
 	"ErrIncompleteConfig":     session.ErrIncompleteConfig,
+	"ErrAmbiguousConfig":      session.ErrAmbiguousConfig,
+	"ErrNoTurnDriver":         session.ErrNoTurnDriver,
 	"ErrNotFound":             session.ErrNotFound,
 	"ErrBadRepository":        session.ErrBadRepository,
 	"ErrNoSession":            session.ErrNoSession,

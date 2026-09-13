@@ -32,6 +32,32 @@ var (
 	// at process start where a deployment can catch it.
 	ErrIncompleteConfig = errors.New("incomplete config")
 
+	// ErrAmbiguousConfig is returned by NewManager when one question has been
+	// answered twice — today, when both Config.TurnDriver and
+	// Config.TurnDrivers are wired. The wrapped message names which pair.
+	//
+	// Distinct from ErrIncompleteConfig for the reason that one is distinct
+	// from ErrNilConfig: the three send whoever reads them to different work.
+	// A nil config is a mistake at the call site, an incomplete one is wiring
+	// somebody has not finished, and an ambiguous one is wiring somebody
+	// finished twice — where the fix is to delete a line rather than add one.
+	//
+	// Refusing rather than picking is the whole point. A precedence rule would
+	// leave a host watching the driver it did not mean to wire take every turn
+	// in the process, with nothing anywhere saying which one won.
+	ErrAmbiguousConfig = errors.New("ambiguous config")
+
+	// ErrNoTurnDriver is returned when a host's TurnDriverSource reports
+	// success for a session and hands over no driver.
+	//
+	// A broken contract on the host's side, named as one: ErrBadRepository's
+	// case, one capability over. It is refused at the point of resolution
+	// because the alternative is a nil inside the seam that translates a
+	// driver's answer, which panics several frames down in the middle of
+	// somebody's turn — the failure S8's total construction exists to prevent,
+	// now that a driver arrives per verb rather than at NewManager.
+	ErrNoTurnDriver = errors.New("no turn driver for this session")
+
 	// ErrNotFound is what a repository returns when the requested ID does not
 	// exist. Implementations must return an error satisfying errors.Is against
 	// this sentinel — the manager distinguishes "no such session" (a clean

@@ -164,11 +164,19 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 		Standing:   standing,
 		Sight:      &sightSeam{members: worldMembers(*world)},
 		Equipment:  equipmentBeside(standing),
-		// The plain seam, for the reason the Striker below gives: an authored
-		// world is loaded to be inspected and re-serialized, so no clock
-		// advances and no turn is ever driven here. A compelled driver would
-		// also have no scope to save what an obeyed word left behind.
-		TurnDriver: m.turnDriver,
+		// The REFUSING stand-in, for the reason the Striker below gives: an
+		// authored world is loaded to be inspected and re-serialized, so no
+		// clock advances and no turn is ever driven here. A compelled driver
+		// would also have no scope to save what an obeyed word left behind.
+		//
+		// It is a stand-in rather than a resolution because there is no
+		// session to name. A host's driver source is asked about one
+		// (rpg-toolkit#1734), and neither caller has one to give: StartSession
+		// is proving a world loads BEFORE creating the session — asking here
+		// would have the host mint a driver for a session that may turn out to
+		// exist already — and AtlasOf previews a world nobody has started at
+		// all.
+		TurnDriver: turnDriverSeam{driver: refusingTurnDriver{}},
 		Striker:    encounter.RefusingStriker{},
 		// An authored world is walked by nobody: it is loaded to be inspected
 		// and re-serialized. Same reasoning as the Striker above.

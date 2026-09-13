@@ -70,12 +70,18 @@ func (basicSeam) Act(view MonsterView) (TurnIntent, error) {
 // drives it, and an unknown name fails loudly.
 //
 // The value is STATEFUL, where a Behavior() is not: it keeps per-member names
-// across turns, and it is not safe for concurrent use. Config.TurnDriver is
-// read once at NewManager, so one of these serves every session that Manager
-// serves — the host is what guards it (rpg-api#980 holds a single driver
-// behind a mutex, with the cross-session member-id caveat written down
-// beside it). A driver per session or per encounter needs a seam this
-// package does not have yet; rpg-toolkit#1734.
+// across turns, and it is not safe for concurrent use. ONE OF THESE SERVES ONE
+// SESSION — a host hands them out through [Config.TurnDrivers], which is asked
+// once per verb for the session that verb is about (rpg-toolkit#1734). Wiring
+// one to [Config.TurnDriver] instead would put a single stateful driver in
+// front of every session in the process, which is what this constructor's doc
+// used to describe and what rpg-api#980's mutex and cross-session member-id
+// caveat existed to contain.
+//
+// What that seam does NOT change is the boundary inside one session: two write
+// verbs on the same session at the same instant already race that session's
+// own scope, and a driver of its own inherits exactly that boundary rather
+// than widening or narrowing it.
 func Minded(in *MindedInput) (TurnDriver, error) {
 	var patience uint64
 	if in != nil {
@@ -103,11 +109,11 @@ type MindedInput struct {
 // exactly as basicSeam adapts behavior.Basic — same round trip, same
 // reasons (see basicSeam's own doc).
 //
-// STATEFUL, which basicSeam is not: behavior.Minded remembers which mind
-// each member was given, so this value outlives any one turn and is not safe
-// for concurrent use. One of these serves every session its Manager serves,
-// because Config.TurnDriver is read once at NewManager — so the host that
-// wires it is the one that has to serialize turns through it.
+// STATEFUL, which basicSeam is not: behavior.Minded remembers which mind each
+// member was given, so this value outlives any one turn and is not safe for
+// concurrent use. One of these serves ONE SESSION, handed over per verb by the
+// host's [TurnDriverSource] — so what the host serializes is one session's own
+// turns, which is the boundary that session already had.
 type mindedSeam struct {
 	driver *behavior.Minded
 }

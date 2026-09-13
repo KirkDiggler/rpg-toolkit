@@ -218,6 +218,115 @@ way from outside to see which subject the name was filed under.
 driver's call and not this change's: the rulebook is a different module,
 and nothing there is wrong today.
 
+## session v0.85.0 — a driver per session (#1734)
+
+Found by the independent review of #1731 (finding 1) and by rpg-api#980's
+own workaround. `Config.TurnDriver` was read once at `NewManager` and the
+one Manager served every session in the process, so a host could not give
+a session its own `Minded`. rpg-api built one process-wide driver behind
+a mutex and wrote the caveat down beside it: member ids are authored per
+dungeon rather than minted per run, so two parties in the same tomb
+shared a skeleton's assigned mind and names. Harmless while every shipped
+mind names contacts off the view it is handed; not harmless the first
+time a mind carries memory, which is the next slice.
+
+**The ruling (Kirk, 2026-09-13).** Ownership first. A session's lifetime
+is the host's — a Redis TTL, a run ending — and the Manager is
+deliberately stateless per verb with no session-end signal, so a
+per-session driver cache inside it would have no owner for eviction and
+does not go there. `Config` grows `TurnDrivers`, a per-session resolver
+asked once per verb for the session it is about; `TurnDriver` stays for a
+stateless driver serving every session; exactly one of the two is set.
+Inside the Manager the resolved driver rides the verb's scope, and
+resolution happens in two places rather than eleven. Two write verbs on
+ONE session already race that session's own scope; a per-session driver
+inherits that boundary and does not change it.
+
+**The shape, and why.** `TurnDrivers` is an interface —
+`TurnDriverSource.DriverFor(ctx, sessionID) (TurnDriver, error)` — rather
+than a func type, because every other capability on `Config` is one
+(`Roller`, `PresentationIDGenerator`, the three repositories) and a host
+implements them side by side. It takes the verb's context for the reason
+the named payer gives: minds as authored data is a driver built from
+per-session material a host may have to go and fetch, and adding the
+parameter afterwards would break every host that had implemented the
+interface — the exact asymmetry `Config`'s own doc warns about for
+required fields.
+
+The Manager now holds **no driver at all**, only a source. A host that
+wired the stateless field gets a `staticTurnDrivers` built around it at
+`NewManager`, so "which driver serves this verb" has one answer and no
+branch. `openForWrite` resolves once and puts the answer on `writeScope`;
+`loadWorld` resolves beside the read path's world. The eleven sites that
+read `m.turnDriver` read the scope's driver, and `compelledDriver.next`
+became a method reading `d.scope.driver` rather than a field copied from
+it — a field would have been a second name for one value, and the only
+question anybody asks there is whether it is the same brain the rest of
+the verb is using.
+
+`loadAuthored` is the one site with no session to name, and it takes a
+new `refusingTurnDriver` — the fourth refusing stand-in at that same call
+site. Its neighbours already said no clock advances on an authored world;
+now the turn driver says it too. `StartSession` proves a world loads
+*before* the session exists, and `AtlasOf` previews a world nobody has
+started, so neither has a session id to resolve against and asking the
+host would have it mint a driver for a session that may never exist.
+
+It wraps `ErrInvalidWorld` rather than carrying a sentinel of its own,
+where the pattern it cites — `encounter.RefusingStriker` — has
+`ErrRefusingStriker`. Raised by the review and kept as written: the two
+stand-ins beside it at the same call site, `refusingCheckResolver` and
+`refusingWitness`, both wrap `ErrInvalidWorld`, so the package's own
+family stays coherent and a host matching on one matches all three. The
+choice is recorded here so it stays visible next to the pattern it
+diverges from; a dedicated sentinel becomes right when a caller needs to
+tell the three apart, which none does today.
+
+Two sentinels landed rather than one. Neither-set stays
+`ErrIncompleteConfig` — it is the S8 by-name refusal every required
+capability gets — with the row renamed to name **both** doors, since
+either satisfies it and a host that meant to wire the source is not
+helped by an error naming only the other field. Both-set is
+`ErrAmbiguousConfig`: a different fault with a different fix (delete a
+line, not add one), and refused rather than resolved by precedence
+because picking either silently would leave a host watching the driver it
+did not mean to wire take every turn in the process. `ErrNoTurnDriver` is
+the third: a source that reports success and hands over nothing has
+broken its contract, and the nil is refused where it happens rather than
+wrapped into a seam that panics mid-turn.
+
+**Reads resolve too**, which is a deliberate cost. A read advances no
+clock and never consults the driver, and every other capability on that
+path is a refusing stand-in — so a refusing driver there would have been
+uniform and free. The ruling put the driver next to the world instead, so
+that no world this package builds ever holds a brain belonging to
+somebody else, and the price is that a read fails closed when the host
+cannot name a session's driver. It does not widen the host's cache: reads
+touch the same bounded set of sessions writes do.
+
+**"Once per verb" is counted, not assumed.** The review found the doc's
+load-bearing promise — the source is asked once per verb and that answer
+serves the whole verb — held up by nothing but the current shape of
+`openForWrite`. The fake source now counts asks per session id beside the
+drivers it built, and the two proofs assert exactly one ask per verb: per
+`EndTurn` on the write path, per `Roster` on the read path, on the
+succeeding read as well as the two refused ones. The counter is the point
+rather than the map: `built` is keyed by session, so a verb that resolved
+twice landed in the same entry and looked identical to one that resolved
+once. It matters for the host the doc itself names — one that mints per
+ask, from per-session material fetched fresh — where a second ask is a
+second driver rather than a wasted map lookup.
+
+| Mutant | Killed by |
+|--------|-----------|
+| the host source returns the same driver for every session id | `TestEachSessionDrivesItsOwnTurnsWithItsOwnDriver`, on "the host was asked about two sessions and built two drivers" — one entry, not two |
+| a second resolution inside one write verb, at the end of `openForWrite` | the same test, on "one write verb, one ask": 9 asks where 8 were expected |
+| a second resolution inside one read verb, at the top of `loadWorld` | `TestAResolverErrorFailsTheVerbAndDrivesNoTurn`, on "one read verb, one ask": 8 asks where 7 were expected |
+| `openForWrite` resolves a constant session id, so every write uses one session's driver | the same test, on "so did the second's, for the member of the same name": the second session's driver never took a turn |
+| `compelledDriver.next()` returns `Behavior()` instead of the scope's driver | the same test, on "the first session's driver took its own skeleton's turn": the host's driver is never reached for an uncompelled member |
+| `resolveTurnDriver` falls back to `Behavior()` on a source error | `TestAResolverErrorFailsTheVerbAndDrivesNoTurn`: the host's error never reaches the host |
+| the both-set refusal removed from `NewManager` | `TestExactlyOneTurnDriverIsWired/both` |
+
 ## Left for a later rung
 
 - Persistence: names and fears. The encounter integration pays for it.

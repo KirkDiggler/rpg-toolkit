@@ -497,6 +497,17 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 // and View directly) that never drives a turn, so a driven turn landing here
 // at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
+	// THIS SESSION'S OWN DRIVER, resolved here because this is where the read
+	// path's world is loaded — the read half of "once per verb, for the
+	// session the verb is about" ([Manager.resolveTurnDriver]). A read advances
+	// no clock, so the driver is never consulted; it is still the session's
+	// rather than a stand-in, so that no world this package builds holds a
+	// brain that belongs to somebody else.
+	driver, err := m.resolveTurnDriver(ctx, data.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	enc, _, _, err := m.loadWorldWithBaseline(
 		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{}, encounter.RefusingAnnouncer{},
 		&sightSeam{}, refusingCheckResolver{}, refusingWitness{},
@@ -504,7 +515,7 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 		// the three refusing capabilities above are what says so — and a
 		// compelled driver here would have no scope to save the condition an
 		// obeyed word can leave behind.
-		m.turnDriver)
+		driver)
 	return enc, err
 }
 

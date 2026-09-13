@@ -163,7 +163,7 @@ func (s moverSeam) offerStep(
 		Standing:     s.scope.standing,
 		Sight:        &sightSeam{members: worldMembers(world)},
 		Equipment:    equipmentBeside(s.scope.standing),
-		TurnDriver:   s.m.turnDriver,
+		TurnDriver:   s.scope.driver,
 		// The concealment pair, bound to the same live scope every other
 		// seam on this call is — the one-seam consistency law strikerSeam
 		// states at the same place.

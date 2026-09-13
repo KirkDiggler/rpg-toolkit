@@ -955,6 +955,18 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		return nil, fmt.Errorf("session %q: %w: %v", sessionID, ErrInvalidSession, err)
 	}
 
+	// THE VERB'S DRIVER, RESOLVED ONCE, BEFORE ANYTHING CAN ASK FOR IT. It
+	// goes on the scope below, and every capability this verb builds reads it
+	// from there — including the compelled wrapper, whose `next` must be the
+	// same driver the rest of the verb is using. Resolved before the load
+	// rather than during it because a host that cannot name this session's
+	// driver has a wiring fault, and discovering that halfway through
+	// reconstituting a world would report it as a broken world.
+	driver, err := m.resolveTurnDriver(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
 	// scope is allocated here, with its Session/Encounter/Data half filled,
 	// BEFORE the load that needs to hand a Striker to the very *Encounter
 	// this scope will go on to hold — the chicken-and-egg [strikerSeam]
@@ -969,6 +981,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		data:      data,
 		ledger:    ledger,
 		sight:     &sightSeam{},
+		driver:    driver,
 	}
 	enc, baseline, standing, err := m.loadWorldWithBaseline(
 		ctx, data, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
@@ -1063,6 +1076,19 @@ type writeScope struct {
 	// and would quietly allow two capabilities reading different sheets within
 	// one verb.
 	standing standingSeam
+
+	// driver is THIS VERB's turn driver, resolved once by
+	// [Manager.resolveTurnDriver] before the world was loaded and read by
+	// every capability on this call that has to consult a brain — the
+	// compelled wrapper's `next` included.
+	//
+	// It rides the scope for standing's reason and one more. Rebuilding it at
+	// each use would compile, and would let a host's per-session source be
+	// asked several times within one verb: with a source that builds on first
+	// sight that is merely wasteful, but with one that could ever answer
+	// differently it is two capabilities in one call driving turns with two
+	// different brains. Resolved once, carried, and the answer is the verb's.
+	driver encounter.TurnDriver
 
 	// sight is the SAME *sightSeam the live encounter holds — see the
 	// type's own doc on why a pointer, not a value. place adds a member

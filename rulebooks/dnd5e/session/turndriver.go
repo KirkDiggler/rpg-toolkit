@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -28,6 +29,87 @@ type TurnDriver interface {
 	// turn. Nothing is persisted on that error: this package's load-mutate-
 	// save shape means the in-memory world is simply discarded.
 	Act(view MonsterView) (TurnIntent, error)
+}
+
+// TurnDriverSource hands over the [TurnDriver] that serves ONE session. Wire
+// it as Config.TurnDrivers when the driver is stateful; wire the driver
+// itself as Config.TurnDriver when it is not. Exactly one of the two.
+//
+// # Why a per-session seam exists at all
+//
+// A stateful driver — [Minded], and every authored mind that comes after it —
+// is a game with per-member names and memory, and it is not safe for
+// concurrent use. One driver per Manager meant one driver for every session
+// the process served, so two parties running the same authored dungeon shared
+// a skeleton's assigned mind and names, because member ids are authored per
+// dungeon rather than minted per run (rpg-api#980's caveat, rpg-toolkit#1734).
+// This is the seam that lets a host give each session its own.
+//
+// # The cache is the HOST's, deliberately
+//
+// A session's lifetime is the host's — a Redis TTL, a run ending — and this
+// Manager is stateless per verb (S1) with no session-end signal to evict on.
+// A cache here would have no owner, so the host keeps one and this package
+// asks it. See rule A6 in docs/ideas/mind/behavior/adoption.md.
+//
+// # An interface rather than a func, and it takes the verb's context
+//
+// An interface because every other capability on Config is one (Roller,
+// PresentationIDGenerator, the three repositories): a host implements them
+// side by side and this reads like its neighbours. The context because the
+// payer named for this seam is minds as authored data — a driver built from
+// per-session material a host may have to go and fetch — and adding the
+// parameter afterwards would break every host that had implemented the
+// interface, which is the asymmetry Config's own doc warns about.
+type TurnDriverSource interface {
+	// DriverFor returns the driver that serves sessionID, or an error that
+	// fails the verb asking. It is called ONCE per verb, for the session that
+	// verb is about, and the driver it hands over serves that whole verb.
+	//
+	// An error here is never recovered from: a host that cannot say which
+	// driver serves a session has a wiring fault, and a fallback to the
+	// reference driver would answer a monster's turn with somebody else's
+	// brain and look like a design choice.
+	DriverFor(ctx context.Context, sessionID string) (TurnDriver, error)
+}
+
+// staticTurnDrivers is the source a host that wired Config.TurnDriver gets for
+// free: one stateless driver, handed to every session.
+//
+// IT EXISTS SO THERE IS ONE RESOLUTION PATH rather than two. Every verb asks a
+// source for its session's driver; the Manager never holds a driver of its
+// own, so "which driver is this verb using" has exactly one answer and no
+// branch to get wrong.
+type staticTurnDrivers struct {
+	driver TurnDriver
+}
+
+// compile-time proof the stand-in satisfies what it is handed to.
+var _ TurnDriverSource = staticTurnDrivers{}
+
+// DriverFor returns the one driver, for any session.
+func (s staticTurnDrivers) DriverFor(context.Context, string) (TurnDriver, error) {
+	return s.driver, nil
+}
+
+// refusingTurnDriver is the stand-in for a world no session holds —
+// [encounter.RefusingStriker]'s pattern one capability over, and the fourth
+// refusing stand-in at the same call site ([Manager.loadAuthored]).
+//
+// An authored world is loaded to be inspected and re-serialized: no clock
+// advances and no turn is ever driven there, so a driver asked to act on one
+// is this package's own bug. There is also no session to name, which is the
+// structural reason this is a stand-in rather than a resolution — a host's
+// source is asked about a session, and StartSession's has not been created yet
+// while AtlasOf has none at all.
+type refusingTurnDriver struct{}
+
+// compile-time proof the stand-in satisfies what it is handed to.
+var _ TurnDriver = refusingTurnDriver{}
+
+// Act always refuses: no authored world drives a turn.
+func (refusingTurnDriver) Act(MonsterView) (TurnIntent, error) {
+	return nil, fmt.Errorf("a turn was driven on a construction-only world: %w", ErrInvalidWorld)
 }
 
 // MonsterView is this package's own twin of encounter.MonsterView — what a
