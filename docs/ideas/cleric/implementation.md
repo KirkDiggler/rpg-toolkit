@@ -1,5 +1,22 @@
 # Cleric creation implementation
 
+## Spare the Dying: resolution delivery
+
+Resolution adopts the published root `v0.167.0` from #1738. A generic stabilization
+profile uses existing touch preflight and the paid gateless Gather. It records the
+authoritative character result as `EffectStabilized` / `ImposedStabilized`, without
+a healing event, fabricated roll or stored spell condition. A pure candidate query
+reuses character eligibility and touch reach for the later session offer path.
+
+Integration tests cover dying and already-stable characters, cleared progress,
+unchanged zero HP, action payment without slot use or RNG, concentration retained,
+JSON reload and untouched persisted inputs. Dead, positive-HP, missing and monster
+recipients, unreachable targets, physical barriers and insufficient actions refuse
+before delivery. Candidate-query tests cover stable/dead eligibility and barriers.
+The full resolution suite passes on Windows and with Linux's race detector; Linux
+lint reports zero issues. Encounter recording, session, executable content and
+proto/API/web adoption remain outstanding; this is resolution evidence only.
+
 ## Spare the Dying: first root provider
 
 The root provider adds a pure recipient eligibility query and authoritative

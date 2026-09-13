@@ -522,6 +522,12 @@ func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutco
 func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffect, error) {
 	applied := make([]ImposedEffect, 0, len(effects))
 	for _, effect := range effects {
+		if effect.Kind == EffectStabilized {
+			ref := spell
+			applied = append(applied, ImposedEffect{Kind: ImposedStabilized, Ref: &ref,
+				Description: effect.Name, RecipientID: effect.TargetID, Stabilization: effect.Stabilization})
+			continue
+		}
 		if effect.Kind == EffectConditionRemoved {
 			applied = append(applied, removalEffect(effect.Address, effect.Reason))
 			continue
@@ -783,6 +789,9 @@ func newGatelessCast(definition combatActions.Definition, casterID, targetID, op
 	}
 
 	prepared := &preparedCast{source: definition.Ref, conditions: deliveries}
+	if profile.Stabilize {
+		prepared.stabilization = &preparedStabilization{targetID: targetID, source: definition.Ref, name: definition.Name}
+	}
 	if profile.Healing != nil {
 		if roller == nil {
 			return nil, fmt.Errorf("%w: healing requires a roller", ErrBadAction)

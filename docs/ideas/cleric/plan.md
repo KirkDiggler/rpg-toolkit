@@ -38,6 +38,24 @@ below. Preparation is not a prerequisite for continuing this work.
 
 ## Spare the Dying wiring inspection
 
+### Resolution delivery after the provider release
+
+Root PR #1738 merged and published `rulebooks/dnd5e v0.167.0`. The next
+resolution-only slice adopts that real tag and executes `CastProfile.Stabilize`
+through the existing gateless cast. Character eligibility and touch reach run
+before payment; the normal Gather calls `Character.Stabilize` after payment.
+`EffectStabilized` becomes `ImposedStabilized` in `CastOutcome.Targets`, carrying
+the provider's detached before/after life state, unchanged HP and reset progress.
+`StabilizationTargets` supplies provider-owned eligibility for explicitly named
+candidates so session can use the same rule in offers.
+
+After this resolution release, add the neutral encounter recording result in
+its own PR, then adopt the published providers in session for offers, execution,
+recording and reload. Enable executable cantrip content only after those consumers
+support it. Coordinate the proto result and API adoption separately; existing
+private-sheet fields already carry stable state. No temporary pins or concurrent
+dependent PRs. The inspection below records the pre-provider baseline.
+
 ### Accepted scope and first provider slice
 
 The user authorized implementation. Use existing character death-save/life-state

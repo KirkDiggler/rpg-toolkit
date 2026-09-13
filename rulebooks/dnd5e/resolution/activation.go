@@ -71,9 +71,10 @@ type ActivationInput struct {
 }
 
 // preparedCast is one gateless cast's whole delivery: what ran, and the
-// conditions or healing it delivers to its recipients.
+// conditions, healing or stabilization it delivers to its recipients.
 type preparedCast struct {
-	healing *preparedHealing
+	healing       *preparedHealing
+	stabilization *preparedStabilization
 	// source is the spell, echoed into the outcome so a caller learns what ran
 	// without parsing a declaration id.
 	source core.Ref
@@ -99,6 +100,8 @@ type ActivationEffectKind string
 const (
 	// EffectHealingApplied is actual post-clamp healing applied to a target.
 	EffectHealingApplied ActivationEffectKind = "healing-applied"
+	// EffectStabilized records an instantaneous character stabilization.
+	EffectStabilized ActivationEffectKind = "stabilized"
 
 	// EffectConditionApplied is a condition attached to a target.
 	EffectConditionApplied ActivationEffectKind = "condition-applied"
@@ -118,6 +121,9 @@ type ActivationEffect struct {
 	Ref      string
 	Name     string
 	Address  dnd5eEvents.ConditionAddress
+
+	// Stabilization is the authoritative result for EffectStabilized.
+	Stabilization character.StabilizeOutput
 
 	Amount    int
 	Requested int
@@ -662,6 +668,11 @@ func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 	}
 
 	noEffect := ""
+	if m.cast.stabilization != nil {
+		if err := m.cast.stabilization.prepare(cast); err != nil {
+			return nil, err
+		}
+	}
 	if m.cast.healing != nil {
 		var err error
 		noEffect, err = m.cast.healing.prepare(cast)
@@ -672,8 +683,10 @@ func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 	return m.deliverCast(cast, recipients, noEffect), nil
 }
 
-// deliverCast publishes what the cast delivers, inside the collector every
+// deliverCast applies what the cast delivers, inside the collector every
 // activation result already travels through.
+// Instantaneous stabilization contributes its authoritative returned fact
+// directly; it does not manufacture a healing or death-save event.
 //
 // ONE Gather for the whole delivery, not one per condition, and the collector
 // is the reason: it is opened and closed around the publishes, so the effects
@@ -708,6 +721,13 @@ func (m *activationMachine) deliverCast(cast *Participants, recipients []core.En
 				if err := m.cast.healing.deliver(ctx, bus, noEffect); err != nil {
 					return nil, err
 				}
+			}
+			if m.cast.stabilization != nil {
+				fact, err := m.cast.stabilization.deliver(cast)
+				if err != nil {
+					return nil, err
+				}
+				collector.append(fact)
 			}
 
 			for index, delivery := range m.cast.conditions {
