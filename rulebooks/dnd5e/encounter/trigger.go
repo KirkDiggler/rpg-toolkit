@@ -6,6 +6,8 @@ package encounter
 import (
 	"fmt"
 	"sort"
+
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
 
 // InitiativeRoller turns the members entering a fight into the order they act
@@ -329,10 +331,11 @@ func (e *Encounter) unawareOfOpposition(id MemberID, contact map[MemberID]bool) 
 	}
 
 	for _, holding := range holdings {
-		// Not current is a ghost — a subject remembered from before rather
-		// than one being watched now. Remembering where a wolf used to be
-		// does not stop it surprising you.
-		if !holding.Current {
+		// Not current ON SIGHT is a ghost — a subject remembered from
+		// before rather than one being watched now. Remembering where a
+		// wolf used to be does not stop it surprising you, and neither does
+		// hearing one you cannot place.
+		if !holding.CurrentOn(perception.Sight) {
 			continue
 		}
 		other, ok := e.members[holding.Subject]

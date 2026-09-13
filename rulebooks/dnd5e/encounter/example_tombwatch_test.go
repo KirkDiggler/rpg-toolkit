@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -26,7 +27,7 @@ func tell(enc *encounter.Encounter, who, about core.EntityID) {
 		}
 		var p encounter.SightPayload
 		_ = json.Unmarshal(h.Payload, &p)
-		if h.Current {
+		if h.CurrentOn(perception.Sight) {
 			fmt.Printf("%s sees %s at (%g,%g)\n", who, about, p.X, p.Y)
 		} else {
 			fmt.Printf("%s holds a GHOST of %s at last-seen (%g,%g)\n", who, about, p.X, p.Y)

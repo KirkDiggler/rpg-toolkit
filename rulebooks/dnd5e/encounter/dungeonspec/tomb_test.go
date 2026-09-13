@@ -33,6 +33,7 @@ package dungeonspec_test
 // went and what it now insists on.
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -269,7 +270,7 @@ func (s *TombSuite) sees(observer core.EntityID, cell spatial.Position) bool {
 		// Channel-blind, because [perception.Holding] carries no per-channel
 		// list: a holding is current when ANY channel sustains it, and sight
 		// is the only channel this composition ever writes.
-		if h.Current {
+		if h.CurrentOn(perception.Sight) {
 			return true
 		}
 	}

@@ -1294,9 +1294,13 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		}
 		pos := location.Position
 
-		// A holding that is not current is a GHOST — a subject remembered
-		// from before rather than one being watched now.
-		if !h.Current {
+		// A holding not current ON SIGHT is a GHOST — a subject remembered
+		// from before rather than one being watched now. The channel is
+		// named because currency is now per-channel: the filter above asks
+		// what last LANDED (provenance), and this asks what is delivering
+		// it right now, which are different questions the moment a second
+		// channel or a Report exists.
+		if !h.CurrentOn(perception.Sight) {
 			path, reachable := e.routeToRemembered(m.ID, ownCell, pos)
 			if !reachable {
 				path = nil
