@@ -32,6 +32,7 @@ func (s *SkeletonTestSuite) TestNewSkeleton() {
 	s.Require().NotNil(skeleton)
 	s.Assert().Equal("skeleton-1", skeleton.GetID())
 	s.Assert().Equal("Skeleton", skeleton.Name())
+	s.Assert().Equal(monster.MindRetaliator, skeleton.Mind(), "a skeleton with a bow turns on whoever shoots it")
 
 	// Check stats
 	s.Assert().Equal(13, skeleton.HP())

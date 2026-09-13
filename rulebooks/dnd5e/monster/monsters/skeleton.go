@@ -58,6 +58,9 @@ func NewSkeleton(id string) *monster.Monster {
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
+	// A skeleton with a bow turns on whoever shoots it (rpg-toolkit#1725).
+	m.SetMind(monster.MindRetaliator)
+
 	// Add vulnerability to bludgeoning damage (D&D 5e SRD)
 	m.AddTraitData(monstertraits.MustVulnerabilityJSON(id, damage.Bludgeoning))
 
