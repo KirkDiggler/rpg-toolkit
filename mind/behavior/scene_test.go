@@ -61,6 +61,7 @@ type figure struct {
 type scene struct {
 	t       *testing.T
 	g       *behavior.Game
+	rooms   *rooms
 	figures map[core.EntityID]figure
 	senses  map[core.EntityID][]string
 	actors  []core.EntityID
@@ -70,15 +71,105 @@ type scene struct {
 func newScene(t *testing.T) *scene {
 	t.Helper()
 
-	g, err := behavior.New(&behavior.NewInput{Reader: reader{}})
+	r := &rooms{doors: make(map[string][]string)}
+
+	g, err := behavior.New(&behavior.NewInput{Reader: reader{}, Space: r})
 	require.NoError(t, err)
 
 	return &scene{
 		t:       t,
 		g:       g,
+		rooms:   r,
 		figures: make(map[core.EntityID]figure),
 		senses:  make(map[core.EntityID][]string),
 	}
+}
+
+// rooms is the proofs' Space: places are rooms, joined by doors, and a step
+// is one door. Distance is doors counted along the shortest way. This is
+// the geometry the spike was built on, and it lives here because a real
+// board has its own.
+type rooms struct {
+	doors map[string][]string
+}
+
+func (r *rooms) connect(a, b string) {
+	r.doors[a] = append(r.doors[a], b)
+	r.doors[b] = append(r.doors[b], a)
+}
+
+// distances is how many doors each room is from one room.
+func (r *rooms) distances(from string) map[string]int {
+	dist := map[string]int{from: 0}
+	queue := []string{from}
+
+	for len(queue) > 0 {
+		here := queue[0]
+		queue = queue[1:]
+
+		for _, next := range r.doors[here] {
+			if _, seen := dist[next]; seen {
+				continue
+			}
+
+			dist[next] = dist[here] + 1
+			queue = append(queue, next)
+		}
+	}
+
+	return dist
+}
+
+// Distance is doors along the shortest way; unknown when there is none.
+func (r *rooms) Distance(in *behavior.DistanceInput) (*behavior.DistanceOutput, error) {
+	d, known := r.distances(in.From)[in.To]
+
+	return &behavior.DistanceOutput{Steps: d, Known: known}, nil
+}
+
+// Toward is the first door on the way.
+func (r *rooms) Toward(in *behavior.TowardInput) (*behavior.TowardOutput, error) {
+	dist := r.distances(in.To)
+
+	best, found := "", false
+
+	for _, next := range r.doors[in.From] {
+		if d, reachable := dist[next]; reachable && (!found || d < dist[best]) {
+			best, found = next, true
+		}
+	}
+
+	if !found || dist[best] >= dist[in.From] {
+		return &behavior.TowardOutput{}, nil
+	}
+
+	return &behavior.TowardOutput{Next: best, Found: true}, nil
+}
+
+// Away is the door that puts the most rooms between them, and nothing when
+// every door leads closer or nowhere.
+func (r *rooms) Away(in *behavior.AwayInput) (*behavior.AwayOutput, error) {
+	dist := r.distances(in.AwayFrom)
+
+	here, placed := dist[in.From]
+	if !placed {
+		return &behavior.AwayOutput{}, nil
+	}
+
+	best, found := "", false
+
+	for _, next := range r.doors[in.From] {
+		d, reachable := dist[next]
+		if !reachable || d <= here {
+			continue
+		}
+
+		if !found || d > dist[best] {
+			best, found = next, true
+		}
+	}
+
+	return &behavior.AwayOutput{Next: best, Found: found}, nil
 }
 
 // Present is the truth's answer to a swing: is that subject really there.
@@ -93,7 +184,7 @@ func (s *scene) Present(subject core.EntityID) bool {
 // doors declares the dungeon: each pair is one door.
 func (s *scene) doors(pairs ...[2]string) {
 	for _, p := range pairs {
-		s.g.Connect(&behavior.ConnectInput{A: p[0], B: p[1]})
+		s.rooms.connect(p[0], p[1])
 	}
 }
 
@@ -107,7 +198,7 @@ func (s *scene) mind(who core.EntityID, m behavior.Mind, where string) {
 	s.actors = append(s.actors, who)
 }
 
-// bow arms an actor to strike one region away.
+// bow arms an actor to strike one step away.
 func (s *scene) bow(who core.EntityID) {
 	s.g.Sheet(&behavior.SheetInput{Actor: who, Sheet: behavior.Sheet{Reach: 1}})
 }
@@ -148,7 +239,7 @@ func (s *scene) leaves(id core.EntityID) {
 }
 
 // reach is the physics: an observer's senses reach a subject when they
-// reach the region the subject is in. The same senses serve every channel.
+// reach the place the subject is in. The same senses serve every channel.
 type reach struct {
 	where  map[core.EntityID]string
 	senses map[core.EntityID][]string
@@ -261,7 +352,7 @@ func (t *turn) aims() core.EntityID {
 func (t *turn) steps() (string, bool) {
 	t.s.t.Helper()
 
-	stepped, err := stage.Step(&stage.StepInput{Game: t.s.g, Situation: t.out.Situation, Intent: t.out.Intent})
+	stepped, err := stage.Step(&stage.StepInput{Space: t.s.rooms, Situation: t.out.Situation, Intent: t.out.Intent})
 	require.NoError(t.s.t, err)
 
 	return stepped.To, stepped.Moved
@@ -285,7 +376,7 @@ func (t *turn) attacks(source core.EntityID, why string) {
 	assert.Equal(t.s.t, source, t.aims(), why)
 }
 
-// walksTo asserts the actor steps toward something and arrives at a region.
+// walksTo asserts the actor steps toward something and arrives at a place.
 func (t *turn) walksTo(where, why string) {
 	t.s.t.Helper()
 
@@ -296,7 +387,7 @@ func (t *turn) walksTo(where, why string) {
 	assert.Equal(t.s.t, where, to, why)
 }
 
-// backsOff asserts the actor steps away from a region and lands somewhere
+// backsOff asserts the actor steps away from a place and lands somewhere
 // that is not it.
 func (t *turn) backsOff(from, why string) {
 	t.s.t.Helper()

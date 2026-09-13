@@ -72,7 +72,7 @@ type Deed struct {
 	Actor core.EntityID
 	// Target is who it was done to. Empty means nobody.
 	Target core.EntityID
-	// Where is the region it happened in.
+	// Where is the place it happened.
 	Where string
 }
 

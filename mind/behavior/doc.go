@@ -28,12 +28,18 @@
 // the mind ranks first, flee what it may not approach, else pass. Every rung
 // arrived with a use case that paid for it (R7).
 //
-// # What a payload means
+// # What a payload means, and how far away it is
 //
 // Perception carries payloads it never decodes. Behaviour decodes only one,
 // the deeds channel it wrote itself. Everything else is read through the
 // caller's [Reader], the way perception's physics is the caller's Reach:
 // this package holds no vocabulary for what a sighting says (R2).
+//
+// Nor does it hold a map. A place is a string, and what it means — a room,
+// a cell, a hex — is the caller's. The caller's [Space] answers how far apart
+// two places are and where one step toward or away from a place lands
+// (R11). The proofs in this module use rooms joined by doors; a real board
+// uses cells and a pathfinder; the ladder cannot tell the difference.
 //
 // # Inputs and outputs
 //

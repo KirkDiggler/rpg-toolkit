@@ -129,9 +129,9 @@ func TestUseCase2_TheSameHealOutOfSightChangesNothing(t *testing.T) {
 
 // Use case 3 — the archer keeps its range.
 //
-// Three regions in a line. The archer shoots the knight from the next
-// region; when the knight closes, it steps away rather than shooting; from
-// its new region it shoots again. The zombie beside it walks in and swings.
+// Three rooms in a line. The archer shoots the knight from the next
+// room; when the knight closes, it steps away rather than shooting; from
+// its new room it shoots again. The zombie beside it walks in and swings.
 // The archer's whole difference from the zombie is one number its mind
 // returns, and a bow on its sheet.
 func TestUseCase3_TheArcherKeepsItsRange(t *testing.T) {
@@ -145,7 +145,7 @@ func TestUseCase3_TheArcherKeepsItsRange(t *testing.T) {
 	s.person(knight, room, armoured, silent)
 	s.look()
 
-	s.turn(archer).attacks(knight, "it fires from the next region")
+	s.turn(archer).attacks(knight, "it fires from the next room")
 	s.turn(zombie).walksTo(room, "the zombie has to walk")
 
 	s.moves(knight, corridor)
@@ -158,7 +158,25 @@ func TestUseCase3_TheArcherKeepsItsRange(t *testing.T) {
 	a.moved()
 	s.look()
 
-	s.turn(archer).attacks(knight, "and shoots again from the next region")
+	s.turn(archer).attacks(knight, "and shoots again from the next room")
+}
+
+// Use case 3, the other half — the archer with its back to the wall.
+//
+// A room with no doors, the knight in it. The archer would rather keep a
+// step between them; there is nowhere to step. Keeping range is a
+// preference, not a fear: it stands and shoots rather than spending the
+// turn on a flight the space refuses.
+func TestUseCase3_TheArcherWithItsBackToTheWall(t *testing.T) {
+	s := newScene(t)
+	s.mind(archer, archerMind{}, room)
+	s.bow(archer)
+	s.sees([]string{room}, archer)
+
+	s.person(knight, room, armoured, silent)
+	s.look()
+
+	s.turn(archer).attacks(knight, "nowhere to step away to, so it shoots")
 }
 
 // Use case 4 — the intimidated goblin.
@@ -263,7 +281,10 @@ func TestWiringFaultsFailLoudly(t *testing.T) {
 	_, err := behavior.New(nil)
 	require.ErrorIs(t, err, behavior.ErrNoReader)
 
-	g, err := behavior.New(&behavior.NewInput{Reader: reader{}})
+	_, err = behavior.New(&behavior.NewInput{Reader: reader{}})
+	require.ErrorIs(t, err, behavior.ErrNoSpace)
+
+	g, err := behavior.New(&behavior.NewInput{Reader: reader{}, Space: &rooms{doors: make(map[string][]string)}})
 	require.NoError(t, err)
 
 	_, err = g.Turn(&behavior.TurnInput{Actor: zombie})
@@ -289,32 +310,30 @@ func TestACreatureOfUnknownPlaceIsNeverFled(t *testing.T) {
 		Name: "thing knight", Named: true, Bearer: knight,
 	}
 
+	r := &rooms{doors: make(map[string][]string)}
+	r.connect(room, corridor)
+
 	out, err := behavior.Decide(&behavior.DecideInput{
-		Situation: behavior.Situation{
-			Contacts: []behavior.Contact{unplaced},
-			Self:     behavior.Self{Where: room, Adjacent: []string{corridor}},
-		},
-		Mind: skittish,
+		Situation: behavior.Situation{Contacts: []behavior.Contact{unplaced}, Self: behavior.Self{Where: room}},
+		Mind:      skittish,
+		Space:     r,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, behavior.Pass, out.Intent.Verb, "nothing it can act on")
 }
 
-// A situation is the caller's to keep. Sorting or growing what it reports
-// must not reach the game's own dungeon.
+// A situation is the caller's to keep. Rewriting what it reports must not
+// reach the game's own sheets.
 func TestASituationDoesNotAliasTheGame(t *testing.T) {
 	s := newScene(t)
-	s.doors(door(room, corridor), door(room, hall))
 	s.mind(zombie, zombieMind{}, room)
 	s.frightens(zombie, knight)
 
 	first := s.turn(zombie).out.Situation.Self
-	first.Adjacent[0], first.Adjacent[1] = first.Adjacent[1], first.Adjacent[0]
 	first.Fences[0] = mage
 
 	second := s.turn(zombie).out.Situation.Self
-	assert.Equal(t, []string{corridor, hall}, second.Adjacent, "the dungeon is what it was")
-	assert.Equal(t, []core.EntityID{knight}, second.Fences, "and so is the fear")
+	assert.Equal(t, []core.EntityID{knight}, second.Fences, "the fear is what it was")
 }
 
 // A deed nobody did is a wiring fault, not a rumour.

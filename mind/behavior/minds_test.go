@@ -111,7 +111,7 @@ func (zombieMind) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) {
 
 // Keep is nothing. A zombie lets everything get as close as it likes.
 func (zombieMind) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
-	return &behavior.KeepOutput{Regions: 0}, nil
+	return &behavior.KeepOutput{Steps: 0}, nil
 }
 
 // captainMind merges a chant into the one robed figure standing where the
@@ -237,7 +237,7 @@ func (captainMind) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) {
 
 // Keep is nothing. A captain stands and fights.
 func (captainMind) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
-	return &behavior.KeepOutput{Regions: 0}, nil
+	return &behavior.KeepOutput{Steps: 0}, nil
 }
 
 func preference(c behavior.Contact) int {
@@ -254,7 +254,7 @@ func preference(c behavior.Contact) int {
 }
 
 // archerMind never merges, names reflexively, goes for whatever it noticed
-// first — and keeps a region between itself and anything alive.
+// first — and keeps a room between itself and anything alive.
 //
 // It is a zombie with a bow and one preference. That is deliberate: kiting
 // is not cleverness, it is a single number the ladder reads. The archer's
@@ -262,20 +262,20 @@ func preference(c behavior.Contact) int {
 // armed with lives on its sheet, not in its mind.
 type archerMind struct{ zombieMind }
 
-// Keep is one region. Anything that closes to the archer's own region is
+// Keep is one room. Anything that closes to the archer's own room is
 // something to step away from before it is something to shoot.
 func (archerMind) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
-	return &behavior.KeepOutput{Regions: 1}, nil
+	return &behavior.KeepOutput{Steps: 1}, nil
 }
 
 // keeps is any mind with a different Keep: the one knob the ladder reads
 // that the worked minds set to 0 or 1.
 type keeps struct {
 	behavior.Mind
-	regions int
+	steps int
 }
 
 // Keep is whatever the test says.
 func (k keeps) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
-	return &behavior.KeepOutput{Regions: k.regions}, nil
+	return &behavior.KeepOutput{Steps: k.steps}, nil
 }

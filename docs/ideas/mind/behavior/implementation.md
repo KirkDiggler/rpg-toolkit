@@ -120,13 +120,40 @@ records the reasoning.
   judgment was fix versus record, and the line was whether a use case
   already paid for the mechanism.
 
+## v0.2.0 — geometry is the caller's Space (#1723)
+
+The arrow was written down first: a monster on a real board that shoots
+while you are far and switches to melee when you close. The encounter is
+cells with line of sight and a pathfinder; v0.1.0 kept rooms and doors
+inside the module. The ladder did not care which, but `Self.Distance` and
+the game's routing did, and they would have been rewritten per grain.
+
+So the rooms left. `Space` is the third caller-owned seam: `Distance`,
+`Toward`, `Away`. `Self.Adjacent`, `Beyond`, `Game.Connect`, `Route`, and
+`Farther` are gone; `KeepOutput.Regions` became `Steps` because the unit is
+the Space's. The rooms-and-doors geometry moved into the tests as the
+proofs' `Space`, and every proof passes with the same assertions.
+
+One rung changed meaning on the way. Rung 0 used to fire when there was
+*anywhere* to step; it now asks the Space for a step away from that
+creature and fires only if one exists. An archer with its back to the wall
+stands and shoots instead of spending the turn on a flee the stage would
+refuse — and that claim survived its mutant until use case 3b (a room
+with no doors) was written to pay for it. Rung 3 deliberately did not
+follow: fear is not a preference, so a
+cornered creature still means to flee and the stage finds it nowhere. The
+word "region" left the module's docs; the dungeon builder owns regions.
+
 ## Left for a later rung
 
 - Persistence: names and fears alongside perception's `Data`. The
   encounter integration pays for it.
-- The encounter's `Reader` and `Truth`, and a `Reach` that answers the
-  deeds question ("whose senses reached this place") so `Land`'s caller
-  does not compute witnesses by hand.
+- The encounter's `Reader`, `Truth`, and `Space` (its canvas and
+  pathfinder), and a `Reach` that answers the deeds question ("whose senses
+  reached this place") so `Land`'s caller does not compute witnesses by
+  hand.
+- `perception.Qualify` (#1722) for `deed.Subject` and the tests' hearing
+  subjects, once it tags.
 - Retiring `examples/behavior` (#1677) and the `act`/`stage` seam still on
   `examples/perception`.
 - Everything under the design's non-goals, each with its use case.
