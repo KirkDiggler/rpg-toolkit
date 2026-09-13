@@ -107,7 +107,10 @@ like any other, unpaid). Each arrives with the use case that pays for it.
   under a subject qualified by channel (`deed.Subject(actor)`), one per
   figure the witness saw act, so a witness holds an actor's latest deed
   and nothing before it. The payload is said in each witness's terms: actor
-  and target are named only if the witness currently holds them on sight.
+  and target are named only if the witness currently holds them on sight —
+  or is them. An observer never perceives itself, so a witness holds no
+  sight of itself, and a deed done to it would otherwise name nobody; you
+  know when you have been shot at.
   The subject is not — it carries the actor's identity because attaching a
   deed is the claim that `deeds|X` and `X` are one thing, and a mind cannot
   make that claim without the `X`; what the payload vouches for and what the

@@ -198,8 +198,9 @@ type LandInput struct {
 // ErrNoActor if the deed has no actor.
 //
 // The deed's actor and target are named to each witness only if the witness
-// currently holds them on sight: a witness who could not see the healer
-// learns that a heal happened and not who did it. The deed lands on the
+// currently holds them on sight, or is them: a witness who could not see the
+// healer learns that a heal happened and not who did it, and a witness that
+// was the target knows it was. The deed lands on the
 // deeds channel, one qualified subject per figure, through perception's
 // Report door — so it is held and never current, it is judged by the
 // witness's mind like everything else, and the store cannot tell it from a
@@ -216,8 +217,8 @@ func Land(in *LandInput) error {
 		}
 
 		saw := in.Deed
-		saw.Actor = seen(held, in.Deed.Actor)
-		saw.Target = seen(held, in.Deed.Target)
+		saw.Actor = seen(held, witness, in.Deed.Actor)
+		saw.Target = seen(held, witness, in.Deed.Target)
 
 		_, err = in.Store.Report(perception.ReportInput{
 			Observer: witness,
@@ -234,8 +235,15 @@ func Land(in *LandInput) error {
 }
 
 // seen is the subject if the witness currently holds it on sight, else
-// nothing.
-func seen(held []perception.Holding, subject core.EntityID) core.EntityID {
+// nothing — except the witness itself, which it always knows. An observer
+// never perceives itself, so a witness holds no sight of itself, and
+// without this a deed done TO the witness would name nobody. You know when
+// you have been shot at, and you know when you did the shooting.
+func seen(held []perception.Holding, witness, subject core.EntityID) core.EntityID {
+	if subject == witness {
+		return subject
+	}
+
 	for _, h := range held {
 		if h.Subject == subject && h.CurrentOn(perception.Sight) {
 			return subject

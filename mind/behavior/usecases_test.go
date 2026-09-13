@@ -348,3 +348,23 @@ func TestADeedWithNoActorIsRefused(t *testing.T) {
 	})
 	require.ErrorIs(t, err, stage.ErrNoActor)
 }
+
+// A witness knows itself. An observer never perceives itself, so it holds
+// no sight of itself — but a deed done TO it must still say so, or "shot
+// at me" could never be believed by the one it happened to.
+func TestAWitnessKnowsItWasTheTarget(t *testing.T) {
+	s := newScene(t)
+	s.mind(zombie, zombieMind{}, room)
+	s.sees([]string{room}, zombie)
+
+	s.person(knight, room, armoured, silent)
+	s.look()
+
+	s.happens(knight, "attack", zombie, room)
+
+	held := s.turn(zombie).contactHolding(deed.Subject(knight))
+	saw, err := deed.Decode(held.Holdings[0].Payload)
+	require.NoError(t, err)
+	assert.Equal(t, knight, saw.Actor, "it saw the knight")
+	assert.Equal(t, zombie, saw.Target, "and it knows the knight attacked IT")
+}
