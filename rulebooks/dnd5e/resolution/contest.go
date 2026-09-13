@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -96,6 +97,8 @@ const (
 
 	// ImposedHealing is an immediate, post-clamp HP restoration.
 	ImposedHealing ImposedEffectKind = "healing"
+	// ImposedStabilized is instantaneous stabilization without HP recovery.
+	ImposedStabilized ImposedEffectKind = "stabilized"
 
 	// ImposedConditionRemoved is a condition the contest took OFF somebody.
 	//
@@ -174,6 +177,9 @@ type ImposedEffect struct {
 	Kind        ImposedEffectKind
 	Ref         *core.Ref
 	Description string
+
+	// Stabilization is the authoritative result for ImposedStabilized.
+	Stabilization character.StabilizeOutput
 
 	// RecipientID is who it landed on. Always the saver for a contest, and for
 	// a cast either party — True Strike's condition goes on the CASTER — which
