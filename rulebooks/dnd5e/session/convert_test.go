@@ -160,13 +160,15 @@ var omitted = map[string]string{
 	// caller actually asks, not on spec.
 	"perception.Holding.Observed": "first-observed timestamp; no caller asks how old a memory is yet (rpg-toolkit#1702's own out-of-scope note)",
 
-	// Current is the one bool intel's Current/Held Status enum and
-	// per-channel CurrentVia list collapsed into (a holding can only ever be
-	// sustained by the one channel that produced it). It is not carried
-	// verbatim — sightingStatus (convert.go) fans it out into Sighting's own
-	// Status/CurrentVia pair, kept for wire compatibility with hosts that
-	// already compare against intel's "current"/"held" words.
-	"perception.Holding.Current": "fans out into Status and CurrentVia (sightingStatus, convert.go), not a same-shaped passthrough",
+	// CurrentVia is every channel delivering the subject right now. It is
+	// not carried verbatim — sightingStatus (convert.go) fans it out into
+	// Sighting's own Status/CurrentVia pair, kept for wire compatibility
+	// with hosts that already compare against intel's "current"/"held"
+	// words. Until mind/perception v0.2.0 this was a Current bool and
+	// sightingStatus had to RECONSTRUCT the channel list from it; now the
+	// list is copied, which is why the seam can no longer emit a channel
+	// that is not actually sustaining anything.
+	"perception.Holding.CurrentVia": "fans out into Status and CurrentVia (sightingStatus, convert.go), not a same-shaped passthrough",
 }
 
 // TestEveryInnerFieldIsCarriedOrJustified is the completeness check.
