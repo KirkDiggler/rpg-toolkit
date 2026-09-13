@@ -41,6 +41,74 @@ func TestRecordCastSuite(t *testing.T) {
 	suite.Run(t, new(RecordCastSuite))
 }
 
+func (s *RecordCastSuite) TestMixedMissAndDeliveryRecordsInOrderAndSurvivesReload() {
+	enc := s.scene(everyoneStanding{})
+	spell := encounter.SpellIdentity{Ref: "dnd5e:spells:bless", Name: "Bless"}
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: spell,
+		Targets: []encounter.CastTargetResult{
+			{Target: castSkeleton, Missed: true},
+			{Target: castFighter, Results: []encounter.ActivationResult{{
+				Kind: encounter.ResultConditionApplied, Name: "Blessed",
+				Address: &encounter.ConditionAddress{MemberID: castFighter, ConditionRef: "dnd5e:conditions:blessed", SourceID: string(castBard)},
+			}}},
+			{Target: castBard, Missed: true},
+		},
+	})
+	s.Require().NoError(err)
+	before := s.storyEntries(enc, castBard, out.Seqs)
+	s.Equal([]string{encounter.BeatCast, encounter.BeatCastMissed, "condition-applied", encounter.BeatCastMissed}, s.beatNames(before))
+	s.JSONEq(`{"beat":"cast_missed","actor":"bard","target":"cast-skeleton","spell":{"ref":"dnd5e:spells:bless","name":"Bless"}}`, string(before[1].Payload))
+	s.JSONEq(`{"beat":"cast_missed","actor":"bard","target":"bard","spell":{"ref":"dnd5e:spells:bless","name":"Bless"}}`, string(before[3].Payload))
+	// Round-trip the persisted world, not just the live instance.
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+	after := s.storyEntries(reloaded, castBard, out.Seqs)
+	s.Equal(before, after)
+}
+
+func (s *RecordCastSuite) TestAllMissCastHasNoInventedSaveOrEffect() {
+	standing := &countingStanding{}
+	enc := s.scene(standing)
+	before := standing.calls
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: trueStrike,
+		Targets: []encounter.CastTargetResult{{Target: castFighter, Missed: true}, {Target: castSkeleton, Missed: true}},
+	})
+	s.Require().NoError(err)
+	s.Equal(before+1, standing.calls)
+	s.Equal([]string{encounter.BeatCast, encounter.BeatCastMissed, encounter.BeatCastMissed}, s.beatNames(s.storyEntries(enc, castBard, out.Seqs)))
+}
+
+func (s *RecordCastSuite) TestContradictoryLaterMissRejectsWholeTransaction() {
+	for _, withSave := range []bool{false, true} {
+		s.Run(map[bool]string{false: "results", true: "save"}[withSave], func() {
+			enc := s.scene(everyoneStanding{})
+			before := enc.WorldView().Log
+			target := encounter.CastTargetResult{Target: castSkeleton, Missed: true}
+			if withSave {
+				target.Save = failedSave()
+			} else {
+				target.Results = []encounter.ActivationResult{psychicDamage()}
+			}
+			out, err := enc.RecordCast(&encounter.RecordCastInput{
+				Actor: castBard, Spell: viciousMockery,
+				Targets: []encounter.CastTargetResult{{Target: castFighter, Missed: true}, target},
+			})
+			s.ErrorIs(err, encounter.ErrInvalidData)
+			s.Nil(out)
+			s.Equal(before, enc.WorldView().Log)
+		})
+	}
+}
+
 // scene keeps the skeleton behind a wall so first light does not form a fight;
 // cast tests need only a roster, a record, and an observable Standing.
 func (s *RecordCastSuite) scene(standing encounter.Standing) *encounter.Encounter {
@@ -586,7 +654,7 @@ func (s *RecordCastSuite) TestRecordCastClosedShapes() {
 		[]string{"Saver", "Ability", "Roll", "Total", "DC", "Calculation", "Succeeded"},
 		structFieldNames(encounter.CastSave{}),
 	)
-	s.Equal([]string{"Target", "Save", "Results"}, structFieldNames(encounter.CastTargetResult{}))
+	s.Equal([]string{"Target", "Missed", "Save", "Results"}, structFieldNames(encounter.CastTargetResult{}))
 	s.Equal(
 		[]string{"Actor", "Spell", "Targets", "ConcentrationBreaks", "ConcentrationChecks"},
 		structFieldNames(encounter.RecordCastInput{}),

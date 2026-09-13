@@ -1,5 +1,19 @@
 # Cleric creation implementation
 
+## Cast-miss recording prerequisite
+
+After #1710 released resolution `v0.46.0`, session inspection found that the
+encounter record had no representation for its new `CastTargetOutcome.Missed`.
+The encounter-only follow-up adds `CastTargetResult.Missed` and a `cast_missed`
+story beat with actor, target and spell identity. Misses interleave with other
+recipients' saves/effects in caller order. They carry no coordinates or roll.
+
+Full encounter tests and `go vet ./...` pass. Coverage includes mixed and
+all-miss casts, exact payload shape, JSON persistence/reload, and atomic
+rejection of a later miss that also claims a save or applied effect. Existing
+recording tests pass with the additive field's zero value. Session adoption
+remains pending this provider's release; no session pin is changed here.
+
 ## Bless resolution implementation (PR #1710)
 
 Resolution adopts released root `v0.164.0`. Blessed applications now use the

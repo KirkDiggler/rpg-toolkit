@@ -20,6 +20,11 @@ import (
 // activated it".
 const BeatCast = "cast"
 
+// BeatCastMissed records a cast that did not reach one named recipient.
+// Whether it missed is supplied by resolution; this record carries no aim,
+// actual position, invented roll, or explanation inferred from the world.
+const BeatCastMissed = "cast_missed"
+
 // BeatSaved is the "beat" value of the story beat this composition appends
 // when a target rolls a saving throw against a cast.
 //
@@ -195,7 +200,10 @@ type CastSave struct {
 // name another recipient (for example the caster); caller target order remains
 // the ordering authority.
 type CastTargetResult struct {
-	Target  MemberID
+	Target MemberID
+	// Missed is a supplied delivery outcome, mutually exclusive with Save
+	// and Results. False preserves the existing save/effect recording path.
+	Missed  bool
 	Save    *CastSave
 	Results []ActivationResult
 }
@@ -258,6 +266,13 @@ type spellIdentityPayload struct {
 	Name string `json:"name"`
 }
 
+type castMissedPayload struct {
+	Beat   string               `json:"beat"`
+	Actor  MemberID             `json:"actor"`
+	Target MemberID             `json:"target"`
+	Spell  spellIdentityPayload `json:"spell"`
+}
+
 type savedPayload struct {
 	Beat        string               `json:"beat"`
 	Saver       MemberID             `json:"saver"`
@@ -278,7 +293,7 @@ type concentrationEndedPayload struct {
 }
 
 // RecordCast appends one cast beat naming the ordered target list, then each
-// target's saved beat (when gated) and activation-result beats before moving to
+// target's miss beat or saved/effect beats before moving to
 // the next target. The entire input and every payload are validated before the
 // first append, so an input rejection cannot leave a partial transaction in
 // the story.
@@ -375,6 +390,9 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		if _, duplicate := seenTargets[target.Target]; duplicate {
 			return nil, fmt.Errorf("record cast: target %d %q is duplicated: %w", i, target.Target, ErrInvalidData)
 		}
+		if target.Missed && (target.Save != nil || len(target.Results) != 0) {
+			return nil, fmt.Errorf("record cast: target %d %q missed but carries a save or results: %w", i, target.Target, ErrInvalidData)
+		}
 		seenTargets[target.Target] = struct{}{}
 		targets[i] = target.Target
 	}
@@ -396,6 +414,9 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 
 	beatCount := 1
 	for _, target := range in.Targets {
+		if target.Missed {
+			beatCount++
+		}
 		if target.Save != nil {
 			beatCount++
 		}
@@ -408,6 +429,18 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 	})
 
 	for targetIndex, target := range in.Targets {
+		if target.Missed {
+			missBytes, marshalErr := json.Marshal(castMissedPayload{
+				Beat: BeatCastMissed, Actor: in.Actor, Target: target.Target, Spell: spell,
+			})
+			if marshalErr != nil {
+				return nil, fmt.Errorf("record cast: target %d miss payload: %w", targetIndex, marshalErr)
+			}
+			prepared = append(prepared, preparedActivationBeat{
+				payload: missBytes, subjects: []MemberID{in.Actor, target.Target},
+			})
+			continue
+		}
 		if target.Save != nil {
 			savedBytes, savedSubjects, saveErr := e.prepareSaveBeat(
 				fmt.Sprintf("record cast: target %d", targetIndex), in.Actor, target.Save, spell,
