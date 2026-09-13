@@ -13,7 +13,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -184,6 +186,88 @@ func (s *ClericFinalizeSuite) TestStatusProjectionStillRejectsCrossClassResource
 	out, err := char.StatusView(&StatusViewInput{})
 	s.Require().ErrorContains(err, "not in the cleric status-view owner catalog")
 	s.Nil(out, "invalid resources must not produce a partial sheet")
+}
+
+func (s *ClericFinalizeSuite) TestStabilizationPersistsWithoutHealingAndAllowsLaterDamageAndHealing() {
+	ctx := context.Background()
+	char, err := s.draft(s.classInput()).ToCharacter(ctx, "stabilize-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	char.ApplyDamage(ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{{Amount: char.GetMaxHitPoints(), Type: "slashing"}},
+	})
+	char.deathSaveState = &saves.DeathSaveState{Successes: 1, Failures: 2}
+	markSaved(char)
+	resourcesBefore := char.ToData().Resources
+	s.True(char.CanStabilize())
+	result, err := char.Stabilize()
+	s.Require().NoError(err)
+	s.Equal(combat.LifeStateDying, result.Before)
+	s.Equal(combat.LifeStateStabilized, result.After)
+	s.Zero(result.HitPoints)
+	s.Zero(result.Progress.Successes)
+	s.Zero(result.Progress.Failures)
+	s.True(result.Progress.Stabilized)
+	s.True(char.IsDirty())
+	s.Equal(resourcesBefore, char.ToData().Resources)
+	s.False(CanMakeDeathSave(char))
+	s.True(combat.ParticipationFor(char.ParticipationView().LifeState).AutoPassesTurn)
+
+	encoded, err := json.Marshal(char.ToData())
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(encoded, &stored))
+	bus := events.NewEventBus()
+	loaded, err := LoadFromData(ctx, &stored, bus)
+	s.Require().NoError(err)
+	view, err := loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	s.Equal(combat.LifeStateStabilized, view.View.LifeState)
+	s.Zero(view.View.HitPoints.Current)
+	s.True(loaded.CanStabilize(), "already stable remains eligible")
+	repeated, err := loaded.Stabilize()
+	s.Require().NoError(err)
+	s.Equal(combat.LifeStateStabilized, repeated.Before)
+	s.Equal(result.Progress, repeated.Progress)
+	loaded.ApplyDamage(ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{{Amount: 1, Type: "slashing"}},
+	})
+	s.Equal(combat.LifeStateDying, loaded.ParticipationView().LifeState)
+	s.Equal(1, loaded.GetDeathSaveState().Failures)
+	s.Zero(loaded.GetDeathSaveState().Successes)
+	s.True(result.Progress.Stabilized, "returned progress is detached")
+	_, err = loaded.Stabilize()
+	s.Require().NoError(err)
+	s.Require().NoError(dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: loaded.GetID(), Amount: 1, Source: "test-healing",
+	}))
+	s.Equal(combat.LifeStateConscious, loaded.ParticipationView().LifeState)
+	s.False(loaded.CanStabilize())
+}
+
+func (s *ClericFinalizeSuite) TestStabilizationRejectsIneligibleRecipientsWithoutMutation() {
+	for _, state := range []string{"conscious", "dead"} {
+		s.Run(state, func() {
+			char, err := s.draft(s.classInput()).ToCharacter(context.Background(), "invalid-stabilize", events.NewEventBus())
+			s.Require().NoError(err)
+			if state == "dead" {
+				char.hitPoints = 0
+				char.deathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
+			}
+			markSaved(char)
+			before := char.ToData()
+			s.False(char.CanStabilize())
+			out, err := char.Stabilize()
+			s.Require().Error(err)
+			s.Nil(out)
+			s.Equal(before, char.ToData())
+			s.False(char.IsDirty())
+		})
+	}
+	var absent *Character
+	s.False(absent.CanStabilize())
+	out, err := absent.Stabilize()
+	s.Require().Error(err)
+	s.Nil(out)
 }
 
 func (s *ClericFinalizeSuite) TestExistingSheetDoesNotReceiveImplicitSpellGrantsOnLoad() {

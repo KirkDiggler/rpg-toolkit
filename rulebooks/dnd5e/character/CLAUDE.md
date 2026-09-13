@@ -22,6 +22,30 @@ This module provides:
 
 ## Critical Architectural Patterns
 
+### New-class acceptance includes the private sheet
+
+Use a draft created through the public choice/finalization path for at least
+one regression. Do not seed resources, known spells, or class features to make
+that creation regression pass. A focused condition fixture may be added after
+finalization to exercise projection, but is not evidence of a successful cast.
+
+Before declaring the class supported:
+
+1. Finalize, serialize, reload, and call `StatusView` on the resulting character.
+   Verify the actual resource keys, display names, capacities and current values.
+2. Inspect the owner-resource and feature-resource catalogs in `status_view.go`,
+   plus condition display/loader registration. Add only entries the class really
+   owns; preserve rejection of unknown/cross-class data with no partial output.
+3. Verify projected status after spending, effects, reload and rest. Source-qualified
+   effects must preserve separate source identities; unqualified effects must not
+   invent a source. Returned views must remain detached from later mutations.
+4. Hand off private-sheet, offer, execution and live/reloaded-result acceptance to
+   API/web using the actual published provider version. Provider projection does
+   not establish that host authorization/observability or browser rendering works.
+
+This closes the gap exposed by Cleric #1720: finalization and casting worked,
+but the closed status catalog omitted Cleric and refused the whole private sheet.
+
 ### 1. Draft → Character Two-Phase Creation
 
 **Pattern:**

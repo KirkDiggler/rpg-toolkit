@@ -1,4 +1,135 @@
-# Cleric contribution plan — Cure Wounds
+# Cleric level-one contribution plan
+
+## Current direction: expand level-one play, preparation deferred
+
+The user confirmed the implemented Cleric slice, including the private-sheet
+fix, has been deployed and tested end to end. This is user-reported acceptance;
+it does not imply every domain, advertised cantrip, or first-level spell works.
+PR #1721 merged as `9ec6aae8` and its published root tag is `v0.165.1`.
+
+Continue filling out what a level-one Cleric can do, including cantrips and
+first-level spells. Keep preparation deferred: use the existing supported-spell
+acquisition policy without adding a preparation picker, rest-time selection,
+or automatic backfills. Do not introduce generic infrastructure speculatively;
+let the next concrete spell or domain feature expose the missing capability.
+
+The current supported first-level acquisition pool is Bane, Bless, Command,
+Cure Wounds and Healing Word. Acquisition lists and descriptive spell data are
+not proof of executable behavior: for example, Guidance, Light, Resistance and
+Spare the Dying are offered as cantrip choices but need their execution support
+checked separately from their catalog entries.
+
+Next-slice inspection candidates include those remaining cantrips and spells
+such as Shield of Faith, Guiding Bolt and Inflict Wounds. This is an inspection
+queue, not an approved implementation order or a claim that their contracts
+already fit. For each candidate, verify the edition-specific rules and current
+main, then record existing reusable behavior, the actual missing provider work,
+and whether any input/result cannot cross the existing API/proto contract.
+Prefer a bounded playable contribution; discuss new gameplay/default decisions
+with the user before implementing them. Keep domain acquisition/grants as
+explicit slices rather than silently expanding a spell PR.
+
+Each slice must cover native acquisition, private projection, offers/execution,
+authoritative spending/results, persistence and relevant rest/concentration
+cleanup. Publish one module PR at a time, then consume the real release. API
+adoption may require only a pin; proto changes require an identified wire-shape
+gap. Track toolkit, API and browser evidence independently using the checklist
+below. Preparation is not a prerequisite for continuing this work.
+
+## Spare the Dying wiring inspection
+
+### Accepted scope and first provider slice
+
+The user authorized implementation. Use existing character death-save/life-state
+support only; saving downed monsters and natural recovery after 1d4 hours are
+deferred. A living character at zero HP remains eligible when already stable.
+Casting still spends its action. Use touch reach (currently five feet with
+blocking boundaries), with no added visibility prerequisite. Dead and positive-HP
+characters fail eligibility before payment. No slot, roll, healing, concentration
+replacement or resurrection is involved.
+
+The first root-module PR supplies `Character.CanStabilize`, `Character.Stabilize`
+and the generic `CastProfile.Stabilize` delivery declaration. Stabilization
+clears both death-save counters, preserves HP, marks the recipient dirty and
+returns detached before/after state and progress for result reporting. Existing
+damage and healing transitions remain authoritative after stabilization.
+
+Do not register Spare the Dying as executable in this provider PR: it is already
+selectable, so enabling its profile before resolution/session understand the
+delivery would advertise an unusable cast. After the root release, add delivery,
+target eligibility and neutral result recording in their owning modules, one
+PR/release at a time; then enable content against consumers that handle it.
+Coordinate the stabilization wire result and consumer adoption explicitly.
+
+Provider regression coverage uses a genuinely finalized Cleric, applies damage,
+stabilizes, reloads JSON, reads private status, confirms repeat stabilization,
+then verifies subsequent damage and healing. Profile validation/round-trip and
+ineligible-recipient refusal are covered separately. These are provider tests,
+not a claim of session casting or end-to-end acceptance.
+
+Inspected toolkit `origin/main` at `7ed4c96e`. This is an investigation, not
+tested spell support; implementation authorization is recorded above. The existing stabilized
+life state persists, suppresses death saves, retains unconsciousness at zero HP,
+auto-passes turns, and is cleared by subsequent applied damage or recovery.
+There is no public authoritative character stabilization operation; the old
+reset method is deliberately inert. Do not mutate a copied death-save state or
+manufacture death-save successes to implement the spell.
+
+The root cast profile currently supports damage, conditions and healing, with
+no instantaneous stabilization delivery. Resolution's gateless activation and
+result conversion need a corresponding delivery/result. Touch reach can be
+reused, but healing eligibility cannot substitute for living-at-zero eligibility.
+Session selects special candidates only for known-creature and healing profiles;
+it needs provider-owned stabilization eligibility and the usual offer/preflight
+agreement. Root content must declare an action cantrip, with no slot, save,
+healing roll or concentration. Persistence must mark the recipient dirty.
+
+Encounter activation results and the current proto activation-result union have
+no stabilization result. DeathSaveRolled describes a real rolled death save and
+HealingApplied describes actual healing; neither is an honest substitute.
+Propose a reusable stabilization result for live/Story reporting, verify it with
+the contract owner, then adopt published releases in the established sequence.
+Existing private-sheet life/death-save fields already represent the final state.
+
+Before implementation, resolve already-stable target behavior and the current
+down-monster limitation (monsters are classified as defeated, without character
+death-save state). Explicitly scope natural recovery after 1d4 hours: no matching
+recovery scheduler was found. These are not reasons to silently invent a new
+monster lifecycle or omit recovery behavior. Tests should cover unchanged zero HP,
+cleared save progress, no concentration replacement, no slot spend, turn skipping,
+damage restarting dying, later healing, reload, and authoritative live/Story facts.
+
+Rules evidence: [2014 Spare the Dying](https://www.dndbeyond.com/sources/dnd/basic-rules-2014/spells#SparetheDying)
+and [stabilization](https://www.dndbeyond.com/sources/dnd/basic-rules-2014/combat#StabilizingaCreature).
+
+## Private-sheet acceptance correction (#1720)
+
+The creation/persistence/casting plan omitted a required read path: projecting
+the normally finalized character for the owner's private sheet. Cleric resources
+were created correctly, but `StatusView`'s closed owner catalog omitted Cleric.
+Condition source identities also survived mechanics and persistence but were
+dropped by that private projection. This is a projection coverage gap, not
+evidence of missing spellcasting mechanics.
+
+Toolkit PR #1721 adds the Cleric Hit Dice/level-one slot catalog arm and projects
+source-qualified condition identity. Its regression finalizes a Life Cleric,
+checks resources, spends a slot, adds focused Bless/Bane fixtures, reloads JSON,
+and verifies sources, rest cleanup/restoration and detached resource views.
+Cross-class resource rejection remains strict. The condition fixtures do not
+constitute cast acceptance. Local root-module tests/vet/lint and GitHub race
+checks passed on `038f5070`; merge/release and user-reported end-to-end closure
+are recorded in the current-direction section above.
+
+For subsequent slices, record the actual published root
+version and API adoption, then verify native unseeded creation, owner
+GetCharacterData, combat offers/casts, authoritative resources/effects, and
+private-sheet plus Story recovery after reconnect. Verify observable condition
+sources at the host boundary. API tests and browser acceptance must each report
+their own evidence; passing one does not close the other. Keep preparation,
+automatic domain grants and Knowledge Domain's extra acquisition choices separate.
+
+The reusable prevention checklist is in `character/CLAUDE.md` under this rulebook;
+cross-project handoff evidence requirements are in the repository `CLAUDE.md`.
 
 ## Bless acquisition completion
 

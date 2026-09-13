@@ -27,6 +27,39 @@ type CastProfileSuite struct {
 	suite.Suite
 }
 
+func (s *CastProfileSuite) TestStabilizationIsAnInstantaneousTouchDelivery() {
+	profile := actions.CastProfile{
+		Target: actions.CastTargetTouch, RangeFeet: 5, MinTargets: 1, MaxTargets: 1,
+		Stabilize: true,
+	}
+	s.Require().NoError(profile.Validate())
+	encoded, err := json.Marshal(profile)
+	s.Require().NoError(err)
+	var restored actions.CastProfile
+	s.Require().NoError(json.Unmarshal(encoded, &restored))
+	s.Require().NoError(restored.Validate())
+	s.True(restored.Clone().Stabilize)
+	for _, tc := range []struct {
+		name   string
+		change func(*actions.CastProfile)
+	}{
+		{"no consequence", func(p *actions.CastProfile) { p.Stabilize = false }},
+		{"ranged", func(p *actions.CastProfile) { p.Target = actions.CastTargetOneCreature }},
+		{"concentration", func(p *actions.CastProfile) { p.Concentration = &actions.CastConcentration{TurnEnds: 10} }},
+		{"save", func(p *actions.CastProfile) { p.Save = &saves.SaveGate{} }},
+		{"healing", func(p *actions.CastProfile) { p.Healing = &healing.Declaration{} }},
+		{"condition", func(p *actions.CastProfile) { p.Effects = []actions.CastEffect{{}} }},
+		{"damage", func(p *actions.CastProfile) { p.Damage = []damage.Damage{{}} }},
+		{"two targets", func(p *actions.CastProfile) { p.MaxTargets = 2 }},
+	} {
+		s.Run(tc.name, func() {
+			invalid := profile.Clone()
+			tc.change(&invalid)
+			s.Error(invalid.Validate())
+		})
+	}
+}
+
 type castLedger struct {
 	actions int
 	pools   map[coreResources.ResourceKey]int
@@ -229,7 +262,7 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 	s.Run("no consequence at all", func() {
 		profile := gatelessProfile()
 		profile.Effects = nil
-		s.Require().ErrorContains(profile.Validate(), "damage or a delivered condition")
+		s.Require().ErrorContains(profile.Validate(), "cast must declare damage, a delivered condition, healing, or stabilization")
 	})
 
 	s.Run("a save word neither half nor negated", func() {
