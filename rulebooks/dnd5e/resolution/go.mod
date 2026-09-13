@@ -6,9 +6,9 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
-	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.1.1-0.20260913022359-67896d528ec3
+	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.164.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.79.1-0.20260913022811-798d27151b2d
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.80.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.13.0
 	github.com/stretchr/testify v1.11.1
 )
