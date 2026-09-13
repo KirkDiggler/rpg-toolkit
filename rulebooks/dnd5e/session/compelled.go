@@ -70,7 +70,8 @@ func (d compelledDriver) next() encounter.TurnDriver {
 // compile-time proof the wrapper satisfies what it is handed to.
 var _ encounter.TurnDriver = compelledDriver{}
 
-// compelledDriverFor wraps the host's driver for one write verb.
+// compelledDriverFor wraps one write verb's own driver — the one already on
+// its scope ([writeScope.driver]), which is why this takes no driver argument.
 func (m *Manager) compelledDriverFor(ctx context.Context, scope *writeScope) compelledDriver {
 	return compelledDriver{ctx: ctx, m: m, scope: scope}
 }
