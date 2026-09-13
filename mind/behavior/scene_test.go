@@ -454,5 +454,5 @@ func (t *turn) holdsNothingOf(subject core.EntityID, why string) {
 // channel, so the store can never merge it with the sight of the figure.
 // Merging is the mind's judgment.
 func hearingOf(id core.EntityID) core.EntityID {
-	return core.EntityID(string(hearing) + "|" + string(id))
+	return perception.Qualify(hearing, id)
 }
