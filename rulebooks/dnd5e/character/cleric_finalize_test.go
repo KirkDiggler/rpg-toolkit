@@ -35,7 +35,7 @@ func (s *ClericFinalizeSuite) classInput() *SetClassInput {
 		Choices: ClassChoices{
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
-			Spells:   []spells.Spell{spells.Bane, spells.Command, spells.CureWounds, spells.HealingWord},
+			Spells:   []spells.Spell{spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
 				{ChoiceID: choices.ClericArmor, OptionID: choices.ClericArmorChainMail},
@@ -101,7 +101,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.ElementsMatch([]string{
 		refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
 	}, data.KnownCantrips)
-	s.ElementsMatch([]string{refs.Spells.Bane().String(), refs.Spells.Command().String(), refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String()}, data.KnownSpells)
+	s.ElementsMatch([]string{refs.Spells.Bane().String(), refs.Spells.Bless().String(), refs.Spells.Command().String(), refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String()}, data.KnownSpells)
 	encoded, err = json.Marshal(data)
 	s.Require().NoError(err)
 	var stored Data
@@ -175,7 +175,7 @@ func (s *ClericFinalizeSuite) TestInvalidChoicesCannotFinalize() {
 		{"missing cantrip", func(in *SetClassInput) { in.Choices.Cantrips = in.Choices.Cantrips[:2] }},
 		{"missing spells", func(in *SetClassInput) { in.Choices.Spells = nil }},
 		{"missing spell", func(in *SetClassInput) { in.Choices.Spells = in.Choices.Spells[:2] }},
-		{"unsupported spell", func(in *SetClassInput) { in.Choices.Spells[0] = spells.Bless }},
+		{"unsupported spell", func(in *SetClassInput) { in.Choices.Spells[0] = spells.DetectMagic }},
 		{"wrong class spell", func(in *SetClassInput) { in.Choices.Spells[0] = spells.Thunderwave }},
 		{"duplicate spell", func(in *SetClassInput) { in.Choices.Spells[1] = in.Choices.Spells[0] }},
 		{"wrong class cantrip", func(in *SetClassInput) { in.Choices.Cantrips[0] = spells.FireBolt }},

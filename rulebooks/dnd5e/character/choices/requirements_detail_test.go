@@ -24,7 +24,7 @@ func (s *RequirementsDetailTestSuite) TestClericAcquiresAllSupportedFirstLevelSp
 	s.Require().NotNil(req)
 	s.Equal(ClericSpells1, req.ID)
 	s.Equal(1, req.SpellLevel)
-	s.Equal([]spells.Spell{spells.Bane, spells.Command, spells.CureWounds, spells.HealingWord}, req.Options)
+	s.Equal([]spells.Spell{spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord}, req.Options)
 	s.Equal(len(req.Options), req.Count)
 	for _, option := range req.Options {
 		s.True(spells.HasCastProfile(option))

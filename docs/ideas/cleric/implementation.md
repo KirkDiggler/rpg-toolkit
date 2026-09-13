@@ -1,5 +1,14 @@
 # Cleric creation implementation
 
+## Bless acquisition
+
+With session `v0.82.0` released, Cleric's supported first-level selection adds
+Bless. The existing creation/persistence test now finalizes all five spells,
+round-trips both draft and character data, validates each executable profile,
+and preserves the spell list across slot spending and long-rest recovery.
+Choice API expectations and complete-submission fixtures are updated; the
+unsupported-spell refusal now uses Detect Magic. Bard selection is unchanged.
+
 ## Bless session integration (PR #1712)
 
 The session now uses the released provider target query, carries the configured

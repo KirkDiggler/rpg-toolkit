@@ -689,7 +689,7 @@ func getClericRequirements() *Requirements {
 	// Temporary spell access while preparation is deferred. These supported
 	// class spells use the existing choice pipeline; this is not a spellbook
 	// or a domain grant, and does not implement a prepared-spell limit.
-	supported := []spells.Spell{spells.Bane, spells.Command, spells.CureWounds, spells.HealingWord}
+	supported := []spells.Spell{spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord}
 	return &Requirements{
 		Skills: &SkillRequirement{
 			ID:      getSkillChoiceID(classes.Cleric),

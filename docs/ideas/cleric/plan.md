@@ -1,5 +1,20 @@
 # Cleric contribution plan — Cure Wounds
 
+## Bless acquisition completion
+
+Session #1712 merged as `ab7f7a80`, releasing `session v0.82.0`.
+The root-module acquisition slice adds Bless to Cleric's supported first-level
+pool through the existing selection/finalization path. The temporary
+select-all requirement now contains five spells: Bane, Bless, Command,
+Cure Wounds and Healing Word. Preparation and automatic domain grants remain
+deferred. Existing finalized sheets are not backfilled during load; unfinished
+drafts must include the expanded supported selection before finalizing.
+
+No consumer pins change in this slice. API/SDK adoption still needs an explicit
+stale-target policy (recommended `refuse`), and API/web adoption must expose
+the expanded choice list and cast-miss events before claiming a complete
+player-facing Cleric journey.
+
 ## Active session integration
 
 Session adopts released resolution `v0.46.0`, encounter `v0.79.0`, and root
