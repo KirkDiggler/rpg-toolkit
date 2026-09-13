@@ -38,6 +38,28 @@ below. Preparation is not a prerequisite for continuing this work.
 
 ## Spare the Dying wiring inspection
 
+### Executable content after session adoption
+
+Session #1741 merged as `89e3ac92`, publishing `session v0.86.0` with stabilization
+offers, persistence and typed live/Story results. The root-content slice now
+registers Spare the Dying as a one-action cantrip with touch reach, exactly one
+recipient and only `CastProfile.Stabilize`. It declares no slot cost, roll, save,
+healing, condition or concentration. Existing cantrip choices remain unchanged.
+
+Content tests cover the exact profile/price, clone and JSON round-trip, supported
+cantrip filtering, and compatibility with the bonus-action spell restriction.
+A normally finalized Cleric chooses it through the draft path, reloads draft and
+character JSON, compiles the definition, retains both slots and reads private
+status. This is acquisition/content evidence, not a public session cast.
+
+After this root release, the next session-only PR adopts its real tag and runs
+public `Afford` → `Cast` acceptance using a finalized Cleric, including stable
+turn behavior and private status after reload. Hosts adopting the enabled root
+content need at least session `v0.86.0`, resolution `v0.48.0`, and encounter
+`v0.82.0`; the upcoming session release will pin the complete tested combination.
+Protos/API/web result adoption remains pending. Preparation, monster saving and
+timed natural recovery remain deferred.
+
 ### Session adoption after encounter recording
 
 Encounter #1740 merged as `d534145b`, publishing `encounter v0.82.0`.

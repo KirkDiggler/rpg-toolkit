@@ -164,6 +164,9 @@ const SacredFlameRangeFeet = 60
 // Higher-level scaling is outside this level-one cast-content slice.
 const SacredFlameDamage = "1d8"
 
+// SpareTheDyingReachFeet is the current physical touch reach for this cantrip.
+const SpareTheDyingReachFeet = 5
+
 // TrueStrikeTargetParameter is the True Strike condition's parameter naming
 // the creature the advantage is good against.
 const TrueStrikeTargetParameter = "target_id"
@@ -498,6 +501,19 @@ var castContent = map[Spell]castProfileBuilder{
 					CounterpartKey: CommandCasterParameter,
 					OptionKey:      CommandWordParameter,
 				}},
+			}
+		},
+	},
+	SpareTheDying: {
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Spare the Dying",
+		cost:    cantripCost(),
+		build: func(_ int) actions.CastProfile {
+			// Recipient eligibility and stabilization belong to the character
+			// provider. Monsters and timed natural recovery remain deferred.
+			return actions.CastProfile{
+				RangeFeet: SpareTheDyingReachFeet, Target: actions.CastTargetTouch,
+				MinTargets: 1, MaxTargets: 1, Stabilize: true,
 			}
 		},
 	},
