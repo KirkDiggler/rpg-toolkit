@@ -28,6 +28,39 @@ func TestCastContentSuite(t *testing.T) {
 	suite.Run(t, new(CastContentSuite))
 }
 
+func (s *CastContentSuite) TestBlessDeclaresKnownTargetsAndOwnedConcentration() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Bless})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(*refs.Spells.Bless(), d.Ref)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(actions.CastTargetKnownCreature, d.Cast.Target)
+	s.Equal(30, d.Cast.RangeFeet)
+	s.Equal(1, d.Cast.MinTargets)
+	s.Equal(3, d.Cast.MaxTargets)
+	s.Nil(d.Cast.Save)
+	s.Empty(d.Cast.Damage)
+	s.Nil(d.Cast.Healing)
+	s.Require().Len(d.Cast.Effects, 1)
+	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
+	s.Equal(*refs.Conditions.Blessed(), d.Cast.Effects[0].Ref)
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Require().NotNil(d.Cast.Concentration)
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	clone := d.Clone()
+	clone.Cast.Effects[0].CounterpartKey = "wrong"
+	clone.Cast.Concentration.TurnEnds = 1
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	for _, bounds := range [][2]int{{0, 3}, {2, 1}} {
+		invalid := d.Clone()
+		invalid.Cast.MinTargets, invalid.Cast.MaxTargets = bounds[0], bounds[1]
+		s.Error(invalid.Validate())
+	}
+}
+
 func (s *CastContentSuite) TestHealingWordDeclaresRangedBonusActionHealing() {
 	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
 	s.Require().NotNil(d)
@@ -63,7 +96,7 @@ func (s *CastContentSuite) TestHealingWordDeclaresRangedBonusActionHealing() {
 
 func (s *CastContentSuite) TestEveryCompiledSpellCarriesRuleClassification() {
 	for id, level := range map[spells.Spell]int{
-		spells.HealingWord: 1, spells.CureWounds: 1, spells.Bane: 1,
+		spells.HealingWord: 1, spells.CureWounds: 1, spells.Bane: 1, spells.Bless: 1,
 		spells.Thunderwave: 1, spells.DissonantWhispers: 1, spells.Command: 1,
 		spells.SacredFlame: 0, spells.BladeWard: 0, spells.TrueStrike: 0,
 		spells.ViciousMockery: 0, spells.Thunderclap: 0,
@@ -118,7 +151,7 @@ func (s *CastContentSuite) TestBaneCompilesItsCompleteLevelOneProfile() {
 	s.Equal(10, profile.Concentration.TurnEnds)
 	s.True(profile.Concentration.SkipFirstTurnEnd)
 	s.True(spells.HasCastProfile(spells.Bane))
-	s.Equal([]spells.Spell{spells.Bane}, spells.Castable([]spells.Spell{spells.Bless, spells.Bane}))
+	s.Equal([]spells.Spell{spells.Bane}, spells.Castable([]spells.Spell{spells.CharmPerson, spells.Bane}))
 }
 
 func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {

@@ -280,6 +280,18 @@ var longRestCases = map[string]longRestCase{
 		outcome:       longRestRemove,
 		removalReason: "long rest",
 	},
+	refs.Conditions.Blessed().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"blessed"},
+			"member_id":"member-1","source_id":"cleric-1",
+			"source_ref":{"module":"dnd5e","type":"spells","id":"bless"}
+		}`),
+		ownerID:          "member-1",
+		expectedRef:      refs.Conditions.Blessed(),
+		expectedSourceID: "cleric-1",
+		outcome:          longRestRemove,
+		removalReason:    "long rest",
+	},
 	refs.Conditions.Baned().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"baned"},

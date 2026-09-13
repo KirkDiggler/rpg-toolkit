@@ -204,6 +204,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return cc, nil
 	},
+	refs.Conditions.Blessed().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		blessed := &BlessedCondition{}
+		if err := blessed.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load blessed condition")
+		}
+		return blessed, nil
+	},
 	refs.Conditions.Baned().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		baned := &BanedCondition{}
 		if err := baned.loadJSON(data); err != nil {

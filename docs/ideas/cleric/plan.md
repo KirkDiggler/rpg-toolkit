@@ -311,6 +311,52 @@ spent slots on load, and retain rejection of duplicates, unsupported entries,
 and incorrect counts. Slot initialization, casting mechanics, preparation,
 domain grants, and adjacent repository pins do not change in this slice.
 
+### Bless: provider, resolution, session, acquisition
+
+Healing Word acquisition #1707 merged as `7d79fad7`, releasing rulebook
+`v0.163.0`. Bless is the next authorized spell. Its reference is the
+[2014 Basic Rules Bless entry](https://www.dndbeyond.com/spells/2016-bless):
+one action, 30 feet, up to three creatures, concentration up to one minute,
+and an additive d4 on attack rolls and saving throws.
+
+The user explicitly chose known targets within range and a clear path,
+including the caster and dying/stabilized recipients. Current sight is not
+required. This must be a declared targeting contract, not spell-name dispatch
+or reuse of attack eligibility. Dead/defeated targets are not eligible; Bless
+adds no undead/construct exclusion. Keep the existing one-to-three selected
+target convention and ten-subsequent-turn-end concentration timing.
+
+1. **Root provider:** add `BlessedCondition`, canonical ref/loader/display and
+   cleanup registration, plus the level-one Bless profile and a declared
+   `CastTargetKnownCreature` contract. Reuse contributed dice, source-qualified
+   addresses, non-stacking groups, and the existing concentration owner.
+   No acquisition or consumer pin changes in this PR.
+2. **Resolution, after the root release:** pin the actual tag; bind Blessed
+   in the existing prepared condition delivery; support known-creature
+   eligibility and range/clear-path validation. Prove selected self, multiple
+   recipients, dying/death saves, attacks and saves with sourced calculations,
+   Bless plus Bane, overlapping casters, reload, and all concentration endings.
+   Validate before payment or RNG and preserve the spell-turn gate.
+3. **Session, after resolution release:** update the real pin together with
+   offer/execution plumbing. Project known targets including self rather than
+   current-sight attack candidates, revalidate on execution, and prove the
+   resulting casts and bonuses through persisted story and actual turn flow.
+   Check whether this consumer requires any additional projection fields.
+4. **Root acquisition, after session release:** add Bless to the existing
+   supported Cleric selection without silently implementing domain preparation.
+
+Continue one Go module per PR, merge/tag before the next consumer pin, and no
+temporary versions or adjacent repository work. Preparation, domain automatic
+grants, upcasting, and world-clock casting remain deferred.
+
+After #1709 and #1706, the next Bless consumer work starts from resolution
+`v0.45.1`, encounter `v0.78.0`, and session `v0.80.0`. Encounter reads return
+`perception.Holding` with `Current`; persisted channel data remains under
+`EncounterData.Perception.Intel`. Bless's known-target policy must not filter
+out a remembered target merely because `Current` is false. The root provider
+has no encounter/perception dependency and needs no pin or mechanic changes
+for this refactor.
+
 ### Healing Word content provider (after #1700)
 
 #1700 merged as `412f3dc7` and released rulebook `v0.161.0`. The next provider

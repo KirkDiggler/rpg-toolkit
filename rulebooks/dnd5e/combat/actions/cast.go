@@ -16,9 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
-// CastTargetRule names who a cast may be pointed at. Two rules, because two is
-// what the content has: a cast that needs no target at all and a cast that
-// names one creature.
+// CastTargetRule names the targeting contract a cast's consumer must enforce.
 type CastTargetRule string
 
 const (
@@ -30,6 +28,12 @@ const (
 	// CastTargetOneCreature is the existing creature target kind. MinTargets
 	// and MaxTargets carry cardinality, including Bane's one-to-three range.
 	CastTargetOneCreature CastTargetRule = "one_creature"
+
+	// CastTargetKnownCreature selects known creatures within range and a clear
+	// path, without requiring current sight. It includes the caster and
+	// dying/stabilized recipients; dead/defeated creatures are not eligible.
+	// MinTargets and MaxTargets carry the number selected.
+	CastTargetKnownCreature CastTargetRule = "known_creature"
 
 	// CastTargetArea is a cast whose recipients the ENGINE derives, from a
 	// shape the content declares. The caller names nobody.
@@ -260,7 +264,7 @@ func (p CastProfile) Validate() error {
 		if p.MinTargets != 1 || p.MaxTargets != 1 || p.RangeFeet != 5 {
 			return fmt.Errorf("touch cast must select one creature within five feet")
 		}
-	case CastTargetOneCreature:
+	case CastTargetOneCreature, CastTargetKnownCreature:
 		if p.MinTargets < 1 {
 			return fmt.Errorf("creature-targeted cast must require at least one target")
 		}

@@ -77,6 +77,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.Commanded().String():         {Name: CommandedName},
 	refs.Conditions.Concentrating().String():     {Name: ConcentratingName},
 	refs.Conditions.Baned().String():             {Name: BanedName},
+	refs.Conditions.Blessed().String():           {Name: BlessedName},
 	refs.Conditions.Prone().String():             {Name: "Prone"},
 	refs.Conditions.OpportunityAttack().String(): {Name: "Opportunity Attack"},
 
