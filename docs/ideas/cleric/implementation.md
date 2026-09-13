@@ -1,5 +1,24 @@
 # Cleric creation implementation
 
+## Spare the Dying: public session acceptance
+
+Root #1742 merged as `9c99b7e8` and published `v0.168.0`. Session now pins that
+release, retaining resolution `v0.48.0` and encounter `v0.82.0`. No production
+session behavior needed changing for executable content adoption.
+
+Public `Afford` → `Cast` tests load unedited saved output from normal Cleric
+draft finalization with Spare the Dying selected. Finalization fixture provenance
+is documented in session/testdata; no bus enters session. Dying and already-stable
+patients stabilize at zero HP, clear both counters, spend the action, preserve
+both slots and roll no dice. Revalidation refuses newly healed/dead patients
+before payment. JSON repository reload reproduces the live cast/stabilization
+events in Story, private status reports stable at zero HP, and turn advancement
+does not require the stable patient to roll a death save or hold up the clock.
+
+Windows session tests/vet and Linux race tests pass; Linux lint reports zero
+issues. Module formatting and tidy are complete. Protos/API/web stabilization-result adoption
+and browser evidence remain pending; this is toolkit acceptance only.
+
 ## Spare the Dying: executable content
 
 With session `v0.86.0`, resolution `v0.48.0` and encounter `v0.82.0` published,
