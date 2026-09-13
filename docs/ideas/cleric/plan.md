@@ -349,6 +349,14 @@ Continue one Go module per PR, merge/tag before the next consumer pin, and no
 temporary versions or adjacent repository work. Preparation, domain automatic
 grants, upcasting, and world-clock casting remain deferred.
 
+After #1709 and #1706, the next Bless consumer work starts from resolution
+`v0.45.1`, encounter `v0.78.0`, and session `v0.80.0`. Encounter reads return
+`perception.Holding` with `Current`; persisted channel data remains under
+`EncounterData.Perception.Intel`. Bless's known-target policy must not filter
+out a remembered target merely because `Current` is false. The root provider
+has no encounter/perception dependency and needs no pin or mechanic changes
+for this refactor.
+
 ### Healing Word content provider (after #1700)
 
 #1700 merged as `412f3dc7` and released rulebook `v0.161.0`. The next provider
