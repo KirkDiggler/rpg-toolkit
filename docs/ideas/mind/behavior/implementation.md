@@ -272,6 +272,16 @@ now the turn driver says it too. `StartSession` proves a world loads
 started, so neither has a session id to resolve against and asking the
 host would have it mint a driver for a session that may never exist.
 
+It wraps `ErrInvalidWorld` rather than carrying a sentinel of its own,
+where the pattern it cites — `encounter.RefusingStriker` — has
+`ErrRefusingStriker`. Raised by the review and kept as written: the two
+stand-ins beside it at the same call site, `refusingCheckResolver` and
+`refusingWitness`, both wrap `ErrInvalidWorld`, so the package's own
+family stays coherent and a host matching on one matches all three. The
+choice is recorded here so it stays visible next to the pattern it
+diverges from; a dedicated sentinel becomes right when a caller needs to
+tell the three apart, which none does today.
+
 Two sentinels landed rather than one. Neither-set stays
 `ErrIncompleteConfig` — it is the S8 by-name refusal every required
 capability gets — with the row renamed to name **both** doors, since
@@ -294,9 +304,24 @@ somebody else, and the price is that a read fails closed when the host
 cannot name a session's driver. It does not widen the host's cache: reads
 touch the same bounded set of sessions writes do.
 
+**"Once per verb" is counted, not assumed.** The review found the doc's
+load-bearing promise — the source is asked once per verb and that answer
+serves the whole verb — held up by nothing but the current shape of
+`openForWrite`. The fake source now counts asks per session id beside the
+drivers it built, and the two proofs assert exactly one ask per verb: per
+`EndTurn` on the write path, per `Roster` on the read path, on the
+succeeding read as well as the two refused ones. The counter is the point
+rather than the map: `built` is keyed by session, so a verb that resolved
+twice landed in the same entry and looked identical to one that resolved
+once. It matters for the host the doc itself names — one that mints per
+ask, from per-session material fetched fresh — where a second ask is a
+second driver rather than a wasted map lookup.
+
 | Mutant | Killed by |
 |--------|-----------|
 | the host source returns the same driver for every session id | `TestEachSessionDrivesItsOwnTurnsWithItsOwnDriver`, on "the host was asked about two sessions and built two drivers" — one entry, not two |
+| a second resolution inside one write verb, at the end of `openForWrite` | the same test, on "one write verb, one ask": 9 asks where 8 were expected |
+| a second resolution inside one read verb, at the top of `loadWorld` | `TestAResolverErrorFailsTheVerbAndDrivesNoTurn`, on "one read verb, one ask": 8 asks where 7 were expected |
 | `openForWrite` resolves a constant session id, so every write uses one session's driver | the same test, on "so did the second's, for the member of the same name": the second session's driver never took a turn |
 | `compelledDriver.next()` returns `Behavior()` instead of the scope's driver | the same test, on "the first session's driver took its own skeleton's turn": the host's driver is never reached for an uncompelled member |
 | `resolveTurnDriver` falls back to `Behavior()` on a source error | `TestAResolverErrorFailsTheVerbAndDrivesNoTurn`: the host's error never reaches the host |

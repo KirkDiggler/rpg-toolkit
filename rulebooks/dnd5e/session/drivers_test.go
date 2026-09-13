@@ -23,19 +23,35 @@ import (
 // errFor is how the fail-closed proof arms a refusal on a live Manager: a host
 // that cannot say which driver serves a session has a wiring fault, and this
 // is the shape of one.
+//
+// asks COUNTS, and built does not, which is the difference the counter exists
+// for. built is keyed by session id, so a verb that resolved twice would land
+// in the same entry and look identical to one that resolved once. The promise
+// [TurnDriverSource] makes is that the source is asked ONCE per verb and that
+// answer serves the whole verb — the thing that stops two capabilities in one
+// call from holding two different brains — and only a count can hold that up.
+// It matters most for the host the doc itself names: one that mints per ask,
+// from per-session material fetched fresh, where a second ask is a second
+// driver rather than a wasted map lookup.
 type perSessionDrivers struct {
 	built  map[string]*mindedPerSession
+	asks   map[string]int
 	errFor error
 	nilFor bool
 }
 
 func newPerSessionDrivers() *perSessionDrivers {
-	return &perSessionDrivers{built: map[string]*mindedPerSession{}}
+	return &perSessionDrivers{built: map[string]*mindedPerSession{}, asks: map[string]int{}}
 }
 
 // DriverFor hands session sessionID its own driver, building one the first
 // time that session is seen.
 func (s *perSessionDrivers) DriverFor(_ context.Context, sessionID string) (session.TurnDriver, error) {
+	// Counted BEFORE any refusal: an ask that failed is still an ask, and the
+	// fail-closed proof reads this to show the verb asked once and stopped
+	// there rather than retrying.
+	s.asks[sessionID]++
+
 	if s.errFor != nil {
 		return nil, s.errFor
 	}
@@ -135,15 +151,24 @@ func startDungeon(t *testing.T, mgr *session.Manager, sessionID, fighter string,
 	}
 }
 
-// endTurn hands the clock to whatever the session's driver has to answer for.
-func endTurn(t *testing.T, mgr *session.Manager, sessionID, member string) {
+// endTurn hands the clock to whatever the session's driver has to answer for,
+// and counts what that one verb cost the host's source.
+//
+// THE SELECTOR IS FETCHED FIRST, OUTSIDE THE COUNT, on purpose: Afford is a
+// read verb and asks once itself, so folding it in would measure two verbs and
+// prove neither. The window is the EndTurn alone.
+func endTurn(t *testing.T, mgr *session.Manager, source *perSessionDrivers, sessionID, member string) {
 	t.Helper()
 
 	declarationID := currentEndTurnID(t, mgr, sessionID, member)
+
+	before := source.asks[sessionID]
 	_, err := mgr.EndTurn(context.Background(), &session.EndTurnInput{
 		Session: sessionID, Member: member, DeclarationID: declarationID,
 	})
 	require.NoError(t, err)
+	require.Equal(t, before+1, source.asks[sessionID],
+		"one write verb, one ask: the driver is resolved once and carried on the scope")
 }
 
 // Two sessions under one Manager get two drivers, and what one of them
@@ -167,8 +192,8 @@ func TestEachSessionDrivesItsOwnTurnsWithItsOwnDriver(t *testing.T) {
 	startDungeon(t, mgr, "sess-a", "fighter-a", "skel-1", "skel-2")
 	startDungeon(t, mgr, "sess-b", "fighter-b", "skel-1")
 
-	endTurn(t, mgr, "sess-a", "fighter-a")
-	endTurn(t, mgr, "sess-b", "fighter-b")
+	endTurn(t, mgr, source, "sess-a", "fighter-a")
+	endTurn(t, mgr, source, "sess-b", "fighter-b")
 
 	require.Len(t, source.built, 2, "the host was asked about two sessions and built two drivers")
 	first, second := source.built["sess-a"], source.built["sess-b"]
@@ -211,17 +236,35 @@ func TestAResolverErrorFailsTheVerbAndDrivesNoTurn(t *testing.T) {
 	require.Empty(t, driver.asked, "nothing has been driven yet")
 
 	source.errFor = boom
+
+	askedBeforeWrite := source.asks["sess"]
 	_, err := mgr.EndTurn(context.Background(), &session.EndTurnInput{
 		Session: "sess", Member: "fighter-a", DeclarationID: before,
 	})
 	require.ErrorIs(t, err, boom, "the host's own error reaches the host, wrapped")
+	require.Equal(t, askedBeforeWrite+1, source.asks["sess"],
+		"it asked once and stopped there: a refused verb neither retries nor asks a second time")
 
 	// A read is refused by the same door, for the same reason: a world this
 	// package builds never holds a brain that belongs to somebody else.
-	_, readErr := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "fighter-a"})
+	askedBeforeRefusedRead := source.asks["sess"]
+	_, readErr := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a"})
 	require.ErrorIs(t, readErr, boom)
+	require.Equal(t, askedBeforeRefusedRead+1, source.asks["sess"], "and a refused read asks once too")
 
 	source.errFor = nil
+
+	// ONE READ VERB, ONE ASK, on the path that succeeds. The two counts above
+	// are taken where resolution FAILS, which is the cheap half: an error
+	// returns before anything downstream could ask again. This is the half the
+	// promise is actually about — the read path resolves beside the world and
+	// carries that answer through the whole verb.
+	askedBeforeRead := source.asks["sess"]
+	_, err = mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a"})
+	require.NoError(t, err)
+	require.Equal(t, askedBeforeRead+1, source.asks["sess"],
+		"one read verb, one ask: the driver is resolved next to the world and carried")
+
 	require.Empty(t, driver.asked, "no turn was driven")
 	require.Equal(t, before, currentEndTurnID(t, mgr, "sess", "fighter-a"),
 		"and the fighter's turn is still the current one: the verb wrote nothing")
@@ -240,7 +283,7 @@ func TestASourceThatHandsOverNoDriverIsRefused(t *testing.T) {
 	startDungeon(t, mgr, "sess", "fighter-a", "skel-1")
 
 	source.nilFor = true
-	_, err := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "fighter-a"})
+	_, err := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a"})
 	require.ErrorIs(t, err, session.ErrNoTurnDriver)
 	require.Contains(t, err.Error(), "sess", "and it names the session nobody could name a driver for")
 }
