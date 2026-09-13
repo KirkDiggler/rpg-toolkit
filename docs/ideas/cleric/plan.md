@@ -1,5 +1,26 @@
 # Cleric contribution plan — Cure Wounds
 
+## Active Bless resolution slice
+
+Root provider #1708 is merged and released as `rulebooks/dnd5e v0.164.0`.
+Resolution adopts that tag with encounter `v0.78.0`. Known-creature casts use
+the observer's canonical location testimony, including remembered locations,
+for range and clear-path checks. Self needs no self holding; conscious, dying,
+and stabilized recipients are eligible. Dead/defeated recipients are not.
+
+The user chose two explicit host-configured stale-target policies: `refuse`
+rejects the whole cast before spending; `attempt` pays once and reports a miss
+only for recipients no longer at their remembered locations. No policy is
+silently selected, and no hidden live position replaces the aimed location.
+Mixed casts retain caller target order. An all-miss concentration cast follows
+the existing all-save behavior: it ends the previous hold and starts an empty
+hold with the declared duration.
+
+Session must carry the same policy through offers and execution and preserve
+the new per-target miss result when recording. That is the next module slice;
+Bless acquisition follows the session integration. External repository pins,
+preparation, and upcasting remain outside this slice.
+
 Design baseline: toolkit main `fd4cdade`. Session handoff updated 2026-09-12
 against main `ead003f0` after #1693, #1694, and #1695 merged.
 Implementation is authorized by the user in this conversation after their maintainer discussion.

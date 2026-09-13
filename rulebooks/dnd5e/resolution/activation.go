@@ -669,7 +669,7 @@ func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 			return nil, err
 		}
 	}
-	return m.deliverCast(recipients, noEffect), nil
+	return m.deliverCast(cast, recipients, noEffect), nil
 }
 
 // deliverCast publishes what the cast delivers, inside the collector every
@@ -686,7 +686,7 @@ func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 // carries: WHICH spell travels with the condition itself, as the source ref it
 // was built with. That is the split raging already makes between "a feature
 // applied this" and "the feature was Rage".
-func (m *activationMachine) deliverCast(recipients []core.Entity, noEffect string) Step {
+func (m *activationMachine) deliverCast(cast *Participants, recipients []core.Entity, noEffect string) Step {
 	return Gather{
 		name: fmt.Sprintf("cast %s for %s", m.cast.source.String(), m.member),
 		run: func(ctx context.Context, bus events.EventBus) (next Step, err error) {
@@ -711,8 +711,8 @@ func (m *activationMachine) deliverCast(recipients []core.Entity, noEffect strin
 			}
 
 			for index, delivery := range m.cast.conditions {
-				if publishErr := publishCondition(
-					ctx, bus, delivery.condition, recipients[index], dnd5eEvents.ConditionSourceSpell,
+				if _, publishErr := publishCondition(
+					ctx, bus, cast, delivery.condition, recipients[index], dnd5eEvents.ConditionSourceSpell,
 				); publishErr != nil {
 					return nil, fmt.Errorf("cast %s for %q: %w",
 						m.cast.source.String(), m.member, publishErr)

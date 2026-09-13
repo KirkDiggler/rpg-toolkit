@@ -33,6 +33,10 @@ type ActionInput struct {
 	// TargetIDs is the canonical ordered target list for every profile arm.
 	TargetIDs []string
 
+	// StaleTargetPolicy is required for known-creature casts. The host chooses
+	// whether an outdated location refuses the cast or produces a paid miss.
+	StaleTargetPolicy StaleTargetPolicy
+
 	// AreaMembers are the recipients a caller DERIVED from the profile's
 	// declared footprint, for a [combatActions.CastTargetArea] cast. Ignored by
 	// every other arm.
@@ -147,6 +151,11 @@ func normalizeActionTargets(ref core.Ref, targetID string, targetIDs []string) (
 func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	definition := in.Definition.Clone()
 	profile := definition.Cast
+	if profile.Target == combatActions.CastTargetKnownCreature {
+		if err := in.StaleTargetPolicy.validate(); err != nil {
+			return nil, err
+		}
+	}
 	casterID := in.AttackerID
 	targetIDs := append([]string(nil), normalizedTargetIDs...)
 
@@ -211,7 +220,7 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	return &castMachine{
 		spell: definition.Ref, spellName: definition.Name, casterID: casterID,
 		profile: profile.Clone(), concentration: profile.Concentration, targets: entries,
-		derivedTargets: derived,
+		derivedTargets: derived, staleTargetPolicy: in.StaleTargetPolicy,
 	}, nil
 }
 
@@ -233,8 +242,11 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 // surrounding [CastOutcome.Targets] preserves caller order.
 type CastTargetOutcome struct {
 	TargetID string
-	Save     *ContestOutcome
-	Applied  []ImposedEffect
+	// Missed reports an attempted delivery to an outdated location. It never
+	// carries the recipient's actual position.
+	Missed  bool
+	Save    *ContestOutcome
+	Applied []ImposedEffect
 }
 
 // CastOutcome is one paid cast with every target outcome in caller order.
@@ -268,6 +280,7 @@ func (CastOutcome) isOutcome() {}
 // silently discarded question.
 type castTargetMachine struct {
 	targetID string
+	missed   bool
 	inner    Machine
 	first    Step
 }
@@ -285,7 +298,8 @@ type castMachine struct {
 	// derivedTargets records that this cast's recipients were worked out from a
 	// declared footprint rather than named by a caller. It changes which
 	// preflight checks apply — see Start.
-	derivedTargets bool
+	derivedTargets    bool
+	staleTargetPolicy StaleTargetPolicy
 }
 
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
@@ -302,7 +316,9 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 		}
 		if target.targetID != "" {
 			var err error
-			if m.profile.Target == combatActions.CastTargetTouch {
+			if m.profile.Target == combatActions.CastTargetKnownCreature {
+				target.missed, err = validateKnownCreatureTarget(ctx, cast, m.casterID, target.targetID, m.profile.RangeFeet, m.staleTargetPolicy)
+			} else if m.profile.Target == combatActions.CastTargetTouch {
 				err = validateTouchTarget(ctx, m.casterID, target.targetID)
 			} else if m.profile.Healing != nil {
 				err = validateRangedHealingTarget(ctx, m.casterID, target.targetID, m.profile.RangeFeet)
@@ -336,6 +352,13 @@ func (m *castMachine) resolveTarget(index int) Step {
 		return Done{Outcome: m.outcome}
 	}
 	target := m.targets[index]
+	if target.missed {
+		// Defer recording until the door has paid, just like a delivery.
+		return Gather{name: "miss known target", run: func(context.Context, events.EventBus) (Step, error) {
+			m.outcome.Targets = append(m.outcome.Targets, CastTargetOutcome{TargetID: target.targetID, Missed: true})
+			return m.resolveTarget(index + 1), nil
+		}}
+	}
 	return Request{
 		name:    "cast " + m.spell.String() + " on " + target.targetID,
 		machine: startedMachine{first: target.first},
@@ -499,6 +522,10 @@ func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutco
 func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffect, error) {
 	applied := make([]ImposedEffect, 0, len(effects))
 	for _, effect := range effects {
+		if effect.Kind == EffectConditionRemoved {
+			applied = append(applied, removalEffect(effect.Address, effect.Reason))
+			continue
+		}
 		if effect.Kind == EffectHealingApplied {
 			ref, err := core.ParseString(effect.Ref)
 			if err != nil {
