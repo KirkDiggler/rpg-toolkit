@@ -12,6 +12,7 @@ import (
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
@@ -245,6 +246,20 @@ func (s *CastSuite) castRow(spell spells.Spell) session.Declaration {
 	}
 	s.Require().Failf("no row", "the bard was offered no Cast row for %s", spell)
 	return session.Declaration{}
+}
+
+// providerFootprint reads one spell's authored footprint from the same content
+// compiler production uses. Tests compare the seam projection to this value
+// rather than repeating spell dimensions as literals.
+func (s *CastSuite) providerFootprint(spell spells.Spell) combatActions.Footprint {
+	s.T().Helper()
+	definition := spells.CastDefinition(spells.CastDefinitionInput{
+		Spell: spell, SpellSaveDC: bardSaveDC,
+	})
+	s.Require().NotNil(definition)
+	s.Require().NotNil(definition.Cast)
+	s.Require().NotNil(definition.Cast.Area)
+	return definition.Cast.Area.Footprint
 }
 
 // candidateFor finds one member's row in a declaration's candidate universe.
@@ -907,6 +922,13 @@ func (s *CastSuite) TestThunderclapIsOfferedAsAnAreaWithNobodyToAimAt() {
 	s.True(row.Available, "and casting it into an empty room would still be legal")
 	s.Zero(row.MinTargets)
 	s.Zero(row.MaxTargets)
+
+	authored := s.providerFootprint(spells.Thunderclap)
+	s.Require().NotNil(row.Footprint)
+	s.Equal(session.FootprintShapeRadius, row.Footprint.Shape)
+	s.Equal(authored.SizeFeet, row.Footprint.SizeFeet,
+		"the seam copies the provider's exact radius instead of owning the spell dimension")
+	s.Equal(session.FootprintOriginCaster, row.Footprint.Origin)
 }
 
 // TestThunderwaveIsOfferedAsACellToAimAt is the other half of the area offer,
@@ -924,6 +946,59 @@ func (s *CastSuite) TestThunderwaveIsOfferedAsACellToAimAt() {
 	s.Equal(session.TargetCell, row.TargetKind, "a caster-edge box is aimed, and a cell is what aims it")
 	s.Empty(row.Candidates, "there is nothing to choose between")
 	s.True(row.Available)
+
+	authored := s.providerFootprint(spells.Thunderwave)
+	s.Require().NotNil(row.Footprint)
+	s.Equal(session.FootprintShapeBox, row.Footprint.Shape)
+	s.Equal(authored.SizeFeet, row.Footprint.SizeFeet,
+		"the seam copies the provider's exact edge instead of owning the spell dimension")
+	s.Equal(session.FootprintOriginCasterEdge, row.Footprint.Origin)
+}
+
+// TestACompiledUnavailableAreaKeepsItsFootprint pins the distinction between a
+// compiled offer whose budget fails and an early blocker that compiled no
+// content. Presentation survives the former so the dock does not change shape
+// merely because the spell slot ran out.
+func (s *CastSuite) TestACompiledUnavailableAreaKeepsItsFootprint() {
+	bard := castingBardWithSpells("bard", spells.Thunderwave)
+	spent := bard.Resources[resources.SpellSlotLevel1]
+	spent.Current = 0
+	bard.Resources[resources.SpellSlotLevel1] = spent
+	s.scene(bard, 1)
+
+	row := s.castRow(spells.Thunderwave)
+	s.False(row.Available)
+	s.Require().NotNil(row.Why)
+	s.Equal(session.ShortfallNoBudget, row.Why.Reason)
+	s.NotEmpty(row.ID, "the offer compiled even though its current budget gate failed")
+	s.Require().NotNil(row.Footprint)
+	s.Equal(s.providerFootprint(spells.Thunderwave).SizeFeet, row.Footprint.SizeFeet)
+}
+
+// TestNonAreaAndEarlyBlockedCastsCarryNoFootprint pins both absence cases. A
+// client receives provider-authored presentation only: it never infers an
+// outline from a spell ref, and an early blocker does not pretend content was
+// compiled when the turn gate stopped before the sheet was read.
+func (s *CastSuite) TestNonAreaAndEarlyBlockedCastsCarryNoFootprint() {
+	s.scene(castingBard("bard", spells.ViciousMockery), 1)
+
+	s.Nil(s.castRow(spells.ViciousMockery).Footprint, "a targeted spell declares no area")
+
+	out, err := s.mgr.Afford(context.Background(), &session.AffordInput{
+		Session: "sess", Member: "skeleton",
+	})
+	s.Require().NoError(err)
+	var blocked []session.Declaration
+	for _, row := range out.Declarations {
+		if row.Verb == session.VerbCast {
+			blocked = append(blocked, row)
+		}
+	}
+	s.Require().Len(blocked, 1)
+	s.False(blocked[0].Available)
+	s.Empty(blocked[0].ID)
+	s.Nil(blocked[0].Spell)
+	s.Nil(blocked[0].Footprint)
 }
 
 // cellOf is where the composition actually put somebody. Members are placed by
