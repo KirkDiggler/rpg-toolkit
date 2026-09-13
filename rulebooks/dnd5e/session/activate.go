@@ -339,6 +339,9 @@ func activationResults(effects []resolution.ActivationEffect) []encounter.Activa
 			Calculation: rollCalculationFor(effect.Calculation),
 			Description: effect.Description, Reason: effect.Reason,
 		}
+		if effect.Kind == resolution.EffectStabilized {
+			result.Stabilization = stabilizationDetail(effect.Stabilization)
+		}
 		switch result.Kind {
 		case encounter.ResultConditionApplied, encounter.ResultConditionRemoved:
 			result.Address = &encounter.ConditionAddress{

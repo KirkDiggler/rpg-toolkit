@@ -1497,6 +1497,7 @@ func (ConcentrationEndedBody) isEventBody() {}
 type ActivationResultBody struct {
 	Actor            string                `json:"actor"`
 	HealingApplied   *HealingAppliedBody   `json:"healing_applied,omitempty"`
+	Stabilized       *StabilizedBody       `json:"stabilized,omitempty"`
 	DamageApplied    *DamageAppliedBody    `json:"damage_applied,omitempty"`
 	ConditionApplied *ConditionAppliedBody `json:"condition_applied,omitempty"`
 	ConditionRemoved *ConditionRemovedBody `json:"condition_removed,omitempty"`
@@ -1505,6 +1506,18 @@ type ActivationResultBody struct {
 }
 
 func (ActivationResultBody) isEventBody() {}
+
+// StabilizedBody reports instantaneous stabilization without healing or a roll.
+// The state and progress are authoritative provider facts, including zero values.
+type StabilizedBody struct {
+	Target     string            `json:"target"`
+	SourceRef  string            `json:"source_ref"`
+	SourceName string            `json:"source_name"`
+	Before     LifeState         `json:"before"`
+	After      LifeState         `json:"after"`
+	HitPoints  int               `json:"hit_points"`
+	Progress   DeathSaveProgress `json:"progress"`
+}
 
 // HealingAppliedBody carries authoritative post-clamp healing facts from the
 // rulebook, including the requested amount and the source that authored it.

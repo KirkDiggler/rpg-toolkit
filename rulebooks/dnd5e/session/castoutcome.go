@@ -156,6 +156,15 @@ func imposedResult(
 	}
 
 	switch imposed.Kind {
+	case resolution.ImposedStabilized:
+		if imposed.Ref == nil {
+			return encounter.ActivationResult{}, fmt.Errorf("%w: stabilization has no source ref", ErrInvalidWorld)
+		}
+		return encounter.ActivationResult{
+			Kind: encounter.ResultStabilized, Target: encounter.MemberID(imposed.RecipientID),
+			Ref: imposed.Ref.String(), Name: imposed.Description,
+			Stabilization: stabilizationDetail(imposed.Stabilization),
+		}, nil
 	case resolution.ImposedCondition:
 		if imposed.Ref == nil {
 			return encounter.ActivationResult{}, fmt.Errorf(
