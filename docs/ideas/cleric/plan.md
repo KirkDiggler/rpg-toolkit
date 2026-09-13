@@ -40,6 +40,21 @@ below. Preparation is not a prerequisite for continuing this work.
 
 ### Resolution delivery after the provider release
 
+Resolution #1739 merged as `a0d4a5e5`, publishing `resolution v0.48.0`.
+The encounter-only recording slice adds `ResultStabilized` to the shared cast /
+ability result family. Its required neutral detail carries before/after state,
+unchanged HP and resulting death-save progress; no healing or rolled death save
+is synthesized. Both recording verbs reject malformed inputs before appending
+and preserve the detail through JSON reload and audience-scoped Story reads.
+Encounter needs no rulebook dependency or pin change for this primitive carrier.
+
+Next, after encounter merges and publishes its tag, update session against that
+tag and resolution `v0.48.0`. Session must wire stabilization offers and preflight,
+map `ImposedStabilized` into recording and live results, and test save/reload.
+Main also includes session `v0.85.0`'s supplied-driver changes; preserve those
+contracts when adopting. Executable content and proto/API adoption are still
+pending, with monsters and timed recovery deferred.
+
 Root PR #1738 merged and published `rulebooks/dnd5e v0.167.0`. The next
 resolution-only slice adopts that real tag and executes `CastProfile.Stabilize`
 through the existing gateless cast. Character eligibility and touch reach run

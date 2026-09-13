@@ -664,11 +664,15 @@ func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 	// root event type. A result says how far a creature went and what stopped
 	// it in words a host can persist without knowing what either means.
 	s.Equal([]string{
-		"Kind", "Target", "Address", "Ref", "Name",
+		"Kind", "Target", "Address", "Ref", "Name", "Stabilization",
 		"Amount", "Requested", "Before", "After", "Calculation",
 		"DamageType", "Description", "Reason",
 		"Moved", "StoppedBy",
 	}, structFieldNames(encounter.ActivationResult{}))
+	s.Equal([]string{
+		"Before", "After", "HitPoints", "Successes", "Failures", "SuccessesNeeded",
+		"FailuresRemaining", "Stabilized", "Dead",
+	}, structFieldNames(encounter.StabilizationDetail{}))
 	s.Equal([]string{"Actor", "Target", "Ability", "Results"}, structFieldNames(encounter.RecordActivationInput{}))
 	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordActivationOutput{}))
 }
