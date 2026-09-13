@@ -14,16 +14,18 @@ README holds the nineteen lessons that shaped these rules.
 ## The arrow
 
 A monster on a real board that changes its mind because of what it
-perceives. The first scene a player will see: a monster shoots while you
-are far, switches to melee when you close, and goes back to the bow when
-you step away. Every slice is judged by whether it brings that scene
-closer.
+perceives. The first scene a player will see: a bow skeleton shooting at
+the closest player turns on the one who shot at it, and when that player
+puts the bow away and closes to melee, goes back to whoever is closest.
+The mind is the skeleton's: it ranks by a deed it witnessed, the way the
+captain ranks the healer first, with a shot in place of a heal. Every
+slice is judged by whether it brings that scene closer.
 
 ## Scope
 
 A monster's mind: what it holds, what it makes of it, what it means to do,
 and where that lands. Behaviour is a customer of `mind/perception`
-v0.2.0 — the three asks it took there are
+v0.3.0 — the three asks it took there are
 [#1704](https://github.com/KirkDiggler/rpg-toolkit/issues/1704) — and it
 never learns anything about the world except through perception and the
 values a caller hands it.
@@ -208,7 +210,10 @@ the stage to say a deed in a witness's terms.
 
 Perception's own errors pass through `Observe`, `Report`, and `Held`
 unwrapped; they are perception's vocabulary and a caller already imports it
-to build a `Pass`.
+to build a `Pass`. A `Reader`'s and a `Space`'s errors pass through the
+same way, from `Situation`, `Decide`, `Turn`, and `stage.Step`: they are
+the caller's vocabulary, and a pathfinder that fails is the pathfinder's
+to explain, not this module's.
 
 ## Use cases
 

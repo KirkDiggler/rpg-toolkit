@@ -144,6 +144,18 @@ follow: fear is not a preference, so a
 cornered creature still means to flee and the stage finds it nowhere. The
 word "region" left the module's docs; the dungeon builder owns regions.
 
+### What the independent review of v0.2.0 changed
+
+Reviewed at `74d98bff`, gates and all three mutants reproduced. Three
+findings, all record-keeping, all taken: issue #1723's rung-3 sentence
+said the Space is asked at rung 3 and the code deliberately does not —
+the issue was corrected, the code is the party that was right; a stale
+"once it tags" bullet and a stale perception version survived the
+`Qualify` commit and were removed; R13 now says a `Reader`'s and a
+`Space`'s errors pass through as the caller's vocabulary. Declined:
+nothing. The arrow was also corrected on Kirk's word in the same commit:
+the mind that changes is the skeleton's, not the weapon.
+
 ## Left for a later rung
 
 - Persistence: names and fears alongside perception's `Data`. The
@@ -152,8 +164,6 @@ word "region" left the module's docs; the dungeon builder owns regions.
   pathfinder), and a `Reach` that answers the deeds question ("whose senses
   reached this place") so `Land`'s caller does not compute witnesses by
   hand.
-- `perception.Qualify` (#1722) for `deed.Subject` and the tests' hearing
-  subjects, once it tags.
 - Retiring `examples/behavior` (#1677) and the `act`/`stage` seam still on
   `examples/perception`.
 - Everything under the design's non-goals, each with its use case.
