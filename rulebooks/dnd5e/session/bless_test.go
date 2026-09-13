@@ -80,6 +80,16 @@ func (s *CastSuite) TestBlessMissingPolicyExplainsBothOfferAndCast() {
 	s.Equal(2, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 }
 
+func (s *CastSuite) TestBlessInvalidPolicyFailsConfiguration() {
+	s.scene(blessCleric(), 3)
+	mgr, err := session.NewManager(&session.Config{StaleTargetPolicy: "typo",
+		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.Nil(mgr)
+	s.ErrorIs(err, session.ErrIncompleteConfig)
+	s.ErrorContains(err, "StaleTargetPolicy")
+}
+
 func (s *CastSuite) TestBlessPoliciesMixedCastAndStoryReload() {
 	for _, policy := range []session.StaleTargetPolicy{session.StaleTargetRefuse, session.StaleTargetAttempt} {
 		s.Run(string(policy), func() {

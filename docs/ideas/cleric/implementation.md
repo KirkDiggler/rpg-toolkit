@@ -1,6 +1,6 @@
 # Cleric creation implementation
 
-## Bless session integration checkpoint
+## Bless session integration (PR #1712)
 
 The session now uses the released provider target query, carries the configured
 policy into execution, and preserves missed recipients in CastOutput, encounter
