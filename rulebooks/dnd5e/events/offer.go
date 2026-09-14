@@ -96,13 +96,56 @@ var (
 	// PostRollOfferChain is folded between the d20 and [PostAttackRollChain]:
 	// see [PostRollOfferEvent] for why that boundary and no other.
 	//
-	// Folded on an ATTACK roll only today. Saving throws and ability checks
-	// are the same shape and are deliberately not folded yet — they arrive
-	// with the slice that asks for them, not as an enumeration against a
-	// hypothetical.
+	// Folded on an ATTACK roll only today. Saving throws are the same shape
+	// and remain deliberately unfolded — they arrive with the slice that
+	// asks for them, not as an enumeration against a hypothetical.
+	// [PostCheckRollOfferChain] is that slice for ability checks.
 	PostRollOfferChain = events.DefineChainedTopic[*PostRollOfferEvent]("dnd5e.roll.offer")
 
 	// OfferTakenTopic carries [OfferTakenEvent]: an offer was spent, and this
-	// is its face.
+	// is its face. Shared across every roll kind an offer can join — an
+	// audience answers the same way whether the die joins an attack or a
+	// check, and the offerer reads back the same event either way.
 	OfferTakenTopic = events.DefineTypedTopic[OfferTakenEvent]("dnd5e.roll.offer.taken")
+
+	// PostCheckRollOfferChain is [PostRollOfferChain]'s ability-check sibling:
+	// folded between the d20 and the check's success/failure determination,
+	// for [PostCheckRollOfferEvent]'s reason. Guidance is the first consumer.
+	PostCheckRollOfferChain = events.DefineChainedTopic[*PostCheckRollOfferEvent]("dnd5e.checks.roll.offer")
 )
+
+// PostCheckRollOfferEvent is folded AFTER an ability check's d20 is rolled and
+// BEFORE anything reads the outcome off it — [PostRollOfferEvent]'s boundary,
+// applied to ability checks instead of attacks.
+//
+// # Why checks get their own event instead of reusing PostRollOfferEvent
+//
+// The two carry different identities: an attack's offer is folded against an
+// attacker AND a target, while a check has only a checker — there is nobody
+// on the other end of an ability check the way there is an AC to beat. Giving
+// checks their own event keeps AttackerID/TargetID honest for attacks instead
+// of leaving one field meaningless on a check.
+//
+// # Nothing here is a modifier, same as the attack event
+//
+// Subscribers APPEND to Offers. They do not touch Roll or Total, which are
+// reported so a subscriber can decide whether its die is worth offering, and
+// so whoever is asked can see what they are deciding about. Guidance's own
+// text is the reason this boundary is exactly right for it too: "the
+// creature can roll the die before or after making the ability check."
+type PostCheckRollOfferEvent struct {
+	// CheckerID is whose d20 was rolled.
+	CheckerID string
+
+	// Roll is the d20 as rolled, after advantage or disadvantage.
+	Roll int
+
+	// Total is what the check settled on before any offer joins it — the
+	// roll plus the checker's modifier and any chain-granted bonus. The
+	// number an offer would be added to.
+	Total int
+
+	// Offers are what the checker's own effects put on the table, in
+	// subscription order.
+	Offers []Offer
+}

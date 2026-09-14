@@ -36,6 +36,12 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
+	guided, err := NewGuidedCondition(NewGuidedConditionInput{
+		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.Guidance(),
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	return map[string]dnd5eEvents.ConditionBehavior{
 		"raging":            &RagingCondition{CharacterID: "m1"},
@@ -64,6 +70,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"concentrating":     NewConcentratingCondition("m1", refs.Spells.TrueStrike().String(), TrueStrikeName, 2),
 		"baned":             baned,
 		"blessed":           blessed,
+		"guided":            guided,
 		"vicious_mockery":   NewViciousMockeryCondition("m1", "bard-1", ""),
 		"unconscious":       NewUnconsciousCondition("m1", roller),
 		"opportunity":       NewOpportunityAttackCondition("m1"),

@@ -218,6 +218,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return baned, nil
 	},
+	refs.Conditions.Guided().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		guided := &GuidedCondition{}
+		if err := guided.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load guided condition")
+		}
+		return guided, nil
+	},
 	refs.Spells.Shield().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		sh := &ShieldSpellCondition{}
 		if err := sh.loadJSON(data); err != nil {

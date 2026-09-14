@@ -79,9 +79,14 @@ nothing else in the codebase does this yet. Reuse `OfferAnswer`/`OfferSpend`/
 `OfferKeep` from `strike_pose.go` rather than redefining them.
 
 `checks.MakeAbilityCheck` (`checks/checks.go`) has no `RollCalculation` today,
-unlike `saves.MakeSavingThrow` — needed so a resumed check can append the
-offered die as one more sourced component, the same shape attacks, saves and
-healing already use, instead of bumping a bare int.
+unlike `saves.MakeSavingThrow` — but checked how Strike actually builds
+`StrikeOutcome.Calculation` (`resolution/strike.go:385`) and it is built
+entirely inside `resolution`, from the roll/modifier data the lower-level
+attack code already returns, not inside the attack rules package itself. The
+check equivalent follows the same layering: `resolution` (Slice 2) builds its
+own sourced `RollCalculation` locally from `checks.AbilityCheckResult`'s
+existing `Roll`/`Total`/`BonusSources`, so the offered die can append as one
+more sourced component. `checks.AbilityCheckResult` itself does not change.
 
 `resolution.MakeCheck` is already the right shape to build on: no `World`, no
 `Initiative`, no combat dependency — its own doc already names this as the
@@ -122,17 +127,20 @@ to be confirmed with a test, not assumed.
 
 1. **Root, not yet castable.** `PostCheckRollOfferEvent`/
    `PostCheckRollOfferChain` in `events/offer.go`, sibling to the attack one
-   (`CheckerID` in place of `AttackerID`). `checks.AbilityCheckResult` gains a
-   `Calculation`. `GuidanceCondition` in `conditions/`, mirroring
-   `InspiredCondition` per above. **Not added to `castContent`** — stays
-   selectable-but-inert exactly where it sits today, matching how Spare the
-   Dying's provider PR shipped before its content was enabled.
-2. **Resolution + session: the real suspend/resume work.** Extend
-   `resolveStagedCheck` to fold the new offer chain after `MakeCheck` returns;
-   on a validated single offer for the checker, freeze enough state (checker,
-   applied approach, DC, roll, total, calculation, offer, plus whatever
-   `Search`/`Unlock` need to finish) and report posed instead of a finished
-   result; unchanged otherwise. Session gains a new interrupt window kind
+   (`CheckerID` in place of `AttackerID`). `GuidanceCondition` in
+   `conditions/`, mirroring `InspiredCondition` per above. `checks` package is
+   untouched — its sourced calculation is built in `resolution`, not here (see
+   above). **Not added to `castContent`** — stays selectable-but-inert exactly
+   where it sits today, matching how Spare the Dying's provider PR shipped
+   before its content was enabled.
+2. **Resolution + session: the real suspend/resume work.** Build a sourced
+   `RollCalculation` for the check locally in `resolution`, the way
+   `strike.go` does for `StrikeOutcome`, then extend `resolveStagedCheck` to
+   fold the new offer chain after `MakeCheck` returns; on a validated single
+   offer for the checker, freeze enough state (checker, applied approach, DC,
+   roll, total, calculation, offer, plus whatever `Search`/`Unlock` need to
+   finish) and report posed instead of a finished result; unchanged
+   otherwise. Session gains a new interrupt window kind
    (sibling to `windowKindReaction`) and a resume path that thaws, applies
    spend/keep (rolling the die and appending it to the calculation on spend,
    as `strikeMachine.spendOffer` does), then runs the one genuinely per-verb
@@ -158,6 +166,33 @@ is to be confirmed once inside that code, not asserted here.
 
 Sources: [2014 Guidance](https://www.dndbeyond.com/spells/2149-guidance),
 user-supplied rules text above.
+
+### Slice 1 delivered: chain plumbing and the condition, not yet castable
+
+`PostCheckRollOfferEvent`/`PostCheckRollOfferChain` added to `events/offer.go`,
+sibling to the attack pair. `GuidedCondition` added to `conditions/`
+(`refs.Conditions.Guided()`, spell source ref `refs.Spells.Guidance()`,
+already present from the existing cantrip-choice catalog entry). It mirrors
+`InspiredCondition`'s offer/take mechanism on the new check chain, filtered
+on `CheckerID` with no skill filter, and mirrors `BlessedCondition`'s
+long-rest cleanup subscription rather than Inspired's combat-end one —
+Guidance is concentration, same duration category as Bless, not Bardic
+Inspiration's ten-minutes-or-combat-end. Registered in the condition loader
+and in both cross-package contract tests (`ref_contract_test.go`,
+`long_rest_registry_test.go`) that keep the loader registry honest against
+every loadable condition.
+
+`checks.AbilityCheckResult` was deliberately left untouched — checked how
+`StrikeOutcome.Calculation` is actually built (`resolution/strike.go:385`)
+and it happens entirely inside `resolution`, not the lower-level attack
+rules package; the check equivalent follows the same layering and belongs to
+Slice 2.
+
+Not wired into anything yet: nothing folds `PostCheckRollOfferChain` at a
+real roll site, so the condition cannot currently be exercised end to end.
+Guidance is not in `castContent`. Full root module suite, vet, and lint pass
+clean; `go build`/`go vet ./...` and `golangci-lint run` reported 0 issues on
+the touched packages.
 
 ## Spare the Dying wiring inspection
 
