@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -19,4 +20,9 @@ func TestGoblinAuthorsItsScimitarDefinitionDirectly(t *testing.T) {
 	require.NotNil(t, scimitar.Attack)
 	require.Equal(t, &combatActions.MeleeDelivery{ReachFeet: 1}, scimitar.Attack.Delivery.Melee,
 		"preserve the existing authored value; correcting its unit is separate work")
+}
+
+func TestGoblinThinksLikeACoward(t *testing.T) {
+	require.Equal(t, monster.MindCoward, NewGoblin("goblin-1").Mind(),
+		"a goblin holds no grudge and backs away from whatever closes on it")
 }
