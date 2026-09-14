@@ -41,6 +41,15 @@ const (
 	// windowKindPostRoll is a d20 that stopped to ask its roller whether they
 	// spend something they hold on it (rpg-project#398).
 	windowKindPostRoll = "post_roll"
+
+	// windowKindCheckOffer is an ability check that stopped for the same
+	// reason [windowKindPostRoll] does, on [resolution.MakeCheck]'s own
+	// suspend/resume rather than the strike machine's. Unlock is the only
+	// verb that poses one today — Search's checks cross through
+	// [encounter.CheckResolver], which has no way to carry a pose yet (see
+	// docs/ideas/cleric/plan.md), so a die held during a Search check is
+	// silently kept rather than posed.
+	windowKindCheckOffer = "check_offer"
 )
 
 // windowPayload is the frozen half of one posed reaction window: everything
@@ -126,6 +135,76 @@ type postRollWindowPayload struct {
 	Frozen []byte `json:"frozen"`
 }
 
+// checkOfferWindowPayload is the frozen half of one posed check-offer window
+// — [postRollWindowPayload]'s check sibling, and Unlock's own for now (see
+// [windowKindCheckOffer]).
+type checkOfferWindowPayload struct {
+	// Kind is [windowKindCheckOffer]. See its doc.
+	Kind string `json:"kind"`
+
+	// Audience is who is being asked — always the checker, the window's own
+	// audience, and carried again here for the mis-pairing refusal
+	// [thawPostRollPayload]'s doc explains.
+	Audience string `json:"audience"`
+
+	// Door is which lock this check was rolled against, so the answer can
+	// finish the same Unlock the question paused. Unlock-specific: the next
+	// verb to pose a check-offer window brings its own field for "what to
+	// finish", not a rename of this one.
+	Door string `json:"door"`
+
+	// Offer is what the audience holds, as the effect that offered it named
+	// itself.
+	Offer ReactionRef `json:"offer"`
+
+	// Roll and Total are the d20 and the number the offer would join. THE
+	// LOCK'S DC IS NOT HERE, for [postRollWindowPayload.Roll]'s reason: a
+	// player deciding whether a die is worth spending should not be able to
+	// read off whether it would close the gap.
+	Roll  int `json:"roll"`
+	Total int `json:"total"`
+
+	// Frozen is resolution's own machine state, opaque to this package.
+	Frozen []byte `json:"frozen"`
+}
+
+// marshalCheckOfferPayload renders one posed check-offer window's frozen
+// half.
+func marshalCheckOfferPayload(p checkOfferWindowPayload) ([]byte, error) {
+	p.Kind = windowKindCheckOffer
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshal check offer window payload: %w", err)
+	}
+	return raw, nil
+}
+
+// thawCheckOfferPayload reads a stored CHECK-OFFER window payload back,
+// under [thawWindowPayload]'s rule and for the same reason.
+func thawCheckOfferPayload(raw []byte, audience string) (checkOfferWindowPayload, error) {
+	var p checkOfferWindowPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return checkOfferWindowPayload{}, fmt.Errorf("%w: check offer window payload: %v", ErrInvalidSession, err)
+	}
+	if p.Kind != windowKindCheckOffer {
+		return checkOfferWindowPayload{}, fmt.Errorf(
+			"%w: window payload kind %q is not a check offer window", ErrInvalidSession, p.Kind)
+	}
+	if p.Audience == "" || p.Door == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
+		return checkOfferWindowPayload{}, fmt.Errorf(
+			"%w: check offer window payload names no audience, door or offer", ErrInvalidSession)
+	}
+	if len(p.Frozen) == 0 {
+		return checkOfferWindowPayload{}, fmt.Errorf(
+			"%w: check offer window payload froze no machine to resume", ErrInvalidSession)
+	}
+	if p.Audience != audience {
+		return checkOfferWindowPayload{}, fmt.Errorf(
+			"%w: check offer window payload names %q but is posed to %q", ErrInvalidSession, p.Audience, audience)
+	}
+	return p, nil
+}
+
 // marshalWindowPayload renders one posed reaction window's frozen half.
 func marshalWindowPayload(p windowPayload) ([]byte, error) {
 	p.Kind = windowKindReaction
@@ -161,7 +240,7 @@ func windowKindOf(raw []byte) (string, error) {
 		return "", fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
 	}
 	switch peek.Kind {
-	case windowKindReaction, windowKindPostRoll:
+	case windowKindReaction, windowKindPostRoll, windowKindCheckOffer:
 		return peek.Kind, nil
 	default:
 		return "", fmt.Errorf(

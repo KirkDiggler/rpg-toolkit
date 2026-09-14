@@ -18,7 +18,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // DoorsInput asks for a session's doors, as one member knows them.
@@ -204,6 +207,20 @@ type UnlockOutput struct {
 	// numbering (stream.go).
 	Seq uint64 `json:"seq"`
 
+	// Paused is true when the attempt stopped to ask the member whether to
+	// spend a held offer before the lock's verdict is settled —
+	// [AttackOutput.Paused]'s shape, applied to a check instead of a swing.
+	// Beaten, DC, Applied, Door.State's post-verdict value, Discovered and
+	// Formed are all the zero value while this is true: there is no verdict
+	// yet, only a question. Answer it with [Manager.React].
+	Paused bool `json:"paused,omitempty"`
+
+	// Roll is the d20 as rolled, present only when Paused — the same
+	// presence law [Declaration.Remaining] keeps for a number a verb does
+	// not normally carry. THE LOCK'S DC IS DELIBERATELY NOT SURFACED
+	// alongside it, for [checkOfferWindowPayload.Roll]'s reason.
+	Roll *int `json:"roll,omitempty"`
+
 	Saved    SaveReport     `json:"saved"`
 	Delivery DeliveryReport `json:"delivery"`
 }
@@ -261,11 +278,20 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		if err := m.stageCheck(ctx, scope, "member", in.Member); err != nil {
 			return nil, fmt.Errorf("unlock: %w", err)
 		}
-		verdict, verr := m.resolveStagedCheck(scope, in.Member, lock.Approaches)
+		outcome, verr := m.resolveStagedCheckPoseable(scope, in.Member, lock.Approaches)
 		if verr != nil {
 			return nil, fmt.Errorf("unlock %q: %w", in.Door, verr)
 		}
-		beaten, total, applied = verdict.Beaten, verdict.Total, verdict.Applied
+
+		// THE ATTEMPT STOPPED TO ASK. The checker holds something that could
+		// join the roll — Guidance is the first — and resolution posed
+		// rather than settling. Nothing about the lock has happened yet, so
+		// there is no beat to write beyond the pause itself.
+		if outcome.Posed != nil {
+			return m.poseUnlockWindow(ctx, scope, in, outcome.Posed)
+		}
+
+		beaten, total, applied = outcome.Verdict.Beaten, outcome.Verdict.Total, outcome.Verdict.Applied
 	}
 
 	unlocked, err := scope.enc.Unlock(&encounter.UnlockInput{
@@ -295,6 +321,83 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		Seq:        scope.deliveredSeq(in.Member, unlocked.Seq),
 		Saved:      report,
 		Delivery:   delivery,
+	}, nil
+}
+
+// poseUnlockWindow commits the half of the attempt that happened and asks
+// the member the question resolution stopped on — [poseAttackWindow]'s
+// shape, for a lock check instead of a swing.
+//
+// The encounter is not paused for the same reason a posed attack does not
+// pause it: Unlock is not a driven turn, so this question lives entirely in
+// the interrupt ledger already persisted here.
+func (m *Manager) poseUnlockWindow(
+	ctx context.Context, scope *writeScope, in *UnlockInput, posed *resolution.Pose,
+) (*UnlockOutput, error) {
+	ask := posed.Ask
+	if ask.Audience != in.Member {
+		// R5, checked on this side of the seam too: this build poses to the
+		// checker and to nobody else.
+		return nil, fmt.Errorf("unlock: %w: the machine asked %q on %q's roll",
+			ErrInvalidWorld, ask.Audience, in.Member)
+	}
+	if ask.Offer.Ref == nil || ask.Offer.Name == "" {
+		return nil, fmt.Errorf("unlock: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
+	}
+	if len(ask.Options) != 2 {
+		return nil, fmt.Errorf("unlock: %w: the machine posed %d answers and this seam poses two",
+			ErrInvalidWorld, len(ask.Options))
+	}
+
+	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
+	payload, err := marshalCheckOfferPayload(checkOfferWindowPayload{
+		Audience: ask.Audience,
+		Door:     in.Door,
+		Offer:    offer,
+		Roll:     ask.Roll,
+		Total:    ask.Total,
+		Frozen:   posed.Frozen,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unlock: %w: %v", ErrInvalidSession, err)
+	}
+
+	// THE TWO ANSWERS ARE THIS SEAM'S, not the machine's: [poseAttackWindow]'s
+	// own reasoning, reused rather than re-derived.
+	if _, err := scope.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(ask.Audience),
+		Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
+		Payload:  payload,
+		At:       scope.baseline,
+	}); err != nil {
+		return nil, fmt.Errorf("unlock: %w: %v", ErrInvalidSession, err)
+	}
+	scope.data.Windows = scope.ledger.ToData()
+	scope.touched = true
+
+	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
+		Audience: encounter.MemberID(ask.Audience),
+		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
+		Roll:     ask.Roll,
+		Total:    ask.Total,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unlock: %w", reportUnrecorded(scope, translate(err)))
+	}
+
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("unlock: %w", err)
+	}
+
+	roll := ask.Roll
+	return &UnlockOutput{
+		Paused:   true,
+		Total:    ask.Total,
+		Roll:     &roll,
+		Seq:      scope.deliveredSeq(in.Member, recorded.Seq),
+		Saved:    report,
+		Delivery: delivery,
 	}, nil
 }
 

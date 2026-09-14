@@ -484,31 +484,37 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", translate(err))
 	}
+
+	// A WINDOW IS OPEN, checked BEFORE either clock gate below and answered
+	// instead of them.
+	//
+	// This used to run only after confirming a turn clock, on the reasoning
+	// that a window is posed inside a fight. Guidance's check-offer window
+	// (docs/ideas/cleric/plan.md) broke that: Unlock poses one to a member
+	// trying a lock OUTSIDE combat, on the world clock, and that member still
+	// needs their REACT row — a world-clock return above this point would
+	// silently drop the one open question they have. So the check now runs
+	// UNCONDITIONALLY, with the clock already in hand to report honestly and
+	// to decide which OTHER rows (if any) accompany the window.
+	//
+	// For a turn-clock member the original reasoning still holds: it is
+	// somebody ELSE's turn by construction — a skeleton is mid-walk — so the
+	// not-your-turn gate below would refuse the one declaration this member
+	// most needs to see, and would refuse it with the wrong reason. While the
+	// freeze holds, EVERY other verb for EVERY member is unavailable with
+	// [ShortfallWindowOpen], because every other verb is refused with
+	// ErrWindowOpen at its own door. A world-clock member has no such verbs to
+	// mark unavailable — the economy never applied to them — so their frozen
+	// panel is the window alone.
+	if len(open) > 0 {
+		return affordWhileFrozen(in.Session, in.Member, open, ClockKind(clock.Kind))
+	}
+
 	if ClockKind(clock.Kind) != ClockTurn {
 		// A non-nil, empty slice: the world clock's Declarations marshals as
 		// "[]", never "null" — the same reason above applies to the wire
 		// shape as much as the tag.
 		return &AffordOutput{Clock: ClockWorld, Declarations: []Declaration{}}, nil
-	}
-
-	// A WINDOW IS OPEN, checked BEFORE the not-your-turn gate and answered
-	// instead of it. That order is the whole point of the REACT row: it is
-	// somebody ELSE's turn by construction — a skeleton is mid-walk — so the
-	// gate below would refuse the one declaration this member most needs to
-	// see, and would refuse it with the wrong reason.
-	//
-	// While the freeze holds, EVERY other verb for EVERY member is
-	// unavailable with [ShortfallWindowOpen], because every other verb is
-	// refused with ErrWindowOpen at its own door. Announcing the refusal
-	// before the click is what Afford is for; a panel that stayed lit here
-	// would offer buttons the seam has already decided to reject.
-	//
-	// A member on the WORLD clock is untouched by all of this and returned
-	// above: the economy does not apply to them, they have no declarations to
-	// mark unavailable, and no window can be posed to them because a window is
-	// posed inside a fight.
-	if len(open) > 0 {
-		return affordWhileFrozen(in.Session, in.Member, open)
 	}
 
 	// NOT YOUR TURN, checked FIRST and cheaply — clock.Active is already in
@@ -693,14 +699,23 @@ func slotOf(p *combat.SpendProfile) Slot {
 // shape the not-your-turn path emits, for the same reason: the reason is
 // identical for every one of them, so seven copies of "the table is waiting"
 // would be a panel that looks like it has choices.
-func affordWhileFrozen(session, member string, open []interrupt.Window) (*AffordOutput, error) {
-	frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
-	declarations := []Declaration{
-		blockedDeclaration(VerbAttack, TargetMember, frozen),
-		blockedDeclaration(VerbMove, TargetPath, frozen),
-		blockedDeclaration(VerbActivate, TargetNone, frozen),
-		blockedDeclaration(VerbCast, TargetNone, frozen),
-		blockedDeclaration(VerbEndTurn, TargetNone, frozen),
+func affordWhileFrozen(session, member string, open []interrupt.Window, clock ClockKind) (*AffordOutput, error) {
+	declarations := []Declaration{}
+
+	// The five turn-economy blockers apply only to a member the economy ever
+	// applied to. A world-clock member (Unlock's checker, outside combat) was
+	// never offered Attack/Move/Activate/Cast/EndTurn to begin with, so
+	// marking them unavailable here would be reporting a refusal for rows
+	// that were never rows.
+	if clock == ClockTurn {
+		frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
+		declarations = append(declarations,
+			blockedDeclaration(VerbAttack, TargetMember, frozen),
+			blockedDeclaration(VerbMove, TargetPath, frozen),
+			blockedDeclaration(VerbActivate, TargetNone, frozen),
+			blockedDeclaration(VerbCast, TargetNone, frozen),
+			blockedDeclaration(VerbEndTurn, TargetNone, frozen),
+		)
 	}
 
 	for _, window := range open {
@@ -715,7 +730,7 @@ func affordWhileFrozen(session, member string, open []interrupt.Window) (*Afford
 	}
 
 	sortDeclarations(declarations)
-	return &AffordOutput{Clock: ClockTurn, Declarations: declarations}, nil
+	return &AffordOutput{Clock: clock, Declarations: declarations}, nil
 }
 
 // reactDeclaration compiles one open window into the row its audience sees.
@@ -736,6 +751,9 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 	}
 	if kind == windowKindPostRoll {
 		return postRollDeclaration(session, member, window)
+	}
+	if kind == windowKindCheckOffer {
+		return checkOfferDeclaration(session, member, window)
 	}
 
 	payload, err := thawWindowPayload(window.Payload, string(window.Audience))
