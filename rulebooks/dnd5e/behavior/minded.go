@@ -79,11 +79,12 @@ type Minded struct {
 // mind in the process could not have a berserker and a bow skeleton on the
 // same board.
 type NewMindedInput struct {
-	// Ranged says whether an item id names a weapon that can shoot back —
-	// the first authoring knob a mind takes, and it is really just data: the
-	// same Retaliator answers a crossbow or shrugs off a thrown dagger
-	// depending on what the driver was handed. Nil means the rulebook's own
-	// weapon catalog.
+	// Ranged says whether an item id names a weapon that can shoot back.
+	// It is the CATALOG knob and not a profile field: what a bow IS is data
+	// about the world, while whether a mind cares is [Grudge.Excuse]. One
+	// answer serves every mind this driver builds, which is why it lives
+	// here and the profile does not. Nil means the rulebook's own weapon
+	// catalog.
 	Ranged func(item string) bool
 
 	// Minds is the door an authored mind comes through: the word a member's
