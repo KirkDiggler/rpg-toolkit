@@ -329,6 +329,23 @@ second driver rather than a wasted map lookup.
 
 ## dnd5e/behavior v0.5.0 — the Retaliator profile (#1745)
 
+**UNMERGED as of writing.** The version in the heading is the one this PR's
+merge will mint, not a tag that exists; the wave publishes inside-out,
+#1746 → #1748 → #1750 → rpg-api#984. This record is written before the
+merge so the reasoning is reviewable beside the code.
+
+**What the walk staged, 2026-09-14** (full record on
+[#1748](https://github.com/KirkDiggler/rpg-toolkit/pull/1748)). The coward
+goblin was seen on the board stepping away from a player who walked up to
+it. The berserker thug's chase was seen; its grudge held PAST A NEARER
+PLAYER was not staged, and rests on
+`TestTheBerserkerDoesNotCareWhatTheShooterIsHolding` and that test's killed
+mutant. The retaliator skeleton was not re-walked, its only change being the
+patience spelling. Kirk's call was that the tests carry the two unstaged
+halves. The finding that came out of it: staging a mind's moment on a board
+— a shooter placed, a weapon swapped, a nearer body standing by — is hard
+enough that it wants a tool, filed as a follow-up rather than built here.
+
 **The ruling (Kirk, #1745).** The Retaliator is really a grudge system, and
 what sets it off and how long it holds are things to configure. What the
 monster DOES stays apart from WHERE it is configured, so this slice tunes

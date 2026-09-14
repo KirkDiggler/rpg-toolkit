@@ -24,6 +24,18 @@ import (
 // The vocabulary is closed and small on purpose. Each value is a rule the
 // mind applies to what it sees, and a rule nobody has named is not one a
 // profile can hold.
+//
+// The TYPE cannot enforce that, being a string, and [NewMindedInput.Minds]
+// is a door a caller's own mind comes through — so the runtime answer is
+// written down here instead of left to be discovered: AN UNRECOGNIZED VALUE
+// EXCUSES NOBODY. A misspelt "Unarmed" behaves exactly as [ExcuseNever] and
+// reports nothing, which is fail-closed on the grudge and still a surprise
+// if you expected the weapon rule.
+//
+// Nothing validates it, because nothing authors it: the rulebook's own
+// presets are the only writers today and a table test pins every field they
+// set. A use case that lets a host or a file write an Excuse is what pays
+// for the check, and the same goes for [Retaliator.Room].
 type Excuse string
 
 // Excuse constants.
@@ -136,6 +148,12 @@ type Retaliator struct {
 	// in the Space's own steps — what [Retaliator.Keep] answers, and the
 	// only field the ladder's rung 0 reads. 0 stands and fights; 2 backs
 	// away from anything that gets within two steps.
+	//
+	// A NEGATIVE ROOM IS NO ROOM. Rung 0 keeps a creature it measures at
+	// fewer steps than this, and nothing is ever fewer than zero steps
+	// away, so a negative value skips every contact and the mind behaves
+	// exactly as if it were 0. Unvalidated for the reason given on
+	// [Excuse]: only the rulebook's presets write it.
 	//
 	// It is not called Keep because the judgment is: a mind answers
 	// [behavior.Mind.Keep] with a method, and a field of that name could
@@ -278,6 +296,8 @@ func (r *Retaliator) excused(c behavior.Contact) bool {
 	case ExcuseNever:
 		return false
 	default:
+		// An Excuse nobody named excuses nobody, which is [Excuse]'s own
+		// documented answer rather than a fallthrough nobody chose.
 		return false
 	}
 }
