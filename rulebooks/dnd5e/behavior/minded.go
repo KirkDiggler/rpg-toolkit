@@ -36,8 +36,10 @@ const (
 	// MindBerserker turns on whoever attacked it and does not care what
 	// they are holding: only the clock talks it off a grudge.
 	MindBerserker = "berserker"
-	// MindCoward holds no grudge at all: it shoots the closest standing
-	// player and steps away from whatever closes on it.
+	// MindCoward holds no grudge at all: it keeps its room, stepping away
+	// from whatever closes on it, and answers the closest standing player
+	// with whatever it holds — a blade-only coward backs off and fights
+	// cornered.
 	MindCoward = "coward"
 )
 
