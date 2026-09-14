@@ -55,7 +55,10 @@ that.
 
 ### Order of work
 
-1. **SHIPPED** ([#1745](https://github.com/KirkDiggler/rpg-toolkit/issues/1745), PR TBD) — a
+1. **SHIPPED** ([#1745](https://github.com/KirkDiggler/rpg-toolkit/issues/1745);
+   PRs [#1746](https://github.com/KirkDiggler/rpg-toolkit/pull/1746),
+   [#1748](https://github.com/KirkDiggler/rpg-toolkit/pull/1748),
+   [#1750](https://github.com/KirkDiggler/rpg-toolkit/pull/1750)) — a
    tunable Retaliator profile: `Grudge{Patience, Excuse}` and `Room`,
    proven by three minds on one scene in the driver's own tests. Berserker
    (any weapon, long patience), bow skeleton (ranged only, short patience),
