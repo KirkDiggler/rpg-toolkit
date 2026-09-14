@@ -84,7 +84,7 @@ type Room interface {
 	// GetLineOfSight returns positions along the line of sight
 	GetLineOfSight(from, to Position) []Position
 
-	// IsLineOfSightBlocked checks if line of sight is blocked by entities
+	// IsLineOfSightBlocked checks if every eligible sight lane is obstructed.
 	IsLineOfSightBlocked(from, to Position) bool
 }
 

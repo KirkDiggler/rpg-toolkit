@@ -2,6 +2,7 @@ package spatial_test
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -83,6 +84,13 @@ func (s *RoomTestSuite) TestRoomBasics() {
 		s.Assert().Equal(float64(10), dimensions.Width)
 		s.Assert().Equal(float64(10), dimensions.Height)
 	})
+}
+
+func (s *RoomTestSuite) TestInvalidSightPositionFailsClosed() {
+	s.True(s.room.IsLineOfSightBlocked(
+		spatial.Position{X: math.NaN()},
+		spatial.Position{X: 1, Y: 1},
+	))
 }
 
 func (s *RoomTestSuite) TestEntityPlacement() {
