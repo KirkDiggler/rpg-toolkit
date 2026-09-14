@@ -3,6 +3,7 @@ package spatial
 import (
 	"errors"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -36,6 +37,46 @@ func (f footprintSight) At(in SightCellInput) (SightCellOutput, error) {
 		To:        point,
 	})
 	return SightCellOutput{Blocked: out.Contact}, err
+}
+
+type canonicalRaySight struct {
+	grid Grid
+}
+
+func (obstruction canonicalRaySight) Along(in SightLaneInput) (SightLaneOutput, error) {
+	expected := CanonicalBoundaryRay(obstruction.grid, in.From, in.To)
+	matchesRequest := len(in.Ray) > 2 && in.Ray[0] == in.From && slices.Equal(in.Ray, expected)
+	return SightLaneOutput{HardBlocked: matchesRequest}, nil
+}
+
+func (canonicalRaySight) At(SightCellInput) (SightCellOutput, error) {
+	return SightCellOutput{}, nil
+}
+
+func (s *SightLanesSuite) TestSuppliesCanonicalRayInRequestedDirection() {
+	grid := NewSquareGrid(SquareGridConfig{Width: 10, Height: 10})
+	from := Position{X: 1, Y: 2}
+	to := Position{X: 7, Y: 5}
+	obstructions := canonicalRaySight{grid: grid}
+
+	for _, endpoints := range []struct {
+		name     string
+		from, to Position
+	}{
+		{name: "forward", from: from, to: to},
+		{name: "reverse", from: to, to: from},
+	} {
+		s.Run(endpoints.name, func() {
+			out, err := SightLanes(SightLanesInput{
+				Grid:         grid,
+				From:         endpoints.from,
+				To:           endpoints.to,
+				Obstructions: obstructions,
+			})
+			s.Require().NoError(err)
+			s.True(out.Blocked, "adapter only blocks when Ray is canonical and begins at From")
+		})
+	}
 }
 
 func (s *SightLanesSuite) TestThinFootprintNeedsNoRoomOccupants() {
