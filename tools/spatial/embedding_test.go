@@ -75,6 +75,18 @@ func (s *EmbeddingTestSuite) TestBearingBetweenNeighboursIsAMultipleOfSixty() {
 	s.False(ok, "no bearing to yourself")
 }
 
+func (s *EmbeddingTestSuite) TestNonFiniteWidthsAndNumericBearing() {
+	for _, width := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		s.ErrorIs(HexEmbeddingConfig{CellWidth: width}.Validate(), ErrBadCellWidth)
+		emb := NewHexEmbedding(HexEmbeddingConfig{CellWidth: width})
+		s.Equal(Point{}, emb.CellCentre(Position{X: 1}))
+	}
+	emb := NewHexEmbedding(HexEmbeddingConfig{Orientation: HexOrientationFlatTop, CellWidth: 5})
+	angle, ok := emb.Bearing(Position{}, Position{Y: 1})
+	s.True(ok)
+	s.InDelta(90, angle, 1e-12)
+}
+
 func (s *EmbeddingTestSuite) TestANonPositiveCellWidthIsRefusedAndItsEmbeddingIsInert() {
 	s.Require().Error(HexEmbeddingConfig{Orientation: HexOrientationPointyTop, CellWidth: 0}.Validate())
 	s.Require().Error(HexEmbeddingConfig{Orientation: HexOrientationPointyTop, CellWidth: -5}.Validate())
