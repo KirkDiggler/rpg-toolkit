@@ -23,6 +23,7 @@ func (s *FootprintTraceSuite) TestContactIntervals() {
 		{"cross", Point{X: -4}, Point{X: 4}, true, true, .25, .75},
 		{"miss", Point{X: -4, Y: 2}, Point{X: 4, Y: 2}, false, false, 0, 0},
 		{"edge overlap", Point{X: -4, Y: 1}, Point{X: 4, Y: 1}, true, false, .25, .75},
+		{"edge tangent", Point{X: -4, Y: 2}, Point{Y: 1}, true, false, 1, 1},
 		{"corner", Point{X: -4, Y: -1}, Point{Y: 3}, true, false, .5, .5},
 		{"start inside", Point{}, Point{X: 4}, true, true, 0, .5},
 		{"contained", Point{X: -1}, Point{X: 1}, true, true, 0, 1},
@@ -93,4 +94,8 @@ func (s *FootprintTraceSuite) TestThinBoxAndInvalidEndpoints() {
 		_, err = TraceFootprint(in)
 		s.ErrorIs(err, ErrBadFootprintTrace)
 	}
+	in.From = Point{X: -math.MaxFloat64}
+	in.To = Point{X: math.MaxFloat64}
+	_, err = TraceFootprint(in)
+	s.ErrorIs(err, ErrBadFootprintTrace, "overflowed intermediate arithmetic must be refused")
 }
