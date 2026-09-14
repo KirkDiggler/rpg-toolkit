@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>A Room Is Not a Dungeon</title>
+<meta name="description" content="A working request boundary, an API encounter driver, and the doorway that exposed the difference between revealing a room and sharing a world.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/a-room-is-not-a-dungeon/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="A Room Is Not a Dungeon">
+<meta property="og:description" content="A working request boundary, an API encounter driver, and the doorway that exposed the difference between revealing a room and sharing a world.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/a-room-is-not-a-dungeon/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-room-is-not-a-dungeon.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-room-is-not-a-dungeon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading A Room Is Not a Dungeon beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A Room Is Not a Dungeon">
+<meta name="twitter:description" content="A working request boundary, an API encounter driver, and the doorway that exposed the difference between revealing a room and sharing a world.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-room-is-not-a-dungeon.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading A Room Is Not a Dungeon beside a blue D20 wireframe.">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91;--pressure-soft:#2b1e20}
+*{box-sizing:border-box}
+html{background:var(--ground);color-scheme:dark;overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}
+a{color:var(--bright);text-underline-offset:3px}
+.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}
+.eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}
+h1{max-width:950px;margin:.3em 0 .27em;font-size:clamp(4rem,9vw,7.2rem);letter-spacing:-.035em}
+.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}
+.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}
+.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}
+.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.legend{display:flex;flex-wrap:wrap;gap:1.5rem;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase}
+.legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}
+.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}
+.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}
+.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}
+.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}
+.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+p{max-width:74ch;margin:.76em 0}.lead{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}
+code{color:var(--bright);font-size:.87em}
+figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-block:1px solid var(--rule-strong);scrollbar-color:var(--rule-strong) var(--ground)}
+figure svg{display:block;width:100%;min-width:840px;height:auto;margin:0 auto}
+figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}
+.law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",monospace}.law b{color:var(--primary);font-weight:500}
+.pressure-law{border-left-color:var(--pressure)}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}
+footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer a{white-space:nowrap}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px}
+svg .t-title{font-size:22px;font-weight:600}svg .t-big{font-size:29px;font-weight:600}svg .mono{font-size:15px}svg .label{fill:var(--muted);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.8px}svg .small{fill:var(--muted);font-size:16px}svg .blue{fill:var(--bright)}svg .rust{fill:var(--pressure-text)}svg .faint{fill:var(--faint)}
+svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.5}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.4;stroke-dasharray:7 6}
+svg .wire{fill:none;stroke:var(--muted);stroke-width:1.5}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .dash{stroke-dasharray:7 6}svg .wall{fill:none;stroke:var(--muted);stroke-width:4;stroke-linecap:square}svg .wall-blue{fill:none;stroke:var(--accent);stroke-width:4}
+figure::before{display:none}
+@media(max-width:760px){
+ .page{padding:14px 14px 70px}header{padding:50px 14px 48px 42px}
+ .origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{flex-direction:column;gap:.6rem}
+ .timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}
+ .panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}figure svg{min-width:900px}footer{margin:48px 0 0 42px}
+ figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-block:1px solid var(--accent);background:var(--ground);color:var(--bright);font:500 .69rem/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.6rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Layer 6 · The API dungeon prototype</div>
+    <h1>A Room Is Not a Dungeon</h1>
+    <p class="dek">The conditions could affect a Character. The combat prototype was where I wanted to see those pieces work together, with rpg-api’s encounter orchestrator driving the interaction. I could have stayed in one room and fleshed out the architecture. But <em>I thought the door should just work.</em> When it didn’t, that became the next problem to solve.</p>
+    <nav class="origin-links" aria-label="Field-note navigation">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets →</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/a-request-needs-an-owner/"><span>Previous field note</span><strong>A Request Needs an Owner →</strong></a>
+    </nav>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Setting</b><span>testing conditions in combat</span></div><div><b>Pressure</b><span>the room beyond the door</span></div><div><b>Horizon</b><span>revealing is not enough</span></div></div>
+    <div class="legend" aria-label="Diagram legend"><span><i></i>an explicit handoff</span><span><i></i>an assumption exposed</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Four panels: from the request driver to the doorway">
+    <section class="timeline-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">After the request</span></div>
+      <div class="panel-body">
+        <div class="question-label">Pick up the last thread</div>
+        <h2 id="panel-1-title">The driver was already there</h2>
+        <p class="lead">A Flurry Strike did not load its own combatants, create their bus, or decide what the client should receive. The encounter orchestrator assembled that work and called the toolkit’s rules. I already knew the API was doing more than I wanted. This was deliberately where I was learning what a simpler boundary would need to carry.</p>
+        <figure tabindex="0" aria-label="Diagram: the API assembles one interaction">
+          <svg viewBox="0 0 960 390" role="img" aria-labelledby="d1-title d1-desc">
+            <title id="d1-title">The interaction driver lives in rpg-api</title>
+            <desc id="d1-desc">A player chooses Flurry Strike. The API encounter orchestrator loads and wires participants, calls toolkit rules, saves state and reports the result. The toolkit owns rules and state mutations; the API assembles the interaction.</desc>
+            <defs><marker id="d1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <text x="28" y="29" class="label blue">ONE WORKING INTERACTION</text>
+            <rect x="28" y="60" width="211" height="94" class="soft"/>
+            <circle cx="63" cy="94" r="10" fill="var(--bright)"/><path d="M47 127Q48 108 63 108T79 127Z" fill="var(--accent)"/>
+            <text x="96" y="96" class="small">player chooses</text><text x="96" y="128" class="t-title">Flurry Strike</text>
+            <path d="M239 107H296" class="wire-blue" marker-end="url(#d1-arrow)"/>
+            <rect x="300" y="60" width="632" height="248" class="box"/>
+            <text x="325" y="95" class="label blue">RPG-API · ENCOUNTER ORCHESTRATOR</text>
+            <rect x="325" y="119" width="182" height="74" class="soft"/><text x="416" y="148" text-anchor="middle" class="small">bring participants</text><text x="416" y="178" text-anchor="middle" class="t-title">load + wire</text>
+            <path d="M507 156H540" class="wire-blue" marker-end="url(#d1-arrow)"/>
+            <rect x="544" y="119" width="146" height="74" class="soft"/><text x="617" y="148" text-anchor="middle" class="small">toolkit</text><text x="617" y="178" text-anchor="middle" class="t-title">call rules</text>
+            <path d="M690 156H724" class="wire-blue" marker-end="url(#d1-arrow)"/>
+            <rect x="728" y="119" width="179" height="74" class="soft"/><text x="817" y="148" text-anchor="middle" class="small">return to the game</text><text x="817" y="178" text-anchor="middle" class="t-title">save + report</text>
+            <path d="M325 221H907" class="wire dash"/>
+            <text x="325" y="253" class="small">Rules interpret the action. State owners apply their changes.</text>
+            <text x="325" y="282" class="small">The prototype brings the whole interaction together.</text>
+            <text x="28" y="353" class="label">A REQUEST HAS AN OWNER.</text><text x="485" y="353" class="label blue">THE API SUPPLIES ITS SURROUNDINGS.</text>
+          </svg>
+          <figcaption>The API owned the assembly around the call. The toolkit supplied the rules and the objects that changed.</figcaption>
+        </figure>
+        <div class="law"><b>Owning a change is not the same as completing an interaction.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">Alongside the rules</span></div>
+      <div class="panel-body">
+        <div class="question-label">The tool underneath the room</div>
+        <h2 id="panel-2-title">Everything could start at zero</h2>
+        <p class="lead"><code>tools/spatial</code> gave us rooms, coordinates, entity placement, and movement checks. It handled space, not D&amp;D rules. My buddy built that foundation. He wasn’t a programmer by trade, but he had a knack for seeing how things fit and solving problems. In the first room, at the dungeon origin, local and dungeon positions coincided. I expected opening the door and continuing into the next room to be the easy part.</p>
+        <figure tabindex="0" aria-label="Diagram: two locally correct rooms do not yet form a shared map">
+          <svg viewBox="0 0 960 635" role="img" aria-labelledby="d2-title d2-desc">
+            <title id="d2-title">Spatial supplies the room tools; the API must assemble the journey</title>
+            <desc id="d2-desc">The toolkit's spatial package supplies room geometry, positions and movement checks without D&amp;D rules. Room A and Room B each have a local origin and locally valid positions. An adventurer approaches the door in Room A. The API's handoff to Room B is unresolved; reusable room tools do not by themselves complete the player interaction.</desc>
+            <defs>
+              <pattern id="d2-grid" width="42" height="36" patternUnits="userSpaceOnUse"><path d="M0 18L10 0H31L42 18L31 36H10Z" fill="none" stroke="var(--rule)" stroke-width=".7"/></pattern>
+              <marker id="d2-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker>
+            </defs>
+            <text x="28" y="30" class="label">ROOM A · ITS OWN FRAME</text><text x="585" y="30" class="label">ROOM B · ITS OWN FRAME</text>
+            <rect x="28" y="64" width="347" height="267" fill="url(#d2-grid)"/>
+            <path d="M375 169V64H28V331H375V232" class="wall"/>
+            <path d="M377 174V226" stroke="var(--pressure)" stroke-width="7"/>
+            <circle cx="248" cy="186" r="12" fill="var(--bright)"/><path d="M229 228Q230 204 248 204T267 228Z" fill="var(--accent)"/>
+            <text x="248" y="264" text-anchor="middle" class="small">the adventurer</text>
+            <path d="M286 201H349" class="wire-rust dash" marker-end="url(#d2-arrow)"/>
+            <circle cx="50" cy="309" r="4" fill="var(--muted)"/><text x="68" y="314" class="mono">local origin</text>
+            <rect x="585" y="64" width="347" height="267" fill="url(#d2-grid)"/>
+            <path d="M585 168V64H932V331H585V232" class="wall"/>
+            <path d="M583 174V226" stroke="var(--pressure)" stroke-width="7"/>
+            <path d="M756 161L775 193L756 225L737 193Z" fill="var(--pressure-soft)" stroke="var(--pressure)" stroke-width="2"/>
+            <text x="756" y="264" text-anchor="middle" class="small">another room’s creature</text>
+            <circle cx="607" cy="309" r="4" fill="var(--muted)"/><text x="625" y="314" class="mono">local origin</text>
+            <path d="M403 201H464M504 201H556" class="wire-rust dash"/><text x="484" y="211" text-anchor="middle" class="t-big rust">?</text>
+            <text x="480" y="376" text-anchor="middle" class="t-big">Two rooms were not yet one working journey.</text>
+            <rect x="166" y="410" width="628" height="90" class="pressure"/>
+            <text x="480" y="444" text-anchor="middle" class="label rust">WHAT ONE ROOM HAD HIDDEN</text>
+            <text x="480" y="477" text-anchor="middle" class="mono">a local position does not locate you in the dungeon</text>
+            <rect x="28" y="522" width="904" height="87" class="soft"/>
+            <text x="52" y="555" class="mono blue">tools/spatial</text>
+            <text x="265" y="555" class="small">room geometry · entity positions · movement checks</text>
+            <text x="52" y="587" class="small">Reusable tools underneath. The API still had to assemble the dungeon.</text>
+          </svg>
+          <figcaption>Spatial supplied reusable room tools. The API still had to bring them together into a continuous player interaction.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>One room had hidden an assumption. The next room could not.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">Feb → March 2026</span></div>
+      <div class="panel-body">
+        <div class="question-label">Make the relationship explicit</div>
+        <h2 id="panel-3-title">The room’s contents have to arrive with it</h2>
+        <p class="lead">The early fix made that relationship explicit. The API calculated and stored room origins; the client accumulated revealed rooms. March’s follow-through exposed a finer mismatch: a room’s walls could be shifted into dungeon space while its creatures stayed local. The conversion had to carry both. Monster IDs also had to distinguish one room’s inhabitants from another’s.</p>
+        <figure tabindex="0" aria-label="Diagram: a room origin places both walls and creatures in the same dungeon frame">
+          <svg viewBox="0 0 960 675" role="img" aria-labelledby="d3-title d3-desc">
+            <title id="d3-title">The same origin must translate the room and its contents</title>
+            <desc id="d3-desc">Before the correction, shifting the walls alone leaves the creature at its local position. The explicit rule is dungeon position equals room origin plus local position, applied to both walls and creatures. The repaired client projection shows Room A and Room B together, with distinct monster identities. This proves projection consistency, not a completed traversal.</desc>
+            <defs>
+              <pattern id="d3-grid" width="42" height="36" patternUnits="userSpaceOnUse"><path d="M0 18L10 0H31L42 18L31 36H10Z" fill="none" stroke="var(--rule)" stroke-width=".7"/></pattern>
+              <marker id="d3-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker>
+            </defs>
+            <text x="28" y="28" class="label rust">THE PARTIAL HANDOFF</text>
+            <rect x="28" y="50" width="904" height="116" class="pressure"/>
+            <text x="55" y="88" class="t-title">The walls move into place.</text><text x="55" y="125" class="t-title rust">The creature is still “over here.”</text>
+            <path d="M585 75L601 103L585 131L569 103Z" fill="var(--pressure-soft)" stroke="var(--pressure)" stroke-width="2"/>
+            <path d="M620 103H724" class="wire-rust dash"/>
+            <rect x="749" y="74" width="153" height="63" class="ghost"/><text x="825" y="113" text-anchor="middle" class="small">shifted room</text>
+
+            <text x="28" y="215" class="label blue">ONE EXPLICIT TRANSLATION</text>
+            <rect x="28" y="237" width="904" height="83" class="soft"/>
+            <text x="480" y="272" text-anchor="middle" class="t-big">dungeon position = room origin + local position</text>
+            <text x="480" y="302" text-anchor="middle" class="mono blue">apply the same handoff to walls AND creatures</text>
+            <path d="M480 320V355" class="wire-blue" marker-end="url(#d3-blue-arrow)"/>
+
+            <rect x="89" y="379" width="335" height="193" fill="url(#d3-grid)"/>
+            <rect x="467" y="379" width="404" height="193" fill="url(#d3-grid)"/>
+            <path d="M424 451V379H89V572H424V501M467 451V379H871V572H467V501" class="wall-blue"/>
+            <path d="M424 451H467M424 501H467" class="wire-blue"/>
+            <text x="113" y="412" class="label blue">ROOM A</text><text x="490" y="412" class="label blue">ROOM B</text>
+            <circle cx="339" cy="465" r="11" fill="var(--bright)"/><path d="M321 503Q322 482 339 482T357 503Z" fill="var(--accent)"/>
+            <path d="M683 446L700 476L683 506L666 476Z" fill="var(--pressure-soft)" stroke="var(--pressure)" stroke-width="2"/>
+            <text x="683" y="542" text-anchor="middle" class="mono">room-B / monster-1</text>
+            <text x="480" y="615" text-anchor="middle" class="t-title blue">Now the room and its contents agree on where they are.</text>
+            <text x="480" y="655" text-anchor="middle" class="label">THE CLIENT RECEIVES ONE COHERENT PLACEMENT</text>
+          </svg>
+          <figcaption>Origins and room-scoped monster IDs repaired the handoff to the client. The API still owned that assembly.</figcaption>
+        </figure>
+        <div class="law"><b>A shared coordinate frame has to include what lives inside it.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">Still in the prototype</span></div>
+      <div class="panel-body">
+        <div class="question-label">The next limit is behind the picture</div>
+        <h2 id="panel-4-title">Revealing the room was not enough</h2>
+        <p class="lead">Showing the next room did not complete the handoff. <code>OpenDoor</code> could announce it and add its monsters to the encounter, yet leave their spatial placements out of the saved <code>RoomData</code> used by movement and perception. The client could be shown a larger dungeon while those server routines still read the old room.</p>
+        <figure tabindex="0" aria-label="Diagram: the client sees the revealed room, but saved spatial state still describes the old room">
+          <svg viewBox="0 0 960 610" role="img" aria-labelledby="d4-title d4-desc">
+            <title id="d4-title">The revealed view and the driver's saved spatial state diverge</title>
+            <desc id="d4-desc">OpenDoor builds a revealed-room response and event for the client. The client can display both rooms. The saved RoomData is not extended with the new spatial placements, so subsequent movement and perception read the previous room. Other encounter state is saved; the missing handoff is specifically the spatial data.</desc>
+            <defs><marker id="d4-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker><marker id="d4-rust-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker></defs>
+            <rect x="299" y="26" width="362" height="79" class="box"/>
+            <text x="480" y="55" text-anchor="middle" class="label">RPG-API</text><text x="480" y="87" text-anchor="middle" class="t-big">OpenDoor</text>
+            <path d="M381 105V142H248V190" class="wire-blue" marker-end="url(#d4-blue-arrow)"/>
+            <path d="M579 105V142H714V190" class="wire-rust dash" marker-end="url(#d4-rust-arrow)"/>
+            <text x="248" y="170" text-anchor="middle" class="label blue">RESPONSE + ROOM-REVEALED EVENT</text>
+            <text x="714" y="170" text-anchor="middle" class="label rust">SPATIAL MERGE MISSING</text>
+
+            <rect x="28" y="197" width="439" height="254" class="soft"/>
+            <text x="54" y="232" class="label blue">WHAT THE CLIENT CAN BE SHOWN</text>
+            <path d="M219 306V260H64V406H219V347M257 306V260H432V406H257V347M219 306H257M219 347H257" class="wall-blue"/>
+            <text x="139" y="290" text-anchor="middle" class="label">ROOM A</text><text x="344" y="290" text-anchor="middle" class="label">ROOM B</text>
+            <circle cx="169" cy="323" r="8" fill="var(--bright)"/><path d="M156 351Q157 334 169 334T182 351Z" fill="var(--accent)"/>
+            <path d="M342 312L355 335L342 358L329 335Z" fill="var(--pressure-soft)" stroke="var(--pressure)" stroke-width="2"/>
+            <text x="248" y="434" text-anchor="middle" class="small">new room + its creatures</text>
+
+            <rect x="495" y="197" width="437" height="254" class="pressure"/>
+            <text x="521" y="232" class="label rust">SAVED SPATIAL DATA</text>
+            <rect x="532" y="260" width="155" height="146" class="box"/>
+            <text x="609" y="290" text-anchor="middle" class="label">ROOM A</text>
+            <circle cx="640" cy="323" r="8" fill="var(--bright)"/><path d="M627 351Q628 334 640 334T653 351Z" fill="var(--accent)"/>
+            <rect x="724" y="260" width="171" height="146" class="ghost"/>
+            <text x="809" y="322" text-anchor="middle" class="t-title rust">not merged</text><text x="809" y="352" text-anchor="middle" class="small">new placements</text>
+            <text x="714" y="434" text-anchor="middle" class="mono">RoomData</text>
+            <path d="M714 451V493" class="wire-rust" marker-end="url(#d4-rust-arrow)"/>
+            <rect x="495" y="498" width="437" height="67" class="box"/>
+            <text x="714" y="539" text-anchor="middle" class="t-title">next movement / perception read</text>
+            <text x="28" y="522" class="small">Door flags, monsters and initiative were saved.</text>
+            <text x="28" y="550" class="small">That did not save the combined spatial world.</text>
+            <text x="480" y="598" text-anchor="middle" class="label rust">THE PICTURE AND THE NEXT INTERACTION DID NOT YET SHARE THE SAME WORLD</text>
+          </svg>
+          <figcaption>The reveal reached the client. The spatial update needed by the next interaction did not yet reach the saved room.</figcaption>
+        </figure>
+        <p class="end-question">The next room could appear on the screen.<br>The driver still needed a world that included it.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>The opening follows the API driver already shown in the previous field note. The reason for the combat prototype, the expectation that the doorway should work, the rough room, and awareness of API complexity are Kirk’s recollections. The diagrams explain the boundary; they are not recovered screenshots.</p>
+    <p>The contemporary <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/3052cdfc/tools/spatial/doc.go"><code>tools/spatial</code> contract</a> describes positioning, entity placement and movement validation without game-specific rules. The parallel room-origin work is documented in the <a href="https://github.com/KirkDiggler/rpg-project/blob/238ba74/ideas/multi-room-dungeons/design.md">February 6 audit</a>. API <a href="https://github.com/KirkDiggler/rpg-api/commit/f0a0f30"><code>f0a0f30</code></a> calculates and stores origins; web <a href="https://github.com/KirkDiggler/rpg-dnd5e-web/commit/850d422d"><code>850d422d</code></a> accumulates revealed rooms. API <a href="https://github.com/KirkDiggler/rpg-api/commit/9646ce2"><code>9646ce2</code></a> makes monster IDs room-scoped; <a href="https://github.com/KirkDiggler/rpg-api/commit/bb9e96c"><code>bb9e96c</code></a> applies the same origin to walls and entities in the response. Related event-path corrections follow in <a href="https://github.com/KirkDiggler/rpg-api/commit/06d2008"><code>06d2008</code></a>.</p>
+    <p>The final panel is bounded by the <a href="https://github.com/KirkDiggler/rpg-api/blob/f6ed5c9/internal/orchestrators/encounter/orchestrator.go">March 28 source snapshot</a>: <code>OpenDoor</code> updates revealed-room and monster state without merging the new spatial placements into <code>RoomData</code>; <code>executeMove</code> continues to read that saved room. Corrected client coordinates are not proof of a fully working crossing.</p>
+    <p class="scope">This field note stays in the rpg-api prototype. Later spatial persistence fixes, toolkit Encounter extraction, and the composable encounter are outside this cut.</p>
+  </footer>
+</main>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
