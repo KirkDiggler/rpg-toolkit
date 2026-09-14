@@ -244,6 +244,7 @@ func (g *GuidedCondition) end(ctx context.Context, reason string) error {
 	if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
 		MemberID:     g.MemberID,
 		ConditionRef: refs.Conditions.Guided().String(),
+		SourceID:     g.SourceID,
 		Reason:       reason,
 	}); err != nil {
 		return rpgerr.Wrapf(err, "failed to publish guided removal for member %s", g.MemberID)

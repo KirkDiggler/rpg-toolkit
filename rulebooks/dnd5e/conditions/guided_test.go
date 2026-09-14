@@ -104,6 +104,9 @@ func (s *GuidedConditionTestSuite) TestTakingItSpendsItOnce() {
 	s.Require().Len(s.removed, 1)
 	s.Equal("rogue-1", s.removed[0].MemberID)
 	s.Equal(refs.Conditions.Guided().String(), s.removed[0].ConditionRef)
+	s.Equal("cleric-1", s.removed[0].SourceID,
+		"must match ConditionAddress's own SourceID, or a keeper's three-field "+
+			"removal match never finds this condition to drop it")
 	s.Equal("spent", s.removed[0].Reason)
 	s.False(s.condition.IsApplied())
 
