@@ -16,6 +16,8 @@
 //   - Footprint geometry: freely placed box coverage over an explicit hex-cell
 //     universe and closed-segment contact/interior intervals
 //     (PlacedCoverage, TraceFootprint)
+//   - Caller-supplied obstruction evaluation over canonical sight lanes
+//     (SightLanes)
 //   - Cell-anchored footprint coverage for compatibility (Coverage)
 //   - Multi-room orchestration and connections
 //   - Distance calculations and area queries

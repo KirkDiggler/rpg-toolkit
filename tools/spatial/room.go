@@ -516,15 +516,17 @@ func (r *BasicRoom) GetLineOfSight(from, to Position) []Position {
 // which is what a player at the table already assumes.
 //
 // This reaches the corner rule exactly on squares and within 0.01% of it on
-// hexes. The remaining gap is the price of staying grid-native: the corner rule
-// itself needs cell-polygon geometry and a plane embedding, which this module
-// does not have — see [BasicRoom.lineOfSightLaneBlockedUnsafe] for why that is
-// the endpoint rather than the answer today.
+// hexes. The remaining gap is the price of staying grid-native rather than
+// evaluating every pair of cell-polygon corners in the plane.
 //
 // SYMMETRY IS STRUCTURAL, not incidental: every lane is rasterized on the
 // canonical ray, and the neighbour lanes are explored from both ends, so the
 // rule has no direction left to disagree about. It is pinned as a law over
 // fuzzed rooms in every grid family.
+//
+// Boundaries are hard obstructions and remain absolute. Entities are soft
+// obstructions that eligible neighbour lanes can bypass. Gridless rooms keep a
+// single lane because their positions have no cell extent to lean around.
 //
 // The common case costs exactly what it used to. A pair whose direct lane is
 // clear returns on that first test, and most pairs are clear — the extra work
@@ -534,90 +536,32 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	// ONE RASTERIZATION FOR THE DIRECT LANE, reused by both checks below.
-	direct := CanonicalBoundaryRay(r.grid, from, to)
-
-	// A BOUNDARY IS AN EDGE AND STAYS A HARD BLOCK. Neighbour lanes model
-	// leaning around something that has extent — an occluding cell is a pillar
-	// or a wall block, and a viewer really can look past its corner. A boundary
-	// is a wall drawn ON the edge between two cells, with no extent in this
-	// model and no stated length, so "around it" is not a thing the data
-	// describes. Softening it would rewrite a primitive nobody reported, and
-	// rpg-toolkit#1022 is about occluders: the wall cells a player watches
-	// swallow their sightline.
-	if r.boundaryBlocksAlongUnsafe(direct) {
-		return true
-	}
-
-	if !r.entityBlocksAlongUnsafe(direct) {
-		return false
-	}
-
-	// GRIDLESS KEEPS THE SINGLE LANE, for the same reason boundaries do.
-	// Neighbour lanes model a CELL'S EXTENT — a square or a hex tiles the
-	// plane, so a viewer really can look past its corner. A gridless position
-	// is a point in continuous space with no cell around it and no neighbours
-	// of its own; what GetNeighbors offers there is eight samples on a unit
-	// circle, an arbitrary distance that means one thing in a ten-foot room
-	// and nothing at all in a mile-wide one. Leaning by an arbitrary amount is
-	// not the rule this fixes.
-	if r.grid.GetShape() == GridShapeGridless {
-		return true
-	}
-
-	// The direct lane is obstructed. Sight survives if any neighbour of either
-	// end has a clear lane — that is the corner a player would lean around.
-	//
-	// A neighbour must MAKE PROGRESS: strictly closer to the other end than the
-	// cell itself. Merely "no further" was tried and measured worse on every
-	// grid family — it turns leaning into wandering, letting sight recover from
-	// a vantage a full cell sideways, and on squares it doubled the pairs seen
-	// that the game's corner rule denies. Progress keeps the alternative on the
-	// way to the target rather than beside it.
-	distance := r.grid.Distance(from, to)
-	for _, alt := range r.grid.GetNeighbors(from) {
-		if r.blocksLineOfSightUnsafe(alt) || r.grid.Distance(alt, to) >= distance {
-			continue
-		}
-		if !r.lineOfSightLaneBlockedUnsafe(alt, to) {
-			return false
-		}
-	}
-	for _, alt := range r.grid.GetNeighbors(to) {
-		if r.blocksLineOfSightUnsafe(alt) || r.grid.Distance(from, alt) >= distance {
-			continue
-		}
-		if !r.lineOfSightLaneBlockedUnsafe(from, alt) {
-			return false
-		}
-	}
-
-	return true
+	out, err := SightLanes(SightLanesInput{
+		Grid:         r.grid,
+		From:         from,
+		To:           to,
+		Obstructions: roomSightObstructions{room: r},
+	})
+	return err != nil || out.Blocked
 }
 
-// lineOfSightLaneBlockedUnsafe reports whether ONE lane between two cells is
-// obstructed, by a boundary it crosses or by something standing in it.
-//
-// It rasterizes the canonical ray ONCE and runs both checks over it. Until
-// rpg-toolkit#1022 a single call consulted two different rays —
-// [CanonicalBoundaryRay] for boundaries, the caller's own ray for entities —
-// and the second of those was the direction-dependence this issue is named
-// for. One lane, one ray, and one rasterization of it: alternative lanes are
-// only built when the direct one is already blocked, which is the case the
-// cost lands on.
-//
-// The endpoints are never opaque: you are not blocked by the cell you stand in
-// or the one you are looking at.
-//
-// THE ENDPOINT THIS APPROXIMATES is 5e's corner rule, evaluated as real
-// geometry: cell polygons in a plane, and a lane for every corner pair. That
-// is exact where this is within 0.01%, and it is what belongs here the day
-// this module grows a plane embedding — it has none today, and measured 5x the
-// cost per query on hexes, on a path callers already run O(range²) per viewer.
-// Recorded so the comparison does not have to be re-derived: rpg-toolkit#1022.
-func (r *BasicRoom) lineOfSightLaneBlockedUnsafe(from, to Position) bool {
-	path := CanonicalBoundaryRay(r.grid, from, to)
-	return r.boundaryBlocksAlongUnsafe(path) || r.entityBlocksAlongUnsafe(path)
+type roomSightObstructions struct {
+	room *BasicRoom
+}
+
+func (obstructions roomSightObstructions) Along(in SightLaneInput) (SightLaneOutput, error) {
+	if obstructions.room.boundaryBlocksAlongUnsafe(in.Ray) {
+		return SightLaneOutput{HardBlocked: true}, nil
+	}
+	return SightLaneOutput{
+		SoftBlocked: obstructions.room.entityBlocksAlongUnsafe(in.Ray),
+	}, nil
+}
+
+func (obstructions roomSightObstructions) At(in SightCellInput) (SightCellOutput, error) {
+	return SightCellOutput{
+		Blocked: obstructions.room.blocksLineOfSightUnsafe(in.At),
+	}, nil
 }
 
 // boundaryBlocksAlongUnsafe reports whether a rasterized ray crosses a

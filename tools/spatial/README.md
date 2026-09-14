@@ -118,7 +118,8 @@ they follow the grid-provided `GetLineOfSight` ray, reject any blocked
 consecutive crossing, and do not find a detour. Boundary LoS checks use one
 lexicographically ordered endpoint ray so a boundary has the same result in
 either direction even when square Bresenham chooses different directional rays.
-Entity blockers continue to use the caller's requested ray.
+Entity and boundary blockers use that same canonical ray for each evaluated
+sight lane.
 
 For hex A*, `SimplePathFinder.FindPathWithTraversal` accepts a
 `TraversalPredicate` so callers can reject a crossing without treating either
@@ -948,6 +949,67 @@ spell thresholds remain above this API.
 
 These queries do not make props occupy cells in `BasicRoom`, persist authored
 footprints, load meshes, or add scale, height, and polygon support.
+
+#### Shared sight-lane evaluation
+
+`SightLanes` exposes the same direct and progress-making-neighbour lane
+calculation used by `BasicRoom`, while callers supply obstruction facts. `Along`
+reports hard obstructions that cannot be bypassed and soft obstructions that an
+alternate lane may bypass; both block the lane on which they appear. `At`
+reports an opaque alternate origin. It is not a movement or standing query.
+
+Each `Along` call receives one canonical `Ray`, oriented from `From` toward
+`To`. Treat the ray as read-only and do not retain it. The query retains no
+callbacks and takes no locks, so callers own a stable view for its duration.
+Missing collaborators and non-finite endpoints return the documented errors;
+any callback error is returned with a zero output rather than being interpreted
+as clear or blocked sight.
+
+Continuous footprints compose without occupying a `BasicRoom` cell:
+
+```go
+type footprintSight struct {
+    emb       spatial.HexEmbedding
+    placement spatial.FootprintPlacement
+}
+
+func (f footprintSight) Along(in spatial.SightLaneInput) (spatial.SightLaneOutput, error) {
+    trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+        Placement: f.placement,
+        From:      f.emb.CellCentre(in.From),
+        To:        f.emb.CellCentre(in.To),
+    })
+    return spatial.SightLaneOutput{SoftBlocked: trace.Interior}, err
+}
+
+func (f footprintSight) At(in spatial.SightCellInput) (spatial.SightCellOutput, error) {
+    point := f.emb.CellCentre(in.At)
+    trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+        Placement: f.placement,
+        From:      point,
+        To:        point,
+    })
+    return spatial.SightCellOutput{Blocked: trace.Contact}, err
+}
+
+obstructions := footprintSight{
+    emb: spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{CellWidth: 5}),
+    placement: spatial.FootprintPlacement{
+        Footprint: spatial.Footprint{Box: &spatial.Box{W: 30, D: 0.2}},
+    },
+}
+result, err := spatial.SightLanes(spatial.SightLanesInput{
+    Grid:         spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 9, SpanHeight: 9}),
+    From:         spatial.Position{X: -2},
+    To:           spatial.Position{X: 2},
+    Obstructions: obstructions,
+})
+```
+
+This example demonstrates geometry composition only; live prop ownership,
+standing thresholds, cover rules, and persistence remain caller policy.
+`BasicRoom.IsLineOfSightBlocked` delegates through an internal obstruction
+reader while holding its existing read lock, giving its callbacks a stable view.
 
 #### Room Interface
 ```go
