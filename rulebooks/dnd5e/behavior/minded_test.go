@@ -26,6 +26,11 @@ import (
 
 var bowRef = core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "shortbow"}
 
+// handGrudge is the grudge a test spells out when it builds a Retaliator
+// directly rather than taking one from a word: the bow skeleton's own rule,
+// and long enough to cover every clock in this file.
+var handGrudge = behavior.Grudge{Patience: 3, Excuse: behavior.ExcuseUnarmed}
+
 const (
 	skeleton = encounter.MemberID("skeleton")
 	alice    = encounter.MemberID("alice")
@@ -315,8 +320,8 @@ func (s *MindedTestSuite) TestARememberedShooterIsStillRankedFirst() {
 	}
 
 	r := &behavior.Retaliator{
-		Space:    flatSpace{aliceAt.String(): 4, bobAt.String(): 1},
-		Patience: behavior.DefaultPatience,
+		Space:  flatSpace{aliceAt.String(): 4, bobAt.String(): 1},
+		Grudge: handGrudge,
 	}
 
 	out, err := r.Rank(&mind.RankInput{Situation: mind.Situation{
@@ -435,7 +440,7 @@ func (s *MindedTestSuite) TestAContactIsNamedByItsMemberId() {
 		},
 	}
 
-	r := &behavior.Retaliator{Space: flatSpace{}, Patience: behavior.DefaultPatience}
+	r := &behavior.Retaliator{Space: flatSpace{}}
 
 	for _, tc := range cases {
 		s.Run(tc.scene, func() {
@@ -467,8 +472,8 @@ func (skittish) Keep(*mind.KeepInput) (*mind.KeepOutput, error) {
 func (s *MindedTestSuite) skittishDriver(word string) *behavior.Minded {
 	d, err := behavior.NewMinded(&behavior.NewMindedInput{
 		Minds: map[string]mind.Mind{word: skittish{&behavior.Retaliator{
-			Space:    flatSpace{bobAt.String(): 1},
-			Patience: behavior.DefaultPatience,
+			Space:  flatSpace{bobAt.String(): 1},
+			Grudge: handGrudge,
 		}}},
 	})
 	s.Require().NoError(err)

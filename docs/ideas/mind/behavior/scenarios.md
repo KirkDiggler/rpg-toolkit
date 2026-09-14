@@ -27,18 +27,21 @@ The scene pulls on four pieces, and none of them is the Retaliator's.
 
 | Piece | What the goblin needs | Owner | Today |
 |---|---|---|---|
-| A trigger | "at some stage": bloodied, outnumbered, or just having struck. A judgement over the goblin's own state and what it holds. | The mind's `Rank` inputs — profile material. | Retaliator hardcodes provocation, excuse, and patience. |
+| A trigger | "at some stage": bloodied, outnumbered, or just having struck. A judgement over the goblin's own state and what it holds. | The mind's `Rank` inputs — profile material. | Excuse and patience are profile fields (#1745); provocation is still hardcoded as "an attack on me", and the goblin's own trigger does not exist. |
 | A new outcome | "become unseen" is not Away, Attack, Toward, or Pass. | The ladder, as a claim beside `Keep` — not the mind's to reorder (R‑ladder, [design.md](design.md)). | No such rung. This is the first use case that earns one. |
 | A place to go | a cell no Named contact currently sees, reachable this turn. | `mind/perception`: the mind asks, perception answers. Behaviour never reasons about sight itself (R1). | Concealment exists in `world/graph` and the encounter; no "cells unseen by these observers" query. |
 | A two-step turn | disengage, move there, hide: a bonus action beside a move, compelled as one turn. | The driver (`rulebooks/dnd5e/encounter`, session). | The driver issues one intent per turn; `disengage` and `dash` exist as actions, `hide` does not. |
 
 ### What is configured where
 
-- **Profile** (the mind): what the monster cares about. Provocation (an
-  attack on me; on an ally; only damage), excuse (the actor unseen or
-  holding ranged; any weapon), patience (how long a grudge lasts), and
-  the goblin's own trigger. Zero value tells the truth: an empty profile
-  is a mind that holds no grudge and says so.
+- **Profile** (the mind): what the monster cares about. Excuse (the actor
+  unseen or holding ranged; any weapon), patience (how long a grudge
+  lasts), and how much room it wants are fields as of #1745, and the zero
+  value tells the truth: `Grudge{}` is a mind that holds no grudge and says
+  so. **Provocation is UNPAID** — an attack on me is hardcoded, and an
+  attack on an ally or a damage-only rule has no mind asking for it. So is
+  the goblin's own trigger. Neither self-extends from the profile slice;
+  each waits for the scene that wants it.
 - **Claims** (the ladder): what wins. `Keep` today; `Sole` (narrow rung 1
   to one target so a grudge is chased past the fighter in front) and
   the goblin's "become unseen" are the candidates. A leash ("stop
@@ -52,11 +55,19 @@ that.
 
 ### Order of work
 
-1. A tunable Retaliator profile — provocation, excuse, patience — proven
-   by three minds in the tests: berserker (any weapon, long patience),
-   bow skeleton (ranged only, short patience), coward (no grudge, high
-   `Keep`). Teaches which fields exist before any format is chosen;
-   authoring minds as data stays a non-goal until the fields are known.
+1. **WALKED 2026-09-14, SHIPS AS**
+   [#1746](https://github.com/KirkDiggler/rpg-toolkit/pull/1746) →
+   [#1748](https://github.com/KirkDiggler/rpg-toolkit/pull/1748) →
+   [#1750](https://github.com/KirkDiggler/rpg-toolkit/pull/1750)
+   ([#1745](https://github.com/KirkDiggler/rpg-toolkit/issues/1745)) — a
+   tunable Retaliator profile: `Grudge{Patience, Excuse}` and `Room`,
+   proven by three minds on one scene in the driver's own tests. Berserker
+   (any weapon, long patience), bow skeleton (ranged only, short patience),
+   coward (no grudge, two steps of room). Provocation was NOT part of it and
+   is recorded as unpaid above. The fields a profile has are now known,
+   which is what had to be true before a format is chosen; authoring minds
+   as data stays a non-goal, and its price is now measurable — every tune is
+   a new word and a toolkit release.
 2. `Sole`, if the walk shows the chase is wanted.
 3. The goblin's four pieces, each with its own use case and owner, in
    whatever order the walk demands. None of them self-extends from the
@@ -64,10 +75,10 @@ that.
 
 ### Open
 
-- The walk that proves a profile is two goblins with different profiles
-  in one room. Session v0.85.0 gives one driver per session; whether the
-  driver picks a mind per creature is verified before that walk is
-  promised.
+- The walk that proves a profile is two monsters with different words in
+  one room. The driver files a mind per MEMBER id, not per session, so the
+  mechanism is there and #1745's session PR pins it; the walk itself is
+  still owed.
 - `docs/ideas/monster-behavior/` is the pre-perception design (utility
   scoring, `monster.TakeTurn`) for this same goblin. It is superseded by
   this line and kept as history.

@@ -327,6 +327,131 @@ second driver rather than a wasted map lookup.
 | `resolveTurnDriver` falls back to `Behavior()` on a source error | `TestAResolverErrorFailsTheVerbAndDrivesNoTurn`: the host's error never reaches the host |
 | the both-set refusal removed from `NewManager` | `TestExactlyOneTurnDriverIsWired/both` |
 
+## dnd5e/behavior v0.5.0 — the Retaliator profile (#1745)
+
+**UNMERGED as of writing.** The version in the heading is the one this PR's
+merge will mint, not a tag that exists; the wave publishes inside-out,
+#1746 → #1748 → #1750 → rpg-api#984. This record is written before the
+merge so the reasoning is reviewable beside the code.
+
+**What the walk staged, 2026-09-14** (full record on
+[#1748](https://github.com/KirkDiggler/rpg-toolkit/pull/1748)). The coward
+goblin was seen on the board stepping away from a player who walked up to
+it. The berserker thug's chase was seen; its grudge held PAST A NEARER
+PLAYER was not staged, and rests on
+`TestTheBerserkerDoesNotCareWhatTheShooterIsHolding` and that test's killed
+mutant. The retaliator skeleton was not re-walked, its only change being the
+patience spelling. Kirk's call was that the tests carry the two unstaged
+halves. The finding that came out of it: staging a mind's moment on a board
+— a shooter placed, a weapon swapped, a nearer body standing by — is hard
+enough that it wants a tool, filed as a follow-up rather than built here.
+
+**The ruling (Kirk, #1745).** The Retaliator is really a grudge system, and
+what sets it off and how long it holds are things to configure. What the
+monster DOES stays apart from WHERE it is configured, so this slice tunes
+the mind in code and learns which fields a mind has before any
+authored-data format is chosen.
+
+### The shape, and why
+
+`Grudge{Patience, Excuse}` is what a mind does about being attacked, and
+`Room` is how much space it wants. Both are plain fields on the
+`Retaliator`, so a preset is a literal and the whole profile is readable in
+one line.
+
+- **Patience is a SPAN**, not a maximum age: the number of ticks a deed
+  stays worth answering, counting from the tick it was confirmed. That
+  reading is what makes `Grudge{}` honest. Read as a maximum age instead, a
+  patience of zero still answers a deed of age zero — so the mind with no
+  grudge would hold one for exactly the tick anybody was looking, which is
+  the zero value telling a lie about itself. The retaliator's number moved
+  from 2 to 3 for the same arithmetic: `age > 2` and `age < 3` cover the
+  same three ticks, and #1725's walked behaviour is unchanged.
+- **`ExcuseNever` is the zero Excuse.** An Excuse is a rule for letting an
+  actor GO, so an author who set a grudge and named no excuse wrote down no
+  way out of it. The alternative zero, `ExcuseUnarmed`, would have every
+  profile assert a weapon rule its author never typed.
+- **The field is `Room`, not `Keep`.** A mind answers `Keep` with a method,
+  and a field of that name cannot sit beside it. `Room` says what it means —
+  how much space it wants between itself and a live creature, in the Space's
+  own steps — and its doc points at the judgment it answers.
+- **`NewMindedInput.Patience` and `DefaultPatience` are gone.** How long a
+  mind holds a grudge is the mind's. One number for every mind in a process
+  could not have a berserker and a bow skeleton on the same board, which is
+  the whole scene this slice exists to show. `Ranged` stays on the driver —
+  what a bow IS is a catalog, whether the mind cares is the profile — and is
+  handed to every preset.
+
+**The profile feeds the ranking and never reorders it.** Rank's order is
+fixed: a grudge, then the live ahead of the remembered, then the closest,
+then the subject. What the profile decides is WHO has a grudge and how much
+room the mind wants; rung 0 reads `Room` and this mind does not. That is the
+line `scenarios.md` draws between a profile and a claim, and it is now in
+the `Retaliator`'s own doc.
+
+### The presets
+
+Every number is a feel number. A tick is a fight ROUND (walk 2 of #1725).
+
+| word | patience | excuse | room | what it is |
+|---|---|---|---|---|
+| `retaliator` | 3 | unarmed | 0 | #1725's bow skeleton, unchanged |
+| `berserker` | 10 | never | 0 | longer than any fight here: within one fight it never forgets |
+| `coward` | 0 (none) | — | 2 | no grudge at all; backs away from anything adjacent |
+
+The berserker's 10 is a number rather than an infinity because "never
+forgets" is a claim no walk has paid for, and a span is the shape the field
+already has. The coward's 2 is the smallest room that means anything: one
+step would name only a creature sharing its cell, which is nobody.
+
+### The proofs
+
+One scene, three words, and the body never changes — the member is called
+`skeleton` throughout, because what is under test is the word on its sheet.
+Alice shot it with a crossbow two ticks ago, has since drawn a longsword and
+closed to three cells; bob has stood two cells off and attacked nobody; the
+bow reaches both and the blade reaches neither. Three derivations change one
+thing each: the crossbow back in alice's hands, bob at touching distance,
+the shot landing on the tick being answered.
+
+| | sword seen | crossbow still up | bob in its face |
+|---|---|---|---|
+| retaliator | bob, bow | alice, bow | bob, melee |
+| berserker | alice, bow | alice, bow | alice, bow (past the nearer man) |
+| coward | bob, bow | bob, bow | one step back from bob |
+
+The middle column is the control for the grudge itself rather than the
+excuse: with a shooter nothing could excuse, a mind that holds a grudge and
+a mind that holds none finally choose different people.
+
+### What the mutants said
+
+Five mutants, applied to the working tree and reverted.
+
+| Mutant | Killed by |
+|--------|-----------|
+| the retaliator's excuse swapped to `ExcuseNever` | `TestTheRetaliatorLetsAnUnarmedShooterGo/the sword is seen` (alice where bob was expected), and `TestTheGrudgeEndsWhenTheBowIsPutAway` and `TestHandsItDidNotSeeAreNotABow` from #1725 |
+| the berserker's patience set to 0 | `TestTheBerserkerDoesNotCareWhatTheShooterIsHolding`, all three scenes: bob every time |
+| the coward's room set to 0 | `TestTheCowardHoldsNoGrudgeAndKeepsItsRoom/somebody is in its face`: it swung at bob instead of stepping back |
+| the berserker and coward presets swapped | `TestAZeroGrudgeRefusesTheShotThatJustLanded/the coward` and the berserker's own three scenes |
+| `Grudge{}` holds a grudge (`fresh` reads the span as a maximum age) | `TestTheZeroGrudgeIsNoGrudge` on "not even the deed that landed this tick", `TestTheZeroGrudgeRanksNobodyFirst/the zero grudge`, and `TestAZeroGrudgeRefusesTheShotThatJustLanded/the coward` |
+
+Each of the first four is also killed by
+`TestEachWordsPresetIsWhatItsDocSays`, the table over `mindFor` — the only
+test written from inside the package, because a preset is not reachable
+from a driver's answer except through a scene built to tell one number from
+another. It is what catches a doc that drifted from its table.
+
+### The lesson
+
+Every tune is a new word and a toolkit release. A berserker is not a new
+type, a new judgment, or a new rung — it is `Excuse: ExcuseNever` and a
+bigger number — and yet shipping it cost a constant in two modules, a preset
+in a third, a pin in each consumer and four PRs. That is the cost authored
+data would remove, and it is being paid deliberately a few times first: the
+fields a profile has are now known (patience, excuse, room), which is
+exactly what had to be true before anybody chose a format to author them in.
+
 ## Left for a later rung
 
 - Persistence: names and fears. The encounter integration pays for it.

@@ -22,21 +22,31 @@ import (
 // definition's Mind field speaks (monster.MindRetaliator is the same word;
 // session's tests pin the two together, since this module does not import
 // its parent). A member whose sheet names none is driven by [Basic].
+//
+// All three are one [Retaliator] under three profiles, which is the whole
+// lesson of rpg-toolkit#1745: a mind is a shape with fields, and a monster
+// tuned differently is not a new type. It is still a new WORD and a toolkit
+// release, because the profile a word means lives in [presets] and not on
+// the definition — the cost authored data would remove.
 const (
-	// MindRetaliator turns on whoever attacked it while the deed is fresh,
-	// and otherwise goes for the closest standing player.
+	// MindRetaliator turns on whoever attacked it while the deed is fresh
+	// and they still hold something that could shoot back, and otherwise
+	// goes for the closest standing player.
 	MindRetaliator = "retaliator"
+	// MindBerserker turns on whoever attacked it and does not care what
+	// they are holding: only the clock talks it off a grudge.
+	MindBerserker = "berserker"
+	// MindCoward holds no grudge at all: it keeps its room, stepping away
+	// from whatever closes on it, and answers the closest standing player
+	// with whatever it holds — a blade-only coward backs off and fights
+	// cornered.
+	MindCoward = "coward"
 )
 
 // ErrUnknownMind reports a member whose sheet names a mind this driver has
 // never heard of. It fails loudly: a monster silently falling back to the
 // basic driver would look like a design choice rather than a typo.
 var ErrUnknownMind = errors.New("behavior: unknown mind")
-
-// DefaultPatience is how many clock ticks old an attack deed may be before
-// the Retaliator stops holding a grudge over it. A feel number, and one the
-// first walk will tune.
-const DefaultPatience uint64 = 2
 
 // Minded is a [encounter.TurnDriver] that gives each member the mind its
 // sheet names, and drives it through mind/behavior: the view's holdings
@@ -55,26 +65,28 @@ const DefaultPatience uint64 = 2
 // perception store stays the encounter's (rule A1). Not safe for concurrent
 // use: one driver serves one encounter, one turn at a time.
 type Minded struct {
-	basic    Basic
-	board    *board
-	game     *behavior.Game
-	patience uint64
-	ranged   func(item string) bool
-	minds    map[string]behavior.Mind
-	minded   map[core.EntityID]struct{}
+	basic  Basic
+	board  *board
+	game   *behavior.Game
+	ranged func(item string) bool
+	minds  map[string]behavior.Mind
+	minded map[core.EntityID]struct{}
 }
 
-// NewMindedInput configures the driver. Patience 0 means DefaultPatience.
+// NewMindedInput configures the driver.
+//
+// There is no patience knob here, and that is the point of
+// rpg-toolkit#1745: how long a mind holds a grudge is the MIND's, named by
+// the word a monster's sheet says, and a host that set one number for every
+// mind in the process could not have a berserker and a bow skeleton on the
+// same board.
 type NewMindedInput struct {
-	// Patience is how many clock ticks old an attack deed may be and still
-	// be answered by a mind that holds grudges. 0 means DefaultPatience.
-	Patience uint64
-
-	// Ranged says whether an item id names a weapon that can shoot back —
-	// the first authoring knob a mind takes, and it is really just data: the
-	// same Retaliator answers a crossbow or shrugs off a thrown dagger
-	// depending on what the driver was handed. Nil means the rulebook's own
-	// weapon catalog.
+	// Ranged says whether an item id names a weapon that can shoot back.
+	// It is the CATALOG knob and not a profile field: what a bow IS is data
+	// about the world, while whether a mind cares is [Grudge.Excuse]. One
+	// answer serves every mind this driver builds, which is why it lives
+	// here and the profile does not. Nil means the rulebook's own weapon
+	// catalog.
 	Ranged func(item string) bool
 
 	// Minds is the door an authored mind comes through: the word a member's
@@ -98,11 +110,6 @@ func NewMinded(in *NewMindedInput) (*Minded, error) {
 		return nil, fmt.Errorf("minded: %w", err)
 	}
 
-	patience := DefaultPatience
-	if in != nil && in.Patience > 0 {
-		patience = in.Patience
-	}
-
 	var (
 		ranged func(item string) bool
 		minds  map[string]behavior.Mind
@@ -114,12 +121,11 @@ func NewMinded(in *NewMindedInput) (*Minded, error) {
 	}
 
 	return &Minded{
-		board:    b,
-		game:     game,
-		patience: patience,
-		ranged:   ranged,
-		minds:    minds,
-		minded:   make(map[core.EntityID]struct{}),
+		board:  b,
+		game:   game,
+		ranged: ranged,
+		minds:  minds,
+		minded: make(map[core.EntityID]struct{}),
 	}, nil
 }
 
@@ -167,6 +173,46 @@ func (d *Minded) assign(view encounter.MonsterView) error {
 	return nil
 }
 
+// preset is one word's tuning of the one [Retaliator] — the fields a mind
+// has, which is what this slice exists to find out before any authored-data
+// format is chosen. Space and Ranged are the driver's and not a preset's:
+// geometry belongs to the board, and what counts as a bow is a catalog.
+type preset struct {
+	Grudge Grudge
+	Room   int
+}
+
+// presets are the profiles the rulebook's own words mean. Every number here
+// is a FEEL number, tuned by a walk and derived from nothing.
+//
+//	word        patience  excuse   room
+//	retaliator  3         unarmed  0
+//	berserker   10        never    0
+//	coward      0 (none)  -        2
+//
+// The retaliator's 3 is #1725's behaviour unchanged: a deed stays worth
+// answering on the tick it lands and the two after it, which is exactly
+// what that slice's "older than 2 is stale" arithmetic did before Patience
+// became a span. A tick is a fight ROUND (walk 2 of #1725), so it answers a
+// shot for about two rounds after the last one.
+//
+// The berserker's 10 is longer than any fight at this table: within one
+// fight it never forgets, and a shot it answered ten rounds later is a
+// monster nobody will ever meet. It is a number rather than an infinity
+// because "never forgets" is a claim no walk has paid for, and a span is
+// the shape the field already has.
+//
+// The coward's 2 is two steps of room, which the ladder's rung 0 reads as
+// "back away from a live creature nearer than two" — in practice, anything
+// adjacent. One step would mean only a creature sharing its cell, which is
+// nobody. Its grudge is the zero value and says so: a coward does not
+// answer attacks, it leaves.
+var presets = map[string]preset{
+	MindRetaliator: {Grudge: Grudge{Patience: 3, Excuse: ExcuseUnarmed}},
+	MindBerserker:  {Grudge: Grudge{Patience: 10, Excuse: ExcuseNever}},
+	MindCoward:     {Room: 2},
+}
+
 // mindFor is the rulebook's registry: the sheet's word, the mind it means.
 // The caller's own minds are asked first, so an authored mind extends the
 // vocabulary and may override a word the rulebook ships.
@@ -175,12 +221,11 @@ func (d *Minded) mindFor(name string) (behavior.Mind, error) {
 		return mind, nil
 	}
 
-	switch name {
-	case MindRetaliator:
-		return &Retaliator{Space: d.board, Patience: d.patience, Ranged: d.ranged}, nil
-	default:
-		return nil, fmt.Errorf("%w: %q", ErrUnknownMind, name)
+	if p, ok := presets[name]; ok {
+		return &Retaliator{Space: d.board, Grudge: p.Grudge, Room: p.Room, Ranged: d.ranged}, nil
 	}
+
+	return nil, fmt.Errorf("%w: %q", ErrUnknownMind, name)
 }
 
 // intent maps the ladder's decision onto the encounter's sealed intents.
