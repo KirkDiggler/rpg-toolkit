@@ -42,7 +42,9 @@ The three files have different jobs:
 - [Encounter anchoring](encounter-anchoring/)
 - [Encounter transitions](encounter-transitions/)
 - [D&D 5e NPCs](dnd5e-npcs/)
-- [Monster behavior](monster-behavior/)
+- [Mind: perception](mind/perception/) — implemented
+- [Mind: behavior](mind/behavior/) — implemented; [scenarios.md](mind/behavior/scenarios.md) holds the arrows
+- [Monster behavior](monster-behavior/) — superseded by mind/behavior; history only
 - [NPC](npc/)
 - [Play](play/)
 - [Session SDK](session-sdk/)
