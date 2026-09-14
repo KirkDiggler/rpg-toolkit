@@ -6,7 +6,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.3.1
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.168.1-0.20260914061456-4cf2d553956b
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.169.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.81.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.13.0
 	github.com/stretchr/testify v1.11.1
