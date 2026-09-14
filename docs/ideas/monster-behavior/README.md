@@ -2,9 +2,12 @@
 
 > Make monsters fight back with simple, extensible behavior
 
-## Status: Design Complete
+## Status: SUPERSEDED
 
-Ready for implementation.
+History only. The goblin lives on as Arrow 2 in
+[mind/behavior/scenarios.md](../mind/behavior/scenarios.md); the utility
+scoring and `monster.TakeTurn` shape below predate `mind/perception` and
+`mind/behavior` and are not built on.
 
 ## Trigger
 
