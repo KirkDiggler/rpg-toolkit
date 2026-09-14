@@ -194,6 +194,75 @@ Guidance is not in `castContent`. Full root module suite, vet, and lint pass
 clean; `go build`/`go vet ./...` and `golangci-lint run` reported 0 issues on
 the touched packages.
 
+### Search: deferred, with the user's authorization, and why
+
+Slice 3 wired Guidance's interactive offer onto `Unlock` only. Extending the
+same offer to Search's find checks was investigated and explicitly declined
+by the user ("seems like a lot of baggage") after the actual shape of the
+problem was read out of the code, not assumed. Recorded here so a later
+session does not have to re-derive it.
+
+**Search cannot honestly pose the same way Unlock does.** `encounter.Search`
+calls `CheckResolver.ResolveCheck` inside a loop, once per concealed door
+touching the swept region:
+
+```go
+for _, doorID := range e.world.concealedDoors {
+    ...
+    verdict, err := e.checkResolver.ResolveCheck(&ResolveCheckInput{...})
+    ...
+}
+```
+
+One `Search` call can make zero, one, or many checks. RAW's "one ability
+check of its choice" has no defined answer to "which of the N checks a
+single Search call happens to make" — that is not a plumbing gap, it is an
+undecided rule.
+
+**Worse, posing anything here breaks Search's own secrecy law.** The
+package doc is explicit: "An empty region and a failed check return the
+same bytes... even the persisted blob is identical" — a failed searcher
+must not be able to tell a room was empty from a room that hid something
+they missed. Stopping to ask "spend your die?" only when a check actually
+runs would itself leak that a concealed door exists in the region, before
+the searcher has found anything — exactly the fact this verb exists to
+protect.
+
+**The user's resolution**, once this was laid out: apply the die
+automatically, not as an offer, to every check one `Search` call makes,
+since the player experiences "search the room" as one action regardless of
+how many concealed doors the engine happens to be checking against, and
+they never learn that count either way — so uniform automatic application
+leaks nothing a plain `Search` call does not already conceal.
+
+**That still is not a small addition, which is why it stays deferred.**
+The tracking half is free — an applied bonus already rides the existing
+sourced `RollComponent`/`RollCalculation` shape no matter how it is
+delivered, the same way Raging's advantage or a proficiency bonus already
+does. The mechanism half is not: `GuidedCondition`'s existing subscription
+(`PostCheckRollOfferChain`) is Unlock's interactive path, and it cannot
+also subscribe to the ordinary pre-roll `AbilityCheckChain` bonus fold to
+get automatic behavior for Search — that chain fires on *every* check,
+Unlock's included, so the same condition auto-applying there would silently
+bypass the interactive pose Slice 3 just built. A condition has no way to
+know which verb triggered the roll it is being asked to join.
+
+So automatic application for Search has to be Search's own explicit code
+path, not a second subscription on the existing condition: check whether
+the searcher holds Guidance before the sweep starts, apply the bonus to
+every check the sweep makes (rolled once and reused, or independently per
+check — undecided, and immaterial to the tracking, which is uniform
+either way), and consume the condition exactly once when the sweep ends
+rather than after the first internal check. That last part is the reason
+this cannot live inside `resolveStagedCheck` as written: it is invoked once
+per door, with no memory of "this is check 2 of 3 in the same Search call."
+It also still needs `encounter.Search`'s own calling contract to change —
+the same `encounter` + `session` PR pair Slice 3 already named — now to
+carry an extra caller-supplied bonus rather than to carry a pose.
+
+Deferred, not ruled impossible: a future session can pick this up from the
+mechanism description above without re-deriving the secrecy problem.
+
 ## Spare the Dying wiring inspection
 
 ### Executable content after session adoption
