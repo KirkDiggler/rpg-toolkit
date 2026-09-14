@@ -16,23 +16,100 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// Retaliator is the bow skeleton's mind: it turns on whoever attacked it
-// while that deed is fresher than its patience AND the shooter still has a
-// bow up, and otherwise goes for the closest. It is the captain's
-// retarget-on-a-witnessed-deed from mind/behavior's proofs with a shot in
-// place of a heal.
+// Excuse is what lets a SEEN actor off a grudge — the half of a grudge the
+// clock does not own. It is asked only about an actor the mind can
+// currently see: a figure it merely remembers being shot by has no hands to
+// check, and Patience is what remains for one of those.
+//
+// The vocabulary is closed and small on purpose. Each value is a rule the
+// mind applies to what it sees, and a rule nobody has named is not one a
+// profile can hold.
+type Excuse string
+
+// Excuse constants.
+const (
+	// ExcuseNever excuses nobody: whoever attacked it stays answerable
+	// until the clock runs out, whatever they are holding now.
+	//
+	// It is the ZERO VALUE, and that is a claim rather than an accident. An
+	// Excuse is a rule for letting somebody GO, so an author who set a
+	// grudge and named no excuse wrote down no way out of it — and the
+	// honest reading of an unwritten release rule is that there is none.
+	// The alternative zero, [ExcuseUnarmed], would have a profile assert a
+	// weapon rule its author never typed.
+	ExcuseNever Excuse = ""
+	// ExcuseUnarmed lets go of an actor the mind can see holding nothing
+	// that could shoot back. The bow skeleton's rule, bought by #1725's
+	// first walk: a skeleton that cannot be shot at any more has no reason
+	// to keep answering a bow.
+	ExcuseUnarmed Excuse = "unarmed"
+)
+
+// Grudge is what a mind does about a deed done to it: how long it stays
+// worth answering, and what lets the actor off before then. It is the first
+// half of a [Retaliator]'s profile and a plain value, so a preset is a
+// literal and a mind that holds no grudge is the zero.
+//
+// ZERO VALUE: no grudge at all. Patience is a SPAN — how many ticks a deed
+// stays worth answering, counting from the tick it was confirmed — so a
+// span of zero is a deed that was never worth answering, not one answerable
+// for an instant. That reading is what makes Grudge{} honest, and it is why
+// Patience is a span rather than a maximum age: a maximum age of zero still
+// answers a deed landed this very tick, and a mind with no grudge would
+// hold one for exactly as long as anybody was looking.
+type Grudge struct {
+	// Patience is how many ticks a deed stays worth answering. 2 answers a
+	// deed on the tick it lands and the tick after; 0 answers none.
+	Patience uint64
+	// Excuse is what lets a SEEN actor off before Patience runs out.
+	Excuse Excuse
+}
+
+// fresh reports whether a deed confirmed at that tick is still worth
+// answering at this one. A deed confirmed at or after the clock's own
+// high-water is as fresh as a deed gets, which is why the age is floored
+// rather than subtracted straight: the clock is the situation's and the
+// testimony's counters are perception's, and nothing here is the party that
+// gets to assume they agree.
+func (g Grudge) fresh(at, confirmed uint64) bool {
+	var age uint64
+	if at > confirmed {
+		age = at - confirmed
+	}
+
+	return age < g.Patience
+}
+
+// Retaliator is the rulebook's one grudge-holding mind, and the three words
+// it ships under are three profiles of it rather than three types: it turns
+// on whoever attacked it while that deed is still worth answering, it keeps
+// whatever room it wants, and it otherwise goes for the closest. It is the
+// captain's retarget-on-a-witnessed-deed from mind/behavior's proofs with a
+// shot in place of a heal.
 //
 // Four judgments and no state. Judge attaches an attack deed to the figure
 // the deed names — a claim, because the deed already says who and the mind
 // still has to believe it. Name is the member's own id. Rank is the grudge,
-// then the distance. Keep is nothing: it stands and fights.
+// then the distance. Keep is [Retaliator.Room].
+//
+// # The profile feeds the ranking; it never reorders it
+//
+// Rank's order is fixed and the profile cannot touch it: a grudge first,
+// then the live ahead of the remembered, then the closest, then the subject
+// as a tiebreak. What [Retaliator.Grudge] decides is WHO has a grudge, not
+// where a grudge sits in that list — and what [Retaliator.Room] decides is
+// how much space it wants, which the ladder's rung 0 reads and this mind
+// does not. Neither may reorder the ladder itself. That is the line
+// `docs/ideas/mind/behavior/scenarios.md` draws between a profile and a
+// claim: "how far the monster takes it" is the ladder abandoning one rung
+// for another, and only a claim may say that.
 //
 // The grudge is kind-blind, by design: any attack deed against me counts,
 // whoever landed it. A non-creature attacker — a dominated ally, a
 // friendly-fire swing — therefore ranks first and is still never attacked,
-// because the ladder attacks only creatures, and the skeleton walks toward
-// it instead. No use case has paid for kind-filtering, and the dominated
-// case argues the blind grudge is right.
+// because the ladder attacks only creatures, and the mind walks toward it
+// instead. No use case has paid for kind-filtering, and the dominated case
+// argues the blind grudge is right.
 //
 // # Why a weapon, and not only a clock
 //
@@ -40,21 +117,35 @@ import (
 // the skeleton with a crossbow, put it away, drew a longsword and closed —
 // and the skeleton kept shooting past the nearer barbarian until the timer
 // ran out. A skeleton that cannot be shot at any more has no reason to keep
-// answering a bow. So the grudge is a WEAPON rule first: it holds only while
-// the shooter is seen holding something ranged. Patience stays as the
-// fallback for a shooter the skeleton cannot currently see — a ghost it
-// remembers being shot by, whose hands it therefore cannot check.
+// answering a bow. So the skeleton's grudge is a WEAPON rule first
+// ([ExcuseUnarmed]): it holds only while the shooter is seen holding
+// something ranged. Patience stays as the fallback for a shooter the mind
+// cannot currently see — a ghost it remembers being shot by, whose hands it
+// therefore cannot check.
+//
+// A berserker is the same mind with [ExcuseNever]: the walk's finding was
+// about a skeleton, and a thug that keeps coming after you drop the
+// crossbow is a monster, not a bug.
 type Retaliator struct {
 	// Space is how it knows what closest means. Geometry is the caller's
 	// (mind/behavior R11); a mind may ask.
 	Space behavior.Space
-	// Patience is how many ticks old a deed may be and still be held
-	// against its actor.
-	Patience uint64
+	// Grudge is what it does about being attacked. The zero holds none.
+	Grudge Grudge
+	// Room is how much space it wants between itself and a live creature,
+	// in the Space's own steps — what [Retaliator.Keep] answers, and the
+	// only field the ladder's rung 0 reads. 0 stands and fights; 2 backs
+	// away from anything that gets within two steps.
+	//
+	// It is not called Keep because the judgment is: a mind answers
+	// [behavior.Mind.Keep] with a method, and a field of that name could
+	// not sit beside it.
+	Room int
 	// Ranged says whether an item id names a weapon that can shoot back.
-	// It is the first authoring knob on a mind — a monster that answers a
-	// crossbow but shrugs off a thrown dagger is not a different mind, it is
-	// really just data — and nil means the rulebook's own weapon catalog.
+	// It is the catalog knob and not a profile field — a monster that
+	// answers a crossbow but shrugs off a thrown dagger is not a different
+	// mind, it is really just data — and nil means the rulebook's own
+	// weapon catalog. Only [ExcuseUnarmed] ever asks it.
 	Ranged func(item string) bool
 }
 
@@ -101,8 +192,8 @@ func (r *Retaliator) Name(in *behavior.NameInput) (*behavior.NameOutput, error) 
 	return &behavior.NameOutput{Name: behavior.Name(id), Named: true}, nil
 }
 
-// Rank puts whoever attacked ME, fresher than Patience, first; then the
-// closest. A deed against somebody else is not a grudge. Ghosts rank by
+// Rank puts whoever attacked ME, while the grudge still stands, first; then
+// the closest. A deed against somebody else is not a grudge. Ghosts rank by
 // the same distance, after everything live.
 func (r *Retaliator) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) {
 	s := in.Situation
@@ -145,10 +236,8 @@ func (r *Retaliator) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) 
 }
 
 // grudge reports whether the contact holds an attack deed against the actor
-// itself that is still worth answering: fresher than Patience, and either
-// from somebody the skeleton cannot currently see — a remembered shooter,
-// whose hands it has no way to check — or from somebody it can see with a
-// ranged weapon still in hand.
+// itself that is still worth answering: inside the grudge's patience, and
+// not excused.
 //
 // A mind may decode a payload itself (mind/behavior R2), which is why the
 // hands are read here and [behavior.Reading] stays as narrow as it is: what
@@ -164,12 +253,11 @@ func (r *Retaliator) grudge(c behavior.Contact, s behavior.Situation) bool {
 			continue
 		}
 
-		if s.At-h.Confirmed > r.Patience {
+		if !r.Grudge.fresh(s.At, h.Confirmed) {
 			continue
 		}
 
-		seen, armed := r.hands(c)
-		if !seen || armed {
+		if !r.excused(c) {
 			return true
 		}
 	}
@@ -177,10 +265,27 @@ func (r *Retaliator) grudge(c behavior.Contact, s behavior.Situation) bool {
 	return false
 }
 
+// excused reports whether this profile's Excuse lets the contact go. Only a
+// contact the mind can currently SEE is ever excused: an excuse is a rule
+// about what a figure is doing now, and a figure it merely remembers is
+// doing nothing it can observe.
+func (r *Retaliator) excused(c behavior.Contact) bool {
+	switch r.Grudge.Excuse {
+	case ExcuseUnarmed:
+		seen, armed := r.hands(c)
+
+		return seen && !armed
+	case ExcuseNever:
+		return false
+	default:
+		return false
+	}
+}
+
 // hands reads what the contact is currently SEEN holding: whether sight is
 // delivering them at all, and whether either hand holds a ranged weapon.
-// Seen with no equipment testimony is seen with nothing to go on — the
-// skeleton saw the figure, not the hands — and that is not a bow.
+// Seen with no equipment testimony is seen with nothing to go on — the mind
+// saw the figure, not the hands — and that is not a bow.
 func (r *Retaliator) hands(c behavior.Contact) (seen, armed bool) {
 	for _, h := range c.Holdings {
 		if h.Channel != perception.Sight || !h.CurrentOn(perception.Sight) {
@@ -222,7 +327,7 @@ func rangedByCatalog(item string) bool {
 	return ok && w.IsRanged()
 }
 
-// Keep is nothing. A retaliator stands and fights.
+// Keep is [Retaliator.Room]. A profile that wants none stands and fights.
 func (r *Retaliator) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
-	return &behavior.KeepOutput{Steps: 0}, nil
+	return &behavior.KeepOutput{Steps: r.Room}, nil
 }

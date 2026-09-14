@@ -25,6 +25,14 @@
 // (rpg-toolkit#1725), and NewMindedInput.Minds is the door a caller's own
 // comes through.
 //
+// It is still the only one. The three words the rulebook ships —
+// retaliator, berserker, coward — are three PROFILES of that one mind
+// (rpg-toolkit#1745), which is how this package learns what fields a mind
+// has before anything decides where a profile is authored. What a word is
+// worth is a preset here, so tuning a monster is a toolkit release; that
+// cost is the argument for minds as data, and paying it a few times first
+// is deliberate.
+//
 // The richer design — mode machines, disposition, stimuli-and-memory
 // perception — lives in rpg-project's own ideas/monster-ai/design.md and
 // remains deliberately unbuilt here. Each of the three waits on a use case
