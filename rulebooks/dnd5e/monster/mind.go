@@ -37,9 +37,11 @@ const (
 	// they are holding: nothing but the clock talks it off a grudge. The
 	// thug's mind.
 	MindBerserker Mind = "berserker"
-	// MindCoward holds no grudge at all: it shoots whoever is nearest from
-	// a distance and steps away from whatever closes on it. The goblin's
-	// mind.
+	// MindCoward holds no grudge at all: it keeps its room, stepping away
+	// from whatever closes on it, and answers whoever is nearest with
+	// whatever it holds. A mind says what a monster cares about, not what
+	// it is armed with; a coward with only a blade backs off and fights
+	// cornered. The goblin's mind.
 	MindCoward Mind = "coward"
 )
 
