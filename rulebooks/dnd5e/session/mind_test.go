@@ -28,9 +28,19 @@ import (
 // up (behavior.MindRetaliator), and nothing between them shares a type: the
 // name crosses the encounter as an opaque string, exactly as Targeting does,
 // so a typo in either constant is a monster that either fails loudly at the
-// driver or silently gets the basic behaviour. The driver's module cannot
-// import its parent, so this is the one place the two can be compared at
-// all.
+// driver or silently gets the basic behaviour.
+//
+// The driver's module DOES NOT import its parent's definition vocabulary,
+// and that is a law rather than an impossibility: nothing in the module
+// graph forbids it — the parent has never required the driver, so there is
+// no cycle to hit — and the behavior module in fact imports `encounter` and
+// `weapons` from the same parent today. What it keeps out is `monster`.
+// A mind is named on the sheet and looked up by the driver (adoption rule
+// A5), so the driver reads the word off the view it was handed and stays
+// definition-ignorant; a registry keyed on `monster.Mind` would type-check
+// perfectly and quietly end that. Which is why this is the one place the
+// two can be compared at all, and why the sentence is worth stating: a
+// choice can be reversed by accident, and an impossibility cannot.
 func TestMindWordsAgree(t *testing.T) {
 	words := []struct {
 		sheet  monster.Mind
@@ -301,38 +311,59 @@ func TestMindedRefusesAnUnknownMind(t *testing.T) {
 	require.ErrorIs(t, err, behavior.ErrUnknownMind)
 }
 
-// Two members of ONE encounter, shot the same way on the same turn, decide
-// differently — because each thinks with the word its own sheet names.
+// Three members of ONE encounter, shot the same way on the same turn, decide
+// three different things — because each thinks with the word its own sheet
+// names.
 //
 // This is where the patience knob went (rpg-toolkit#1745). It used to be
 // the host's: one number, set at construction, for every mind in the
 // process. The test that proved a host could set it is gone, and this is
 // what replaced it, because the knob it proved could not have produced this
-// scene at all — one driver, one turn, two grudges of different lengths.
+// scene at all — one driver, one turn, three profiles.
 //
-// ONE driver answers both, which is the other half. The driver files a mind
-// per MEMBER id, so the skeleton's retaliator and the thug's berserker live
-// side by side in the value a host hands to one session.
+// ONE driver answers all three, which is the other half. The driver files a
+// mind per MEMBER id, so the skeleton's retaliator, the thug's berserker and
+// the goblin's coward live side by side in the value a host hands to one
+// session. Every word the rulebook ships is routed through this seam here;
+// the vocabulary test above pins the words themselves, and this is the only
+// place all three are spent.
 //
 // The scene is the same one the driver's own module proves each word
 // against, rebuilt on this package's types: the shooter put the crossbow
 // away and closed, and a bystander stands in reach. The skeleton lets her
-// go. The thug does not care what she is holding.
-func TestTwoMembersOfOneEncounterThinkWithTheirOwnWords(t *testing.T) {
+// go and swings at the bystander. The thug does not care what she is
+// holding. The coward does not answer shots at all and will not let the
+// bystander stand that close.
+//
+// THE THREE ANSWERS ARE PAIRWISE DIFFERENT, and that is the assertion that
+// bites: the words collapsing to one — the same registry key answering for
+// every member — leaves three identical intents, whichever key it is.
+func TestEveryMemberOfOneEncounterThinksWithItsOwnWord(t *testing.T) {
 	driver, err := session.Minded(nil)
 	require.NoError(t, err)
 
-	skeleton, err := driver.Act(mindedSwap(t, "skeleton", behavior.MindRetaliator))
-	require.NoError(t, err)
-	thug, err := driver.Act(mindedSwap(t, "thug", behavior.MindBerserker))
-	require.NoError(t, err)
+	act := func(member, word string) session.TurnIntent {
+		t.Helper()
+		intent, actErr := driver.Act(mindedSwap(t, member, word))
+		require.NoError(t, actErr)
+		return intent
+	}
+
+	skeleton := act("skeleton", behavior.MindRetaliator)
+	thug := act("thug", behavior.MindBerserker)
+	goblin := act("goblin", behavior.MindCoward)
 
 	require.Equal(t, session.Attack{Target: "bob", Action: mindedBlade.String()}, skeleton,
 		"the skeleton swings at the man beside it: alice cannot shoot back any more")
 	require.Equal(t, session.Attack{Target: "alice", Action: mindedBow.String()}, thug,
 		"the thug shoots past him at alice, who shot it, sword or no sword")
+	require.Equal(t, session.Move{Path: []spatial.Position{{X: 7, Y: 4}}}, goblin,
+		"the goblin holds no grudge and wants bob further off: one step back, the way the board laid it out")
+
 	require.NotEqual(t, skeleton, thug,
 		"same board, same shot, same turn, same driver: only the word differs")
+	require.NotEqual(t, thug, goblin)
+	require.NotEqual(t, skeleton, goblin)
 }
 
 // mindedSwap is #1745's scene at this package's boundary: member was shot
