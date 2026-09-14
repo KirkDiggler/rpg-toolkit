@@ -24,6 +24,8 @@ func TestParseMind_Table(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "retaliator", input: "retaliator", want: MindRetaliator},
+		{name: "berserker", input: "berserker", want: MindBerserker},
+		{name: "coward", input: "coward", want: MindCoward},
 		{name: "empty string rejected", input: "", wantErr: true},
 		{name: "unknown value rejected", input: "genius", wantErr: true},
 	}
@@ -33,6 +35,10 @@ func TestParseMind_Table(t *testing.T) {
 			if tc.wantErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "invalid mind")
+				for _, word := range authorable {
+					require.Contains(t, err.Error(), word.String(),
+						"a refusal names the whole vocabulary, so an author can see what they meant")
+				}
 				require.Equal(t, MindUnspecified, got)
 				return
 			}
