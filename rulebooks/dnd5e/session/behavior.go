@@ -82,13 +82,8 @@ func (basicSeam) Act(view MonsterView) (TurnIntent, error) {
 // verbs on the same session at the same instant already race that session's
 // own scope, and a driver of its own inherits exactly that boundary rather
 // than widening or narrowing it.
-func Minded(in *MindedInput) (TurnDriver, error) {
-	var patience uint64
-	if in != nil {
-		patience = in.Patience
-	}
-
-	driver, err := behavior.NewMinded(&behavior.NewMindedInput{Patience: patience})
+func Minded(_ *MindedInput) (TurnDriver, error) {
+	driver, err := behavior.NewMinded(nil)
 	if err != nil {
 		return nil, fmt.Errorf("minded driver: %w", err)
 	}
@@ -96,14 +91,20 @@ func Minded(in *MindedInput) (TurnDriver, error) {
 	return mindedSeam{driver: driver}, nil
 }
 
-// MindedInput configures the minded driver.
-type MindedInput struct {
-	// Patience is how many clock ticks old a witnessed deed may be before a
-	// mind stops holding a grudge over it. Zero takes the rulebook's own
-	// default — a feel number the first walk tunes, and not one a host
-	// should have to name to get a working driver.
-	Patience uint64
-}
+// MindedInput configures the minded driver, and configures nothing today:
+// nil is the whole contract, and every host passes it.
+//
+// It used to carry Patience — one grudge length for every mind in the
+// process. Patience is now the MIND's, named by the word a monster's sheet
+// says and held by the driver's own preset for that word
+// (rpg-toolkit#1745), because a host that set one number could not have a
+// berserker and a bow skeleton on the same board.
+//
+// The type stays because the door does. A knob that belongs to the host
+// rather than to a mind — which is not the same thing as a knob that
+// belongs to a monster — arrives here, and arrives without changing the
+// signature every host already calls.
+type MindedInput struct{}
 
 // mindedSeam adapts behavior.Minded to this package's own TurnDriver,
 // exactly as basicSeam adapts behavior.Basic — same round trip, same

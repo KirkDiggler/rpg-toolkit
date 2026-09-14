@@ -5,14 +5,14 @@ go 1.24.1
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
-	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.3.0
+	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.3.1
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.168.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.4.1
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.169.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.5.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.82.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.48.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.13.0

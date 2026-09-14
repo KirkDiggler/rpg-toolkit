@@ -118,7 +118,8 @@ they follow the grid-provided `GetLineOfSight` ray, reject any blocked
 consecutive crossing, and do not find a detour. Boundary LoS checks use one
 lexicographically ordered endpoint ray so a boundary has the same result in
 either direction even when square Bresenham chooses different directional rays.
-Entity blockers continue to use the caller's requested ray.
+Entity and boundary blockers use that same canonical ray for each evaluated
+sight lane.
 
 For hex A*, `SimplePathFinder.FindPathWithTraversal` accepts a
 `TraversalPredicate` so callers can reject a crossing without treating either
@@ -864,69 +865,151 @@ type FieldOutput struct {
 func (f FieldOutput) PathTo(goal Position) ([]Position, bool)
 ```
 
-#### Coverage
+#### Placed footprint geometry
 
-`Coverage` rasterises a footprint at a transform onto a grid and answers with
-the fraction of each cell's area under it. It is the one geometric question
-asked of every shape in the game: a prop that does not fit in a cell, a
-creature bigger than one, a blast. Fractions come out and thresholds go in
-above — half is the tabletop's template rule, and it is the rulebook's number,
-not spatial's.
+`PlacedCoverage` rasterises a freely placed rectangular footprint over an
+explicit universe of axial cells. `TraceFootprint` tests a closed segment
+against the same rectangle without depending on a grid. Both use the caller's
+continuous plane and report geometry only: thresholds, movement, sight, cover,
+and whether a prop occupies room cells remain caller policy.
 
-Coverage needs the grid's place in the plane, which is `HexEmbedding`: where a
-cell's centre sits, where its six corners are, and the bearing from one cell to
-another. `CellWidth` is measured **across the flats**, in the caller's own unit
-— spatial has no notion of feet, so a rulebook that calls a cell five feet
-passes 5 and reads everything back in feet. A cell's circumradius is
-`CellWidth/sqrt(3)` under both orientations.
+`HexEmbedding.CellWidth`, points, and box dimensions all use the caller's chosen
+unit; spatial has no notion of feet. Plane X runs east and Y runs south. Facing
+maps local +X to `(cos(a), sin(a))`, so positive 90 degrees points south. `Box.D`
+runs along local X, `Box.W` across local Y, and `LocalOffset` shifts the box
+centre in those local axes before rotation and translation by `Origin`.
 
 ```go
-func NewHexEmbedding(c HexEmbeddingConfig) HexEmbedding
-
-type HexEmbeddingConfig struct {
-    Orientation HexOrientation // pointy-top or flat-top
-    CellWidth   float64        // across the flats, caller's unit; must be positive
+type FootprintPlacement struct {
+    Footprint   Footprint
+    Origin      Point
+    Facing      float64
+    LocalOffset Point
 }
 
-func (c HexEmbeddingConfig) Validate() error            // ErrBadCellWidth
-func (e HexEmbedding) CellCentre(cell Position) Point
-func (e HexEmbedding) CellCorners(cell Position) [6]Point
-func (e HexEmbedding) Bearing(from, to Position) (degrees float64, ok bool)
-
-func Coverage(emb HexEmbedding, g Grid, in CoverageInput) (CoverageOutput, error)
-
-type CoverageInput struct {
-    Footprint Footprint  // Box{W across the bearing, D along it}; Polygon later
-    At        Position   // the anchor cell
-    Facing    float64    // degrees counter-clockwise from east; nothing snaps to an axis
-    Anchor    AnchorRule // AnchorAtCentre | AnchorAtEdge
+type PlacedCoverageInput struct {
+    Embedding HexEmbedding
+    Placement FootprintPlacement
+    Cells     []Position // exact finite integral axial cells to inspect
 }
 
-type CoverageOutput struct {
-    Cells map[Position]float64 // fraction of each cell's area under it, (0, 1]
+func PlacedCoverage(in PlacedCoverageInput) (CoverageOutput, error)
+
+type FootprintTraceInput struct {
+    Placement FootprintPlacement
+    From, To  Point
 }
+
+type FootprintTraceOutput struct {
+    Contact  bool    // meets the closed rectangle
+    Interior bool    // positive-length portion lies strictly inside
+    Enter    float64 // contact interval in [0,1]
+    Leave    float64
+}
+
+func TraceFootprint(in FootprintTraceInput) (FootprintTraceOutput, error)
 ```
 
-`AnchorAtEdge` puts the footprint's near edge on the anchor cell's boundary
-along `Facing`, so the anchor cell is (very nearly) not under it — at a bearing
-off a grid axis the anchor's own corner pokes past that line by a percent or
-so, which a threshold above discards. `Edges` — the cell boundaries an outline
-crosses, which is how a thin thing that covers under half of everything still
-blocks something — arrives with the first thin prop that needs it.
+Coverage misses are absent from the output map; duplicates are idempotent. An
+empty candidate universe returns a non-nil empty map after validating the
+embedding and placement. Callers provide bounded candidate sets: the query does
+not infer floor, void, map membership, or nearest cells. Invalid or non-finite
+geometry, widths, endpoints, and fractional/non-finite cells return an error and
+never a partial coverage map.
+
+For traces, edge overlap and a corner touch are contact but not interior. A
+stationary point inside or on the rectangle is contact with interval `[0,0]`
+and is not interior; a stationary point outside is a miss. Reversing a segment
+maps the interval to `[1-Leave, 1-Enter]`.
 
 ```go
-emb := spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{
-    Orientation: spatial.HexOrientationPointyTop,
-    CellWidth:   5, // feet, because the caller measured in feet
+emb := spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{CellWidth: 5})
+placement := spatial.FootprintPlacement{
+    Footprint: spatial.Footprint{Box: &spatial.Box{W: 4, D: 10}},
+    Origin: spatial.Point{X: 3.25, Y: -1.75},
+    Facing: 37,
+}
+coverage, err := spatial.PlacedCoverage(spatial.PlacedCoverageInput{
+    Embedding: emb,
+    Placement: placement,
+    Cells: []spatial.Position{{}, {X: 1}, {Y: -1}},
 })
-facing, _ := emb.Bearing(casterCell, chosenCell)
-out, err := spatial.Coverage(emb, room.GetGrid(), spatial.CoverageInput{
-    Footprint: spatial.Footprint{Box: &spatial.Box{W: 15, D: 15}},
-    At:        casterCell,
-    Facing:    facing,
-    Anchor:    spatial.AnchorAtEdge,
+trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+    Placement: placement,
+    From: spatial.Point{X: -5},
+    To: spatial.Point{X: 8},
 })
 ```
+
+`Coverage` remains the cell-anchored compatibility entry point. It converts the
+anchor cell through `CellCentre`, supplies a bounded candidate set from the
+grid, and delegates to `PlacedCoverage`. `AnchorAtCentre` centres the box on the
+cell; `AnchorAtEdge` puts its near edge one cell inradius along Facing. Existing
+spell thresholds remain above this API.
+
+These queries do not make props occupy cells in `BasicRoom`, persist authored
+footprints, load meshes, or add scale, height, and polygon support.
+
+#### Shared sight-lane evaluation
+
+`SightLanes` exposes the same direct and progress-making-neighbour lane
+calculation used by `BasicRoom`, while callers supply obstruction facts. `Along`
+reports hard obstructions that cannot be bypassed and soft obstructions that an
+alternate lane may bypass; both block the lane on which they appear. `At`
+reports an opaque alternate origin. It is not a movement or standing query.
+
+Each `Along` call receives one canonical `Ray`, oriented from `From` toward
+`To`. Treat the ray as read-only and do not retain it. The query retains no
+callbacks and takes no locks, so callers own a stable view for its duration.
+Missing collaborators and non-finite endpoints return the documented errors;
+any callback error is returned with a zero output rather than being interpreted
+as clear or blocked sight.
+
+Continuous footprints compose without occupying a `BasicRoom` cell:
+
+```go
+type footprintSight struct {
+    emb       spatial.HexEmbedding
+    placement spatial.FootprintPlacement
+}
+
+func (f footprintSight) Along(in spatial.SightLaneInput) (spatial.SightLaneOutput, error) {
+    trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+        Placement: f.placement,
+        From:      f.emb.CellCentre(in.From),
+        To:        f.emb.CellCentre(in.To),
+    })
+    return spatial.SightLaneOutput{SoftBlocked: trace.Interior}, err
+}
+
+func (f footprintSight) At(in spatial.SightCellInput) (spatial.SightCellOutput, error) {
+    point := f.emb.CellCentre(in.At)
+    trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+        Placement: f.placement,
+        From:      point,
+        To:        point,
+    })
+    return spatial.SightCellOutput{Blocked: trace.Contact}, err
+}
+
+obstructions := footprintSight{
+    emb: spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{CellWidth: 5}),
+    placement: spatial.FootprintPlacement{
+        Footprint: spatial.Footprint{Box: &spatial.Box{W: 30, D: 0.2}},
+    },
+}
+result, err := spatial.SightLanes(spatial.SightLanesInput{
+    Grid:         spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 9, SpanHeight: 9}),
+    From:         spatial.Position{X: -2},
+    To:           spatial.Position{X: 2},
+    Obstructions: obstructions,
+})
+```
+
+This example demonstrates geometry composition only; live prop ownership,
+standing thresholds, cover rules, and persistence remain caller policy.
+`BasicRoom.IsLineOfSightBlocked` delegates through an internal obstruction
+reader while holding its existing read lock, giving its callbacks a stable view.
 
 #### Room Interface
 ```go

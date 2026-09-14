@@ -36,8 +36,9 @@ const (
 // CoverageInput places a footprint on the plane: which cell it is anchored at,
 // which way it faces, and whether it sits on that cell or in front of it.
 //
-// Facing is in degrees, counter-clockwise from east, as HexEmbedding.Bearing
-// reports it. Any angle is legal: nothing here snaps to a grid axis.
+// Facing is in degrees from east in the embedding's numeric plane, as
+// HexEmbedding.Bearing reports it; positive 90 points south. Any finite angle
+// is legal: nothing here snaps to a grid axis.
 type CoverageInput struct {
 	Footprint Footprint
 	At        Position
@@ -77,61 +78,40 @@ const coverageEpsilon = 1e-9
 // without this changing. Only cells the grid considers valid are reported.
 //
 // Returns ErrNoFootprint when no shape was given, ErrBadFootprint when its
-// sides are not positive, and ErrBadCellWidth when the embedding has no frame.
+// sides are not positive and finite, ErrBadCellWidth when the embedding has no
+// frame, and ErrBadFootprintPlacement for an invalid anchor or facing.
 func Coverage(emb HexEmbedding, g Grid, in CoverageInput) (CoverageOutput, error) {
 	if in.Footprint.Box == nil {
 		return CoverageOutput{}, ErrNoFootprint
 	}
 	b := *in.Footprint.Box
-	if b.W <= 0 || b.D <= 0 {
-		return CoverageOutput{}, ErrBadFootprint
-	}
-	if emb.cellWidth <= 0 {
-		return CoverageOutput{}, ErrBadCellWidth
-	}
-
-	rect := boxPolygon(emb, in, b)
-	radius := math.Ceil((b.D+b.W/2)/emb.cellWidth) + 1
-
-	out := CoverageOutput{Cells: map[Position]float64{}}
-	for _, cell := range g.GetPositionsInRange(in.At, radius) {
-		hex := emb.CellCorners(cell)
-		whole := polygonArea(hex[:])
-		if whole <= 0 {
-			continue
-		}
-		clipped := clipConvex(hex[:], rect)
-		f := polygonArea(clipped) / whole
-		if f > coverageEpsilon {
-			out.Cells[cell] = math.Min(f, 1)
+	for _, v := range []float64{b.W, b.D} {
+		if v <= 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+			return CoverageOutput{}, ErrBadFootprint
 		}
 	}
-
-	return out, nil
-}
-
-// boxPolygon is the footprint's four corners in the plane, in boundary order.
-//
-// The near edge sits on the anchor cell's boundary for AnchorAtEdge — half a
-// cell width along the bearing, which is the inradius — and the box is centred
-// on the cell for AnchorAtCentre.
-func boxPolygon(emb HexEmbedding, in CoverageInput, b Box) []Point {
-	rad := in.Facing * math.Pi / 180
-	ux, uy := math.Cos(rad), math.Sin(rad)
-	nx, ny := -uy, ux
-
-	c := emb.CellCentre(in.At)
-	near, far := -b.D/2, b.D/2
+	if err := (HexEmbeddingConfig{CellWidth: emb.cellWidth}).Validate(); err != nil {
+		return CoverageOutput{}, err
+	}
+	placement := FootprintPlacement{
+		Footprint: in.Footprint, Origin: emb.CellCentre(in.At), Facing: in.Facing,
+	}
 	if in.Anchor == AnchorAtEdge {
-		near, far = emb.cellWidth/2, emb.cellWidth/2+b.D
+		placement.LocalOffset.X = (emb.cellWidth + b.D) / 2
 	}
-	half := b.W / 2
-
-	at := func(along, across float64) Point {
-		return Point{X: c.X + ux*along + nx*across, Y: c.Y + uy*along + ny*across}
+	if _, err := footprintBox(placement); err != nil {
+		return CoverageOutput{}, err
+	}
+	radius := math.Ceil((b.D+b.W/2)/emb.cellWidth) + 1
+	if math.IsNaN(radius) || math.IsInf(radius, 0) {
+		return CoverageOutput{}, ErrBadFootprintPlacement
 	}
 
-	return []Point{at(near, -half), at(far, -half), at(far, half), at(near, half)}
+	return PlacedCoverage(PlacedCoverageInput{
+		Embedding: emb,
+		Placement: placement,
+		Cells:     g.GetPositionsInRange(in.At, radius),
+	})
 }
 
 // clipConvex is the part of subject inside the convex clipper, both given in

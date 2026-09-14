@@ -168,6 +168,34 @@ func (s *CoverageTestSuite) TestACentredBoxCoversTheCellItSitsOn() {
 	s.InDelta(1.0, out.Cells[origin], 1e-9, "a centred box sits on its own anchor")
 }
 
+func (s *CoverageTestSuite) TestCellAnchorAdapterMatchesContinuousQuery() {
+	for _, anchor := range []AnchorRule{AnchorAtCentre, AnchorAtEdge} {
+		for _, angle := range []float64{0, 15, 60, 90, 137} {
+			in := CoverageInput{
+				Footprint: Footprint{Box: &Box{W: 15, D: 15}},
+				At:        Position{X: 1, Y: -1}, Facing: angle, Anchor: anchor,
+			}
+			old, err := Coverage(s.emb, s.grid, in)
+			s.Require().NoError(err)
+			placement := FootprintPlacement{
+				Footprint: in.Footprint, Origin: s.emb.CellCentre(in.At), Facing: in.Facing,
+			}
+			if anchor == AnchorAtEdge {
+				placement.LocalOffset.X = 10
+			}
+			direct, err := PlacedCoverage(PlacedCoverageInput{
+				Embedding: s.emb, Placement: placement,
+				Cells: s.grid.GetPositionsInRange(in.At, 6),
+			})
+			s.Require().NoError(err)
+			s.Equal(keys(old.Cells), keys(direct.Cells))
+			for cell, fraction := range old.Cells {
+				s.InDelta(fraction, direct.Cells[cell], 1e-9)
+			}
+		}
+	}
+}
+
 func (s *CoverageTestSuite) TestRefusals() {
 	_, err := Coverage(s.emb, s.grid, CoverageInput{At: Position{}})
 	s.ErrorIs(err, ErrNoFootprint)
