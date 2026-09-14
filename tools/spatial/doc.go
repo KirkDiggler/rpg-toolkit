@@ -13,8 +13,10 @@
 //   - Room-based spatial organization
 //   - Collision detection and spatial queries
 //   - Path validation, and distance fields over a grid (Field, PathTo)
-//   - Coverage: which cells a footprint lies on, as fractions, over a hex
-//     grid's embedding in the plane (HexEmbedding, Coverage)
+//   - Footprint geometry: freely placed box coverage over an explicit hex-cell
+//     universe and closed-segment contact/interior intervals
+//     (PlacedCoverage, TraceFootprint)
+//   - Cell-anchored footprint coverage for compatibility (Coverage)
 //   - Multi-room orchestration and connections
 //   - Distance calculations and area queries
 //   - Entity position tracking
@@ -28,6 +30,8 @@
 //   - Thresholds: how much of a cell a footprint must cover to count is the
 //     game's; Coverage answers with fractions and has no opinion about half
 //   - Interaction ranges: Their meanings and effects are game-specific
+//   - Durable prop/entity occupancy: geometry queries do not place footprints
+//     into rooms or choose playable cells
 //   - 3D positioning: This is explicitly 2D only
 //   - Movement costs: Action economy is game-specific
 //   - Elevation: Height/flying is game-specific
