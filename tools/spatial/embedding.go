@@ -37,9 +37,9 @@ type HexEmbeddingConfig struct {
 }
 
 // Validate reports whether the config describes a usable plane.
-// Returns ErrBadCellWidth when CellWidth is not positive.
+// Returns ErrBadCellWidth when CellWidth is not positive or finite.
 func (c HexEmbeddingConfig) Validate() error {
-	if c.CellWidth <= 0 {
+	if c.CellWidth <= 0 || math.IsNaN(c.CellWidth) || math.IsInf(c.CellWidth, 0) {
 		return ErrBadCellWidth
 	}
 
@@ -77,8 +77,8 @@ type HexEmbedding struct {
 // to a corner — is CellWidth/sqrt(3) under both orientations, because across
 // the flats is sqrt(3) circumradii either way.
 //
-// A CellWidth that is not positive yields an embedding with no frame, whose
-// methods return zero points and report no bearing. That is deliberate: the
+// A CellWidth that is not positive or finite yields an embedding with no frame,
+// whose methods return zero points and report no bearing. That is deliberate: the
 // alternative is a panic in the middle of a raster, or a silent frame of some
 // invented size. Callers that take a width from content validate the config.
 func NewHexEmbedding(c HexEmbeddingConfig) HexEmbedding {
@@ -130,7 +130,8 @@ func (e HexEmbedding) CellCorners(cell Position) [6]Point {
 }
 
 // Bearing reports the direction from one cell's centre to another's, in
-// degrees within [0, 360), measured counter-clockwise from east.
+// degrees within [0, 360), measured from east in the numeric plane. Because Y
+// runs south, positive 90 points south.
 //
 // Reports false when the two cells are the same, and when the embedding has
 // no frame: neither has a direction at all, and a caller that wants to say
