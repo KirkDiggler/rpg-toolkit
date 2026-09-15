@@ -187,6 +187,7 @@ var truthEntries = []struct{ file, fn string }{
 	{"projection.go", "projectCharacterOn"},
 	{"participation.go", "participationOn"},
 	{"check.go", "makeCheckOn"},
+	{"check_pose.go", "resumeCheckOn"},
 	{"long_rest.go", "longRestOn"},
 	{"death_save.go", "deathSaveOn"},
 }

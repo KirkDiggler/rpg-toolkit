@@ -8,12 +8,16 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/checks"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
@@ -79,6 +83,21 @@ type CheckOutput struct {
 	// itself on a check (guidance is the canonical one), the write-back is
 	// already in the caller's hands instead of silently lost down here.
 	DirtyCharacter *character.Data
+
+	// Calculation is the check's sourced arithmetic — d20, modifier and any
+	// chain-granted bonuses, in the same shape attacks and saves already
+	// carry. Built here rather than in [checks.MakeAbilityCheck], the same
+	// layering [strikeMachine] keeps for StrikeOutcome.Calculation: the rules
+	// package returns the bare numbers, and the sourced record is assembled
+	// by whichever caller owns the bus. Nil when [CheckOutput.Posed] is set.
+	Calculation *dnd5eEvents.RollCalculation
+
+	// Posed is the question this check stopped on, mirroring [Output.Posed]'s
+	// presence law: every other field on this struct is the zero value when
+	// this is set, and this is nil when the check ran to a finished result.
+	// Set only when the checker holds an offer (Guidance is the first) —
+	// every check without one finishes exactly as it does today.
+	Posed *Pose
 }
 
 // MakeCheck is the lawful way to make an ability check for a stored character:
@@ -214,28 +233,195 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 		DC:        applied.DC,
 		Modifier:  modifier,
 	})
-
-	// Revoked on every exit whether or not the roll worked, because a
-	// subscription that outlives its interaction is the leak this package
-	// exists to prevent.
-	tearErr := surf.teardown(ctx)
-
 	if checkErr != nil {
 		return nil, errors.Join(
 			fmt.Errorf("resolution: check for %q: %w", one.ID(), checkErr),
-			tearErr,
+			surf.teardown(ctx),
 		)
 	}
+
+	calculation, calcErr := checkCalculationFor(applied, skill, modifier, result)
+	if calcErr != nil {
+		return nil, errors.Join(
+			fmt.Errorf("resolution: check for %q: %w", one.ID(), calcErr),
+			surf.teardown(ctx),
+		)
+	}
+
+	// Folded on THIS interaction's bus, same custody as the ability-check
+	// chain above — anyone holding an offer against the checker's own roll
+	// (Guidance is the first) puts it on the table here, before the bus is
+	// torn down. Nothing is spent yet: an offer nobody answers costs nothing.
+	offers, offerErr := gatherCheckOffers(ctx, surf, one.ID(), result.Roll, calculation.Total)
+	if offerErr != nil {
+		return nil, errors.Join(
+			fmt.Errorf("resolution: check for %q: %w", one.ID(), offerErr),
+			surf.teardown(ctx),
+		)
+	}
+
+	var posed *Pose
+	if len(offers) > 0 {
+		posed, err = poseCheck(poseCheckInput{
+			checkerID: one.ID(), applied: applied, result: result, calculation: calculation, offers: offers,
+		})
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("resolution: check for %q: %w", one.ID(), err),
+				surf.teardown(ctx),
+			)
+		}
+	}
+
+	// Revoked on every exit whether or not the roll worked, and whether or
+	// not it posed — R5's rule made mechanical for checks, the same as
+	// [resolveOn]'s teardown around driveStep.
+	tearErr := surf.teardown(ctx)
 	if tearErr != nil {
 		return nil, fmt.Errorf("resolution: teardown: %w", tearErr)
 	}
 
-	out := &CheckOutput{Result: result, Applied: applied}
+	if posed != nil {
+		return &CheckOutput{Posed: posed}, nil
+	}
+
+	out := &CheckOutput{Result: result, Applied: applied, Calculation: calculation}
 	if ch.IsDirty() {
 		out.DirtyCharacter = ch.ToData()
 	}
 
 	return out, nil
+}
+
+// checkApproachSource names the route a check was rolled through — a skill
+// when the approach resolved one, the bare ability otherwise — for the d20
+// and modifier components' [dnd5eEvents.RollSource]. Every [RollComponent]
+// requires a ref (rpg-toolkit#1357's strictness extended to calculations), so
+// an ordinary check needs an identity here the way a spell or a weapon
+// already has one.
+func checkApproachSource(applied encounter.CheckApproach, skill skills.Skill) (*core.Ref, string) {
+	if ref := skillRef(skill); ref != nil {
+		return ref, skills.Display(skill)
+	}
+	if ability, err := abilities.GetByID(applied.Ability); err == nil {
+		return attackAbilityRef(ability), ability.Display()
+	}
+	return nil, string(applied.Ability)
+}
+
+// skillRef maps a resolved skill to its ref, or nil for a bare-ability route
+// (no skill was involved) or an unrecognised one. A switch rather than a
+// lookup table: refs.Skills is itself hand-authored accessors, and this is
+// the first caller that needs the reverse direction.
+func skillRef(skill skills.Skill) *core.Ref {
+	switch skill {
+	case skills.Acrobatics:
+		return refs.Skills.Acrobatics()
+	case skills.AnimalHandling:
+		return refs.Skills.AnimalHandling()
+	case skills.Arcana:
+		return refs.Skills.Arcana()
+	case skills.Athletics:
+		return refs.Skills.Athletics()
+	case skills.Deception:
+		return refs.Skills.Deception()
+	case skills.History:
+		return refs.Skills.History()
+	case skills.Insight:
+		return refs.Skills.Insight()
+	case skills.Intimidation:
+		return refs.Skills.Intimidation()
+	case skills.Investigation:
+		return refs.Skills.Investigation()
+	case skills.Medicine:
+		return refs.Skills.Medicine()
+	case skills.Nature:
+		return refs.Skills.Nature()
+	case skills.Perception:
+		return refs.Skills.Perception()
+	case skills.Performance:
+		return refs.Skills.Performance()
+	case skills.Persuasion:
+		return refs.Skills.Persuasion()
+	case skills.Religion:
+		return refs.Skills.Religion()
+	case skills.SleightOfHand:
+		return refs.Skills.SleightOfHand()
+	case skills.Stealth:
+		return refs.Skills.Stealth()
+	case skills.Survival:
+		return refs.Skills.Survival()
+	default:
+		return nil
+	}
+}
+
+// checkCalculationFor assembles the check's sourced arithmetic from the bare
+// numbers [checks.MakeAbilityCheck] returns: a d20 component, a flat-modifier
+// component, and one component per chain-granted bonus source. Mirrors
+// [strikeMachine.afterAttackChain]'s calculation, built in resolution rather
+// than in the rules package for the same reason.
+//
+// The d20 component's dice trace is necessarily thinner than an attack's or a
+// save's: [checks.AbilityCheckResult] reports only the final Roll, not the
+// original faces under advantage/disadvantage, so OriginalRolls/FinalRolls
+// both carry that one settled face rather than the pair the rules package
+// actually rolled.
+func checkCalculationFor(
+	applied encounter.CheckApproach, skill skills.Skill, modifier int, result *checks.AbilityCheckResult,
+) (*dnd5eEvents.RollCalculation, error) {
+	ref, name := checkApproachSource(applied, skill)
+	source := dnd5eEvents.RollSource{Ref: ref, Name: name}
+	components := []dnd5eEvents.RollComponent{
+		{
+			Source: source,
+			Dice: &dnd5eEvents.DiceTrace{
+				Notation: "1d20", DieSize: 20,
+				OriginalRolls: []int{result.Roll}, FinalRolls: []int{result.Roll}, Subtotal: result.Roll,
+			},
+		},
+		{Source: source, Modifier: &modifier},
+	}
+	for _, bonus := range result.BonusSources {
+		amount := bonus.Bonus
+		components = append(components, dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: bonus.SourceRef, Name: bonus.Name, SourceID: bonus.EntityID},
+			Modifier: &amount,
+		})
+	}
+
+	calculation := &dnd5eEvents.RollCalculation{Components: components}
+	for _, component := range components {
+		if component.Dice != nil {
+			calculation.Total += component.Dice.Subtotal
+		}
+		if component.Modifier != nil {
+			calculation.Total += *component.Modifier
+		}
+	}
+	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
+		return nil, fmt.Errorf("check calculation: %w", err)
+	}
+	return calculation, nil
+}
+
+// gatherCheckOffers folds [dnd5eEvents.PostCheckRollOfferChain] on the
+// interaction's own bus and hands back what was put on the table — the check
+// sibling of [gatherPostRollOffers].
+func gatherCheckOffers(
+	ctx context.Context, bus events.EventBus, checkerID string, roll, total int,
+) ([]dnd5eEvents.Offer, error) {
+	event := &dnd5eEvents.PostCheckRollOfferEvent{CheckerID: checkerID, Roll: roll, Total: total}
+	chain := events.NewStagedChain[*dnd5eEvents.PostCheckRollOfferEvent](combat.ModifierStages)
+	modified, err := dnd5eEvents.PostCheckRollOfferChain.On(bus).PublishWithChain(ctx, event, chain)
+	if err != nil {
+		return nil, fmt.Errorf("publish post check roll offers: %w", err)
+	}
+	folded, err := modified.Execute(ctx, event)
+	if err != nil {
+		return nil, fmt.Errorf("execute post check roll offers: %w", err)
+	}
+	return folded.Offers, nil
 }
 
 // bestApproach selects the character's best listed route and reads their
