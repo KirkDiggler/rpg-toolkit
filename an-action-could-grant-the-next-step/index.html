@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>An Action Could Grant the Next Step</title>
+<meta name="description" content="The doorway was unfinished. The action system introduced a new building block: a choice could grant what the character was able to do next.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/an-action-could-grant-the-next-step/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="An Action Could Grant the Next Step">
+<meta property="og:description" content="The doorway was unfinished. The action system introduced a new building block: a choice could grant what the character was able to do next.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/an-action-could-grant-the-next-step/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/an-action-could-grant-the-next-step.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/an-action-could-grant-the-next-step.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading An Action Could Grant the Next Step beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="An Action Could Grant the Next Step">
+<meta name="twitter:description" content="The doorway was unfinished. The action system introduced a new building block: a choice could grant what the character was able to do next.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/an-action-could-grant-the-next-step.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading An Action Could Grant the Next Step beside a blue D20 wireframe.">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91;--pressure-soft:#2b1e20}
+*{box-sizing:border-box}
+html{background:var(--ground);color-scheme:dark;overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}
+a{color:var(--bright);text-underline-offset:3px}
+.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+
+
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}
+.eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}
+h1{max-width:950px;margin:.3em 0 .3em;font-size:clamp(3.7rem,8vw,6.2rem);letter-spacing:-.035em}
+.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}
+.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}
+.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}
+.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.legend{display:flex;flex-wrap:wrap;gap:1.5rem;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase}
+.legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}
+.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}
+.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}
+.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}
+.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}
+.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+p{max-width:74ch;margin:.76em 0}.lead{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}
+code{color:var(--bright);font-size:.87em}
+figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-block:1px solid var(--rule-strong);scrollbar-color:var(--rule-strong) var(--ground)}
+figure svg{display:block;width:100%;min-width:840px;height:auto;margin:0 auto}
+figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}
+.law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",monospace}.law b{color:var(--primary);font-weight:500}
+.pressure-law{border-left-color:var(--pressure)}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}
+footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer a{white-space:nowrap}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px}
+svg .t-title{font-size:22px;font-weight:600}svg .t-big{font-size:29px;font-weight:600}svg .mono{font-size:15px}svg .label{fill:var(--muted);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.8px}svg .small{fill:var(--muted);font-size:16px}svg .blue{fill:var(--bright)}svg .rust{fill:var(--pressure-text)}svg .faint{fill:var(--faint)}
+svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.5}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.4;stroke-dasharray:7 6}
+svg .wire{fill:none;stroke:var(--muted);stroke-width:1.5}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .dash{stroke-dasharray:7 6}
+figure::before{display:none}
+@media(max-width:760px){
+ .page{padding:14px 14px 70px}header{padding:50px 14px 48px 42px}
+ .origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{flex-direction:column;gap:.6rem}
+ .timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}
+ .panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}figure svg{min-width:900px}footer{margin:48px 0 0 42px}
+ figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-block:1px solid var(--accent);background:var(--ground);color:var(--bright);font:500 .69rem/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.35rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Layer 7 · The action system</div>
+    <h1>An Action Could Grant the Next Step</h1>
+    <p class="dek">The door had opened, but the monsters would not cross. I hadn’t solved that. As I remember it, we turned back to the action system. The important change was a new kind of building block: <strong>Actions a Character could have, gain, and use.</strong> Taking one could grant the next step, instead of carrying out the whole interaction at once.</p>
+    <nav class="origin-links" aria-label="Field-note navigation">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets →</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/a-room-is-not-a-dungeon/"><span>Previous field note</span><strong>A Room Is Not a Dungeon →</strong></a>
+    </nav>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Unfinished</b><span>the crossing between rooms</span></div><div><b>Focus</b><span>ordinary choices in a turn</span></div><div><b>Payoff</b><span>make the next step grantable</span></div></div>
+    <div class="legend" aria-label="Diagram legend"><span><i></i>a new building block</span><span><i></i>what the old model could not express</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Four panels: from counting resources to granting the next action">
+    <section class="timeline-panel pressure-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">Back to the actions</span></div>
+      <div class="panel-body">
+        <div class="question-label">Counting was not the whole model</div>
+        <h2 id="panel-1-title">A counter was not an Action</h2>
+        <p class="lead">We could count what remained in a turn: an action, a bonus action, a reaction. But “one action left” did not describe the things a Character could actually do, or the new opportunities a choice might create. That behavior still had to be assembled around the counters.</p>
+        <figure tabindex="0" aria-label="Diagram: remaining-use counters do not describe a grantable next action">
+          <svg viewBox="0 0 960 400" role="img" aria-labelledby="a1-title a1-desc">
+            <title id="a1-title">The old turn ledger counted resources, not granted attack opportunities</title>
+            <desc id="a1-desc">The earlier economy ledger tracks standard actions, bonus actions and reactions. Those counts do not describe a distinct strike opportunity granted by choosing Attack. The action model needs to represent what can be granted and then used, not only how much turn budget remains.</desc>
+            <text x="28" y="30" class="label">THE EARLIER ECONOMY LEDGER</text>
+            <rect x="28" y="65" width="330" height="230" class="box"/>
+            <text x="52" y="104" class="label">REMAINING USES</text>
+            <text x="52" y="151" class="t-title">standard action</text><text x="325" y="151" text-anchor="end" class="t-big">1</text>
+            <text x="52" y="200" class="t-title">bonus action</text><text x="325" y="200" text-anchor="end" class="t-big">1</text>
+            <text x="52" y="249" class="t-title">reaction</text><text x="325" y="249" text-anchor="end" class="t-big">1</text>
+            <path d="M358 179H381M413 179H438" class="wire-rust dash"/>
+            <text x="397" y="189" text-anchor="middle" class="t-big rust">?</text>
+            <rect x="448" y="65" width="484" height="230" class="pressure"/>
+            <text x="472" y="104" class="label rust">WHAT THE COUNT DOES NOT DESCRIBE</text>
+            <text x="472" y="151" class="t-title">Take Attack now.</text>
+            <text x="472" y="200" class="t-title">Gain a Strike to use next.</text>
+            <text x="472" y="253" class="small">The granted opportunity needs a place in the model.</text>
+            <text x="480" y="350" text-anchor="middle" class="t-title">A remaining-use count is not the thing you are allowed to do.</text>
+          </svg>
+          <figcaption>The earlier ledger tracked turn resources. It did not yet represent the attack capacity granted by choosing Attack.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>A budget alone cannot describe a grantable next step.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">New building block</span></div>
+      <div class="panel-body">
+        <div class="question-label">This was the shift</div>
+        <h2 id="panel-2-title">Actions became things a Character could gain</h2>
+        <p class="lead"><strong>We made Actions first-class, grantable things.</strong> Taking an action could create an opportunity for another, rather than completing the whole interaction itself. Attack grants the capacity to make a Strike; choosing that Strike is a separate step. Characters could have ordinary base actions and gain further possibilities through the same action system.</p>
+        <figure tabindex="0" aria-label="Diagram: Attack spends a standard action and grants capacity that Strike consumes">
+          <svg viewBox="0 0 960 440" role="img" aria-labelledby="a2-title a2-desc">
+            <title id="a2-title">Attack and Strike describe different steps</title>
+            <desc id="a2-desc">In an ordinary turn without extra attacks, choosing the Attack ability changes standard actions from one to zero and granted attack capacity from zero to one. Using Strike consumes that capacity, from one to zero. Movement is a separate allowance. Granting capacity does not mean constructing a fresh Strike object for every Attack.</desc>
+            <defs><marker id="a2-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <text x="28" y="30" class="label">ORDINARY TURN · NO EXTRA ATTACKS</text>
+            <rect x="28" y="77" width="206" height="143" class="box"/>
+            <text x="131" y="116" text-anchor="middle" class="small">choose the ability</text>
+            <text x="131" y="162" text-anchor="middle" class="t-big">Attack</text>
+            <text x="131" y="198" text-anchor="middle" class="small">spend to gain capacity</text>
+            <path d="M234 149H291" class="wire-blue" marker-end="url(#a2-arrow)"/>
+            <rect x="301" y="77" width="358" height="143" class="soft"/>
+            <text x="325" y="114" class="label blue">A STRIKE BECOMES AVAILABLE</text>
+            <text x="325" y="157" class="t-title">standard actions</text><text x="630" y="157" text-anchor="end" class="t-big">1 → 0</text>
+            <text x="325" y="199" class="t-title">granted attacks</text><text x="630" y="199" text-anchor="end" class="t-big blue">0 → 1</text>
+            <path d="M659 149H716" class="wire-blue" marker-end="url(#a2-arrow)"/>
+            <rect x="726" y="77" width="206" height="143" class="soft"/>
+            <text x="829" y="116" text-anchor="middle" class="small">then use the action</text>
+            <text x="829" y="162" text-anchor="middle" class="t-big">Strike</text>
+            <text x="829" y="198" text-anchor="middle" class="small">attacks: 1 → 0</text>
+            <text x="480" y="271" text-anchor="middle" class="t-title blue">Spending the turn resource does not spend the granted strike.</text>
+            <rect x="28" y="314" width="904" height="96" class="box"/>
+            <text x="52" y="349" class="label">MOVEMENT IS SEPARATE</text>
+            <text x="52" y="383" class="t-title">Move uses movement allowance, not the attack capacity above.</text>
+          </svg>
+          <figcaption>Granting the opportunity and carrying it out became separate steps. The Character could retain the opportunity between them.</figcaption>
+        </figure>
+        <div class="law"><b>An action could change what you were able to do next.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">March 21, 2026</span></div>
+      <div class="panel-body">
+        <div class="question-label">Give the new model a coherent home</div>
+        <h2 id="panel-3-title">The economy supported the action system</h2>
+        <p class="lead">The economy tracked what could be spent, what had been granted, and what remained. The action system gave those facts meaning. Character could perform the economy change and return the resulting choices together. That let the API delegate instead of rebuilding the action rules alongside the toolkit. The cleanup followed from the model.</p>
+        <figure tabindex="0" aria-label="Diagram: the API delegates an action choice to Character and translates the returned availability data">
+          <svg viewBox="0 0 960 530" role="img" aria-labelledby="a3-title a3-desc">
+            <title id="a3-title">Character owns both the economy change and the availability answer</title>
+            <desc id="a3-desc">The API passes the selected ability or action reference to Character. Character's action-system methods change costs and granted capacity and produce availability, usability and reason data from that state. The API converts the returned fields for the client. This is the economy and availability boundary, not the complete attack or movement driver.</desc>
+            <defs><marker id="a3-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <rect x="28" y="116" width="210" height="111" class="box"/>
+            <text x="133" y="151" text-anchor="middle" class="label">API CALL</text>
+            <text x="133" y="191" text-anchor="middle" class="t-title">pass the choice ref</text>
+            <path d="M238 172H289" class="wire-blue" marker-end="url(#a3-arrow)"/>
+            <rect x="299" y="28" width="633" height="338" class="soft"/>
+            <text x="325" y="64" class="label blue">TOOLKIT CHARACTER</text>
+            <text x="325" y="102" class="t-title">The action system and its turn state meet here.</text>
+            <rect x="325" y="131" width="248" height="95" class="box"/>
+            <text x="449" y="169" text-anchor="middle" class="mono">ActivateAbility</text>
+            <text x="449" y="203" text-anchor="middle" class="mono">ExecuteAction</text>
+            <path d="M573 178H611" class="wire-blue" marker-end="url(#a3-arrow)"/>
+            <rect x="621" y="131" width="285" height="95" class="box"/>
+            <text x="763" y="169" text-anchor="middle" class="t-title">costs</text>
+            <text x="763" y="203" text-anchor="middle" class="t-title">+ granted capacity</text>
+            <path d="M763 226V258H616V276" class="wire-blue" marker-end="url(#a3-arrow)"/>
+            <rect x="325" y="286" width="581" height="56" class="box"/>
+            <text x="616" y="322" text-anchor="middle" class="t-title blue">available choices · usable? · reason</text>
+            <path d="M616 366V410" class="wire-blue" marker-end="url(#a3-arrow)"/>
+            <rect x="299" y="420" width="633" height="87" class="box"/>
+            <text x="325" y="453" class="label">API → CLIENT</text>
+            <text x="325" y="487" class="t-title">translate the returned data, not the rules again</text>
+          </svg>
+          <figcaption>The same Character that changes its economy supplies the resulting options. The host still drives the wider interaction.</figcaption>
+        </figure>
+        <div class="law"><b>Ask the owner what the change makes possible.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">A bounded win</span></div>
+      <div class="panel-body">
+        <div class="question-label">A new possibility, not just a smaller count</div>
+        <h2 id="panel-4-title">A spent action could leave a Strike waiting</h2>
+        <p class="lead">The player could spend the turn action and still have a Strike waiting. That was the point: the first choice had granted a separate next step. Character could retain that opportunity, let it be used, and report what remained. The follow-up no longer had to be hidden inside one larger operation.</p>
+        <figure tabindex="0" aria-label="Diagram: selected availability answers before Attack, after Attack and after Strike">
+          <svg viewBox="0 0 960 500" role="img" aria-labelledby="a4-title a4-desc">
+            <title id="a4-title">The availability data follows one ordinary attack</title>
+            <desc id="a4-desc">At turn start the standard-action budget is one and attack capacity is zero: Attack and Move are usable, Strike is not offered. After Attack the standard-action budget is zero and attack capacity one: Attack is not usable, Strike and Move are usable. After consuming Strike, capacity is zero: Strike is no longer offered and Move remains usable. Other choices and class-specific grants are omitted. These are illustrative returned-data states, not a recorded playthrough or the entire UI.</desc>
+            <text x="28" y="29" class="label blue">RETURNED DATA · ONE ORDINARY ATTACK · SELECTED CHOICES ONLY</text>
+            <rect x="28" y="66" width="904" height="359" class="box"/>
+            <path d="M28 125H932M28 225H932M28 325H932M283 66V425M439 66V425M595 66V425" class="wire"/>
+            <text x="52" y="104" class="label">TURN STEP</text>
+            <text x="361" y="94" text-anchor="middle" class="label">STANDARD</text><text x="361" y="114" text-anchor="middle" class="label">ACTIONS</text>
+            <text x="517" y="94" text-anchor="middle" class="label">ATTACK</text><text x="517" y="114" text-anchor="middle" class="label">CAPACITY</text>
+            <text x="655" y="104" class="label">SELECTED ANSWERS</text>
+            <text x="52" y="181" class="t-title">Start turn</text>
+            <text x="361" y="187" text-anchor="middle" class="t-big">1</text><text x="517" y="187" text-anchor="middle" class="t-big faint">0</text>
+            <text x="655" y="154" class="small">Attack usable</text><text x="655" y="181" class="small faint">Strike not offered</text><text x="655" y="208" class="small">Move usable</text>
+            <rect x="29" y="226" width="902" height="98" fill="var(--accent-soft)"/>
+            <text x="52" y="281" class="t-title blue">After Attack</text>
+            <text x="361" y="287" text-anchor="middle" class="t-big faint">0</text><text x="517" y="287" text-anchor="middle" class="t-big blue">1</text>
+            <text x="655" y="254" class="small faint">Attack not usable</text><text x="655" y="281" class="t-title blue">Strike usable</text><text x="655" y="308" class="small">Move usable</text>
+            <text x="52" y="381" class="t-title">After Strike</text>
+            <text x="361" y="387" text-anchor="middle" class="t-big faint">0</text><text x="517" y="387" text-anchor="middle" class="t-big faint">0</text>
+            <text x="655" y="354" class="small faint">Attack not usable</text><text x="655" y="381" class="small faint">Strike not offered</text><text x="655" y="408" class="small">Move usable</text>
+            <text x="480" y="474" text-anchor="middle" class="t-title blue">The action was spent. The opportunity it granted remained.</text>
+          </svg>
+          <figcaption>The granted next step is visible in the returned data. Other choices, class grants, and unchanged budgets are omitted.</figcaption>
+        </figure>
+        <p class="end-question">An Action could change what a Character was able to do.<br>The encounter still had to agree about the result.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>The unfinished crossing and the remembered shift in attention come from Kirk’s reconstruction. He remembers the door opening but monsters not crossing; the exact sequence and cause are not pinned. This chapter does not claim the doorway was fixed, or that Actions were first invented afterward.</p>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/a802577b/docs/adr/0028-typed-activatable-actions.md">January Action split</a> makes Actions first-class and grantable. The <a href="https://github.com/KirkDiggler/rpg-toolkit/commit/cb7e7418">budget/capacity change</a> adds granted attacks and movement to the earlier resource-only ledger. The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/fdd27be2/rulebooks/dnd5e/character/draft.go#L1576">ordinary-action setup</a> supplies combat abilities such as Attack and permanent Strike/Move Actions. Attack grants capacity, not a newly constructed Strike object on each use. Flurry and Bless were future design cases Kirk measured the shape against, not proof of a level-one Flurry playthrough.</p>
+    <p>The concrete refinement is <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/3052cdfc/rulebooks/dnd5e/character/action_economy.go">Character-owned economy and availability</a>, integrated March 21. The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/3052cdfc/rulebooks/dnd5e/character/action_economy_test.go#L390">turn/activation tests</a> cover starting the turn, granting a strike and refusing another standard-action ability; the <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/3052cdfc/rulebooks/dnd5e/character/action_economy_test.go#L637">strike tests</a> cover consuming capacity and refusing a strike without it. The ordinary-turn diagram illustrates those semantics, not a captured game session.</p>
+    <p>API <a href="https://github.com/KirkDiggler/rpg-api/commit/f4c6284"><code>f4c6284</code></a> deletes its availability builders and delegates these economy operations. The <a href="https://github.com/KirkDiggler/rpg-api/commit/9b7833b">March 21 integration</a> pins the released rulebook module rather than the intermediate local replacement. The API still drives attack resolution and movement, and persists several kinds of state. Character’s Move branch at this point checks availability; it does not implement spatial movement or debit its distance.</p>
+    <p class="scope">The chapter follows the developing Action model from its January introduction through March’s ownership refinement; it does not date both changes to one moment. The win is a grantable next step, not a complete encounter rewrite or a claim of one literal economy caller across every repository. The conflicting state representations and April capacity-driven pause belong to the following note. Later room-contract and toolkit Encounter changes remain later.</p>
+  </footer>
+</main>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
