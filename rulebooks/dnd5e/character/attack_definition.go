@@ -6,17 +6,11 @@ package character
 import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
-)
-
-const (
-	defaultMeleeReach = 5
-	reachWeaponReach  = 10
 )
 
 // AssembleAttackInput identifies the equipped weapon and grip to compile, plus
@@ -46,83 +40,25 @@ func AssembleAttack(c *Character, in *AssembleAttackInput) (combatActions.Defini
 	return assembleWeaponAttack(c, weapon, unarmed, in)
 }
 
+// assembleWeaponAttack hands the character's own numbers to the shared
+// assembly. The character is the [weaponattack.Wielder] — it already answers
+// all three of that interface's questions — and the one thing only this
+// package can work out, what the other hand holds, is resolved here from the
+// equipment slot and passed down.
 func assembleWeaponAttack(
 	c *Character,
 	weapon *weapons.Weapon,
 	unarmed bool,
 	in *AssembleAttackInput,
 ) (combatActions.Definition, error) {
-	weaponRef := refs.Weapons.ByID(string(weapon.ID))
-	if weaponRef == nil {
-		return combatActions.Definition{}, rpgerr.Newf(
-			rpgerr.CodeInvalidArgument, "no ref for weapon %q", weapon.ID)
-	}
-
-	delivery, err := deliveryForWeapon(weapon)
-	if err != nil {
-		return combatActions.Definition{}, err
-	}
-
-	ability := attackAbility(c, weapon)
-	modifier := c.GetAbilityModifier(ability)
-	attackBonus := modifier
-	if unarmed || c.IsProficientWith(weapon) {
-		attackBonus += c.ProficiencyBonus()
-	}
-
-	pools, err := weapon.DamageForGrip(in.TwoHanded)
-	if err != nil {
-		return combatActions.Definition{}, rpgerr.Wrap(err, "cannot compile weapon damage")
-	}
-
-	definition := combatActions.Definition{
-		Ref:  *weaponRef,
-		Name: weapon.Name,
-		Cost: combatActions.CloneSpendProfile(in.Cost),
-		Attack: &combatActions.AttackProfile{
-			Category:    combatActions.AttackCategoryWeapon,
-			Delivery:    delivery,
-			AttackBonus: attackBonus,
-			Ability: &combatActions.AbilityContribution{
-				Ability:  ability,
-				Modifier: modifier,
-			},
-			Weapon: &combatActions.WeaponContext{
-				Ref:              copyRef(weaponRef),
-				TwoHanded:        in.TwoHanded || weapon.HasProperty(weapons.PropertyTwoHanded),
-				OffHandWeaponRef: copyRef(otherHandWeaponRef(c, in.Slot)),
-			},
-			Damage: copyDamagePools(pools),
-		},
-	}
-	if err := definition.Validate(); err != nil {
-		return combatActions.Definition{}, rpgerr.Wrap(err, "assembled attack is invalid")
-	}
-
-	return definition, nil
-}
-
-func deliveryForWeapon(weapon *weapons.Weapon) (combatActions.AttackDelivery, error) {
-	if weapon.IsRanged() {
-		if weapon.Range == nil {
-			return combatActions.AttackDelivery{}, rpgerr.Newf(
-				rpgerr.CodeInvalidArgument, "ranged weapon %q has no range", weapon.ID)
-		}
-		return combatActions.AttackDelivery{Ranged: &combatActions.RangedDelivery{
-			NormalFeet: weapon.Range.Normal,
-			LongFeet:   weapon.Range.Long,
-		}}, nil
-	}
-	if !weapon.IsMelee() {
-		return combatActions.AttackDelivery{}, rpgerr.Newf(
-			rpgerr.CodeInvalidArgument, "weapon %q has unknown category %q", weapon.ID, weapon.Category)
-	}
-
-	reach := defaultMeleeReach
-	if weapon.HasProperty(weapons.PropertyReach) {
-		reach = reachWeaponReach
-	}
-	return combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: reach}}, nil
+	return weaponattack.Assemble(&weaponattack.Input{
+		Wielder:          c,
+		Weapon:           weapon,
+		TwoHanded:        in.TwoHanded,
+		Cost:             in.Cost,
+		OffHandWeaponRef: otherHandWeaponRef(c, in.Slot),
+		AlwaysProficient: unarmed,
+	})
 }
 
 func otherHandWeaponRef(c *Character, slot InventorySlot) *core.Ref {
@@ -173,34 +109,4 @@ func equippedWeapon(c *Character, slot InventorySlot) (*weapons.Weapon, bool, er
 		return nil, false, rpgerr.Newf(rpgerr.CodeInvalidArgument, "%q holds no weapon", slot)
 	}
 	return weapon, false, nil
-}
-
-func attackAbility(c *Character, weapon *weapons.Weapon) abilities.Ability {
-	if weapon.HasProperty(weapons.PropertyFinesse) {
-		if c.GetAbilityModifier(abilities.DEX) > c.GetAbilityModifier(abilities.STR) {
-			return abilities.DEX
-		}
-		return abilities.STR
-	}
-	if weapon.IsRanged() {
-		return abilities.DEX
-	}
-	return abilities.STR
-}
-
-func copyDamagePools(pools []damage.Damage) []damage.Damage {
-	copy := make([]damage.Damage, len(pools))
-	for index, pool := range pools {
-		copy[index] = pool
-		copy[index].Properties = append([]damage.Property(nil), pool.Properties...)
-	}
-	return copy
-}
-
-func copyRef(ref *core.Ref) *core.Ref {
-	if ref == nil {
-		return nil
-	}
-	copy := *ref
-	return &copy
 }

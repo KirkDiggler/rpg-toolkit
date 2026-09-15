@@ -5,14 +5,14 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// NewThug creates a CR 1 thug with a mace component attack and Pack Tactics.
+// NewThug creates a CR 1 thug carrying a mace and a heavy crossbow, with
+// Pack Tactics.
 // Multiattack is deferred until a sequence profile and machine exist.
 func NewThug(id string) *monster.Monster {
 	m := monster.New(monster.Config{
@@ -31,17 +31,14 @@ func NewThug(id string) *monster.Monster {
 		},
 	})
 
-	// The component attack remains available until a sequence profile exists.
-	mustAddAction(m, combatActions.Definition{
-		Ref:  *refs.MonsterActions.ThugMace(),
-		Name: "mace",
-		Attack: &combatActions.AttackProfile{
-			Category:    combatActions.AttackCategoryWeapon,
-			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
-			AttackBonus: 4,
-			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: 2}},
-		},
-	})
+	// Mace and heavy crossbow, off the catalog and this thug's own numbers:
+	// STR 15 carries the mace to the SRD's "+4, 1d6+2" and DEX 11 carries the
+	// crossbow to "+2, 1d10" — two different abilities, one assembly
+	// (rpg-project#448). Melee FIRST, so a thug standing over you swings.
+	//
+	// Multiattack is still deferred until a sequence profile and machine
+	// exist; these are the component attacks.
+	mustAddWeapon(m, weapons.Mace, weapons.HeavyCrossbow)
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

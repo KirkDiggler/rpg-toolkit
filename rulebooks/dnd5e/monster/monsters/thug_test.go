@@ -47,10 +47,12 @@ func (s *ThugTestSuite) TestNewThug() {
 	speed := thug.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// The component attack remains; multiattack waits for a sequence profile.
+	// The component attacks remain; multiattack waits for a sequence profile.
+	// Melee first, so a thug standing over you swings rather than shoots.
 	actions := thug.Actions()
-	s.Require().Len(actions, 1)
-	s.Equal(refs.MonsterActions.ThugMace(), &actions[0].Ref)
+	s.Require().Len(actions, 2)
+	s.Equal(refs.Weapons.Mace(), &actions[0].Ref)
+	s.Equal(refs.Weapons.HeavyCrossbow(), &actions[1].Ref)
 }
 
 func (s *ThugTestSuite) TestThugTraits() {

@@ -17,18 +17,12 @@ func TestMonsterActionRefsAreUniqueContentIdentities(t *testing.T) {
 		id   string
 	}{
 		{"animated armor slam", refs.MonsterActions.AnimatedArmorSlam(), "animated-armor-slam"},
-		{"bandit scimitar", refs.MonsterActions.BanditScimitar(), "bandit-scimitar"},
-		{"bandit light crossbow", refs.MonsterActions.BanditLightCrossbow(), "bandit-light-crossbow"},
 		{"brown bear bite", refs.MonsterActions.BrownBearBite(), "brown-bear-bite"},
 		{"brown bear claw", refs.MonsterActions.BrownBearClaw(), "brown-bear-claw"},
 		{"ghoul bite", refs.MonsterActions.GhoulBite(), "ghoul-bite"},
 		{"ghoul claw", refs.MonsterActions.GhoulClaw(), "ghoul-claw"},
 		{"giant rat bite", refs.MonsterActions.GiantRatBite(), "giant-rat-bite"},
-		{"goblin scimitar", refs.MonsterActions.GoblinScimitar(), "goblin-scimitar"},
 		{"skeleton captain longsword", refs.MonsterActions.SkeletonCaptainLongsword(), "skeleton-captain-longsword"},
-		{"skeleton shortsword", refs.MonsterActions.SkeletonShortsword(), "skeleton-shortsword"},
-		{"skeleton shortbow", refs.MonsterActions.SkeletonShortbow(), "skeleton-shortbow"},
-		{"thug mace", refs.MonsterActions.ThugMace(), "thug-mace"},
 		{"wolf bite", refs.MonsterActions.WolfBite(), "wolf-bite"},
 		{"zombie slam", refs.MonsterActions.ZombieSlam(), "zombie-slam"},
 	}

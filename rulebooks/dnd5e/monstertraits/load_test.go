@@ -53,11 +53,11 @@ func goblinData(id string) *monster.Data {
 		ArmorClass:       15,
 		ProficiencyBonus: 2,
 		Actions: []combatActions.Definition{{
-			Ref:  *refs.MonsterActions.GoblinScimitar(),
+			Ref:  *refs.Weapons.Scimitar(),
 			Name: "scimitar",
 			Attack: &combatActions.AttackProfile{
 				Category:    combatActions.AttackCategoryWeapon,
-				Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 1}},
+				Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
 				AttackBonus: 4,
 				Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 2}},
 			},
