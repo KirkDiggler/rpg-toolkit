@@ -151,6 +151,9 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 	if kind == windowKindPostRoll {
 		return m.answerPostRoll(ctx, scope, window, in.Choice)
 	}
+	if kind == windowKindCheckOffer {
+		return m.answerCheckOffer(ctx, scope, window, in.Choice)
+	}
 
 	payload, err := thawWindowPayload(window.Payload, string(window.Audience))
 	if err != nil {

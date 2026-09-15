@@ -105,27 +105,39 @@ func (c checkSeam) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.Res
 	return c.m.resolveStagedCheck(c.scope, string(in.Member), in.Approaches)
 }
 
-// resolveStagedCheck is THE ONE PLACE A CHECK CROSSES TO RESOLUTION at this
-// seam: the staged record goes down, [resolution.MakeCheck] loads the
-// character with their conditions attached, selects the best listed approach
-// (net pricing — the member's modifier against each route's own DC — ties to
-// authored order; the mechanism ruling that briefly lived here, now
-// resolution's own pin), rolls it with the AbilityCheckChain firing on
-// resolution's bus, and the verdict comes back as data. Search's find checks
-// (through [checkSeam]) and Unlock's lock checks both land here.
+// stagedCheckOutcome is one check's result on the way out of resolution,
+// before this seam has decided what to do with a pose: either a finished
+// verdict, or the question resolution stopped on. Exactly one is set, the
+// same presence law [resolution.Output.Posed] keeps.
+type stagedCheckOutcome struct {
+	Verdict *encounter.ResolveCheckOutput
+	Posed   *resolution.Pose
+}
+
+// resolveStagedCheckPoseable is THE ONE PLACE A CHECK CROSSES TO RESOLUTION
+// at this seam: the staged record goes down, [resolution.MakeCheck] loads
+// the character with their conditions attached, selects the best listed
+// approach (net pricing — the member's modifier against each route's own
+// DC — ties to authored order; the mechanism ruling that briefly lived here,
+// now resolution's own pin), rolls it with the AbilityCheckChain firing on
+// resolution's bus, and the verdict — or the pose — comes back as data.
+//
+// [Manager.Unlock] calls this directly and can honour a pose.
+// [resolveStagedCheck] wraps it for [checkSeam], which cannot: see that
+// function's own doc.
 //
 // A member with no staged record is a wiring fault: the verb that reached
 // the composition without staging its actor is this package's own bug, and
 // the error says so at the point of failure rather than rolling a check for
 // nobody.
 //
-// A DirtyCharacter on the answer is written back through the same
+// A DirtyCharacter on a finished verdict is written back through the same
 // save-and-report path a swing's dirty sheets use ([Manager.saveDirty]'s
-// shape): nil today — no condition yet spends itself on a check — but the
-// day guidance does, the write is already in hand instead of silently lost.
-func (m *Manager) resolveStagedCheck(
+// shape). A posed outcome writes nothing back yet — nothing on the sheet
+// changed merely by asking the question.
+func (m *Manager) resolveStagedCheckPoseable(
 	scope *writeScope, member string, approaches []encounter.CheckApproach,
-) (*encounter.ResolveCheckOutput, error) {
+) (*stagedCheckOutcome, error) {
 	staged, ok := scope.checks[member]
 	if !ok {
 		return nil, fmt.Errorf("resolve check for %q: no record was staged for this verb: %w",
@@ -152,6 +164,10 @@ func (m *Manager) resolveStagedCheck(
 		return nil, fmt.Errorf("member %q: check failed: %v", member, err)
 	}
 
+	if out.Posed != nil {
+		return &stagedCheckOutcome{Posed: out.Posed}, nil
+	}
+
 	if out.DirtyCharacter != nil {
 		if err := m.characters.SaveCharacter(staged.ctx, out.DirtyCharacter); err != nil {
 			report := SaveReport{
@@ -161,6 +177,59 @@ func (m *Manager) resolveStagedCheck(
 			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
 		}
 		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
+	}
+
+	return &stagedCheckOutcome{Verdict: &encounter.ResolveCheckOutput{
+		Beaten:  out.Result.Success,
+		Applied: out.Applied,
+		Total:   out.Result.Total,
+	}}, nil
+}
+
+// resolveStagedCheck is [checkSeam]'s [encounter.CheckResolver] entry —
+// Search's find checks land here. [encounter.CheckResolver]'s own signature
+// has no way to carry a pose (that seam is a different module and this
+// slice does not touch it; see docs/ideas/cleric/plan.md), so a checker
+// holding an offer here has it silently KEPT: this seam asks
+// [resolution.ResumeCheck] to decline on the checker's behalf, exactly the
+// answer that costs nothing, rather than spend a die nobody was asked about
+// or refuse the whole check. [Manager.Unlock] uses
+// [resolveStagedCheckPoseable] directly instead, and can pose for real.
+func (m *Manager) resolveStagedCheck(
+	scope *writeScope, member string, approaches []encounter.CheckApproach,
+) (*encounter.ResolveCheckOutput, error) {
+	outcome, err := m.resolveStagedCheckPoseable(scope, member, approaches)
+	if err != nil {
+		return nil, err
+	}
+	if outcome.Verdict != nil {
+		return outcome.Verdict, nil
+	}
+	return m.declineStagedOffer(scope, member, outcome.Posed.Frozen)
+}
+
+// declineStagedOffer finishes a posed check by keeping whatever was offered,
+// for a caller that cannot ask the question ([resolveStagedCheck]'s own
+// reason). Nothing is re-rolled and nothing is re-folded — the seam's own
+// small [resolution.ResumeCheck] caller, [Manager.answerCheckOffer]'s
+// sibling for the answer this seam gives instead of asking.
+func (m *Manager) declineStagedOffer(
+	scope *writeScope, member string, frozen []byte,
+) (*encounter.ResolveCheckOutput, error) {
+	staged, ok := scope.checks[member]
+	if !ok {
+		return nil, fmt.Errorf("resolve check for %q: no record was staged for this verb: %w",
+			member, ErrNoSheet)
+	}
+
+	out, err := resolution.ResumeCheck(staged.ctx, &resolution.CheckResumeInput{
+		Frozen:    frozen,
+		Answer:    resolution.OfferKeep,
+		Character: staged.data,
+		Roller:    &diceSeam{roller: m.dice},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("member %q: resume check failed: %v", member, err)
 	}
 
 	return &encounter.ResolveCheckOutput{
