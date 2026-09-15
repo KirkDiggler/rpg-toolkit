@@ -133,6 +133,19 @@ type MonsterPlacement struct {
 	// CARRIED, NEVER INTERPRETED.
 	Targeting string
 
+	// Actions is what this monster can do, in the author's order
+	// ([PlaceSpec.Actions], rpg-project#448) — for a host to hand to the
+	// session's SpawnInput.Actions when it spawns the sheet. Nil when the
+	// author armed it with nothing, which means the definition keeps the
+	// arms its stat block gives it.
+	//
+	// VERBATIM, and in the authored order, for Targeting's reason and one
+	// more: the order IS the instruction. Both drivers take the first action
+	// whose target is in reach, so sorting this list or deduplicating it
+	// would quietly rewrite what the author said the monster does when you
+	// close on it.
+	Actions []string `json:"Actions,omitempty"`
+
 	// Boss is whether this is the monster whose death ends things.
 	Boss bool
 
@@ -741,6 +754,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
 			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
 			ID: p.ID, Holds: holds, Faction: p.Faction,
+			Actions: append([]string(nil), p.Actions...),
 			Arrives: predicateOf(p.Arrives),
 		})
 	}
