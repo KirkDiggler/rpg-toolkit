@@ -6,14 +6,14 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// NewBanditMelee creates a CR 1/8 bandit with scimitar
+// NewBanditMelee creates a CR 1/8 bandit carrying a scimitar and a light
+// crossbow — the SRD bandit, blade first
 func NewBanditMelee(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -31,17 +31,11 @@ func NewBanditMelee(id string) *monster.Monster {
 		},
 	})
 
-	// Scimitar melee attack
-	mustAddAction(m, combatActions.Definition{
-		Ref:  *refs.MonsterActions.BanditScimitar(),
-		Name: "scimitar",
-		Attack: &combatActions.AttackProfile{
-			Category:    combatActions.AttackCategoryWeapon,
-			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
-			AttackBonus: 3, // +1 DEX + 2 proficiency
-			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 1}},
-		},
-	})
+	// Scimitar and light crossbow, off the catalog and this bandit's own
+	// numbers: DEX 12 and a +2 proficiency bonus give the SRD's "+3, 1d6+1"
+	// and "+3, 1d8+1" (rpg-project#448). Melee FIRST, so a bandit you have
+	// closed on draws the blade.
+	mustAddWeapon(m, weapons.Scimitar, weapons.LightCrossbow)
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})
@@ -49,7 +43,7 @@ func NewBanditMelee(id string) *monster.Monster {
 	return m
 }
 
-// NewBanditRanged creates a CR 1/8 bandit with light crossbow
+// NewBanditRanged creates a CR 1/8 bandit carrying a light crossbow alone
 func NewBanditRanged(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -67,17 +61,13 @@ func NewBanditRanged(id string) *monster.Monster {
 		},
 	})
 
-	// Light crossbow ranged attack
-	mustAddAction(m, combatActions.Definition{
-		Ref:  *refs.MonsterActions.BanditLightCrossbow(),
-		Name: "light crossbow",
-		Attack: &combatActions.AttackProfile{
-			Category:    combatActions.AttackCategoryWeapon,
-			Delivery:    combatActions.AttackDelivery{Ranged: &combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320}},
-			AttackBonus: 3, // +1 DEX + 2 proficiency
-			Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 1}},
-		},
-	})
+	// The bow and nothing else. This is the SAME stat block as NewBanditMelee
+	// above, with one word dropped from its list — which is exactly the thing
+	// a placement's `actions` now says without a second constructor
+	// (rpg-project#448). Kept as it stands because content may name
+	// `dnd5e:monsters:bandit-archer` today; it is a candidate for deletion
+	// once nothing does.
+	mustAddWeapon(m, weapons.LightCrossbow)
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

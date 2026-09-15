@@ -52,11 +52,11 @@ func (s *SkeletonTestSuite) TestNewSkeleton() {
 	speed := skeleton.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// Check actions - should have shortsword and shortbow
+	// Check actions - should have shortsword and shortbow, melee first
 	actions := skeleton.Actions()
 	s.Require().Len(actions, 2)
-	s.Equal(refs.MonsterActions.SkeletonShortsword(), &actions[0].Ref)
-	s.Equal(refs.MonsterActions.SkeletonShortbow(), &actions[1].Ref)
+	s.Equal(refs.Weapons.Shortsword(), &actions[0].Ref)
+	s.Equal(refs.Weapons.Shortbow(), &actions[1].Ref)
 }
 
 func (s *SkeletonTestSuite) TestWeaponDefinitionsHaveDistinctIdentityAndDelivery() {
@@ -64,15 +64,15 @@ func (s *SkeletonTestSuite) TestWeaponDefinitionsHaveDistinctIdentityAndDelivery
 	s.Require().Len(actions, 2)
 
 	shortsword := actions[0]
-	s.Equal(refs.MonsterActions.SkeletonShortsword(), &shortsword.Ref)
-	s.Equal("shortsword", shortsword.Name)
+	s.Equal(refs.Weapons.Shortsword(), &shortsword.Ref)
+	s.Equal("Shortsword", shortsword.Name)
 	s.Require().NotNil(shortsword.Attack)
 	s.Equal(&combatActions.MeleeDelivery{ReachFeet: 5}, shortsword.Attack.Delivery.Melee)
 	s.Nil(shortsword.Attack.Delivery.Ranged)
 
 	shortbow := actions[1]
-	s.Equal(refs.MonsterActions.SkeletonShortbow(), &shortbow.Ref)
-	s.Equal("shortbow", shortbow.Name)
+	s.Equal(refs.Weapons.Shortbow(), &shortbow.Ref)
+	s.Equal("Shortbow", shortbow.Name)
 	s.Require().NotNil(shortbow.Attack)
 	s.Equal(&combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320}, shortbow.Attack.Delivery.Ranged)
 	s.Nil(shortbow.Attack.Delivery.Melee)

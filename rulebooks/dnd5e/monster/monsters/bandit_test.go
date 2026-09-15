@@ -45,10 +45,11 @@ func (s *BanditTestSuite) TestNewBanditMelee() {
 	speed := bandit.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// Check actions - should have scimitar
+	// Check actions - the SRD bandit carries both, blade first
 	actions := bandit.Actions()
-	s.Require().Len(actions, 1)
-	s.Assert().Equal(refs.MonsterActions.BanditScimitar(), &actions[0].Ref)
+	s.Require().Len(actions, 2)
+	s.Assert().Equal(refs.Weapons.Scimitar(), &actions[0].Ref)
+	s.Assert().Equal(refs.Weapons.LightCrossbow(), &actions[1].Ref)
 }
 
 func (s *BanditTestSuite) TestNewBanditRanged() {
@@ -73,10 +74,11 @@ func (s *BanditTestSuite) TestNewBanditRanged() {
 	speed := bandit.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// Check actions - should have light crossbow
+	// Check actions - the bow and nothing else, which is the whole difference
+	// between this stat block and NewBanditMelee's
 	actions := bandit.Actions()
 	s.Require().Len(actions, 1)
-	s.Assert().Equal(refs.MonsterActions.BanditLightCrossbow(), &actions[0].Ref)
+	s.Assert().Equal(refs.Weapons.LightCrossbow(), &actions[0].Ref)
 }
 
 func (s *BanditTestSuite) TestBanditTraits() {
