@@ -167,6 +167,15 @@ const SacredFlameDamage = "1d8"
 // SpareTheDyingReachFeet is the current physical touch reach for this cantrip.
 const SpareTheDyingReachFeet = 5
 
+// GuidanceReachFeet is Guidance's touch reach.
+const GuidanceReachFeet = 5
+
+// GuidanceTurnEnds is "up to one minute" expressed the way this rulebook's
+// concentration owns duration: ten of the caster's subsequent turn ends,
+// [BaneTurnEnds]'s and Bless's own reason — there is no minute or round
+// boundary in this build's vocabulary, only turn ends.
+const GuidanceTurnEnds = 10
+
 // TrueStrikeTargetParameter is the True Strike condition's parameter naming
 // the creature the advantage is good against.
 const TrueStrikeTargetParameter = "target_id"
@@ -514,6 +523,27 @@ var castContent = map[Spell]castProfileBuilder{
 			return actions.CastProfile{
 				RangeFeet: SpareTheDyingReachFeet, Target: actions.CastTargetTouch,
 				MinTargets: 1, MaxTargets: 1, Stabilize: true,
+			}
+		},
+	},
+	Guidance: {
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Guidance",
+		cost:    cantripCost(),
+		build: func(_ int) actions.CastProfile {
+			// Self is a legal touch recipient (docs/ideas/cleric plan): CastTargetSelf
+			// is a no-picker mode and cannot stand for "choose yourself among others",
+			// Cure Wounds's own reason. Which later check the die joins, and whether
+			// it is spent or kept, is the checker's own post-roll offer
+			// (PostCheckRollOfferChain) — this profile only delivers the condition
+			// that holds it.
+			return actions.CastProfile{
+				RangeFeet: GuidanceReachFeet, Target: actions.CastTargetTouch,
+				MinTargets: 1, MaxTargets: 1,
+				Effects: []actions.CastEffect{{
+					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Guided(), CounterpartKey: "source_id",
+				}},
+				Concentration: &actions.CastConcentration{TurnEnds: GuidanceTurnEnds, SkipFirstTurnEnd: true},
 			}
 		},
 	},

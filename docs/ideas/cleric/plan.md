@@ -263,6 +263,58 @@ carry an extra caller-supplied bonus rather than to carry a pose.
 Deferred, not ruled impossible: a future session can pick this up from the
 mechanism description above without re-deriving the secrecy problem.
 
+### Slice 4 delivered: Guidance is castable
+
+Root-only, no consumer pins: enabling content never crosses a dependency
+edge session/resolution don't already own. Root PR #1754 published
+`rulebooks/dnd5e v0.170.0`, resolution PR #1755 published
+`rulebooks/dnd5e/resolution v0.49.0`, session PR #1756 published
+`rulebooks/dnd5e/session v0.88.0` — all three merged before this slice, in
+that order, each repinned to the prior's real tag before its own merge.
+
+Guidance added to `castContent`: a level-0 action cantrip, touch range,
+`CastTargetTouch` (self included, Cure Wounds's own precedent for why
+`CastTargetSelf` cannot stand for this), concentration `TurnEnds: 10,
+SkipFirstTurnEnd: true` — "up to one minute" in this rulebook's own
+turn-end vocabulary, the same shape Bless already uses. Delivers
+`GuidedCondition` through the existing no-save condition-delivery path via
+`CastEffect{Ref: *refs.Conditions.Guided(), CounterpartKey: "source_id"}`.
+
+`GuidedCondition` needed a construction path for that delivery it did not
+have: `resolution/contest.go`'s `prepareCondition` special-cases Blessed
+and Baned (both need a parsed `*core.Ref` for their own strict
+canonical-source validation) and falls back to `conditions.CreateFromRef`
+— the root module's own generic factory — for everything else. Guidance's
+constructor carries the same strict validation Blessed's does, so rather
+than add a third resolution-side special case (a resolution PR this slice
+does not need), `conditions/factory.go` gained a `createGuided` that
+parses the caller-supplied source-ref string itself before calling
+`NewGuidedCondition` — root-only, mirroring how `createTrueStrike` and
+`createCommanded` already parse their own config, just with the extra
+parse step Blessed's shape requires.
+
+Two existing tests asserted the PRE-Guidance world and needed updating to
+the new true state, not fixes to a defect: `spells.Castable`'s Cleric
+subset test now includes Guidance alongside Sacred Flame and Spare the
+Dying, and a Cleric-finalize reload test that iterated every executable
+known cantrip and asserted every one carries a save DC — true before this
+slice, false now that Guidance is executable and carries none. Both
+updated to assert the actual (correct) new behavior rather than loosened
+to stop failing.
+
+Acceptance covers: `CastDefinition` shape (target/range/concentration/
+effect/counterpart-key, clone independence, JSON round-trip), the factory
+building `GuidedCondition` from its counterpart key and refusing a wrong
+source spell, and the full existing root/resolution/session suites passing
+unchanged elsewhere. Full root module build/vet/test/lint clean.
+
+Guidance is now castable end to end on `Unlock`: a finalized Cleric casts
+it on an ally or self during combat (world-clock casting remains a
+separate, pre-existing `session.Cast` limitation), the recipient's next
+`Unlock` attempt (in or out of combat) can pose, and spend/keep/reload all
+behave as Slice 3 already proved. Search stays deferred per the section
+above. Protos/API/web adoption is out of toolkit scope and untouched here.
+
 ## Spare the Dying wiring inspection
 
 ### Executable content after session adoption

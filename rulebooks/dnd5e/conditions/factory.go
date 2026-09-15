@@ -116,6 +116,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createCommanded(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Concentrating().ID:
 		condition, err = createConcentrating(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.Guided().ID:
+		condition, err = createGuided(input.Config, input.MemberID, input.SourceRef)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -473,6 +475,38 @@ func createViciousMockery(
 	}
 
 	return NewViciousMockeryCondition(memberID, cfg.SourceID, sourceRef), nil
+}
+
+// guidedConfig is the config structure for the guided condition. SourceID is
+// the cleric who cast Guidance.
+type guidedConfig struct {
+	SourceID string `json:"source_id"`
+}
+
+// createGuided creates a guided condition from config. The member is the
+// creature Guidance touched.
+//
+// Unlike the plain-string sourceRef conditions above, [NewGuidedCondition]
+// takes a parsed *core.Ref and validates it against the canonical Guidance
+// spell ref — [BlessedCondition]'s strictness, not [ViciousMockeryCondition]'s
+// — so the string this factory is handed is parsed here rather than deferred
+// to the constructor.
+func createGuided(config json.RawMessage, memberID, sourceRef string) (*GuidedCondition, error) {
+	var cfg guidedConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse guided config")
+		}
+	}
+
+	ref, err := core.ParseString(sourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse guided source ref: %s", sourceRef)
+	}
+
+	return NewGuidedCondition(NewGuidedConditionInput{
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+	})
 }
 
 // concentratingConfig is the config structure for the concentrating condition.

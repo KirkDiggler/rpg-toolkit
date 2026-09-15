@@ -2,6 +2,7 @@ package conditions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -189,6 +190,39 @@ func (s *GuidedConditionTestSuite) TestRoundTripsThroughJSON() {
 	s.Equal("rogue-1", reloaded.MemberID)
 	s.Equal("cleric-1", reloaded.SourceID)
 	s.Equal(refs.Spells.Guidance().String(), reloaded.SourceRef.String())
+}
+
+// TestTheFactoryBuildsItFromItsCounterpartKey pins the cast-delivery path a
+// real Guidance cast takes: CreateFromRef, not the constructor directly,
+// because that is what resolution's generic condition dispatch calls
+// (BlessedCondition's shape needs a parsed *core.Ref too, so this path
+// parses the caller-supplied source ref rather than deferring to the
+// constructor — [TrueStrikeConditionSuite.TestItsSourceIsTheSpell]'s own
+// test for the plain-string factories).
+func (s *GuidedConditionTestSuite) TestTheFactoryBuildsItFromItsCounterpartKey() {
+	out, err := CreateFromRef(&CreateFromRefInput{
+		Ref:       refs.Conditions.Guided().String(),
+		MemberID:  "rogue-1",
+		Config:    json.RawMessage(`{"source_id":"cleric-1"}`),
+		SourceRef: refs.Spells.Guidance().String(),
+	})
+	s.Require().NoError(err)
+
+	built, ok := out.Condition.(*GuidedCondition)
+	s.Require().True(ok)
+	s.Equal("rogue-1", built.MemberID)
+	s.Equal("cleric-1", built.SourceID)
+	s.Equal(refs.Spells.Guidance().String(), built.SourceRef.String())
+}
+
+func (s *GuidedConditionTestSuite) TestTheFactoryRefusesAWrongSourceSpell() {
+	_, err := CreateFromRef(&CreateFromRefInput{
+		Ref:       refs.Conditions.Guided().String(),
+		MemberID:  "rogue-1",
+		Config:    json.RawMessage(`{"source_id":"cleric-1"}`),
+		SourceRef: refs.Spells.Bless().String(),
+	})
+	s.Require().Error(err, "only Guidance delivers this condition")
 }
 
 func TestGuidedConditionSuite(t *testing.T) {
