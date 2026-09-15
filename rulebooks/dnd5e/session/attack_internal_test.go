@@ -896,7 +896,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 				Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
 			}
 		}
-		actionRef = refs.MonsterActions.SkeletonShortsword()
+		actionRef = refs.Weapons.Shortsword()
 	}
 	require.NotNil(t, actionRef, "the spawned skeleton must be the persisted attacker under test")
 	require.NoError(t, sessions.SaveSession(ctx, stored))
