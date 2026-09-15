@@ -36,6 +36,233 @@ adoption may require only a pin; proto changes require an identified wire-shape
 gap. Track toolkit, API and browser evidence independently using the checklist
 below. Preparation is not a prerequisite for continuing this work.
 
+## Guidance: post-roll check-offer plan
+
+The user chose Guidance as the next inspection candidate from the current
+cantrip list and picked the RAW-accurate shape over a cheaper approximation:
+the recipient decides whether to spend the die *after* seeing their own roll,
+matching 2014 Basic Rules text supplied by the user: "You touch one willing
+creature. Once before the spell ends, the target can roll a d4 and add the
+number rolled to one ability check of its choice. It can roll the die before
+or after making the ability check. The spell then ends." One action, touch,
+V/S only, concentration up to one minute, no ritual tag. Taking the die ends
+the spell immediately, not just on the duration running out.
+
+### What already exists and what does not
+
+Bardic Inspiration (`features/bardic_inspiration.go`, `conditions/inspired.go`)
+is the die-holder template, not the hard part: a condition subscribes to an
+offer chain, appends an `Offer`, and self-removes when `OfferTakenTopic` names
+it. `GuidanceCondition` mirrors this almost directly, with two differences —
+it is concentration-bound rather than "until combat ends or rest" (so it needs
+no combat-end/rest subscription of its own; the concentration teardown Bless
+and Bane already use removes it), and RAW's "one ability check of its choice"
+means it offers on whichever check the recipient later makes, not a
+skill-filtered one.
+
+The actual new work is the roll side. `events/offer.go`'s
+`PostRollOfferEvent`/`PostRollOfferChain` is the only place in the toolkit
+that implements "ask after the roll, before the outcome, resume from bytes
+later" — folded today only on attack rolls. Its own doc names this gap
+directly: "Folded on an ATTACK roll only today. Saving throws and ability
+checks are the same shape and are deliberately not folded yet — they arrive
+with the slice that asks for them." This is that slice, for checks only —
+saving throws are a separate future slice, since `saveMachine` is only ever
+driven as a `Request` sub-machine from inside a casting machine
+(`contest.go`), and `Request` explicitly refuses a sub-machine that poses
+("a requester cannot be suspended"). That wall is out of scope here.
+
+`resolution/strike.go` + `strike_pose.go` is the only working example of the
+full roll → offer → `Pose` → `Frozen` → `Resume` shape, and is the template to
+copy for checks — not because checks currently resemble Strike, but because
+nothing else in the codebase does this yet. Reuse `OfferAnswer`/`OfferSpend`/
+`OfferKeep` from `strike_pose.go` rather than redefining them.
+
+`checks.MakeAbilityCheck` (`checks/checks.go`) has no `RollCalculation` today,
+unlike `saves.MakeSavingThrow` — but checked how Strike actually builds
+`StrikeOutcome.Calculation` (`resolution/strike.go:385`) and it is built
+entirely inside `resolution`, from the roll/modifier data the lower-level
+attack code already returns, not inside the attack rules package itself. The
+check equivalent follows the same layering: `resolution` (Slice 2) builds its
+own sourced `RollCalculation` locally from `checks.AbilityCheckResult`'s
+existing `Roll`/`Total`/`BonusSources`, so the offered die can append as one
+more sourced component. `checks.AbilityCheckResult` itself does not change.
+
+`resolution.MakeCheck` is already the right shape to build on: no `World`, no
+`Initiative`, no combat dependency — its own doc already names this as the
+anticipated first consumer of a check's write-back ("the day a condition
+spends itself on a check (guidance is the canonical one), the write-back is
+already in the caller's hands instead of silently lost down here").
+
+**Ruled out**: routing checks through `resolution.Resolve`/`Machine`. Checked
+its `Input` — it requires `World`, `Initiative` (required), `Standing`
+(required) and a full `Participants` list, the heavyweight full-encounter
+apparatus `MakeCheck` was deliberately built without ("there is no world
+here, and that is v1's honest answer"). Not needed anyway: every check already
+crosses to resolution through exactly one session-level function.
+
+**The one true seam**: `session.Manager.resolveStagedCheck`
+(`session/conceal.go`), whose own doc says so directly — "THE ONE PLACE A
+CHECK CROSSES TO RESOLUTION at this seam... Search (through checkSeam) and
+Unlock's lock checks both land here." Confirmed by grep across the whole
+rulebook: `.ResolveCheck(` has exactly one real caller anywhere
+(`encounter/search.go`), and nothing inside Attack/Cast/Activate/Move
+resolution currently invokes a check at all — `CheckResolver` is wired into
+every `resolution.Input` but unexercised today. So fixing
+`resolveStagedCheck` once covers every live consumer; `OpenDoor` has no check
+at all and is unaffected.
+
+Neither `Search` nor `Unlock` touch action economy or turn state — confirmed
+by grep, no hits. They already work identically in or out of combat, and so
+does `resolution.MakeCheck`. There is no separate combat-mode/exploration-mode
+implementation to build — one Pose-capable `resolveStagedCheck` serves both.
+Combat state matters only for *casting* Guidance: `session.Cast` currently
+refuses world-clock casts at all, a pre-existing, separately tracked
+limitation, so Guidance can only be cast during a turn today. The held die
+should still be usable on a later check outside combat, since no
+combat-end subscription was found anywhere in the concentration mechanism —
+to be confirmed with a test, not assumed.
+
+### Slices
+
+1. **Root, not yet castable.** `PostCheckRollOfferEvent`/
+   `PostCheckRollOfferChain` in `events/offer.go`, sibling to the attack one
+   (`CheckerID` in place of `AttackerID`). `GuidanceCondition` in
+   `conditions/`, mirroring `InspiredCondition` per above. `checks` package is
+   untouched — its sourced calculation is built in `resolution`, not here (see
+   above). **Not added to `castContent`** — stays selectable-but-inert exactly
+   where it sits today, matching how Spare the Dying's provider PR shipped
+   before its content was enabled.
+2. **Resolution + session: the real suspend/resume work.** Build a sourced
+   `RollCalculation` for the check locally in `resolution`, the way
+   `strike.go` does for `StrikeOutcome`, then extend `resolveStagedCheck` to
+   fold the new offer chain after `MakeCheck` returns; on a validated single
+   offer for the checker, freeze enough state (checker, applied approach, DC,
+   roll, total, calculation, offer, plus whatever `Search`/`Unlock` need to
+   finish) and report posed instead of a finished result; unchanged
+   otherwise. Session gains a new interrupt window kind
+   (sibling to `windowKindReaction`) and a resume path that thaws, applies
+   spend/keep (rolling the die and appending it to the calculation on spend,
+   as `strikeMachine.spendOffer` does), then runs the one genuinely per-verb
+   piece — finish whichever verb was in flight (Search: reveal findings;
+   Unlock: apply the lock verdict). Regression guard: existing Search/Unlock
+   suites must pass unchanged for the no-offer path.
+3. **Root: enable it.** Add Guidance to `castContent`. Acceptance: a
+   finalized Cleric casts Guidance on an ally or self during combat, the
+   recipient later makes a Search or Unlock check (in or out of combat), gets
+   posed, spends or keeps, reload preserves an open window mid-decision, and
+   concentration end / the one-minute duration / taking the die each
+   correctly end the condition.
+
+Deferred, explicitly out of scope here: propagating a check-triggered `Pose`
+out of Attack/Cast/Activate/Move resolution (nothing calls a check from
+inside those today, so there is nothing live to fix); world-clock casting of
+Guidance itself (existing `session.Cast` limitation, separate slice); saving
+throws gaining the same offer treatment (blocked on `Request`, separate
+slice, Resistance's future work). Protos/API are expected to be adoption-only
+— the ask/answer shape (`VERB_REACT`/`ReactionRef`) and the outcome shape
+(`RollComponent`/`RollCalculation`) both already cross generically — but that
+is to be confirmed once inside that code, not asserted here.
+
+Sources: [2014 Guidance](https://www.dndbeyond.com/spells/2149-guidance),
+user-supplied rules text above.
+
+### Slice 1 delivered: chain plumbing and the condition, not yet castable
+
+`PostCheckRollOfferEvent`/`PostCheckRollOfferChain` added to `events/offer.go`,
+sibling to the attack pair. `GuidedCondition` added to `conditions/`
+(`refs.Conditions.Guided()`, spell source ref `refs.Spells.Guidance()`,
+already present from the existing cantrip-choice catalog entry). It mirrors
+`InspiredCondition`'s offer/take mechanism on the new check chain, filtered
+on `CheckerID` with no skill filter, and mirrors `BlessedCondition`'s
+long-rest cleanup subscription rather than Inspired's combat-end one —
+Guidance is concentration, same duration category as Bless, not Bardic
+Inspiration's ten-minutes-or-combat-end. Registered in the condition loader
+and in both cross-package contract tests (`ref_contract_test.go`,
+`long_rest_registry_test.go`) that keep the loader registry honest against
+every loadable condition.
+
+`checks.AbilityCheckResult` was deliberately left untouched — checked how
+`StrikeOutcome.Calculation` is actually built (`resolution/strike.go:385`)
+and it happens entirely inside `resolution`, not the lower-level attack
+rules package; the check equivalent follows the same layering and belongs to
+Slice 2.
+
+Not wired into anything yet: nothing folds `PostCheckRollOfferChain` at a
+real roll site, so the condition cannot currently be exercised end to end.
+Guidance is not in `castContent`. Full root module suite, vet, and lint pass
+clean; `go build`/`go vet ./...` and `golangci-lint run` reported 0 issues on
+the touched packages.
+
+### Search: deferred, with the user's authorization, and why
+
+Slice 3 wired Guidance's interactive offer onto `Unlock` only. Extending the
+same offer to Search's find checks was investigated and explicitly declined
+by the user ("seems like a lot of baggage") after the actual shape of the
+problem was read out of the code, not assumed. Recorded here so a later
+session does not have to re-derive it.
+
+**Search cannot honestly pose the same way Unlock does.** `encounter.Search`
+calls `CheckResolver.ResolveCheck` inside a loop, once per concealed door
+touching the swept region:
+
+```go
+for _, doorID := range e.world.concealedDoors {
+    ...
+    verdict, err := e.checkResolver.ResolveCheck(&ResolveCheckInput{...})
+    ...
+}
+```
+
+One `Search` call can make zero, one, or many checks. RAW's "one ability
+check of its choice" has no defined answer to "which of the N checks a
+single Search call happens to make" — that is not a plumbing gap, it is an
+undecided rule.
+
+**Worse, posing anything here breaks Search's own secrecy law.** The
+package doc is explicit: "An empty region and a failed check return the
+same bytes... even the persisted blob is identical" — a failed searcher
+must not be able to tell a room was empty from a room that hid something
+they missed. Stopping to ask "spend your die?" only when a check actually
+runs would itself leak that a concealed door exists in the region, before
+the searcher has found anything — exactly the fact this verb exists to
+protect.
+
+**The user's resolution**, once this was laid out: apply the die
+automatically, not as an offer, to every check one `Search` call makes,
+since the player experiences "search the room" as one action regardless of
+how many concealed doors the engine happens to be checking against, and
+they never learn that count either way — so uniform automatic application
+leaks nothing a plain `Search` call does not already conceal.
+
+**That still is not a small addition, which is why it stays deferred.**
+The tracking half is free — an applied bonus already rides the existing
+sourced `RollComponent`/`RollCalculation` shape no matter how it is
+delivered, the same way Raging's advantage or a proficiency bonus already
+does. The mechanism half is not: `GuidedCondition`'s existing subscription
+(`PostCheckRollOfferChain`) is Unlock's interactive path, and it cannot
+also subscribe to the ordinary pre-roll `AbilityCheckChain` bonus fold to
+get automatic behavior for Search — that chain fires on *every* check,
+Unlock's included, so the same condition auto-applying there would silently
+bypass the interactive pose Slice 3 just built. A condition has no way to
+know which verb triggered the roll it is being asked to join.
+
+So automatic application for Search has to be Search's own explicit code
+path, not a second subscription on the existing condition: check whether
+the searcher holds Guidance before the sweep starts, apply the bonus to
+every check the sweep makes (rolled once and reused, or independently per
+check — undecided, and immaterial to the tracking, which is uniform
+either way), and consume the condition exactly once when the sweep ends
+rather than after the first internal check. That last part is the reason
+this cannot live inside `resolveStagedCheck` as written: it is invoked once
+per door, with no memory of "this is check 2 of 3 in the same Search call."
+It also still needs `encounter.Search`'s own calling contract to change —
+the same `encounter` + `session` PR pair Slice 3 already named — now to
+carry an extra caller-supplied bonus rather than to carry a pose.
+
+Deferred, not ruled impossible: a future session can pick this up from the
+mechanism description above without re-deriving the secrecy problem.
+
 ## Spare the Dying wiring inspection
 
 ### Executable content after session adoption
