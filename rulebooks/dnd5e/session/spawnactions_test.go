@@ -150,6 +150,14 @@ func (s *SpawnActionsTestSuite) TestASpawnRefusesAWeaponNothingCanBuild() {
 	}{
 		{"a weapon the catalog does not have", "dnd5e:weapons:trebuchet", session.ErrUnknownContent},
 		{"a ref that is not a weapon", "dnd5e:monster_actions:wolf-bite", session.ErrUnknownContent},
+		// The row that makes the TYPE check load-bearing rather than
+		// decorative. Deleting the module/type test leaves the two rows
+		// above passing — nothing answers to "wolf-bite" in the weapons
+		// catalog either — but `dnd5e:monster_actions:mace` has a weapon's
+		// id in a namespace that is not the weapons catalog, and only the
+		// type check refuses it. Found by running that mutant.
+		{"an authored action whose id collides with a weapon's",
+			"dnd5e:monster_actions:mace", session.ErrUnknownContent},
 		{"another module's weapon", "homebrew:weapons:shortbow", session.ErrUnknownContent},
 		{"a bare weapon id", "shortbow", session.ErrBadRef},
 	} {
