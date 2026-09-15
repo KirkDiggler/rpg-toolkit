@@ -954,7 +954,7 @@ type MemberInput struct {
 // encounter-owned primitive, the same species as [Member.Name] and
 // [AttackIdentity.DamageType]: this composition carries it and never
 // interprets it, per C1 (this module's go.mod cannot import the rulebook,
-// so it cannot know what a Ref like "dnd5e:monster_actions:skeleton-shortbow" means, or
+// so it cannot know what a Ref like "dnd5e:weapons:shortbow" means, or
 // what a Kind string like "melee" means).
 type ActionView struct {
 	// Ref identifies this authored action to its eventual consumer. Opaque here.

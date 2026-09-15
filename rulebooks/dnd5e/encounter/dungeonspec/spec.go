@@ -759,7 +759,8 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 		case "knows":
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
-			"offset", "targeting", "boss", "holds", "holdable", "faction", "arrives":
+			"offset", "targeting", "actions", "boss", "holds", "holdable", "faction",
+			"arrives":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)
@@ -880,6 +881,38 @@ type PlaceSpec struct {
 	// Targeting is the author's word for how a monster picks a target.
 	// Monsters only. Carried opaquely and never interpreted here.
 	Targeting *string `yaml:"targeting,omitempty"`
+
+	// Actions is what this monster can do, in the author's own order
+	// (rpg-project#448). MONSTERS ONLY, refused on anything else exactly as
+	// Targeting is. Optional: omitted means the monster's definition keeps
+	// the arms its stat block gives it.
+	//
+	// FULL REFS, like every other ref in this file: `dnd5e:weapons:shortbow`,
+	// never `shortbow`. A weapon a monster carries is the catalog's weapon
+	// and carries the catalog's ref, because there is nothing different
+	// about a goblin's shortbow and a skeleton's — both are +4 for 1d6+2,
+	// and both numbers are the wielder's.
+	//
+	// THE ORDER IS THE POINT. Both drivers take the first action whose
+	// target is in reach, so an archer that lists a blade first swings when
+	// you are standing on it and one that lists only a bow shoots you point
+	// blank. That is how two goblins in one room tell different stories
+	// without a line of Go: `[scimitar, shortbow]` and `[shortbow]`.
+	//
+	// CARRIED, NOT INTERPRETED, like Targeting and Holds. This package
+	// refuses a ref that is not a well-formed `dnd5e:weapons:<id>` and stops
+	// there: whether the catalog HAS that weapon is a question only the
+	// rulebook can answer, and the rulebook is not a dependency of this
+	// module. The session answers it at spawn and refuses the file's boot;
+	// a turn never meets an unknown ref.
+	//
+	// WHY ONLY WEAPONS TODAY. The design keeps authored non-weapon actions —
+	// a claw, a bite, a multiattack — in this same list, and none exists
+	// yet. Refusing the types that cannot appear is what makes a typo'd
+	// `dnd5e:weapon:shortbow` a field error on the form instead of a
+	// surprise at boot, and admitting the first real claw is a one-line
+	// change here.
+	Actions []string `yaml:"actions,omitempty"`
 
 	// Boss marks the monster whose death ends things. Monsters only, and at
 	// most one per region.
