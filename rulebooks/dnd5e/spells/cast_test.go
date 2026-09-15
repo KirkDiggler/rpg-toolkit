@@ -62,6 +62,41 @@ func (s *CastContentSuite) TestBlessDeclaresKnownTargetsAndOwnedConcentration() 
 	}
 }
 
+func (s *CastContentSuite) TestGuidanceDeclaresTouchAndOwnedConcentration() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Guidance})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(*refs.Spells.Guidance(), d.Ref)
+	s.Equal(0, d.Cast.Casting.Level, "a cantrip, not a leveled spell")
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(d.Cost.Pools, "a cantrip spends no slot")
+	s.Equal(actions.CastTargetTouch, d.Cast.Target, "self is a legal touch recipient, unlike CastTargetSelf")
+	s.Equal(5, d.Cast.RangeFeet)
+	s.Equal(1, d.Cast.MinTargets)
+	s.Equal(1, d.Cast.MaxTargets)
+	s.Nil(d.Cast.Save)
+	s.Empty(d.Cast.Damage)
+	s.Nil(d.Cast.Healing)
+	s.Require().Len(d.Cast.Effects, 1)
+	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
+	s.Equal(*refs.Conditions.Guided(), d.Cast.Effects[0].Ref)
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Require().NotNil(d.Cast.Concentration, "up to one minute, the same duration category as Bless")
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	clone := d.Clone()
+	clone.Cast.Effects[0].CounterpartKey = "wrong"
+	clone.Cast.Concentration.TurnEnds = 1
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	raw, err := json.Marshal(d)
+	s.Require().NoError(err)
+	var reloaded actions.Definition
+	s.Require().NoError(json.Unmarshal(raw, &reloaded))
+	s.Require().NoError(reloaded.Validate())
+	s.Equal(d, &reloaded)
+}
+
 func (s *CastContentSuite) TestHealingWordDeclaresRangedBonusActionHealing() {
 	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
 	s.Require().NotNil(d)
@@ -183,7 +218,7 @@ func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {
 }
 
 func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantrips() {
-	s.Equal([]spells.Spell{spells.SacredFlame, spells.SpareTheDying},
+	s.Equal([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.SpareTheDying},
 		spells.Castable([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.Light, spells.SpareTheDying}))
 }
 

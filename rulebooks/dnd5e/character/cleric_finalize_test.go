@@ -330,10 +330,15 @@ func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReloa
 		supported = append(supported, definition.Ref.String())
 		s.Require().NoError(definition.Validate())
 		s.Require().NotNil(definition.Cast)
-		s.Require().NotNil(definition.Cast.Save)
+		if definition.Cast.Save == nil {
+			// Guidance is supported content now too, and carries no save DC —
+			// this loop's DC assertion below is Sacred Flame's own check.
+			continue
+		}
 		s.Equal(13, definition.Cast.Save.DC.DC(saves.DCInput{}))
 	}
-	s.Equal([]string{refs.Spells.SacredFlame().String()}, supported)
+	s.ElementsMatch([]string{refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String()}, supported,
+		"Light remains an unsupported choice; Sacred Flame and Guidance are executable content")
 	s.Len(loaded.KnownCantrips(), 3, "unsupported choices remain known")
 }
 
