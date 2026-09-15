@@ -119,6 +119,40 @@ type SpawnInput struct {
 	// Empty is the ordinary case: most monsters hold nothing.
 	Holds []string
 
+	// Actions is what this monster can do, in the author's order — the
+	// author's placement from the dungeon file's `place[].actions`
+	// (rpg-project#448), forwarded to the sheet at spawn.
+	//
+	// WEAPON REFS, `dnd5e:weapons:shortbow`, and nothing else today. A
+	// monster's weapon attack is the catalog's weapon assembled against that
+	// monster's own scores, so a goblin's shortbow and a skeleton's carry the
+	// same ref and differ only in who is holding them. The design keeps
+	// authored non-weapon actions (claw, bite, multiattack) in this same
+	// list; none exists on any monster this build ships, so anything that is
+	// not `dnd5e:weapons:*` is refused with ErrUnknownContent rather than
+	// carried through to a turn that could not use it.
+	//
+	// NON-EMPTY REPLACES, EMPTY KEEPS. A list replaces the instantiated
+	// monster's whole action list with the weapons named, in order; empty —
+	// the ordinary case — leaves the stat block's own arms alone. It is not
+	// additive, because "this goblin carries a bow and nothing else" is a
+	// thing an author must be able to say.
+	//
+	// THE ORDER IS THE INSTRUCTION. Both drivers take the first action whose
+	// target is in reach, so a placement listing the blade first swings when
+	// you close on it and one listing only a bow shoots you point blank.
+	// Nothing here sorts or deduplicates the list.
+	//
+	// IT FAILS HERE OR NOWHERE. An unknown ref refuses the spawn with
+	// ErrUnknownContent, carrying the ref's own text — the sentinel a bad
+	// monster ref already returns. A host boots a shipped dungeon through
+	// this verb, so a bad weapon refuses boot; a turn never meets one.
+	//
+	// ASSEMBLED NOW, STORED ON THE SHEET. A saved run keeps the numbers it
+	// was spawned with, and a later change to the catalog or to the stat
+	// block does not re-arm a monster mid-run.
+	Actions []string
+
 	// Faction is the side this monster fights on — the author's placement
 	// from the dungeon file's `place[].faction` (rpg-project#375, the
 	// hold-out design §3 "Spawn"), forwarded to the composition untouched,
@@ -563,7 +597,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	//
 	// The order is still chosen: there is no reason to touch the world when
 	// the call is already doomed.
-	sheet, err := instantiate(in.ID, in.Ref)
+	sheet, err := instantiate(in.ID, in.Ref, in.Actions)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}

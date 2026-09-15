@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // Loading an entity, and the cleanup that must not happen.
@@ -118,7 +119,7 @@ func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*cha
 // The ID is separate from the ref because a template cannot carry identity:
 // one skeleton entry makes five skeletons, and each needs its own name in the
 // encounter.
-func instantiate(id string, ref string) (*monster.Data, error) {
+func instantiate(id string, ref string, actions []string) (*monster.Data, error) {
 	if ref == "" {
 		return nil, ErrNoRef
 	}
@@ -164,7 +165,62 @@ func instantiate(id string, ref string) (*monster.Data, error) {
 	if built == nil {
 		return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
 	}
+
+	if len(actions) > 0 {
+		if err := arm(built, actions); err != nil {
+			return nil, err
+		}
+	}
+
 	return built.ToData(), nil
+}
+
+// arm replaces a freshly built monster's actions with the ones the author
+// named, in the author's order (rpg-project#448, [SpawnInput.Actions]).
+//
+// ASSEMBLED NOW, STORED ONCE. The sheet is what gets rehydrated (S4), so the
+// numbers a monster is spawned with are the numbers it keeps: a later change
+// to the weapons catalog or to a stat block's scores does not silently re-arm
+// something mid-run.
+//
+// EVERY REF IS A WEAPON REF, and anything else is refused. The design keeps
+// authored non-weapon actions — a claw, a bite, a multiattack — in this same
+// list, and NONE EXISTS TODAY: no monster this build ships carries an action
+// that is not a catalog weapon. Refusing what cannot appear is what keeps the
+// failure here, at spawn, where a host is reading a file; admitting the first
+// real claw is a change to this one function.
+//
+// IT FAILS AT SPAWN, NEVER AT A TURN. A ref the catalog does not know refuses
+// the whole verb with [ErrUnknownContent], carrying the ref's own text, which
+// is the same sentinel a bad monster ref returns and for the same reason: a
+// host boots a shipped dungeon through this door, so a bad weapon refuses
+// boot rather than surfacing as a monster that stands there doing nothing.
+//
+// A MALFORMED REF IS [ErrBadRef], not ErrUnknownContent — the same split the
+// monster ref above is held to. "This is not a module:type:id" and "nothing
+// here answers to that id" are different things to tell a host, and
+// dungeonspec already refuses the first at author time.
+func arm(built *monster.Monster, actions []string) error {
+	ids := make([]weapons.WeaponID, 0, len(actions))
+	for _, action := range actions {
+		parsed, err := core.ParseString(action)
+		if err != nil {
+			return fmt.Errorf("%q: %w: %v", action, ErrBadRef, err)
+		}
+		if parsed.Module != refs.Module || parsed.Type != refs.TypeWeapons {
+			return fmt.Errorf("%q: %w", action, ErrUnknownContent)
+		}
+		id := weapons.WeaponID(parsed.ID)
+		if _, err := weapons.GetByID(id); err != nil {
+			return fmt.Errorf("%q: %w", action, ErrUnknownContent)
+		}
+		ids = append(ids, id)
+	}
+
+	if err := built.SetWeapons(ids); err != nil {
+		return fmt.Errorf("arming %q: %w", built.Name(), err)
+	}
+	return nil
 }
 
 // projectMonster reports the state of an instantiated NPC.

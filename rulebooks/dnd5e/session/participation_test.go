@@ -57,7 +57,7 @@ func TestParticipationMapsProviderFactsWithoutThresholds(t *testing.T) {
 	dead := dwarfCharacterRecord("dead", 0)
 	dead.DeathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
 	conscious := dwarfCharacterRecord("conscious", 1)
-	monsterSheet, err := instantiate("defeated", "dnd5e:monsters:skeleton")
+	monsterSheet, err := instantiate("defeated", "dnd5e:monsters:skeleton", nil)
 	require.NoError(t, err)
 	monsterSheet.HitPoints = 0
 
@@ -227,7 +227,7 @@ func TestParticipationWorldNPCIdentityWinsBeforeCombatantLookup(t *testing.T) {
 	dying := dwarfCharacterRecord("dying", 0)
 	characterCollision := dwarfCharacterRecord("character-collision", 10)
 	monsterCollisionCharacter := dwarfCharacterRecord("monster-collision", 10)
-	monsterCollision, err := instantiate("monster-collision", "dnd5e:monsters:skeleton")
+	monsterCollision, err := instantiate("monster-collision", "dnd5e:monsters:skeleton", nil)
 	require.NoError(t, err)
 	merchant, err := npcs.NewMerchant(nil)
 	require.NoError(t, err)
@@ -283,7 +283,7 @@ func TestParticipationWorldNPCIdentityWinsBeforeCombatantLookup(t *testing.T) {
 
 func TestParticipationPartyDefeatUsesOnlyRequestedPlayers(t *testing.T) {
 	dying := dwarfCharacterRecord("dying", 0)
-	monsterSheet, err := instantiate("upright-monster", "dnd5e:monsters:skeleton")
+	monsterSheet, err := instantiate("upright-monster", "dnd5e:monsters:skeleton", nil)
 	require.NoError(t, err)
 
 	seam := standingSeam{
@@ -424,7 +424,7 @@ func commandedBlob(t *testing.T, member, caster, word string) json.RawMessage {
 func TestACommandedMemberIsDrivenWhoeverTheyAre(t *testing.T) {
 	player := dwarfCharacterRecord("fighter", 10)
 	player.Conditions = []json.RawMessage{commandedBlob(t, "fighter", "bard", "flee")}
-	skeleton, err := instantiate("skeleton", "dnd5e:monsters:skeleton")
+	skeleton, err := instantiate("skeleton", "dnd5e:monsters:skeleton", nil)
 	require.NoError(t, err)
 	skeleton.Conditions = append(skeleton.Conditions,
 		commandedBlob(t, "skeleton", "bard", "approach"))
