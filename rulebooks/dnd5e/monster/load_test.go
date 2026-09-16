@@ -67,7 +67,7 @@ func (s *PureLoadTestSuite) sheet() *Data {
 		Speed:            SpeedData{Walk: 30},
 		Senses:           SensesData{Darkvision: 60, PassivePerception: 9},
 		Actions: []combatActions.Definition{{
-			Ref:  *refs.MonsterActions.SkeletonShortsword(),
+			Ref:  *refs.Weapons.Shortsword(),
 			Name: "shortsword",
 			Attack: &combatActions.AttackProfile{
 				Category:    combatActions.AttackCategoryWeapon,
@@ -117,7 +117,7 @@ func (s *PureLoadTestSuite) TestActionsReturnsDeepClones() {
 	fresh := m.Actions()
 	s.Equal("shortsword", fresh[0].Name)
 	s.Equal("1d6", fresh[0].Attack.Damage[0].Dice)
-	s.Equal("skeleton-shortsword", fresh[0].Ref.ID)
+	s.Equal("shortsword", fresh[0].Ref.ID)
 	s.Equal(s.sheet().Actions, m.ToData().Actions)
 }
 
@@ -132,7 +132,7 @@ func (s *PureLoadTestSuite) TestAddActionRejectsInvalidOpaqueConditionParameters
 	s.Require().NoError(err)
 
 	err = m.AddAction(combatActions.Definition{
-		Ref:  *refs.MonsterActions.SkeletonShortsword(),
+		Ref:  *refs.Weapons.Shortsword(),
 		Name: "Bad Shortsword",
 		Attack: &combatActions.AttackProfile{
 			Category:    combatActions.AttackCategoryWeapon,
