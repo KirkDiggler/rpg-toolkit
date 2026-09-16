@@ -716,3 +716,119 @@ func (s *AdvanceTestSuite) TestTheReturnedEntryCannotEditHistory() {
 
 	s.Equal(2, char.Levels()[1].Level)
 }
+
+// --- Design §9.3a at the CALL SITE, not just in the helpers ---
+
+// oneFighterLevelAmongFive is a character whose class level and character
+// level differ by four: one level taken in fighter, then four in wizard.
+//
+// R2.4 will not let Advance build this, and every Advance-driven test above
+// uses a single-class fighter where the two numbers are equal — so those tests
+// pass just as happily with the two arguments swapped inside Advance. This
+// fixture is the one shape that tells them apart, and it is here so the rule
+// Kirk's multiclass remark motivated is not the one rule with no test that
+// would catch it breaking.
+//
+// Its hit dice pool is seeded at five so that resizing it is a visible act:
+// a pool sized from the CLASS level would be asked to shrink, and shrinking is
+// the one thing resizeClassResources refuses to do.
+func (s *AdvanceTestSuite) oneFighterLevelAmongFive() *Character {
+	levels := make([]LevelEntry, 0, 5)
+	for i := 1; i <= 5; i++ {
+		class := classes.Wizard
+		if i == 1 {
+			class = classes.Fighter
+		}
+		levels = append(levels, LevelEntry{Level: i, ClassID: class, HitPointMethod: HitPointMethodAverage})
+	}
+
+	char := &Character{
+		id:            "one-fighter-level-among-five",
+		classID:       classes.Fighter,
+		levels:        levels,
+		hitDice:       10,
+		hitPoints:     30,
+		maxHitPoints:  30,
+		abilityScores: shared.AbilityScores{abilities.CON: 10},
+		resources:     make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+	}
+	char.resources[resources.HitDice] = resources.NewHitDiceResource(resources.HitDiceResourceConfig{
+		CharacterID: char.id,
+		Level:       5,
+	})
+
+	s.Require().Equal(5, char.GetLevel())
+	s.Require().Equal(1, char.ClassLevel(classes.Fighter))
+	return char
+}
+
+func (s *AdvanceTestSuite) TestAdvanceIndexesGrantsByClassLevelAndTheEntryByCharacterLevel() {
+	char := s.oneFighterLevelAmongFive()
+
+	out, err := char.Advance(s.ctx, &AdvanceInput{
+		ClassID:        classes.Fighter,
+		HitPointMethod: HitPointMethodAverage,
+	})
+	s.Require().NoError(err)
+
+	// The grant. This is the second FIGHTER level, so Action Surge arrives —
+	// even though it is the sixth CHARACTER level, which grants a fighter
+	// nothing at all. Looking the grants up by the character level finds an
+	// empty list and this assertion fails.
+	s.Equal([]string{refs.Features.ActionSurge().ID}, refIDs(out.Gained.Features),
+		"the second FIGHTER level is the one that grants Action Surge")
+	s.True(s.hasFeature(char, refs.Features.ActionSurge().ID))
+
+	// The entry. A level record entry is numbered by character level (R2.5):
+	// entry n is level n+1, whatever class took it.
+	s.Equal(6, out.Entry.Level, "the sixth level taken")
+	s.Equal(6, char.Levels()[5].Level)
+	s.Equal(6, char.GetLevel())
+
+	// The two numbers, reported separately and not interchangeably.
+	s.Equal(6, out.Gained.CharacterLevel)
+	s.Equal(2, out.Gained.ClassLevel)
+
+	// Hit dice count every level whatever class took it, so the pool grows
+	// from five to six. Sized by the class level it would be asked to shrink
+	// to two, which resizeClassResources refuses — leaving it at five.
+	s.Equal(6, char.GetResource(resources.HitDice).Maximum(),
+		"hit dice are counted by the CHARACTER level")
+}
+
+func (s *AdvanceTestSuite) TestAdvanceSizesAClassPoolByTheClassLevel() {
+	// The mirror of the assertion above, on a pool that is sized by the class
+	// rather than by the character: a monk with two monk levels among six
+	// reaches monk level 3, and gets three Ki points rather than seven.
+	levels := make([]LevelEntry, 0, 6)
+	for i := 1; i <= 6; i++ {
+		class := classes.Wizard
+		if i <= 2 {
+			class = classes.Monk
+		}
+		levels = append(levels, LevelEntry{Level: i, ClassID: class, HitPointMethod: HitPointMethodAverage})
+	}
+	char := &Character{
+		id:            "two-monk-levels-among-six",
+		classID:       classes.Monk,
+		levels:        levels,
+		hitDice:       8,
+		hitPoints:     30,
+		maxHitPoints:  30,
+		abilityScores: shared.AbilityScores{abilities.CON: 10},
+		resources:     make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+	}
+
+	out, err := char.Advance(s.ctx, &AdvanceInput{
+		ClassID:        classes.Monk,
+		HitPointMethod: HitPointMethodAverage,
+	})
+	s.Require().NoError(err)
+
+	s.Equal(7, out.Gained.CharacterLevel)
+	s.Equal(3, out.Gained.ClassLevel)
+	s.Equal(3, char.GetResource(resources.Ki).Maximum(),
+		"Ki is sized by the MONK level, not by the seven levels this character holds")
+	s.Equal(7, char.GetResource(resources.HitDice).Maximum(),
+		"and hit dice by every level it holds")
+}
