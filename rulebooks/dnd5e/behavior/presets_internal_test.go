@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // Every word the rulebook ships means one Retaliator under a profile, and
@@ -29,11 +31,18 @@ func TestEachWordsPresetIsWhatItsDocSays(t *testing.T) {
 	cases := []struct {
 		word   string
 		grudge Grudge
+		fear   Fear
 		room   int
 	}{
-		{word: MindRetaliator, grudge: Grudge{Patience: 3, Excuse: ExcuseUnarmed}},
-		{word: MindBerserker, grudge: Grudge{Patience: 10, Excuse: ExcuseNever}},
-		{word: MindCoward, room: 2},
+		{word: MindRetaliator, grudge: Grudge{
+			Patience: 3, Excuse: ExcuseUnarmed,
+			Provokes: []string{encounter.DeedAttack},
+		}},
+		{word: MindBerserker, grudge: Grudge{
+			Patience: 10, Excuse: ExcuseNever,
+			Provokes: []string{encounter.DeedAttack, encounter.DeedIntimidate},
+		}},
+		{word: MindCoward, room: 2, fear: Fear{Patience: 3}},
 	}
 
 	require.Len(t, presets, len(cases),
@@ -48,6 +57,7 @@ func TestEachWordsPresetIsWhatItsDocSays(t *testing.T) {
 			require.True(t, ok, "three words, one mind, three profiles")
 
 			require.Equal(t, tc.grudge, retaliator.Grudge)
+			require.Equal(t, tc.fear, retaliator.Fear)
 			require.Equal(t, tc.room, retaliator.Room)
 			require.Same(t, driver.board, retaliator.Space,
 				"geometry is the driver's board and never a preset's")

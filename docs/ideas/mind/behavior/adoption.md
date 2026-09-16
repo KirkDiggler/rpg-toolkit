@@ -52,6 +52,13 @@ before it:
   session's lifetime does: the Manager is stateless per verb and gets no
   session-end signal, so a cache inside it would have no owner to evict
   it.
+- **A7** — What a deed is WORTH is the preset's, and so is the set of
+  verbs a mind answers. `Judge` reads no verb: whether two holdings are one
+  figure is a claim about perception, true whatever the figure did.
+  `Grudge.Provokes` says which verbs count as done to me and `Fear` says
+  which one frightens me, and both are fields on the profile a word means
+  (rpg-project#454). A verb tested in the code rather than read off the
+  profile is the hardcoding scenarios.md named.
 
 ## Done when
 

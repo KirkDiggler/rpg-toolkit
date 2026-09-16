@@ -452,6 +452,80 @@ data would remove, and it is being paid deliberately a few times first: the
 fields a profile has are now known (patience, excuse, room), which is
 exactly what had to be true before anybody chose a format to author them in.
 
+## mind/behavior — rung 0 asks about each creature (rpg-project#454)
+
+Keep was asked **once per turn**, before rung 0's loop, and that one number
+was compared against every contact. A mind that keeps its distance from one
+figure and none from another was inexpressible — which is what a frightened
+monster is.
+
+`KeepInput` gained a `Contact`, and `Decide` asks inside rung 0's own loop
+about the creature it is measuring. Nothing else moved: the rungs, their
+order, and what each one skips are what they were, and a mind with one
+answer for everybody behaves identically. Every `Keep` in the repo ignored
+its input before this and still does; every existing proof passed unchanged.
+
+It is its own PR because `mind/behavior` is its own Go module.
+
+| Mutant | Killed by |
+|--------|-----------|
+| the single per-turn `Keep` call put back | `TestRungZeroAsksTheMindAboutEachCreature/it steps away from the one it fears` — Attack (`0x1`) where Away (`0x3`) was expected: the fearful monster swings at what it meant to run from |
+
+## dnd5e/behavior v0.6.0 — Fear and the provocation set (rpg-project#454)
+
+The first shenanigan's mind half. The encounter lands an `intimidate` deed
+on the witnesses; this is the three words deciding what it is worth.
+
+- **`Fear{Patience}`** on the preset beside `Grudge`, coward `3`. While a
+  threat is fresh, `Keep` answers `math.MaxInt` for the one who made it and
+  `Room` for everybody else. The zero `Fear{}` is never cowed, which is
+  every other word.
+- **`Grudge.Provokes`** replaces the hardcoded `Verb == DeedAttack` in
+  `grudge`. Retaliator `{attack}`; berserker `{attack, intimidate}`; coward
+  none, because it reads the threat through `Fear` instead. Empty provokes
+  nobody, so the zero `Grudge` is still honest.
+- **`Judge` reads no verb at all** any more. That was not tidying: a
+  coward's grudge is the zero, so a verb-filtered Judge would leave the
+  threat unattached — a deeds handle floating beside the fighter rather than
+  on her — and `Keep` would be asked about a contact holding no memory of
+  the one thing that happened to it. Whether two holdings are one figure is
+  a claim about perception and is true whatever she did; what the deed is
+  worth is the profile's, and now says so in one place.
+
+### Two things the design said and the code did not
+
+**The sight range is not on the view.** The design says a cowed coward's
+`Keep` answers "my sight range". `encounter.MonsterView` carries no sight
+range — `SightFeet` is a member fact the view does not project — so the
+answer is `math.MaxInt`, documented as "no distance is far enough while I
+can see her". The outcome is the design's and arguably better at the edge:
+rung 0 only ever considers a CREATURE, and a creature is a figure some
+current holding reads as one, so the moment she is a memory the question is
+never asked about her again. "As far as it can see the fighter" is the
+ladder's own doing, not a number anybody computed.
+
+**The provocation set is not shared between `Judge` and `grudge`.** The
+plan was to replace the verb test in both with one set. Doing that would
+have broken fear, for the reason above.
+
+### What the mutants said
+
+Five mutants, applied to the working tree and reverted.
+
+| Mutant | Killed by |
+|--------|-----------|
+| `Keep` ignores the intimidate deed | `TestACowedCowardRunsInsteadOfShooting` (Attack at alice where Move away was expected), plus `TestAMindWithNoFearIsNeverCowed` and `TestFearWearsOff/still working on the last tick` |
+| the berserker's `Provokes` loses `intimidate` | `TestTheBerserkerChargesWhoeverThreatenedIt`: bob with a sword, where alice across the room was expected |
+| the retaliator's `Provokes` gains `intimidate` | `TestTheRetaliatorIsUnmovedByAThreat`: alice where bob was expected, both against the literal and against the same scene with no deed in it |
+| `Judge` filters deeds by verb again | `TestACowedCowardRunsInsteadOfShooting`, `TestFearWearsOff/still working on the last tick`, and `TestJudgeAttachesAThreatToTheFigureWhoMadeIt` |
+| `Fear.fresh` never expires | `TestFearWearsOff/spent on the next`: still fleeing three ticks on |
+
+Two existing tests failed the moment `Provokes` landed and were corrected
+rather than bumped: `handGrudge` and the preset table both had to start
+naming the verb they answer. That is the fail-closed zero doing its job —
+an omission that used to be invisible is now a fixture that provokes
+nobody.
+
 ## Left for a later rung
 
 - Persistence: names and fears. The encounter integration pays for it.
