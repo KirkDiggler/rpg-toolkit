@@ -18,6 +18,24 @@ import (
 // Struck or missed, it is the same deed — a miss is still a shot at you.
 const DeedAttack = "attack"
 
+// DeedIntimidate is the verb a beaten Intimidate check lands under: what a
+// witness would say they saw somebody DO when a character threatened a
+// monster and the threat landed (rpg-project#454,
+// ideas/shenanigans/intimidate.md).
+//
+// A MISSED THREAT LANDS NOTHING, which is the difference between this verb
+// and [DeedAttack]. A miss is still a shot at you; a threat nobody was
+// frightened by is a sentence in the air. Whether a failed attempt provokes
+// anyone is an open item on rpg-project#454, deliberately not a hidden
+// default here.
+//
+// What the deed is WORTH is the mind's business and not this module's: the
+// coward reads it as fear, the berserker as a provocation, the retaliator
+// as nothing at all (rulebooks/dnd5e/behavior). This composition lands the
+// testimony and forms no opinion — there is no flee flag, and rule A2 is
+// why (the design's first broken cut).
+const DeedIntimidate = "intimidate"
+
 // landAttack tells every member whose senses reach the actor's cell that
 // the actor attacked, through perception's own Report door, in each
 // witness's terms (mind/behavior rule A4: a deed is landed where the fact
@@ -27,29 +45,54 @@ const DeedAttack = "attack"
 // sorted order is the one named; the others are the outcome beat's to
 // tell. No use case has paid for more than one yet.
 func (e *Encounter) landAttack(actor MemberID, targets []MemberID) error {
+	where, witnesses, err := e.audienceOf(actor)
+	if err != nil {
+		return err
+	}
+
+	var target MemberID
+	if len(targets) > 0 {
+		target = targets[0]
+	}
+
+	return e.landDeed(DeedAttack, actor, target, where, witnesses)
+}
+
+// audienceOf answers where a member is standing and who can see that cell —
+// the two facts every deed needs before it can be landed, asked once so the
+// Intimidate verb can refuse on the audience it is about to land on rather
+// than computing it a second time.
+func (e *Encounter) audienceOf(actor MemberID) (spatial.Position, []core.EntityID, error) {
 	record, ok := e.members[actor]
 	if !ok {
-		return fmt.Errorf("deed: actor %q: %w", actor, ErrNoMember)
+		return spatial.Position{}, nil, fmt.Errorf("deed: actor %q: %w", actor, ErrNoMember)
 	}
 
 	where, err := e.cellOf(record)
 	if err != nil {
-		return fmt.Errorf("deed: actor %q: %w", actor, err)
+		return spatial.Position{}, nil, fmt.Errorf("deed: actor %q: %w", actor, err)
 	}
 
 	witnesses, err := e.witnessesOf(where)
 	if err != nil {
-		return fmt.Errorf("deed: %w", err)
+		return spatial.Position{}, nil, fmt.Errorf("deed: %w", err)
 	}
 
-	d := deed.Deed{Verb: DeedAttack, Actor: actor, Where: where.String()}
-	if len(targets) > 0 {
-		d.Target = targets[0]
-	}
+	return where, witnesses, nil
+}
 
+// landDeed puts one deed on every witness, at the clock's high-water mark.
+//
+// THE VERB IS THE CALLER'S, and so is the audience. Every deed this
+// composition publishes goes through here, so "a witness keeps an actor's
+// latest deed only" and the clock reading a deed is stamped with are one
+// answer rather than one per verb.
+func (e *Encounter) landDeed(
+	verb string, actor, target MemberID, where spatial.Position, witnesses []core.EntityID,
+) error {
 	if err := stage.Land(&stage.LandInput{
 		Store:     e.intelLog,
-		Deed:      d,
+		Deed:      deed.Deed{Verb: verb, Actor: actor, Target: target, Where: where.String()},
 		Witnesses: witnesses,
 		At:        uint64(e.clock.ToData().HighWater),
 	}); err != nil {
