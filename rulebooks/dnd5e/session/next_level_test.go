@@ -55,6 +55,8 @@ func (s *NextLevelSuite) TestABardIsOfferedOnlyTheSpellItDoesNotKnow() {
 	s.Equal([]string{spellRef(spells.HealingWord)}, choice.Options,
 		"the four this bard already knows are not choices")
 	s.Equal("bard-spells-2", choice.ID)
+	s.Equal("Choose 1 supported 1st-level spell", choice.Label,
+		"the rulebook's own words, carried rather than composed here")
 }
 
 // TestABardsEntitlementIsProjectedNotDecided pins the availability signal as
@@ -72,12 +74,34 @@ func (s *NextLevelSuite) TestABardsEntitlementIsProjectedNotDecided() {
 	s.Equal(1, out.Level, "the sheet is still level 1")
 	s.Equal(2, out.EntitledLevel, "and 300 experience has earned level 2")
 	s.Equal(levelUpXP, out.Experience)
-	s.Equal(900, out.NextThreshold, "the total level 3 needs")
+	s.Equal(900, out.NextLevelThreshold, "the total level 3 needs")
 	s.Equal(2, out.CharacterLevel, "the level it would take")
 	s.Equal(2, out.ClassLevel)
-	s.Equal("bard", out.Class)
 	s.Equal(8, out.HitDie, "a bard's d8")
-	s.Equal("belwyn", out.Character)
+}
+
+// TestTheClassTravelsAsARefAndAName pins the vocabulary a host reads.
+//
+// The ref is the same shape every other piece of content uses, so the host
+// maps the id after the second colon and nothing invents a second way to name
+// a class. The display name is projected beside it because the rulebook is the
+// only thing that knows it, and a host spelling "Bard" from "bard" would be
+// authoring content — which stops being a capitalisation the day a class is
+// named something the id does not capitalise into.
+func (s *NextLevelSuite) TestTheClassTravelsAsARefAndAName() {
+	mgr, _ := advancementManager(s.T(), testDice{}, advancingBard("belwyn"), advancingFighter("ferrin"))
+	ctx := context.Background()
+
+	bard, err := mgr.NextLevel(ctx, &session.NextLevelInput{Character: "belwyn"})
+	s.Require().NoError(err)
+	s.Equal(refs.Classes.Bard().String(), bard.Class)
+	s.Equal("dnd5e:classes:bard", bard.Class, "spelled out, because the host parses this string")
+	s.Equal("Bard", bard.ClassName)
+
+	fighter, err := mgr.NextLevel(ctx, &session.NextLevelInput{Character: "ferrin"})
+	s.Require().NoError(err)
+	s.Equal(refs.Classes.Fighter().String(), fighter.Class)
+	s.Equal("Fighter", fighter.ClassName)
 }
 
 // TestAFighterIsAskedNothingAndGivenActionSurge is the other shape a level
@@ -97,7 +121,6 @@ func (s *NextLevelSuite) TestAFighterIsAskedNothingAndGivenActionSurge() {
 	s.Equal(10, out.HitDie, "a fighter's d10")
 	s.Equal(2, out.CharacterLevel)
 	s.Equal(2, out.ClassLevel)
-	s.Equal("fighter", out.Class)
 }
 
 // TestAWizardsSubclassIsRefusedRatherThanDropped is the charter's own

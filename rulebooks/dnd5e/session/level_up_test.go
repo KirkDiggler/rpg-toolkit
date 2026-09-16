@@ -63,6 +63,9 @@ func (s *LevelUpSuite) TestABardTakesTheLevelAndTheSheetHoldsIt() {
 	s.Empty(out.Saved.Failed)
 	s.Equal(2, out.Gained.CharacterLevel)
 	s.Equal(2, out.Gained.ClassLevel)
+	s.Equal(refs.Classes.Bard().String(), out.Gained.Class,
+		"the write says which class took the level, for a host that never read")
+	s.Equal("Bard", out.Gained.ClassName)
 }
 
 // TestTheLevelReportsWhichPoolsItMoved pins the account a host renders.

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -88,18 +89,34 @@ func (m *Manager) NextLevel(ctx context.Context, in *NextLevelInput) (*NextLevel
 	}
 
 	return &NextLevelOutput{
-		Character:      in.Character,
-		Class:          string(classID),
-		Level:          sheet.GetLevel(),
-		Experience:     sheet.Experience(),
-		EntitledLevel:  sheet.EntitledLevel(),
-		NextThreshold:  sheet.NextLevelThreshold(),
-		CharacterLevel: characterLevel,
-		ClassLevel:     classLevel,
-		HitDie:         classData.HitDice,
-		Features:       grantedFeatureRefs(classID, classLevel),
-		Choices:        asked,
+		Level:              sheet.GetLevel(),
+		ClassLevel:         classLevel,
+		CharacterLevel:     characterLevel,
+		Class:              classRef(classID),
+		ClassName:          classes.Name(classID),
+		Experience:         sheet.Experience(),
+		EntitledLevel:      sheet.EntitledLevel(),
+		NextLevelThreshold: sheet.NextLevelThreshold(),
+		HitDie:             classData.HitDice,
+		Features:           grantedFeatureRefs(classID, classLevel),
+		Choices:            asked,
 	}, nil
+}
+
+// classRef names a class the way every other piece of content is named.
+//
+// Composed rather than looked up, and that is the one place this file builds a
+// ref without a catalog behind it — refs.Classes has named methods and no
+// ByID, so there is nothing to ask. It is safe here because the CALLER has
+// already asked the real catalog: classes.GetData refuses a class with no
+// table one line above, so a ref is only built for a class the rulebook knows.
+// The rulebook composes the same string for a grant's source ref
+// ("dnd5e:classes:" + the id, character/advance.go's buildGranted); going
+// through core.Ref keeps the grammar the type's business rather than this
+// file's.
+func classRef(classID classes.Class) string {
+	ref := core.Ref{Module: refs.Module, Type: refs.TypeClasses, ID: core.ID(classID)}
+	return ref.String()
 }
 
 // levelChoicesOf projects a level's requirement row into this package's own
@@ -131,6 +148,7 @@ func levelChoicesOf(reqs *choices.Requirements) ([]LevelChoice, error) {
 		}
 		asked = append(asked, LevelChoice{
 			ID:      string(reqs.Cantrips.ID),
+			Label:   reqs.Cantrips.Label,
 			Kind:    LevelChoiceCantrip,
 			Count:   reqs.Cantrips.Count,
 			Options: options,
@@ -145,6 +163,7 @@ func levelChoicesOf(reqs *choices.Requirements) ([]LevelChoice, error) {
 		}
 		asked = append(asked, LevelChoice{
 			ID:         string(reqs.Spellbook.ID),
+			Label:      reqs.Spellbook.Label,
 			Kind:       LevelChoiceSpell,
 			Count:      reqs.Spellbook.Count,
 			SpellLevel: reqs.Spellbook.SpellLevel,

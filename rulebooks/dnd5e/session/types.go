@@ -2768,7 +2768,17 @@ type LevelChoice struct {
 	// submission names this back.
 	ID string `json:"id"`
 
-	// Kind is what is being chosen.
+	// Label is the requirement's own words, e.g. "Choose 1 supported
+	// 1st-level spell". Carried rather than composed: the rulebook already
+	// writes the sentence, and a host that rebuilt it from Count and Kind
+	// would be authoring content — and would lose the one the rulebook uses
+	// when a count equals its whole option list ("Select all ...", which is
+	// not a choice and says so).
+	Label string `json:"label,omitempty"`
+
+	// Kind is what is being chosen. CARRIED, NEVER INFERRED: a host reading
+	// SpellLevel or the option strings to work out which question this was
+	// would be guessing at something the row states.
 	Kind LevelChoiceKind `json:"kind"`
 
 	// Count is how many to choose. It is the CLASS's number and is not
@@ -2802,16 +2812,31 @@ type NextLevelInput struct {
 // and EntitledLevel (R4.10) — both are projected and the comparison is the
 // host's, because a flag here would be a rule in the seam.
 type NextLevelOutput struct {
-	// Character is the sheet this answer is about.
-	Character string `json:"character"`
-
-	// Class is the character's class, as its bare id ("bard"). Multiclassing
-	// is not open, so the next level is taken in this class (R2.4).
-	Class string `json:"class"`
-
 	// Level is the character level the sheet holds NOW. CharacterLevel below
 	// is the one the next level would make it.
 	Level int `json:"level"`
+
+	// ClassLevel is the class level the next level would take.
+	ClassLevel int `json:"class_level"`
+
+	// CharacterLevel is the character level the next level WOULD TAKE, which
+	// is Level plus one. Equal to ClassLevel until multiclassing opens, and
+	// stated separately so the day it opens this surface does not change
+	// shape.
+	CharacterLevel int `json:"character_level"`
+
+	// Class is the character's class as a CANONICAL REF,
+	// "dnd5e:classes:bard" — the same vocabulary the rulebook already uses
+	// for a class source ref, so a host maps the id after the second colon
+	// and nothing here invents a second way to name a class. Multiclassing
+	// is not open, so the next level is taken in this class (R2.4).
+	Class string `json:"class"`
+
+	// ClassName is the class's display name, "Bard". Projected here because
+	// it is something the host wants to display and the rulebook is the only
+	// thing that knows it; a host spelling it from the id would be authoring
+	// content.
+	ClassName string `json:"class_name"`
 
 	// Experience is the character's cumulative total.
 	Experience int `json:"experience"`
@@ -2820,20 +2845,11 @@ type NextLevelOutput struct {
 	// Level means a level is waiting to be taken.
 	EntitledLevel int `json:"entitled_level"`
 
-	// NextThreshold is the total needed before another level is earned, or 0
-	// at the top of the table — zero telling the truth rather than hiding a
-	// level, since no reading of a table whose first threshold is 0 produces
-	// "0 more needed".
-	NextThreshold int `json:"next_threshold"`
-
-	// CharacterLevel is the character level the next level WOULD TAKE, which
-	// is Level plus one.
-	CharacterLevel int `json:"character_level"`
-
-	// ClassLevel is the class level the next level would take. Equal to
-	// CharacterLevel until multiclassing opens, and stated separately so the
-	// day it opens this surface does not change shape.
-	ClassLevel int `json:"class_level"`
+	// NextLevelThreshold is the total needed before another level is earned,
+	// or 0 at the top of the table — zero telling the truth rather than
+	// hiding a level, since no reading of a table whose first threshold is 0
+	// produces "0 more needed".
+	NextLevelThreshold int `json:"next_level_threshold"`
 
 	// HitDie is the class's hit die, e.g. 10 for a fighter. What the level
 	// does with it is [Manager.LevelUp]'s HitPointMethod.
@@ -2941,6 +2957,17 @@ type LevelGained struct {
 
 	// ProficiencyBonus is the bonus AT the new level, not the change.
 	ProficiencyBonus int `json:"proficiency_bonus"`
+
+	// Class is the class the level was taken in, as a canonical ref —
+	// "dnd5e:classes:bard", the same vocabulary [NextLevelOutput.Class]
+	// carries. Stated here rather than left for the host to remember from
+	// the read, because a host may write without having read and because
+	// multiclassing will make "which class did this level go into" a real
+	// question rather than a restatement.
+	Class string `json:"class"`
+
+	// ClassName is that class's display name.
+	ClassName string `json:"class_name"`
 
 	// Features are the canonical refs the level granted.
 	Features []string `json:"features,omitempty"`

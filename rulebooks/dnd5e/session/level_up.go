@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -114,7 +115,7 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 
 	return &LevelUpOutput{
 		Saved:  SaveReport{Written: []string{aggregate}},
-		Gained: levelGained(advanced.Gained),
+		Gained: levelGained(data.ClassID, advanced.Gained),
 	}, nil
 }
 
@@ -287,12 +288,18 @@ func translateAdvance(err error) error {
 }
 
 // levelGained projects the rulebook's account of a level into this package's.
-func levelGained(gained character.GainedAtLevel) LevelGained {
+//
+// The class is passed in rather than read off the account: GainedAtLevel says
+// what a level added and not which class it went into, and a host that wrote
+// without reading first has nothing else to learn it from.
+func levelGained(classID classes.Class, gained character.GainedAtLevel) LevelGained {
 	out := LevelGained{
 		CharacterLevel:   gained.CharacterLevel,
 		ClassLevel:       gained.ClassLevel,
 		HitPointGain:     gained.HitPointGain,
 		ProficiencyBonus: gained.ProficiencyBonus,
+		Class:            classRef(classID),
+		ClassName:        classes.Name(classID),
 	}
 
 	if len(gained.Features) > 0 {
