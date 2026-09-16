@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Working Pieces Were Not Enough</title>
+<meta name="description" content="A useful action model, conflicting accounts of one creature, and the pause that made the missing coherent system clear.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/working-pieces-were-not-enough/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Working Pieces Were Not Enough">
+<meta property="og:description" content="A useful action model, conflicting accounts of one creature, and the pause that made the missing coherent system clear.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/working-pieces-were-not-enough/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/working-pieces-were-not-enough.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/working-pieces-were-not-enough.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading Working Pieces Were Not Enough beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Working Pieces Were Not Enough">
+<meta name="twitter:description" content="A useful action model, conflicting accounts of one creature, and the pause that made the missing coherent system clear.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/working-pieces-were-not-enough.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading Working Pieces Were Not Enough beside a blue D20 wireframe.">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91;--pressure-soft:#2b1e20}
+*{box-sizing:border-box}
+html{background:var(--ground);color-scheme:dark;overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}
+a{color:var(--bright);text-underline-offset:3px}
+.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+
+
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}
+.eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}
+h1{max-width:950px;margin:.3em 0 .3em;font-size:clamp(3.7rem,8vw,6.2rem);letter-spacing:-.035em}
+.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}
+.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}
+.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}
+.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.legend{display:flex;flex-wrap:wrap;gap:1.5rem;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase}
+.legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}
+.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}
+.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}
+.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}
+.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}
+.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+p{max-width:74ch;margin:.76em 0}.lead,.reflection{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}
+code{color:var(--bright);font-size:.87em}
+figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-block:1px solid var(--rule-strong);scrollbar-color:var(--rule-strong) var(--ground)}
+figure svg{display:block;width:100%;min-width:840px;height:auto;margin:0 auto}
+figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}
+.law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",monospace}.law b{color:var(--primary);font-weight:500}
+.pressure-law{border-left-color:var(--pressure)}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}
+footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer a{white-space:nowrap}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px}
+svg .t-title{font-size:22px;font-weight:600}svg .t-big{font-size:29px;font-weight:600}svg .mono{font-size:15px}svg .label{fill:var(--muted);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.8px}svg .small{fill:var(--muted);font-size:16px}svg .blue{fill:var(--bright)}svg .rust{fill:var(--pressure-text)}svg .faint{fill:var(--faint)}
+svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.5}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.4;stroke-dasharray:7 6}
+svg .wire{fill:none;stroke:var(--muted);stroke-width:1.5}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .dash{stroke-dasharray:7 6}
+figure::before{display:none}
+@media(max-width:760px){
+ .page{padding:14px 14px 70px}header{padding:50px 14px 48px 42px}
+ .origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{flex-direction:column;gap:.6rem}
+ .timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}
+ .panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}figure svg{min-width:900px}footer{margin:48px 0 0 42px}
+ figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-block:1px solid var(--accent);background:var(--ground);color:var(--bright);font:500 .69rem/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.35rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Layer 8 · The API prototype</div>
+    <h1>Working Pieces Were Not Enough</h1>
+    <p class="dek">The Action work was a real step forward. But <strong>useful pieces had not added up to the coherent system I thought I was building.</strong> Different parts of the game could still disagree about the same creature. Fixing those descriptions helped. It also made the larger job clearer: I needed to reconsider how the pieces fit together.</p>
+    <nav class="origin-links" aria-label="Field-note navigation">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets →</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/an-action-could-grant-the-next-step/"><span>Previous field note</span><strong>An Action Could Grant the Next Step →</strong></a>
+    </nav>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Setting</b><span>ordinary combat</span></div><div><b>Pressure</b><span>one creature, conflicting accounts</span></div><div><b>Horizon</b><span>a pause, then every option open</span></div></div>
+    <div class="legend" aria-label="Diagram legend"><span><i></i>a shared contract</span><span><i></i>a disagreement exposed</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Five panels: from conflicting accounts to the pause and the work still ahead">
+    <section class="timeline-panel pressure-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">March 2026</span></div>
+      <div class="panel-body">
+        <div class="question-label">Follow the action’s result</div>
+        <h2 id="panel-1-title">An action happened. The accounts disagreed.</h2>
+        <p class="lead">Granting a Strike and using it were separate steps. That made the action model clearer. But once the strike happened, its result still had to travel through the game. A combat update could reflect the damage while the same monster’s hover panel still called it uninjured.</p>
+        <figure tabindex="0" aria-label="Diagram: the same creature has changed health and an unchanged hover description">
+          <svg viewBox="0 0 960 400" role="img" aria-labelledby="d1-title d1-desc">
+            <title id="d1-title">One creature, two conflicting accounts</title>
+            <desc id="d1-desc">An ordinary attack produces a health change for a monster. The hover panel still describes that same monster as uninjured. Both accounts refer to one entity. This is an explanatory diagram, not a recovered gameplay screenshot.</desc>
+            <defs><marker id="d1-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker><marker id="d1-rust-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker></defs>
+            <text x="28" y="30" class="label">AFTER AN ORDINARY ATTACK</text>
+            <rect x="28" y="76" width="288" height="151" class="soft"/>
+            <text x="52" y="114" class="label blue">COMBAT UPDATE</text>
+            <text x="52" y="160" class="t-big">Health reduced</text>
+            <text x="52" y="199" class="small">the changed creature</text>
+            <path d="M316 151H403" class="wire-blue" marker-end="url(#d1-blue-arrow)"/>
+            <path d="M480 76L547 114V190L480 228L413 190V114Z" class="ghost"/>
+            <path d="M480 116L501 152L480 188L459 152Z" fill="var(--pressure-soft)" stroke="var(--pressure)" stroke-width="2"/>
+            <text x="480" y="259" text-anchor="middle" class="mono">same entity ID</text>
+            <path d="M555 151H636" class="wire-rust dash" marker-end="url(#d1-rust-arrow)"/>
+            <rect x="644" y="76" width="288" height="151" class="pressure"/>
+            <text x="668" y="114" class="label rust">HOVER PANEL</text>
+            <text x="668" y="160" class="t-big rust">Uninjured</text>
+            <text x="668" y="199" class="small">the unchanged description</text>
+            <path d="M172 227V301H788V227" class="wire dash"/>
+            <text x="480" y="346" text-anchor="middle" class="t-title">Both accounts were describing the same creature.</text>
+            <text x="480" y="382" text-anchor="middle" class="label rust">WHICH PART OF THE SCREEN SHOULD I BELIEVE?</text>
+          </svg>
+          <figcaption>The bug was visible in the hover panel. The mismatch belonged to the data feeding it.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>Resolving a change did not make every description current.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">Inside the client</span></div>
+      <div class="panel-body">
+        <div class="question-label">The stitching was everywhere</div>
+        <h2 id="panel-2-title">Each view held part of the creature</h2>
+        <p class="lead">The map drew placements from one container. Monster health came from another. Character appearance lived elsewhere again. Combat events had to reconcile those slices, and their updates could drift. A local fix corrected one path; it did not establish how every account stayed in step. The repeated stitching was a problem with the connections, not just the displays.</p>
+        <figure tabindex="0" aria-label="Diagram: a combat event must coordinate separate placement, health and Character data">
+          <svg viewBox="0 0 960 460" role="img" aria-labelledby="d2-title d2-desc">
+            <title id="d2-title">One update must keep several state containers in step</title>
+            <desc id="d2-desc">The client distributes a combat update across dungeonMap.entities for placements, monsters for monster health, and fullCharactersMap for Character details. These feed the map, hover panel and Character model. They are different slices used across creatures, not three complete copies of one monster. Each event handler must coordinate the updates.</desc>
+            <defs><marker id="d2-rust-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker><marker id="d2-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <text x="28" y="28" class="label rust">EVERY EVENT HAS TO KEEP THE SLICES IN STEP</text>
+            <rect x="362" y="53" width="236" height="65" class="box"/>
+            <text x="480" y="94" text-anchor="middle" class="t-title">combat update</text>
+            <path d="M480 118V145H167V179M480 145V179M480 145H793V179" class="wire-rust dash"/>
+            <path d="M167 166V179" class="wire-rust" marker-end="url(#d2-rust-arrow)"/><path d="M480 166V179" class="wire-rust" marker-end="url(#d2-rust-arrow)"/><path d="M793 166V179" class="wire-rust" marker-end="url(#d2-rust-arrow)"/>
+            <rect x="28" y="187" width="278" height="104" class="pressure"/>
+            <text x="167" y="224" text-anchor="middle" class="mono">dungeonMap.entities</text>
+            <text x="167" y="263" text-anchor="middle" class="t-title">placements</text>
+            <rect x="341" y="187" width="278" height="104" class="pressure"/>
+            <text x="480" y="224" text-anchor="middle" class="mono">monsters[]</text>
+            <text x="480" y="263" text-anchor="middle" class="t-title">monster health</text>
+            <rect x="654" y="187" width="278" height="104" class="pressure"/>
+            <text x="793" y="224" text-anchor="middle" class="mono">fullCharactersMap</text>
+            <text x="793" y="263" text-anchor="middle" class="t-title">Character details</text>
+            <path d="M167 291V334" class="wire-blue" marker-end="url(#d2-blue-arrow)"/><path d="M480 291V334" class="wire-blue" marker-end="url(#d2-blue-arrow)"/><path d="M793 291V334" class="wire-blue" marker-end="url(#d2-blue-arrow)"/>
+            <rect x="28" y="342" width="278" height="61" class="box"/><text x="167" y="381" text-anchor="middle" class="t-title">map</text>
+            <rect x="341" y="342" width="278" height="61" class="box"/><text x="480" y="381" text-anchor="middle" class="t-title">hover panel</text>
+            <rect x="654" y="342" width="278" height="61" class="box"/><text x="793" y="381" text-anchor="middle" class="t-title">Character model</text>
+            <text x="480" y="446" text-anchor="middle" class="small">A correction in one slice did not automatically update the others.</text>
+          </svg>
+          <figcaption>These were different slices, not three complete copies. Event handlers had to keep their consumers in step.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>The views were being synchronized by convention.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">March → April 2026</span></div>
+      <div class="panel-body">
+        <div class="question-label">Change the contract, not each display</div>
+        <h2 id="panel-3-title">A shared record fixed one boundary</h2>
+        <p class="lead">The new <code>EntityState</code> contract gathered identity, position, health, conditions, and rendering details into one entry. A snapshot could replace the encounter view; smaller updates replaced affected entries by ID. The map and hover panel could read the same received creature. That answered a client-state problem. It did not yet answer how the whole fight held together.</p>
+        <figure tabindex="0" aria-label="Diagram: replace one complete entity entry and let map and hover read the same record">
+          <svg viewBox="0 0 960 630" role="img" aria-labelledby="d3-title d3-desc">
+            <title id="d3-title">Different views read the same received entity</title>
+            <desc id="d3-desc">A received EntityState carries a complete description of the affected creature. It replaces that creature's entry in the client's entity map by ID. Other entries remain unchanged. The map reads position and state from the entry; the hover panel reads its health. This unifies these client reads, not every server-side source of state.</desc>
+            <defs><marker id="d3-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <rect x="164" y="26" width="632" height="124" class="soft"/>
+            <text x="190" y="59" class="label blue">RECEIVED ENTITYSTATE · ONE COMPLETE ENTRY</text>
+            <text x="190" y="96" class="t-title">identity · position · health · conditions</text>
+            <text x="190" y="129" class="small">+ the details needed to render this creature</text>
+            <path d="M480 150V211" class="wire-blue" marker-end="url(#d3-blue-arrow)"/>
+            <text x="506" y="185" class="mono blue">replace this ID’s entry</text>
+            <rect x="104" y="220" width="752" height="186" class="box"/>
+            <text x="129" y="254" class="label">CLIENT ENTITY MAP</text>
+            <rect x="129" y="276" width="702" height="52" class="soft"/>
+            <text x="151" y="310" class="t-title blue">this creature</text>
+            <text x="380" y="310" class="small">position · HP · conditions · rendering details</text>
+            <path d="M347 277V327" class="wire-blue"/>
+            <text x="151" y="373" class="small faint">other creatures</text>
+            <text x="380" y="373" class="small faint">unchanged by this update</text>
+            <path d="M480 406V443H275V477M480 443H685V477" class="wire-blue"/>
+            <path d="M275 463V477" class="wire-blue" marker-end="url(#d3-blue-arrow)"/><path d="M685 463V477" class="wire-blue" marker-end="url(#d3-blue-arrow)"/>
+            <rect x="120" y="485" width="310" height="91" class="soft"/>
+            <text x="275" y="518" text-anchor="middle" class="label blue">MAP</text>
+            <text x="275" y="554" text-anchor="middle" class="t-title">position + state</text>
+            <rect x="530" y="485" width="310" height="91" class="soft"/>
+            <text x="685" y="518" text-anchor="middle" class="label blue">HOVER PANEL</text>
+            <text x="685" y="554" text-anchor="middle" class="t-title">health description</text>
+            <text x="480" y="618" text-anchor="middle" class="t-title blue">Different questions. One received creature.</text>
+          </svg>
+          <figcaption>Update the affected entity once. Its consumers read the same received state; other entries remain unchanged.</figcaption>
+        </figure>
+        <div class="law"><b>One consistent view was not yet one coherent system.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">The larger undertaking</span></div>
+      <div class="panel-body">
+        <div class="question-label">The gaps were between the pieces</div>
+        <h2 id="panel-4-title">The next change was architectural</h2>
+        <p class="lead">The fixes were useful, but they were still fixes to pieces. The API had an orchestrator; that did not mean the pieces formed a coherent system. A shared client record made some views agree. It did not settle which state the next interaction should load or how changes should survive the whole trip.</p>
+        <figure tabindex="0" aria-label="Diagram: separate state sources still need a coherent contract through the interaction">
+          <svg viewBox="0 0 960 500" role="img" aria-labelledby="d4-title d4-desc">
+            <title id="d4-title">The pieces still need a coherent interaction</title>
+            <desc id="d4-desc">The API holds spatial data, separately tracked Character HP, and initiative data. Separate records are not inherently wrong, but a shared client description does not settle their relationship through the interaction. The dashed box asks which state is current, what the action changed, what the next call loads, and what the player sees. It represents a requirement, not a replacement design already chosen.</desc>
+            <defs><marker id="d4-rust-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker></defs>
+            <text x="28" y="29" class="label">THE LOCAL FIX DID NOT REMOVE THE LARGER QUESTION</text>
+            <rect x="28" y="62" width="420" height="333" class="box"/>
+            <text x="52" y="99" class="label rust">STILL ASSEMBLED BY RPG-API</text>
+            <rect x="52" y="122" width="372" height="67" class="pressure"/>
+            <text x="74" y="151" class="mono">RoomData</text><text x="74" y="176" class="small">spatial placements</text>
+            <rect x="52" y="200" width="372" height="67" class="pressure"/>
+            <text x="74" y="229" class="mono">CharacterHP</text><text x="74" y="254" class="small">health still tracked separately</text>
+            <rect x="52" y="278" width="372" height="67" class="pressure"/>
+            <text x="74" y="307" class="mono">InitiativeData</text><text x="74" y="332" class="small">turn order</text>
+            <text x="238" y="377" text-anchor="middle" class="small">the host still reconciles the pieces</text>
+            <path d="M448 228H518" class="wire-rust dash" marker-end="url(#d4-rust-arrow)"/>
+            <rect x="530" y="62" width="402" height="333" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="7 6"/>
+            <text x="554" y="99" class="label blue">WHAT THE WHOLE HAD TO ANSWER</text>
+            <text x="554" y="149" class="t-big">One coherent interaction</text>
+            <path d="M554 172H908" class="wire-blue"/>
+            <text x="554" y="209" class="t-title">Which state is current?</text>
+            <text x="554" y="249" class="t-title">What did the action change?</text>
+            <text x="554" y="289" class="t-title">What does the next call load?</text>
+            <text x="554" y="329" class="t-title">What does the player see?</text>
+            <text x="554" y="377" class="small blue">the requirement, not a chosen design</text>
+            <text x="480" y="448" text-anchor="middle" class="t-title">Working pieces did not yet make a coherent system.</text>
+            <text x="480" y="482" text-anchor="middle" class="t-title rust">Another patch was not the whole job.</text>
+          </svg>
+          <figcaption>Separate records were not inherently wrong. The problem was keeping the whole interaction coherent across them.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-5" data-panel="5" aria-labelledby="panel-5-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">05</span><span class="date-label">The pause</span></div>
+      <div class="panel-body">
+        <div class="question-label">Away from the code</div>
+        <h2 id="panel-5-title">The tools needed a way to work together</h2>
+        <p class="lead">An architecture-level update was more than I could give the project then. Work needed attention, and my training for a 108 km ultra was reaching 80 to 100 km a week. The break became obvious.</p>
+        <p class="reflection">Running gave me time to think without getting caught in implementation. I had to hold the problem in my head. I liked what the tools could do. I still needed a way for them to work together. It felt like I had been making a prototype all along.</p>
+        <p class="end-question">Working pieces were not enough.<br>When I came back, every option would have to be on the table.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-project/blob/4e2a65a/ideas/unified-entity-state/CLAUDE.md">March 28 bug-fix record</a> names the stale hover health, dead monsters still rendering, and Character appearance resets. Kirk recalls these contradictions as a signal that he needed a proper encounter system. The diagrams explain the relationships; they are not recovered gameplay screenshots.</p>
+    <p>The starting point is <a href="https://kirkdiggler.github.io/rpg-toolkit/an-action-could-grant-the-next-step/">the grantable Action model</a> from the previous note. The April pause, training volume, and running as space for thought are Kirk’s recollections, not dates or motives inferred from Git. No particular run or race result is depicted.</p>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-dnd5e-web/blob/3f999466/src/hooks/useEncounterState.ts">client store</a> replaces snapshots or affected entries by ID. Subsequent <a href="https://github.com/KirkDiggler/rpg-dnd5e-web/commit/ad3ac8b5">map</a> and <a href="https://github.com/KirkDiggler/rpg-dnd5e-web/commit/8ca27b93">hover</a> changes consume it, retaining legacy fallbacks. The branch <a href="https://github.com/KirkDiggler/rpg-dnd5e-web/commit/52d3b3ac">integrates April 5</a>, after further wiring and a deliberate choice to keep dead creatures visible with dead-state rendering. Consistent state, not making every corpse disappear, is the payoff here.</p>
+    <p>The API’s <a href="https://github.com/KirkDiggler/rpg-api/blob/5570d6f/internal/repositories/encounters/repository.go">March 29 repository contract</a> still contains separate spatial, HP and initiative data alongside the new entity map. A shared client representation is not proof of unified server authority, correct delivery on every event path, or a completed gameplay walk.</p>
+    <p class="scope">Implementation and integration dates are evidence dates, not the boundaries of Kirk’s April pause. This note reaches the pause and the intention for the return; it does not claim a replacement was already chosen. The doorway persistence fix, later toolkit Encounter work, and August reset remain later.</p>
+  </footer>
+</main>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+<!-- End Cloudflare Web Analytics -->
+</body>
+</html>
