@@ -183,546 +183,401 @@ type SpellbookRequirement struct {
 	Label      string         `json:"label"`       // e.g., "Choose 6 1st-level spells for your spellbook"
 }
 
-// GetClassRequirements returns the requirements for a specific class at level 1
+// GetClassRequirements returns what a class asks for at level 1 — the choices
+// character creation puts in front of a player.
+//
+// This is creation's entry point and its meaning has not changed: level 1's
+// authored row, the spell and cantrip questions derived from the class's
+// progression table, and the subclass for the one class that picks it at 1.
 func GetClassRequirements(classID classes.Class) *Requirements {
-	return GetClassRequirementsAtLevel(classID, 1)
+	return GetClassRequirementsGainedAtLevel(classID, 1)
 }
 
-// GetClassRequirementsAtLevel returns the requirements for a specific class at a given level
-func GetClassRequirementsAtLevel(classID classes.Class, level int) *Requirements {
-	reqs := getBaseClassRequirements(classID)
-
-	// Add subclass requirement if needed at this level
-	classData := classes.ClassData[classID]
-	if classData != nil && classData.SubclassLevel > 0 && level >= classData.SubclassLevel {
-		reqs.Subclass = &SubclassRequirement{
-			ID:      ChoiceID(classData.SubclassChoiceID),
-			Options: classData.Subclasses,
-			Label:   classData.SubclassLabel,
-		}
-	}
-
-	return reqs
-}
-
-// getBaseClassRequirements returns the base requirements for a class (without subclass)
-func getBaseClassRequirements(classID classes.Class) *Requirements {
-	// Get class-specific requirements
+// classLevelRequirements is every class's authored requirement table.
+//
+// Rows are built fresh on each call rather than shared from a package
+// variable: callers receive a *Requirements and write to it (the subclass
+// requirement is folded in that way), and a shared row would let one caller
+// edit what the next one reads.
+func classLevelRequirements(classID classes.Class) []LevelRequirements {
 	switch classID {
 	case classes.Fighter:
-		return getFighterRequirements()
+		return fighterLevelRequirements()
 	case classes.Barbarian:
-		return getBarbarianRequirements()
+		return barbarianLevelRequirements()
 	case classes.Wizard:
-		return getWizardRequirements()
+		return wizardLevelRequirements()
 	case classes.Rogue:
-		return getRogueRequirements()
+		return rogueLevelRequirements()
 	case classes.Cleric:
-		return getClericRequirements()
+		return clericLevelRequirements()
 	case classes.Bard:
-		return getBardRequirements()
+		return bardLevelRequirements()
 	case classes.Druid:
-		return getDruidRequirements()
+		return druidLevelRequirements()
 	case classes.Monk:
-		return getMonkRequirements()
+		return monkLevelRequirements()
 	case classes.Paladin:
-		return getPaladinRequirements()
+		return paladinLevelRequirements()
 	case classes.Ranger:
-		return getRangerRequirements()
+		return rangerLevelRequirements()
 	case classes.Sorcerer:
-		return getSorcererRequirements()
+		return sorcererLevelRequirements()
 	case classes.Warlock:
-		return getWarlockRequirements()
+		return warlockLevelRequirements()
 	default:
-		// For unimplemented classes, return basic skill requirements from class data
+		// A class with no table of its own is still asked for the skills its
+		// class data names, at level 1.
 		classData := classes.ClassData[classID]
-		if classData == nil {
-			return &Requirements{}
+		if classData == nil || classData.SkillCount <= 0 || len(classData.SkillList) == 0 {
+			return nil
 		}
-
-		reqs := &Requirements{}
-		if classData.SkillCount > 0 && len(classData.SkillList) > 0 {
-			reqs.Skills = &SkillRequirement{
-				ID:      getSkillChoiceID(classID),
-				Count:   classData.SkillCount,
-				Options: classData.SkillList,
-				Label:   fmt.Sprintf("Choose %d skills", classData.SkillCount),
-			}
-		}
-		return reqs
-	}
-}
-
-func getFighterRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      getSkillChoiceID(classes.Fighter),
-			Count:   classes.ClassData[classes.Fighter].SkillCount,
-			Options: classes.ClassData[classes.Fighter].SkillList,
-			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Fighter].SkillCount),
-		},
-		Equipment: enrichEquipmentRequirements(getFighterEquipmentRequirements()),
-		FightingStyle: &FightingStyleRequirement{
-			ID: FighterFightingStyle,
-			Options: []fightingstyles.FightingStyle{
-				fightingstyles.Archery,
-				fightingstyles.Defense,
-				fightingstyles.Dueling,
-				fightingstyles.GreatWeaponFighting,
-				fightingstyles.Protection,
-				fightingstyles.TwoWeaponFighting,
+		return []LevelRequirements{{
+			Level: 1,
+			Requirements: Requirements{
+				Skills: &SkillRequirement{
+					ID:      getSkillChoiceID(classID),
+					Count:   classData.SkillCount,
+					Options: classData.SkillList,
+					Label:   fmt.Sprintf("Choose %d skills", classData.SkillCount),
+				},
 			},
-			Label: "Choose a fighting style",
-		},
+		}}
 	}
 }
 
-func getBarbarianRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      getSkillChoiceID(classes.Barbarian),
-			Count:   classes.ClassData[classes.Barbarian].SkillCount,
-			Options: classes.ClassData[classes.Barbarian].SkillList,
-			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Barbarian].SkillCount),
-		},
-		Equipment: enrichEquipmentRequirements(getBarbarianEquipmentRequirements()),
-		// No subclass at level 1 (Path chosen at level 3)
-		// No spells or cantrips
-	}
-}
-
-func getWizardRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      getSkillChoiceID(classes.Wizard),
-			Count:   classes.ClassData[classes.Wizard].SkillCount,
-			Options: classes.ClassData[classes.Wizard].SkillList,
-			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Wizard].SkillCount),
-		},
-		Equipment: enrichEquipmentRequirements(getWizardEquipmentRequirements()),
-		Cantrips: &CantripRequirement{
-			ID:    WizardCantrips1,
-			Count: 3,
-			Options: []spells.Spell{
-				// Damage cantrips
-				spells.FireBolt,
-				spells.RayOfFrost,
-				spells.ShockingGrasp,
-				spells.AcidSplash,
-				spells.PoisonSpray,
-				spells.ChillTouch,
-				// Utility cantrips
-				spells.MageHand,
-				spells.MinorIllusion,
-				spells.Prestidigitation,
-				spells.Light,
+// fighterLevelRequirements is what a fighter is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func fighterLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      getSkillChoiceID(classes.Fighter),
+				Count:   classes.ClassData[classes.Fighter].SkillCount,
+				Options: classes.ClassData[classes.Fighter].SkillList,
+				Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Fighter].SkillCount),
 			},
-			Label: "Choose 3 cantrips",
-		},
-		Spellbook: &SpellbookRequirement{
-			ID:         WizardSpells1,
-			Count:      6,
-			SpellLevel: 1,
-			Options: []spells.Spell{
-				// Damage spells
-				spells.MagicMissile,
-				spells.BurningHands,
-				spells.ChromaticOrb,
-				spells.Thunderwave,
-				spells.IceKnife,
-				spells.WitchBolt,
-				// Utility spells
-				spells.Shield,
-				spells.Sleep,
-				spells.CharmPerson,
-				spells.DetectMagic,
-				spells.Identify,
-				// Note: This is not the complete wizard spell list
-				// In a real implementation, we'd have a comprehensive list
+			Equipment: enrichEquipmentRequirements(getFighterEquipmentRequirements()),
+			FightingStyle: &FightingStyleRequirement{
+				ID: FighterFightingStyle,
+				Options: []fightingstyles.FightingStyle{
+					fightingstyles.Archery,
+					fightingstyles.Defense,
+					fightingstyles.Dueling,
+					fightingstyles.GreatWeaponFighting,
+					fightingstyles.Protection,
+					fightingstyles.TwoWeaponFighting,
+				},
+				Label: "Choose a fighting style",
 			},
-			Label: "Choose 6 1st-level spells for your spellbook",
 		},
-	}
+	}}
 }
 
-func getRogueRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      getSkillChoiceID(classes.Rogue),
-			Count:   classes.ClassData[classes.Rogue].SkillCount,
-			Options: classes.ClassData[classes.Rogue].SkillList,
-			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Rogue].SkillCount),
+// barbarianLevelRequirements is what a barbarian is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func barbarianLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      getSkillChoiceID(classes.Barbarian),
+				Count:   classes.ClassData[classes.Barbarian].SkillCount,
+				Options: classes.ClassData[classes.Barbarian].SkillList,
+				Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Barbarian].SkillCount),
+			},
+			Equipment: enrichEquipmentRequirements(getBarbarianEquipmentRequirements()),
+			// No subclass at level 1 (Path chosen at level 3)
+			// No spells or cantrips
 		},
-		Equipment: enrichEquipmentRequirements(getRogueEquipmentRequirements()),
-		Expertise: &ExpertiseRequirement{
-			ID:    RogueExpertise1,
-			Count: 2,
-			Label: "Choose 2 skills or thieves' tools for expertise",
+	}}
+}
+
+// wizardLevelRequirements is what a wizard is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func wizardLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      getSkillChoiceID(classes.Wizard),
+				Count:   classes.ClassData[classes.Wizard].SkillCount,
+				Options: classes.ClassData[classes.Wizard].SkillList,
+				Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Wizard].SkillCount),
+			},
+			Equipment: enrichEquipmentRequirements(getWizardEquipmentRequirements()),
 		},
-	}
+	}}
+}
+
+// rogueLevelRequirements is what a rogue is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func rogueLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      getSkillChoiceID(classes.Rogue),
+				Count:   classes.ClassData[classes.Rogue].SkillCount,
+				Options: classes.ClassData[classes.Rogue].SkillList,
+				Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Rogue].SkillCount),
+			},
+			Equipment: enrichEquipmentRequirements(getRogueEquipmentRequirements()),
+			Expertise: &ExpertiseRequirement{
+				ID:    RogueExpertise1,
+				Count: 2,
+				Label: "Choose 2 skills or thieves' tools for expertise",
+			},
+		},
+	}}
 }
 
 // getBardRequirements returns requirements for Bard class
-func getBardRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:    BardSkills,
-			Count: 3,
-			// ENUMERATED, NOT NIL. A bard chooses any three skills, and this
-			// used to say so by leaving Options empty — a sentinel with two
-			// readings. Validation reads empty as "no list to check against"
-			// and lets anything through; every consumer that BUILDS a choice
-			// out of a requirement reads empty as "nothing to offer" and
-			// builds none, so the bard was offered no skill choice at all.
-			// "Any" is not a concept this stack needs for one class, so the
-			// eighteen are written out and both readings agree.
-			Options: []skills.Skill{
-				skills.Acrobatics,
-				skills.AnimalHandling,
-				skills.Arcana,
-				skills.Athletics,
-				skills.Deception,
-				skills.History,
-				skills.Insight,
-				skills.Intimidation,
-				skills.Investigation,
-				skills.Medicine,
-				skills.Nature,
-				skills.Perception,
-				skills.Performance,
-				skills.Persuasion,
-				skills.Religion,
-				skills.SleightOfHand,
-				skills.Stealth,
-				skills.Survival,
+// bardLevelRequirements is what a bard is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func bardLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:    BardSkills,
+				Count: 3,
+				// ENUMERATED, NOT NIL. A bard chooses any three skills, and this
+				// used to say so by leaving Options empty — a sentinel with two
+				// readings. Validation reads empty as "no list to check against"
+				// and lets anything through; every consumer that BUILDS a choice
+				// out of a requirement reads empty as "nothing to offer" and
+				// builds none, so the bard was offered no skill choice at all.
+				// "Any" is not a concept this stack needs for one class, so the
+				// eighteen are written out and both readings agree.
+				Options: []skills.Skill{
+					skills.Acrobatics,
+					skills.AnimalHandling,
+					skills.Arcana,
+					skills.Athletics,
+					skills.Deception,
+					skills.History,
+					skills.Insight,
+					skills.Intimidation,
+					skills.Investigation,
+					skills.Medicine,
+					skills.Nature,
+					skills.Perception,
+					skills.Performance,
+					skills.Persuasion,
+					skills.Religion,
+					skills.SleightOfHand,
+					skills.Stealth,
+					skills.Survival,
+				},
+				Label: "Choose 3 skills",
 			},
-			Label: "Choose 3 skills",
-		},
-		Equipment: enrichEquipmentRequirements(getBardEquipmentRequirements()),
-		Tools: &ToolRequirement{
-			ID:    BardInstruments,
-			Count: 3,
-			// THE SHARED LIST, not a second copy of it. These ten were written
-			// out here as bare strings while musicalInstrumentToolOptions()
-			// already built the same ten from the proficiencies constants for
-			// the Outlander background — two lists of one thing, and only one
-			// of them tied to the constants.
-			//
-			// The drift is silent in the worst direction. A consumer maps each
-			// option to its own vocabulary and DROPS what it cannot map; drop
-			// them all and the choice disappears rather than erroring, so a
-			// bard would simply have no instruments to pick and nothing would
-			// say why. (The monk's requirement still hand-writes the same ten
-			// after a list of artisan's tools; it needs the two halves
-			// concatenated and is left for whoever splits that.)
-			Options: musicalInstrumentToolOptions(),
-			Label:   "Choose 3 musical instruments",
-		},
-		// Gated to the cantrips this build can cast. Unsupported catalog
-		// entries are not offered as choices that produce nothing.
-		Cantrips: &CantripRequirement{
-			ID:      BardCantrips1,
-			Count:   2,
-			Options: spells.Castable(spells.BardCantrips),
-			Label:   "Choose 2 cantrips",
-		},
-		// Each option has an executable cast profile. The level-one known-spell
-		// count remains four as the supported catalog grows (rpg-toolkit#1661).
-		Spellbook: &SpellbookRequirement{
-			ID:         BardSpells1,
-			Count:      4,
-			SpellLevel: 1,
-			Options: []spells.Spell{
-				spells.Bane, spells.Thunderwave, spells.DissonantWhispers, spells.Command,
-				spells.HealingWord,
+			Equipment: enrichEquipmentRequirements(getBardEquipmentRequirements()),
+			Tools: &ToolRequirement{
+				ID:    BardInstruments,
+				Count: 3,
+				// THE SHARED LIST, not a second copy of it. These ten were written
+				// out here as bare strings while musicalInstrumentToolOptions()
+				// already built the same ten from the proficiencies constants for
+				// the Outlander background — two lists of one thing, and only one
+				// of them tied to the constants.
+				//
+				// The drift is silent in the worst direction. A consumer maps each
+				// option to its own vocabulary and DROPS what it cannot map; drop
+				// them all and the choice disappears rather than erroring, so a
+				// bard would simply have no instruments to pick and nothing would
+				// say why. (The monk's requirement still hand-writes the same ten
+				// after a list of artisan's tools; it needs the two halves
+				// concatenated and is left for whoever splits that.)
+				Options: musicalInstrumentToolOptions(),
+				Label:   "Choose 3 musical instruments",
 			},
-			Label: "Choose 4 supported 1st-level spells",
-		},
 
-		// Bards get expertise at level 3, not level 1
-	}
+			// Expertise is bard level 3 in 2014 and 2 in 2024; we take 2014
+			// (design R2.2), which makes it a row of its own alongside the
+			// Bard College — and a subclass is the one requirement the engine
+			// can pose and cannot receive (rpg-toolkit#1767).
+		},
+	}}
 }
 
 // getDruidRequirements returns requirements for Druid class
-func getDruidRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      DruidSkills,
-			Count:   2,
-			Options: classes.ClassData[classes.Druid].SkillList,
-			Label:   "Choose 2 skills",
-		},
-		Equipment: enrichEquipmentRequirements(getDruidEquipmentRequirements()),
-		Cantrips: &CantripRequirement{
-			ID:    DruidCantrips1,
-			Count: 2,
-			Options: []spells.Spell{
-				// Damage cantrips
-				spells.Frostbite,
-				spells.PrimalSavagery,
-				spells.Thornwhip,
-				spells.CreateBonfire,
-				spells.Infestation,
-				// Utility cantrips
-				spells.Druidcraft,
-				spells.Guidance,
-				spells.MagicStone,
-				spells.MoldEarth,
-				spells.Resistance,
-				spells.ShapeWater,
+// druidLevelRequirements is what a druid is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func druidLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      DruidSkills,
+				Count:   2,
+				Options: classes.ClassData[classes.Druid].SkillList,
+				Label:   "Choose 2 skills",
 			},
-			Label: "Choose 2 cantrips",
+			Equipment: enrichEquipmentRequirements(getDruidEquipmentRequirements()),
+			// Note: Druids prepare spells, they don't have a spellbook
+			// They prepare spells = Wisdom modifier + druid level (minimum 1)
 		},
-		// Note: Druids prepare spells, they don't have a spellbook
-		// They prepare spells = Wisdom modifier + druid level (minimum 1)
-	}
+	}}
 }
 
 // getMonkRequirements returns requirements for Monk class
-func getMonkRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      MonkSkills,
-			Count:   2,
-			Options: classes.ClassData[classes.Monk].SkillList,
-			Label:   "Choose 2 skills",
-		},
-		Equipment: enrichEquipmentRequirements(getMonkEquipmentRequirements()),
-		Tools: &ToolRequirement{
-			ID:    MonkTools,
-			Count: 1,
-			Options: []shared.SelectionID{
-				// Artisan's tools
-				shared.SelectionID("alchemist-supplies"),
-				shared.SelectionID("brewer-supplies"),
-				shared.SelectionID("calligrapher-supplies"),
-				shared.SelectionID("carpenter-tools"),
-				shared.SelectionID("cartographer-tools"),
-				shared.SelectionID("cobbler-tools"),
-				shared.SelectionID("cook-utensils"),
-				shared.SelectionID("glassblower-tools"),
-				shared.SelectionID("jeweler-tools"),
-				shared.SelectionID("leatherworker-tools"),
-				shared.SelectionID("mason-tools"),
-				shared.SelectionID("painter-supplies"),
-				shared.SelectionID("potter-tools"),
-				shared.SelectionID("smith-tools"),
-				shared.SelectionID("tinker-tools"),
-				shared.SelectionID("weaver-tools"),
-				shared.SelectionID("woodcarver-tools"),
-				shared.SelectionID("disguise-kit"),
-				shared.SelectionID("forgery-kit"),
-				// Musical instruments
-				shared.SelectionID("bagpipes"),
-				shared.SelectionID("drum"),
-				shared.SelectionID("dulcimer"),
-				shared.SelectionID("flute"),
-				shared.SelectionID("lute"),
-				shared.SelectionID("lyre"),
-				shared.SelectionID("horn"),
-				shared.SelectionID("pan-flute"),
-				shared.SelectionID("shawm"),
-				shared.SelectionID("viol"),
+// monkLevelRequirements is what a monk is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func monkLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      MonkSkills,
+				Count:   2,
+				Options: classes.ClassData[classes.Monk].SkillList,
+				Label:   "Choose 2 skills",
 			},
-			Label: "Choose 1 artisan's tools or musical instrument",
+			Equipment: enrichEquipmentRequirements(getMonkEquipmentRequirements()),
+			Tools: &ToolRequirement{
+				ID:    MonkTools,
+				Count: 1,
+				Options: []shared.SelectionID{
+					// Artisan's tools
+					shared.SelectionID("alchemist-supplies"),
+					shared.SelectionID("brewer-supplies"),
+					shared.SelectionID("calligrapher-supplies"),
+					shared.SelectionID("carpenter-tools"),
+					shared.SelectionID("cartographer-tools"),
+					shared.SelectionID("cobbler-tools"),
+					shared.SelectionID("cook-utensils"),
+					shared.SelectionID("glassblower-tools"),
+					shared.SelectionID("jeweler-tools"),
+					shared.SelectionID("leatherworker-tools"),
+					shared.SelectionID("mason-tools"),
+					shared.SelectionID("painter-supplies"),
+					shared.SelectionID("potter-tools"),
+					shared.SelectionID("smith-tools"),
+					shared.SelectionID("tinker-tools"),
+					shared.SelectionID("weaver-tools"),
+					shared.SelectionID("woodcarver-tools"),
+					shared.SelectionID("disguise-kit"),
+					shared.SelectionID("forgery-kit"),
+					// Musical instruments
+					shared.SelectionID("bagpipes"),
+					shared.SelectionID("drum"),
+					shared.SelectionID("dulcimer"),
+					shared.SelectionID("flute"),
+					shared.SelectionID("lute"),
+					shared.SelectionID("lyre"),
+					shared.SelectionID("horn"),
+					shared.SelectionID("pan-flute"),
+					shared.SelectionID("shawm"),
+					shared.SelectionID("viol"),
+				},
+				Label: "Choose 1 artisan's tools or musical instrument",
+			},
 		},
-	}
+	}}
 }
 
 // getPaladinRequirements returns requirements for Paladin class
-func getPaladinRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      PaladinSkills,
-			Count:   2,
-			Options: classes.ClassData[classes.Paladin].SkillList,
-			Label:   "Choose 2 skills",
+// paladinLevelRequirements is what a paladin is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func paladinLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      PaladinSkills,
+				Count:   2,
+				Options: classes.ClassData[classes.Paladin].SkillList,
+				Label:   "Choose 2 skills",
+			},
+			Equipment: enrichEquipmentRequirements(getPaladinEquipmentRequirements()),
+			// Note: Paladins get spells at level 2, not level 1
+			// Fighting style comes at level 2 for Paladins
 		},
-		Equipment: enrichEquipmentRequirements(getPaladinEquipmentRequirements()),
-		// Note: Paladins get spells at level 2, not level 1
-		// Fighting style comes at level 2 for Paladins
-	}
+	}}
 }
 
 // getRangerRequirements returns requirements for Ranger class
-func getRangerRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      RangerSkills,
-			Count:   3,
-			Options: classes.ClassData[classes.Ranger].SkillList,
-			Label:   "Choose 3 skills",
-		},
-		Equipment: enrichEquipmentRequirements(getRangerEquipmentRequirements()),
-		FightingStyle: &FightingStyleRequirement{
-			ID: RangerFightingStyle,
-			Options: []fightingstyles.FightingStyle{
-				fightingstyles.Archery,
-				fightingstyles.Defense,
-				fightingstyles.Dueling,
-				fightingstyles.TwoWeaponFighting,
+// rangerLevelRequirements is what a ranger is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func rangerLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      RangerSkills,
+				Count:   3,
+				Options: classes.ClassData[classes.Ranger].SkillList,
+				Label:   "Choose 3 skills",
 			},
-			Label: "Choose a fighting style",
+			Equipment: enrichEquipmentRequirements(getRangerEquipmentRequirements()),
+			FightingStyle: &FightingStyleRequirement{
+				ID: RangerFightingStyle,
+				Options: []fightingstyles.FightingStyle{
+					fightingstyles.Archery,
+					fightingstyles.Defense,
+					fightingstyles.Dueling,
+					fightingstyles.TwoWeaponFighting,
+				},
+				Label: "Choose a fighting style",
+			},
+			// Note: Rangers get spells at level 2, not level 1
 		},
-		// Note: Rangers get spells at level 2, not level 1
-	}
+	}}
 }
 
 // getSorcererRequirements returns requirements for Sorcerer class
-func getSorcererRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      SorcererSkills,
-			Count:   2,
-			Options: classes.ClassData[classes.Sorcerer].SkillList,
-			Label:   "Choose 2 skills",
-		},
-		Equipment: enrichEquipmentRequirements(getSorcererEquipmentRequirements()),
-		Cantrips: &CantripRequirement{
-			ID:    SorcererCantrips1,
-			Count: 4,
-			Options: []spells.Spell{
-				// Damage cantrips
-				spells.FireBolt,
-				spells.RayOfFrost,
-				spells.ShockingGrasp,
-				spells.AcidSplash,
-				spells.PoisonSpray,
-				spells.ChillTouch,
-				spells.BoomingBlade,
-				spells.GreenFlameBlade,
-				spells.SwordBurst,
-				// Utility cantrips
-				spells.MageHand,
-				spells.MinorIllusion,
-				spells.Prestidigitation,
-				spells.Light,
-				spells.DancingLights,
-				spells.Friends,
-				spells.Mending,
-				spells.Message,
-				spells.TrueStrike,
-				spells.ControlFlames,
-				spells.CreateBonfire,
+// sorcererLevelRequirements is what a sorcerer is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func sorcererLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      SorcererSkills,
+				Count:   2,
+				Options: classes.ClassData[classes.Sorcerer].SkillList,
+				Label:   "Choose 2 skills",
 			},
-			Label: "Choose 4 cantrips",
+			Equipment: enrichEquipmentRequirements(getSorcererEquipmentRequirements()),
 		},
-		Spellbook: &SpellbookRequirement{
-			ID:         SorcererSpells1,
-			Count:      2,
-			SpellLevel: 1,
-			Options: []spells.Spell{
-				// Level 1 Sorcerer spells
-				spells.MagicMissile,
-				spells.BurningHands,
-				spells.ChromaticOrb,
-				spells.Shield,
-				spells.Sleep,
-				spells.CharmPerson,
-				spells.DisguiseSelf,
-				spells.ExpeditiousRetreat,
-				spells.FalseLife,
-				spells.FogCloud,
-				spells.RayOfSickness,
-				spells.Thunderwave,
-				spells.WitchBolt,
-				spells.ColorSpray,
-				spells.FeatherFall,
-			},
-			Label: "Choose 2 1st-level spells",
-		},
-	}
+	}}
 }
 
 // getWarlockRequirements returns requirements for Warlock class
-func getWarlockRequirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      WarlockSkills,
-			Count:   2,
-			Options: classes.ClassData[classes.Warlock].SkillList,
-			Label:   "Choose 2 skills",
-		},
-		Equipment: enrichEquipmentRequirements(getWarlockEquipmentRequirements()),
-		Cantrips: &CantripRequirement{
-			ID:    WarlockCantrips1,
-			Count: 2,
-			Options: []spells.Spell{
-				// Damage cantrips
-				spells.EldritchBlast, // signature warlock cantrip
-				spells.ChillTouch,
-				spells.PoisonSpray,
-				spells.SacredFlame,
-				spells.TollTheDead,
-				// Utility cantrips
-				spells.MageHand,
-				spells.MinorIllusion,
-				spells.Prestidigitation,
-				spells.Friends,
-				spells.BladeWard,
-				spells.CreateBonfire,
-				spells.Infestation,
+// warlockLevelRequirements is what a warlock is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func warlockLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      WarlockSkills,
+				Count:   2,
+				Options: classes.ClassData[classes.Warlock].SkillList,
+				Label:   "Choose 2 skills",
 			},
-			Label: "Choose 2 cantrips",
+			Equipment: enrichEquipmentRequirements(getWarlockEquipmentRequirements()),
 		},
-		Spellbook: &SpellbookRequirement{
-			ID:         WarlockSpells1,
-			Count:      2,
-			SpellLevel: 1,
-			Options: []spells.Spell{
-				// Level 1 Warlock spells
-				spells.ArmsOfHadar,
-				spells.CharmPerson,
-				spells.ComprehendLanguages,
-				spells.ExpeditiousRetreat,
-				spells.HellishRebuke,
-				spells.Hex,
-				spells.ProtectionEvil,
-				spells.UnseenServant,
-			},
-			Label: "Choose 2 1st-level spells",
-		},
-	}
+	}}
 }
 
-func getClericRequirements() *Requirements {
-	// Temporary spell access while preparation is deferred. These supported
-	// class spells use the existing choice pipeline; this is not a spellbook
-	// or a domain grant, and does not implement a prepared-spell limit.
-	supported := []spells.Spell{spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord}
-	return &Requirements{
-		Skills: &SkillRequirement{
-			ID:      getSkillChoiceID(classes.Cleric),
-			Count:   classes.ClassData[classes.Cleric].SkillCount,
-			Options: classes.ClassData[classes.Cleric].SkillList,
-			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Cleric].SkillCount),
-		},
-		Equipment: enrichEquipmentRequirements(getClericEquipmentRequirements()),
-		Cantrips: &CantripRequirement{
-			ID:    ClericCantrips1,
-			Count: 3,
-			Options: []spells.Spell{
-				// Damage cantrips
-				spells.SacredFlame,
-				spells.TollTheDead,
-				spells.WordOfRadiance,
-				// Utility cantrips
-				spells.Guidance,
-				spells.Light,
-				spells.Resistance,
-				spells.SpareTheDying,
-				spells.Thaumaturgy,
+// clericLevelRequirements is what a cleric is asked at each of its class
+// levels. Level 1 is the class as creation has always built it.
+func clericLevelRequirements() []LevelRequirements {
+	return []LevelRequirements{{
+		Level: 1,
+		Requirements: Requirements{
+			Skills: &SkillRequirement{
+				ID:      getSkillChoiceID(classes.Cleric),
+				Count:   classes.ClassData[classes.Cleric].SkillCount,
+				Options: classes.ClassData[classes.Cleric].SkillList,
+				Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Cleric].SkillCount),
 			},
-			Label: "Choose 3 cantrips",
+			Equipment: enrichEquipmentRequirements(getClericEquipmentRequirements()),
 		},
-		Spellbook: &SpellbookRequirement{
-			ID:         ClericSpells1,
-			Count:      len(supported),
-			SpellLevel: 1,
-			Options:    supported,
-			Label:      "Select all supported 1st-level Cleric spells",
-		},
-	}
+	}}
 }
 
 // getSkillChoiceID returns the appropriate ChoiceID for a class's skill selection
@@ -2050,10 +1905,15 @@ func getWarlockEquipmentRequirements() []*EquipmentRequirement {
 	}
 }
 
-// GetClassRequirementsWithSubclass returns requirements modified by the chosen subclass
+// GetClassRequirementsWithSubclass returns what a class asks for at a class
+// level, with its chosen subclass's modifications applied.
+//
+// The level now means the level those requirements are GAINED at rather than a
+// creation total (design R4.2). Its one caller asks at the level a subclass is
+// chosen, which for the only class that chooses one at creation is level 1,
+// where the two readings are the same set.
 func GetClassRequirementsWithSubclass(class classes.Class, level int, subclass classes.Subclass) *Requirements {
-	// Start with base requirements for the level
-	reqs := GetClassRequirementsAtLevel(class, level)
+	reqs := GetClassRequirementsGainedAtLevel(class, level)
 	if reqs == nil {
 		return nil
 	}

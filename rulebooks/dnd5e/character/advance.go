@@ -5,6 +5,8 @@ package character
 
 import (
 	"context"
+	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -17,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // AdvanceInput contains everything a level needs that the toolkit cannot
@@ -85,6 +88,29 @@ type GainedAtLevel struct {
 	// CharacterLevel (R4.7). Reported because it is the number most likely to
 	// have moved without anything visible granting it.
 	ProficiencyBonus int
+
+	// Resources are the pools whose maximum this level moved, in key order.
+	//
+	// A slot increase is not a question and is applied without asking (R4.6),
+	// which means nothing on the level-up screen would mention it unless the
+	// engine says so. This is what lets a response read "1st-level spell slots
+	// 2 to 3" instead of leaving the player to notice (R4.7).
+	Resources []ResourceChange
+}
+
+// ResourceChange is one pool whose maximum a level moved.
+//
+// From is 0 for a pool the character did not have before, which is the same
+// thing said about a maximum that rose from nothing.
+type ResourceChange struct {
+	// Key names the pool.
+	Key coreResources.ResourceKey
+
+	// From is the maximum before this level.
+	From int
+
+	// To is the maximum after it.
+	To int
 }
 
 // Advance takes one more level in a class, appending it to the character's
@@ -142,6 +168,20 @@ func (c *Character) Advance(ctx context.Context, input *AdvanceInput) (*AdvanceO
 		return nil, err
 	}
 
+	// What the level's choices become on the sheet, built through the compiler
+	// creation uses (R4.4c). Built here rather than in commitLevel because a
+	// choice naming something this build cannot turn into a ref is a content
+	// defect and must stop the level rather than produce a sheet quietly
+	// missing a spell — the same reason finalization compiles before it builds.
+	chosenCantrips, err := compileKnownSpells(input.Choices, shared.ChoiceCantrips, "cantrip")
+	if err != nil {
+		return nil, err
+	}
+	chosenSpells, err := compileKnownSpells(input.Choices, shared.ChoiceSpells, "spell")
+	if err != nil {
+		return nil, err
+	}
+
 	// The last thing that can fail, and the only mutation with an undo. After
 	// this line nothing below returns an error, so the sheet either takes
 	// every change this level makes or none of them.
@@ -158,7 +198,16 @@ func (c *Character) Advance(ctx context.Context, input *AdvanceInput) (*AdvanceO
 		Choices:        cloneChoices(input.Choices),
 	}
 
-	c.commitLevel(entry, newFeatures, newConditions, attached, classLevel, characterLevel)
+	resourceChanges := c.commitLevel(commitLevelInput{
+		entry:          entry,
+		newFeatures:    newFeatures,
+		newConditions:  newConditions,
+		attached:       attached,
+		knownCantrips:  chosenCantrips,
+		knownSpells:    chosenSpells,
+		classLevel:     classLevel,
+		characterLevel: characterLevel,
+	})
 
 	// The record the caller is handed is a copy: the entry on the sheet is
 	// append-only, and a shared Choices slice would let a reader edit it.
@@ -174,6 +223,7 @@ func (c *Character) Advance(ctx context.Context, input *AdvanceInput) (*AdvanceO
 			Conditions:       grantedConditionRefs(newConditions),
 			HitPointGain:     hitPointGain,
 			ProficiencyBonus: c.ProficiencyBonus(),
+			Resources:        resourceChanges,
 		},
 	}, nil
 }
@@ -214,6 +264,22 @@ func (c *Character) checkCanAdvance(input *AdvanceInput) error {
 		return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
 			rpgerr.WithMeta("character_id", c.id),
 		}, "unknown hit point method %q", input.HitPointMethod)
+	}
+
+	// R4.11: a level must be EARNED. Entitlement is derived from the experience
+	// total by the 2014 threshold table, and the gap between it and the record
+	// is the whole of the "level up available" signal — there is no flag to go
+	// stale. The rule lives here because the toolkit owns rules: the same check
+	// in the orchestrator would be a game rule in the API, and an API that can
+	// decide when a level is earned is one that can grant one.
+	if taking := len(c.levels) + 1; taking > c.EntitledLevel() {
+		return rpgerr.NewfWithOpts(rpgerr.CodePrerequisiteNotMet, []rpgerr.Option{
+			rpgerr.WithMeta("character_id", c.id),
+			rpgerr.WithMeta("experience", c.experience),
+			rpgerr.WithMeta("required_experience", ExperienceThresholdForLevel(taking)),
+			rpgerr.WithMeta("entitled_level", c.EntitledLevel()),
+		}, "character %q has %d experience and level %d needs %d",
+			c.id, c.experience, taking, ExperienceThresholdForLevel(taking))
 	}
 
 	// R4.1. InCombat is what the sheet itself can answer: it holds a live
@@ -267,21 +333,24 @@ func checkGrantsApplicable(grants []classes.Grant, classID classes.Class, classL
 	return nil
 }
 
-// checkLevelChoices enforces R4.5: a level that requires choices must receive
-// them, and a level that requires none must not be handed any.
+// checkLevelChoices is the whole of what a level asks of its input: that the
+// choices this level requires are the choices it was given, that they are
+// legal answers, and that advancement can actually apply them.
 //
-// "Requires" means requires AT THIS LEVEL.
-// [choices.GetClassRequirementsAtLevel] answers with creation totals, so every
-// choice an earlier level already asked for is in it too;
-// [choices.GetClassChoiceIDsGainedAtLevel] is that total minus the previous
-// level's, which is what this level itself adds.
+// It used to check PRESENCE only — a set of supplied ids against a set of
+// required ids — so three off-list spells under the right id passed, and so did
+// one spell where the level asked for two. Creation validates through
+// [choices.Validator]; advancement now validates through the same one, against
+// the requirements that level gained (design R4.4b: "Presence is not
+// validation").
 //
 // A level that grants nothing is a valid level — several classes have them —
-// so an empty grant list is not by itself an error.
+// so an empty requirement set is not by itself an error.
 func checkLevelChoices(input *AdvanceInput, classLevel int) error {
-	required := choices.GetClassChoiceIDsGainedAtLevel(input.ClassID, classLevel)
+	required := choices.GetClassRequirementsGainedAtLevel(input.ClassID, classLevel)
+	ids := required.ChoiceIDs()
 
-	if len(required) == 0 {
+	if len(ids) == 0 {
 		if len(input.Choices) > 0 {
 			return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
 				rpgerr.WithMeta("class", string(input.ClassID)),
@@ -293,19 +362,136 @@ func checkLevelChoices(input *AdvanceInput, classLevel int) error {
 		return nil
 	}
 
-	supplied := make(map[choices.ChoiceID]struct{}, len(input.Choices))
-	for _, choice := range input.Choices {
-		supplied[choice.ChoiceID] = struct{}{}
+	if err := checkRequirementsApplicable(required, input.ClassID, classLevel); err != nil {
+		return err
+	}
+	if err := checkRequirementsAnswerable(required, input.ClassID, classLevel); err != nil {
+		return err
+	}
+	if err := checkNothingUnasked(input, ids, classLevel); err != nil {
+		return err
 	}
 
+	result := choices.NewValidator().Validate(required, choices.SubmissionsFrom(input.Choices))
+	if !result.Valid && len(result.Errors) > 0 {
+		first := result.Errors[0]
+		return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+			rpgerr.WithMeta("class", string(input.ClassID)),
+			rpgerr.WithMeta("class_level", classLevel),
+			rpgerr.WithMeta("choice_id", string(first.ChoiceID)),
+			rpgerr.WithMeta("category", string(first.Category)),
+		}, "%s level %d: %s", input.ClassID, classLevel, first.Message)
+	}
+
+	return nil
+}
+
+// checkRequirementsApplicable refuses a level whose question advancement could
+// take an answer to and then do nothing with.
+//
+// This wave applies spells and cantrips, because those are what the progression
+// table asks for. Every other kind — a subclass, a fighting style, expertise,
+// skills — is refused until a level that asks for it arrives with the compiler
+// that applies it (R4.4c). It is the shape [checkGrantsApplicable] already has
+// for the other half of a level, and for the same reason: failing closed and
+// loudly beats a sheet that is quietly missing half a level.
+func checkRequirementsApplicable(
+	required *choices.Requirements, classID classes.Class, classLevel int,
+) error {
+	var asks string
+	switch {
+	case required.Subclass != nil:
+		// The one requirement the engine can pose and cannot receive:
+		// shared.ChoiceCategory has no subclass value (rpg-toolkit#1767).
+		asks = "a subclass"
+	case required.Skills != nil || len(required.AdditionalSkills) > 0:
+		asks = "skills"
+	case required.FightingStyle != nil:
+		asks = "a fighting style"
+	case required.Expertise != nil:
+		asks = "expertise"
+	case len(required.Equipment) > 0 || len(required.EquipmentCategories) > 0:
+		asks = "equipment"
+	case len(required.Languages) > 0:
+		asks = "languages"
+	case required.Tools != nil:
+		asks = "tool proficiencies"
+	default:
+		return nil
+	}
+
+	return rpgerr.NewfWithOpts(rpgerr.CodeNotAllowed, []rpgerr.Option{
+		rpgerr.WithMeta("class", string(classID)),
+		rpgerr.WithMeta("class_level", classLevel),
+		rpgerr.WithMeta("asks", asks),
+	}, "%s level %d requires choosing %s, which advancement cannot apply; "+
+		"taking the level would record the choice and change nothing on the sheet",
+		classID, classLevel, asks)
+}
+
+// checkRequirementsAnswerable refuses a question with no answers.
+//
+// A class table can say a spell is learned at a level this build has no spells
+// for — a wizard's 2nd-level spells, a ranger's first — and an option list of
+// nothing is not a choice anyone can make. The requirement is still posed,
+// because the class really does learn a spell there; refusing it names the gap
+// instead of handing the player a level that taught them nothing.
+func checkRequirementsAnswerable(
+	required *choices.Requirements, classID classes.Class, classLevel int,
+) error {
+	if req := required.Cantrips; req != nil && req.Count > 0 && len(req.Options) == 0 {
+		return unansweredContent(classID, classLevel, string(req.ID), "cantrips")
+	}
+	if req := required.Spellbook; req != nil && req.Count > 0 && len(req.Options) == 0 {
+		return unansweredContent(classID, classLevel, string(req.ID),
+			fmt.Sprintf("%d%s-level spells", req.SpellLevel, ordinalSuffix(req.SpellLevel)))
+	}
+	return nil
+}
+
+// unansweredContent is the refusal for a requirement this build has no content
+// to answer with.
+func unansweredContent(classID classes.Class, classLevel int, choiceID, missing string) error {
+	return rpgerr.NewfWithOpts(rpgerr.CodeNotAllowed, []rpgerr.Option{
+		rpgerr.WithMeta("class", string(classID)),
+		rpgerr.WithMeta("class_level", classLevel),
+		rpgerr.WithMeta("choice_id", choiceID),
+	}, "%s level %d requires choosing from the %s %s knows, and this build has none",
+		classID, classLevel, missing, classID)
+}
+
+// ordinalSuffix names a spell level the way a message should read.
+func ordinalSuffix(n int) string {
+	switch n {
+	case 1:
+		return "st"
+	case 2:
+		return "nd"
+	case 3:
+		return "rd"
+	default:
+		return "th"
+	}
+}
+
+// checkNothingUnasked refuses a choice this level did not ask for.
+//
+// The client sends the choices it was asked for and nothing else (R4.15). The
+// record is append-only, so a choice nothing asked for is one no correction can
+// ever take back — the same reason a level that requires none refuses any.
+func checkNothingUnasked(input *AdvanceInput, required []choices.ChoiceID, classLevel int) error {
+	asked := make(map[choices.ChoiceID]struct{}, len(required))
 	for _, id := range required {
-		if _, ok := supplied[id]; !ok {
-			return rpgerr.NewfWithOpts(rpgerr.CodePrerequisiteNotMet, []rpgerr.Option{
+		asked[id] = struct{}{}
+	}
+
+	for _, choice := range input.Choices {
+		if _, ok := asked[choice.ChoiceID]; !ok {
+			return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
 				rpgerr.WithMeta("class", string(input.ClassID)),
 				rpgerr.WithMeta("class_level", classLevel),
-				rpgerr.WithMeta("choice_id", string(id)),
-			}, "%s level %d requires choice %q, which was not supplied",
-				input.ClassID, classLevel, id)
+				rpgerr.WithMeta("choice_id", string(choice.ChoiceID)),
+			}, "%s level %d did not ask for choice %q", input.ClassID, classLevel, choice.ChoiceID)
 		}
 	}
 
@@ -418,25 +604,40 @@ func (c *Character) attachGranted(
 	return attached, nil
 }
 
+// commitLevelInput is everything a committed level writes to the sheet, named
+// rather than positional because eight parameters of which three are ints is a
+// signature two of them can be swapped in silently.
+type commitLevelInput struct {
+	entry         LevelEntry
+	newFeatures   []features.Feature
+	newConditions []loadedEffect
+	attached      []attachedFeature
+
+	// knownCantrips and knownSpells are what this level's choices compiled to.
+	knownCantrips []*core.Ref
+	knownSpells   []*core.Ref
+
+	// classLevel sizes what the class grants; characterLevel sizes hit dice.
+	classLevel     int
+	characterLevel int
+}
+
 // commitLevel performs every mutation this level makes. Nothing here can fail,
 // which is what makes [Character.Advance] atomic: by the time it is called the
 // only step with an undo has already succeeded.
-func (c *Character) commitLevel(
-	entry LevelEntry,
-	newFeatures []features.Feature,
-	newConditions []loadedEffect,
-	attached []attachedFeature,
-	classLevel, characterLevel int,
-) {
-	c.levels = append(c.levels, entry)
+//
+// It returns the pools whose maximum moved, because that is knowable only here
+// — the sizing happens against the pools as they were a statement earlier.
+func (c *Character) commitLevel(input commitLevelInput) []ResourceChange {
+	c.levels = append(c.levels, input.entry)
 
-	c.features = append(c.features, newFeatures...)
-	if len(attached) > 0 {
+	c.features = append(c.features, input.newFeatures...)
+	if len(input.attached) > 0 {
 		keeper := c.SheetKeeper()
-		keeper.attachedFeatures = append(keeper.attachedFeatures, attached...)
+		keeper.attachedFeatures = append(keeper.attachedFeatures, input.attached...)
 	}
 
-	for _, effect := range newConditions {
+	for _, effect := range input.newConditions {
 		c.conditions = append(c.conditions, effect.behavior)
 		if c.bus == nil {
 			// Waiting for a bus, in the one place Attach looks.
@@ -444,40 +645,54 @@ func (c *Character) commitLevel(
 		}
 	}
 
-	c.resizeClassResources(entry.ClassID, classLevel, characterLevel)
+	// The level's choices reach the sheet, not just the record (R4.4c). A spell
+	// chosen at a level-up used to be written into an append-only entry and
+	// nowhere else: not the known list, not the cast menu, not the sheet.
+	c.knownCantrips = append(c.knownCantrips, input.knownCantrips...)
+	c.knownSpells = append(c.knownSpells, input.knownSpells...)
 
-	c.maxHitPoints += entry.HitPointGain
+	changes := c.resizeClassResources(input.entry.ClassID, input.classLevel, input.characterLevel)
+
+	c.maxHitPoints += input.entry.HitPointGain
 
 	// A level raises the pool, and raises what is in it — but it never lifts a
 	// character off zero. A character at zero hit points is dying, and quietly
 	// standing them up while their death saves stay on the sheet would be
 	// healing dressed as arithmetic.
 	if c.hitPoints > 0 {
-		c.hitPoints += entry.HitPointGain
+		c.hitPoints += input.entry.HitPointGain
 	}
 
 	// The pools and the hit points both moved, and a sheet that did not report
 	// itself dirty would have the whole level discarded by the next write-back
 	// (rpg-toolkit#1087).
 	c.poolChanged()
+
+	return changes
 }
 
 // resizeClassResources grows this character's class pools to what its new
-// level grants, WITHOUT refilling what it already spent.
+// level grants, WITHOUT refilling what it already spent, and reports every
+// maximum that moved.
 //
 // A level that raises a maximum hands over the difference unspent and leaves
 // everything already spent spent: gaining a level gives you one more hit die,
 // not a full night's rest. A pool the character does not have yet arrives
 // full, which is the same thing said about a maximum that rose from zero.
-func (c *Character) resizeClassResources(classID classes.Class, classLevel, characterLevel int) {
+func (c *Character) resizeClassResources(
+	classID classes.Class, classLevel, characterLevel int,
+) []ResourceChange {
 	if c.resources == nil {
 		c.resources = make(map[coreResources.ResourceKey]*combat.RecoverableResource)
 	}
+
+	changes := make([]ResourceChange, 0)
 
 	for key, resized := range buildClassResources(c, classID, classLevel, characterLevel) {
 		existing, had := c.resources[key]
 		if !had {
 			c.resources[key] = resized
+			changes = append(changes, ResourceChange{Key: key, From: 0, To: resized.Maximum()})
 			continue
 		}
 
@@ -493,7 +708,16 @@ func (c *Character) resizeClassResources(classID classes.Class, classLevel, char
 			_ = resized.Use(spend)
 		}
 		c.resources[key] = resized
+		changes = append(changes, ResourceChange{
+			Key: key, From: existing.Maximum(), To: resized.Maximum(),
+		})
 	}
+
+	// Map iteration is unordered and this is a projection someone reads, so it
+	// is sorted rather than left to vary between two runs of the same level.
+	sort.Slice(changes, func(i, j int) bool { return changes[i].Key < changes[j].Key })
+
+	return changes
 }
 
 // rollHitPointGain produces the hit points this level adds, inside the toolkit

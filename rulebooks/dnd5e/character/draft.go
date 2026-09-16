@@ -649,11 +649,11 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	// a choice naming something this build cannot turn into a ref is a content
 	// defect and should stop finalization rather than produce a sheet that is
 	// quietly missing a spell.
-	knownCantrips, err := d.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+	knownCantrips, err := compileKnownSpells(d.choices, shared.ChoiceCantrips, "cantrip")
 	if err != nil {
 		return nil, err
 	}
-	knownSpells, err := d.compileKnownSpells(shared.ChoiceSpells, "spell")
+	knownSpells, err := compileKnownSpells(d.choices, shared.ChoiceSpells, "spell")
 	if err != nil {
 		return nil, err
 	}
@@ -755,134 +755,39 @@ func (d *Draft) ValidateChoices() error {
 	// Create validator
 	validator := choices.NewValidator()
 
-	// Convert draft choices to submissions
-	submissions := choices.NewSubmissions()
 	requirements := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
 	backgroundRequirements := choices.GetBackgroundRequirements(d.background)
-	d.addSubclassSubmission(submissions)
 
-	// Process stored choices into submissions
+	// Equipment is checked before anything is translated, because these are
+	// checks on what was PERSISTED rather than on whether it satisfies a
+	// requirement: an equipment id this build cannot resolve is a broken
+	// record, not a wrong answer.
 	for _, choice := range d.choices {
-		switch choice.Category {
-		case shared.ChoiceSkills:
-			if len(choice.SkillSelection) > 0 {
-				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
-				skillValues = append(skillValues, choice.SkillSelection...)
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceSkills,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					Values:   skillValues,
-				})
-			}
-		case shared.ChoiceEquipment:
-			if len(choice.EquipmentSelection) > 0 {
-				choiceRequirements := requirements
-				if choice.Source == shared.SourceBackground {
-					choiceRequirements = backgroundRequirements
-				}
-				if err := d.validatePersistedCategoryEquipmentChoice(choice, choiceRequirements); err != nil {
-					return err
-				}
-
-				// Validate all equipment IDs exist before adding to submissions
-				for _, equipID := range choice.EquipmentSelection {
-					_, err := equipment.GetByID(equipID)
-					if err != nil {
-						return rpgerr.Newf(rpgerr.CodeNotFound,
-							"invalid equipment ID in stored choices: %s", equipID)
-					}
-				}
-
-				// For equipment bundles with options, use the option ID as the value
-				// For category-based choices, use the actual equipment IDs
-				values := choice.EquipmentSelection
-				if choice.OptionID != "" {
-					// This is a bundle choice - use the option ID as the single value
-					values = []shared.SelectionID{choice.OptionID}
-				}
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceEquipment,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					OptionID: choice.OptionID,
-					Values:   values,
-				})
-			}
-		case shared.ChoiceLanguages:
-			if len(choice.LanguageSelection) > 0 {
-				langValues := make([]shared.SelectionID, 0, len(choice.LanguageSelection))
-				langValues = append(langValues, choice.LanguageSelection...)
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceLanguages,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					Values:   langValues,
-				})
-			}
-		// Cantrips and spells are RECORDED by SetClass and were never
-		// converted here, so every spellcaster failed its own requirement no
-		// matter what the player chose ("Choose 2 cantrips required" on a
-		// draft carrying two cantrips). That is why only the four martial
-		// classes could be finalized. The recorder and the validator now read
-		// the same choice.
-		case shared.ChoiceCantrips:
-			if len(choice.SpellSelection) > 0 {
-				cantripValues := make([]shared.SelectionID, 0, len(choice.SpellSelection))
-				cantripValues = append(cantripValues, choice.SpellSelection...)
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceCantrips,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					Values:   cantripValues,
-				})
-			}
-		case shared.ChoiceSpells:
-			if len(choice.SpellSelection) > 0 {
-				spellValues := make([]shared.SelectionID, 0, len(choice.SpellSelection))
-				spellValues = append(spellValues, choice.SpellSelection...)
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceSpells,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					Values:   spellValues,
-				})
-			}
-		case shared.ChoiceToolProficiency:
-			if len(choice.ToolSelection) > 0 {
-				toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
-				for i, t := range choice.ToolSelection {
-					toolValues[i] = shared.SelectionID(t)
-				}
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceToolProficiency,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					Values:   toolValues,
-				})
-			}
-		case shared.ChoiceFightingStyle:
-			if choice.FightingStyleSelection != nil {
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceFightingStyle,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					Values:   []shared.SelectionID{*choice.FightingStyleSelection},
-				})
-			}
-		case shared.ChoiceExpertise:
-			if len(choice.ExpertiseSelection) > 0 {
-				expertiseValues := make([]shared.SelectionID, len(choice.ExpertiseSelection))
-				copy(expertiseValues, choice.ExpertiseSelection)
-				submissions.Add(choices.Submission{
-					Category: shared.ChoiceExpertise,
-					Source:   choice.Source,
-					ChoiceID: choice.ChoiceID,
-					Values:   expertiseValues,
-				})
+		if choice.Category != shared.ChoiceEquipment || len(choice.EquipmentSelection) == 0 {
+			continue
+		}
+		choiceRequirements := requirements
+		if choice.Source == shared.SourceBackground {
+			choiceRequirements = backgroundRequirements
+		}
+		if err := d.validatePersistedCategoryEquipmentChoice(choice, choiceRequirements); err != nil {
+			return err
+		}
+		for _, equipID := range choice.EquipmentSelection {
+			if _, err := equipment.GetByID(equipID); err != nil {
+				return rpgerr.Newf(rpgerr.CodeNotFound,
+					"invalid equipment ID in stored choices: %s", equipID)
 			}
 		}
 	}
+
+	// The same translation advancement uses (design R4.4b). Cantrips and spells
+	// are RECORDED by SetClass and were once not converted here at all, so every
+	// spellcaster failed its own requirement no matter what the player chose;
+	// one shared builder is what keeps the recorder and the validator reading
+	// the same choice.
+	submissions := choices.SubmissionsFrom(d.choices)
+	d.addSubclassSubmission(submissions)
 
 	// Validate choices
 	result := &choices.ValidationResult{Valid: true}
@@ -1230,9 +1135,16 @@ func compileWallet(bgGrant *backgrounds.Grant) currency.Money {
 // know. The validator has already gated the id against the class's option
 // list; this is the second half of the same question, and the one that can
 // answer "this build has no such spell".
-func (d *Draft) compileKnownSpells(category shared.ChoiceCategory, role string) ([]*core.Ref, error) {
+// It takes the choices rather than reading a draft's, because a level-up makes
+// the same kind of choice and must reach the sheet the same way (design R4.4c:
+// "Advance MUST apply a level's choices through the same compilers creation
+// uses, by category"). A second compiler would be a second chance to disagree
+// about what a chosen spell becomes.
+func compileKnownSpells(
+	recorded []choices.ChoiceData, category shared.ChoiceCategory, role string,
+) ([]*core.Ref, error) {
 	var known []*core.Ref
-	for _, choice := range d.choices {
+	for _, choice := range recorded {
 		if choice.Category != category {
 			continue
 		}
@@ -2107,8 +2019,6 @@ func buildClassResources(
 		}
 
 	case classes.Bard:
-		addStartingSpellSlots(built, char, class)
-
 		// Bardic Inspiration uses - Charisma modifier, minimum one, recovered
 		// on long rest. The minimum is RAW and is what keeps a bard with a
 		// Charisma of 10 from carrying a pool nothing can ever spend.
@@ -2122,9 +2032,6 @@ func buildClassResources(
 			CharacterID: char.id,
 			ResetType:   coreResources.ResetLongRest,
 		})
-
-	case classes.Cleric:
-		addStartingSpellSlots(built, char, class)
 
 	case classes.Monk:
 		// Ki points - equal to monk level, recovered on short or long rest.
@@ -2142,6 +2049,11 @@ func buildClassResources(
 		}
 	}
 
+	// Spell slots - every class whose progression table has them, at the size
+	// that table gives its class level. Not a case in the switch above: the
+	// table is what says which classes cast and how much.
+	addSpellSlots(built, char, class, classLevel)
+
 	// Hit dice - all classes get hit dice for short rest healing.
 	// Uses helper which includes special recovery logic (half per long rest, min 1).
 	// Counted by CHARACTER level: every level taken adds a die, whatever class
@@ -2154,22 +2066,46 @@ func buildClassResources(
 	return built
 }
 
-// addStartingSpellSlots seeds the existing first-level resource from starting
-// class data. Class cases opt into it; higher-level progression, preparation,
-// and Pact Magic are separate responsibilities.
-func addStartingSpellSlots(
-	built map[coreResources.ResourceKey]*combat.RecoverableResource, char *Character, class classes.Class,
+// addSpellSlots sizes a caster's slot pools from its class progression table,
+// one pool per spell level the table reaches at this class level.
+//
+// This replaced a per-class switch case that read a single level-1 constant
+// (design R4.6a: "Slot pools are sized from the table by class level for every
+// class whose table has slots; the per-class switch case in buildClassResources
+// goes"). Under the old shape a level-2 bard computed a gain of 2 - 2 = 0 and
+// its pool never moved, and wizard, druid and sorcerer had slot data and never
+// received a pool at all, so casting was silently impossible for them.
+//
+// Pact Magic is excluded and not forgotten: a warlock's slots are all the same
+// level, climb with the warlock, and return on a SHORT rest. A pool built here
+// would recover on the wrong rest, which is worse than the nothing a warlock
+// has today, so the table says pact_magic and this declines to size it (§8).
+func addSpellSlots(
+	built map[coreResources.ResourceKey]*combat.RecoverableResource,
+	char *Character, class classes.Class, classLevel int,
 ) {
-	classData := classes.ClassData[class]
-	if len(classData.SpellSlots) == 0 || classData.SpellSlots[0] <= 0 {
+	row := classes.SpellProgressionAtLevel(class, classLevel)
+	if row.SlotReset != classes.SpellSlotResetLongRest {
 		return
 	}
-	built[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-		ID:          string(resources.SpellSlotLevel1),
-		Maximum:     classData.SpellSlots[0],
-		CharacterID: char.id,
-		ResetType:   coreResources.ResetLongRest,
-	})
+
+	for index, count := range row.SpellSlots {
+		if count <= 0 {
+			continue
+		}
+		key, ok := resources.SpellSlotLevel(index + 1)
+		if !ok {
+			// A table reaching past 9th level is a content defect, not a
+			// resource: there is no pool to put those slots in.
+			continue
+		}
+		built[key] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(key),
+			Maximum:     count,
+			CharacterID: char.id,
+			ResetType:   coreResources.ResetLongRest,
+		})
+	}
 }
 
 // initializeStandardCombatAbilities adds universal combat abilities to the character.

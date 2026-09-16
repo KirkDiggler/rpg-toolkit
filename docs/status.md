@@ -22,9 +22,26 @@ and `classes.GetGrantsGainedAtLevel` answers "what does level N add?" beside
 `GetGrantsForLevel`'s "what does a level-N character have?". Content: Fighter
 gains Action Surge at 2, the first grant in the repository above level 1.
 Rung 1 cannot be walked — there is no level field on the wire and no level-up
-RPC — so its evidence is the toolkit suite. Not built: multiclassing, XP,
-ability score improvements, spell slot progression, and the Barbarian/Monk
-level-2 rows (rung 3).
+RPC — so its evidence is the toolkit suite.
+
+**The level-up system, rung 2 (rpg-project#452, 2026-09-16).**
+The per-level facts rung 1 had nowhere to put are now data. A class's
+requirements are level-tagged rows read by
+`choices.GetClassRequirementsGainedAtLevel`, so a class can ask for something at
+a level above 1 for the first time — before this the only thing any class gained
+above level 1 was its subclass. `classes.Data`'s three level-1 spellcasting
+scalars became a `classes.SpellProgression`, one column per fact and one entry
+per class level from the 2014 tables; the spell and cantrip questions are
+DERIVED from it (bard: four known at 1, five at 2, therefore choose one) rather
+than authored beside it, and slot pools are sized from it for every class, so
+wizard, druid, sorcerer and paladin have the pools they never had.
+`Character.Advance` now validates a level's choices through the validator
+creation uses and applies them through the compiler creation uses, so a spell
+chosen at a level-up reaches the known list instead of only the record. A
+character holds `Data.Experience` and takes only the level the 2014 threshold
+table entitles it to; nothing awards experience yet, so there is deliberately no
+mutator. Not built: multiclassing, ability score improvements, a subclass as a
+choice (#1767), warlock Pact Magic, and prepared casting.
 
 **Cleric creation (rpg-project#406, merged #1585, D&D v0.150.0, 2026-09-08).**
 Cleric base proficiencies and fixed shield compile; Life's heavy-armor grant

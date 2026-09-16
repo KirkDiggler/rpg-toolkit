@@ -280,6 +280,7 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		playerID:            d.PlayerID,
 		name:                d.Name,
 		levels:              levels,
+		experience:          d.Experience,
 		raceID:              d.RaceID,
 		subraceID:           d.SubraceID,
 		classID:             d.ClassID,
