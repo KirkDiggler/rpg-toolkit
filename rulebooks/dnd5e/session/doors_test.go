@@ -32,7 +32,6 @@ import (
 func deftCharacter(id string, dex int) *character.Data {
 	return &character.Data{
 		ID: id, PlayerID: "player-" + id, Name: "Delve", Level: 3,
-		Levels:           syntheticLevels(classes.Rogue, 3),
 		ProficiencyBonus: 2, RaceID: races.Dwarf, ClassID: classes.Rogue,
 		HitPoints: 20, MaxHitPoints: 20, ArmorClass: 14,
 		AbilityScores: shared.AbilityScores{abilities.DEX: dex},

@@ -832,13 +832,8 @@ func strikeFixtureFighter(id string) *character.Data {
 		PlayerID: "player-" + id,
 		Name:     id,
 		Level:    3,
-		Levels: []character.LevelEntry{
-			{Level: 1, ClassID: classes.Fighter, HitPointGain: 12, HitPointMethod: character.HitPointMethodMax},
-			{Level: 2, ClassID: classes.Fighter, HitPointGain: 8, HitPointMethod: character.HitPointMethodAverage},
-			{Level: 3, ClassID: classes.Fighter, HitPointGain: 8, HitPointMethod: character.HitPointMethodAverage},
-		},
-		ClassID: classes.Fighter,
-		RaceID:  races.Human,
+		ClassID:  classes.Fighter,
+		RaceID:   races.Human,
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,

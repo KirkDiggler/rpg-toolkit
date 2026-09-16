@@ -307,7 +307,6 @@ func (s *LongRestTestSuite) fighter() *character.Data {
 	return &character.Data{
 		ID: longRestFighterID, PlayerID: "rest-player", Name: "Spent Fighter",
 		Level: 4, ProficiencyBonus: 2, RaceID: races.Human, ClassID: classes.Fighter,
-		Levels: syntheticLevels(classes.Fighter, 4, 12, 8),
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
@@ -347,7 +346,6 @@ func (s *LongRestTestSuite) barbarian() *character.Data {
 	return &character.Data{
 		ID: longRestBarbarianID, PlayerID: "rest-player", Name: "Spent Barbarian",
 		Level: 5, ProficiencyBonus: 3, RaceID: races.Human, ClassID: classes.Barbarian,
-		Levels: syntheticLevels(classes.Barbarian, 5, 15, 10),
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 18, abilities.DEX: 14, abilities.CON: 16,
 			abilities.INT: 8, abilities.WIS: 12, abilities.CHA: 10,

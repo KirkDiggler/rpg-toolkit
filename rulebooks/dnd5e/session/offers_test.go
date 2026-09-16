@@ -694,7 +694,7 @@ func TestAttackRequiresADeclarationID(t *testing.T) {
 // Executing the new selector then banks the priced level-5 second swing.
 func TestCompiledAttackSelectorIncludesItsActualPrice(t *testing.T) {
 	alice := armedFighter("alice")
-	setLevel(alice, 3)
+	alice.Level = 3
 	mgr, _, _, characters := aFight(t, alice, []int{1, 1, 1, 1})
 	ctx := context.Background()
 
@@ -703,7 +703,7 @@ func TestCompiledAttackSelectorIncludesItsActualPrice(t *testing.T) {
 	level3 := requireSingleDeclaration(t, before.Declarations, session.VerbAttack)
 	require.Equal(t, session.SlotAction, level3.Slot)
 
-	setLevel(characters.byID["alice"], 5)
+	characters.byID["alice"].Level = 5
 	after, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	level5 := requireSingleDeclaration(t, after.Declarations, session.VerbAttack)

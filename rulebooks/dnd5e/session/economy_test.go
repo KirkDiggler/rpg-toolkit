@@ -66,7 +66,7 @@ const skeletonAC = 13
 // got the die it asked for, so this stops being true loudly rather than quietly.
 func (s *EconomySuite) fightScene(level int, rolls ...int) {
 	alice := armedFighter("alice")
-	setLevel(alice, level)
+	alice.Level = level
 
 	s.mgr, s.sessions, s.encounters, s.characters = aFight(s.T(), alice, rolls)
 }

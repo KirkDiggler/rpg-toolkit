@@ -133,7 +133,7 @@ func (s *ResolveTestSuite) dodging() json.RawMessage {
 
 func (s *ResolveTestSuite) shortsword() combatActions.Definition {
 	return combatActions.Definition{
-		Ref:  *refs.Weapons.Shortsword(),
+		Ref:  *refs.MonsterActions.SkeletonShortsword(),
 		Name: "shortsword",
 		Attack: &combatActions.AttackProfile{
 			Category:    combatActions.AttackCategoryWeapon,
@@ -422,7 +422,7 @@ func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 
 	// Reconstituted as behaviour, not merely carried along as bytes.
 	s.Require().Len(loaded.Actions(), 1, "the shortsword definition survived")
-	s.Require().Equal(refs.Weapons.Shortsword(), &loaded.Actions()[0].Ref)
+	s.Require().Equal(refs.MonsterActions.SkeletonShortsword(), &loaded.Actions()[0].Ref)
 
 	// And it round-trips back out to exactly the data that went in.
 	s.Require().Equal([]combatActions.Definition{s.shortsword()}, loaded.ToData().Actions)

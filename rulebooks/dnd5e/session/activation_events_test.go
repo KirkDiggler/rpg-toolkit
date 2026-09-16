@@ -91,7 +91,7 @@ func newActivationEventScene(
 func secondWindFighter(t *testing.T, id string, hp, maxHP int) *character.Data {
 	t.Helper()
 	fighter := armedFighter(id)
-	setLevel(fighter, 3)
+	fighter.Level = 3
 	fighter.HitPoints = hp
 	fighter.MaxHitPoints = maxHP
 	feature, err := json.Marshal(features.SecondWindData{

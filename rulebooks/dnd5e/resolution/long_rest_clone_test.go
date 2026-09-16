@@ -13,7 +13,6 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
@@ -35,10 +34,7 @@ func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
 		Appearance: &customization.Appearance{
 			Hair: &customization.HairCustomization{ColorSRGB: &hairColor},
 		},
-		AbilityScores: shared.AbilityScores{abilities.STR: 16},
-		Levels: []character.LevelEntry{
-			{Level: 1, ClassID: classes.Fighter, HitPointGain: 12, HitPointMethod: character.HitPointMethodMax},
-		},
+		AbilityScores:  shared.AbilityScores{abilities.STR: 16},
 		DeathSaveState: &saves.DeathSaveState{Failures: 1},
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
 			skills.Athletics: shared.Proficient,

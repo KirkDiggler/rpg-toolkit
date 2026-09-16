@@ -289,7 +289,7 @@ func (s *AttackEventsTestSuite) TestAMissCarriesTheTokenTheAttackerWasGiven() {
 // on its own.
 func (s *AttackEventsTestSuite) TestTwoSwingsAreTwoDifferentRolls() {
 	alice := armedFighter("alice")
-	setLevel(alice, 5)
+	alice.Level = 5
 	mgr := s.duelWithStreamAndIDs(&sequenceDice{rolls: []int{2, 2}}, &countingPresentationIDs{}, alice)
 
 	first := s.swing(mgr)

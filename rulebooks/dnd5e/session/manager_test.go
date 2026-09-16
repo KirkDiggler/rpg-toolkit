@@ -175,7 +175,6 @@ func dwarfCharacter(id string) *character.Data {
 		PlayerID:         "player-" + id,
 		Name:             "Alice",
 		Level:            3,
-		Levels:           syntheticLevels(classes.Fighter, 3),
 		ProficiencyBonus: 2,
 		RaceID:           races.Dwarf,
 		ClassID:          classes.Fighter,

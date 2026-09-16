@@ -577,7 +577,6 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 	return &character.Data{
 		ID: id, PlayerID: "player-" + id, Name: "Spent Fighter",
 		Level: 4, ProficiencyBonus: 2, RaceID: races.Human, ClassID: classes.Fighter,
-		Levels: syntheticLevels(classes.Fighter, 4),
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,

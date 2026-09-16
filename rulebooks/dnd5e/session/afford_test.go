@@ -40,7 +40,7 @@ func TestAffordSuite(t *testing.T) { suite.Run(t, new(AffordSuite)) }
 // suites are driving the identical scene.
 func (s *AffordSuite) fightScene(level int, rolls ...int) {
 	alice := armedFighter("alice")
-	setLevel(alice, level)
+	alice.Level = level
 
 	s.mgr, s.sessions, s.encounters, s.characters = aFight(s.T(), alice, rolls)
 }

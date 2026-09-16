@@ -113,10 +113,6 @@ func cloneCharacterData(in *character.Data) *character.Data {
 	}
 
 	out := *in
-	// The level record is append-only and no rest writes to it, but the
-	// clone owns every mutable field on the record it hands back rather
-	// than every field some caller happens to write today.
-	out.Levels = slices.Clone(in.Levels)
 	out.Appearance = customization.CloneAppearance(in.Appearance)
 	out.AbilityScores = maps.Clone(in.AbilityScores)
 	if in.DeathSaveState != nil {

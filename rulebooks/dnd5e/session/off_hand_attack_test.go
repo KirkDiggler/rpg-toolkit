@@ -182,7 +182,7 @@ func TestTurnResetRemovesUnusedOffHandDeclaration(t *testing.T) {
 
 func TestBankedMainHandAttackSortsBeforeBonusAttack(t *testing.T) {
 	fighter := offHandFighter("alice")
-	setLevel(fighter, 5)
+	fighter.Level = 5
 	mgr, _, _, _ := aFight(t, fighter, []int{1})
 	main := attackDeclarationForSlot(t, affordOffHandFight(t, mgr).Declarations, session.SlotAction)
 	_, err := mgr.Attack(context.Background(), &session.AttackInput{
