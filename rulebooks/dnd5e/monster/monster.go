@@ -83,10 +83,7 @@ type Config struct {
 
 // New creates a new monster with the specified configuration
 func New(config Config) *Monster {
-	profBonus := config.ProficiencyBonus
-	if profBonus == 0 {
-		profBonus = 2 // Default for low CR monsters
-	}
+	profBonus := proficiencyBonusOf(config.ProficiencyBonus)
 	return &Monster{
 		creatureType:     config.CreatureType,
 		id:               config.ID,
