@@ -69,6 +69,22 @@ func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
 	return witnesses, nil
 }
 
+// BeatIntimidated is the "beat" value of the story beat this composition
+// appends when somebody threatens a member — landed or not.
+//
+// EXPORTED BECAUSE A DECODER READS IT, for the same reason [BeatSighted]
+// and [BeatWindowOpened] are: a session-side decoder is written against it
+// in the same wave, so a rename fails to compile there instead of quietly
+// producing a beat nobody renders. That failure is the one this constant
+// exists to prevent, and it is not hypothetical — this beat shipped
+// untyped at the seam once, and the roll reached no client at all.
+//
+// IT MATTERS MORE HERE THAN FOR MOST BEATS. This beat is the ONLY account
+// of the roll: unlike a swing, a threat writes no outcome and a missed one
+// writes nothing else whatsoever. A client that cannot decode it cannot
+// tell the table what happened.
+const BeatIntimidated = "intimidated"
+
 // IntimidateInput names who threatened whom, whether the check was beaten,
 // and the numbers the table should see.
 type IntimidateInput struct {
@@ -210,7 +226,7 @@ func (e *Encounter) Intimidate(in *IntimidateInput) (*IntimidateOutput, error) {
 // third state for a reader downstream.
 func (e *Encounter) appendIntimidatedBeat(in *IntimidateInput, witnesses []MemberID, at uint64) (uint64, error) {
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat":   "intimidated",
+		"beat":   BeatIntimidated,
 		"actor":  string(in.Actor),
 		"target": string(in.Target),
 		"dc":     in.DC,

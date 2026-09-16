@@ -145,7 +145,9 @@ func (s *IntimidateTestSuite) TestAMissedThreatLandsNothing() {
 }
 
 // The roll is seen either way: a beat carries the actor, the target, the DC,
-// the total and whether it landed, to every witness.
+// the total and whether it landed, to every witness — under the name
+// [encounter.BeatIntimidated], which the session's decoder reads by the same
+// constant so a rename cannot part them silently.
 func (s *IntimidateTestSuite) TestTheTableSeesTheDieWhetherItLandedOrNot() {
 	for _, beaten := range []bool{true, false} {
 		enc := s.scene()
@@ -154,7 +156,7 @@ func (s *IntimidateTestSuite) TestTheTableSeesTheDieWhetherItLandedOrNot() {
 		})
 		s.Require().NoError(err)
 
-		beats := s.beatsOfKind(enc, goblin, "intimidated")
+		beats := s.beatsOfKind(enc, goblin, encounter.BeatIntimidated)
 		s.Require().Len(beats, 1)
 		s.Equal(string(alice), beats[0]["actor"])
 		s.Equal(string(goblin), beats[0]["target"])
@@ -162,7 +164,7 @@ func (s *IntimidateTestSuite) TestTheTableSeesTheDieWhetherItLandedOrNot() {
 		s.EqualValues(14, beats[0]["total"])
 		s.Equal(beaten, beats[0]["beaten"], "false beside a miss, never absent")
 
-		s.Empty(s.beatsOfKind(enc, billy, "intimidated"), "billy saw nothing to narrate")
+		s.Empty(s.beatsOfKind(enc, billy, encounter.BeatIntimidated), "billy saw nothing to narrate")
 	}
 }
 
@@ -174,7 +176,7 @@ func (s *IntimidateTestSuite) TestAThreatThroughAWallIsRefused() {
 		Actor: alice, Target: billy, Beaten: true, DC: 9, Total: 20,
 	})
 	s.Require().ErrorIs(err, encounter.ErrUnwitnessed)
-	s.Empty(s.beatsOfKind(enc, alice, "intimidated"), "a refusal writes no beat")
+	s.Empty(s.beatsOfKind(enc, alice, encounter.BeatIntimidated), "a refusal writes no beat")
 }
 
 // The rest of the refusals, in validation order.
