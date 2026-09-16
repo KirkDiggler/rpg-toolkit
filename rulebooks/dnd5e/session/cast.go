@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -157,6 +159,24 @@ type CastOutput struct {
 	// A cast whose push does not provoke never pauses, because nothing is
 	// asked; see [Manager.Cast] on why a flee is the one directive that does.
 	Paused bool `json:"paused,omitempty"`
+
+	// Posed reports that a target's own saving throw stopped to ask them
+	// whether to spend a held offer before the save's verdict is settled —
+	// [UnlockOutput.Paused]'s shape, applied to a cast's save instead of a
+	// lock check. Every field above Spell and Persisted/Delivery is the zero
+	// value while this is true: the price is paid (Cost charges before the
+	// door yields its first step, whichever step that turns out to be), but
+	// there is no verdict yet, only a question — answered with [Manager.React].
+	Posed bool `json:"posed,omitempty"`
+
+	// Roll is the d20 as rolled, present only when Posed. THE SAVE'S DC IS
+	// DELIBERATELY NOT SURFACED alongside it, [checkOfferWindowPayload.Roll]'s
+	// reason: a player who could see it would be deciding whether the die
+	// closes the gap rather than whether it is worth spending.
+	Roll *int `json:"roll,omitempty"`
+
+	// Total is the number the offer would join, present only when Posed.
+	Total *int `json:"total,omitempty"`
 }
 
 // CastSaveReport is one saving throw a cast's gate produced, as the caster's
@@ -423,7 +443,35 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", translateResolution(err))
 	}
 
-	targetResults, pushes, err := castOutcome(out.Outcome, in.Member, *selected.declaration.Spell)
+	// THE ATTEMPT STOPPED TO ASK. A target holds something that could join its
+	// own saving throw — Resistance is the first — and resolution posed
+	// rather than settling. The price above is already paid: [Cost] charges
+	// before the door yields its first step, whether or not that step turns
+	// out to be this one, so nothing here is refunded or deferred.
+	if out.Posed != nil {
+		return m.poseCastWindow(ctx, scope, in.Member, *selected.declaration.Spell, areaUnresolved(caught), out)
+	}
+
+	return m.finishCast(ctx, scope, in.Member, *selected.declaration.Spell, definition.Ref, areaUnresolved(caught), out)
+}
+
+// finishCast is everything a cast does once resolution has a real
+// [resolution.CastOutcome] in hand — reached directly by a cast that never
+// posed, and by [Manager.answerCastOffer] once a posed one is answered. One
+// function rather than two, so a beat the fresh path writes cannot drift from
+// the one the resumed path writes for the same cast.
+//
+// caught is already the CALLER-FACING projection ([areaUnresolved]'s own
+// output) rather than the internal [areaCaught] a fresh cast computes it
+// from: a resumed cast has no footprint left to derive it from (the
+// footprint was fixed before any target's save was even rolled) and carries
+// this projection through the window payload instead — see
+// [castOfferWindowPayload.Caught].
+func (m *Manager) finishCast(
+	ctx context.Context, scope *writeScope, member string, spell SpellRef, spellRef core.Ref,
+	caught []CaughtMember, out *resolution.Output,
+) (*CastOutput, error) {
+	targetResults, pushes, err := castOutcome(out.Outcome, member, spell)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -453,10 +501,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// the mechanical sheet writes remain durable and are named by
 	// reportUnrecorded while this unsaved encounter scope is dropped.
 	recorded, err := scope.enc.RecordCast(&encounter.RecordCastInput{
-		Actor: encounter.MemberID(in.Member),
+		Actor: encounter.MemberID(member),
 		Spell: encounter.SpellIdentity{
-			Ref:  selected.declaration.Spell.Ref,
-			Name: selected.declaration.Spell.Name,
+			Ref:  spell.Ref,
+			Name: spell.Name,
 		},
 		Targets: targetResults,
 		// PASSED THROUGH, exactly as the strike passes them: resolution
@@ -483,7 +531,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// the scope would throw the question away and leave the table waiting on a
 	// window nobody can see; so the verb commits, and says on its own output
 	// that the walk is unfinished.
-	paused, err := walkCastPushes(ctx, scope.enc, pushes, definition.Ref)
+	paused, err := walkCastPushes(ctx, scope.enc, pushes, spellRef)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, err))
 	}
@@ -505,13 +553,102 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 	return &CastOutput{
 		MissedTargets: missedTargets,
-		Spell:         *selected.declaration.Spell,
+		Spell:         spell,
 		Saved:         castSaveReport(singleSave),
-		Caught:        areaUnresolved(caught),
+		Caught:        caught,
 		Seqs:          recorded.Seqs,
 		Paused:        paused,
 		Persisted:     report,
 		Delivery:      delivery,
+	}, nil
+}
+
+// poseCastWindow commits the price already paid and asks the target the
+// question resolution stopped on — [poseUnlockWindow]'s shape, for a cast's
+// saving throw instead of a lock check.
+//
+// The encounter is not paused for the same reason a posed check does not
+// pause it: the window lives entirely in the interrupt ledger already
+// persisted here, and every other member's turn proceeds around it exactly
+// as it does around any other open reaction window.
+func (m *Manager) poseCastWindow(
+	ctx context.Context, scope *writeScope, member string, spell SpellRef, caught []CaughtMember,
+	out *resolution.Output,
+) (*CastOutput, error) {
+	posed := out.Posed
+	ask := posed.Ask
+	if ask.Offer.Ref == nil || ask.Offer.Name == "" {
+		return nil, fmt.Errorf("cast: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
+	}
+	if len(ask.Options) != 2 {
+		return nil, fmt.Errorf("cast: %w: the machine posed %d answers and this seam poses two",
+			ErrInvalidWorld, len(ask.Options))
+	}
+
+	// THE PRICE IS ALREADY PAID, in memory, by the [resolution.Resolve] call
+	// that just posed — [Cost] charges before the door yields its first
+	// step, whichever step that turns out to be. Adopted and saved here, or
+	// a bard whose slot was spent would see it back on the next read because
+	// nothing durable ever recorded the charge.
+	if err := m.adopt(ctx, scope, out.World); err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
+	}
+	if err := m.saveDirty(ctx, scope, out); err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
+	}
+
+	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
+	payload, err := marshalCastOfferPayload(castOfferWindowPayload{
+		Audience: ask.Audience,
+		Caster:   member,
+		Spell:    spell,
+		Caught:   caught,
+		Offer:    offer,
+		Roll:     ask.Roll,
+		Total:    ask.Total,
+		Frozen:   posed.Frozen,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cast: %w: %v", ErrInvalidSession, err)
+	}
+
+	// THE TWO ANSWERS ARE THIS SEAM'S, not the machine's: [poseUnlockWindow]'s
+	// own reasoning, reused rather than re-derived.
+	if _, err := scope.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(ask.Audience),
+		Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
+		Payload:  payload,
+		At:       scope.baseline,
+	}); err != nil {
+		return nil, fmt.Errorf("cast: %w: %v", ErrInvalidSession, err)
+	}
+	scope.data.Windows = scope.ledger.ToData()
+	scope.touched = true
+
+	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
+		Audience: encounter.MemberID(ask.Audience),
+		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
+		Roll:     ask.Roll,
+		Total:    ask.Total,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))
+	}
+
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
+	}
+
+	roll, total := ask.Roll, ask.Total
+	return &CastOutput{
+		Spell:     spell,
+		Posed:     true,
+		Roll:      &roll,
+		Total:     &total,
+		Seqs:      []uint64{scope.deliveredSeq(member, recorded.Seq)},
+		Persisted: report,
+		Delivery:  delivery,
 	}, nil
 }
 
