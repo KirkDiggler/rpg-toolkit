@@ -127,6 +127,16 @@ type CastProfile struct {
 	// there is no attack ability to add.
 	Damage []damage.Damage `json:"damage,omitempty"`
 
+	// DamageIfInjured is what the cast deals INSTEAD, when the resolved
+	// saver is missing any of its current hit points at the moment the
+	// contest reads them — Toll the Dead's own wording ("If the target is
+	// missing any of its hit points, it instead takes..."). Empty is every
+	// other cast's answer: a fixed pool that never depends on who is
+	// standing in front of it. Declared as a PAIR with Damage rather than a
+	// standalone alternate — see Validate — because "not injured" needs its
+	// own answer too, and Damage is that answer.
+	DamageIfInjured []damage.Damage `json:"damage_if_injured,omitempty"`
+
 	// Effects are the conditions the cast delivers when it lands.
 	Effects []CastEffect `json:"effects,omitempty"`
 
@@ -351,7 +361,7 @@ func (p CastProfile) Validate() error {
 			return fmt.Errorf("stabilization requires an unopposed touch cast without other effects or concentration")
 		}
 	}
-	if len(p.Damage) == 0 && len(p.Effects) == 0 && p.Healing == nil && !p.Stabilize {
+	if len(p.Damage) == 0 && len(p.DamageIfInjured) == 0 && len(p.Effects) == 0 && p.Healing == nil && !p.Stabilize {
 		return fmt.Errorf("cast must declare damage, a delivered condition, healing, or stabilization")
 	}
 	if len(p.Damage) > 0 {
@@ -361,6 +371,23 @@ func (p CastProfile) Validate() error {
 		for _, pool := range p.Damage {
 			if pool.HasProperty(damage.AddsAttackAbilityModifier) {
 				return fmt.Errorf("cast damage must not be marked with the attack ability modifier")
+			}
+		}
+	}
+	if len(p.DamageIfInjured) > 0 {
+		// A pair, not a standalone alternate: a profile declaring only the
+		// injured pool would leave an unhurt target with no answer at all,
+		// which is the same affordance-with-nothing-behind-it every other
+		// refusal in this function exists to name.
+		if len(p.Damage) == 0 {
+			return fmt.Errorf("cast declares damage_if_injured but no plain damage for an uninjured target")
+		}
+		if err := damage.Validate(p.DamageIfInjured); err != nil {
+			return fmt.Errorf("cast damage_if_injured declaration is invalid: %w", err)
+		}
+		for _, pool := range p.DamageIfInjured {
+			if pool.HasProperty(damage.AddsAttackAbilityModifier) {
+				return fmt.Errorf("cast damage_if_injured must not be marked with the attack ability modifier")
 			}
 		}
 	}
@@ -430,6 +457,13 @@ func (p CastProfile) Clone() CastProfile {
 		copy(clone.Damage, p.Damage)
 		for index := range p.Damage {
 			clone.Damage[index].Properties = append([]damage.Property(nil), p.Damage[index].Properties...)
+		}
+	}
+	if p.DamageIfInjured != nil {
+		clone.DamageIfInjured = make([]damage.Damage, len(p.DamageIfInjured))
+		copy(clone.DamageIfInjured, p.DamageIfInjured)
+		for index := range p.DamageIfInjured {
+			clone.DamageIfInjured[index].Properties = append([]damage.Property(nil), p.DamageIfInjured[index].Properties...)
 		}
 	}
 	if p.Effects != nil {
