@@ -313,6 +313,34 @@ func (s *ClericFinalizeSuite) TestChosenSpareTheDyingCompilesAfterDraftAndCharac
 	s.NoError(err, "private-sheet projection accepts the normally finalized cleric")
 }
 
+func (s *ClericFinalizeSuite) TestChosenResistanceCompilesAfterDraftAndCharacterReload() {
+	input := s.classInput()
+	input.Choices.Cantrips = []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Resistance}
+	draft := s.draft(input)
+	raw, err := json.Marshal(draft.ToData())
+	s.Require().NoError(err)
+	var storedDraft DraftData
+	s.Require().NoError(json.Unmarshal(raw, &storedDraft))
+	char, err := LoadDraftFromData(&storedDraft).ToCharacter(context.Background(), "resistant-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	raw, err = json.Marshal(char.ToData())
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(raw, &stored))
+	loaded, err := Load(context.Background(), &stored)
+	s.Require().NoError(err)
+	s.Len(loaded.KnownCantrips(), 3)
+	s.Contains(stored.KnownCantrips, refs.Spells.Resistance().String())
+	definition := loaded.CastDefinition(spells.Resistance)
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Nil(definition.Cast.Save, "the saving throw the die joins is the saver's own, not this cast's gate")
+	s.Require().NotNil(definition.Cast.Concentration)
+	s.Empty(definition.Cost.Pools)
+	_, err = loaded.StatusView(&StatusViewInput{})
+	s.NoError(err, "private-sheet projection accepts the normally finalized cleric")
+}
+
 func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReload() {
 	draft := s.draft(s.classInput())
 	char, err := draft.ToCharacter(context.Background(), "sacred-flame-cleric", events.NewEventBus())
