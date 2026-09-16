@@ -322,6 +322,54 @@ func TestACreatureOfUnknownPlaceIsNeverFled(t *testing.T) {
 	assert.Equal(t, behavior.Pass, out.Intent.Verb, "nothing it can act on")
 }
 
+// Rung 0 asks the mind PER CREATURE (rpg-project#454). A monster afraid of
+// one figure and not another runs from the one, with the other standing just
+// as close — which is what a Keep asked once per turn could not express.
+//
+// The mage ranks first and is let all the way in; the knight, the same one
+// step away, is what the mind steps back from.
+func TestRungZeroAsksTheMindAboutEachCreature(t *testing.T) {
+	r := &rooms{doors: make(map[string][]string)}
+	r.connect(room, corridor)
+	r.connect(corridor, hall)
+
+	near := func(id core.EntityID, where string) behavior.Contact {
+		return behavior.Contact{
+			Holdings: []behavior.Holding{{
+				Holding: perception.Holding{Subject: id, CurrentVia: []perception.Channel{sight}},
+				Reading: behavior.Reading{Creature: true, Where: where},
+			}},
+			Name: behavior.Name(id), Named: true, Bearer: id,
+		}
+	}
+	situation := behavior.Situation{
+		Contacts: []behavior.Contact{near(mage, hall), near(knight, room)},
+		Self:     behavior.Self{Sheet: behavior.Sheet{Reach: 1}, Where: corridor},
+	}
+
+	t.Run("it steps away from the one it fears", func(t *testing.T) {
+		out, err := behavior.Decide(&behavior.DecideInput{
+			Situation: situation,
+			Mind:      afraidOf{zombieMind{}, behavior.Name(knight), 2},
+			Space:     r,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, behavior.Away, out.Intent.Verb)
+		assert.Equal(t, behavior.Name(knight), out.Intent.Target,
+			"the mage is exactly as close and is not what it is running from")
+	})
+
+	t.Run("and swings at the one it does not", func(t *testing.T) {
+		out, err := behavior.Decide(&behavior.DecideInput{
+			Situation: situation,
+			Mind:      afraidOf{zombieMind{}, "nobody", 2},
+			Space:     r,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, behavior.Attack, out.Intent.Verb, "afraid of nobody in this room")
+	})
+}
+
 // A situation is the caller's to keep. Rewriting what it reports must not
 // reach the game's own sheets.
 func TestASituationDoesNotAliasTheGame(t *testing.T) {

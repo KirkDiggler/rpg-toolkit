@@ -280,6 +280,25 @@ func (k keeps) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
 	return &behavior.KeepOutput{Steps: k.steps}, nil
 }
 
+// afraidOf is any mind that keeps its distance from ONE named contact and
+// none at all from anyone else — the shape fear takes (rpg-project#454), and
+// the thing a Keep asked once per turn could not say.
+type afraidOf struct {
+	behavior.Mind
+	of    behavior.Name
+	steps int
+}
+
+// Keep is the whole room for the one it is afraid of, and nothing for
+// everybody else.
+func (a afraidOf) Keep(in *behavior.KeepInput) (*behavior.KeepOutput, error) {
+	if in.Contact.Named && in.Contact.Name == a.of {
+		return &behavior.KeepOutput{Steps: a.steps}, nil
+	}
+
+	return &behavior.KeepOutput{Steps: 0}, nil
+}
+
 // asked is any mind that counts how often it was asked for a word. A name
 // that persisted is a name the mind was not asked for twice, and counting
 // is the only way to see the difference from outside.

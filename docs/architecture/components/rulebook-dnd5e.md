@@ -387,7 +387,7 @@ post a validation request, get a `ValidationResult`. Hot path:
 | Symbol | Role |
 |---|---|
 | `choices.ValidationResult`, `choices.ValidationError` | return shape (11, 2 references) |
-| `choices.GetClassRequirements`, `choices.GetClassRequirementsAtLevel`, `choices.GetClassRequirementsWithSubclass`, `choices.GetRaceRequirements` | per-step requirement queries |
+| `choices.GetClassRequirements`, `choices.GetClassRequirementsGainedAtLevel`, `choices.GetClassRequirementsWithSubclass`, `choices.GetRaceRequirements` | per-step requirement queries |
 | `choices.Requirements`, `choices.ChoiceData`, `choices.ChoiceID` | request shape |
 | Class-specific selectors (`choices.FighterPack`, `choices.WizardWeaponsPrimary`, etc.) | typed equipment-choice constants |
 | `choices.SkillRequirement`, `choices.ToolRequirement`, `choices.FightingStyleRequirement`, `choices.EquipmentRequirement` | requirement-type taxonomy |

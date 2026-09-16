@@ -10,18 +10,22 @@ on:
       - 'rulebooks/dnd5e/encounter/**'
       - 'rulebooks/dnd5e/session/**'
 
-# GOPRIVATE makes go resolve our own modules straight from git instead of the
-# public module proxy. gorelease asks the proxy for the newest tag of the
-# module's major; minutes after a tag is cut the proxy still answers the old
-# one and the gate dies with "Cannot suggest a release version ... most recent
-# version of this major" (rpg-toolkit#1763, Kirk's ruling 2026-09-16). Going
-# direct sees the tag the moment it exists.
-env:
-  GOPRIVATE: github.com/KirkDiggler/*
-
+# GOPRIVATE is set PER JOB, to the module under test only (see each job's env).
+# Repo-wide (#1768) it also sent every dependency to git, and a dependency's
+# go.mod may pin a pseudo-version whose commit was squashed away: dnd5e
+# v0.169.0 pins tools/spatial at a8a4dd3fc92a, which git no longer has and only
+# the proxy still serves. Per module, the gate reads the module's own tags
+# fresh from git and its dependencies from the proxy, which is what each side
+# is good for.
 jobs:
   gorelease-play-clock:
     runs-on: ubuntu-latest
+    env:
+      # GOPRIVATE for THIS module only: its tags come straight from git (the
+      # stale-proxy trap, #1768), while its dependencies still resolve through
+      # the proxy, which keeps pseudo-versions whose commits were squashed away
+      # (dnd5e v0.169.0 pins tools/spatial at a revision git no longer has).
+      GOPRIVATE: github.com/KirkDiggler/rpg-toolkit/play/clock
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +45,12 @@ jobs:
 
   gorelease-play-intel:
     runs-on: ubuntu-latest
+    env:
+      # GOPRIVATE for THIS module only: its tags come straight from git (the
+      # stale-proxy trap, #1768), while its dependencies still resolve through
+      # the proxy, which keeps pseudo-versions whose commits were squashed away
+      # (dnd5e v0.169.0 pins tools/spatial at a revision git no longer has).
+      GOPRIVATE: github.com/KirkDiggler/rpg-toolkit/play/intel
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +70,12 @@ jobs:
 
   gorelease-play-record:
     runs-on: ubuntu-latest
+    env:
+      # GOPRIVATE for THIS module only: its tags come straight from git (the
+      # stale-proxy trap, #1768), while its dependencies still resolve through
+      # the proxy, which keeps pseudo-versions whose commits were squashed away
+      # (dnd5e v0.169.0 pins tools/spatial at a revision git no longer has).
+      GOPRIVATE: github.com/KirkDiggler/rpg-toolkit/play/record
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,6 +95,12 @@ jobs:
 
   gorelease-play-interrupt:
     runs-on: ubuntu-latest
+    env:
+      # GOPRIVATE for THIS module only: its tags come straight from git (the
+      # stale-proxy trap, #1768), while its dependencies still resolve through
+      # the proxy, which keeps pseudo-versions whose commits were squashed away
+      # (dnd5e v0.169.0 pins tools/spatial at a revision git no longer has).
+      GOPRIVATE: github.com/KirkDiggler/rpg-toolkit/play/interrupt
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,6 +120,12 @@ jobs:
 
   gorelease-dnd5e-encounter:
     runs-on: ubuntu-latest
+    env:
+      # GOPRIVATE for THIS module only: its tags come straight from git (the
+      # stale-proxy trap, #1768), while its dependencies still resolve through
+      # the proxy, which keeps pseudo-versions whose commits were squashed away
+      # (dnd5e v0.169.0 pins tools/spatial at a revision git no longer has).
+      GOPRIVATE: github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter
     steps:
       - uses: actions/checkout@v4
         with:
@@ -117,6 +145,12 @@ jobs:
 
   gorelease-dnd5e-session:
     runs-on: ubuntu-latest
+    env:
+      # GOPRIVATE for THIS module only: its tags come straight from git (the
+      # stale-proxy trap, #1768), while its dependencies still resolve through
+      # the proxy, which keeps pseudo-versions whose commits were squashed away
+      # (dnd5e v0.169.0 pins tools/spatial at a revision git no longer has).
+      GOPRIVATE: github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session
     steps:
       - uses: actions/checkout@v4
         with:

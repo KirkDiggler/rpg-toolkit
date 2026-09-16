@@ -307,11 +307,23 @@ type RankOutput struct {
 // KeepInput is the situation to judge distance in.
 type KeepInput struct {
 	Situation Situation
+
+	// Contact is the creature the question is about. ASKED PER CREATURE,
+	// not once per turn (rpg-project#454): a mind may keep its distance
+	// from one figure and none at all from another, which is what fear is
+	// — the frightened goblin runs from the fighter who threatened it and
+	// walks past the wizard beside them.
+	//
+	// It is always a contact rung 0 is measuring; there is no "keep, in
+	// general" question and no zero Contact to answer. A mind with one
+	// answer for everybody ignores this field, which every mind that
+	// predates it already does.
+	Contact Contact
 }
 
-// KeepOutput is how close this mind lets a live creature get before it would
-// rather step away, in the space's own unit: 0 means it stands and fights, 1
-// means it keeps a step between them.
+// KeepOutput is how close this mind lets THIS live creature get before it
+// would rather step away, in the space's own unit: 0 means it stands and
+// fights, 1 means it keeps a step between them.
 type KeepOutput struct {
 	Steps int
 }
@@ -347,8 +359,8 @@ type DecideOutput struct {
 // lets things get. The space is consulted for what only a map can know: how
 // far, and whether there is anywhere to step.
 //
-//  0. a live named creature is nearer than the mind keeps, and the space
-//     finds a step away → Away
+//  0. a live named creature is nearer than the mind keeps FROM THAT
+//     CREATURE, and the space finds a step away → Away
 //  1. a live named creature is within reach → Attack
 //  2. a ranked named contact, live or ghost, is placed, not here, and not
 //     fenced → Toward
@@ -363,6 +375,12 @@ type DecideOutput struct {
 // Every rung skips a contact with no place, and rungs 0 and 1 skip one the
 // space cannot measure. Known to be there, not known where, is not nearer
 // than anything and not within reach of anything.
+//
+// Rung 0 asks the mind once PER CREATURE rather than once per turn
+// (rpg-project#454), so "I keep my distance from her and nobody else" is a
+// thing a mind can say. The ladder is unchanged by it: the rungs, their
+// order, and what each one skips are exactly what they were, and a mind with
+// one answer for everybody behaves identically.
 //
 // The two flights differ on purpose. Keeping range (rung 0) is a preference:
 // an archer that cannot step away stands and shoots. Fear (rung 3) is not:
@@ -382,11 +400,6 @@ func Decide(in *DecideInput) (*DecideOutput, error) {
 		return nil, err
 	}
 
-	keep, err := in.Mind.Keep(&KeepInput{Situation: s})
-	if err != nil {
-		return nil, err
-	}
-
 	for _, c := range ranked.Ranked {
 		if !c.Named || !c.Creature() || c.Where() == "" {
 			continue
@@ -397,7 +410,22 @@ func Decide(in *DecideInput) (*DecideOutput, error) {
 			return nil, err
 		}
 
-		if !d.Known || d.Steps >= keep.Steps {
+		if !d.Known {
+			continue
+		}
+
+		// ASKED ABOUT THIS CREATURE, inside the loop. It used to be one
+		// question per turn, and a mind that keeps different distances
+		// from different figures was inexpressible — which is what a
+		// frightened monster is (rpg-project#454). A mind with one answer
+		// for everybody is unaffected: the same number comes back every
+		// time it is asked.
+		keep, err := in.Mind.Keep(&KeepInput{Situation: s, Contact: c})
+		if err != nil {
+			return nil, err
+		}
+
+		if d.Steps >= keep.Steps {
 			continue
 		}
 

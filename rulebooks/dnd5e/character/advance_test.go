@@ -43,11 +43,18 @@ func TestAdvanceSuite(t *testing.T) {
 	suite.Run(t, new(AdvanceTestSuite))
 }
 
-// fighter finalizes the shared level-1 fighter fixture onto this suite's bus.
+// fighter finalizes the shared level-1 fighter fixture onto this suite's bus,
+// with the experience for any level these tests take.
+//
+// Entitlement is a rule of its own with its own tests (see the experience
+// section below); every test here is about what a level DOES, and a fixture
+// that had to be topped up before each one would only say that the gate exists
+// twenty more times.
 func (s *AdvanceTestSuite) fighter() *Character {
 	draft := newFighterDraft(s.T())
 	char, err := draft.ToCharacter(s.ctx, "advancing-fighter", s.bus)
 	s.Require().NoError(err)
+	char.experience = ExperienceThresholdForLevel(MaxCharacterLevel)
 	return char
 }
 
@@ -419,7 +426,7 @@ func (s *AdvanceTestSuite) TestAdvanceRefusesALevelThatWouldNeedAChoiceItCannotT
 
 	s.Require().Error(err)
 	s.Nil(out)
-	s.ErrorContains(err, "requires choice")
+	s.ErrorContains(err, "requires choosing a subclass")
 	s.Equal(2, char.GetLevel(), "the character is still level 2")
 }
 
@@ -444,6 +451,7 @@ func (s *AdvanceTestSuite) mixedRecordCharacter() *Character {
 		id:            "two-fighter-levels-and-three-wizard",
 		classID:       classes.Fighter,
 		levels:        levels,
+		experience:    ExperienceThresholdForLevel(MaxCharacterLevel),
 		abilityScores: shared.AbilityScores{abilities.CON: 10},
 		resources:     make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
@@ -667,6 +675,7 @@ func (s *AdvanceTestSuite) TestAMonkSecondLevelGrantsNoFeatureAndIsStillValid() 
 	draft := newMonkDraft(s.T())
 	char, err := draft.ToCharacter(s.ctx, "advancing-monk", s.bus)
 	s.Require().NoError(err)
+	char.experience = ExperienceThresholdForLevel(2)
 	before := len(char.GetFeatures())
 	_, hadKi := char.GetResourceData()[resources.Ki]
 	s.Require().False(hadKi, "a level-1 monk has no Ki")
@@ -746,6 +755,7 @@ func (s *AdvanceTestSuite) oneFighterLevelAmongFive() *Character {
 		id:            "one-fighter-level-among-five",
 		classID:       classes.Fighter,
 		levels:        levels,
+		experience:    ExperienceThresholdForLevel(MaxCharacterLevel),
 		hitDice:       10,
 		hitPoints:     30,
 		maxHitPoints:  30,
@@ -812,6 +822,7 @@ func (s *AdvanceTestSuite) TestAdvanceSizesAClassPoolByTheClassLevel() {
 		id:            "two-monk-levels-among-six",
 		classID:       classes.Monk,
 		levels:        levels,
+		experience:    ExperienceThresholdForLevel(MaxCharacterLevel),
 		hitDice:       8,
 		hitPoints:     30,
 		maxHitPoints:  30,
