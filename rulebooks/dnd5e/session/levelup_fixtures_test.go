@@ -114,6 +114,30 @@ func advancingWizard(id string) *character.Data {
 	}
 }
 
+// advancingDruid is a level-3 druid who has earned level 4 — the first level
+// that asks a druid for a cantrip, and the one whose option list this build
+// cannot name in full.
+//
+// 2700 is the level-4 threshold. The sheet knows no cantrips, so nothing is
+// removed from the row and the whole authored list is offered.
+func advancingDruid(id string) *character.Data {
+	return &character.Data{
+		ID: id, PlayerID: "player-" + id, Name: "Dara", Level: 3,
+		Levels:     syntheticLevels(classes.Druid, 3),
+		ClassID:    classes.Druid,
+		RaceID:     "human",
+		Experience: 2700,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 10, abilities.DEX: 14, abilities.CON: 14,
+			abilities.INT: 12, abilities.WIS: 16, abilities.CHA: 8,
+		},
+		HitPoints: 21, MaxHitPoints: 21, ArmorClass: 13, ProficiencyBonus: 2,
+		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
+			resources.HitDice: {Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest},
+		},
+	}
+}
+
 // spellRefs writes bare spell ids the way a finalized sheet stores them, as
 // canonical refs. It panics on an id the catalog cannot name, so a fixture
 // that names a spell wrong fails as a broken fixture rather than as a broken

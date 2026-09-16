@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -153,4 +155,44 @@ func (s *NextLevelSuite) TestTheReadSavesNothing() {
 	s.Require().NoError(err)
 	s.Zero(characters.saves, "a read persists nothing")
 	s.Equal(1, characters.byID["belwyn"].Level, "and the stored sheet is untouched")
+}
+
+// TestAnOptionTheCatalogCannotNameIsRefused is the other half of failing
+// closed at the read, and it is REACHABLE TODAY rather than hypothetical.
+//
+// A druid's level-4 cantrip row offers Thorn Whip. The rulebook's choice
+// vocabulary spells its id "thornwhip" and the ref catalog spells it
+// "thorn-whip", so refs.Spells.ByID answers nil for an option that is really
+// on the list. That is a content mismatch in the rulebook module, not here —
+// and what this seam owes is to say so rather than hand the player a
+// ten-option menu where the class authored eleven.
+//
+// The cost of the alternative is not cosmetic. A choice whose count equals its
+// option list — the cleric's supported spells are one — becomes unanswerable
+// the moment a single option is dropped, and the player only finds out after
+// confirming. This test pins the loud failure; it starts passing for a
+// different reason, still green, on the day the two spellings are reconciled,
+// which is why it asserts on the spell's name rather than merely on an error.
+func (s *NextLevelSuite) TestAnOptionTheCatalogCannotNameIsRefused() {
+	mgr, _ := advancementManager(s.T(), testDice{}, advancingDruid("dara"))
+
+	authored := choices.GetClassRequirementsGainedAtLevel(classes.Druid, 4).Cantrips
+	s.Require().NotNil(authored, "the fixture is only interesting while this level asks for a cantrip")
+
+	out, err := mgr.NextLevel(context.Background(), &session.NextLevelInput{Character: "dara"})
+	if err == nil {
+		// The ONLY acceptable success is a menu as long as the class
+		// authored, which is what makes this row kill a silent drop rather
+		// than accept it. A verb that skipped the option it could not name
+		// arrives here with one fewer, and says nothing about it.
+		s.Len(out.Choices, 1)
+		s.Len(out.Choices[0].Options, len(authored.Options),
+			"every option the class authored reaches the player, or the read refuses")
+		s.T().Log("the rulebook's spell ids and its ref catalog now agree; this row no longer refuses")
+		return
+	}
+
+	s.ErrorIs(err, session.ErrLevelNotOffered)
+	s.Contains(err.Error(), "thornwhip", "the refusal names the option it could not put on the menu")
+	s.Nil(out)
 }
