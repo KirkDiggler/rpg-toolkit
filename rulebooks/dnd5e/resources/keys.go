@@ -48,11 +48,67 @@ const (
 	// Used by: Bardic Inspiration.
 	Inspiration coreResources.ResourceKey = "inspiration"
 
-	// SpellSlotLevel1 is the canonical pool for first-level spell slots.
-	// Level-1 Bards start with two uses from their class progression and
-	// recover them on a long rest.
+	// SpellSlotLevel1 is the pool for 1st-level spell slots. A class's slots
+	// at any level come from its classes.SpellProgression; the pool is sized
+	// from that table and recovers on a long rest.
 	SpellSlotLevel1 coreResources.ResourceKey = "spell_slot_level_1"
+
+	// SpellSlotLevel2 is the pool for 2nd-level spell slots.
+	SpellSlotLevel2 coreResources.ResourceKey = "spell_slot_level_2"
+
+	// SpellSlotLevel3 is the pool for 3rd-level spell slots.
+	SpellSlotLevel3 coreResources.ResourceKey = "spell_slot_level_3"
+
+	// SpellSlotLevel4 is the pool for 4th-level spell slots.
+	SpellSlotLevel4 coreResources.ResourceKey = "spell_slot_level_4"
+
+	// SpellSlotLevel5 is the pool for 5th-level spell slots.
+	SpellSlotLevel5 coreResources.ResourceKey = "spell_slot_level_5"
+
+	// SpellSlotLevel6 is the pool for 6th-level spell slots.
+	SpellSlotLevel6 coreResources.ResourceKey = "spell_slot_level_6"
+
+	// SpellSlotLevel7 is the pool for 7th-level spell slots.
+	SpellSlotLevel7 coreResources.ResourceKey = "spell_slot_level_7"
+
+	// SpellSlotLevel8 is the pool for 8th-level spell slots.
+	SpellSlotLevel8 coreResources.ResourceKey = "spell_slot_level_8"
+
+	// SpellSlotLevel9 is the pool for 9th-level spell slots.
+	SpellSlotLevel9 coreResources.ResourceKey = "spell_slot_level_9"
 )
+
+// MaxSpellLevel is the highest spell level the 2014 class tables reach, and so
+// the highest slot pool that exists.
+const MaxSpellLevel = 9
+
+// spellSlotKeys is the slot pool for each spell level, indexed by spell level.
+// Index 0 is unused: a cantrip costs no slot.
+var spellSlotKeys = [MaxSpellLevel + 1]coreResources.ResourceKey{
+	1: SpellSlotLevel1,
+	2: SpellSlotLevel2,
+	3: SpellSlotLevel3,
+	4: SpellSlotLevel4,
+	5: SpellSlotLevel5,
+	6: SpellSlotLevel6,
+	7: SpellSlotLevel7,
+	8: SpellSlotLevel8,
+	9: SpellSlotLevel9,
+}
+
+// SpellSlotLevel returns the pool key for a spell level, and whether that spell
+// level has one.
+//
+// A composed key would be one line shorter and would also mint
+// "spell_slot_level_0" and "spell_slot_level_12" on request — keys nothing
+// grants, nothing recovers and DisplayName does not know. The closed table is
+// what makes an out-of-range spell level a refusal instead of a resource.
+func SpellSlotLevel(spellLevel int) (coreResources.ResourceKey, bool) {
+	if spellLevel < 1 || spellLevel > MaxSpellLevel {
+		return "", false
+	}
+	return spellSlotKeys[spellLevel], true
+}
 
 // DisplayName returns the rulebook-owned display name for a resource key and
 // whether that key belongs to the closed owner-private status catalog. Unknown
@@ -74,6 +130,22 @@ func DisplayName(key coreResources.ResourceKey) (string, bool) {
 		return "Bardic Inspiration", true
 	case SpellSlotLevel1:
 		return "1st-level Spell Slots", true
+	case SpellSlotLevel2:
+		return "2nd-level Spell Slots", true
+	case SpellSlotLevel3:
+		return "3rd-level Spell Slots", true
+	case SpellSlotLevel4:
+		return "4th-level Spell Slots", true
+	case SpellSlotLevel5:
+		return "5th-level Spell Slots", true
+	case SpellSlotLevel6:
+		return "6th-level Spell Slots", true
+	case SpellSlotLevel7:
+		return "7th-level Spell Slots", true
+	case SpellSlotLevel8:
+		return "8th-level Spell Slots", true
+	case SpellSlotLevel9:
+		return "9th-level Spell Slots", true
 	default:
 		return "", false
 	}
