@@ -25,6 +25,12 @@ const (
 	variantMoveSealed      = "session:move:v2"
 	variantDeathSaveSealed = "session:death-save:v2"
 	variantEndTurnSealed   = "session:end-turn:v2"
+	// variantIntimidateSealed is the threat's own sealed string
+	// (rpg-project#454). Sealed like Move's and unlike Attack's, because a
+	// threat compiles no action definition: there is nothing about it that
+	// can go stale between the read and the click except the budget the row
+	// already reports.
+	variantIntimidateSealed = "session:intimidate:v2"
 	// variantActivatePrefix namespaces an activation's variant so an ability
 	// ref can never collide with a sealed string, however the ref catalog
 	// grows.
@@ -199,7 +205,7 @@ func canonicalSelectorVariant(raw json.RawMessage) (json.RawMessage, error) {
 // under the current version without an explicit bump.
 func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 	switch verb {
-	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbCast, VerbDeathSave, VerbReact:
+	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbCast, VerbDeathSave, VerbReact, VerbIntimidate:
 	default:
 		return fmt.Errorf("unsupported declaration verb %q", verb)
 	}
@@ -240,6 +246,8 @@ func selectorVariant(
 		return json.RawMessage(`"` + variantDeathSaveSealed + `"`), nil
 	case VerbEndTurn:
 		return json.RawMessage(`"` + variantEndTurnSealed + `"`), nil
+	case VerbIntimidate:
+		return json.RawMessage(`"` + variantIntimidateSealed + `"`), nil
 	case VerbReact:
 		if window == "" {
 			return nil, fmt.Errorf("react declaration requires a window id")

@@ -420,3 +420,21 @@ func projectDoor(d encounter.Door) Door {
 func projectApproach(a encounter.CheckApproach) DoorApproach {
 	return DoorApproach{Ability: a.Ability, Tool: a.Tool, DC: a.DC}
 }
+
+// checkApproachesOf is [projectApproach] the other way, for a check arriving
+// from a host rather than leaving for one ([SpawnInput.Intimidate]).
+//
+// NIL STAYS NIL, and it is load-bearing: an absent check means the rulebook
+// derives the DC from the monster's own stat block, and an empty-but-present
+// list would be refused as a check with no way through it.
+func checkApproachesOf(approaches []DoorApproach) []encounter.CheckApproach {
+	if approaches == nil {
+		return nil
+	}
+	out := make([]encounter.CheckApproach, 0, len(approaches))
+	for _, a := range approaches {
+		out = append(out, encounter.CheckApproach{Ability: a.Ability, Tool: a.Tool, DC: a.DC})
+	}
+
+	return out
+}

@@ -712,6 +712,8 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrAlreadyHeld)
 	case errors.Is(err, encounter.ErrNotVisible):
 		return fmt.Errorf("%w", ErrNotVisible)
+	case errors.Is(err, encounter.ErrUnwitnessed):
+		return fmt.Errorf("%w", ErrUnwitnessed)
 	case errors.Is(err, encounter.ErrTurnPaused):
 		// The composition refusing a verb because a driven turn is stopped
 		// mid-walk waiting on an answer. This seam's own word for that is

@@ -153,6 +153,36 @@ type SpawnInput struct {
 	// block does not re-arm a monster mid-run.
 	Actions []string
 
+	// Intimidate is the check a character must beat to frighten this monster
+	// — the author's placement from the dungeon file's `place[].intimidate`
+	// (rpg-project#454), forwarded to the composition untouched.
+	//
+	// THIS IS THE ONLY WAY AN AUTHORED DC REACHES A LIVE MONSTER, and it is
+	// Holds's argument again: a host that resolves monster content at
+	// runtime builds its world empty of members and brings every monster in
+	// through this verb, so a DC that could only be set at construction is a
+	// DC the game never sees. Without this field the sergeant priced at 12
+	// is talked down on its stat block's 10 and nobody can tell.
+	//
+	// EMPTY MEANS DERIVED, NOT UNGATED. Absent — the ordinary case —
+	// [Manager.Intimidate] rolls against the monster's own passive Insight.
+	// Nothing is gated; everything is a check.
+	//
+	// The seam's own approach type, converted at the boundary like Holds and
+	// Actions (S2: no inner type crosses this seam's exported surface).
+	Intimidate []DoorApproach
+
+	// OnIntimidated is the world fact every witness learns when a threat
+	// against this monster lands — the author's `place[].on.intimidated.fact`
+	// (rpg-project#454). Empty is the ordinary case: a scared goblin does not
+	// turn the camp unless the author planted the fact that says so.
+	//
+	// A FACT ID, forwarded as the word it was written. Unlike Holds, it is
+	// NOT key-prefixed: a fact is a word a disposition waits for by name,
+	// like a faction rather than a record, and dungeonspec compiles it
+	// verbatim for that reason.
+	OnIntimidated string
+
 	// Faction is the side this monster fights on — the author's placement
 	// from the dungeon file's `place[].faction` (rpg-project#375, the
 	// hold-out design §3 "Spawn"), forwarded to the composition untouched,
@@ -491,7 +521,11 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// composition's own rule (rpg-project#375, R4), and nothing about the
 	// players' side is authorable — see SpawnInput.Faction.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", "", false, nil, "", nil)
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", "", false, nil, "", nil,
+		// A PLAYER IS NOT INTIMIDABLE by this build: Manager.Intimidate
+		// refuses a target with no monster stat block to derive a DC from,
+		// so there is nothing for a joining character to carry.
+		nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -635,7 +669,8 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// to make it.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
-		sheet.Targeting.String(), sheet.Mind.String(), false, in.Holds, in.Faction, in.Arrives)
+		sheet.Targeting.String(), sheet.Mind.String(), false, in.Holds, in.Faction, in.Arrives,
+		in.Intimidate, in.OnIntimidated)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -723,7 +758,9 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	// No faction: a world NPC is never a side (rpg-toolkit#1404), and the
 	// composition puts a member of this kind in no faction at all.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "", "", blocksMovement, nil, "", nil)
+		0, 0, nil, "", "", blocksMovement, nil, "", nil,
+		// A world NPC is not a monster and carries no authored check.
+		nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -759,6 +796,7 @@ func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
 	speedFeet, sightFeet int, actions []encounter.ActionView, targeting, mind string, blocksMovement bool,
 	holds []string, faction string, arrives Arrival,
+	intimidate []DoorApproach, onIntimidated string,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -822,6 +860,12 @@ func place(
 		// (reserve.go): a session Arrival in, the composition's own Trigger
 		// out, nil staying nil.
 		Arrives: triggerOf(arrives),
+		// The author's shenanigan facts (rpg-project#454), converted at the
+		// boundary like Holds: the seam's own approach type in, the
+		// composition's CheckApproach out, nil staying nil. The fact id is a
+		// string on both sides, so it crosses untouched.
+		Intimidate:    checkApproachesOf(intimidate),
+		OnIntimidated: onIntimidated,
 	})
 	if err != nil {
 		return nil, translate(err)

@@ -29,11 +29,13 @@ import (
 // checker's CURRENT record — a rest or another effect between the question
 // and the answer is real state, not staleness to paper over.
 //
-// # Unlock is the only verb this answers today
+// # Which verb it finishes is the payload's to say
 //
-// [checkOfferWindowPayload.Door] names what to finish — see that field's
-// doc for why a future verb (Search, once it can pose at all) brings its
-// own field rather than a rename of this one.
+// [checkOfferWindowPayload.Door] and [checkOfferWindowPayload.Target] name
+// what to finish, and exactly one of them is ever set (that field's doc
+// says why, and thawCheckOfferPayload refuses a payload that sets both or
+// neither). A door finishes the Unlock the question paused; a target
+// finishes the Intimidate.
 func (m *Manager) answerCheckOffer(
 	ctx context.Context, scope *writeScope, window interrupt.Window, choice ReactChoice,
 ) (*ReactOutput, error) {
@@ -75,15 +77,29 @@ func (m *Manager) answerCheckOffer(
 		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
 	}
 
-	// Finish the unlock this check was for. encounter.Unlock records its own
-	// beat — the ordinary (unposed) Unlock path does not record separately
-	// either, so the resumed half stays symmetric with it.
-	if _, err := scope.enc.Unlock(&encounter.UnlockInput{
-		Door:    payload.Door,
-		Beaten:  out.Result.Success,
-		Actor:   encounter.MemberID(payload.Audience),
-		Total:   out.Result.Total,
-		Applied: out.Applied,
+	// Finish the verb this check was for. Each composition op records its
+	// own beat — the ordinary (unposed) paths do not record separately
+	// either, so the resumed half stays symmetric with them.
+	//
+	// The ACTION IS NOT CHARGED HERE. Intimidate charged it before it
+	// rolled, precisely so that a member who pauses cannot answer the
+	// question and then threaten somebody else with the same action.
+	if payload.Door != "" {
+		if _, err := scope.enc.Unlock(&encounter.UnlockInput{
+			Door:    payload.Door,
+			Beaten:  out.Result.Success,
+			Actor:   encounter.MemberID(payload.Audience),
+			Total:   out.Result.Total,
+			Applied: out.Applied,
+		}); err != nil {
+			return nil, fmt.Errorf("react: %w", translate(err))
+		}
+	} else if _, err := scope.enc.Intimidate(&encounter.IntimidateInput{
+		Actor:  encounter.MemberID(payload.Audience),
+		Target: encounter.MemberID(payload.Target),
+		Beaten: out.Result.Success,
+		DC:     out.Applied.DC,
+		Total:  out.Result.Total,
 	}); err != nil {
 		return nil, fmt.Errorf("react: %w", translate(err))
 	}

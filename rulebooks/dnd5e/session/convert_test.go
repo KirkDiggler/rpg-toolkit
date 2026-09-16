@@ -157,6 +157,21 @@ var omitted = map[string]string{
 	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
 	"encounter.Member.Mind":      "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Mind",
 
+	// Intimidate and OnIntimidated (rpg-project#454) are the placement's
+	// authored shenanigan facts, read by ONE consumer: Manager.Intimidate,
+	// which asks the composition for them at the moment it needs a DC and
+	// hands the DC straight back on IntimidateOutput. A roster listing
+	// answers "who is here, and where"; a monster's difficulty class is not
+	// part of that question, and the number reaches a client on the
+	// response and on the `intimidated` beat either way. The fact is not a
+	// client concern at all — what the world learns is the world's, read
+	// through the stance it flips. Project them when a real reader needs
+	// them ahead of the roll, the way SpeedFeet and friends will be.
+	"encounter.Member.Intimidate": "the authored check Manager.Intimidate reads at roll time; " +
+		"the DC reaches a client on the response and the beat, not on a roster row",
+	"encounter.Member.OnIntimidated": "what the WORLD learns when a threat lands; a client reads the " +
+		"consequence as a stance change, never the authored fact id",
+
 	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
 	// occupancy check at Join/Step time — it decides whether an arrival is
 	// refused, not something a roster listing reports back afterward. The

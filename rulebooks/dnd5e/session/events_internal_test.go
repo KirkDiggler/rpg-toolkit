@@ -152,6 +152,8 @@ func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
 			`{"beat":"arrived","id":"trap-1","kind":"hazard","cell":{"x":1,"y":4}}`},
 		{"door with no door", EventDoor, `{"beat":"door","state":"open"}`},
 		{"door with no state", EventDoor, `{"beat":"door","door":"gate"}`},
+		{"intimidated with no actor", EventIntimidated, `{"beat":"intimidated","target":"goblin","dc":9,"total":14,"beaten":true}`},
+		{"intimidated with no target", EventIntimidated, `{"beat":"intimidated","actor":"alice","dc":9,"total":14,"beaten":true}`},
 	}
 
 	for _, tc := range cases {
@@ -175,6 +177,44 @@ func TestBodyForAcceptsACompleteBeat(t *testing.T) {
 		Attacker: "alice", Target: "bob", Roll: 15, Total: 20, Against: 12, Damage: 8,
 		Attack: AttackRef{Ref: "longsword", Name: "Longsword", DamageType: DamageSlashing},
 	}, body)
+}
+
+// TestTheIntimidatedBeatDecodes is the threat's own decode pin
+// (rpg-project#454), and it is worth more than most: a threat writes no
+// outcome beat and a missed one writes nothing else at all, so this beat is
+// the ONLY account of the roll. Untyped, the outcome reaches nobody — which
+// is what shipped before this case existed.
+func TestTheIntimidatedBeatDecodes(t *testing.T) {
+	t.Run("a beaten threat", func(t *testing.T) {
+		kind, body := decodeBeat([]byte(
+			`{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":14,"beaten":true}`))
+		require.Equal(t, EventIntimidated, kind)
+		require.Equal(t, IntimidatedBody{
+			Actor: "alice", Target: "goblin", DC: 9, Total: 14, Beaten: true,
+		}, body)
+	})
+
+	// THE MISSED ONE IS THE CASE THAT MATTERS. Nothing else in the run
+	// records it, so `beaten: false` decoding as a real body rather than a
+	// nil one is the whole difference between a table that saw the roll and
+	// a table that saw nothing.
+	t.Run("a missed threat", func(t *testing.T) {
+		kind, body := decodeBeat([]byte(
+			`{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":4,"beaten":false}`))
+		require.Equal(t, EventIntimidated, kind)
+		require.Equal(t, IntimidatedBody{
+			Actor: "alice", Target: "goblin", DC: 9, Total: 4, Beaten: false,
+		}, body)
+	})
+
+	// And it goes back out with every key present: `beaten:false` dropped
+	// for being false is indistinguishable to a non-Go client from a beat
+	// that never said (TestFalseIsAnAnswerOnTheWire's law).
+	t.Run("false is an answer on the way out too", func(t *testing.T) {
+		raw, err := json.Marshal(IntimidatedBody{Actor: "alice", Target: "goblin", DC: 9})
+		require.NoError(t, err)
+		require.JSONEq(t, `{"actor":"alice","target":"goblin","dc":9,"total":0,"beaten":false}`, string(raw))
+	})
 }
 
 // TestStruckBodyDecodesReplayDetail pins the second half of the projection:

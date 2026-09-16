@@ -925,6 +925,24 @@ const (
 	// (rpg-toolkit#1020) narrows it.
 	EventDoor EventKind = "door"
 
+	// EventIntimidated reports somebody threatening a member — landed or
+	// not (rpg-project#454, the first shenanigan). Every witness to the
+	// threat hears it, which is the audience the composition computed for
+	// the deed itself.
+	//
+	// THE BEAT IS THE ONLY ACCOUNT OF THE ROLL. Unlike a swing, a threat
+	// writes no outcome beat, and a missed one writes nothing else at all
+	// — no deed, no fact, no change to the monster. So a client that
+	// cannot decode this cannot tell the table what happened, which is
+	// exactly what shipped before this kind existed. The composition
+	// exports the beat's name ([encounter.BeatIntimidated]) so a rename
+	// fails to compile here rather than silently going untyped again.
+	//
+	// The composition's word crosses unchanged, like "held" and "arrived":
+	// "intimidated" is the statement of what happened, and the wire's
+	// EVENT_KIND_INTIMIDATED says the same (rpg-api-protos#339).
+	EventIntimidated EventKind = "intimidated"
+
 	// EventDoorRevealed is a concealed door entering THIS RECIPIENT's
 	// knowledge — their own search, a crossing, or perceiving it open. The
 	// body is the patch for the recipient's cached atlas and door list:
@@ -1884,6 +1902,37 @@ type DoorBody struct {
 }
 
 func (DoorBody) isEventBody() {}
+
+// IntimidatedBody is EventIntimidated's typed body: who threatened whom,
+// what they had to beat, what they rolled, and whether it landed.
+//
+// NO OMITEMPTY ON Beaten, DC OR Total, and that is the point rather than an
+// oversight ([TestFalseIsAnAnswerOnTheWire]'s law). `beaten: false` is the
+// whole content of a missed threat — the one case where nothing else is
+// written — and a key dropped for being false is indistinguishable to a
+// non-Go client from a beat that never said. The same reasoning
+// [IntimidateOutput.Total] gives for carrying a zero.
+type IntimidatedBody struct {
+	// Actor is who made the threat.
+	Actor string `json:"actor"`
+
+	// Target is who was threatened. The witnesses are the beat's audience
+	// and are not listed: a recipient knows it saw this because it was
+	// delivered the beat at all.
+	Target string `json:"target"`
+
+	// DC is what the check had to reach — the monster's own, authored on
+	// the placement or derived from its stat block.
+	DC int `json:"dc"`
+
+	// Total is what the check totalled.
+	Total int `json:"total"`
+
+	// Beaten is whether it landed.
+	Beaten bool `json:"beaten"`
+}
+
+func (IntimidatedBody) isEventBody() {}
 
 // DoorRevealedBody is EventDoorRevealed's typed body: a concealed door as
 // the recipient's own atlas and door list now carry it — the patch for both
