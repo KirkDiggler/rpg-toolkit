@@ -27,8 +27,12 @@ func castingCleric() *character.Data {
 			abilities.INT: 10, abilities.WIS: 16, abilities.CHA: 8,
 		},
 		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 10, ProficiencyBonus: 2,
+		// Light is the unsupported cantrip these tests lean on. Guidance was
+		// one too until dnd5e v0.171.0 gave it cast content, at which point
+		// it started answering the cast panel and stopped being a stand-in
+		// for a cantrip the panel must not offer.
 		KnownCantrips: []string{
-			refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
+			refs.Spells.SacredFlame().String(), refs.Spells.Light().String(),
 		},
 	}
 }
@@ -151,7 +155,7 @@ func (s *CastSuite) TestSacredFlameRejectsForgedAndUnownedOffers() {
 	row := s.castRow(spells.SacredFlame)
 	s.refuseSacredFlame("forged", "skeleton")
 	s.refuseSacredFlame(row.ID, "nobody")
-	s.characters.byID[s.member].KnownCantrips = []string{refs.Spells.Guidance().String(), refs.Spells.Light().String()}
+	s.characters.byID[s.member].KnownCantrips = []string{refs.Spells.Light().String()}
 	s.Empty(s.castRows())
 	s.refuseSacredFlame(row.ID, "skeleton")
 }

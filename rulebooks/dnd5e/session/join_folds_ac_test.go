@@ -87,6 +87,7 @@ func barbarianCharacter(id string) *character.Data {
 		PlayerID:         "player-" + id,
 		Name:             "Standre",
 		Level:            3,
+		Levels:           syntheticLevels(classes.Barbarian, 3),
 		ProficiencyBonus: 2,
 		RaceID:           races.Human,
 		ClassID:          classes.Barbarian,

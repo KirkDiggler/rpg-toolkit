@@ -216,10 +216,15 @@ func (m *memCharacters) SaveCharacter(_ context.Context, data *character.Data) e
 // roster, never into the Characters store Attack and now Move both read.
 func aliceTheFighter() *character.Data {
 	return &character.Data{
-		ID:               "alice",
-		PlayerID:         "player-alice",
-		Name:             "Alice",
-		Level:            3,
+		ID:       "alice",
+		PlayerID: "player-alice",
+		Name:     "Alice",
+		Level:    3,
+		Levels: []character.LevelEntry{
+			{Level: 1, ClassID: classes.Fighter, HitPointGain: 12, HitPointMethod: character.HitPointMethodMax},
+			{Level: 2, ClassID: classes.Fighter, HitPointGain: 8, HitPointMethod: character.HitPointMethodAverage},
+			{Level: 3, ClassID: classes.Fighter, HitPointGain: 8, HitPointMethod: character.HitPointMethodAverage},
+		},
 		ProficiencyBonus: 2,
 		RaceID:           races.Human,
 		ClassID:          classes.Fighter,
@@ -231,10 +236,15 @@ func aliceTheFighter() *character.Data {
 
 func bobTheDwarf() *character.Data {
 	return &character.Data{
-		ID:               "bob",
-		PlayerID:         "player-bob",
-		Name:             "Bob",
-		Level:            3,
+		ID:       "bob",
+		PlayerID: "player-bob",
+		Name:     "Bob",
+		Level:    3,
+		Levels: []character.LevelEntry{
+			{Level: 1, ClassID: classes.Fighter, HitPointGain: 12, HitPointMethod: character.HitPointMethodMax},
+			{Level: 2, ClassID: classes.Fighter, HitPointGain: 8, HitPointMethod: character.HitPointMethodAverage},
+			{Level: 3, ClassID: classes.Fighter, HitPointGain: 8, HitPointMethod: character.HitPointMethodAverage},
+		},
 		ProficiencyBonus: 2,
 		RaceID:           races.Dwarf,
 		ClassID:          classes.Fighter,
