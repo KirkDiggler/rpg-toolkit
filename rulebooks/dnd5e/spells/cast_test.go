@@ -283,6 +283,36 @@ func (s *CastContentSuite) TestTollTheDeadCarriesBothDamagePoolsWISAndNecrotic()
 	s.Nil(profile.Concentration)
 }
 
+func (s *CastContentSuite) TestWordOfRadianceCarriesItsBurstConstitutionSaveAndRadiantDamage() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.WordOfRadiance, SpellSaveDC: 14})
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Equal(refs.Spells.WordOfRadiance().String(), definition.Ref.String())
+	s.Equal("Word of Radiance", definition.Name)
+	s.Nil(definition.Attack)
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(definition.Cost.Pools, "cantrips spend no spell-slot pool")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(5, profile.RangeFeet, "each creature you can see within 5 feet of you")
+	s.Equal(actions.CastTargetOneCreature, profile.Target, "Bane's chooser shape, not an area burst")
+	s.Equal(1, profile.MinTargets)
+	s.Equal(32, profile.MaxTargets, "a wire-schema ceiling deliberately wider than RAW's own, not a rule")
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.CON}, profile.Save.Abilities)
+	s.Equal(14, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess)
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence)
+	s.Require().Len(profile.Damage, 1)
+	s.Equal("1d6", profile.Damage[0].Dice)
+	s.Equal(damage.Radiant, profile.Damage[0].Type)
+	s.Empty(profile.DamageIfInjured)
+	s.Empty(profile.Effects)
+	s.Nil(profile.Concentration)
+}
+
 func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantrips() {
 	s.Equal([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.SpareTheDying},
 		spells.Castable([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.Light, spells.SpareTheDying}))

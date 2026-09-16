@@ -566,6 +566,50 @@ character creation already offers it; nothing to change there either.
 
 Sources: [2014 Toll the Dead](https://www.dndbeyond.com/spells/2141-toll-the-dead).
 
+Shipped: root #1783 (`rulebooks/dnd5e v0.177.0`), resolution #1784
+(`rulebooks/dnd5e/resolution v0.51.0`). rpg-api's pin bump merged as #999.
+Live-verified against a real running server: a fresh target took `1d8`
+necrotic, the same target re-cast on while already injured took `1d12`.
+
+## Word of Radiance: free — reuses Bane's chooser shape and Sacred Flame's save/damage shape
+
+Word of Radiance (2014 PHB, Evocation cantrip): "Each creature of your
+choice that you can see within 5 feet of you must succeed on a
+Constitution saving throw or take 1d6 radiant damage." Range: Self.
+No new toolkit capability — `CastTargetOneCreature` with `MinTargets`/
+`MaxTargets` already carries a chooser list (Bane), and a single Save +
+Damage pair with no delivered condition already resolves correctly
+through the same per-target loop (Sacred Flame). Combining the two is
+data, not code: confirmed by reading `resolution/action.go`'s
+`resolveTarget`/`shapeTarget`, which drive each target through its own
+contest and shape whatever the profile declares — Damage-only,
+Effects-only, or (untested combination until this spell, but nothing
+in the loop branches on it) both — with no branch on target count.
+
+**The MaxTargets number.** RAW places no numeric cap on this cantrip —
+unlike Bane's explicit "up to three creatures," Word of Radiance's limit
+is purely geometric (whoever is within 5 feet). `CastProfile.Validate()`
+requires `CastTargetOneCreature` to declare a concrete
+`MinTargets`/`MaxTargets` pair; there is no "unbounded" sentinel, and
+adding one would itself be new capability work — the "free" spell would
+stop being free. The true geometric ceiling on this build's grid kind
+(hex) is 6 neighbors, but the declared `WordOfRadianceMaxTargets` is 32,
+deliberately wider than RAW's own real limit, on the user's explicit
+call: a tight RAW-matching cap risks silently truncating a legal target
+list if some future grid kind or edge case allows more than 6 adjacent
+creatures, whereas a generous ceiling never actually binds in practice —
+candidates are already filtered to genuine adjacency at cast time
+(confirmed live during the Toll the Dead range-filtering behavior), so
+the schema number is a safety margin, never a rule.
+
+One PR only (root) — Sacred Flame's wire shape exactly, no pose, no new
+async capability, so resolution needs no field and session needs no
+change. Already in Cleric's hardcoded cantrip choice list
+(`character/choices/spell_choices.go`), same as Toll the Dead before it —
+character creation already offers it.
+
+Sources: [2014 Word of Radiance](https://www.dndbeyond.com/spells/2143-word-of-radiance).
+
 ## Spare the Dying wiring inspection
 
 ### Executable content after session adoption

@@ -192,6 +192,25 @@ const GuidanceTurnEnds = 10
 // ResistanceReachFeet is Resistance's touch reach.
 const ResistanceReachFeet = 5
 
+// WordOfRadianceRangeFeet is Word of Radiance's burst reach: "each creature
+// of your choice that you can see within 5 feet of you" (2014 PHB p.290).
+const WordOfRadianceRangeFeet = 5
+
+// WordOfRadianceDamage is the radiant damage at character levels 1–4.
+const WordOfRadianceDamage = "1d6"
+
+// WordOfRadianceMaxTargets bounds the wire schema's target list; it is not a
+// RAW limit. RAW's own cap is "each creature ... you can see within 5 feet",
+// which this build's CastTargetOneCreature has no way to express as
+// "unbounded" — MinTargets/MaxTargets are always concrete ints (see
+// CastProfile.Validate). Six is the true geometric ceiling on a hex grid (the
+// grid kind this build actually plays on), but 32 is declared instead,
+// deliberately wider than RAW, so a future grid kind or an edge case this
+// build hasn't hit yet can't silently truncate a legal target list. The real
+// limiter stays candidates, filtered to genuine adjacency at cast time,
+// exactly as every other ranged cast already is.
+const WordOfRadianceMaxTargets = 32
+
 // ResistanceTurnEnds is "up to one minute", [GuidanceTurnEnds]'s own reading
 // applied to Resistance's identical duration.
 const ResistanceTurnEnds = 10
@@ -624,6 +643,26 @@ var castContent = map[Spell]castProfileBuilder{
 				},
 				Damage:          []damage.Damage{{Dice: TollTheDeadDamage, Type: damage.Necrotic}},
 				DamageIfInjured: []damage.Damage{{Dice: TollTheDeadInjuredDamage, Type: damage.Necrotic}},
+			}
+		},
+	},
+	WordOfRadiance: {
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Word of Radiance",
+		cost:    cantripCost(),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet:  WordOfRadianceRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: WordOfRadianceMaxTargets,
+				Save: &saves.SaveGate{
+					Abilities:  []abilities.Ability{abilities.CON},
+					DC:         saves.DCStatic(spellSaveDC),
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage: []damage.Damage{{Dice: WordOfRadianceDamage, Type: damage.Radiant}},
 			}
 		},
 	},
