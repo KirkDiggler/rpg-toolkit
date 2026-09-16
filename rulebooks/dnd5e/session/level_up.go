@@ -279,10 +279,32 @@ func translateAdvance(err error) error {
 		return fmt.Errorf("%w: %v", ErrBadLevelRequest, err)
 	case rpgerr.CodePrerequisiteNotMet, rpgerr.CodeTimingRestriction,
 		rpgerr.CodeNotAllowed, rpgerr.CodeInvalidState:
-		// The request was fine and the answer is no: the experience is not
-		// earned yet, the character is in a fight, the level names another
-		// class, the record cannot be advanced from. Each of these clears on
+		// The request was fine and the answer is no. Each of these clears on
 		// its own, which is why they are one sentinel and not four.
+		//
+		// Which of the four this verb can actually produce today, since a
+		// reviewer asked rather than assuming (and the answer is not "all"):
+		//
+		//   PrerequisiteNotMet  LIVE — the experience is not earned yet.
+		//   TimingRestriction   LIVE — the sheet holds a live action economy.
+		//                       The headline caveat of this verb, pinned by
+		//                       TestASheetInAFightIsRefusedAsATimingRestriction.
+		//   InvalidState        LIVE — a stored sheet with no level record to
+		//                       advance from.
+		//   NotAllowed          NOT REACHABLE THROUGH THIS VERB, two ways over.
+		//                       The rulebook raises it for a level taken in
+		//                       another class, and this verb reads the class
+		//                       off the sheet it just loaded, so the mismatch
+		//                       cannot arise — until LevelUpInput gains a
+		//                       class, which is the stated multiclassing plan
+		//                       and one line away. It also raises it for a
+		//                       requirement this build has no content to
+		//                       answer, which levelChoicesOf now refuses
+		//                       earlier and with its own message (see #1795).
+		//
+		// The arm stays for both: one is a seam whose opening is planned, and
+		// the other is a rule this package is deliberately holding early and
+		// intends to hand back.
 		return fmt.Errorf("%w: %v", ErrCannotAdvance, err)
 	default:
 		return err
