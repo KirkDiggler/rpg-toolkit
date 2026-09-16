@@ -5,6 +5,7 @@ package behavior
 
 import (
 	"cmp"
+	"math"
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -75,21 +76,78 @@ type Grudge struct {
 	Patience uint64
 	// Excuse is what lets a SEEN actor off before Patience runs out.
 	Excuse Excuse
+	// Provokes is the deed verbs this grudge answers — what counts as a
+	// deed done to me (rpg-project#454). A swing always did;
+	// [encounter.DeedIntimidate] is the first verb that made the question
+	// worth asking, because a threat provokes a berserker and slides off a
+	// retaliator.
+	//
+	// EMPTY PROVOKES NOBODY, which keeps the zero [Grudge] honest: a mind
+	// that holds no grudge answers no verb, and an author who set a
+	// patience and named no verb wrote down a grudge nothing can trigger.
+	// Fail-closed is the same call [ExcuseNever] makes one field up, for
+	// the same reason — a default here would have a profile assert a rule
+	// its author never typed.
+	//
+	// WHAT A DEED IS WORTH IS THE PRESET'S, and this is where it says so.
+	// [Retaliator.Judge] no longer reads a verb at all: whether two
+	// holdings are one figure is a perception claim, and what the figure
+	// DID about me is this list.
+	Provokes []string
+}
+
+// provoked reports whether this verb is one the grudge answers.
+func (g Grudge) provoked(verb string) bool {
+	return slices.Contains(g.Provokes, verb)
 }
 
 // fresh reports whether a deed confirmed at that tick is still worth
-// answering at this one. A deed confirmed at or after the clock's own
-// high-water is as fresh as a deed gets, which is why the age is floored
-// rather than subtracted straight: the clock is the situation's and the
-// testimony's counters are perception's, and nothing here is the party that
-// gets to assume they agree.
+// answering at this one.
 func (g Grudge) fresh(at, confirmed uint64) bool {
+	return within(g.Patience, at, confirmed)
+}
+
+// Fear is what a mind does about being frightened: how long the memory of a
+// threat keeps it away from whoever made it. The second half of a
+// [Retaliator]'s profile beside [Grudge], and a plain value for the same
+// reason — a preset is a literal, and a mind that is never cowed is the
+// zero (rpg-project#454, ideas/shenanigans/intimidate.md).
+//
+// ZERO VALUE: NEVER COWED. Patience is a span on [Grudge.Patience]'s
+// reading — how many ticks a threat keeps working, counting from the tick
+// it was confirmed — so a span of zero is a threat that never worked at
+// all. A mind with no Fear holds an intimidate deed and does nothing with
+// it, which is exactly what the retaliator does.
+//
+// A STRUCT AND NOT A NUMBER, deliberately. Slice two of the shenanigans
+// folder adds Company — fear lapsing early in the company of enough live
+// allies — and a bare `FearPatience int` would have to become a struct
+// then. This is the shape that grows a field.
+type Fear struct {
+	// Patience is how many ticks a threat keeps the mind away from whoever
+	// made it. 3 is the coward's, the retaliator's number for the
+	// retaliator's reason: a fight's length.
+	Patience uint64
+}
+
+// fresh reports whether a threat confirmed at that tick is still working at
+// this one.
+func (f Fear) fresh(at, confirmed uint64) bool {
+	return within(f.Patience, at, confirmed)
+}
+
+// within is the span both patiences are read by. A deed confirmed at or
+// after the clock's own high-water is as fresh as a deed gets, which is why
+// the age is floored rather than subtracted straight: the clock is the
+// situation's and the testimony's counters are perception's, and nothing
+// here is the party that gets to assume they agree.
+func within(patience, at, confirmed uint64) bool {
 	var age uint64
 	if at > confirmed {
 		age = at - confirmed
 	}
 
-	return age < g.Patience
+	return age < patience
 }
 
 // Retaliator is the rulebook's one grudge-holding mind, and the three words
@@ -144,6 +202,9 @@ type Retaliator struct {
 	Space behavior.Space
 	// Grudge is what it does about being attacked. The zero holds none.
 	Grudge Grudge
+	// Fear is what it does about being frightened. The zero is never
+	// cowed, which is every mind but the coward today.
+	Fear Fear
 	// Room is how much space it wants between itself and a live creature,
 	// in the Space's own steps — what [Retaliator.Keep] answers, and the
 	// only field the ladder's rung 0 reads. 0 stands and fights; 2 backs
@@ -167,9 +228,22 @@ type Retaliator struct {
 	Ranged func(item string) bool
 }
 
-// Judge attaches every attack deed to the member it names as actor, when
-// the actor is held at all. The deed's subject is qualified by channel, so
-// the store never merged them; only this claim does.
+// Judge attaches every deed to the member it names as actor, when the actor
+// is held at all. The deed's subject is qualified by channel, so the store
+// never merged them; only this claim does.
+//
+// IT READS NO VERB, and it used to (rpg-project#454). "These two holdings
+// are one figure" is a claim about PERCEPTION — the woman I can see is the
+// one the testimony names — and it is true whatever she did. What the deed
+// is worth is a separate question with a separate answer, and the answer
+// lives on the profile: [Grudge.Provokes] for a swing worth returning,
+// [Retaliator.Fear] for a threat worth running from.
+//
+// The filter had to go for fear to work at all. A coward's grudge is the
+// zero, so a verb-filtered Judge would leave the threat unattached — a
+// deeds handle floating beside the fighter instead of ON her — and [Keep]
+// would be asked about a contact holding no memory of the one thing that
+// happened to it.
 func (r *Retaliator) Judge(in *behavior.JudgeInput) (*behavior.JudgeOutput, error) {
 	held := func(id core.EntityID) bool {
 		return slices.ContainsFunc(in.Holdings, func(h behavior.Holding) bool { return h.Subject == id })
@@ -182,7 +256,7 @@ func (r *Retaliator) Judge(in *behavior.JudgeInput) (*behavior.JudgeOutput, erro
 			continue
 		}
 
-		if d, err := deed.Decode(h.Payload); err == nil && d.Verb == encounter.DeedAttack && d.Actor != "" && held(d.Actor) {
+		if d, err := deed.Decode(h.Payload); err == nil && d.Actor != "" && held(d.Actor) {
 			same = append(same, behavior.Pair{A: h.Subject, B: d.Actor})
 		}
 	}
@@ -253,9 +327,9 @@ func (r *Retaliator) Rank(in *behavior.RankInput) (*behavior.RankOutput, error) 
 	return &behavior.RankOutput{Ranked: ranked}, nil
 }
 
-// grudge reports whether the contact holds an attack deed against the actor
-// itself that is still worth answering: inside the grudge's patience, and
-// not excused.
+// grudge reports whether the contact holds a PROVOKING deed against the
+// actor itself that is still worth answering: a verb this profile answers
+// ([Grudge.Provokes]), inside the grudge's patience, and not excused.
 //
 // A mind may decode a payload itself (mind/behavior R2), which is why the
 // hands are read here and [behavior.Reading] stays as narrow as it is: what
@@ -267,7 +341,7 @@ func (r *Retaliator) grudge(c behavior.Contact, s behavior.Situation) bool {
 		}
 
 		d, err := deed.Decode(h.Payload)
-		if err != nil || d.Verb != encounter.DeedAttack || d.Target != s.Actor {
+		if err != nil || !r.Grudge.provoked(d.Verb) || d.Target != s.Actor {
 			continue
 		}
 
@@ -347,7 +421,56 @@ func rangedByCatalog(item string) bool {
 	return ok && w.IsRanged()
 }
 
-// Keep is [Retaliator.Room]. A profile that wants none stands and fights.
-func (r *Retaliator) Keep(*behavior.KeepInput) (*behavior.KeepOutput, error) {
+// Keep is [Retaliator.Room] — or, from somebody this mind is still afraid
+// of, every step there is.
+//
+// FEAR IS PER CREATURE, which is why the ladder asks this per creature
+// (mind/behavior, rpg-project#454). A cowed goblin runs from the fighter
+// who threatened it and walks straight past the wizard standing just as
+// close; one number for the room could not say that.
+//
+// The number for somebody feared is [math.MaxInt] rather than a sight
+// range, and that is the honest one: what the monster wants is not a
+// distance, it is to not be looked at. The ladder already stops where the
+// design says it should — rung 0 only ever considers a CREATURE, and a
+// creature is a figure some current holding reads as one, so the moment the
+// fighter is out of sight and becomes a memory this answer is never asked
+// about her again and the goblin goes back to shooting. "As far as it can
+// see the fighter" is the outcome, not a number anybody had to compute.
+//
+// The room still applies to everybody else, and to the feared one after the
+// threat wears off: intimidation ADDS fear on top of the coward's two-step
+// flinch, it does not replace it (rpg-project#454).
+func (r *Retaliator) Keep(in *behavior.KeepInput) (*behavior.KeepOutput, error) {
+	if in != nil && r.cowed(in.Contact, in.Situation) {
+		return &behavior.KeepOutput{Steps: math.MaxInt}, nil
+	}
+
 	return &behavior.KeepOutput{Steps: r.Room}, nil
+}
+
+// cowed reports whether the contact holds a threat against the actor itself
+// that is still working: an intimidate deed, inside the fear's patience.
+//
+// NO EXCUSE APPLIES. An [Excuse] is a rule about what a figure is holding,
+// and a threat is not a weapon — putting the sword away does not unsay it.
+// The clock is the only way out, which is what [Fear] having one field
+// means.
+func (r *Retaliator) cowed(c behavior.Contact, s behavior.Situation) bool {
+	for _, h := range c.Holdings {
+		if h.Channel != deed.Channel {
+			continue
+		}
+
+		d, err := deed.Decode(h.Payload)
+		if err != nil || d.Verb != encounter.DeedIntimidate || d.Target != s.Actor {
+			continue
+		}
+
+		if r.Fear.fresh(s.At, h.Confirmed) {
+			return true
+		}
+	}
+
+	return false
 }

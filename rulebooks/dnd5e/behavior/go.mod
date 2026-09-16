@@ -4,11 +4,11 @@ go 1.24.1
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
-	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.3.1
+	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.169.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.81.0
-	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.13.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.176.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.85.0
+	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.15.0
 	github.com/stretchr/testify v1.11.1
 )
 
