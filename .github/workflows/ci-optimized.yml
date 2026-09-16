@@ -233,8 +233,23 @@ jobs:
     - name: Every ADR is summarised in docs/adr/DECISIONS.md
       run: ./scripts/check-decisions.sh
 
+  # A pseudo-version is how a wave is BUILT and is correct there. On main it
+  # names a commit on a branch that was deleted when its PR merged — a dead pin,
+  # the same failure as a leaked replace. #1761 merged one; #1773 repaired it.
+  #
+  # Deliberately outside the changed-modules matrix: the rotten pin is usually in
+  # a module the PR never touched, so this scans the whole repo every time. It is
+  # also deliberately not in the pre-commit hook, which a go.mod-only commit skips
+  # entirely — which is exactly how #1761 got through.
+  pseudo-versions:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: No go.mod pins an rpg-toolkit module at a pseudo-version
+      run: ./scripts/check-pseudo-versions.sh
+
   ci-status:
-    needs: [changes, test-changed, test-all, docs-decisions]
+    needs: [changes, test-changed, test-all, docs-decisions, pseudo-versions]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -245,6 +260,7 @@ jobs:
         echo "Changed modules test: ${{ needs.test-changed.result }}"
         echo "All modules test: ${{ needs.test-all.result }}"
         echo "ADR digest: ${{ needs.docs-decisions.result }}"
+        echo "Pseudo-version pins: ${{ needs.pseudo-versions.result }}"
         
         # Fail if any required job failed
         if [[ "${{ needs.changes.result }}" == "failure" ]]; then
@@ -266,6 +282,11 @@ jobs:
 
         if [[ "${{ needs.docs-decisions.result }}" == "failure" ]]; then
           echo "❌ An ADR is missing from docs/adr/DECISIONS.md"
+          exit 1
+        fi
+
+        if [[ "${{ needs.pseudo-versions.result }}" == "failure" ]]; then
+          echo "❌ A go.mod pins an rpg-toolkit module at a pseudo-version"
           exit 1
         fi
         
