@@ -636,7 +636,7 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 // alice is then refused the verbs a downed member cannot drive.
 func (s *SentinelSuite) TestADownedActorIsRefusedInOurWords() {
 	alice := armedFighter("alice")
-	alice.Level = 5
+	setLevel(alice, 5)
 	bob := armedFighter("bob")
 	// The lawful damage die caps the longsword at 8 + 3 per swing, so two
 	// swings (22) must be enough to put bob at zero inside alice's own

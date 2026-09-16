@@ -222,6 +222,7 @@ func plainHallWorld(t fataler) *encounter.EncounterData {
 func sharpEyed(id string) *character.Data {
 	return &character.Data{
 		ID: id, PlayerID: "player-" + id, Name: "Sharp", Level: 3,
+		Levels:           syntheticLevels(classes.Rogue, 3),
 		ProficiencyBonus: 2, RaceID: races.Dwarf, ClassID: classes.Rogue,
 		HitPoints: 20, MaxHitPoints: 20, ArmorClass: 14,
 		AbilityScores: shared.AbilityScores{abilities.WIS: 14, abilities.DEX: 14},
@@ -708,6 +709,7 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 
 	mira := &character.Data{
 		ID: "mira", PlayerID: "player-mira", Name: "Mira", Level: 3,
+		Levels:           syntheticLevels(classes.Ranger, 3),
 		ProficiencyBonus: 2, RaceID: races.Elf, ClassID: classes.Ranger,
 		HitPoints: 20, MaxHitPoints: 20, ArmorClass: 14,
 		AbilityScores: shared.AbilityScores{abilities.WIS: 16, abilities.INT: 10},

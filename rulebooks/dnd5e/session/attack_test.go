@@ -49,6 +49,7 @@ func unarmedFighter(id string) *character.Data {
 		PlayerID: "player-" + id,
 		Name:     id,
 		Level:    3,
+		Levels:   syntheticLevels(classes.Fighter, 3),
 		ClassID:  classes.Fighter,
 		RaceID:   races.Human,
 		AbilityScores: shared.AbilityScores{
@@ -70,6 +71,7 @@ func armedFighter(id string) *character.Data {
 		PlayerID: "player-" + id,
 		Name:     id,
 		Level:    3,
+		Levels:   syntheticLevels(classes.Fighter, 3),
 		ClassID:  classes.Fighter,
 		RaceID:   races.Human,
 		AbilityScores: shared.AbilityScores{
@@ -265,7 +267,7 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 // stored number instead of folding, these tests report 16 and say so.
 func (s *AttackTestSuite) unarmoredBarbarian(id string) *character.Data {
 	sheet := armedFighter(id)
-	sheet.ClassID = classes.Barbarian
+	setClass(sheet, classes.Barbarian)
 	sheet.Inventory = nil
 	sheet.EquipmentSlots = character.EquipmentSlots{}
 

@@ -65,7 +65,7 @@ func TestTwoPlayersSuite(t *testing.T) {
 // own arithmetic is exactly duelAC's, proven once and not re-derived here.
 func armedBarbarian(id string) *character.Data {
 	c := armedFighter(id)
-	c.ClassID = classes.Barbarian
+	setClass(c, classes.Barbarian)
 	return c
 }
 

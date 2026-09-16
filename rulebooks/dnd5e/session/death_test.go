@@ -435,7 +435,7 @@ func (s *DeathTestSuite) TestNothingReachesAClientUnnamed() {
 // this package can drive a character to zero in: Attack compiles character
 // attackers only, so a monster cannot be the one who does it.
 func (s *DeathTestSuite) duelAtZero() {
-	s.characters.byID["bob"].Level = 5
+	setLevel(s.characters.byID["bob"], 5)
 	// The lawful damage die caps the longsword at 8 + 3 per swing, so two
 	// swings (22) must be enough to end alice: 12 hit points keeps the whole
 	// takedown inside bob's own two-attack turn, which is what the fixture
@@ -477,7 +477,7 @@ func (s *DeathTestSuite) duelAtZero() {
 // Two characters, because Attack compiles character attackers only: bob is the
 // only thing in this package that can drive alice to zero.
 func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
-	s.characters.byID["bob"].Level = 5
+	setLevel(s.characters.byID["bob"], 5)
 	// Same arithmetic duelAtZero keeps: 12 hit points lets bob's two-attack
 	// turn carry the takedown under the lawful damage die.
 	s.characters.byID["alice"].HitPoints = 12
