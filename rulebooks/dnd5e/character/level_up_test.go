@@ -179,6 +179,15 @@ func spellChoice(id choices.ChoiceID, chosen ...spells.Spell) choices.ChoiceData
 	}
 }
 
+// knownSpellIDs names this character's known spells in order.
+func knownSpellIDs(char *Character) []string {
+	out := make([]string, 0, len(char.KnownSpells()))
+	for _, ref := range char.KnownSpells() {
+		out = append(out, ref.ID)
+	}
+	return out
+}
+
 // resourceChange finds one pool's reported movement.
 func resourceChange(out *AdvanceOutput, key coreResources.ResourceKey) (ResourceChange, bool) {
 	for _, change := range out.Gained.Resources {
@@ -465,12 +474,18 @@ func (s *LevelUpSuite) TestACantripAlreadyKnownIsNotOffered() {
 	s.NotEmpty(offered.Cantrips.Options, "and the ones it does not know are still there")
 }
 
-// TestABardIsRefusedASpellItAlreadyKnows — the screen is a courtesy, not a
-// rule. Choosing Bane used to append a second Bane to the known list: a sheet
-// holding one spell twice against a table that says five.
+// TestABardIsRefusedASpellItAlreadyKnows is the reproduction, exactly as it was
+// found: a bard knowing [bane thunderwave dissonant-whispers command] takes
+// level 2 and answers bard-spells-2 with bane.
+//
+// It used to return NO ERROR and leave the known list as
+// [bane thunderwave dissonant-whispers command bane], with the duplicate choice
+// written into a record that can never be corrected. The screen offering the
+// spell was the visible half; this was the half that reached the sheet.
 func (s *LevelUpSuite) TestABardIsRefusedASpellItAlreadyKnows() {
 	char := s.bard()
-	s.Require().Len(char.KnownSpells(), 4)
+	s.Require().Equal([]string{"bane", "thunderwave", "dissonant-whispers", "command"},
+		knownSpellIDs(char), "the sheet the reproduction starts from")
 
 	out, err := char.Advance(s.ctx, &AdvanceInput{
 		ClassID:        classes.Bard,
@@ -482,8 +497,48 @@ func (s *LevelUpSuite) TestABardIsRefusedASpellItAlreadyKnows() {
 	s.Nil(out)
 	s.ErrorContains(err, "already knows")
 	s.ErrorContains(err, "bane")
-	s.Equal(1, char.GetLevel(), "nothing mutated")
-	s.Len(char.KnownSpells(), 4)
+
+	// Nothing moved: not the list, not the level, not the append-only record.
+	s.Equal([]string{"bane", "thunderwave", "dissonant-whispers", "command"},
+		knownSpellIDs(char))
+	s.Equal(1, char.GetLevel())
+	s.Len(char.Levels(), 1, "no entry was appended")
+}
+
+// TestAStoredSheetHoldingASpellTwiceIsRefused — a duplicate on a persisted
+// sheet is a corrupted record, and load refuses it rather than repairing it.
+//
+// Silently collapsing the list to a set would leave a sheet that reads correct
+// beside a record that produced a wrong one, and the record is append-only so
+// there is nothing to repair it to.
+func (s *LevelUpSuite) TestAStoredSheetHoldingASpellTwiceIsRefused() {
+	char := s.bard()
+	data := char.ToData()
+	s.Require().NoError(func() error { _, err := Load(s.ctx, data); return err }(),
+		"the sheet loads before it is corrupted")
+
+	for _, tc := range []struct {
+		name    string
+		corrupt func(*Data)
+	}{
+		{"a known spell twice", func(d *Data) {
+			d.KnownSpells = append(d.KnownSpells, d.KnownSpells[0])
+		}},
+		{"a known cantrip twice", func(d *Data) {
+			d.KnownCantrips = append(d.KnownCantrips, d.KnownCantrips[0])
+		}},
+	} {
+		s.Run(tc.name, func() {
+			corrupted := char.ToData()
+			tc.corrupt(corrupted)
+
+			loaded, err := Load(s.ctx, corrupted)
+
+			s.Require().Error(err)
+			s.Nil(loaded)
+			s.ErrorContains(err, "appears twice")
+		})
+	}
 }
 
 // TestTheKnownListHoldsNoDuplicatesAfterALevel — the positive half: the one
