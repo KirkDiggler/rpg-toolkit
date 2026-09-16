@@ -58,6 +58,12 @@ type Character struct {
 	// the record (design §2 R2.2, §5 R5.1).
 	levels []LevelEntry
 
+	// experience is the total experience this character has earned. It is
+	// cumulative and never debited (design R4.8), and the level it ENTITLES
+	// the character to is derived from it — never stored, so the gap between
+	// entitlement and the record cannot go stale. See [Character.Experience].
+	experience int
+
 	// Race, class, and background
 	raceID       races.Race
 	subraceID    races.Subrace
@@ -1100,6 +1106,7 @@ func (c *Character) ToData() *Data {
 		Level:               c.GetLevel(),
 		ProficiencyBonus:    c.ProficiencyBonus(),
 		Levels:              cloneLevelEntries(c.levels),
+		Experience:          c.experience,
 		RaceID:              c.raceID,
 		SubraceID:           c.subraceID,
 		ClassID:             c.classID,

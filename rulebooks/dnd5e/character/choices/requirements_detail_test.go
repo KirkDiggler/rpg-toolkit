@@ -72,9 +72,10 @@ func (s *RequirementsDetailTestSuite) TestBardSpells1OffersOnlySpellsThisBuildCa
 		s.Require().NotNil(data, "%s", option)
 		s.Equal(req.SpellLevel, data.Level, "%s is offered as a level-%d pick", option, req.SpellLevel)
 	}
-	s.Equal(classes.ClassData[classes.Bard].SpellsKnown, req.Count)
+	levelOne := classes.SpellProgressionAtLevel(classes.Bard, 1)
+	s.Equal(levelOne.SpellsKnown, req.Count)
 	s.Greater(len(req.Options), req.Count, "Healing Word makes four known spells a choice among five")
-	s.Equal(4, classes.ClassData[classes.Bard].SpellsKnown,
+	s.Equal(4, levelOne.SpellsKnown,
 		"the supported choice count must not rewrite factual class progression")
 }
 
