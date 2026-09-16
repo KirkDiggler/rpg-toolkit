@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -18,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -403,6 +405,108 @@ func (s *LevelUpSuite) TestABardIsRefusedAChoiceTheLevelDidNotAskFor() {
 	s.Nil(out)
 	s.ErrorContains(err, "bard-spells-9")
 	s.Equal(1, char.GetLevel())
+}
+
+// --- a level never teaches what is already known (walk finding) -----------
+
+// TestABardIsOfferedOnlyTheSpellItDoesNotKnow is the walk finding. Scanlan is
+// created with four of the five spells his level-2 row offers, and the class
+// function cannot know that — it answers for a class at a level. A screen
+// driven by the class answer would offer him Bane, which he already has.
+func (s *LevelUpSuite) TestABardIsOfferedOnlyTheSpellItDoesNotKnow() {
+	char := s.bard()
+
+	classAnswer := choices.GetClassRequirementsGainedAtLevel(classes.Bard, 2)
+	s.Require().NotNil(classAnswer.Spellbook)
+	s.Len(classAnswer.Spellbook.Options, 5,
+		"the class row offers all five, because a class has no character")
+
+	offered := char.NextLevelRequirements()
+	s.Require().NotNil(offered.Spellbook)
+	s.Equal([]spells.Spell{spells.HealingWord}, offered.Spellbook.Options,
+		"the one spell this bard does not already know")
+	s.Equal(1, offered.Spellbook.Count, "the count is the class's rule, not this bard's")
+	s.Equal(choices.ChoiceID("bard-spells-2"), offered.Spellbook.ID)
+}
+
+// TestTheClassRowIsUnchangedByTheCharactersView — creation reads the class
+// function, and a filtered row leaking back into it would quietly shrink what
+// a new bard is offered at level 1.
+func (s *LevelUpSuite) TestTheClassRowIsUnchangedByTheCharactersView() {
+	char := s.bard()
+	_ = char.NextLevelRequirements()
+
+	again := choices.GetClassRequirementsGainedAtLevel(classes.Bard, 2)
+	s.Require().NotNil(again.Spellbook)
+	s.Len(again.Spellbook.Options, 5)
+}
+
+// TestACantripAlreadyKnownIsNotOffered — the rule covers both lists. A bard
+// gains its third cantrip at level 4, and this one already has two of the four
+// this build can cast.
+func (s *LevelUpSuite) TestACantripAlreadyKnownIsNotOffered() {
+	char := &Character{
+		id:      "bard-at-three",
+		classID: classes.Bard,
+		levels: []LevelEntry{
+			{Level: 1, ClassID: classes.Bard, HitPointMethod: HitPointMethodMax},
+			{Level: 2, ClassID: classes.Bard, HitPointMethod: HitPointMethodAverage},
+			{Level: 3, ClassID: classes.Bard, HitPointMethod: HitPointMethodAverage},
+		},
+		knownCantrips: []*core.Ref{refs.Spells.TrueStrike(), refs.Spells.ViciousMockery()},
+	}
+
+	offered := char.NextLevelRequirements()
+
+	s.Require().NotNil(offered.Cantrips, "a bard's third cantrip arrives at level 4")
+	s.Equal(1, offered.Cantrips.Count)
+	s.NotContains(offered.Cantrips.Options, spells.TrueStrike)
+	s.NotContains(offered.Cantrips.Options, spells.ViciousMockery)
+	s.NotEmpty(offered.Cantrips.Options, "and the ones it does not know are still there")
+}
+
+// TestABardIsRefusedASpellItAlreadyKnows — the screen is a courtesy, not a
+// rule. Choosing Bane used to append a second Bane to the known list: a sheet
+// holding one spell twice against a table that says five.
+func (s *LevelUpSuite) TestABardIsRefusedASpellItAlreadyKnows() {
+	char := s.bard()
+	s.Require().Len(char.KnownSpells(), 4)
+
+	out, err := char.Advance(s.ctx, &AdvanceInput{
+		ClassID:        classes.Bard,
+		HitPointMethod: HitPointMethodAverage,
+		Choices:        []choices.ChoiceData{spellChoice("bard-spells-2", spells.Bane)},
+	})
+
+	s.Require().Error(err)
+	s.Nil(out)
+	s.ErrorContains(err, "already knows")
+	s.ErrorContains(err, "bane")
+	s.Equal(1, char.GetLevel(), "nothing mutated")
+	s.Len(char.KnownSpells(), 4)
+}
+
+// TestTheKnownListHoldsNoDuplicatesAfterALevel — the positive half: the one
+// spell this bard did not know lands, and the list stays five DISTINCT spells.
+func (s *LevelUpSuite) TestTheKnownListHoldsNoDuplicatesAfterALevel() {
+	char := s.bard()
+
+	_, err := char.Advance(s.ctx, &AdvanceInput{
+		ClassID:        classes.Bard,
+		HitPointMethod: HitPointMethodAverage,
+		Choices:        []choices.ChoiceData{spellChoice("bard-spells-2", spells.HealingWord)},
+	})
+	s.Require().NoError(err)
+
+	seen := make(map[string]int)
+	for _, ref := range char.KnownSpells() {
+		seen[ref.ID]++
+	}
+	s.Len(seen, 5, "five distinct spells")
+	for id, count := range seen {
+		s.Equal(1, count, "%s appears once", id)
+	}
+	s.Contains(seen, "healing-word")
 }
 
 // --- the classes that ask nothing (R4.14) ---------------------------------

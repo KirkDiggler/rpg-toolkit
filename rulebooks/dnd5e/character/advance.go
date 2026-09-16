@@ -20,6 +20,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // AdvanceInput contains everything a level needs that the toolkit cannot
@@ -158,18 +159,8 @@ func (c *Character) Advance(ctx context.Context, input *AdvanceInput) (*AdvanceO
 		return nil, err
 	}
 
-	newFeatures, newConditions, err := c.buildGranted(grants, input.ClassID)
-	if err != nil {
-		return nil, err
-	}
-
-	hitPointGain, err := c.rollHitPointGain(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-
 	// What the level's choices become on the sheet, built through the compiler
-	// creation uses (R4.4c). Built here rather than in commitLevel because a
+	// creation uses (R4.4c). Built with the rest of the validation because a
 	// choice naming something this build cannot turn into a ref is a content
 	// defect and must stop the level rather than produce a sheet quietly
 	// missing a spell — the same reason finalization compiles before it builds.
@@ -178,6 +169,19 @@ func (c *Character) Advance(ctx context.Context, input *AdvanceInput) (*AdvanceO
 		return nil, err
 	}
 	chosenSpells, err := compileKnownSpells(input.Choices, shared.ChoiceSpells, "spell")
+	if err != nil {
+		return nil, err
+	}
+	if err := c.checkNothingAlreadyKnown(chosenCantrips, chosenSpells); err != nil {
+		return nil, err
+	}
+
+	newFeatures, newConditions, err := c.buildGranted(grants, input.ClassID)
+	if err != nil {
+		return nil, err
+	}
+
+	hitPointGain, err := c.rollHitPointGain(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -381,6 +385,122 @@ func checkLevelChoices(input *AdvanceInput, classLevel int) error {
 			rpgerr.WithMeta("choice_id", string(first.ChoiceID)),
 			rpgerr.WithMeta("category", string(first.Category)),
 		}, "%s level %d: %s", input.ClassID, classLevel, first.Message)
+	}
+
+	return nil
+}
+
+// NextLevelRequirements returns what the level this character would take next
+// asks OF IT — the class's row for that level, with everything it already knows
+// removed from the spell and cantrip options.
+//
+// [choices.GetClassRequirementsGainedAtLevel] answers for a CLASS at a level,
+// which is the right question at creation and an incomplete one afterwards: it
+// cannot know that this particular bard already holds four of the five spells
+// its level-2 row offers. A screen driven by the class answer offers a spell
+// the character knows, and the player only finds out it was not a choice after
+// picking it. The class function is unchanged and is still what creation reads;
+// this is the character's own view of the same row.
+//
+// The COUNT is not reduced with the options, because how many spells a level
+// teaches is the class's rule and not a property of who is taking it. A level
+// whose remaining options cannot satisfy its count is unanswerable, and
+// [Character.Advance] refuses it rather than teaching half of one.
+//
+// There is no class parameter: R2.4 forces every level into the character's own
+// class, and a parameter that can hold exactly one correct value is one a
+// caller can get wrong with no error to refuse it. When multiclassing opens
+// that seam this gains the class the level is taken in, the way [AdvanceInput]
+// already states it.
+func (c *Character) NextLevelRequirements() *choices.Requirements {
+	reqs := choices.GetClassRequirementsGainedAtLevel(c.classID, c.ClassLevel(c.classID)+1)
+
+	// Safe to write to: the class function builds its rows fresh per call
+	// precisely so a caller folding something in cannot edit the table.
+	if reqs.Cantrips != nil {
+		reqs.Cantrips.Options = withoutKnown(reqs.Cantrips.Options, c.knownCantrips)
+	}
+	if reqs.Spellbook != nil {
+		reqs.Spellbook.Options = withoutKnown(reqs.Spellbook.Options, c.knownSpells)
+	}
+
+	return reqs
+}
+
+// withoutKnown returns the options that are not already on a known list.
+//
+// A ref's ID *is* the spell id — everything after the second separator — so the
+// chosen vocabulary and the stored one compare directly, without composing a
+// ref out of a string or parsing one back into an id.
+func withoutKnown(options []spells.Spell, known []*core.Ref) []spells.Spell {
+	if len(known) == 0 || len(options) == 0 {
+		return options
+	}
+
+	held := make(map[spells.Spell]struct{}, len(known))
+	for _, ref := range known {
+		if ref != nil {
+			held[spells.Spell(ref.ID)] = struct{}{}
+		}
+	}
+
+	out := make([]spells.Spell, 0, len(options))
+	for _, option := range options {
+		if _, had := held[option]; !had {
+			out = append(out, option)
+		}
+	}
+	return out
+}
+
+// checkNothingAlreadyKnown refuses a level that would teach this character a
+// spell or cantrip it already has.
+//
+// Found on the walk: a bard created with four of the five spells its level-2
+// row offers was offered all five, because the class function answers for a
+// class at a level and cannot know what one character holds. Nothing refused
+// the duplicate, so choosing Bane appended a second Bane to the known list —
+// a sheet holding one spell twice against a table that says five.
+//
+// [Character.NextLevelRequirements] keeps the duplicate off the screen. This
+// keeps it off the sheet, because a screen is a courtesy and not a rule: the
+// client sends what it likes and the engine decides what is legal.
+func (c *Character) checkNothingAlreadyKnown(chosenCantrips, chosenSpells []*core.Ref) error {
+	if err := refuseAlreadyKnown(c.id, c.knownCantrips, chosenCantrips, "cantrip"); err != nil {
+		return err
+	}
+	return refuseAlreadyKnown(c.id, c.knownSpells, chosenSpells, "spell")
+}
+
+// refuseAlreadyKnown names the first chosen ref that is already held.
+//
+// Each accepted choice joins the held set as it passes, so one level naming the
+// same spell through two requirements is refused by the same rule that refuses
+// a repeat of something learned years ago.
+func refuseAlreadyKnown(characterID string, held, chosen []*core.Ref, role string) error {
+	if len(chosen) == 0 {
+		return nil
+	}
+
+	known := make(map[core.ID]struct{}, len(held)+len(chosen))
+	for _, ref := range held {
+		if ref != nil {
+			known[ref.ID] = struct{}{}
+		}
+	}
+
+	for _, ref := range chosen {
+		if ref == nil {
+			continue
+		}
+		if _, had := known[ref.ID]; had {
+			return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+				rpgerr.WithMeta("character_id", characterID),
+				rpgerr.WithMeta("role", role),
+				rpgerr.WithMeta("spell", string(ref.ID)),
+			}, "character %q already knows the %s %q", characterID, role, ref.ID)
+		}
+		known[ref.ID] = struct{}{}
 	}
 
 	return nil
