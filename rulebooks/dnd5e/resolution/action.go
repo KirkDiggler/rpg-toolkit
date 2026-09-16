@@ -218,7 +218,7 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	}
 
 	return &castMachine{
-		spell: definition.Ref, spellName: definition.Name, casterID: casterID,
+		spell: definition.Ref, spellName: definition.Name, casterID: casterID, option: in.Option,
 		profile: profile.Clone(), concentration: profile.Concentration, targets: entries,
 		derivedTargets: derived, staleTargetPolicy: in.StaleTargetPolicy,
 	}, nil
@@ -289,6 +289,7 @@ type castMachine struct {
 	spell         core.Ref
 	spellName     string
 	casterID      string
+	option        string
 	profile       combatActions.CastProfile
 	targets       []castTargetMachine
 	concentration *combatActions.CastConcentration
@@ -359,7 +360,7 @@ func (m *castMachine) resolveTarget(index int) Step {
 			return m.resolveTarget(index + 1), nil
 		}}
 	}
-	return Request{
+	req := Request{
 		name:    "cast " + m.spell.String() + " on " + target.targetID,
 		machine: startedMachine{first: target.first},
 		next: func(_ context.Context, out Outcome) (Step, error) {
@@ -374,6 +375,14 @@ func (m *castMachine) resolveTarget(index int) Step {
 			return m.resolveTarget(index + 1), nil
 		},
 	}
+	// A gateless target's inner machine never poses (there is no save to
+	// offer a die on), so onPose here is reached only for a gated cast — the
+	// same "opt in where a pose can genuinely arrive" rule [requestSave]
+	// follows.
+	req.onPose = func(_ context.Context, contest Pose) (Step, error) {
+		return poseCast(m, index, contest)
+	}
+	return req
 }
 
 // drop ends the concentration the caster is already holding, in favour of the

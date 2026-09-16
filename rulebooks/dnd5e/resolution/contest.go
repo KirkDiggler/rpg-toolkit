@@ -1134,7 +1134,7 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 	if m.in.Roller == nil {
 		return nil, fmt.Errorf("%w: a contest rolls with no roller", ErrNoRoller)
 	}
-	return requestSave(&SaveInput{
+	req := requestSave(&SaveInput{
 		SaverID:   m.in.SaverID,
 		Ability:   ability,
 		DC:        dc,
@@ -1143,7 +1143,11 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 		Roller:    m.in.Roller,
 	}, func(_ context.Context, save SaveOutcome) (Step, error) {
 		return m.resolve(ability, dc, save)
-	}), nil
+	})
+	req.onPose = func(_ context.Context, save Pose) (Step, error) {
+		return poseContest(m, ability, dc, save)
+	}
+	return req, nil
 }
 
 func (m *contestMachine) saveSource() (dnd5eEvents.RollSource, error) {
