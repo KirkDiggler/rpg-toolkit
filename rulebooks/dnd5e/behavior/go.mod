@@ -7,7 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.176.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.84.1-0.20260916111117-adadbc07f772
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.85.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.15.0
 	github.com/stretchr/testify v1.11.1
 )
