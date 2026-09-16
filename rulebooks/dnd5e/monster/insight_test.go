@@ -41,47 +41,61 @@ func (s *PassiveInsightTestSuite) blob(wis int, profBonus int, proficiencies ...
 	}
 }
 
-// A goblin's WIS 8 is a -1 modifier, so its passive Insight is 9 — the number
-// ideas/shenanigans/intimidate.md names as the goblin's derived DC.
-func (s *PassiveInsightTestSuite) TestAGoblinsWisdomAnswersNine() {
-	s.Equal(9, s.blob(8, 2).PassiveInsight())
+// A goblin's WIS 8 is a -1 modifier and its stat block lists no Insight, so
+// its passive Insight is 9 — the number ideas/shenanigans/intimidate.md names
+// as the goblin's derived DC.
+func (s *PassiveInsightTestSuite) TestAnUnlistedInsightFallsBackToWisdom() {
+	s.Equal(9, s.blob(8, 2).PassiveInsight(), "a goblin")
+	s.Equal(10, s.blob(10, 2).PassiveInsight(), "a thug: WIS 10 is +0")
 }
 
-// A thug's WIS 10 is a +0 modifier: passive Insight 10.
-func (s *PassiveInsightTestSuite) TestAThugsWisdomAnswersTen() {
-	s.Equal(10, s.blob(10, 2).PassiveInsight())
+// THE LISTED NUMBER IS THE WHOLE MODIFIER. This fixture's +7 is deliberately
+// NOT what Wisdom and proficiency would produce — WIS 14's +2 with a +3
+// proficiency bonus is +5 — because an SRD stat block's listed skill already
+// includes whatever else the creature has going for it (the goblin's Stealth
+// +6 is DEX +2 and Nimble Escape, not DEX plus its +2 proficiency).
+//
+// So the answer is 17, and the two numbers the old reading would have
+// produced are both wrong and both nearby: 15 if the bonus were treated as a
+// proficiency flag, 20 if the listed total had the proficiency bonus added on
+// top of it.
+func (s *PassiveInsightTestSuite) TestAListedInsightIsTheWholeModifier() {
+	listed := s.blob(14, 3, ProficiencyData{Skill: string(skills.Insight), Bonus: 7})
+
+	s.Equal(17, listed.PassiveInsight(), "10 + the printed +7, and nothing else")
+	s.NotEqual(15, listed.PassiveInsight(), "not 10 + WIS + the CR proficiency bonus")
+	s.NotEqual(20, listed.PassiveInsight(), "and never the listed total PLUS that bonus")
 }
 
-// Listing Insight among the proficiencies adds the creature's proficiency
-// bonus. The entry's own Bonus is deliberately not the number used: the
-// proficiency list is read here as a membership test.
-func (s *PassiveInsightTestSuite) TestInsightProficiencyAddsTheProficiencyBonus() {
-	plain := s.blob(14, 3)
-	proficient := s.blob(14, 3, ProficiencyData{Skill: string(skills.Insight), Bonus: 99})
-
-	s.Equal(12, plain.PassiveInsight())
-	s.Equal(15, proficient.PassiveInsight(),
-		"10 + WIS 14's +2 + the creature's own +3, never the entry's authored Bonus")
+// The creature's own proficiency bonus is never added to a listed number, at
+// any value it takes — including the absent one the loader reads as 2.
+func (s *PassiveInsightTestSuite) TestTheProficiencyBonusNeverJoinsAListedNumber() {
+	for _, profBonus := range []int{0, 2, 3, 6} {
+		listed := s.blob(14, profBonus, ProficiencyData{Skill: string(skills.Insight), Bonus: 7})
+		s.Equal(17, listed.PassiveInsight(), "proficiency bonus %d changes nothing", profBonus)
+	}
 }
 
-// A proficiency in something else is not a proficiency in Insight.
-func (s *PassiveInsightTestSuite) TestAnotherSkillsProficiencyChangesNothing() {
-	s.Equal(12, s.blob(14, 3, ProficiencyData{Skill: string(skills.Stealth), Bonus: 5}).PassiveInsight())
+// A listed +0 is a real answer and reads as one: the list says whether the
+// skill is there at all, separately from what it is worth. Wisdom does not
+// get to override it.
+func (s *PassiveInsightTestSuite) TestAListedZeroIsAnAnswer() {
+	s.Equal(10, s.blob(18, 3, ProficiencyData{Skill: string(skills.Insight)}).PassiveInsight(),
+		"listed at +0 despite WIS 18, which is what the stat block said")
 }
 
-// An absent proficiency bonus means 2, the same rule the loader applies, so a
-// blob and the sheet loaded from it cannot disagree.
-func (s *PassiveInsightTestSuite) TestAnAbsentProficiencyBonusMeansTwo() {
-	s.Equal(12, s.blob(10, 0, ProficiencyData{Skill: string(skills.Insight)}).PassiveInsight())
+// A listed skill that is not Insight is not an Insight number.
+func (s *PassiveInsightTestSuite) TestAnotherListedSkillChangesNothing() {
+	s.Equal(12, s.blob(14, 3, ProficiencyData{Skill: string(skills.Stealth), Bonus: 6}).PassiveInsight())
 }
 
-// The loaded sheet answers what the blob it came from answers — for a
-// proficient creature and a plain one alike.
+// The loaded sheet answers what the blob it came from answers, listed or not.
 func (s *PassiveInsightTestSuite) TestTheSheetAnswersWhatItsBlobAnswers() {
 	for _, blob := range []*Data{
 		s.blob(8, 2),
-		s.blob(14, 3, ProficiencyData{Skill: string(skills.Insight), Bonus: 99}),
-		s.blob(10, 0, ProficiencyData{Skill: string(skills.Insight)}),
+		s.blob(14, 3, ProficiencyData{Skill: string(skills.Insight), Bonus: 7}),
+		s.blob(18, 3, ProficiencyData{Skill: string(skills.Insight)}),
+		s.blob(14, 3, ProficiencyData{Skill: string(skills.Stealth), Bonus: 6}),
 	} {
 		loaded, err := Load(context.Background(), blob)
 		s.Require().NoError(err)
@@ -91,16 +105,20 @@ func (s *PassiveInsightTestSuite) TestTheSheetAnswersWhatItsBlobAnswers() {
 
 // Nothing stores the number. A blob written back out carries no passive
 // Insight to go stale, which is what "passive is derived, never stored" means
-// in practice.
+// in practice: move the stat block and the answer moves.
 func (s *PassiveInsightTestSuite) TestPassiveInsightIsNotSerialized() {
-	loaded, err := Load(context.Background(), s.blob(14, 3, ProficiencyData{Skill: string(skills.Insight)}))
+	loaded, err := Load(context.Background(), s.blob(14, 3))
 	s.Require().NoError(err)
-	s.Equal(15, loaded.PassiveInsight())
+	s.Equal(12, loaded.PassiveInsight())
 
 	written := loaded.ToData()
 	s.Equal(SensesData{}, written.Senses,
 		"no senses field carries passive Insight; raising Wisdom must move the answer")
 
 	written.AbilityScores[abilities.WIS] = 18
-	s.Equal(17, written.PassiveInsight())
+	s.Equal(14, written.PassiveInsight())
+
+	written.Proficiencies = append(written.Proficiencies,
+		ProficiencyData{Skill: string(skills.Insight), Bonus: 7})
+	s.Equal(17, written.PassiveInsight(), "and listing the skill moves it again")
 }

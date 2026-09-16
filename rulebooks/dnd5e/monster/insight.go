@@ -17,30 +17,35 @@ import (
 // decides the shape: there is no `passive_insight` field on [SensesData] and
 // there must not be one. [SensesData.PassivePerception] is a stored number
 // because the SRD prints it on the stat block and a loader seeds it; nothing
-// prints passive Insight, so the only honest source is the stat block's own
-// Wisdom and proficiencies. A stored copy would be a second answer that goes
-// stale the moment either moves.
+// prints passive Insight, so the only honest source is what the stat block
+// does print. A stored copy would be a second answer that goes stale the
+// moment the stat block moves.
 //
-// It reads 10 + the Wisdom modifier, plus the monster's proficiency bonus when
-// the definition lists Insight among its proficiencies. A goblin (WIS 8)
-// answers 9; a thug (WIS 10) answers 10.
+// # 10 + the listed Insight, or 10 + the Wisdom modifier
 //
-// THE PROFICIENCY ENTRY IS A MEMBERSHIP TEST HERE, NOT A NUMBER.
-// [ProficiencyData] carries a per-skill Bonus, and this derivation ignores it
-// in favour of the creature's CR-based proficiency bonus, because that is what
-// rpg-project#454 ruled. If a stat block ever needs a passive Insight that its
-// own Wisdom and proficiency bonus cannot produce, that is the authored
-// `intimidate:` DC on the placement, not a new field here.
+// A LISTED SKILL IS A TOTAL, NOT A PROFICIENCY FLAG (ruled on
+// rpg-project#454). An SRD stat block prints "Skills Stealth +6" and that
+// +6 is the whole modifier — the goblin's is DEX +2 plus rather more than
+// its +2 proficiency bonus, because Nimble Escape is in there too. So
+// [ProficiencyData.Bonus] is the number, and the creature's CR-based
+// proficiency bonus is NEVER added on top of one: doing that would double
+// count the proficiency the listed number already includes.
+//
+// A stat block that lists no Insight has no printed number to use, and the
+// answer falls back to 10 + its Wisdom modifier. A goblin (WIS 8) answers 9;
+// a thug (WIS 10) answers 10.
+//
+// A listed Insight of +0 is a real answer and reads as one: passive 10, not
+// "unlisted". The zero tells the truth because the list says whether the
+// skill is there at all, separately from what it is worth.
 func (d *Data) PassiveInsight() int {
-	proficient := false
 	for _, prof := range d.Proficiencies {
 		if prof.Skill == string(skills.Insight) {
-			proficient = true
-			break
+			return passiveInsight(d.AbilityScores, prof.Bonus, true)
 		}
 	}
 
-	return passiveInsight(d.AbilityScores, proficiencyBonusOf(d.ProficiencyBonus), proficient)
+	return passiveInsight(d.AbilityScores, 0, false)
 }
 
 // PassiveInsight returns the loaded sheet's passive Insight — the same number
@@ -49,30 +54,20 @@ func (d *Data) PassiveInsight() int {
 // Both exist because both are read: a live sheet answers for anything holding
 // a [Monster], and the blob answers for the session, which carries monster
 // sheets as [Data] and would otherwise have to load a whole monster to ask one
-// question of its Wisdom.
+// question of its stat block.
 func (m *Monster) PassiveInsight() int {
-	_, proficient := m.proficiencies[string(skills.Insight)]
+	bonus, listed := m.proficiencies[string(skills.Insight)]
 
-	return passiveInsight(m.abilityScores, m.proficiencyBonus, proficient)
+	return passiveInsight(m.abilityScores, bonus, listed)
 }
 
-// passiveInsight is the one derivation both accessors answer with.
-func passiveInsight(scores shared.AbilityScores, proficiencyBonus int, proficient bool) int {
-	score := 10 + scores.Modifier(abilities.WIS)
-	if proficient {
-		score += proficiencyBonus
+// passiveInsight is the one derivation both accessors answer with: the listed
+// total when the stat block prints one, and the bare Wisdom modifier when it
+// does not.
+func passiveInsight(scores shared.AbilityScores, listedBonus int, listed bool) int {
+	if listed {
+		return 10 + listedBonus
 	}
 
-	return score
-}
-
-// proficiencyBonusOf applies the same "absent means 2" rule loadMonster applies
-// when it builds a sheet, so a blob and the sheet loaded from it never disagree
-// about a proficient creature's passive Insight.
-func proficiencyBonusOf(authored int) int {
-	if authored == 0 {
-		return 2
-	}
-
-	return authored
+	return 10 + scores.Modifier(abilities.WIS)
 }

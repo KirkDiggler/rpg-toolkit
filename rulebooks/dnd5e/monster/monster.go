@@ -97,6 +97,18 @@ func New(config Config) *Monster {
 	}
 }
 
+// proficiencyBonusOf is the "absent means 2" rule both constructors apply —
+// [New] from a [Config] and loadMonster from a [Data]. One statement of it
+// rather than two, so a blob and the sheet loaded from it cannot disagree
+// about what an unstated proficiency bonus means.
+func proficiencyBonusOf(authored int) int {
+	if authored == 0 {
+		return 2
+	}
+
+	return authored
+}
+
 // GetID implements core.Entity
 func (m *Monster) GetID() string {
 	return m.id
