@@ -373,19 +373,27 @@ type PropData struct {
 // about the member and not yet a fact about the run. Arrives is the predicate,
 // REQUIRED — a reserve entry with none would be a member waiting for nothing.
 type ReserveData struct {
-	ID             MemberID         `json:"id"`
-	Kind           MemberKind       `json:"kind"`
-	Name           string           `json:"name,omitempty"`
-	Cell           PositionData     `json:"cell"`
-	SpeedFeet      int              `json:"speed_feet,omitempty"`
-	SightFeet      int              `json:"sight_feet,omitempty"`
-	Actions        []ActionViewData `json:"actions,omitempty"`
-	Targeting      string           `json:"targeting,omitempty"`
-	Mind           string           `json:"mind,omitempty"`
-	BlocksMovement bool             `json:"blocks_movement,omitempty"`
-	Faction        FactionID        `json:"faction,omitempty"`
-	Holds          []IntelID        `json:"holds,omitempty"`
-	Arrives        TriggerData      `json:"arrives"`
+	ID        MemberID         `json:"id"`
+	Kind      MemberKind       `json:"kind"`
+	Name      string           `json:"name,omitempty"`
+	Cell      PositionData     `json:"cell"`
+	SpeedFeet int              `json:"speed_feet,omitempty"`
+	SightFeet int              `json:"sight_feet,omitempty"`
+	Actions   []ActionViewData `json:"actions,omitempty"`
+	Targeting string           `json:"targeting,omitempty"`
+	Mind      string           `json:"mind,omitempty"`
+
+	// Intimidate and OnIntimidated are [MemberData]'s two shenanigan keys,
+	// kept for a member still waiting to arrive — its facts are the same
+	// facts, and losing them across a save would make an arrival
+	// unintimidable for reasons nobody authored.
+	Intimidate    []CheckApproachData `json:"intimidate,omitempty"`
+	OnIntimidated FactID              `json:"on_intimidated,omitempty"`
+
+	BlocksMovement bool        `json:"blocks_movement,omitempty"`
+	Faction        FactionID   `json:"faction,omitempty"`
+	Holds          []IntelID   `json:"holds,omitempty"`
+	Arrives        TriggerData `json:"arrives"`
 }
 
 // IntelData is the persistent representation of one authored knowledge
@@ -1085,6 +1093,14 @@ type MemberData struct {
 	Targeting string           `json:"targeting,omitempty"`
 	Mind      string           `json:"mind,omitempty"`
 
+	// Intimidate and OnIntimidated carry forward the member's shenanigan
+	// facts (rpg-project#454) — see [MemberInput.Intimidate] and
+	// [MemberInput.OnIntimidated]. Both omit when unset, so a blob written
+	// before these keys existed and one written today for the same roster
+	// are byte-identical, and both load into the same run.
+	Intimidate    []CheckApproachData `json:"intimidate,omitempty"`
+	OnIntimidated FactID              `json:"on_intimidated,omitempty"`
+
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
 	// written before this field existed has no blocks_movement key and
@@ -1237,6 +1253,8 @@ func (e *Encounter) snapshot() EncounterData {
 			Actions:        actionViewDataFrom(m.Actions),
 			Targeting:      m.Targeting,
 			Mind:           m.Mind,
+			Intimidate:     approachesDataFrom(m.Intimidate),
+			OnIntimidated:  m.OnIntimidated,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -1330,6 +1348,8 @@ func (e *Encounter) snapshot() EncounterData {
 			Actions:        actionViewDataFrom(rm.record.Actions),
 			Targeting:      rm.record.Targeting,
 			Mind:           rm.record.Mind,
+			Intimidate:     approachesDataFrom(rm.record.Intimidate),
+			OnIntimidated:  rm.record.OnIntimidated,
 			BlocksMovement: rm.record.BlocksMovement,
 			Faction:        rm.record.Faction,
 			Holds:          append([]IntelID(nil), rm.holds...),
@@ -1914,7 +1934,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: reserve %q cell %s: %w: %w",
 				r.ID, f.notStandable(cell), ErrInvalidData, ErrBadPlacement)
 		}
-		if err := validateMemberFacts(r.ID, r.SpeedFeet, r.SightFeet, actionViewsFrom(r.Actions)); err != nil {
+		if err := validateMemberFacts(r.ID, r.SpeedFeet, r.SightFeet, actionViewsFrom(r.Actions), approachesFromData(r.Intimidate)); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
 		if err := f.validateMemberFaction(r.ID, r.Kind, r.Faction); err != nil {
@@ -1958,7 +1978,18 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf(
 				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
 		}
-		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation))
+		// The roster's and the reserve's own authored facts count as
+		// mintable too — see mintedFactIDs. Both lists, because a member
+		// waiting to arrive carries the same authored fact it will carry
+		// when it stands on the floor.
+		taught := make([]FactID, 0, len(data.Members)+len(data.Reserve))
+		for _, m := range data.Members {
+			taught = append(taught, m.OnIntimidated)
+		}
+		for _, r := range data.Reserve {
+			taught = append(taught, r.OnIntimidated)
+		}
+		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, mintable, data.EverMembers); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
@@ -2260,6 +2291,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Actions:        actionViewsFrom(m.Actions),
 			Targeting:      m.Targeting,
 			Mind:           m.Mind,
+			Intimidate:     approachesFromData(m.Intimidate),
+			OnIntimidated:  m.OnIntimidated,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}
@@ -2320,6 +2353,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				Actions:        actionViewsFrom(r.Actions),
 				Targeting:      r.Targeting,
 				Mind:           r.Mind,
+				Intimidate:     approachesFromData(r.Intimidate),
+				OnIntimidated:  r.OnIntimidated,
 				BlocksMovement: r.BlocksMovement,
 				Faction:        r.Faction,
 			},

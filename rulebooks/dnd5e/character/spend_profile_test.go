@@ -356,6 +356,23 @@ func (s *CostCompilerTestSuite) TestAStrikeCostsOneBankedAttackAndNoSlot() {
 	s.Empty(profile.Grants)
 }
 
+// Threatening somebody costs the standard action and banks nothing. The
+// difference from the Attack action is the whole point: an Attack action
+// buys a bank of swings because Extra Attack is a class table, and no
+// feature in this rulebook grants a second threat (rpg-project#454).
+func (s *CostCompilerTestSuite) TestAnIntimidateCostsTheActionAndBanksNothing() {
+	profile, err := CostOfIntimidate(s.sheetOf(classes.Fighter, 5))
+	s.Require().NoError(err)
+	s.Require().NoError(profile.Validate())
+
+	s.Equal(1, profile.Slots[coreCombat.ActionStandard])
+	s.Len(profile.Slots, 1)
+	s.Empty(profile.Capacity)
+	s.Empty(profile.Grants, "an Attack action banks swings; a threat banks nothing")
+	s.Empty(profile.Pools)
+	s.Empty(profile.Requires, "nothing gates the attempt — the DC is the monster's")
+}
+
 // No sheet, no price. The compilers refuse rather than compiling a default,
 // the same way AssembleAttack refuses a nil character.
 func (s *CostCompilerTestSuite) TestCompilingWithoutASheetIsRefused() {
@@ -366,6 +383,9 @@ func (s *CostCompilerTestSuite) TestCompilingWithoutASheetIsRefused() {
 	s.Require().Error(err)
 
 	_, err = CostOfOffHandAttack(nil)
+	s.Require().Error(err)
+
+	_, err = CostOfIntimidate(nil)
 	s.Require().Error(err)
 }
 

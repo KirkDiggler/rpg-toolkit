@@ -82,10 +82,7 @@ func (m *Monster) TakeUnappliedConditions() []json.RawMessage {
 // [Data] lives here; everything that touches a bus lives in [SheetKeeper].
 func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 	// Handle proficiency bonus - default to 2 if not set
-	profBonus := d.ProficiencyBonus
-	if profBonus == 0 {
-		profBonus = 2
-	}
+	profBonus := proficiencyBonusOf(d.ProficiencyBonus)
 
 	m := &Monster{
 		creatureType:     d.CreatureType,

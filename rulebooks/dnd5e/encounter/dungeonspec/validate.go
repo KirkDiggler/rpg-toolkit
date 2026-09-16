@@ -709,6 +709,16 @@ func (v *validation) place() {
 				v.fail(p+".targeting", "%q declares targeting %q, which is not a word this build knows", pl.Ref, *pl.Targeting)
 			}
 			v.placeActions(p, pl)
+			// A monster's authored check is a check like any other: at
+			// least one way through when the key is there at all, each
+			// naming an ability and a DC. Absent is legal and means the
+			// rulebook derives it ([PlaceSpec.Intimidate]).
+			if pl.Intimidate != nil {
+				v.approaches(p+".intimidate",
+					"this monster declares an intimidate check with no way through it — an ability and a DC",
+					pl.Intimidate)
+			}
+			v.placeOn(p, pl)
 			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {
 					v.fail(p+".boss", "region %q already names %q (place[%d]) as its boss", s.Regions[owner].ID, s.Place[prev].Ref, prev)
@@ -734,6 +744,12 @@ func (v *validation) place() {
 			}
 			if pl.Actions != nil {
 				v.fail(p+".actions", "%q is not a monster and cannot have actions", pl.Ref)
+			}
+			if pl.Intimidate != nil {
+				v.fail(p+".intimidate", "%q is not a monster and cannot be intimidated", pl.Ref)
+			}
+			if pl.On != nil {
+				v.fail(p+".on", "%q is not a monster and nothing can be done to it that the world learns", pl.Ref)
 			}
 			if pl.Boss {
 				v.fail(p+".boss", "%q is not a monster and cannot be the boss", pl.Ref)
@@ -1384,6 +1400,40 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // A DUPLICATE IS ALLOWED AND MEANS SOMETHING. `[scimitar, scimitar]` lists
 // the same weapon twice, which is a pointless loadout rather than a malformed
 // one, and refusing it would be this compiler having an opinion about play.
+// placeOn validates what the world learns from a shenanigan landing on this
+// monster ([PlaceSpec.On], rpg-project#454).
+//
+// THE KEY IS THE VERB, and only the verbs this build actually lands are
+// accepted. An author who wrote `on: { persuaded: … }` meant something real
+// — persuasion is slice two of the shenanigans folder — and a dungeon that
+// accepted the line would silently never fire it. Refusing by name is how
+// they find out on the form instead of at the table.
+func (v *validation) placeOn(path string, pl PlaceSpec) {
+	for _, verb := range sortedKeys(pl.On) {
+		at := fmt.Sprintf("%s.on.%s", path, verb)
+		if verb != OnIntimidated {
+			v.fail(at, "%q is not a verb this build lands: the only one is %q", verb, OnIntimidated)
+			continue
+		}
+		if pl.On[verb].Fact == "" {
+			v.fail(at+".fact", "this says the world learns something and does not say what")
+		}
+	}
+}
+
+// sortedKeys orders a map's keys so a file with two bad `on:` entries reports
+// them in the same order every run — a validator whose defect list depends on
+// Go's map iteration is one no transcript can compare (C8).
+func sortedKeys(m map[string]OnSpec) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+
+	return out
+}
+
 func (v *validation) placeActions(path string, pl PlaceSpec) {
 	for j, ref := range pl.Actions {
 		at := fmt.Sprintf("%s.actions[%d]", path, j)

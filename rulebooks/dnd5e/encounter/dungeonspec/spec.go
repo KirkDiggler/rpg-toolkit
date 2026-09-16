@@ -760,7 +760,7 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
 			"offset", "targeting", "actions", "boss", "holds", "holdable", "faction",
-			"arrives":
+			"arrives", "intimidate", "on":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)
@@ -811,6 +811,36 @@ type ApproachSpec struct {
 	// DC is what this route must beat. REQUIRED at least 1 — a check with
 	// dc 0 is what an undeclared one would look like.
 	DC int `yaml:"dc"`
+}
+
+// OnIntimidated is the only verb [PlaceSpec.On] accepts today: the key an
+// author writes under `on:` to say what the world learns when a threat
+// against this monster lands.
+//
+// A CONSTANT RATHER THAN A LITERAL because two places have to agree about
+// it — the validator that refuses every other key, and the compiler that
+// reads this one — and because the next shenanigan adds a sibling here
+// rather than a second spelling somewhere else.
+const OnIntimidated = "intimidated"
+
+// OnSpec is what the world learns from one shenanigan landing: an authored
+// fact id, and nothing else yet.
+//
+// AN OBJECT RATHER THAN A BARE STRING, deliberately. `on: { intimidated:
+// sergeant-cowed }` would read fine today and have nowhere to put the second
+// thing a landed verb might teach — a stance, a round, a second fact. The
+// object is the shape that grows a key instead of breaking a file.
+type OnSpec struct {
+	// Fact is the authored fact id every witness learns. REQUIRED
+	// non-empty: an `on:` entry that teaches nothing is a line the author
+	// wrote for a reason, and accepting it would silently never fire.
+	//
+	// CARRIED VERBATIM, not key-prefixed — a fact is a word a disposition
+	// waits for by name, like a faction rather than a door (compile.go's
+	// intel reveals do the same). The dungeon ALLOWS a fact nothing else
+	// mentions (R8, pre-release: show the cost), so this is not checked
+	// against the dispositions.
+	Fact string `yaml:"fact"`
 }
 
 // PlaceSpec is one authored placement at an ABSOLUTE cell.
@@ -970,6 +1000,43 @@ type PlaceSpec struct {
 	// side. Carried to the host as [MonsterPlacement.Faction], which hands
 	// it to [encounter.MemberInput.Faction] when it spawns the sheet.
 	Faction string `yaml:"faction,omitempty"`
+
+	// Intimidate is the check a character must beat to frighten this
+	// monster (rpg-project#454, ideas/shenanigans/intimidate.md) — the
+	// SAME approach list a lock carries, priced per route:
+	// `intimidate: [{ ability: intimidation, dc: 12 }]`, and the author may
+	// list other ways through (`{ ability: str, dc: 15 }` flexes a muscle).
+	// MONSTERS ONLY, refused on anything else exactly as Targeting is.
+	//
+	// OMITTED MEANS DERIVED, NOT UNGATED. Absent, the rulebook rolls
+	// Intimidation against the stat block's own passive Insight — 10 + its
+	// Wisdom modifier, plus proficiency if the definition lists Insight, so
+	// a goblin is DC 9 and a thug DC 10. "Nothing is gated; everything is a
+	// check" (living-world §13): every character may attempt this on every
+	// monster, and the DC is the monster's, never a lock on the attempt.
+	//
+	// Unlike a lock's, an EMPTY list is not refused as unauthored, because
+	// this key is optional in the first place — `intimidate: []` is refused
+	// as what it is, a check with no way through, by the same sentence a
+	// lock's empty list gets.
+	Intimidate CheckSpec `yaml:"intimidate,omitempty"`
+
+	// On is what the WORLD learns when a shenanigan against this monster
+	// lands, keyed by the verb that landed (rpg-project#454, design
+	// decision 7): `on: { intimidated: { fact: sergeant-cowed } }`. Every
+	// witness learns the fact through the existing learnFact path, and a
+	// disposition's `until: { fact: sergeant-cowed }` does the rest.
+	// MONSTERS ONLY.
+	//
+	// KEYED BY VERB SO THE SECOND SHENANIGAN ADDS A KEY, NOT A FIELD.
+	// `intimidated` is the only verb this build has; anything else is a
+	// field error naming the key, not a quietly ignored line — an author
+	// who wrote `on: { persuaded: … }` meant something, and a dungeon that
+	// accepted it would silently never fire it.
+	//
+	// Absent means no fact, which is the common case: a scared goblin does
+	// not turn the camp unless the author planted the fact that says so.
+	On map[string]OnSpec `yaml:"on,omitempty"`
 
 	// Arrives is the predicate that brings this placement into the run
 	// (rpg-project#375, the hold-out design §2, §3.7, R6). MONSTERS AND
