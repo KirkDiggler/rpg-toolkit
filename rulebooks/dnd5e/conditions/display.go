@@ -83,4 +83,13 @@ var displayCatalog = map[string]Display{
 
 	// Standard conditions reachable by the four builds.
 	refs.Conditions.Unconscious().String(): {Name: "Unconscious"},
+
+	// Cleric cantrips. Guided is a pre-existing gap found alongside
+	// Resistance's own: Guidance shipped and merged without an entry here,
+	// so any real Guidance cast whose activation gets recorded has hit this
+	// same "no display catalog entry" error since it merged. Fixed here
+	// rather than filed separately since it is a one-line addition to the
+	// exact catalog Resistance's own entry touches, for the same reason.
+	refs.Conditions.Guided().String():     {Name: GuidedName},
+	refs.Conditions.Resistance().String(): {Name: ResistanceName},
 }
