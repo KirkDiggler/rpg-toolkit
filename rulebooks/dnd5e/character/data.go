@@ -46,6 +46,20 @@ type Data struct {
 	// character's level (R2.2).
 	Levels []LevelEntry `json:"levels"`
 
+	// Experience is the total experience this character has earned.
+	//
+	// Cumulative and never debited (design R4.8), and read-only over the wire
+	// (R4.12): nothing in the toolkit awards it yet and no service call writes
+	// it, so a fixture seeds a levelled character by writing this field on the
+	// persisted sheet. The level it entitles the character to is DERIVED from
+	// it and never stored — see [Character.EntitledLevel].
+	//
+	// A sheet written before experience existed loads with zero, and load does
+	// not re-check entitlement against it (R4.12a): Advance enforces the rule
+	// at the moment a level is taken, and a later change to the threshold table
+	// must not refuse every stored sheet that was legal when it was written.
+	Experience int `json:"experience"`
+
 	// Race and class
 	RaceID     races.Race       `json:"race_id"`
 	SubraceID  races.Subrace    `json:"subrace_id,omitempty"`

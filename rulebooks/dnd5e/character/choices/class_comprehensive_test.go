@@ -101,7 +101,7 @@ func (s *ClassComprehensiveSuite) TestAllClassesAPIValidation() {
 			}
 
 			// Get requirements
-			reqs := choices.GetClassRequirementsAtLevel(data.Class, 1)
+			reqs := choices.GetClassRequirements(data.Class)
 			s.Require().NotNil(reqs, "%s should have requirements", data.Name)
 
 			// Validate hit die
@@ -150,7 +150,7 @@ func (s *ClassComprehensiveSuite) TestAllClassesValidSubmissions() {
 
 	for _, data := range testCases {
 		s.Run(data.Name+"_Valid", func() {
-			reqs := choices.GetClassRequirementsAtLevel(data.Class, 1)
+			reqs := choices.GetClassRequirements(data.Class)
 			s.Require().NotNil(reqs)
 
 			result := s.validator.Validate(reqs, data.ValidBase)
@@ -171,7 +171,7 @@ func (s *ClassComprehensiveSuite) TestAllClassesInvalidSkills() {
 
 	for _, data := range testCases {
 		s.Run(data.Name+"_InvalidSkills", func() {
-			reqs := choices.GetClassRequirementsAtLevel(data.Class, 1)
+			reqs := choices.GetClassRequirements(data.Class)
 
 			// Test too many skills
 			s.Run("TooMany", func() {
@@ -260,7 +260,7 @@ func (s *ClassComprehensiveSuite) TestAllClassesEquipmentVariations() {
 					}
 
 					if reqs == nil {
-						reqs = choices.GetClassRequirementsAtLevel(data.Class, 1)
+						reqs = choices.GetClassRequirements(data.Class)
 					}
 
 					result := s.validator.Validate(reqs, variation)
