@@ -435,12 +435,17 @@ func (s *IntimidateSuite) TestAGuidedThreatStopsAndAsks() {
 	out, err := s.threaten(mgr)
 	s.Require().NoError(err)
 
+	// ROLL IS THE ONLY NUMBER a paused threat reports (rpg-api-protos#339).
+	// Asserted as the whole shape rather than field by field, because the
+	// claim is that nothing else is carried — and a test that checked three
+	// fields would pass on a fourth nobody meant to send.
 	s.True(out.Paused, "the attempt is waiting on an answer")
 	s.Require().NotNil(out.Roll)
 	s.Equal(6, *out.Roll, "the d20 the player is deciding about")
-	s.Equal(5, out.Total, "the pre-offer total")
-	s.Equal(0, out.DC, "no verdict yet, so no difficulty to report against one")
-	s.False(out.Beaten)
+	s.Equal(session.IntimidateOutput{
+		Paused: true, Roll: out.Roll, Target: "goblin",
+		Seq: out.Seq, Saved: out.Saved, Delivery: out.Delivery,
+	}, *out, "no verdict yet, so no total, no DC, no applied route and no beaten")
 	s.False(s.held(mgr, encounter.DeedIntimidate), "and nothing has reached the goblin")
 
 	// THE ACTION IS ALREADY GONE, read off the stored sheet rather than off

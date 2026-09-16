@@ -52,6 +52,9 @@ type IntimidateOutput struct {
 	Beaten bool `json:"beaten"`
 
 	// Total is what the check totalled. No omitempty: zero is an answer.
+	//
+	// ZERO WHILE PAUSED, along with Beaten and DC — see [IntimidateOutput.Paused]
+	// for the whole rule and why this one diverges from Unlock's.
 	Total int `json:"total"`
 
 	// DC is what it had to reach — the APPLIED route's own difficulty. The
@@ -73,18 +76,37 @@ type IntimidateOutput struct {
 
 	// Paused is true when the attempt stopped to ask the member whether to
 	// spend a held offer before the verdict is settled —
-	// [UnlockOutput.Paused]'s shape. Beaten, DC and Applied are the zero
-	// value while it is true: there is no verdict yet, only a question.
-	// Answer it with [Manager.React].
+	// [UnlockOutput.Paused]'s shape. Answer it with [Manager.React].
+	//
+	// # While it is true, ROLL IS THE ONLY NUMBER
+	//
+	// Beaten, Total, DC and Applied are all the zero value; Roll carries the
+	// d20 and nothing else does. There is no verdict yet, only a question,
+	// and the whole shape says so rather than reporting a half-answer a
+	// client would have to know not to render. Ruled on the wire contract
+	// (rpg-api-protos#339), and stated here in full so the api handler
+	// copies it instead of guessing.
+	//
+	// THIS DIVERGES FROM [Manager.Unlock], deliberately and knowingly. A
+	// paused Unlock reports the PRE-OFFER TOTAL — its own test pins it, and
+	// the reasoning is that the total alone is safe to show because the
+	// lock's DC is withheld, so a player cannot read off whether the die
+	// would close the gap. The same reasoning would have allowed it here.
+	// The wire contract chose the stricter shape instead; if the two should
+	// agree, it is Unlock that moves, and that is a separate slice with its
+	// own test to change.
 	//
 	// THE ACTION IS ALREADY SPENT when this is true. It is charged before
 	// anything is rolled, so a member who pauses cannot answer the question
 	// and then threaten somebody else with the same action.
 	Paused bool `json:"paused,omitempty"`
 
-	// Roll is the d20 as rolled, present only when Paused. THE MONSTER'S DC
-	// IS DELIBERATELY NOT SURFACED alongside it, for
-	// [checkOfferWindowPayload.Roll]'s reason.
+	// Roll is the d20 as rolled, present only when Paused — and the only
+	// number this output carries while it is. THE MONSTER'S DC IS
+	// DELIBERATELY NOT SURFACED alongside it, for
+	// [checkOfferWindowPayload.Roll]'s reason: a player deciding whether a
+	// die is worth spending should not be able to read off whether it would
+	// close the gap.
 	Roll *int `json:"roll,omitempty"`
 
 	Saved    SaveReport     `json:"saved"`
@@ -364,10 +386,12 @@ func (m *Manager) poseIntimidateWindow(
 		return nil, fmt.Errorf("intimidate: %w", err)
 	}
 
+	// NO TOTAL. Roll is the only number a paused threat reports
+	// ([IntimidateOutput.Paused]) — the one place this seam's shape is not
+	// Unlock's, and the reason is on that field.
 	roll := ask.Roll
 	return &IntimidateOutput{
 		Paused:   true,
-		Total:    ask.Total,
 		Roll:     &roll,
 		Target:   in.Target,
 		Seq:      scope.deliveredSeq(in.Member, recorded.Seq),
