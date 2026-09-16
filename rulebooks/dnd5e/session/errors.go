@@ -288,6 +288,23 @@ var (
 	// actor's current sight — the host-seam twin of encounter.ErrNotVisible.
 	ErrNotVisible = errors.New("target not visible")
 
+	// ErrUnwitnessed is [Manager.Intimidate]'s refusal when the target did
+	// not witness the actor — the host-seam twin of
+	// encounter.ErrUnwitnessed.
+	//
+	// THE OTHER DIRECTION FROM ErrNotVisible, and its own sentinel for the
+	// reason the composition's is: a threat has to be seen BY the one being
+	// threatened, sight range is per member, and "I can see you" and "you
+	// can see me" are two different answers. A caller narrating the refusal
+	// needs the right one.
+	//
+	// NOT ErrOutOfReach, which is a DISTANCE. Attack's reach refusal means
+	// "get closer"; this one does not, because a threat has no range cap
+	// beyond sight and closing on somebody through a wall changes nothing.
+	// Telling a player to walk toward a goblin that cannot see them is the
+	// wrong instruction, which is what merging the two would produce.
+	ErrUnwitnessed = errors.New("target did not witness the actor")
+
 	// ErrNotDown is Loot's refusal for a body that is still standing — the
 	// host-seam twin of encounter.ErrNotDown (rpg-project#368 §4.2).
 	//

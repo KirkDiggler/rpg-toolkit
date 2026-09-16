@@ -149,8 +149,7 @@ type IntimidateOutput struct {
 // told so.
 //
 // Errors: ErrNilInput, ErrNoMemberID, ErrNoSession, ErrNoEncounter,
-// ErrNotYourTurn, ErrDowned, ErrCannotAfford, ErrNoSheet,
-// encounter.ErrUnwitnessed.
+// ErrNotYourTurn, ErrDowned, ErrCannotAfford, ErrNoSheet, ErrUnwitnessed.
 func (m *Manager) Intimidate(ctx context.Context, in *IntimidateInput) (*IntimidateOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("intimidate: %w", ErrNilInput)
@@ -197,8 +196,11 @@ func (m *Manager) Intimidate(ctx context.Context, in *IntimidateInput) (*Intimid
 		return nil, fmt.Errorf("intimidate: %w", translate(err))
 	}
 	if !slices.Contains(witnesses, encounter.MemberID(in.Target)) {
+		// THIS SEAM'S OWN SENTINEL, not the composition's. A raw
+		// encounter error crossing here is the S2 leak, and a host that
+		// cannot match it answers Internal for what is an ordinary refusal.
 		return nil, fmt.Errorf("intimidate: target %q cannot see the actor: %w",
-			in.Target, encounter.ErrUnwitnessed)
+			in.Target, ErrUnwitnessed)
 	}
 
 	if err := m.spendOnIntimidate(ctx, scope, in.Member, clock.Round); err != nil {

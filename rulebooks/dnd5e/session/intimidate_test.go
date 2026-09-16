@@ -28,6 +28,12 @@ type IntimidateSuite struct {
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
+
+	// authored, when set, is the dungeon author's hand on the spawn — what
+	// dungeonspec's MonsterPlacement compiles to and a host forwards. Most
+	// scenes leave it nil, which is the ordinary placement that prices
+	// nothing and plants nothing.
+	authored func(*session.SpawnInput)
 }
 
 func TestIntimidateSuite(t *testing.T) {
@@ -35,7 +41,7 @@ func TestIntimidateSuite(t *testing.T) {
 }
 
 func (s *IntimidateSuite) SetupTest() {
-	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.sessions, s.encounters, s.authored = newFakeSessions(), newFakeEncounters(), nil
 	// CHA 8 is a -1 modifier, so a d20 of 10 totals 9 — exactly the goblin's
 	// derived DC, which a total that MEETS beats. A d20 of 5 totals 4 and
 	// does not. Both scenes turn on one die.
@@ -90,10 +96,14 @@ func (s *IntimidateSuite) aYardDriven(
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
+	spawn := &session.SpawnInput{
 		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
 		Position: spatial.Position{X: 5, Y: 1},
-	})
+	}
+	if s.authored != nil {
+		s.authored(spawn)
+	}
+	_, err = mgr.Spawn(ctx, spawn)
 	s.Require().NoError(err)
 
 	// THE CLOCK IS AUTHORED, not rolled for — [turnWorld]'s own reason, and
@@ -243,7 +253,11 @@ func (s *IntimidateSuite) TestRefusedThroughAWall() {
 	)...)
 
 	_, err := s.threaten(mgr)
-	s.Require().ErrorIs(err, encounter.ErrUnwitnessed)
+	// THE SEAM'S OWN SENTINEL. A raw encounter error reaching a host is the
+	// S2 leak, and one the host cannot match is answered as Internal — an
+	// ordinary refusal reported as a server fault.
+	s.Require().ErrorIs(err, session.ErrUnwitnessed)
+	s.Require().NotErrorIs(err, encounter.ErrUnwitnessed, "the composition's error stays inside")
 	s.False(s.held(mgr, encounter.DeedIntimidate))
 
 	// NOTHING WAS CHARGED, and the sheet proves it structurally: lighting
@@ -540,4 +554,128 @@ func (s *IntimidateSuite) TestAGuidedThreatKeptFallsShort() {
 	s.answer(mgr, session.ReactHold)
 
 	s.False(s.held(mgr, encounter.DeedIntimidate), "a 5 does not reach 9")
+}
+
+// AN AUTHORED DC HAS TO REACH A LIVE RUN, and SpawnInput is the only road it
+// can travel: a host that resolves monster content at runtime builds its
+// world empty of members and brings every monster in through Spawn. Without
+// the field the sergeant priced at 12 is talked down on its stat block's 9
+// and nobody can tell (rpg-project#454).
+func (s *IntimidateSuite) TestAnAuthoredCheckSurvivesTheSpawn() {
+	s.authored = func(in *session.SpawnInput) {
+		in.Intimidate = []session.DoorApproach{{Ability: "intimidation", DC: 12}}
+	}
+	mgr := s.aYard([]int{10})
+
+	out, err := s.threaten(mgr)
+	s.Require().NoError(err)
+	s.Equal(12, out.DC, "the author's number, not the goblin's passive Insight of 9")
+	s.Equal(session.DoorApproach{Ability: "intimidation", DC: 12}, out.Applied)
+	s.False(out.Beaten, "a 9 does not reach 12 — which the derived DC would have")
+}
+
+// And the ordinary placement, so the field's ABSENCE still means derived
+// rather than ungated: the same scene with nothing authored is DC 9.
+func (s *IntimidateSuite) TestAnUnauthoredSpawnStillDerives() {
+	mgr := s.aYard([]int{10})
+
+	out, err := s.threaten(mgr)
+	s.Require().NoError(err)
+	s.Equal(9, out.DC)
+	s.True(out.Beaten)
+}
+
+// The world half has the same road to travel. An authored
+// `on: { intimidated: { fact: … } }` reaches the run through Spawn, and a
+// beaten threat teaches it to the witnesses — proved through the stance it
+// flips, which is the only thing the fact is FOR.
+func (s *IntimidateSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
+	const fact = "sergeant-cowed"
+	s.authored = func(in *session.SpawnInput) {
+		in.OnIntimidated = fact
+		in.Faction = "raiders"
+	}
+	mgr := s.aCamp(fact, []int{10})
+
+	out, err := s.threaten(mgr)
+	s.Require().NoError(err)
+	s.Require().True(out.Beaten)
+
+	// The stance turning IS the fact arriving: the disposition waits on it
+	// and nothing else can flip it. Read off the seam's own event, because
+	// this seam publishes no stance read.
+	for _, event := range s.events(mgr, "alice") {
+		if event.Kind != session.EventStanceChanged {
+			continue
+		}
+		// The pair is unordered and written in its one normalized order,
+		// which is why this reads party-first and the authored disposition
+		// does not.
+		s.Equal(session.StanceChangedBody{
+			Between: []string{"party", "raiders"}, Stance: "neutral",
+		}, event.Body, "cowing it in front of the camp turned the camp")
+		return
+	}
+	s.Fail("the fact never reached the run, so the camp never learned anything")
+}
+
+// aCamp is the yard with a faction that is hostile until it learns a fact,
+// and the goblin as that faction's mind — the smallest world in which
+// teaching a fact is observable at this seam.
+func (s *IntimidateSuite) aCamp(fact string, rolls []int) *session.Manager {
+	roller := &sequenceDice{rolls: append([]int{10, 10}, rolls...)}
+	mgr, err := session.NewManager(&session.Config{
+		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
+		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{
+			Canvas:   pointyCanvas(),
+			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
+			Factions: []encounter.FactionInput{{ID: "raiders", Mind: "goblin"}},
+			Dispositions: []encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{"raiders", encounter.FactionParty},
+				Stance:  encounter.StanceHostile,
+				Until:   encounter.TriggerFact{Fact: fact},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+	data := enc.ToData()
+
+	ctx := context.Background()
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: &data,
+	})
+	s.Require().NoError(err)
+
+	spawn := &session.SpawnInput{
+		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
+		Position: spatial.Position{X: 5, Y: 1},
+	}
+	s.authored(spawn)
+	_, err = mgr.Spawn(ctx, spawn)
+	s.Require().NoError(err)
+
+	stored, err := s.encounters.GetEncounter(ctx, "world")
+	s.Require().NoError(err)
+	s.Require().NoError(s.encounters.SaveEncounter(ctx, "world",
+		turnWorld(stored, []string{"alice", "goblin"}, 0)))
+
+	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal(session.ClockTurn, turn.Clock)
+
+	return mgr
 }
