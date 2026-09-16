@@ -2731,3 +2731,234 @@ type RecheckOutput struct {
 	Saved    SaveReport
 	Delivery DeliveryReport
 }
+
+// LevelChoiceKind names what a level is asking a player to pick.
+//
+// A string enum of this package's own, for the reason [MemberKind] is one: it
+// maps onto a proto enum, so adding a kind must be a compatible change. It is
+// deliberately NOT a mirror of the rulebook's [choices.Requirements] fields —
+// that shape has eleven of them and this seam can translate two. A kind
+// missing from this list is refused with [ErrLevelNotOffered] rather than
+// dropped; see [Manager.NextLevel].
+type LevelChoiceKind string
+
+const (
+	// LevelChoiceCantrip asks for cantrips. Options and selections are
+	// canonical spell refs.
+	LevelChoiceCantrip LevelChoiceKind = "cantrip"
+
+	// LevelChoiceSpell asks for leveled spells. Options and selections are
+	// canonical spell refs, and [LevelChoice.SpellLevel] says which spell
+	// level they are.
+	LevelChoiceSpell LevelChoiceKind = "spell"
+)
+
+// LevelChoice is one question the next level asks.
+//
+// Options is the WHOLE universe this choice ranges over — the class's row for
+// that level with everything the character already knows removed, which is the
+// character's own view of the row rather than the class's (rpg-toolkit#1781).
+// An EMPTY Options with a positive Count is a level this build cannot yet
+// teach: the class table really does say a spell is learned there and no list
+// has been authored for its spell level. That is projected as it stands rather
+// than hidden, because a level that quietly asked for nothing would look
+// exactly like a level that gives a spell away for free.
+type LevelChoice struct {
+	// ID is the requirement's own identifier, e.g. "bard-spells-2". A
+	// submission names this back.
+	ID string `json:"id"`
+
+	// Kind is what is being chosen.
+	Kind LevelChoiceKind `json:"kind"`
+
+	// Count is how many to choose. It is the CLASS's number and is not
+	// reduced along with Options: how many spells a level teaches is a rule,
+	// not a property of who is taking it.
+	Count int `json:"count"`
+
+	// SpellLevel is which spell level the options are, for
+	// [LevelChoiceSpell]. Zero for a cantrip choice, where the question does
+	// not arise.
+	SpellLevel int `json:"spell_level,omitempty"`
+
+	// Options are the canonical refs this choice may select from, e.g.
+	// "dnd5e:spells:healing-word".
+	Options []string `json:"options,omitempty"`
+}
+
+// NextLevelInput asks what the next level would be for one stored character.
+//
+// The character ID is the whole universe: this read ranges over one sheet and
+// the class tables, and names both in its answer.
+type NextLevelInput struct {
+	// Character is the stored character to ask about.
+	Character string
+}
+
+// NextLevelOutput describes the level this character would take next, and what
+// its sheet says about whether it may.
+//
+// THIS VERB DECIDES NOTHING. "A level is available" is the gap between Level
+// and EntitledLevel (R4.10) — both are projected and the comparison is the
+// host's, because a flag here would be a rule in the seam.
+type NextLevelOutput struct {
+	// Character is the sheet this answer is about.
+	Character string `json:"character"`
+
+	// Class is the character's class, as its bare id ("bard"). Multiclassing
+	// is not open, so the next level is taken in this class (R2.4).
+	Class string `json:"class"`
+
+	// Level is the character level the sheet holds NOW. CharacterLevel below
+	// is the one the next level would make it.
+	Level int `json:"level"`
+
+	// Experience is the character's cumulative total.
+	Experience int `json:"experience"`
+
+	// EntitledLevel is the highest level that total has earned. Greater than
+	// Level means a level is waiting to be taken.
+	EntitledLevel int `json:"entitled_level"`
+
+	// NextThreshold is the total needed before another level is earned, or 0
+	// at the top of the table — zero telling the truth rather than hiding a
+	// level, since no reading of a table whose first threshold is 0 produces
+	// "0 more needed".
+	NextThreshold int `json:"next_threshold"`
+
+	// CharacterLevel is the character level the next level WOULD TAKE, which
+	// is Level plus one.
+	CharacterLevel int `json:"character_level"`
+
+	// ClassLevel is the class level the next level would take. Equal to
+	// CharacterLevel until multiclassing opens, and stated separately so the
+	// day it opens this surface does not change shape.
+	ClassLevel int `json:"class_level"`
+
+	// HitDie is the class's hit die, e.g. 10 for a fighter. What the level
+	// does with it is [Manager.LevelUp]'s HitPointMethod.
+	HitDie int `json:"hit_die"`
+
+	// Features are the canonical refs the level grants, carried verbatim
+	// from the class's authored grant rows.
+	Features []string `json:"features,omitempty"`
+
+	// Choices are the questions the level asks THIS character. Empty for
+	// most levels of most classes, which is a level and not an error.
+	Choices []LevelChoice `json:"choices,omitempty"`
+}
+
+// LevelUpHitPointMethod selects how a level's hit point gain is produced.
+//
+// This package's own string type rather than the rulebook's, for the S2 reason
+// every enum here is: a host wiring this verb must not have to name a toolkit
+// type. It offers TWO of the rulebook's three — the level-1-only "max" is not
+// a level-up answer and is refused before any I/O rather than carried down to
+// be refused by the rulebook after a sheet has been read.
+type LevelUpHitPointMethod string
+
+const (
+	// HitPointsRolled rolls the class hit die through the host's own Dice.
+	HitPointsRolled LevelUpHitPointMethod = "rolled"
+
+	// HitPointsAverage takes the class's fixed average, half the die plus
+	// one (PHB p.15).
+	HitPointsAverage LevelUpHitPointMethod = "average"
+)
+
+// LevelChoiceSubmission answers one [LevelChoice].
+//
+// IT CARRIES NO CATEGORY. The client names the choice and its selections; what
+// KIND of question that id was is read back off the level's own requirement
+// row, so a client cannot pick the wrong one and a level that changes what it
+// asks does not need every client to change with it.
+type LevelChoiceSubmission struct {
+	// ChoiceID is the [LevelChoice.ID] being answered. An id the level did
+	// not ask for is refused with [ErrBadLevelRequest].
+	ChoiceID string
+
+	// Selections are canonical refs, e.g. "dnd5e:spells:healing-word". A
+	// string that is not a ref, or names no spell this build carries, is
+	// refused before the rulebook is called.
+	Selections []string
+}
+
+// LevelUpInput takes the level a character has earned.
+type LevelUpInput struct {
+	// Character is the stored character to advance.
+	Character string
+
+	// HitPointMethod is how the hit point gain is produced. The VALUE is the
+	// rulebook's; a caller-supplied number would put a game rule in the host.
+	HitPointMethod LevelUpHitPointMethod
+
+	// Choices answers every question [Manager.NextLevel] reported. A level
+	// that asks nothing takes none, and one supplied anyway is refused: the
+	// level record is append-only, so a choice nobody asked for could never
+	// be taken back.
+	Choices []LevelChoiceSubmission
+}
+
+// ResourceMaximumChange is one pool whose maximum the level moved.
+type ResourceMaximumChange struct {
+	// Key is the resource key, e.g. "spell_slot_level_1".
+	Key string `json:"key"`
+
+	// Name is the display name for that key, or the key itself when the
+	// rulebook's table has no name for it. A pool nobody named still ships,
+	// named by its key, rather than being dropped from the account.
+	Name string `json:"name"`
+
+	// From is the maximum before this level. Zero for a pool the character
+	// did not have.
+	From int `json:"from"`
+
+	// To is the maximum after it.
+	To int `json:"to"`
+}
+
+// LevelGained is what one level added, as the sheet can describe it
+// immediately afterwards.
+//
+// A PROJECTION FOR DISPLAY. Nothing reads it back: every field is recomputable
+// from the level record and the current rules, which is the whole point of
+// recording a level's inputs rather than its effects.
+//
+// Conditions granted at a level are deliberately absent. The rulebook reports
+// them beside the features and no consumer has a place to put them yet; a
+// field nobody fills is a worse answer than one that is not there, and the day
+// one is needed it is a compatible addition.
+type LevelGained struct {
+	// CharacterLevel is the level the character is now.
+	CharacterLevel int `json:"character_level"`
+
+	// ClassLevel is the class level it is now.
+	ClassLevel int `json:"class_level"`
+
+	// HitPointGain is what the level added to the maximum, die plus
+	// Constitution modifier.
+	HitPointGain int `json:"hit_point_gain"`
+
+	// ProficiencyBonus is the bonus AT the new level, not the change.
+	ProficiencyBonus int `json:"proficiency_bonus"`
+
+	// Features are the canonical refs the level granted.
+	Features []string `json:"features,omitempty"`
+
+	// Resources are the pools whose maximum the level moved.
+	Resources []ResourceMaximumChange `json:"resources,omitempty"`
+}
+
+// LevelUpOutput reports what the level persisted and what it added.
+//
+// IT DOES NOT RETURN THE SHEET. character.Data crosses this boundary on the
+// repository alone (S2), so a host that wants the new sheet re-reads it
+// through the repository it already implements — which is also the only read
+// that can be trusted to show what actually landed.
+type LevelUpOutput struct {
+	// Saved names what was persisted: one character aggregate.
+	Saved SaveReport `json:"saved"`
+
+	// Gained is what the level added.
+	Gained LevelGained `json:"gained"`
+}
