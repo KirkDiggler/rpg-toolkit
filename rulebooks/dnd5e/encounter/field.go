@@ -870,6 +870,28 @@ type MemberInput struct {
 	// (mind/behavior adoption, rpg-toolkit#1725, rule A5).
 	Mind string
 
+	// Intimidate is the authored check a character must beat to frighten
+	// this member ([dungeonspec.PlaceSpec.Intimidate], rpg-project#454) —
+	// the same list of approaches a lock carries, priced per route. Nil
+	// when the author wrote none, and nil MEANS SOMETHING: the rulebook
+	// derives the default from the stat block's own passive Insight. This
+	// composition cannot derive it and must not try (C1) — it carries the
+	// list and never reads a DC.
+	Intimidate []CheckApproach
+
+	// OnIntimidated is the world fact every witness learns when a threat
+	// against this member lands ([dungeonspec.PlaceSpec.On]'s `intimidated`
+	// key, rpg-project#454). Empty when the author asked for none, which is
+	// the common case: a scared goblin does not turn the camp unless
+	// somebody planted the fact that says so.
+	//
+	// THE PLAY RECORD AND THE WORLD JOURNAL ARE BOTH WRITTEN, AND NEITHER
+	// IS THE OTHER'S CACHE (Kirk, 2026-09-16). The deed is this monster's
+	// own memory of who threatened it and goes with the run; the fact is
+	// what the camp comes to know and carries out of it. [Encounter.Intimidate]
+	// writes to each from one seam and copies nothing between them.
+	OnIntimidated FactID
+
 	// BlocksMovement says whether this member refuses a later arrival on
 	// its cell (rpg-toolkit#1434) — a bare fact, the same species as
 	// SpeedFeet and SightFeet: this composition carries it and never asks
@@ -985,7 +1007,9 @@ type ActionView struct {
 // monster's turn asks [MonsterView.Budget] or [SeenMember.InReach] for one.
 // Callers ask this BEFORE any mutation — see [Encounter.Join]'s own call for
 // why that ordering matters there specifically.
-func validateMemberFacts(id MemberID, speedFeet, sightFeet int, actions []ActionView) error {
+func validateMemberFacts(
+	id MemberID, speedFeet, sightFeet int, actions []ActionView, intimidate []CheckApproach,
+) error {
 	if speedFeet < 0 {
 		return fmt.Errorf("member %s: speed %d feet is negative: %w", id, speedFeet, ErrNoMember)
 	}
@@ -995,6 +1019,17 @@ func validateMemberFacts(id MemberID, speedFeet, sightFeet int, actions []Action
 	for _, a := range actions {
 		if a.RangeFeet < 0 {
 			return fmt.Errorf("member %s: action %q range %d feet is negative: %w", id, a.Ref, a.RangeFeet, ErrNoMember)
+		}
+	}
+	// An authored route with nothing to beat is the same defect a lock's is
+	// (validateCheck), asked of a member. AN EMPTY LIST IS NOT A DEFECT
+	// HERE, and that is the difference: a lock that lists no way through
+	// can never be opened, while a monster that lists no way to frighten it
+	// is every monster — the rulebook derives the DC from its own stat
+	// block (MemberInput.Intimidate).
+	for _, a := range intimidate {
+		if a.DC < 1 {
+			return fmt.Errorf("member %s: intimidate approach at DC %d has nothing to beat: %w", id, a.DC, ErrNoMember)
 		}
 	}
 	return nil
@@ -1359,6 +1394,13 @@ type Member struct {
 	Targeting string
 	Mind      string
 
+	// Intimidate and OnIntimidated carry forward
+	// [MemberInput.Intimidate]/[MemberInput.OnIntimidated] verbatim — see
+	// those fields' own docs. This is where the session reads the authored
+	// check before it rolls one, exactly as it reads Actions.
+	Intimidate    []CheckApproach
+	OnIntimidated FactID
+
 	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
 	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
 	BlocksMovement bool
@@ -1397,6 +1439,8 @@ type memberRecord struct {
 	Actions        []ActionView
 	Targeting      string
 	Mind           string
+	Intimidate     []CheckApproach
+	OnIntimidated  FactID
 	BlocksMovement bool
 
 	// Faction is the faction the caller NAMED, or empty for the kind's
@@ -1650,6 +1694,13 @@ type JoinInput struct {
 	Actions   []ActionView
 	Targeting string
 	Mind      string
+
+	// Intimidate and OnIntimidated are this joiner's shenanigan facts,
+	// [MemberInput.Intimidate] and [MemberInput.OnIntimidated] under the
+	// name Join takes them by — a monster that arrives mid-run is as
+	// intimidable as one that started there.
+	Intimidate    []CheckApproach
+	OnIntimidated FactID
 
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.

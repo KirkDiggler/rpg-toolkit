@@ -319,6 +319,32 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 		{"a prop armed with actions", `at: [1,1], blocks_movement: true, blocks_los: false }`,
 			`at: [1,1], blocks_movement: true, blocks_los: false, actions: ["dnd5e:weapons:scimitar"] }`,
 			"place[0].actions", "not a monster"},
+		// The first shenanigan's two placement keys (rpg-project#454). The
+		// check is a check like any other, so its rows refuse exactly as a
+		// lock's do; the `on:` map is keyed by the verb that landed, and a
+		// verb this build does not land is refused BY NAME rather than
+		// silently never firing.
+		{"an intimidate approach nothing has to beat", `at: [11,3], targeting: lowest-health }`,
+			`at: [11,3], targeting: lowest-health, intimidate: [{ ability: intimidation, dc: 0 }] }`,
+			"place[8].intimidate[0].dc", "nothing to beat"},
+		{"an intimidate approach with no ability", `at: [11,3], targeting: lowest-health }`,
+			`at: [11,3], targeting: lowest-health, intimidate: [{ dc: 12 }] }`,
+			"place[8].intimidate[0].ability", "which ability it rolls"},
+		{"an explicitly empty intimidate list", `at: [11,3], targeting: lowest-health }`,
+			`at: [11,3], targeting: lowest-health, intimidate: [] }`,
+			"place[8].intimidate", "no way through it"},
+		{"a prop that can be intimidated", `at: [1,1], blocks_movement: true, blocks_los: false }`,
+			`at: [1,1], blocks_movement: true, blocks_los: false, intimidate: [{ ability: intimidation, dc: 12 }] }`,
+			"place[0].intimidate", "not a monster"},
+		{"a prop the world learns something about", `at: [1,1], blocks_movement: true, blocks_los: false }`,
+			`at: [1,1], blocks_movement: true, blocks_los: false, on: { intimidated: { fact: f } } }`,
+			"place[0].on", "not a monster"},
+		{"an on verb this build does not land", `at: [11,3], targeting: lowest-health }`,
+			`at: [11,3], targeting: lowest-health, on: { persuaded: { fact: talked-round } } }`,
+			"place[8].on.persuaded", "not a verb this build lands"},
+		{"an on entry that teaches nothing", `at: [11,3], targeting: lowest-health }`,
+			`at: [11,3], targeting: lowest-health, on: { intimidated: {} } }`,
+			"place[8].on.intimidated.fact", "does not say what"},
 		{"a boss that is a prop", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, boss: true }`,
 			"place[0].boss", "not a monster"},
 		{"a lock approach nothing has to beat", "locked: [{ ability: dex, dc: 12 }]", "locked: [{ ability: dex, dc: 0 }]",

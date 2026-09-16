@@ -174,6 +174,24 @@ type MonsterPlacement struct {
 	// authored before factions existed pictures byte-identically.
 	Faction string `json:"Faction,omitempty"`
 
+	// Intimidate is the check a character must beat to frighten this
+	// monster ([PlaceSpec.Intimidate], rpg-project#454) — for a host to
+	// hand to [encounter.MemberInput.Intimidate] when it spawns the sheet.
+	// Nil when the author authored none, which means the rulebook derives
+	// the DC from the stat block's own passive Insight.
+	Intimidate []encounter.CheckApproach `json:"Intimidate,omitempty"`
+
+	// On is what the world learns when a shenanigan against this monster
+	// lands, verb to fact id ([PlaceSpec.On]) — read by the host at
+	// [OnIntimidated] and handed to [encounter.MemberInput.OnIntimidated].
+	// Nil when the author planted nothing.
+	//
+	// STILL KEYED BY VERB on this side, deliberately: the composition takes
+	// one fact per verb as its own field, and flattening here would put the
+	// verb's name in a Go field name — which is where the second shenanigan
+	// would have to break this type instead of adding a key.
+	On map[string]string `json:"On,omitempty"`
+
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
 	// [predicateOf] — for a host to hand to [encounter.MemberInput.Arrives]
@@ -718,6 +736,21 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 	return out
 }
 
+// onOf carries what the world learns, verb to fact id, nil staying nil so a
+// placement that planted nothing pictures exactly as it did before this key
+// existed.
+func onOf(on map[string]OnSpec) map[string]string {
+	if on == nil {
+		return nil
+	}
+	out := make(map[string]string, len(on))
+	for verb, spec := range on {
+		out[verb] = spec.Fact
+	}
+
+	return out
+}
+
 // approachesOf carries an authored check's approaches to the composition's
 // shape — copied, not aliased, for regionsOf's reason — with nil staying nil:
 // a door that was never concealed carries nothing, which is the zero value
@@ -754,8 +787,10 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
 			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
 			ID: p.ID, Holds: holds, Faction: p.Faction,
-			Actions: append([]string(nil), p.Actions...),
-			Arrives: predicateOf(p.Arrives),
+			Actions:    append([]string(nil), p.Actions...),
+			Intimidate: approachesOf(p.Intimidate),
+			On:         onOf(p.On),
+			Arrives:    predicateOf(p.Arrives),
 		})
 	}
 	return out

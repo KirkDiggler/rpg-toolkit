@@ -541,6 +541,16 @@ var (
 	// the configured range (default: adjacent, one cell) from the actor.
 	ErrOutOfRange = errors.New("encounter: target out of range")
 
+	// ErrUnwitnessed is returned when [Encounter.Intimidate]'s target did
+	// not witness the actor: the target is not in [Encounter.witnessesOf]
+	// of the actor's cell, so nothing it could be told happened in front of
+	// it. THE OTHER DIRECTION FROM ErrNotVisible, deliberately its own
+	// sentinel — a threat has to be seen BY the one being threatened, and
+	// sight range is per member, so "I can see you" and "you can see me"
+	// are two different answers and a caller narrating the refusal needs
+	// the right one.
+	ErrUnwitnessed = errors.New("encounter: target did not witness the actor")
+
 	// ErrNotVisible is returned when Interact's target is not in the
 	// actor's current sight — a target once seen but not seen now refuses
 	// identically to one never seen at all, the same "current, not held"

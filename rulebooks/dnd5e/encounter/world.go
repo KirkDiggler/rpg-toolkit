@@ -307,13 +307,27 @@ func (f *field) factionIDs() []FactionID {
 }
 
 // mintedFactIDs is every fact id this run can mention, sorted: what a record
-// reveals, what a disposition waits for, what an ending waits for — the
+// reveals, what a disposition waits for, what an ending waits for, and what a
+// member teaches its witnesses when a threat against it lands — the
 // `known:fact` kinds the trust boundary accepts at load.
-func mintedFactIDs(f *field, endings []Trigger) []FactID {
+//
+// members is the roster and the reserve AS PERSISTED, because that is where a
+// shenanigan's fact is authored (rpg-project#454): `on: { intimidated: { fact:
+// … } }` on the sergeant's placement means this run can mint
+// `known:fact:sergeant-cowed` even though no record reveals it and no
+// disposition has to wait for it. Left out, a saved run in which the sergeant
+// was cowed would refuse to load — its own fact would look like another
+// dungeon's.
+func mintedFactIDs(f *field, endings []Trigger, members []FactID) []FactID {
 	seen := make(map[FactID]bool)
 	for _, rec := range f.intel {
 		if rec.Reveals.Fact != "" {
 			seen[rec.Reveals.Fact] = true
+		}
+	}
+	for _, id := range members {
+		if id != "" {
+			seen[id] = true
 		}
 	}
 	for _, d := range f.dispositions {
