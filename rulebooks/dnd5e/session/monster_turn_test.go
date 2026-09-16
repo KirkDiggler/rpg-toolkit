@@ -1198,17 +1198,28 @@ func TestSessionDoubleDoorVisibleInterruptsGhostPursuit(t *testing.T) {
 	require.False(t, seen(after, "billy"), "concealed Billy must not become current while David interrupts")
 
 	var david session.SeenMember
+	var sawDavid bool
 	for _, member := range after.Seen {
 		if member.ID == "david" {
-			david = member
+			david, sawDavid = member, true
 			break
 		}
 	}
-	require.NotEmpty(t, david.Path, "newly visible David must have a live path")
-	require.NotEqual(t, billyMemory.Path[:1], david.Path[:1], "David's live route must discriminate visible priority from continued ghost pursuit")
-	delegatedMove, ok := recorder.intents[intentOffset+1].(session.Move)
-	require.True(t, ok, "visible David outside reach must cause a one-cell move")
-	require.Equal(t, david.Path[:1], delegatedMove.Path, "current-visible David must interrupt the stale Billy route")
+	require.True(t, sawDavid, "David must be current-visible on the interrupting view")
+
+	// THE INTERRUPTION IS A SHOT, NOT A STEP (rpg-project#448). A goblin
+	// carries a shortbow now, so a player it can see two cells away is
+	// already in reach and there is no route to walk — which is why David
+	// arrives with an empty path rather than a one-cell one. The claim this
+	// test exists for is untouched: a current-visible player takes the
+	// decision away from a remembered one, and the stale Billy route is
+	// abandoned rather than continued.
+	require.Empty(t, david.Path, "a player already in reach of the bow needs no route to him")
+	delegatedAttack, ok := recorder.intents[intentOffset+1].(session.Attack)
+	require.True(t, ok, "current-visible David must interrupt the stale Billy route")
+	require.Equal(t, "david", delegatedAttack.Target)
+	require.Equal(t, refs.Weapons.Shortbow().String(), delegatedAttack.Action,
+		"and it is the bow that reaches him, not the blade the goblin also carries")
 
 	requireNeverContainsPosition(t, recorder.views, "billy", hiddenRightCell)
 	requireNeverContainsIntentPosition(t, recorder.intents, hiddenRightCell)
