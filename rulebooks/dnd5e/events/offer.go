@@ -6,6 +6,7 @@ package events
 import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 )
 
 // Offer is one spendable thing a member already holds that could join a roll
@@ -96,10 +97,10 @@ var (
 	// PostRollOfferChain is folded between the d20 and [PostAttackRollChain]:
 	// see [PostRollOfferEvent] for why that boundary and no other.
 	//
-	// Folded on an ATTACK roll only today. Saving throws are the same shape
-	// and remain deliberately unfolded — they arrive with the slice that
-	// asks for them, not as an enumeration against a hypothetical.
-	// [PostCheckRollOfferChain] is that slice for ability checks.
+	// Folded on an ATTACK roll only. [PostCheckRollOfferChain] is the same
+	// shape for ability checks and [PostSaveRollOfferChain] for saving
+	// throws — each arrived with the slice that asked for it, not as an
+	// enumeration against a hypothetical.
 	PostRollOfferChain = events.DefineChainedTopic[*PostRollOfferEvent]("dnd5e.roll.offer")
 
 	// OfferTakenTopic carries [OfferTakenEvent]: an offer was spent, and this
@@ -112,6 +113,11 @@ var (
 	// folded between the d20 and the check's success/failure determination,
 	// for [PostCheckRollOfferEvent]'s reason. Guidance is the first consumer.
 	PostCheckRollOfferChain = events.DefineChainedTopic[*PostCheckRollOfferEvent]("dnd5e.checks.roll.offer")
+
+	// PostSaveRollOfferChain is [PostRollOfferChain]'s saving-throw sibling:
+	// folded between the d20 and the save's success/failure determination,
+	// for [PostSaveRollOfferEvent]'s reason. Resistance is the first consumer.
+	PostSaveRollOfferChain = events.DefineChainedTopic[*PostSaveRollOfferEvent]("dnd5e.saves.roll.offer")
 )
 
 // PostCheckRollOfferEvent is folded AFTER an ability check's d20 is rolled and
@@ -146,6 +152,48 @@ type PostCheckRollOfferEvent struct {
 	Total int
 
 	// Offers are what the checker's own effects put on the table, in
+	// subscription order.
+	Offers []Offer
+}
+
+// PostSaveRollOfferEvent is folded AFTER a saving throw's d20 is rolled and
+// BEFORE anything reads the outcome off it — [PostRollOfferEvent]'s boundary,
+// applied to saving throws instead of attacks.
+//
+// # Why saves get their own event instead of reusing PostCheckRollOfferEvent
+//
+// A saving throw's identity is different from a check's: it carries an
+// Ability (which save is being made) and a DC to beat, neither of which a
+// bare ability check has. Giving saves their own event keeps the fields
+// honest instead of overloading a check event with save-only meaning.
+//
+// # Nothing here is a modifier, same as the attack and check events
+//
+// Subscribers APPEND to Offers. They do not touch Roll or Total, which are
+// reported so a subscriber can decide whether its die is worth offering, and
+// so whoever is asked can see what they are deciding about. Resistance's own
+// text is the reason this boundary is exactly right for it too: "you can
+// roll the die and add the number rolled to one saving throw of your choice
+// ... before or after making the save."
+type PostSaveRollOfferEvent struct {
+	// SaverID is whose d20 was rolled.
+	SaverID string
+
+	// Ability is the ability score being tested.
+	Ability abilities.Ability
+
+	// DC is what the total must reach.
+	DC int
+
+	// Roll is the d20 as rolled, after advantage or disadvantage.
+	Roll int
+
+	// Total is what the save settled on before any offer joins it — the
+	// roll plus the saver's modifier and any chain-granted bonus. The
+	// number an offer would be added to.
+	Total int
+
+	// Offers are what the saver's own effects put on the table, in
 	// subscription order.
 	Offers []Offer
 }

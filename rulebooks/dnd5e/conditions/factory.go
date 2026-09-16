@@ -118,6 +118,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createConcentrating(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Guided().ID:
 		condition, err = createGuided(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.Resistance().ID:
+		condition, err = createResistance(input.Config, input.MemberID, input.SourceRef)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -505,6 +507,38 @@ func createGuided(config json.RawMessage, memberID, sourceRef string) (*GuidedCo
 	}
 
 	return NewGuidedCondition(NewGuidedConditionInput{
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+	})
+}
+
+// resistanceConfig is the config structure for the resistance condition.
+// SourceID is the cleric who cast Resistance.
+type resistanceConfig struct {
+	SourceID string `json:"source_id"`
+}
+
+// createResistance creates a resistance condition from config. The member is
+// the creature Resistance touched.
+//
+// Unlike the plain-string sourceRef conditions above, [NewResistanceCondition]
+// takes a parsed *core.Ref and validates it against the canonical Resistance
+// spell ref — [BlessedCondition]'s strictness, not [ViciousMockeryCondition]'s
+// — so the string this factory is handed is parsed here rather than deferred
+// to the constructor. Mirrors [createGuided] exactly.
+func createResistance(config json.RawMessage, memberID, sourceRef string) (*ResistanceCondition, error) {
+	var cfg resistanceConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse resistance config")
+		}
+	}
+
+	ref, err := core.ParseString(sourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse resistance source ref: %s", sourceRef)
+	}
+
+	return NewResistanceCondition(NewResistanceConditionInput{
 		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
 	})
 }

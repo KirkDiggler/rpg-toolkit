@@ -66,6 +66,10 @@ var (
 	// creature, spendable on one later ability check.
 	conditionGuided = &core.Ref{Module: Module, Type: TypeConditions, ID: "guided"}
 
+	// Resistance (docs/ideas/cleric): the d4 Resistance leaves on the touched
+	// creature, spendable on one later saving throw.
+	conditionResistance = &core.Ref{Module: Module, Type: TypeConditions, ID: "resistance"}
+
 	// Reaction conditions (Wave 2.11d) — universal-by-default reactions that
 	// subscribe to the appropriate chain and publish ReactionTriggerEvents
 	// when their predicate matches AND gamectx.IsReactionReady returns true.
@@ -187,3 +191,8 @@ func (n conditionsNS) Concentrating() *core.Ref { return conditionConcentrating 
 // Guided returns the ref for the GuidedCondition, applied to the creature
 // Guidance touches and holding the d4 it can spend on one later ability check.
 func (n conditionsNS) Guided() *core.Ref { return conditionGuided }
+
+// Resistance returns the ref for the ResistanceCondition, applied to the
+// creature Resistance touches and holding the d4 it can spend on one later
+// saving throw.
+func (n conditionsNS) Resistance() *core.Ref { return conditionResistance }
