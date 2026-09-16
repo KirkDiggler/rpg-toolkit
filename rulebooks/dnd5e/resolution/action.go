@@ -720,11 +720,12 @@ func newGatedCast(
 	}
 
 	return NewContest(&ContestInput{
-		Gate:        profile.Save,
-		SaverID:     targetID,
-		Application: application,
-		Damage:      profile.Damage,
-		Move:        directiveFor(profile.Move, casterID),
+		Gate:            profile.Save,
+		SaverID:         targetID,
+		Application:     application,
+		Damage:          profile.Damage,
+		DamageIfInjured: profile.DamageIfInjured,
+		Move:            directiveFor(profile.Move, casterID),
 		// The compiled definition is the provenance pair: its ref names the
 		// spell and its name is what the player reads on the roll.
 		SourceName: definition.Name,

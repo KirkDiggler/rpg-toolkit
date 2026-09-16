@@ -337,6 +337,60 @@ func (s *ContestDamageTestSuite) TestAMadeSaveDeliversNeitherAndStillRecordsTheR
 	s.Require().Empty(out.DirtyCharacters, "no damage, no condition, nothing to save")
 }
 
+// tollTheDead builds the contest Toll the Dead would raise: 1d8 necrotic for
+// an uninjured saver, 1d12 instead for an injured one.
+func tollTheDead(roll int) Machine {
+	return NewContest(&ContestInput{
+		Gate:            mockeryGate(),
+		SaverID:         heroID,
+		DamageIfInjured: []damage.Damage{{Dice: "1d12", Type: damage.Necrotic}},
+		Damage:          []damage.Damage{{Dice: "1d8", Type: damage.Necrotic}},
+		SourceName:      "Toll the Dead",
+		Cause:           mockedCause(),
+		Roller:          facedRoller{d20: roll, other: psychicFace},
+	})
+}
+
+// TestAnUninjuredSaverTakesThePlainPool pins the common case: a saver at
+// full HP never sees DamageIfInjured at all.
+func (s *ContestDamageTestSuite) TestAnUninjuredSaverTakesThePlainPool() {
+	out, err := s.resolve(s.saver(14), tollTheDead(straightRoll), nil, nil)
+	s.Require().NoError(err)
+
+	outcome := s.outcome(out)
+	s.Require().Equal("1d8 necrotic damage", outcome.AtStake.Description)
+	s.Require().Len(outcome.Imposed, 1)
+	s.Require().Equal(psychicFace, outcome.Imposed[0].Amount)
+}
+
+// TestAnInjuredSaverTakesTheLargerPool is the mechanism's whole point: the
+// saver is missing hit points before the save is even rolled, so the
+// contest picks DamageIfInjured before anything downstream ever sees two
+// pools.
+func (s *ContestDamageTestSuite) TestAnInjuredSaverTakesTheLargerPool() {
+	out, err := s.resolve(s.saver(psychicFace), tollTheDead(straightRoll), nil, nil)
+	s.Require().NoError(err)
+
+	outcome := s.outcome(out)
+	s.Require().Equal("1d12 necrotic damage", outcome.AtStake.Description,
+		"missing any HP at all picks the larger pool, not a graduated scale")
+	s.Require().Len(outcome.Imposed, 1)
+	s.Require().Equal(psychicFace, outcome.Imposed[0].Amount)
+}
+
+// TestAFullyHealedSaverIsNotInjured pins the boundary: HP == MaxHP is NOT
+// "missing any hit points" -- RAW's own line, and the one a >= or <= typo
+// would get backwards.
+func (s *ContestDamageTestSuite) TestAFullyHealedSaverIsNotInjured() {
+	saver := s.saver(14)
+	saver.MaxHitPoints = 14
+
+	out, err := s.resolve(saver, tollTheDead(straightRoll), nil, nil)
+	s.Require().NoError(err)
+
+	s.Require().Equal("1d8 necrotic damage", s.outcome(out).AtStake.Description)
+}
+
 // Damage with no rider: the other half of the fan-out, and the one that proves
 // the condition is no longer required for a contest to mean something.
 func (s *ContestDamageTestSuite) TestADamageOnlyContestLandsDamageAndNothingElse() {

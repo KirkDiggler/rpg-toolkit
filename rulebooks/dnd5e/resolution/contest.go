@@ -41,6 +41,15 @@ type ContestInput struct {
 	// contest with no damage declared deals none.
 	Damage []damage.Damage
 
+	// DamageIfInjured is what the saver takes INSTEAD of Damage, when the
+	// saver is missing any of its current hit points at the moment
+	// [contestMachine.Start] reads them — Toll the Dead's own wrinkle
+	// ("If the target is missing any of its hit points, it instead
+	// takes..."). Empty is every other contest's answer, and mirrors
+	// [combatActions.CastProfile.DamageIfInjured] field for field — this is
+	// where that declaration lands once a fresh cast builds this input.
+	DamageIfInjured []damage.Damage
+
 	// SourceName is the display name of whatever [ContestInput.Cause] names as
 	// the effect — "Vicious Mockery". REQUIRED whenever damage is declared, and
 	// unread otherwise.
@@ -1107,6 +1116,22 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 		m.prepared = prepared
 	}
 
+	if len(m.in.DamageIfInjured) > 0 {
+		// THE PICK HAPPENS ONCE, HERE, AND NOTHING BELOW THIS LINE KNOWS A
+		// CHOICE WAS EVER MADE. Read the saver's live sheet — the same way
+		// chooseAbility does a few lines down — and settle which pool this
+		// contest actually deals before any of the ordinary Damage
+		// preflight below runs. damage.Validate, m.resolve and
+		// applyPreparedDamage stay blind to DamageIfInjured entirely.
+		injured, err := saverIsInjured(cast, m.in.SaverID)
+		if err != nil {
+			return nil, err
+		}
+		if injured {
+			m.in.Damage = m.in.DamageIfInjured
+		}
+	}
+
 	if len(m.in.Damage) > 0 {
 		// Preflight, so a malformed pool is refused before the door charges
 		// anybody rather than mid-delivery with the save already rolled.
@@ -1402,6 +1427,19 @@ func savingThrowModifier(cast *Participants, saverID string, ability abilities.A
 		return saver.GetSavingThrowModifier(ability), nil
 	}
 	return 0, fmt.Errorf("%w: %q", ErrNoSaver, saverID)
+}
+
+// saverIsInjured reads whether the saver is currently missing any hit
+// points — [ContestInput.DamageIfInjured]'s own trigger, read off the same
+// live sheet [savingThrowModifier] does, one line up.
+func saverIsInjured(cast *Participants, saverID string) (bool, error) {
+	if saver, ok := cast.Character(saverID); ok {
+		return saver.GetHitPoints() < saver.GetMaxHitPoints(), nil
+	}
+	if saver, ok := cast.Monster(saverID); ok {
+		return saver.GetHitPoints() < saver.GetMaxHitPoints(), nil
+	}
+	return false, fmt.Errorf("%w: %q", ErrNoSaver, saverID)
 }
 
 func (p *Participants) entity(id string) (core.Entity, error) {
