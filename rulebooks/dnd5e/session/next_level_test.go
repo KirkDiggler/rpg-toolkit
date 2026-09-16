@@ -219,3 +219,39 @@ func (s *NextLevelSuite) TestAnOptionTheCatalogCannotNameIsRefused() {
 	s.Contains(err.Error(), "thornwhip", "the refusal names the option it could not put on the menu")
 	s.Nil(out)
 }
+
+// TestARowItsOptionsCannotSatisfyIsRefused is R4.4f reaching the read: "a level
+// whose remaining options cannot satisfy its count is refused as unanswerable
+// rather than quietly teaching fewer than the table says."
+//
+// That was written as the WRITE's rule, and the read has to match it or the two
+// disagree in the worst direction. A ranger at 2 projected as a question asking
+// for two spells with nothing to pick from renders as a disabled confirm and no
+// message — the player is shown a level they cannot take and told nothing about
+// why. rpg-api found exactly that row on a live projection.
+//
+// An earlier revision of this package projected such a row faithfully and
+// argued the emptiness was self-describing. It is not: a level nobody can take
+// is not a thing to put in front of a player, and the reader who needs to see
+// the unfinished table is the designer, whose view of it is the toolkit's own
+// tests.
+//
+// The second row is the control that stops this from over-refusing. A count met
+// exactly — one option, one spell — is a real question and must still be asked.
+func (s *NextLevelSuite) TestARowItsOptionsCannotSatisfyIsRefused() {
+	mgr, _ := advancementManager(s.T(), testDice{}, advancingRanger("rowan"), advancingBard("belwyn"))
+	ctx := context.Background()
+
+	out, err := mgr.NextLevel(ctx, &session.NextLevelInput{Character: "rowan"})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrLevelNotOffered)
+	s.Nil(out, "and no half-answer is invented for it")
+	s.Contains(err.Error(), "ranger level 2", "the refusal names the class and the level")
+	s.Contains(err.Error(), "2 level-1 spells", "what the table asks for")
+	s.Contains(err.Error(), "offers 0", "and what this build has for it")
+
+	met, err := mgr.NextLevel(ctx, &session.NextLevelInput{Character: "belwyn"})
+	s.Require().NoError(err, "a count its options meet exactly is a question, not a refusal")
+	s.Require().Len(met.Choices, 1)
+	s.Equal(met.Choices[0].Count, len(met.Choices[0].Options))
+}

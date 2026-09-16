@@ -2758,11 +2758,14 @@ const (
 // Options is the WHOLE universe this choice ranges over — the class's row for
 // that level with everything the character already knows removed, which is the
 // character's own view of the row rather than the class's (rpg-toolkit#1781).
-// An EMPTY Options with a positive Count is a level this build cannot yet
-// teach: the class table really does say a spell is learned there and no list
-// has been authored for its spell level. That is projected as it stands rather
-// than hidden, because a level that quietly asked for nothing would look
-// exactly like a level that gives a spell away for free.
+//
+// Options is therefore never shorter than Count. A row this build cannot
+// satisfy — the class table says two spells are learned and no list has been
+// authored for their spell level — is refused by [Manager.NextLevel] with
+// [ErrLevelNotOffered] rather than projected (R4.4f), because the write refuses
+// it too: a question rendered with a count of two and nothing to pick from is a
+// disabled confirm and no explanation, which is the confirmation-the-write-will-
+// refuse shape this seam exists to close.
 type LevelChoice struct {
 	// ID is the requirement's own identifier, e.g. "bard-spells-2". A
 	// submission names this back.

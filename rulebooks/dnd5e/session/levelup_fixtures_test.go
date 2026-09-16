@@ -138,6 +138,31 @@ func advancingDruid(id string) *character.Data {
 	}
 }
 
+// advancingRanger is a level-1 ranger who has earned level 2 — the level whose
+// row this build cannot satisfy.
+//
+// The ranger's table says two 1st-level spells are learned at 2, and no ranger
+// spell list has been authored for spell level 1, so the row asks for two and
+// offers none. rpg-api found it on a live projection; it is the reason the
+// count check exists.
+func advancingRanger(id string) *character.Data {
+	return &character.Data{
+		ID: id, PlayerID: "player-" + id, Name: "Rowan", Level: 1,
+		Levels:     syntheticLevels(classes.Ranger, 1),
+		ClassID:    classes.Ranger,
+		RaceID:     "human",
+		Experience: levelUpXP,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 12, abilities.DEX: 16, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
+		},
+		HitPoints: 12, MaxHitPoints: 12, ArmorClass: 14, ProficiencyBonus: 2,
+		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
+			resources.HitDice: {Current: 1, Maximum: 1, ResetType: coreResources.ResetLongRest},
+		},
+	}
+}
+
 // spellRefs writes bare spell ids the way a finalized sheet stores them, as
 // canonical refs. It panics on an id the catalog cannot name, so a fixture
 // that names a spell wrong fails as a broken fixture rather than as a broken

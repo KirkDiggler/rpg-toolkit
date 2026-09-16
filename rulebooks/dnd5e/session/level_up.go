@@ -89,7 +89,8 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 		return nil, fmt.Errorf("level up: character %q: %w: %v", in.Character, ErrBadCharacter, err)
 	}
 
-	submitted, err := levelChoiceData(sheet.NextLevelRequirements(), in.Choices)
+	submitted, err := levelChoiceData(
+		sheet.NextLevelRequirements(), data.ClassID, sheet.ClassLevel(data.ClassID)+1, in.Choices)
 	if err != nil {
 		return nil, fmt.Errorf("level up: character %q: %w", in.Character, err)
 	}
@@ -153,9 +154,10 @@ func advanceHitPointMethod(method LevelUpHitPointMethod) (character.HitPointMeth
 // translate, which therefore fires on the write too even for a caller that
 // never read.
 func levelChoiceData(
-	required *choices.Requirements, submissions []LevelChoiceSubmission,
+	required *choices.Requirements, classID classes.Class, classLevel int,
+	submissions []LevelChoiceSubmission,
 ) ([]choices.ChoiceData, error) {
-	asked, err := levelChoicesOf(required)
+	asked, err := levelChoicesOf(required, classID, classLevel)
 	if err != nil {
 		return nil, err
 	}

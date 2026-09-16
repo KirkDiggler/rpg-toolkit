@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -82,7 +83,7 @@ func (m *Manager) NextLevel(ctx context.Context, in *NextLevelInput) (*NextLevel
 	classLevel := sheet.ClassLevel(classID) + 1
 	characterLevel := sheet.GetLevel() + 1
 
-	asked, err := levelChoicesOf(sheet.NextLevelRequirements())
+	asked, err := levelChoicesOf(sheet.NextLevelRequirements(), classID, classLevel)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"next level: character %q taking %s level %d: %w", in.Character, classID, classLevel, err)
@@ -133,7 +134,13 @@ func classRef(classID classes.Class) string {
 // not silently miss a kind added later". Anything in it this function did not
 // translate is refused, so a twelfth requirement kind arriving in the rulebook
 // fails loudly here rather than vanishing from a player's menu.
-func levelChoicesOf(reqs *choices.Requirements) ([]LevelChoice, error) {
+//
+// A row whose options cannot satisfy its count is refused too (R4.4f), and the
+// class and level are parameters for no other reason than to name the class and
+// level in that refusal.
+func levelChoicesOf(
+	reqs *choices.Requirements, classID classes.Class, classLevel int,
+) ([]LevelChoice, error) {
 	if reqs == nil {
 		return nil, nil
 	}
@@ -172,6 +179,15 @@ func levelChoicesOf(reqs *choices.Requirements) ([]LevelChoice, error) {
 		translated[reqs.Spellbook.ID] = struct{}{}
 	}
 
+	for _, choice := range asked {
+		if len(choice.Options) >= choice.Count {
+			continue
+		}
+		return nil, fmt.Errorf(
+			"%w: %s level %d asks for %s and this build offers %d",
+			ErrLevelNotOffered, classID, classLevel, choiceDemand(choice), len(choice.Options))
+	}
+
 	for _, id := range reqs.ChoiceIDs() {
 		if _, ok := translated[id]; ok {
 			continue
@@ -182,6 +198,25 @@ func levelChoicesOf(reqs *choices.Requirements) ([]LevelChoice, error) {
 	}
 
 	return asked, nil
+}
+
+// choiceDemand says what a row is asking for, in the words a refusal needs:
+// the count and the kind, with the spell level folded into the noun.
+//
+// "level-1 spells" rather than "1st-level spells" on purpose. The rulebook
+// writes the ordinal form and keeps the table that produces it unexported;
+// copying that table here to phrase an error would put a second spelling of a
+// content fact in the seam, and the two would drift. This form needs no table
+// and loses nothing a reader needs.
+func choiceDemand(choice LevelChoice) string {
+	noun := "cantrips"
+	if choice.Kind == LevelChoiceSpell {
+		noun = fmt.Sprintf("level-%d spells", choice.SpellLevel)
+	}
+	if choice.Count == 1 {
+		noun = strings.TrimSuffix(noun, "s")
+	}
+	return fmt.Sprintf("%d %s", choice.Count, noun)
 }
 
 // requirementKindOf names the kind of requirement an id belongs to, so a
