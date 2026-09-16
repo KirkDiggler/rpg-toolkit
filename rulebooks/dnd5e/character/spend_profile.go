@@ -143,6 +143,39 @@ func CostOfOffHandAttack(c *Character) (*combat.SpendProfile, error) {
 	}, nil
 }
 
+// CostOfIntimidate compiles what threatening somebody costs this character:
+// the standard action, and nothing else (rpg-project#454,
+// ideas/shenanigans/intimidate.md).
+//
+// IT BANKS NOTHING, which is the difference from [CostOfAttack]. An Attack
+// action buys a bank of swings because Extra Attack is a class table; a
+// threat is one thing said once, and there is no feature in this rulebook
+// that grants a second one. A shenanigan that ever does brings its own
+// grant, the way Extra Attack brought Attack's.
+//
+// It lives here rather than beside the session verb for the reason every
+// compiler in this file does: a price is a question about the SHEET, and
+// this is the only side of the seam that can see one. The sheet is not read
+// today and is taken anyway — [CostOfStrike]'s argument, which held: the
+// price of a threat is a character question the moment anything makes it
+// one, and a compiler that has to grow a parameter is a compiler every
+// caller has to be found for.
+//
+// Whether the FIRST threat of a fight should be free the way a warning
+// shout is at the table is open item 3 on rpg-project#454. It would be a
+// grant here, not a special case at the door.
+func CostOfIntimidate(c *Character) (*combat.SpendProfile, error) {
+	if c == nil {
+		return nil, rpgerr.New(rpgerr.CodeNil, "no character to price an Intimidate for")
+	}
+
+	return &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{
+			coreCombat.ActionStandard: 1,
+		},
+	}, nil
+}
+
 // CostOfSwing composes the Attack action and one Strike into the single atomic
 // price charged for a swing. An already-banked attack costs only its capacity;
 // otherwise the first swing is netted from the Attack action's grant.
