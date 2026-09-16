@@ -463,6 +463,53 @@ func (s *CompileSuite) TestMonstersComeOutInOrderAndUninterpreted() {
 	s.Empty(none.Monsters[0].Targeting, "a monster that says nothing carries nothing")
 }
 
+// TestAMonstersArmsComeOutInTheAuthorsOrder — the second half of law C1 for
+// the field rpg-project#448 adds: this package carries what a monster was
+// armed with and never reads it.
+func (s *CompileSuite) TestAMonstersArmsComeOutInTheAuthorsOrder() {
+	c := s.load(s.tombWith(
+		`at: [11,3], targeting: lowest-health }`,
+		`at: [11,3], targeting: lowest-health, actions: ["dnd5e:weapons:scimitar", "dnd5e:weapons:shortbow"] }`,
+	))
+
+	s.Equal([]string{"dnd5e:weapons:scimitar", "dnd5e:weapons:shortbow"}, c.Monsters[0].Actions,
+		"verbatim and in the order written: the order is what the driver reads")
+
+	swapped := s.load(s.tombWith(
+		`at: [11,3], targeting: lowest-health }`,
+		`at: [11,3], targeting: lowest-health, actions: ["dnd5e:weapons:shortbow", "dnd5e:weapons:scimitar"] }`,
+	))
+	s.Equal("dnd5e:weapons:shortbow", swapped.Monsters[0].Actions[0],
+		"the same two weapons the other way round stay the other way round")
+
+	none := s.load(s.tomb)
+	s.Nil(none.Monsters[0].Actions,
+		"a monster the author armed with nothing carries nothing, and keeps its definition's arms")
+}
+
+// TestEditingAnArmedSpecCannotReachIntoTheCompiledPlacement is the same
+// custody rule the props above are held to: the compiled list is a copy, so a
+// caller that still holds the spec cannot rewrite what a placed monster
+// carries.
+func (s *CompileSuite) TestEditingAnArmedSpecCannotReachIntoTheCompiledPlacement() {
+	raw := s.tombWith(
+		`at: [11,3], targeting: lowest-health }`,
+		`at: [11,3], targeting: lowest-health, actions: ["dnd5e:weapons:scimitar"] }`,
+	)
+	spec, err := dungeonspec.Decode([]byte(raw))
+	s.Require().NoError(err)
+
+	compiled, err := dungeonspec.Compile(spec)
+	s.Require().NoError(err)
+
+	for i := range spec.Place {
+		if len(spec.Place[i].Actions) > 0 {
+			spec.Place[i].Actions[0] = "dnd5e:weapons:greataxe"
+		}
+	}
+	s.Equal([]string{"dnd5e:weapons:scimitar"}, compiled.Monsters[0].Actions)
+}
+
 // TestThePartyHasSomewhereToStand — the author declares ONE cell; what a party
 // needs is several, so the ordering is the whole value of the answer.
 func (s *CompileSuite) TestThePartyHasSomewhereToStand() {

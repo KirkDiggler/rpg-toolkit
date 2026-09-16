@@ -48,6 +48,11 @@ var (
 // The ref type segments this compiler can route. A ref's type decides what a
 // placement BECOMES, which is why an unknown one is refused: there is no
 // default kind of thing to be.
+// moduleDND5e is the one content module this compiler's own vocabulary lives
+// in. It is written out rather than imported: taking the rulebook root as a
+// dependency for one string is a module edge nothing else here needs.
+const moduleDND5e = "dnd5e"
+
 const (
 	typeProps    = "props"
 	typeItems    = "items"
@@ -703,6 +708,7 @@ func (v *validation) place() {
 			if pl.Targeting != nil && !targetings[*pl.Targeting] {
 				v.fail(p+".targeting", "%q declares targeting %q, which is not a word this build knows", pl.Ref, *pl.Targeting)
 			}
+			v.placeActions(p, pl)
 			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {
 					v.fail(p+".boss", "region %q already names %q (place[%d]) as its boss", s.Regions[owner].ID, s.Place[prev].Ref, prev)
@@ -725,6 +731,9 @@ func (v *validation) place() {
 			}
 			if pl.Targeting != nil {
 				v.fail(p+".targeting", "%q is not a monster and cannot have targeting", pl.Ref)
+			}
+			if pl.Actions != nil {
+				v.fail(p+".actions", "%q is not a monster and cannot have actions", pl.Ref)
 			}
 			if pl.Boss {
 				v.fail(p+".boss", "%q is not a monster and cannot be the boss", pl.Ref)
@@ -1361,6 +1370,36 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // wrote. What stays here is the ROUTING, which is this compiler's own
 // question: scenery and monsters are what it can place, and anything else is
 // refused by name.
+// placeActions validates the weapons an author armed a monster with
+// (rpg-project#448, [PlaceSpec.Actions]).
+//
+// SHAPE AND VOCABULARY, NOT MEMBERSHIP. Each entry must be a well-formed
+// `dnd5e:weapons:<id>` — which is as far as this module can see. The weapons
+// catalog lives in the rulebook root, which this module does not import and
+// is not about to start importing for a string check; the session resolves
+// the id at spawn and refuses the file's boot when the catalog does not have
+// it (design §5, "fail closed at author time, not turn time" — boot IS author
+// time for a shipped file).
+//
+// A DUPLICATE IS ALLOWED AND MEANS SOMETHING. `[scimitar, scimitar]` lists
+// the same weapon twice, which is a pointless loadout rather than a malformed
+// one, and refusing it would be this compiler having an opinion about play.
+func (v *validation) placeActions(path string, pl PlaceSpec) {
+	for j, ref := range pl.Actions {
+		at := fmt.Sprintf("%s.actions[%d]", path, j)
+
+		parsed, err := core.ParseString(ref)
+		if err != nil {
+			v.fail(at, "%q is not a ref: %v", ref, err)
+			continue
+		}
+		if parsed.Module != moduleDND5e || parsed.Type != typeWeapons {
+			v.fail(at, "%q is not a weapon: an action names a weapon as %s:%s:<id>",
+				ref, moduleDND5e, typeWeapons)
+		}
+	}
+}
+
 func refKind(ref string) (string, error) {
 	parsed, err := core.ParseString(ref)
 	if err != nil {

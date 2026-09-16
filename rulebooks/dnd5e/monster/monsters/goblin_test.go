@@ -10,16 +10,22 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-func TestGoblinAuthorsItsScimitarDefinitionDirectly(t *testing.T) {
+func TestGoblinWieldsCatalogWeapons(t *testing.T) {
 	definitions := NewGoblin("goblin-1").Actions()
-	require.Len(t, definitions, 1)
+	require.Len(t, definitions, 2)
 
 	scimitar := definitions[0]
-	require.Equal(t, refs.MonsterActions.GoblinScimitar(), &scimitar.Ref)
-	require.Equal(t, "scimitar", scimitar.Name)
+	require.Equal(t, refs.Weapons.Scimitar(), &scimitar.Ref,
+		"the action's ref is the weapon's; there is no such thing as a goblin scimitar")
+	require.Equal(t, "Scimitar", scimitar.Name)
 	require.NotNil(t, scimitar.Attack)
-	require.Equal(t, &combatActions.MeleeDelivery{ReachFeet: 1}, scimitar.Attack.Delivery.Melee,
-		"preserve the existing authored value; correcting its unit is separate work")
+	require.Equal(t, &combatActions.MeleeDelivery{ReachFeet: 5}, scimitar.Attack.Delivery.Melee,
+		"the reach comes off the catalog now, so the authored one-foot defect cannot come back")
+
+	shortbow := definitions[1]
+	require.Equal(t, refs.Weapons.Shortbow(), &shortbow.Ref)
+	require.Equal(t, &combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320},
+		shortbow.Attack.Delivery.Ranged)
 }
 
 func TestGoblinThinksLikeACoward(t *testing.T) {

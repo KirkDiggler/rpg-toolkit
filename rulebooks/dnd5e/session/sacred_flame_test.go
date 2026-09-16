@@ -27,12 +27,8 @@ func castingCleric() *character.Data {
 			abilities.INT: 10, abilities.WIS: 16, abilities.CHA: 8,
 		},
 		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 10, ProficiencyBonus: 2,
-		// Light is the unsupported cantrip these tests lean on. Guidance was
-		// one too until dnd5e v0.171.0 gave it cast content, at which point
-		// it started answering the cast panel and stopped being a stand-in
-		// for a cantrip the panel must not offer.
 		KnownCantrips: []string{
-			refs.Spells.SacredFlame().String(), refs.Spells.Light().String(),
+			refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
 		},
 	}
 }
@@ -53,10 +49,13 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 				rolls = append(rolls, tc.damage)
 			}
 			s.scene(castingCleric(), 2, rolls...)
-			rows := s.castRows()
-			s.Require().Len(rows, 1, "unsupported known cantrips stay on the sheet, not the cast panel")
-			s.Equal(refs.Spells.SacredFlame().String(), rows[0].Spell.Ref)
-			s.Require().True(rows[0].Available, "exhausted slots do not block a cantrip")
+			offered := s.offeredCantrips()
+			s.NotContains(offered, refs.Spells.Light().String(),
+				"an unsupported known cantrip stays on the sheet, not the cast panel")
+			s.Contains(offered, refs.Spells.Guidance().String(),
+				"Guidance is supported content now (rpg-toolkit#1757) and reaches the panel")
+			firstRow := s.castRow(spells.SacredFlame)
+			s.Require().True(firstRow.Available, "exhausted slots do not block a cantrip")
 			before := s.storedSkeleton()
 			out, err := s.cast(spells.SacredFlame)
 			s.Require().NoError(err)
@@ -134,9 +133,26 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 			s.Equal(session.ShortfallNoBudget, row.Why.Reason)
 			s.Equal(session.CurrencyAction, row.Why.Currency)
 			s.Equal(0, row.Why.Left)
-			s.refuseSacredFlame(rows[0].ID, "skeleton")
+			s.refuseSacredFlame(firstRow.ID, "skeleton")
 		})
 	}
+}
+
+// offeredCantrips is every spell ref the cast panel is currently offering.
+//
+// The panel's CONTENTS rather than its length: which cantrips this build
+// supports grows as content lands (Guidance arrived in rpg-toolkit#1757), and
+// a count says nothing about the claim these tests actually make — that a
+// cantrip the sheet knows but this build cannot cast never reaches the panel.
+func (s *CastSuite) offeredCantrips() []string {
+	s.T().Helper()
+	out := make([]string, 0, 2)
+	for _, row := range s.castRows() {
+		if row.Spell != nil {
+			out = append(out, row.Spell.Ref)
+		}
+	}
+	return out
 }
 
 // Refusal must not roll, append events, or write any repository.
@@ -155,8 +171,9 @@ func (s *CastSuite) TestSacredFlameRejectsForgedAndUnownedOffers() {
 	row := s.castRow(spells.SacredFlame)
 	s.refuseSacredFlame("forged", "skeleton")
 	s.refuseSacredFlame(row.ID, "nobody")
-	s.characters.byID[s.member].KnownCantrips = []string{refs.Spells.Light().String()}
-	s.Empty(s.castRows())
+	s.characters.byID[s.member].KnownCantrips = []string{refs.Spells.Guidance().String(), refs.Spells.Light().String()}
+	s.NotContains(s.offeredCantrips(), refs.Spells.SacredFlame().String(),
+		"a cantrip the sheet no longer knows is off the panel, and its old row is a forgery")
 	s.refuseSacredFlame(row.ID, "skeleton")
 }
 
