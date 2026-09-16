@@ -280,6 +280,7 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		playerID:            d.PlayerID,
 		name:                d.Name,
 		levels:              levels,
+		experience:          d.Experience,
 		raceID:              d.RaceID,
 		subraceID:           d.SubraceID,
 		classID:             d.ClassID,
@@ -792,6 +793,7 @@ func parseSpellRefs(stored []string, role string) ([]*core.Ref, error) {
 		return nil, nil
 	}
 	out := make([]*core.Ref, 0, len(stored))
+	seen := make(map[core.ID]struct{}, len(stored))
 	for _, raw := range stored {
 		ref, err := core.ParseString(raw)
 		if err != nil {
@@ -801,6 +803,24 @@ func parseSpellRefs(stored []string, role string) ([]*core.Ref, error) {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
 				"%s %q is not a spell ref", role, raw)
 		}
+		// A duplicate is a corrupted record, and is refused rather than
+		// repaired — the same discipline the two checks above already apply.
+		//
+		// Nothing can legally write one: creation takes each spell once and
+		// [Character.Advance] refuses a spell the character already knows. So a
+		// list holding one is evidence that a level was taken wrongly, and
+		// silently collapsing it to a set would erase that evidence while
+		// leaving the record that produced it in place — a sheet that reads
+		// correct and a history that is not. The record is append-only and
+		// cannot be corrected anyway, so there is nothing to repair it TO.
+		if _, had := seen[ref.ID]; had {
+			return nil, rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+				rpgerr.WithMeta("role", role),
+				rpgerr.WithMeta("spell", string(ref.ID)),
+			}, "%s %q appears twice; a character knows a spell once", role, ref.ID)
+		}
+		seen[ref.ID] = struct{}{}
+
 		out = append(out, ref)
 	}
 	return out, nil

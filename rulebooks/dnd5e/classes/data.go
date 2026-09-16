@@ -23,10 +23,12 @@ type Data struct {
 	SkillList  []skills.Skill // Available skills to choose from
 
 	// Spellcasting
+	//
+	// The ability is the only spellcasting fact that does not vary by level.
+	// How many cantrips and spells a class knows, and what slots it has, are
+	// per-level facts and live in its [SpellProgression] — they were three
+	// scalars here, each holding only the level-1 value (design R4.5).
 	SpellcastingAbility abilities.Ability // Empty if not a spellcaster
-	CantripsKnown       int               // At level 1
-	SpellsKnown         int               // At level 1 (0 for prepared casters)
-	SpellSlots          []int             // Spell slots at level 1 [1st, 2nd, 3rd...]
 
 	// Subclass information
 	SubclassLevel    int        // Level when subclass is chosen (0 = no subclass)
@@ -99,9 +101,6 @@ var ClassData = map[Class]*Data{
 			skills.Religion,
 		},
 		SpellcastingAbility: abilities.INT,
-		CantripsKnown:       3,
-		SpellsKnown:         0,        // Wizards prepare from spellbook
-		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 		SubclassLevel:       2,
 		SubclassLabel:       "Arcane Tradition",
 		SubclassChoiceID:    "wizard-tradition",
@@ -139,9 +138,6 @@ var ClassData = map[Class]*Data{
 			skills.Religion,
 		},
 		SpellcastingAbility: abilities.WIS,
-		CantripsKnown:       3,
-		SpellsKnown:         0,        // Clerics prepare from full spell list
-		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 		SubclassLevel:       1,
 		SubclassLabel:       "Divine Domain",
 		SubclassChoiceID:    "cleric-domain",
@@ -249,9 +245,6 @@ var ClassData = map[Class]*Data{
 		SkillCount:          3,
 		SkillList:           []skills.Skill{}, // Bards can choose any 3 skills
 		SpellcastingAbility: abilities.CHA,
-		CantripsKnown:       2,
-		SpellsKnown:         4,
-		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 		SubclassLevel:       3,
 		SubclassLabel:       "Bard College",
 		SubclassChoiceID:    "bard-college",
@@ -299,9 +292,6 @@ var ClassData = map[Class]*Data{
 			skills.Survival,
 		},
 		SpellcastingAbility: abilities.WIS,
-		CantripsKnown:       2,
-		SpellsKnown:         0,        // Druids prepare from full spell list
-		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 		SubclassLevel:       2,
 		SubclassLabel:       "Druid Circle",
 		SubclassChoiceID:    "druid-circle",
@@ -359,9 +349,6 @@ var ClassData = map[Class]*Data{
 		},
 		// Paladins don't get spellcasting until level 2
 		SpellcastingAbility: abilities.CHA,
-		CantripsKnown:       0,
-		SpellsKnown:         0,
-		SpellSlots:          []int{}, // No spell slots at level 1
 	},
 
 	Ranger: {
@@ -391,9 +378,6 @@ var ClassData = map[Class]*Data{
 		},
 		// Rangers don't get spellcasting until level 2
 		SpellcastingAbility: abilities.WIS,
-		CantripsKnown:       0,
-		SpellsKnown:         0,
-		SpellSlots:          []int{}, // No spell slots at level 1
 	},
 
 	Sorcerer: {
@@ -419,9 +403,6 @@ var ClassData = map[Class]*Data{
 			skills.Religion,
 		},
 		SpellcastingAbility: abilities.CHA,
-		CantripsKnown:       4,
-		SpellsKnown:         2,
-		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 	},
 
 	Warlock: {
@@ -446,9 +427,6 @@ var ClassData = map[Class]*Data{
 			skills.Religion,
 		},
 		SpellcastingAbility: abilities.CHA,
-		CantripsKnown:       2,
-		SpellsKnown:         2,
-		SpellSlots:          []int{1}, // One 1st level slot at level 1 (Pact Magic)
 	},
 }
 

@@ -270,7 +270,7 @@ func (s *KnownSpellsSuite) TestTheCompilerTurnsAChosenIdIntoARef() {
 		SpellSelection: []spells.Spell{spells.ViciousMockery, spells.MinorIllusion},
 	})
 
-	known, err := draft.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+	known, err := compileKnownSpells(draft.choices, shared.ChoiceCantrips, "cantrip")
 
 	s.Require().NoError(err)
 	s.Equal([]string{
@@ -290,7 +290,7 @@ func (s *KnownSpellsSuite) TestTheCompiledRefIsNotTheCatalogsOwn() {
 		SpellSelection: []spells.Spell{spells.ViciousMockery},
 	})
 
-	known, err := draft.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+	known, err := compileKnownSpells(draft.choices, shared.ChoiceCantrips, "cantrip")
 	s.Require().NoError(err)
 	s.Require().Len(known, 1)
 
@@ -311,7 +311,7 @@ func (s *KnownSpellsSuite) TestASpellThisBuildHasNoRefForIsRefused() {
 		SpellSelection: []spells.Spell{"song-of-nothing"},
 	})
 
-	_, err := draft.compileKnownSpells(shared.ChoiceCantrips, "cantrip")
+	_, err := compileKnownSpells(draft.choices, shared.ChoiceCantrips, "cantrip")
 
 	s.Require().ErrorContains(err, "song-of-nothing")
 }
