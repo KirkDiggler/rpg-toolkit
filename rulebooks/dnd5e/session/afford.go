@@ -80,6 +80,25 @@ const (
 	// does not (design R10).
 	VerbCast Verb = "cast"
 
+	// VerbIntimidate is [Manager.Intimidate]: threatening another member so
+	// the mind reading the outcome changes what it does
+	// (rpg-project#454, the first shenanigan).
+	//
+	// One row, targeting a member, priced at the standard action
+	// ([character.CostOfIntimidate]). Its selector variant is a sealed
+	// string like Move's and unlike Attack's: a threat compiles no action
+	// definition, and there is nothing about it that can go stale between
+	// the read and the click except the budget the row already reports.
+	//
+	// ITS CANDIDATES ARE EVERYONE THIS MEMBER CAN SEE, with no reach gate at
+	// all: "no distance cap beyond sight" is the design's own decision, and
+	// shouting across a lit hall is a shenanigan. The verb's real refusal is
+	// the other direction — the TARGET must be able to see the actor — and
+	// this seam cannot compute that from the actor's own holdings, so an
+	// offered row can still be refused at the door. That is the same
+	// asymmetry a stale Attack row has, and the verb is where it is caught.
+	VerbIntimidate Verb = "intimidate"
+
 	// VerbDeathSave is [Manager.DeathSave]: the explicit saving throw offered
 	// only to the active Dying character with this turn's capacity remaining.
 	VerbDeathSave Verb = "death_save"
@@ -540,6 +559,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 			// member whose turn it is not can cast none of what they know,
 			// and the reason is identical for every known spell.
 			blockedDeclaration(VerbCast, TargetNone, notYourTurn),
+			blockedDeclaration(VerbIntimidate, TargetMember, notYourTurn),
 			blockedDeclaration(VerbEndTurn, TargetNone, notYourTurn),
 		}}, nil
 	}
@@ -553,7 +573,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	actor := m.loadActorSheet(ctx, in.Member)
 	offers, err := m.compileOffersFor(
 		ctx, enc, data, in.Session, in.Member, clock, actor,
-		VerbAttack, VerbMove, VerbActivate, VerbCast, VerbDeathSave, VerbEndTurn,
+		VerbAttack, VerbMove, VerbActivate, VerbCast, VerbIntimidate, VerbDeathSave, VerbEndTurn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
@@ -711,6 +731,7 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 		frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
 		declarations = append(declarations,
 			blockedDeclaration(VerbAttack, TargetMember, frozen),
+			blockedDeclaration(VerbIntimidate, TargetMember, frozen),
 			blockedDeclaration(VerbMove, TargetPath, frozen),
 			blockedDeclaration(VerbActivate, TargetNone, frozen),
 			blockedDeclaration(VerbCast, TargetNone, frozen),

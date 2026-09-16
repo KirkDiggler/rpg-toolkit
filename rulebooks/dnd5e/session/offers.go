@@ -161,6 +161,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
+			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
 			endTurn,
 		)
 	}
@@ -176,6 +177,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
+			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
 			endTurn,
 		)
 	}
@@ -210,6 +212,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
+			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
 			deathSave,
 			endTurn,
 		)
@@ -258,6 +261,20 @@ func (m *Manager) compileOffersFor(
 			ctx, enc, m.standingFor(ctx, data, encounterRosterKinds(roster)),
 			sessionID, member, sheet, roster, positions, holdings,
 		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// BUILT BEFORE THE ATTACK ASSEMBLY, because a threat needs no weapon.
+	// The ErrBadAttack path below returns early with Attack blocked and
+	// everything else still standing, and a threat belongs on the standing
+	// side: a fighter whose weapon will not compile can still tell a goblin
+	// what is going to happen to it.
+	var intimidate compiledOffer
+	if requested[VerbIntimidate] {
+		var err error
+		intimidate, err = buildIntimidateOffer(enc, sessionID, member, sheet)
 		if err != nil {
 			return nil, err
 		}
@@ -335,6 +352,7 @@ func (m *Manager) compileOffersFor(
 				blockedCompiledOffer(VerbAttack, TargetMember, why),
 				move,
 				endTurn,
+				intimidate,
 			}, activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
@@ -441,7 +459,7 @@ func (m *Manager) compileOffersFor(
 		attacks = append(attacks, offHandAttack)
 	}
 
-	offers := append(attacks, move, deathSave, endTurn)
+	offers := append(attacks, move, deathSave, endTurn, intimidate)
 	offers = append(offers, activations...)
 	return finishRequestedOffers(requested, append(offers, casts...)...)
 }
@@ -655,6 +673,75 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 	}
 	decl.Why = &why
 	return compiledOffer{declaration: decl, sheet: sheet, verb: VerbMove, slot: SlotNone, variant: variant}, nil
+}
+
+// buildIntimidateOffer compiles the one Intimidate row: priced at the
+// standard action, aimed at anybody who can currently SEE this member
+// (rpg-project#454).
+//
+// ITS CANDIDATES ARE THE WITNESSES, and the direction is the point. Every
+// other member-targeting row here asks who the ACTOR can see; a threat only
+// reaches somebody who can see who is making it, so this asks the
+// composition the question the verb itself will ask
+// ([encounter.Encounter.Witnesses]). The panel and the door therefore agree,
+// instead of the panel offering a goblin in a dark corridor that the verb
+// then refuses.
+//
+// NO REACH GATE, which is the other thing that makes it unlike a swing. A
+// threat carries as far as sight does — "no distance cap beyond sight" is the
+// design's own decision — so every witness is available and none carries a
+// ShortfallTargetOutOfReach.
+func buildIntimidateOffer(
+	enc *encounter.Encounter, session, member string, sheet *character.Character,
+) (compiledOffer, error) {
+	id, variant, err := selectorIDFor(session, member, VerbIntimidate, SlotAction, nil, nil, "", "")
+	if err != nil {
+		return compiledOffer{}, err
+	}
+
+	witnesses, err := enc.Witnesses(encounter.MemberID(member))
+	if err != nil {
+		return compiledOffer{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+	}
+	candidates := make([]targetPreflight, 0, len(witnesses))
+	for _, id := range witnesses {
+		// A member always witnesses their own cell, and threatening
+		// yourself is not a shenanigan.
+		if string(id) == member {
+			continue
+		}
+		candidates = append(candidates, targetPreflight{member: string(id), available: true})
+	}
+
+	profile, err := character.CostOfIntimidate(sheet)
+	if err != nil {
+		return compiledOffer{}, fmt.Errorf("%w: %v", ErrBadCost, err)
+	}
+
+	decl := Declaration{
+		Verb: VerbIntimidate, Slot: SlotAction, ID: id,
+		TargetKind: TargetMember, Candidates: projectCandidates(candidates),
+	}
+	switch {
+	case !combat.CanPay(sheet, profile):
+		why := shortfallForPay(sheet, profile, SlotAction)
+		decl.Why = &why
+	case len(candidates) == 0:
+		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be threatened"}
+		decl.Why = &why
+	default:
+		decl.Available = true
+	}
+
+	targets := make(map[string]targetPreflight, len(candidates))
+	for _, candidate := range candidates {
+		targets[candidate.member] = candidate
+	}
+
+	return compiledOffer{
+		declaration: decl, sheet: sheet, targets: targets,
+		verb: VerbIntimidate, slot: SlotAction, variant: variant,
+	}, nil
 }
 
 // blockedCompiledOffer is the compiledOffer shape every early per-verb
@@ -923,16 +1010,21 @@ func verbRank(v Verb) int {
 	// named rows a player scans, and the swing and the walk come first.
 	case VerbCast:
 		return 3
-	case VerbDeathSave:
+	// INTIMIDATE SITS WITH THE SWING, after the lists: it is a turn's own
+	// control like Attack and Move, aimed at somebody in the room, and a
+	// panel draws the things you DO to a creature near each other.
+	case VerbIntimidate:
 		return 4
-	case VerbEndTurn:
+	case VerbDeathSave:
 		return 5
+	case VerbEndTurn:
+		return 6
 	// REACT IS LAST, and it is the only row that can appear on a turn that is
 	// not the member's own. A panel draws the turn's controls first and the
 	// question underneath them, because the question is the thing that is
 	// about to change and the controls are the thing that is greyed out.
 	case VerbReact:
-		return 6
+		return 7
 	default:
 		return 7
 	}

@@ -154,10 +154,20 @@ type checkOfferWindowPayload struct {
 	Audience string `json:"audience"`
 
 	// Door is which lock this check was rolled against, so the answer can
-	// finish the same Unlock the question paused. Unlock-specific: the next
-	// verb to pose a check-offer window brings its own field for "what to
-	// finish", not a rename of this one.
-	Door string `json:"door"`
+	// finish the same Unlock the question paused. Unlock-specific, and the
+	// next verb to pose a check-offer window brought its own field for
+	// "what to finish" rather than a rename of this one — see Target.
+	//
+	// EXACTLY ONE OF Door AND Target IS SET, which is how the answer knows
+	// which verb it is finishing. A payload with both, or with neither, is
+	// a window this build never wrote.
+	Door string `json:"door,omitempty"`
+
+	// Target is who this check was rolled against, so the answer can finish
+	// the same Intimidate the question paused (rpg-project#454). Door's
+	// sibling, added the way that field's doc said the second verb would
+	// add one.
+	Target string `json:"target,omitempty"`
 
 	// Offer is what the audience holds, as the effect that offered it named
 	// itself.
@@ -272,9 +282,18 @@ func thawCheckOfferPayload(raw []byte, audience string) (checkOfferWindowPayload
 		return checkOfferWindowPayload{}, fmt.Errorf(
 			"%w: window payload kind %q is not a check offer window", ErrInvalidSession, p.Kind)
 	}
-	if p.Audience == "" || p.Door == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
+	if p.Audience == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
 		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: check offer window payload names no audience, door or offer", ErrInvalidSession)
+			"%w: check offer window payload names no audience or offer", ErrInvalidSession)
+	}
+	// EXACTLY ONE of the two "what to finish" fields, checked here because
+	// this is the trust boundary for a stored window: a payload naming both
+	// a door and a target, or neither, is one this build never wrote, and
+	// answering it would pick a verb by accident.
+	if (p.Door == "") == (p.Target == "") {
+		return checkOfferWindowPayload{}, fmt.Errorf(
+			"%w: check offer window payload names %s to finish", ErrInvalidSession,
+			map[bool]string{true: "neither a door nor a target", false: "both a door and a target"}[p.Door == ""])
 	}
 	if len(p.Frozen) == 0 {
 		return checkOfferWindowPayload{}, fmt.Errorf(

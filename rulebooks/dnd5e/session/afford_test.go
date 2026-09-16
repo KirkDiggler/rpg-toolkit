@@ -109,10 +109,19 @@ func (s *AffordSuite) TestAvailableMeansAttackWillNotRefuse() {
 
 	out := s.afford()
 	s.Equal(session.ClockTurn, out.Clock)
-	// Attack, Move, EndTurn, and the five activations a plain fighter
+	// Attack, Move, Intimidate, EndTurn, and the five activations a plain fighter
 	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
 	// ability is excluded: swinging is VerbAttack's job here.
-	s.Require().Len(out.Declarations, 8)
+	refilled := make([]session.Verb, 0, len(out.Declarations))
+	for _, d := range out.Declarations {
+		refilled = append(refilled, d.Verb)
+	}
+	s.Require().Equal([]session.Verb{
+		session.VerbAttack, session.VerbMove,
+		session.VerbActivate, session.VerbActivate, session.VerbActivate,
+		session.VerbActivate, session.VerbActivate,
+		session.VerbIntimidate, session.VerbEndTurn,
+	}, refilled)
 
 	decl := s.attackDecl(out)
 	s.True(decl.Available, "a fresh turn can still buy its first swing")
@@ -138,10 +147,19 @@ func (s *AffordSuite) TestUnavailableMeansAttackRefusesWithTheSameShortfall() {
 	s.Require().True(first.Hit)
 
 	out := s.afford()
-	// Attack, Move, EndTurn, and the five activations a plain fighter
+	// Attack, Move, Intimidate, EndTurn, and the five activations a plain fighter
 	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
 	// ability is excluded: swinging is VerbAttack's job here.
-	s.Require().Len(out.Declarations, 8)
+	refilled := make([]session.Verb, 0, len(out.Declarations))
+	for _, d := range out.Declarations {
+		refilled = append(refilled, d.Verb)
+	}
+	s.Require().Equal([]session.Verb{
+		session.VerbAttack, session.VerbMove,
+		session.VerbActivate, session.VerbActivate, session.VerbActivate,
+		session.VerbActivate, session.VerbActivate,
+		session.VerbIntimidate, session.VerbEndTurn,
+	}, refilled)
 	decl := s.attackDecl(out)
 	s.False(decl.Available, "nothing left to buy a second swing")
 	s.Require().NotNil(decl.Why)
@@ -214,10 +232,19 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 	s.nextTurn()
 
 	out := s.afford()
-	// Attack, Move, EndTurn, and the five activations a plain fighter
+	// Attack, Move, Intimidate, EndTurn, and the five activations a plain fighter
 	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
 	// ability is excluded: swinging is VerbAttack's job here.
-	s.Require().Len(out.Declarations, 8)
+	refilled := make([]session.Verb, 0, len(out.Declarations))
+	for _, d := range out.Declarations {
+		refilled = append(refilled, d.Verb)
+	}
+	s.Require().Equal([]session.Verb{
+		session.VerbAttack, session.VerbMove,
+		session.VerbActivate, session.VerbActivate, session.VerbActivate,
+		session.VerbActivate, session.VerbActivate,
+		session.VerbIntimidate, session.VerbEndTurn,
+	}, refilled)
 	s.True(s.attackDecl(out).Available, "a new turn buys a new swing")
 	s.Equal(session.SlotAction, s.attackDecl(out).Slot)
 }
@@ -402,8 +429,16 @@ func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	s.Equal(session.ClockTurn, out.Clock)
 	// One blocker per VERB, all blocked the same way — Activate is one verb
 	// however many things it would compile on a turn that were hers, and Cast
-	// is one row for the same reason.
-	s.Require().Len(out.Declarations, 5)
+	// is one row for the same reason. Named rather than counted: a new verb
+	// has to be added here, not have a number bumped past it.
+	verbs := make([]session.Verb, 0, len(out.Declarations))
+	for _, d := range out.Declarations {
+		verbs = append(verbs, d.Verb)
+	}
+	s.Require().Equal([]session.Verb{
+		session.VerbAttack, session.VerbMove, session.VerbActivate,
+		session.VerbCast, session.VerbIntimidate, session.VerbEndTurn,
+	}, verbs)
 	for _, d := range out.Declarations {
 		s.False(d.Available)
 		s.Empty(d.ID, "a blocker carries no selector ID")

@@ -166,6 +166,17 @@ func requireSingleAttackDeclaration(t *testing.T, decls []session.Declaration) s
 }
 
 // requireSingleDeclaration returns the one declaration with the given verb.
+// verbsOf is the verbs a panel shows, in the order it shows them. Asserting
+// the SET rather than the count means a new verb has to be named here, not
+// counted — a bumped number would have said nothing about which verb arrived.
+func verbsOf(decls []session.Declaration) []session.Verb {
+	out := make([]session.Verb, 0, len(decls))
+	for _, d := range decls {
+		out = append(out, d.Verb)
+	}
+	return out
+}
+
 func requireSingleDeclaration(t *testing.T, decls []session.Declaration, verb session.Verb) session.Declaration {
 	t.Helper()
 	for i := range decls {
@@ -283,12 +294,17 @@ func TestAffordProjectsEveryCompiledDeclarationOnTheTurnClock(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, session.ClockTurn, out.Clock)
-	// Attack, Move, EndTurn, and the FIVE activations a plain fighter carries:
+	// Attack, Move, Intimidate, EndTurn, and the FIVE activations a plain fighter carries:
 	// Dash, Disengage, Dodge, Help, Hide. The sixth combat ability every
 	// character has is Attack, and it is deliberately not among them —
 	// swinging is VerbAttack's job, and offering the Attack action separately
 	// would put two buttons on the panel for one thing.
-	require.Len(t, out.Declarations, 8)
+	require.Equal(t, []session.Verb{
+		session.VerbAttack, session.VerbMove,
+		session.VerbActivate, session.VerbActivate, session.VerbActivate,
+		session.VerbActivate, session.VerbActivate,
+		session.VerbIntimidate, session.VerbEndTurn,
+	}, verbsOf(out.Declarations))
 
 	// Documented verb order: Attack, Move, Activate, EndTurn — and EndTurn is
 	// no longer at a fixed index, which is why every lookup below is BY VERB.
@@ -362,7 +378,10 @@ func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	// One blocker per verb. Activate and Cast are ONE verb each however many
 	// rows they could compile when the sheet is readable: a member who cannot
 	// act can do none of them, and the reason is identical for every one.
-	require.Len(t, out.Declarations, 5)
+	require.Equal(t, []session.Verb{
+		session.VerbAttack, session.VerbMove, session.VerbActivate,
+		session.VerbCast, session.VerbIntimidate, session.VerbEndTurn,
+	}, verbsOf(out.Declarations), "every verb a turn has, and nothing else")
 
 	for _, d := range out.Declarations {
 		require.False(t, d.Available)
@@ -400,7 +419,10 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	require.Equal(t, session.ClockTurn, out.Clock)
 	// Normal verbs are blocked, while the provider offers the active Dying
 	// character one explicit Death Save and keeps End Turn independent.
-	require.Len(t, out.Declarations, 6)
+	require.Equal(t, []session.Verb{
+		session.VerbAttack, session.VerbMove, session.VerbActivate,
+		session.VerbCast, session.VerbIntimidate, session.VerbDeathSave, session.VerbEndTurn,
+	}, verbsOf(out.Declarations))
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)
@@ -496,7 +518,12 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 	// character has is Attack, and it is deliberately not among them —
 	// swinging is VerbAttack's job, and offering the Attack action separately
 	// would put two buttons on the panel for one thing.
-	require.Len(t, out.Declarations, 8)
+	require.Equal(t, []session.Verb{
+		session.VerbAttack, session.VerbMove,
+		session.VerbActivate, session.VerbActivate, session.VerbActivate,
+		session.VerbActivate, session.VerbActivate,
+		session.VerbIntimidate, session.VerbEndTurn,
+	}, verbsOf(out.Declarations))
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)
@@ -572,7 +599,10 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	// One blocker per verb. Activate and Cast are ONE verb each however many
 	// rows they could compile when the sheet is readable: a member who cannot
 	// act can do none of them, and the reason is identical for every one.
-	require.Len(t, out.Declarations, 5)
+	require.Equal(t, []session.Verb{
+		session.VerbAttack, session.VerbMove, session.VerbActivate,
+		session.VerbCast, session.VerbIntimidate, session.VerbEndTurn,
+	}, verbsOf(out.Declarations), "every verb a turn has, and nothing else")
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)
