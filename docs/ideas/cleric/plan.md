@@ -495,6 +495,77 @@ Sources: [2014 Resistance](https://www.dndbeyond.com/spells/2153-resistance),
 user-confirmed scope: saving throws only, the roll itself rather than any
 resulting damage.
 
+## Toll the Dead: HP-conditional damage plan
+
+Toll the Dead (2014 PHB, Necromancy cantrip): the target makes a WIS save.
+On a fail it takes 1d8 necrotic damage — or 1d12 instead, if it is missing
+any of its current hit points at the moment of the save. On a success, no
+damage. Mechanically this is Sacred Flame's own shape (single target, save
+negates, damage) with exactly one wrinkle: WHICH damage pool applies
+depends on a live fact about the target read at cast time, and nothing
+existing reads live target state to choose between two authored pools.
+
+### What's missing, precisely
+
+`CastProfile.build(spellSaveDC int) actions.CastProfile`
+(`spells/cast.go`) is called once per cast with only the caster's own
+spell save DC — no target, no live sheet. `damage.Damage` is a static
+`Dice` string baked into the authored profile, and `newGatedCast`
+(`resolution/action.go`) passes `profile.Damage` straight into
+`ContestInput.Damage` unmodified. No existing spell picks between two
+declared pools based on anything about the saver.
+
+The fact itself is already reachable, though — nothing new to expose:
+`cast.Character(id)`/`cast.Monster(id)` (`resolution/resolve.go`) both
+return types with matching `GetHitPoints()`/`GetMaxHitPoints()`
+accessors (`character/character.go`, `monster/monster.go`), so "is the
+target already injured" is just `saver.GetHitPoints() <
+saver.GetMaxHitPoints()` once something reads it at the right moment.
+
+### The two slices
+
+Two PRs, following the exact root → resolution shape Resistance's own
+handoff used, minus the session slice (Toll the Dead is Sacred Flame's
+wire shape exactly — no pose, no new async capability, so nothing about
+`session.Cast` needs to change or even learn a new fact).
+
+1. **Root.** `CastProfile` gains `DamageIfInjured []damage.Damage`
+   alongside the existing `Damage`, declared as a PAIR rather than a
+   standalone alternate — `Validate()` refuses `DamageIfInjured` without
+   a paired `Damage` (an uninjured target would have no answer at all).
+   `Clone()` deep-copies it the same way `Damage` already is. Not yet
+   consumed by anything; not yet in `castContent`. A second commit, once
+   resolution can read it, adds Toll the Dead's own `castContent` entry
+   — otherwise Sacred Flame's shape, WIS instead of DEX, 60ft, necrotic.
+2. **Resolution.** `ContestInput` gets the mirrored field; `newGatedCast`
+   passes `profile.DamageIfInjured` through exactly like it already does
+   for `profile.Damage`. In `contestMachine.Start()`, right before the
+   existing damage-preflight block (`resolution/contest.go`, the
+   `if len(m.in.Damage) > 0 { damage.Validate(...) }` guard), look up the
+   saver via `cast.Character`/`cast.Monster`, check
+   `GetHitPoints() < GetMaxHitPoints()`, and if true, swap
+   `DamageIfInjured` in as `m.in.Damage` before anything downstream ever
+   sees two pools. `damage.Validate`, `m.resolve()`,
+   `applyPreparedDamage` all stay exactly as they are today — the pick
+   happens once, early, and everything after it is blind to the fact a
+   choice was ever made. Pins root's pushed commit as a pseudo-version
+   during development (same one-off exception used throughout the
+   Resistance handoff), re-pinned to the real tag once root merges.
+
+### Cross-repo scoping
+
+None expected. Toll the Dead introduces no new wire shape — it's Sacred
+Flame's `CastResponse`/`SAVED` beat exactly, which rpg-api and web
+already carry end to end with zero spell-specific code (confirmed
+during the Resistance rollout: the Cast door, the cantrip choice list,
+and spell display are all already generic over spell content). Toll the
+Dead is already registered in the spell catalog and already sitting in
+Cleric's hardcoded cantrip choice list (`character/choices/requirements.go`),
+exactly as Resistance was before its own castContent entry landed — so
+character creation already offers it; nothing to change there either.
+
+Sources: [2014 Toll the Dead](https://www.dndbeyond.com/spells/2141-toll-the-dead).
+
 ## Spare the Dying wiring inspection
 
 ### Executable content after session adoption

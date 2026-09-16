@@ -164,6 +164,19 @@ const SacredFlameRangeFeet = 60
 // Higher-level scaling is outside this level-one cast-content slice.
 const SacredFlameDamage = "1d8"
 
+// TollTheDeadRangeFeet is how far a caster may point Toll the Dead (PHB p.283).
+const TollTheDeadRangeFeet = 60
+
+// TollTheDeadDamage is the necrotic damage at levels 1–4 against an
+// uninjured target. Higher-level scaling is outside this level-one
+// cast-content slice, the same boundary every other cantrip here keeps.
+const TollTheDeadDamage = "1d8"
+
+// TollTheDeadInjuredDamage is what the same failed save deals INSTEAD, when
+// the target is already missing any of its hit points — RAW's own wording,
+// not a graduated scale against how much it has lost.
+const TollTheDeadInjuredDamage = "1d12"
+
 // SpareTheDyingReachFeet is the current physical touch reach for this cantrip.
 const SpareTheDyingReachFeet = 5
 
@@ -590,6 +603,27 @@ var castContent = map[Spell]castProfileBuilder{
 					Recurrence: saves.RecurrenceNone,
 				},
 				Damage: []damage.Damage{{Dice: SacredFlameDamage, Type: damage.Radiant}},
+			}
+		},
+	},
+	TollTheDead: {
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Toll the Dead",
+		cost:    cantripCost(),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet:  TollTheDeadRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
+				Save: &saves.SaveGate{
+					Abilities:  []abilities.Ability{abilities.WIS},
+					DC:         saves.DCStatic(spellSaveDC),
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage:          []damage.Damage{{Dice: TollTheDeadDamage, Type: damage.Necrotic}},
+				DamageIfInjured: []damage.Damage{{Dice: TollTheDeadInjuredDamage, Type: damage.Necrotic}},
 			}
 		},
 	},

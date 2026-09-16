@@ -341,6 +341,38 @@ func (s *ClericFinalizeSuite) TestChosenResistanceCompilesAfterDraftAndCharacter
 	s.NoError(err, "private-sheet projection accepts the normally finalized cleric")
 }
 
+func (s *ClericFinalizeSuite) TestChosenTollTheDeadCompilesAfterDraftAndCharacterReload() {
+	input := s.classInput()
+	input.Choices.Cantrips = []spells.Spell{spells.SacredFlame, spells.Guidance, spells.TollTheDead}
+	draft := s.draft(input)
+	raw, err := json.Marshal(draft.ToData())
+	s.Require().NoError(err)
+	var storedDraft DraftData
+	s.Require().NoError(json.Unmarshal(raw, &storedDraft))
+	char, err := LoadDraftFromData(&storedDraft).ToCharacter(context.Background(), "tolling-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	raw, err = json.Marshal(char.ToData())
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(raw, &stored))
+	loaded, err := Load(context.Background(), &stored)
+	s.Require().NoError(err)
+	s.Len(loaded.KnownCantrips(), 3)
+	s.Contains(stored.KnownCantrips, refs.Spells.TollTheDead().String())
+	definition := loaded.CastDefinition(spells.TollTheDead)
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Require().NotNil(definition.Cast.Save)
+	s.Equal([]abilities.Ability{abilities.WIS}, definition.Cast.Save.Abilities)
+	s.Require().Len(definition.Cast.Damage, 1)
+	s.Equal("1d8", definition.Cast.Damage[0].Dice)
+	s.Require().Len(definition.Cast.DamageIfInjured, 1)
+	s.Equal("1d12", definition.Cast.DamageIfInjured[0].Dice)
+	s.Empty(definition.Cost.Pools)
+	_, err = loaded.StatusView(&StatusViewInput{})
+	s.NoError(err, "private-sheet projection accepts the normally finalized cleric")
+}
+
 func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReload() {
 	draft := s.draft(s.classInput())
 	char, err := draft.ToCharacter(context.Background(), "sacred-flame-cleric", events.NewEventBus())

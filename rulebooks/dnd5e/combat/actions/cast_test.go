@@ -171,6 +171,50 @@ func (s *CastProfileSuite) TestAGatedCastValidates() {
 	s.Require().NoError(gatedProfile().Validate())
 }
 
+// tollTheDeadProfile is Toll the Dead's own shape: a plain pool for an
+// uninjured target and a second, larger one for an injured target.
+func tollTheDeadProfile() actions.CastProfile {
+	profile := gatedDamageProfile()
+	profile.DamageIfInjured = []damage.Damage{{Dice: "1d12", Type: damage.Necrotic}}
+	return profile
+}
+
+func (s *CastProfileSuite) TestADamageIfInjuredPairValidates() {
+	s.Require().NoError(tollTheDeadProfile().Validate())
+}
+
+func (s *CastProfileSuite) TestDamageIfInjuredWithoutPlainDamageIsRefused() {
+	profile := tollTheDeadProfile()
+	profile.Damage = nil
+
+	s.Require().ErrorContains(profile.Validate(), "no plain damage for an uninjured target")
+}
+
+func (s *CastProfileSuite) TestDamageIfInjuredValidatesItsOwnPool() {
+	profile := tollTheDeadProfile()
+	profile.DamageIfInjured = []damage.Damage{{Dice: "not-a-die", Type: damage.Necrotic}}
+
+	s.Require().ErrorContains(profile.Validate(), "damage_if_injured declaration is invalid")
+}
+
+func (s *CastProfileSuite) TestDamageIfInjuredRefusesTheAttackAbilityModifier() {
+	profile := tollTheDeadProfile()
+	profile.DamageIfInjured[0].Properties = []damage.Property{damage.AddsAttackAbilityModifier}
+
+	s.Require().ErrorContains(profile.Validate(), "damage_if_injured must not be marked with the attack ability modifier")
+}
+
+func (s *CastProfileSuite) TestCloningACastProfileCopiesItsDamageIfInjured() {
+	profile := tollTheDeadProfile()
+
+	clone := profile.Clone()
+	clone.DamageIfInjured[0].Dice = "99d99"
+	clone.DamageIfInjured[0].Properties = append(clone.DamageIfInjured[0].Properties, damage.Property("mutated"))
+
+	s.Equal("1d12", profile.DamageIfInjured[0].Dice, "a clone that aliased the pool would rewrite the original")
+	s.Empty(profile.DamageIfInjured[0].Properties)
+}
+
 // A pointer rather than a bool beside a duration: nil is "no concentration",
 // and there is no state where a declared duration means nothing.
 func (s *CastProfileSuite) TestAConcentrationCastValidates() {

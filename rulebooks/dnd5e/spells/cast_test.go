@@ -252,6 +252,37 @@ func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {
 	s.Nil(profile.Concentration)
 }
 
+func (s *CastContentSuite) TestTollTheDeadCarriesBothDamagePoolsWISAndNecrotic() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TollTheDead, SpellSaveDC: 14})
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Equal(refs.Spells.TollTheDead().String(), definition.Ref.String())
+	s.Equal("Toll the Dead", definition.Name)
+	s.Nil(definition.Attack)
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(definition.Cost.Pools, "cantrips spend no spell-slot pool")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(60, profile.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, profile.Target)
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.WIS}, profile.Save.Abilities,
+		"a Wisdom save, unlike Sacred Flame's Dexterity one")
+	s.Equal(14, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess)
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence)
+	s.Require().Len(profile.Damage, 1)
+	s.Equal("1d8", profile.Damage[0].Dice, "the uninjured pool")
+	s.Equal(damage.Necrotic, profile.Damage[0].Type)
+	s.Require().Len(profile.DamageIfInjured, 1)
+	s.Equal("1d12", profile.DamageIfInjured[0].Dice, "the larger pool, RAW's own wording")
+	s.Equal(damage.Necrotic, profile.DamageIfInjured[0].Type)
+	s.Empty(profile.Effects, "Toll the Dead leaves no condition behind")
+	s.Nil(profile.Concentration)
+}
+
 func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantrips() {
 	s.Equal([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.SpareTheDying},
 		spells.Castable([]spells.Spell{spells.Guidance, spells.SacredFlame, spells.Light, spells.SpareTheDying}))
