@@ -704,6 +704,54 @@ var (
 	// the current catalog is verified clean (equipment's own
 	// pack_contents_test.go); reachable only if a future pack ships broken.
 	ErrBadPackContents = errors.New("pack contents do not resolve against the catalog")
+
+	// ErrLevelNotOffered is returned when THIS BUILD cannot put a level in
+	// front of a player: the level's requirement row asks for a kind this
+	// seam was never taught to offer, or one of its spell options is an id
+	// the ref catalog cannot name.
+	//
+	// PROGRAMMER- AND CONTENT-FACING, which is why it is separate from
+	// ErrBadLevelRequest below — the same split ErrCannotAfford and ErrBadCost
+	// keep. Nothing the player did produced it and nothing they can do will
+	// clear it; a host should say "this level cannot be taken here yet"
+	// rather than "your request was wrong", and whoever debugs it should be
+	// sent to the rulebook rather than to a client.
+	//
+	// It is raised by [Manager.NextLevel] as well as [Manager.LevelUp], and
+	// THAT is the point: refusing at the READ is what keeps a client from
+	// being shown a confirmation the write would refuse. A seam that offered
+	// the level minus the part it could not translate would hand the player a
+	// menu whose missing row looks exactly like a row that was never there —
+	// the invisible failure the package charter names for every producer.
+	//
+	// The message names what could not be offered: the requirement kind
+	// ("subclass") or the spell id with no canonical ref.
+	ErrLevelNotOffered = errors.New("this build cannot offer that level")
+
+	// ErrBadLevelRequest is returned when the LEVEL-UP REQUEST is wrong: a hit
+	// point method this verb does not offer, a submission naming a choice the
+	// level never asked for, a selection that is not a canonical ref for a
+	// spell this build carries, or anything the rulebook's own Advance reports
+	// as an invalid argument — a count that does not match, an option that is
+	// not on the list, a spell the character already knows.
+	//
+	// The caller-facing half of the split described on ErrLevelNotOffered, and
+	// the one a host maps to InvalidArgument. The rulebook's own words ride
+	// along as TEXT rather than as a wrapped error, for the reason
+	// translateResolution gives: a host matching on rpgerr's codes would be
+	// coupled to a module this seam exists to keep replaceable (S2).
+	ErrBadLevelRequest = errors.New("invalid level-up request")
+
+	// ErrCannotAdvance is returned when the character MAY NOT take a level
+	// right now: its experience has not earned one, it is in a fight, its
+	// stored record cannot be advanced from, or the level names a class that
+	// is not its own.
+	//
+	// A fact about the game rather than a defect, which is why it is not
+	// ErrBadLevelRequest: the request was well formed and the answer is no,
+	// and the same request succeeds once the character earns the experience or
+	// the fight ends. A host maps it to FailedPrecondition.
+	ErrCannotAdvance = errors.New("character cannot take a level now")
 )
 
 // WindowOpenError is [ErrWindowOpen]'s detail: which windows are open and who

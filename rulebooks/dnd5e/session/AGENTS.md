@@ -11,13 +11,24 @@ for why the split exists at all.
 
 ## What this package owns
 
-**The verb surface.** Thirty-two exported `Manager` methods, each one load, act,
+**The verb surface.** Thirty-four exported `Manager` methods, each one load, act,
 save, return — no setup call, no teardown, no ordering for the caller to get
 wrong. `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
 `Search`, `Loot`, `Hold`, `Trade`, `Interact`, `OpenDoor`, `Unlock`, `Join`,
-`Exit`, `End`, `Spawn`, `PlaceNPC`, `Dissolve`, `Unpack`, `StartSession`, and the
-reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`, `View`, `Story`, `Where`,
-`Turn`, `Doors`. A verb is a file; the file is the unit of ownership.
+`Exit`, `End`, `Spawn`, `PlaceNPC`, `Dissolve`, `Unpack`, `LevelUp`,
+`StartSession`, and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
+`View`, `Story`, `Where`, `Turn`, `Doors`, `NextLevel`. A verb is a file; the
+file is the unit of ownership.
+
+**Two of them are not seated.** `NextLevel` ([`next_level.go`](./next_level.go))
+and `LevelUp` ([`level_up.go`](./level_up.go)) take a character id and no
+session, because a level is taken between runs: there is no world to freeze, no
+story to tell, and therefore no `writeScope` and no `commit` — `LevelUp` writes
+one character aggregate and reports it. They are the ruling *"our level up
+should be contained in our session package"* (Kirk, 2026-09-16), and the trap
+they carry is named in their own godoc: **this Manager has no index from a
+character to a session**, so "seated in a run" cannot be checked here and the
+in-combat refusal is exactly the sheet's own.
 
 **The three repositories and the capabilities beside them.**
 [`repositories.go`](./repositories.go) declares `SessionRepository`,

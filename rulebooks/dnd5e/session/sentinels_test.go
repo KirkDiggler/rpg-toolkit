@@ -252,6 +252,9 @@ var sessionSentinels = map[string]error{
 	"ErrNoWindow":             session.ErrNoWindow,
 	"ErrNotAudience":          session.ErrNotAudience,
 	"ErrNotOffered":           session.ErrNotOffered,
+	"ErrLevelNotOffered":      session.ErrLevelNotOffered,
+	"ErrBadLevelRequest":      session.ErrBadLevelRequest,
+	"ErrCannotAdvance":        session.ErrCannotAdvance,
 }
 
 // TestExportedSentinelAllowListIsComplete makes sessionSentinels an actual
