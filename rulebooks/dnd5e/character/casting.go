@@ -25,7 +25,7 @@ func (c *Character) CastDefinition(id spells.Spell) *actions.Definition {
 			Ref:  &core.Ref{Module: refs.Module, Type: refs.TypeAbilities, ID: string(ability)},
 			Name: ability.Display(), Label: "Spellcasting modifier", SourceID: c.id,
 		}, Amount: c.GetAbilityModifier(ability)}}
-		if data := spells.GetData(id); data != nil && c.classID == classes.Cleric && c.subclassID == classes.LifeDomain && c.level >= 1 {
+		if data := spells.GetData(id); data != nil && c.classID == classes.Cleric && c.subclassID == classes.LifeDomain && c.GetLevel() >= 1 {
 			input.HealingModifiers = append(input.HealingModifiers, features.DiscipleOfLife(healing.Context{Spell: true, SpellLevel: data.Level}, c.id)...)
 		}
 	}

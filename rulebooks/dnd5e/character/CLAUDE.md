@@ -466,10 +466,35 @@ equipmentChoices := []choices.EquipmentChoiceSelection{
 **Fix:** Added `clearChoicesBySource()` helper, called in SetClass/SetRace/SetBackground
 **Tests:** `ClassChangeTestSuite` in draft_test.go validates the fix
 
-### Future: Character Modification After Creation
-**Need:** Ability to level up, multiclass, gain items
-**Pattern:** Create Draft from existing Character, modify, re-finalize
-**Status:** Not implemented
+### Levelling up: the record, not a re-finalized draft
+
+A character keeps an append-only record of the levels it has taken
+(`Data.Levels`), and `Character.Advance` appends one. `Data.Level` and
+`Data.ProficiencyBonus` are PROJECTIONS of that record — `ToData` writes them
+from it, `Load` refuses a sheet where the two disagree, and nothing in the
+toolkit reads them back as truth.
+
+The entry holds the INPUTS to a level — the class it was taken in, the hit
+point method and its result, the choices it required — never the effects. What
+a level granted is derived from the entry plus the current rules, so correcting
+a rule corrects every character. Storing the effects instead reads better and
+rots: the day a grant is fixed, every stored account of it becomes a permanent
+description of something that should not have happened.
+
+Grants and class resources are indexed by **class level**
+(`Character.ClassLevel`); the proficiency bonus is derived from **character
+level** (`Character.GetLevel`). They are equal today and are still written down
+as different numbers, because that is what multiclassing will need and it costs
+one loop now.
+
+The re-finalize-a-draft pattern this section used to propose is NOT the shape:
+a draft carries creation totals, so replaying one would re-grant every level-1
+proficiency. See `ideas/characters/advancement/design.md` in rpg-project, and
+toolkit#1764.
+
+**Still missing:** multiclassing, XP, ability score improvements and feats,
+spell slot progression, levelling down. Each has a seam named in that design;
+none is built.
 
 ### Future: Equipment Item Integration
 **Need:** Resolve equipment SelectionIDs to actual item entities

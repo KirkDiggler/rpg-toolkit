@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
@@ -345,11 +346,11 @@ func (s *CharacterSavingThrowTestSuite) createTestCharacter(
 	}
 
 	return &Character{
-		id:               "test-char",
-		level:            1,
-		proficiencyBonus: 2, // Level 1 proficiency bonus
-		abilityScores:    scores,
-		savingThrows:     savingThrows,
+		id:            "test-char",
+		classID:       classes.Fighter,
+		levels:        syntheticLevels(classes.Fighter, 1),
+		abilityScores: scores,
+		savingThrows:  savingThrows,
 	}
 }
 
@@ -559,7 +560,8 @@ func (s *CharacterHitDiceTestSuite) createFreshCharacter() {
 	// Create a level 4 Fighter (d10 hit dice, +2 CON modifier from 14 CON)
 	s.character = &Character{
 		id:           "test-fighter",
-		level:        4,
+		classID:      classes.Fighter,
+		levels:       syntheticLevels(classes.Fighter, 4),
 		hitDice:      10, // d10
 		hitPoints:    15,
 		maxHitPoints: 40,

@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
@@ -30,9 +31,20 @@ type Data struct {
 	PlayerID string `json:"player_id"`
 	Name     string `json:"name"`
 
-	// Core attributes
+	// Core attributes.
+	//
+	// Both are PROJECTIONS of Levels, not truth (design §2 R2.2). ToData
+	// writes them from the record so the wire and every existing reader are
+	// unaffected; nothing in the toolkit reads them back as the character's
+	// level. Two representations that could disagree must not, so LoadCharacter
+	// refuses a sheet whose Level does not match its record (R2.3).
 	Level            int `json:"level"`
 	ProficiencyBonus int `json:"proficiency_bonus"`
+
+	// Levels is the record of how this character reached its current level, in
+	// order. Levels[0] is level 1. This is the source of truth for the
+	// character's level (R2.2).
+	Levels []LevelEntry `json:"levels"`
 
 	// Race and class
 	RaceID     races.Race       `json:"race_id"`
@@ -110,6 +122,53 @@ type Data struct {
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// HitPointMethod names how a level's hit point gain was produced.
+//
+// Stored on the entry rather than re-derived, because a roll cannot be rolled
+// again: the same call authored wall runs already make. Everything else a
+// level did is derived from the entry plus the current rules, so correcting a
+// rule corrects every character (design §7.1).
+type HitPointMethod string
+
+const (
+	// HitPointMethodMax takes the full hit die. Level 1 only — every later
+	// level rolls or averages.
+	HitPointMethodMax HitPointMethod = "max"
+
+	// HitPointMethodRolled rolls the class hit die.
+	HitPointMethodRolled HitPointMethod = "rolled"
+
+	// HitPointMethodAverage takes the class's fixed average for its hit die,
+	// which is half the die plus one (PHB p.15).
+	HitPointMethodAverage HitPointMethod = "average"
+)
+
+// LevelEntry records one level this character has taken. Append-only.
+//
+// It holds the INPUTS to that level, never the effects: what a level granted
+// is derived from the entry plus the current rules, so a corrected rule
+// corrects every character. A record of effects reads better and rots — the
+// day a grant is fixed, every stored account of it becomes a confident,
+// permanent description of something that should not have happened, with no
+// way to reconcile it against the sheet. See design §7.1.
+type LevelEntry struct {
+	// Level is the character level this entry produced. Entry n has Level n+1.
+	Level int `json:"level"`
+
+	// ClassID is the class the level was taken in. Always equal to the
+	// character's class until multiclassing exists (R2.4).
+	ClassID classes.Class `json:"class_id"`
+
+	// HitPointGain is the hit points this level added, and the method that
+	// produced it. Stored because a roll cannot be re-derived.
+	HitPointGain   int            `json:"hit_point_gain"`
+	HitPointMethod HitPointMethod `json:"hit_point_method"`
+
+	// Choices are the choices this level required, if any. Empty for a level
+	// that requires none — which is every level 2 of the four SRD classes.
+	Choices []choices.ChoiceData `json:"choices,omitempty"`
 }
 
 // InventoryItemData represents serializable inventory item

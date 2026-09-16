@@ -52,12 +52,11 @@ func createTestFighterCharacter(t *testing.T, bus events.EventBus) *Character {
 	}
 
 	return &Character{
-		id:               "fighter-1",
-		name:             "Test Fighter",
-		level:            3,
-		proficiencyBonus: 2,
-		classID:          classes.Fighter,
-		raceID:           races.Human,
+		id:      "fighter-1",
+		name:    "Test Fighter",
+		levels:  syntheticLevels(classes.Fighter, 3),
+		classID: classes.Fighter,
+		raceID:  races.Human,
 		abilityScores: shared.AbilityScores{
 			abilities.STR: 16,
 			abilities.DEX: 14,
@@ -120,7 +119,8 @@ func (s *ActionEconomyTestSuite) TestToData_NilActionEconomyOmitted() {
 	char := &Character{
 		id:           "test-char",
 		name:         "Test",
-		level:        1,
+		classID:      classes.Fighter,
+		levels:       syntheticLevels(classes.Fighter, 1),
 		skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		savingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 	}
@@ -139,7 +139,8 @@ func (s *ActionEconomyTestSuite) TestToData_IncludesActionEconomy() {
 	char := &Character{
 		id:           "test-char",
 		name:         "Test",
-		level:        1,
+		classID:      classes.Fighter,
+		levels:       syntheticLevels(classes.Fighter, 1),
 		skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		savingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 	}
@@ -163,7 +164,7 @@ func (s *ActionEconomyTestSuite) TestToData_IncludesActionEconomy() {
 
 func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 	// Create minimal valid Data with action economy
-	data := &Data{
+	data := &Data{Levels: syntheticLevels(classes.Fighter, 5),
 		ID:               "test-char",
 		PlayerID:         "player-1",
 		Name:             "Test Fighter",
@@ -277,7 +278,7 @@ func (s *ActionEconomyTestSuite) TestSeededEconomy_RoundTrip_ActivateAbility_NoN
 
 func (s *ActionEconomyTestSuite) TestLoadFromData_NilActionEconomy() {
 	// Create minimal valid Data without action economy
-	data := &Data{
+	data := &Data{Levels: syntheticLevels(classes.Fighter, 5),
 		ID:               "test-char",
 		PlayerID:         "player-1",
 		Name:             "Test Fighter",
@@ -340,7 +341,7 @@ func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePreservesDeathSaveCapac
 }
 
 func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePersistsSpentDeathSaveCapacityAtZero() {
-	input := &Data{
+	input := &Data{Level: 1,
 		ID: "spent-death-save",
 		ActionEconomy: &ActionEconomyData{
 			Granted: map[GrantedActionKey]int{

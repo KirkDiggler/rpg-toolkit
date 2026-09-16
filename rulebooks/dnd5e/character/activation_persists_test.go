@@ -43,7 +43,7 @@ func (s *ActivationPersistsTestSuite) SetupTest() {
 }
 
 func (s *ActivationPersistsTestSuite) sheet() *Data {
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Fighter, 3),
 		ID: "persist-fighter", PlayerID: "p1", Name: "Persist",
 		Level: 3, ProficiencyBonus: 2,
 		RaceID: races.Human, ClassID: classes.Fighter,

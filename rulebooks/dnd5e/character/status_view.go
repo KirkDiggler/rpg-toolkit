@@ -165,7 +165,7 @@ func (c *Character) StatusView(_ *StatusViewInput) (*StatusViewOutput, error) {
 	participation := c.ParticipationView()
 
 	view := &StatusView{
-		Level:         c.level,
+		Level:         c.GetLevel(),
 		HitPoints:     HitPointView{Current: c.hitPoints, Maximum: c.maxHitPoints},
 		LifeState:     participation.LifeState,
 		DeathSaves:    participation.DeathSaves,

@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -659,12 +660,21 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 
 	// Create the character
 	char := &Character{
-		id:                  characterID,
-		playerID:            d.playerID,
-		name:                d.name,
-		appearance:          customization.CloneAppearance(d.appearance),
-		level:               1,
-		proficiencyBonus:    2,
+		id:         characterID,
+		playerID:   d.playerID,
+		name:       d.name,
+		appearance: customization.CloneAppearance(d.appearance),
+		// Level 1 is a level. The record is complete from the first one
+		// rather than backfilled from level 2 onward (design §2.4), and it
+		// carries this draft's own choices verbatim — the inputs to level 1,
+		// which is exactly what every later entry holds.
+		levels: []LevelEntry{{
+			Level:          1,
+			ClassID:        d.class,
+			HitPointGain:   maxHP,
+			HitPointMethod: HitPointMethodMax,
+			Choices:        slices.Clone(d.choices),
+		}},
 		raceID:              d.race,
 		subraceID:           d.subrace,
 		classID:             d.class,
@@ -2058,9 +2068,29 @@ func calculateBarbarianRageUses(level int) int {
 // initializeClassResources adds class-specific resources to the character.
 // Called during ToCharacter after the character struct is created.
 func (d *Draft) initializeClassResources(char *Character) {
-	level := char.level
+	for key, resource := range buildClassResources(char, d.class, char.ClassLevel(d.class), char.GetLevel()) {
+		char.resources[key] = resource
+	}
+}
 
-	switch d.class {
+// buildClassResources returns the class-granted pools a character of this
+// class level has, each at full.
+//
+// classLevel sizes what the CLASS grants — rage charges, Ki, the starting
+// spell slot — because a feature arrives at its own class's level (R4.6).
+// characterLevel sizes hit dice, which count every level whatever class took
+// it. Today R2.4 forces the two equal; they are passed separately so the
+// arithmetic stays true when it stops being.
+//
+// Creation assigns these as they come. [Character.Advance] keeps what is
+// already spent and grants only the difference; see resizeClassResources.
+func buildClassResources(
+	char *Character, class classes.Class, classLevel, characterLevel int,
+) map[coreResources.ResourceKey]*combat.RecoverableResource {
+	built := make(map[coreResources.ResourceKey]*combat.RecoverableResource)
+	level := classLevel
+
+	switch class {
 	case classes.Barbarian:
 		// Rage charges - recovered on long rest
 		maxRages := calculateBarbarianRageUses(level)
@@ -2073,11 +2103,11 @@ func (d *Draft) initializeClassResources(char *Character) {
 				CharacterID: char.id,
 				ResetType:   coreResources.ResetLongRest,
 			})
-			char.resources[resources.RageCharges] = rageResource
+			built[resources.RageCharges] = rageResource
 		}
 
 	case classes.Bard:
-		d.initializeStartingSpellSlots(char)
+		addStartingSpellSlots(built, char, class)
 
 		// Bardic Inspiration uses - Charisma modifier, minimum one, recovered
 		// on long rest. The minimum is RAW and is what keeps a bard with a
@@ -2086,7 +2116,7 @@ func (d *Draft) initializeClassResources(char *Character) {
 		if maxUses < 1 {
 			maxUses = 1
 		}
-		char.resources[resources.Inspiration] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		built[resources.Inspiration] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 			ID:          string(resources.Inspiration),
 			Maximum:     maxUses,
 			CharacterID: char.id,
@@ -2094,7 +2124,7 @@ func (d *Draft) initializeClassResources(char *Character) {
 		})
 
 	case classes.Cleric:
-		d.initializeStartingSpellSlots(char)
+		addStartingSpellSlots(built, char, class)
 
 	case classes.Monk:
 		// Ki points - equal to monk level, recovered on short or long rest.
@@ -2108,28 +2138,33 @@ func (d *Draft) initializeClassResources(char *Character) {
 				CharacterID: char.id,
 				ResetType:   coreResources.ResetShortRest,
 			})
-			char.resources[resources.Ki] = kiResource
+			built[resources.Ki] = kiResource
 		}
 	}
 
-	// Hit dice - all classes get hit dice for short rest healing
-	// Uses helper which includes special recovery logic (half per long rest, min 1)
-	hitDiceResource := resources.NewHitDiceResource(resources.HitDiceResourceConfig{
+	// Hit dice - all classes get hit dice for short rest healing.
+	// Uses helper which includes special recovery logic (half per long rest, min 1).
+	// Counted by CHARACTER level: every level taken adds a die, whatever class
+	// took it.
+	built[resources.HitDice] = resources.NewHitDiceResource(resources.HitDiceResourceConfig{
 		CharacterID: char.id,
-		Level:       level,
+		Level:       characterLevel,
 	})
-	char.resources[resources.HitDice] = hitDiceResource
+
+	return built
 }
 
-// initializeStartingSpellSlots seeds the existing first-level resource from
-// starting class data. Class cases opt into it; higher-level progression,
-// preparation, and Pact Magic are separate responsibilities.
-func (d *Draft) initializeStartingSpellSlots(char *Character) {
-	classData := classes.ClassData[d.class]
+// addStartingSpellSlots seeds the existing first-level resource from starting
+// class data. Class cases opt into it; higher-level progression, preparation,
+// and Pact Magic are separate responsibilities.
+func addStartingSpellSlots(
+	built map[coreResources.ResourceKey]*combat.RecoverableResource, char *Character, class classes.Class,
+) {
+	classData := classes.ClassData[class]
 	if len(classData.SpellSlots) == 0 || classData.SpellSlots[0] <= 0 {
 		return
 	}
-	char.resources[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+	built[resources.SpellSlotLevel1] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 		ID:          string(resources.SpellSlotLevel1),
 		Maximum:     classData.SpellSlots[0],
 		CharacterID: char.id,

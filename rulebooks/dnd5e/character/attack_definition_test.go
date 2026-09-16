@@ -549,6 +549,7 @@ func (s *CharacterAttackTestSuite) TestCostOfSwing_FirstSwingNetsTheAttackGrant(
 func (s *CharacterAttackTestSuite) TestCostOfSwing_ExtraAttackLeavesLaterCapacityBanked() {
 	data := s.martialHero()
 	data.Level = 5
+	data.Levels = syntheticLevels(classes.Fighter, 5)
 	fighter := s.load(data)
 
 	profile, err := CostOfSwing(fighter)

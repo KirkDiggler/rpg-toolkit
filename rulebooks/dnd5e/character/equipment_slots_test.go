@@ -7,6 +7,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/suite"
 )
@@ -254,10 +255,11 @@ func (s *EquipmentSlotsTestSuite) TestEquipmentSlots_Persistence() {
 	shieldItem := armor.All[armor.Shield]
 
 	char := &Character{
-		id:    "test-char",
-		name:  "Test Character",
-		level: 1,
-		bus:   s.bus,
+		id:      "test-char",
+		name:    "Test Character",
+		classID: classes.Fighter,
+		levels:  syntheticLevels(classes.Fighter, 1),
+		bus:     s.bus,
 		inventory: []InventoryItem{
 			{Equipment: &chainMail, Quantity: 1},
 			{Equipment: &longsword, Quantity: 1},

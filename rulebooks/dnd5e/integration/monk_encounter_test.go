@@ -159,8 +159,14 @@ func (s *MonkEncounterSuite) createLevel2Monk() *character.Character {
 		Name:             "Shadow the Swift",
 		Level:            2,
 		ProficiencyBonus: 2,
-		RaceID:           races.Human,
-		ClassID:          classes.Monk,
+		// The record is the sheet's statement of its own level: two levels
+		// taken in monk, the first at the full hit die and the second rolled.
+		Levels: []character.LevelEntry{
+			{Level: 1, ClassID: classes.Monk, HitPointGain: 10, HitPointMethod: character.HitPointMethodMax},
+			{Level: 2, ClassID: classes.Monk, HitPointGain: 6, HitPointMethod: character.HitPointMethodRolled},
+		},
+		RaceID:  races.Human,
+		ClassID: classes.Monk,
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 10, // +0
 			abilities.DEX: 16, // +3

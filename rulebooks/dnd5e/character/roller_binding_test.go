@@ -94,7 +94,7 @@ func gwfBlob(s *suite.Suite, memberID string) json.RawMessage {
 // rollerBindingSheet is a minimal persisted fighter carrying the given
 // conditions — enough sheet to load, attach, and swing a weapon.
 func rollerBindingSheet(conditions ...json.RawMessage) *Data {
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Fighter, 4),
 		ID:               "roller-fighter",
 		PlayerID:         "player-roller",
 		Name:             "Roller Binding",

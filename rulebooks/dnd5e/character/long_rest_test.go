@@ -50,7 +50,8 @@ func (s *LongRestTestSuite) createFreshCharacter() {
 	// Create a level 4 Barbarian with 14 CON
 	s.character = &Character{
 		id:           "test-barbarian",
-		level:        4,
+		classID:      classes.Barbarian,
+		levels:       syntheticLevels(classes.Barbarian, 4),
 		hitDice:      12, // d12
 		hitPoints:    20, // Half HP (40 max)
 		maxHitPoints: 40,
@@ -340,7 +341,7 @@ func TestShortRestRetainsPersistedActionEconomy(t *testing.T) {
 }
 
 func longRestEconomyTestData(actionEconomy *ActionEconomyData) *Data {
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Fighter, 4),
 		ID:               "rest-economy-fighter",
 		PlayerID:         "rest-economy-player",
 		Name:             "Rest Economy Fighter",
@@ -377,7 +378,7 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 	require.NoError(t, err)
 
 	shortRestPool := coreResources.ResourceKey("test-short-rest-pool")
-	data := &Data{
+	data := &Data{Levels: syntheticLevels(classes.Fighter, 4),
 		ID:               "rest-fighter",
 		PlayerID:         "rest-player",
 		Name:             "Rest Fighter",

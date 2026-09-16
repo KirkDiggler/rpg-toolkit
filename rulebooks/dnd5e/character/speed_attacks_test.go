@@ -52,97 +52,97 @@ func (s *SpeedAttacksTestSuite) TestGetSpeed_UnknownRace_DefaultsTo30() {
 // GetExtraAttacksCount tests - Fighter
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level1() {
-	char := &Character{classID: classes.Fighter, level: 1}
+	char := &Character{classID: classes.Fighter, levels: syntheticLevels(classes.Fighter, 1)}
 	s.Assert().Equal(0, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level4() {
-	char := &Character{classID: classes.Fighter, level: 4}
+	char := &Character{classID: classes.Fighter, levels: syntheticLevels(classes.Fighter, 4)}
 	s.Assert().Equal(0, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level5() {
-	char := &Character{classID: classes.Fighter, level: 5}
+	char := &Character{classID: classes.Fighter, levels: syntheticLevels(classes.Fighter, 5)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level10() {
-	char := &Character{classID: classes.Fighter, level: 10}
+	char := &Character{classID: classes.Fighter, levels: syntheticLevels(classes.Fighter, 10)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level11() {
-	char := &Character{classID: classes.Fighter, level: 11}
+	char := &Character{classID: classes.Fighter, levels: syntheticLevels(classes.Fighter, 11)}
 	s.Assert().Equal(2, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level19() {
-	char := &Character{classID: classes.Fighter, level: 19}
+	char := &Character{classID: classes.Fighter, levels: syntheticLevels(classes.Fighter, 19)}
 	s.Assert().Equal(2, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level20() {
-	char := &Character{classID: classes.Fighter, level: 20}
+	char := &Character{classID: classes.Fighter, levels: syntheticLevels(classes.Fighter, 20)}
 	s.Assert().Equal(3, char.GetExtraAttacksCount())
 }
 
 // GetExtraAttacksCount tests - Martial classes (Extra Attack at level 5)
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Barbarian_Level4() {
-	char := &Character{classID: classes.Barbarian, level: 4}
+	char := &Character{classID: classes.Barbarian, levels: syntheticLevels(classes.Barbarian, 4)}
 	s.Assert().Equal(0, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Barbarian_Level5() {
-	char := &Character{classID: classes.Barbarian, level: 5}
+	char := &Character{classID: classes.Barbarian, levels: syntheticLevels(classes.Barbarian, 5)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Monk_Level5() {
-	char := &Character{classID: classes.Monk, level: 5}
+	char := &Character{classID: classes.Monk, levels: syntheticLevels(classes.Monk, 5)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Paladin_Level5() {
-	char := &Character{classID: classes.Paladin, level: 5}
+	char := &Character{classID: classes.Paladin, levels: syntheticLevels(classes.Paladin, 5)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Ranger_Level5() {
-	char := &Character{classID: classes.Ranger, level: 5}
+	char := &Character{classID: classes.Ranger, levels: syntheticLevels(classes.Ranger, 5)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount())
 }
 
 // GetExtraAttacksCount tests - Non-martial classes
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Rogue_Level5() {
-	char := &Character{classID: classes.Rogue, level: 5}
+	char := &Character{classID: classes.Rogue, levels: syntheticLevels(classes.Rogue, 5)}
 	s.Assert().Equal(0, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Wizard_Level20() {
-	char := &Character{classID: classes.Wizard, level: 20}
+	char := &Character{classID: classes.Wizard, levels: syntheticLevels(classes.Wizard, 20)}
 	s.Assert().Equal(0, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Cleric_Level5() {
-	char := &Character{classID: classes.Cleric, level: 5}
+	char := &Character{classID: classes.Cleric, levels: syntheticLevels(classes.Cleric, 5)}
 	s.Assert().Equal(0, char.GetExtraAttacksCount())
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Warlock_Level5() {
-	char := &Character{classID: classes.Warlock, level: 5}
+	char := &Character{classID: classes.Warlock, levels: syntheticLevels(classes.Warlock, 5)}
 	s.Assert().Equal(0, char.GetExtraAttacksCount())
 }
 
 // GetExtraAttacksCount tests - Martial classes don't get more than 1 extra
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Barbarian_Level20() {
-	char := &Character{classID: classes.Barbarian, level: 20}
+	char := &Character{classID: classes.Barbarian, levels: syntheticLevels(classes.Barbarian, 20)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount(), "barbarian caps at 1 extra attack")
 }
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Monk_Level20() {
-	char := &Character{classID: classes.Monk, level: 20}
+	char := &Character{classID: classes.Monk, levels: syntheticLevels(classes.Monk, 20)}
 	s.Assert().Equal(1, char.GetExtraAttacksCount(), "monk caps at 1 extra attack")
 }

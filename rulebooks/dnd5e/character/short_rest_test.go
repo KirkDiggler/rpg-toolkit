@@ -7,6 +7,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -41,7 +42,8 @@ func (s *ShortRestTestSuite) createFreshCharacter() {
 	// Create a level 2 Fighter with 14 CON
 	s.character = &Character{
 		id:           "test-fighter",
-		level:        2,
+		classID:      classes.Fighter,
+		levels:       syntheticLevels(classes.Fighter, 2),
 		hitDice:      10, // d10
 		hitPoints:    10, // Half HP (20 max)
 		maxHitPoints: 20,

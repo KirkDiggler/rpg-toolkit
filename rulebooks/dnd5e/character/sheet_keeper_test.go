@@ -99,7 +99,7 @@ func (s *HealingAppliedTestSuite) SetupTest() {
 }
 
 func keeperSheet() *Data {
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Barbarian, 3),
 		ID:               "keeper-char",
 		PlayerID:         "keeper-player",
 		Name:             "Kept",

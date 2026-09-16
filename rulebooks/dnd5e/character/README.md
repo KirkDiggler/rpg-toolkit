@@ -254,12 +254,35 @@ The character package is designed for clean API integration:
 4. **Character Storage** - Efficient storage of just IDs
 5. **Proto Mapping** - All constants map to proto enums for wire safety
 
+## Levels and advancement
+
+A character carries `Data.Levels`, the append-only record of the levels it has
+taken. `Levels[0]` is level 1, written at creation with the draft's own
+choices; every later entry is appended by `Character.Advance`.
+
+```go
+out, err := char.Advance(ctx, &character.AdvanceInput{
+    ClassID:        classes.Fighter,
+    HitPointMethod: character.HitPointMethodAverage,
+})
+// out.Entry  — what was recorded
+// out.Gained — what the level added, derived for display
+```
+
+`Data.Level` and `Data.ProficiencyBonus` are projections of the record, written
+by `ToData` and refused by `Load` when they disagree with it. A character
+persisted before the record existed loads with a synthesized level-1 entry; one
+claiming a higher level with no record is refused rather than guessed at.
+
+`Advance` refuses a character in combat, computes the hit point gain itself,
+and is atomic — a failure leaves the character exactly as it was.
+
 ## Future Enhancements
 
 - [ ] Spell choices with full spell data
 - [ ] Feat selection system
-- [ ] Multiclass support
-- [ ] Level-up choices
+- [ ] Multiclass support (the level record is where a level in another class goes)
+- [ ] Choices that arrive at a level above 1 (subclass, ability score improvement)
 - [ ] Custom equipment creation
 
 ## Example Usage

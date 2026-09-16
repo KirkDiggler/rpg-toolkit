@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -50,9 +51,12 @@ type Character struct {
 	name       string
 	appearance *customization.Appearance
 
-	// Core attributes
-	level            int
-	proficiencyBonus int
+	// levels is the append-only record of the levels this character has
+	// taken, in order. It is the sheet's ONE representation of its level:
+	// the character level is the number of entries and the proficiency bonus
+	// is derived from it, so there is no stored number that can disagree with
+	// the record (design §2 R2.2, §5 R5.1).
+	levels []LevelEntry
 
 	// Race, class, and background
 	raceID       races.Race
@@ -148,9 +152,73 @@ func (c *Character) Appearance() *customization.Appearance {
 	return customization.CloneAppearance(c.appearance)
 }
 
-// GetLevel returns the character's level
+// GetLevel returns the character's level: the number of levels it has taken.
+//
+// Derived from the record rather than stored, so a character's level and its
+// history cannot disagree. See [Character.Levels] for the record itself, and
+// [Character.ClassLevel] for the per-class count that grants are indexed by.
 func (c *Character) GetLevel() int {
-	return c.level
+	return len(c.levels)
+}
+
+// Levels returns a copy of this character's level record, oldest first.
+//
+// A copy, because the record is append-only and a caller holding the sheet's
+// own slice could edit history in place. The per-entry Choices slices are
+// copied with it for the same reason.
+func (c *Character) Levels() []LevelEntry {
+	return cloneLevelEntries(c.levels)
+}
+
+// ClassLevel returns how many of this character's levels were taken in the
+// given class.
+//
+// This is the number grants and class resources are indexed by (design R4.6):
+// a fighter's Action Surge arrives at his second FIGHTER level, not his second
+// level. Today every entry names the character's own class (R2.4), so this
+// equals [Character.GetLevel] for the character's own class and zero for any
+// other — which is exactly why the two are written down as different numbers
+// now, while the difference still costs one loop.
+func (c *Character) ClassLevel(classID classes.Class) int {
+	count := 0
+	for _, entry := range c.levels {
+		if entry.ClassID == classID {
+			count++
+		}
+	}
+	return count
+}
+
+// cloneLevelEntries deep-copies a level record, including each entry's
+// choices, so neither the caller nor the sheet can mutate the other's.
+func cloneLevelEntries(entries []LevelEntry) []LevelEntry {
+	if entries == nil {
+		return nil
+	}
+
+	out := make([]LevelEntry, 0, len(entries))
+	for _, entry := range entries {
+		clone := entry
+		if entry.Choices != nil {
+			clone.Choices = slices.Clone(entry.Choices)
+		}
+		out = append(out, clone)
+	}
+	return out
+}
+
+// proficiencyBonusForLevel is the 5e proficiency bonus progression, +2 at
+// levels 1-4 and +1 for every four levels after (PHB p.15).
+//
+// DERIVED, never stored (design R5.1). The literal 2 written at creation was
+// invisible while every character was level 1 and wrong the moment one reached
+// 5. A level below 1 has no bonus to state, and returns the +2 a level-1
+// character has rather than a negative number.
+func proficiencyBonusForLevel(level int) int {
+	if level < 1 {
+		return 2
+	}
+	return 2 + (level-1)/4
 }
 
 // GetSpeed returns the character's base walking speed in feet from their race.
@@ -171,15 +239,15 @@ func (c *Character) GetExtraAttacksCount() int {
 	switch c.classID {
 	case classes.Fighter:
 		switch {
-		case c.level >= 20:
+		case c.GetLevel() >= 20:
 			return 3
-		case c.level >= 11:
+		case c.GetLevel() >= 11:
 			return 2
-		case c.level >= 5:
+		case c.GetLevel() >= 5:
 			return 1
 		}
 	case classes.Barbarian, classes.Monk, classes.Paladin, classes.Ranger:
-		if c.level >= 5 {
+		if c.GetLevel() >= 5 {
 			return 1
 		}
 	}
@@ -201,9 +269,13 @@ func (c *Character) AbilityScores() shared.AbilityScores {
 	return c.abilityScores
 }
 
-// ProficiencyBonus returns the character's proficiency bonus (implements Combatant interface)
+// ProficiencyBonus returns the character's proficiency bonus (implements Combatant interface).
+//
+// Derived from the CHARACTER level — the total number of levels taken,
+// whatever class each was taken in (design R4.7). That is the 5e rule, and the
+// reason character level and class level cannot be collapsed into one number.
 func (c *Character) ProficiencyBonus() int {
-	return c.proficiencyBonus
+	return proficiencyBonusForLevel(c.GetLevel())
 }
 
 // GetSkillModifier returns the total modifier for a skill check
@@ -214,9 +286,9 @@ func (c *Character) GetSkillModifier(skill skills.Skill) int {
 	if level, hasProficiency := c.skills[skill]; hasProficiency {
 		switch level {
 		case shared.Proficient:
-			modifier += c.proficiencyBonus
+			modifier += c.ProficiencyBonus()
 		case shared.Expert:
-			modifier += c.proficiencyBonus * 2
+			modifier += c.ProficiencyBonus() * 2
 		}
 	}
 
@@ -234,7 +306,7 @@ func (c *Character) GetSavingThrowModifier(ability abilities.Ability) int {
 	modifier := c.GetAbilityModifier(ability)
 
 	if level, hasProficiency := c.savingThrows[ability]; hasProficiency && level == shared.Proficient {
-		modifier += c.proficiencyBonus
+		modifier += c.ProficiencyBonus()
 	}
 
 	return modifier
@@ -1020,11 +1092,14 @@ func (c *Character) UnequipItem(slot InventorySlot) {
 // ToData converts the character to its persistent data form
 func (c *Character) ToData() *Data {
 	data := &Data{
-		ID:                  c.id,
-		PlayerID:            c.playerID,
-		Name:                c.name,
-		Level:               c.level,
-		ProficiencyBonus:    c.proficiencyBonus,
+		ID:       c.id,
+		PlayerID: c.playerID,
+		Name:     c.name,
+		// Projections of the record, written from it rather than from a
+		// stored copy (R2.2). Load refuses a sheet where they disagree.
+		Level:               c.GetLevel(),
+		ProficiencyBonus:    c.ProficiencyBonus(),
+		Levels:              cloneLevelEntries(c.levels),
 		RaceID:              c.raceID,
 		SubraceID:           c.subraceID,
 		ClassID:             c.classID,
@@ -1676,7 +1751,7 @@ func (c *Character) SpellSaveDC() int {
 		return 0
 	}
 
-	return spellSaveDCBase + c.proficiencyBonus + c.GetAbilityModifier(classData.SpellcastingAbility)
+	return spellSaveDCBase + c.ProficiencyBonus() + c.GetAbilityModifier(classData.SpellcastingAbility)
 }
 
 // KnownCantrips returns the cantrips this character knows, as content refs.

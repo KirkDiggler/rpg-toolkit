@@ -135,6 +135,19 @@ func getFighterGrants() []Grant {
 				},
 			},
 		},
+		{
+			// Action Surge, the first grant in this repository above level 1.
+			// The feature itself is already built, routed by the factory and
+			// the loader, and carries its own once-per-short-rest resource;
+			// this row is the whole of what level 2 adds.
+			Level: 2,
+			Features: []FeatureRef{
+				{
+					Ref:    refs.Features.ActionSurge().String(),
+					Config: json.RawMessage(`{"uses": 1}`),
+				},
+			},
+		},
 	}
 }
 
@@ -292,6 +305,34 @@ func getRogueGrants() []Grant {
 			// Note: Expertise is a CHOICE, not a grant - handled separately
 		},
 	}
+}
+
+// GetGrantsGainedAtLevel returns only the grants a class gains AT the given
+// level — the ones whose Level is exactly this level.
+//
+// This answers "what does level N add?", which is a different question from
+// [GetGrantsForLevel]'s "what does a level-N character have?". Advancement
+// needs the first: applying the cumulative set to a character that already
+// exists would grant every level-1 feature a second time.
+//
+// The names say which question each answers on purpose. "ForLevel" and
+// "AtLevel" would not.
+//
+// Returns an empty slice for a level that grants nothing, and nil for a class
+// with no grants at all — the same distinction [GetGrantsForLevel] makes.
+func GetGrantsGainedAtLevel(classID Class, level int) []Grant {
+	allGrants := GetGrants(classID)
+	if allGrants == nil {
+		return nil
+	}
+
+	result := make([]Grant, 0)
+	for _, grant := range allGrants {
+		if grant.Level == level {
+			result = append(result, grant)
+		}
+	}
+	return result
 }
 
 // GetGrantsForLevel returns all grants applicable at or before the given level.

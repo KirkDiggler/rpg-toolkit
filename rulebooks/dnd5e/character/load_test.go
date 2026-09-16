@@ -103,7 +103,7 @@ func fullSheet(s *suite.Suite) *Data {
 	sword, err := equipment.GetByID(weapons.Longsword)
 	s.Require().NoError(err)
 
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Barbarian, 3),
 		ID:               "char-load",
 		PlayerID:         "player-load",
 		Name:             "Round Tripper",
@@ -338,7 +338,7 @@ func (s *PureLoadTestSuite) TestStrictLoadRejectsPersistedOwnerResourceBoundsBef
 	}
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			data := &Data{
+			data := &Data{Level: 1,
 				ID: "fighter-bounds", ClassID: classes.Fighter,
 				Resources: map[coreResources.ResourceKey]RecoverableResourceData{resources.HitDice: tc.data},
 			}
@@ -357,7 +357,7 @@ func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedOwnerResourcesWithoutNo
 		{Current: 4, Maximum: 3},
 	}
 	for _, malformed := range tests {
-		data := &Data{
+		data := &Data{Level: 1,
 			ID: "fighter-lenient-bounds", ClassID: classes.Fighter,
 			Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 				resources.HitDice: malformed,
@@ -405,7 +405,7 @@ func (s *PureLoadTestSuite) TestStrictLoadRejectsFeaturePrivateResourceBoundsBef
 	}
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			data := &Data{ID: "fighter-private", ClassID: classes.Fighter, Features: []json.RawMessage{tc.blob()}}
+			data := &Data{Level: 1, ID: "fighter-private", ClassID: classes.Fighter, Features: []json.RawMessage{tc.blob()}}
 			loaded, err := Load(s.ctx, data)
 			s.Require().Error(err)
 			s.Nil(loaded, "strict load must reject before malformed private uses reach StatusView")
@@ -419,7 +419,7 @@ func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedFeaturePrivateResource(
 		CharacterID: "fighter-private-lenient", Uses: 2, MaxUses: 1,
 	})
 	s.Require().NoError(err)
-	loaded, err := LoadFromData(s.ctx, &Data{
+	loaded, err := LoadFromData(s.ctx, &Data{Level: 1,
 		ID: "fighter-private-lenient", ClassID: classes.Fighter, Features: []json.RawMessage{raw},
 	}, events.NewEventBus())
 	s.Require().NoError(err)
@@ -566,7 +566,7 @@ func (s *PureLoadTestSuite) TestAttachScopesAttachableFeatureToItsRef() {
 	s.Require().NoError(err)
 	bus := newRecordingBus()
 
-	char, err := Load(s.ctx, &Data{
+	char, err := Load(s.ctx, &Data{Level: 1,
 		ID: "scoped-fighter", ClassID: classes.Fighter, Features: []json.RawMessage{secondWind},
 	})
 	s.Require().NoError(err)

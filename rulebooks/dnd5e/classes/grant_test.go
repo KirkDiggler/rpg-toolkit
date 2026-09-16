@@ -133,22 +133,43 @@ func (s *GrantTestSuite) TestGetGrants_Rogue_EndToEndConditionCreation() {
 // Fighter Tests
 // =============================================================================
 
+// grantAtLevel returns the class's grant for exactly this level, failing the
+// test when there is none.
+//
+// Grants are looked up by the level they belong to rather than by position, so
+// that adding a grant at a later level cannot silently re-point a test at a
+// different row — which is what indexing plus a length assertion does.
+func (s *GrantTestSuite) grantAtLevel(grants []Grant, level int) Grant {
+	s.T().Helper()
+
+	for _, grant := range grants {
+		if grant.Level == level {
+			return grant
+		}
+	}
+
+	s.Require().Fail("no grant at level", "expected a grant at level %d", level)
+	return Grant{}
+}
+
 func (s *GrantTestSuite) TestGetGrants_Fighter_ReturnsGrants() {
 	grants := GetGrants(Fighter)
 
 	s.Require().NotNil(grants, "GetGrants(Fighter) should not return nil")
-	s.Require().Len(grants, 1, "Fighter should have 1 grant at level 1")
 
-	level1 := grants[0]
-	s.Equal(1, level1.Level, "First grant should be at level 1")
+	levels := make([]int, 0, len(grants))
+	for _, grant := range grants {
+		levels = append(levels, grant.Level)
+	}
+	s.Equal([]int{1, 2}, levels,
+		"Fighter grants at level 1 (Second Wind) and level 2 (Action Surge), in order")
 }
 
 func (s *GrantTestSuite) TestGetGrants_Fighter_Level1Proficiencies() {
 	grants := GetGrants(Fighter)
 	s.Require().NotNil(grants)
-	s.Require().Len(grants, 1)
 
-	level1 := grants[0]
+	level1 := s.grantAtLevel(grants, 1)
 
 	// Armor: All armor and shields (PHB p.71)
 	s.Contains(level1.ArmorProficiencies, proficiencies.ArmorLight,
@@ -178,9 +199,8 @@ func (s *GrantTestSuite) TestGetGrants_Fighter_Level1Proficiencies() {
 func (s *GrantTestSuite) TestGetGrants_Fighter_Level1SecondWind() {
 	grants := GetGrants(Fighter)
 	s.Require().NotNil(grants)
-	s.Require().Len(grants, 1)
 
-	level1 := grants[0]
+	level1 := s.grantAtLevel(grants, 1)
 
 	// Second Wind feature (PHB p.72)
 	s.Require().Len(level1.Features, 1, "Fighter should have 1 feature at level 1")
@@ -194,9 +214,8 @@ func (s *GrantTestSuite) TestGetGrants_Fighter_Level1SecondWind() {
 func (s *GrantTestSuite) TestGetGrants_Fighter_NoConditionsAtLevel1() {
 	grants := GetGrants(Fighter)
 	s.Require().NotNil(grants)
-	s.Require().Len(grants, 1)
 
-	level1 := grants[0]
+	level1 := s.grantAtLevel(grants, 1)
 
 	// Fighter has no conditions at level 1 (Fighting Style is a choice, not a grant)
 	s.Empty(level1.Conditions,
@@ -400,4 +419,64 @@ func (s *GrantTestSuite) TestGetGrants_Monk_Level1Equipment() {
 	s.Require().Len(level1.Equipment, 1, "Monk should have one fixed starting equipment grant")
 	s.Contains(level1.Equipment, EquipmentItem{ID: weapons.Dart, Quantity: 10},
 		"Monk should have ten darts")
+}
+
+// =============================================================================
+// Grants gained AT a level, versus grants held AT OR BEFORE one
+// =============================================================================
+
+func (s *GrantTestSuite) TestGetGrantsGainedAtLevel_FighterTwoIsActionSurgeAlone() {
+	gained := GetGrantsGainedAtLevel(Fighter, 2)
+
+	s.Require().Len(gained, 1, "exactly one grant belongs to level 2")
+	s.Equal(2, gained[0].Level)
+	s.Require().Len(gained[0].Features, 1)
+	s.Equal(refs.Features.ActionSurge().String(), gained[0].Features[0].Ref,
+		"level 2 adds Action Surge and nothing else")
+	s.Empty(gained[0].ArmorProficiencies, "and re-grants no proficiency it already has")
+	s.Empty(gained[0].WeaponProficiencies)
+	s.Empty(gained[0].Conditions)
+	s.Empty(gained[0].Equipment)
+}
+
+func (s *GrantTestSuite) TestGetGrantsForLevel_FighterTwoIsStillCumulative() {
+	held := GetGrantsForLevel(Fighter, 2)
+
+	levels := make([]int, 0, len(held))
+	features := make([]string, 0)
+	for _, grant := range held {
+		levels = append(levels, grant.Level)
+		for _, feature := range grant.Features {
+			features = append(features, feature.Ref)
+		}
+	}
+
+	s.Equal([]int{1, 2}, levels,
+		"a level-2 fighter HAS both grants; the cumulative question is unchanged")
+	s.Equal([]string{
+		refs.Features.SecondWind().String(),
+		refs.Features.ActionSurge().String(),
+	}, features)
+}
+
+func (s *GrantTestSuite) TestGetGrantsGainedAtLevel_ALevelThatGrantsNothingIsEmptyNotNil() {
+	gained := GetGrantsGainedAtLevel(Fighter, 3)
+
+	s.NotNil(gained, "the fighter has grants, so the question is answerable")
+	s.Empty(gained, "level 3 adds no grant row today")
+}
+
+func (s *GrantTestSuite) TestGetGrantsGainedAtLevel_AClassWithNoGrantsIsNil() {
+	s.Nil(GetGrantsGainedAtLevel(Wizard, 1),
+		"an unmigrated class has no grants at all, which is not the same as granting nothing")
+}
+
+func (s *GrantTestSuite) TestGetGrantsGainedAtLevel_LevelOneIsUnchangedForEveryClass() {
+	for _, classID := range []Class{Fighter, Barbarian, Monk, Rogue, Bard, Cleric} {
+		gained := GetGrantsGainedAtLevel(classID, 1)
+		held := GetGrantsForLevel(classID, 1)
+
+		s.Equal(held, gained,
+			"at level 1 the two questions have the same answer for %s", classID)
+	}
 }

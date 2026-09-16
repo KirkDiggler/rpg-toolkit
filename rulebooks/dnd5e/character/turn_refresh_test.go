@@ -40,7 +40,7 @@ func (s *TurnRefreshTestSuite) SetupTest() {
 }
 
 func (s *TurnRefreshTestSuite) sheet() *Data {
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Fighter, 5),
 		ID:               "refresh-fighter",
 		PlayerID:         "refresh-player",
 		Name:             "Fresh",

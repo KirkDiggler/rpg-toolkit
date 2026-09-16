@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -262,7 +263,7 @@ func TestDeathSaveStateCannotBeMutatedThroughLegacyCharacterDoors(t *testing.T) 
 
 func TestDeathSaveStateDoesNotAliasPersistenceBoundaries(t *testing.T) {
 	t.Run("Load clones caller state", func(t *testing.T) {
-		input := &Data{
+		input := &Data{Level: 1,
 			ID: "load-alias", HitPoints: 0, MaxHitPoints: 10,
 			DeathSaveState: &saves.DeathSaveState{Failures: 3, Dead: true},
 		}
@@ -295,7 +296,7 @@ func TestDeathSaveStateDoesNotAliasPersistenceBoundaries(t *testing.T) {
 	})
 
 	t.Run("nil state remains safe and detached", func(t *testing.T) {
-		input := &Data{ID: "nil-alias", HitPoints: 0, MaxHitPoints: 10}
+		input := &Data{Level: 1, ID: "nil-alias", HitPoints: 0, MaxHitPoints: 10}
 		char, err := Load(context.Background(), input)
 		require.NoError(t, err)
 		markSaved(char)
@@ -532,7 +533,7 @@ func TestHealingOwnsLifeStateTransitions(t *testing.T) {
 
 func TestLegacyUnconsciousBlobCannotRunASecondDeathSaveLedger(t *testing.T) {
 	legacy := json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},"member_id":"legacy-char","successes":2,"failures":0,"stabilized":false,"dead":false}`)
-	data := &Data{
+	data := &Data{Level: 1,
 		ID: "legacy-char", HitPoints: 0, MaxHitPoints: 10,
 		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 1},
 		Conditions:     []json.RawMessage{legacy},
@@ -605,6 +606,8 @@ func bareCharacterAtZero(state *saves.DeathSaveState) *Character {
 	copyState := *state
 	return &Character{
 		id: "death-save-char", hitPoints: 0, maxHitPoints: 10,
+		classID:        classes.Fighter,
+		levels:         syntheticLevels(classes.Fighter, 1),
 		deathSaveState: &copyState,
 	}
 }

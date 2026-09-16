@@ -14,7 +14,7 @@ import (
 // TestAddInventoryItemAppendsANewStack is the headline: the runtime path
 // Trade needs, since compileInventory only ever runs at draft-compile time.
 func TestAddInventoryItemAppendsANewStack(t *testing.T) {
-	data := &character.Data{}
+	data := &character.Data{Level: 1}
 
 	err := character.AddInventoryItem(data, character.InventoryItemData{
 		Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1,
@@ -26,7 +26,7 @@ func TestAddInventoryItemAppendsANewStack(t *testing.T) {
 }
 
 func TestAddInventoryItemMergesIntoAnExistingStack(t *testing.T) {
-	data := &character.Data{
+	data := &character.Data{Level: 1,
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
 		},
@@ -50,7 +50,7 @@ func TestAddInventoryItemRejectsNilData(t *testing.T) {
 }
 
 func TestAddInventoryItemRejectsEmptyID(t *testing.T) {
-	data := &character.Data{}
+	data := &character.Data{Level: 1}
 	err := character.AddInventoryItem(data, character.InventoryItemData{
 		Type: shared.EquipmentTypeWeapon, Quantity: 1,
 	})
@@ -64,7 +64,7 @@ func TestAddInventoryItemRejectsEmptyID(t *testing.T) {
 // merge branch would otherwise silently shrink or invert an existing stack.
 func TestAddInventoryItemRejectsNonpositiveQuantity(t *testing.T) {
 	for _, quantity := range []int{0, -1} {
-		data := &character.Data{
+		data := &character.Data{Level: 1,
 			Inventory: []character.InventoryItemData{
 				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
 			},
@@ -80,7 +80,7 @@ func TestAddInventoryItemRejectsNonpositiveQuantity(t *testing.T) {
 }
 
 func TestAddInventoryItemRejectsUnknownEquipmentID(t *testing.T) {
-	data := &character.Data{}
+	data := &character.Data{Level: 1}
 	err := character.AddInventoryItem(data, character.InventoryItemData{
 		Type: shared.EquipmentTypeWeapon, ID: "not-a-real-weapon", Quantity: 1,
 	})
@@ -89,7 +89,7 @@ func TestAddInventoryItemRejectsUnknownEquipmentID(t *testing.T) {
 }
 
 func TestAddInventoryItemRejectsCatalogTypeMismatch(t *testing.T) {
-	data := &character.Data{}
+	data := &character.Data{Level: 1}
 	err := character.AddInventoryItem(data, character.InventoryItemData{
 		Type: shared.EquipmentTypeArmor, ID: string(weapons.Longsword), Quantity: 1,
 	})
