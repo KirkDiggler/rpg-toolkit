@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -333,4 +334,69 @@ func (s *LevelUpSuite) TestAFailedSaveSaysWhatDidNotLand() {
 	s.Equal([]string{"character:ferrin"}, saveErr.Report.Failed)
 	s.Empty(saveErr.Report.Written, "nothing landed")
 	s.False(saveErr.Report.Partial())
+}
+
+// TestAFailingHostRollerComesBackOutUnflattened is the promise this verb's
+// error translation makes in its own godoc: *"a failing host Roller reaches the
+// hit point roll and comes back out through here, and flattening the host's own
+// error to protect it from us would break its matching on it."*
+//
+// Nothing held it to that. A reviewer replaced the default arm's `return err`
+// with a wrap in ErrCannotAdvance and the whole suite stayed green, which made
+// the paragraph above an unfalsifiable claim rather than a contract.
+//
+// This is the roll path's sibling of TestAFailedSaveSaysWhatDidNotLand, and the
+// two assertions that matter pull in opposite directions: the host's own error
+// must still match, and neither session sentinel may. A host branching on its
+// own dice outage must not have to unwrap ours to find it.
+func (s *LevelUpSuite) TestAFailingHostRollerComesBackOutUnflattened() {
+	mgr, characters := advancementManager(s.T(), brokenDice{}, advancingFighter("ferrin"))
+
+	out, err := mgr.LevelUp(context.Background(), &session.LevelUpInput{
+		Character:      "ferrin",
+		HitPointMethod: session.HitPointsRolled,
+	})
+	s.Require().Error(err)
+	s.Nil(out)
+
+	s.ErrorIs(err, errNoRandomness, "the host's own error stays matchable")
+	s.NotErrorIs(err, session.ErrCannotAdvance,
+		"a dice outage is not the character being unable to take a level")
+	s.NotErrorIs(err, session.ErrBadLevelRequest, "nor a malformed request")
+	s.Zero(characters.saves, "and nothing is written on the way out")
+}
+
+// TestASheetInAFightIsRefusedAsATimingRestriction pins the caveat this verb's
+// godoc and AGENTS.md both spend a paragraph on.
+//
+// The rulebook refuses a level to a sheet holding a live action economy, coded
+// CodeTimingRestriction, and this seam folds four rpgerr codes into
+// ErrCannotAdvance. A reviewer narrowed that case to CodePrerequisiteNotMet
+// alone and the suite stayed green: timing, not-allowed and invalid-state could
+// all leave the family unnoticed. The in-combat one is the headline claim of
+// the whole verb — "this verb's in-combat refusal is exactly the sheet's own,
+// no narrower and no wider" — and it was the one nothing could falsify.
+//
+// The message assertion is the other half. The rulebook's sentence rides along
+// as text so a player is told WHY, and a translation that kept the sentinel and
+// dropped the words would still pass an errors.Is check alone.
+func (s *LevelUpSuite) TestASheetInAFightIsRefusedAsATimingRestriction() {
+	fighting := advancingFighter("ferrin")
+	fighting.ActionEconomy = &character.ActionEconomyData{
+		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1,
+		ReactionsRemaining: 1, MovementRemaining: 30,
+	}
+	mgr, characters := advancementManager(s.T(), testDice{}, fighting)
+
+	_, err := mgr.LevelUp(context.Background(), &session.LevelUpInput{
+		Character:      "ferrin",
+		HitPointMethod: session.HitPointsAverage,
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrCannotAdvance)
+	s.NotErrorIs(err, session.ErrBadLevelRequest,
+		"being mid-fight is a fact about the game, not a malformed request")
+	s.Contains(err.Error(), "in combat", "the rulebook's own words reach the player")
+	s.Contains(err.Error(), "between-run", "including why the rule exists")
+	s.Zero(characters.saves)
 }

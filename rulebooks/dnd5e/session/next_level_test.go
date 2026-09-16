@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -254,4 +255,45 @@ func (s *NextLevelSuite) TestARowItsOptionsCannotSatisfyIsRefused() {
 	s.Require().NoError(err, "a count its options meet exactly is a question, not a refusal")
 	s.Require().Len(met.Choices, 1)
 	s.Equal(met.Choices[0].Count, len(met.Choices[0].Options))
+}
+
+// TestThereIsNoLevelPastTheTopOfTheTable is the one place this read did not
+// obey the law the rest of the package is built on: *"refusing at the read is
+// what keeps a client from being shown a confirmation LevelUp would go on to
+// refuse."*
+//
+// A level-20 fighter used to be described a level 21 — a hit die, no features,
+// no choices, and an entirely straight face — which LevelUp then refused with
+// the rulebook's own "level 21 needs 0". It survived because the availability
+// signal hides it: at 20 the gap between Level and EntitledLevel is zero, so a
+// client built to R4.10 never asks. "Nobody asks" is not a refusal, and the day
+// something asks for a different reason the answer was a fiction.
+//
+// The bound is read from the rulebook rather than spelled here, so the
+// assertion below is about the refusal existing and naming the level, not about
+// the number 20 being correct — that is the rulebook's to state and to change.
+func (s *NextLevelSuite) TestThereIsNoLevelPastTheTopOfTheTable() {
+	capped := advancingFighter("ferrin")
+	capped.Level = character.MaxCharacterLevel
+	capped.Levels = syntheticLevels(classes.Fighter, character.MaxCharacterLevel)
+	capped.Experience = character.ExperienceThresholdForLevel(character.MaxCharacterLevel)
+	mgr, _ := advancementManager(s.T(), testDice{}, capped)
+
+	out, err := mgr.NextLevel(context.Background(), &session.NextLevelInput{Character: "ferrin"})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrLevelNotOffered)
+	s.Nil(out, "and no level 21 is described")
+	s.Contains(err.Error(), "no level 21 in this table", "the refusal says what it could not offer")
+
+	// The control: one level below the top is still a real question, so this
+	// refusal cannot be a blanket ban on high levels.
+	below := advancingFighter("rowan")
+	below.Level = character.MaxCharacterLevel - 1
+	below.Levels = syntheticLevels(classes.Fighter, character.MaxCharacterLevel-1)
+	below.Experience = character.ExperienceThresholdForLevel(character.MaxCharacterLevel)
+	mgrBelow, _ := advancementManager(s.T(), testDice{}, below)
+
+	last, err := mgrBelow.NextLevel(context.Background(), &session.NextLevelInput{Character: "rowan"})
+	s.Require().NoError(err, "the last level the table describes is still offered")
+	s.Equal(character.MaxCharacterLevel, last.CharacterLevel)
 }

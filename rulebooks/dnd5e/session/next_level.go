@@ -83,6 +83,24 @@ func (m *Manager) NextLevel(ctx context.Context, in *NextLevelInput) (*NextLevel
 	classLevel := sheet.ClassLevel(classID) + 1
 	characterLevel := sheet.GetLevel() + 1
 
+	// Past the top of the advancement table there is no next level to
+	// describe, and describing one anyway is the exact shape this verb exists
+	// to prevent: the sheet would report a level 21 with a hit die and no
+	// choices, and LevelUp would refuse it. It stayed reachable because the
+	// availability signal hides it — at 20 the gap between Level and
+	// EntitledLevel is zero, so no client built to R4.10 ever asks — and
+	// "nobody asks" is not a refusal.
+	//
+	// The bound is [character.MaxCharacterLevel], READ from the rulebook and
+	// never spelled here. A literal 20 in this file would be a game number in
+	// the seam, which is the charter's mechanical test for a rule in the wrong
+	// place; the day an edition adds levels, this line is already right.
+	if characterLevel > character.MaxCharacterLevel {
+		return nil, fmt.Errorf(
+			"next level: character %q: there is no level %d in this table: %w",
+			in.Character, characterLevel, ErrLevelNotOffered)
+	}
+
 	asked, err := levelChoicesOf(sheet.NextLevelRequirements(), classID, classLevel)
 	if err != nil {
 		return nil, fmt.Errorf(
