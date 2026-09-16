@@ -312,6 +312,71 @@ func (s *IntimidateSuite) endTurn(mgr *session.Manager, member string) {
 	s.Require().NoError(err)
 }
 
+// events is the typed events the member's own stream carries.
+func (s *IntimidateSuite) events(mgr *session.Manager, member string) []session.Event {
+	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	return story
+}
+
+// THE BEAT IS THE ONLY ACCOUNT OF THE ROLL, so it has to cross the seam
+// TYPED. A threat writes no outcome beat, and a missed one writes nothing
+// else at all — no deed, no fact, nothing about the monster changes — so an
+// undecoded beat means the outcome reaches nobody. It shipped that way once:
+// kindFor had no case and rpg-api saw EventUnknown.
+//
+// Driven through the real Manager rather than decodeBeat, because the unit
+// pin passed the whole time the wire was broken: what was missing was the
+// case, not the decoder.
+func (s *IntimidateSuite) TestABeatenThreatSurfacesAsATypedEvent() {
+	mgr := s.aYard([]int{10})
+
+	out, err := s.threaten(mgr)
+	s.Require().NoError(err)
+	s.Require().True(out.Beaten)
+
+	var found *session.Event
+	for i, event := range s.events(mgr, "alice") {
+		if event.Kind == session.EventIntimidated {
+			found = &s.events(mgr, "alice")[i]
+		}
+	}
+	s.Require().NotNil(found, "the threat reached alice's stream as its own kind, not EventUnknown")
+	s.Equal(session.IntimidatedBody{
+		Actor: "alice", Target: "goblin", DC: 9, Total: 9, Beaten: true,
+	}, found.Body, "the numbers the response reported, on the wire")
+	s.Equal(out.Seq, found.Seq, "IntimidateOutput.Seq references this event")
+
+	// The goblin heard it too — the audience is the witnesses.
+	for _, event := range s.events(mgr, "goblin") {
+		if event.Kind == session.EventIntimidated {
+			return
+		}
+	}
+	s.Fail("the goblin was threatened and its own stream does not say so")
+}
+
+// The missed threat is the case that matters most: nothing else in the run
+// records it, so a body carrying beaten:false IS the outcome.
+func (s *IntimidateSuite) TestAMissedThreatSurfacesToo() {
+	mgr := s.aYard([]int{5})
+
+	out, err := s.threaten(mgr)
+	s.Require().NoError(err)
+	s.Require().False(out.Beaten)
+
+	for _, event := range s.events(mgr, "alice") {
+		if event.Kind != session.EventIntimidated {
+			continue
+		}
+		s.Equal(session.IntimidatedBody{
+			Actor: "alice", Target: "goblin", DC: 9, Total: 4, Beaten: false,
+		}, event.Body, "the roll the table saw, and the only record of it")
+		return
+	}
+	s.Fail("a missed threat left no typed event, which is the whole outcome lost")
+}
+
 // where the goblin stands now.
 func (s *IntimidateSuite) goblinAt(mgr *session.Manager) spatial.Position {
 	out, err := mgr.Where(context.Background(), &session.WhereInput{Session: "sess", Member: "goblin"})

@@ -305,6 +305,12 @@ func kindFor(beat string) EventKind {
 	// nobody renders.
 	case encounter.BeatSighted:
 		return EventSighted
+	// The threat. Named by the composition's own exported constant for
+	// BeatSighted's reason, and with more riding on it: a threat writes no
+	// outcome beat and a missed one writes nothing else at all, so this is
+	// the only account of the roll a client ever gets (rpg-project#454).
+	case encounter.BeatIntimidated:
+		return EventIntimidated
 	// The holdings verbs, named by what the record says (rpg-project#368
 	// §4.1). "looted", "held" and "dropped" are the composition's own words
 	// for what it did, so they cross unchanged — unlike "down"/"downed"
@@ -404,6 +410,22 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DoorBody{Door: p.Door, State: p.State, Actor: p.Actor, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
+	case EventIntimidated:
+		var p struct {
+			Actor  string `json:"actor"`
+			Target string `json:"target"`
+			DC     int    `json:"dc"`
+			Total  int    `json:"total"`
+			Beaten bool   `json:"beaten"`
+		}
+		// Actor and target gate the body; the numbers do not. A threat
+		// nobody can name is malformed, but `beaten: false` with a total of
+		// 0 is a legal beat — the DC is never 0, so nothing here can be
+		// read as absent-versus-zero.
+		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Target == "" {
+			return nil
+		}
+		return IntimidatedBody{Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
 	case EventTurnEnded:
 		var p struct {
 			Member string `json:"member"`
