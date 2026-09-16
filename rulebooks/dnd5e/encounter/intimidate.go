@@ -44,6 +44,31 @@ import (
 // a wall. There is no distance cap beyond sight: shouting across a lit hall
 // is a shenanigan, and the DC is the monster's, not the range's.
 
+// Witnesses is every member whose senses reach a member's own cell: who would
+// learn what that member does where they stand.
+//
+// A READ, and the one the caller needs BEFORE it does anything expensive. The
+// session prices a threat in the actor's standard action and must know the
+// target can see them before it charges — a verb that takes the action and
+// then refuses is one nobody would forgive — and the same list is what an
+// action panel offers as the people you can shout at. [Encounter.Intimidate]
+// asks again for itself and does not trust the answer it handed out: this is
+// a read of a moment, and a door may close between the two calls.
+//
+// Sorted, and includes the member themselves whenever they can see their own
+// cell — which is every placed member, and is why the audience of an
+// `intimidated` beat has the actor in it.
+//
+// Errors: ErrNoMember (no such member), ErrBadPlacement (not placed).
+func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
+	_, witnesses, err := e.audienceOf(of)
+	if err != nil {
+		return nil, fmt.Errorf("witnesses: %w", err)
+	}
+
+	return witnesses, nil
+}
+
 // IntimidateInput names who threatened whom, whether the check was beaten,
 // and the numbers the table should see.
 type IntimidateInput struct {

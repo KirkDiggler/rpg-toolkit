@@ -109,6 +109,25 @@ func (s *IntimidateTestSuite) TestABeatenThreatLandsOnWhoeverSawIt() {
 	s.False(ok, "billy, behind the wall, never learned a threat was made")
 }
 
+// The witness read a caller prices against is the same set the verb lands
+// on, and it answers before anything is spent.
+func (s *IntimidateTestSuite) TestTheWitnessReadIsTheAudience() {
+	enc := s.scene()
+
+	witnesses, err := enc.Witnesses(alice)
+	s.Require().NoError(err)
+	s.Equal([]encounter.MemberID{alice, goblin}, witnesses, "billy is behind the wall")
+
+	out, err := enc.Intimidate(&encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
+	})
+	s.Require().NoError(err)
+	s.Equal(witnesses, out.Witnesses, "what the caller was told, and what the verb used")
+
+	_, err = enc.Witnesses("nobody")
+	s.ErrorIs(err, encounter.ErrNoMember)
+}
+
 // A missed threat lands NOTHING — no deed at all, which is the difference
 // between this verb and an attack, where a miss is still a shot at you.
 func (s *IntimidateTestSuite) TestAMissedThreatLandsNothing() {
