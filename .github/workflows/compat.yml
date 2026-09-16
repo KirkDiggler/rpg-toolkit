@@ -10,6 +10,15 @@ on:
       - 'rulebooks/dnd5e/encounter/**'
       - 'rulebooks/dnd5e/session/**'
 
+# GOPRIVATE makes go resolve our own modules straight from git instead of the
+# public module proxy. gorelease asks the proxy for the newest tag of the
+# module's major; minutes after a tag is cut the proxy still answers the old
+# one and the gate dies with "Cannot suggest a release version ... most recent
+# version of this major" (rpg-toolkit#1763, Kirk's ruling 2026-09-16). Going
+# direct sees the tag the moment it exists.
+env:
+  GOPRIVATE: github.com/KirkDiggler/*
+
 jobs:
   gorelease-play-clock:
     runs-on: ubuntu-latest
