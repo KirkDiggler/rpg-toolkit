@@ -29,7 +29,14 @@ var bowRef = core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "shortbow"}
 // handGrudge is the grudge a test spells out when it builds a Retaliator
 // directly rather than taking one from a word: the bow skeleton's own rule,
 // and long enough to cover every clock in this file.
-var handGrudge = behavior.Grudge{Patience: 3, Excuse: behavior.ExcuseUnarmed}
+//
+// It names the verb it answers, because since rpg-project#454 a grudge that
+// names none answers nothing — an omission here used to be invisible and is
+// now a fixture that provokes nobody.
+var handGrudge = behavior.Grudge{
+	Patience: 3, Excuse: behavior.ExcuseUnarmed,
+	Provokes: []string{encounter.DeedAttack},
+}
 
 const (
 	skeleton = encounter.MemberID("skeleton")

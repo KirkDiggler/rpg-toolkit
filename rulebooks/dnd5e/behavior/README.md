@@ -64,21 +64,28 @@ keeps it honest.
 There is one authored mind in this package. The three words are three
 tunings of it, not three types.
 
-`Retaliator` turns on whoever attacked it while that deed is still worth
-answering, keeps whatever room it wants, and otherwise goes for the
-closest standing player. Its four judgments: `Judge` attaches an attack
-deed to the figure the deed names; `Name` is the member's own id; `Rank`
-is the grudge, then live before remembered, then distance; `Keep` is
-`Room`.
+`Retaliator` turns on whoever provoked it while that deed is still worth
+answering, keeps whatever room it wants from whoever it is not afraid of,
+and otherwise goes for the closest standing player. Its four judgments:
+`Judge` attaches a deed to the figure the deed names; `Name` is the
+member's own id; `Rank` is the grudge, then live before remembered, then
+distance; `Keep` is `Room`, or every step there is from somebody it is
+still frightened of.
 
-Its profile is two fields on the mind and one knob on the driver.
+Its profile is three fields on the mind and one knob on the driver.
 
-- **`Grudge.Patience`** — how many ticks a witnessed attack stays worth
+- **`Grudge.Patience`** — how many ticks a witnessed deed stays worth
   answering, counting from the tick it was confirmed. A tick is a fight
   round.
-- **`Grudge.Excuse`** — what lets a currently *seen* attacker off before
+- **`Grudge.Excuse`** — what lets a currently *seen* actor off before
   patience runs out. `ExcuseUnarmed` releases someone the mind can see
   holding nothing that could shoot back. `ExcuseNever` releases nobody.
+- **`Grudge.Provokes`** — which deed verbs count as done *to me*. A swing
+  always did; `intimidate` is the verb that made the question worth asking,
+  because a threat provokes a berserker and slides off a retaliator.
+- **`Fear.Patience`** — how many ticks a threat keeps the mind away from
+  whoever made it. While it holds, `Keep` answers every step there is for
+  that one figure and the room for everybody else.
 - **`Room`** — how many steps of space it wants between itself and a live
   creature, read by the ladder's rung 0.
 - **`Ranged`**, on the driver rather than on any profile, says whether an
@@ -88,16 +95,18 @@ Its profile is two fields on the mind and one knob on the driver.
 
 ### The three presets
 
-| Word | Patience | Excuse | Room | What it does on the board |
-|---|---|---|---|---|
-| `retaliator` | 3 | `unarmed` | 0 | Answers the shot for the round it lands and the two after. Lets go the moment it sees the shooter without something ranged in hand. The skeleton. |
-| `berserker` | 10 | never | 0 | Comes for whoever shot it and nothing talks it off: swapping weapons does not help, and ten rounds is longer than the fight. The thug. |
-| `coward` | 0 (none) | — | 2 | Holds no grudge at all. Backs away from anything that gets adjacent, and fights only when cornered. The goblin. |
+| Word | Patience | Excuse | Provokes | Room | Fear | What it does on the board |
+|---|---|---|---|---|---|---|
+| `retaliator` | 3 | `unarmed` | `attack` | 0 | — | Answers the shot for the round it lands and the two after. Lets go the moment it sees the shooter without something ranged in hand. A threat slides off it: its excuse is about hands, and a threat is not a swing. The skeleton. |
+| `berserker` | 10 | never | `attack`, `intimidate` | 0 | — | Comes for whoever shot it *or threatened it* and nothing talks it off: swapping weapons does not help, and ten rounds is longer than the fight. The thug. |
+| `coward` | 0 (none) | — | — | 2 | 3 | Holds no grudge at all. Backs away from anything that gets adjacent, and fights only when cornered — until somebody frightens it, and then it runs from that one while it can still see them. The goblin. |
 
 Every number there is a feel number, tuned by a walk and derived from
-nothing.
+nothing. The coward's fear is the retaliator's 3 for the retaliator's
+reason: a fight's length. Its two steps of room **stay** — intimidation is
+fear added on top of the flinch, not a replacement for it.
 
-Three zero values carry meaning, and each is a claim rather than an
+Five zero values carry meaning, and each is a claim rather than an
 accident:
 
 - **Patience is a span, not a maximum age.** Zero answers no deed at all,
@@ -110,6 +119,15 @@ accident:
 - **A negative `Room` is no room.** Rung 0 keeps a creature it measures at
   fewer steps than this, and nothing is fewer than zero steps away, so a
   negative value behaves exactly as zero.
+- **An empty `Provokes` provokes nobody.** A mind that holds no grudge
+  answers no verb, and an author who set a patience and named no verb wrote
+  down a grudge nothing can trigger. Fail-closed, the same call
+  `ExcuseNever` makes.
+- **`Fear{}` is never cowed.** Patience is a span on `Grudge.Patience`'s
+  reading, so zero is a threat that never worked at all. The mind holds the
+  deed and does nothing with it, which is exactly what the retaliator does.
+  `Fear` is a struct rather than a number so slice two can add `Company`
+  without breaking a file.
 
 Because the profile a word means lives in this package and not on the
 definition, tuning a monster is a new word and a toolkit release. That
@@ -125,11 +143,18 @@ the fighter in front" are the ladder abandoning one rung for another, and
 only a claim on the ladder may say that. A profile decides *who* a monster
 cares about, never *where that sits* in the order of rungs.
 
-Provocation is likewise unpaid. "An attack on me" is hardcoded today; an
-attack on an ally, or a damage-only trigger, has no mind asking for it
-yet. See
+Provocation used to be unpaid, and half of it now is. "An attack on me" was
+hardcoded until `Grudge.Provokes` made the verb set the profile's
+([rpg-project#454](https://github.com/KirkDiggler/rpg-project/issues/454)).
+An attack on an *ally*, or a damage-only trigger, still has no mind asking
+for it, and neither is a profile field until one does. See
 [`docs/ideas/mind/behavior/scenarios.md`](../../../docs/ideas/mind/behavior/scenarios.md),
 which keeps the line between a profile and a claim.
+
+How far a frightened monster runs is on the same line and stays there. Fear
+makes `Keep` answer differently about one figure; it does not reorder a
+rung, and "as far as it can see her" is the ladder's own doing — rung 0
+only ever considers a creature, so the moment she is a memory it stops.
 
 ## Authoring your own mind
 

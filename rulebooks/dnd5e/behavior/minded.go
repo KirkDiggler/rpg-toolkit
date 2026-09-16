@@ -39,7 +39,9 @@ const (
 	// MindCoward holds no grudge at all: it keeps its room, stepping away
 	// from whatever closes on it, and answers the closest standing player
 	// with whatever it holds — a blade-only coward backs off and fights
-	// cornered.
+	// cornered. It is also the one mind a THREAT works on: frighten it and
+	// it runs from whoever did while it can still see them
+	// (rpg-project#454).
 	MindCoward = "coward"
 )
 
@@ -179,16 +181,17 @@ func (d *Minded) assign(view encounter.MonsterView) error {
 // geometry belongs to the board, and what counts as a bow is a catalog.
 type preset struct {
 	Grudge Grudge
+	Fear   Fear
 	Room   int
 }
 
 // presets are the profiles the rulebook's own words mean. Every number here
 // is a FEEL number, tuned by a walk and derived from nothing.
 //
-//	word        patience  excuse   room
-//	retaliator  3         unarmed  0
-//	berserker   10        never    0
-//	coward      0 (none)  -        2
+//	word        patience  excuse   provokes           room  fear
+//	retaliator  3         unarmed  attack             0     none
+//	berserker   10        never    attack, intimidate 0     none
+//	coward      0 (none)  -        —                  2     3
 //
 // The retaliator's 3 is #1725's behaviour unchanged: a deed stays worth
 // answering on the tick it lands and the two after it, which is exactly
@@ -207,10 +210,34 @@ type preset struct {
 // adjacent. One step would mean only a creature sharing its cell, which is
 // nobody. Its grudge is the zero value and says so: a coward does not
 // answer attacks, it leaves.
+//
+// # What a threat is worth, per word (rpg-project#454)
+//
+// The provocation column is the debt scenarios.md named — "an attack on me
+// is hardcoded" — paid by the first verb that made it matter.
+//
+//   - The BERSERKER counts a threat as a swing. Its excuse is
+//     [ExcuseNever], so nothing about the threatener's hands talks it down;
+//     the thug charges whoever threatened it, whoever else is closer.
+//   - The RETALIATOR does not. Its excuse is about hands and a threat is
+//     not a swing, so `intimidate` is simply absent from its list: it holds
+//     the deed, [Judge] still attaches it to the right figure, and its
+//     ranking is exactly what it was.
+//   - The COWARD answers no verb at all — its grudge is still the zero —
+//     and reads the threat through [Fear] instead. Patience 3 is the
+//     retaliator's number for the retaliator's reason: a fight's length.
+//     The 2 steps of room STAY: intimidation is fear added on top of the
+//     flinch, not a replacement for it (Kirk, rpg-project#454).
 var presets = map[string]preset{
-	MindRetaliator: {Grudge: Grudge{Patience: 3, Excuse: ExcuseUnarmed}},
-	MindBerserker:  {Grudge: Grudge{Patience: 10, Excuse: ExcuseNever}},
-	MindCoward:     {Room: 2},
+	MindRetaliator: {Grudge: Grudge{
+		Patience: 3, Excuse: ExcuseUnarmed,
+		Provokes: []string{encounter.DeedAttack},
+	}},
+	MindBerserker: {Grudge: Grudge{
+		Patience: 10, Excuse: ExcuseNever,
+		Provokes: []string{encounter.DeedAttack, encounter.DeedIntimidate},
+	}},
+	MindCoward: {Room: 2, Fear: Fear{Patience: 3}},
 }
 
 // mindFor is the rulebook's registry: the sheet's word, the mind it means.
@@ -222,7 +249,7 @@ func (d *Minded) mindFor(name string) (behavior.Mind, error) {
 	}
 
 	if p, ok := presets[name]; ok {
-		return &Retaliator{Space: d.board, Grudge: p.Grudge, Room: p.Room, Ranged: d.ranged}, nil
+		return &Retaliator{Space: d.board, Grudge: p.Grudge, Fear: p.Fear, Room: p.Room, Ranged: d.ranged}, nil
 	}
 
 	return nil, fmt.Errorf("%w: %q", ErrUnknownMind, name)
