@@ -22,8 +22,8 @@ import (
 func quarterstaffMonk(t *testing.T, id string) *character.Data {
 	t.Helper()
 	monk := armedFighter(id)
-	monk.Level = 1
 	monk.ClassID = classes.Monk
+	setLevel(monk, 1)
 	monk.AbilityScores[abilities.STR] = 12
 	monk.AbilityScores[abilities.DEX] = 16
 	monk.AbilityScores[abilities.WIS] = 15

@@ -51,6 +51,7 @@ func rosterCharacter(id, name, player string, appearance *customization.Appearan
 		PlayerID:         player,
 		Name:             name,
 		Level:            3,
+		Levels:           syntheticLevels(classes.Fighter, 3),
 		ProficiencyBonus: 2,
 		RaceID:           races.Human,
 		ClassID:          classes.Fighter,

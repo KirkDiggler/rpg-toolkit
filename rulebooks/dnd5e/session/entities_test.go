@@ -381,7 +381,7 @@ func BenchmarkSpawnMonster(b *testing.B) {
 func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 	monk := dwarfCharacter("bob")
 	monk.RaceID = races.Human
-	monk.ClassID = classes.Monk
+	setClass(monk, classes.Monk)
 	monk.AbilityScores = shared.AbilityScores{
 		abilities.STR: 12,
 		abilities.DEX: 16, // +3
