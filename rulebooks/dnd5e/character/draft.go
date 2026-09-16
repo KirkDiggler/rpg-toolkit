@@ -1632,110 +1632,59 @@ func (d *Draft) getBackgroundSubmissions() *choices.Submissions {
 	return subs
 }
 
-// getClassSubmissions extracts class-related submissions from draft choices
+// getClassSubmissions is what completeness reads: this draft's class choices,
+// as the submissions the validator matches against the class's requirements.
+//
+// It TRANSLATES NOTHING ITSELF. It used to carry its own copy of the
+// ChoiceData-to-Submission switch, and a second copy of that switch is a second
+// opinion about what a choice means — which has now cost two bugs of the same
+// shape, each invisible because the other builder agreed with the client:
+//
+//   - a bard's spells and cantrips were not converted here at all, so a bard
+//     passed [Draft.ValidateChoices] and was still 80% complete, and
+//     FinalizeDraft refused a draft that had answered every question;
+//   - a fighting style was submitted under the constant
+//     choices.FighterFightingStyle for EVERY class, so a ranger — the only
+//     other class with a level-1 fighting style — could not be created by any
+//     client with any choices. Its requirement is "ranger-fighting-style", the
+//     submission claimed "fighter-fighting-style", and the answered
+//     requirement was never seen.
+//
+// Both were "a class requirement this builder cannot see is a requirement
+// nothing can ever satisfy". One builder is the fix for the class of bug; the
+// id belongs to the requirement, and the choice carries the id it was recorded
+// with, so no per-class mapping exists to get wrong.
 func (d *Draft) getClassSubmissions() *choices.Submissions {
-	subs := choices.NewSubmissions()
-	d.addSubclassSubmission(subs)
-
+	classChoices := make([]choices.ChoiceData, 0, len(d.choices))
 	for _, choice := range d.choices {
-		if choice.Source == shared.SourceClass {
-			// Convert ChoiceData to Submission
-			// This would need proper mapping of choice data to submission format
-			// For now, simplified version
-			if len(choice.SkillSelection) > 0 {
-				// Use the choice ID that was stored when SetClass was called
-				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
-				skillValues = append(skillValues, choice.SkillSelection...)
-				subs.Add(choices.Submission{
-					Category: shared.ChoiceSkills,
-					Source:   shared.SourceClass,
-					ChoiceID: choice.ChoiceID, // Already stored correctly by SetClass
-					Values:   skillValues,
-				})
-			}
-
-			// Handle equipment choices
-			if len(choice.EquipmentSelection) > 0 {
-				// For equipment bundles with options, use the option ID as the value
-				// For category-based choices, use the actual equipment IDs
-				values := make([]shared.SelectionID, 0)
-				if choice.OptionID != "" {
-					// This is a bundle choice - use the option ID as the single value
-					values = append(values, choice.OptionID)
-				} else {
-					// Category-based choice - use the equipment IDs
-					values = choice.EquipmentSelection
-				}
-				subs.Add(choices.Submission{
-					Category: shared.ChoiceEquipment,
-					Source:   shared.SourceClass,
-					ChoiceID: choice.ChoiceID,
-					OptionID: choice.OptionID,
-					Values:   values,
-				})
-			}
-
-			// Handle fighting style choices
-			if choice.FightingStyleSelection != nil {
-				subs.Add(choices.Submission{
-					Category: shared.ChoiceFightingStyle,
-					Source:   shared.SourceClass,
-					ChoiceID: choices.FighterFightingStyle, // Would need mapping for other classes
-					Values:   []shared.SelectionID{*choice.FightingStyleSelection},
-				})
-			}
-
-			// Handle tool proficiency choices
-			if len(choice.ToolSelection) > 0 {
-				toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
-				for i, t := range choice.ToolSelection {
-					toolValues[i] = shared.SelectionID(t)
-				}
-				subs.Add(choices.Submission{
-					Category: shared.ChoiceToolProficiency,
-					Source:   shared.SourceClass,
-					ChoiceID: choice.ChoiceID,
-					Values:   toolValues,
-				})
-			}
-
-			// Handle expertise choices (Rogue L1/L6, Bard L3/L10)
-			if len(choice.ExpertiseSelection) > 0 {
-				expertiseValues := make([]shared.SelectionID, len(choice.ExpertiseSelection))
-				copy(expertiseValues, choice.ExpertiseSelection)
-				subs.Add(choices.Submission{
-					Category: shared.ChoiceExpertise,
-					Source:   shared.SourceClass,
-					ChoiceID: choice.ChoiceID,
-					Values:   expertiseValues,
-				})
-			}
-
-			// Handle cantrip and spell choices. BRANCHING ON THE CATEGORY,
-			// because both are carried in SpellSelection and the field alone
-			// cannot say which requirement a selection answers.
-			//
-			// This builder is what completeness reads, where [Draft.
-			// ValidateChoices] reads its own; the two disagreeing is how a
-			// bard came to pass validation and still be 80% complete, so
-			// FinalizeDraft refused a draft that had answered every question.
-			// A class requirement this builder cannot see is a requirement
-			// nothing can ever satisfy.
-			if len(choice.SpellSelection) > 0 &&
-				(choice.Category == shared.ChoiceCantrips || choice.Category == shared.ChoiceSpells) {
-				spellValues := make([]shared.SelectionID, 0, len(choice.SpellSelection))
-				spellValues = append(spellValues, choice.SpellSelection...)
-				subs.Add(choices.Submission{
-					Category: choice.Category,
-					Source:   shared.SourceClass,
-					ChoiceID: choice.ChoiceID,
-					Values:   spellValues,
-				})
-			}
+		if choice.Source != shared.SourceClass {
+			continue
 		}
+		classChoices = append(classChoices, d.withRecordedChoiceID(choice))
 	}
 
+	subs := choices.SubmissionsFrom(classChoices)
+	d.addSubclassSubmission(subs)
+
 	return subs
+}
+
+// withRecordedChoiceID fills in the requirement id of a stored choice that has
+// none.
+//
+// [Draft.SetClass] records every class choice with the id of the requirement it
+// answers, so a draft written by this build always carries one. A draft
+// persisted before the fighting style carried its own id does not, and the
+// class's row is where that id lives — one lookup, not a per-class map.
+func (d *Draft) withRecordedChoiceID(choice choices.ChoiceData) choices.ChoiceData {
+	if choice.ChoiceID != "" || choice.Category != shared.ChoiceFightingStyle {
+		return choice
+	}
+
+	if reqs := choices.GetClassRequirements(d.class); reqs != nil && reqs.FightingStyle != nil {
+		choice.ChoiceID = reqs.FightingStyle.ID
+	}
+	return choice
 }
 
 // addSubclassSubmission projects the draft's single subclass field into the
