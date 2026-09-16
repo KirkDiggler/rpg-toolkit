@@ -251,7 +251,7 @@ func TestCharacterLoadRejectsMalformedAppearanceStrictAndLegacy(t *testing.T) {
 	malformed := completeAppearance()
 	malformed.Outfit.PrimaryColorSRGB = ptr(uint32(0x1000000))
 	expectedErr := customization.ValidateAppearance(malformed)
-	data := &character.Data{
+	data := &character.Data{Level: 1,
 		ID:         "bad-appearance",
 		Appearance: malformed,
 	}
@@ -277,7 +277,7 @@ func TestCharacterAppearancePreservesPresentZeroAndNilState(t *testing.T) {
 			PrimaryColorSRGB: &zero,
 		},
 	}
-	data := &character.Data{ID: "zero-appearance", Appearance: appearance}
+	data := &character.Data{Level: 1, ID: "zero-appearance", Appearance: appearance}
 
 	loaded, err := character.Load(context.Background(), data)
 	require.NoError(t, err)

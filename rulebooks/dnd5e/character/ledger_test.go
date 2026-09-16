@@ -49,7 +49,7 @@ func (s *SheetLedgerTestSuite) SetupTest() {
 // monk is a level-5 monk with ki: the only sheet in the fixture set that can
 // be charged in two currencies at once.
 func (s *SheetLedgerTestSuite) monk() *Data {
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Monk, 5),
 		ID:               "gate-monk",
 		PlayerID:         "gate-player",
 		Name:             "Payer",

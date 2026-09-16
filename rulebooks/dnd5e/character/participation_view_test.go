@@ -19,7 +19,7 @@ func TestParticipationViewLoadsShieldWithoutConsultingDisplayCatalog(t *testing.
 	shield, err := conditions.NewShieldSpellCondition("shield-char").ToJSON()
 	require.NoError(t, err)
 
-	char, err := Load(context.Background(), &Data{
+	char, err := Load(context.Background(), &Data{Level: 1,
 		ID:             "shield-char",
 		HitPoints:      0,
 		MaxHitPoints:   10,

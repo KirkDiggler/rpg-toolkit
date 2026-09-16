@@ -30,7 +30,8 @@ func newTestMonkDraftAndCharacter(level int) (*Draft, *Character) {
 	draft := &Draft{class: classes.Monk}
 	char := &Character{
 		id:        "test-monk",
-		level:     level,
+		classID:   classes.Monk,
+		levels:    syntheticLevels(classes.Monk, level),
 		resources: make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
 	return draft, char

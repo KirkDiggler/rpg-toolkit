@@ -12,7 +12,7 @@ import (
 )
 
 func TestRemoveInventoryItemDecrementsAnExistingStack(t *testing.T) {
-	data := &character.Data{
+	data := &character.Data{Level: 1,
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 3},
 		},
@@ -34,7 +34,7 @@ func TestRemoveInventoryItemDecrementsAnExistingStack(t *testing.T) {
 // quantity (load.go), so leaving one behind would write data this same
 // package's next load could not accept.
 func TestRemoveInventoryItemExactAmountRemovesTheStack(t *testing.T) {
-	data := &character.Data{
+	data := &character.Data{Level: 1,
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 2},
 		},
@@ -48,7 +48,7 @@ func TestRemoveInventoryItemExactAmountRemovesTheStack(t *testing.T) {
 }
 
 func TestRemoveInventoryItemInsufficientQuantityIsRefused(t *testing.T) {
-	data := &character.Data{
+	data := &character.Data{Level: 1,
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
 		},
@@ -63,7 +63,7 @@ func TestRemoveInventoryItemInsufficientQuantityIsRefused(t *testing.T) {
 }
 
 func TestRemoveInventoryItemNotOwnedIsRefused(t *testing.T) {
-	data := &character.Data{}
+	data := &character.Data{Level: 1}
 
 	err := character.RemoveInventoryItem(data, character.InventoryItemData{
 		Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1,
@@ -73,7 +73,7 @@ func TestRemoveInventoryItemNotOwnedIsRefused(t *testing.T) {
 }
 
 func TestRemoveInventoryItemTypeMismatchIsNotOwned(t *testing.T) {
-	data := &character.Data{
+	data := &character.Data{Level: 1,
 		Inventory: []character.InventoryItemData{
 			// Same ID, different Type: a stack this package would never
 			// itself produce, but RemoveInventoryItem matches Type AND ID,
@@ -98,7 +98,7 @@ func TestRemoveInventoryItemRejectsNilData(t *testing.T) {
 }
 
 func TestRemoveInventoryItemRejectsEmptyID(t *testing.T) {
-	data := &character.Data{}
+	data := &character.Data{Level: 1}
 	err := character.RemoveInventoryItem(data, character.InventoryItemData{
 		Type: shared.EquipmentTypeWeapon, Quantity: 1,
 	})
@@ -112,7 +112,7 @@ func TestRemoveInventoryItemRejectsEmptyID(t *testing.T) {
 // remove from it, so it is rejected outright.
 func TestRemoveInventoryItemRejectsNonpositiveQuantity(t *testing.T) {
 	for _, quantity := range []int{0, -1} {
-		data := &character.Data{
+		data := &character.Data{Level: 1,
 			Inventory: []character.InventoryItemData{
 				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
 			},

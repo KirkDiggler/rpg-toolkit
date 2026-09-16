@@ -230,7 +230,7 @@ func (s *AttachRollbackTestSuite) fighterFeatureSheet() *Data {
 	})
 	s.Require().NoError(err)
 
-	return &Data{
+	return &Data{Level: 1,
 		ID:       "rollback-fighter",
 		ClassID:  classes.Fighter,
 		Features: []json.RawMessage{secondWind, actionSurge},

@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-06
+updated: 2026-09-16
 confidence: high — active #1366/#1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
 ---
 
@@ -10,6 +10,21 @@ confidence: high — active #1366/#1246 boundaries and gates are verified in the
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Current direction
+
+**Character advancement rung 1 (rpg-project#452, rpg-toolkit#1764, 2026-09-16).**
+A character now keeps `Data.Levels`, the append-only record of the levels it has
+taken, and `Character.Advance` applies a class grant to a character that already
+exists — the primitive a subclass at 3, an ability score improvement at 4, a
+feat or a boon will each reuse. `Data.Level` and `Data.ProficiencyBonus` became
+projections of that record (`Load` refuses a sheet where they disagree), the
+proficiency bonus is derived rather than the literal `2` written at creation,
+and `classes.GetGrantsGainedAtLevel` answers "what does level N add?" beside
+`GetGrantsForLevel`'s "what does a level-N character have?". Content: Fighter
+gains Action Surge at 2, the first grant in the repository above level 1.
+Rung 1 cannot be walked — there is no level field on the wire and no level-up
+RPC — so its evidence is the toolkit suite. Not built: multiclassing, XP,
+ability score improvements, spell slot progression, and the Barbarian/Monk
+level-2 rows (rung 3).
 
 **Cleric creation (rpg-project#406, merged #1585, D&D v0.150.0, 2026-09-08).**
 Cleric base proficiencies and fixed shield compile; Life's heavy-armor grant
@@ -924,8 +939,9 @@ See "Paused / on hold" below.
   registration-order-dependent, not explicitly ordered.** Rage and Martial Arts both modify
   damage at the same chain stage; which one runs first depends on subscribe
   order rather than a declared priority. SneakAttack has the same latent
-  shape. Irrelevant at level 1 single-class (today's only playtest shape) —
-  revisit if multiclass ordering is ever exercised.
+  shape. Irrelevant while every character is single-class (still today's only
+  shape, though levels above 1 are now reachable) — revisit if multiclass
+  ordering is ever exercised.
 
 ### Retired top-level Encounter SDK (historical)
 

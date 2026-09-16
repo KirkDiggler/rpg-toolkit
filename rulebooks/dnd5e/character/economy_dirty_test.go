@@ -60,7 +60,7 @@ func (s *EconomyDirtyTestSuite) SetupTest() {
 // sheet is a level-3 monk mid-encounter: ki to spend, hit dice to spend, and
 // no action economy yet (the encounter seeds that at the turn boundary).
 func (s *EconomyDirtyTestSuite) sheet() *Data {
-	return &Data{
+	return &Data{Levels: syntheticLevels(classes.Monk, 3),
 		ID:               "economy-monk",
 		PlayerID:         "economy-player",
 		Name:             "Spender",

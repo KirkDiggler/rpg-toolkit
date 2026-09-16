@@ -497,7 +497,7 @@ func newLevel3Rogue(t *testing.T) *Character {
 // RageCharges) match the new level.
 func promoteToLevel(t *testing.T, draft *Draft, char *Character, level int) {
 	t.Helper()
-	char.level = level
+	char.levels = syntheticLevels(char.classID, level)
 	// Re-run resource initialization against the new level. The draft's class
 	// is what gates which pools are created.
 	draft.initializeClassResources(char)

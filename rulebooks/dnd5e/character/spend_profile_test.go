@@ -55,6 +55,7 @@ func (s *CostCompilerTestSuite) sheetOf(class classes.Class, level int) *Charact
 		PlayerID:         "cost-player",
 		Name:             "Priced",
 		Level:            level,
+		Levels:           syntheticLevels(class, level),
 		ProficiencyBonus: 2,
 		RaceID:           races.Human,
 		ClassID:          class,

@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -269,12 +270,16 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		return nil, err
 	}
 
+	levels, err := loadLevelRecord(d)
+	if err != nil {
+		return nil, err
+	}
+
 	char := &Character{
 		id:                  d.ID,
 		playerID:            d.PlayerID,
 		name:                d.Name,
-		level:               d.Level,
-		proficiencyBonus:    d.ProficiencyBonus,
+		levels:              levels,
 		raceID:              d.RaceID,
 		subraceID:           d.SubraceID,
 		classID:             d.ClassID,
@@ -372,6 +377,83 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 	initStandardCombatAbilities(char)
 
 	return char, nil
+}
+
+// loadLevelRecord returns the level record this sheet loads with, refusing a
+// sheet whose two representations of its level disagree.
+//
+// The record is the truth and Data.Level is a projection of it (R2.2), so a
+// sheet carrying both must carry them in agreement; a load that silently
+// preferred one would let the disagreement survive a round trip and grow.
+//
+// A sheet with no record at all is one written before the record existed.
+// There is exactly one such character — a level-1 one — and its level-1 entry
+// is synthesized here from what the sheet does say (R2.6). A recordless sheet
+// claiming any other level is refused rather than guessed at: inventing the
+// history of levels 2..N would be inventing what they granted (R2.7).
+func loadLevelRecord(d *Data) ([]LevelEntry, error) {
+	if d.Levels == nil {
+		return synthesizeLevelOneEntry(d)
+	}
+
+	if len(d.Levels) != d.Level {
+		return nil, rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+			rpgerr.WithMeta("character_id", d.ID),
+			rpgerr.WithMeta("level", d.Level),
+			rpgerr.WithMeta("entries", len(d.Levels)),
+		}, "character %q claims level %d but its record holds %d entries",
+			d.ID, d.Level, len(d.Levels))
+	}
+
+	for i, entry := range d.Levels {
+		if entry.Level != i+1 {
+			return nil, rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+				rpgerr.WithMeta("character_id", d.ID),
+				rpgerr.WithMeta("index", i),
+				rpgerr.WithMeta("entry_level", entry.Level),
+			}, "character %q level record entry %d claims level %d, expected %d (R2.5)",
+				d.ID, i, entry.Level, i+1)
+		}
+
+		if entry.ClassID != d.ClassID {
+			return nil, rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+				rpgerr.WithMeta("character_id", d.ID),
+				rpgerr.WithMeta("index", i),
+				rpgerr.WithMeta("entry_class", string(entry.ClassID)),
+				rpgerr.WithMeta("character_class", string(d.ClassID)),
+			}, "character %q level record entry %d was taken in class %q but the character is a %q; "+
+				"multiclassing is the seam this refusal holds shut (R2.4)",
+				d.ID, i, entry.ClassID, d.ClassID)
+		}
+	}
+
+	return cloneLevelEntries(d.Levels), nil
+}
+
+// synthesizeLevelOneEntry writes the level-1 entry a pre-record character
+// never had, from the only inputs a level-1 sheet can still tell us: its
+// class, and the maximum hit die every level-1 character takes.
+func synthesizeLevelOneEntry(d *Data) ([]LevelEntry, error) {
+	if d.Level != 1 {
+		return nil, rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+			rpgerr.WithMeta("character_id", d.ID),
+			rpgerr.WithMeta("level", d.Level),
+		}, "character %q claims level %d with no level record; only a level-1 character "+
+			"predates the record, and the history of a higher level cannot be guessed (R2.7)",
+			d.ID, d.Level)
+	}
+
+	hitPointGain := 0
+	if classData := classes.GetData(d.ClassID); classData != nil {
+		hitPointGain = classData.HitDice + d.AbilityScores.Modifier(abilities.CON)
+	}
+
+	return []LevelEntry{{
+		Level:          1,
+		ClassID:        d.ClassID,
+		HitPointGain:   hitPointGain,
+		HitPointMethod: HitPointMethodMax,
+	}}, nil
 }
 
 // loadInventory validates persisted quantities and resolves item IDs against
