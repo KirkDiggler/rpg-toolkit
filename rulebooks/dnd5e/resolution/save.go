@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -86,6 +87,10 @@ func NewSave(in *SaveInput) Machine {
 
 type saveMachine struct {
 	in *SaveInput
+
+	// resume is the answer to a pose this machine already made, or nil for a
+	// fresh save. See [NewSaveResumed].
+	resume *saveResume
 }
 
 func describeRollContributions(
@@ -111,9 +116,17 @@ func describeRollContributions(
 
 // Start reads the saver's own modifier off its sheet, then asks resolution to
 // run the saving throw on its bus.
+//
+// A RESUMED machine takes a different first step: the d20 has already been
+// rolled and the offer chain already folded, so re-rolling would throw away
+// the number the saver was asked about and re-folding would be a second fold
+// with side effects — [strikeMachine.Start]'s own reason.
 func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
+	}
+	if m.resume != nil {
+		return m.resumeStep(), nil
 	}
 
 	modifier := 0
@@ -131,7 +144,7 @@ func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error)
 		return nil, fmt.Errorf("%w: a saving throw needs its d20 source", ErrBadAction)
 	}
 
-	return gatherSavingThrow(m.in, cast, modifier), nil
+	return m.gatherSavingThrow(cast, modifier), nil
 }
 
 // gatherSavingThrow builds the Gather step that makes the saving throw.
@@ -141,7 +154,8 @@ func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error)
 // place the SavingThrowChain fires: advantage cancellation, natural 1s and
 // 20s, the totals, and the fold itself all stay where they live rather than
 // being reimplemented on this side of the seam.
-func gatherSavingThrow(in *SaveInput, cast *Participants, modifier int) Gather {
+func (m *saveMachine) gatherSavingThrow(cast *Participants, modifier int) Gather {
+	in := m.in
 	return Gather{
 		name: "saving throw",
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
@@ -169,7 +183,46 @@ func gatherSavingThrow(in *SaveInput, cast *Participants, modifier int) Gather {
 				return nil, fmt.Errorf("roll saving throw: %w", err)
 			}
 
-			return Done{Outcome: SaveOutcome{Result: result}}, nil
+			// THE OFFER BOUNDARY, [strikeMachine.afterAttackChain]'s own
+			// reason applied to saves: Resistance's die joins the roll after
+			// the SavingThrowChain has already decided advantage, bonuses and
+			// the total, and before anything reads success off it. A save
+			// nobody holds an offer against folds an empty chain and finishes
+			// exactly as it did before this existed.
+			offerEvent := &dnd5eEvents.PostSaveRollOfferEvent{
+				SaverID: in.SaverID, Ability: in.Ability, DC: in.DC,
+				Roll: result.Roll, Total: result.Total,
+			}
+			return gatherSaveOffers(offerEvent, func(_ context.Context, offers []dnd5eEvents.Offer) (Step, error) {
+				if len(offers) == 0 {
+					return Done{Outcome: SaveOutcome{Result: result}}, nil
+				}
+				return m.pose(result, offers)
+			}), nil
+		},
+	}
+}
+
+// gatherSaveOffers folds [dnd5eEvents.PostSaveRollOfferChain] on the
+// interaction's own bus and hands back what was put on the table — the save
+// sibling of [gatherPostRollOffers] and [gatherCheckOffers].
+func gatherSaveOffers(
+	event *dnd5eEvents.PostSaveRollOfferEvent,
+	next func(context.Context, []dnd5eEvents.Offer) (Step, error),
+) Gather {
+	return Gather{
+		name: "post save roll offers",
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			chain := events.NewStagedChain[*dnd5eEvents.PostSaveRollOfferEvent](combat.ModifierStages)
+			modified, err := dnd5eEvents.PostSaveRollOfferChain.On(bus).PublishWithChain(ctx, event, chain)
+			if err != nil {
+				return nil, fmt.Errorf("publish post save roll offers: %w", err)
+			}
+			folded, err := modified.Execute(ctx, event)
+			if err != nil {
+				return nil, fmt.Errorf("execute post save roll offers: %w", err)
+			}
+			return next(ctx, folded.Offers)
 		},
 	}
 }

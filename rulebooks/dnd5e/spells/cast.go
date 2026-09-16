@@ -176,6 +176,13 @@ const GuidanceReachFeet = 5
 // boundary in this build's vocabulary, only turn ends.
 const GuidanceTurnEnds = 10
 
+// ResistanceReachFeet is Resistance's touch reach.
+const ResistanceReachFeet = 5
+
+// ResistanceTurnEnds is "up to one minute", [GuidanceTurnEnds]'s own reading
+// applied to Resistance's identical duration.
+const ResistanceTurnEnds = 10
+
 // TrueStrikeTargetParameter is the True Strike condition's parameter naming
 // the creature the advantage is good against.
 const TrueStrikeTargetParameter = "target_id"
@@ -544,6 +551,25 @@ var castContent = map[Spell]castProfileBuilder{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Guided(), CounterpartKey: "source_id",
 				}},
 				Concentration: &actions.CastConcentration{TurnEnds: GuidanceTurnEnds, SkipFirstTurnEnd: true},
+			}
+		},
+	},
+	Resistance: {
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Resistance",
+		cost:    cantripCost(),
+		build: func(_ int) actions.CastProfile {
+			// [Guidance]'s own shape, for its own reason: which saving throw
+			// the die joins, and whether it is spent or kept, is the saver's
+			// own post-roll offer (PostSaveRollOfferChain) — this profile
+			// only delivers the condition that holds it.
+			return actions.CastProfile{
+				RangeFeet: ResistanceReachFeet, Target: actions.CastTargetTouch,
+				MinTargets: 1, MaxTargets: 1,
+				Effects: []actions.CastEffect{{
+					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Resistance(), CounterpartKey: "source_id",
+				}},
+				Concentration: &actions.CastConcentration{TurnEnds: ResistanceTurnEnds, SkipFirstTurnEnd: true},
 			}
 		},
 	},

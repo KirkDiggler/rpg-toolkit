@@ -755,6 +755,9 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 	if kind == windowKindCheckOffer {
 		return checkOfferDeclaration(session, member, window)
 	}
+	if kind == windowKindCastOffer {
+		return castOfferDeclaration(session, member, window)
+	}
 
 	payload, err := thawWindowPayload(window.Payload, string(window.Audience))
 	if err != nil {

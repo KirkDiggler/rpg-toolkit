@@ -225,6 +225,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return guided, nil
 	},
+	refs.Conditions.Resistance().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		resistance := &ResistanceCondition{}
+		if err := resistance.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load resistance condition")
+		}
+		return resistance, nil
+	},
 	refs.Spells.Shield().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		sh := &ShieldSpellCondition{}
 		if err := sh.loadJSON(data); err != nil {

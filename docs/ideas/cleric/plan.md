@@ -14,10 +14,13 @@ or automatic backfills. Do not introduce generic infrastructure speculatively;
 let the next concrete spell or domain feature expose the missing capability.
 
 The current supported first-level acquisition pool is Bane, Bless, Command,
-Cure Wounds and Healing Word. Acquisition lists and descriptive spell data are
-not proof of executable behavior: for example, Guidance, Light, Resistance and
-Spare the Dying are offered as cantrip choices but need their execution support
-checked separately from their catalog entries.
+Cure Wounds and Healing Word. Spare the Dying and Guidance are executable
+cantrips too (see their own sections below) — Guidance only on `Unlock`,
+Search's find checks deliberately excluded, recorded in Guidance's own
+section. Acquisition lists and descriptive spell data are not proof of
+executable behavior on their own: Light, Resistance, Toll the Dead, Word of
+Radiance and Thaumaturgy remain offered as cantrip choices with no execution
+support yet, and each needs checking separately from its catalog entry.
 
 Next-slice inspection candidates include those remaining cantrips and spells
 such as Shield of Faith, Guiding Bolt and Inflict Wounds. This is an inspection
@@ -314,6 +317,183 @@ separate, pre-existing `session.Cast` limitation), the recipient's next
 `Unlock` attempt (in or out of combat) can pose, and spend/keep/reload all
 behave as Slice 3 already proved. Search stays deferred per the section
 above. Protos/API/web adoption is out of toolkit scope and untouched here.
+
+## Resistance: saving-throw post-roll offer plan
+
+Resistance is Guidance's saving-throw sibling — 2014 PHB: touch one willing
+creature; once before the spell ends, the target can roll a d4 and add it to
+one saving throw of its choice, before or after making the save; the spell
+then ends. Same shape as Guidance in every way that matters (touch,
+one-minute concentration, the die joins the roll before the outcome is read)
+except the roll kind: a saving throw, never a check, never damage, never an
+attack. The user authorized this work after the actual architecture was
+read out of the code, not assumed — recorded here so a later session does
+not have to re-derive it.
+
+### Why this is harder than Guidance, precisely
+
+Checks had one problem (no suspend capability at all) and one lucky
+accident (Unlock doesn't go through `resolution.Resolve`, so it was cheap
+to make poseable standalone). Saves have a different, harder problem:
+**every saving throw in this codebase is invoked as a `Request` sub-machine,
+and `Request` refuses a sub-machine that poses** — checked in `step.go`:
+`drive()` (the function `Request` alone calls) errors outright with "a
+requester cannot be suspended" the moment its driven machine returns a
+`Pose`. This is not a check gap, it is a deliberate refusal already coded.
+
+**But there is exactly one place this needs fixing**, confirmed by grep:
+`requestSave` (`contest.go`) is the *only* caller of `NewSave` anywhere in
+the module, and it is what every save-gated spell's cast machine
+(`contestMachine`, built by `newGatedCast`) goes through. Bane, Command,
+Sacred Flame's DEX save — all of them, one choke point. Exactly the
+`resolveStagedCheck` shape: fix it once, every existing and future
+save-gated spell gets it for free, no per-spell integration.
+
+**The complication is nesting depth, not breadth.** A single-target
+save-gated cast has ONE `Request` in the way (`requestSave`, inside
+`contestMachine`). A multi-target cast (Bane, up to 3 creatures) has TWO:
+`castMachine.resolveTarget` also wraps each target's `contestMachine` in
+its own `Request`, recursively building `m.outcome.Targets` as it goes
+(`action.go`). So a save's pose has to climb two `Request` layers for
+Bane, one for Sacred Flame — the fix has to work at both depths, but
+`castMachine`'s own recursive shape already carries exactly the state
+freezing it would need (which target index, everything resolved before
+it) — there is no separate bookkeeping structure to invent.
+
+**Session needs no module-boundary split this time.** Checks split across
+Search (blocked, `encounter.CheckResolver` can't carry a pose) and Unlock
+(clean, direct). Every current save happens through casting a spell, and
+every spell — Bane, Command, Sacred Flame, and Resistance's own future
+targets — already goes through the one `session.Manager.Cast` entry.
+Fixing Cast's pose handling once covers every save-gated spell that
+exists today, the same way fixing `requestSave` does in resolution.
+
+### The actual fix
+
+`Request` gains a second, optional callback beside `next` — something
+like `onPose(ctx, Pose) (Step, error)` — invoked when the driven machine
+poses instead of finishing. Left unset, behavior is EXACTLY what it is
+today: `drive()` refuses a posed sub-machine, unchanged, so every existing
+`Request` user (including ones that never touch saves) is provably
+unaffected. `requestSave` supplies one that turns the save's `Pose` into
+`contestMachine`'s own, freezing the contest's own inputs (ability, DC,
+source) alongside the save's frozen bytes. `castMachine.resolveTarget`
+supplies one that does the same one layer up: freeze `index`, the
+`CastOutcome` accumulated so far, and the inner (contest's) pose.
+
+Note what does NOT need to change: `driveStep`'s own `Gather`-to-`Pose`
+path already works today (that is how Strike poses, see `strike_pose.go`),
+and `resolveOn`/`Output.Posed` already handle a `Pose` arriving from
+`driveStep` regardless of how deep inside the machine it originated. The
+only place that currently forecloses this is `Request`'s own `drive()`
+call and its blanket refusal.
+
+### Slices as delivered — three PRs, not four
+
+The draft plan below assumed Guidance's exact four-PR shape (root →
+resolution → session → root). Once inside the code, two things collapsed
+that to three:
+
+- `step.go`, `contest.go`, and `action.go` all sit under the one
+  `resolution` go.mod, so the one-nearest-go.mod-module-per-PR rule never
+  forced the `Request` capability, the single-target wiring, and the
+  multi-target propagation apart — they were always one release unit
+  regardless of how many files they touch. Splitting them would have been
+  an incremental-safety preference, not a boundary the rules require, and
+  it would have cost an extra PR for no isolation Guidance itself didn't
+  need.
+- The root "not yet castable" slice and the root "enable it" slice are
+  the same module too, and since nothing about #1778 had merged (or could
+  have merged, given the pseudo-pin approach below) before #1779/#1780
+  were built, there was no ordering reason to keep them in separate PRs
+  either. They landed as two commits on the same branch instead.
+
+**The four-PR draft, superseded by what actually shipped:**
+
+1. ~~Root, not yet castable~~ — folded into PR 1 below.
+2. ~~Resolution, single-target~~ / ~~multi-target~~ — one PR either way; see PR 2.
+3. Session — shipped as planned; see PR 3.
+4. ~~Root: enable it~~ — folded into PR 1 as a second commit.
+
+**What shipped:**
+
+1. **[#1778](https://github.com/KirkDiggler/rpg-toolkit/pull/1778) — root.**
+   `PostSaveRollOfferEvent`/`PostSaveRollOfferChain` in `events/offer.go`
+   (sibling to the check one), `ResistanceCondition` mirroring
+   `GuidedCondition` — offers on the SAVER's next saving throw, no
+   ability filter (RAW: "one saving throw of its choice") — and, once
+   #1779/#1780 existed to run it, a second commit on the same branch
+   adding Resistance to `castContent` and the character-package
+   acceptance trace the CLAUDE.md checklist asks for.
+2. **[#1779](https://github.com/KirkDiggler/rpg-toolkit/pull/1779) —
+   resolution, one PR.** The opt-in `onPose` callback on
+   `Request`/`driveStep` in `step.go` (unset stays today's
+   error-on-pose, proven byte-identical by the full existing suite);
+   `save.go` folds `PostSaveRollOfferChain` right after the d20 and poses
+   when the saver holds an offer; `contest.go`/`contest_pose.go` freeze
+   the contest's own consequences; `action.go`/`cast_pose.go` propagate a
+   pose one `Request` layer further out for a multi-target cast, and
+   `NewCastResumed` hands the resumed machine to the EXISTING `Resolve`
+   entry unchanged — `Output.Posed` already existed generically from
+   Strike's own pose, so `resolve.go` needed no changes at all. Proven
+   against Bane (shipped, save-gated, multi-target) for both the
+   single- and two-`Request`-layer cases, and against a real
+   `ResistanceCondition` actually holding the offer.
+3. **[#1780](https://github.com/KirkDiggler/rpg-toolkit/pull/1780) —
+   session.** `Cast`'s tail is extracted into `finishCast`, called by
+   both the fresh and resumed paths so they cannot write two different
+   beats for the same cast. `poseCastWindow` mirrors `poseUnlockWindow` —
+   and building its own session-level test caught a real bug: the
+   caster's payment (a spell slot, an action) is charged in memory before
+   the door yields its first step, but nothing was persisting that charge
+   on the posed path until `poseCastWindow` was given its own
+   adopt-and-save. `answerCastOffer` resumes through
+   `resolution.NewCastResumed` with no `Cost` (already paid), and detects
+   a SECOND `Output.Posed` after resuming — Bane can ask several targets
+   in turn — reaching for `poseCastWindow` again rather than a second
+   copy of it. New `windowKindCastOffer` payload/declaration/dispatch,
+   `windowKindCheckOffer`'s own shape. Proven against Bane, including the
+   two-target re-pose case.
+
+**Pin discipline for this slice.** The user explicitly authorized a
+one-off exception to the standing one-PR-at-a-time release rule for this
+whole slice: each PR pins the PREVIOUS one's pushed commit as a
+pseudo-version (`go get module@sha`) rather than waiting for it to merge
+and tag, specifically "in case we need to go back" — so a finding at the
+session layer could still change the resolution design before anything
+was tagged. All three PRs were built and their full suites proven green
+this way before any of them merged. The pins still get swapped to real
+tags in publish order (#1778 → #1779 → #1780) before each is marked
+merge-ready, per the standing rule.
+
+### Expected cross-repo scoping (unconfirmed until there)
+
+Following the pattern the Guidance handoff established and verified: the
+ask/answer wire shape (`VERB_REACT`, `ReactionRef`) and the outcome shape
+(`RollComponent`/`RollCalculation`) are both already generic in protos and
+already adopted by rpg-api for the attack case, per the rpg-api#985
+investigation. A save-offer window should ride the same generic shapes
+with no new proto messages, same as Unlock's did — but that is an
+expectation carried over from a different feature, not a fact checked
+against this one yet, and should be verified once rpg-api actually adopts
+this slice.
+
+### Deferred, explicitly out of scope
+
+Nothing about `AbilityCheckChain`'s existing pre-roll bonus mechanism
+(Raging, etc.) changes. Death saving throws are saving throws mechanically
+but are rolled through a separate `DeathSave` verb, not through a cast at
+all — whether Resistance's die can be banked for one is a real rules
+question (RAW allows it: a death save is "one saving throw of its
+choice") not addressed by this plan, and DeathSave's own resumption shape
+has not been inspected. World-clock casting remains the same pre-existing
+`session.Cast` limitation Guidance already lives with. Search-style
+secrecy concerns do not apply here — nothing about a saving throw is
+supposed to be hidden from the creature making it.
+
+Sources: [2014 Resistance](https://www.dndbeyond.com/spells/2153-resistance),
+user-confirmed scope: saving throws only, the roll itself rather than any
+resulting damage.
 
 ## Spare the Dying wiring inspection
 

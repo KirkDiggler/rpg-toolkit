@@ -34,6 +34,8 @@ func TestDisplayForKnownConditions(t *testing.T) {
 		{"prone", *refs.Conditions.Prone(), Display{Name: "Prone"}},
 		{"opportunity attack", *refs.Conditions.OpportunityAttack(), Display{Name: "Opportunity Attack"}},
 		{"unconscious", *refs.Conditions.Unconscious(), Display{Name: "Unconscious"}},
+		{"guided", *refs.Conditions.Guided(), Display{Name: GuidedName}},
+		{"resistance", *refs.Conditions.Resistance(), Display{Name: ResistanceName}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

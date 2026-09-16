@@ -42,6 +42,12 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
+	resistance, err := NewResistanceCondition(NewResistanceConditionInput{
+		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.Resistance(),
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	return map[string]dnd5eEvents.ConditionBehavior{
 		"raging":            &RagingCondition{CharacterID: "m1"},
@@ -71,6 +77,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"baned":             baned,
 		"blessed":           blessed,
 		"guided":            guided,
+		"resistance":        resistance,
 		"vicious_mockery":   NewViciousMockeryCondition("m1", "bard-1", ""),
 		"unconscious":       NewUnconsciousCondition("m1", roller),
 		"opportunity":       NewOpportunityAttackCondition("m1"),

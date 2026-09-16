@@ -50,6 +50,12 @@ const (
 	// docs/ideas/cleric/plan.md), so a die held during a Search check is
 	// silently kept rather than posed.
 	windowKindCheckOffer = "check_offer"
+
+	// windowKindCastOffer is a cast's own saving throw that stopped for the
+	// same reason [windowKindCheckOffer] does, on [resolution.NewCastResumed]
+	// instead of a resumed check. Cast is the only verb that poses one:
+	// every saving throw runs through a cast (docs/ideas/cleric/plan.md).
+	windowKindCastOffer = "cast_offer"
 )
 
 // windowPayload is the frozen half of one posed reaction window: everything
@@ -168,6 +174,82 @@ type checkOfferWindowPayload struct {
 	Frozen []byte `json:"frozen"`
 }
 
+// castOfferWindowPayload is the frozen half of one posed cast-offer window —
+// [checkOfferWindowPayload]'s cast sibling, holding a saving throw's own
+// pose instead of a check's.
+type castOfferWindowPayload struct {
+	// Kind is [windowKindCastOffer]. See its doc.
+	Kind string `json:"kind"`
+
+	// Audience is who is being asked — the SAVER, not necessarily the
+	// caster (Bane can ask any of several targets), carried again here for
+	// the mis-pairing refusal [thawCheckOfferPayload]'s doc explains.
+	Audience string `json:"audience"`
+
+	// Caster is who cast the spell — the member [CastOutput]'s beats,
+	// numbering and economy are keyed to, and NOT necessarily Audience: a
+	// bard casting Bane at the party's own cleric asks the cleric, not the
+	// bard.
+	Caster string `json:"caster"`
+
+	// Spell is the spell that was cast, echoed into the finished
+	// [CastOutput] the same way an unposed cast's own reaches it.
+	Spell SpellRef `json:"spell"`
+
+	// Caught rides through the pause unchanged — an area cast's footprint is
+	// fixed before any target's save is even rolled, so it cannot depend on
+	// how this window is answered.
+	Caught []CaughtMember `json:"caught,omitempty"`
+
+	// Offer is what the audience holds, as the effect that offered it named
+	// itself.
+	Offer ReactionRef `json:"offer"`
+
+	// Roll and Total are the d20 and the number the offer would join. THE
+	// SAVE'S DC IS NOT HERE, [checkOfferWindowPayload.Roll]'s reason.
+	Roll  int `json:"roll"`
+	Total int `json:"total"`
+
+	// Frozen is resolution's own machine state, opaque to this package.
+	Frozen []byte `json:"frozen"`
+}
+
+// marshalCastOfferPayload renders one posed cast-offer window's frozen half.
+func marshalCastOfferPayload(p castOfferWindowPayload) ([]byte, error) {
+	p.Kind = windowKindCastOffer
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshal cast offer window payload: %w", err)
+	}
+	return raw, nil
+}
+
+// thawCastOfferPayload reads a stored CAST-OFFER window payload back, under
+// [thawWindowPayload]'s rule and for the same reason.
+func thawCastOfferPayload(raw []byte, audience string) (castOfferWindowPayload, error) {
+	var p castOfferWindowPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return castOfferWindowPayload{}, fmt.Errorf("%w: cast offer window payload: %v", ErrInvalidSession, err)
+	}
+	if p.Kind != windowKindCastOffer {
+		return castOfferWindowPayload{}, fmt.Errorf(
+			"%w: window payload kind %q is not a cast offer window", ErrInvalidSession, p.Kind)
+	}
+	if p.Audience == "" || p.Caster == "" || p.Spell.Ref == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
+		return castOfferWindowPayload{}, fmt.Errorf(
+			"%w: cast offer window payload names no audience, caster, spell or offer", ErrInvalidSession)
+	}
+	if len(p.Frozen) == 0 {
+		return castOfferWindowPayload{}, fmt.Errorf(
+			"%w: cast offer window payload froze no machine to resume", ErrInvalidSession)
+	}
+	if p.Audience != audience {
+		return castOfferWindowPayload{}, fmt.Errorf(
+			"%w: cast offer window payload names %q but is posed to %q", ErrInvalidSession, p.Audience, audience)
+	}
+	return p, nil
+}
+
 // marshalCheckOfferPayload renders one posed check-offer window's frozen
 // half.
 func marshalCheckOfferPayload(p checkOfferWindowPayload) ([]byte, error) {
@@ -240,7 +322,7 @@ func windowKindOf(raw []byte) (string, error) {
 		return "", fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
 	}
 	switch peek.Kind {
-	case windowKindReaction, windowKindPostRoll, windowKindCheckOffer:
+	case windowKindReaction, windowKindPostRoll, windowKindCheckOffer, windowKindCastOffer:
 		return peek.Kind, nil
 	default:
 		return "", fmt.Errorf(

@@ -66,15 +66,29 @@ func (g Gather) Name() string { return g.name }
 // interaction contributes to the requested save exactly as it would to a
 // direct one.
 //
-// No suspension yet. The requested machine runs to Done inside this one's
-// step loop, which is enough for every consumer today, and the boundary is
-// self-describing data — a machine, and a continuation taking its outcome — so
-// the later case where the answer comes from outside the process (Pose) is a
-// new step rather than a redesign of this one.
+// By default the requested machine runs to Done inside this one's step loop,
+// which is enough for every consumer that leaves [Request.onPose] unset —
+// exactly today's behaviour, unchanged. [Request.onPose] is the opt-in for a
+// requester whose sub-machine CAN suspend: a contest requesting a saving
+// throw (Resistance's own die is offered on the save, not the contest) and a
+// cast requesting a contest per target both need it, because [drive]'s
+// default refusal ("a requester cannot be suspended") is correct for every
+// other requester and wrong for exactly these two. The callback turns the
+// sub-machine's [Pose] into this machine's OWN pose — freezing whatever this
+// machine needs to resume the request later — rather than the pose crossing
+// the requester unexamined, which is what would strand it: nothing about a
+// requester survives a suspension except what onPose chooses to freeze.
 type Request struct {
 	name    string
 	machine Machine
 	next    func(ctx context.Context, out Outcome) (Step, error)
+
+	// onPose is nil for every requester that cannot compose with a pose —
+	// [drive] keeps refusing those exactly as before. Set, it is called
+	// instead of that refusal, with the sub-machine's raw pose, and its
+	// return value becomes the step this request continues with (typically
+	// a new [Pose] of the requester's own).
+	onPose func(ctx context.Context, pose Pose) (Step, error)
 }
 
 func (Request) isStep() {}
@@ -209,11 +223,42 @@ func driveStep(
 				return nil, nil, fmt.Errorf("%w: Request built outside this package", ErrBadStep)
 			}
 
-			// The same bus and the same cast: a requested interaction happens
-			// inside this one, not beside it.
-			out, runErr := drive(ctx, bus, s.machine, cast)
+			if s.onPose == nil {
+				// The same bus and the same cast: a requested interaction
+				// happens inside this one, not beside it. Byte-identical to
+				// every build before onPose existed — a requester that never
+				// opted in cannot tell the capability was added.
+				out, runErr := drive(ctx, bus, s.machine, cast)
+				if runErr != nil {
+					return nil, nil, fmt.Errorf("requested %s: %w", s.name, runErr)
+				}
+
+				step, err = s.next(ctx, out)
+				if err != nil {
+					return nil, nil, err
+				}
+				continue
+			}
+
+			// s.onPose is set: this requester can compose with a sub-machine
+			// that suspends, so the refusal [drive] would apply does not run
+			// here. Preflight and drive the sub-machine inline instead,
+			// exactly as [drive] does, but hand a pose to onPose rather than
+			// erroring on it.
+			sub, startErr := start(ctx, s.machine, cast)
+			if startErr != nil {
+				return nil, nil, fmt.Errorf("requested %s: %w", s.name, startErr)
+			}
+			out, posed, runErr := driveStep(ctx, bus, sub, cast)
 			if runErr != nil {
 				return nil, nil, fmt.Errorf("requested %s: %w", s.name, runErr)
+			}
+			if posed != nil {
+				step, err = s.onPose(ctx, *posed)
+				if err != nil {
+					return nil, nil, err
+				}
+				continue
 			}
 
 			step, err = s.next(ctx, out)
