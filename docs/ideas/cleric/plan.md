@@ -388,48 +388,83 @@ and `resolveOn`/`Output.Posed` already handle a `Pose` arriving from
 only place that currently forecloses this is `Request`'s own `drive()`
 call and its blanket refusal.
 
-### Slices — same four-PR shape as Guidance
+### Slices as delivered — three PRs, not four
 
-`step.go`, `contest.go`, and `action.go` all sit under the one `resolution`
-go.mod, so the one-nearest-go.mod-module-per-PR rule doesn't force the
-`Request` capability, the single-target wiring, and the multi-target
-propagation apart — they're one release unit regardless of how many files
-they touch. Splitting them was an incremental-safety preference on my
-part, not a boundary the rules require, and it costs an extra PR (plus an
-extra provider/consumer pin dance) for no isolation Guidance itself didn't
-need. Collapsing back to root → resolution → session → root — Guidance's
-own shape — is the right call:
+The draft plan below assumed Guidance's exact four-PR shape (root →
+resolution → session → root). Once inside the code, two things collapsed
+that to three:
 
-1. **Root, not yet castable.** `PostSaveRollOfferEvent`/
-   `PostSaveRollOfferChain` in `events/offer.go` (sibling to the check
-   one), `ResistanceCondition` mirroring `GuidedCondition` — offers on
-   the SAVER's next saving throw, no ability filter (RAW: "one saving
-   throw of its choice"). Not added to `castContent`. Publishes first —
-   resolution's slice pins this tag.
-2. **Resolution: the whole save-pose capability, one PR.** Add the
-   opt-in `onPose` callback to `Request`/`driveStep`/`drive()` in
-   `step.go` (unset stays today's error-on-pose, so every non-opted-in
-   caller is provably unaffected); wire `requestSave`/`contestMachine`
-   to use it with a sourced save calculation (mirroring
-   `checkCalculationFor`) and a pose/`ResumeSave`-equivalent; wire
-   `castMachine.resolveTarget` to propagate a contest's pose one layer
-   up, freezing `index` and the in-progress `CastOutcome`. Proven against
-   both a single-target save (Sacred Flame) and a multi-target one
-   (Bane or Command) in the same PR, since both paths are exercised by
-   the one change. Pins slice 1's tag; publishes second.
-3. **Session.** Extend `Cast`'s handling of a save-gated spell to detect
-   `Output.Posed` (today `Cast` presumably treats any `Posed` cast the
-   way Attack's own pose is handled, or does not handle it at all yet —
-   to be confirmed once inside that code, not assumed here) and open a
-   new interrupt window kind (sibling to `windowKindCheckOffer`), resuming
-   through resolution's new save-resume entry. Reuses the existing
-   generic `VerbReact`/`ReactionRef` wire shape — no new session
-   vocabulary expected, same as Guidance. Pins slice 2's tag; publishes
-   third.
-4. **Root: enable it.** Add Resistance to `castContent`. Same root
-   module as slice 1, but a separate PR since it lands after resolution
-   and session exist to actually run it — mirrors Guidance's own final
-   slice exactly.
+- `step.go`, `contest.go`, and `action.go` all sit under the one
+  `resolution` go.mod, so the one-nearest-go.mod-module-per-PR rule never
+  forced the `Request` capability, the single-target wiring, and the
+  multi-target propagation apart — they were always one release unit
+  regardless of how many files they touch. Splitting them would have been
+  an incremental-safety preference, not a boundary the rules require, and
+  it would have cost an extra PR for no isolation Guidance itself didn't
+  need.
+- The root "not yet castable" slice and the root "enable it" slice are
+  the same module too, and since nothing about #1778 had merged (or could
+  have merged, given the pseudo-pin approach below) before #1779/#1780
+  were built, there was no ordering reason to keep them in separate PRs
+  either. They landed as two commits on the same branch instead.
+
+**The four-PR draft, superseded by what actually shipped:**
+
+1. ~~Root, not yet castable~~ — folded into PR 1 below.
+2. ~~Resolution, single-target~~ / ~~multi-target~~ — one PR either way; see PR 2.
+3. Session — shipped as planned; see PR 3.
+4. ~~Root: enable it~~ — folded into PR 1 as a second commit.
+
+**What shipped:**
+
+1. **[#1778](https://github.com/KirkDiggler/rpg-toolkit/pull/1778) — root.**
+   `PostSaveRollOfferEvent`/`PostSaveRollOfferChain` in `events/offer.go`
+   (sibling to the check one), `ResistanceCondition` mirroring
+   `GuidedCondition` — offers on the SAVER's next saving throw, no
+   ability filter (RAW: "one saving throw of its choice") — and, once
+   #1779/#1780 existed to run it, a second commit on the same branch
+   adding Resistance to `castContent` and the character-package
+   acceptance trace the CLAUDE.md checklist asks for.
+2. **[#1779](https://github.com/KirkDiggler/rpg-toolkit/pull/1779) —
+   resolution, one PR.** The opt-in `onPose` callback on
+   `Request`/`driveStep` in `step.go` (unset stays today's
+   error-on-pose, proven byte-identical by the full existing suite);
+   `save.go` folds `PostSaveRollOfferChain` right after the d20 and poses
+   when the saver holds an offer; `contest.go`/`contest_pose.go` freeze
+   the contest's own consequences; `action.go`/`cast_pose.go` propagate a
+   pose one `Request` layer further out for a multi-target cast, and
+   `NewCastResumed` hands the resumed machine to the EXISTING `Resolve`
+   entry unchanged — `Output.Posed` already existed generically from
+   Strike's own pose, so `resolve.go` needed no changes at all. Proven
+   against Bane (shipped, save-gated, multi-target) for both the
+   single- and two-`Request`-layer cases, and against a real
+   `ResistanceCondition` actually holding the offer.
+3. **[#1780](https://github.com/KirkDiggler/rpg-toolkit/pull/1780) —
+   session.** `Cast`'s tail is extracted into `finishCast`, called by
+   both the fresh and resumed paths so they cannot write two different
+   beats for the same cast. `poseCastWindow` mirrors `poseUnlockWindow` —
+   and building its own session-level test caught a real bug: the
+   caster's payment (a spell slot, an action) is charged in memory before
+   the door yields its first step, but nothing was persisting that charge
+   on the posed path until `poseCastWindow` was given its own
+   adopt-and-save. `answerCastOffer` resumes through
+   `resolution.NewCastResumed` with no `Cost` (already paid), and detects
+   a SECOND `Output.Posed` after resuming — Bane can ask several targets
+   in turn — reaching for `poseCastWindow` again rather than a second
+   copy of it. New `windowKindCastOffer` payload/declaration/dispatch,
+   `windowKindCheckOffer`'s own shape. Proven against Bane, including the
+   two-target re-pose case.
+
+**Pin discipline for this slice.** The user explicitly authorized a
+one-off exception to the standing one-PR-at-a-time release rule for this
+whole slice: each PR pins the PREVIOUS one's pushed commit as a
+pseudo-version (`go get module@sha`) rather than waiting for it to merge
+and tag, specifically "in case we need to go back" — so a finding at the
+session layer could still change the resolution design before anything
+was tagged. All three PRs were built and their full suites proven green
+this way before any of them merged. The pins still get swapped to real
+tags in publish order (#1778 → #1779 → #1780) before each is marked
+merge-ready, per the standing rule.
 
 ### Expected cross-repo scoping (unconfirmed until there)
 
@@ -440,8 +475,8 @@ already adopted by rpg-api for the attack case, per the rpg-api#985
 investigation. A save-offer window should ride the same generic shapes
 with no new proto messages, same as Unlock's did — but that is an
 expectation carried over from a different feature, not a fact checked
-against this one yet, and should be verified once session's slice is
-real rather than assumed.
+against this one yet, and should be verified once rpg-api actually adopts
+this slice.
 
 ### Deferred, explicitly out of scope
 
