@@ -193,6 +193,66 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 	})
 }
 
+// TestSingleRoomValidationPaths locks source attribution for every placement
+// failure. In particular, it prevents offset-frame coordinates and the old
+// "last monster" report from returning to author-facing diagnostics.
+func TestSingleRoomValidationPaths(t *testing.T) {
+	raw, err := os.ReadFile("testdata/world-builder-v3.yaml")
+	require.NoError(t, err)
+	cases := []struct {
+		name       string
+		edit       func(*SingleRoomSpec)
+		path       string
+		coordinate string
+	}{
+		{
+			name: "party blocked with monsters present", path: "room.room.partyStart", coordinate: "q=0 r=0",
+			edit: func(s *SingleRoomSpec) {
+				s.Room.Scene.Items[0].Transform.X = 0
+				s.Room.Scene.Items[0].Transform.Z = 0
+			},
+		},
+		{
+			name: "party off floor negative odd", path: "room.room.partyStart", coordinate: "q=-3 r=-1",
+			edit: func(s *SingleRoomSpec) { s.Room.Gameplay.PartyStart = &RoomCell{Q: -3, R: -1} },
+		},
+		{
+			name: "first monster fails while later monster is valid", path: "room.room.monsters[0].cell", coordinate: "q=2 r=0",
+			edit: func(s *SingleRoomSpec) {
+				s.Room.Scene.Items[0].Transform.X = 2 * math.Sqrt(3)
+				s.Room.Scene.Items[0].Transform.Z = 0
+				s.Room.Gameplay.Monsters[0].Cell = RoomCell{Q: 2, R: 0}
+				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", Cell: RoomCell{Q: 1, R: 0}})
+			},
+		},
+		{
+			name: "later monster fails", path: "room.room.monsters[1].cell", coordinate: "q=2 r=0",
+			edit: func(s *SingleRoomSpec) {
+				s.Room.Scene.Items[0].Transform.X = 2 * math.Sqrt(3)
+				s.Room.Scene.Items[0].Transform.Z = 0
+				s.Room.Gameplay.Monsters[0].Cell = RoomCell{Q: 1, R: 0}
+				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", Cell: RoomCell{Q: 2, R: 0}})
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			decoded, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
+			require.NoError(t, err)
+			tc.edit(decoded.Spec)
+			compiled, err := CompileSingleRoom(CompileSingleRoomInput{Spec: decoded.Spec})
+			require.Error(t, err)
+			require.True(t, errors.Is(err, ErrBadSpec))
+			var validation *ValidationError
+			require.ErrorAs(t, err, &validation)
+			require.Equal(t, Compiled{}, compiled)
+			require.NotEmpty(t, validation.Errors)
+			require.Equal(t, tc.path, validation.Errors[0].Path)
+			require.Contains(t, validation.Errors[0].Message, "at author's axial "+tc.coordinate)
+		})
+	}
+}
+
 // mustEncode marshals an edited spec back to the YAML public Load accepts.
 func mustEncode(t *testing.T, spec *SingleRoomSpec) []byte {
 	t.Helper()

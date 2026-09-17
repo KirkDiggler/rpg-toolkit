@@ -177,6 +177,24 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 	return fact
 }
 
+// StaticPlacementError identifies a placement rejected by static field facts.
+// At remains in the encounter field's coordinate frame; callers that retain
+// an authoring frame should use the source coordinate for presentation.
+type StaticPlacementError struct {
+	Index  int
+	At     spatial.Position
+	Reason string
+	Cause  error
+}
+
+// Error returns the detailed placement refusal in the field coordinate frame.
+func (e *StaticPlacementError) Error() string {
+	return fmt.Sprintf("placement[%d] at [%g,%g] %s: %v", e.Index, e.At.X, e.At.Y, e.Reason, e.Cause)
+}
+
+// Unwrap exposes the underlying placement sentinel.
+func (e *StaticPlacementError) Unwrap() error { return e.Cause }
+
 // ValidateStaticPlacements validates authored placement cells against the
 // compiled field and static contributors without inventing a live member.
 func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
@@ -187,11 +205,11 @@ func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
 	for i, authored := range cells {
 		cell := f.cellAt(authored)
 		if !f.isStandable(cell) {
-			return fmt.Errorf("placement[%d] at [%g,%g] is not standable: %w", i, authored.X, authored.Y, ErrBadPlacement)
+			return &StaticPlacementError{Index: i, At: authored, Reason: "is not standable", Cause: ErrBadPlacement}
 		}
 		for _, p := range f.props {
 			if p.BlocksMovement != nil && *p.BlocksMovement && f.cellAt(p.At) == cell {
-				return fmt.Errorf("placement[%d] at [%g,%g] is occupied by prop %q: %w", i, authored.X, authored.Y, p.Ref, ErrBadPlacement)
+				return &StaticPlacementError{Index: i, At: authored, Reason: fmt.Sprintf("is occupied by prop %q", p.Ref), Cause: ErrBadPlacement}
 			}
 		}
 		centre := f.plane.CellCentre(cell)
@@ -201,7 +219,7 @@ func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
 			}
 			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: p.placement, From: centre, To: centre})
 			if traceErr != nil || contact.Contact {
-				return fmt.Errorf("placement[%d] at [%g,%g] is occupied by footprint %q: %w", i, authored.X, authored.Y, p.id, ErrBadPlacement)
+				return &StaticPlacementError{Index: i, At: authored, Reason: fmt.Sprintf("is occupied by footprint %q", p.id), Cause: ErrBadPlacement}
 			}
 		}
 	}

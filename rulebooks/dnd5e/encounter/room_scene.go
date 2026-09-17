@@ -67,21 +67,28 @@ type RoomSceneFrame struct {
 	FootprintFrame  string  `yaml:"footprintFrame" json:"footprintFrame"`
 }
 
+// RoomSceneWorkspace defines the playable room bounds.
 type RoomSceneWorkspace struct {
 	HexRadius       float64 `yaml:"hexRadius" json:"hexRadius"`
 	HorizontalLimit float64 `yaml:"horizontalLimit" json:"horizontalLimit"`
 }
+
+// RoomSceneTransform is a scene object's position and rotation.
 type RoomSceneTransform struct {
 	X         float64 `yaml:"x" json:"x"`
 	Y         float64 `yaml:"y" json:"y"`
 	Z         float64 `yaml:"z" json:"z"`
 	RotationY float64 `yaml:"rotationY" json:"rotationY"`
 }
+
+// RoomSceneOffset is a light's local offset from its item.
 type RoomSceneOffset struct {
 	X float64 `yaml:"x" json:"x"`
 	Y float64 `yaml:"y" json:"y"`
 	Z float64 `yaml:"z" json:"z"`
 }
+
+// RoomSceneLight describes an optional point light on a scene item.
 type RoomSceneLight struct {
 	Enabled   bool            `yaml:"enabled" json:"enabled"`
 	Offset    RoomSceneOffset `yaml:"offset" json:"offset"`
@@ -89,6 +96,8 @@ type RoomSceneLight struct {
 	Intensity float64         `yaml:"intensity" json:"intensity"`
 	Range     float64         `yaml:"range" json:"range"`
 }
+
+// RoomSceneItem is a visual prop in a room scene.
 type RoomSceneItem struct {
 	Kind        string             `yaml:"kind" json:"kind"`
 	ID          string             `yaml:"id" json:"id"`
@@ -100,6 +109,8 @@ type RoomSceneItem struct {
 	HeightScale *float64           `yaml:"heightScale,omitempty" json:"heightScale,omitempty"`
 	PointLight  *RoomSceneLight    `yaml:"pointLight,omitempty" json:"pointLight,omitempty"`
 }
+
+// RoomSceneGroup is a transformable visual grouping in a room scene.
 type RoomSceneGroup struct {
 	Kind      string             `yaml:"kind" json:"kind"`
 	ID        string             `yaml:"id" json:"id"`
@@ -107,6 +118,8 @@ type RoomSceneGroup struct {
 	ParentID  string             `yaml:"parentId,omitempty" json:"parentId,omitempty"`
 	Transform RoomSceneTransform `yaml:"transform" json:"transform"`
 }
+
+// RoomVisualScene contains the authored items and groups for a room.
 type RoomVisualScene struct {
 	Version int              `yaml:"version" json:"version"`
 	ID      string           `yaml:"id" json:"id"`
@@ -114,6 +127,8 @@ type RoomVisualScene struct {
 	Items   []RoomSceneItem  `yaml:"items" json:"items"`
 	Groups  []RoomSceneGroup `yaml:"groups" json:"groups"`
 }
+
+// RoomScenePresentation carries a room scene with its coordinate declarations.
 type RoomScenePresentation struct {
 	Version   int                `yaml:"version" json:"version"`
 	Frame     RoomSceneFrame     `yaml:"coordinateFrame" json:"coordinateFrame"`

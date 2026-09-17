@@ -1,6 +1,7 @@
 package dungeonspec
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -56,13 +57,36 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		starts = append(starts, at)
 		monsters = append(monsters, MonsterPlacement{ID: m.ID, Ref: m.Ref, Region: spec.Room.Gameplay.ImplicitRegionID, At: at})
 	}
-	// Validate final placement against the same encounter-owned static fold.
-	if err := encounter.ValidateStaticPlacements(field, starts); err != nil {
-		path := "room.room.partyStart"
-		if len(starts) > 1 {
-			path = fmt.Sprintf("room.room.monsters[%d].cell", len(starts)-2)
+	// Validate each source placement independently. Besides identifying the
+	// actual failing placement (rather than the last one in the batch), this
+	// keeps the diagnostic in the author's axial frame instead of exposing the
+	// legacy offset cell used by the encounter field.
+	placements := make([]struct {
+		path string
+		cell RoomCell
+		at   spatial.Position
+	}, 0, len(starts))
+	placements = append(placements, struct {
+		path string
+		cell RoomCell
+		at   spatial.Position
+	}{path: "room.room.partyStart", cell: *spec.Room.Gameplay.PartyStart, at: starts[0]})
+	for i, m := range spec.Room.Gameplay.Monsters {
+		placements = append(placements, struct {
+			path string
+			cell RoomCell
+			at   spatial.Position
+		}{path: fmt.Sprintf("room.room.monsters[%d].cell", i), cell: m.Cell, at: starts[i+1]})
+	}
+	for _, placement := range placements {
+		if err := encounter.ValidateStaticPlacements(field, []spatial.Position{placement.at}); err != nil {
+			var placementErr *encounter.StaticPlacementError
+			if errors.As(err, &placementErr) {
+				err = errors.New(placementErr.Reason)
+			}
+			return Compiled{}, singleRoomCompileError(placement.path,
+				fmt.Sprintf("at author's axial q=%d r=%d: %s", placement.cell.Q, placement.cell.R, err))
 		}
-		return Compiled{}, singleRoomCompileError(path, err.Error())
 	}
 	// Party seats are deterministic nearest-first in the authored region.
 	party := deriveSingleRoomSeats(cells, starts[0], occupied, o, field)
@@ -76,6 +100,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	return Compiled{Key: spec.Key, Name: spec.Room.Scene.Name, Field: field, PartyStart: party, Monsters: monsters}, nil
 }
 
+// CompileSingleRoomInput supplies a decoded single-room specification.
 type CompileSingleRoomInput struct{ Spec *SingleRoomSpec }
 
 func singleRoomCompileError(path, message string) error {
