@@ -212,9 +212,15 @@ func (s *DoorsSuite) TestUnlockRollsTheSheetAgainstTheDC() {
 
 	beats := s.doorEvents("alice")
 	s.Require().Len(beats, 1)
-	s.Equal(session.DoorBody{Door: "gate", State: "open", Actor: "alice",
-		DC: tombDC, Total: tombDC, Beaten: true}, beats[0],
-		"the attempt is narrated with its author and its numbers")
+	body := beats[0]
+	s.Equal("gate", body.Door)
+	s.Equal("open", body.State)
+	s.Equal("alice", body.Actor)
+	s.Equal(tombDC, body.DC)
+	s.Equal(tombDC, body.Total, "the attempt is narrated with its author and its numbers")
+	s.True(body.Beaten)
+	s.Require().NotNil(body.Calculation, "an unlock's DoorChanged is a check beat (R4)")
+	s.Equal(tombDC, body.Calculation.Total)
 }
 
 func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
@@ -230,9 +236,15 @@ func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
 
 	beats := s.doorEvents("alice")
 	s.Require().Len(beats, 1)
-	s.Equal(session.DoorBody{Door: "gate", State: "locked", Actor: "alice",
-		DC: tombDC, Total: 10, Beaten: false}, beats[0],
-		"the miss is as much fiction as the hit")
+	body := beats[0]
+	s.Equal("gate", body.Door)
+	s.Equal("locked", body.State)
+	s.Equal("alice", body.Actor)
+	s.Equal(tombDC, body.DC)
+	s.Equal(10, body.Total, "the miss is as much fiction as the hit")
+	s.False(body.Beaten)
+	s.Require().NotNil(body.Calculation)
+	s.Equal(10, body.Calculation.Total)
 
 	again, err := s.mgr.Unlock(ctx, &session.UnlockInput{
 		Session: "sess", Member: "alice", Door: "gate"})

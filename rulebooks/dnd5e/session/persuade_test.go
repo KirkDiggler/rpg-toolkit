@@ -483,9 +483,16 @@ func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction(
 		}
 	}
 	s.Require().NotNil(persuaded, "the verdict reached the log")
-	s.Equal(session.PersuadedBody{
-		Actor: "alice", Target: "goblin", DC: 9, Total: 11, Beaten: true,
-	}, persuaded.Body, "the offered die joined the total, and nothing was re-rolled")
+	body, ok := persuaded.Body.(session.PersuadedBody)
+	s.Require().True(ok)
+	s.Equal("alice", body.Actor)
+	s.Equal("goblin", body.Target)
+	s.Equal(9, body.DC)
+	s.Equal(11, body.Total, "the offered die joined the total, and nothing was re-rolled")
+	s.True(body.Beaten)
+	s.Require().NotNil(body.Calculation)
+	s.Equal(11, body.Calculation.Total,
+		"and the RESUMED arithmetic rides the beat, offered die included")
 
 	s.Require().NotNil(answered, "and so did what the goblin did about it")
 	s.Equal(session.AnsweredBody{
@@ -605,4 +612,64 @@ func (s *PersuadeSuite) frontWithBandit() *session.Manager {
 	s.Require().NoError(err)
 
 	return mgr
+}
+
+// TestTheUntrainedRuleReachesTheWireByName is the done-when of
+// rpg-project#462, at the seam that used to lose it. The rule shipped applied
+// but INVISIBLE: it kept the lower of two faces and the beat said one number,
+// so a player could not tell a house rule from a bad roll. Both faces, the
+// kept one, and the word "Untrained" now cross typed.
+func (s *PersuadeSuite) TestTheUntrainedRuleReachesTheWireByName() {
+	s.SetupTest()
+	s.sheet = armedFighter("alice") // no Persuasion at all
+
+	mgr := s.front([]int{10, 3})
+	out, err := s.persuade(mgr)
+	s.Require().NoError(err)
+	s.Require().False(out.Beaten)
+
+	var body session.PersuadedBody
+	for _, event := range s.events(mgr, "alice") {
+		if persuaded, ok := event.Body.(session.PersuadedBody); ok {
+			body = persuaded
+		}
+	}
+	s.Require().NotZero(body.Actor, "the verdict reached alice's stream typed")
+
+	die := d20Of(s.T(), body.Calculation)
+	s.Equal("2d20", die.Notation, "the pair the rule actually threw")
+	s.Equal([]int{10, 3}, die.FinalRolls, "and the discarded 10 survives to the log")
+	s.Equal([]int{1}, die.KeptIndices)
+	s.Require().NotNil(die.Keep)
+	s.Equal(session.KeepDisadvantage, die.Keep.Rule)
+	s.Require().Len(die.Keep.Imposed, 1)
+	s.Equal("Untrained", die.Keep.Imposed[0].Name,
+		"the word the log prints comes down from the server, never invented by a client")
+	s.Equal("alice", die.Keep.Imposed[0].SourceID)
+	s.Empty(die.Keep.Granted)
+	s.Equal(body.Total, body.Calculation.Total)
+}
+
+// TestATrainedCheckerCarriesNoRule is the control: the same verb, the same
+// seam, a character who took the skill. One die, and nothing recorded over it.
+// Without this, "Keep is set" could just mean "Keep is always set".
+func (s *PersuadeSuite) TestATrainedCheckerCarriesNoRule() {
+	s.SetupTest()
+
+	mgr := s.front([]int{10, 3})
+	_, err := s.persuade(mgr)
+	s.Require().NoError(err)
+
+	var body session.PersuadedBody
+	for _, event := range s.events(mgr, "alice") {
+		if persuaded, ok := event.Body.(session.PersuadedBody); ok {
+			body = persuaded
+		}
+	}
+	s.Require().NotZero(body.Actor)
+
+	die := d20Of(s.T(), body.Calculation)
+	s.Equal("1d20", die.Notation)
+	s.Empty(die.KeptIndices)
+	s.Nil(die.Keep, "nobody touched the pool, and the zero value says so")
 }

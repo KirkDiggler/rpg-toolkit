@@ -166,6 +166,10 @@ func TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly(t *testin
 					{
 						Source: session.RollSource{
 							Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
+							// The healing dice are the fighter's own: every
+							// dice pool names the entity whose rule threw it
+							// (rpg-project#462 R7).
+							SourceID: "alice",
 						},
 						Dice: &session.DiceTrace{
 							Notation: "1d10", DieSize: 10,

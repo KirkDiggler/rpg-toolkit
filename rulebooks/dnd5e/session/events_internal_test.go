@@ -231,6 +231,10 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 			`"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":4},"modifier":0},` +
 			`"damage_type":"slashing"},` +
 			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}],` +
+			// STILL IN THE PAYLOAD, AND READ BY NOTHING. Persisted fights carry
+			// these keys; the body dropped them when the keep record replaced
+			// them (rpg-project#462 R1), and tolerating them on read is what
+			// keeps that history typeable instead of deleting it.
 			`"advantage_sources":[{"source_ref":"dnd5e:conditions:hidden","source_id":"alice"}],` +
 			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}]}`))
 	require.Equal(t, EventStruck, kind)
@@ -270,12 +274,10 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 	require.Zero(t, *got.DamageComponents[0].Roll.Modifier)
 	require.NotNil(t, got.DamageComponents[1].Multiplier)
 	require.Zero(t, *got.DamageComponents[1].Multiplier)
-	require.Equal(t,
-		[]AttackModifierSource{{SourceRef: "dnd5e:conditions:hidden", SourceID: "alice"}},
-		got.AdvantageSources)
-	require.Equal(t,
-		[]AttackModifierSource{{SourceRef: "dnd5e:conditions:dodging", SourceID: "bob"}},
-		got.DisadvantageSources)
+	// The payload still carries advantage_sources and disadvantage_sources —
+	// persisted fights have them — and the body reads neither. They are
+	// tolerated so history stays typeable, and the fold's attribution arrives
+	// on the calculation's keep record instead (rpg-project#462 R1).
 }
 
 // TestStruckBodyDecodesLegacyDamageComponents pins the legacy read fallback:
@@ -767,7 +769,7 @@ func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
 
 func TestRollCalculationDecodesSourceQualifiedSubtractionStrictly(t *testing.T) {
 	valid := json.RawMessage(`{"components":[` +
-		`{"source":{"ref":"dnd5e:actions:death_save","name":"Death Saving Throw"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[10],"final_rolls":[10],"subtotal":10}},` +
+		`{"source":{"ref":"dnd5e:actions:death_save","name":"Death Saving Throw","source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[10],"final_rolls":[10],"subtotal":10}},` +
 		`{"source":{"ref":"dnd5e:spells:bane","name":"Bane","source_id":"bard-a"},"dice":{"notation":"1d4","die_size":4,"original_rolls":[3],"final_rolls":[3],"subtotal":3},"subtract_dice":true}],"total":7}`)
 	calculation, ok := decodeRollCalculation(valid)
 	require.True(t, ok)

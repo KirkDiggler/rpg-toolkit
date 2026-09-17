@@ -406,24 +406,37 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return EndedBody{Ending: p.Ending}
 	case EventDoor:
 		var p struct {
-			Door   string `json:"door"`
-			State  string `json:"state"`
-			Actor  string `json:"actor"`
-			DC     int    `json:"dc"`
-			Total  int    `json:"total"`
-			Beaten bool   `json:"beaten"`
+			Door        string          `json:"door"`
+			State       string          `json:"state"`
+			Actor       string          `json:"actor"`
+			DC          int             `json:"dc"`
+			Total       int             `json:"total"`
+			Beaten      bool            `json:"beaten"`
+			Calculation json.RawMessage `json:"calculation"`
 		}
 		if json.Unmarshal(payload, &p) != nil || p.Door == "" || p.State == "" {
 			return nil
 		}
-		return DoorBody{Door: p.Door, State: p.State, Actor: p.Actor, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
+		// An unlock attempt's arithmetic, when the beat carried any. Refused
+		// rather than dropped when it could not have produced the total it is
+		// filed under: a body that typed anyway would render a roll nobody
+		// made (rpg-project#462 R4).
+		calculation, ok := attemptCalculation(p.Calculation, p.Total)
+		if !ok {
+			return nil
+		}
+		return DoorBody{
+			Door: p.Door, State: p.State, Actor: p.Actor,
+			DC: p.DC, Total: p.Total, Beaten: p.Beaten, Calculation: calculation,
+		}
 	case EventIntimidated:
 		var p struct {
-			Actor  string `json:"actor"`
-			Target string `json:"target"`
-			DC     int    `json:"dc"`
-			Total  int    `json:"total"`
-			Beaten bool   `json:"beaten"`
+			Actor       string          `json:"actor"`
+			Target      string          `json:"target"`
+			DC          int             `json:"dc"`
+			Total       int             `json:"total"`
+			Beaten      bool            `json:"beaten"`
+			Calculation json.RawMessage `json:"calculation"`
 		}
 		// Actor and target gate the body; the numbers do not. A threat
 		// nobody can name is malformed, but `beaten: false` with a total of
@@ -432,21 +445,40 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Target == "" {
 			return nil
 		}
-		return IntimidatedBody{Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
+		// THE ARITHMETIC GATES, unlike the scalars. It is optional, but a
+		// present one that could not have produced this total refuses the
+		// whole body: rendering a roll nobody made is worse than an untyped
+		// beat (rpg-project#462).
+		calculation, ok := attemptCalculation(p.Calculation, p.Total)
+		if !ok {
+			return nil
+		}
+		return IntimidatedBody{
+			Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total,
+			Beaten: p.Beaten, Calculation: calculation,
+		}
 	case EventPersuaded:
 		var p struct {
-			Actor  string `json:"actor"`
-			Target string `json:"target"`
-			DC     int    `json:"dc"`
-			Total  int    `json:"total"`
-			Beaten bool   `json:"beaten"`
+			Actor       string          `json:"actor"`
+			Target      string          `json:"target"`
+			DC          int             `json:"dc"`
+			Total       int             `json:"total"`
+			Beaten      bool            `json:"beaten"`
+			Calculation json.RawMessage `json:"calculation"`
 		}
 		// [EventIntimidated]'s gate, for its reason: actor and target gate the
-		// body and the numbers do not.
+		// body and the numbers do not, while the arithmetic does.
 		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Target == "" {
 			return nil
 		}
-		return PersuadedBody{Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
+		calculation, ok := attemptCalculation(p.Calculation, p.Total)
+		if !ok {
+			return nil
+		}
+		return PersuadedBody{
+			Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total,
+			Beaten: p.Beaten, Calculation: calculation,
+		}
 	case EventAnswered:
 		var p struct {
 			Creature string `json:"creature"`
@@ -1385,7 +1417,8 @@ func decodeDiceTrace(raw json.RawMessage) (*DiceTrace, bool) {
 	}
 	for key := range fields {
 		switch key {
-		case "notation", "die_size", "original_rolls", "rerolls", "final_rolls", "kept_indices", "subtotal":
+		case "notation", "die_size", "original_rolls", "rerolls", "final_rolls",
+			"kept_indices", "subtotal", "keep":
 		default:
 			return nil, false
 		}
@@ -1435,7 +1468,77 @@ func decodeDiceTrace(raw json.RawMessage) (*DiceTrace, bool) {
 			return nil, false
 		}
 	}
+	if keepRaw, keepPresent := fields["keep"]; keepPresent {
+		keep, ok := decodeDiceKeep(keepRaw)
+		if !ok {
+			return nil, false
+		}
+		trace.Keep = keep
+	}
 	return trace, true
+}
+
+// decodeDiceKeep decodes the record that says why one face counted, refusing
+// unknown keys, nulls and duplicates like every other decoder here. Whether
+// the record DESCRIBES the pool it sits on — advantage kept the highest of at
+// least two faces, a cancellation kept none and names both sides — is replayed
+// by the composition's validator once the whole calculation is assembled.
+func decodeDiceKeep(raw json.RawMessage) (*DiceKeep, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok {
+		return nil, false
+	}
+	for key := range fields {
+		switch key {
+		case "rule", "granted", "imposed":
+		default:
+			return nil, false
+		}
+	}
+	for _, value := range fields {
+		if isJSONNull(value) {
+			return nil, false
+		}
+	}
+	ruleRaw, rulePresent := fields["rule"]
+	if !rulePresent {
+		return nil, false
+	}
+	keep := &DiceKeep{}
+	if json.Unmarshal(ruleRaw, &keep.Rule) != nil {
+		return nil, false
+	}
+	granted, ok := decodeKeepSources(fields["granted"])
+	if !ok {
+		return nil, false
+	}
+	imposed, ok := decodeKeepSources(fields["imposed"])
+	if !ok {
+		return nil, false
+	}
+	keep.Granted, keep.Imposed = granted, imposed
+	return keep, true
+}
+
+// decodeKeepSources decodes one side of a keep record. An absent key is an
+// empty side, which is a real answer: advantage has nothing imposed.
+func decodeKeepSources(raw json.RawMessage) ([]RollSource, bool) {
+	if raw == nil {
+		return nil, true
+	}
+	var elements []json.RawMessage
+	if json.Unmarshal(raw, &elements) != nil {
+		return nil, false
+	}
+	sources := make([]RollSource, 0, len(elements))
+	for _, element := range elements {
+		source, ok := decodeRollSource(element)
+		if !ok {
+			return nil, false
+		}
+		sources = append(sources, source)
+	}
+	return sources, true
 }
 
 // decodeDiceReroll decodes one ordered die replacement, requiring its index,
@@ -1504,12 +1607,39 @@ func rollComponentTotal(component RollComponent) int {
 // calculationMatchesD20 checks scalar summaries against the authoritative
 // calculation without deciding any success rule.
 func calculationMatchesD20(calculation *RollCalculation, roll, total int) bool {
+	if !calculationMatchesTotal(calculation, total) {
+		return false
+	}
+	return calculation.Components[0].Dice.Subtotal == roll
+}
+
+// calculationMatchesTotal is [calculationMatchesD20] for a beat that carries
+// the total but no separate roll summary — a social attempt, an unlock. The
+// d20 shape is still checked: the first component is the operation's own pool
+// by the shared calculation contract, and that is what makes its keep record
+// the place a reader looks for advantage and disadvantage.
+func calculationMatchesTotal(calculation *RollCalculation, total int) bool {
 	if calculation == nil || len(calculation.Components) == 0 {
 		return false
 	}
 	first := calculation.Components[0]
 	return first.Dice != nil && first.Dice.DieSize == 20 && !first.SubtractDice &&
-		first.Dice.Subtotal == roll && calculation.Total == total
+		calculation.Total == total
+}
+
+// attemptCalculation decodes the arithmetic an attempt beat carries, refusing
+// one that cannot have produced the total it is filed under. Absent is a real
+// answer — a beat written before this field existed, or by a path that
+// recorded no arithmetic — and decodes to nil with ok.
+func attemptCalculation(raw json.RawMessage, total int) (*RollCalculation, bool) {
+	if raw == nil {
+		return nil, true
+	}
+	calculation, ok := decodeRollCalculation(raw)
+	if !ok || !calculationMatchesTotal(calculation, total) {
+		return nil, false
+	}
+	return calculation, true
 }
 
 // validationComponentFor projects the SDK's string-ref roll component onto the
@@ -1557,6 +1687,7 @@ func validationDiceTraceFor(trace *DiceTrace) *encounter.DiceTrace {
 		FinalRolls:    append([]int(nil), trace.FinalRolls...),
 		KeptIndices:   append([]int(nil), trace.KeptIndices...),
 		Subtotal:      trace.Subtotal,
+		Keep:          validationDiceKeepFor(trace.Keep),
 	}
 	if trace.Rerolls != nil {
 		clone.Rerolls = make([]encounter.DiceReroll, len(trace.Rerolls))
@@ -1571,6 +1702,30 @@ func validationDiceTraceFor(trace *DiceTrace) *encounter.DiceTrace {
 		}
 	}
 	return clone
+}
+
+// validationDiceKeepFor projects the keep record onto the composition's
+// validator shape, so a decoded record that does not describe its own dice is
+// refused by the same replay every other trace fact goes through.
+func validationDiceKeepFor(keep *DiceKeep) *encounter.DiceKeep {
+	if keep == nil {
+		return nil
+	}
+
+	clone := &encounter.DiceKeep{Rule: encounter.KeepRule(keep.Rule)}
+	for _, source := range keep.Granted {
+		clone.Granted = append(clone.Granted, validationRollSourceFor(source))
+	}
+	for _, source := range keep.Imposed {
+		clone.Imposed = append(clone.Imposed, validationRollSourceFor(source))
+	}
+	return clone
+}
+
+func validationRollSourceFor(source RollSource) encounter.RollSource {
+	return encounter.RollSource{
+		Ref: source.Ref, Name: source.Name, Label: source.Label, SourceID: source.SourceID,
+	}
 }
 
 // cloneInt returns an independently owned copy of value, nil-safe.
@@ -1672,11 +1827,12 @@ func windowOpenedBody(payload []byte) EventBody {
 // without a typed body rather than with an invented one.
 func rollWindowOpenedBody(payload []byte) EventBody {
 	var p struct {
-		PresentationID string        `json:"presentation_id"`
-		Audience       string        `json:"audience"`
-		Offer          *beatReaction `json:"offer"`
-		Roll           int           `json:"roll"`
-		Total          int           `json:"total"`
+		PresentationID string          `json:"presentation_id"`
+		Audience       string          `json:"audience"`
+		Offer          *beatReaction   `json:"offer"`
+		Roll           int             `json:"roll"`
+		Total          int             `json:"total"`
+		Calculation    json.RawMessage `json:"calculation"`
 	}
 	if json.Unmarshal(payload, &p) != nil || p.Audience == "" {
 		return nil
@@ -1688,7 +1844,21 @@ func rollWindowOpenedBody(payload []byte) EventBody {
 	if p.Roll < 1 || p.Roll > 20 {
 		return nil
 	}
-	return RollWindowOpenedBody{PresentationID: p.PresentationID, Audience: p.Audience, Offer: *offer, Roll: p.Roll, Total: p.Total}
+	// The window's own arithmetic, checked against BOTH scalars it is shown
+	// beside: a player deciding whether to spend a die must not be shown a
+	// roll that disagrees with the number in front of them (R5).
+	var calculation *RollCalculation
+	if p.Calculation != nil {
+		decoded, ok := decodeRollCalculation(p.Calculation)
+		if !ok || !calculationMatchesD20(decoded, p.Roll, p.Total) {
+			return nil
+		}
+		calculation = decoded
+	}
+	return RollWindowOpenedBody{
+		PresentationID: p.PresentationID, Audience: p.Audience, Offer: *offer,
+		Roll: p.Roll, Total: p.Total, Calculation: calculation,
+	}
 }
 
 // structBody decodes a struck or missed outcome beat's shared fields.
@@ -1711,6 +1881,12 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 	}
 	for key, value := range outer {
 		switch key {
+		// advantage_sources and disadvantage_sources are TOLERATED AND READ BY
+		// NOTHING. The body dropped them when the keep record replaced them
+		// (rpg-project#462 R1), but real fights are already persisted with
+		// them; refusing those payloads on read would delete history that
+		// actually happened. The fold's attribution now arrives inside
+		// calculation.
 		case "beat", "actor", "targets", "roll", "total", "against", "amount", "critical",
 			"attack", "reaction", "damage_components", "advantage_sources", "disadvantage_sources",
 			"presentation_id", "calculation":
@@ -1721,17 +1897,15 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 	}
 
 	var p struct {
-		Actor               string                 `json:"actor"`
-		Targets             []string               `json:"targets"`
-		Roll                int                    `json:"roll"`
-		Total               int                    `json:"total"`
-		Against             int                    `json:"against"`
-		Amount              int                    `json:"amount"`
-		Critical            bool                   `json:"critical"`
-		Attack              beatAttack             `json:"attack"`
-		Reaction            *beatReaction          `json:"reaction"`
-		AdvantageSources    []AttackModifierSource `json:"advantage_sources"`
-		DisadvantageSources []AttackModifierSource `json:"disadvantage_sources"`
+		Actor    string        `json:"actor"`
+		Targets  []string      `json:"targets"`
+		Roll     int           `json:"roll"`
+		Total    int           `json:"total"`
+		Against  int           `json:"against"`
+		Amount   int           `json:"amount"`
+		Critical bool          `json:"critical"`
+		Attack   beatAttack    `json:"attack"`
+		Reaction *beatReaction `json:"reaction"`
 		// PresentationID is REQUIRED TO BE NOTHING, unlike the death save's
 		// own token, and the difference is history rather than taste. That
 		// field shipped with the feature that writes it, so every death-save
@@ -1788,8 +1962,7 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 			Roll: p.Roll, Total: p.Total, Against: p.Against, Damage: p.Amount,
 			Attack: p.Attack.toRef(), Critical: p.Critical,
 			DamageComponents: components,
-			AdvantageSources: p.AdvantageSources, DisadvantageSources: p.DisadvantageSources,
-			Reaction: reaction, PresentationID: p.PresentationID, Calculation: calculation,
+			Reaction:         reaction, PresentationID: p.PresentationID, Calculation: calculation,
 		}
 	}
 	return MissedBody{

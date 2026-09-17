@@ -205,6 +205,17 @@ var omitted = map[string]string{
 	// list is copied, which is why the seam can no longer emit a channel
 	// that is not actually sustaining anything.
 	"perception.Holding.CurrentVia": "fans out into Status and CurrentVia (sightingStatus, convert.go), not a same-shaped passthrough",
+
+	// NOT ADOPTED, NOT DECIDED AGAINST. Both landed in encounter after this
+	// seam's last pin — authored footprint placements with rpg-toolkit#1753,
+	// the typed single-room source with rpg-toolkit#1798 — and surfaced here
+	// the moment a wave lifted session's encounter pin (rpg-project#462's
+	// dice slice, which needed a different new field entirely). Projecting
+	// them is each feature's own slice: a seam field invented by whichever
+	// unrelated wave happens to bump the pin is how a wire shape nobody
+	// designed reaches a client.
+	"encounter.Atlas.Placed":    "authored footprint placements (rpg-toolkit#1753); not yet adopted by this seam",
+	"encounter.Atlas.RoomScene": "typed single-room source (rpg-toolkit#1798); not yet adopted by this seam",
 }
 
 // TestEveryInnerFieldIsCarriedOrJustified is the completeness check.

@@ -190,8 +190,6 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 			`"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting","label":"reroll"}}],"subtotal":4},"modifier":0},`+
 			`"damage_type":"slashing"},`+
 			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}],`+
-			`"advantage_sources":[{"source_ref":"dnd5e:conditions:hidden","source_id":"alice"}],`+
-			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}],`+
 			`"presentation_id":"roll-abc"}`,
 		payload,
 	)

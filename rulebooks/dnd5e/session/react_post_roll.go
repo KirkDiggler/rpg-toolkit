@@ -231,8 +231,10 @@ func recordStrike(
 	}
 	if struck.Hit {
 		recorded.DamageComponents = recordDamageComponents(struck.DamageComponents)
-		recorded.AdvantageSources = recordAttackModifierSources(struck.Folded.AdvantageSources)
-		recorded.DisadvantageSources = recordAttackModifierSources(struck.Folded.DisadvantageSources)
+		// The fold's attribution is NOT recorded beside the dice any more. It
+		// arrives inside Calculation, on the d20 component's keep record, which
+		// is the pool it actually describes — a list beside it could disagree
+		// with it, and this seam wrote both (rpg-project#462 R1).
 	}
 
 	// Set outside the Hit arm on purpose: whether a miss can end or test a

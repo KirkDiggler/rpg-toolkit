@@ -86,11 +86,12 @@ func (m *Manager) answerCheckOffer(
 	// question and then threaten somebody else with the same action.
 	if payload.Door != "" {
 		if _, err := scope.enc.Unlock(&encounter.UnlockInput{
-			Door:    payload.Door,
-			Beaten:  out.Result.Success,
-			Actor:   encounter.MemberID(payload.Audience),
-			Total:   out.Result.Total,
-			Applied: out.Applied,
+			Door:        payload.Door,
+			Beaten:      out.Result.Success,
+			Actor:       encounter.MemberID(payload.Audience),
+			Total:       out.Result.Total,
+			Applied:     out.Applied,
+			Calculation: rollCalculationFor(out.Calculation),
 		}); err != nil {
 			return nil, fmt.Errorf("react: %w", translate(err))
 		}
@@ -161,6 +162,9 @@ func (m *Manager) landResumedSocial(
 		Beaten: out.Result.Success,
 		DC:     out.Applied.DC,
 		Total:  out.Result.Total,
+		// The RESUMED calculation, which is the pre-offer one plus whatever
+		// the answer added — never the frozen one the window asked with.
+		Calculation: rollCalculationFor(out.Calculation),
 	}
 
 	var spec socialVerb

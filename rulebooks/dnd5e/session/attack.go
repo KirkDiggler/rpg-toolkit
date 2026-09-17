@@ -687,6 +687,7 @@ func diceTraceFor(trace *dnd5eEvents.DiceTrace) *encounter.DiceTrace {
 		FinalRolls:    append([]int(nil), trace.FinalRolls...),
 		KeptIndices:   append([]int(nil), trace.KeptIndices...),
 		Subtotal:      trace.Subtotal,
+		Keep:          encounterDiceKeepFor(trace.Keep),
 	}
 	if trace.Rerolls != nil {
 		clone.Rerolls = make([]encounter.DiceReroll, len(trace.Rerolls))
@@ -695,6 +696,67 @@ func diceTraceFor(trace *dnd5eEvents.DiceTrace) *encounter.DiceTrace {
 		}
 	}
 	return clone
+}
+
+// encounterDiceKeepFor carries the keep record onto the persisted trace. A
+// field nobody copies is a field the story never sees: without this the pair
+// of faces reaches the record with nothing to say which one counted or why
+// (rpg-project#462 R1).
+func encounterDiceKeepFor(keep *dnd5eEvents.DiceKeep) *encounter.DiceKeep {
+	if keep == nil {
+		return nil
+	}
+
+	return &encounter.DiceKeep{
+		Rule:    encounter.KeepRule(keep.Rule),
+		Granted: encounterRollSourcesFor(keep.Granted),
+		Imposed: encounterRollSourcesFor(keep.Imposed),
+	}
+}
+
+func encounterRollSourcesFor(sources []dnd5eEvents.RollSource) []encounter.RollSource {
+	if len(sources) == 0 {
+		return nil
+	}
+
+	mapped := make([]encounter.RollSource, len(sources))
+	for i, source := range sources {
+		mapped[i] = encounter.RollSource{
+			Name: source.Name, Label: source.Label, SourceID: source.SourceID,
+		}
+		if source.Ref != nil {
+			mapped[i].Ref = source.Ref.String()
+		}
+	}
+	return mapped
+}
+
+// sessionDiceKeepFor carries the keep record from the persisted trace onto the
+// host-facing one, interpreting nothing.
+func sessionDiceKeepFor(keep *encounter.DiceKeep) *DiceKeep {
+	if keep == nil {
+		return nil
+	}
+
+	return &DiceKeep{
+		Rule:    KeepRule(keep.Rule),
+		Granted: sessionRollSourcesFor(keep.Granted),
+		Imposed: sessionRollSourcesFor(keep.Imposed),
+	}
+}
+
+func sessionRollSourcesFor(sources []encounter.RollSource) []RollSource {
+	if len(sources) == 0 {
+		return nil
+	}
+
+	mapped := make([]RollSource, len(sources))
+	for i, source := range sources {
+		mapped[i] = RollSource{
+			Ref: source.Ref, Name: source.Name, Label: source.Label, SourceID: source.SourceID,
+		}
+	}
+	return mapped
 }
 
 // rollComponentFor deep-clones one component's roll facts: the sourced
@@ -729,6 +791,13 @@ func rollCalculationFor(calculation *dnd5eEvents.RollCalculation) *encounter.Rol
 		}
 	}
 	return clone
+}
+
+// sessionRollCalculationOf carries a rulebook calculation straight onto the
+// host-facing shape, for the paths that hold one without persisting it first —
+// the window payloads, which freeze what the player is being asked about.
+func sessionRollCalculationOf(calculation *dnd5eEvents.RollCalculation) *RollCalculation {
+	return sessionRollCalculationFor(rollCalculationFor(calculation))
 }
 
 // sessionRollCalculationFor deep-clones the neutral persisted calculation onto
@@ -772,6 +841,7 @@ func diceTraceFromEncounter(trace *encounter.DiceTrace) *DiceTrace {
 		OriginalRolls: append([]int(nil), trace.OriginalRolls...),
 		FinalRolls:    append([]int(nil), trace.FinalRolls...),
 		KeptIndices:   append([]int(nil), trace.KeptIndices...), Subtotal: trace.Subtotal,
+		Keep: sessionDiceKeepFor(trace.Keep),
 	}
 	if trace.Rerolls != nil {
 		clone.Rerolls = make([]DiceReroll, len(trace.Rerolls))
@@ -802,24 +872,6 @@ func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.Damage
 		out = append(out, encounter.DamageComponent{
 			Source: string(component.Source), Roll: rollComponentFor(component.Roll),
 			DamageType: string(component.DamageType), Multiplier: multiplier,
-		})
-	}
-	return out
-}
-
-func recordAttackModifierSources(in []dnd5eEvents.AttackModifierSource) []encounter.AttackModifierSource {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make([]encounter.AttackModifierSource, 0, len(in))
-	for _, source := range in {
-		var sourceRef string
-		if source.SourceRef != nil {
-			sourceRef = source.SourceRef.String()
-		}
-		out = append(out, encounter.AttackModifierSource{
-			SourceRef: sourceRef,
-			SourceID:  source.SourceID,
 		})
 	}
 	return out

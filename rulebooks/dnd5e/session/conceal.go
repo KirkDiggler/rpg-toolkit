@@ -186,10 +186,15 @@ func (m *Manager) resolveStagedCheckPoseable(
 		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
 	}
 
+	// THE CALCULATION CROSSES WITH THE VERDICT. This seam used to narrow the
+	// check to {Beaten, Applied, Total}, and everything the rules package had
+	// recorded about the roll — both d20 faces, which one was kept, the rule
+	// that decided it — died right here (rpg-project#462).
 	return &stagedCheckOutcome{Verdict: &encounter.ResolveCheckOutput{
-		Beaten:  out.Result.Success,
-		Applied: out.Applied,
-		Total:   out.Result.Total,
+		Beaten:      out.Result.Success,
+		Applied:     out.Applied,
+		Total:       out.Result.Total,
+		Calculation: rollCalculationFor(out.Calculation),
 	}}, nil
 }
 
@@ -243,9 +248,10 @@ func (m *Manager) declineStagedOffer(
 	}
 
 	return &encounter.ResolveCheckOutput{
-		Beaten:  out.Result.Success,
-		Applied: out.Applied,
-		Total:   out.Result.Total,
+		Beaten:      out.Result.Success,
+		Applied:     out.Applied,
+		Total:       out.Result.Total,
+		Calculation: rollCalculationFor(out.Calculation),
 	}, nil
 }
 
