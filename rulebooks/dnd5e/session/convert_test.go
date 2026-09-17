@@ -95,6 +95,8 @@ var renamed = map[string]struct{ outer, reason string }{
 	"encounter.Atlas.Orientation": {outer: "Layout",
 		reason: "the frame an author typed in becomes the layout a client draws in — same " +
 			"two values, a different question, and a different name so they cannot be confused"},
+	"encounter.Atlas.RoomScene": {outer: "RoomSceneJSON",
+		reason: "the canonical encounter presentation is validated and encoded as JSON so no inner scene type crosses S2"},
 
 	// Confirmed is "when this payload was last landed, whether or not it
 	// changed" (mind/perception's own doc) — exactly what Sighting.At has
@@ -109,6 +111,7 @@ var renamed = map[string]struct{ outer, reason string }{
 // reason. Anything absent from a projection and absent from here is a bug, not
 // a decision.
 var omitted = map[string]string{
+	"encounter.Atlas.Placed": "engine-only placement geometry; movement and sight remain encounter answers, and no raw contributor is on this wire",
 	// A record entry names every viewer a beat was addressed to. Returning that
 	// would tell one player which other members exist and were present —
 	// including members they have never perceived and rooms they have never
