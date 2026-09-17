@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -462,7 +463,7 @@ func (m *castMachine) wardCastStep(
 			if !out.Result.Success {
 				m.outcome.Targets = append(m.outcome.Targets, CastTargetOutcome{
 					TargetID: target.targetID,
-					Warded:   &WardOutcome{SourceID: ward.SourceID, Save: out.Result},
+					Warded:   &WardOutcome{SourceID: ward.SourceID, Ability: abilities.WIS, Save: out.Result},
 				})
 				return m.resolveTarget(index + 1), nil
 			}

@@ -26,6 +26,13 @@ type WardOutcome struct {
 	// SourceID is the caster whose Sanctuary blocked this attempt.
 	SourceID string
 
+	// Ability is the ability the attacker's failed save was made with —
+	// always Wisdom for Sanctuary today, but carried explicitly rather than
+	// left for a caller to hardcode, the same reason every other saving
+	// throw in this package names its own ability instead of leaving it
+	// implicit.
+	Ability abilities.Ability
+
 	// Save is the attacker's failed saving throw, for the story.
 	Save *saves.SavingThrowResult
 }

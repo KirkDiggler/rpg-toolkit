@@ -229,7 +229,7 @@ func (m *strikeMachine) wardCheckStep(
 			if !out.Result.Success {
 				m.outcome = StrikeOutcome{
 					AttackerID: m.in.AttackerID, TargetID: m.in.TargetID,
-					Warded: &WardOutcome{SourceID: ward.SourceID, Save: out.Result},
+					Warded: &WardOutcome{SourceID: ward.SourceID, Ability: abilities.WIS, Save: out.Result},
 				}
 				return Done{Outcome: m.outcome}, nil
 			}
