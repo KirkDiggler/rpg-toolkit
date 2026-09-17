@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -250,8 +251,9 @@ func voidFromData(name string) (Void, error) {
 // TestTheHandedOutCanvasAnswersTheSameWay.
 //
 // It EMBEDS the room rather than reimplementing it: every other read, every
-// mutator, and the grid itself are spatial's, unchanged. One method is
-// overridden, and it is the one the declaration is about.
+// mutator, and the grid itself are spatial's, unchanged. The placement
+// predicate is extended with the field's shared footprint fact, and sight is
+// overridden for the void and placed-obstruction declarations.
 type canvasRoom struct {
 	*spatial.BasicRoom
 
@@ -260,6 +262,16 @@ type canvasRoom struct {
 	// floor and asking the encounter are one question — see
 	// IsLineOfSightBlocked.
 	field *field
+}
+
+// CanPlaceEntity retains spatial's entity-occupancy predicate and adds the
+// field's shared centre-coverage fact for movement-blocking footprints.
+func (c *canvasRoom) CanPlaceEntity(entity core.Entity, pos spatial.Position) bool {
+	if !c.BasicRoom.CanPlaceEntity(entity, pos) {
+		return false
+	}
+	_, blocked := c.field.standingBlocks(pos)
+	return !blocked
 }
 
 // IsLineOfSightBlocked reports whether sight between two cells is blocked,

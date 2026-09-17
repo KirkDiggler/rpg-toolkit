@@ -191,6 +191,18 @@ func validatePlacement(p spatial.FootprintPlacement) error {
 		return fmt.Errorf("placement footprint sides must be positive: %w", ErrNoField)
 	}
 
+	// Validate through spatial's released geometry path as well as the basic
+	// scalar checks above. Extremely small finite boxes can underflow during
+	// polygon measurement, and admitting one would defer an unmeasurable
+	// placement error to every runtime trace.
+	if _, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+		Placement: p,
+		From:      p.Origin,
+		To:        p.Origin,
+	}); err != nil {
+		return fmt.Errorf("placement geometry cannot be measured: %w; %w", ErrNoField, err)
+	}
+
 	return nil
 }
 

@@ -130,14 +130,14 @@ func (e *Encounter) Canvas() (spatial.Room, error) {
 // IsAdjacent, GetLineOfSight, GetPositionsInRange), so handing out the grid
 // hands out no way to change it.
 //
-// The pass-throughs behave EXACTLY as the room does, which is the invariant
-// worth stating because it also decides what not to do. CanPlaceEntity takes an
-// entity and spatial dereferences it without a nil check — measured:
-// BasicRoom.CanPlaceEntity(nil, an occupied cell) panics, and on an empty cell
-// it returns true because the loop never runs. That is spatial's behaviour, not
-// this view's, and guarding it HERE would make the view answer differently from
-// the room it stands in front of. The mutators are the only place this type
-// decides anything, and they are the only place it guards anything.
+// The read pass-throughs behave EXACTLY as the room does, which is the
+// invariant worth stating because it also decides what not to do. Placement is
+// the one shared canvas predicate extended by canvasRoom: after spatial's
+// entity-occupancy answer, it also refuses movement-blocking footprint contact.
+// It still takes an entity and spatial dereferences it without a nil check —
+// measured: BasicRoom.CanPlaceEntity(nil, an occupied cell) panics, and on an
+// empty cell it returns true because the loop never runs. That legacy behavior
+// is retained; the footprint fact is the only added decision here.
 type readOnlyRoom struct {
 	canvas *canvasRoom
 }

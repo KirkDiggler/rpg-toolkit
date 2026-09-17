@@ -166,6 +166,21 @@ func (s *PlacedPropsSuite) TestSetupRefusesAMemberAuthoredOntoACoveredCentre() {
 	s.Contains(err.Error(), "table-a")
 }
 
+func (s *PlacedPropsSuite) TestHandedOutCanvasRefusesMovementFootprintCoverage() {
+	enc, err := s.setup(placedField(placed("table-a", coveredBox(5, centreOf(cellAt(1, 1))), true, false)), encounter.MemberInput{
+		ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0),
+	})
+	s.Require().NoError(err)
+	canvas, err := enc.Canvas()
+	s.Require().NoError(err)
+	entities := canvas.GetAllEntities()
+	s.Require().Contains(entities, string(alice))
+	s.False(canvas.CanPlaceEntity(entities[string(alice)], cellAt(1, 1)),
+		"the public canvas predicate must include the shared footprint fact")
+	s.True(canvas.CanPlaceEntity(entities[string(alice)], cellAt(2, 1)),
+		"an uncovered centre retains ordinary placement semantics")
+}
+
 // --- The two flags are independent; all four combinations are real content ---
 
 func (s *PlacedPropsSuite) TestMovementWithoutSightClosesFeetAndOpensSight() {
@@ -366,6 +381,7 @@ func (s *PlacedPropsSuite) TestInvalidPlacementsAreRefused() {
 		{"no id", encounter.PlacedPropInput{Placement: valid, BlocksMovement: true}, nil},
 		{"no box", encounter.PlacedPropInput{ID: "ghost", BlocksMovement: true}, nil},
 		{"zero side", placed("ghost", coveredBox(0, centreOf(cellAt(1, 1))), true, false), nil},
+		{"unmeasurable tiny side", placed("ghost", coveredBox(1e-200, centreOf(cellAt(1, 1))), true, false), nil},
 		{"nan origin", placed("ghost", spatial.FootprintPlacement{
 			Footprint: spatial.Footprint{Box: &spatial.Box{W: 5, D: 5}},
 			Origin:    spatial.Point{X: math.NaN(), Y: 0},
