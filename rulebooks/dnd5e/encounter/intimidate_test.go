@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -22,6 +23,11 @@ import (
 // the author planted.
 type IntimidateTestSuite struct {
 	suite.Suite
+	ctx context.Context
+}
+
+func (s *IntimidateTestSuite) SetupTest() {
+	s.ctx = context.Background()
 }
 
 func TestIntimidateSuite(t *testing.T) {
@@ -91,13 +97,12 @@ func (s *IntimidateTestSuite) beatsOfKind(
 func (s *IntimidateTestSuite) TestABeatenThreatLandsOnWhoeverSawIt() {
 	enc := s.scene()
 
-	out, err := enc.Intimidate(&encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
+	out, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 	s.True(out.Beaten)
 	s.Equal([]encounter.MemberID{alice, goblin}, out.Witnesses, "billy is behind the wall")
-	s.Empty(out.Fact, "nobody authored a fact on this goblin")
 
 	saw, ok := s.deedOf(enc, goblin, alice)
 	s.Require().True(ok, "the goblin heard the threat")
@@ -118,8 +123,8 @@ func (s *IntimidateTestSuite) TestTheWitnessReadIsTheAudience() {
 	s.Require().NoError(err)
 	s.Equal([]encounter.MemberID{alice, goblin}, witnesses, "billy is behind the wall")
 
-	out, err := enc.Intimidate(&encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
+	out, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 	s.Equal(witnesses, out.Witnesses, "what the caller was told, and what the verb used")
@@ -133,12 +138,11 @@ func (s *IntimidateTestSuite) TestTheWitnessReadIsTheAudience() {
 func (s *IntimidateTestSuite) TestAMissedThreatLandsNothing() {
 	enc := s.scene()
 
-	out, err := enc.Intimidate(&encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 4,
+	out, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 4, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 	s.False(out.Beaten)
-	s.Empty(out.Fact)
 
 	_, ok := s.deedOf(enc, goblin, alice)
 	s.False(ok, "a threat nobody was frightened by is a sentence in the air")
@@ -151,8 +155,8 @@ func (s *IntimidateTestSuite) TestAMissedThreatLandsNothing() {
 func (s *IntimidateTestSuite) TestTheTableSeesTheDieWhetherItLandedOrNot() {
 	for _, beaten := range []bool{true, false} {
 		enc := s.scene()
-		_, err := enc.Intimidate(&encounter.IntimidateInput{
-			Actor: alice, Target: goblin, Beaten: beaten, DC: 9, Total: 14,
+		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+			Actor: alice, Target: goblin, Beaten: beaten, DC: 9, Total: 14, Roller: rollsLowest{},
 		})
 		s.Require().NoError(err)
 
@@ -172,8 +176,8 @@ func (s *IntimidateTestSuite) TestTheTableSeesTheDieWhetherItLandedOrNot() {
 func (s *IntimidateTestSuite) TestAThreatThroughAWallIsRefused() {
 	enc := s.scene()
 
-	_, err := enc.Intimidate(&encounter.IntimidateInput{
-		Actor: alice, Target: billy, Beaten: true, DC: 9, Total: 20,
+	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: billy, Beaten: true, DC: 9, Total: 20, Roller: rollsLowest{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrUnwitnessed)
 	s.Empty(s.beatsOfKind(enc, alice, encounter.BeatIntimidated), "a refusal writes no beat")
@@ -183,19 +187,19 @@ func (s *IntimidateTestSuite) TestAThreatThroughAWallIsRefused() {
 func (s *IntimidateTestSuite) TestRefusals() {
 	enc := s.scene()
 
-	_, err := enc.Intimidate(nil)
+	_, err := enc.Intimidate(s.ctx, nil)
 	s.ErrorIs(err, encounter.ErrNilInput)
 
-	_, err = enc.Intimidate(&encounter.IntimidateInput{Actor: alice})
+	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{Actor: alice, Roller: rollsLowest{}})
 	s.ErrorIs(err, encounter.ErrNoMember, "a threat with no target")
 
-	_, err = enc.Intimidate(&encounter.IntimidateInput{Actor: "nobody", Target: goblin})
+	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{Actor: "nobody", Target: goblin, Roller: rollsLowest{}})
 	s.ErrorIs(err, encounter.ErrNotMember)
 
-	_, err = enc.Intimidate(&encounter.IntimidateInput{Actor: alice, Target: "nobody"})
+	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{Actor: alice, Target: "nobody", Roller: rollsLowest{}})
 	s.ErrorIs(err, encounter.ErrNotMember)
 
-	_, err = enc.Intimidate(&encounter.IntimidateInput{Actor: alice, Target: alice})
+	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{Actor: alice, Target: alice, Roller: rollsLowest{}})
 	s.ErrorIs(err, encounter.ErrNotMember, "frightening yourself is a caller defect")
 }
 
@@ -206,6 +210,12 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 	const sergeant = core.EntityID("sergeant")
 
 	open := func(fact encounter.FactID) *encounter.Encounter {
+		var table map[string][]encounter.Answer
+		if fact != "" {
+			table = map[string][]encounter.Answer{
+				encounter.AnswerIntimidated: {{Weight: 1, Fact: fact}},
+			}
+		}
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
 			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -222,7 +232,7 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
 				{ID: sergeant, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-					Faction: campFaction, OnIntimidated: fact},
+					Faction: campFaction, Answers: table},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})
@@ -239,31 +249,28 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 		enc := open(campFact)
 		s.Require().Equal(encounter.StanceHostile, stance(enc), "precondition: nobody knows yet")
 
-		out, err := enc.Intimidate(&encounter.IntimidateInput{
-			Actor: alice, Target: sergeant, Beaten: true, DC: 10, Total: 17,
+		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+			Actor: alice, Target: sergeant, Beaten: true, DC: 10, Total: 17, Roller: rollsLowest{},
 		})
 		s.Require().NoError(err)
-		s.Equal(campFact, out.Fact)
 		s.Equal(encounter.StanceNeutral, stance(enc))
 	})
 
 	s.Run("authored but missed: the camp learns nothing", func() {
 		enc := open(campFact)
-		out, err := enc.Intimidate(&encounter.IntimidateInput{
-			Actor: alice, Target: sergeant, Beaten: false, DC: 10, Total: 3,
+		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+			Actor: alice, Target: sergeant, Beaten: false, DC: 10, Total: 3, Roller: rollsLowest{},
 		})
 		s.Require().NoError(err)
-		s.Empty(out.Fact)
 		s.Equal(encounter.StanceHostile, stance(enc))
 	})
 
 	s.Run("unauthored: a scared sergeant does not turn a camp nobody told", func() {
 		enc := open("")
-		out, err := enc.Intimidate(&encounter.IntimidateInput{
-			Actor: alice, Target: sergeant, Beaten: true, DC: 10, Total: 17,
+		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+			Actor: alice, Target: sergeant, Beaten: true, DC: 10, Total: 17, Roller: rollsLowest{},
 		})
 		s.Require().NoError(err)
-		s.Empty(out.Fact)
 		s.Equal(encounter.StanceHostile, stance(enc))
 	})
 }
@@ -280,7 +287,9 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	enc := s.scene(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4},
-			Mind: "coward", Intimidate: approaches, OnIntimidated: campFact},
+			Mind: "coward", Intimidate: approaches, Answers: map[string][]encounter.Answer{
+				encounter.AnswerIntimidated: {{Weight: 1, Fact: campFact}},
+			}},
 	)
 
 	read := func(enc *encounter.Encounter) encounter.Member {
@@ -296,13 +305,13 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	}
 
 	s.Equal(approaches, read(enc).Intimidate)
-	s.Equal(campFact, read(enc).OnIntimidated)
+	s.Equal(campFact, read(enc).Answers[encounter.AnswerIntimidated][0].Fact)
 
 	// Learn the fact first, so the blob carries a `known:fact` this field
 	// mints ONLY because the placement authored it — the trust boundary has
 	// to accept it on the way back in.
-	_, err := enc.Intimidate(&encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 12, Total: 18,
+	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 12, Total: 18, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 
@@ -313,7 +322,8 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	})
 	s.Require().NoError(err)
 	s.Equal(approaches, read(reloaded).Intimidate, "and survives a reload")
-	s.Equal(campFact, read(reloaded).OnIntimidated)
+	s.Equal(campFact, read(reloaded).Answers[encounter.AnswerIntimidated][0].Fact,
+		"the table survives the reload, and the blob's trust boundary accepts the fact it mints")
 }
 
 // A route with nothing to beat is the same defect on a member that it is on

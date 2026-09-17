@@ -51,6 +51,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // Spec is the authored dungeon, decoded and not yet checked. Every field is
@@ -760,7 +762,7 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
 			"offset", "targeting", "actions", "boss", "holds", "holdable", "faction",
-			"arrives", "intimidate", "on":
+			"arrives", "intimidate", "persuade", "on":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)
@@ -813,34 +815,134 @@ type ApproachSpec struct {
 	DC int `yaml:"dc"`
 }
 
-// OnIntimidated is the only verb [PlaceSpec.On] accepts today: the key an
-// author writes under `on:` to say what the world learns when a threat
-// against this monster lands.
+// The four keys [PlaceSpec.On] accepts: one per social verb per verdict,
+// spelled as the composition spells them ([encounter.AnswerKeys]) so the
+// file, the validator and the run cannot disagree about what an outcome is
+// called.
 //
-// A CONSTANT RATHER THAN A LITERAL because two places have to agree about
-// it — the validator that refuses every other key, and the compiler that
-// reads this one — and because the next shenanigan adds a sibling here
-// rather than a second spelling somewhere else.
-const OnIntimidated = "intimidated"
+// FAILURE HAS A TABLE TOO, and that is deliberate: "a failed Intimidate that
+// raises the alarm makes attempting worse than not attempting… it is what
+// gives the untrained rule teeth" (ideas/shenanigans/front-room-goblin.md).
+const (
+	// OnIntimidated is what the creature does when a threat lands.
+	OnIntimidated = encounter.AnswerIntimidated
 
-// OnSpec is what the world learns from one shenanigan landing: an authored
-// fact id, and nothing else yet.
+	// OnIntimidateFailed is what it does when a threat misses.
+	OnIntimidateFailed = encounter.AnswerIntimidateFailed
+
+	// OnPersuaded is what it does when an appeal lands.
+	OnPersuaded = encounter.AnswerPersuaded
+
+	// OnPersuadeFailed is what it does when an appeal misses.
+	OnPersuadeFailed = encounter.AnswerPersuadeFailed
+)
+
+// laterWords are the outcome words this design NAMES and this build does not
+// land, refused BY NAME with where they went (rpg-project#458).
 //
-// AN OBJECT RATHER THAN A BARE STRING, deliberately. `on: { intimidated:
-// sergeant-cowed }` would read fine today and have nowhere to put the second
-// thing a landed verb might teach — a stance, a round, a second fact. The
-// object is the shape that grows a key instead of breaking a file.
-type OnSpec struct {
-	// Fact is the authored fact id every witness learns. REQUIRED
-	// non-empty: an `on:` entry that teaches nothing is a line the author
-	// wrote for a reason, and accepting it would silently never fire.
+// THE SAME COURTESY THE DELETED `knows` KEY GETS ([knowsRefusal]). An author
+// who wrote `alarm:` meant something real — it is slice three of the
+// shenanigans folder — and a dungeon that accepted the line would silently
+// never fire it. Refusing as a bare unknown field would tell them the word
+// does not exist, which is false and sends them looking for a typo.
+var laterWords = map[string]string{
+	"alarm":   "designed as the Alarm slice and not built yet",
+	"lure":    "designed and not built yet",
+	"pretend": "designed as the Insight slice and not built yet",
+	"tell":    "not a word: a fact taught to whoever was there is `fact`",
+}
+
+// AnswerSpec is ONE ENTRY in an outcome's table: how likely it is, what the
+// creature says, and the one thing it does.
+//
+// # One entry fires, and weights are relative
+//
+// The engine sums the table's weights and rolls one die of that size, so an
+// author may write 3 and 1 or 75 and 25 and mean the same thing. An omitted
+// weight is 1, which makes a table of entries that all omit it an even split
+// and a single entry the certainty it looks like.
+//
+// # Exactly one word, or none
+//
+// `fact` or `flee`, never both — two words in one entry is refused at
+// validation so an author never has to guess ordering. Wanting two things to
+// happen is not expressible today and two entries do not express it either; a
+// later slice may add a list under one entry when a use case pays for one.
+//
+// An entry with NO word is legal only when it has a line to say: a creature
+// that answers and does nothing is a real outcome, and one that neither speaks
+// nor acts is a row written for no reason.
+type AnswerSpec struct {
+	// Weight is this entry's relative share. OMITTED MEANS 1, which is why
+	// this is a pointer: `weight: 0` is a row that can never fire, and an
+	// int could not tell it apart from a row that named no weight at all.
+	// Refused below 1.
+	Weight *int `yaml:"weight,omitempty"`
+
+	// Say is the creature's line, carried VERBATIM onto the beat. The engine
+	// never composes it. Omitted means the creature says nothing.
+	//
+	// "This is also a place where the dungeon author can put text the goblin
+	// would say for each outcome" (Kirk).
+	Say string `yaml:"say,omitempty"`
+
+	// Fact is the authored fact id every witness learns when this entry
+	// fires — what the old `on: { intimidated: { fact: … } }` said, now one
+	// entry of one outcome's table. A disposition's `until: { fact: … }`
+	// does the rest.
 	//
 	// CARRIED VERBATIM, not key-prefixed — a fact is a word a disposition
-	// waits for by name, like a faction rather than a door (compile.go's
-	// intel reveals do the same). The dungeon ALLOWS a fact nothing else
-	// mentions (R8, pre-release: show the cost), so this is not checked
-	// against the dispositions.
-	Fact string `yaml:"fact"`
+	// waits for by name, like a faction rather than a door. The dungeon
+	// ALLOWS a fact nothing else mentions (R8, pre-release: show the cost),
+	// so this is not checked against the dispositions.
+	//
+	// A POINTER for [AnswerSpec.Weight]'s reason: `fact: ""` is an author
+	// who wrote the key and did not finish the sentence, and a plain string
+	// could not tell that apart from an entry that named no fact at all. The
+	// two get different defects because they are different mistakes.
+	Fact *string `yaml:"fact,omitempty"`
+
+	// Flee sends the creature away from whoever spoke to it, its own full
+	// speed, as a directed move — `flee: {}`. An EMPTY MAPPING rather than a
+	// bare word because a word with no body has nowhere to grow: the day
+	// fleeing takes a distance or a destination, `flee: { toward: … }` is an
+	// addition to this file and not a break in every file that has one.
+	Flee *FleeSpec `yaml:"flee,omitempty"`
+}
+
+// FleeSpec is `flee: {}` — the word, with no options yet. It exists as a type
+// rather than a bool so the key is written the way every other outcome word
+// is, and so the first option it grows is a field here.
+type FleeSpec struct{}
+
+// UnmarshalYAML reads one answer entry, refusing the designed-but-unbuilt
+// words by name ([laterWords]) and every unknown key, for
+// [PlaceSpec.UnmarshalYAML]'s reason.
+func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: an answer entry is { weight, say } plus at most one of { fact, flee }",
+			value.Line)
+	}
+	for i := 0; i < len(value.Content); i += 2 {
+		key := value.Content[i].Value
+		if why, later := laterWords[key]; later {
+			return fmt.Errorf("line %d: `%s` is %s (rpg-project#458)", value.Content[i].Line, key, why)
+		}
+		switch key {
+		case "weight", "say", "fact", "flee":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
+				value.Content[i].Line, key)
+		}
+	}
+	type answerBody AnswerSpec
+	var obj answerBody
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	*r = AnswerSpec(obj)
+
+	return nil
 }
 
 // PlaceSpec is one authored placement at an ABSOLUTE cell.
@@ -1021,22 +1123,45 @@ type PlaceSpec struct {
 	// lock's empty list gets.
 	Intimidate CheckSpec `yaml:"intimidate,omitempty"`
 
-	// On is what the WORLD learns when a shenanigan against this monster
-	// lands, keyed by the verb that landed (rpg-project#454, design
-	// decision 7): `on: { intimidated: { fact: sergeant-cowed } }`. Every
-	// witness learns the fact through the existing learnFact path, and a
-	// disposition's `until: { fact: sergeant-cowed }` does the rest.
-	// MONSTERS ONLY.
+	// Persuade is the check a character must beat to talk this monster round
+	// (rpg-project#458) — [PlaceSpec.Intimidate]'s twin, the same approach
+	// list priced per route: `persuade: [{ ability: persuasion, dc: 10 }]`.
+	// MONSTERS ONLY, refused on anything else.
 	//
-	// KEYED BY VERB SO THE SECOND SHENANIGAN ADDS A KEY, NOT A FIELD.
-	// `intimidated` is the only verb this build has; anything else is a
-	// field error naming the key, not a quietly ignored line — an author
-	// who wrote `on: { persuaded: … }` meant something, and a dungeon that
-	// accepted it would silently never fire it.
+	// OMITTED MEANS DERIVED, NOT UNGATED, exactly as Intimidate's is: absent,
+	// the rulebook rolls Persuasion against the stat block's own passive
+	// Insight. An empty list is refused as what it is, a check with no way
+	// through.
+	Persuade CheckSpec `yaml:"persuade,omitempty"`
+
+	// On is the ANSWER TABLE: what this monster does about a social verb's
+	// verdict, keyed by outcome, a weighted list of entries under each
+	// (rpg-project#458, ideas/shenanigans/front-room-goblin.md). MONSTERS
+	// ONLY.
 	//
-	// Absent means no fact, which is the common case: a scared goblin does
-	// not turn the camp unless the author planted the fact that says so.
-	On map[string]OnSpec `yaml:"on,omitempty"`
+	//	on:
+	//	  intimidated:
+	//	    - { weight: 70, say: "Fine! The cellar door is behind the barrels.", fact: goblin-cowed }
+	//	    - { weight: 30, say: "Boss! BOSS!", flee: {} }
+	//	  intimidate_failed:
+	//	    - { say: "Big talk for someone standing in my doorway." }
+	//
+	// A LIST, NOT A SINGLE OUTCOME, and that is the change from the shape
+	// this replaced. `on: { intimidated: { fact: x } }` said one thing about
+	// one outcome and had nowhere to put a line of speech, a failed attempt
+	// or a creature that runs. It is GONE rather than kept beside this —
+	// a dual representation of one authored fact is the thing this repo bans
+	// — and a file that still uses it fails on the entry's own shape.
+	//
+	// KEYED BY OUTCOME SO THE NEXT VERB ADDS A KEY, NOT A FIELD. The four
+	// keys this build lands are listed above; anything else is a field error
+	// naming the key, and a word the design named but has not built is
+	// refused by name with where it went ([laterWords]).
+	//
+	// Absent means the creature answers nothing, which is the common case: a
+	// scared goblin does not turn the camp unless the author planted the
+	// fact that says so.
+	On map[string][]AnswerSpec `yaml:"on,omitempty"`
 
 	// Arrives is the predicate that brings this placement into the run
 	// (rpg-project#375, the hold-out design §2, §3.7, R6). MONSTERS AND

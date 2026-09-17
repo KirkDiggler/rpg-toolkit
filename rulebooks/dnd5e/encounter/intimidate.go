@@ -4,10 +4,12 @@
 package encounter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -112,6 +114,20 @@ type IntimidateInput struct {
 	// check; nothing here reads them.
 	DC    int
 	Total int
+
+	// Roller is THE WORLD'S DIE, the one the answer table is picked with.
+	// REQUIRED — supplied, never defaulted ([ErrNoRoller]), for
+	// resolution.CheckInput.Roller's standing reason: a silent default puts
+	// untestable randomness into a result that looks fine, and R1 says this
+	// roll is shown to the table.
+	//
+	// PER CALL RATHER THAN A CONSTRUCTOR CAPABILITY, unlike
+	// [InitiativeRoller]. Every capability refused at [NewEncounter] is one
+	// the composition consults from first light and cannot avoid; this one
+	// is consulted only when somebody speaks to a creature whose author
+	// wrote it a table. That is [Decider]'s shape, not Initiative's — and
+	// the caller that rolled the check is the caller that holds the die.
+	Roller dice.Roller
 }
 
 // IntimidateOutput reports what the threat reached.
@@ -126,11 +142,6 @@ type IntimidateOutput struct {
 	// order.
 	Witnesses []MemberID
 
-	// Fact is the world fact the witnesses learned, or empty when the
-	// author planted none or the check was missed. Echoed so a caller can
-	// narrate "the camp knows" without re-reading the placement.
-	Fact FactID
-
 	// Seq is the sequence number of the `intimidated` beat. A failed
 	// attempt gets one too: somebody tried, and the story is what happened
 	// rather than what worked ([UnlockOutput.Seq]).
@@ -138,113 +149,162 @@ type IntimidateOutput struct {
 }
 
 // Intimidate reports a threat against a member, and on a beaten check lands
-// the deed that frightened it.
+// the deed that frightened it — then rolls whatever the author wrote the
+// creature does about it.
 //
-// Validation order (R5 atomicity): nil input → empty actor/target → closed →
-// actor is a member → target is a member → actor and target are not the same
-// → the actor is placed → the target can see the actor → the beat → the deed
-// → the fact.
+// Validation order (R5 atomicity): nil input → empty actor/target → no roller
+// → closed → actor is a member → target is a member → actor and target are not
+// the same → the actor is placed → the target can see the actor → the beat →
+// the deed → the answer.
 //
 // THE BEAT IS APPENDED BEFORE ITS CONSEQUENCES, the law
 // [Encounter.refreshSight] states: the threat is the cause, and a stance beat
-// ahead of the threat that explains it would be a story told backwards.
+// ahead of the threat that explains it would be a story told backwards. The
+// ANSWERED beat comes after both, because it is the result rather than the
+// cause (answer.go).
 //
-// Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember, ErrBadPlacement,
-// ErrUnwitnessed.
-func (e *Encounter) Intimidate(in *IntimidateInput) (*IntimidateOutput, error) {
+// Errors: ErrNilInput, ErrNoMember, ErrNoRoller, ErrClosed, ErrNotMember,
+// ErrBadPlacement, ErrUnwitnessed.
+func (e *Encounter) Intimidate(ctx context.Context, in *IntimidateInput) (*IntimidateOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("intimidate: %w", ErrNilInput)
 	}
-	if in.Actor == "" || in.Target == "" {
-		return nil, fmt.Errorf("intimidate: %w", ErrNoMember)
-	}
-	if e.outcome != nil {
-		return nil, fmt.Errorf("intimidate: %w", ErrClosed)
-	}
-
-	if _, ok := e.members[in.Actor]; !ok {
-		return nil, fmt.Errorf("intimidate: actor %q: %w", in.Actor, ErrNotMember)
-	}
-	target, ok := e.members[in.Target]
-	if !ok {
-		return nil, fmt.Errorf("intimidate: target %q: %w", in.Target, ErrNotMember)
-	}
-	// Frightening yourself is not a shenanigan, it is a caller defect — and
-	// it would land a deed naming its own holder, which no mind can read as
-	// anything.
-	if in.Actor == in.Target {
-		return nil, fmt.Errorf("intimidate: actor %q cannot threaten itself: %w", in.Actor, ErrNotMember)
-	}
-
-	where, witnesses, err := e.audienceOf(in.Actor)
-	if err != nil {
-		return nil, fmt.Errorf("intimidate: %w", err)
-	}
-	if !slices.Contains(witnesses, in.Target) {
-		return nil, fmt.Errorf("intimidate: target %q cannot see the actor: %w", in.Target, ErrUnwitnessed)
-	}
-
-	at := uint64(e.clock.ToData().HighWater)
-	seq, err := e.appendIntimidatedBeat(in, witnesses, at)
+	out, err := e.social(ctx, socialInput{
+		verb: DeedIntimidate, beat: BeatIntimidated, tag: "intimidate",
+		actor: in.Actor, target: in.Target, beaten: in.Beaten,
+		dc: in.DC, total: in.Total, roller: in.Roller,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	out := &IntimidateOutput{Beaten: in.Beaten, Witnesses: witnesses, Seq: seq}
-	if !in.Beaten {
-		return out, nil
-	}
-
-	if err := e.landDeed(DeedIntimidate, in.Actor, in.Target, where, witnesses); err != nil {
-		return nil, fmt.Errorf("intimidate: %w", err)
-	}
-
-	// THE WORLD HALF IS OPT-IN and it is the TARGET's placement that opts
-	// in: `on: { intimidated: { fact: sergeant-cowed } }` is authored on the
-	// monster being threatened, and the witnesses to that threat are who
-	// learn it. Absent means no fact and the camp does not care.
-	if target.OnIntimidated == "" {
-		return out, nil
-	}
-	for _, id := range witnesses {
-		if err := e.learnFact(id, target.OnIntimidated, "intimidated", at); err != nil {
-			return nil, fmt.Errorf("intimidate: %w", err)
-		}
-	}
-	out.Fact = target.OnIntimidated
-
-	return out, nil
+	return &IntimidateOutput{Beaten: out.beaten, Witnesses: out.witnesses, Seq: out.seq}, nil
 }
 
-// appendIntimidatedBeat writes what the table saw: who threatened whom, the
-// DC, the total, and whether it landed.
+// socialInput is one social verb's landing, in the vocabulary the shared body
+// takes it in. Unexported: the seam's own words are [IntimidateInput] and
+// [PersuadeInput], and this is the machine underneath them.
+type socialInput struct {
+	verb   string
+	beat   string
+	tag    string
+	actor  MemberID
+	target MemberID
+	beaten bool
+	dc     int
+	total  int
+	roller dice.Roller
+}
+
+// socialOutput is what the shared body reached.
+type socialOutput struct {
+	beaten    bool
+	witnesses []MemberID
+	seq       uint64
+}
+
+// social is THE ONE BODY BOTH SOCIAL VERBS RUN, and sharing it is the design's
+// own claim: "Persuade is Intimidate's twin on the same machine". The audience,
+// the refusals, the beat, the deed and the answer are identical; what differs
+// is the verb the deed lands under, the beat's name and which half of the
+// table the verdict reads.
+//
+// TWO BODIES WOULD BE TWO ANSWERS TO "WHO IS THE AUDIENCE". The moment one of
+// them learned something about witnesses the other did not, a threat and an
+// appeal in the same room would reach different people for reasons nobody
+// wrote down. The price a verb costs and the DC it faces are exactly where the
+// two verbs DO differ, and both of those live on the other side of this seam.
+func (e *Encounter) social(ctx context.Context, in socialInput) (socialOutput, error) {
+	if in.actor == "" || in.target == "" {
+		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, ErrNoMember)
+	}
+	if in.roller == nil {
+		return socialOutput{}, fmt.Errorf("%s: the world rolls the answer: %w", in.verb, ErrNoRoller)
+	}
+	if e.outcome != nil {
+		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, ErrClosed)
+	}
+
+	if _, ok := e.members[in.actor]; !ok {
+		return socialOutput{}, fmt.Errorf("%s: actor %q: %w", in.verb, in.actor, ErrNotMember)
+	}
+	if _, ok := e.members[in.target]; !ok {
+		return socialOutput{}, fmt.Errorf("%s: target %q: %w", in.verb, in.target, ErrNotMember)
+	}
+	// Frightening yourself is not a shenanigan, it is a caller defect — and
+	// it would land a deed naming its own holder, which no mind can read as
+	// anything.
+	if in.actor == in.target {
+		return socialOutput{}, fmt.Errorf("%s: actor %q cannot address itself: %w",
+			in.verb, in.actor, ErrNotMember)
+	}
+
+	where, witnesses, err := e.audienceOf(in.actor)
+	if err != nil {
+		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, err)
+	}
+	if !slices.Contains(witnesses, in.target) {
+		return socialOutput{}, fmt.Errorf("%s: target %q cannot see the actor: %w",
+			in.verb, in.target, ErrUnwitnessed)
+	}
+
+	at := uint64(e.clock.ToData().HighWater)
+	seq, err := e.appendSocialBeat(in, witnesses, at)
+	if err != nil {
+		return socialOutput{}, err
+	}
+
+	if in.beaten {
+		if err := e.landDeed(in.verb, in.actor, in.target, where, witnesses); err != nil {
+			return socialOutput{}, fmt.Errorf("%s: %w", in.verb, err)
+		}
+	}
+
+	// THE WORLD HALF IS OPT-IN AND IT IS THE TARGET'S PLACEMENT THAT OPTS IN,
+	// on either verdict: `on: { intimidated: … }` and `on: { intimidate_failed:
+	// … }` are two keys of one table, and a placement that authored neither
+	// answers nothing at all.
+	if err := e.answer(ctx, answerInput{
+		creature: in.target, actor: in.actor,
+		key:  answerKeyFor(in.verb, in.beaten),
+		verb: in.verb, beaten: in.beaten,
+		witnesses: witnesses, at: at, roller: in.roller,
+	}); err != nil {
+		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, err)
+	}
+
+	return socialOutput{beaten: in.beaten, witnesses: witnesses, seq: seq}, nil
+}
+
+// appendSocialBeat writes what the table saw: who addressed whom, the DC, the
+// total, and whether it landed.
 //
 // EVERY WITNESS IS THE AUDIENCE, not just the two parties — "everyone in the
 // set learns what happened, not only the target" (the design, decision 2).
 // The numbers are written unconditionally, false beside a miss included, for
 // the reason a struck beat writes `critical: false`: absent must not become a
 // third state for a reader downstream.
-func (e *Encounter) appendIntimidatedBeat(in *IntimidateInput, witnesses []MemberID, at uint64) (uint64, error) {
+func (e *Encounter) appendSocialBeat(in socialInput, witnesses []MemberID, at uint64) (uint64, error) {
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat":   BeatIntimidated,
-		"actor":  string(in.Actor),
-		"target": string(in.Target),
-		"dc":     in.DC,
-		"total":  in.Total,
-		"beaten": in.Beaten,
+		"beat":   in.beat,
+		"actor":  string(in.actor),
+		"target": string(in.target),
+		"dc":     in.dc,
+		"total":  in.total,
+		"beaten": in.beaten,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("intimidate: marshal beat: %w", err)
+		return 0, fmt.Errorf("%s: marshal beat: %w", in.verb, err)
 	}
 
 	out, err := e.appendBeat(&record.AppendInput{
 		At:       at,
 		Audience: witnesses,
-		Tags:     map[string]string{"tag": "intimidate"},
+		Tags:     map[string]string{"tag": in.tag},
 		Payload:  payload,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("intimidate: %w", err)
+		return 0, fmt.Errorf("%s: %w", in.verb, err)
 	}
 
 	return out.Seq, nil

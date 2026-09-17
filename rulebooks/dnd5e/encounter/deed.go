@@ -36,6 +36,23 @@ const DeedAttack = "attack"
 // why (the design's first broken cut).
 const DeedIntimidate = "intimidate"
 
+// DeedPersuade is the verb a beaten Persuade check lands under: what a witness
+// would say they saw somebody DO when a character talked a creature round and
+// the appeal landed (rpg-project#458,
+// ideas/shenanigans/front-room-goblin.md).
+//
+// [DeedIntimidate]'S TWIN, deliberately its own verb and not a flag on that
+// one. A mind reads the verb: the coward's fear keys on being threatened and
+// nothing about being reasoned with, and a single "social" deed with a
+// polarity field would make every preset ask a second question before it knew
+// what happened to it. What a held `persuade` deed is WORTH is the preset's
+// business, and today every shipped preset holds it and does nothing — which
+// is the zero value telling the truth, not a gap.
+//
+// A MISSED APPEAL LANDS NOTHING, [DeedIntimidate]'s rule for
+// [DeedIntimidate]'s reason.
+const DeedPersuade = "persuade"
+
 // landAttack tells every member whose senses reach the actor's cell that
 // the actor attacked, through perception's own Report door, in each
 // witness's terms (mind/behavior rule A4: a deed is landed where the fact
