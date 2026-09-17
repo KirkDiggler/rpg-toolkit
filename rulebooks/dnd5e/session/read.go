@@ -213,7 +213,10 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 		return nil, fmt.Errorf("atlas: %w", translate(err))
 	}
 
-	projected := projectAtlas(atlas)
+	projected, err := projectAtlas(atlas)
+	if err != nil {
+		return nil, fmt.Errorf("atlas: %w", err)
+	}
 	return &projected, nil
 }
 
@@ -251,7 +254,10 @@ func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error)
 		return nil, fmt.Errorf("atlasof: %w", translate(err))
 	}
 
-	projected := projectAtlas(atlas)
+	projected, err := projectAtlas(atlas)
+	if err != nil {
+		return nil, fmt.Errorf("atlasof: %w", err)
+	}
 	return &projected, nil
 }
 

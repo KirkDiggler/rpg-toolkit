@@ -98,7 +98,7 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
 		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Segments",
-			"Sealed", "Regions", "Exits", "Start"},
+			"Sealed", "Regions", "Exits", "Start", "RoomSceneJSON"},
 		fieldsOf(session.Atlas{}),
 		"the map is a grid, which way its hexes point, its cells, the things standing on it, "+
 			"its walls as crossings and as lines, its doorways, which cells nobody stands on, "+
