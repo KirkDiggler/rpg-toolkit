@@ -70,7 +70,7 @@ var feetPerSourceUnit = encounter.FeetPerCell / math.Sqrt(3)
 // path.
 func (r *RoomSource) CanonicalPlacedProps() ([]encounter.PlacedPropInput, error) {
 	if len(r.Gameplay.PropDeclarations) == 0 {
-		return nil, nil
+		return []encounter.PlacedPropInput{}, nil
 	}
 
 	items := make(map[string]encounter.RoomSceneItem, len(r.Scene.Items))

@@ -177,6 +177,37 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 	return fact
 }
 
+// ValidateStaticPlacements validates authored placement cells against the
+// compiled field and static contributors without inventing a live member.
+func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
+	f, err := compileField(in)
+	if err != nil {
+		return err
+	}
+	for i, authored := range cells {
+		cell := f.cellAt(authored)
+		if !f.isStandable(cell) {
+			return fmt.Errorf("placement[%d] at [%g,%g] is not standable: %w", i, authored.X, authored.Y, ErrBadPlacement)
+		}
+		for _, p := range f.props {
+			if p.BlocksMovement != nil && *p.BlocksMovement && f.cellAt(p.At) == cell {
+				return fmt.Errorf("placement[%d] at [%g,%g] is occupied by prop %q: %w", i, authored.X, authored.Y, p.Ref, ErrBadPlacement)
+			}
+		}
+		centre := f.plane.CellCentre(cell)
+		for _, p := range f.placed {
+			if !p.blocksMovement {
+				continue
+			}
+			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: p.placement, From: centre, To: centre})
+			if traceErr != nil || contact.Contact {
+				return fmt.Errorf("placement[%d] at [%g,%g] is occupied by footprint %q: %w", i, authored.X, authored.Y, p.id, ErrBadPlacement)
+			}
+		}
+	}
+	return nil
+}
+
 // blockedBy is WHY a cell is closed to a mover, as a phrase to drop into a
 // refusal — the same shape [field.notStandable] has always had, extended to the
 // contributors the field itself knows nothing about.

@@ -388,10 +388,12 @@ func (s *SingleRoomSourceSuite) TestDecodeHonorsAnchorsAndMerges() {
 	s.False(*out.Spec.Room.Gameplay.PropDeclarations["table"].BlocksMovement)
 }
 
-func (s *SingleRoomSourceSuite) TestLoadStillRefusesSingleRoomV3() {
-	_, err := Load(s.raw)
-	s.Error(err)
-	s.ErrorIs(err, ErrBadSpec)
+func (s *SingleRoomSourceSuite) TestLoadCompilesSingleRoomV3() {
+	compiled, err := Load(s.raw)
+	s.Require().NoError(err)
+	s.Equal("workshop-room", compiled.Key)
+	s.Equal("Workshop", compiled.Name)
+	s.NotEmpty(compiled.PartyStart)
 }
 
 func TestSingleRoomSourceSuite(t *testing.T) { suite.Run(t, new(SingleRoomSourceSuite)) }

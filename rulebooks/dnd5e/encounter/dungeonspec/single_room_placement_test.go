@@ -92,7 +92,8 @@ func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsAreAbsentWithoutDecla
 
 	empty, err := (&RoomSource{}).CanonicalPlacedProps()
 	s.Require().NoError(err)
-	s.Nil(empty, "no declarations is no contributors, not an empty non-nil list")
+	s.NotNil(empty, "empty declarations return an explicit empty contributor list")
+	s.Empty(empty)
 }
 
 func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsRefuseIneligibleSources() {

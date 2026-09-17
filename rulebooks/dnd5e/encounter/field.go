@@ -511,6 +511,11 @@ type SegmentInput struct {
 // make its floor, and the props, walls and doors standing on it
 // (rpg-project#256).
 type FieldInput struct {
+	// RoomScene is the lossless presentation authored alongside a v3 room.
+	// It is carried verbatim by the encounter boundary and is never read by
+	// gameplay geometry.
+	RoomScene *RoomScenePresentation
+
 	// Canvas is what this field DECLARES about the map its regions paint:
 	// what the space between them does to a sightline, and which way its
 	// hexes point. Both REQUIRED: see [Void] and [Orientation] for why this
