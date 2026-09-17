@@ -103,11 +103,12 @@ func poseCheck(in poseCheckInput) (*Pose, error) {
 
 	return &Pose{
 		Ask: Ask{
-			Audience: offer.Audience,
-			Offer:    offer,
-			Options:  []string{string(OfferSpend), string(OfferKeep)},
-			Roll:     in.result.Roll,
-			Total:    in.calculation.Total,
+			Audience:    offer.Audience,
+			Offer:       offer,
+			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Roll:        in.result.Roll,
+			Total:       in.calculation.Total,
+			Calculation: dnd5eEvents.CloneRollCalculation(in.calculation),
 		},
 		Frozen: frozen,
 	}, nil

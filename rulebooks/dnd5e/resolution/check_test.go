@@ -78,6 +78,18 @@ func (s *CheckTestSuite) seeker(conds ...json.RawMessage) *character.Data {
 	}
 }
 
+// guided is a Guidance die held by the seeker, so a check poses instead of
+// finishing — the only shipped way to reach a posed check.
+func (s *CheckTestSuite) guided() json.RawMessage {
+	condition, err := conditions.NewGuidedCondition(conditions.NewGuidedConditionInput{
+		MemberID: seekerID, SourceID: "cleric-1", SourceRef: refs.Spells.Guidance(),
+	})
+	s.Require().NoError(err)
+	raw, err := condition.ToJSON()
+	s.Require().NoError(err)
+	return raw
+}
+
 func (s *CheckTestSuite) raging() json.RawMessage {
 	raw, err := (&conditions.RagingCondition{
 		CharacterID: seekerID,
@@ -337,4 +349,32 @@ func (s *CheckTestSuite) TestRageAndUntrainedCancelOverOneCheck() {
 	s.Require().Len(die.Keep.Imposed, 1)
 	s.Equal("Untrained", die.Keep.Imposed[0].Name)
 	s.Equal(seekerID, die.Keep.Imposed[0].SourceID)
+}
+
+// TestAPosedCheckAsksWithTheWholeRoll pins R5's half of the slice. The window
+// that asks a player whether to spend a die is where an untrained roll is
+// FIRST seen — before the verdict, before any beat about the outcome. Ask
+// carried two scalars, so the seam that writes that beat could only show one
+// face. It now carries the settled arithmetic the offered die would join.
+func (s *CheckTestSuite) TestAPosedCheckAsksWithTheWholeRoll() {
+	untrainedSeeker := s.seeker(s.raging(), s.guided())
+	delete(untrainedSeeker.Skills, skills.Athletics)
+
+	out, err := MakeCheck(s.ctx, &CheckInput{
+		Character:  untrainedSeeker,
+		Approaches: []encounter.CheckApproach{route(string(skills.Athletics), 12)},
+		Roller:     s.roller,
+		Untrained:  true,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Posed, "Guidance holds a die, so the check stops to ask")
+
+	ask := out.Posed.Ask
+	s.Require().NotNil(ask.Calculation, "and it asks with the arithmetic, not two numbers")
+	s.Equal(ask.Total, ask.Calculation.Total)
+	s.Equal(ask.Roll, ask.Calculation.Components[0].Dice.Subtotal)
+
+	keep := keepOf(s.T(), ask.Calculation)
+	s.Require().NotNil(keep, "the two rules that met over the die are already visible here")
+	s.Equal(dnd5eEvents.KeepCancelled, keep.Rule)
 }

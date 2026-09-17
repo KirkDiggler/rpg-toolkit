@@ -246,11 +246,12 @@ func (m *strikeMachine) pose(
 
 	return Pose{
 		Ask: Ask{
-			Audience: offer.Audience,
-			Offer:    offer,
-			Options:  []string{string(OfferSpend), string(OfferKeep)},
-			Roll:     roll,
-			Total:    m.outcome.Total,
+			Audience:    offer.Audience,
+			Offer:       offer,
+			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Roll:        roll,
+			Total:       m.outcome.Total,
+			Calculation: dnd5eEvents.CloneRollCalculation(m.outcome.Calculation),
 		},
 		Frozen: frozen,
 	}, nil

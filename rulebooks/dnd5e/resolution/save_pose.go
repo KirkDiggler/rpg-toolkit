@@ -145,11 +145,12 @@ func (m *saveMachine) pose(result *saves.SavingThrowResult, offers []dnd5eEvents
 
 	return Pose{
 		Ask: Ask{
-			Audience: offer.Audience,
-			Offer:    offer,
-			Options:  []string{string(OfferSpend), string(OfferKeep)},
-			Roll:     result.Roll,
-			Total:    result.Total,
+			Audience:    offer.Audience,
+			Offer:       offer,
+			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Roll:        result.Roll,
+			Total:       result.Total,
+			Calculation: dnd5eEvents.CloneRollCalculation(result.Calculation),
 		},
 		Frozen: frozen,
 	}, nil
