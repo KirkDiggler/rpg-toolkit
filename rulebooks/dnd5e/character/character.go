@@ -284,6 +284,30 @@ func (c *Character) ProficiencyBonus() int {
 	return proficiencyBonusForLevel(c.GetLevel())
 }
 
+// SkillProficiency answers how well this character is trained in a skill:
+// [shared.NotProficient], [shared.Proficient] or [shared.Expert].
+//
+// A FACT ABOUT THE SHEET, AND ONLY THAT. It states the character's training
+// and applies no rule to it — what untrained COSTS at the table is a rules
+// question, and it is answered one layer up in
+// rulebooks/dnd5e/resolution where the check chain lives
+// (rpg-project#457 R2, ideas/shenanigans/front-room-goblin.md). A sheet that
+// decided its own disadvantage would be the rule spread across the sheet,
+// the check and the offer, which is exactly the build the ruling forbids.
+//
+// THE ZERO VALUE IS THE ANSWER for a skill the character never took:
+// [shared.NotProficient] is what untrained means, so an absent entry needs
+// no second return value to be read correctly. That is deliberate — an
+// (level, ok) pair would let a caller treat "no entry" as "unknown" and
+// invent a third state the sheet does not have.
+//
+// [Character.GetSkillModifier] is the other half of this pair and stays the
+// way to get the NUMBER; this is the way to get the TRAINING, which the
+// number cannot be reversed into (a +3 is a trained +1 or an untrained +3).
+func (c *Character) SkillProficiency(skill skills.Skill) shared.ProficiencyLevel {
+	return c.skills[skill]
+}
+
 // GetSkillModifier returns the total modifier for a skill check
 func (c *Character) GetSkillModifier(skill skills.Skill) int {
 	ability := skills.Ability(skill)
