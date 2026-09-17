@@ -551,6 +551,24 @@ var (
 	// the right one.
 	ErrUnwitnessed = errors.New("encounter: target did not witness the actor")
 
+	// ErrNoRoller is returned when a verb that has to roll was handed no
+	// die. Supplied, never defaulted — resolution.CheckInput.Roller's
+	// standing reason, applied to the world's own reaction roll: a silent
+	// default puts untestable randomness into a result that looks fine, and
+	// R1 (rpg-project#457) says this roll is shown to the table.
+	ErrNoRoller = errors.New("encounter: no roller supplied")
+
+	// ErrBadReaction is returned when a member's authored reaction table is
+	// one this composition could not roll: an outcome key it does not know,
+	// or an entry weighing less than 1 (reaction.go, rpg-project#458).
+	//
+	// REFUSED AT THE DOOR THE MEMBER CAME IN THROUGH — Setup, Join or a
+	// persisted blob — rather than when a player finally speaks to it. A
+	// table that can never fire is a misconfiguration, and discovering it
+	// mid-verb turns an authoring mistake into an internal error on
+	// somebody's turn.
+	ErrBadReaction = errors.New("encounter: reaction table cannot be rolled")
+
 	// ErrNotVisible is returned when Interact's target is not in the
 	// actor's current sight — a target once seen but not seen now refuses
 	// identically to one never seen at all, the same "current, not held"

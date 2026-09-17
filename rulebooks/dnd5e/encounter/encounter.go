@@ -663,7 +663,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		// negative one is not a shorter distance, it is a caller defect
 		// (Copilot, PR #1187), and would otherwise produce a nonsense
 		// budget or reach at the exact moment a monster's turn needs one.
-		if err := validateMemberFacts(m.ID, m.SpeedFeet, m.SightFeet, m.Actions, m.Intimidate); err != nil {
+		if err := validateMemberFacts(memberFacts{
+			ID: m.ID, SpeedFeet: m.SpeedFeet, SightFeet: m.SightFeet, Actions: m.Actions,
+			Intimidate: m.Intimidate, Persuade: m.Persuade, Reactions: m.Reactions,
+		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 	}
@@ -836,7 +839,8 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Targeting:      mi.Targeting,
 			Mind:           mi.Mind,
 			Intimidate:     copyApproaches(mi.Intimidate),
-			OnIntimidated:  mi.OnIntimidated,
+			Persuade:       copyApproaches(mi.Persuade),
+			Reactions:      cloneReactions(mi.Reactions),
 			BlocksMovement: mi.BlocksMovement,
 			Faction:        mi.Faction,
 		}
@@ -1066,7 +1070,8 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		Targeting:      record.Targeting,
 		Mind:           record.Mind,
 		Intimidate:     copyApproaches(record.Intimidate),
-		OnIntimidated:  record.OnIntimidated,
+		Persuade:       copyApproaches(record.Persuade),
+		Reactions:      cloneReactions(record.Reactions),
 		BlocksMovement: record.BlocksMovement,
 		Faction:        factionOf(record),
 	}, nil
@@ -2152,7 +2157,10 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// success safety net: Join mutates a LIVE *Encounter, so an invalid
 	// fact caught after PlaceEntity would need to roll a placement back
 	// rather than simply never having made one (Copilot, PR #1187).
-	if err := validateMemberFacts(in.Member, in.SpeedFeet, in.SightFeet, in.Actions, in.Intimidate); err != nil {
+	if err := validateMemberFacts(memberFacts{
+		ID: in.Member, SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions,
+		Intimidate: in.Intimidate, Persuade: in.Persuade, Reactions: in.Reactions,
+	}); err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
@@ -2210,7 +2218,8 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		Targeting:      in.Targeting,
 		Mind:           in.Mind,
 		Intimidate:     copyApproaches(in.Intimidate),
-		OnIntimidated:  in.OnIntimidated,
+		Persuade:       copyApproaches(in.Persuade),
+		Reactions:      cloneReactions(in.Reactions),
 		BlocksMovement: in.BlocksMovement,
 		Faction:        in.Faction,
 	}
@@ -2230,7 +2239,8 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 			Member: Member{
 				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
 				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting, Mind: in.Mind,
-				Intimidate: copyApproaches(in.Intimidate), OnIntimidated: in.OnIntimidated,
+				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
+				Reactions:      cloneReactions(in.Reactions),
 				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
 			},
 		}, nil
