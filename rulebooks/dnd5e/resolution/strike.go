@@ -508,10 +508,6 @@ func (m *strikeMachine) afterOffers(
 	})
 }
 
-// attackModifierRefs projects the richer attack-chain source records onto the
-// post-roll snapshot's established reference-only narration contract. The
-// strike fold owns source reasons/IDs; the older post-roll event intentionally
-// exposes only refs, so no source metadata is duplicated across that boundary.
 // attackRollSources maps the fold's own source records onto the calculation's
 // sourced-fact type — SourceRef->Ref, Reason->Name, SourceID->SourceID — so
 // the keep record on the d20 names the same rules the fold recorded, and
@@ -528,6 +524,10 @@ func attackRollSources(sources []dnd5eEvents.AttackModifierSource) []dnd5eEvents
 	return mapped
 }
 
+// attackModifierRefs projects the richer attack-chain source records onto the
+// post-roll snapshot's established reference-only narration contract. The
+// strike fold owns source reasons/IDs; the older post-roll event intentionally
+// exposes only refs, so no source metadata is duplicated across that boundary.
 func attackModifierRefs(sources []dnd5eEvents.AttackModifierSource) []*core.Ref {
 	refs := make([]*core.Ref, 0, len(sources))
 	for _, source := range sources {
