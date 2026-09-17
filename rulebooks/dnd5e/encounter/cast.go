@@ -25,6 +25,11 @@ const BeatCast = "cast"
 // actual position, invented roll, or explanation inferred from the world.
 const BeatCastMissed = "cast_missed"
 
+// BeatCastWarded records a cast that a Sanctuary-style ward stopped before
+// it reached one named recipient: the CASTER's own failed save against the
+// warding caster's DC, not a fact about the recipient at all.
+const BeatCastWarded = "cast_warded"
+
 // BeatSaved is the "beat" value of the story beat this composition appends
 // when a target rolls a saving throw against a cast.
 //
@@ -171,28 +176,28 @@ type SpellIdentity struct {
 // spell then delivers — which is the result beats' business, not this one's.
 type CastSave struct {
 	// Saver is the member who rolled. Must be a member of this encounter.
-	Saver MemberID
+	Saver MemberID `json:"saver"`
 
 	// Ability is the rulebook ability the save was made with, carried as the
 	// rulebook's own primitive — "wisdom" for Vicious Mockery. Required:
 	// a save against nothing is not a save the table can read.
-	Ability string
+	Ability string `json:"ability"`
 
 	// Roll is the d20 as rolled and Total the number it reached after the
 	// saver's modifiers.
-	Roll  int
-	Total int
+	Roll  int `json:"roll"`
+	Total int `json:"total"`
 
 	// DC is the number the total was against.
-	DC int
+	DC int `json:"dc"`
 
 	// Calculation is the authoritative sourced arithmetic. Roll and Total are
 	// retained summaries and must agree with its d20 component and total.
-	Calculation *RollCalculation
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 
 	// Succeeded is the rulebook's ruling. Encounter records it without
 	// recomputing success policy from Total and DC.
-	Succeeded bool
+	Succeeded bool `json:"succeeded"`
 }
 
 // CastTargetResult is one member named by a cast, the save they rolled when
@@ -201,10 +206,15 @@ type CastSave struct {
 // the ordering authority.
 type CastTargetResult struct {
 	Target MemberID
-	// Missed is a supplied delivery outcome, mutually exclusive with Save
-	// and Results. False preserves the existing save/effect recording path.
-	Missed  bool
-	Save    *CastSave
+	// Missed is a supplied delivery outcome, mutually exclusive with Save,
+	// Results, and Warded. False preserves the existing save/effect
+	// recording path.
+	Missed bool
+	Save   *CastSave
+	// Warded is set when a Sanctuary-style ward on THIS target stopped the
+	// cast before any save or effect ran against them — mutually exclusive
+	// with Missed, Save, and Results. Nil is the ordinary, unwarded case.
+	Warded  *WardedDetail
 	Results []ActivationResult
 }
 
@@ -271,6 +281,19 @@ type castMissedPayload struct {
 	Actor  MemberID             `json:"actor"`
 	Target MemberID             `json:"target"`
 	Spell  spellIdentityPayload `json:"spell"`
+}
+
+type castWardedPayload struct {
+	Beat        string               `json:"beat"`
+	Actor       MemberID             `json:"actor"`
+	Target      MemberID             `json:"target"`
+	Source      MemberID             `json:"source"`
+	Spell       spellIdentityPayload `json:"spell"`
+	Ability     string               `json:"ability"`
+	Roll        int                  `json:"roll"`
+	Total       int                  `json:"total"`
+	DC          int                  `json:"dc"`
+	Calculation *RollCalculation     `json:"calculation,omitempty"`
 }
 
 type savedPayload struct {
@@ -390,8 +413,11 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		if _, duplicate := seenTargets[target.Target]; duplicate {
 			return nil, fmt.Errorf("record cast: target %d %q is duplicated: %w", i, target.Target, ErrInvalidData)
 		}
-		if target.Missed && (target.Save != nil || len(target.Results) != 0) {
-			return nil, fmt.Errorf("record cast: target %d %q missed but carries a save or results: %w", i, target.Target, ErrInvalidData)
+		if target.Missed && (target.Save != nil || len(target.Results) != 0 || target.Warded != nil) {
+			return nil, fmt.Errorf("record cast: target %d %q missed but carries a save, results, or ward: %w", i, target.Target, ErrInvalidData)
+		}
+		if target.Warded != nil && (target.Save != nil || len(target.Results) != 0) {
+			return nil, fmt.Errorf("record cast: target %d %q warded but carries a save or results: %w", i, target.Target, ErrInvalidData)
 		}
 		seenTargets[target.Target] = struct{}{}
 		targets[i] = target.Target
@@ -420,6 +446,9 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		if target.Save != nil {
 			beatCount++
 		}
+		if target.Warded != nil {
+			beatCount++
+		}
 		beatCount += len(target.Results)
 	}
 	prepared := make([]preparedActivationBeat, 0, beatCount)
@@ -438,6 +467,18 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 			}
 			prepared = append(prepared, preparedActivationBeat{
 				payload: missBytes, subjects: []MemberID{in.Actor, target.Target},
+			})
+			continue
+		}
+		if target.Warded != nil {
+			wardedBytes, wardedSubjects, wardedErr := e.prepareWardedBeat(
+				fmt.Sprintf("record cast: target %d", targetIndex), in.Actor, target.Target, target.Warded, spell,
+			)
+			if wardedErr != nil {
+				return nil, wardedErr
+			}
+			prepared = append(prepared, preparedActivationBeat{
+				payload: wardedBytes, subjects: wardedSubjects,
 			})
 			continue
 		}
@@ -544,6 +585,69 @@ func (e *Encounter) prepareSaveBeat(
 		subjects = append(subjects, save.Saver)
 	}
 	return savedBytes, subjects, nil
+}
+
+// prepareWardedBeat validates and marshals one target's Sanctuary-style
+// ward: the CASTER's own failed save against the warding caster's DC.
+//
+// NOT [Encounter.prepareSaveBeat] REUSED, deliberately: that helper's
+// subjects assume the two parties in an ordinary recipient save (the actor
+// and whoever saved, [savedPayload]'s own shape), and a ward has three —
+// the caster who saved, the target it protected, and the caster who cast
+// the ward — so its own subjects list is built here instead.
+func (e *Encounter) prepareWardedBeat(
+	verb string, actor, target MemberID, warded *WardedDetail, spell spellIdentityPayload,
+) ([]byte, []MemberID, error) {
+	if warded.Source == "" {
+		return nil, nil, fmt.Errorf("%s: warded source: %w", verb, ErrNoMember)
+	}
+	if _, ok := e.members[warded.Source]; !ok {
+		return nil, nil, fmt.Errorf("%s: warded source %q: %w", verb, warded.Source, ErrNoMember)
+	}
+	save := warded.Save
+	if save.Saver == "" {
+		return nil, nil, fmt.Errorf("%s: warded save saver: %w", verb, ErrNoMember)
+	}
+	// THE INVERSION IS THE WHOLE POINT OF A WARD: an ordinary [CastSave]'s
+	// saver is the recipient, but here it is the ACTOR — the one whose
+	// attempt the ward is testing, not the one it protects.
+	if save.Saver != actor {
+		return nil, nil, fmt.Errorf(
+			"%s: warded save saver %q must be the actor %q: %w", verb, save.Saver, actor, ErrInvalidData)
+	}
+	if save.Ability == "" {
+		return nil, nil, fmt.Errorf("%s: warded save ability: %w", verb, ErrInvalidData)
+	}
+	if save.Roll < 1 || save.Roll > 20 {
+		return nil, nil, fmt.Errorf("%s: warded save roll %d is not a d20: %w", verb, save.Roll, ErrInvalidData)
+	}
+	if save.DC < 1 {
+		return nil, nil, fmt.Errorf("%s: warded save dc %d: %w", verb, save.DC, ErrInvalidData)
+	}
+	if save.Succeeded {
+		// A ward beat exists because the attempt was stopped. A save that
+		// succeeded is not a fact this beat can carry without lying about
+		// what happened next — that attempt proceeds through the ordinary
+		// Save/Results path instead.
+		return nil, nil, fmt.Errorf("%s: warded save succeeded: %w", verb, ErrInvalidData)
+	}
+	if err := validateRecordedD20(save.Calculation, save.Roll, save.Total); err != nil {
+		return nil, nil, fmt.Errorf("%s: warded save calculation: %v: %w", verb, err, ErrInvalidData)
+	}
+
+	wardedBytes, err := json.Marshal(castWardedPayload{
+		Beat: BeatCastWarded, Actor: actor, Target: target, Source: warded.Source, Spell: spell,
+		Ability: save.Ability, Roll: save.Roll, Total: save.Total, DC: save.DC, Calculation: save.Calculation,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: warded payload: %w", verb, err)
+	}
+
+	subjects := []MemberID{actor, target}
+	if warded.Source != actor && warded.Source != target {
+		subjects = append(subjects, warded.Source)
+	}
+	return wardedBytes, subjects, nil
 }
 
 // prepareConcentrationChecks validates and marshals one saved beat per check
