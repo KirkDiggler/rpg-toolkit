@@ -25,7 +25,7 @@ func validRollCalculation() *encounter.RollCalculation {
 	return &encounter.RollCalculation{
 		Components: []encounter.RollComponent{
 			{
-				Source: encounter.RollSource{Ref: "dnd5e:weapons:greatsword", Name: "Greatsword"},
+				Source: encounter.RollSource{Ref: "dnd5e:weapons:greatsword", Name: "Greatsword", SourceID: "hero-1"},
 				Dice: &encounter.DiceTrace{
 					Notation:      "2d6",
 					DieSize:       6,
@@ -342,7 +342,7 @@ func TestRollCalculationValidation(t *testing.T) {
 func TestRollCalculationPersistenceShape(t *testing.T) {
 	t.Run("dice component omits the absent modifier", func(t *testing.T) {
 		component := encounter.RollComponent{
-			Source: encounter.RollSource{Ref: "dnd5e:weapons:greatsword", Name: "Greatsword"},
+			Source: encounter.RollSource{Ref: "dnd5e:weapons:greatsword", Name: "Greatsword", SourceID: "hero-1"},
 			Dice: &encounter.DiceTrace{
 				Notation:      "1d8",
 				DieSize:       8,
@@ -355,7 +355,7 @@ func TestRollCalculationPersistenceShape(t *testing.T) {
 		b, err := json.Marshal(component)
 		require.NoError(t, err)
 		require.JSONEq(t, `{
-			"source": {"ref": "dnd5e:weapons:greatsword", "name": "Greatsword"},
+			"source": {"ref": "dnd5e:weapons:greatsword", "name": "Greatsword", "source_id": "hero-1"},
 			"dice": {
 				"notation": "1d8", "die_size": 8,
 				"original_rolls": [4], "final_rolls": [4], "subtotal": 4
@@ -397,8 +397,11 @@ func TestRollTraceCarrierShapes(t *testing.T) {
 	require.Equal(t, []string{"Ref", "Name", "Label", "SourceID"}, structFieldNames(encounter.RollSource{}))
 	require.Equal(t, []string{"DieIndex", "Before", "After", "Source"}, structFieldNames(encounter.DiceReroll{}))
 	require.Equal(t, []string{
-		"Notation", "DieSize", "OriginalRolls", "Rerolls", "FinalRolls", "KeptIndices", "Subtotal",
-	}, structFieldNames(encounter.DiceTrace{}))
+		"Notation", "DieSize", "OriginalRolls", "Rerolls", "FinalRolls", "KeptIndices", "Subtotal", "Keep",
+	}, structFieldNames(encounter.DiceTrace{}),
+		"Keep is the sibling of Rerolls: Rerolls says why the faces changed, Keep says why one of them counted")
+	require.Equal(t, []string{"Rule", "Granted", "Imposed"}, structFieldNames(encounter.DiceKeep{}),
+		"the rule, and the sources on each side of it — a cancellation names both")
 	require.Equal(t, []string{"Source", "Dice", "Modifier", "SubtractDice"}, structFieldNames(encounter.RollComponent{}))
 	require.Equal(t, []string{"Components", "Total"}, structFieldNames(encounter.RollCalculation{}))
 	require.Equal(t, []string{"Source", "Roll", "DamageType", "Multiplier"},
@@ -411,7 +414,9 @@ func TestRollCalculationPreservesQualifiedSubtractiveComponents(t *testing.T) {
 	calculation := &encounter.RollCalculation{
 		Components: []encounter.RollComponent{
 			{
-				Source: encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Source: encounter.RollSource{
+					Ref: "dnd5e:weapons:longsword", Name: "Longsword", SourceID: "hero-1",
+				},
 				Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
 					OriginalRolls: []int{14}, FinalRolls: []int{14}, Subtotal: 14},
 			},
@@ -446,8 +451,29 @@ func TestRollCalculationRejectsMalformedOperatorsAndSources(t *testing.T) {
 	t.Run("subtractive dice requires a responsible source entity", func(t *testing.T) {
 		calculation := validRollCalculation()
 		calculation.Components[0].SubtractDice = true
+		calculation.Components[0].Source.SourceID = ""
 		calculation.Total = -6
 		require.Error(t, encounter.ValidateRollCalculation(calculation))
+	})
+
+	// R7: EVERY dice pool names the entity whose rule threw it, not only a
+	// subtractive one. The narrower rule above was the first case of this and
+	// is now one instance of it — this is the additive pool that used to reach
+	// persistence with nobody behind it, and a decoder validating through here
+	// would have let it back out again.
+	t.Run("any dice pool requires a responsible source entity", func(t *testing.T) {
+		calculation := validRollCalculation()
+		calculation.Components[0].Source.SourceID = ""
+		require.ErrorContains(t, encounter.ValidateRollCalculation(calculation),
+			"dice source id is required")
+	})
+
+	// The control that keeps the rule narrow: a component contributing only a
+	// modifier has no pool, so it names no entity and is not asked to.
+	t.Run("a modifier-only component needs no entity", func(t *testing.T) {
+		calculation := validRollCalculation()
+		calculation.Components[1].Source.SourceID = ""
+		require.NoError(t, encounter.ValidateRollCalculation(calculation))
 	})
 
 	t.Run("subtract cannot appear without dice", func(t *testing.T) {
@@ -463,4 +489,115 @@ func TestRollCalculationRejectsMalformedOperatorsAndSources(t *testing.T) {
 		calculation.Total = 12
 		require.Error(t, encounter.ValidateRollCalculation(calculation))
 	})
+}
+
+// keepSource is a well-formed keep source: a rule, and the entity that brought
+// it. A keep rule was BROUGHT by somebody, so its sources name one even though
+// the general RollSource contract does not require it.
+func keepSource(ref, name, entity string) encounter.RollSource {
+	return encounter.RollSource{Ref: ref, Name: name, Label: "rule", SourceID: entity}
+}
+
+// disadvantagedCalculation is the shape an untrained check persists: two d20
+// faces, the lower kept, and the record naming the rule that decided it.
+func disadvantagedCalculation() *encounter.RollCalculation {
+	return &encounter.RollCalculation{Components: []encounter.RollComponent{{
+		Source: encounter.RollSource{
+			Ref: "dnd5e:skills:persuasion", Name: "Persuasion", SourceID: "hero-1",
+		},
+		Dice: &encounter.DiceTrace{
+			Notation: "2d20", DieSize: 20,
+			OriginalRolls: []int{7, 18}, FinalRolls: []int{7, 18},
+			KeptIndices: []int{0}, Subtotal: 7,
+			Keep: &encounter.DiceKeep{
+				Rule:    encounter.KeepDisadvantage,
+				Imposed: []encounter.RollSource{keepSource("dnd5e:rules:untrained", "Untrained", "hero-1")},
+			},
+		},
+	}}, Total: 7}
+}
+
+func TestRollCalculationAcceptsAWellFormedKeepRecord(t *testing.T) {
+	require.NoError(t, encounter.ValidateRollCalculation(disadvantagedCalculation()))
+}
+
+// TestRollCalculationRefusesAKeepRecordThatDoesNotDescribeItsDice is the
+// mirror's half of the fail-closed rule. A record filled by hand and got wrong
+// is refused at the seam rather than persisted and rendered wrong forever.
+func TestRollCalculationRefusesAKeepRecordThatDoesNotDescribeItsDice(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*encounter.DiceTrace)
+	}{
+		{
+			// THE ONE WITH TEETH. No kept indices means every face counts, so
+			// a cancellation over a pair persists a subtotal of both dice
+			// added together under the one label implying a single die was
+			// thrown. RAW rolls one die when the two rules meet.
+			name: "cancelled over a pair of dice",
+			change: func(trace *encounter.DiceTrace) {
+				trace.KeptIndices = nil
+				trace.Subtotal = 25
+				trace.Keep = &encounter.DiceKeep{
+					Rule:    encounter.KeepCancelled,
+					Granted: []encounter.RollSource{keepSource("dnd5e:conditions:helped", "Help", "alice")},
+					Imposed: []encounter.RollSource{keepSource("dnd5e:rules:untrained", "Untrained", "hero-1")},
+				}
+			},
+		},
+		{
+			name: "disadvantage kept the higher face",
+			change: func(trace *encounter.DiceTrace) {
+				trace.KeptIndices = []int{1}
+				trace.Subtotal = 18
+			},
+		},
+		{
+			name: "disadvantage nobody imposed",
+			change: func(trace *encounter.DiceTrace) {
+				trace.Keep.Imposed = nil
+			},
+		},
+		{
+			name: "a rule brought by nobody",
+			change: func(trace *encounter.DiceTrace) {
+				trace.Keep.Imposed[0].SourceID = ""
+			},
+		},
+		{
+			name: "a rule nobody has heard of",
+			change: func(trace *encounter.DiceTrace) {
+				trace.Keep.Rule = "lucky"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calculation := disadvantagedCalculation()
+			test.change(calculation.Components[0].Dice)
+			calculation.Total = calculation.Components[0].Dice.Subtotal
+			require.Error(t, encounter.ValidateRollCalculation(calculation))
+		})
+	}
+}
+
+// A cancellation over ONE die is the shape that is meant to exist: the trace
+// reads like a straight roll and only the record says two rules met.
+func TestRollCalculationAcceptsACancellationOverOneDie(t *testing.T) {
+	calculation := disadvantagedCalculation()
+	trace := calculation.Components[0].Dice
+	trace.Notation = "1d20"
+	trace.OriginalRolls = []int{11}
+	trace.FinalRolls = []int{11}
+	trace.KeptIndices = nil
+	trace.Subtotal = 11
+	trace.Keep = &encounter.DiceKeep{
+		Rule:    encounter.KeepCancelled,
+		Granted: []encounter.RollSource{keepSource("dnd5e:conditions:helped", "Help", "alice")},
+		Imposed: []encounter.RollSource{keepSource("dnd5e:rules:untrained", "Untrained", "hero-1")},
+	}
+	calculation.Total = 11
+
+	require.NoError(t, encounter.ValidateRollCalculation(calculation))
 }

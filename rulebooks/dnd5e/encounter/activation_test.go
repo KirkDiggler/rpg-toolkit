@@ -105,7 +105,7 @@ func validHealingResult() encounter.ActivationResult {
 		Calculation: &encounter.RollCalculation{
 			Components: []encounter.RollComponent{
 				{
-					Source: encounter.RollSource{Ref: "dnd5e:features:second_wind", Name: "Second Wind"},
+					Source: encounter.RollSource{Ref: "dnd5e:features:second_wind", Name: "Second Wind", SourceID: "hero-1"},
 					Dice: &encounter.DiceTrace{
 						Notation:      "1d10",
 						DieSize:       10,
@@ -151,7 +151,7 @@ func (s *RecordActivationSuite) TestRecordActivationSecondWind() {
 
 	wantPayloads := []string{
 		`{"beat":"activated","actor":"fighter","ability":{"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
-		`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":2,"requested":7,"before":8,"after":10,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":1}],"total":7},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+		`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":2,"requested":7,"before":8,"after":10,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"hero-1"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":1}],"total":7},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
 	}
 	wantAudience := []string{"cleric", "fighter", "goblin-activation"}
 	for _, who := range []encounter.MemberID{activationFighter, activationCleric, activationGoblin} {
@@ -222,7 +222,7 @@ func (s *RecordActivationSuite) TestRecordActivationMultiResultOrder() {
 	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"condition-applied","target":"fighter","ref":"dnd5e:conditions:raging","name":"Raging"}}`, string(entries[1].Payload))
 	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"capacity-granted","target":"fighter","description":"30ft movement"}}`, string(entries[2].Payload))
 	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"condition-removed","target":"cleric","ref":"dnd5e:conditions:helped","name":"Helped","reason":"expired"}}`, string(entries[3].Payload))
-	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"cleric","amount":3,"requested":3,"before":4,"after":7,"calculation":{"components":[{"source":{"ref":"dnd5e:features:many-effects","name":"Many Effects"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[1],"final_rolls":[1],"subtotal":1}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":2}],"total":3},"ref":"dnd5e:features:many-effects","name":"Many Effects"}}`, string(entries[4].Payload))
+	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"cleric","amount":3,"requested":3,"before":4,"after":7,"calculation":{"components":[{"source":{"ref":"dnd5e:features:many-effects","name":"Many Effects", "source_id": "hero-1"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[1],"final_rolls":[1],"subtotal":1}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":2}],"total":3},"ref":"dnd5e:features:many-effects","name":"Many Effects"}}`, string(entries[4].Payload))
 }
 
 // healingWithTotal builds a healing result whose calculation rolls the given
@@ -242,7 +242,7 @@ func healingWithTotal(target encounter.MemberID, ref, name string, requested, fa
 		Calculation: &encounter.RollCalculation{
 			Components: []encounter.RollComponent{
 				{
-					Source: encounter.RollSource{Ref: ref, Name: name},
+					Source: encounter.RollSource{Ref: ref, Name: name, SourceID: "hero-1"},
 					Dice: &encounter.DiceTrace{
 						Notation:      "1d10",
 						DieSize:       10,
@@ -333,7 +333,7 @@ func (s *RecordActivationSuite) TestRecordActivationPreservesRulebookArithmetic(
 	out, err := enc.RecordActivation(in)
 	s.Require().NoError(err)
 	entries := s.storyEntries(enc, activationFighter, out.Seqs)
-	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":-4,"requested":3,"before":4,"after":-20,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":-3}],"total":3},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`, string(entries[1].Payload))
+	s.JSONEq(`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":-4,"requested":3,"before":4,"after":-20,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"hero-1"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":-3}],"total":3},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`, string(entries[1].Payload))
 }
 
 // TestRecordActivationPayloadIsDeterministic compares the stored bytes, not

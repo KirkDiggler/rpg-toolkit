@@ -187,7 +187,7 @@ func psychicDamage() encounter.ActivationResult {
 		Calculation: &encounter.RollCalculation{
 			Components: []encounter.RollComponent{
 				{
-					Source: encounter.RollSource{Ref: viciousMockery.Ref, Name: viciousMockery.Name},
+					Source: encounter.RollSource{Ref: viciousMockery.Ref, Name: viciousMockery.Name, SourceID: "hero-1"},
 					Dice: &encounter.DiceTrace{
 						Notation:      "1d4",
 						DieSize:       4,
@@ -217,7 +217,7 @@ func saveCalculation(source encounter.SpellIdentity, ability string, roll, total
 	return &encounter.RollCalculation{
 		Components: []encounter.RollComponent{
 			{
-				Source: encounter.RollSource{Ref: source.Ref, Name: source.Name},
+				Source: encounter.RollSource{Ref: source.Ref, Name: source.Name, SourceID: "hero-1"},
 				Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
 					OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll},
 			},
@@ -287,7 +287,7 @@ func (s *RecordCastSuite) TestTheCastAndSavedPayloads() {
 	s.Equal(
 		`{"beat":"saved","saver":"cast-skeleton","ability":"wisdom","roll":6,"total":8,"dc":13,`+
 			`"succeeded":false,"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery"},`+
+			`{"source":{"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery","source_id":"hero-1"},`+
 			`"dice":{"notation":"1d20","die_size":20,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},`+
 			`{"source":{"ref":"dnd5e:abilities:wisdom","name":"wisdom"},"modifier":2}],"total":8},`+
 			`"source":{"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery"}}`,
@@ -311,7 +311,7 @@ func (s *RecordCastSuite) TestTheDamageCarriesItsAmountAndItsFace() {
 		`{"beat":"activation-result","actor":"bard","result":{"kind":"damage-applied",`+
 			`"target":"cast-skeleton","amount":3,"requested":3,"before":7,"after":4,`+
 			`"calculation":{"components":[{"source":{"ref":"dnd5e:spells:vicious-mockery",`+
-			`"name":"Vicious Mockery"},"dice":{"notation":"1d4","die_size":4,`+
+			`"name":"Vicious Mockery","source_id":"hero-1"},"dice":{"notation":"1d4","die_size":4,`+
 			`"original_rolls":[3],"final_rolls":[3],"subtotal":3}}],"total":3},`+
 			`"ref":"dnd5e:spells:vicious-mockery","name":"Vicious Mockery",`+
 			`"damage_type":"psychic"}}`,
@@ -726,7 +726,7 @@ func (s *RecordCastSuite) TestAnOrderedThreeTargetCastRecordsOneCastAndEachTarge
 			Calculation: &encounter.RollCalculation{
 				Components: []encounter.RollComponent{
 					{
-						Source: encounter.RollSource{Ref: viciousMockery.Ref, Name: viciousMockery.Name},
+						Source: encounter.RollSource{Ref: viciousMockery.Ref, Name: viciousMockery.Name, SourceID: "hero-1"},
 						Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
 							OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll},
 					},

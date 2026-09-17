@@ -151,7 +151,8 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 
 	failed, err := s.enc.Unlock(&encounter.UnlockInput{
 		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC), Actor: delve, Total: missed,
-		Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
+		Calculation: lockpickCalculation(missed),
+		Applied:     encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 	s.Require().NoError(err, "a failed check is an outcome, not an error")
 	s.False(failed.Beaten)
 	s.Equal([]encounter.CheckApproach{{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}},
@@ -161,7 +162,8 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 
 	beaten, err := s.enc.Unlock(&encounter.UnlockInput{
 		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC), Actor: delve, Total: met,
-		Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
+		Calculation: lockpickCalculation(met),
+		Applied:     encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 	s.Require().NoError(err)
 	s.True(beaten.Beaten, "meeting the DC exactly beats it — a tie goes to the roller, per picksTheLock")
 	s.Equal(encounter.DoorOpen, beaten.State, "beaten means open, not merely unlocked")
@@ -191,6 +193,63 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	s.Equal(false, attempts[0]["beaten"])
 	s.Equal(float64(met), attempts[1]["total"])
 	s.Equal(true, attempts[1]["beaten"])
+
+	// AND THE ROLL BEHIND THE NUMBER RIDES BOTH. An unlock's DoorChanged is a
+	// check beat (rpg-project#462 R4): "any future check beat" includes the
+	// one that already exists, so the pair of faces and the rule that decided
+	// them reach the table the same way a social attempt's do.
+	for i, attempt := range attempts {
+		raw, err := json.Marshal(attempt["calculation"])
+		s.Require().NoError(err, "attempt %d carries its arithmetic", i)
+		var got encounter.RollCalculation
+		s.Require().NoError(json.Unmarshal(raw, &got))
+		s.Require().NoError(encounter.ValidateRollCalculation(&got),
+			"attempt %d round-trips as valid arithmetic", i)
+		s.Equal(attempt["total"], float64(got.Total), "and it agrees with the number the beat reports")
+		s.Require().NotNil(got.Components[0].Dice)
+		s.Equal(20, got.Components[0].Dice.DieSize, "the beat opens with the d20 that was thrown")
+	}
+}
+
+// lockpickCalculation is one thieves-tools attempt: a straight d20 and the
+// dexterity that was added to it.
+func lockpickCalculation(total int) *encounter.RollCalculation {
+	face := total - 2
+	modifier := 2
+	return &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source: encounter.RollSource{
+					Ref: "dnd5e:abilities:dexterity", Name: "Dexterity", SourceID: string(delve),
+				},
+				Dice: &encounter.DiceTrace{
+					Notation: "1d20", DieSize: 20,
+					OriginalRolls: []int{face}, FinalRolls: []int{face}, Subtotal: face,
+				},
+			},
+			{
+				Source:   encounter.RollSource{Ref: "dnd5e:abilities:dexterity", Name: "Dexterity"},
+				Modifier: &modifier,
+			},
+		},
+		Total: total,
+	}
+}
+
+// TestAnUnlockRefusesArithmeticThatCannotHaveHappened: the beat is what the
+// table saw, so arithmetic disagreeing with the total it is filed under is
+// refused before the door moves — not written down wrong and rendered forever.
+func (s *TombDoorSuite) TestAnUnlockRefusesArithmeticThatCannotHaveHappened() {
+	wrong := lockpickCalculation(cryptDC)
+	wrong.Total = 99
+
+	_, err := s.enc.Unlock(&encounter.UnlockInput{
+		Door: cryptDoor, Beaten: true, Actor: delve, Total: cryptDC, Calculation: wrong,
+		Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "calculation")
+	s.Equal(encounter.DoorLocked, s.doorState(cryptDoor), "and the door did not move")
 }
 
 // TestAStrangerCannotBeTheActor: a beat crediting a non-member would be the

@@ -44,6 +44,17 @@ type RollWindowInput struct {
 	Roll  int
 	Total int
 
+	// Calculation is the settled arithmetic the offer would join — the d20
+	// pool with every face it threw and the keep record naming any rule that
+	// decided which one counted.
+	//
+	// THE WINDOW IS WHERE AN UNTRAINED ROLL IS FIRST SEEN (rpg-project#462
+	// R5), and until this field existed it showed one face. Optional, and
+	// validated against Roll and Total when present: a player deciding with a
+	// number in front of them must not be shown arithmetic that disagrees
+	// with it.
+	Calculation *RollCalculation
+
 	// PresentationID is the caller's existing opaque token for this d20,
 	// shared with the attack response, visual throw and eventual outcome.
 	// Empty remains valid for legacy callers; never derive it from Seq.
@@ -62,6 +73,7 @@ type rollWindowPayload struct {
 	Offer          reactionIdentityPayload `json:"offer"`
 	Roll           int                     `json:"roll"`
 	Total          int                     `json:"total"`
+	Calculation    *RollCalculation        `json:"calculation,omitempty"`
 	PresentationID string                  `json:"presentation_id,omitempty"`
 }
 
@@ -122,12 +134,19 @@ func (e *Encounter) RecordRollWindow(in *RollWindowInput) (*RollWindowOutput, er
 		return nil, fmt.Errorf("record roll window: roll %d is not a d20: %w", in.Roll, ErrInvalidData)
 	}
 
+	if in.Calculation != nil {
+		if err := validateRecordedD20(in.Calculation, in.Roll, in.Total); err != nil {
+			return nil, fmt.Errorf("record roll window: calculation: %w", err)
+		}
+	}
+
 	payload, err := json.Marshal(rollWindowPayload{
 		Beat:           BeatRollWindowOpened,
 		Audience:       in.Audience,
 		Offer:          reactionIdentityPayload{Ref: in.Offer.Ref, Name: in.Offer.Name},
 		Roll:           in.Roll,
 		Total:          in.Total,
+		Calculation:    in.Calculation,
 		PresentationID: in.PresentationID,
 	})
 	if err != nil {
