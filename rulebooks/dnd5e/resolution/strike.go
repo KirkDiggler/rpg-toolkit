@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -88,6 +89,13 @@ type StrikeOutcome struct {
 	// a concentrating defender's Constitution check and what failing it ended.
 	// Empty on a miss and on a hit against nobody holding an ongoing rule.
 	FollowUps []FollowUpOutcome
+
+	// Warded is set when the target's Sanctuary ward stopped this attack
+	// before any roll — the attacker failed a Wisdom save against the
+	// warding caster. Every other field above stays zero: there was no d20,
+	// no AC comparison, no damage. Nil when no ward applied or every ward
+	// the target held was cleared.
+	Warded *WardOutcome
 }
 
 // ConditionOutcome records whether one declared on-hit condition landed.
@@ -176,7 +184,65 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 	if m.resume != nil {
 		return m.resumeStep(), nil
 	}
-	return m.effectiveACStep(m.target, m.longRange), nil
+	return m.sanctuaryStep(cast), nil
+}
+
+// sanctuaryStep runs before the effective-AC/roll steps: it ends the
+// attacker's OWN Sanctuary first if they hold one — RAW's self-break,
+// unconditional for a Strike, which is always an attack — then works
+// through every Sanctuary ward the target holds that the attacker is not
+// already immune to. See docs/ideas/cleric/plan.md's Sanctuary section for
+// why this lives here rather than as a subscription on the condition
+// itself, and why the self-break fires on the attempt regardless of
+// whether THIS attack is itself warded off.
+func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
+	next := m.effectiveACStep(m.target, m.longRange)
+	return Gather{
+		name: "sanctuary self-break",
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			if err := endSanctuaryIfHeld(ctx, bus, cast, m.in.AttackerID); err != nil {
+				return nil, err
+			}
+			pending := pendingSanctuaryWards(cast, m.in.AttackerID, m.in.TargetID)
+			return m.wardCheckStep(cast, pending, 0, next), nil
+		},
+	}
+}
+
+// wardCheckStep works through pending Sanctuary wards one at a time as
+// nested saving throws, [requestSave]'s own shape. A save can itself be
+// posed (an attacker holding a Resistance die, say); this step sets no
+// onPose, so a colliding offer surfaces as [Request]'s existing "a
+// requester cannot be suspended" refusal — a named error, not silent
+// corruption — rather than a freeze/resume shape for this new interruption
+// point. Documented as a known gap, not assumed absent.
+func (m *strikeMachine) wardCheckStep(
+	cast *Participants, pending []*conditions.SanctuaryCondition, index int, next Step,
+) Step {
+	if index >= len(pending) {
+		return next
+	}
+	ward := pending[index]
+	dc := wardSaveDC(cast, ward.SourceID)
+	return requestSave(wardSaveInput(m.in.AttackerID, ward, dc, m.in.Roller),
+		func(_ context.Context, out SaveOutcome) (Step, error) {
+			if !out.Result.Success {
+				m.outcome = StrikeOutcome{
+					AttackerID: m.in.AttackerID, TargetID: m.in.TargetID,
+					Warded: &WardOutcome{SourceID: ward.SourceID, Save: out.Result},
+				}
+				return Done{Outcome: m.outcome}, nil
+			}
+			return Gather{
+				name: "sanctuary immunity",
+				run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+					if err := applySanctuaryImmunity(ctx, bus, cast, m.in.AttackerID, ward.SourceID); err != nil {
+						return nil, err
+					}
+					return m.wardCheckStep(cast, pending, index+1, next), nil
+				},
+			}, nil
+		})
 }
 
 // preflight is everything both a fresh and a resumed strike need before

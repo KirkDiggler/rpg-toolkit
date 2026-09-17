@@ -1,5 +1,76 @@
 # Cleric level-one contribution plan
 
+## Sanctuary: resolution slice 1 delivered — Strike ward, not yet Cast
+
+Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811)
+(`SanctuaryCondition`/`SanctuaryImmuneCondition`, not yet consumed), built
+against its pushed commit as a pseudo-version per the standing
+develop-outside-in allowance. That PR's own description carries the full
+design (why the ward save runs post-payment rather than in free preflight,
+why self-break and the retarget live in resolution, the user's
+simplification of RAW's 24-hour immunity down to a combat/rest-scoped
+condition) — this entry only records what the resolution half actually
+shipped, since this branch was cut before #1811 merged to main and does not
+carry that section's text yet. **A small doc merge conflict in this file is
+expected** once #1811 merges and this branch rebases; that's an ordinary
+consequence of two sibling in-flight PRs editing the same doc, not a code
+conflict, and is expected to reconcile at merge time.
+
+`resolution/sanctuary.go` (new): `sanctuaryWardsOn`/`sanctuaryImmuneTo`/
+`pendingSanctuaryWards` read the target's and attacker's conditions directly
+via the existing `heldConditions` helper — no bus subscription, matching the
+design's "resolution asks directly" shape. `wardSaveDC` reads the warding
+caster's own `Character.SpellSaveDC()` (Sanctuary is Cleric-only, so always
+a character). `applySanctuaryImmunity` publishes `ConditionAppliedTopic`
+rather than calling `.Apply()` itself, mirroring `prepareCondition`/
+`publishCondition`'s existing shape — the owning keeper is what actually
+applies a condition and marks the sheet dirty. `endSanctuaryIfHeld`
+publishes `ConditionRemovedTopic` then calls `.Remove()`, in that order,
+mirroring `GuidedCondition.end`'s own reasoning: the removal lands on the
+bus while the condition is still the thing that owned it; `.Remove()`'s
+existing `IsApplied` idempotency guard makes it safe that the keeper's own
+`onConditionRemoved` handler will also call `.Remove()` on its reference to
+the same object.
+
+`strikeMachine` (`resolution/strike.go`): a new `sanctuaryStep`, inserted as
+the first step `Start()` returns for a fresh (non-resumed) strike — which
+matters because `Resolve` pays `in.Cost` BEFORE driving the step chain
+`Start()` produced (confirmed by reading `resolve.go`: `start()` then
+`payForMachine()` then `driveStep()`), so anything in that returned chain
+already runs post-payment for free, with no separate "post-payment hook"
+needed. It first calls `endSanctuaryIfHeld` unconditionally (a Strike is
+always an attack), then `wardCheckStep` works through every pending
+Sanctuary ward on the target as nested `requestSave` calls — the existing
+save machine, reused verbatim, not a new suspend mechanism. `StrikeOutcome`
+gained a `Warded *WardOutcome` field; every other field stays zero on a
+blocked attack (no roll ever happened).
+
+**Known, explicitly scoped-out gap**: `wardCheckStep` sets no `onPose` on
+its nested save request. A save can itself be posed (an attacker holding a
+Resistance die on the very save Sanctuary forces, say); today that surfaces
+as `Request`'s existing "a requester cannot be suspended" error rather than
+a graceful pause — a named failure, not silent corruption, but a real gap.
+Documented rather than silently shipped; picking it up means giving Strike a
+second, independent pose/resume shape alongside `strike_pose.go`'s existing
+one for post-roll offers.
+
+Four new tests in `resolution/sanctuary_test.go` cover: a failed ward save
+blocking the attack with zero rolls; a passed save granting immunity while
+the attack proceeds exactly as if unwarded; an attacker who already holds
+immunity skipping the save entirely; and an attacker who holds their OWN
+Sanctuary losing it the instant they attack, regardless of that attack's own
+outcome. Full resolution module build/vet/test/lint clean.
+
+**Not done in this PR**: the Cast-side equivalent (a harmful single-target
+spell against a warded creature — Bane, Command, Sacred Flame and similar).
+`castMachine.resolveTarget` is the injection point, gated on
+`castView.IsHostile(casterID, targetID)` rather than a new "is this spell
+harmful" classification — reusing the existing hostility/faction check
+already used elsewhere for targeting eligibility — since Sanctuary's RAW
+text ("attack or a harmful spell") maps naturally onto "a spell aimed at an
+enemy" and no per-spell harmful/beneficial flag exists to check instead.
+Not yet designed in code, only in this paragraph; next slice.
+
 ## Current direction: expand level-one play, preparation deferred
 
 The user confirmed the implemented Cleric slice, including the private-sheet
