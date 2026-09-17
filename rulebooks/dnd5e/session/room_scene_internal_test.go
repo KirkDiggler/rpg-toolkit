@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package session
 
 import (
@@ -52,9 +55,13 @@ func TestProjectAtlasNilRoomSceneIsAbsent(t *testing.T) {
 func TestProjectAtlasRoomSceneRejectsInvalidWithoutPartialAtlas(t *testing.T) {
 	cases := map[string]func(*encounter.RoomScenePresentation){
 		"version": func(p *encounter.RoomScenePresentation) { p.Version = 99 },
-		"frame": func(p *encounter.RoomScenePresentation) { p.Frame.HorizontalPlane = "wrong" },
-		"graph": func(p *encounter.RoomScenePresentation) { p.Scene.Items = []encounter.RoomSceneItem{{Kind: encounter.RoomSceneKindProp, ID: "p", AssetRef: "a", ParentID: "missing"}} },
-		"nonfinite": func(p *encounter.RoomScenePresentation) { p.Scene.Items = []encounter.RoomSceneItem{{Kind: encounter.RoomSceneKindProp, ID: "p", AssetRef: "a", Transform: encounter.RoomSceneTransform{X: math.NaN()}}} },
+		"frame":   func(p *encounter.RoomScenePresentation) { p.Frame.HorizontalPlane = "wrong" },
+		"graph": func(p *encounter.RoomScenePresentation) {
+			p.Scene.Items = []encounter.RoomSceneItem{{Kind: encounter.RoomSceneKindProp, ID: "p", AssetRef: "a", ParentID: "missing"}}
+		},
+		"nonfinite": func(p *encounter.RoomScenePresentation) {
+			p.Scene.Items = []encounter.RoomSceneItem{{Kind: encounter.RoomSceneKindProp, ID: "p", AssetRef: "a", Transform: encounter.RoomSceneTransform{X: math.NaN()}}}
+		},
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
