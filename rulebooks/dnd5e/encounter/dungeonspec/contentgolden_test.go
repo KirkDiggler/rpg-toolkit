@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -106,6 +107,8 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 	files, err := filepath.Glob("testdata/*.yaml")
 	require.NoError(t, err)
+	// The v3 source fixture is decoded by the source suite, not the legacy v2 compiler.
+	files = slices.DeleteFunc(files, func(path string) bool { return filepath.Base(path) == "world-builder-v3.yaml" })
 	require.Len(t, files, 5, "the five authored dungeons this package ships")
 
 	for _, path := range files {
