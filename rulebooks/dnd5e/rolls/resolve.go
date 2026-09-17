@@ -90,7 +90,7 @@ func ResolveContributions(
 		original := append([]int(nil), faces...)
 		final := append([]int(nil), faces...)
 		output.Components = append(output.Components, dnd5eEvents.RollComponent{
-			Source: cloneSource(contribution.description.Source),
+			Source: dnd5eEvents.CloneRollSource(contribution.description.Source),
 			Dice: &dnd5eEvents.DiceTrace{
 				Notation:      dice.SimplePool(contribution.count, contribution.size, 0).Notation(),
 				DieSize:       contribution.size,
@@ -119,17 +119,8 @@ func checkContributions(
 }
 
 func validateContribution(contribution dnd5eEvents.DiceContribution) (checkedContribution, error) {
-	if contribution.Source.Ref == nil {
-		return checkedContribution{}, fmt.Errorf("source ref is required")
-	}
-	if err := contribution.Source.Ref.IsValid(); err != nil {
-		return checkedContribution{}, fmt.Errorf("source ref is invalid: %w", err)
-	}
-	if strings.TrimSpace(contribution.Source.Name) == "" {
-		return checkedContribution{}, fmt.Errorf("source name is required")
-	}
-	if strings.TrimSpace(contribution.Source.SourceID) == "" {
-		return checkedContribution{}, fmt.Errorf("source id is required for a dice contribution")
+	if err := validateDiceSource(contribution.Source, "a dice contribution"); err != nil {
+		return checkedContribution{}, err
 	}
 
 	matches := contributionNotation.FindStringSubmatch(contribution.Dice)
@@ -151,11 +142,22 @@ func validateContribution(contribution dnd5eEvents.DiceContribution) (checkedCon
 	return checkedContribution{description: contribution, count: count, size: size}, nil
 }
 
-func cloneSource(source dnd5eEvents.RollSource) dnd5eEvents.RollSource {
-	clone := source
-	if source.Ref != nil {
-		ref := *source.Ref
-		clone.Ref = &ref
+// validateDiceSource refuses a source that cannot stand behind a physical
+// dice pool. The last check is R7: every dice pool names the entity whose rule
+// threw it, and "what" names the pool so the refusal says which one had no
+// entity behind it (rpg-project#462).
+func validateDiceSource(source dnd5eEvents.RollSource, what string) error {
+	if source.Ref == nil {
+		return fmt.Errorf("source ref is required")
 	}
-	return clone
+	if err := source.Ref.IsValid(); err != nil {
+		return fmt.Errorf("source ref is invalid: %w", err)
+	}
+	if strings.TrimSpace(source.Name) == "" {
+		return fmt.Errorf("source name is required")
+	}
+	if strings.TrimSpace(source.SourceID) == "" {
+		return fmt.Errorf("source id is required for %s", what)
+	}
+	return nil
 }

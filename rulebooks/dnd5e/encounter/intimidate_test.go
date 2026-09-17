@@ -346,3 +346,154 @@ func (s *IntimidateTestSuite) TestAnApproachWithNothingToBeatIsRefused() {
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 }
+
+// untrainedCheck is the arithmetic an untrained character's Persuasion or
+// Intimidation check produces: two d20 faces, the lower kept, and the record
+// naming the rule that decided it and the entity it was imposed on.
+func untrainedCheck(total int) *encounter.RollCalculation {
+	modifier := total - 7
+	return &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source: encounter.RollSource{
+					Ref: "dnd5e:skills:intimidation", Name: "Intimidation", SourceID: string(alice),
+				},
+				Dice: &encounter.DiceTrace{
+					Notation: "2d20", DieSize: 20,
+					OriginalRolls: []int{7, 18}, FinalRolls: []int{7, 18},
+					KeptIndices: []int{0}, Subtotal: 7,
+					Keep: &encounter.DiceKeep{
+						Rule: encounter.KeepDisadvantage,
+						Imposed: []encounter.RollSource{{
+							Ref: "dnd5e:rules:untrained", Name: "Untrained",
+							Label: "rule", SourceID: string(alice),
+						}},
+					},
+				},
+			},
+			{
+				Source:   encounter.RollSource{Ref: "dnd5e:abilities:charisma", Name: "Charisma"},
+				Modifier: &modifier,
+			},
+		},
+		Total: total,
+	}
+}
+
+// TestTheBeatCarriesTheWholeRoll is the seam half of rpg-project#462: the beat
+// used to say {dc, total, beaten} and the table saw one number. It now carries
+// the arithmetic that produced the number, keep record and all, so a client can
+// print "2d20 [7, 18] kept 7 · disadvantage: Untrained" without inventing a
+// word the server never sent.
+func (s *IntimidateTestSuite) TestTheBeatCarriesTheWholeRoll() {
+	enc := s.scene()
+
+	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
+		Calculation: untrainedCheck(14), Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+
+	beats := s.beatsOfKind(enc, goblin, "intimidated")
+	s.Require().Len(beats, 1)
+
+	raw, err := json.Marshal(beats[0]["calculation"])
+	s.Require().NoError(err)
+	var got encounter.RollCalculation
+	s.Require().NoError(json.Unmarshal(raw, &got))
+
+	s.Require().NoError(encounter.ValidateRollCalculation(&got), "it round-trips as valid arithmetic")
+	s.Equal(14, got.Total)
+	die := got.Components[0].Dice
+	s.Require().NotNil(die)
+	s.Equal([]int{7, 18}, die.FinalRolls, "both faces survive persistence")
+	s.Equal([]int{0}, die.KeptIndices)
+	s.Require().NotNil(die.Keep)
+	s.Equal(encounter.KeepDisadvantage, die.Keep.Rule)
+	s.Require().Len(die.Keep.Imposed, 1)
+	s.Equal("Untrained", die.Keep.Imposed[0].Name, "the word comes down from the server")
+	s.Equal(string(alice), die.Keep.Imposed[0].SourceID)
+}
+
+// TestABeatWithoutArithmeticSaysSo: the field is optional and absent means
+// absent. A caller that recorded no arithmetic writes no key, rather than a
+// zero-valued calculation a reader would have to tell apart from a real one.
+func (s *IntimidateTestSuite) TestABeatWithoutArithmeticSaysSo() {
+	enc := s.scene()
+
+	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+
+	beats := s.beatsOfKind(enc, goblin, "intimidated")
+	s.Require().Len(beats, 1)
+	_, present := beats[0]["calculation"]
+	s.False(present)
+}
+
+// TestArithmeticThatCannotHaveHappenedIsRefused: a beat is what the table saw.
+// Arithmetic that disagrees with the total it is filed under, or a keep record
+// that does not describe its own dice, is refused at append rather than
+// written down wrong and rendered wrong forever.
+func (s *IntimidateTestSuite) TestArithmeticThatCannotHaveHappenedIsRefused() {
+	tests := []struct {
+		name   string
+		change func(*encounter.RollCalculation)
+	}{
+		{
+			name: "the total disagrees with the beat",
+			change: func(calc *encounter.RollCalculation) {
+				calc.Total = 99
+			},
+		},
+		{
+			name: "disadvantage kept the higher face",
+			change: func(calc *encounter.RollCalculation) {
+				calc.Components[0].Dice.KeptIndices = []int{1}
+				calc.Components[0].Dice.Subtotal = 18
+				calc.Total = 25
+			},
+		},
+		{
+			name: "a rule brought by nobody",
+			change: func(calc *encounter.RollCalculation) {
+				calc.Components[0].Dice.Keep.Imposed[0].SourceID = ""
+			},
+		},
+		{
+			name: "a rule nobody has heard of",
+			change: func(calc *encounter.RollCalculation) {
+				calc.Components[0].Dice.Keep.Rule = "lucky"
+			},
+		},
+		{
+			name: "the roll did not open with a d20",
+			change: func(calc *encounter.RollCalculation) {
+				calc.Components[0].Dice.DieSize = 6
+				calc.Components[0].Dice.Notation = "2d6"
+				calc.Components[0].Dice.OriginalRolls = []int{1, 6}
+				calc.Components[0].Dice.FinalRolls = []int{1, 6}
+				calc.Components[0].Dice.Subtotal = 1
+				calc.Total = 8
+			},
+		},
+	}
+
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			enc := s.scene()
+			calc := untrainedCheck(14)
+			test.change(calc)
+
+			_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+				Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
+				Calculation: calc, Roller: rollsLowest{},
+			})
+
+			s.Require().Error(err)
+			s.Contains(err.Error(), "calculation")
+			s.Empty(s.beatsOfKind(enc, goblin, "intimidated"), "and nothing was written")
+		})
+	}
+}

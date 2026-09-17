@@ -110,6 +110,18 @@ func (i *InspiredCondition) Apply(ctx context.Context, bus events.EventBus) erro
 	if i.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "inspired condition already applied")
 	}
+	if i.SourceID == "" {
+		// THE OFFER NAMES THE BARD, and Offer.SourceID is required because the
+		// die lands on a calculation as its own component when it is taken —
+		// every dice pool names the entity whose rule threw it
+		// (rpg-project#462 R7). Refused here, where the condition goes live on
+		// a bus, rather than several seams later when the player has already
+		// been asked about a die nobody owns. NewGuidedCondition and
+		// NewResistanceCondition refuse the same thing in their constructors;
+		// this one returns no error, so its door is here.
+		return rpgerr.New(rpgerr.CodeInvalidArgument,
+			"inspired condition requires the id of the bard who granted the die")
+	}
 	i.bus = bus
 
 	offers := dnd5eEvents.PostRollOfferChain.On(bus)
@@ -217,6 +229,7 @@ func (i *InspiredCondition) onPostRollOffer(
 			Name:     InspiredName,
 			Audience: i.MemberID,
 			Die:      i.Die,
+			SourceID: i.SourceID,
 		})
 		return e, nil
 	}

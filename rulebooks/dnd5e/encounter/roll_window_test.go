@@ -167,3 +167,131 @@ func (s *RollWindowTestSuite) TestItRefusesWhatItCannotNarrate() {
 func TestRollWindowSuite(t *testing.T) {
 	suite.Run(t, new(RollWindowTestSuite))
 }
+
+// windowCalculation is the arithmetic an untrained check offers a die on: two
+// d20 faces with the lower kept, and the record naming the rule.
+func windowCalculation(kept, total int) *encounter.RollCalculation {
+	modifier := total - kept
+	return &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source: encounter.RollSource{
+					Ref: "dnd5e:skills:persuasion", Name: "Persuasion", SourceID: string(alice),
+				},
+				Dice: &encounter.DiceTrace{
+					Notation: "2d20", DieSize: 20,
+					OriginalRolls: []int{kept, 18}, FinalRolls: []int{kept, 18},
+					KeptIndices: []int{0}, Subtotal: kept,
+					Keep: &encounter.DiceKeep{
+						Rule: encounter.KeepDisadvantage,
+						Imposed: []encounter.RollSource{{
+							Ref: "dnd5e:rules:untrained", Name: "Untrained",
+							Label: "rule", SourceID: string(alice),
+						}},
+					},
+				},
+			},
+			{
+				Source:   encounter.RollSource{Ref: "dnd5e:abilities:charisma", Name: "Charisma"},
+				Modifier: &modifier,
+			},
+		},
+		Total: total,
+	}
+}
+
+// TestTheWindowCarriesTheRollBehindTheQuestion is R5 at this seam. The window
+// is where an untrained roll is FIRST seen — before the verdict, before any
+// beat about the outcome — and with only Roll and Total it could show one face
+// and no rule while asking the player whether to spend a die on it.
+func (s *RollWindowTestSuite) TestTheWindowCarriesTheRollBehindTheQuestion() {
+	enc := s.scene()
+
+	_, err := enc.RecordRollWindow(&encounter.RollWindowInput{
+		Audience: encounter.MemberID(alice), Offer: testBardicInspiration,
+		Roll: 8, Total: 12, Calculation: windowCalculation(8, 12),
+	})
+	s.Require().NoError(err)
+
+	beat := s.rollWindowBeat(enc, encounter.MemberID(alice))
+	raw, err := json.Marshal(beat["calculation"])
+	s.Require().NoError(err)
+	var got encounter.RollCalculation
+	s.Require().NoError(json.Unmarshal(raw, &got))
+
+	s.Require().NoError(encounter.ValidateRollCalculation(&got), "it round-trips as valid arithmetic")
+	s.Equal(12, got.Total)
+	die := got.Components[0].Dice
+	s.Require().NotNil(die)
+	s.Equal([]int{8, 18}, die.FinalRolls, "both faces survive persistence")
+	s.Require().NotNil(die.Keep)
+	s.Equal(encounter.KeepDisadvantage, die.Keep.Rule)
+	s.Require().Len(die.Keep.Imposed, 1)
+	s.Equal("Untrained", die.Keep.Imposed[0].Name)
+}
+
+// A window with no arithmetic writes no key: absent means absent, never a
+// zero-valued calculation a reader would have to tell apart from a real one.
+func (s *RollWindowTestSuite) TestAWindowWithoutArithmeticSaysSo() {
+	enc := s.scene()
+	_, err := enc.RecordRollWindow(&encounter.RollWindowInput{
+		Audience: encounter.MemberID(alice), Offer: testBardicInspiration, Roll: 8, Total: 12,
+	})
+	s.Require().NoError(err)
+
+	beat := s.rollWindowBeat(enc, encounter.MemberID(alice))
+	_, present := beat["calculation"]
+	s.False(present)
+}
+
+// TestArithmeticThatDisagreesWithTheQuestionIsRefused: the two scalars are what
+// the player is shown. A calculation that could not have produced them would
+// render a different roll beside the same question, so the window is refused
+// rather than written.
+func (s *RollWindowTestSuite) TestArithmeticThatDisagreesWithTheQuestionIsRefused() {
+	tests := []struct {
+		name   string
+		change func(*encounter.RollCalculation)
+	}{
+		{
+			name:   "the total disagrees",
+			change: func(calc *encounter.RollCalculation) { calc.Total = 99 },
+		},
+		{
+			name: "the d20 subtotal disagrees with the roll shown",
+			change: func(calc *encounter.RollCalculation) {
+				calc.Components[0].Dice.KeptIndices = []int{1}
+				calc.Components[0].Dice.Subtotal = 18
+				calc.Components[0].Dice.Keep = nil
+				calc.Total = 22
+			},
+		},
+		{
+			name: "the roll did not open with a d20",
+			change: func(calc *encounter.RollCalculation) {
+				die := calc.Components[0].Dice
+				die.DieSize, die.Notation = 6, "2d6"
+				die.OriginalRolls, die.FinalRolls = []int{1, 6}, []int{1, 6}
+				die.Subtotal = 1
+				die.Keep = nil
+				die.KeptIndices = []int{0}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			enc := s.scene()
+			calculation := windowCalculation(8, 12)
+			test.change(calculation)
+
+			_, err := enc.RecordRollWindow(&encounter.RollWindowInput{
+				Audience: encounter.MemberID(alice), Offer: testBardicInspiration,
+				Roll: 8, Total: 12, Calculation: calculation,
+			})
+
+			s.Require().Error(err)
+			s.Contains(err.Error(), "calculation")
+		})
+	}
+}

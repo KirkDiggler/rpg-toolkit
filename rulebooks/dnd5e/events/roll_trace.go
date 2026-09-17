@@ -87,6 +87,39 @@ type DiceReroll struct {
 	Source   RollSource
 }
 
+// KeepRule names the rule that decided which faces of a dice pool count.
+type KeepRule string
+
+const (
+	// KeepAdvantage keeps the highest face of a pool rolled with advantage.
+	KeepAdvantage KeepRule = "advantage"
+
+	// KeepDisadvantage keeps the lowest face of a pool rolled with disadvantage.
+	KeepDisadvantage KeepRule = "disadvantage"
+
+	// KeepCancelled records granted and imposed sources meeting: the pool was
+	// rolled straight and every face counts, and the record says why.
+	KeepCancelled KeepRule = "cancelled"
+)
+
+// DiceKeep records the rule that decided KeptIndices, and who brought it.
+// Nil when nothing touched the pool: a straight roll keeps every face.
+//
+// It is the sibling of Rerolls. Rerolls explains why FinalRolls differ from
+// OriginalRolls; Keep explains why KeptIndices is what it is. Cancellation is
+// a recorded rule rather than an absence: RAW rolls one die, and so do we, but
+// the record names the two rules that met (rpg-project#462 R2).
+type DiceKeep struct {
+	// Rule names the keep rule that was applied.
+	Rule KeepRule
+
+	// Granted are the sources that granted advantage on this pool.
+	Granted []RollSource
+
+	// Imposed are the sources that imposed disadvantage on this pool.
+	Imposed []RollSource
+}
+
 // DiceTrace records the original and final faces of one homogeneous dice pool.
 // An empty KeptIndices means every final face contributes to Subtotal.
 type DiceTrace struct {
@@ -97,6 +130,10 @@ type DiceTrace struct {
 	FinalRolls    []int
 	KeptIndices   []int
 	Subtotal      int
+
+	// Keep records the rule that decided KeptIndices. Nil when nothing
+	// touched the pool.
+	Keep *DiceKeep
 }
 
 // RollComponent records dice, a modifier, or both from one source.
@@ -115,6 +152,34 @@ type RollComponent struct {
 type RollCalculation struct {
 	Components []RollComponent
 	Total      int
+}
+
+// NewRollCalculation assembles a calculation from its components and sums the
+// authoritative total off the components themselves, so no machine hand-writes
+// its own arithmetic and then disagrees with the record it publishes.
+// Subtractive dice subtract their subtotal; a non-nil Modifier participates
+// even when it is zero. Validate the result before publishing it.
+func NewRollCalculation(components []RollComponent) *RollCalculation {
+	calculation := &RollCalculation{Components: components}
+	for _, component := range components {
+		if component.Dice != nil {
+			if component.SubtractDice {
+				calculation.Total -= component.Dice.Subtotal
+			} else {
+				calculation.Total += component.Dice.Subtotal
+			}
+		}
+		if component.Modifier != nil {
+			calculation.Total += *component.Modifier
+		}
+	}
+	return calculation
+}
+
+// CloneRollSource returns a copy of source whose ref is its own, so a published
+// source cannot be mutated through the one it was copied from.
+func CloneRollSource(source RollSource) RollSource {
+	return cloneRollSource(source)
 }
 
 // CloneRollCalculation returns a deep clone of calculation, or nil when calculation is nil.
@@ -160,7 +225,32 @@ func cloneDiceTrace(trace *DiceTrace) *DiceTrace {
 		FinalRolls:    cloneInts(trace.FinalRolls),
 		KeptIndices:   cloneInts(trace.KeptIndices),
 		Subtotal:      trace.Subtotal,
+		Keep:          cloneDiceKeep(trace.Keep),
 	}
+}
+
+func cloneDiceKeep(keep *DiceKeep) *DiceKeep {
+	if keep == nil {
+		return nil
+	}
+
+	return &DiceKeep{
+		Rule:    keep.Rule,
+		Granted: cloneRollSources(keep.Granted),
+		Imposed: cloneRollSources(keep.Imposed),
+	}
+}
+
+func cloneRollSources(sources []RollSource) []RollSource {
+	if sources == nil {
+		return nil
+	}
+
+	clones := make([]RollSource, len(sources))
+	for i, source := range sources {
+		clones[i] = cloneRollSource(source)
+	}
+	return clones
 }
 
 func cloneInts(values []int) []int {
@@ -257,8 +347,13 @@ func validateRollComponent(component RollComponent) error {
 	if component.SubtractDice && component.Dice == nil {
 		return fmt.Errorf("cannot subtract dice without dice")
 	}
-	if component.SubtractDice && strings.TrimSpace(component.Source.SourceID) == "" {
-		return fmt.Errorf("subtractive dice source id is required")
+	if component.Dice != nil && strings.TrimSpace(component.Source.SourceID) == "" {
+		// R7: every dice pool names the entity whose rule threw it. The d20 is
+		// the roller's, a contributed die its granter's, a damage die the
+		// wielder's. A roll with no entity behind it does not exist in this
+		// game, so it is refused here rather than rendered anonymous
+		// (rpg-project#462).
+		return fmt.Errorf("dice source id is required")
 	}
 	if component.Dice == nil {
 		return nil
@@ -328,8 +423,106 @@ func validateDiceTrace(trace *DiceTrace) error {
 	if err := validateRerolls(trace); err != nil {
 		return err
 	}
+	if err := validateSubtotal(trace); err != nil {
+		return err
+	}
 
-	return validateSubtotal(trace)
+	return validateDiceKeep(trace)
+}
+
+// validateDiceKeep refuses any keep record that does not describe the pool it
+// sits on. Fail closed: a builder that fills the record by hand and gets it
+// wrong is refused at the seam, not rendered wrong (rpg-project#462).
+func validateDiceKeep(trace *DiceTrace) error {
+	keep := trace.Keep
+	if keep == nil {
+		return nil
+	}
+
+	for i, source := range keep.Granted {
+		if err := validateKeepSource(source); err != nil {
+			return fmt.Errorf("keep granted source %d: %w", i, err)
+		}
+	}
+	for i, source := range keep.Imposed {
+		if err := validateKeepSource(source); err != nil {
+			return fmt.Errorf("keep imposed source %d: %w", i, err)
+		}
+	}
+
+	switch keep.Rule {
+	case KeepAdvantage:
+		return validateKeptExtreme(trace, keep.Rule, len(keep.Granted), len(keep.Imposed),
+			func(a, b int) int { return max(a, b) })
+	case KeepDisadvantage:
+		return validateKeptExtreme(trace, keep.Rule, len(keep.Imposed), len(keep.Granted),
+			func(a, b int) int { return min(a, b) })
+	case KeepCancelled:
+		if len(keep.Granted) == 0 || len(keep.Imposed) == 0 {
+			return fmt.Errorf(
+				"keep rule %q requires both a granted and an imposed source, got %d and %d",
+				keep.Rule, len(keep.Granted), len(keep.Imposed),
+			)
+		}
+		if len(trace.FinalRolls) != 1 {
+			// RAW ROLLS ONE DIE WHEN THE TWO RULES MEET, and so do we. A
+			// cancellation recorded over a pair is not a cancellation: it is
+			// an advantage or a disadvantage whose keep decision went
+			// unrecorded, and every face would count toward the subtotal.
+			return fmt.Errorf(
+				"keep rule %q rolls one die, got %d faces", keep.Rule, len(trace.FinalRolls))
+		}
+		if len(trace.KeptIndices) != 0 {
+			return fmt.Errorf("keep rule %q keeps no face, got %d kept", keep.Rule, len(trace.KeptIndices))
+		}
+		return nil
+	default:
+		return fmt.Errorf("keep rule %q is not a keep rule", keep.Rule)
+	}
+}
+
+// validateKeptExtreme checks the shape both one-sided keep rules share: the
+// rule was brought by at least one source, nothing opposed it, the pool holds
+// more than one face, exactly one was kept, and the kept face is the extreme
+// the rule names.
+func validateKeptExtreme(
+	trace *DiceTrace, rule KeepRule, bringing, opposing int, extreme func(int, int) int,
+) error {
+	if bringing == 0 {
+		return fmt.Errorf("keep rule %q records no source that brought it", rule)
+	}
+	if opposing != 0 {
+		return fmt.Errorf("keep rule %q records an opposing source: that is a cancellation", rule)
+	}
+	if len(trace.FinalRolls) < 2 {
+		return fmt.Errorf("keep rule %q requires at least 2 faces, got %d", rule, len(trace.FinalRolls))
+	}
+	if len(trace.KeptIndices) != 1 {
+		return fmt.Errorf("keep rule %q keeps exactly one face, got %d", rule, len(trace.KeptIndices))
+	}
+
+	index := trace.KeptIndices[0]
+	if index < 0 || index >= len(trace.FinalRolls) {
+		return fmt.Errorf("kept index %d is outside final rolls", index)
+	}
+	want := trace.FinalRolls[0]
+	for _, face := range trace.FinalRolls[1:] {
+		want = extreme(want, face)
+	}
+	if trace.FinalRolls[index] != want {
+		return fmt.Errorf("keep rule %q kept face %d, want %d", rule, trace.FinalRolls[index], want)
+	}
+	return nil
+}
+
+func validateKeepSource(source RollSource) error {
+	if err := validateRollSource(source); err != nil {
+		return err
+	}
+	if strings.TrimSpace(source.SourceID) == "" {
+		return fmt.Errorf("source id is required: a keep rule is brought by an entity")
+	}
+	return nil
 }
 
 func validateFaces(kind string, faces []int, dieSize int) error {

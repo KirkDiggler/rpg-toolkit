@@ -238,7 +238,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
 			{
 				Source: "weapon",
 				Roll: encounter.RollComponent{
-					Source: encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+					Source: encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword", SourceID: "hero-1"},
 					Dice: &encounter.DiceTrace{
 						Notation: "1d8", DieSize: 8,
 						OriginalRolls: []int{4}, FinalRolls: []int{4}, Subtotal: 4,
@@ -393,6 +393,7 @@ func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
 		c.Roll.SubtractDice = true
 	})
 	add("subtractive dice source id is missing", func(c *encounter.DamageComponent) {
+		c.Roll.Source.SourceID = ""
 		c.Roll.SubtractDice = true
 	})
 	add("subtractive dice source id is blank", func(c *encounter.DamageComponent) {
@@ -518,7 +519,7 @@ func gwfDamageComponents() []encounter.DamageComponent {
 		{
 			Source: "weapon",
 			Roll: encounter.RollComponent{
-				Source: encounter.RollSource{Ref: "dnd5e:weapons:greatsword", Name: "Greatsword"},
+				Source: encounter.RollSource{Ref: "dnd5e:weapons:greatsword", Name: "Greatsword", SourceID: "hero-1"},
 				Dice: &encounter.DiceTrace{
 					Notation:      "2d6",
 					DieSize:       6,
@@ -1040,7 +1041,9 @@ func attackCalculation(roll, modifier, penalty int) *encounter.RollCalculation {
 	calculation := &encounter.RollCalculation{
 		Components: []encounter.RollComponent{
 			{
-				Source: encounter.RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Source: encounter.RollSource{
+					Ref: "dnd5e:weapons:longsword", Name: "Longsword", SourceID: "hero-1",
+				},
 				Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
 					OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll},
 			},
@@ -1091,7 +1094,9 @@ func (s *OutcomeTestSuite) TestAttackCalculationRoundTripsAndScalarOnlyIsRefused
 
 func (s *OutcomeTestSuite) TestDeathSaveCalculationRoundTripsAndMalformedDataIsRefused() {
 	calculation := attackCalculation(12, 0, 4)
-	calculation.Components[0].Source = encounter.RollSource{Ref: "dnd5e:actions:death-save", Name: "Death Save"}
+	calculation.Components[0].Source = encounter.RollSource{
+		Ref: "dnd5e:actions:death-save", Name: "Death Save", SourceID: string(alice),
+	}
 	calculation.Components[1] = calculation.Components[2]
 	calculation.Components = calculation.Components[:2]
 	calculation.Total = 8

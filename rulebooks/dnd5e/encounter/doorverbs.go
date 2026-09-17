@@ -254,6 +254,17 @@ type UnlockInput struct {
 	// verdict is Beaten, alone.
 	Total int
 
+	// Calculation is the full sourced arithmetic behind Total — the d20 pool
+	// with every face it threw and the keep record naming any rule that
+	// decided which one counted. CARRIED, NEVER COMPARED, the same law as
+	// Total.
+	//
+	// A DoorChanged written by an unlock attempt IS a check beat
+	// (rpg-project#462 R4): "any future check beat" includes the one that
+	// already exists. Optional; when present it must describe Total and open
+	// with a d20 pool, or the attempt is refused rather than recorded wrong.
+	Calculation *RollCalculation
+
 	// Applied is the route the attempt actually took — the one the
 	// caller's resolver applied, which is the member's best listed
 	// approach per the standing ruling (rpg-project#350; the selection
@@ -373,6 +384,12 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	extra["dc"] = in.Applied.DC
 	extra["beaten"] = in.Beaten
 	extra["total"] = in.Total
+	if in.Calculation != nil {
+		if err := validateRecordedTotal(in.Calculation, in.Total); err != nil {
+			return nil, fmt.Errorf("unlock %q: calculation: %w", door.id, err)
+		}
+		extra["calculation"] = in.Calculation
+	}
 
 	changed, err := e.setDoorState(door, next, extra)
 	if err != nil {

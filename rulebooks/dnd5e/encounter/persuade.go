@@ -64,6 +64,16 @@ type PersuadeInput struct {
 	DC    int
 	Total int
 
+	// Calculation is the full sourced arithmetic behind Total — the d20 pool
+	// with every face it threw and the keep record naming the rule that
+	// decided which one counted. CARRIED, NEVER COMPARED, exactly like DC and
+	// Total; it rides the beat so the story can say "2d20 [7, 18] kept 7 ·
+	// disadvantage: Untrained" instead of one number (rpg-project#462).
+	//
+	// Optional. When present it must describe Total and open with a d20 pool,
+	// or the attempt is refused rather than written down wrong.
+	Calculation *RollCalculation
+
 	// Roller is the world's die, the one the answer table is picked with.
 	// REQUIRED ([ErrNoRoller]) — see [IntimidateInput.Roller] for why it is
 	// per call rather than a constructor capability.
@@ -102,7 +112,7 @@ func (e *Encounter) Persuade(ctx context.Context, in *PersuadeInput) (*PersuadeO
 	out, err := e.social(ctx, socialInput{
 		verb: DeedPersuade, beat: BeatPersuaded, tag: "persuade",
 		actor: in.Actor, target: in.Target, beaten: in.Beaten,
-		dc: in.DC, total: in.Total, roller: in.Roller,
+		dc: in.DC, total: in.Total, calculation: in.Calculation, roller: in.Roller,
 	})
 	if err != nil {
 		return nil, err

@@ -111,6 +111,17 @@ type ResolveCheckOutput struct {
 	// Total is what the check totalled, carried and never compared —
 	// [UnlockInput.Total]'s law.
 	Total int
+
+	// Calculation is the resolver's full sourced arithmetic for the roll: the
+	// d20 pool with every face it threw and the keep record naming any rule
+	// that decided which one counted, then the modifier and any bonuses.
+	//
+	// CARRIED AND NEVER COMPARED, the same law as Total and Beaten. It exists
+	// because this verdict used to be three numbers wide, so an untrained
+	// character's second d20 face and the word "Untrained" died at the seam
+	// and the table saw one number (rpg-project#462). Optional: a resolver
+	// that records no arithmetic leaves it nil, and nil means exactly that.
+	Calculation *RollCalculation
 }
 
 // Witness answers who currently perceives a door's crossings — the injected

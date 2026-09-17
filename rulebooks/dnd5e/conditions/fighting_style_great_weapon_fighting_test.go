@@ -223,8 +223,10 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Dagger(), Name: "Dagger"},
-					Dice:   diceTrace(4, 1),
+					Source: dnd5eEvents.RollSource{
+						Ref: refs.Weapons.Dagger(), Name: "Dagger", SourceID: "fighter-1",
+					},
+					Dice: diceTrace(4, 1),
 				},
 				DamageType: damage.Slashing,
 			},
@@ -232,8 +234,10 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 				Source:     dnd5eEvents.DamageSourceWeapon,
 				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
-					Dice:   diceTrace(6, 1),
+					Source: dnd5eEvents.RollSource{
+						Ref: refs.Weapons.Greatsword(), Name: "Greatsword", SourceID: "fighter-1",
+					},
+					Dice: diceTrace(6, 1),
 				},
 				DamageType: damage.Slashing,
 			},
@@ -273,7 +277,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsCurrentFacesAfter
 				Source:     dnd5eEvents.DamageSourceWeapon,
 				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
+					Source: dnd5eEvents.RollSource{
+						Ref: refs.Weapons.Greatsword(), Name: "Greatsword", SourceID: "fighter-1",
+					},
 					Dice: &dnd5eEvents.DiceTrace{
 						Notation:      "d6",
 						DieSize:       6,
@@ -348,8 +354,10 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCall
 				Source:     dnd5eEvents.DamageSourceWeapon,
 				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
-					Dice:   diceTrace(6, 1, 2), // original/final [1,2], subtotal 3
+					Source: dnd5eEvents.RollSource{
+						Ref: refs.Weapons.Greatsword(), Name: "Greatsword", SourceID: "fighter-1",
+					},
+					Dice: diceTrace(6, 1, 2), // original/final [1,2], subtotal 3
 				},
 				DamageType: damage.Slashing,
 			},
@@ -397,7 +405,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestNilPrimaryDiceTraceFails
 				Source:     dnd5eEvents.DamageSourceWeapon,
 				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
+					Source: dnd5eEvents.RollSource{
+						Ref: refs.Weapons.Greatsword(), Name: "Greatsword", SourceID: "fighter-1",
+					},
 					// Roll.Dice deliberately nil: a marked primary weapon
 					// carrying no dice trace.
 				},
@@ -427,4 +437,57 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestToJSON() {
 	s.Require().NoError(err)
 	s.Contains(string(jsonData), refs.Conditions.FightingStyleGreatWeaponFighting().ID)
 	s.Contains(string(jsonData), "fighter-1")
+}
+
+// TestRerollsEveryLowFaceButOnlyKeptOnesMoveTheSubtotal pins the one reader of
+// KeptIndices in the rulebook, now that a keep record sits beside them. A
+// dropped die still gets its reroll recorded — the history is the whole
+// history — but only a kept die can change what the pool contributed.
+func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsEveryLowFaceButOnlyKeptOnesMoveTheSubtotal() {
+	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-1", s.mockRoller)
+	s.Require().NoError(gwf.Apply(s.ctx, s.bus))
+	defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
+
+	// Both faces are low, so both reroll; only index 1 is kept.
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil)
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil)
+
+	trace := diceTrace(6, 1, 2)
+	trace.KeptIndices = []int{1}
+	trace.Subtotal = 2
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []dnd5eEvents.DamageComponent{{
+			Source:     dnd5eEvents.DamageSourceWeapon,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref: refs.Weapons.Greatsword(), Name: "Greatsword", SourceID: "fighter-1",
+				},
+				Dice: trace,
+			},
+			DamageType: damage.Slashing,
+		}},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	got := finalEvent.Components[0].Roll.Dice
+	s.Require().NotNil(got)
+	s.Equal([]int{4, 5}, got.FinalRolls, "both low faces were rerolled")
+	s.Require().Len(got.Rerolls, 2, "and both rerolls are on the record")
+	s.Equal([]int{1}, got.KeptIndices, "the keep decision is untouched by the reroll")
+	s.Equal(5, got.Subtotal, "only the kept die moved the subtotal: 2 -> 5, never 4 + 5")
+
+	calc := &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{finalEvent.Components[0].Roll},
+		Total:      5,
+	}
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(calc))
 }

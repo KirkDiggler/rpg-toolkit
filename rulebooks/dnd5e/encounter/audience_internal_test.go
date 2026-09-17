@@ -196,7 +196,7 @@ func TestCallSiteClassification(t *testing.T) {
 		Values: map[OutcomeValue]int{ValueRoll: 4, ValueTotal: 4, ValueAgainst: 15},
 		Calculation: &RollCalculation{Components: []RollComponent{
 			{
-				Source: RollSource{Ref: "dnd5e:weapons:club", Name: "Club"},
+				Source: RollSource{Ref: "dnd5e:weapons:club", Name: "Club", SourceID: "hero-1"},
 				Dice: &DiceTrace{Notation: "1d20", DieSize: 20,
 					OriginalRolls: []int{4}, FinalRolls: []int{4}, Subtotal: 4},
 			},

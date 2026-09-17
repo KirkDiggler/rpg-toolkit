@@ -293,6 +293,19 @@ type AttackModifierSource struct {
 	Reason    string    // Human-readable explanation
 }
 
+// RollSource maps this modifier onto the calculation's sourced-fact type:
+// SourceRef->Ref, Reason->Name, SourceID->SourceID. An attack modifier has no
+// separate kind word, so Label stays empty. Owned by the type rather than by
+// each caller, so a keep record cannot spell the same fact two ways.
+func (s AttackModifierSource) RollSource() RollSource {
+	source := RollSource{Name: s.Reason, SourceID: s.SourceID}
+	if s.SourceRef != nil {
+		ref := *s.SourceRef
+		source.Ref = &ref
+	}
+	return source
+}
+
 // =============================================================================
 // Chain Events (modifier chains)
 // =============================================================================
@@ -439,6 +452,17 @@ type SaveModifierSource struct {
 	EntityID   string    // ID of entity providing the modifier
 }
 
+// RollSource maps this modifier onto the calculation's sourced-fact type, one
+// to one: SourceRef->Ref, Name->Name, SourceType->Label, EntityID->SourceID.
+func (s SaveModifierSource) RollSource() RollSource {
+	source := RollSource{Name: s.Name, Label: s.SourceType, SourceID: s.EntityID}
+	if s.SourceRef != nil {
+		ref := *s.SourceRef
+		source.Ref = &ref
+	}
+	return source
+}
+
 // SaveBonusSource tracks a bonus to the saving throw
 type SaveBonusSource struct {
 	SaveModifierSource     // Embedded modifier source
@@ -488,6 +512,19 @@ type CheckModifierSource struct {
 	SourceType string    // Type of source ("condition", "feature", "spell", etc)
 	SourceRef  *core.Ref // Reference to the source
 	EntityID   string    // ID of entity providing the modifier
+}
+
+// RollSource maps this modifier onto the calculation's sourced-fact type, one
+// to one: SourceRef->Ref, Name->Name, SourceType->Label, EntityID->SourceID.
+// The untrained rule already publishes Name "Untrained" with the rules ref, so
+// the word a log prints comes down from here and is never invented by a client.
+func (s CheckModifierSource) RollSource() RollSource {
+	source := RollSource{Name: s.Name, Label: s.SourceType, SourceID: s.EntityID}
+	if s.SourceRef != nil {
+		ref := *s.SourceRef
+		source.Ref = &ref
+	}
+	return source
 }
 
 // CheckBonusSource tracks a bonus to an ability check.

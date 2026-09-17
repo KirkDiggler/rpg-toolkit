@@ -182,6 +182,7 @@ func (c *Character) MakeDeathSave(
 	result, err := saves.MakeDeathSave(ctx, &saves.DeathSaveInput{
 		Roller:        input.Roller,
 		State:         state,
+		SaverID:       c.GetID(),
 		D20Source:     dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 		Contributions: contributions.Contributions,
 	})

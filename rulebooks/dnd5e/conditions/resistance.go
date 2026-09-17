@@ -213,7 +213,8 @@ func (r *ResistanceCondition) onPostSaveRollOffer(
 		_ context.Context, e *dnd5eEvents.PostSaveRollOfferEvent,
 	) (*dnd5eEvents.PostSaveRollOfferEvent, error) {
 		e.Offers = append(e.Offers, dnd5eEvents.Offer{
-			Ref: refs.Conditions.Resistance(), Name: ResistanceName, Audience: r.MemberID, Die: ResistanceDie,
+			Ref: refs.Conditions.Resistance(), Name: ResistanceName, Audience: r.MemberID,
+			Die: ResistanceDie, SourceID: r.SourceID,
 		})
 		return e, nil
 	}

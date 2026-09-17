@@ -129,8 +129,9 @@ func markedWeaponComponent(faces ...int) dnd5eEvents.DamageComponent {
 		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 		Roll: dnd5eEvents.RollComponent{
 			Source: dnd5eEvents.RollSource{
-				Ref:  refs.Weapons.Greatsword(),
-				Name: "Greatsword",
+				Ref:      refs.Weapons.Greatsword(),
+				Name:     "Greatsword",
+				SourceID: "fighter-1",
 			},
 			Dice: &dnd5eEvents.DiceTrace{
 				Notation:      dice.SimplePool(len(faces), 6, 0).Notation(),

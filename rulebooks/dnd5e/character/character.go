@@ -355,13 +355,13 @@ type MakeSavingThrowInput struct {
 	DC int
 
 	// D20Source is the canonical effect/action source that caused this save.
+	//
+	// Advantage and disadvantage are NOT inputs here. They arrive on the
+	// SavingThrowChain from the conditions and features attached to this
+	// character, which is where every real source already comes from — and
+	// only a chain source can name the entity a keep record requires
+	// (rpg-project#462 R7).
 	D20Source dnd5eEvents.RollSource
-
-	// HasAdvantage indicates the character has advantage on this save
-	HasAdvantage bool
-
-	// HasDisadvantage indicates the character has disadvantage on this save
-	HasDisadvantage bool
 }
 
 // MakeSavingThrow makes a full saving throw for this character.
@@ -401,9 +401,7 @@ func (c *Character) MakeSavingThrow(
 		ModifierSource: dnd5eEvents.RollSource{
 			Ref: savingThrowAbilityRef(input.Ability), Name: input.Ability.Display(),
 		},
-		Contributions:   contributions.Contributions,
-		HasAdvantage:    input.HasAdvantage,
-		HasDisadvantage: input.HasDisadvantage,
+		Contributions: contributions.Contributions,
 	})
 }
 
