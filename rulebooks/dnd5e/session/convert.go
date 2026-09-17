@@ -4,6 +4,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
@@ -67,7 +68,7 @@ func projectLayout(o encounter.Orientation) HexLayout {
 // What remains is the translation S2 exists for: the composition's types
 // become this package's, so a host never recompiles when the inner module
 // changes shape. convert_test.go holds this honest field by field.
-func projectAtlas(in encounter.Atlas) Atlas {
+func projectAtlas(in encounter.Atlas) (Atlas, error) {
 	out := Atlas{
 		// Hex is the field's only family as of rpg-project#256; the
 		// composition's Grid() has no other answer to give.
@@ -81,6 +82,20 @@ func projectAtlas(in encounter.Atlas) Atlas {
 		Segments:   make([]AtlasSegment, 0, len(in.Segments)),
 		Sealed:     append([]spatial.Position(nil), in.Sealed...),
 		Exits:      make([]AtlasExit, 0, len(in.Exits)),
+	}
+
+	// RoomScene is already the encounter's canonical presentation. Validate
+	// with its owner and carry the complete document, rather than introducing
+	// a second DTO or reimplementing its graph/range rules.
+	if in.RoomScene != nil {
+		if defects := encounter.ValidateRoomScene(in.RoomScene); len(defects) != 0 {
+			return Atlas{}, fmt.Errorf("project atlas room scene: %s: %w", defects[0].Error(), ErrInvalidWorld)
+		}
+		raw, err := json.Marshal(in.RoomScene)
+		if err != nil {
+			return Atlas{}, fmt.Errorf("project atlas room scene: %w: %w", ErrInvalidWorld, err)
+		}
+		out.RoomSceneJSON = string(raw)
 	}
 
 	// THE HELD FILTER IS INHERITED, THE FIELDS ARE NOT. A prop somebody
@@ -151,7 +166,7 @@ func projectAtlas(in encounter.Atlas) Atlas {
 		})
 	}
 
-	return out
+	return out, nil
 }
 
 // intelIDs converts the seam's plain record ids to the composition's own type.

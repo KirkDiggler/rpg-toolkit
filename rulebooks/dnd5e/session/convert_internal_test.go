@@ -20,7 +20,14 @@ import (
 // never actually wired into the copy loop below. This file is the value half:
 // proof that the bytes projectAtlas returns are the bytes it was handed, not
 // just that the outer type has somewhere to put them.
-//
+func mustProjectAtlas(in encounter.Atlas) Atlas {
+	out, err := projectAtlas(in)
+	if err != nil {
+		panic(err)
+	}
+	return out
+}
+
 // TestPropFacingAndOffsetCrossTheSeam pins rpg-project#261's projection: a
 // straight copy, by design, of the two additive presentational fields —
 // carried exactly as the composition reports them, including the "said
@@ -41,7 +48,7 @@ func TestPropFacingAndOffsetCrossTheSeam(t *testing.T) {
 		},
 	}
 
-	out := projectAtlas(in)
+	out := mustProjectAtlas(in)
 
 	require.Len(t, out.Props, 2)
 	require.Equal(t, "se", out.Props[0].Facing, "the exact authored word, uninterpreted")
@@ -65,7 +72,7 @@ func TestWallHeightCrossesTheSeam(t *testing.T) {
 		},
 	}
 
-	out := projectAtlas(in)
+	out := mustProjectAtlas(in)
 
 	require.Len(t, out.Boundaries, 2)
 	require.Equal(t, 2.5, out.Boundaries[0].Height, "the exact authored multiplier")
@@ -98,7 +105,7 @@ func TestSegmentsAndSealedCrossTheSeam(t *testing.T) {
 		Sealed: []spatial.Position{{X: 3, Y: 1}, {X: 3, Y: 3}},
 	}
 
-	out := projectAtlas(in)
+	out := mustProjectAtlas(in)
 
 	require.Len(t, out.Segments, 2)
 	require.Equal(t, AxialPointF{Q: 2, R: 7.5}, out.Segments[0].From,
@@ -134,7 +141,7 @@ func fieldsOfSegment() []string {
 // nothing sealed projects empty, never nil-with-a-length, so a host that
 // ranges over either gets the same shape whatever the dungeon is.
 func TestAnEmptyAtlasProjectsEmptyLists(t *testing.T) {
-	out := projectAtlas(encounter.Atlas{Orientation: encounter.HexesArePointyTop()})
+	out := mustProjectAtlas(encounter.Atlas{Orientation: encounter.HexesArePointyTop()})
 
 	require.Empty(t, out.Segments)
 	require.Empty(t, out.Sealed)
@@ -156,7 +163,7 @@ func TestAnEmptyAtlasProjectsEmptyLists(t *testing.T) {
 // what S2 forbids.
 func TestTheStartIsCopiedNotShared(t *testing.T) {
 	inner := &encounter.AtlasStart{At: spatial.Position{X: 1, Y: 3}, Facing: "e"}
-	out := projectAtlas(encounter.Atlas{
+	out := mustProjectAtlas(encounter.Atlas{
 		Orientation: encounter.HexesArePointyTop(),
 		Start:       inner,
 	})
@@ -175,6 +182,6 @@ func TestTheStartIsCopiedNotShared(t *testing.T) {
 // the conversion decides it: nil in, nil out, never a zero-valued start that
 // would claim the party arrives at the origin looking nowhere.
 func TestAnAtlasWithNoStartProjectsNil(t *testing.T) {
-	out := projectAtlas(encounter.Atlas{Orientation: encounter.HexesArePointyTop()})
+	out := mustProjectAtlas(encounter.Atlas{Orientation: encounter.HexesArePointyTop()})
 	require.Nil(t, out.Start)
 }
