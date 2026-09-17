@@ -12,10 +12,10 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.178.1-0.20260917011855-08f62d717354
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.179.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.6.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.85.1-0.20260917022758-70b00b1b4d26
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.51.1-0.20260917014053-e6481f52fa0a
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.86.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.52.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.15.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/stretchr/testify v1.11.1
