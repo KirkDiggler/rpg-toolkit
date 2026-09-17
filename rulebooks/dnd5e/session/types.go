@@ -950,10 +950,16 @@ const (
 	// ([encounter.BeatPersuaded]) so a rename fails to compile here.
 	EventPersuaded EventKind = "persuaded"
 
-	// EventReacted is WHAT THE CREATURE DID ABOUT IT: the world's own roll on
-	// the author's reaction table after a social verb settled
-	// (rpg-project#458, R1 — "everything visible in the log now, probably not
-	// story but the debug log for sure").
+	// EventAnswered is WHAT THE CREATURE DID ABOUT IT: the world's own roll on
+	// the author's answer table after a social verb settled (rpg-project#458,
+	// R1 — "everything visible in the log now, probably not story but the
+	// debug log for sure").
+	//
+	// "ANSWERED", NOT "REACTED", AND THE DISTINCTION IS LOAD-BEARING HERE.
+	// [VerbReact] is D&D's reaction — an interrupt window this seam poses and
+	// a player answers with a held swing. A creature replying to somebody who
+	// spoke to it is a different thing on a different clock, and a client
+	// switching on event kind must not have to tell them apart by context.
 	//
 	// IT CARRIES THE AUTHOR'S LINE, and that is how the player receives what
 	// the goblin says. Nothing else in this build projects "what the player
@@ -964,7 +970,7 @@ const (
 	// index of the entry that fired, so the table can be replayed from the
 	// log rather than taken on trust. A verdict the author wrote no table for
 	// produces NO beat of this kind at all — absent means absent.
-	EventReacted EventKind = "reacted"
+	EventAnswered EventKind = "answered"
 
 	// EventDoorRevealed is a concealed door entering THIS RECIPIENT's
 	// knowledge — their own search, a crossing, or perceiving it open. The
@@ -1982,14 +1988,15 @@ type PersuadedBody struct {
 
 func (PersuadedBody) isEventBody() {}
 
-// ReactedBody is EventReacted's typed body: the world's roll on the author's
-// table, and what the creature did and said.
+// AnsweredBody is EventAnswered's typed body: the world's roll on the author's
+// answer table, and what the creature did and said. Not a reaction — see
+// [EventAnswered].
 //
 // EVERY FIELD IS WRITTEN, NONE OMITEMPTY. A reader downstream must not be able
 // to get a third state out of an absent key — `beaten: false`, `entry: 0` and
 // an empty `word` are all answers, and the beat exists at all only when an
 // entry actually fired.
-type ReactedBody struct {
+type AnsweredBody struct {
 	// Creature is whose table was rolled — the member the verb was aimed at.
 	Creature string `json:"creature"`
 
@@ -2025,7 +2032,7 @@ type ReactedBody struct {
 	Fact string `json:"fact"`
 }
 
-func (ReactedBody) isEventBody() {}
+func (AnsweredBody) isEventBody() {}
 
 // DoorRevealedBody is EventDoorRevealed's typed body: a concealed door as
 // the recipient's own atlas and door list now carry it — the patch for both

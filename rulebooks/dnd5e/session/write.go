@@ -178,7 +178,7 @@ type SpawnInput struct {
 	// means DERIVED, not ungated.
 	Persuade []DoorApproach
 
-	// Reactions is what this monster DOES about a social verb's verdict,
+	// Answers is what this monster DOES about a social verb's verdict,
 	// keyed by outcome — the author's `place[].on` (rpg-project#458),
 	// forwarded untouched.
 	//
@@ -189,7 +189,7 @@ type SpawnInput struct {
 	//
 	// Empty is the ordinary case: a creature with nothing authored answers
 	// nothing and the world rolls no die.
-	Reactions map[string][]Reaction
+	Answers map[string][]Answer
 
 	// Faction is the side this monster fights on — the author's placement
 	// from the dungeon file's `place[].faction` (rpg-project#375, the
@@ -678,7 +678,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
 		sheet.Targeting.String(), sheet.Mind.String(), false, in.Holds, in.Faction, in.Arrives,
-		socialPlacement{Intimidate: in.Intimidate, Persuade: in.Persuade, Reactions: in.Reactions})
+		socialPlacement{Intimidate: in.Intimidate, Persuade: in.Persuade, Answers: in.Answers})
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -873,7 +873,7 @@ func place(
 		// string on both sides, so it crosses untouched.
 		Intimidate: checkApproachesOf(social.Intimidate),
 		Persuade:   checkApproachesOf(social.Persuade),
-		Reactions:  reactionsOf(social.Reactions),
+		Answers:    answersOf(social.Answers),
 	})
 	if err != nil {
 		return nil, translate(err)

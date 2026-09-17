@@ -316,8 +316,8 @@ func kindFor(beat string) EventKind {
 	// (rpg-project#458).
 	case encounter.BeatPersuaded:
 		return EventPersuaded
-	case encounter.BeatReacted:
-		return EventReacted
+	case encounter.BeatAnswered:
+		return EventAnswered
 	// The holdings verbs, named by what the record says (rpg-project#368
 	// §4.1). "looted", "held" and "dropped" are the composition's own words
 	// for what it did, so they cross unchanged — unlike "down"/"downed"
@@ -447,7 +447,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return PersuadedBody{Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
-	case EventReacted:
+	case EventAnswered:
 		var p struct {
 			Creature string `json:"creature"`
 			Verb     string `json:"verb"`
@@ -466,7 +466,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		if json.Unmarshal(payload, &p) != nil || p.Creature == "" || p.Verb == "" || p.Of < 1 {
 			return nil
 		}
-		return ReactedBody{
+		return AnsweredBody{
 			Creature: p.Creature, Verb: p.Verb, Beaten: p.Beaten,
 			Roll: p.Roll, Of: p.Of, Entry: p.Entry,
 			Word: p.Word, Say: p.Say, Fact: p.Fact,

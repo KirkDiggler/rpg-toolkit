@@ -603,7 +603,7 @@ func (s *IntimidateSuite) TestAnUnauthoredSpawnStillDerives() {
 func (s *IntimidateSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 	const fact = "sergeant-cowed"
 	s.authored = func(in *session.SpawnInput) {
-		in.Reactions = map[string][]session.Reaction{
+		in.Answers = map[string][]session.Answer{
 			"intimidated": {{Weight: 1, Fact: fact}},
 		}
 		in.Faction = "raiders"

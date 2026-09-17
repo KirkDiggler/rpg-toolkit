@@ -59,7 +59,7 @@ type socialVerb struct {
 	authored func(encounter.Member) []encounter.CheckApproach
 
 	// land is the composition op that records the verdict and rolls the
-	// creature's reaction to it.
+	// creature's answer to it.
 	land func(
 		context.Context, *encounter.Encounter, *socialLanding,
 	) (beaten bool, seq uint64, err error)
@@ -413,13 +413,15 @@ func (m *Manager) poseSocialWindow(
 	}, nil
 }
 
-// Reaction is ONE entry in an authored reaction table, in this seam's own
-// vocabulary (rpg-project#458).
+// Answer is ONE entry in an authored answer table, in this seam's own
+// vocabulary (rpg-project#458) — the creature's authored answer to a check,
+// rolled by the world. NOT [VerbReact], which is D&D's reaction and an
+// interrupt window this seam already owns that word for.
 //
 // SPELLED HERE RATHER THAN IMPORTED (S2): no composition type crosses this
-// seam's exported surface, so a host hands over these and [reactionsOf]
+// seam's exported surface, so a host hands over these and [answersOf]
 // converts at the boundary — the same move [DoorApproach] makes for a check.
-type Reaction struct {
+type Answer struct {
 	// Weight is this entry's share of the table, AT LEAST 1. The authoring
 	// dialect resolves an omitted weight to 1 before a host ever sees one;
 	// the composition refuses anything lower.
@@ -447,21 +449,21 @@ type Reaction struct {
 type socialPlacement struct {
 	Intimidate []DoorApproach
 	Persuade   []DoorApproach
-	Reactions  map[string][]Reaction
+	Answers    map[string][]Answer
 }
 
-// reactionsOf converts an authored reaction table to the composition's shape
+// answersOf converts an authored answer table to the composition's shape
 // at the boundary and nowhere else, nil staying nil so a placement that
 // authored none crosses as none.
-func reactionsOf(reactions map[string][]Reaction) map[string][]encounter.Reaction {
-	if reactions == nil {
+func answersOf(answers map[string][]Answer) map[string][]encounter.Answer {
+	if answers == nil {
 		return nil
 	}
-	out := make(map[string][]encounter.Reaction, len(reactions))
-	for key, entries := range reactions {
-		rows := make([]encounter.Reaction, 0, len(entries))
+	out := make(map[string][]encounter.Answer, len(answers))
+	for key, entries := range answers {
+		rows := make([]encounter.Answer, 0, len(entries))
 		for _, entry := range entries {
-			rows = append(rows, encounter.Reaction{
+			rows = append(rows, encounter.Answer{
 				Weight: entry.Weight,
 				Say:    entry.Say,
 				Fact:   encounter.FactID(entry.Fact),

@@ -6,7 +6,7 @@ package session_test
 // persuade_test.go is the second shenanigan across the whole seam
 // (rpg-project#458): the twin verb, the social verbs on the WORLD clock where
 // no fight exists, the untrained rule reaching a real check, and the author's
-// reaction table arriving as a typed beat.
+// answer table arriving as a typed beat.
 
 import (
 	"context"
@@ -264,7 +264,7 @@ func (s *PersuadeSuite) TestAnUntrainedCheckerRollsTheVerbAtDisadvantage() {
 // it was rolled with, the entry that fired and the line the author wrote.
 func (s *PersuadeSuite) TestTheReactionReachesTheStreamAsATypedBeat() {
 	s.authored = func(in *session.SpawnInput) {
-		in.Reactions = map[string][]session.Reaction{
+		in.Answers = map[string][]session.Answer{
 			"persuaded": {
 				{Weight: 3, Say: "Bandits took the cellar. Go left at the rope."},
 				{Weight: 1, Say: "Follow me."},
@@ -282,28 +282,28 @@ func (s *PersuadeSuite) TestTheReactionReachesTheStreamAsATypedBeat() {
 	var found *session.Event
 	events := s.events(mgr, "alice")
 	for i := range events {
-		if events[i].Kind == session.EventReacted {
+		if events[i].Kind == session.EventAnswered {
 			found = &events[i]
 		}
 	}
-	s.Require().NotNil(found, "the reaction reached alice's stream as its own kind")
-	s.Equal(session.ReactedBody{
+	s.Require().NotNil(found, "the answer reached alice's stream as its own kind")
+	s.Equal(session.AnsweredBody{
 		Creature: "goblin", Verb: encounter.DeedPersuade, Beaten: true,
 		Roll: 2, Of: 4, Entry: 0, Word: "",
 		Say: "Bandits took the cellar. Go left at the rope.", Fact: "",
 	}, found.Body, "the die, the weights it was rolled against, and the author's line verbatim")
 }
 
-// A verdict the author wrote no table for produces NO reaction beat at all.
+// A verdict the author wrote no table for produces NO answer beat at all.
 // Absent means absent, which is what makes an entry that fires and does
 // nothing distinguishable from nothing being authored.
 func (s *PersuadeSuite) TestAnUnauthoredOutcomeRollsNothing() {
 	s.authored = func(in *session.SpawnInput) {
-		in.Reactions = map[string][]session.Reaction{
+		in.Answers = map[string][]session.Answer{
 			"persuade_failed": {{Weight: 1, Say: "Nothing down there, friend."}},
 		}
 	}
-	// ONE face. A reaction roll would ask for a second and fail the verb; the
+	// ONE face. An answer roll would ask for a second and fail the verb; the
 	// appeal succeeding is the assertion that the beaten half never rolled.
 	mgr := s.front([]int{10})
 
@@ -312,7 +312,7 @@ func (s *PersuadeSuite) TestAnUnauthoredOutcomeRollsNothing() {
 	s.Require().True(out.Beaten)
 
 	for _, event := range s.events(mgr, "alice") {
-		s.NotEqual(session.EventReacted, event.Kind, "nothing was authored for a beaten appeal")
+		s.NotEqual(session.EventAnswered, event.Kind, "nothing was authored for a beaten appeal")
 	}
 }
 
@@ -432,7 +432,7 @@ func guidedTalker(id string) *character.Data {
 	return sheet
 }
 
-// A PAUSED VERB STILL ROLLS THE CREATURE'S REACTION when it resumes, and it
+// A PAUSED VERB STILL ROLLS THE CREATURE'S ANSWER when it resumes, and it
 // resumes as the verb that was PAUSED.
 //
 // The window carries which social verb it stopped: while Intimidate was the
@@ -440,11 +440,11 @@ func guidedTalker(id string) *character.Data {
 // Persuade that landed an Intimidate would put the wrong deed on a mind — the
 // coward would take fear from a conversation it was talked round by. This
 // scene pauses a Persuade, answers it, and reads back the deed, the beat and
-// the reaction the author wrote.
+// the answer the author wrote.
 func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction() {
 	s.sheet = guidedTalker("alice")
 	s.authored = func(in *session.SpawnInput) {
-		in.Reactions = map[string][]session.Reaction{
+		in.Answers = map[string][]session.Answer{
 			"persuaded": {{Weight: 1, Say: "Go left at the rope.", Fact: "bandits-in-cellar"}},
 		}
 	}
@@ -472,14 +472,14 @@ func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction(
 	s.True(s.heldBy(mgr, encounter.DeedPersuade), "it finished as the verb that was paused")
 	s.False(s.heldBy(mgr, encounter.DeedIntimidate), "and never as the other one")
 
-	var persuaded, reacted *session.Event
+	var persuaded, answered *session.Event
 	events := s.events(mgr, "alice")
 	for i := range events {
 		switch events[i].Kind {
 		case session.EventPersuaded:
 			persuaded = &events[i]
-		case session.EventReacted:
-			reacted = &events[i]
+		case session.EventAnswered:
+			answered = &events[i]
 		}
 	}
 	s.Require().NotNil(persuaded, "the verdict reached the log")
@@ -487,10 +487,10 @@ func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction(
 		Actor: "alice", Target: "goblin", DC: 9, Total: 11, Beaten: true,
 	}, persuaded.Body, "the offered die joined the total, and nothing was re-rolled")
 
-	s.Require().NotNil(reacted, "and so did what the goblin did about it")
-	s.Equal(session.ReactedBody{
+	s.Require().NotNil(answered, "and so did what the goblin did about it")
+	s.Equal(session.AnsweredBody{
 		Creature: "goblin", Verb: encounter.DeedPersuade, Beaten: true,
 		Roll: 1, Of: 1, Entry: 0, Word: "fact",
 		Say: "Go left at the rope.", Fact: "bandits-in-cellar",
-	}, reacted.Body)
+	}, answered.Body)
 }
