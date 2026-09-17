@@ -665,7 +665,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		// budget or reach at the exact moment a monster's turn needs one.
 		if err := validateMemberFacts(memberFacts{
 			ID: m.ID, SpeedFeet: m.SpeedFeet, SightFeet: m.SightFeet, Actions: m.Actions,
-			Intimidate: m.Intimidate, Persuade: m.Persuade, Reactions: m.Reactions,
+			Intimidate: m.Intimidate, Persuade: m.Persuade, Answers: m.Answers,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -840,7 +840,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Mind:           mi.Mind,
 			Intimidate:     copyApproaches(mi.Intimidate),
 			Persuade:       copyApproaches(mi.Persuade),
-			Reactions:      cloneReactions(mi.Reactions),
+			Answers:        cloneAnswers(mi.Answers),
 			BlocksMovement: mi.BlocksMovement,
 			Faction:        mi.Faction,
 		}
@@ -1071,7 +1071,7 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		Mind:           record.Mind,
 		Intimidate:     copyApproaches(record.Intimidate),
 		Persuade:       copyApproaches(record.Persuade),
-		Reactions:      cloneReactions(record.Reactions),
+		Answers:        cloneAnswers(record.Answers),
 		BlocksMovement: record.BlocksMovement,
 		Faction:        factionOf(record),
 	}, nil
@@ -2159,7 +2159,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// rather than simply never having made one (Copilot, PR #1187).
 	if err := validateMemberFacts(memberFacts{
 		ID: in.Member, SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions,
-		Intimidate: in.Intimidate, Persuade: in.Persuade, Reactions: in.Reactions,
+		Intimidate: in.Intimidate, Persuade: in.Persuade, Answers: in.Answers,
 	}); err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -2219,7 +2219,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		Mind:           in.Mind,
 		Intimidate:     copyApproaches(in.Intimidate),
 		Persuade:       copyApproaches(in.Persuade),
-		Reactions:      cloneReactions(in.Reactions),
+		Answers:        cloneAnswers(in.Answers),
 		BlocksMovement: in.BlocksMovement,
 		Faction:        in.Faction,
 	}
@@ -2240,7 +2240,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
 				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting, Mind: in.Mind,
 				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
-				Reactions:      cloneReactions(in.Reactions),
+				Answers:        cloneAnswers(in.Answers),
 				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
 			},
 		}, nil

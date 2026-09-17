@@ -816,7 +816,7 @@ type ApproachSpec struct {
 }
 
 // The four keys [PlaceSpec.On] accepts: one per social verb per verdict,
-// spelled as the composition spells them ([encounter.ReactionKeys]) so the
+// spelled as the composition spells them ([encounter.AnswerKeys]) so the
 // file, the validator and the run cannot disagree about what an outcome is
 // called.
 //
@@ -825,16 +825,16 @@ type ApproachSpec struct {
 // gives the untrained rule teeth" (ideas/shenanigans/front-room-goblin.md).
 const (
 	// OnIntimidated is what the creature does when a threat lands.
-	OnIntimidated = encounter.ReactionIntimidated
+	OnIntimidated = encounter.AnswerIntimidated
 
 	// OnIntimidateFailed is what it does when a threat misses.
-	OnIntimidateFailed = encounter.ReactionIntimidateFailed
+	OnIntimidateFailed = encounter.AnswerIntimidateFailed
 
 	// OnPersuaded is what it does when an appeal lands.
-	OnPersuaded = encounter.ReactionPersuaded
+	OnPersuaded = encounter.AnswerPersuaded
 
 	// OnPersuadeFailed is what it does when an appeal misses.
-	OnPersuadeFailed = encounter.ReactionPersuadeFailed
+	OnPersuadeFailed = encounter.AnswerPersuadeFailed
 )
 
 // laterWords are the outcome words this design NAMES and this build does not
@@ -852,7 +852,7 @@ var laterWords = map[string]string{
 	"tell":    "not a word: a fact taught to whoever was there is `fact`",
 }
 
-// ReactionSpec is ONE ENTRY in an outcome's table: how likely it is, what the
+// AnswerSpec is ONE ENTRY in an outcome's table: how likely it is, what the
 // creature says, and the one thing it does.
 //
 // # One entry fires, and weights are relative
@@ -872,7 +872,7 @@ var laterWords = map[string]string{
 // An entry with NO word is legal only when it has a line to say: a creature
 // that answers and does nothing is a real outcome, and one that neither speaks
 // nor acts is a row written for no reason.
-type ReactionSpec struct {
+type AnswerSpec struct {
 	// Weight is this entry's relative share. OMITTED MEANS 1, which is why
 	// this is a pointer: `weight: 0` is a row that can never fire, and an
 	// int could not tell it apart from a row that named no weight at all.
@@ -896,7 +896,7 @@ type ReactionSpec struct {
 	// ALLOWS a fact nothing else mentions (R8, pre-release: show the cost),
 	// so this is not checked against the dispositions.
 	//
-	// A POINTER for [ReactionSpec.Weight]'s reason: `fact: ""` is an author
+	// A POINTER for [AnswerSpec.Weight]'s reason: `fact: ""` is an author
 	// who wrote the key and did not finish the sentence, and a plain string
 	// could not tell that apart from an entry that named no fact at all. The
 	// two get different defects because they are different mistakes.
@@ -915,12 +915,12 @@ type ReactionSpec struct {
 // is, and so the first option it grows is a field here.
 type FleeSpec struct{}
 
-// UnmarshalYAML reads one reaction entry, refusing the designed-but-unbuilt
+// UnmarshalYAML reads one answer entry, refusing the designed-but-unbuilt
 // words by name ([laterWords]) and every unknown key, for
 // [PlaceSpec.UnmarshalYAML]'s reason.
-func (r *ReactionSpec) UnmarshalYAML(value *yaml.Node) error {
+func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: a reaction entry is { weight, say } plus at most one of { fact, flee }",
+		return fmt.Errorf("line %d: an answer entry is { weight, say } plus at most one of { fact, flee }",
 			value.Line)
 	}
 	for i := 0; i < len(value.Content); i += 2 {
@@ -931,16 +931,16 @@ func (r *ReactionSpec) UnmarshalYAML(value *yaml.Node) error {
 		switch key {
 		case "weight", "say", "fact", "flee":
 		default:
-			return fmt.Errorf("line %d: field %s not found in type dungeonspec.ReactionSpec",
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)
 		}
 	}
-	type reactionBody ReactionSpec
-	var obj reactionBody
+	type answerBody AnswerSpec
+	var obj answerBody
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
-	*r = ReactionSpec(obj)
+	*r = AnswerSpec(obj)
 
 	return nil
 }
@@ -1134,7 +1134,7 @@ type PlaceSpec struct {
 	// through.
 	Persuade CheckSpec `yaml:"persuade,omitempty"`
 
-	// On is the REACTION TABLE: what this monster does about a social verb's
+	// On is the ANSWER TABLE: what this monster does about a social verb's
 	// verdict, keyed by outcome, a weighted list of entries under each
 	// (rpg-project#458, ideas/shenanigans/front-room-goblin.md). MONSTERS
 	// ONLY.
@@ -1161,7 +1161,7 @@ type PlaceSpec struct {
 	// Absent means the creature answers nothing, which is the common case: a
 	// scared goblin does not turn the camp unless the author planted the
 	// fact that says so.
-	On map[string][]ReactionSpec `yaml:"on,omitempty"`
+	On map[string][]AnswerSpec `yaml:"on,omitempty"`
 
 	// Arrives is the predicate that brings this placement into the run
 	// (rpg-project#375, the hold-out design §2, §3.7, R6). MONSTERS AND

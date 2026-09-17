@@ -64,7 +64,7 @@ type PersuadeInput struct {
 	DC    int
 	Total int
 
-	// Roller is the world's die, the one the reaction table is picked with.
+	// Roller is the world's die, the one the answer table is picked with.
 	// REQUIRED ([ErrNoRoller]) — see [IntimidateInput.Roller] for why it is
 	// per call rather than a constructor capability.
 	Roller dice.Roller

@@ -188,15 +188,15 @@ type MonsterPlacement struct {
 	// stat block's own passive Insight.
 	Persuade []encounter.CheckApproach `json:"Persuade,omitempty"`
 
-	// Reactions is what this monster does about a social verb's verdict,
+	// Answers is what this monster does about a social verb's verdict,
 	// keyed by outcome ([PlaceSpec.On]) — for a host to hand to
-	// [encounter.MemberInput.Reactions] when it spawns the sheet. Nil when
+	// [encounter.MemberInput.Answers] when it spawns the sheet. Nil when
 	// the author authored no table.
 	//
 	// COMPILED, NOT CARRIED: an omitted weight is resolved to 1 here
-	// ([reactionsOf]), so what the host hands over is a table every entry of
+	// ([answersOf]), so what the host hands over is a table every entry of
 	// which states its own share.
-	Reactions map[string][]encounter.Reaction `json:"Reactions,omitempty"`
+	Answers map[string][]encounter.Answer `json:"Answers,omitempty"`
 
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
@@ -742,7 +742,7 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 	return out
 }
 
-// reactionsOf carries the authored reaction table to the composition's shape,
+// answersOf carries the authored answer table to the composition's shape,
 // nil staying nil so a placement that authored none pictures exactly as it did
 // before this key existed.
 //
@@ -751,13 +751,13 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 // number — so the default is resolved once, here, and nothing downstream has
 // to know what "omitted" meant. That is the same move every other compiled
 // default in this file makes.
-func reactionsOf(on map[string][]ReactionSpec) map[string][]encounter.Reaction {
+func answersOf(on map[string][]AnswerSpec) map[string][]encounter.Answer {
 	if on == nil {
 		return nil
 	}
-	out := make(map[string][]encounter.Reaction, len(on))
+	out := make(map[string][]encounter.Answer, len(on))
 	for key, entries := range on {
-		rows := make([]encounter.Reaction, 0, len(entries))
+		rows := make([]encounter.Answer, 0, len(entries))
 		for _, entry := range entries {
 			weight := 1
 			if entry.Weight != nil {
@@ -767,7 +767,7 @@ func reactionsOf(on map[string][]ReactionSpec) map[string][]encounter.Reaction {
 			if entry.Fact != nil {
 				fact = *entry.Fact
 			}
-			rows = append(rows, encounter.Reaction{
+			rows = append(rows, encounter.Answer{
 				Weight: weight,
 				Say:    entry.Say,
 				Fact:   encounter.FactID(fact),
@@ -819,7 +819,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 			Actions:    append([]string(nil), p.Actions...),
 			Intimidate: approachesOf(p.Intimidate),
 			Persuade:   approachesOf(p.Persuade),
-			Reactions:  reactionsOf(p.On),
+			Answers:    answersOf(p.On),
 			Arrives:    predicateOf(p.Arrives),
 		})
 	}

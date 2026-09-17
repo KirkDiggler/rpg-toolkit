@@ -3,7 +3,7 @@
 
 package encounter_test
 
-// reaction_test.go is THE AUTHOR'S TABLE ON A REAL BOARD (rpg-project#458,
+// answer_test.go is THE AUTHOR'S TABLE ON A REAL BOARD (rpg-project#458,
 // ideas/shenanigans/front-room-goblin.md): the world's die picks one entry,
 // a `fact` reaches every witness and turns a disposition, a `flee` walks the
 // creature away without a fight existing, and a failed check reads its own
@@ -22,23 +22,23 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-type ReactionTestSuite struct {
+type AnswerTestSuite struct {
 	suite.Suite
 	ctx context.Context
 }
 
-func TestReactionSuite(t *testing.T) {
-	suite.Run(t, new(ReactionTestSuite))
+func TestAnswerSuite(t *testing.T) {
+	suite.Run(t, new(AnswerTestSuite))
 }
 
-func (s *ReactionTestSuite) SetupTest() {
+func (s *AnswerTestSuite) SetupTest() {
 	s.ctx = context.Background()
 }
 
 // front is the goblin's own room: alice at one end, the goblin at the other,
 // no wall between them and — deliberately — NO FIGHT. Nothing here is
 // hostile, nobody rolled initiative, and the goblin still gets to act.
-func (s *ReactionTestSuite) front(table map[string][]encounter.Reaction) *encounter.Encounter {
+func (s *AnswerTestSuite) front(table map[string][]encounter.Answer) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -55,7 +55,7 @@ func (s *ReactionTestSuite) front(table map[string][]encounter.Reaction) *encoun
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: campFaction, SpeedFeet: 30, Reactions: table},
+				Faction: campFaction, SpeedFeet: 30, Answers: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -64,7 +64,7 @@ func (s *ReactionTestSuite) front(table map[string][]encounter.Reaction) *encoun
 	return enc
 }
 
-func (s *ReactionTestSuite) beatsOf(
+func (s *AnswerTestSuite) beatsOf(
 	enc *encounter.Encounter, who core.EntityID, kind string,
 ) []map[string]any {
 	story, err := enc.Story(&encounter.StoryInput{Audience: who})
@@ -81,14 +81,14 @@ func (s *ReactionTestSuite) beatsOf(
 	return out
 }
 
-func (s *ReactionTestSuite) reactedBeats(enc *encounter.Encounter, who core.EntityID) []map[string]any {
+func (s *AnswerTestSuite) answeredBeats(enc *encounter.Encounter, who core.EntityID) []map[string]any {
 	story, err := enc.Story(&encounter.StoryInput{Audience: who})
 	s.Require().NoError(err)
 	out := make([]map[string]any, 0)
 	for _, entry := range story {
 		var beat map[string]any
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		if beat["beat"] == encounter.BeatReacted {
+		if beat["beat"] == encounter.BeatAnswered {
 			out = append(out, beat)
 		}
 	}
@@ -96,7 +96,7 @@ func (s *ReactionTestSuite) reactedBeats(enc *encounter.Encounter, who core.Enti
 	return out
 }
 
-func (s *ReactionTestSuite) cellOf(enc *encounter.Encounter, who encounter.MemberID) spatial.Position {
+func (s *AnswerTestSuite) cellOf(enc *encounter.Encounter, who encounter.MemberID) spatial.Position {
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	for _, m := range members {
@@ -112,9 +112,9 @@ func (s *ReactionTestSuite) cellOf(enc *encounter.Encounter, who encounter.Membe
 // A seeded die picks the entry its face lands in, and the die it rolls is the
 // size of the SUM of the weights — not the count of the entries. 70/30 is a
 // d100, and face 71 is the first face of the second entry.
-func (s *ReactionTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
-	table := map[string][]encounter.Reaction{
-		encounter.ReactionIntimidated: {
+func (s *AnswerTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
+	table := map[string][]encounter.Answer{
+		encounter.AnswerIntimidated: {
 			{Weight: 70, Say: "Fine, fine!", Fact: campFact},
 			{Weight: 30, Say: "BOSS!"},
 		},
@@ -140,7 +140,7 @@ func (s *ReactionTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
 			s.Require().NoError(err)
 			s.Equal(100, of, "one die the size of the summed weights")
 
-			beats := s.reactedBeats(enc, goblin)
+			beats := s.answeredBeats(enc, goblin)
 			s.Require().Len(beats, 1)
 			s.EqualValues(tc.entry, beats[0]["entry"])
 			s.Equal(tc.say, beats[0]["say"], "the author's line, verbatim")
@@ -153,9 +153,9 @@ func (s *ReactionTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
 // A `fact` entry teaches EVERY witness and the disposition waiting on it
 // fires: the camp turns, which is the proof the fact arrived rather than the
 // beat merely claiming it did.
-func (s *ReactionTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
-	enc := s.front(map[string][]encounter.Reaction{
-		encounter.ReactionIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}},
+func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
+	enc := s.front(map[string][]encounter.Answer{
+		encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}},
 	})
 
 	before, err := enc.Stance(campFaction, encounter.FactionParty)
@@ -171,7 +171,7 @@ func (s *ReactionTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 	s.Require().NoError(err)
 	s.Equal(encounter.StanceNeutral, after, "the until fired on the fact the entry planted")
 
-	beats := s.reactedBeats(enc, alice)
+	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
 	s.Equal("fact", beats[0]["word"])
 	s.Equal(string(campFact), beats[0]["fact"])
@@ -184,7 +184,7 @@ func (s *ReactionTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 // faction the party is NOT hostile to, so no bubble forms, nobody rolls
 // initiative, and the goblin is on the world clock — the room the whole slice
 // exists for.
-func (s *ReactionTestSuite) neutralFront(table map[string][]encounter.Reaction) *encounter.Encounter {
+func (s *AnswerTestSuite) neutralFront(table map[string][]encounter.Answer) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -201,7 +201,7 @@ func (s *ReactionTestSuite) neutralFront(table map[string][]encounter.Reaction) 
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: "goblins", SpeedFeet: 30, Reactions: table},
+				Faction: "goblins", SpeedFeet: 30, Answers: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -213,9 +213,9 @@ func (s *ReactionTestSuite) neutralFront(table map[string][]encounter.Reaction) 
 // A `flee` entry WALKS THE CREATURE, with no fight in the room and nobody's
 // turn being spent — the primitive this slice buys. It ends farther from the
 // actor than it started, and no turn is consumed because there is no turn.
-func (s *ReactionTestSuite) TestAFleeEntryWalksTheCreatureWithNoFightRunning() {
-	enc := s.neutralFront(map[string][]encounter.Reaction{
-		encounter.ReactionIntimidated: {{Weight: 1, Say: "BOSS!", Flee: true}},
+func (s *AnswerTestSuite) TestAFleeEntryWalksTheCreatureWithNoFightRunning() {
+	enc := s.neutralFront(map[string][]encounter.Answer{
+		encounter.AnswerIntimidated: {{Weight: 1, Say: "BOSS!", Flee: true}},
 	})
 
 	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: goblin})
@@ -245,14 +245,14 @@ func (s *ReactionTestSuite) TestAFleeEntryWalksTheCreatureWithNoFightRunning() {
 	s.Require().NotEmpty(moved, "the walk went down the log a cell at a time")
 	for _, beat := range moved {
 		s.Equal(string(goblin), beat["member"])
-		s.Equal("encounter:reaction:flee", beat["cause"],
+		s.Equal("encounter:answer:flee", beat["cause"],
 			"a step nobody caused would leave this key absent")
 	}
 	last := moved[len(moved)-1]["position"].(map[string]any)
 	s.EqualValues(end.X, last["x"], "the last beat is where it stopped")
 	s.EqualValues(end.Y, last["y"])
 
-	beats := s.reactedBeats(enc, alice)
+	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
 	s.Equal("flee", beats[0]["word"])
 	s.Empty(beats[0]["fact"], "a flee teaches nothing")
@@ -260,7 +260,7 @@ func (s *ReactionTestSuite) TestAFleeEntryWalksTheCreatureWithNoFightRunning() {
 
 // A creature with nowhere to go stays put, and the beat still says the entry
 // fired. Not going anywhere is an outcome, not an error.
-func (s *ReactionTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
+func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -272,8 +272,8 @@ func (s *ReactionTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 0}, SpeedFeet: 30,
-				Reactions: map[string][]encounter.Reaction{
-					encounter.ReactionIntimidated: {{Weight: 1, Flee: true}},
+				Answers: map[string][]encounter.Answer{
+					encounter.AnswerIntimidated: {{Weight: 1, Flee: true}},
 				}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -286,15 +286,15 @@ func (s *ReactionTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 	s.Require().NoError(err)
 
 	s.Equal(float64(1), s.cellOf(enc, goblin).X, "there was nowhere farther to stand")
-	s.Require().Len(s.reactedBeats(enc, alice), 1, "the entry fired even though nothing moved")
+	s.Require().Len(s.answeredBeats(enc, alice), 1, "the entry fired even though nothing moved")
 }
 
 // A failed check reads the FAILED half of the table, which is what makes
 // attempting worse than not attempting.
-func (s *ReactionTestSuite) TestAFailedCheckReadsItsOwnTable() {
-	enc := s.front(map[string][]encounter.Reaction{
-		encounter.ReactionIntimidated:      {{Weight: 1, Say: "Fine."}},
-		encounter.ReactionIntimidateFailed: {{Weight: 1, Say: "Big talk."}},
+func (s *AnswerTestSuite) TestAFailedCheckReadsItsOwnTable() {
+	enc := s.front(map[string][]encounter.Answer{
+		encounter.AnswerIntimidated:      {{Weight: 1, Say: "Fine."}},
+		encounter.AnswerIntimidateFailed: {{Weight: 1, Say: "Big talk."}},
 	})
 
 	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
@@ -302,7 +302,7 @@ func (s *ReactionTestSuite) TestAFailedCheckReadsItsOwnTable() {
 	})
 	s.Require().NoError(err)
 
-	beats := s.reactedBeats(enc, alice)
+	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
 	s.Equal("Big talk.", beats[0]["say"])
 	s.Equal(false, beats[0]["beaten"])
@@ -312,31 +312,31 @@ func (s *ReactionTestSuite) TestAFailedCheckReadsItsOwnTable() {
 // No table for the outcome that happened is SILENCE: no die, no beat. Absent
 // means absent, and it is distinguishable from an entry that fired and did
 // nothing.
-func (s *ReactionTestSuite) TestNoTableMeansNoRollAndNoBeat() {
+func (s *AnswerTestSuite) TestNoTableMeansNoRollAndNoBeat() {
 	s.Run("nothing authored at all", func() {
 		enc := s.front(nil)
 		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
 			Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
 		})
 		s.Require().NoError(err)
-		s.Empty(s.reactedBeats(enc, alice))
+		s.Empty(s.answeredBeats(enc, alice))
 	})
 
 	s.Run("a table for the other verdict only", func() {
-		enc := s.front(map[string][]encounter.Reaction{
-			encounter.ReactionIntimidated: {{Weight: 1, Say: "Fine."}},
+		enc := s.front(map[string][]encounter.Answer{
+			encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine."}},
 		})
 		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
 			Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 2, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
 		})
 		s.Require().NoError(err)
-		s.Empty(s.reactedBeats(enc, alice), "the failed half was never authored")
+		s.Empty(s.answeredBeats(enc, alice), "the failed half was never authored")
 	})
 }
 
 // The die is supplied, never defaulted: a verb handed no roller is refused
 // before anything is written.
-func (s *ReactionTestSuite) TestAVerbWithNoDieIsRefused() {
+func (s *AnswerTestSuite) TestAVerbWithNoDieIsRefused() {
 	enc := s.front(nil)
 
 	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{Actor: alice, Target: goblin})
@@ -348,24 +348,24 @@ func (s *ReactionTestSuite) TestAVerbWithNoDieIsRefused() {
 
 // A table this composition could not roll is refused at the door the member
 // came in through, never at the roll.
-func (s *ReactionTestSuite) TestAnUnrollableTableIsRefusedAtTheDoor() {
+func (s *AnswerTestSuite) TestAnUnrollableTableIsRefusedAtTheDoor() {
 	s.Run("an outcome key this build does not land", func() {
-		_, err := encounter.NewEncounter(s.setupWith(map[string][]encounter.Reaction{
+		_, err := encounter.NewEncounter(s.setupWith(map[string][]encounter.Answer{
 			"bribed": {{Weight: 1, Say: "ok"}},
 		}))
-		s.Require().ErrorIs(err, encounter.ErrBadReaction)
+		s.Require().ErrorIs(err, encounter.ErrBadAnswer)
 	})
 
 	s.Run("an entry that can never fire", func() {
-		_, err := encounter.NewEncounter(s.setupWith(map[string][]encounter.Reaction{
-			encounter.ReactionPersuaded: {{Weight: 0, Say: "never"}},
+		_, err := encounter.NewEncounter(s.setupWith(map[string][]encounter.Answer{
+			encounter.AnswerPersuaded: {{Weight: 0, Say: "never"}},
 		}))
-		s.Require().ErrorIs(err, encounter.ErrBadReaction)
+		s.Require().ErrorIs(err, encounter.ErrBadAnswer)
 	})
 }
 
 // setupWith is the front room with one table, for the refusal scenes.
-func (s *ReactionTestSuite) setupWith(table map[string][]encounter.Reaction) *encounter.SetupInput {
+func (s *AnswerTestSuite) setupWith(table map[string][]encounter.Answer) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -376,7 +376,7 @@ func (s *ReactionTestSuite) setupWith(table map[string][]encounter.Reaction) *en
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}, Reactions: table},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}, Answers: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	}

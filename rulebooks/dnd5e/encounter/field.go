@@ -887,8 +887,8 @@ type MemberInput struct {
 	// passive Insight, and this composition cannot and must not try (C1).
 	Persuade []CheckApproach
 
-	// Reactions is what this member DOES about a social verb's verdict,
-	// keyed by outcome ([ReactionKeys]) with a weighted list of entries
+	// Answers is what this member DOES about a social verb's verdict,
+	// keyed by outcome ([AnswerKeys]) with a weighted list of entries
 	// under each ([dungeonspec.PlaceSpec.On], rpg-project#458). Nil when
 	// the author wrote no table, which is the common case: a creature with
 	// nothing authored answers nothing and the world rolls no die.
@@ -898,13 +898,13 @@ type MemberInput struct {
 	// failed attempt, or a creature that runs. There is no second shape
 	// beside this one — a dual representation is the thing this repo bans,
 	// and the migration is in the authoring dialect where authors can read
-	// it (reaction.go's own doc).
+	// it (answer.go's own doc).
 	//
-	// VALIDATED AT THIS DOOR ([validateReactions]): an outcome key this
+	// VALIDATED AT THIS DOOR ([validateAnswers]): an outcome key this
 	// build does not land, or an entry weighing less than 1, is
-	// [ErrBadReaction] here rather than an internal error on somebody's
+	// [ErrBadAnswer] here rather than an internal error on somebody's
 	// turn.
-	Reactions map[string][]Reaction
+	Answers map[string][]Answer
 
 	// BlocksMovement says whether this member refuses a later arrival on
 	// its cell (rpg-toolkit#1434) — a bare fact, the same species as
@@ -1035,7 +1035,7 @@ type memberFacts struct {
 	Actions    []ActionView
 	Intimidate []CheckApproach
 	Persuade   []CheckApproach
-	Reactions  map[string][]Reaction
+	Answers    map[string][]Answer
 }
 
 func validateMemberFacts(in memberFacts) error {
@@ -1070,8 +1070,8 @@ func validateMemberFacts(in memberFacts) error {
 		}
 	}
 	// A table this composition could not roll is refused at whichever door
-	// the member came in through, never at the roll (reaction.go).
-	if err := validateReactions(in.Reactions); err != nil {
+	// the member came in through, never at the roll (answer.go).
+	if err := validateAnswers(in.Answers); err != nil {
 		return fmt.Errorf("member %s: %w", in.ID, err)
 	}
 
@@ -1437,15 +1437,15 @@ type Member struct {
 	Targeting string
 	Mind      string
 
-	// Intimidate, Persuade and Reactions carry forward
-	// [MemberInput.Intimidate]/[MemberInput.Persuade]/[MemberInput.Reactions]
+	// Intimidate, Persuade and Answers carry forward
+	// [MemberInput.Intimidate]/[MemberInput.Persuade]/[MemberInput.Answers]
 	// verbatim — see those fields' own docs. This is where the session reads
 	// the authored checks before it rolls one, exactly as it reads Actions.
-	// Reactions is read by nobody outside this composition; it is on the
+	// Answers is read by nobody outside this composition; it is on the
 	// roster row so a host can show an author what a placement carries.
 	Intimidate []CheckApproach
 	Persuade   []CheckApproach
-	Reactions  map[string][]Reaction
+	Answers    map[string][]Answer
 
 	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
 	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
@@ -1487,7 +1487,7 @@ type memberRecord struct {
 	Mind           string
 	Intimidate     []CheckApproach
 	Persuade       []CheckApproach
-	Reactions      map[string][]Reaction
+	Answers        map[string][]Answer
 	BlocksMovement bool
 
 	// Faction is the faction the caller NAMED, or empty for the kind's
@@ -1742,14 +1742,14 @@ type JoinInput struct {
 	Targeting string
 	Mind      string
 
-	// Intimidate, Persuade and Reactions are this joiner's shenanigan facts,
+	// Intimidate, Persuade and Answers are this joiner's shenanigan facts,
 	// [MemberInput.Intimidate], [MemberInput.Persuade] and
-	// [MemberInput.Reactions] under the names Join takes them by — a monster
+	// [MemberInput.Answers] under the names Join takes them by — a monster
 	// that arrives mid-run is as talkable-to as one that started there, and
 	// its table is validated at this door the same way.
 	Intimidate []CheckApproach
 	Persuade   []CheckApproach
-	Reactions  map[string][]Reaction
+	Answers    map[string][]Answer
 
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.

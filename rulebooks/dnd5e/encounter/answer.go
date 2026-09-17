@@ -13,8 +13,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
-// reaction.go is THE AUTHOR'S TABLE, AND THE WORLD'S DIE (rpg-project#458,
+// answer.go is THE AUTHOR'S TABLE, AND THE WORLD'S DIE (rpg-project#458,
 // ideas/shenanigans/front-room-goblin.md).
+//
+// AN ANSWER IS THE CREATURE'S AUTHORED ANSWER TO A CHECK, ROLLED BY THE WORLD
+// — NOT THE React VERB. "Reaction" is D&D's own rules term and this engine
+// already uses it for that: an interrupt window, a held reaction, the thing
+// [Encounter.RecordRollWindow] and the session's React answer. A creature
+// replying to somebody who spoke to it is a different thing on a different
+// clock, and naming both "reaction" would have made every doc in this package
+// ambiguous about which one it meant.
 //
 // A social verb lands a verdict. What the creature DOES about that verdict is
 // not this composition's opinion and not the verb's: the author wrote a
@@ -33,10 +41,10 @@ import (
 //
 // # The die is the world's, and it is seen
 //
-// R1 (Kirk, 2026-09-17): the reaction roll goes in the beat and the debug log.
+// R1 (Kirk, 2026-09-17): the answer roll goes in the beat and the debug log.
 // So the pick is one die of size sum(weights) rolled through the caller's
 // supplied roller — never a local rand, never a hash of anything — and the
-// face, the total and the entry index all ride out on [BeatReacted]. A table
+// face, the total and the entry index all ride out on [BeatAnswered]. A table
 // nobody can replay is a table nobody can trust.
 //
 // # Nothing here decides what an outcome MEANS
@@ -46,7 +54,7 @@ import (
 // `fact` turns, and what a fleeing creature's mind makes of the run, stay
 // where they already live — the disposition graph and rulebooks/dnd5e/behavior.
 
-// The four outcomes an author may write a reaction table for: one per social
+// The four outcomes an author may write an answer table for: one per social
 // verb per verdict.
 //
 // THE KEY IS THE VERB AND THE VERDICT TOGETHER, which is why failure has a
@@ -56,32 +64,32 @@ import (
 // outcome that happened does nothing at all and writes no beat — absent means
 // absent, not "the creature shrugged".
 const (
-	// ReactionIntimidated is what the creature does when a threat lands.
-	ReactionIntimidated = "intimidated"
+	// AnswerIntimidated is what the creature does when a threat lands.
+	AnswerIntimidated = "intimidated"
 
-	// ReactionIntimidateFailed is what it does when a threat misses.
-	ReactionIntimidateFailed = "intimidate_failed"
+	// AnswerIntimidateFailed is what it does when a threat misses.
+	AnswerIntimidateFailed = "intimidate_failed"
 
-	// ReactionPersuaded is what it does when an appeal lands.
-	ReactionPersuaded = "persuaded"
+	// AnswerPersuaded is what it does when an appeal lands.
+	AnswerPersuaded = "persuaded"
 
-	// ReactionPersuadeFailed is what it does when an appeal misses.
-	ReactionPersuadeFailed = "persuade_failed"
+	// AnswerPersuadeFailed is what it does when an appeal misses.
+	AnswerPersuadeFailed = "persuade_failed"
 )
 
-// ReactionKeys is every outcome key this build accepts, in authored order:
+// AnswerKeys is every outcome key this build accepts, in authored order:
 // each verb's success then its failure. EXPORTED because the authoring
 // dialect refuses every other key by name and must list the ones it takes, and
 // a second copy of the list there is the drift this constant exists to
 // prevent.
-var ReactionKeys = []string{
-	ReactionIntimidated,
-	ReactionIntimidateFailed,
-	ReactionPersuaded,
-	ReactionPersuadeFailed,
+var AnswerKeys = []string{
+	AnswerIntimidated,
+	AnswerIntimidateFailed,
+	AnswerPersuaded,
+	AnswerPersuadeFailed,
 }
 
-// Reaction is ONE entry in an outcome's table: how likely it is, what the
+// Answer is ONE entry in an outcome's table: how likely it is, what the
 // creature says, and the one thing it does.
 //
 // EXACTLY ONE OUTCOME WORD, OR NONE. An entry that both teaches a fact and
@@ -90,7 +98,7 @@ var ReactionKeys = []string{
 // the table). An entry with neither is legal only when it has a line to say:
 // a creature that answers and does nothing is a real outcome, and a creature
 // that neither speaks nor acts is a row the author wrote for no reason.
-type Reaction struct {
+type Answer struct {
 	// Weight is this entry's share of the table. AT LEAST 1, refused
 	// otherwise: a zero would be an entry that can never fire, sitting in a
 	// file looking like a possibility. Weights are relative and summed by
@@ -103,7 +111,7 @@ type Reaction struct {
 
 	// Say is the creature's line, VERBATIM. The composition never composes
 	// it, never templates it and never translates it — it is carried onto
-	// [BeatReacted] exactly as the author typed it. Empty means the creature
+	// [BeatAnswered] exactly as the author typed it. Empty means the creature
 	// says nothing, which is the common case for a table that only turns a
 	// disposition.
 	Say string
@@ -130,25 +138,29 @@ type Reaction struct {
 	Flee bool
 }
 
-// BeatReacted is the "beat" value of the story beat appended when the world
-// rolls a creature's reaction to a social verb.
+// BeatAnswered is the "beat" value of the story beat appended when the world
+// rolls a creature's answer to a social verb.
+//
+// "answered", NOT "reacted": the React verb owns that word at this seam, and a
+// client switching on beat names must not have to disambiguate an interrupt
+// window from a goblin replying to a threat.
 //
 // EXPORTED BECAUSE A DECODER READS IT, [BeatIntimidated]'s reason exactly: the
 // session-side decoder is written against this constant in the same wave, so a
 // rename fails to compile there instead of quietly producing a beat nobody
 // renders.
 //
-// IT IS THE ONLY ACCOUNT OF THE REACTION ROLL, and the author's line reaches
+// IT IS THE ONLY ACCOUNT OF THE ANSWER ROLL, and the author's line reaches
 // the table through it and nowhere else.
-const BeatReacted = "reacted"
+const BeatAnswered = "answered"
 
-// reactionCauseFlee is the cause every beat of a fleeing creature's directed
+// answerCauseFlee is the cause every beat of a fleeing creature's directed
 // walk carries, so an observer can tell a rout from a step and from a shove
 // ([DirectInput.Cause] is required for exactly this reason).
-var reactionCauseFlee = core.Ref{Module: "encounter", Type: "reaction", ID: "flee"}
+var answerCauseFlee = core.Ref{Module: "encounter", Type: "answer", ID: "flee"}
 
-// reactionInput is one settled verdict looking for the creature's answer to it.
-type reactionInput struct {
+// answerInput is one settled verdict looking for the creature's answer to it.
+type answerInput struct {
 	// creature is whose placement carries the table — the member the verb
 	// was aimed at.
 	creature MemberID
@@ -156,7 +168,7 @@ type reactionInput struct {
 	// actor is who spoke. The anchor a flee runs away from.
 	actor MemberID
 
-	// key is the outcome, one of [ReactionKeys].
+	// key is the outcome, one of [AnswerKeys].
 	key string
 
 	// verb is the bare verb name carried onto the beat ("intimidate",
@@ -171,14 +183,14 @@ type reactionInput struct {
 	witnesses []MemberID
 
 	// at is the clock's high-water mark, shared with the verb's own beat so
-	// the reaction is stamped with the moment that caused it.
+	// the answer is stamped with the moment that caused it.
 	at uint64
 
 	// roller is the world's die. Required by the verbs that call this.
 	roller dice.Roller
 }
 
-// react rolls the creature's reaction to a settled verdict and carries it out.
+// answer rolls the creature's answer to a settled verdict and carries it out.
 //
 // NO TABLE, NO ROLL, NO BEAT. A placement that authored nothing for this
 // outcome produces silence, which is distinguishable from an entry that fired
@@ -189,12 +201,12 @@ type reactionInput struct {
 // because the threat is the CAUSE of everything after it; this beat is the
 // RESULT, and it reports the entry, the roll and the line that only exist
 // once the pick has been made.
-func (e *Encounter) react(ctx context.Context, in reactionInput) error {
+func (e *Encounter) answer(ctx context.Context, in answerInput) error {
 	creature, ok := e.members[in.creature]
 	if !ok {
 		return fmt.Errorf("react: creature %q: %w", in.creature, ErrNotMember)
 	}
-	entries := creature.Reactions[in.key]
+	entries := creature.Answers[in.key]
 	if len(entries) == 0 {
 		return nil
 	}
@@ -207,7 +219,7 @@ func (e *Encounter) react(ctx context.Context, in reactionInput) error {
 		// Unreachable: every entry is validated to carry at least 1 at the
 		// door it came in through. Refusing rather than rolling a d0 keeps
 		// the day that stops being true from being a panic in dice.
-		return fmt.Errorf("react: %q weighs %d: %w", in.key, total, ErrBadReaction)
+		return fmt.Errorf("react: %q weighs %d: %w", in.key, total, ErrBadAnswer)
 	}
 
 	roll, err := in.roller.Roll(ctx, total)
@@ -215,11 +227,11 @@ func (e *Encounter) react(ctx context.Context, in reactionInput) error {
 		return fmt.Errorf("react: %q: %w", in.key, err)
 	}
 
-	index, entry := pickReaction(entries, roll)
+	index, entry := pickAnswer(entries, roll)
 
 	if entry.Fact != "" {
 		for _, id := range in.witnesses {
-			if err := e.learnFact(id, entry.Fact, BeatReacted, in.at); err != nil {
+			if err := e.learnFact(id, entry.Fact, BeatAnswered, in.at); err != nil {
 				return fmt.Errorf("react: %w", err)
 			}
 		}
@@ -231,10 +243,10 @@ func (e *Encounter) react(ctx context.Context, in reactionInput) error {
 		}
 	}
 
-	return e.appendReactedBeat(in, index, entry, roll, total)
+	return e.appendAnsweredBeat(in, index, entry, roll, total)
 }
 
-// pickReaction walks the table accumulating weights and returns the entry the
+// pickAnswer walks the table accumulating weights and returns the entry the
 // face landed in, with its index.
 //
 // AUTHORED ORDER, ACCUMULATED, so the same face always picks the same entry —
@@ -243,7 +255,7 @@ func (e *Encounter) react(ctx context.Context, in reactionInput) error {
 // final entry is reachable and the loop always returns inside itself; the
 // fallback exists so a roller that breaks its contract picks the last entry
 // rather than reading off the end.
-func pickReaction(entries []Reaction, roll int) (int, Reaction) {
+func pickAnswer(entries []Answer, roll int) (int, Answer) {
 	acc := 0
 	for i, entry := range entries {
 		acc += entry.Weight
@@ -306,7 +318,7 @@ func (e *Encounter) fleeFrom(ctx context.Context, creature, actor MemberID) erro
 	}
 
 	if _, err := e.Direct(ctx, DirectInput{
-		Mover: creature, Cause: reactionCauseFlee, Route: route.Path, Provokes: false,
+		Mover: creature, Cause: answerCauseFlee, Route: route.Path, Provokes: false,
 	}); err != nil {
 		return fmt.Errorf("flee: %w", err)
 	}
@@ -314,7 +326,7 @@ func (e *Encounter) fleeFrom(ctx context.Context, creature, actor MemberID) erro
 	return nil
 }
 
-// appendReactedBeat writes what the table saw: which creature reacted, to
+// appendAnsweredBeat writes what the table saw: which creature answered, to
 // which verb and verdict, the die and the weights it was rolled against, the
 // entry that fired, the word it carried and the line the author wrote.
 //
@@ -322,18 +334,18 @@ func (e *Encounter) fleeFrom(ctx context.Context, creature, actor MemberID) erro
 // reader downstream must not get a third state out of an absent key. `word` is
 // empty for an entry that only speaks, and that is an answer rather than a
 // gap.
-func (e *Encounter) appendReactedBeat(
-	in reactionInput, index int, entry Reaction, roll, of int,
+func (e *Encounter) appendAnsweredBeat(
+	in answerInput, index int, entry Answer, roll, of int,
 ) error {
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat":     BeatReacted,
+		"beat":     BeatAnswered,
 		"creature": string(in.creature),
 		"verb":     in.verb,
 		"beaten":   in.beaten,
 		"roll":     roll,
 		"of":       of,
 		"entry":    index,
-		"word":     reactionWord(entry),
+		"word":     answerWord(entry),
 		"say":      entry.Say,
 		"fact":     string(entry.Fact),
 	})
@@ -344,7 +356,7 @@ func (e *Encounter) appendReactedBeat(
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       in.at,
 		Audience: in.witnesses,
-		Tags:     map[string]string{"tag": BeatReacted},
+		Tags:     map[string]string{"tag": BeatAnswered},
 		Payload:  payload,
 	}); err != nil {
 		return fmt.Errorf("react: %w", err)
@@ -353,10 +365,10 @@ func (e *Encounter) appendReactedBeat(
 	return nil
 }
 
-// reactionWord is the entry's outcome word as the author wrote it, or empty
+// answerWord is the entry's outcome word as the author wrote it, or empty
 // for an entry that only speaks. One place, so the beat and the validator
 // cannot disagree about what a word is called.
-func reactionWord(entry Reaction) string {
+func answerWord(entry Answer) string {
 	switch {
 	case entry.Fact != "":
 		return "fact"
@@ -367,23 +379,23 @@ func reactionWord(entry Reaction) string {
 	}
 }
 
-// reactionKeyFor is the outcome key a verb's verdict lands under. One
+// answerKeyFor is the outcome key a verb's verdict lands under. One
 // function, so the verbs and the authoring dialect cannot spell the pairing
 // differently.
-func reactionKeyFor(verb string, beaten bool) string {
+func answerKeyFor(verb string, beaten bool) string {
 	switch {
 	case verb == DeedIntimidate && beaten:
-		return ReactionIntimidated
+		return AnswerIntimidated
 	case verb == DeedIntimidate:
-		return ReactionIntimidateFailed
+		return AnswerIntimidateFailed
 	case verb == DeedPersuade && beaten:
-		return ReactionPersuaded
+		return AnswerPersuaded
 	default:
-		return ReactionPersuadeFailed
+		return AnswerPersuadeFailed
 	}
 }
 
-// validateReactions refuses a table this composition could not roll: an
+// validateAnswers refuses a table this composition could not roll: an
 // outcome key it does not know, and an entry that weighs less than 1.
 //
 // AT THE DOOR, NOT AT THE ROLL. A placement whose table can never fire is a
@@ -392,15 +404,15 @@ func reactionKeyFor(verb string, beaten bool) string {
 // error. The authoring dialect refuses the same two things in the author's own
 // words; this is the composition refusing them for every other caller,
 // including a persisted blob somebody edited.
-func validateReactions(reactions map[string][]Reaction) error {
-	for key, entries := range reactions {
-		if !validReactionKey(key) {
-			return fmt.Errorf("reaction %q is not an outcome this build lands: %w", key, ErrBadReaction)
+func validateAnswers(answers map[string][]Answer) error {
+	for key, entries := range answers {
+		if !validAnswerKey(key) {
+			return fmt.Errorf("answer %q is not an outcome this build lands: %w", key, ErrBadAnswer)
 		}
 		for i, entry := range entries {
 			if entry.Weight < 1 {
-				return fmt.Errorf("reaction %q entry %d weighs %d: %w",
-					key, i, entry.Weight, ErrBadReaction)
+				return fmt.Errorf("answer %q entry %d weighs %d: %w",
+					key, i, entry.Weight, ErrBadAnswer)
 			}
 		}
 	}
@@ -408,9 +420,9 @@ func validateReactions(reactions map[string][]Reaction) error {
 	return nil
 }
 
-// validReactionKey reports whether a key is one of [ReactionKeys].
-func validReactionKey(key string) bool {
-	for _, known := range ReactionKeys {
+// validAnswerKey reports whether a key is one of [AnswerKeys].
+func validAnswerKey(key string) bool {
+	for _, known := range AnswerKeys {
 		if key == known {
 			return true
 		}
@@ -419,17 +431,17 @@ func validReactionKey(key string) bool {
 	return false
 }
 
-// cloneReactions deep-copies a reaction table so a caller's map and the
+// cloneAnswers deep-copies an answer table so a caller's map and the
 // composition's cannot be the same one — [MemberInput]'s standing rule that
 // nothing crossing this door stays aliased.
-func cloneReactions(reactions map[string][]Reaction) map[string][]Reaction {
-	if reactions == nil {
+func cloneAnswers(answers map[string][]Answer) map[string][]Answer {
+	if answers == nil {
 		return nil
 	}
 
-	out := make(map[string][]Reaction, len(reactions))
-	for key, entries := range reactions {
-		out[key] = append([]Reaction(nil), entries...)
+	out := make(map[string][]Answer, len(answers))
+	for key, entries := range answers {
+		out[key] = append([]Answer(nil), entries...)
 	}
 
 	return out

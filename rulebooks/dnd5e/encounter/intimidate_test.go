@@ -210,10 +210,10 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 	const sergeant = core.EntityID("sergeant")
 
 	open := func(fact encounter.FactID) *encounter.Encounter {
-		var table map[string][]encounter.Reaction
+		var table map[string][]encounter.Answer
 		if fact != "" {
-			table = map[string][]encounter.Reaction{
-				encounter.ReactionIntimidated: {{Weight: 1, Fact: fact}},
+			table = map[string][]encounter.Answer{
+				encounter.AnswerIntimidated: {{Weight: 1, Fact: fact}},
 			}
 		}
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -232,7 +232,7 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
 				{ID: sergeant, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-					Faction: campFaction, Reactions: table},
+					Faction: campFaction, Answers: table},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})
@@ -287,8 +287,8 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	enc := s.scene(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4},
-			Mind: "coward", Intimidate: approaches, Reactions: map[string][]encounter.Reaction{
-				encounter.ReactionIntimidated: {{Weight: 1, Fact: campFact}},
+			Mind: "coward", Intimidate: approaches, Answers: map[string][]encounter.Answer{
+				encounter.AnswerIntimidated: {{Weight: 1, Fact: campFact}},
 			}},
 	)
 
@@ -305,7 +305,7 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	}
 
 	s.Equal(approaches, read(enc).Intimidate)
-	s.Equal(campFact, read(enc).Reactions[encounter.ReactionIntimidated][0].Fact)
+	s.Equal(campFact, read(enc).Answers[encounter.AnswerIntimidated][0].Fact)
 
 	// Learn the fact first, so the blob carries a `known:fact` this field
 	// mints ONLY because the placement authored it — the trust boundary has
@@ -322,7 +322,7 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	})
 	s.Require().NoError(err)
 	s.Equal(approaches, read(reloaded).Intimidate, "and survives a reload")
-	s.Equal(campFact, read(reloaded).Reactions[encounter.ReactionIntimidated][0].Fact,
+	s.Equal(campFact, read(reloaded).Answers[encounter.AnswerIntimidated][0].Fact,
 		"the table survives the reload, and the blob's trust boundary accepts the fact it mints")
 }
 

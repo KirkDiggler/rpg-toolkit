@@ -1409,7 +1409,7 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // A DUPLICATE IS ALLOWED AND MEANS SOMETHING. `[scimitar, scimitar]` lists
 // the same weapon twice, which is a pointless loadout rather than a malformed
 // one, and refusing it would be this compiler having an opinion about play.
-// placeOn validates the reaction table an author wrote on this monster
+// placeOn validates the answer table an author wrote on this monster
 // ([PlaceSpec.On], rpg-project#458).
 //
 // THE KEY IS THE OUTCOME, and only the four outcomes this build lands are
@@ -1435,9 +1435,9 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 func (v *validation) placeOn(path string, pl PlaceSpec) {
 	for _, key := range sortedKeys(pl.On) {
 		at := fmt.Sprintf("%s.on.%s", path, key)
-		if !knownReactionKey(key) {
+		if !knownAnswerKey(key) {
 			v.fail(at, "%q is not an outcome this build lands: they are %s",
-				key, strings.Join(encounter.ReactionKeys, ", "))
+				key, strings.Join(encounter.AnswerKeys, ", "))
 			continue
 		}
 		entries := pl.On[key]
@@ -1446,13 +1446,13 @@ func (v *validation) placeOn(path string, pl PlaceSpec) {
 			continue
 		}
 		for j, entry := range entries {
-			v.reactionEntry(fmt.Sprintf("%s[%d]", at, j), entry)
+			v.answerEntry(fmt.Sprintf("%s[%d]", at, j), entry)
 		}
 	}
 }
 
-// reactionEntry validates one row of one outcome's table.
-func (v *validation) reactionEntry(at string, entry ReactionSpec) {
+// answerEntry validates one row of one outcome's table.
+func (v *validation) answerEntry(at string, entry AnswerSpec) {
 	if entry.Weight != nil && *entry.Weight < 1 {
 		v.fail(at+".weight", "a weight of %d can never be rolled: omit it for 1, or give it a share",
 			*entry.Weight)
@@ -1483,9 +1483,9 @@ func (v *validation) reactionEntry(at string, entry ReactionSpec) {
 	}
 }
 
-// knownReactionKey reports whether a key is one the composition lands.
-func knownReactionKey(key string) bool {
-	for _, known := range encounter.ReactionKeys {
+// knownAnswerKey reports whether a key is one the composition lands.
+func knownAnswerKey(key string) bool {
+	for _, known := range encounter.AnswerKeys {
 		if key == known {
 			return true
 		}
@@ -1497,7 +1497,7 @@ func knownReactionKey(key string) bool {
 // sortedKeys orders a map's keys so a file with two bad `on:` entries reports
 // them in the same order every run — a validator whose defect list depends on
 // Go's map iteration is one no transcript can compare (C8).
-func sortedKeys(m map[string][]ReactionSpec) []string {
+func sortedKeys(m map[string][]AnswerSpec) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

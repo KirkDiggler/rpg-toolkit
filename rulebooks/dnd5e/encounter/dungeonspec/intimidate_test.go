@@ -46,7 +46,7 @@ func TestAnAuthoredTableReachesTheHost(t *testing.T) {
 		{Ability: "persuasion", DC: 10},
 	}, chief.Persuade)
 
-	require.Equal(t, map[string][]encounter.Reaction{
+	require.Equal(t, map[string][]encounter.Answer{
 		dungeonspec.OnIntimidated: {
 			{Weight: 70, Say: "Fine, fine!", Fact: "sergeant-cowed"},
 			{Weight: 30, Say: "BOSS!", Flee: true},
@@ -54,7 +54,7 @@ func TestAnAuthoredTableReachesTheHost(t *testing.T) {
 		dungeonspec.OnIntimidateFailed: {{Weight: 1, Say: "Big talk."}},
 		dungeonspec.OnPersuaded:        {{Weight: 1, Fact: "sergeant-cowed"}},
 		dungeonspec.OnPersuadeFailed:   {{Weight: 1, Say: "Nothing down there, friend."}},
-	}, chief.Reactions)
+	}, chief.Answers)
 }
 
 // An omitted weight compiles to 1, resolved HERE so nothing downstream has to
@@ -67,11 +67,11 @@ func TestAnOmittedWeightCompilesToOne(t *testing.T) {
 	compiled, err := dungeonspec.Load([]byte(edited(t, chiefLine, evenly)))
 	require.NoError(t, err)
 
-	require.Equal(t, []encounter.Reaction{
+	require.Equal(t, []encounter.Answer{
 		{Weight: 1, Say: "one"},
 		{Weight: 1, Say: "two"},
 		{Weight: 1, Say: "three"},
-	}, compiled.Monsters[0].Reactions[dungeonspec.OnIntimidated])
+	}, compiled.Monsters[0].Answers[dungeonspec.OnIntimidated])
 }
 
 // Absent is the common case and it compiles to nil, not to an empty map — the
@@ -84,7 +84,7 @@ func TestAMonsterNobodyPricedCarriesNothing(t *testing.T) {
 	for _, m := range compiled.Monsters {
 		require.Nil(t, m.Intimidate, "%s prices no threat", m.ID)
 		require.Nil(t, m.Persuade, "%s prices no appeal", m.ID)
-		require.Nil(t, m.Reactions, "%s answers nothing", m.ID)
+		require.Nil(t, m.Answers, "%s answers nothing", m.ID)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestAFactNothingElseMentionsIsAllowed(t *testing.T) {
 			"fact: nobody-waits-for-this }, { weight: 30", 1))))
 	require.NoError(t, err)
 	require.Equal(t, encounter.FactID("nobody-waits-for-this"),
-		compiled.Monsters[0].Reactions[dungeonspec.OnIntimidated][0].Fact)
+		compiled.Monsters[0].Answers[dungeonspec.OnIntimidated][0].Fact)
 }
 
 // TestTheNewKeysAreKnownToTheDecoder: a yaml tag alone is not enough —
@@ -159,7 +159,7 @@ func TestADesignedButUnbuiltWordIsRefusedByName(t *testing.T) {
 func TestATypoInAnEntryIsAnUnknownField(t *testing.T) {
 	_, err := dungeonspec.Load([]byte(onTable(t, `{ intimidated: [ { sez: "hi" } ] }`)))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "field sez not found in type dungeonspec.ReactionSpec")
+	require.Contains(t, err.Error(), "field sez not found in type dungeonspec.AnswerSpec")
 }
 
 // Two words in one entry is refused, so an author never has to guess which

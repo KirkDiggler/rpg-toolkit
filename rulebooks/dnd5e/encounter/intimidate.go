@@ -115,7 +115,7 @@ type IntimidateInput struct {
 	DC    int
 	Total int
 
-	// Roller is THE WORLD'S DIE, the one the reaction table is picked with.
+	// Roller is THE WORLD'S DIE, the one the answer table is picked with.
 	// REQUIRED — supplied, never defaulted ([ErrNoRoller]), for
 	// resolution.CheckInput.Roller's standing reason: a silent default puts
 	// untestable randomness into a result that looks fine, and R1 says this
@@ -155,13 +155,13 @@ type IntimidateOutput struct {
 // Validation order (R5 atomicity): nil input → empty actor/target → no roller
 // → closed → actor is a member → target is a member → actor and target are not
 // the same → the actor is placed → the target can see the actor → the beat →
-// the deed → the reaction.
+// the deed → the answer.
 //
 // THE BEAT IS APPENDED BEFORE ITS CONSEQUENCES, the law
 // [Encounter.refreshSight] states: the threat is the cause, and a stance beat
 // ahead of the threat that explains it would be a story told backwards. The
-// REACTION beat comes after both, because it is the result rather than the
-// cause (reaction.go).
+// ANSWERED beat comes after both, because it is the result rather than the
+// cause (answer.go).
 //
 // Errors: ErrNilInput, ErrNoMember, ErrNoRoller, ErrClosed, ErrNotMember,
 // ErrBadPlacement, ErrUnwitnessed.
@@ -205,7 +205,7 @@ type socialOutput struct {
 
 // social is THE ONE BODY BOTH SOCIAL VERBS RUN, and sharing it is the design's
 // own claim: "Persuade is Intimidate's twin on the same machine". The audience,
-// the refusals, the beat, the deed and the reaction are identical; what differs
+// the refusals, the beat, the deed and the answer are identical; what differs
 // is the verb the deed lands under, the beat's name and which half of the
 // table the verdict reads.
 //
@@ -219,7 +219,7 @@ func (e *Encounter) social(ctx context.Context, in socialInput) (socialOutput, e
 		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, ErrNoMember)
 	}
 	if in.roller == nil {
-		return socialOutput{}, fmt.Errorf("%s: the world rolls the reaction: %w", in.verb, ErrNoRoller)
+		return socialOutput{}, fmt.Errorf("%s: the world rolls the answer: %w", in.verb, ErrNoRoller)
 	}
 	if e.outcome != nil {
 		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, ErrClosed)
@@ -264,9 +264,9 @@ func (e *Encounter) social(ctx context.Context, in socialInput) (socialOutput, e
 	// on either verdict: `on: { intimidated: … }` and `on: { intimidate_failed:
 	// … }` are two keys of one table, and a placement that authored neither
 	// answers nothing at all.
-	if err := e.react(ctx, reactionInput{
+	if err := e.answer(ctx, answerInput{
 		creature: in.target, actor: in.actor,
-		key:  reactionKeyFor(in.verb, in.beaten),
+		key:  answerKeyFor(in.verb, in.beaten),
 		verb: in.verb, beaten: in.beaten,
 		witnesses: witnesses, at: at, roller: in.roller,
 	}); err != nil {
