@@ -185,6 +185,11 @@ func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 	s.Require().Len(beats, 1)
 	s.Equal(session.DoorBody{Door: "gate", State: "open", Actor: "alice"}, beats[0],
 		"the beat names the door, the state, and whose hands")
+	// THE CARVE-OUT IN THE PRODUCER RULE. A verb that rolled a check is
+	// refused when it reaches the beat with no arithmetic (ErrNoCalculation),
+	// but this door faced no DC — nothing was thrown, and nil is the truth
+	// rather than a lost roll. Widening that guard would refuse this.
+	s.Nil(beats[0].Calculation, "an unlocked door rolls nothing, and says so")
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})

@@ -296,6 +296,11 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 
 		beaten, total, applied = outcome.Verdict.Beaten, outcome.Verdict.Total, outcome.Verdict.Applied
 		calculation = outcome.Verdict.Calculation
+		// A LOCK WAS FACED, so a roll happened. Only the unlocked-door path
+		// below may reach the beat with nil, and it faced no DC.
+		if err := requireCalculation("unlock", in.Member, calculation); err != nil {
+			return nil, err
+		}
 	}
 
 	unlocked, err := scope.enc.Unlock(&encounter.UnlockInput{
@@ -355,6 +360,10 @@ func (m *Manager) poseUnlockWindow(
 	if len(ask.Options) != 2 {
 		return nil, fmt.Errorf("unlock: %w: the machine posed %d answers and this seam poses two",
 			ErrInvalidWorld, len(ask.Options))
+	}
+
+	if err := requirePosedCalculation("unlock", in.Member, ask.Calculation); err != nil {
+		return nil, err
 	}
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}

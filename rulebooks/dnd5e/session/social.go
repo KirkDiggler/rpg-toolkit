@@ -237,6 +237,10 @@ func (m *Manager) speak(
 	}
 
 	verdict := outcome.Verdict
+	if err := requireCalculation(string(spec.verb), member, verdict.Calculation); err != nil {
+		return nil, err
+	}
+
 	beaten, seq, err := spec.land(ctx, scope.enc, &socialLanding{
 		Actor:       encounter.MemberID(member),
 		Target:      encounter.MemberID(target),
@@ -362,6 +366,10 @@ func (m *Manager) poseSocialWindow(
 	if len(ask.Options) != 2 {
 		return nil, fmt.Errorf("%s: %w: the machine posed %d answers and this seam poses two",
 			spec.verb, ErrInvalidWorld, len(ask.Options))
+	}
+
+	if err := requirePosedCalculation(string(spec.verb), member, ask.Calculation); err != nil {
+		return nil, err
 	}
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}

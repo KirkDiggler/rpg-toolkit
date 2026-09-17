@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
@@ -196,6 +197,40 @@ func (m *Manager) resolveStagedCheckPoseable(
 		Total:       out.Result.Total,
 		Calculation: rollCalculationFor(out.Calculation),
 	}}, nil
+}
+
+// requireCalculation is the PRODUCER HALF of rpg-project#462's carrier rule.
+//
+// The beat's Calculation field is nil-able, and has to be: a payload written
+// before the field existed carries none, and a decoder that refused those
+// would delete history that happened. That leniency is exactly what makes a
+// producer's omission invisible — a missing optional field on a new beat looks
+// identical to an old beat — so every verb in this build that ROLLED a check
+// refuses to write the beat without the roll behind it.
+//
+// verb and subject name the refusal so a host reading the message knows which
+// verb lost it and for whom. A verb that rolled NOTHING never calls this:
+// opening an unlocked door faces no DC, and nil there is the truth.
+func requireCalculation(verb, subject string, calculation *encounter.RollCalculation) error {
+	if calculation != nil {
+		return nil
+	}
+
+	return fmt.Errorf("%s: %w: the check for %q settled with no roll behind its total",
+		verb, ErrNoCalculation, subject)
+}
+
+// requirePosedCalculation is [requireCalculation] for the window that ASKS.
+// The paused window is where a roll is first seen, and the player is about to
+// decide with it in front of them (rpg-project#462 R5), so a question posed
+// without it is refused rather than asked.
+func requirePosedCalculation(verb, subject string, calculation *dnd5eEvents.RollCalculation) error {
+	if calculation != nil {
+		return nil
+	}
+
+	return fmt.Errorf("%s: %w: the paused check for %q asks with no roll behind it",
+		verb, ErrNoCalculation, subject)
 }
 
 // resolveStagedCheck is [checkSeam]'s [encounter.CheckResolver] entry —
