@@ -108,14 +108,31 @@ func (s *BelievedStanceTestSuite) TestEveryViewerBelievesTheSameThingToday() {
 	s.Equal(forAlice, forBilly, "no deception is in play, so belief is truth for both")
 }
 
-// A world NPC is on nobody's side: known, and neutral — the same thing the
-// opposed read already says about them.
-func (s *BelievedStanceTestSuite) TestAWorldNPCIsKnownAndNeutral() {
+// A world NPC is in NO FACTION, so there is no pair to have a stance about and
+// the answer is NOT KNOWN — not "neutral".
+//
+// This scene used to assert the opposite, and the opposite was wrong. "Nobody
+// is against them" and "there is no side here to be on" are different
+// statements, and reporting the second as neutral collapses an absence into an
+// answer: a client drawing a ring would paint a vendor the same colour as a
+// goblin the party had a truce with, with no way to tell them apart.
+func (s *BelievedStanceTestSuite) TestAWorldNPCHasNoStanceToBelieve() {
 	enc := s.yard()
 
 	got, known := enc.BelievedStance(alice, "innkeeper")
-	s.Require().True(known)
-	s.Equal(encounter.StanceNeutral, got)
+	s.False(known, "a member in no faction is in no pair")
+	s.Empty(got)
+
+	// And the other direction, for the same reason.
+	got, known = enc.BelievedStance("innkeeper", alice)
+	s.False(known)
+	s.Empty(got)
+
+	// IsAllied still answers, because it asks a different question: "are they
+	// on my side" has a correct false, while "what is their stance" has none.
+	allied, known := enc.IsAllied(alice, "innkeeper")
+	s.True(known)
+	s.False(allied)
 }
 
 // Somebody who is not here is not "neutral": known is false, so a caller can

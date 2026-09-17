@@ -538,12 +538,19 @@ func (e *Encounter) IsAllied(a, b MemberID) (allied, known bool) {
 //
 // # known
 //
-// False when either id is not a member of this encounter — [Encounter.IsHostile]'s
-// rule, for its reason: a caller asking about somebody who is not here has to
-// be able to tell that apart from an answer. A member in NO faction (a world
-// NPC) is known and [StanceNeutral]: nobody is on their side and nobody is
-// against them, which is the same thing [Encounter.opposed] already says about
-// them in its own words.
+// False when there is no PAIR to have a stance about, which is two cases and
+// they are the same case: an id that is not a member of this encounter, and a
+// member in NO FACTION, which a world NPC is.
+//
+// THIS USED TO ANSWER NEUTRAL FOR A WORLD NPC, and that was wrong. "Nobody is
+// against them" and "there is no side here to be on" are different statements,
+// and reporting the second as [StanceNeutral] collapsed an ABSENCE into an
+// ANSWER — the defect this repo's own zero-value rule exists to prevent. A
+// client drawing a ring off this would have painted a vendor the same colour
+// as a goblin the party had declared a truce with, and had no way to tell.
+// [Encounter.IsAllied] reports (false, true) for the same pair, and that is a
+// different question: "are they on my side" has a correct false answer, while
+// "what is their stance" has none.
 func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
 	mv, ok := e.members[viewer]
 	if !ok {
@@ -555,7 +562,7 @@ func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
 	}
 	fv, fs := factionOf(mv), factionOf(ms)
 	if fv == "" || fs == "" {
-		return StanceNeutral, true
+		return "", false
 	}
 
 	return e.stanceBetween(pairOf(fv, fs)), true
