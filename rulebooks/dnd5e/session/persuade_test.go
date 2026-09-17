@@ -431,3 +431,66 @@ func guidedTalker(id string) *character.Data {
 
 	return sheet
 }
+
+// A PAUSED VERB STILL ROLLS THE CREATURE'S REACTION when it resumes, and it
+// resumes as the verb that was PAUSED.
+//
+// The window carries which social verb it stopped: while Intimidate was the
+// only one, "a target and no door" named it unambiguously; with two, a resumed
+// Persuade that landed an Intimidate would put the wrong deed on a mind — the
+// coward would take fear from a conversation it was talked round by. This
+// scene pauses a Persuade, answers it, and reads back the deed, the beat and
+// the reaction the author wrote.
+func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction() {
+	s.sheet = guidedTalker("alice")
+	s.authored = func(in *session.SpawnInput) {
+		in.Reactions = map[string][]session.Reaction{
+			"persuaded": {{Weight: 1, Say: "Go left at the rope.", Fact: "bandits-in-cellar"}},
+		}
+	}
+	// The d20 (6, which totals 7 and misses DC 9), the Guidance d4 (4, making
+	// 11, which beats it), then the world's own die for the one-entry table.
+	mgr := s.front([]int{6, 4, 1})
+
+	out, err := s.persuade(mgr)
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "the checker holds a die and the machine stopped")
+
+	rows := s.rows(mgr)
+	var react session.Declaration
+	for _, row := range rows {
+		if row.Verb == session.VerbReact {
+			react = row
+		}
+	}
+	s.Require().NotEmpty(react.ID, "the question is on the panel")
+	_, err = mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "alice", DeclarationID: react.ID, Choice: session.ReactStrike,
+	})
+	s.Require().NoError(err)
+
+	s.True(s.heldBy(mgr, encounter.DeedPersuade), "it finished as the verb that was paused")
+	s.False(s.heldBy(mgr, encounter.DeedIntimidate), "and never as the other one")
+
+	var persuaded, reacted *session.Event
+	events := s.events(mgr, "alice")
+	for i := range events {
+		switch events[i].Kind {
+		case session.EventPersuaded:
+			persuaded = &events[i]
+		case session.EventReacted:
+			reacted = &events[i]
+		}
+	}
+	s.Require().NotNil(persuaded, "the verdict reached the log")
+	s.Equal(session.PersuadedBody{
+		Actor: "alice", Target: "goblin", DC: 9, Total: 11, Beaten: true,
+	}, persuaded.Body, "the offered die joined the total, and nothing was re-rolled")
+
+	s.Require().NotNil(reacted, "and so did what the goblin did about it")
+	s.Equal(session.ReactedBody{
+		Creature: "goblin", Verb: encounter.DeedPersuade, Beaten: true,
+		Roll: 1, Of: 1, Entry: 0, Word: "fact",
+		Say: "Go left at the rope.", Fact: "bandits-in-cellar",
+	}, reacted.Body)
+}
