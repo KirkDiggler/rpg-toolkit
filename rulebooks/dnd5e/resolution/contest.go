@@ -1010,7 +1010,13 @@ func rollContestDamage(
 		component := dnd5eEvents.DamageComponent{
 			Source: dnd5eEvents.DamageSourceSpell,
 			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(cause.EffectRef), Name: sourceName},
+				Source: dnd5eEvents.RollSource{
+					Ref: cloneCoreRef(cause.EffectRef), Name: sourceName,
+					// The dice are the INSTIGATOR's: the effect ref says what
+					// dealt the damage, the id says who raised it
+					// (rpg-project#462 R7).
+					SourceID: cause.InstigatorID,
+				},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      dice.SimplePool(len(rolls), dieSize, 0).Notation(),
 					DieSize:       dieSize,

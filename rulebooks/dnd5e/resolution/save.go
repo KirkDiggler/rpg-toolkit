@@ -39,13 +39,14 @@ type SaveInput struct {
 	D20Source dnd5eEvents.RollSource
 
 	// Roller rolls the save. It is required; resolution never substitutes hidden randomness.
+	//
+	// ADVANTAGE IS NOT AN INPUT HERE. This struct used to carry
+	// HasAdvantage/HasDisadvantage for advantage "the caller already knows
+	// about" — a pair of booleans nothing ever set true, and which could name
+	// neither the rule nor the entity a keep record requires
+	// (rpg-project#462 R7). Every source now arrives on the SavingThrowChain,
+	// where Dodging, Raging and the rest already come from.
 	Roller dice.Roller
-
-	// HasAdvantage and HasDisadvantage are advantage the *caller* already knows
-	// about, before any effect has a say. Effects add their own during the
-	// fold; these two do not replace that.
-	HasAdvantage    bool
-	HasDisadvantage bool
 }
 
 // SaveOutcome is what a saving throw produces.
@@ -175,9 +176,7 @@ func (m *saveMachine) gatherSavingThrow(cast *Participants, modifier int) Gather
 				ModifierSource: dnd5eEvents.RollSource{
 					Ref: attackAbilityRef(in.Ability), Name: in.Ability.Display(),
 				},
-				Contributions:   contributions,
-				HasAdvantage:    in.HasAdvantage,
-				HasDisadvantage: in.HasDisadvantage,
+				Contributions: contributions,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("roll saving throw: %w", err)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -112,10 +113,32 @@ func (s *CheckTestSuite) TestARagingCheckerGetsAdvantageOnAnAthleticsCheck() {
 		"athletics is STR +3 with proficiency +2")
 	s.Require().True(out.Result.Success)
 
-	s.Require().Len(out.Result.AdvantageSources, 1)
-	s.Require().Equal(refs.Conditions.Raging(), out.Result.AdvantageSources[0].SourceRef,
+	keep := keepOf(s.T(), out.Calculation)
+	s.Require().NotNil(keep)
+	s.Equal(dnd5eEvents.KeepAdvantage, keep.Rule)
+	s.Require().Len(keep.Granted, 1)
+	s.Equal(refs.Conditions.Raging().String(), keep.Granted[0].Ref.String(),
 		"and it is Raging that says so, by name, not the wiring")
-	s.Require().Equal("Raging", out.Result.AdvantageSources[0].Name)
+	s.Equal("Raging", keep.Granted[0].Name)
+	s.Equal(seekerID, keep.Granted[0].SourceID, "Raging is the checker's own")
+	s.Equal([]int{straightRoll, advantageRoll}, dieOf(s.T(), out.Calculation).FinalRolls,
+		"both faces reach the log, not only the kept one")
+}
+
+// keepOf reads the keep record off the d20 pool of a calculation. Component 0
+// is the d20 by contract.
+func keepOf(t *testing.T, calculation *dnd5eEvents.RollCalculation) *dnd5eEvents.DiceKeep {
+	t.Helper()
+	return dieOf(t, calculation).Keep
+}
+
+func dieOf(t *testing.T, calculation *dnd5eEvents.RollCalculation) *dnd5eEvents.DiceTrace {
+	t.Helper()
+	require.NotNil(t, calculation)
+	require.NotEmpty(t, calculation.Components)
+	trace := calculation.Components[0].Dice
+	require.NotNil(t, trace)
+	return trace
 }
 
 // The control that makes the headline mean something: the same checker, the
@@ -125,7 +148,7 @@ func (s *CheckTestSuite) TestTheSameCheckerWithoutRageRollsStraight() {
 	s.Require().NoError(err)
 
 	s.Require().Equal(straightRoll, out.Result.Roll)
-	s.Require().Empty(out.Result.AdvantageSources)
+	s.Require().Nil(keepOf(s.T(), out.Calculation), "nobody touched the pool")
 	s.Require().Nil(out.DirtyCharacter,
 		"a plain check leaves the sheet untouched, and nil says so")
 }
@@ -138,7 +161,7 @@ func (s *CheckTestSuite) TestRagingDeclinesAPerceptionCheckOnItsOwn() {
 	s.Require().NoError(err)
 
 	s.Require().Equal(straightRoll, out.Result.Roll)
-	s.Require().Empty(out.Result.AdvantageSources)
+	s.Require().Nil(keepOf(s.T(), out.Calculation))
 }
 
 // Routes are priced separately (rpg-project#350): best cannot mean best
@@ -278,4 +301,40 @@ func (s *CheckTestSuite) TestTheCheckLeavesNothingOnTheBus() {
 
 func TestCheckSuite(t *testing.T) {
 	suite.Run(t, new(CheckTestSuite))
+}
+
+// TestRageAndUntrainedCancelOverOneCheck is R2 at the seam that raises both
+// rules. A raging barbarian who never trained Athletics has one rule granting
+// advantage on a Strength check and another imposing disadvantage for the
+// missing training. RAW rolls one die, and so do we — the difference from a
+// plain check is that the record says which two rules met over it. Before the
+// keep record, this roll and a straight one were byte-identical.
+//
+// Two SHIPPED rules, not two fakes: Raging's own STR-check predicate and the
+// untrained rule resolution installs. Nothing was added to make this test
+// possible.
+func (s *CheckTestSuite) TestRageAndUntrainedCancelOverOneCheck() {
+	untrainedSeeker := s.seeker(s.raging())
+	delete(untrainedSeeker.Skills, skills.Athletics)
+
+	out, err := MakeCheck(s.ctx, &CheckInput{
+		Character:  untrainedSeeker,
+		Approaches: []encounter.CheckApproach{route(string(skills.Athletics), 12)},
+		Roller:     s.roller,
+		Untrained:  true,
+	})
+	s.Require().NoError(err)
+
+	s.Require().Equal(straightRoll, out.Result.Roll, "one die, as the book says")
+
+	die := dieOf(s.T(), out.Calculation)
+	s.Equal("1d20", die.Notation)
+	s.Empty(die.KeptIndices)
+	s.Require().NotNil(die.Keep, "and unlike a straight roll, it says why")
+	s.Equal(dnd5eEvents.KeepCancelled, die.Keep.Rule)
+	s.Require().Len(die.Keep.Granted, 1)
+	s.Equal("Raging", die.Keep.Granted[0].Name)
+	s.Require().Len(die.Keep.Imposed, 1)
+	s.Equal("Untrained", die.Keep.Imposed[0].Name)
+	s.Equal(seekerID, die.Keep.Imposed[0].SourceID)
 }

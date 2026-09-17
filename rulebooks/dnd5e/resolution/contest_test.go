@@ -18,6 +18,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -212,8 +213,11 @@ func (s *ContestTestSuite) TestRagingFoldsIntoTheContestsSave() {
 	outcome := s.contestOutcome(out)
 	s.Require().Equal(advantageRoll, outcome.Save.Result.Roll,
 		"only a rolled-twice-take-higher can produce this die")
-	s.Require().Len(outcome.Save.Result.AdvantageSources, 1)
-	s.Require().Equal(refs.Conditions.Raging(), outcome.Save.Result.AdvantageSources[0].SourceRef,
+	keep := keepOf(s.T(), outcome.Save.Result.Calculation)
+	s.Require().NotNil(keep)
+	s.Equal(dnd5eEvents.KeepAdvantage, keep.Rule)
+	s.Require().Len(keep.Granted, 1)
+	s.Equal(refs.Conditions.Raging().String(), keep.Granted[0].Ref.String(),
 		"and it is Raging that says so, through the Request")
 
 	s.Require().True(outcome.Succeeded, "the barbarian shrugs off the wolf")

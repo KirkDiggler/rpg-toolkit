@@ -42,12 +42,14 @@ type frozenCheck struct {
 	IsNat1    bool                    `json:"is_nat1"`
 	IsNat20   bool                    `json:"is_nat20"`
 
-	AdvantageSources    []dnd5eEvents.CheckModifierSource `json:"advantage_sources"`
-	DisadvantageSources []dnd5eEvents.CheckModifierSource `json:"disadvantage_sources"`
-	BonusSources        []dnd5eEvents.CheckBonusSource    `json:"bonus_sources"`
+	BonusSources []dnd5eEvents.CheckBonusSource `json:"bonus_sources"`
 
 	// Calculation is the settled pre-offer arithmetic and is reused verbatim
-	// on resume.
+	// on resume. It is also where advantage and disadvantage are frozen: the
+	// d20 component's keep record names the rules that granted or imposed and
+	// the entities that brought them, so the parallel source lists that used
+	// to sit beside it here would be a second copy of a fact that can
+	// disagree with its own dice (rpg-project#462 R1).
 	Calculation *dnd5eEvents.RollCalculation `json:"calculation"`
 
 	// Offer is what was put on the table.
@@ -82,20 +84,18 @@ func poseCheck(in poseCheckInput) (*Pose, error) {
 	}
 
 	frozen, err := json.Marshal(frozenCheck{
-		Kind:                frozenCheckKind,
-		Version:             frozenCheckVersion,
-		CheckerID:           in.checkerID,
-		Applied:             in.applied,
-		DC:                  in.result.DC,
-		Roll:                in.result.Roll,
-		Total:               in.calculation.Total,
-		IsNat1:              in.result.IsNat1,
-		IsNat20:             in.result.IsNat20,
-		AdvantageSources:    in.result.AdvantageSources,
-		DisadvantageSources: in.result.DisadvantageSources,
-		BonusSources:        in.result.BonusSources,
-		Calculation:         dnd5eEvents.CloneRollCalculation(in.calculation),
-		Offer:               offer,
+		Kind:         frozenCheckKind,
+		Version:      frozenCheckVersion,
+		CheckerID:    in.checkerID,
+		Applied:      in.applied,
+		DC:           in.result.DC,
+		Roll:         in.result.Roll,
+		Total:        in.calculation.Total,
+		IsNat1:       in.result.IsNat1,
+		IsNat20:      in.result.IsNat20,
+		BonusSources: in.result.BonusSources,
+		Calculation:  dnd5eEvents.CloneRollCalculation(in.calculation),
+		Offer:        offer,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: freeze check: %v", ErrBadFrozen, err)
@@ -243,7 +243,9 @@ func resumeCheckOn(ctx context.Context, in *CheckResumeInput, surf *surface) (*C
 		}
 
 		component := dnd5eEvents.RollComponent{
-			Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(frozen.Offer.Ref), Name: frozen.Offer.Name},
+			Source: dnd5eEvents.RollSource{
+				Ref: cloneCoreRef(frozen.Offer.Ref), Name: frozen.Offer.Name, SourceID: frozen.Offer.SourceID,
+			},
 			Dice: &dnd5eEvents.DiceTrace{
 				Notation: dice.SimplePool(1, size, 0).Notation(), DieSize: size,
 				OriginalRolls: []int{face}, FinalRolls: []int{face}, Subtotal: face,
@@ -274,15 +276,14 @@ func resumeCheckOn(ctx context.Context, in *CheckResumeInput, surf *surface) (*C
 	}
 
 	result := &checks.AbilityCheckResult{
-		Roll:                frozen.Roll,
-		Total:               total,
-		DC:                  frozen.DC,
-		Success:             total >= frozen.DC,
-		IsNat1:              frozen.IsNat1,
-		IsNat20:             frozen.IsNat20,
-		AdvantageSources:    frozen.AdvantageSources,
-		DisadvantageSources: frozen.DisadvantageSources,
-		BonusSources:        frozen.BonusSources,
+		Roll:         frozen.Roll,
+		Total:        total,
+		DC:           frozen.DC,
+		Success:      total >= frozen.DC,
+		IsNat1:       frozen.IsNat1,
+		IsNat20:      frozen.IsNat20,
+		BonusSources: frozen.BonusSources,
+		Calculation:  calculation,
 	}
 
 	return &CheckOutput{

@@ -316,7 +316,9 @@ func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) err
 	}
 
 	component := dnd5eEvents.RollComponent{
-		Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(offer.Ref), Name: offer.Name},
+		Source: dnd5eEvents.RollSource{
+			Ref: cloneCoreRef(offer.Ref), Name: offer.Name, SourceID: offer.SourceID,
+		},
 		Dice: &dnd5eEvents.DiceTrace{
 			Notation: dice.SimplePool(1, size, 0).Notation(), DieSize: size,
 			OriginalRolls: []int{face}, FinalRolls: []int{face}, Subtotal: face,

@@ -166,10 +166,47 @@ func encounterRollCalculation(calculation *dnd5eEvents.RollCalculation) *encount
 					trace.Rerolls[j].Source.Ref = reroll.Source.Ref.String()
 				}
 			}
+			// The keep record crosses with the dice it describes. Dropping it
+			// here would put the pair of faces on the record with nothing to
+			// say which one counted or why — the exact narrowing this slice
+			// exists to remove (rpg-project#462 R1).
+			trace.Keep = encounterDiceKeep(component.Dice.Keep)
 			converted.Components[i].Dice = trace
 		}
 	}
 	return converted
+}
+
+// encounterDiceKeep mirrors a keep record onto the persistence carrier, or nil
+// when nothing touched the pool. Nil in, nil out: a straight roll has no rule
+// to record, and inventing one would answer a question nobody asked.
+func encounterDiceKeep(keep *dnd5eEvents.DiceKeep) *encounter.DiceKeep {
+	if keep == nil {
+		return nil
+	}
+
+	return &encounter.DiceKeep{
+		Rule:    encounter.KeepRule(keep.Rule),
+		Granted: encounterRollSources(keep.Granted),
+		Imposed: encounterRollSources(keep.Imposed),
+	}
+}
+
+func encounterRollSources(sources []dnd5eEvents.RollSource) []encounter.RollSource {
+	if len(sources) == 0 {
+		return nil
+	}
+
+	mapped := make([]encounter.RollSource, len(sources))
+	for i, source := range sources {
+		mapped[i] = encounter.RollSource{
+			Name: source.Name, Label: source.Label, SourceID: source.SourceID,
+		}
+		if source.Ref != nil {
+			mapped[i].Ref = source.Ref.String()
+		}
+	}
+	return mapped
 }
 
 // breaks reads the collected facts back in the shape the record takes.

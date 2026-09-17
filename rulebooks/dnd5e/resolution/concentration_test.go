@@ -977,3 +977,71 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 	// cantrip's own rider is left.
 	s.Equal([]string{refs.Conditions.ViciousMockery().String()}, s.conditionRefs(out, heroID))
 }
+
+// TestTheMirrorCarriesTheKeepRecord pins the seam where the record would
+// otherwise be lost. The persistence carrier is a separate spelling of the
+// trace — encounter cannot import the rulebook — so every field crosses by
+// hand, and a field that nobody copies is a field the story never sees. A
+// concentration save made at disadvantage would reach the record as a pair of
+// faces with nothing to say which one counted or why.
+func TestTheMirrorCarriesTheKeepRecord(t *testing.T) {
+	source := dnd5eEvents.RollSource{
+		Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame", SourceID: "bard-1",
+	}
+	untrained := dnd5eEvents.RollSource{
+		Ref: refs.Rules.Untrained(), Name: "Untrained", Label: "rule", SourceID: "bard-1",
+	}
+	modifier := 2
+	calculation := dnd5eEvents.NewRollCalculation([]dnd5eEvents.RollComponent{
+		{
+			Source: source,
+			Dice: &dnd5eEvents.DiceTrace{
+				Notation: "2d20", DieSize: 20,
+				OriginalRolls: []int{7, 18}, FinalRolls: []int{7, 18},
+				KeptIndices: []int{0}, Subtotal: 7,
+				Keep: &dnd5eEvents.DiceKeep{
+					Rule:    dnd5eEvents.KeepDisadvantage,
+					Imposed: []dnd5eEvents.RollSource{untrained},
+				},
+			},
+		},
+		{Source: source, Modifier: &modifier},
+	})
+	require.NoError(t, dnd5eEvents.ValidateRollCalculation(calculation))
+
+	mirrored := encounterRollCalculation(calculation)
+
+	require.NoError(t, encounter.ValidateRollCalculation(mirrored),
+		"and it is valid on the other side of the seam, not merely copied")
+	keep := mirrored.Components[0].Dice.Keep
+	require.NotNil(t, keep)
+	require.Equal(t, encounter.KeepDisadvantage, keep.Rule)
+	require.Len(t, keep.Imposed, 1)
+	require.Equal(t, "Untrained", keep.Imposed[0].Name)
+	require.Equal(t, refs.Rules.Untrained().String(), keep.Imposed[0].Ref,
+		"the ref crosses as its canonical string, like every other ref here")
+	require.Equal(t, "rule", keep.Imposed[0].Label)
+	require.Equal(t, "bard-1", keep.Imposed[0].SourceID)
+	require.Empty(t, keep.Granted)
+}
+
+// TestTheMirrorLeavesAStraightRollAlone: nil in, nil out. A straight roll has
+// no rule to record, and a zero-valued keep record on the far side would be a
+// rule the story would have to explain.
+func TestTheMirrorLeavesAStraightRollAlone(t *testing.T) {
+	source := dnd5eEvents.RollSource{
+		Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame", SourceID: "bard-1",
+	}
+	calculation := dnd5eEvents.NewRollCalculation([]dnd5eEvents.RollComponent{{
+		Source: source,
+		Dice: &dnd5eEvents.DiceTrace{
+			Notation: "1d20", DieSize: 20,
+			OriginalRolls: []int{11}, FinalRolls: []int{11}, Subtotal: 11,
+		},
+	}})
+
+	mirrored := encounterRollCalculation(calculation)
+
+	require.NoError(t, encounter.ValidateRollCalculation(mirrored))
+	require.Nil(t, mirrored.Components[0].Dice.Keep)
+}

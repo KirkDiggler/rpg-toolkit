@@ -25,6 +25,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
@@ -289,6 +290,16 @@ func (s *HoldOutSuite) TestPackTacticsCountsARaiderAsAnAllyBeforeAndAfterTheFlip
 		outcome := s.resolve(s.camp().ToData(), chomp(roller))
 		s.True(packTacticsFired(outcome), "advantage: %+v", outcome.Folded.AdvantageSources)
 		s.Equal(15, outcome.Roll, "the higher die")
+
+		// And the die itself says so: two faces, the higher kept, and the
+		// record naming the rule and the packmate who brought it.
+		die := outcome.Calculation.Components[0].Dice
+		s.Require().NotNil(die.Keep)
+		s.Equal(dnd5eEvents.KeepAdvantage, die.Keep.Rule)
+		s.Require().Len(die.Keep.Granted, 1)
+		s.Equal(refs.MonsterTraits.PackTactics().String(), die.Keep.Granted[0].Ref.String())
+		s.NotEmpty(die.Keep.Granted[0].SourceID, "a rule nobody brought is refused before the roll")
+		s.Len(die.KeptIndices, 1)
 		s.Empty(roller.script, "%v", roller.calls)
 	})
 

@@ -289,6 +289,33 @@ func TestDeliveryRangeAndLongRangeDisadvantage(t *testing.T) {
 		require.Equal(t, 4, outcome.Roll)
 		require.Len(t, outcome.Folded.DisadvantageSources, 1)
 		require.Equal(t, definition.Ref, *outcome.Folded.DisadvantageSources[0].SourceRef)
+
+		// The pair the fold decided on reaches the log intact, and the record
+		// says which rule kept the lower face (rpg-project#462 R1).
+		die := outcome.Calculation.Components[0].Dice
+		require.Equal(t, "2d20", die.Notation)
+		require.Equal(t, []int{17, 4}, die.FinalRolls, "the discarded 17 is kept, not thrown away")
+		require.Equal(t, []int{1}, die.KeptIndices)
+		require.NotNil(t, die.Keep)
+		require.Equal(t, dnd5eEvents.KeepDisadvantage, die.Keep.Rule)
+		require.Len(t, die.Keep.Imposed, 1)
+		require.Equal(t, "target is beyond normal range", die.Keep.Imposed[0].Name)
+		require.Equal(t, wolfID, die.Keep.Imposed[0].SourceID)
+		require.Equal(t, wolfID, outcome.Calculation.Components[0].Source.SourceID,
+			"and the d20 itself is the attacker's, not the weapon definition's")
+	})
+
+	t.Run("inside normal range records no keep rule", func(t *testing.T) {
+		definition := validMeleeDefinition()
+		definition.Attack.Delivery = combatActions.AttackDelivery{Ranged: &combatActions.RangedDelivery{NormalFeet: 20, LongFeet: 40}}
+		roller := &actionRoller{singles: []int{15}, damage: [][]int{{3}}}
+		out, err := resolveActionDefinition(t, definition, 4, roller)
+		require.NoError(t, err)
+		outcome := out.Outcome.(StrikeOutcome)
+
+		die := outcome.Calculation.Components[0].Dice
+		require.Equal(t, "1d20", die.Notation)
+		require.Nil(t, die.Keep, "nobody touched the pool, and the zero value says so")
 	})
 }
 
