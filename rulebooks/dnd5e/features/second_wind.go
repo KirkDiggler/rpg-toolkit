@@ -146,7 +146,9 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 	calculation := &dnd5eEvents.RollCalculation{
 		Components: []dnd5eEvents.RollComponent{
 			{
-				Source: dnd5eEvents.RollSource{Ref: &diceSourceRef, Name: "Second Wind"},
+				Source: dnd5eEvents.RollSource{
+					Ref: &diceSourceRef, Name: "Second Wind", SourceID: owner.GetID(),
+				},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      "1d10",
 					DieSize:       10,

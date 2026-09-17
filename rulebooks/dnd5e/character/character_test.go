@@ -488,8 +488,12 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowConsultsParkedBusCond
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
+	s.Require().NotNil(result.Calculation)
+	keep := result.Calculation.Components[0].Dice.Keep
+	s.Require().NotNil(keep, "advantage from the parked bus must reach the die's keep record")
+
 	var names []string
-	for _, src := range result.AdvantageSources {
+	for _, src := range keep.Granted {
 		names = append(names, src.Name)
 	}
 	s.Contains(names, "Dodging",

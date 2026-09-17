@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -66,6 +67,54 @@ func (s *SavingThrowTestSuite) withSources(input *SavingThrowInput) *SavingThrow
 		input.ModifierSource = dnd5eEvents.RollSource{Ref: ref, Name: input.Ability.Display()}
 	}
 	return input
+}
+
+// subscribeSaveModifier puts one advantage or disadvantage source on the save
+// chain, the way a condition does. Every source carries a ref, a name and the
+// entity that brought it: a keep record that cannot name who brought the rule
+// is refused before any die is rolled.
+func (s *SavingThrowTestSuite) subscribeSaveModifier(
+	grant bool, name string, ref *core.Ref, entity string,
+) {
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
+	_, err := saveChain.SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent,
+			c chain.Chain[*dnd5eEvents.SavingThrowChainEvent],
+		) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
+			addErr := c.Add(combat.StageConditions, name,
+				func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent,
+				) (*dnd5eEvents.SavingThrowChainEvent, error) {
+					source := dnd5eEvents.SaveModifierSource{
+						Name: name, SourceType: "condition", SourceRef: ref, EntityID: entity,
+					}
+					if grant {
+						e.AdvantageSources = append(e.AdvantageSources, source)
+					} else {
+						e.DisadvantageSources = append(e.DisadvantageSources, source)
+					}
+					return e, nil
+				})
+			return c, addErr
+		})
+	s.Require().NoError(err)
+}
+
+func (s *SavingThrowTestSuite) grantSave(name string, ref *core.Ref, entity string) {
+	s.subscribeSaveModifier(true, name, ref, entity)
+}
+
+func (s *SavingThrowTestSuite) imposeSave(name string, ref *core.Ref, entity string) {
+	s.subscribeSaveModifier(false, name, ref, entity)
+}
+
+// d20Trace reads the save's own die off the calculation: component 0 is the
+// d20 by contract.
+func (s *SavingThrowTestSuite) d20Trace(result *SavingThrowResult) *dnd5eEvents.DiceTrace {
+	s.Require().NotNil(result.Calculation)
+	s.Require().NotEmpty(result.Calculation.Components)
+	trace := result.Calculation.Components[0].Dice
+	s.Require().NotNil(trace)
+	return trace
 }
 
 // TestBasicSuccess tests that a saving throw succeeds when roll + modifier >= DC
@@ -131,14 +180,14 @@ func (s *SavingThrowTestSuite) TestAdvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
 
 	input := &SavingThrowInput{
-		Roller:       s.mockRoller,
-		EventBus:     s.bus,
-		SaverID:      "hero",
-		Ability:      abilities.WIS,
-		DC:           12,
-		Modifier:     2,
-		HasAdvantage: true,
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
+		Ability:  abilities.WIS,
+		DC:       12,
+		Modifier: 2,
 	}
+	s.grantSave("Dodging", refs.Conditions.Dodging(), "hero")
 
 	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
@@ -158,14 +207,14 @@ func (s *SavingThrowTestSuite) TestDisadvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
 
 	input := &SavingThrowInput{
-		Roller:          s.mockRoller,
-		EventBus:        s.bus,
-		SaverID:         "hero",
-		Ability:         abilities.DEX,
-		DC:              15,
-		Modifier:        4,
-		HasDisadvantage: true,
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
+		Ability:  abilities.DEX,
+		DC:       15,
+		Modifier: 4,
 	}
+	s.imposeSave("Poisoned", refs.Conditions.Poisoned(), "hero")
 
 	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
@@ -237,14 +286,14 @@ func (s *SavingThrowTestSuite) TestNatural20WithAdvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{12, 20}, nil)
 
 	input := &SavingThrowInput{
-		Roller:       s.mockRoller,
-		EventBus:     s.bus,
-		SaverID:      "hero",
-		Ability:      abilities.CHA,
-		DC:           15,
-		Modifier:     1,
-		HasAdvantage: true,
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
+		Ability:  abilities.CHA,
+		DC:       15,
+		Modifier: 1,
 	}
+	s.grantSave("Dodging", refs.Conditions.Dodging(), "hero")
 
 	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
@@ -263,14 +312,14 @@ func (s *SavingThrowTestSuite) TestNatural1WithDisadvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{15, 1}, nil)
 
 	input := &SavingThrowInput{
-		Roller:          s.mockRoller,
-		EventBus:        s.bus,
-		SaverID:         "hero",
-		Ability:         abilities.CON,
-		DC:              10,
-		Modifier:        3,
-		HasDisadvantage: true,
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
+		Ability:  abilities.CON,
+		DC:       10,
+		Modifier: 3,
 	}
+	s.imposeSave("Poisoned", refs.Conditions.Poisoned(), "hero")
 
 	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
@@ -335,15 +384,15 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(11, nil)
 
 	input := &SavingThrowInput{
-		Roller:          s.mockRoller,
-		EventBus:        s.bus,
-		SaverID:         "hero",
-		Ability:         abilities.DEX,
-		DC:              15,
-		Modifier:        2,
-		HasAdvantage:    true,
-		HasDisadvantage: true,
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
+		Ability:  abilities.DEX,
+		DC:       15,
+		Modifier: 2,
 	}
+	s.grantSave("Helped", refs.Conditions.Helped(), "ally")
+	s.imposeSave("Poisoned", refs.Conditions.Poisoned(), "hero")
 
 	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
 	s.Require().NoError(err)
@@ -357,10 +406,11 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 func (s *SavingThrowTestSuite) TestBaneContributionProducesCheckedCalculationWithOneD4UnderAdvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{12, 16}, nil)
 	s.mockRoller.EXPECT().RollN(s.ctx, 1, 4).Return([]int{4}, nil)
+	s.grantSave("Dodging", refs.Conditions.Dodging(), "hero")
 
 	result, err := MakeSavingThrow(s.ctx, &SavingThrowInput{
 		Roller: s.mockRoller, EventBus: s.bus, SaverID: "hero", Ability: abilities.CHA,
-		DC: 14, Modifier: 2, HasAdvantage: true,
+		DC: 14, Modifier: 2,
 		D20Source:      dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
 		ModifierSource: dnd5eEvents.RollSource{Ref: refs.Abilities.Charisma(), Name: "Charisma"},
 		Contributions: []dnd5eEvents.DiceContribution{{
@@ -433,6 +483,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
 					e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.SaveModifierSource{
 						Name:       "Dodging",
 						SourceType: "condition",
+						SourceRef:  refs.Conditions.Dodging(),
 						EntityID:   "hero",
 					})
 					return e, nil
@@ -461,8 +512,13 @@ func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
 	s.Equal(15, result.Roll, "should use higher roll due to advantage")
 	s.Equal(17, result.Total, "total should be 15 + 2 = 17")
 	s.True(result.Success, "17 should succeed against DC 15")
-	s.Len(result.AdvantageSources, 1, "should have one advantage source")
-	s.Equal("Dodging", result.AdvantageSources[0].Name)
+	trace := s.d20Trace(result)
+	s.Equal([]int{8, 15}, trace.FinalRolls, "both faces survive to the log")
+	s.Require().NotNil(trace.Keep)
+	s.Equal(dnd5eEvents.KeepAdvantage, trace.Keep.Rule)
+	s.Require().Len(trace.Keep.Granted, 1, "the keep record names the rule that granted it")
+	s.Equal("Dodging", trace.Keep.Granted[0].Name)
+	s.Equal("hero", trace.Keep.Granted[0].SourceID)
 }
 
 // TestChainGrantsDisadvantage tests that a chain subscriber can impose disadvantage
@@ -478,6 +534,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
 				e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.SaveModifierSource{
 					Name:       "Poisoned",
 					SourceType: "condition",
+					SourceRef:  refs.Conditions.Poisoned(),
 					EntityID:   "hero",
 				})
 				return e, nil
@@ -505,8 +562,13 @@ func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
 	s.Equal(5, result.Roll, "should use lower roll due to disadvantage")
 	s.Equal(9, result.Total, "total should be 5 + 4 = 9")
 	s.False(result.Success, "9 should fail against DC 15")
-	s.Len(result.DisadvantageSources, 1, "should have one disadvantage source")
-	s.Equal("Poisoned", result.DisadvantageSources[0].Name)
+	trace := s.d20Trace(result)
+	s.Equal([]int{18, 5}, trace.FinalRolls)
+	s.Require().NotNil(trace.Keep)
+	s.Equal(dnd5eEvents.KeepDisadvantage, trace.Keep.Rule)
+	s.Require().Len(trace.Keep.Imposed, 1)
+	s.Equal("Poisoned", trace.Keep.Imposed[0].Name)
+	s.Empty(trace.Keep.Granted)
 }
 
 // TestChainAddsBonus tests that a chain subscriber can add bonuses to the roll
@@ -558,37 +620,23 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 	s.Equal(3, result.BonusSources[0].Bonus)
 }
 
-// TestChainAdvantageAndInputDisadvantageCancelOut tests that chain advantage and input disadvantage cancel
-func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut() {
-	// Should roll normally when they cancel out
+// TestCancellationIsRecordedNotErased pins R2: when a granted and an imposed
+// rule meet, RAW rolls one die and so do we — and the record says which two
+// rules met over it. Before the keep record existed, a cancelled roll was
+// indistinguishable from a straight one and the player never learned that
+// their ally's Help had been eaten.
+func (s *SavingThrowTestSuite) TestCancellationIsRecordedNotErased() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(12, nil)
-
-	// Subscribe to grant advantage
-	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
-	_, err := saveChain.SubscribeWithChain(s.ctx,
-		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
-			addErr := c.Add(combat.StageConditions, "dodging", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
-				e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.SaveModifierSource{
-					Name:       "Dodging",
-					SourceType: "condition",
-				})
-				return e, nil
-			})
-			if addErr != nil {
-				return c, addErr
-			}
-			return c, nil
-		})
-	s.Require().NoError(err)
+	s.grantSave("Helped", refs.Conditions.Helped(), "ally")
+	s.imposeSave("Poisoned", refs.Conditions.Poisoned(), "hero")
 
 	input := &SavingThrowInput{
-		Roller:          s.mockRoller,
-		EventBus:        s.bus,
-		SaverID:         "hero",
-		Ability:         abilities.DEX,
-		DC:              15,
-		Modifier:        2,
-		HasDisadvantage: true, // Input has disadvantage
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
+		Ability:  abilities.DEX,
+		DC:       15,
+		Modifier: 2,
 	}
 
 	result, err := MakeSavingThrow(s.ctx, s.withSources(input))
@@ -598,11 +646,35 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 	s.Equal(12, result.Roll, "should roll normally when advantage/disadvantage cancel")
 	s.Equal(14, result.Total, "total should be 12 + 2 = 14")
 
-	// Both sources should still be tracked even though they cancelled out
-	s.Len(result.AdvantageSources, 1, "should track advantage source from chain")
-	s.Equal("Dodging", result.AdvantageSources[0].Name)
-	s.Len(result.DisadvantageSources, 1, "should track disadvantage source from input")
-	s.Equal("Input", result.DisadvantageSources[0].Name)
+	trace := s.d20Trace(result)
+	s.Equal("1d20", trace.Notation)
+	s.Empty(trace.KeptIndices)
+	s.Require().NotNil(trace.Keep, "a cancelled roll is not a straight roll")
+	s.Equal(dnd5eEvents.KeepCancelled, trace.Keep.Rule)
+	s.Require().Len(trace.Keep.Granted, 1)
+	s.Equal("ally", trace.Keep.Granted[0].SourceID, "the help was somebody else's")
+	s.Require().Len(trace.Keep.Imposed, 1)
+	s.Equal("Poisoned", trace.Keep.Imposed[0].Name)
+}
+
+// TestD20NamesTheSaver pins R7 for saves: the d20's ref and name say the rule
+// that caused the save, and its entity is the creature that rolled it.
+func (s *SavingThrowTestSuite) TestD20NamesTheSaver() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(12, nil)
+
+	result, err := MakeSavingThrow(s.ctx, s.withSources(&SavingThrowInput{
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
+		Ability:  abilities.DEX,
+		DC:       15,
+		Modifier: 2,
+	}))
+	s.Require().NoError(err)
+
+	d20 := result.Calculation.Components[0]
+	s.Equal("hero", d20.Source.SourceID, "the d20 belongs to the saver")
+	s.Equal("Sacred Flame", d20.Source.Name, "and its rule is still what caused the save")
 }
 
 // TestRefusesNilEventBus pins the required-bus contract (rpg-toolkit#1357):

@@ -36,7 +36,13 @@ type DeathSaveInput struct {
 	// State is the current death save state to update
 	State *DeathSaveState
 
-	// D20Source is the canonical death-save action source.
+	// SaverID is the ID of the dying creature. Required — the d20 is theirs,
+	// and a dice pool with no entity behind it does not exist in this game
+	// (rpg-project#462 R7).
+	SaverID string
+
+	// D20Source is the canonical death-save action source. Its ref and name
+	// say the rule; the entity comes from SaverID.
 	D20Source dnd5eEvents.RollSource
 
 	// Contributions are already selected by the dying creature's condition owner.
@@ -109,6 +115,10 @@ func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult
 	if input.State == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "state cannot be nil")
 	}
+	if input.SaverID == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
+			"SaverID is required: a death save's d20 belongs to the dying creature")
+	}
 
 	if err := validateCalculationSource("d20", input.D20Source); err != nil {
 		return nil, err
@@ -122,10 +132,17 @@ func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult
 		roller = dice.NewRoller()
 	}
 
-	roll, err := roller.Roll(ctx, 20)
+	// The same d20 roller every other machine uses. No source grants advantage
+	// on a death save yet, so both lists are empty and the trace is the
+	// straight 1d20 it has always been — the day one does, this call already
+	// records it (rpg-project#462).
+	d20Source := dnd5eEvents.CloneRollSource(input.D20Source)
+	d20Source.SourceID = input.SaverID
+	d20, err := rolls.RollD20(ctx, &rolls.RollD20Input{Roller: roller, Source: d20Source})
 	if err != nil {
-		return nil, err
+		return nil, rpgerr.Wrap(err, "failed to roll death save d20")
 	}
+	roll := d20.Face
 	resolved, err := rolls.ResolveContributions(ctx, &rolls.ResolveContributionsInput{
 		Roller: roller, Contributions: input.Contributions,
 	})
@@ -133,15 +150,9 @@ func MakeDeathSave(ctx context.Context, input *DeathSaveInput) (*DeathSaveResult
 		return nil, rpgerr.Wrap(err, "failed to resolve death save contributions")
 	}
 	components := make([]dnd5eEvents.RollComponent, 0, 1+len(resolved.Components))
-	components = append(components, dnd5eEvents.RollComponent{
-		Source: cloneRollSource(input.D20Source),
-		Dice: &dnd5eEvents.DiceTrace{
-			Notation: "1d20", DieSize: 20, OriginalRolls: []int{roll},
-			FinalRolls: []int{roll}, Subtotal: roll,
-		},
-	})
+	components = append(components, dnd5eEvents.RollComponent{Source: d20Source, Dice: d20.Trace})
 	components = append(components, resolved.Components...)
-	calculation := calculationFor(components)
+	calculation := dnd5eEvents.NewRollCalculation(components)
 	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
 		return nil, rpgerr.Wrap(err, "death save calculation is invalid")
 	}

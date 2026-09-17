@@ -23,7 +23,9 @@ func validRollCalculation() *RollCalculation {
 	zero := 0
 	return &RollCalculation{Components: []RollComponent{
 		{
-			Source: RollSource{Ref: testRef(refs.Weapons.Greatsword()), Name: "Greatsword"},
+			Source: RollSource{
+				Ref: testRef(refs.Weapons.Greatsword()), Name: "Greatsword", SourceID: "hero-1",
+			},
 			Dice: &DiceTrace{
 				Notation:      "2d6",
 				DieSize:       6,
@@ -108,7 +110,7 @@ func TestRollCalculationValidNegativeModifier(t *testing.T) {
 func TestRollCalculationValidSubtractiveDiceAndSignedModifier(t *testing.T) {
 	calc := &RollCalculation{Components: []RollComponent{
 		{
-			Source: RollSource{Ref: refs.Actions.Strike(), Name: "Strike"},
+			Source: RollSource{Ref: refs.Actions.Strike(), Name: "Strike", SourceID: "hero-1"},
 			Dice: &DiceTrace{Notation: "1d20", DieSize: 20,
 				OriginalRolls: []int{14}, FinalRolls: []int{14}, Subtotal: 14},
 		},
@@ -429,4 +431,205 @@ func TestCloneRollCalculation(t *testing.T) {
 
 func TestCloneRollCalculationNil(t *testing.T) {
 	require.Nil(t, CloneRollCalculation(nil))
+}
+
+// keepSource is a well-formed keep source: a rule, and the entity that brought
+// it. Every field is required — a record that cannot name who brought the rule
+// cannot be rendered.
+func keepSource(name string, ref *core.Ref, entity string) RollSource {
+	return RollSource{Ref: testRef(ref), Name: name, SourceID: entity}
+}
+
+// advantageCalculation is a valid 2d20 pool kept under advantage: the higher
+// face counts, one kept index, one granting source, nothing imposed.
+func advantageCalculation() *RollCalculation {
+	return &RollCalculation{Components: []RollComponent{{
+		Source: RollSource{Ref: testRef(refs.Actions.Strike()), Name: "Strike", SourceID: "hero"},
+		Dice: &DiceTrace{
+			Notation: "2d20", DieSize: 20,
+			OriginalRolls: []int{7, 18}, FinalRolls: []int{7, 18},
+			KeptIndices: []int{1}, Subtotal: 18,
+			Keep: &DiceKeep{
+				Rule: KeepAdvantage,
+				Granted: []RollSource{
+					keepSource("Reckless Attack", refs.Conditions.RecklessAttack(), "hero"),
+				},
+			},
+		},
+	}}, Total: 18}
+}
+
+func TestRollCalculationValidAdvantageKeep(t *testing.T) {
+	require.NoError(t, ValidateRollCalculation(advantageCalculation()))
+}
+
+func TestRollCalculationValidDisadvantageKeep(t *testing.T) {
+	calc := advantageCalculation()
+	calc.Components[0].Dice.KeptIndices = []int{0}
+	calc.Components[0].Dice.Subtotal = 7
+	calc.Components[0].Dice.Keep = &DiceKeep{
+		Rule:    KeepDisadvantage,
+		Imposed: []RollSource{keepSource("Untrained", refs.Rules.Untrained(), "hero")},
+	}
+	calc.Total = 7
+
+	require.NoError(t, ValidateRollCalculation(calc))
+}
+
+// TestRollCalculationValidCancelledKeep is the case the log could never show:
+// one die, no kept indices, and a record naming the two rules that met.
+func TestRollCalculationValidCancelledKeep(t *testing.T) {
+	calc := advantageCalculation()
+	calc.Components[0].Dice.Notation = "1d20"
+	calc.Components[0].Dice.OriginalRolls = []int{11}
+	calc.Components[0].Dice.FinalRolls = []int{11}
+	calc.Components[0].Dice.KeptIndices = nil
+	calc.Components[0].Dice.Subtotal = 11
+	calc.Components[0].Dice.Keep = &DiceKeep{
+		Rule:    KeepCancelled,
+		Granted: []RollSource{keepSource("Help", refs.Conditions.Helped(), "alice")},
+		Imposed: []RollSource{keepSource("Untrained", refs.Rules.Untrained(), "hero")},
+	}
+	calc.Total = 11
+
+	require.NoError(t, ValidateRollCalculation(calc))
+}
+
+// TestRollCalculationRefusesAWrongKeepRecord is the fail-closed half of R1: a
+// builder that fills the record by hand and gets it wrong is refused at the
+// seam rather than rendered wrong.
+func TestRollCalculationRefusesAWrongKeepRecord(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*DiceTrace)
+	}{
+		{
+			name: "advantage on a one-die pool",
+			change: func(trace *DiceTrace) {
+				trace.Notation = "1d20"
+				trace.OriginalRolls = []int{18}
+				trace.FinalRolls = []int{18}
+				trace.KeptIndices = []int{0}
+			},
+		},
+		{
+			name: "advantage kept the lower face",
+			change: func(trace *DiceTrace) {
+				trace.KeptIndices = []int{0}
+				trace.Subtotal = 7
+			},
+		},
+		{
+			name: "advantage kept two faces",
+			change: func(trace *DiceTrace) {
+				trace.KeptIndices = []int{0, 1}
+				trace.Subtotal = 25
+			},
+		},
+		{
+			name: "advantage nobody granted",
+			change: func(trace *DiceTrace) {
+				trace.Keep.Granted = nil
+			},
+		},
+		{
+			name: "advantage with something imposed is a cancellation",
+			change: func(trace *DiceTrace) {
+				trace.Keep.Imposed = []RollSource{
+					keepSource("Untrained", refs.Rules.Untrained(), "hero"),
+				}
+			},
+		},
+		{
+			name: "disadvantage kept the higher face",
+			change: func(trace *DiceTrace) {
+				trace.Keep = &DiceKeep{
+					Rule:    KeepDisadvantage,
+					Imposed: []RollSource{keepSource("Untrained", refs.Rules.Untrained(), "hero")},
+				}
+			},
+		},
+		{
+			name: "cancelled with nothing imposed",
+			change: func(trace *DiceTrace) {
+				trace.KeptIndices = nil
+				trace.Subtotal = 25
+				trace.Keep = &DiceKeep{
+					Rule:    KeepCancelled,
+					Granted: []RollSource{keepSource("Help", refs.Conditions.Helped(), "alice")},
+				}
+			},
+		},
+		{
+			name: "cancelled that still kept a face",
+			change: func(trace *DiceTrace) {
+				trace.Keep = &DiceKeep{
+					Rule:    KeepCancelled,
+					Granted: []RollSource{keepSource("Help", refs.Conditions.Helped(), "alice")},
+					Imposed: []RollSource{keepSource("Untrained", refs.Rules.Untrained(), "hero")},
+				}
+			},
+		},
+		{
+			name: "a rule nobody has heard of",
+			change: func(trace *DiceTrace) {
+				trace.Keep.Rule = "lucky"
+			},
+		},
+		{
+			name: "an empty rule",
+			change: func(trace *DiceTrace) {
+				trace.Keep.Rule = ""
+			},
+		},
+		{
+			name: "a rule brought by nobody",
+			change: func(trace *DiceTrace) {
+				trace.Keep.Granted[0].SourceID = ""
+			},
+		},
+		{
+			name: "a rule with no ref to name it",
+			change: func(trace *DiceTrace) {
+				trace.Keep.Granted[0].Ref = nil
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calc := advantageCalculation()
+			test.change(calc.Components[0].Dice)
+			require.Error(t, ValidateRollCalculation(calc))
+		})
+	}
+}
+
+// TestRollCalculationRefusesAnAnonymousDicePool is R7 stated as a refusal:
+// every dice pool names the entity whose rule threw it, and a roll with no
+// entity behind it does not exist in this game.
+func TestRollCalculationRefusesAnAnonymousDicePool(t *testing.T) {
+	calc := advantageCalculation()
+	calc.Components[0].Source.SourceID = ""
+
+	require.ErrorContains(t, ValidateRollCalculation(calc), "dice source id is required")
+}
+
+// TestCloneRollCalculationCopiesTheKeepRecord pins that a clone is a clone:
+// scribbling on the copy's keep record cannot reach the original.
+func TestCloneRollCalculationCopiesTheKeepRecord(t *testing.T) {
+	calc := advantageCalculation()
+
+	clone := CloneRollCalculation(calc)
+	require.NotNil(t, clone.Components[0].Dice.Keep)
+	require.Equal(t, KeepAdvantage, clone.Components[0].Dice.Keep.Rule)
+	require.Len(t, clone.Components[0].Dice.Keep.Granted, 1)
+
+	clone.Components[0].Dice.Keep.Rule = KeepDisadvantage
+	clone.Components[0].Dice.Keep.Granted[0].Name = "scribbled"
+	clone.Components[0].Dice.Keep.Granted[0].Ref.ID = "scribbled"
+
+	require.Equal(t, KeepAdvantage, calc.Components[0].Dice.Keep.Rule)
+	require.Equal(t, "Reckless Attack", calc.Components[0].Dice.Keep.Granted[0].Name)
+	require.Equal(t, refs.Conditions.RecklessAttack().ID, calc.Components[0].Dice.Keep.Granted[0].Ref.ID)
 }

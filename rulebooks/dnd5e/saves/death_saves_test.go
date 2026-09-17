@@ -52,6 +52,7 @@ func (s *DeathSaveTestSuite) TestRoll1AddsTwoFailures() {
 	input := &DeathSaveInput{
 		Roller:    s.mockRoller,
 		State:     state,
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
@@ -78,6 +79,7 @@ func (s *DeathSaveTestSuite) TestRoll2To9AddsOneFailure() {
 			input := &DeathSaveInput{
 				Roller:    s.mockRoller,
 				State:     state,
+				SaverID:   "hero",
 				D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 			}
 
@@ -107,6 +109,7 @@ func (s *DeathSaveTestSuite) TestRoll10To19AddsOneSuccess() {
 			input := &DeathSaveInput{
 				Roller:    s.mockRoller,
 				State:     state,
+				SaverID:   "hero",
 				D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 			}
 
@@ -131,6 +134,7 @@ func (s *DeathSaveTestSuite) TestRoll20RegainsConsciousness() {
 	input := &DeathSaveInput{
 		Roller:    s.mockRoller,
 		State:     state,
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
@@ -155,6 +159,7 @@ func (s *DeathSaveTestSuite) TestThreeFailuresCausesDeath() {
 	input := &DeathSaveInput{
 		Roller:    s.mockRoller,
 		State:     state,
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
@@ -175,6 +180,7 @@ func (s *DeathSaveTestSuite) TestThreeSuccessesStabilizes() {
 	input := &DeathSaveInput{
 		Roller:    s.mockRoller,
 		State:     state,
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
@@ -195,6 +201,7 @@ func (s *DeathSaveTestSuite) TestRoll1WithTwoFailuresCausesDeath() {
 	input := &DeathSaveInput{
 		Roller:    s.mockRoller,
 		State:     state,
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 	}
 
@@ -212,6 +219,7 @@ func (s *DeathSaveTestSuite) TestBaneAdjustedTotalClassifiesFacesTwoThroughNinet
 
 	result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
 		Roller: s.mockRoller, State: &DeathSaveState{},
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 		Contributions: []dnd5eEvents.DiceContribution{{
 			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
@@ -231,6 +239,7 @@ func (s *DeathSaveTestSuite) TestNaturalOnePolicyOverridesBaneAdjustedTotal() {
 
 	result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
 		Roller: s.mockRoller, State: &DeathSaveState{},
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 		Contributions: []dnd5eEvents.DiceContribution{{
 			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
@@ -249,6 +258,7 @@ func (s *DeathSaveTestSuite) TestNaturalTwentyPolicyOverridesBaneAdjustedTotal()
 
 	result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
 		Roller: s.mockRoller, State: &DeathSaveState{Failures: 2},
+		SaverID:   "hero",
 		D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 		Contributions: []dnd5eEvents.DiceContribution{{
 			Source: dnd5eEvents.RollSource{Ref: refs.Spells.Bane(), Name: "Bane", SourceID: "bard-a"},
@@ -353,6 +363,7 @@ func (s *DeathSaveTestSuite) TestResultAuthorsExactProgressDeltas() {
 			result, err := MakeDeathSave(s.ctx, &DeathSaveInput{
 				Roller:    s.mockRoller,
 				State:     &DeathSaveState{},
+				SaverID:   "hero",
 				D20Source: dnd5eEvents.RollSource{Ref: refs.Actions.DeathSave(), Name: "Death Save"},
 			})
 			s.Require().NoError(err)
