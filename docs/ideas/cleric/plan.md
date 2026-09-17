@@ -1,5 +1,86 @@
 # Cleric level-one contribution plan
 
+## Sanctuary: session slice delivered — the ward reaches the wire
+
+Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811),
+resolution PR [#1812](https://github.com/KirkDiggler/rpg-toolkit/pull/1812),
+and encounter PR [#1813](https://github.com/KirkDiggler/rpg-toolkit/pull/1813).
+This branch was cut before any of the three merged, so it does not carry
+their plan.md text yet — same expected small doc-merge-conflict caveat those
+already recorded for each other.
+
+**Three-way pseudo-version pin, and a real pin-order lesson.** Session
+depends on root, resolution AND encounter, so all three needed pinning to
+their pushed commits. `go get module@sha` — which worked cleanly for a
+single root-only pin on the resolution PR — refused nested-module SHAs here
+("found (root's version) but does not contain package .../resolution"),
+apparently mis-resolving the module boundary when asked for a NESTED
+module's commit directly. Worked around with `go mod edit -require` and the
+canonical pseudo-version format Go actually wants
+(`vX.Y.(Z+1)-0.yyyymmddhhmmss-abcdefabcdef`, the "0." prefix included) —
+`go mod tidy`'s own error message states the exact expected timestamp when
+given a syntactically-valid-but-wrong one, which is what actually unblocked
+this rather than deriving the timestamp correctly by hand. **Also needed a
+small resolution-side patch** (`WardOutcome` gained an explicit `Ability`
+field, `abilities.WIS` set at both construction sites) once it became clear
+session would otherwise have to hardcode `"wisdom"` as a string disconnected
+from the mechanic that already knows it — pushed as a second commit on
+#1812, and session re-pinned to that new commit before continuing.
+
+**Strike**, `recordStrike` (`session/react_post_roll.go`, the shared
+translator both the fresh and resumed swing paths already route through):
+a `struck.Warded != nil` branch builds `encounter.RecordInput{Kind:
+OutcomeWarded, Warded: &encounter.WardedDetail{...}}` and returns early —
+deliberately NOT setting `PresentationID` or the top-level `Calculation`,
+since `encounter.Record` refuses both on every kind but Struck/Missed (no
+attack roll happened here to correlate a shared token against). `AttackOutput`
+gained `Warded bool` / `WardedBy string`, the same "these fields are not
+answers when this is true" shape `Paused` already documents for itself.
+
+**Cast**, `castOutcome`/new `castWarded` helper (`session/castoutcome.go`):
+a `target.Warded != nil` branch short-circuits before `castSave` even runs,
+appending a `CastTargetResult{Warded: ...}` and continuing to the next
+target — so one warded recipient in a multi-target Bane cast does not touch
+what the loop does for the others. `CastOutput` gained `WardedTargets
+[]string`, `MissedTargets`'s own sibling.
+
+**The wire types**, both new (`session/types.go`): `EventWarded`/`WardedBody`
+(Strike, nested under a `"warded"` key the way `encounter.Record`'s generic
+outcome map writes it) and `EventCastWarded`/`CastWardedBody` (Cast, FLAT —
+`encounter`'s own `castWardedPayload` never used the generic map, so its
+wire shape was already flat and the two decoders necessarily differ in
+shape though not in the facts they check). Neither carries a separate
+"Saver" field: the saver of a ward's own save IS the actor by construction
+(the same reasoning `ConcentrationCheck.Save`'s own doc already gives for
+itself), so a second field naming them would be one that could disagree.
+Both decoders (`session/events.go`) apply the same strict presence/non-null
+key discipline `savedEventBody` already uses, plus two checks nothing else
+needed: the save's saver must equal the beat's actor (the inversion IS the
+point), and `succeeded` must be false (a "successful" ward save is not a
+fact this beat can carry without lying about what happened next).
+
+Four new tests in `session/sanctuary_internal_test.go`, mirroring
+`bless_internal_test.go`'s own established pattern for this exact kind of
+check — `decodeBeat` round-trip plus required-key refusal for both wire
+shapes, and `recordStrike`/`castOutcome` conversion checks — rather than
+driving a full live `Manager` scene through `Attack`/`Cast`. That tradeoff
+is deliberate and worth stating plainly: resolution's and encounter's own
+suites already prove the underlying mechanic (the save timing, the
+cost-commits-on-failure property, the story validation) at their own
+layers, so this slice's job is narrowly to prove the TRANSLATION between
+them is correct — which the internal unit tests do directly and far more
+cheaply than assembling a `Spawn`-a-hostile-monster end-to-end scene would
+have, for the same evidence. Full session module build/vet/test/lint
+clean, every pre-existing test unchanged.
+
+**Not done here, and next**: root's `castContent` enablement — the very
+last step, per this plan's own standing discipline of never enabling
+selectable content before every consumer beneath it can represent what
+happens when it fires. Also out of scope: rpg-api/rpg-dnd5e-web adoption,
+which is the actual "web test" the user's "all the way down" goal named,
+and cannot start until root ships a real tag Sanctuary can be selected
+from.
+
 ## Current direction: expand level-one play, preparation deferred
 
 The user confirmed the implemented Cleric slice, including the private-sheet
