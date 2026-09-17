@@ -64,6 +64,23 @@ func (s *ReactionTestSuite) front(table map[string][]encounter.Reaction) *encoun
 	return enc
 }
 
+func (s *ReactionTestSuite) beatsOf(
+	enc *encounter.Encounter, who core.EntityID, kind string,
+) []map[string]any {
+	story, err := enc.Story(&encounter.StoryInput{Audience: who})
+	s.Require().NoError(err)
+	out := make([]map[string]any, 0)
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == kind {
+			out = append(out, beat)
+		}
+	}
+
+	return out
+}
+
 func (s *ReactionTestSuite) reactedBeats(enc *encounter.Encounter, who core.EntityID) []map[string]any {
 	story, err := enc.Story(&encounter.StoryInput{Audience: who})
 	s.Require().NoError(err)
@@ -220,6 +237,20 @@ func (s *ReactionTestSuite) TestAFleeEntryWalksTheCreatureWithNoFightRunning() {
 	after, err := enc.ClockOf(&encounter.ClockOfInput{Member: goblin})
 	s.Require().NoError(err)
 	s.Equal(encounter.ClockWorld, after.Kind, "a rout is not a turn, and did not start one")
+
+	// EVERY CELL IS A MOVEMENT BEAT THAT NAMES WHAT MOVED IT. A step a
+	// creature chose carries no cause and the key is absent; a directed one
+	// names the effect, which is how an observer tells a rout from a walk.
+	moved := s.beatsOf(enc, alice, "moved")
+	s.Require().NotEmpty(moved, "the walk went down the log a cell at a time")
+	for _, beat := range moved {
+		s.Equal(string(goblin), beat["member"])
+		s.Equal("encounter:reaction:flee", beat["cause"],
+			"a step nobody caused would leave this key absent")
+	}
+	last := moved[len(moved)-1]["position"].(map[string]any)
+	s.EqualValues(end.X, last["x"], "the last beat is where it stopped")
+	s.EqualValues(end.Y, last["y"])
 
 	beats := s.reactedBeats(enc, alice)
 	s.Require().Len(beats, 1)
