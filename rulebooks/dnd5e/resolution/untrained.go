@@ -69,11 +69,15 @@ import (
 //  3. the character's training in that skill is [shared.NotProficient];
 //  4. there is a checker to ask, which there always is by this point.
 //
-// SUBSCRIBED RATHER THAN PASSED AS A FLAG. [checks.AbilityCheckInput] has a
-// HasDisadvantage bool, and using it would record the source as "Input" — a
-// roll that tells a player their luck was bad instead of telling them what to
-// take next level. The chain is where a named source belongs, and resolution
-// is the only lawful owner of this bus (ADR-0038).
+// SUBSCRIBED RATHER THAN PASSED AS A FLAG. [checks.AbilityCheckInput] USED TO
+// HAVE a HasDisadvantage bool, and using it would have recorded the source as
+// "Input" — a roll that tells a player their luck was bad instead of telling
+// them what to take next level. The flag is gone now: a boolean names neither
+// a rule nor an entity, so it could not be recorded at all once every keep
+// record had to (rpg-project#462 R7), and it left with the fake trace this
+// package used to build. The reasoning outlived the flag. The chain is where a
+// named source belongs, and resolution is the only lawful owner of this bus
+// (ADR-0038).
 func untrainedSource(
 	ctx context.Context, surf *surface, ch *character.Character, in *CheckInput, skill skills.Skill,
 ) error {

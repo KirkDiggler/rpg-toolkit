@@ -246,11 +246,12 @@ func (m *strikeMachine) pose(
 
 	return Pose{
 		Ask: Ask{
-			Audience: offer.Audience,
-			Offer:    offer,
-			Options:  []string{string(OfferSpend), string(OfferKeep)},
-			Roll:     roll,
-			Total:    m.outcome.Total,
+			Audience:    offer.Audience,
+			Offer:       offer,
+			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Roll:        roll,
+			Total:       m.outcome.Total,
+			Calculation: dnd5eEvents.CloneRollCalculation(m.outcome.Calculation),
 		},
 		Frozen: frozen,
 	}, nil
@@ -316,7 +317,9 @@ func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) err
 	}
 
 	component := dnd5eEvents.RollComponent{
-		Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(offer.Ref), Name: offer.Name},
+		Source: dnd5eEvents.RollSource{
+			Ref: cloneCoreRef(offer.Ref), Name: offer.Name, SourceID: offer.SourceID,
+		},
 		Dice: &dnd5eEvents.DiceTrace{
 			Notation: dice.SimplePool(1, size, 0).Notation(), DieSize: size,
 			OriginalRolls: []int{face}, FinalRolls: []int{face}, Subtotal: face,

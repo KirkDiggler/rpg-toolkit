@@ -102,12 +102,17 @@ type CheckOutput struct {
 	// already in the caller's hands instead of silently lost down here.
 	DirtyCharacter *character.Data
 
-	// Calculation is the check's sourced arithmetic — d20, modifier and any
-	// chain-granted bonuses, in the same shape attacks and saves already
-	// carry. Built here rather than in [checks.MakeAbilityCheck], the same
-	// layering [strikeMachine] keeps for StrikeOutcome.Calculation: the rules
-	// package returns the bare numbers, and the sourced record is assembled
-	// by whichever caller owns the bus. Nil when [CheckOutput.Posed] is set.
+	// Calculation is the check's sourced arithmetic — the d20 pool, the
+	// modifier and any chain-granted bonuses. It is [checks.AbilityCheckResult]'s
+	// own Calculation, carried here unchanged.
+	//
+	// IT USED TO BE ASSEMBLED HERE, and that was the break this slice closes
+	// (rpg-project#462 R3). The rules package returned a single settled Roll,
+	// so this side could only fabricate a one-face trace for the pair it had
+	// actually rolled — and said so in its own comment. Checks build their
+	// calculation where saves do now; attacks still build theirs here, because
+	// an offer rewrites an attack's after the roll. Nil when
+	// [CheckOutput.Posed] is set.
 	Calculation *dnd5eEvents.RollCalculation
 
 	// Posed is the question this check stopped on, mirroring [Output.Posed]'s
@@ -256,6 +261,8 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 	// publish to the one bus this entry created. Same custody shape as the
 	// save machine's Gather (see save.go): the rules package requires the bus
 	// and this package is the only lawful supplier.
+	ref, name := checkApproachSource(applied, skill)
+	route := dnd5eEvents.RollSource{Ref: ref, Name: name}
 	result, checkErr := checks.MakeAbilityCheck(ctx, &checks.AbilityCheckInput{
 		Roller:    in.Roller,
 		EventBus:  surf,
@@ -263,6 +270,10 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 		Skill:     skill,
 		DC:        applied.DC,
 		Modifier:  modifier,
+		// The route names both the die and the modifier; the rules package
+		// writes the CHECKER's id onto the die itself (rpg-project#462 R7).
+		D20Source:      route,
+		ModifierSource: route,
 	})
 	if checkErr != nil {
 		return nil, errors.Join(
@@ -271,13 +282,7 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 		)
 	}
 
-	calculation, calcErr := checkCalculationFor(applied, skill, modifier, result)
-	if calcErr != nil {
-		return nil, errors.Join(
-			fmt.Errorf("resolution: check for %q: %w", one.ID(), calcErr),
-			surf.teardown(ctx),
-		)
-	}
+	calculation := result.Calculation
 
 	// Folded on THIS interaction's bus, same custody as the ability-check
 	// chain above — anyone holding an offer against the checker's own roll
@@ -385,55 +390,6 @@ func skillRef(skill skills.Skill) *core.Ref {
 	default:
 		return nil
 	}
-}
-
-// checkCalculationFor assembles the check's sourced arithmetic from the bare
-// numbers [checks.MakeAbilityCheck] returns: a d20 component, a flat-modifier
-// component, and one component per chain-granted bonus source. Mirrors
-// [strikeMachine.afterAttackChain]'s calculation, built in resolution rather
-// than in the rules package for the same reason.
-//
-// The d20 component's dice trace is necessarily thinner than an attack's or a
-// save's: [checks.AbilityCheckResult] reports only the final Roll, not the
-// original faces under advantage/disadvantage, so OriginalRolls/FinalRolls
-// both carry that one settled face rather than the pair the rules package
-// actually rolled.
-func checkCalculationFor(
-	applied encounter.CheckApproach, skill skills.Skill, modifier int, result *checks.AbilityCheckResult,
-) (*dnd5eEvents.RollCalculation, error) {
-	ref, name := checkApproachSource(applied, skill)
-	source := dnd5eEvents.RollSource{Ref: ref, Name: name}
-	components := []dnd5eEvents.RollComponent{
-		{
-			Source: source,
-			Dice: &dnd5eEvents.DiceTrace{
-				Notation: "1d20", DieSize: 20,
-				OriginalRolls: []int{result.Roll}, FinalRolls: []int{result.Roll}, Subtotal: result.Roll,
-			},
-		},
-		{Source: source, Modifier: &modifier},
-	}
-	for _, bonus := range result.BonusSources {
-		amount := bonus.Bonus
-		components = append(components, dnd5eEvents.RollComponent{
-			Source:   dnd5eEvents.RollSource{Ref: bonus.SourceRef, Name: bonus.Name, SourceID: bonus.EntityID},
-			Modifier: &amount,
-		})
-	}
-
-	calculation := &dnd5eEvents.RollCalculation{Components: components}
-	for _, component := range components {
-		if component.Dice != nil {
-			calculation.Total += component.Dice.Subtotal
-		}
-		if component.Modifier != nil {
-			calculation.Total += *component.Modifier
-		}
-	}
-	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
-		return nil, fmt.Errorf("check calculation: %w", err)
-	}
-	return calculation, nil
 }
 
 // gatherCheckOffers folds [dnd5eEvents.PostCheckRollOfferChain] on the

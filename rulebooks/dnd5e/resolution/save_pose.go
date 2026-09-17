@@ -38,13 +38,13 @@ type frozenSave struct {
 	IsNat1  bool              `json:"is_nat1"`
 	IsNat20 bool              `json:"is_nat20"`
 
-	AdvantageSources    []dnd5eEvents.SaveModifierSource `json:"advantage_sources"`
-	DisadvantageSources []dnd5eEvents.SaveModifierSource `json:"disadvantage_sources"`
-	BonusSources        []dnd5eEvents.SaveBonusSource    `json:"bonus_sources"`
+	BonusSources []dnd5eEvents.SaveBonusSource `json:"bonus_sources"`
 
 	// Calculation is the settled pre-offer arithmetic — [saves.MakeSavingThrow]
 	// already builds it sourced, unlike a check, so it is stored verbatim
-	// rather than rebuilt.
+	// rather than rebuilt. It is also where advantage and disadvantage are
+	// frozen: the d20 component's keep record names the rules that met over
+	// it, so no parallel source list sits beside it here (rpg-project#462 R1).
 	Calculation *dnd5eEvents.RollCalculation `json:"calculation"`
 
 	// Offer is what was put on the table.
@@ -135,7 +135,6 @@ func (m *saveMachine) pose(result *saves.SavingThrowResult, offers []dnd5eEvents
 		SaverID: m.in.SaverID, Ability: m.in.Ability, DC: m.in.DC,
 		Roll: result.Roll, Total: result.Total,
 		IsNat1: result.IsNat1, IsNat20: result.IsNat20,
-		AdvantageSources: result.AdvantageSources, DisadvantageSources: result.DisadvantageSources,
 		BonusSources: result.BonusSources,
 		Calculation:  dnd5eEvents.CloneRollCalculation(result.Calculation),
 		Offer:        offer,
@@ -146,11 +145,12 @@ func (m *saveMachine) pose(result *saves.SavingThrowResult, offers []dnd5eEvents
 
 	return Pose{
 		Ask: Ask{
-			Audience: offer.Audience,
-			Offer:    offer,
-			Options:  []string{string(OfferSpend), string(OfferKeep)},
-			Roll:     result.Roll,
-			Total:    result.Total,
+			Audience:    offer.Audience,
+			Offer:       offer,
+			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Roll:        result.Roll,
+			Total:       result.Total,
+			Calculation: dnd5eEvents.CloneRollCalculation(result.Calculation),
 		},
 		Frozen: frozen,
 	}, nil
@@ -175,16 +175,14 @@ func (m *saveMachine) resumeStep() Step {
 			}
 
 			return Done{Outcome: SaveOutcome{Result: &saves.SavingThrowResult{
-				Roll:                frozen.Roll,
-				Total:               total,
-				DC:                  frozen.DC,
-				Success:             total >= frozen.DC,
-				IsNat1:              frozen.IsNat1,
-				IsNat20:             frozen.IsNat20,
-				AdvantageSources:    frozen.AdvantageSources,
-				DisadvantageSources: frozen.DisadvantageSources,
-				BonusSources:        frozen.BonusSources,
-				Calculation:         calculation,
+				Roll:         frozen.Roll,
+				Total:        total,
+				DC:           frozen.DC,
+				Success:      total >= frozen.DC,
+				IsNat1:       frozen.IsNat1,
+				IsNat20:      frozen.IsNat20,
+				BonusSources: frozen.BonusSources,
+				Calculation:  calculation,
 			}}}, nil
 		},
 	}
@@ -208,7 +206,9 @@ func (m *saveMachine) spendOffer(
 	}
 
 	component := dnd5eEvents.RollComponent{
-		Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(offer.Ref), Name: offer.Name},
+		Source: dnd5eEvents.RollSource{
+			Ref: cloneCoreRef(offer.Ref), Name: offer.Name, SourceID: offer.SourceID,
+		},
 		Dice: &dnd5eEvents.DiceTrace{
 			Notation: dice.SimplePool(1, size, 0).Notation(), DieSize: size,
 			OriginalRolls: []int{face}, FinalRolls: []int{face}, Subtotal: face,

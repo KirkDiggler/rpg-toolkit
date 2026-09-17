@@ -371,10 +371,24 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	if err := rolls.ValidateContributions(contributions); err != nil {
 		return nil, fmt.Errorf("validate attack contributions: %w", err)
 	}
-	roll, d20Trace, err := rollAttackD20(ctx, roller, hasAdvantage, hasDisadvantage)
+	// ONE D20 ROLLER for the rulebook. The fold's own source records go
+	// through as the rules that granted and imposed, so the keep record can
+	// name Reckless Attack or Pack Tactics instead of a boolean losing it —
+	// and the d20 is the ATTACKER's die, not the weapon definition's
+	// (rpg-project#462 R7).
+	d20Source := dnd5eEvents.RollSource{
+		Ref: cloneCoreRef(&m.in.Definition.Ref), Name: m.in.Definition.Name, SourceID: m.in.AttackerID,
+	}
+	d20, err := rolls.RollD20(ctx, &rolls.RollD20Input{
+		Roller:  roller,
+		Source:  d20Source,
+		Granted: attackRollSources(folded.AdvantageSources),
+		Imposed: attackRollSources(folded.DisadvantageSources),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("roll attack: %w", err)
 	}
+	roll := d20.Face
 	resolved, err := rolls.ResolveContributions(ctx, &rolls.ResolveContributionsInput{
 		Roller: roller, Contributions: contributions,
 	})
@@ -382,23 +396,15 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 		return nil, fmt.Errorf("resolve attack contributions: %w", err)
 	}
 	bonus := folded.AttackBonus
-	calculation := &dnd5eEvents.RollCalculation{Components: []dnd5eEvents.RollComponent{
-		{Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(&m.in.Definition.Ref), Name: m.in.Definition.Name}, Dice: d20Trace},
-		{Source: dnd5eEvents.RollSource{Ref: cloneCoreRef(&m.in.Definition.Ref), Name: m.in.Definition.Name}, Modifier: &bonus},
-	}}
-	calculation.Components = append(calculation.Components, resolved.Components...)
-	for _, component := range calculation.Components {
-		if component.Dice != nil {
-			if component.SubtractDice {
-				calculation.Total -= component.Dice.Subtotal
-			} else {
-				calculation.Total += component.Dice.Subtotal
-			}
-		}
-		if component.Modifier != nil {
-			calculation.Total += *component.Modifier
-		}
+	components := []dnd5eEvents.RollComponent{
+		{Source: d20Source, Dice: d20.Trace},
+		{
+			Source:   dnd5eEvents.RollSource{Ref: cloneCoreRef(&m.in.Definition.Ref), Name: m.in.Definition.Name},
+			Modifier: &bonus,
+		},
 	}
+	components = append(components, resolved.Components...)
+	calculation := dnd5eEvents.NewRollCalculation(components)
 	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
 		return nil, fmt.Errorf("attack calculation: %w", err)
 	}
@@ -500,6 +506,22 @@ func (m *strikeMachine) afterOffers(
 
 		return m.rollDamage(nextCtx, m.in.Roller)
 	})
+}
+
+// attackRollSources maps the fold's own source records onto the calculation's
+// sourced-fact type — SourceRef->Ref, Reason->Name, SourceID->SourceID — so
+// the keep record on the d20 names the same rules the fold recorded, and
+// cannot drift from them.
+func attackRollSources(sources []dnd5eEvents.AttackModifierSource) []dnd5eEvents.RollSource {
+	if len(sources) == 0 {
+		return nil
+	}
+
+	mapped := make([]dnd5eEvents.RollSource, len(sources))
+	for i, source := range sources {
+		mapped[i] = source.RollSource()
+	}
+	return mapped
 }
 
 // attackModifierRefs projects the richer attack-chain source records onto the
@@ -655,6 +677,10 @@ func (m *strikeMachine) rollDamageComponent(
 			Source: dnd5eEvents.RollSource{
 				Ref:  cloneCoreRef(&m.in.Definition.Ref),
 				Name: m.in.Definition.Name,
+				// The damage dice are the WIELDER's, the same way the d20 is
+				// the attacker's: the ref and name say which weapon or spell
+				// threw them, the id says who (rpg-project#462 R7).
+				SourceID: m.in.AttackerID,
 			},
 			Dice: &dnd5eEvents.DiceTrace{
 				Notation:      notation,
@@ -866,37 +892,6 @@ func combatantFor(cast *Participants, id string) (combat.Combatant, error) {
 	}
 
 	return nil, fmt.Errorf("%w: %q", ErrNoCombatant, id)
-}
-
-func rollAttackD20(
-	ctx context.Context, roller dice.Roller, hasAdvantage, hasDisadvantage bool,
-) (int, *dnd5eEvents.DiceTrace, error) {
-	if hasAdvantage == hasDisadvantage {
-		face, err := roller.Roll(ctx, 20)
-		if err != nil {
-			return 0, nil, err
-		}
-		return face, &dnd5eEvents.DiceTrace{
-			Notation: "1d20", DieSize: 20, OriginalRolls: []int{face},
-			FinalRolls: []int{face}, Subtotal: face,
-		}, nil
-	}
-	faces, err := roller.RollN(ctx, 2, 20)
-	if err != nil {
-		return 0, nil, err
-	}
-	if len(faces) != 2 {
-		return 0, nil, fmt.Errorf("%w: roller returned %d dice for a pair", ErrBadAttack, len(faces))
-	}
-	kept := 0
-	if hasAdvantage && faces[1] > faces[0] || hasDisadvantage && faces[1] < faces[0] {
-		kept = 1
-	}
-	return faces[kept], &dnd5eEvents.DiceTrace{
-		Notation: "2d20", DieSize: 20,
-		OriginalRolls: append([]int(nil), faces...), FinalRolls: append([]int(nil), faces...),
-		KeptIndices: []int{kept}, Subtotal: faces[kept],
-	}, nil
 }
 
 // gatherAttack builds the step that folds the attack chain.

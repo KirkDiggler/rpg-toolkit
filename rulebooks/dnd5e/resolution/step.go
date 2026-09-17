@@ -122,6 +122,17 @@ type Ask struct {
 	// which is a different question and a different game.
 	Roll  int
 	Total int
+
+	// Calculation is the settled arithmetic the offered die would join — the
+	// same numbers Roll and Total summarise, with the faces and the keep
+	// record behind them. Carried for the beat the seam writes when it poses
+	// the question: the paused window is where an untrained roll is FIRST
+	// seen, and a seam with only two scalars can only show one face
+	// (rpg-project#462 R5).
+	//
+	// It is the pre-offer calculation. Whatever the answer adds lands on the
+	// resumed outcome's own, not here.
+	Calculation *dnd5eEvents.RollCalculation
 }
 
 // Pose is a machine stopping mid-run to be answered from outside the process.

@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -102,12 +103,18 @@ func (s *UntrainedTestSuite) TestAnUntrainedSkillVerbRollsAtDisadvantage() {
 		"only a rolled-twice-take-lower can produce this die")
 	s.Require().Equal(untrainedLow+2, out.Result.Total, "CHA 14 is +2, and untrained adds no proficiency")
 
-	s.Require().Len(out.Result.DisadvantageSources, 1)
-	s.Equal("Untrained", out.Result.DisadvantageSources[0].Name)
-	s.Equal("rule", out.Result.DisadvantageSources[0].SourceType,
+	die := dieOf(s.T(), out.Calculation)
+	s.Equal("2d20", die.Notation, "two faces were thrown and both reach the log")
+	s.Require().Len(die.KeptIndices, 1)
+	s.Require().NotNil(die.Keep)
+	s.Equal(dnd5eEvents.KeepDisadvantage, die.Keep.Rule)
+	s.Require().Len(die.Keep.Imposed, 1)
+	s.Equal("Untrained", die.Keep.Imposed[0].Name)
+	s.Equal("rule", die.Keep.Imposed[0].Label,
 		"nobody carries it, nobody granted it, nothing dispels it")
-	s.Equal(refs.Rules.Untrained(), out.Result.DisadvantageSources[0].SourceRef)
-	s.Equal(seekerID, out.Result.DisadvantageSources[0].EntityID)
+	s.Equal(refs.Rules.Untrained().String(), die.Keep.Imposed[0].Ref.String())
+	s.Equal(seekerID, die.Keep.Imposed[0].SourceID)
+	s.Empty(die.Keep.Granted)
 }
 
 // The control that makes the headline mean something: the SAME verb, the same
@@ -117,7 +124,8 @@ func (s *UntrainedTestSuite) TestATrainedCheckerRollsStraight() {
 
 	s.Require().Equal(untrainedHigh, out.Result.Roll)
 	s.Require().Equal(untrainedHigh+4, out.Result.Total, "CHA +2 and proficiency +2")
-	s.Empty(out.Result.DisadvantageSources)
+	s.Equal("1d20", dieOf(s.T(), out.Calculation).Notation, "a trained check throws one die")
+	s.Nil(keepOf(s.T(), out.Calculation), "and records no rule over it")
 }
 
 // Expertise is training too: the rule asks whether the character is
@@ -126,7 +134,7 @@ func (s *UntrainedTestSuite) TestExpertiseIsTraining() {
 	out := s.check(true, route(string(skills.Athletics), 10))
 
 	s.Require().Equal(untrainedHigh, out.Result.Roll)
-	s.Empty(out.Result.DisadvantageSources)
+	s.Nil(keepOf(s.T(), out.Calculation))
 }
 
 // THE SCOPE, AND THE LETTER. Search and Unlock are not skill verbs: they
@@ -136,7 +144,7 @@ func (s *UntrainedTestSuite) TestAVerbThatDoesNotTakeTheRuleRollsTheLetter() {
 	out := s.check(false, route(string(skills.Persuasion), 10))
 
 	s.Require().Equal(untrainedHigh, out.Result.Roll, "RAW puts no penalty on an untrained check")
-	s.Empty(out.Result.DisadvantageSources)
+	s.Nil(keepOf(s.T(), out.Calculation), "one die, and no rule recorded over it")
 }
 
 // A bare-ability route has no training to lack. Shoving a door with Strength
@@ -146,7 +154,7 @@ func (s *UntrainedTestSuite) TestABareAbilityRouteTakesNoRule() {
 	out := s.check(true, route(string(abilities.STR), 10))
 
 	s.Require().Equal(untrainedHigh, out.Result.Roll)
-	s.Empty(out.Result.DisadvantageSources)
+	s.Nil(keepOf(s.T(), out.Calculation))
 }
 
 // The rule reaches ONLY the applied route. A list where the untrained skill
@@ -161,7 +169,7 @@ func (s *UntrainedTestSuite) TestOnlyTheAppliedRouteIsAsked() {
 	s.Require().Equal(string(skills.Intimidation), out.Applied.Ability,
 		"proficiency makes Intimidation the better route at the same DC")
 	s.Require().Equal(untrainedHigh, out.Result.Roll)
-	s.Empty(out.Result.DisadvantageSources)
+	s.Nil(keepOf(s.T(), out.Calculation))
 }
 
 // The die it lands on is the ONE the calculation reports, and the source
@@ -172,7 +180,7 @@ func (s *UntrainedTestSuite) TestOnlyTheAppliedRouteIsAsked() {
 // two faces is kept, and the calculation records the face that was kept. A
 // build that put "Untrained" in the components would have to invent a zero
 // modifier for it, which is a number nobody rolled.
-func (s *UntrainedTestSuite) TestTheSourceIsInTheResultNotTheArithmetic() {
+func (s *UntrainedTestSuite) TestTheSourceIsOnTheDieNotInTheArithmetic() {
 	out := s.check(true, route(string(skills.Persuasion), 10))
 
 	s.Require().NotNil(out.Calculation)
@@ -181,5 +189,9 @@ func (s *UntrainedTestSuite) TestTheSourceIsInTheResultNotTheArithmetic() {
 		s.NotEqual("Untrained", component.Source.Name,
 			"a rule that keeps the lower face adds no number to add")
 	}
-	s.Require().Len(out.Result.DisadvantageSources, 1, "and the source list is where it is recorded")
+
+	keep := keepOf(s.T(), out.Calculation)
+	s.Require().NotNil(keep, "and the die it decided is where it is recorded")
+	s.Require().Len(keep.Imposed, 1)
+	s.Equal("Untrained", keep.Imposed[0].Name)
 }

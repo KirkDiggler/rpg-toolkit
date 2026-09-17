@@ -35,7 +35,7 @@ func TestHealingPublicationFailureDoesNotPromiseRollback(t *testing.T) {
 	fault := errors.New("applied subscriber failed")
 	_, err = dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(ctx, func(context.Context, dnd5eEvents.HealingAppliedEvent) error { return fault })
 	require.NoError(t, err)
-	heal := preparedHealing{targetID: bardID, declaration: healing.Declaration{Dice: "1d8"}, roller: facedRoller{other: 5}, source: dnd5eEvents.RollSource{Ref: refs.Spells.CureWounds(), Name: "Cure Wounds"}}
+	heal := preparedHealing{targetID: bardID, declaration: healing.Declaration{Dice: "1d8"}, roller: facedRoller{other: 5}, source: dnd5eEvents.RollSource{Ref: refs.Spells.CureWounds(), Name: "Cure Wounds", SourceID: "cleric-1"}}
 	require.ErrorIs(t, heal.deliver(ctx, bus, ""), fault)
 	require.Equal(t, 6, sheet.ToData().HitPoints, "a later subscriber failure does not undo live HP mutation")
 	require.Equal(t, 1, stored.HitPoints, "the caller's persisted input remains untouched")
