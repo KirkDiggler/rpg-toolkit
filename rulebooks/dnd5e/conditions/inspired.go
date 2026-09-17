@@ -217,6 +217,7 @@ func (i *InspiredCondition) onPostRollOffer(
 			Name:     InspiredName,
 			Audience: i.MemberID,
 			Die:      i.Die,
+			SourceID: i.SourceID,
 		})
 		return e, nil
 	}

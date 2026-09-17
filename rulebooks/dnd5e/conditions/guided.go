@@ -211,6 +211,7 @@ func (g *GuidedCondition) onPostCheckRollOffer(
 	) (*dnd5eEvents.PostCheckRollOfferEvent, error) {
 		e.Offers = append(e.Offers, dnd5eEvents.Offer{
 			Ref: refs.Conditions.Guided(), Name: GuidedName, Audience: g.MemberID, Die: GuidedDie,
+			SourceID: g.SourceID,
 		})
 		return e, nil
 	}

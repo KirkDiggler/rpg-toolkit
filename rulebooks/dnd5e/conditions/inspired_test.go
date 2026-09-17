@@ -60,6 +60,8 @@ func (s *InspiredConditionTestSuite) TestItOffersOnTheHoldersOwnRoll() {
 	s.Equal(InspiredName, offers[0].Name)
 	s.Equal("fighter-1", offers[0].Audience, "the choice belongs to whoever holds the die")
 	s.Equal(InspiredDie, offers[0].Die)
+	s.Equal("bard-1", offers[0].SourceID,
+		"whose die and whose choice are different facts: the d6 is the bard's (rpg-project#462 R7)")
 	s.Empty(s.removed, "offering costs nothing")
 	s.True(s.condition.IsApplied())
 }
