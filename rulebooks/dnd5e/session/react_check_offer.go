@@ -84,13 +84,21 @@ func (m *Manager) answerCheckOffer(
 	// The ACTION IS NOT CHARGED HERE. Intimidate charged it before it
 	// rolled, precisely so that a member who pauses cannot answer the
 	// question and then threaten somebody else with the same action.
+	// THE RESUMED HALF APPENDS THE SAME BEATS, so it fails closed the same
+	// way: a resumed check that lost its arithmetic would publish one number
+	// through a door the unposed path has just been shut on.
+	if err := requireCalculation("react", payload.Audience, rollCalculationFor(out.Calculation)); err != nil {
+		return nil, err
+	}
+
 	if payload.Door != "" {
 		if _, err := scope.enc.Unlock(&encounter.UnlockInput{
-			Door:    payload.Door,
-			Beaten:  out.Result.Success,
-			Actor:   encounter.MemberID(payload.Audience),
-			Total:   out.Result.Total,
-			Applied: out.Applied,
+			Door:        payload.Door,
+			Beaten:      out.Result.Success,
+			Actor:       encounter.MemberID(payload.Audience),
+			Total:       out.Result.Total,
+			Applied:     out.Applied,
+			Calculation: rollCalculationFor(out.Calculation),
 		}); err != nil {
 			return nil, fmt.Errorf("react: %w", translate(err))
 		}
@@ -161,6 +169,10 @@ func (m *Manager) landResumedSocial(
 		Beaten: out.Result.Success,
 		DC:     out.Applied.DC,
 		Total:  out.Result.Total,
+		// The RESUMED calculation, which is the pre-offer one plus whatever
+		// the answer added — never the frozen one the window asked with. The
+		// caller refused a nil one before reaching either branch.
+		Calculation: rollCalculationFor(out.Calculation),
 	}
 
 	var spec socialVerb

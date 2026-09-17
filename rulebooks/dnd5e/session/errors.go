@@ -374,6 +374,23 @@ var (
 	// is unusable, and the repair is upstream of anything a caller can retry.
 	ErrInvalidWorld = errors.New("invalid encounter data")
 
+	// ErrNoCalculation is returned when a verb that rolled a check reached the
+	// beat with no sourced arithmetic behind its total.
+	//
+	// THE CARRIER IS OPTIONAL; THE PRODUCER IS NOT. The beat's Calculation
+	// field is nil-able because a payload written before the field existed has
+	// none, and a decoder that refused those would delete history. But a verb
+	// in THIS build that rolls a d20 and then writes a beat without the roll
+	// behind it is a seam that has quietly gone back to publishing one number
+	// — the exact failure rpg-project#462 exists to end, and one that no test
+	// downstream can see, because a missing optional field looks like an old
+	// beat. So it is refused loudly here, where it is still a bug rather than
+	// a story.
+	//
+	// It is NOT returned for a verb that rolled nothing: opening an unlocked
+	// door faces no DC, and nil there is the truth.
+	ErrNoCalculation = errors.New("check produced no calculation")
+
 	// ErrInBubble is returned when a verb requires its member NOT be in a
 	// running bubble and they are.
 	//

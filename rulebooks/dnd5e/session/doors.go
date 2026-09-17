@@ -273,6 +273,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 	}
 
 	var applied encounter.CheckApproach
+	var calculation *encounter.RollCalculation
 	beaten, total := false, 0
 	if locked {
 		if err := m.stageCheck(ctx, scope, "member", in.Member); err != nil {
@@ -294,6 +295,12 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		}
 
 		beaten, total, applied = outcome.Verdict.Beaten, outcome.Verdict.Total, outcome.Verdict.Applied
+		calculation = outcome.Verdict.Calculation
+		// A LOCK WAS FACED, so a roll happened. Only the unlocked-door path
+		// below may reach the beat with nil, and it faced no DC.
+		if err := requireCalculation("unlock", in.Member, calculation); err != nil {
+			return nil, err
+		}
 	}
 
 	unlocked, err := scope.enc.Unlock(&encounter.UnlockInput{
@@ -302,6 +309,10 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		Actor:   encounter.MemberID(in.Member),
 		Total:   total,
 		Applied: applied,
+		// An unlock's DoorChanged is a check beat and carries the roll behind
+		// it (rpg-project#462 R4). Nil on a door with no lock to beat, which
+		// rolled nothing.
+		Calculation: calculation,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w", translate(err))
@@ -351,14 +362,19 @@ func (m *Manager) poseUnlockWindow(
 			ErrInvalidWorld, len(ask.Options))
 	}
 
+	if err := requirePosedCalculation("unlock", in.Member, ask.Calculation); err != nil {
+		return nil, err
+	}
+
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
 	payload, err := marshalCheckOfferPayload(checkOfferWindowPayload{
-		Audience: ask.Audience,
-		Door:     in.Door,
-		Offer:    offer,
-		Roll:     ask.Roll,
-		Total:    ask.Total,
-		Frozen:   posed.Frozen,
+		Audience:    ask.Audience,
+		Door:        in.Door,
+		Offer:       offer,
+		Roll:        ask.Roll,
+		Total:       ask.Total,
+		Calculation: sessionRollCalculationOf(ask.Calculation),
+		Frozen:      posed.Frozen,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w: %v", ErrInvalidSession, err)
@@ -382,6 +398,9 @@ func (m *Manager) poseUnlockWindow(
 		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
 		Roll:     ask.Roll,
 		Total:    ask.Total,
+		// The beat that asks shows the whole roll, not the one face the two
+		// scalars could carry (rpg-project#462 R5).
+		Calculation: rollCalculationFor(ask.Calculation),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w", reportUnrecorded(scope, translate(err)))

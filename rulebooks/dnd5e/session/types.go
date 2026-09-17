@@ -1277,6 +1277,41 @@ type DiceReroll struct {
 	Source RollSource `json:"source"`
 }
 
+// KeepRule names the rule that decided which faces of a dice pool count.
+// The wire words, mirrored from the rulebook's own spelling.
+type KeepRule string
+
+const (
+	// KeepAdvantage keeps the highest face of a pool rolled with advantage.
+	KeepAdvantage KeepRule = "advantage"
+
+	// KeepDisadvantage keeps the lowest face of a pool rolled with disadvantage.
+	KeepDisadvantage KeepRule = "disadvantage"
+
+	// KeepCancelled records granted and imposed sources meeting: the pool was
+	// rolled straight and every face counts, and the record says why.
+	KeepCancelled KeepRule = "cancelled"
+)
+
+// DiceKeep records the rule that decided KeptIndices, and who brought it.
+// Nil when nothing touched the pool: a straight roll keeps every face.
+//
+// IT IS WHY THE PARALLEL SOURCE LISTS ARE GONE from this seam's bodies. A list
+// beside the dice can disagree with the dice; a record on the trace that
+// decided them cannot (rpg-project#462 R1). A client draws the discarded face
+// struck through and prints the rule's name from here — never a word it
+// invented, and never a style guessed from the beat's actor.
+type DiceKeep struct {
+	// Rule is "advantage", "disadvantage" or "cancelled".
+	Rule KeepRule `json:"rule"`
+
+	// Granted are the sources that granted advantage on this pool.
+	Granted []RollSource `json:"granted,omitempty"`
+
+	// Imposed are the sources that imposed disadvantage on this pool.
+	Imposed []RollSource `json:"imposed,omitempty"`
+}
+
 // DiceTrace records the original and final faces of one homogeneous dice
 // pool. An empty KeptIndices means every final face contributes to Subtotal.
 type DiceTrace struct {
@@ -1300,6 +1335,11 @@ type DiceTrace struct {
 	// KeptIndices are the FinalRolls positions that contribute to Subtotal;
 	// empty means every final face contributes.
 	KeptIndices []int `json:"kept_indices,omitempty"`
+
+	// Keep records the rule that decided KeptIndices, and who brought it.
+	// Nil when nothing touched the pool — a straight roll, and the zero value
+	// says exactly that.
+	Keep *DiceKeep `json:"keep,omitempty"`
 
 	// Subtotal is the dice' authoritative contribution — faces kept, never
 	// resummed by a reader.
@@ -1374,14 +1414,6 @@ type DamageComponent struct {
 	FlatBonus int `json:"flat_bonus,omitempty"`
 }
 
-// AttackModifierSource identifies one replayable advantage/disadvantage
-// source. Human-readable rules-engine reasons deliberately do not cross this
-// seam.
-type AttackModifierSource struct {
-	SourceRef string `json:"source_ref,omitempty"`
-	SourceID  string `json:"source_id,omitempty"`
-}
-
 // StruckBody is EventStruck's typed body: an attack landed. The numbers
 // AttackOutput gives the attacker, here for every witness, plus what was
 // swung.
@@ -1401,9 +1433,10 @@ type StruckBody struct {
 	Critical bool      `json:"critical"`
 	// DamageComponents are ordered inputs to the authoritative aggregate Damage.
 	DamageComponents []DamageComponent `json:"damage_components,omitempty"`
-	// AdvantageSources and DisadvantageSources preserve the fold's attribution.
-	AdvantageSources    []AttackModifierSource `json:"advantage_sources,omitempty"`
-	DisadvantageSources []AttackModifierSource `json:"disadvantage_sources,omitempty"`
+	// The fold's attribution is NOT a pair of lists here any more. It lives on
+	// Calculation's d20 component, in the Keep record that decided which face
+	// counted — refs and ids only was the narrower spelling of the same fact,
+	// and keeping both would let the two disagree (rpg-project#462 R1).
 
 	// Reaction names what this swing was taken AS, when it was taken as a
 	// reaction — an opportunity attack, today. Absent for an ordinary
@@ -1816,6 +1849,16 @@ type RollWindowOpenedBody struct {
 	// Roll is the d20 as rolled and Total the number the offer would join.
 	Roll  int `json:"roll"`
 	Total int `json:"total"`
+
+	// Calculation is the settled arithmetic the offer would join — the d20
+	// pool with every face it threw and the Keep record naming any rule that
+	// decided which one counted.
+	//
+	// THE WINDOW IS WHERE AN UNTRAINED ROLL IS FIRST SEEN (rpg-project#462
+	// R5). Until this field existed the body had nowhere to put it, so the
+	// wire's own calculation field was never filled and the player chose
+	// looking at one face.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 func (RollWindowOpenedBody) isEventBody() {}
@@ -1959,6 +2002,15 @@ type DoorBody struct {
 	DC     int    `json:"dc,omitempty"`
 	Total  int    `json:"total,omitempty"`
 	Beaten bool   `json:"beaten,omitempty"`
+
+	// Calculation is the roll behind an unlock attempt — the d20 pool with
+	// every face it threw and the Keep record naming any rule that decided
+	// which one counted. Set on attempt beats only; a plain open or close
+	// rolled nothing and says so by leaving it nil.
+	//
+	// An unlock's DoorChanged IS a check beat (rpg-project#462 R4): "any
+	// future check beat" includes the one that already exists.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 func (DoorBody) isEventBody() {}
@@ -1990,6 +2042,16 @@ type IntimidatedBody struct {
 
 	// Beaten is whether it landed.
 	Beaten bool `json:"beaten"`
+
+	// Calculation is the roll behind Total — the d20 pool with every face it
+	// threw and the Keep record naming the rule that decided which one
+	// counted. This beat used to be {dc, total, beaten} wide, so an untrained
+	// character's second face and the word "Untrained" never reached the log
+	// (rpg-project#462).
+	//
+	// Optional, and absent means absent: a beat written without arithmetic
+	// carries no key rather than an empty calculation.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 func (IntimidatedBody) isEventBody() {}
@@ -2015,6 +2077,16 @@ type PersuadedBody struct {
 
 	// Beaten is whether it landed.
 	Beaten bool `json:"beaten"`
+
+	// Calculation is the roll behind Total — the d20 pool with every face it
+	// threw and the Keep record naming the rule that decided which one
+	// counted. This beat used to be {dc, total, beaten} wide, so an untrained
+	// character's second face and the word "Untrained" never reached the log
+	// (rpg-project#462).
+	//
+	// Optional, and absent means absent: a beat written without arithmetic
+	// carries no key rather than an empty calculation.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
 func (PersuadedBody) isEventBody() {}

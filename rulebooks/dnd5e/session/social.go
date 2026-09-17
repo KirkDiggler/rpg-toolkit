@@ -72,6 +72,11 @@ type socialLanding struct {
 	Beaten bool
 	DC     int
 	Total  int
+
+	// Calculation is the roll behind Total, keep record and all. It rides the
+	// beat so the table reads "2d20 [7, 18] kept 7 · disadvantage: Untrained"
+	// rather than one number (rpg-project#462).
+	Calculation *encounter.RollCalculation
 }
 
 // intimidateVerb is the threat: Intimidation against the target's own
@@ -88,7 +93,8 @@ func (m *Manager) intimidateVerb() socialVerb {
 		) (bool, uint64, error) {
 			out, err := enc.Intimidate(ctx, &encounter.IntimidateInput{
 				Actor: in.Actor, Target: in.Target, Beaten: in.Beaten,
-				DC: in.DC, Total: in.Total, Roller: &diceSeam{roller: m.dice},
+				DC: in.DC, Total: in.Total, Calculation: in.Calculation,
+				Roller: &diceSeam{roller: m.dice},
 			})
 			if err != nil {
 				return false, 0, err
@@ -114,7 +120,8 @@ func (m *Manager) persuadeVerb() socialVerb {
 		) (bool, uint64, error) {
 			out, err := enc.Persuade(ctx, &encounter.PersuadeInput{
 				Actor: in.Actor, Target: in.Target, Beaten: in.Beaten,
-				DC: in.DC, Total: in.Total, Roller: &diceSeam{roller: m.dice},
+				DC: in.DC, Total: in.Total, Calculation: in.Calculation,
+				Roller: &diceSeam{roller: m.dice},
 			})
 			if err != nil {
 				return false, 0, err
@@ -230,12 +237,17 @@ func (m *Manager) speak(
 	}
 
 	verdict := outcome.Verdict
+	if err := requireCalculation(string(spec.verb), member, verdict.Calculation); err != nil {
+		return nil, err
+	}
+
 	beaten, seq, err := spec.land(ctx, scope.enc, &socialLanding{
-		Actor:  encounter.MemberID(member),
-		Target: encounter.MemberID(target),
-		Beaten: verdict.Beaten,
-		DC:     verdict.Applied.DC,
-		Total:  verdict.Total,
+		Actor:       encounter.MemberID(member),
+		Target:      encounter.MemberID(target),
+		Beaten:      verdict.Beaten,
+		DC:          verdict.Applied.DC,
+		Total:       verdict.Total,
+		Calculation: verdict.Calculation,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", spec.verb, translate(err))
@@ -356,6 +368,10 @@ func (m *Manager) poseSocialWindow(
 			spec.verb, ErrInvalidWorld, len(ask.Options))
 	}
 
+	if err := requirePosedCalculation(string(spec.verb), member, ask.Calculation); err != nil {
+		return nil, err
+	}
+
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
 	payload, err := marshalCheckOfferPayload(checkOfferWindowPayload{
 		Audience: ask.Audience,
@@ -363,11 +379,12 @@ func (m *Manager) poseSocialWindow(
 		// WHICH verb is paused, so the answer finishes the one that was asked
 		// (window.go): a resumed Persuade that landed an Intimidate would be
 		// a silently wrong deed on a mind.
-		Verb:   spec.verb,
-		Offer:  offer,
-		Roll:   ask.Roll,
-		Total:  ask.Total,
-		Frozen: posed.Frozen,
+		Verb:        spec.verb,
+		Offer:       offer,
+		Roll:        ask.Roll,
+		Total:       ask.Total,
+		Calculation: sessionRollCalculationOf(ask.Calculation),
+		Frozen:      posed.Frozen,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w: %v", spec.verb, ErrInvalidSession, err)
@@ -389,6 +406,9 @@ func (m *Manager) poseSocialWindow(
 		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
 		Roll:     ask.Roll,
 		Total:    ask.Total,
+		// The beat that asks shows the whole roll, not the one face the two
+		// scalars could carry (rpg-project#462 R5).
+		Calculation: rollCalculationFor(ask.Calculation),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", spec.verb, reportUnrecorded(scope, translate(err)))

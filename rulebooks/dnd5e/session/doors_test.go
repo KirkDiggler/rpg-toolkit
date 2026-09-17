@@ -185,6 +185,11 @@ func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 	s.Require().Len(beats, 1)
 	s.Equal(session.DoorBody{Door: "gate", State: "open", Actor: "alice"}, beats[0],
 		"the beat names the door, the state, and whose hands")
+	// THE CARVE-OUT IN THE PRODUCER RULE. A verb that rolled a check is
+	// refused when it reaches the beat with no arithmetic (ErrNoCalculation),
+	// but this door faced no DC — nothing was thrown, and nil is the truth
+	// rather than a lost roll. Widening that guard would refuse this.
+	s.Nil(beats[0].Calculation, "an unlocked door rolls nothing, and says so")
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})
@@ -212,9 +217,15 @@ func (s *DoorsSuite) TestUnlockRollsTheSheetAgainstTheDC() {
 
 	beats := s.doorEvents("alice")
 	s.Require().Len(beats, 1)
-	s.Equal(session.DoorBody{Door: "gate", State: "open", Actor: "alice",
-		DC: tombDC, Total: tombDC, Beaten: true}, beats[0],
-		"the attempt is narrated with its author and its numbers")
+	body := beats[0]
+	s.Equal("gate", body.Door)
+	s.Equal("open", body.State)
+	s.Equal("alice", body.Actor)
+	s.Equal(tombDC, body.DC)
+	s.Equal(tombDC, body.Total, "the attempt is narrated with its author and its numbers")
+	s.True(body.Beaten)
+	s.Require().NotNil(body.Calculation, "an unlock's DoorChanged is a check beat (R4)")
+	s.Equal(tombDC, body.Calculation.Total)
 }
 
 func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
@@ -230,9 +241,15 @@ func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
 
 	beats := s.doorEvents("alice")
 	s.Require().Len(beats, 1)
-	s.Equal(session.DoorBody{Door: "gate", State: "locked", Actor: "alice",
-		DC: tombDC, Total: 10, Beaten: false}, beats[0],
-		"the miss is as much fiction as the hit")
+	body := beats[0]
+	s.Equal("gate", body.Door)
+	s.Equal("locked", body.State)
+	s.Equal("alice", body.Actor)
+	s.Equal(tombDC, body.DC)
+	s.Equal(10, body.Total, "the miss is as much fiction as the hit")
+	s.False(body.Beaten)
+	s.Require().NotNil(body.Calculation)
+	s.Equal(10, body.Calculation.Total)
 
 	again, err := s.mgr.Unlock(ctx, &session.UnlockInput{
 		Session: "sess", Member: "alice", Door: "gate"})

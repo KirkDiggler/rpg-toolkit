@@ -216,6 +216,7 @@ var sessionSentinels = map[string]error{
 	"ErrNoEncounterID":        session.ErrNoEncounterID,
 	"ErrSessionExists":        session.ErrSessionExists,
 	"ErrInvalidWorld":         session.ErrInvalidWorld,
+	"ErrNoCalculation":        session.ErrNoCalculation,
 	"ErrInBubble":             session.ErrInBubble,
 	"ErrNotInFight":           session.ErrNotInFight,
 	"ErrNotYourTurn":          session.ErrNotYourTurn,

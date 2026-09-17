@@ -190,6 +190,13 @@ type checkOfferWindowPayload struct {
 	Roll  int `json:"roll"`
 	Total int `json:"total"`
 
+	// Calculation is the settled arithmetic the offered die would join — the
+	// same numbers Roll and Total summarise, with every face and the keep
+	// record behind them. The window is where an untrained roll is FIRST seen
+	// (rpg-project#462 R5); with only the two scalars, this payload could
+	// carry one face and no rule.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+
 	// Frozen is resolution's own machine state, opaque to this package.
 	Frozen []byte `json:"frozen"`
 }

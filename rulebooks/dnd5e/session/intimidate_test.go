@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
@@ -366,9 +367,20 @@ func (s *IntimidateSuite) TestABeatenThreatSurfacesAsATypedEvent() {
 		}
 	}
 	s.Require().NotNil(found, "the threat reached alice's stream as its own kind, not EventUnknown")
-	s.Equal(session.IntimidatedBody{
-		Actor: "alice", Target: "goblin", DC: 9, Total: 11, Beaten: true,
-	}, found.Body, "the numbers the response reported, on the wire")
+	body, ok := found.Body.(session.IntimidatedBody)
+	s.Require().True(ok)
+	s.Equal("alice", body.Actor)
+	s.Equal("goblin", body.Target)
+	s.Equal(9, body.DC)
+	s.Equal(11, body.Total, "the numbers the response reported, on the wire")
+	s.True(body.Beaten)
+
+	// AND THE ROLL BEHIND THE NUMBER. This beat used to be {dc, total,
+	// beaten} wide, so the faces that produced the total never left the
+	// server (rpg-project#462).
+	die := d20Of(s.T(), body.Calculation)
+	s.Equal(20, die.DieSize)
+	s.Equal(11, body.Calculation.Total)
 	s.Equal(out.Seq, found.Seq, "IntimidateOutput.Seq references this event")
 
 	// The goblin heard it too — the audience is the witnesses.
@@ -393,9 +405,16 @@ func (s *IntimidateSuite) TestAMissedThreatSurfacesToo() {
 		if event.Kind != session.EventIntimidated {
 			continue
 		}
-		s.Equal(session.IntimidatedBody{
-			Actor: "alice", Target: "goblin", DC: 9, Total: 6, Beaten: false,
-		}, event.Body, "the roll the table saw, and the only record of it")
+		body, ok := event.Body.(session.IntimidatedBody)
+		s.Require().True(ok)
+		s.Equal("alice", body.Actor)
+		s.Equal("goblin", body.Target)
+		s.Equal(9, body.DC)
+		s.Equal(6, body.Total, "the roll the table saw, and the only record of it")
+		s.False(body.Beaten)
+		s.Equal(20, d20Of(s.T(), body.Calculation).DieSize)
+		s.Equal(6, body.Calculation.Total,
+			"a missed threat carries its roll too — full data until v1.0")
 		return
 	}
 	s.Fail("a missed threat left no typed event, which is the whole outcome lost")
@@ -707,4 +726,15 @@ func talkingFighter(id string) *character.Data {
 	}
 
 	return sheet
+}
+
+// d20Of reads the roll behind an attempt beat: component 0 is the operation's
+// own d20 pool by the shared calculation contract, which is what makes its
+// keep record the place a reader looks for advantage and disadvantage.
+func d20Of(t require.TestingT, calculation *session.RollCalculation) *session.DiceTrace {
+	require.NotNil(t, calculation, "the beat carries the roll behind its total (rpg-project#462)")
+	require.NotEmpty(t, calculation.Components)
+	trace := calculation.Components[0].Dice
+	require.NotNil(t, trace)
+	return trace
 }

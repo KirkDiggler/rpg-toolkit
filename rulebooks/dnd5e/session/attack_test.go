@@ -441,6 +441,17 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Require().NotNil(out.Calculation)
 	s.Equal(out.Total, out.Calculation.Total)
 
+	// THE D20 IS THE ATTACKER'S (rpg-project#462 R7). It used to be sourced to
+	// the weapon definition and nothing else, so a client wanting to draw the
+	// roller's die in the roller's own style had to guess it from the beat's
+	// actor — which is the client calculating.
+	s.Require().NotEmpty(out.Calculation.Components)
+	d20 := out.Calculation.Components[0]
+	s.Require().NotNil(d20.Dice)
+	s.Equal(20, d20.Dice.DieSize)
+	s.Equal("alice", d20.Source.SourceID)
+	s.Nil(d20.Dice.Keep, "nothing granted or imposed, so nothing is recorded over it")
+
 	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 	last := story[len(story)-1]
@@ -450,14 +461,19 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
 			`"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[15],"final_rolls":[15],"subtotal":15}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[15],"final_rolls":[15],"subtotal":15}},`+
 			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":20},`+
 			`"damage_components":[`+
-			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},`+
 			`"dice":{"notation":"d8","die_size":8,"original_rolls":[5],"final_rolls":[5],"subtotal":5}},"damage_type":"slashing"},`+
 			`{"source":"ability","roll":{"source":{"ref":"dnd5e:abilities:str","name":"Strength"},"modifier":3},"damage_type":"slashing"}],`+
 			`"presentation_id":"presentation-test-id"}`,
 		string(last.Payload))
+	// The parallel source lists are gone from the body and from what this
+	// seam writes: the keep record on the d20 is the fold's attribution now,
+	// and two spellings of one fact could disagree (R1).
+	s.NotContains(string(last.Payload), "advantage_sources")
+	s.NotContains(string(last.Payload), "disadvantage_sources")
 	s.Equal(session.AttackRef{Ref: "dnd5e:weapons:longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }
 
@@ -477,7 +493,7 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
 			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
 			`"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[2],"final_rolls":[2],"subtotal":2}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[2],"final_rolls":[2],"subtotal":2}},`+
 			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":7},`+
 			`"presentation_id":"presentation-test-id"}`,
 		string(story[len(story)-1].Payload))
