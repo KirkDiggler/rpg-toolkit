@@ -206,6 +206,38 @@ type FieldData struct {
 	// order, with cells in the AUTHORED offset frame.
 	Props []PropData `json:"props,omitempty"`
 
+	// Placed are the authored footprint placements (issue #1753), in
+	// authored order, with geometry in the CANONICAL frame: feet, exactly
+	// as [FieldInput.Placed] carries it — the placement is already the
+	// compiled geometry and never re-converted on the wire.
+	//
+	// Scenery's omitempty rule: omitted and written as an empty list are
+	// the same fact, so a blob from before placed contributors existed
+	// simply loads with none.
+	Placed []PlacedPropData `json:"placed,omitempty"`
+
+	// RoomScene is the validated room scene presentation the field was
+	// constructed with (issue #1753), carried verbatim: doubles, empty
+	// lists, pointers and all — the ONE shape the runtime, the blob and the
+	// atlas speak, never a parallel wrapper with its own defaults.
+	//
+	// OPTIONAL, and nil stays nil on every carrier: a field without one is
+	// every field authored before v3, and a nil here is the whole of what
+	// those blobs meant. A nil pointer also survives the wire exactly: the
+	// key is omitted when nil, and a JSON round trip of an authored empty
+	// scene carries "items": [] rather than null, because the snapshot it
+	// was written from held an empty list, not absence.
+	//
+	// LOADED THROUGH THE SAME VALIDATOR the field was built under
+	// (compileField — [ValidateRoomScene]'s one walk): a presentation
+	// version this build does not carry, a malformed scene, or the
+	// combination with concealed structure is refused at load by name,
+	// never reinterpreted. The version is EXPLICIT — there is no
+	// EncounterData-level version to bump, and none is assumed; this key
+	// carries its own, and a future one is a dialect change this build
+	// refuses rather than guesses at.
+	RoomScene *RoomScenePresentation `json:"room_scene,omitempty"`
+
 	// Intel is the authored knowledge records, in authored order
 	// (rpg-project#372). Scenery's omitempty rule: omitted and empty are the
 	// same fact, so a blob written before intel existed simply loads with
@@ -359,6 +391,63 @@ type PropData struct {
 	// from the first frame, so every blob from before arrivals existed reads
 	// exactly as it did.
 	Arrives *TriggerData `json:"arrives,omitempty"`
+}
+
+// PlacedPropData is the persistent representation of one [PlacedPropInput]
+// (issue #1753).
+//
+// THE GEOMETRY IS VALUE, NOT POINTER: Origin, LocalOffset and the box's two
+// sides are plain floats in the CANONICAL frame, so a blob that carried them
+// as absence could be told apart from one that carried (0,0) facing nowhere —
+// a real placement — only by the field-level omitempty, which is why the
+// whole list is omitted when empty rather than any member of it.
+// Facing is REQUIRED only in the sense a float always is: any finite degree
+// is legal, and compilePlaced refuses a non-finite one by name at load.
+type PlacedPropData struct {
+	// ID mirrors [PlacedPropInput.ID]. REQUIRED non-empty at load and
+	// refused by name (compilePlaced), because a contributor without a name
+	// is a blocker nothing can be told about.
+	ID PropID `json:"id"`
+
+	// Placement mirrors [PlacedPropInput.Placement], copied out and back
+	// without conversion in either direction.
+	Placement PlacementData `json:"placement"`
+
+	// BlocksMovement and BlocksLineOfSight mirror the input's two answers
+	// ([PlacedPropInput]). Written without omitempty, on PropData flags'
+	// rule: these are plain bools rather than pointers because a placed
+	// contributor was BORN with the requirement that it say both — there is
+	// no blob from before the flags existed that could have omitted one, so
+	// absence cannot mean anything but the zero value.
+	BlocksMovement    bool `json:"blocks_movement"`
+	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+}
+
+// PlacementData is the persistent representation of a
+// [spatial.FootprintPlacement]: the box and its pose, in feet, in the
+// canonical plane. Values, never a second authored pose — see
+// [PlacedPropData].
+type PlacementData struct {
+	// Footprint is the placement's rectangle: W across its facing, D along
+	// it (spatial's own Box convention — deliberate name swap from the
+	// source frame, single-room-play.md §3).
+	Footprint FootprintData `json:"footprint"`
+
+	// Origin is where the placement sits in the plane, in feet.
+	Origin PositionData `json:"origin"`
+
+	// Facing is the rectangle's facing in degrees.
+	Facing float64 `json:"facing"`
+
+	// LocalOffset is the box's offset inside the placement's own axes,
+	// before Facing.
+	LocalOffset PositionData `json:"local_offset"`
+}
+
+// FootprintData is the persistent box: W across, D along.
+type FootprintData struct {
+	W float64 `json:"w"`
+	D float64 `json:"d"`
 }
 
 // ReserveData is the persistent representation of one [reservedMember]: a
@@ -1520,6 +1609,31 @@ func fieldDataFrom(f *field) FieldData {
 		}
 	}
 
+	if len(f.placed) > 0 {
+		out.Placed = make([]PlacedPropData, len(f.placed))
+		for i, p := range f.placed {
+			// Fresh box, never the compiled one's own: two ToData calls must
+			// not alias one rectangle (PlacedPropData's rule, the input copy's
+			// reason twice over).
+			out.Placed[i] = PlacedPropData{
+				ID: p.id,
+				Placement: PlacementData{
+					Footprint:   FootprintData{W: p.placement.Footprint.Box.W, D: p.placement.Footprint.Box.D},
+					Origin:      PositionData{X: p.placement.Origin.X, Y: p.placement.Origin.Y},
+					Facing:      p.placement.Facing,
+					LocalOffset: PositionData{X: p.placement.LocalOffset.X, Y: p.placement.LocalOffset.Y},
+				},
+				BlocksMovement:    p.blocksMovement,
+				BlocksLineOfSight: p.blocksLineOfSight,
+			}
+		}
+	}
+
+	// The presentation, freshly copied per call (room_scene.go's one copy):
+	// two ToData calls must not alias one scene, and mutating the returned
+	// blob must not reach the running field.
+	out.RoomScene = copyRoomScene(f.roomScene)
+
 	if len(f.intel) > 0 {
 		out.Intel = make([]IntelData, len(f.intel))
 		for i, rec := range f.intel {
@@ -1944,6 +2058,18 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: %w", ErrNoWitness)
 		}
 	}
+	// The room scene presentation rides a single unconcealed room (issue
+	// #1753): a blob carrying both the scene and concealed structure is a
+	// combination this build never wrote — the scene is the room's FULL
+	// layout, and a member projection that filtered it honestly would have
+	// to guess which mesh stands in whose room. compileField already
+	// refused concealed regions; this refuses concealed doors, the other
+	// half of the same combination, before anything is constructed (R5).
+	if fieldConcealed && fieldInput.RoomScene != nil {
+		return nil, fmt.Errorf(
+			"load encounter: room scene presentation rides one unconcealed region and the field carries concealed structure: %w: %w",
+			ErrInvalidData, ErrNoField)
+	}
 	// Validate members: no duplicates, cells present, integral and floor
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range data.Members {
@@ -1986,6 +2112,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 
+		// STANDABLE INCLUDES UNCOVERED at load too (issue #1753): the same
+		// standing fact Setup and Join ask, at the load door — load is the
+		// trust boundary for the blob, and a member saved onto a footprint's
+		// centre is a state no save of this build can produce, however it
+		// came to be. Refused before a live encounter is returned, by the
+		// same centre-covered fold every placement question asks.
+		if prop, covered := f.standingBlocks(cell); covered {
+			return nil, fmt.Errorf("load encounter: member %q cell [%g,%g] is covered by placed prop %q: %w: %w",
+				m.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
+		}
+
 		// A faction this field does not have, or a mind in the wrong
 		// faction, is the SAME refusal Setup and Join make — a blob that
 		// names a side the dungeon never declared was edited.
@@ -2025,6 +2162,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if !f.isStandable(cell) {
 			return nil, fmt.Errorf("load encounter: reserve %q cell %s: %w: %w",
 				r.ID, f.notStandable(cell), ErrInvalidData, ErrBadPlacement)
+		}
+		// And UNCOVERED, the same standing fact the arrival will ask when the
+		// predicate holds (reserve.go) — a reserved seat inside a placed
+		// footprint is a run that can never seat the waiter, refused at the
+		// load door rather than at the first arrival attempt.
+		if prop, covered := f.standingBlocks(cell); covered {
+			return nil, fmt.Errorf("load encounter: reserve %q cell [%g,%g] is covered by placed prop %q: %w: %w",
+				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 		if err := validateMemberFacts(memberFacts{
 			ID: r.ID, SpeedFeet: r.SpeedFeet, SightFeet: r.SightFeet, Actions: actionViewsFrom(r.Actions),
@@ -2116,6 +2261,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			// cross-check, only somewhere to be (rpg-toolkit#1108).
 			if !f.isStandable(spatial.Position{X: om.Cell.X, Y: om.Cell.Y}) {
 				return nil, fmt.Errorf("load encounter: outcome member %q cell is owned by no region: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
+			}
+			// And UNCOVERED, the same standing fact the live member check asks
+			// (issue #1753): a finished position inside a footprint's centre
+			// is a state this build's own steps and arrivals cannot have
+			// produced, refused at the load door like the rest.
+			if prop, covered := f.standingBlocks(spatial.Position{X: om.Cell.X, Y: om.Cell.Y}); covered {
+				return nil, fmt.Errorf("load encounter: outcome member %q cell [%g,%g] is covered by placed prop %q: %w: %w",
+					om.ID, om.Cell.X, om.Cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 			}
 		}
 	}
@@ -2674,8 +2827,9 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	in := FieldInput{
-		Canvas:  CanvasInput{Void: void, Orientation: orientation},
-		Regions: make([]RegionInput, len(fd.Regions)),
+		Canvas:    CanvasInput{Void: void, Orientation: orientation},
+		Regions:   make([]RegionInput, len(fd.Regions)),
+		RoomScene: fd.RoomScene,
 	}
 
 	for i, rd := range fd.Regions {
@@ -2751,6 +2905,20 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			prop.Arrives = t
 		}
 		in.Props = append(in.Props, prop)
+	}
+
+	for _, ppd := range fd.Placed {
+		in.Placed = append(in.Placed, PlacedPropInput{
+			ID: ppd.ID,
+			Placement: spatial.FootprintPlacement{
+				Footprint:   spatial.Footprint{Box: &spatial.Box{W: ppd.Placement.Footprint.W, D: ppd.Placement.Footprint.D}},
+				Origin:      spatial.Point{X: ppd.Placement.Origin.X, Y: ppd.Placement.Origin.Y},
+				Facing:      ppd.Placement.Facing,
+				LocalOffset: spatial.Point{X: ppd.Placement.LocalOffset.X, Y: ppd.Placement.LocalOffset.Y},
+			},
+			BlocksMovement:    ppd.BlocksMovement,
+			BlocksLineOfSight: ppd.BlocksLineOfSight,
+		})
 	}
 
 	for _, ed := range fd.Exits {

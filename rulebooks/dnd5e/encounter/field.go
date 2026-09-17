@@ -511,6 +511,22 @@ type SegmentInput struct {
 // make its floor, and the props, walls and doors standing on it
 // (rpg-project#256).
 type FieldInput struct {
+	// RoomScene is the lossless presentation authored alongside a v3 room
+	// (issue #1753). VALIDATED AND SNAPSHOT at construction — the ONE
+	// validator ([ValidateRoomScene], room_scene_validate.go, the same walk
+	// the source decoder delegates to) runs at both construction seams, and
+	// the compiled field deep-copies it, so a caller editing their scene
+	// pointer afterwards cannot change a running field, a saved blob or an
+	// atlas. Nil is legal and means a field without one — every field
+	// authored before v3 — and nil it stays on every carrier it rides.
+	//
+	// A field carrying one is SINGLE-ROOM v3 content: one unconcealed
+	// region, no concealed structure anywhere (the scene is one room's full
+	// layout, and no member projection of it beside hidden space is honest —
+	// the unsupported combinations are refused by name, never
+	// half-filtered). Gameplay geometry never reads it.
+	RoomScene *RoomScenePresentation
+
 	// Canvas is what this field DECLARES about the map its regions paint:
 	// what the space between them does to a sightline, and which way its
 	// hexes point. Both REQUIRED: see [Void] and [Orientation] for why this
@@ -552,6 +568,25 @@ type FieldInput struct {
 	// Props are the things standing on the floor that are not creatures, in
 	// absolute authored cells. Optional. See [PropInput].
 	Props []PropInput
+
+	// Placed are the authored footprint placements: named rectangles in the
+	// CANONICAL spatial plane — feet, not authored cells — whose movement
+	// and sight facts are independent of any cell they cover (issue #1753).
+	// Optional; omitted means none, and a field without them answers exactly
+	// as every field did before the list existed.
+	//
+	// NOT ANCHORED. A footprint carries no cell it sits on and no fake
+	// entity: standing is centre contact, crossing is segment interior, and
+	// the geometry is measured in the plane [FeetPerCell] names. The
+	// conversion from the portable source frame happens at the construction
+	// boundary (dungeonspec); no second authored pose exists here.
+	//
+	// Refused when an id is empty, duplicated (among placed or against a
+	// legacy [PropInput.ID]), or the placement is missing, non-finite,
+	// non-positive or unrepresentable (ErrNoField). A footprint needs NO
+	// floor: it may overhang the void, and sight keeps the parts of it the
+	// painted mask does not cover.
+	Placed []PlacedPropInput
 
 	// Walls are the authored edges between adjacent floor cells that block
 	// movement and sight, with both endpoints as absolute authored offset

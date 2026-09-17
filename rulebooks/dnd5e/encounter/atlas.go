@@ -68,6 +68,30 @@ type Atlas struct {
 	// doorway's crossing, projected onto the segment it stands in.
 	Segments []AtlasSegment
 
+	// Placed is every authored footprint placement (issue #1753), sorted by
+	// id — the SAME contributor set standing, crossing and sight read, in
+	// the CANONICAL frame, so a host drawing or projecting the placed
+	// geometry draws exactly what the engine enforces and nothing has to
+	// re-derive it from cells.
+	//
+	// CONSTRUCTION TRUTH like every other list here: a placement has no
+	// runtime lifetime in this slice (no move/hold/drop protocol exists),
+	// so there is nothing live to fold — the compiled list, copied out.
+	Placed []AtlasPlacedProp
+
+	// RoomScene is the validated room scene presentation the field was
+	// constructed with (issue #1753), copied out per call — doubles, empty
+	// lists and pointer leaves included, never the compiled one's own.
+	//
+	// NIL for a field without one, and nil it stays. A field that carries
+	// one is single-room v3 content: one unconcealed region, no concealed
+	// structure anywhere ([compileField] and the construction seams refuse
+	// the unsupported combinations), so the full scene is construction
+	// truth here exactly as the floor is. What a MEMBER may be shown is
+	// [Encounter.AtlasFor]'s question, and it refuses the combinations it
+	// cannot project rather than transmitting a hidden layout.
+	RoomScene *RoomScenePresentation
+
 	// Sealed is every cell in [Atlas.Cells] NOBODY CAN STAND ON, sorted by
 	// coordinate: scenery, and the cells walls leave no room in.
 	//
@@ -219,6 +243,23 @@ type AtlasProp struct {
 	Offset [3]float64
 }
 
+// AtlasPlacedProp is one authored footprint placement, as the map reports
+// it: its name, its canonical geometry, and its two blocking answers.
+// [PlacedPropInput] as a snapshot.
+type AtlasPlacedProp struct {
+	// ID is the author's name for this placement ([PlacedPropInput.ID]).
+	ID PropID
+
+	// Placement is the canonical rectangle — feet, facing in degrees, local
+	// offset — copied out per call.
+	Placement spatial.FootprintPlacement
+
+	// BlocksMovement and BlocksLineOfSight are the two answers the engine
+	// enforces, carried so a host need not guess from the shape.
+	BlocksMovement    bool
+	BlocksLineOfSight bool
+}
+
 // AtlasBoundary is one wall or barrier crossing, with both endpoints in
 // dungeon-absolute space.
 type AtlasBoundary struct {
@@ -281,11 +322,30 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		Boundaries:  make([]AtlasBoundary, 0, len(f.walls)),
 		Doorways:    make([]AtlasDoorway, 0, len(e.doors)),
 		Segments:    make([]AtlasSegment, 0, len(f.segments)),
+		// The presentation, copied out fresh per call: mutating one atlas's
+		// scene must never reach the compiled field or another snapshot.
+		RoomScene: copyRoomScene(f.roomScene),
 	}
 
 	for _, s := range f.segments {
 		out.Segments = append(out.Segments, AtlasSegment{From: s.From, To: s.To, Height: s.Height})
 	}
+
+	// PLACED CONTRIBUTORS (issue #1753), in the canonical frame, sorted by
+	// id (C8 — every list on this snapshot is sorted, and this one's
+	// coordinate is a name). Copies, never the compiled contributors':
+	// mutating the result never reaches internal state.
+	for _, p := range f.placed {
+		box := *p.placement.Footprint.Box
+		out.Placed = append(out.Placed, AtlasPlacedProp{
+			ID:                p.id,
+			Placement:         p.placement,
+			BlocksMovement:    p.blocksMovement,
+			BlocksLineOfSight: p.blocksLineOfSight,
+		})
+		out.Placed[len(out.Placed)-1].Placement.Footprint.Box = &box
+	}
+	sort.Slice(out.Placed, func(i, j int) bool { return out.Placed[i].ID < out.Placed[j].ID })
 
 	// Sorted by id rather than left in authored order: every other list on
 	// this snapshot is sorted so nothing about how the field was authored

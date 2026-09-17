@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+	"gopkg.in/yaml.v3"
 )
 
 // Compiled is an authored dungeon turned into a world, in two halves.
@@ -21,6 +22,11 @@ import (
 // resolves to. This package may not know that (design law C1), so the refs
 // come out the far end as the same strings that went in.
 type Compiled struct {
+	// Key and Name are the provider-owned published identity. v3 uses the
+	// root key and visual scene name; legacy compilation fills the spec values.
+	Key  string
+	Name string
+
 	// Field is the compiled world: the regions as authored, the walls and
 	// props at their absolute cells, the doors standing in their crossings,
 	// and the ways out. Ready for [encounter.NewEncounter].
@@ -216,6 +222,16 @@ type MonsterPlacement struct {
 // validation failure is returned as a [*ValidationError] carrying every
 // defect, and is an [ErrBadSpec].
 func Load(raw []byte) (Compiled, error) {
+	var version struct {
+		Version int `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(raw, &version); err == nil && version.Version == 3 {
+		decoded, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
+		if err != nil {
+			return Compiled{}, err
+		}
+		return CompileSingleRoom(CompileSingleRoomInput{Spec: decoded.Spec})
+	}
 	spec, err := Decode(raw)
 	if err != nil {
 		return Compiled{}, err
@@ -292,6 +308,8 @@ func Compile(spec *Spec) (Compiled, error) {
 	}
 
 	return Compiled{
+		Key:          spec.Key,
+		Name:         spec.Name,
 		Field:        field,
 		PartyStart:   start,
 		StartFacing:  spec.Start.Facing,

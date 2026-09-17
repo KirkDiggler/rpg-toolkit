@@ -54,6 +54,8 @@ const (
 // IT IS, content's own identifier (`dnd5e:props:pillar`), carried so a refusal
 // can say the word "pillar" to whoever asked; it is empty for everything but a
 // prop, because nothing else on a cell has a content ref this module holds.
+// A PLACED FOOTPRINT carries its own id in both, honestly: it has no content
+// ref beyond the name its author gave the placement (placed_props.go).
 type ContribRef struct {
 	Kind ContribKind
 	ID   string
@@ -122,6 +124,30 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 		fact.Contribs = append(fact.Contribs, ContribRef{Kind: ContribField, Blocks: true})
 	}
 
+	// PLACED FOOTPRINTS, CENTRE-COVERED (issue #1753). A movement-blocking
+	// placement closes every cell whose centre it covers — stationary
+	// [spatial.TraceFootprint] contact, boundary included — no matter where
+	// its rectangle reaches. Every covering contributor is reported: two
+	// overlapping tables do not erase each other's fact.
+	if len(e.field.placed) > 0 {
+		centre := e.field.plane.CellCentre(in.Cell)
+		for i := range e.field.placed {
+			p := &e.field.placed[i]
+			if !p.blocksMovement {
+				continue
+			}
+			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: p.placement, From: centre, To: centre,
+			})
+			if err != nil || contact.Contact {
+				fact.Passage = PassageBlocked
+				fact.Contribs = append(fact.Contribs, ContribRef{
+					Kind: ContribProp, ID: string(p.id), Ref: string(p.id), Blocks: true,
+				})
+			}
+		}
+	}
+
 	for _, ent := range e.canvas.GetEntitiesAt(in.Cell) {
 		switch v := ent.(type) {
 		case *propEntity:
@@ -149,6 +175,55 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 	}
 
 	return fact
+}
+
+// StaticPlacementError identifies a placement rejected by static field facts.
+// At remains in the encounter field's coordinate frame; callers that retain
+// an authoring frame should use the source coordinate for presentation.
+type StaticPlacementError struct {
+	Index  int
+	At     spatial.Position
+	Reason string
+	Cause  error
+}
+
+// Error returns the detailed placement refusal in the field coordinate frame.
+func (e *StaticPlacementError) Error() string {
+	return fmt.Sprintf("placement[%d] at [%g,%g] %s: %v", e.Index, e.At.X, e.At.Y, e.Reason, e.Cause)
+}
+
+// Unwrap exposes the underlying placement sentinel.
+func (e *StaticPlacementError) Unwrap() error { return e.Cause }
+
+// ValidateStaticPlacements validates authored placement cells against the
+// compiled field and static contributors without inventing a live member.
+func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
+	f, err := compileField(in)
+	if err != nil {
+		return err
+	}
+	for i, authored := range cells {
+		cell := f.cellAt(authored)
+		if !f.isStandable(cell) {
+			return &StaticPlacementError{Index: i, At: authored, Reason: "is not standable", Cause: ErrBadPlacement}
+		}
+		for _, p := range f.props {
+			if p.BlocksMovement != nil && *p.BlocksMovement && f.cellAt(p.At) == cell {
+				return &StaticPlacementError{Index: i, At: authored, Reason: fmt.Sprintf("is occupied by prop %q", p.Ref), Cause: ErrBadPlacement}
+			}
+		}
+		centre := f.plane.CellCentre(cell)
+		for _, p := range f.placed {
+			if !p.blocksMovement {
+				continue
+			}
+			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: p.placement, From: centre, To: centre})
+			if traceErr != nil || contact.Contact {
+				return &StaticPlacementError{Index: i, At: authored, Reason: fmt.Sprintf("is occupied by footprint %q", p.id), Cause: ErrBadPlacement}
+			}
+		}
+	}
+	return nil
 }
 
 // blockedBy is WHY a cell is closed to a mover, as a phrase to drop into a

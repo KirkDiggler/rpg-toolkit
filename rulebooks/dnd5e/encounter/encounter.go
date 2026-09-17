@@ -700,6 +700,18 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if in.Witness == nil {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoWitness)
 		}
+		// THE COMBINATION THE PROJECTION CANNOT FILTER (issue #1753): a room
+		// scene presentation is one room's full layout, and beside concealed
+		// structure there is no member projection of it that does not guess
+		// which mesh stands in whose room. compileField already refused the
+		// region half; the concealed-door half is only known here, beside
+		// the capabilities, and is refused the same way rather than carried
+		// into a field the atlas could not project.
+		if in.Field.RoomScene != nil {
+			return nil, fmt.Errorf(
+				"newencounter: room scene presentation rides one unconcealed region and the field carries concealed structure: %w",
+				ErrNoField)
+		}
 	}
 
 	// Every authored seat is a whole offset cell that some region owns. Asked
@@ -713,6 +725,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if cell := f.cellAt(mi.Position); !f.isStandable(cell) {
 			return nil, fmt.Errorf("newencounter: member %q position [%g,%g] %s: %w",
 				mi.ID, mi.Position.X, mi.Position.Y, f.notStandable(cell), ErrBadPlacement)
+		}
+		// STANDABLE INCLUDES UNCOVERED (issue #1753): the same standing fact
+		// Join asks, at Setup — nobody spawns inside a table the author also
+		// placed, whichever seam placed them.
+		if prop, covered := f.standingBlocks(f.cellAt(mi.Position)); covered {
+			return nil, fmt.Errorf("newencounter: member %q position [%g,%g] is covered by placed prop %q: %w",
+				mi.ID, mi.Position.X, mi.Position.Y, prop, ErrBadPlacement)
 		}
 	}
 
@@ -2206,6 +2225,14 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// step). Scenery is on the map and is not somewhere anybody stands.
 	if !e.field.isStandable(in.Cell) {
 		return nil, fmt.Errorf("join: cell %v %s: %w", in.Cell, e.field.notStandable(in.Cell), ErrBadPlacement)
+	}
+
+	// STANDABLE INCLUDES UNCOVERED (issue #1753): a movement-blocking placed
+	// footprint covering the cell's centre refuses the arrival by name — the
+	// same fact [Encounter.CellAt] would give a step here, so a join and a
+	// step cannot disagree about a table someone would land inside.
+	if prop, covered := e.field.standingBlocks(in.Cell); covered {
+		return nil, fmt.Errorf("join: cell %v is covered by placed prop %q: %w", in.Cell, prop, ErrBadPlacement)
 	}
 
 	member := &memberRecord{

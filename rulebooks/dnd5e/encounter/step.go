@@ -229,6 +229,35 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// stopped them if something does.
 	here, placed := e.canvas.GetEntityPosition(string(member.ID))
 
+	// THE CROSSING FOLD (issue #1753): one read for what closes the DIRECT
+	// crossing — a movement-blocking boundary (walls, shut doors; the
+	// canvas's own answer, still the thing that decides doors) or a placed
+	// footprint's interior. The fold answers the boundary first, so a door or
+	// wall on the crossing keeps its own law unchanged: the pre-check below
+	// stays silent, moveMember refuses, and the shut door is named — never
+	// the prop that happens to share the edge.
+	//
+	// A FOOTPRINT CROSSING IS REFUSED BY NAME, here and before the move,
+	// because the canvas's own MoveEntity decides boundaries only and cannot
+	// see a rectangle between two cells: left to it, the step would walk
+	// through the table.
+	//
+	// ASKED ONLY FOR A MOVER ON THE MAP, exactly as the boundary read it
+	// replaced was: without a here there is no crossing to judge, and the
+	// move below refuses the unplaced member as it always has.
+	crossingBlocked := false
+	if placed {
+		prop, crossed, cerr := e.crossingBlocked(here, to)
+		if cerr != nil {
+			return executedAction{}, fmt.Errorf("crossing from %v into %v: %w", here, to, cerr)
+		}
+		if prop != "" {
+			return executedAction{}, fmt.Errorf("the crossing from %v into %v is through %q: %w",
+				here, to, prop, ErrBadPlacement)
+		}
+		crossingBlocked = crossed
+	}
+
 	// WHAT IS IN THE WAY IS ANSWERED BEFORE WHAT IS ON THE CELL. A shut door
 	// with a wight behind it is refused as the door, and the refusal must not
 	// mention the wight — the mover cannot see through the door, and a
@@ -238,7 +267,11 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// crossing: this asks the canvas the same question routeTo asks
 	// and adds no second answer, and moveMember below refuses it again either
 	// way.
-	crossingBlocked := placed && e.canvas.IsBoundaryMovementBlocked(here, to)
+	//
+	// A CLOSED CROSSING OUTRANKS THE DESTINATION TOO, for the same reason in
+	// the new key: what the crossing runs into is hit before whatever stands
+	// on the far cell, so a blocked crossing skips the destination refusal
+	// the way a door always has.
 
 	if fact := e.CellAt(CellAtInput{Cell: to, Mover: member.ID}); fact.Passage == PassageBlocked && !crossingBlocked {
 		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)

@@ -279,7 +279,10 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 func (e *Encounter) arriveMember(rm *reservedMember, cause string, at uint64) error {
 	id := rm.record.ID
 	entity := &memberEntity{id: string(id), kind: rm.record.Kind, blocksMovement: rm.record.BlocksMovement}
-	cell, err := e.arrivalCell(rm.at, e.field.isStandable, fmt.Sprintf("member %q", id))
+	// STANDABLE INCLUDES UNCOVERED (issue #1753): the same standing fact a
+	// join and a step read. A member does not materialize inside a table;
+	// arrivalCell looks for the nearest cell that is both.
+	cell, err := e.arrivalCell(rm.at, e.arrivalStandable, fmt.Sprintf("member %q", id))
 	if err != nil {
 		return err
 	}
@@ -336,6 +339,19 @@ func (e *Encounter) arriveProp(index int, cause string, at uint64) error {
 		return fmt.Errorf("arrival of prop %q: %w", p.ID, err)
 	}
 	return e.appendArrivedBeat(p.ID, ArrivedProp, cell, at)
+}
+
+// arrivalStandable is the floor predicate a MEMBER'S arrival asks: the
+// field's own standability minus the centre-covered cells a movement-blocking
+// placed footprint closes (issue #1753) — the ONE standing answer, at the
+// arrival seam as at Join and the step.
+func (e *Encounter) arrivalStandable(cell spatial.Position) bool {
+	if !e.field.isStandable(cell) {
+		return false
+	}
+	_, covered := e.field.standingBlocks(cell)
+
+	return !covered
 }
 
 // arrivalCell is where an arrival lands: the authored cell when it is floor
