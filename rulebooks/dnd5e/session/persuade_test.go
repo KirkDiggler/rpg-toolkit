@@ -16,6 +16,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -371,4 +372,62 @@ func (s *PersuadeSuite) TestSomebodyElsesTurnStillRefuses() {
 
 	_, err = s.persuade(mgr)
 	s.ErrorIs(err, session.ErrNotYourTurn, "it is the goblin's turn")
+}
+
+// While an interrupt window is open, the social rows are BLOCKED on the world
+// clock rather than dropped.
+//
+// Before R3 a frozen free-roam panel was the window alone and that was the
+// whole truth — the economy verbs were never rows there, so reporting a
+// refusal for them would have been reporting a refusal for nothing. The social
+// verbs ARE rows there now, so leaving them out would make two rows simply
+// vanish while a window stands, which is the one thing that panel exists to
+// prevent.
+func (s *PersuadeSuite) TestAFrozenFreeRoamPanelBlocksTheSocialRowsRatherThanDroppingThem() {
+	// The d20, then the Guidance die the offer would spend.
+	s.sheet = guidedTalker("alice")
+	mgr := s.front([]int{6, 4})
+
+	out, err := s.persuade(mgr)
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "the checker holds a die and the machine stopped to ask")
+
+	byVerb := declarationsByVerb(s.rows(mgr))
+	for _, verb := range []session.Verb{session.VerbIntimidate, session.VerbPersuade} {
+		row, ok := byVerb[verb]
+		s.Require().True(ok, "%s: the row is still on the panel", verb)
+		s.False(row.Available, "%s: nothing may be declared while a window stands", verb)
+		s.Require().NotNil(row.Why)
+		s.Equal(session.ShortfallWindowOpen, row.Why.Reason,
+			"%s: and the panel says WHY, rather than the row disappearing", verb)
+	}
+	_, hasReact := byVerb[session.VerbReact]
+	s.True(hasReact, "the question itself is on the panel")
+
+	// And no turn-economy verb is reported there: those were never rows in
+	// free roam, and a refusal for a row that never existed is noise.
+	for _, verb := range []session.Verb{
+		session.VerbAttack, session.VerbMove, session.VerbActivate, session.VerbCast, session.VerbEndTurn,
+	} {
+		s.NotContains(byVerb, verb, "%s: never a free-roam row, so never a free-roam refusal", verb)
+	}
+}
+
+// guidedTalker is [talkingFighter] already holding a Guidance die, so the
+// check machine poses instead of settling.
+func guidedTalker(id string) *character.Data {
+	sheet := talkingFighter(id)
+	condition, err := conditions.NewGuidedCondition(conditions.NewGuidedConditionInput{
+		MemberID: id, SourceID: "cleric-1", SourceRef: refs.Spells.Guidance(),
+	})
+	if err != nil {
+		panic(err)
+	}
+	raw, err := condition.ToJSON()
+	if err != nil {
+		panic(err)
+	}
+	sheet.Conditions = append(sheet.Conditions, raw)
+
+	return sheet
 }

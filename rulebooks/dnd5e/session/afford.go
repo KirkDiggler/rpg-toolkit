@@ -748,17 +748,24 @@ func slotOf(p *combat.SpendProfile) Slot {
 func affordWhileFrozen(session, member string, open []interrupt.Window, clock ClockKind) (*AffordOutput, error) {
 	declarations := []Declaration{}
 
-	// The five turn-economy blockers apply only to a member the economy ever
-	// applied to. A world-clock member (Unlock's checker, outside combat) was
-	// never offered Attack/Move/Activate/Cast/EndTurn to begin with, so
-	// marking them unavailable here would be reporting a refusal for rows
-	// that were never rows.
+	// A VERB IS MARKED UNAVAILABLE ONLY WHERE IT WAS A ROW. The turn-economy
+	// verbs were never offered to a world-clock member, so reporting a
+	// refusal for them there would be reporting a refusal for rows that were
+	// never rows.
+	//
+	// THE SOCIAL VERBS ARE ROWS ON BOTH CLOCKS as of R3 (rpg-project#457), so
+	// they are blocked on both. Before that ruling a frozen world-clock panel
+	// was the window alone and that was the whole truth; now, leaving them out
+	// would make two rows simply VANISH while a window is open, which is the
+	// one thing this function exists to prevent.
+	frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
+	declarations = append(declarations,
+		blockedDeclaration(VerbIntimidate, TargetMember, frozen),
+		blockedDeclaration(VerbPersuade, TargetMember, frozen),
+	)
 	if clock == ClockTurn {
-		frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
 		declarations = append(declarations,
 			blockedDeclaration(VerbAttack, TargetMember, frozen),
-			blockedDeclaration(VerbIntimidate, TargetMember, frozen),
-			blockedDeclaration(VerbPersuade, TargetMember, frozen),
 			blockedDeclaration(VerbMove, TargetPath, frozen),
 			blockedDeclaration(VerbActivate, TargetNone, frozen),
 			blockedDeclaration(VerbCast, TargetNone, frozen),
