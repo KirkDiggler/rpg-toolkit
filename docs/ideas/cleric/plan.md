@@ -257,6 +257,67 @@ module build/vet/test/lint clean. Next: resolution — the actual ward-save
 step, the self-break check, and the miss/blocked-outcome shape described
 above.
 
+### Root slice 2 delivered: enabled — Sanctuary is castable
+
+The last step, per this plan's own standing discipline: never make
+something selectable before every consumer beneath it can represent what
+happens when it fires. Resolution (#1812), encounter (#1813) and session
+(#1814) all landed first; this slice only adds the `castContent` entry and
+the acquisition-list line now that the whole chain can honestly run it.
+
+`spells/cast.go`: a new entry, `Healing Word`'s exact cost shape (bonus
+action + one level-1 slot — `slotCost` only builds a standard-action cost,
+so this is inlined the same way Healing Word's own entry already is rather
+than generalizing a helper for a second data point) combined with
+`Guidance`'s exact delivery shape (touch, self a legal recipient the same
+`CastTargetSelf`-cannot-stand-for-this reason, one `CastEffect` delivering
+the condition via `CounterpartKey: "source_id"`, `Concentration{TurnEnds:
+10, SkipFirstTurnEnd: true}`). `spells/types.go` and `spells/data.go` both
+gained a `Sanctuary` entry too, matching every recent spell's own precedent
+of keeping the informational (and mostly-legacy, per Healing Word's own
+handoff notes) `SpellData` table in sync even though nothing requires it
+for casting to work.
+
+`character/choices/spell_choices.go`: `Sanctuary` added to
+`clericSpellsLevel1`, growing the "select all supported 1st-level spells"
+list from five to six.
+
+**The one non-obvious fix this required**: `classes.clericPreparedSpellCount`
+(`classes/progression_data.go`) — a second, separately-maintained constant
+that has to agree with the options-list length by hand, because the
+`classes` package cannot import `character/choices` to derive it (that
+comment was already on the constant, anticipating exactly this moment).
+Missing this produces a very readable failure — "Must choose exactly 6
+spells, got 5" — across every Cleric creation/level-up test that builds a
+full spell selection, which is how it was actually caught rather than
+reasoned out in advance. Bumped 5 → 6.
+
+That one hardcoded-count fix then cascaded into every existing test fixture
+that hand-lists Cleric's five supported spells: `cleric_finalize_test.go`,
+`level_up_test.go`, `requirements_detail_test.go`,
+`class_comprehensive_test.go` (both the shared valid-submission builder and
+the `SpellCount` table entry), and the `TestCreationRequirementsGolden`
+golden fixture (regenerated with `-update`, diff reviewed — exactly the
+expected `count`/`options`/nothing else). None of these needed new
+assertions, only the existing ones updated to name six spells instead of
+five — the same "loosened to stop failing" line every prior slice in this
+plan has drawn: these are updates to the actual, correct new behavior, not
+weakened checks.
+
+New dedicated coverage: `TestSanctuaryDeclaresTouchBonusActionAndOwnedConcentration`
+in `spells/cast_test.go`, `TestGuidanceDeclaresTouchAndOwnedConcentration`'s
+own shape (definition fields, clone independence, JSON round-trip) — the
+one piece nothing else exercises directly, since the fixture updates above
+only prove Sanctuary compiles as part of a full character, not that its
+`CastDefinition` shape itself is right in isolation.
+
+Full root module build/vet/test/lint clean. **This closes out the toolkit
+side of Sanctuary.** What's left is entirely outside this repository:
+rpg-api and rpg-dnd5e-web adoption, which is the actual "test in web" the
+user's original "all the way down" framing named, and cannot start until
+this PR (and #1812/#1813/#1814 beneath it) ship real tags Sanctuary can be
+pinned to.
+
 ## Guidance: post-roll check-offer plan
 
 The user chose Guidance as the next inspection candidate from the current
