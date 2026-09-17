@@ -102,6 +102,11 @@ func (h *Hide) Activate(ctx context.Context, owner core.Entity, input CombatAbil
 		Skill:     skills.Stealth,
 		DC:        dc,
 		Modifier:  sc.GetSkillModifier(skills.Stealth),
+		// The route the check was rolled through names both the die and the
+		// modifier; the checker's own id is written onto the die by the rules
+		// package (rpg-project#462 R7).
+		D20Source:      dnd5eEvents.RollSource{Ref: refs.Skills.Stealth(), Name: "Stealth"},
+		ModifierSource: dnd5eEvents.RollSource{Ref: refs.Skills.Stealth(), Name: "Stealth"},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to make stealth check: %w", err)

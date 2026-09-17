@@ -57,15 +57,15 @@ type SavingThrowInput struct {
 
 	// Contributions are already selected by the saving creature's condition
 	// owner. This evaluator applies no stacking or source-selection policy.
+	//
+	// ADVANTAGE ARRIVES ON THE CHAIN AND NOWHERE ELSE. This input used to
+	// carry HasAdvantage/HasDisadvantage booleans for advantage "the caller
+	// already knows about", recorded as a synthetic source named "Input" with
+	// no ref and no entity. A keep record names the rules that met and the
+	// entities that brought them (rpg-project#462 R7), which a boolean cannot
+	// do — so the door is the SavingThrowChain, where every real source
+	// already comes from.
 	Contributions []dnd5eEvents.DiceContribution
-
-	// HasAdvantage indicates rolling two d20s and taking the higher result
-	HasAdvantage bool
-
-	// HasDisadvantage indicates rolling two d20s and taking the lower result
-	// Note: If both HasAdvantage and HasDisadvantage are true, they cancel out
-	// and a single d20 is rolled (D&D 5e rule)
-	HasDisadvantage bool
 }
 
 // SavingThrowResult contains the outcome of a saving throw
@@ -90,16 +90,18 @@ type SavingThrowResult struct {
 	// Note: Unlike attack rolls, natural 20s don't automatically succeed saving throws in D&D 5e
 	IsNat20 bool
 
-	// AdvantageSources contains the sources that granted advantage on this save
-	AdvantageSources []dnd5eEvents.SaveModifierSource
-
-	// DisadvantageSources contains the sources that imposed disadvantage on this save
-	DisadvantageSources []dnd5eEvents.SaveModifierSource
-
 	// BonusSources contains the sources that added bonuses to this save
 	BonusSources []dnd5eEvents.SaveBonusSource
 
 	// Calculation is the complete sourced arithmetic checked for this result.
+	//
+	// It is also where advantage and disadvantage are recorded: the d20
+	// component's DiceTrace carries every face rolled, which one was kept, and
+	// the Keep record naming the sources that granted or imposed it. The
+	// result used to carry AdvantageSources/DisadvantageSources beside the
+	// dice they described; a parallel list can disagree with its dice and
+	// Keep cannot, so the list is gone rather than kept alongside
+	// (rpg-project#462 R1).
 	Calculation *dnd5eEvents.RollCalculation
 }
 
@@ -150,26 +152,7 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 		roller = dice.NewRoller()
 	}
 
-	// Initialize modifier tracking from input
-	hasAdvantage := input.HasAdvantage
-	hasDisadvantage := input.HasDisadvantage
-	var advantageSources []dnd5eEvents.SaveModifierSource
-	var disadvantageSources []dnd5eEvents.SaveModifierSource
 	var bonusSources []dnd5eEvents.SaveBonusSource
-
-	// Track input-provided advantage/disadvantage as sources for auditability
-	if input.HasAdvantage {
-		advantageSources = append(advantageSources, dnd5eEvents.SaveModifierSource{
-			Name:       "Input",
-			SourceType: "input",
-		})
-	}
-	if input.HasDisadvantage {
-		disadvantageSources = append(disadvantageSources, dnd5eEvents.SaveModifierSource{
-			Name:       "Input",
-			SourceType: "input",
-		})
-	}
 
 	chainEvent := &dnd5eEvents.SavingThrowChainEvent{
 		SaverID: input.SaverID,
@@ -193,22 +176,17 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 		return nil, rpgerr.Wrap(err, "failed to execute saving throw chain")
 	}
 
-	// Collect modifiers from chain (append to input sources)
-	if result.HasAdvantage() {
-		hasAdvantage = true
-		advantageSources = append(advantageSources, result.AdvantageSources...)
-	}
-	if result.HasDisadvantage() {
-		hasDisadvantage = true
-		disadvantageSources = append(disadvantageSources, result.DisadvantageSources...)
-	}
+	// Collect modifiers from the chain. The advantage and disadvantage sources
+	// go straight to the d20 roller as the rules that granted and imposed:
+	// nothing in between collapses them into a pair of booleans, so the keep
+	// record can name them.
+	granted := saveRollSources(result.AdvantageSources)
+	imposed := saveRollSources(result.DisadvantageSources)
 	bonusSources = append(bonusSources, result.BonusSources...)
 
 	bonusComponents := make([]dnd5eEvents.RollComponent, 0, len(bonusSources))
 	for i, source := range bonusSources {
-		rollSource := cloneRollSource(dnd5eEvents.RollSource{
-			Ref: source.SourceRef, Name: source.Name, SourceID: source.EntityID,
-		})
+		rollSource := dnd5eEvents.CloneRollSource(source.RollSource())
 		if err := validateCalculationSource("bonus", rollSource); err != nil {
 			return nil, rpgerr.Wrapf(err, "bonus source %d", i)
 		}
@@ -218,13 +196,23 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 		})
 	}
 
-	// D&D 5e Rule: Advantage and Disadvantage cancel each other out.
-	effectiveAdvantage := hasAdvantage && !hasDisadvantage
-	effectiveDisadvantage := hasDisadvantage && !hasAdvantage
-	roll, d20Trace, err := rollD20(ctx, roller, effectiveAdvantage, effectiveDisadvantage)
+	// ONE D20 ROLLER for the whole rulebook: it decides how many dice the
+	// granted and imposed sources call for, which face counts, and what the
+	// keep record says. This package no longer carries its own switch.
+	//
+	// The d20 is the SAVER'S die (R7): the source's ref and name say the rule
+	// that caused the save, and its entity is the creature that rolled it, so
+	// a client can draw the die in its owner's style without guessing from the
+	// beat's actor.
+	d20Source := dnd5eEvents.CloneRollSource(input.D20Source)
+	d20Source.SourceID = input.SaverID
+	d20, err := rolls.RollD20(ctx, &rolls.RollD20Input{
+		Roller: roller, Source: d20Source, Granted: granted, Imposed: imposed,
+	})
 	if err != nil {
-		return nil, err
+		return nil, rpgerr.Wrap(err, "failed to roll saving throw d20")
 	}
+	roll := d20.Face
 
 	resolved, err := rolls.ResolveContributions(ctx, &rolls.ResolveContributionsInput{
 		Roller: roller, Contributions: input.Contributions,
@@ -236,67 +224,42 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 	modifier := input.Modifier
 	components := make([]dnd5eEvents.RollComponent, 0, 2+len(bonusComponents)+len(resolved.Components))
 	components = append(components,
-		dnd5eEvents.RollComponent{Source: cloneRollSource(input.D20Source), Dice: d20Trace},
-		dnd5eEvents.RollComponent{Source: cloneRollSource(input.ModifierSource), Modifier: &modifier},
+		dnd5eEvents.RollComponent{Source: d20Source, Dice: d20.Trace},
+		dnd5eEvents.RollComponent{Source: dnd5eEvents.CloneRollSource(input.ModifierSource), Modifier: &modifier},
 	)
 	components = append(components, bonusComponents...)
 	components = append(components, resolved.Components...)
-	calculation := calculationFor(components)
+	calculation := dnd5eEvents.NewRollCalculation(components)
 	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
 		return nil, rpgerr.Wrap(err, "saving throw calculation is invalid")
 	}
 
 	return &SavingThrowResult{
-		Roll:                roll,
-		Total:               calculation.Total,
-		DC:                  input.DC,
-		Success:             calculation.Total >= input.DC,
-		IsNat1:              roll == 1,
-		IsNat20:             roll == 20,
-		AdvantageSources:    advantageSources,
-		DisadvantageSources: disadvantageSources,
-		BonusSources:        bonusSources,
-		Calculation:         calculation,
+		Roll:         roll,
+		Total:        calculation.Total,
+		DC:           input.DC,
+		Success:      calculation.Total >= input.DC,
+		IsNat1:       roll == 1,
+		IsNat20:      roll == 20,
+		BonusSources: bonusSources,
+		Calculation:  calculation,
 	}, nil
 }
 
-func rollD20(
-	ctx context.Context,
-	roller dice.Roller,
-	advantage bool,
-	disadvantage bool,
-) (int, *dnd5eEvents.DiceTrace, error) {
-	if !advantage && !disadvantage {
-		face, err := roller.Roll(ctx, 20)
-		if err != nil {
-			return 0, nil, err
-		}
-		return face, &dnd5eEvents.DiceTrace{
-			Notation: "1d20", DieSize: 20, OriginalRolls: []int{face},
-			FinalRolls: []int{face}, Subtotal: face,
-		}, nil
+// saveRollSources maps the chain's modifier sources onto the calculation's
+// sourced-fact type, one to one: SourceRef->Ref, Name->Name, SourceType->Label,
+// EntityID->SourceID. Whose rule and whose die are different facts and both
+// survive the mapping.
+func saveRollSources(sources []dnd5eEvents.SaveModifierSource) []dnd5eEvents.RollSource {
+	if len(sources) == 0 {
+		return nil
 	}
 
-	faces, err := roller.RollN(ctx, 2, 20)
-	if err != nil {
-		return 0, nil, err
+	mapped := make([]dnd5eEvents.RollSource, len(sources))
+	for i, source := range sources {
+		mapped[i] = source.RollSource()
 	}
-	if len(faces) != 2 {
-		return 0, nil, rpgerr.Newf(rpgerr.CodeInternal, "d20 roller returned %d faces, want 2", len(faces))
-	}
-	kept := 0
-	if advantage && faces[1] > faces[0] {
-		kept = 1
-	}
-	if disadvantage && faces[1] < faces[0] {
-		kept = 1
-	}
-	face := faces[kept]
-	return face, &dnd5eEvents.DiceTrace{
-		Notation: "2d20", DieSize: 20,
-		OriginalRolls: append([]int(nil), faces...),
-		FinalRolls:    append([]int(nil), faces...), KeptIndices: []int{kept}, Subtotal: face,
-	}, nil
+	return mapped
 }
 
 func validateCalculationSource(kind string, source dnd5eEvents.RollSource) error {
@@ -308,30 +271,4 @@ func validateCalculationSource(kind string, source dnd5eEvents.RollSource) error
 		return rpgerr.Wrapf(err, "%s source is invalid", kind)
 	}
 	return nil
-}
-
-func cloneRollSource(source dnd5eEvents.RollSource) dnd5eEvents.RollSource {
-	clone := source
-	if source.Ref != nil {
-		ref := *source.Ref
-		clone.Ref = &ref
-	}
-	return clone
-}
-
-func calculationFor(components []dnd5eEvents.RollComponent) *dnd5eEvents.RollCalculation {
-	calculation := &dnd5eEvents.RollCalculation{Components: components}
-	for _, component := range components {
-		if component.Dice != nil {
-			if component.SubtractDice {
-				calculation.Total -= component.Dice.Subtotal
-			} else {
-				calculation.Total += component.Dice.Subtotal
-			}
-		}
-		if component.Modifier != nil {
-			calculation.Total += *component.Modifier
-		}
-	}
-	return calculation
 }

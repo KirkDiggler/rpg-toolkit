@@ -195,7 +195,9 @@ func validSecondWindCalculation() *dnd5eEvents.RollCalculation {
 	return &dnd5eEvents.RollCalculation{
 		Components: []dnd5eEvents.RollComponent{
 			{
-				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Source: dnd5eEvents.RollSource{
+					Ref: refs.Features.SecondWind(), Name: "Second Wind", SourceID: "fighter-1",
+				},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      "1d10",
 					DieSize:       10,
@@ -229,7 +231,7 @@ func validSecondWindCalculationWithRerolls() *dnd5eEvents.RollCalculation {
 	return &dnd5eEvents.RollCalculation{
 		Components: []dnd5eEvents.RollComponent{
 			{
-				Source: dnd5eEvents.RollSource{Ref: &componentRef, Name: "Second Wind"},
+				Source: dnd5eEvents.RollSource{Ref: &componentRef, Name: "Second Wind", SourceID: "fighter-1"},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      "2d10",
 					DieSize:       10,

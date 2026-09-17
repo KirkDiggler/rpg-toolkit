@@ -37,6 +37,14 @@ type Offer struct {
 	// notation rather than a number because nothing has been rolled: whoever
 	// takes the offer rolls it, with their own roller.
 	Die string
+
+	// SourceID is the entity whose die this is — the BARD who inspired, the
+	// cleric who guided — which is a different fact from Audience, the member
+	// being asked. Required: when the die is taken it lands on the
+	// calculation as its own component, and every dice pool names the entity
+	// whose rule threw it (rpg-project#462 R7). A client that draws each die
+	// in its owner's style reads this, never the beat's actor.
+	SourceID string
 }
 
 // PostRollOfferEvent is folded AFTER the d20 is rolled and BEFORE anything

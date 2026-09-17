@@ -257,8 +257,9 @@ func (s *SneakAttackCondition) onDamageChain(
 			Source: dnd5eEvents.DamageSourceFeature,
 			Roll: dnd5eEvents.RollComponent{
 				Source: dnd5eEvents.RollSource{
-					Ref:  refs.Features.SneakAttack(),
-					Name: "Sneak Attack",
+					Ref:      refs.Features.SneakAttack(),
+					Name:     "Sneak Attack",
+					SourceID: s.CharacterID,
 				},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      dice.SimplePool(len(sneakDice), 6, 0).Notation(),

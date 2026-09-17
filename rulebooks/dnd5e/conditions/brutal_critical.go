@@ -214,8 +214,9 @@ func (b *BrutalCriticalCondition) onDamageChain(
 			Source: dnd5eEvents.DamageSourceFeature,
 			Roll: dnd5eEvents.RollComponent{
 				Source: dnd5eEvents.RollSource{
-					Ref:  refs.Features.BrutalCritical(),
-					Name: "Brutal Critical",
+					Ref:      refs.Features.BrutalCritical(),
+					Name:     "Brutal Critical",
+					SourceID: b.MemberID,
 				},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      dice.SimplePool(len(extraRolls), dieSize, 0).Notation(),
