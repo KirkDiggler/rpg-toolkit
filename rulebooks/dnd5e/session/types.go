@@ -201,6 +201,11 @@ type Atlas struct {
 	// told "n" for a dungeon whose author never chose a direction would open
 	// the camera on a decision nobody made.
 	Start *AtlasStart `json:"start,omitempty"`
+
+	// RoomSceneJSON is the canonical, validated room presentation encoded as
+	// JSON. An empty string means the authored world predates room scenes;
+	// non-empty values are never silently discarded when invalid.
+	RoomSceneJSON string `json:"room_scene_json,omitempty"`
 }
 
 // AtlasStart is the authored way in: a cell, and the direction the party is
