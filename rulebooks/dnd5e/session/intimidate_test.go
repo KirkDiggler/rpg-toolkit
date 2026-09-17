@@ -15,10 +15,13 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -42,10 +45,17 @@ func TestIntimidateSuite(t *testing.T) {
 
 func (s *IntimidateSuite) SetupTest() {
 	s.sessions, s.encounters, s.authored = newFakeSessions(), newFakeEncounters(), nil
-	// CHA 8 is a -1 modifier, so a d20 of 10 totals 9 — exactly the goblin's
-	// derived DC, which a total that MEETS beats. A d20 of 5 totals 4 and
-	// does not. Both scenes turn on one die.
-	s.characters = newFakeCharacters(armedFighter("alice"))
+	// ALICE IS PROFICIENT IN INTIMIDATION, and every scene in this suite
+	// depends on it: an untrained checker rolls the verb at disadvantage
+	// (rpg-project#457 R2), which costs two faces instead of one and would
+	// make every scripted die in this file about the untrained rule rather
+	// than about the thing it says it tests. The rule's own scenes are at the
+	// bottom of this file, and they script two faces on purpose.
+	//
+	// CHA 8 is a -1 modifier and proficiency is +2, so a d20 of 10 totals 11
+	// — over the goblin's derived DC of 9. A d20 of 5 totals 6 and does not.
+	// Both scenes turn on one die.
+	s.characters = newFakeCharacters(talkingFighter("alice"))
 }
 
 // aYard opens a session with alice alone in an 8x8 hall, then spawns a goblin
@@ -165,7 +175,7 @@ func (s *IntimidateSuite) TestTheDerivedDifficultyIsTheGoblinsPassiveInsight() {
 
 	s.Equal(9, out.DC, "10 + WIS 8's -1")
 	s.Equal("intimidation", out.Applied.Ability, "the one derived route")
-	s.Equal(9, out.Total, "the d20's 10 with CHA 8's -1")
+	s.Equal(11, out.Total, "the d20's 10 with CHA 8's -1 and proficiency's +2")
 	s.True(out.Beaten, "a total that meets the DC beats it")
 	s.Equal("goblin", out.Target)
 }
@@ -189,7 +199,7 @@ func (s *IntimidateSuite) TestAMissedThreatLandsNothing() {
 	s.Require().NoError(err)
 
 	s.False(out.Beaten)
-	s.Equal(4, out.Total, "5 with CHA 8's -1")
+	s.Equal(6, out.Total, "5 with CHA 8's -1 and proficiency's +2")
 	s.Equal(9, out.DC)
 	s.False(s.held(mgr, encounter.DeedIntimidate), "nothing for the mind to read")
 }
@@ -357,7 +367,7 @@ func (s *IntimidateSuite) TestABeatenThreatSurfacesAsATypedEvent() {
 	}
 	s.Require().NotNil(found, "the threat reached alice's stream as its own kind, not EventUnknown")
 	s.Equal(session.IntimidatedBody{
-		Actor: "alice", Target: "goblin", DC: 9, Total: 9, Beaten: true,
+		Actor: "alice", Target: "goblin", DC: 9, Total: 11, Beaten: true,
 	}, found.Body, "the numbers the response reported, on the wire")
 	s.Equal(out.Seq, found.Seq, "IntimidateOutput.Seq references this event")
 
@@ -384,7 +394,7 @@ func (s *IntimidateSuite) TestAMissedThreatSurfacesToo() {
 			continue
 		}
 		s.Equal(session.IntimidatedBody{
-			Actor: "alice", Target: "goblin", DC: 9, Total: 4, Beaten: false,
+			Actor: "alice", Target: "goblin", DC: 9, Total: 6, Beaten: false,
 		}, event.Body, "the roll the table saw, and the only record of it")
 		return
 	}
@@ -505,8 +515,9 @@ func (s *IntimidateSuite) answer(mgr *session.Manager, choice session.ReactChoic
 // stops after the d20 and asks them, and the answer finishes the same
 // attempt. Nothing is re-rolled.
 //
-// The die is what decides it: 6 on the d20 with CHA 8's -1 is a 5, which
-// misses the goblin's 9; the d4's own face makes it 9, which meets it.
+// The die is what decides it: 6 on the d20 with CHA 8's -1 and proficiency's
+// +2 is a 7, which misses the goblin's 9; the d4's own 4 makes it 11, which
+// beats it.
 func (s *IntimidateSuite) TestAGuidedThreatStopsAndAsks() {
 	mgr := s.aYard([]int{6, 4})
 	s.guide()
@@ -522,7 +533,7 @@ func (s *IntimidateSuite) TestAGuidedThreatStopsAndAsks() {
 	s.Require().NotNil(out.Roll)
 	s.Equal(6, *out.Roll, "the d20 the player is deciding about")
 	s.Equal(session.IntimidateOutput{
-		Paused: true, Total: 5, Roll: out.Roll, Target: "goblin",
+		Paused: true, Total: 7, Roll: out.Roll, Target: "goblin",
 		Seq: out.Seq, Saved: out.Saved, Delivery: out.Delivery,
 	}, *out, "the pre-offer total, and no DC, no applied route and no verdict")
 	s.False(s.held(mgr, encounter.DeedIntimidate), "and nothing has reached the goblin")
@@ -592,10 +603,15 @@ func (s *IntimidateSuite) TestAnUnauthoredSpawnStillDerives() {
 func (s *IntimidateSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 	const fact = "sergeant-cowed"
 	s.authored = func(in *session.SpawnInput) {
-		in.OnIntimidated = fact
+		in.Reactions = map[string][]session.Reaction{
+			"intimidated": {{Weight: 1, Fact: fact}},
+		}
 		in.Faction = "raiders"
 	}
-	mgr := s.aCamp(fact, []int{10})
+	// TWO FACES: the d20 for the check, then the world's own die for the
+	// reaction table — one entry, so a d1, and the face is the only one there
+	// is (rpg-project#458).
+	mgr := s.aCamp(fact, []int{10, 1})
 
 	out, err := s.threaten(mgr)
 	s.Require().NoError(err)
@@ -678,4 +694,17 @@ func (s *IntimidateSuite) aCamp(fact string, rolls []int) *session.Manager {
 	s.Require().Equal(session.ClockTurn, turn.Clock)
 
 	return mgr
+}
+
+// talkingFighter is [armedFighter] who took Intimidation and Persuasion at
+// creation — the fixture every scene above needs, so that the untrained rule
+// is exercised by the scenes that are about it and by no others.
+func talkingFighter(id string) *character.Data {
+	sheet := armedFighter(id)
+	sheet.Skills = map[skills.Skill]shared.ProficiencyLevel{
+		skills.Intimidation: shared.Proficient,
+		skills.Persuasion:   shared.Proficient,
+	}
+
+	return sheet
 }

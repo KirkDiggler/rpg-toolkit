@@ -94,14 +94,8 @@ func (m *Manager) answerCheckOffer(
 		}); err != nil {
 			return nil, fmt.Errorf("react: %w", translate(err))
 		}
-	} else if _, err := scope.enc.Intimidate(&encounter.IntimidateInput{
-		Actor:  encounter.MemberID(payload.Audience),
-		Target: encounter.MemberID(payload.Target),
-		Beaten: out.Result.Success,
-		DC:     out.Applied.DC,
-		Total:  out.Result.Total,
-	}); err != nil {
-		return nil, fmt.Errorf("react: %w", translate(err))
+	} else if err := m.landResumedSocial(ctx, scope, payload, out); err != nil {
+		return nil, fmt.Errorf("react: %w", err)
 	}
 
 	// Closed BEFORE the beat is committed, so a failure to save leaves a
@@ -143,4 +137,49 @@ func checkOfferDeclaration(session, member string, window interrupt.Window) (Dec
 		TargetKind: TargetNone,
 		Candidates: []TargetCandidate{},
 	}, nil
+}
+
+// landResumedSocial finishes the social verb a check-offer window paused,
+// through the same composition op the unpaused path uses.
+//
+// THE PAYLOAD SAYS WHICH VERB, and this switch is why it has to
+// ([checkOfferWindowPayload.Verb]). While Intimidate was the only social verb,
+// "a target and no door" named it unambiguously; with two, a resumed Persuade
+// that landed an Intimidate would put the wrong deed on a mind — the coward
+// would take fear from a conversation it was talked round by. The payload is
+// refused at the trust boundary when it names neither.
+//
+// NOTHING IS RE-ROLLED. The verdict handed in is the resumed machine's, offer
+// included; this only carries it across the seam. The action, if one was
+// spent, was spent before the question was asked.
+func (m *Manager) landResumedSocial(
+	ctx context.Context, scope *writeScope, payload checkOfferWindowPayload, out *resolution.CheckOutput,
+) error {
+	landing := &socialLanding{
+		Actor:  encounter.MemberID(payload.Audience),
+		Target: encounter.MemberID(payload.Target),
+		Beaten: out.Result.Success,
+		DC:     out.Applied.DC,
+		Total:  out.Result.Total,
+	}
+
+	var spec socialVerb
+	switch payload.Verb {
+	case VerbIntimidate:
+		spec = m.intimidateVerb()
+	case VerbPersuade:
+		spec = m.persuadeVerb()
+	default:
+		// Unreachable: thawCheckOfferPayload refuses a target under any other
+		// verb. Refusing rather than defaulting keeps the day that stops being
+		// true from silently landing a threat.
+		return fmt.Errorf("%w: a paused check names target %q under verb %q",
+			ErrInvalidSession, payload.Target, payload.Verb)
+	}
+
+	if _, _, err := spec.land(ctx, scope.enc, landing); err != nil {
+		return translate(err)
+	}
+
+	return nil
 }

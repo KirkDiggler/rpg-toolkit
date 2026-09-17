@@ -311,6 +311,13 @@ func kindFor(beat string) EventKind {
 	// the only account of the roll a client ever gets (rpg-project#454).
 	case encounter.BeatIntimidated:
 		return EventIntimidated
+	// The appeal, and what the creature did about either of them. Named by
+	// the composition's own exported constants for BeatIntimidated's reason
+	// (rpg-project#458).
+	case encounter.BeatPersuaded:
+		return EventPersuaded
+	case encounter.BeatReacted:
+		return EventReacted
 	// The holdings verbs, named by what the record says (rpg-project#368
 	// §4.1). "looted", "held" and "dropped" are the composition's own words
 	// for what it did, so they cross unchanged — unlike "down"/"downed"
@@ -426,6 +433,44 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return IntimidatedBody{Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
+	case EventPersuaded:
+		var p struct {
+			Actor  string `json:"actor"`
+			Target string `json:"target"`
+			DC     int    `json:"dc"`
+			Total  int    `json:"total"`
+			Beaten bool   `json:"beaten"`
+		}
+		// [EventIntimidated]'s gate, for its reason: actor and target gate the
+		// body and the numbers do not.
+		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Target == "" {
+			return nil
+		}
+		return PersuadedBody{Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
+	case EventReacted:
+		var p struct {
+			Creature string `json:"creature"`
+			Verb     string `json:"verb"`
+			Beaten   bool   `json:"beaten"`
+			Roll     int    `json:"roll"`
+			Of       int    `json:"of"`
+			Entry    int    `json:"entry"`
+			Word     string `json:"word"`
+			Say      string `json:"say"`
+			Fact     string `json:"fact"`
+		}
+		// The creature, the verb and a die that was actually rolled gate the
+		// body. `of` is at least 1 whenever an entry fired, so a zero here is
+		// a beat this build never wrote — and `word` and `say` are both
+		// legitimately empty, which is why neither gates.
+		if json.Unmarshal(payload, &p) != nil || p.Creature == "" || p.Verb == "" || p.Of < 1 {
+			return nil
+		}
+		return ReactedBody{
+			Creature: p.Creature, Verb: p.Verb, Beaten: p.Beaten,
+			Roll: p.Roll, Of: p.Of, Entry: p.Entry,
+			Word: p.Word, Say: p.Say, Fact: p.Fact,
+		}
 	case EventTurnEnded:
 		var p struct {
 			Member string `json:"member"`
