@@ -115,6 +115,16 @@ type IntimidateInput struct {
 	DC    int
 	Total int
 
+	// Calculation is the full sourced arithmetic behind Total — the d20 pool
+	// with every face it threw and the keep record naming the rule that
+	// decided which one counted. CARRIED, NEVER COMPARED, exactly like DC and
+	// Total; it rides the beat so the story can say "2d20 [7, 18] kept 7 ·
+	// disadvantage: Untrained" instead of one number (rpg-project#462).
+	//
+	// Optional. When present it must describe Total and open with a d20 pool,
+	// or the attempt is refused rather than written down wrong.
+	Calculation *RollCalculation
+
 	// Roller is THE WORLD'S DIE, the one the answer table is picked with.
 	// REQUIRED — supplied, never defaulted ([ErrNoRoller]), for
 	// resolution.CheckInput.Roller's standing reason: a silent default puts
@@ -172,7 +182,7 @@ func (e *Encounter) Intimidate(ctx context.Context, in *IntimidateInput) (*Intim
 	out, err := e.social(ctx, socialInput{
 		verb: DeedIntimidate, beat: BeatIntimidated, tag: "intimidate",
 		actor: in.Actor, target: in.Target, beaten: in.Beaten,
-		dc: in.DC, total: in.Total, roller: in.Roller,
+		dc: in.DC, total: in.Total, calculation: in.Calculation, roller: in.Roller,
 	})
 	if err != nil {
 		return nil, err
@@ -185,15 +195,16 @@ func (e *Encounter) Intimidate(ctx context.Context, in *IntimidateInput) (*Intim
 // takes it in. Unexported: the seam's own words are [IntimidateInput] and
 // [PersuadeInput], and this is the machine underneath them.
 type socialInput struct {
-	verb   string
-	beat   string
-	tag    string
-	actor  MemberID
-	target MemberID
-	beaten bool
-	dc     int
-	total  int
-	roller dice.Roller
+	verb        string
+	beat        string
+	tag         string
+	actor       MemberID
+	target      MemberID
+	beaten      bool
+	dc          int
+	total       int
+	calculation *RollCalculation
+	roller      dice.Roller
 }
 
 // socialOutput is what the shared body reached.
@@ -285,14 +296,26 @@ func (e *Encounter) social(ctx context.Context, in socialInput) (socialOutput, e
 // the reason a struck beat writes `critical: false`: absent must not become a
 // third state for a reader downstream.
 func (e *Encounter) appendSocialBeat(in socialInput, witnesses []MemberID, at uint64) (uint64, error) {
-	payload, err := json.Marshal(map[string]interface{}{
+	body := map[string]interface{}{
 		"beat":   in.beat,
 		"actor":  string(in.actor),
 		"target": string(in.target),
 		"dc":     in.dc,
 		"total":  in.total,
 		"beaten": in.beaten,
-	})
+	}
+	if in.calculation != nil {
+		// Refused here rather than written: a beat is what the table saw, and
+		// arithmetic that cannot have happened as told is not something
+		// anybody saw. Absent stays absent — the key is omitted, never a
+		// zero-valued calculation, which would be a third state downstream.
+		if err := validateRecordedTotal(in.calculation, in.total); err != nil {
+			return 0, fmt.Errorf("%s: calculation: %w", in.verb, err)
+		}
+		body["calculation"] = in.calculation
+	}
+
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return 0, fmt.Errorf("%s: marshal beat: %w", in.verb, err)
 	}

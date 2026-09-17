@@ -397,8 +397,11 @@ func TestRollTraceCarrierShapes(t *testing.T) {
 	require.Equal(t, []string{"Ref", "Name", "Label", "SourceID"}, structFieldNames(encounter.RollSource{}))
 	require.Equal(t, []string{"DieIndex", "Before", "After", "Source"}, structFieldNames(encounter.DiceReroll{}))
 	require.Equal(t, []string{
-		"Notation", "DieSize", "OriginalRolls", "Rerolls", "FinalRolls", "KeptIndices", "Subtotal",
-	}, structFieldNames(encounter.DiceTrace{}))
+		"Notation", "DieSize", "OriginalRolls", "Rerolls", "FinalRolls", "KeptIndices", "Subtotal", "Keep",
+	}, structFieldNames(encounter.DiceTrace{}),
+		"Keep is the sibling of Rerolls: Rerolls says why the faces changed, Keep says why one of them counted")
+	require.Equal(t, []string{"Rule", "Granted", "Imposed"}, structFieldNames(encounter.DiceKeep{}),
+		"the rule, and the sources on each side of it — a cancellation names both")
 	require.Equal(t, []string{"Source", "Dice", "Modifier", "SubtractDice"}, structFieldNames(encounter.RollComponent{}))
 	require.Equal(t, []string{"Components", "Total"}, structFieldNames(encounter.RollCalculation{}))
 	require.Equal(t, []string{"Source", "Roll", "DamageType", "Multiplier"},
