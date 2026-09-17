@@ -50,13 +50,22 @@ func TestProjectAtlasNilRoomSceneIsAbsent(t *testing.T) {
 }
 
 func TestProjectAtlasRoomSceneRejectsInvalidWithoutPartialAtlas(t *testing.T) {
-	bad := validRoomScene()
-	bad.Version = 99
-	bad.Scene.Items = []encounter.RoomSceneItem{{Kind: encounter.RoomSceneKindProp, ID: "p", AssetRef: "a", Transform: encounter.RoomSceneTransform{X: math.NaN()}}}
-	out, err := projectAtlas(*atlasWithScene(bad))
-	require.ErrorIs(t, err, ErrInvalidWorld)
-	require.Empty(t, out.RoomSceneJSON)
-	require.Empty(t, out.Cells)
+	cases := map[string]func(*encounter.RoomScenePresentation){
+		"version": func(p *encounter.RoomScenePresentation) { p.Version = 99 },
+		"frame": func(p *encounter.RoomScenePresentation) { p.Frame.HorizontalPlane = "wrong" },
+		"graph": func(p *encounter.RoomScenePresentation) { p.Scene.Items = []encounter.RoomSceneItem{{Kind: encounter.RoomSceneKindProp, ID: "p", AssetRef: "a", ParentID: "missing"}} },
+		"nonfinite": func(p *encounter.RoomScenePresentation) { p.Scene.Items = []encounter.RoomSceneItem{{Kind: encounter.RoomSceneKindProp, ID: "p", AssetRef: "a", Transform: encounter.RoomSceneTransform{X: math.NaN()}}} },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			bad := validRoomScene()
+			mutate(bad)
+			out, err := projectAtlas(*atlasWithScene(bad))
+			require.ErrorIs(t, err, ErrInvalidWorld)
+			require.Empty(t, out.RoomSceneJSON)
+			require.Empty(t, out.Cells)
+		})
+	}
 }
 
 func atlasWithScene(scene *encounter.RoomScenePresentation) *encounter.Atlas {
