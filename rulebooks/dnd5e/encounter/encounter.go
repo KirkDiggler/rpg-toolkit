@@ -697,6 +697,18 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if in.Witness == nil {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoWitness)
 		}
+		// THE COMBINATION THE PROJECTION CANNOT FILTER (issue #1753): a room
+		// scene presentation is one room's full layout, and beside concealed
+		// structure there is no member projection of it that does not guess
+		// which mesh stands in whose room. compileField already refused the
+		// region half; the concealed-door half is only known here, beside
+		// the capabilities, and is refused the same way rather than carried
+		// into a field the atlas could not project.
+		if in.Field.RoomScene != nil {
+			return nil, fmt.Errorf(
+				"newencounter: room scene presentation rides one unconcealed region and the field carries concealed structure: %w",
+				ErrNoField)
+		}
 	}
 
 	// Every authored seat is a whole offset cell that some region owns. Asked

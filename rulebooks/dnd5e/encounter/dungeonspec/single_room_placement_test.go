@@ -66,8 +66,8 @@ func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsSortByID() {
 	yes, no := true, false
 	spec := RoomSource{
 		Scene: encounter.RoomVisualScene{Items: []encounter.RoomSceneItem{
-			{ID: "b", Kind: propKind, Transform: encounter.RoomSceneTransform{X: 1}},
-			{ID: "a", Kind: propKind, Transform: encounter.RoomSceneTransform{X: 2}},
+			{ID: "b", Kind: encounter.RoomSceneKindProp, Transform: encounter.RoomSceneTransform{X: 1}},
+			{ID: "a", Kind: encounter.RoomSceneKindProp, Transform: encounter.RoomSceneTransform{X: 2}},
 		}},
 		Gameplay: RoomGameplaySource{PropDeclarations: map[string]RoomPropDeclaration{
 			"b": {BlocksMovement: &yes, BlocksLineOfSight: &no, Footprint: RoomFootprint{Width: 1, Depth: 1}},
@@ -100,7 +100,7 @@ func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsRefuseIneligibleSourc
 	yes := true
 	dangling := &RoomSource{
 		Scene: encounter.RoomVisualScene{Items: []encounter.RoomSceneItem{
-			{ID: "table", Kind: propKind, Transform: encounter.RoomSceneTransform{X: 1}},
+			{ID: "table", Kind: encounter.RoomSceneKindProp, Transform: encounter.RoomSceneTransform{X: 1}},
 		}},
 		Gameplay: RoomGameplaySource{PropDeclarations: map[string]RoomPropDeclaration{
 			"ghost": {BlocksMovement: &yes, BlocksLineOfSight: &yes,
@@ -112,7 +112,7 @@ func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsRefuseIneligibleSourc
 
 	flagless := &RoomSource{
 		Scene: encounter.RoomVisualScene{Items: []encounter.RoomSceneItem{
-			{ID: "table", Kind: propKind},
+			{ID: "table", Kind: encounter.RoomSceneKindProp},
 		}},
 		Gameplay: RoomGameplaySource{PropDeclarations: map[string]RoomPropDeclaration{
 			"table": {Footprint: RoomFootprint{Width: 1, Depth: 1}},

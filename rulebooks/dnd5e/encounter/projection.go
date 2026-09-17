@@ -73,9 +73,38 @@ import (
 //
 // Returns ErrNotMember for an ID this encounter does not hold — a
 // member-scoped answer for nobody is a question with no honest answer.
+//
+// # What is withheld, and what is refused
+//
+// A field that carries a room scene presentation is single-room v3 content:
+// one unconcealed region, no concealed structure anywhere — construction
+// refuses the other combinations ([compileField] and the seams around it).
+// The projection's own guarantee is stated anyway, because this is the seam
+// that hands the FULL scene to one member: if a field ever reached here
+// carrying both, the honest answer is the refusal, not a guess about which
+// mesh stands in whose room — no reader of this atlas can re-attribute a
+// continuous scene to regions it is not shown. Refused, by name.
+//
+// [Atlas.Placed] is WITHHELD here rather than filtered: a footprint is a
+// continuous rectangle with no anchor cell, and slicing one at a hidden
+// region's edge would invent geometry the author never drew. A concealed
+// legacy field (one that carries placed contributors but no room scene)
+// therefore projects without its placed list — the reader that knows the
+// legacy concealed dialect does not know the new geometry either, and
+// withholding cannot leak what filtering would have had to approximate.
 func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	if _, ok := e.members[member]; !ok {
 		return Atlas{}, fmt.Errorf("atlas for %q: %w", member, ErrNotMember)
+	}
+	// THE COMBINATION THE PROJECTION CANNOT HONESTLY FILTER (issue #1753):
+	// a field with both a room scene presentation and concealed structure.
+	// Construction refuses it first ([compileField], and the concealed-door
+	// half at both seams); this guard is the projection's own law, so the
+	// output boundary never trusts the input boundary it sits behind.
+	if e.field.roomScene != nil && e.world.conceals() {
+		return Atlas{}, fmt.Errorf(
+			"atlas for %q: room scene presentation rides one unconcealed region and cannot be projected beside concealed structure: %w",
+			member, ErrNoField)
 	}
 
 	full, err := e.Atlas()

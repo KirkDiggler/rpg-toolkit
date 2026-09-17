@@ -511,9 +511,20 @@ type SegmentInput struct {
 // make its floor, and the props, walls and doors standing on it
 // (rpg-project#256).
 type FieldInput struct {
-	// RoomScene is the lossless presentation authored alongside a v3 room.
-	// It is carried verbatim by the encounter boundary and is never read by
-	// gameplay geometry.
+	// RoomScene is the lossless presentation authored alongside a v3 room
+	// (issue #1753). VALIDATED AND SNAPSHOT at construction — the ONE
+	// validator ([ValidateRoomScene], room_scene_validate.go, the same walk
+	// the source decoder delegates to) runs at both construction seams, and
+	// the compiled field deep-copies it, so a caller editing their scene
+	// pointer afterwards cannot change a running field, a saved blob or an
+	// atlas. Nil is legal and means a field without one — every field
+	// authored before v3 — and nil it stays on every carrier it rides.
+	//
+	// A field carrying one is SINGLE-ROOM v3 content: one unconcealed
+	// region, no concealed structure anywhere (the scene is one room's full
+	// layout, and no member projection of it beside hidden space is honest —
+	// the unsupported combinations are refused by name, never
+	// half-filtered). Gameplay geometry never reads it.
 	RoomScene *RoomScenePresentation
 
 	// Canvas is what this field DECLARES about the map its regions paint:

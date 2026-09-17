@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -121,6 +122,15 @@ type field struct {
 	// lanes; see placed_props.go.
 	placed []placedContributor
 
+	// roomScene is THE ROOM SCENE PRESENTATION (issue #1753): the validated,
+	// deep-copied v3 visual scene authored beside the field's gameplay
+	// geometry — what ToData and the atlas carry out, never read by gameplay
+	// geometry. Nil for every field without one, and nil it stays: see
+	// [FieldInput.RoomScene]. A compiled field that carries one is a SINGLE
+	// UNCONCEALED-REGION field — compileField refuses the unsupported
+	// combinations the projection could not filter honestly.
+	roomScene *RoomScenePresentation
+
 	// plane is the continuous frame the placed facts are measured in: this
 	// field's own hex layout at FeetPerCell across the flats, so a cell
 	// centre means the same point to a footprint as to the grid that
@@ -213,6 +223,33 @@ func compileField(in FieldInput) (*field, error) {
 		return nil, fmt.Errorf("field has no regions: %w", ErrNoField)
 	}
 
+	// THE ROOM SCENE PRESENTATION, validated before anything else is built
+	// (R5) — the presentation rides the field and its one owner's validator
+	// runs here for both construction seams (see room_scene_validate.go).
+	// A field carrying one is single-room v3 content: the scene is ONE
+	// room's full layout, so a field with several regions or a concealed one
+	// has no honest projection of it — every member would receive the hidden
+	// layout, or the scene's meshes could not be attributed to a region at
+	// all without guessing ownership from a mesh. Refused, by name, rather
+	// than half-filtered (issue #1753; the supported combination is one
+	// unconcealed region).
+	if in.RoomScene != nil {
+		if len(in.Regions) > 1 {
+			return nil, fmt.Errorf(
+				"room scene presentation is one room's content and the field carries %d regions: %w",
+				len(in.Regions), ErrNoField)
+		}
+		for _, r := range in.Regions {
+			if r.Concealed {
+				return nil, fmt.Errorf(
+					"room scene presentation is one room's content and region %q is concealed: %w", r.ID, ErrNoField)
+			}
+		}
+		if defects := ValidateRoomScene(in.RoomScene); len(defects) > 0 {
+			return nil, fmt.Errorf("room scene presentation: %s: %w", joinRoomSceneDefects(defects), ErrNoField)
+		}
+	}
+
 	f := &field{
 		void:         in.Canvas.Void,
 		orientation:  in.Canvas.Orientation,
@@ -298,7 +335,23 @@ func compileField(in FieldInput) (*field, error) {
 	qMin, qMax, rMin, rMax := cellBounds(f.cells)
 	f.width, f.height = 2*max(-qMin, qMax+1), 2*max(-rMin, rMax+1)
 
+	// The presentation, snapshotted AFTER everything else validated (R5:
+	// no observable state until construction succeeds) — the one deep copy
+	// every carrier goes through, so the caller's own pointer stays theirs.
+	f.roomScene = copyRoomScene(in.RoomScene)
+
 	return f, nil
+}
+
+// joinRoomSceneDefects renders every defect in one error sentence, so a
+// refused presentation names all of what is wrong with it at once.
+func joinRoomSceneDefects(defects []RoomSceneDefect) string {
+	parts := make([]string, 0, len(defects))
+	for _, d := range defects {
+		parts = append(parts, d.Error())
+	}
+
+	return strings.Join(parts, "; ")
 }
 
 // compileRegions builds the owner map and the per-region cell lists, refusing

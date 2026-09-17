@@ -13,42 +13,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// roomWorkspacePresets are the workspace extents the editor offers. A v3
-// source carries exactly one of them, never an invented pair.
-var roomWorkspacePresets = [...]encounter.RoomSceneWorkspace{
-	{HexRadius: 6, HorizontalLimit: 12},
-	{HexRadius: 10, HorizontalLimit: 20},
-	{HexRadius: 14, HorizontalLimit: 28},
-}
+// The scene/frame/workspace VALUE validators — the workspace presets, the
+// scalar bounds mirrored from the editor's own validators (world-building
+// serialization.ts / roomDraft.ts at height head), and the frame's approved
+// words — live in the encounter package now ([encounter.ValidateRoomScene],
+// the one owner beside the types they judge). This decoder keeps the YAML
+// shape walk and delegates the decoded values to it, so the two seams cannot
+// diverge.
 
-// Scalar bounds mirrored from the editor's own validators
-// (world-building serialization.ts / roomDraft.ts at height head), so a room
-// the editor accepts is never refused here and vice versa.
+// Approved gameplay values (the play block's policies, and the ref type
+// monster placements carry). The frame and scene vocabulary lives beside
+// [encounter.ValidateRoomScene] now.
 const (
-	maxSceneItems     = 200
-	maxSceneGroups    = 80
-	maxTextLength     = 120
-	maxAssetRefLength = 160
-	maxTransformY     = 8.0
-	maxRotationY      = math.Pi * 100
-	maxLightIntensity = 20.0
-	minLightRange     = 0.01
-	maxLightRange     = 24.0 // two workspace radii at the editor's WORLD_LIMIT
-	lightOffsetLimit  = 12.0
-	minFootprintSize  = 0.1
-	maxFootprintSize  = 12.0
-	minHeightScale    = 0.25
-	maxHeightScale    = 4.0
-)
-
-// Approved source values.
-const (
-	propKind            = "prop"
-	groupKind           = "group"
-	worldXZPlane        = "world-xz"
-	worldYUpAxis        = "world-y-up"
-	worldSceneUnit      = "world-scene-unit"
-	ownerLocalXZFrame   = "owner-local-xz"
 	transparentVoid     = "transparent"
 	brightLighting      = "bright"
 	centreCoverStanding = "centre-covered"
@@ -65,11 +41,7 @@ const (
 	errNotABool      = "must be true or false"
 	errNotAMapping   = "must be a mapping"
 	errNotAList      = "must be a list"
-	errMustBeFinite  = "must be finite"
-	errMustBeAProp   = "must reference a prop"
-	errMustBeAGroup  = "must reference a group"
 	errLiveSceneProp = "must name a live scene prop"
-	errNoCycle       = "must not form a cycle"
 	errDuplicateID   = "duplicate id"
 )
 
@@ -627,11 +599,14 @@ func validateSingleRoom(s *SingleRoomSpec) []FieldError {
 	if s.Room.Name == "" {
 		add("room.name", errRequired)
 	}
-	frameValues(s.Room.CoordinateFrame, add)
-	if !validWorkspace(s.Room.Workspace) {
-		add("room.workspace", "unsupported workspace preset")
+	// THE SCENE'S ONE VALIDATOR (see this file's top): the presentation the
+	// compiler will carry is judged by the encounter-owned walk, and each
+	// defect is prefixed back onto the source path it sits at — the same
+	// paths frameValues/sceneValues always reported, now asked once.
+	presentation := presentationCopy(s.Room)
+	for _, d := range encounter.ValidateRoomScene(&presentation) {
+		add("room."+d.Path, d.Message)
 	}
-	sceneValues(&s.Room.Scene, s.Room.Workspace.HorizontalLimit, add)
 	gameplayValues(&s.Room.Gameplay, s.Room.Workspace.HexRadius, &s.Room.Scene, add)
 	return e
 }
@@ -645,249 +620,6 @@ func playValues(play SingleRoomPlay, add errSink) {
 	}
 	if play.Standing != centreCoverStanding {
 		add("play.standing", "must be centre-covered")
-	}
-}
-
-func frameValues(f encounter.RoomSceneFrame, add errSink) {
-	if f.HorizontalPlane != worldXZPlane {
-		add("room.coordinateFrame.horizontalPlane", "must be world-xz")
-	}
-	if f.VerticalAxis != worldYUpAxis {
-		add("room.coordinateFrame.verticalAxis", "must be world-y-up")
-	}
-	if f.DistanceUnit != worldSceneUnit {
-		add("room.coordinateFrame.distanceUnit", "must be world-scene-unit")
-	}
-	if f.FootprintFrame != ownerLocalXZFrame {
-		add("room.coordinateFrame.footprintFrame", "must be owner-local-xz")
-	}
-	if f.HexRadius != 1 || !finiteNumber(f.HexRadius) {
-		add("room.coordinateFrame.hexRadius", "must be 1")
-	}
-}
-
-// finiteNumber reports a usable float: NaN and both infinities fail, so a
-// NaN can never pass a bound check that follows.
-func finiteNumber(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
-
-// validWorkspace reports whether the workspace is exactly one of the editor
-// presets. NaN never matches, so a NaN radius cannot sneak through.
-func validWorkspace(w encounter.RoomSceneWorkspace) bool {
-	for _, p := range roomWorkspacePresets {
-		if w.HexRadius == p.HexRadius && w.HorizontalLimit == p.HorizontalLimit {
-			return true
-		}
-	}
-	return false
-}
-
-func sceneValues(scene *encounter.RoomVisualScene, limit float64, add errSink) {
-	if scene.Version != 1 {
-		add("room.scene.version", "unsupported version")
-	}
-	textValue(scene.ID, "room.scene.id", add)
-	textValue(scene.Name, "room.scene.name", add)
-	if len(scene.Items) > maxSceneItems {
-		add("room.scene.items", fmt.Sprintf("must contain at most %d props", maxSceneItems))
-	}
-	if len(scene.Groups) > maxSceneGroups {
-		add("room.scene.groups", fmt.Sprintf("must contain at most %d groups", maxSceneGroups))
-	}
-	itemIDs, groupIDs := identitySets(scene, add)
-	for i := range scene.Items {
-		itemValue(&scene.Items[i], fmt.Sprintf("room.scene.items[%d]", i), limit, add)
-	}
-	for i := range scene.Groups {
-		groupValue(&scene.Groups[i], fmt.Sprintf("room.scene.groups[%d]", i), limit, add)
-	}
-	graphValues(scene, itemIDs, groupIDs, add)
-}
-
-// textValue rejects empty and oversized identifiers: the editor allows at
-// most maxTextLength characters for names and labels.
-func textValue(v, p string, add errSink) {
-	if v == "" {
-		add(p, errRequired)
-	}
-	if len(v) > maxTextLength {
-		add(p, fmt.Sprintf("must be at most %d characters", maxTextLength))
-	}
-}
-
-// identitySets collects item and group IDs in one namespace (the editor
-// refuses duplicates across both) and reports every duplicate at the second
-// occurrence.
-func identitySets(scene *encounter.RoomVisualScene, add errSink) (itemIDs, groupIDs map[string]bool) {
-	itemIDs = make(map[string]bool, len(scene.Items))
-	groupIDs = make(map[string]bool, len(scene.Groups))
-	all := make(map[string]bool, len(scene.Items)+len(scene.Groups))
-	for i := range scene.Items {
-		idValue(scene.Items[i].ID, fmt.Sprintf("room.scene.items[%d].id", i), all, itemIDs, add)
-	}
-	for i := range scene.Groups {
-		idValue(scene.Groups[i].ID, fmt.Sprintf("room.scene.groups[%d].id", i), all, groupIDs, add)
-	}
-	return itemIDs, groupIDs
-}
-
-func idValue(id, p string, all, mine map[string]bool, add errSink) {
-	if id == "" {
-		add(p, errRequired)
-	}
-	if len(id) > maxTextLength {
-		add(p, fmt.Sprintf("must be at most %d characters", maxTextLength))
-	}
-	if id != "" && all[id] {
-		add(p, errDuplicateID)
-	}
-	all[id] = true
-	mine[id] = true
-}
-
-func itemValue(it *encounter.RoomSceneItem, p string, limit float64, add errSink) {
-	if it.Kind != propKind {
-		add(p+".kind", "must be prop")
-	}
-	if it.AssetRef == "" {
-		add(p+".assetRef", errRequired)
-	}
-	if len(it.AssetRef) > maxAssetRefLength {
-		add(p+".assetRef", fmt.Sprintf("must be at most %d characters", maxAssetRefLength))
-	}
-	textValue(it.Label, p+".label", add)
-	if it.HeightScale != nil {
-		boundNumber(*it.HeightScale, minHeightScale, maxHeightScale, p+".heightScale", add)
-	}
-	transformValue(it.Transform, p, limit, add)
-	if it.PointLight != nil {
-		lightValue(*it.PointLight, p+".pointLight", add)
-	}
-}
-
-func groupValue(g *encounter.RoomSceneGroup, p string, limit float64, add errSink) {
-	if g.Kind != groupKind {
-		add(p+".kind", "must be group")
-	}
-	textValue(g.Label, p+".label", add)
-	transformValue(g.Transform, p, limit, add)
-}
-
-// boundNumber reports v when it is non-finite or outside [lo, hi]. The
-// finite check comes first, so a NaN is reported once.
-func boundNumber(v, lo, hi float64, p string, add errSink) {
-	if !finiteNumber(v) {
-		add(p, errMustBeFinite)
-		return
-	}
-	if v < lo || v > hi {
-		add(p, fmt.Sprintf("must be between %g and %g", lo, hi))
-	}
-}
-
-// transformValue keeps a pose inside the editor bounds: X and Z within the
-// workspace limit, Y within the editor's 0..8 window, rotation within
-// ±100π radians.
-func transformValue(t encounter.RoomSceneTransform, p string, limit float64, add errSink) {
-	boundNumber(t.X, -limit, limit, p+".transform.x", add)
-	boundNumber(t.Y, 0, maxTransformY, p+".transform.y", add)
-	boundNumber(t.Z, -limit, limit, p+".transform.z", add)
-	boundNumber(t.RotationY, -maxRotationY, maxRotationY, p+".transform.rotationY", add)
-}
-
-func lightValue(l encounter.RoomSceneLight, p string, add errSink) {
-	offsetValue(l.Offset, p, add)
-	if !validHexColor(l.Color) {
-		add(p+".color", "must be a six-digit hex color")
-	}
-	boundNumber(l.Intensity, 0, maxLightIntensity, p+".intensity", add)
-	boundNumber(l.Range, minLightRange, maxLightRange, p+".range", add)
-}
-
-// offsetValue keeps a light inside the editor's fixed world limit in every
-// direction, independent of the room's own workspace.
-func offsetValue(o encounter.RoomSceneOffset, p string, add errSink) {
-	boundNumber(o.X, -lightOffsetLimit, lightOffsetLimit, p+".offset.x", add)
-	boundNumber(o.Y, -lightOffsetLimit, lightOffsetLimit, p+".offset.y", add)
-	boundNumber(o.Z, -lightOffsetLimit, lightOffsetLimit, p+".offset.z", add)
-}
-
-func validHexColor(s string) bool {
-	if len(s) != 7 || s[0] != '#' {
-		return false
-	}
-	for _, c := range s[1:] {
-		isDigit := c >= '0' && c <= '9'
-		isLower := c >= 'a' && c <= 'f'
-		isUpper := c >= 'A' && c <= 'F'
-		if !isDigit && !isLower && !isUpper {
-			return false
-		}
-	}
-	return true
-}
-
-// graphValues checks the parent/support graph in one pass: every reference
-// names a target of the right kind, and the whole graph is acyclic at any
-// length.
-func graphValues(scene *encounter.RoomVisualScene, itemIDs, groupIDs map[string]bool, add errSink) {
-	type dep struct {
-		to   string
-		path string
-	}
-	deps := make(map[string][]dep, len(scene.Items)+len(scene.Groups))
-	order := make([]string, 0, len(scene.Items)+len(scene.Groups))
-	for i := range scene.Items {
-		it := &scene.Items[i]
-		p := fmt.Sprintf("room.scene.items[%d]", i)
-		if it.ParentID != "" && !groupIDs[it.ParentID] {
-			add(p+".parentId", errMustBeAGroup)
-		}
-		if it.SupportID != "" && !itemIDs[it.SupportID] {
-			add(p+".supportId", errMustBeAProp)
-		}
-		if it.ID != "" {
-			order = append(order, it.ID)
-			if it.ParentID != "" && groupIDs[it.ParentID] {
-				deps[it.ID] = append(deps[it.ID], dep{to: it.ParentID, path: p + ".parentId"})
-			}
-			if it.SupportID != "" && itemIDs[it.SupportID] {
-				deps[it.ID] = append(deps[it.ID], dep{to: it.SupportID, path: p + ".supportId"})
-			}
-		}
-	}
-	for i := range scene.Groups {
-		g := &scene.Groups[i]
-		p := fmt.Sprintf("room.scene.groups[%d]", i)
-		if g.ParentID != "" && !groupIDs[g.ParentID] {
-			add(p+".parentId", errMustBeAGroup)
-		}
-		if g.ID != "" {
-			order = append(order, g.ID)
-			if g.ParentID != "" && groupIDs[g.ParentID] {
-				deps[g.ID] = append(deps[g.ID], dep{to: g.ParentID, path: p + ".parentId"})
-			}
-		}
-	}
-	visiting := make(map[string]bool, len(order))
-	done := make(map[string]bool, len(order))
-	var visit func(id string)
-	visit = func(id string) {
-		if done[id] {
-			return
-		}
-		visiting[id] = true
-		for _, d := range deps[id] {
-			if visiting[d.to] {
-				add(d.path, errNoCycle)
-				continue
-			}
-			visit(d.to)
-		}
-		delete(visiting, id)
-		done[id] = true
-	}
-	for _, id := range order {
-		visit(id)
 	}
 }
 
@@ -983,10 +715,23 @@ func arrangementDeclarationValues(decls map[string]map[string]RoomPropDeclaratio
 // sides from 0.1 to 12 scene units and offsets within ±12 of the owner, so
 // free negative/fractional poses stay free while nonsense stays refused.
 func footprintValue(f RoomFootprint, p string, add errSink) {
-	boundNumber(f.Width, minFootprintSize, maxFootprintSize, p+".width", add)
-	boundNumber(f.Depth, minFootprintSize, maxFootprintSize, p+".depth", add)
-	boundNumber(f.OffsetX, -maxFootprintSize, maxFootprintSize, p+".offsetX", add)
-	boundNumber(f.OffsetZ, -maxFootprintSize, maxFootprintSize, p+".offsetZ", add)
+	boundFootprint(f.Width, 0.1, 12, p+".width", add)
+	boundFootprint(f.Depth, 0.1, 12, p+".depth", add)
+	boundFootprint(f.OffsetX, -12, 12, p+".offsetX", add)
+	boundFootprint(f.OffsetZ, -12, 12, p+".offsetZ", add)
+}
+
+// boundFootprint is footprintValue's one bound check — the decoded-value
+// half the scene validator owns for the scene, kept local for the gameplay
+// declarations that are not scene content.
+func boundFootprint(v, lo, hi float64, p string, add errSink) {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		add(p, "must be finite")
+		return
+	}
+	if v < lo || v > hi {
+		add(p, fmt.Sprintf("must be between %g and %g", lo, hi))
+	}
 }
 
 func monsterValues(monsters []RoomMonsterSource, add errSink) {
