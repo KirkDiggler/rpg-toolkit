@@ -176,6 +176,35 @@ func CostOfIntimidate(c *Character) (*combat.SpendProfile, error) {
 	}, nil
 }
 
+// CostOfPersuade compiles what talking somebody round costs this character:
+// the standard action, and nothing else — [CostOfIntimidate]'s price, for
+// [CostOfIntimidate]'s reasons (rpg-project#458,
+// ideas/shenanigans/front-room-goblin.md).
+//
+// THE SAME PRICE, NOT A SHARED FUNCTION. Persuade is Intimidate's twin on the
+// same machine, and the twin is the point: the day one of them is priced
+// differently — a bard's silver tongue, a first threat that is free the way a
+// warning shout is at the table (open item 3 on rpg-project#454) — the change
+// belongs to one verb and must not silently move the other. Two compilers
+// that agree today is the shape that lets them disagree tomorrow without a
+// caller hunt.
+//
+// FREE ON THE WORLD CLOCK, and that is not this compiler's doing. A price is
+// what the action costs when there is an action to spend; the world clock has
+// no economy at all, so the session pays nothing there (move.go's rule). This
+// compiler is never asked on that path.
+func CostOfPersuade(c *Character) (*combat.SpendProfile, error) {
+	if c == nil {
+		return nil, rpgerr.New(rpgerr.CodeNil, "no character to price a Persuade for")
+	}
+
+	return &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{
+			coreCombat.ActionStandard: 1,
+		},
+	}, nil
+}
+
 // CostOfSwing composes the Attack action and one Strike into the single atomic
 // price charged for a swing. An already-banked attack costs only its capacity;
 // otherwise the first swing is netted from the Attack action's grant.

@@ -373,6 +373,23 @@ func (s *CostCompilerTestSuite) TestAnIntimidateCostsTheActionAndBanksNothing() 
 	s.Empty(profile.Requires, "nothing gates the attempt — the DC is the monster's")
 }
 
+// Talking somebody round costs exactly what threatening them does, and banks
+// nothing either. Two compilers rather than one shared body, so the day a
+// bard's silver tongue reprices Persuade the change reaches one verb
+// (rpg-project#458).
+func (s *CostCompilerTestSuite) TestAPersuadeCostsTheActionAndBanksNothing() {
+	profile, err := CostOfPersuade(s.sheetOf(classes.Fighter, 5))
+	s.Require().NoError(err)
+	s.Require().NoError(profile.Validate())
+
+	s.Equal(1, profile.Slots[coreCombat.ActionStandard])
+	s.Len(profile.Slots, 1)
+	s.Empty(profile.Capacity)
+	s.Empty(profile.Grants, "a threat banks nothing and neither does an appeal")
+	s.Empty(profile.Pools)
+	s.Empty(profile.Requires, "nothing gates the attempt — the DC is the creature's")
+}
+
 // No sheet, no price. The compilers refuse rather than compiling a default,
 // the same way AssembleAttack refuses a nil character.
 func (s *CostCompilerTestSuite) TestCompilingWithoutASheetIsRefused() {
@@ -386,6 +403,9 @@ func (s *CostCompilerTestSuite) TestCompilingWithoutASheetIsRefused() {
 	s.Require().Error(err)
 
 	_, err = CostOfIntimidate(nil)
+	s.Require().Error(err)
+
+	_, err = CostOfPersuade(nil)
 	s.Require().Error(err)
 }
 
