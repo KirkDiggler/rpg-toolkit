@@ -41,4 +41,5 @@ const (
 	TypeNPCs            core.Type = "npcs"
 	TypeCombatAbilities core.Type = "combat_abilities"
 	TypeActions         core.Type = "actions"
+	TypeRules           core.Type = "rules"
 )
