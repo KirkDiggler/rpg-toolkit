@@ -84,7 +84,7 @@ func recordedStrikeCalculation(roll, modifier int) *dnd5eEvents.RollCalculation 
 	return &dnd5eEvents.RollCalculation{
 		Components: []dnd5eEvents.RollComponent{
 			{
-				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword", SourceID: "alice"},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation: "1d20", DieSize: 20,
 					OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll,
@@ -113,7 +113,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword", SourceID: "alice"},
 					Dice: &dnd5eEvents.DiceTrace{
 						Notation: "d8", DieSize: 8, OriginalRolls: []int{2}, FinalRolls: []int{4},
 						Rerolls: []dnd5eEvents.DiceReroll{{
@@ -182,10 +182,10 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
 			`"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[15],"final_rolls":[15],"subtotal":15}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[15],"final_rolls":[15],"subtotal":15}},`+
 			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":20},`+
 			`"damage_components":[`+
-			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},`+
 			`"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],`+
 			`"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting","label":"reroll"}}],"subtotal":4},"modifier":0},`+
 			`"damage_type":"slashing"},`+
@@ -217,7 +217,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword", SourceID: "alice"},
 					Dice: &dnd5eEvents.DiceTrace{
 						Notation: "2d8", DieSize: 8,
 						OriginalRolls: []int{5, 6}, FinalRolls: []int{5, 6}, Subtotal: 11,
@@ -277,10 +277,10 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":20,"total":25,"against":12,"amount":14,`+
 			`"critical":true,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
 			`"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[20],"final_rolls":[20],"subtotal":20}},`+
+			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[20],"final_rolls":[20],"subtotal":20}},`+
 			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":25},`+
 			`"damage_components":[`+
-			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},`+
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},`+
 			`"dice":{"notation":"2d8","die_size":8,"original_rolls":[5,6],"final_rolls":[5,6],"subtotal":11}},"damage_type":"slashing"},`+
 			`{"source":"ability","roll":{"source":{"ref":"dnd5e:abilities:str","name":"Strength"},"modifier":3},"damage_type":"slashing"}]}`,
 		string(event.Payload))
@@ -291,7 +291,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	require.Equal(t, 14, got.Damage)
 	require.Len(t, got.DamageComponents, 2)
 	require.Equal(t, RollComponent{
-		Source: RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+		Source: RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword", SourceID: "alice"},
 		Dice: &DiceTrace{
 			Notation: "2d8", DieSize: 8,
 			OriginalRolls: []int{5, 6}, FinalRolls: []int{5, 6}, Subtotal: 11,
@@ -415,7 +415,7 @@ func TestRollCalculationForClonesComponentsInOrder(t *testing.T) {
 	in := &dnd5eEvents.RollCalculation{
 		Components: []dnd5eEvents.RollComponent{
 			{
-				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind", SourceID: "alice"},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation: "1d10", DieSize: 10,
 					OriginalRolls: []int{7}, FinalRolls: []int{7}, Subtotal: 7,

@@ -226,7 +226,7 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
 			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
 			`"damage_components":[` +
-			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},` +
+			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},` +
 			`"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],` +
 			`"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":4},"modifier":0},` +
 			`"damage_type":"slashing"},` +
@@ -248,7 +248,7 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 		{
 			Source: "weapon",
 			Roll: RollComponent{
-				Source: RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword"},
+				Source: RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword", SourceID: "alice"},
 				Dice: &DiceTrace{
 					Notation: "d8", DieSize: 8,
 					OriginalRolls: []int{2}, FinalRolls: []int{4}, Subtotal: 4,
@@ -379,7 +379,7 @@ func TestAMissedBeatCarriesNoDamageComponents(t *testing.T) {
 	}{
 		{
 			name: "well-formed components on a miss",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"final_rolls":[4],"subtotal":4}},"damage_type":"slashing"}]}`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"final_rolls":[4],"subtotal":4}},"damage_type":"slashing"}]}`,
 		},
 		{
 			name: "malformed components on a miss",
@@ -471,7 +471,7 @@ func TestStruckBodyRejectsAmbiguousAndCorruptRollDetail(t *testing.T) {
 		},
 		{
 			name: "roll trace alongside legacy final rolls",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"final_rolls":[5],"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"}},"final_rolls":[5],"damage_type":"slashing"}]`,
 		},
 		{
 			name: "component with neither representation",
@@ -479,7 +479,7 @@ func TestStruckBodyRejectsAmbiguousAndCorruptRollDetail(t *testing.T) {
 		},
 		{
 			name: "new source-only roll without a multiplier",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"}},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "multiplier-only roll missing its ref",
@@ -495,19 +495,19 @@ func TestStruckBodyRejectsAmbiguousAndCorruptRollDetail(t *testing.T) {
 		},
 		{
 			name: "unknown key inside the component body",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"note":"x","damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"}},"note":"x","damage_type":"slashing"}]`,
 		},
 		{
 			name: "unknown key inside the roll body",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"note":"x"},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"note":"x"},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "unknown key inside the dice trace",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"final_rolls":[4],"subtotal":4,"faces":[1]}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"final_rolls":[4],"subtotal":4,"faces":[1]}},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "unknown key inside a reroll",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"},"why":1}],"subtotal":4}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"},"why":1}],"subtotal":4}},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "duplicate key at the payload level",
@@ -523,15 +523,15 @@ func TestStruckBodyRejectsAmbiguousAndCorruptRollDetail(t *testing.T) {
 		},
 		{
 			name: "duplicate key inside the dice trace",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"original_rolls":[5],"final_rolls":[5],"subtotal":5}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"d8","die_size":8,"original_rolls":[4],"original_rolls":[5],"final_rolls":[5],"subtotal":5}},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "null multiplier",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"}},"damage_type":"slashing","multiplier":null}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"}},"damage_type":"slashing","multiplier":null}]`,
 		},
 		{
 			name: "null dice trace",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":null},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":null},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "null modifier",
@@ -547,19 +547,19 @@ func TestStruckBodyRejectsAmbiguousAndCorruptRollDetail(t *testing.T) {
 		},
 		{
 			name: "subtotal contradicts the final faces",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[2,2],"final_rolls":[2,2],"subtotal":5}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[2,2],"final_rolls":[2,2],"subtotal":5}},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "reroll before contradicts the current face",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[3],"final_rolls":[4],"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":4}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"d8","die_size":8,"original_rolls":[3],"final_rolls":[4],"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":4}},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "reroll after outside the die",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[9],"rerolls":[{"die_index":0,"before":2,"after":9,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":9}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[9],"rerolls":[{"die_index":0,"before":2,"after":9,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting"}}],"subtotal":9}},"damage_type":"slashing"}]`,
 		},
 		{
 			name: "kept indices contradict the subtotal",
-			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"dice":{"notation":"2d10","die_size":10,"original_rolls":[3,7],"final_rolls":[3,7],"kept_indices":[0],"subtotal":10}},"damage_type":"slashing"}]`,
+			json: `"damage_components":[{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"2d10","die_size":10,"original_rolls":[3,7],"final_rolls":[3,7],"kept_indices":[0],"subtotal":10}},"damage_type":"slashing"}]`,
 		},
 	}
 
@@ -593,7 +593,7 @@ func TestActivationResultsMapEveryProviderFieldInOrder(t *testing.T) {
 			Calculation: &dnd5eEvents.RollCalculation{
 				Components: []dnd5eEvents.RollComponent{
 					{
-						Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+						Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind", SourceID: "alice"},
 						Dice: &dnd5eEvents.DiceTrace{
 							Notation: "1d10", DieSize: 10,
 							OriginalRolls: []int{8}, FinalRolls: []int{8}, Subtotal: 8,
@@ -700,7 +700,7 @@ func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
 		},
 		{
 			name: "healing applied with a sourced calculation",
-			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[8],"final_rolls":[8],"subtotal":8}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":3}],"total":11},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"alice"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[8],"final_rolls":[8],"subtotal":8}},{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level"},"modifier":3}],"total":11},"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
 			want: ActivationResultBody{Actor: "alice", HealingApplied: &HealingAppliedBody{
 				Target: "alice", Amount: 2, Requested: 11,
 				SourceRef: "dnd5e:features:second_wind", SourceName: "Second Wind",
@@ -708,7 +708,7 @@ func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
 				Calculation: &RollCalculation{
 					Components: []RollComponent{
 						{
-							Source: RollSource{Ref: "dnd5e:features:second_wind", Name: "Second Wind"},
+							Source: RollSource{Ref: "dnd5e:features:second_wind", Name: "Second Wind", SourceID: "alice"},
 							Dice: &DiceTrace{
 								Notation: "1d10", DieSize: 10,
 								OriginalRolls: []int{8}, FinalRolls: []int{8}, Subtotal: 8,
@@ -834,7 +834,7 @@ func TestHealingBodiesRejectMixedAndCorruptRollFacts(t *testing.T) {
 		},
 		{
 			name: "duplicate key inside a reroll source",
-			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"d10","die_size":10,"original_rolls":[2],"final_rolls":[11],"rerolls":[{"die_index":0,"before":2,"after":11,"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","name":"Second Wind"}}],"subtotal":11}}]},` + identity + `}`,
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"alice"},"dice":{"notation":"d10","die_size":10,"original_rolls":[2],"final_rolls":[11],"rerolls":[{"die_index":0,"before":2,"after":11,"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","name":"Second Wind"}}],"subtotal":11}}]},` + identity + `}`,
 			kind: EventActivationResult,
 		},
 		{
@@ -849,7 +849,7 @@ func TestHealingBodiesRejectMixedAndCorruptRollFacts(t *testing.T) {
 		},
 		{
 			name: "unknown key inside the dice trace",
-			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"d10","die_size":10,"original_rolls":[11],"final_rolls":[11],"subtotal":11,"faces":[1]}}]},` + identity + `}`,
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"alice"},"dice":{"notation":"d10","die_size":10,"original_rolls":[11],"final_rolls":[11],"subtotal":11,"faces":[1]}}]},` + identity + `}`,
 			kind: EventActivationResult,
 		},
 		{
@@ -859,7 +859,7 @@ func TestHealingBodiesRejectMixedAndCorruptRollFacts(t *testing.T) {
 		},
 		{
 			name: "dice subtotal contradicts the faces",
-			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":{"notation":"d10","die_size":10,"original_rolls":[11],"final_rolls":[11],"subtotal":9}}]},` + identity + `}`,
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"alice"},"dice":{"notation":"d10","die_size":10,"original_rolls":[11],"final_rolls":[11],"subtotal":9}}]},` + identity + `}`,
 			kind: EventActivationResult,
 		},
 		{
@@ -869,7 +869,7 @@ func TestHealingBodiesRejectMixedAndCorruptRollFacts(t *testing.T) {
 		},
 		{
 			name: "null dice inside the calculation",
-			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind"},"dice":null,"modifier":11}]},` + identity + `}`,
+			json: `{"kind":"healing-applied","target":"alice","amount":2,"requested":11,"before":28,"after":30,"calculation":{"total":11,"components":[{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"alice"},"dice":null,"modifier":11}]},` + identity + `}`,
 			kind: EventActivationResult,
 		},
 		{
@@ -1272,4 +1272,74 @@ func TestASightingThatNamesNobodyIsRefused(t *testing.T) {
 		require.Equal(t, EventSighted, kind, "the kind is still understood")
 		require.Nil(t, body, "but it names nobody, so there is no change to carry")
 	}
+}
+
+// TestAttemptBeatsWrittenBeforeCalculationsStillType is the OTHER HALF of the
+// producer rule, and the half nothing pinned.
+//
+// Every verb in this build refuses to write an attempt beat without the roll
+// behind it (requireCalculation). That strictness is only affordable because
+// the DECODER stays lenient: real sessions are already persisted with
+// Intimidated, Persuaded and DoorChanged beats written before the field
+// existed, and a decoder that refused them would turn lived history into
+// EventUnknown — the whole outcome of a threat or an unlock lost, which is the
+// failure kindFor's own missing case caused once already.
+//
+// Absent is a real answer here and decodes to nil, which is why the producer
+// has to be the one that refuses: a missing optional field on a NEW beat looks
+// exactly like one of these.
+func TestAttemptBeatsWrittenBeforeCalculationsStillType(t *testing.T) {
+	tests := []struct {
+		name    string
+		kind    EventKind
+		payload string
+		want    EventBody
+	}{
+		{
+			name:    "a threat from before the field existed",
+			kind:    EventIntimidated,
+			payload: `{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":14,"beaten":true}`,
+			want: IntimidatedBody{
+				Actor: "alice", Target: "goblin", DC: 9, Total: 14, Beaten: true,
+			},
+		},
+		{
+			name:    "an appeal from before the field existed",
+			kind:    EventPersuaded,
+			payload: `{"beat":"persuaded","actor":"alice","target":"goblin","dc":9,"total":6,"beaten":false}`,
+			want: PersuadedBody{
+				Actor: "alice", Target: "goblin", DC: 9, Total: 6, Beaten: false,
+			},
+		},
+		{
+			name:    "an unlock attempt from before the field existed",
+			kind:    EventDoor,
+			payload: `{"beat":"door","door":"gate","state":"open","actor":"alice","dc":12,"total":13,"beaten":true}`,
+			want: DoorBody{
+				Door: "gate", State: "open", Actor: "alice", DC: 12, Total: 13, Beaten: true,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := bodyFor(test.kind, []byte(test.payload))
+
+			require.NotNil(t, body, "a beat this build cannot type is history deleted")
+			require.Equal(t, test.want, body)
+		})
+	}
+}
+
+// And the control that keeps the leniency narrow: absent is tolerated, WRONG
+// is not. A present calculation that could not have produced the total it is
+// filed under refuses the whole body rather than typing without it.
+func TestAnAttemptBeatWithImpossibleArithmeticDoesNotType(t *testing.T) {
+	payload := `{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":14,"beaten":true,` +
+		`"calculation":{"components":[{"source":{"ref":"dnd5e:skills:intimidation","name":"Intimidation",` +
+		`"source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[7],` +
+		`"final_rolls":[7],"subtotal":7}}],"total":7}}`
+
+	require.Nil(t, bodyFor(EventIntimidated, []byte(payload)),
+		"a total of 7 cannot be the roll behind a beat reporting 14")
 }
