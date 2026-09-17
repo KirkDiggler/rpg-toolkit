@@ -157,20 +157,25 @@ var omitted = map[string]string{
 	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
 	"encounter.Member.Mind":      "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Mind",
 
-	// Intimidate and OnIntimidated (rpg-project#454) are the placement's
-	// authored shenanigan facts, read by ONE consumer: Manager.Intimidate,
-	// which asks the composition for them at the moment it needs a DC and
-	// hands the DC straight back on IntimidateOutput. A roster listing
-	// answers "who is here, and where"; a monster's difficulty class is not
-	// part of that question, and the number reaches a client on the
-	// response and on the `intimidated` beat either way. The fact is not a
-	// client concern at all — what the world learns is the world's, read
-	// through the stance it flips. Project them when a real reader needs
-	// them ahead of the roll, the way SpeedFeet and friends will be.
-	"encounter.Member.Intimidate": "the authored check Manager.Intimidate reads at roll time; " +
+	// Intimidate, Persuade and Answers (rpg-project#454, rpg-project#458)
+	// are the placement's authored shenanigan facts, read by ONE consumer:
+	// the social verbs, which ask the composition for them at the moment they
+	// need a DC and hand the DC straight back on the response. A roster
+	// listing answers "who is here, and where"; a creature's difficulty class
+	// is not part of that question, and the number reaches a client on the
+	// response and on the verb's own beat either way.
+	//
+	// THE TABLE IS THE AUTHOR'S, NOT THE CLIENT'S. What the creature will do
+	// and say is the setup, and projecting it onto a roster row would hand
+	// every player the goblin's script before anybody spoke to it. What they
+	// get is the `answered` beat after it fires — the line, the die, and the
+	// entry that won. Project these when a real reader needs them ahead of
+	// the roll, the way SpeedFeet and friends will be.
+	"encounter.Member.Intimidate": "the authored check the social verbs read at roll time; " +
 		"the DC reaches a client on the response and the beat, not on a roster row",
-	"encounter.Member.OnIntimidated": "what the WORLD learns when a threat lands; a client reads the " +
-		"consequence as a stance change, never the authored fact id",
+	"encounter.Member.Persuade": "Intimidate's twin, omitted for Intimidate's reason",
+	"encounter.Member.Answers": "the author's script for what the creature does and says; a client " +
+		"reads it as the `answered` beat AFTER an entry fires, never as a roster row it could read ahead",
 
 	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
 	// occupancy check at Join/Step time — it decides whether an arrival is

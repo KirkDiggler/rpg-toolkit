@@ -197,7 +197,7 @@ func projectStatus(in *encounter.Status) *Status {
 }
 
 func projectSightings(
-	in []perception.Holding, names map[string]string, kinds map[string]MemberKind,
+	in []perception.Holding, names map[string]string, kinds map[string]MemberKind, stances map[string]string,
 ) []Sighting {
 	out := make([]Sighting, 0, len(in))
 	for _, h := range in {
@@ -207,6 +207,7 @@ func projectSightings(
 			Subject:       subject,
 			Name:          names[subject],
 			Kind:          kinds[subject],
+			Stance:        stances[subject],
 			Seen:          projectSeen(h.Channel, h.Payload),
 			LocationState: projectLocationState(h.Channel, h.Payload),
 			Payload:       append([]byte(nil), h.Payload...),

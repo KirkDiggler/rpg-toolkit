@@ -55,7 +55,7 @@ func TestProjectSightingsSightChannelGetsASeen(t *testing.T) {
 		CurrentVia: []perception.Channel{perception.Sight},
 	}}
 
-	out := projectSightings(holdings, nil, nil)
+	out := projectSightings(holdings, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.NotNil(t, out[0].Seen, "a sight-channel holding must carry Seen")
 	require.Equal(t, spatial.Position{X: 10, Y: 3}, out[0].Seen.Position)
@@ -106,7 +106,7 @@ func TestProjectSightingsNonSightChannelGetsNoSeen(t *testing.T) {
 		CurrentVia: []perception.Channel{perception.Channel("hearing")},
 	}}
 
-	out := projectSightings(holdings, nil, nil)
+	out := projectSightings(holdings, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.Nil(t, out[0].Seen, "a non-sight channel must not carry Seen, however the payload happens to decode")
 	require.Empty(t, out[0].LocationState, "a non-sight channel carries no location state either")
@@ -124,7 +124,7 @@ func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
 		Confirmed: 3,
 	}}
 
-	out := projectSightings(holdings, nil, nil)
+	out := projectSightings(holdings, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.NotNil(t, out[0].Seen, "a held memory must keep its last Seen")
 	require.Equal(t, spatial.Position{X: 6, Y: 10}, out[0].Seen.Position)
@@ -137,7 +137,7 @@ func TestHeldUnknownSightProjectsExplicitUnknownLocation(t *testing.T) {
 	require.NoError(t, err)
 	out := projectSightings([]perception.Holding{{
 		Subject: "billy", Payload: payload, Channel: perception.Sight,
-	}}, nil, nil)
+	}}, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.Equal(t, LocationUnknown, out[0].LocationState)
 	require.Nil(t, out[0].Seen)
@@ -166,7 +166,7 @@ func TestProjectSightingsCarriesKindFromTheRoster(t *testing.T) {
 	}
 	kinds := map[string]MemberKind{"fighter": KindPlayer, "skeleton-1": KindMonster}
 
-	out := projectSightings(holdings, nil, kinds)
+	out := projectSightings(holdings, nil, kinds, nil)
 	require.Len(t, out, 2)
 	for _, s := range out {
 		switch s.Subject {
@@ -193,7 +193,7 @@ func TestProjectSightingsHeldMemoryKeepsItsKind(t *testing.T) {
 	}}
 	kinds := map[string]MemberKind{"goblin-1": KindMonster}
 
-	out := projectSightings(holdings, nil, kinds)
+	out := projectSightings(holdings, nil, kinds, nil)
 	require.Len(t, out, 1)
 	require.Equal(t, KindMonster, out[0].Kind, "a held memory must keep its kind")
 }
@@ -286,7 +286,7 @@ func TestSightingStatusReportsTheSustainingChannelNotTheProvenance(t *testing.T)
 		Channel:    perception.Channel("deeds"),
 		Confirmed:  9,
 		CurrentVia: []perception.Channel{perception.Sight},
-	}}, nil, nil)
+	}}, nil, nil, nil)
 
 	require.Len(t, out, 1)
 	require.Equal(t, "current", out[0].Status)
@@ -304,7 +304,7 @@ func TestSightingStatusReportsAGhostAsHeldWithNoChannels(t *testing.T) {
 		Payload:   sightPayloadBytes(t, 4, 4),
 		Channel:   perception.Sight,
 		Confirmed: 9,
-	}}, nil, nil)
+	}}, nil, nil, nil)
 
 	require.Len(t, out, 1)
 	require.Equal(t, "held", out[0].Status)

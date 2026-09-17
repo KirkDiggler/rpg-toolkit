@@ -365,7 +365,12 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 		return nil, fmt.Errorf("view: %w", translate(err))
 	}
 
-	return projectSightings(holdings, rosterNames(roster), rosterKinds(roster)), nil
+	// And what this viewer believes about each of them, asked per viewer
+	// because a stance is a fact about the PAIR rather than about the subject
+	// (believedStances). This is the read rpg-api fills the sighting's stance
+	// from, and the only place it is answered.
+	return projectSightings(holdings, rosterNames(roster), rosterKinds(roster),
+		believedStances(enc, in.Member, roster)), nil
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward

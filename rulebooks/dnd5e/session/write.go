@@ -172,16 +172,24 @@ type SpawnInput struct {
 	// Actions (S2: no inner type crosses this seam's exported surface).
 	Intimidate []DoorApproach
 
-	// OnIntimidated is the world fact every witness learns when a threat
-	// against this monster lands — the author's `place[].on.intimidated.fact`
-	// (rpg-project#454). Empty is the ordinary case: a scared goblin does not
-	// turn the camp unless the author planted the fact that says so.
+	// Persuade is the check a character must beat to talk this monster round
+	// — the author's `place[].persuade` (rpg-project#458), forwarded
+	// untouched. [SpawnInput.Intimidate]'s twin, with its contracts: empty
+	// means DERIVED, not ungated.
+	Persuade []DoorApproach
+
+	// Answers is what this monster DOES about a social verb's verdict,
+	// keyed by outcome — the author's `place[].on` (rpg-project#458),
+	// forwarded untouched.
 	//
-	// A FACT ID, forwarded as the word it was written. Unlike Holds, it is
-	// NOT key-prefixed: a fact is a word a disposition waits for by name,
-	// like a faction rather than a record, and dungeonspec compiles it
-	// verbatim for that reason.
-	OnIntimidated string
+	// IT REPLACED `OnIntimidated string`, which named one fact on one outcome
+	// and had nowhere to put a line of speech, a failed attempt, or a
+	// creature that runs. There is no second spelling beside it: two
+	// representations of one authored fact is what this repo bans.
+	//
+	// Empty is the ordinary case: a creature with nothing authored answers
+	// nothing and the world rolls no die.
+	Answers map[string][]Answer
 
 	// Faction is the side this monster fights on — the author's placement
 	// from the dungeon file's `place[].faction` (rpg-project#375, the
@@ -522,10 +530,10 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// players' side is authorable — see SpawnInput.Faction.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
 		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", "", false, nil, "", nil,
-		// A PLAYER IS NOT INTIMIDABLE by this build: Manager.Intimidate
-		// refuses a target with no monster stat block to derive a DC from,
-		// so there is nothing for a joining character to carry.
-		nil, "")
+		// A PLAYER IS NOT A SOCIAL TARGET in this build: the social verbs
+		// refuse a target with no monster stat block to derive a DC from, so
+		// there is nothing for a joining character to carry.
+		socialPlacement{})
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -670,7 +678,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
 		sheet.Targeting.String(), sheet.Mind.String(), false, in.Holds, in.Faction, in.Arrives,
-		in.Intimidate, in.OnIntimidated)
+		socialPlacement{Intimidate: in.Intimidate, Persuade: in.Persuade, Answers: in.Answers})
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -760,7 +768,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
 		0, 0, nil, "", "", blocksMovement, nil, "", nil,
 		// A world NPC is not a monster and carries no authored check.
-		nil, "")
+		socialPlacement{})
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -795,8 +803,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
 	speedFeet, sightFeet int, actions []encounter.ActionView, targeting, mind string, blocksMovement bool,
-	holds []string, faction string, arrives Arrival,
-	intimidate []DoorApproach, onIntimidated string,
+	holds []string, faction string, arrives Arrival, social socialPlacement,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -864,8 +871,9 @@ func place(
 		// boundary like Holds: the seam's own approach type in, the
 		// composition's CheckApproach out, nil staying nil. The fact id is a
 		// string on both sides, so it crosses untouched.
-		Intimidate:    checkApproachesOf(intimidate),
-		OnIntimidated: onIntimidated,
+		Intimidate: checkApproachesOf(social.Intimidate),
+		Persuade:   checkApproachesOf(social.Persuade),
+		Answers:    answersOf(social.Answers),
 	})
 	if err != nil {
 		return nil, translate(err)
@@ -963,8 +971,14 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	}
 
 	return &ExitOutput{
-		Outcome:    projectMemberOutcome(left.Outcome),
-		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster)),
+		Outcome: projectMemberOutcome(left.Outcome),
+		// NO STANCES ON WHAT A DEPARTING MEMBER CARRIES OUT. The member has
+		// just left, so the composition answers known=false for every pair
+		// they were in and every stance would be empty anyway — passing nil
+		// says that on purpose rather than asking a question whose answer is
+		// already settled. What they carry is memory, and a stance is about a
+		// relationship they no longer have.
+		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), nil),
 		Discovered: projectDiscoveries(left.IntelDeltas),
 		Seq:        scope.deliveredSeq(in.Member, left.Seq),
 		Closed:     projectOutcome(left.Closed),

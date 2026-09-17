@@ -135,8 +135,14 @@ type stagedCheckOutcome struct {
 // save-and-report path a swing's dirty sheets use ([Manager.saveDirty]'s
 // shape). A posed outcome writes nothing back yet — nothing on the sheet
 // changed merely by asking the question.
+// untrained says whether this verb takes the untrained rule
+// ([resolution.CheckInput.Untrained], rpg-project#457 R2). It is a PARAMETER
+// rather than a property of this function because it is a property of the
+// VERB: the rule is scoped to skill verbs, and the two callers that pass true
+// (Intimidate, Persuade) are the two the ruling names. Unlock and Search pass
+// false and roll the 2014 letter.
 func (m *Manager) resolveStagedCheckPoseable(
-	scope *writeScope, member string, approaches []encounter.CheckApproach,
+	scope *writeScope, member string, approaches []encounter.CheckApproach, untrained bool,
 ) (*stagedCheckOutcome, error) {
 	staged, ok := scope.checks[member]
 	if !ok {
@@ -148,6 +154,7 @@ func (m *Manager) resolveStagedCheckPoseable(
 		Character:  staged.data,
 		Approaches: approaches,
 		Roller:     &diceSeam{roller: m.dice},
+		Untrained:  untrained,
 	})
 	switch {
 	case errors.Is(err, resolution.ErrBadCheck):
@@ -198,7 +205,10 @@ func (m *Manager) resolveStagedCheckPoseable(
 func (m *Manager) resolveStagedCheck(
 	scope *writeScope, member string, approaches []encounter.CheckApproach,
 ) (*encounter.ResolveCheckOutput, error) {
-	outcome, err := m.resolveStagedCheckPoseable(scope, member, approaches)
+	// FALSE: a find check is not a skill verb. Search's seam resolves
+	// Perception and Investigation routes that every character may attempt
+	// as the book wrote them (rpg-project#457 R2's scope).
+	outcome, err := m.resolveStagedCheckPoseable(scope, member, approaches, false)
 	if err != nil {
 		return nil, err
 	}
