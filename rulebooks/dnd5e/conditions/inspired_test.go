@@ -173,3 +173,30 @@ func (s *InspiredConditionTestSuite) TestFactoryRefusesAGrantWithNoGranter() {
 func TestInspiredConditionSuite(t *testing.T) {
 	suite.Run(t, new(InspiredConditionTestSuite))
 }
+
+// TestItRefusesToApplyWithNoBardBehindTheDie is R7 at this condition's door.
+// The offer it puts on the table carries SourceID, and that field is REQUIRED
+// because a taken die lands on the calculation as its own component — a pool
+// with no entity behind it does not exist in this game.
+//
+// NewInspiredCondition returns no error, unlike Guided's and Resistance's
+// constructors, so Apply is where the refusal has to live. Without it the
+// condition attaches happily and the hole opens several seams later, when a
+// player has already been asked about a die nobody owns.
+func (s *InspiredConditionTestSuite) TestItRefusesToApplyWithNoBardBehindTheDie() {
+	orphan := NewInspiredCondition("fighter-1", "", InspiredDie)
+
+	err := orphan.Apply(s.ctx, events.NewEventBus())
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "bard")
+	s.False(orphan.IsApplied(), "and it did not half-attach on the way out")
+}
+
+// The control: the same condition with its bard named attaches and offers.
+func (s *InspiredConditionTestSuite) TestItAppliesWhenTheBardIsNamed() {
+	named := NewInspiredCondition("fighter-2", "bard-2", InspiredDie)
+
+	s.Require().NoError(named.Apply(s.ctx, events.NewEventBus()))
+	s.True(named.IsApplied())
+}

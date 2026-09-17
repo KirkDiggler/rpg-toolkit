@@ -464,6 +464,14 @@ func validateDiceKeep(trace *DiceTrace) error {
 				keep.Rule, len(keep.Granted), len(keep.Imposed),
 			)
 		}
+		if len(trace.FinalRolls) != 1 {
+			// RAW ROLLS ONE DIE WHEN THE TWO RULES MEET, and so do we. A
+			// cancellation recorded over a pair is not a cancellation: it is
+			// an advantage or a disadvantage whose keep decision went
+			// unrecorded, and every face would count toward the subtotal.
+			return fmt.Errorf(
+				"keep rule %q rolls one die, got %d faces", keep.Rule, len(trace.FinalRolls))
+		}
 		if len(trace.KeptIndices) != 0 {
 			return fmt.Errorf("keep rule %q keeps no face, got %d kept", keep.Rule, len(trace.KeptIndices))
 		}

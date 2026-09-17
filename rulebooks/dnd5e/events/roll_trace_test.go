@@ -550,6 +550,22 @@ func TestRollCalculationRefusesAWrongKeepRecord(t *testing.T) {
 			},
 		},
 		{
+			// A cancellation recorded over a PAIR is the dangerous shape: no
+			// kept indices means every face counts, so the subtotal is both
+			// dice added together and the "cancelled" label hides an
+			// advantage or disadvantage whose keep decision went unrecorded.
+			name: "cancelled over a pair of dice",
+			change: func(trace *DiceTrace) {
+				trace.KeptIndices = nil
+				trace.Subtotal = 25
+				trace.Keep = &DiceKeep{
+					Rule:    KeepCancelled,
+					Granted: []RollSource{keepSource("Help", refs.Conditions.Helped(), "alice")},
+					Imposed: []RollSource{keepSource("Untrained", refs.Rules.Untrained(), "hero")},
+				}
+			},
+		},
+		{
 			name: "cancelled with nothing imposed",
 			change: func(trace *DiceTrace) {
 				trace.KeptIndices = nil

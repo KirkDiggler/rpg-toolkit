@@ -186,9 +186,7 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 
 	bonusComponents := make([]dnd5eEvents.RollComponent, 0, len(bonusSources))
 	for i, source := range bonusSources {
-		rollSource := dnd5eEvents.CloneRollSource(dnd5eEvents.RollSource{
-			Ref: source.SourceRef, Name: source.Name, SourceID: source.EntityID,
-		})
+		rollSource := dnd5eEvents.CloneRollSource(source.RollSource())
 		if err := validateCalculationSource("bonus", rollSource); err != nil {
 			return nil, rpgerr.Wrapf(err, "bonus source %d", i)
 		}

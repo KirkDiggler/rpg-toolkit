@@ -618,6 +618,18 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 	s.Len(result.BonusSources, 1, "should have one bonus source")
 	s.Equal("Bless", result.BonusSources[0].Name)
 	s.Equal(3, result.BonusSources[0].Bonus)
+
+	// THE BONUS COMPONENT GOES THROUGH THE ONE MAPPING, like every other
+	// source: SourceRef->Ref, Name->Name, SourceType->Label,
+	// EntityID->SourceID. A hand-rolled RollSource here silently dropped the
+	// kind word, so the log could say "Bless" but not what kind of thing Bless
+	// is — and the check machine, mapping the same fact one field wider, would
+	// have disagreed with it.
+	bonus := result.Calculation.Components[2]
+	s.Equal("Bless", bonus.Source.Name)
+	s.Equal("spell", bonus.Source.Label, "the kind word survives the mapping")
+	s.Equal("cleric", bonus.Source.SourceID)
+	s.Equal(refs.Spells.Bless().String(), bonus.Source.Ref.String())
 }
 
 // TestCancellationIsRecordedNotErased pins R2: when a granted and an imposed
