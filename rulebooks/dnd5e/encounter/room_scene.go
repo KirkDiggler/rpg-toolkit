@@ -46,6 +46,7 @@ type RoomSceneGroup struct {
 	Kind      string             `yaml:"kind" json:"kind"`
 	ID        string             `yaml:"id" json:"id"`
 	Label     string             `yaml:"label" json:"label"`
+	ParentID  string             `yaml:"parentId,omitempty" json:"parentId,omitempty"`
 	Transform RoomSceneTransform `yaml:"transform" json:"transform"`
 }
 type RoomVisualScene struct {
