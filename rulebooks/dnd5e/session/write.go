@@ -971,8 +971,14 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	}
 
 	return &ExitOutput{
-		Outcome:    projectMemberOutcome(left.Outcome),
-		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster)),
+		Outcome: projectMemberOutcome(left.Outcome),
+		// NO STANCES ON WHAT A DEPARTING MEMBER CARRIES OUT. The member has
+		// just left, so the composition answers known=false for every pair
+		// they were in and every stance would be empty anyway — passing nil
+		// says that on purpose rather than asking a question whose answer is
+		// already settled. What they carry is memory, and a stance is about a
+		// relationship they no longer have.
+		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), nil),
 		Discovered: projectDiscoveries(left.IntelDeltas),
 		Seq:        scope.deliveredSeq(in.Member, left.Seq),
 		Closed:     projectOutcome(left.Closed),

@@ -636,6 +636,32 @@ type Sighting struct {
 	// name. Lands with rpg-toolkit#1230.
 	Kind MemberKind `json:"kind,omitempty"`
 
+	// Stance is what THIS VIEWER BELIEVES the subject's stance toward them to
+	// be — for a player, the creature's stance toward the party
+	// (rpg-project#458, "The ring: what a player believes about a creature").
+	// One of "hostile", "neutral" or "allied", and EMPTY when the run cannot
+	// answer: a subject who is not a member, or one in no faction at all,
+	// which a world NPC is.
+	//
+	// BESIDE Name AND Kind, NOT INSIDE [Seen], and the placement is the
+	// contract. Seen is the SIGHT CHANNEL's facts — where the subject is and
+	// what its body is doing, gone when the channel is. A stance is a fact
+	// about the viewer's relationship to the subject, held the way a name and
+	// a kind are: a memory keeps it exactly as it keeps those.
+	//
+	// IT EQUALS THE DERIVED STANCE TODAY, so every viewer gets the same
+	// answer and the ring under a token does not change colour. It is carried
+	// PER VIEWER anyway, because a stance read live off the graph can only
+	// ever be true, and a game with no way to lie can never have illusion in
+	// it. `pretend` — a creature showing one stance and holding another — is
+	// where belief and truth will diverge, and when it lands it changes what
+	// [encounter.Encounter.BelievedStance] answers and nothing else.
+	//
+	// PRESENTATION ONLY. It decides nothing about who may be attacked,
+	// threatened or talked to; the composition's own fold does that, and this
+	// is what a client draws.
+	Stance string `json:"stance,omitempty"`
+
 	// Seen is the sight channel's own typed knowledge; see [Seen]. Decoded by
 	// the composition, not by this package — session never unmarshals
 	// Payload itself.

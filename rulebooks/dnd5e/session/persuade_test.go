@@ -494,3 +494,115 @@ func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction(
 		Say: "Go left at the rope.", Fact: "bandits-in-cellar",
 	}, answered.Body)
 }
+
+// THE RING IS PER VIEWER, and the sighting is what carries it
+// (rpg-project#458). Two viewers on different sides of ONE subject get
+// different stances for it out of the same read, which is what makes `pretend`
+// a later change to one function rather than a rewrite of this projection.
+func (s *PersuadeSuite) TestTwoViewersBelieveDifferentStancesAboutOneSubject() {
+	// A third faction the party is HOSTILE to and the goblins are merely
+	// neutral to, so alice and the goblin looking at the same bandit disagree.
+	mgr := s.frontWithBandit()
+	ctx := context.Background()
+
+	stanceOf := func(viewer, subject string) string {
+		sightings, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: viewer})
+		s.Require().NoError(err)
+		for _, sighting := range sightings {
+			if sighting.Subject == subject {
+				return sighting.Stance
+			}
+		}
+		s.Require().Fail("no sighting", "%s does not see %s", viewer, subject)
+
+		return ""
+	}
+
+	forAlice := stanceOf("alice", "bandit")
+	forGoblin := stanceOf("goblin", "bandit")
+
+	s.Equal(string(encounter.StanceHostile), forAlice, "the party declared itself hostile to bandits")
+	s.Equal(string(encounter.StanceNeutral), forGoblin, "goblins declared nothing about bandits")
+	s.NotEqual(forAlice, forGoblin,
+		"one subject, one read, two beliefs — the fact is about the PAIR, not the subject")
+}
+
+// A subject in NO faction — a world NPC — yields an empty stance rather than
+// "neutral". Nobody is on their side and nobody is against them, and an empty
+// string says the run had no pair to answer about instead of inventing one.
+func (s *PersuadeSuite) TestASubjectInNoFactionHasNoStance() {
+	mgr := s.front(nil)
+	ctx := context.Background()
+
+	_, err := mgr.PlaceNPC(ctx, &session.PlaceNPCInput{
+		Session: "sess", Member: "innkeeper",
+		NPC: merchantData(), Position: spatial.Position{X: 6, Y: 1},
+	})
+	s.Require().NoError(err)
+
+	sightings, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+
+	var found bool
+	for _, sighting := range sightings {
+		if sighting.Subject != "innkeeper" {
+			continue
+		}
+		found = true
+		s.Empty(sighting.Stance, "a world NPC is on nobody's side, and empty says so")
+	}
+	s.Require().True(found, "alice can see the innkeeper")
+}
+
+// frontWithBandit is [PersuadeSuite.front] plus a third faction: bandits, whom
+// the party declared itself hostile to and the goblins said nothing about. It
+// is the smallest world in which two viewers disagree about one subject.
+func (s *PersuadeSuite) frontWithBandit() *session.Manager {
+	s.characters = newFakeCharacters(s.sheet)
+	mgr, err := session.NewManager(&session.Config{
+		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
+		TurnDriver: session.Pass{},
+		Sessions:   s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
+		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{
+			Canvas:   pointyCanvas(),
+			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
+			Factions: []encounter.FactionInput{{ID: "goblins"}, {ID: "bandits"}},
+			Dispositions: []encounter.DispositionInput{
+				{
+					Between: [2]encounter.FactionID{"goblins", encounter.FactionParty},
+					Stance:  encounter.StanceNeutral,
+				},
+				{
+					Between: [2]encounter.FactionID{"bandits", encounter.FactionParty},
+					Stance:  encounter.StanceHostile,
+				},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 1},
+				Faction: "goblins"},
+			{ID: "bandit", Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 1},
+				Faction: "bandits"},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+	data := enc.ToData()
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: &data,
+	})
+	s.Require().NoError(err)
+
+	return mgr
+}
