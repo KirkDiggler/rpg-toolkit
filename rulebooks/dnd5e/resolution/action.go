@@ -220,7 +220,7 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	return &castMachine{
 		spell: definition.Ref, spellName: definition.Name, casterID: casterID, option: in.Option,
 		profile: profile.Clone(), concentration: profile.Concentration, targets: entries,
-		derivedTargets: derived, staleTargetPolicy: in.StaleTargetPolicy,
+		derivedTargets: derived, staleTargetPolicy: in.StaleTargetPolicy, roller: in.Roller,
 	}, nil
 }
 
@@ -247,6 +247,13 @@ type CastTargetOutcome struct {
 	Missed  bool
 	Save    *ContestOutcome
 	Applied []ImposedEffect
+
+	// Warded is set when this target's own Sanctuary ward stopped the cast
+	// from reaching them before any save/effect ran against them — the
+	// caster failed a Wisdom save against the warding caster. Save and
+	// Applied stay empty; other targets in the same multi-target cast are
+	// unaffected. Nil when no ward applied.
+	Warded *WardOutcome
 }
 
 // CastOutcome is one paid cast with every target outcome in caller order.
@@ -295,6 +302,12 @@ type castMachine struct {
 	concentration *combatActions.CastConcentration
 	cast          *Participants
 	outcome       CastOutcome
+
+	// roller rolls the Sanctuary ward save a hostile target's own condition
+	// may force. The cast's own damage/save machinery keeps its roller inside
+	// each castTargetMachine's inner machine; this is resolveTarget's own
+	// copy for the ward check it runs BEFORE that inner machine.
+	roller dice.Roller
 
 	// derivedTargets records that this cast's recipients were worked out from a
 	// declared footprint rather than named by a caller. It changes which
@@ -360,6 +373,15 @@ func (m *castMachine) resolveTarget(index int) Step {
 			return m.resolveTarget(index + 1), nil
 		}}
 	}
+	return m.sanctuaryGate(target, index)
+}
+
+// castRequest is this target's own cast machine, wrapped in the Request that
+// records its shaped outcome and moves on to the next target. Pulled out of
+// resolveTarget so sanctuaryGate can insert itself as the step BEFORE this
+// one runs, for exactly this target, without touching what happens once it
+// does.
+func (m *castMachine) castRequest(target castTargetMachine, index int) Step {
 	req := Request{
 		name:    "cast " + m.spell.String() + " on " + target.targetID,
 		machine: startedMachine{first: target.first},
@@ -383,6 +405,77 @@ func (m *castMachine) resolveTarget(index int) Step {
 		return poseCast(m, index, contest)
 	}
 	return req
+}
+
+// sanctuaryGate runs Sanctuary's self-break and ward check before this
+// target's own cast machine — gated on hostility rather than a per-spell
+// harmful/beneficial classification, which does not exist anywhere in this
+// content model. RAW's "attack or a harmful spell" maps onto "a spell aimed
+// at an enemy", and [gamectx.Cast.IsHostile] is the existing question
+// resolution already has an answer for (Sneak Attack asks it the same way).
+// A cast against a non-hostile target (self, an ally — Cure Wounds,
+// Guidance, Healing Word) never reaches the ward check at all, and an
+// unknown relationship (no run to ask) fails open the same way an unknown
+// relationship already does everywhere else this question is asked: no
+// ward is invented out of missing data.
+//
+// See docs/ideas/cleric/plan.md's Sanctuary section.
+func (m *castMachine) sanctuaryGate(target castTargetMachine, index int) Step {
+	next := m.castRequest(target, index)
+	return Gather{
+		name: "sanctuary check " + target.targetID,
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			cast, ok := gamectx.CastOf(ctx)
+			if !ok {
+				return next, nil
+			}
+			hostile, known := cast.IsHostile(m.casterID, target.targetID)
+			if !known || !hostile {
+				return next, nil
+			}
+			if err := endSanctuaryIfHeld(ctx, bus, m.cast, m.casterID); err != nil {
+				return nil, err
+			}
+			pending := pendingSanctuaryWards(m.cast, m.casterID, target.targetID)
+			return m.wardCastStep(pending, 0, target, index, next), nil
+		},
+	}
+}
+
+// wardCastStep is [strikeMachine.wardCheckStep]'s Cast sibling: it works
+// through pending Sanctuary wards on ONE target as nested saving throws. The
+// difference from Strike is what a failure does — a multi-target cast (Bane,
+// up to three creatures) must not let one warded recipient cancel the
+// others, so a failed save here records THIS target as warded and moves on
+// to resolveTarget(index+1) rather than ending the whole cast. Sets no
+// onPose, [strikeMachine.wardCheckStep]'s same documented gap.
+func (m *castMachine) wardCastStep(
+	pending []*conditions.SanctuaryCondition, wardIndex int, target castTargetMachine, index int, next Step,
+) Step {
+	if wardIndex >= len(pending) {
+		return next
+	}
+	ward := pending[wardIndex]
+	dc := wardSaveDC(m.cast, ward.SourceID)
+	return requestSave(wardSaveInput(m.casterID, ward, dc, m.roller),
+		func(_ context.Context, out SaveOutcome) (Step, error) {
+			if !out.Result.Success {
+				m.outcome.Targets = append(m.outcome.Targets, CastTargetOutcome{
+					TargetID: target.targetID,
+					Warded:   &WardOutcome{SourceID: ward.SourceID, Save: out.Result},
+				})
+				return m.resolveTarget(index + 1), nil
+			}
+			return Gather{
+				name: "sanctuary immunity",
+				run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+					if err := applySanctuaryImmunity(ctx, bus, m.cast, m.casterID, ward.SourceID); err != nil {
+						return nil, err
+					}
+					return m.wardCastStep(pending, wardIndex+1, target, index, next), nil
+				},
+			}, nil
+		})
 }
 
 // drop ends the concentration the caster is already holding, in favour of the

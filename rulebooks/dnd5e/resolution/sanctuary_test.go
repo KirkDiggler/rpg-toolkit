@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -185,4 +186,135 @@ func TestAttackingEndsTheAttackersOwnSanctuary(t *testing.T) {
 		hasConditionRef(t, out.DirtyMonsters[0].Conditions, refs.Conditions.Sanctuary().String()),
 		"the wolf's own Sanctuary ended the moment it attacked",
 	)
+}
+
+// castFixtures is [CastActionTestSuite.fixtures]'s own trick, used directly
+// here rather than inside a suite: ContestDamageTestSuite's world (bard,
+// hero, wolf) and monster fixture are reused rather than rebuilt, and
+// SetT lets its suite.Require() calls work outside suite.Run.
+func castFixtures(t *testing.T) *ContestDamageTestSuite {
+	t.Helper()
+	f := &ContestDamageTestSuite{}
+	f.SetT(t)
+	f.ctx = context.Background()
+	return f
+}
+
+func TestSanctuaryBlocksABaneTargetOnAFailedWardSave(t *testing.T) {
+	fixtures := castFixtures(t)
+	wolf := fixtures.wolfData()
+	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
+
+	roller := &actionRoller{singles: []int{5}} // bard's WIS ward save: fails
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
+	})
+	require.NoError(t, err)
+	out, err := Resolve(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World: fixtures.world(),
+		Participants: []Participant{
+			{Monster: wolf}, {Character: baneCaster(1, 2)}, {Character: clericWarder()},
+		},
+		Machine: machine, Cost: baneCost(),
+	})
+	require.NoError(t, err)
+
+	outcome := out.Outcome.(CastOutcome)
+	require.Len(t, outcome.Targets, 1)
+	require.NotNil(t, outcome.Targets[0].Warded)
+	require.Equal(t, "cleric-1", outcome.Targets[0].Warded.SourceID)
+	require.Nil(t, outcome.Targets[0].Save, "Bane's own contest never ran")
+	require.Empty(t, outcome.Targets[0].Applied)
+	require.Equal(t, 1, roller.calls, "only the ward save was ever rolled")
+
+	payer := fixtures.sheet(out, bardID)
+	require.Zero(t, payer.ActionEconomy.ActionsRemaining, "the action is spent regardless of the ward")
+	require.Equal(t, 1, payer.Resources[resources.SpellSlotLevel1].Current, "and so is the slot")
+}
+
+func TestSanctuarySaveSuccessGrantsImmunityAndBaneStillLandsOnTheWolf(t *testing.T) {
+	fixtures := castFixtures(t)
+	wolf := fixtures.wolfData()
+	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
+
+	roller := &actionRoller{singles: []int{20, 10}}
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
+	})
+	require.NoError(t, err)
+	out, err := Resolve(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World: fixtures.world(),
+		Participants: []Participant{
+			{Monster: wolf}, {Character: baneCaster(1, 2)}, {Character: clericWarder()},
+		},
+		Machine: machine, Cost: baneCost(),
+	})
+	require.NoError(t, err)
+
+	outcome := out.Outcome.(CastOutcome)
+	require.Len(t, outcome.Targets, 1)
+	require.Nil(t, outcome.Targets[0].Warded)
+	require.NotNil(t, outcome.Targets[0].Save, "Bane's own contest ran exactly as if there were no ward")
+
+	require.True(t,
+		hasConditionRef(t, fixtures.sheet(out, bardID).Conditions, refs.Conditions.SanctuaryImmune().String()),
+		"the bard earned immunity to cleric-1's Sanctuary by passing the ward save",
+	)
+}
+
+func TestCastingABaneEndsTheCastersOwnSanctuary(t *testing.T) {
+	fixtures := castFixtures(t)
+	caster := baneCaster(1, 2)
+	caster.Conditions = []json.RawMessage{sanctuaryJSON(t, bardID)}
+
+	roller := &actionRoller{singles: []int{10}}
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
+	})
+	require.NoError(t, err)
+	out, err := Resolve(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Monster: fixtures.wolfData()}, {Character: caster}},
+		Machine:      machine, Cost: baneCost(),
+	})
+	require.NoError(t, err)
+
+	require.False(t,
+		hasConditionRef(t, fixtures.sheet(out, bardID).Conditions, refs.Conditions.Sanctuary().String()),
+		"the bard's own Sanctuary ended the moment it cast a hostile spell",
+	)
+}
+
+func TestSanctuaryDoesNotGateANonHostileCast(t *testing.T) {
+	fixtures := castFixtures(t)
+	saver := fixtures.saver(14)
+	saver.Conditions = []json.RawMessage{sanctuaryJSON(t, heroID)}
+
+	roller := &actionRoller{singles: []int{10}}
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
+	})
+	require.NoError(t, err)
+	out, err := Resolve(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World: fixtures.world(),
+		Participants: []Participant{
+			{Character: saver}, {Monster: fixtures.wolfData()}, {Character: baneCaster(1, 2)},
+		},
+		Machine: machine, Cost: baneCost(),
+	})
+	require.NoError(t, err)
+
+	outcome := out.Outcome.(CastOutcome)
+	require.Len(t, outcome.Targets, 1)
+	require.Nil(t, outcome.Targets[0].Warded, "bard and hero share a faction: never hostile, never gated")
+	require.NotNil(t, outcome.Targets[0].Save)
+	require.Equal(t, 1, roller.calls, "just Bane's own save — no ward save attempted, and Bane deals no damage")
 }

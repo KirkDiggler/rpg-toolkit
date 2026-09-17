@@ -1,6 +1,6 @@
 # Cleric level-one contribution plan
 
-## Sanctuary: resolution slice 1 delivered — Strike ward, not yet Cast
+## Sanctuary: resolution slice 1 delivered — Strike and Cast wards both
 
 Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811)
 (`SanctuaryCondition`/`SanctuaryImmuneCondition`, not yet consumed), built
@@ -61,15 +61,42 @@ immunity skipping the save entirely; and an attacker who holds their OWN
 Sanctuary losing it the instant they attack, regardless of that attack's own
 outcome. Full resolution module build/vet/test/lint clean.
 
-**Not done in this PR**: the Cast-side equivalent (a harmful single-target
-spell against a warded creature — Bane, Command, Sacred Flame and similar).
-`castMachine.resolveTarget` is the injection point, gated on
-`castView.IsHostile(casterID, targetID)` rather than a new "is this spell
-harmful" classification — reusing the existing hostility/faction check
-already used elsewhere for targeting eligibility — since Sanctuary's RAW
-text ("attack or a harmful spell") maps naturally onto "a spell aimed at an
-enemy" and no per-spell harmful/beneficial flag exists to check instead.
-Not yet designed in code, only in this paragraph; next slice.
+**Cast-side, delivered in a second commit on the same PR.**
+`castMachine.resolveTarget` (`resolution/action.go`) is the injection point.
+The existing per-target `Request`-building logic was pulled into its own
+`castRequest` method so a new `sanctuaryGate` could sit in front of it: it
+asks `gamectx.CastOf(ctx).IsHostile(casterID, targetID)` — reused verbatim
+rather than inventing a per-spell harmful/beneficial classification, since
+none exists anywhere in this content model and Sanctuary's RAW text ("attack
+or a harmful spell") maps naturally onto "a spell aimed at an enemy" (the
+same question Sneak Attack already asks this same way). An unknown or
+non-hostile relationship skips the gate entirely — Cure Wounds, Guidance and
+Healing Word never reach a ward check, by construction, with no per-spell
+opt-out needed. `castMachine` gained a `roller` field (the cast door's own
+Roller was previously only threaded into each target's inner machine, never
+kept on the machine itself) so the ward save has one to roll with.
+
+The Cast/Strike divergence that matters: a multi-target cast (Bane, up to
+three) must not let one warded recipient cancel the others, so
+`wardCastStep`'s failure path records `CastTargetOutcome.Warded` for THAT
+target only and continues to `resolveTarget(index+1)` — the other targets
+in the same cast are untouched. `CastTargetOutcome` gained the same
+`Warded *WardOutcome` field `StrikeOutcome` did; `Save`/`Applied` stay empty
+on a warded target. Self-break (`endSanctuaryIfHeld`) fires once per hostile
+target reached, and is naturally idempotent — after the first call the
+caster no longer holds Sanctuary, so it silently does nothing on any further
+hostile target in the same multi-target cast.
+
+Four more tests in `resolution/sanctuary_test.go`, built on
+`cast_action_test.go`'s existing Bane fixtures (`castFixtures` mirrors
+`CastActionTestSuite.fixtures`'s own trick of using a `ContestDamageTestSuite`
+outside `suite.Run`): a failed ward save blocking Bane on the wolf with the
+action/slot still spent; a passed save granting the bard immunity while
+Bane still lands on the wolf exactly as if unwarded; the caster's own
+Sanctuary ending the moment they cast a hostile Bane; and a Bane cast at an
+ALLY (same faction, so never hostile) never reaching the ward check at all
+despite the ally holding Sanctuary. Full resolution module build/vet/test/
+lint clean, all pre-existing tests (including every Bane fixture) unchanged.
 
 ## Current direction: expand level-one play, preparation deferred
 
