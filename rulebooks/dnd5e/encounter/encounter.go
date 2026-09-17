@@ -711,6 +711,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: member %q position [%g,%g] %s: %w",
 				mi.ID, mi.Position.X, mi.Position.Y, f.notStandable(cell), ErrBadPlacement)
 		}
+		// STANDABLE INCLUDES UNCOVERED (issue #1753): the same standing fact
+		// Join asks, at Setup — nobody spawns inside a table the author also
+		// placed, whichever seam placed them.
+		if prop, covered := f.standingBlocks(f.cellAt(mi.Position)); covered {
+			return nil, fmt.Errorf("newencounter: member %q position [%g,%g] is covered by placed prop %q: %w",
+				mi.ID, mi.Position.X, mi.Position.Y, prop, ErrBadPlacement)
+		}
 	}
 
 	// A record's target must name a door this field declares, and a holder
@@ -2198,6 +2205,14 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// step). Scenery is on the map and is not somewhere anybody stands.
 	if !e.field.isStandable(in.Cell) {
 		return nil, fmt.Errorf("join: cell %v %s: %w", in.Cell, e.field.notStandable(in.Cell), ErrBadPlacement)
+	}
+
+	// STANDABLE INCLUDES UNCOVERED (issue #1753): a movement-blocking placed
+	// footprint covering the cell's centre refuses the arrival by name — the
+	// same fact [Encounter.CellAt] would give a step here, so a join and a
+	// step cannot disagree about a table someone would land inside.
+	if prop, covered := e.field.standingBlocks(in.Cell); covered {
+		return nil, fmt.Errorf("join: cell %v is covered by placed prop %q: %w", in.Cell, prop, ErrBadPlacement)
 	}
 
 	member := &memberRecord{

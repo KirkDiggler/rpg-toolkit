@@ -1506,7 +1506,12 @@ func (e *Encounter) floodFrom(
 		Sources: []spatial.Position{from},
 		Limit:   limit,
 		Passable: func(a, b spatial.Position) bool {
-			if e.canvas.IsBoundaryMovementBlocked(a, b) {
+			// THE CROSSING FOLD (issue #1753): boundaries AND placed footprint
+			// interiors, the same read [Encounter.stepMember] makes, so a
+			// route and a step cannot disagree about a thin blocker. A trace
+			// error fails the edge closed — a flood that cannot judge a
+			// crossing does not walk through it.
+			if _, blocked, err := e.crossingBlocked(a, b); err != nil || blocked {
 				return false
 			}
 			if e.CellAt(CellAtInput{Cell: b, Mover: mover}).Passage != PassageBlocked {

@@ -263,7 +263,8 @@ type canvasRoom struct {
 }
 
 // IsLineOfSightBlocked reports whether sight between two cells is blocked,
-// counting opaque void as the wall it is.
+// counting opaque void as the wall it is and placed footprints as the soft
+// lane obstructions they are.
 //
 // THE VOID IS CHECKED FIRST AND CHECKED HARD. tools/spatial's own rule treats a
 // boundary edge as an unconditional block on the direct canonical ray while
@@ -301,6 +302,19 @@ type canvasRoom struct {
 // is a wall, which is the only thing that ever seals anything. Asking
 // regionOf here instead would have made an authored strip of rubble as opaque
 // as the stone it was cut from.
+//
+// THE LANES BELONG TO SPATIAL, NOT TO THIS METHOD. Since spatial v0.15.0 the
+// room's own sight asks [spatial.SightLanes] — direct lane, then
+// progress-making alternates from both endpoints — and this method asks the
+// SAME evaluator with ITS OWN obstruction facts: the boundaries and occluding
+// entities a bare room answers with, plus the field's placed footprints as a
+// SOFT lane obstruction ([spatial.TraceFootprint] interior per lane) whose
+// covered cells make opaque alternate origins ("At excludes origins with
+// Contact"). That is the whole of the approved sight-lanes integration: the
+// algorithm is spatial's, unchanged, and the composition supplies facts
+// instead of copying the neighbour-lane walk. With no placed contributors the
+// footprint reads vanish and the facts are exactly a bare room's, so every
+// legacy field answers as it always did.
 //
 // Under [VoidTransparent] this is spatial's answer unchanged, which is the honest
 // shape of "the declaration decides": there is nothing to add to a sightline
@@ -340,5 +354,81 @@ func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 		}
 	}
 
-	return c.BasicRoom.IsLineOfSightBlocked(from, to)
+	// A CALLBACK ERROR FAILS CLOSED, the exact rule spatial's own
+	// IsLineOfSightBlocked applies at this boolean-only boundary. For a
+	// compiled field the placed traces cannot error (compilePlaced refuses
+	// non-finite geometry), so the rule is a guard, not a behavior.
+	out, err := spatial.SightLanes(spatial.SightLanesInput{
+		Grid:         c.GetGrid(),
+		From:         from,
+		To:           to,
+		Obstructions: canvasSightObstructions{canvas: c},
+	})
+
+	return err != nil || out.Blocked
+}
+
+// canvasSightObstructions supplies the lane facts [spatial.SightLanes] reads
+// this canvas through: the boundaries and occluding entities a bare room
+// answers with, PLUS the placed footprints the field compiled — the same
+// contributor set standing and the movement fold read. It exists because a
+// room's own obstruction reads are spatial-internal, and a canvas delegating
+// to them could never tell a rule about the freely placed shape it runs (the
+// consumer seam sight-lanes.md was written to close).
+//
+// FACTS, NOT A SECOND SEARCH. Every method answers one lane or one cell; the
+// lane algorithm — direct early return, hard precedence, alternatives from
+// both endpoints, symmetry — stays spatial's, exactly as the provider
+// contract requires. Callbacks error only when a placed trace does (see
+// [field.sightBlocksAlong]); SightLanes returns that error, and the boolean
+// seam fails closed above.
+type canvasSightObstructions struct {
+	canvas *canvasRoom
+}
+
+// Along reads one lane: a sight-blocking BOUNDARY on the canonical ray is a
+// HARD obstruction (absolute, no lane bypasses it); an occluding entity on
+// the ray's interior and a footprint's INTERIOR crossing are SOFT ones —
+// endpoints excluded, exactly as the room's own entity rule excludes them, so
+// a sightline never blocks on somebody standing where it starts or ends.
+func (o canvasSightObstructions) Along(in spatial.SightLaneInput) (spatial.SightLaneOutput, error) {
+	for i := 1; i < len(in.Ray); i++ {
+		if b, ok := o.canvas.GetBoundary(in.Ray[i-1], in.Ray[i]); ok && b.BlocksLineOfSight {
+			return spatial.SightLaneOutput{HardBlocked: true}, nil
+		}
+	}
+
+	out := spatial.SightLaneOutput{}
+	for i := 1; i < len(in.Ray)-1 && !out.SoftBlocked; i++ {
+		for _, ent := range o.canvas.GetEntitiesAt(in.Ray[i]) {
+			if placeable, ok := ent.(spatial.Placeable); ok && placeable.BlocksLineOfSight() {
+				out.SoftBlocked = true
+				break
+			}
+		}
+	}
+	if !out.SoftBlocked {
+		soft, err := o.canvas.field.sightBlocksAlong(in.From, in.To)
+		out.SoftBlocked = soft
+
+		return out, err
+	}
+
+	return out, nil
+}
+
+// At reads whether a candidate alternate ORIGIN is opaque: a legacy entity
+// that says it blocks sight stands there, or a sight-blocking footprint's
+// stationary contact covers the cell's centre. SightLanes skips the origins
+// this marks blocked, which is how a covered cell stops being a lane
+// somebody leans through.
+func (o canvasSightObstructions) At(in spatial.SightCellInput) (spatial.SightCellOutput, error) {
+	for _, ent := range o.canvas.GetEntitiesAt(in.At) {
+		if placeable, ok := ent.(spatial.Placeable); ok && placeable.BlocksLineOfSight() {
+			return spatial.SightCellOutput{Blocked: true}, nil
+		}
+	}
+
+	covered, err := o.canvas.field.sightBlocksOriginAt(in.At)
+	return spatial.SightCellOutput{Blocked: covered}, err
 }

@@ -249,7 +249,10 @@ func (e *Encounter) routeLine(mover MemberID, from, anchor spatial.Position, bud
 			out.StoppedBy = fmt.Sprintf("cell %v is off the edge of the field", cell)
 			return out
 		}
-		if e.canvas.IsBoundaryMovementBlocked(prev, cell) {
+		// THE CROSSING FOLD (issue #1753), fail closed on an unjudgeable
+		// crossing, exactly as the route flood is: a directed walk does not
+		// step through a footprint it could not measure.
+		if _, blocked, err := e.crossingBlocked(prev, cell); err != nil || blocked {
 			out.StoppedBy = fmt.Sprintf("the crossing from %v into %v is blocked", prev, cell)
 			return out
 		}

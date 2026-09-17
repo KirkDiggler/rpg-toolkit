@@ -114,6 +114,20 @@ type field struct {
 	// its region, its lighting and its archetype, and nobody's feet go on it.
 	sealedCells map[spatial.Position]bool
 
+	// placed is THE PLACED FOOTPRINT CONTRIBUTORS (issue #1753): every
+	// authored footprint placement, deep-copied, in the CANONICAL frame —
+	// what ToData writes back out beside regions/props/walls. One set, read
+	// by standing ([Encounter.CellAt]), the crossing fold and the sight
+	// lanes; see placed_props.go.
+	placed []placedContributor
+
+	// plane is the continuous frame the placed facts are measured in: this
+	// field's own hex layout at FeetPerCell across the flats, so a cell
+	// centre means the same point to a footprint as to the grid that
+	// rasterizes around it. Built once, in the orientation the canvas was
+	// declared with — a flat-top field measures in the flat-top plane.
+	plane spatial.HexEmbedding
+
 	// intel is the authored knowledge records, deep-copied, in authored
 	// order — construction truth, what ToData writes back out.
 	intel []IntelRecord
@@ -208,6 +222,14 @@ func compileField(in FieldInput) (*field, error) {
 		sealedCells:  make(map[spatial.Position]bool, len(in.Sealed)),
 	}
 
+	// THE PLACED PLANE, before anything measures a footprint: cell centres
+	// in feet, this field's orientation, the one frame every continuous
+	// fact is asked in. A validated width cannot fail; see placed_props.go.
+	f.plane = spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{
+		CellWidth:   placedPlaneCellWidth,
+		Orientation: f.orientation.spatial(),
+	})
+
 	if err := f.compileRegions(in.Regions); err != nil {
 		return nil, err
 	}
@@ -218,6 +240,12 @@ func compileField(in FieldInput) (*field, error) {
 		return nil, err
 	}
 	if err := f.compileProps(in.Props); err != nil {
+		return nil, err
+	}
+	// PLACED FOOTPRINTS AFTER THE PROPS, so a placed id is checked against
+	// the legacy prop ids the props pass just built. Nothing here asks for
+	// floor: a footprint may overhang the void (placed_props.go).
+	if err := f.compilePlaced(in.Placed); err != nil {
 		return nil, err
 	}
 	if err := f.compileWalls(in.Walls); err != nil {

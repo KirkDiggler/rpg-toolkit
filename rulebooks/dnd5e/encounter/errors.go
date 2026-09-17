@@ -64,13 +64,16 @@ var (
 	// a lighting intensity outside [0,1]; more cells than maxFieldCells across
 	// the field; a prop with no ref, with either blocking answer left unsaid
 	// (rpg-toolkit#1128 — [PropInput]), on a non-integral cell, or sharing a
-	// cell with another prop; a wall listed twice; or — Load-only — a blob
-	// carrying the retired `rooms` / `connections` keys (FieldData.Rooms),
-	// or a region whose lighting block omits its intensity. The region
-	// defects with a sentinel of their own (ErrRegionEmpty, ErrRegionOverlap,
-	// ErrRegionArchetypeMissing, ErrRegionLightingMissing) and the edge
-	// defects (ErrEdgeNotAdjacent, ErrEdgeOffFloor) carry that sentinel
-	// instead.
+	// cell with another prop; a wall listed twice; a placed footprint
+	// contributor (issue #1753) with no or duplicated id — against placed or
+	// legacy prop ids alike — or a placement that is missing, non-finite,
+	// non-positive or beyond any representable field coordinate; or — Load-
+	// only — a blob carrying the retired `rooms` / `connections` keys
+	// (FieldData.Rooms), or a region whose lighting block omits its
+	// intensity. The region defects with a sentinel of their own
+	// (ErrRegionEmpty, ErrRegionOverlap, ErrRegionArchetypeMissing,
+	// ErrRegionLightingMissing) and the edge defects (ErrEdgeNotAdjacent,
+	// ErrEdgeOffFloor) carry that sentinel instead.
 	//
 	// Checked identically at Setup and Load: LoadEncounter converts the blob
 	// back into a [FieldInput] and routes it through the SAME compileField

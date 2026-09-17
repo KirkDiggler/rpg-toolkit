@@ -553,6 +553,25 @@ type FieldInput struct {
 	// absolute authored cells. Optional. See [PropInput].
 	Props []PropInput
 
+	// Placed are the authored footprint placements: named rectangles in the
+	// CANONICAL spatial plane — feet, not authored cells — whose movement
+	// and sight facts are independent of any cell they cover (issue #1753).
+	// Optional; omitted means none, and a field without them answers exactly
+	// as every field did before the list existed.
+	//
+	// NOT ANCHORED. A footprint carries no cell it sits on and no fake
+	// entity: standing is centre contact, crossing is segment interior, and
+	// the geometry is measured in the plane [FeetPerCell] names. The
+	// conversion from the portable source frame happens at the construction
+	// boundary (dungeonspec); no second authored pose exists here.
+	//
+	// Refused when an id is empty, duplicated (among placed or against a
+	// legacy [PropInput.ID]), or the placement is missing, non-finite,
+	// non-positive or unrepresentable (ErrNoField). A footprint needs NO
+	// floor: it may overhang the void, and sight keeps the parts of it the
+	// painted mask does not cover.
+	Placed []PlacedPropInput
+
 	// Walls are the authored edges between adjacent floor cells that block
 	// movement and sight, with both endpoints as absolute authored offset
 	// [col,row] pairs (rpg-project#256 moved these up from the room, where

@@ -924,9 +924,30 @@ func walkableValues(cells []RoomCell, radius float64, add errSink) {
 }
 
 // cubeDistance is the axial cube metric: max(|q|, |r|, |-q-r|).
+//
+// SATURATING, NOT WRAPPING. |MinInt| has no positive int, and negating or
+// summing an extreme cell would wrap around and measure a cell at the edge
+// of the int range as if it sat at the origin — a floor hex accepted because
+// its distance came back negative and no radius is smaller than that. Every
+// workspace radius is a two-digit number, so a coordinate magnitude beyond a
+// tiny bound is outside the floor already and the metric saturates rather
+// than lies. Legal cells measure exactly as the unwrapped metric always did.
 func cubeDistance(c RoomCell) int {
-	q, r := abs(c.Q), abs(c.R)
-	return max(q, r, abs(-c.Q-c.R))
+	const metricBound = 1 << 40
+	q, r := saturatingAbs(c.Q), saturatingAbs(c.R)
+	if q > metricBound || r > metricBound {
+		return math.MaxInt
+	}
+	return max(q, r, saturatingAbs(-c.Q-c.R))
+}
+
+// saturatingAbs is |v| for every int: MinInt saturates to MaxInt instead of
+// wrapping back to negative.
+func saturatingAbs(v int) int {
+	if v == math.MinInt {
+		return math.MaxInt
+	}
+	return abs(v)
 }
 
 func abs(v int) int {

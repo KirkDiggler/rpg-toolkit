@@ -54,6 +54,8 @@ const (
 // IT IS, content's own identifier (`dnd5e:props:pillar`), carried so a refusal
 // can say the word "pillar" to whoever asked; it is empty for everything but a
 // prop, because nothing else on a cell has a content ref this module holds.
+// A PLACED FOOTPRINT carries its own id in both, honestly: it has no content
+// ref beyond the name its author gave the placement (placed_props.go).
 type ContribRef struct {
 	Kind ContribKind
 	ID   string
@@ -120,6 +122,30 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 	if !e.field.isStandable(in.Cell) {
 		fact.Passage = PassageBlocked
 		fact.Contribs = append(fact.Contribs, ContribRef{Kind: ContribField, Blocks: true})
+	}
+
+	// PLACED FOOTPRINTS, CENTRE-COVERED (issue #1753). A movement-blocking
+	// placement closes every cell whose centre it covers — stationary
+	// [spatial.TraceFootprint] contact, boundary included — no matter where
+	// its rectangle reaches. Every covering contributor is reported: two
+	// overlapping tables do not erase each other's fact.
+	if len(e.field.placed) > 0 {
+		centre := e.field.plane.CellCentre(in.Cell)
+		for i := range e.field.placed {
+			p := &e.field.placed[i]
+			if !p.blocksMovement {
+				continue
+			}
+			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: p.placement, From: centre, To: centre,
+			})
+			if err != nil || contact.Contact {
+				fact.Passage = PassageBlocked
+				fact.Contribs = append(fact.Contribs, ContribRef{
+					Kind: ContribProp, ID: string(p.id), Ref: string(p.id), Blocks: true,
+				})
+			}
+		}
 	}
 
 	for _, ent := range e.canvas.GetEntitiesAt(in.Cell) {

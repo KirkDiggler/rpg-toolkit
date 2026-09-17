@@ -3,6 +3,7 @@ package dungeonspec
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -278,6 +279,15 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsOutOfRangeNumbers() {
 		{"footprint too wide", "width: 1.2", "width: 20"},
 		{"footprint offset out of range", "offsetX: 0.1, ", "offsetX: 13, "},
 		{"walkable outside workspace", "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: 7, r: 0}"},
+		// INT EXTREMES, NOT JUST OUT-OF-RANGE ONES. A floor cell at the edge
+		// of the int range once passed the workspace check because the cube
+		// metric's signed arithmetic wrapped on it — |MinInt| came back
+		// negative, and a negative distance is smaller than every radius.
+		// Both extremes are refused, by name.
+		{"walkable min-int q", "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: -9223372036854775808, r: 0}"},
+		{"walkable max-int q", "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: 9223372036854775807, r: 0}"},
+		{"walkable min-int r", "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: 0, r: -9223372036854775808}"},
+		{"walkable min-int q and r", "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: -9223372036854775808, r: -9223372036854775808}"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -285,6 +295,27 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsOutOfRangeNumbers() {
 			s.Error(err)
 		})
 	}
+}
+
+func (s *SingleRoomSourceSuite) TestCubeDistanceNeverWrapsOnExtremeCells() {
+	// The metric itself, not only one decode path through it: every extreme
+	// answer must name the cell outside every workspace, never inside one.
+	for _, c := range []RoomCell{
+		{Q: math.MinInt, R: 0}, {Q: 0, R: math.MinInt},
+		{Q: math.MaxInt, R: 0}, {Q: 0, R: math.MaxInt},
+		{Q: math.MinInt, R: math.MinInt}, {Q: math.MaxInt, R: math.MinInt},
+		{Q: -9223372036854775807, R: 9223372036854775806},
+	} {
+		s.Greater(cubeDistance(c), 14, "extreme cell %v measured inside the largest workspace", c)
+	}
+	// LEGAL CELLS IDENTICAL: the whole reference floor measures exactly what
+	// the axial cube metric says it does.
+	s.Equal(0, cubeDistance(RoomCell{Q: 0, R: 0}))
+	s.Equal(2, cubeDistance(RoomCell{Q: 2, R: 0}))
+	s.Equal(2, cubeDistance(RoomCell{Q: -1, R: -1}))
+	s.Equal(1, cubeDistance(RoomCell{Q: -1, R: 1}))
+	s.Equal(1, cubeDistance(RoomCell{Q: 1, R: -1}))
+	s.Equal(3, cubeDistance(RoomCell{Q: 3, R: -1}))
 }
 
 func (s *SingleRoomSourceSuite) TestDecodeRejectsOversizedScene() {

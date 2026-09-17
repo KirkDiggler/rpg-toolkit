@@ -206,6 +206,16 @@ type FieldData struct {
 	// order, with cells in the AUTHORED offset frame.
 	Props []PropData `json:"props,omitempty"`
 
+	// Placed are the authored footprint placements (issue #1753), in
+	// authored order, with geometry in the CANONICAL frame: feet, exactly
+	// as [FieldInput.Placed] carries it — the placement is already the
+	// compiled geometry and never re-converted on the wire.
+	//
+	// Scenery's omitempty rule: omitted and written as an empty list are
+	// the same fact, so a blob from before placed contributors existed
+	// simply loads with none.
+	Placed []PlacedPropData `json:"placed,omitempty"`
+
 	// Intel is the authored knowledge records, in authored order
 	// (rpg-project#372). Scenery's omitempty rule: omitted and empty are the
 	// same fact, so a blob written before intel existed simply loads with
@@ -359,6 +369,63 @@ type PropData struct {
 	// from the first frame, so every blob from before arrivals existed reads
 	// exactly as it did.
 	Arrives *TriggerData `json:"arrives,omitempty"`
+}
+
+// PlacedPropData is the persistent representation of one [PlacedPropInput]
+// (issue #1753).
+//
+// THE GEOMETRY IS VALUE, NOT POINTER: Origin, LocalOffset and the box's two
+// sides are plain floats in the CANONICAL frame, so a blob that carried them
+// as absence could be told apart from one that carried (0,0) facing nowhere —
+// a real placement — only by the field-level omitempty, which is why the
+// whole list is omitted when empty rather than any member of it.
+// Facing is REQUIRED only in the sense a float always is: any finite degree
+// is legal, and compilePlaced refuses a non-finite one by name at load.
+type PlacedPropData struct {
+	// ID mirrors [PlacedPropInput.ID]. REQUIRED non-empty at load and
+	// refused by name (compilePlaced), because a contributor without a name
+	// is a blocker nothing can be told about.
+	ID PropID `json:"id"`
+
+	// Placement mirrors [PlacedPropInput.Placement], copied out and back
+	// without conversion in either direction.
+	Placement PlacementData `json:"placement"`
+
+	// BlocksMovement and BlocksLineOfSight mirror the input's two answers
+	// ([PlacedPropInput]). Written without omitempty, on PropData flags'
+	// rule: these are plain bools rather than pointers because a placed
+	// contributor was BORN with the requirement that it say both — there is
+	// no blob from before the flags existed that could have omitted one, so
+	// absence cannot mean anything but the zero value.
+	BlocksMovement    bool `json:"blocks_movement"`
+	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+}
+
+// PlacementData is the persistent representation of a
+// [spatial.FootprintPlacement]: the box and its pose, in feet, in the
+// canonical plane. Values, never a second authored pose — see
+// [PlacedPropData].
+type PlacementData struct {
+	// Footprint is the placement's rectangle: W across its facing, D along
+	// it (spatial's own Box convention — deliberate name swap from the
+	// source frame, single-room-play.md §3).
+	Footprint FootprintData `json:"footprint"`
+
+	// Origin is where the placement sits in the plane, in feet.
+	Origin PositionData `json:"origin"`
+
+	// Facing is the rectangle's facing in degrees.
+	Facing float64 `json:"facing"`
+
+	// LocalOffset is the box's offset inside the placement's own axes,
+	// before Facing.
+	LocalOffset PositionData `json:"local_offset"`
+}
+
+// FootprintData is the persistent box: W across, D along.
+type FootprintData struct {
+	W float64 `json:"w"`
+	D float64 `json:"d"`
 }
 
 // ReserveData is the persistent representation of one [reservedMember]: a
@@ -1433,6 +1500,26 @@ func fieldDataFrom(f *field) FieldData {
 				pd.Arrives = &td
 			}
 			out.Props[i] = pd
+		}
+	}
+
+	if len(f.placed) > 0 {
+		out.Placed = make([]PlacedPropData, len(f.placed))
+		for i, p := range f.placed {
+			// Fresh box, never the compiled one's own: two ToData calls must
+			// not alias one rectangle (PlacedPropData's rule, the input copy's
+			// reason twice over).
+			out.Placed[i] = PlacedPropData{
+				ID: p.id,
+				Placement: PlacementData{
+					Footprint:   FootprintData{W: p.placement.Footprint.Box.W, D: p.placement.Footprint.Box.D},
+					Origin:      PositionData{X: p.placement.Origin.X, Y: p.placement.Origin.Y},
+					Facing:      p.placement.Facing,
+					LocalOffset: PositionData{X: p.placement.LocalOffset.X, Y: p.placement.LocalOffset.Y},
+				},
+				BlocksMovement:    p.blocksMovement,
+				BlocksLineOfSight: p.blocksLineOfSight,
+			}
 		}
 	}
 
@@ -2653,6 +2740,20 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			prop.Arrives = t
 		}
 		in.Props = append(in.Props, prop)
+	}
+
+	for _, ppd := range fd.Placed {
+		in.Placed = append(in.Placed, PlacedPropInput{
+			ID: ppd.ID,
+			Placement: spatial.FootprintPlacement{
+				Footprint:   spatial.Footprint{Box: &spatial.Box{W: ppd.Placement.Footprint.W, D: ppd.Placement.Footprint.D}},
+				Origin:      spatial.Point{X: ppd.Placement.Origin.X, Y: ppd.Placement.Origin.Y},
+				Facing:      ppd.Placement.Facing,
+				LocalOffset: spatial.Point{X: ppd.Placement.LocalOffset.X, Y: ppd.Placement.LocalOffset.Y},
+			},
+			BlocksMovement:    ppd.BlocksMovement,
+			BlocksLineOfSight: ppd.BlocksLineOfSight,
+		})
 	}
 
 	for _, ed := range fd.Exits {
