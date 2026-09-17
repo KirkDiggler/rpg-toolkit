@@ -187,16 +187,22 @@ type MonsterPlacement struct {
 	// the DC from the stat block's own passive Insight.
 	Intimidate []encounter.CheckApproach `json:"Intimidate,omitempty"`
 
-	// On is what the world learns when a shenanigan against this monster
-	// lands, verb to fact id ([PlaceSpec.On]) — read by the host at
-	// [OnIntimidated] and handed to [encounter.MemberInput.OnIntimidated].
-	// Nil when the author planted nothing.
+	// Persuade is the check a character must beat to talk this monster round
+	// ([PlaceSpec.Persuade], rpg-project#458) — for a host to hand to
+	// [encounter.MemberInput.Persuade] when it spawns the sheet. Nil when the
+	// author authored none, which means the rulebook derives the DC from the
+	// stat block's own passive Insight.
+	Persuade []encounter.CheckApproach `json:"Persuade,omitempty"`
+
+	// Answers is what this monster does about a social verb's verdict,
+	// keyed by outcome ([PlaceSpec.On]) — for a host to hand to
+	// [encounter.MemberInput.Answers] when it spawns the sheet. Nil when
+	// the author authored no table.
 	//
-	// STILL KEYED BY VERB on this side, deliberately: the composition takes
-	// one fact per verb as its own field, and flattening here would put the
-	// verb's name in a Go field name — which is where the second shenanigan
-	// would have to break this type instead of adding a key.
-	On map[string]string `json:"On,omitempty"`
+	// COMPILED, NOT CARRIED: an omitted weight is resolved to 1 here
+	// ([answersOf]), so what the host hands over is a table every entry of
+	// which states its own share.
+	Answers map[string][]encounter.Answer `json:"Answers,omitempty"`
 
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
@@ -754,16 +760,39 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 	return out
 }
 
-// onOf carries what the world learns, verb to fact id, nil staying nil so a
-// placement that planted nothing pictures exactly as it did before this key
-// existed.
-func onOf(on map[string]OnSpec) map[string]string {
+// answersOf carries the authored answer table to the composition's shape,
+// nil staying nil so a placement that authored none pictures exactly as it did
+// before this key existed.
+//
+// THIS IS WHERE AN OMITTED WEIGHT BECOMES 1. The authoring dialect lets an
+// author leave it out, and the composition takes every entry with its own
+// number — so the default is resolved once, here, and nothing downstream has
+// to know what "omitted" meant. That is the same move every other compiled
+// default in this file makes.
+func answersOf(on map[string][]AnswerSpec) map[string][]encounter.Answer {
 	if on == nil {
 		return nil
 	}
-	out := make(map[string]string, len(on))
-	for verb, spec := range on {
-		out[verb] = spec.Fact
+	out := make(map[string][]encounter.Answer, len(on))
+	for key, entries := range on {
+		rows := make([]encounter.Answer, 0, len(entries))
+		for _, entry := range entries {
+			weight := 1
+			if entry.Weight != nil {
+				weight = *entry.Weight
+			}
+			fact := ""
+			if entry.Fact != nil {
+				fact = *entry.Fact
+			}
+			rows = append(rows, encounter.Answer{
+				Weight: weight,
+				Say:    entry.Say,
+				Fact:   encounter.FactID(fact),
+				Flee:   entry.Flee != nil,
+			})
+		}
+		out[key] = rows
 	}
 
 	return out
@@ -807,7 +836,8 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 			ID: p.ID, Holds: holds, Faction: p.Faction,
 			Actions:    append([]string(nil), p.Actions...),
 			Intimidate: approachesOf(p.Intimidate),
-			On:         onOf(p.On),
+			Persuade:   approachesOf(p.Persuade),
+			Answers:    answersOf(p.On),
 			Arrives:    predicateOf(p.Arrives),
 		})
 	}

@@ -472,12 +472,13 @@ type ReserveData struct {
 	Targeting string           `json:"targeting,omitempty"`
 	Mind      string           `json:"mind,omitempty"`
 
-	// Intimidate and OnIntimidated are [MemberData]'s two shenanigan keys,
+	// Intimidate, Persuade and Answers are [MemberData]'s shenanigan keys,
 	// kept for a member still waiting to arrive — its facts are the same
 	// facts, and losing them across a save would make an arrival
 	// unintimidable for reasons nobody authored.
-	Intimidate    []CheckApproachData `json:"intimidate,omitempty"`
-	OnIntimidated FactID              `json:"on_intimidated,omitempty"`
+	Intimidate []CheckApproachData     `json:"intimidate,omitempty"`
+	Persuade   []CheckApproachData     `json:"persuade,omitempty"`
+	Answers    map[string][]AnswerData `json:"answers,omitempty"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -1080,6 +1081,79 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 	return out
 }
 
+// AnswerData is one authored answer entry on the blob — [Answer], with
+// the same fields and the same presence rules (rpg-project#458).
+//
+// WEIGHT IS ALWAYS WRITTEN, unlike every other key here. An omitted weight in
+// the AUTHORING dialect means 1; by the time an entry reaches this
+// composition it carries its own number, and persisting a 1 as an absence
+// would put the dialect's default back into a blob that is supposed to be
+// resolved. The other three omit when unset because their absences mean
+// nothing else.
+type AnswerData struct {
+	Weight int    `json:"weight"`
+	Say    string `json:"say,omitempty"`
+	Fact   FactID `json:"fact,omitempty"`
+	Flee   bool   `json:"flee,omitempty"`
+}
+
+// answersDataFrom renders a member's answer table for the blob, nil
+// staying nil for approachesDataFrom's reason: a placement nobody authored a
+// table on writes no key at all.
+func answersDataFrom(answers map[string][]Answer) map[string][]AnswerData {
+	if answers == nil {
+		return nil
+	}
+	out := make(map[string][]AnswerData, len(answers))
+	for key, entries := range answers {
+		rows := make([]AnswerData, 0, len(entries))
+		for _, entry := range entries {
+			rows = append(rows, AnswerData(entry))
+		}
+		out[key] = rows
+	}
+
+	return out
+}
+
+// answersFromData resolves a persisted answer table back to the entries it
+// names, nil staying nil for answersDataFrom's reason. What it CANNOT do is
+// judge the table: an unknown key or an unrollable weight is refused by
+// [validateAnswers] at the load's own validation step, where every other
+// blob refusal lives.
+func answersFromData(data map[string][]AnswerData) map[string][]Answer {
+	if data == nil {
+		return nil
+	}
+	out := make(map[string][]Answer, len(data))
+	for key, rows := range data {
+		entries := make([]Answer, 0, len(rows))
+		for _, row := range rows {
+			entries = append(entries, Answer(row))
+		}
+		out[key] = entries
+	}
+
+	return out
+}
+
+// taughtFactsOf is every fact id a member's table can teach — what joins
+// [mintedFactIDs] so a world blob may name a fact only an answer plants.
+// Sorted by the table's own key order is not required: mintedFactIDs sorts
+// what it is given.
+func taughtFactsOf(data map[string][]AnswerData) []FactID {
+	var out []FactID
+	for _, rows := range data {
+		for _, row := range rows {
+			if row.Fact != "" {
+				out = append(out, row.Fact)
+			}
+		}
+	}
+
+	return out
+}
+
 // approachesFromData resolves persisted approaches back to the check they
 // name, nil staying nil for approachesDataFrom's reason.
 func approachesFromData(data []CheckApproachData) []CheckApproach {
@@ -1182,13 +1256,21 @@ type MemberData struct {
 	Targeting string           `json:"targeting,omitempty"`
 	Mind      string           `json:"mind,omitempty"`
 
-	// Intimidate and OnIntimidated carry forward the member's shenanigan
-	// facts (rpg-project#454) — see [MemberInput.Intimidate] and
-	// [MemberInput.OnIntimidated]. Both omit when unset, so a blob written
-	// before these keys existed and one written today for the same roster
-	// are byte-identical, and both load into the same run.
-	Intimidate    []CheckApproachData `json:"intimidate,omitempty"`
-	OnIntimidated FactID              `json:"on_intimidated,omitempty"`
+	// Intimidate, Persuade and Answers carry forward the member's
+	// shenanigan facts (rpg-project#454, rpg-project#458) — see
+	// [MemberInput.Intimidate], [MemberInput.Persuade] and
+	// [MemberInput.Answers]. All omit when unset, so a blob written for a
+	// roster with no shenanigans on it is byte-identical to one written
+	// before these keys existed.
+	//
+	// `on_intimidated` IS GONE, not kept beside `answers`. It said one
+	// thing about one outcome; the table says all four, and two spellings of
+	// the same authored fact is the dual representation this repo bans. No
+	// consumer persists this shape yet, so there is no installed base to
+	// migrate — the same argument the placement dialect made when it moved.
+	Intimidate []CheckApproachData     `json:"intimidate,omitempty"`
+	Persuade   []CheckApproachData     `json:"persuade,omitempty"`
+	Answers    map[string][]AnswerData `json:"answers,omitempty"`
 
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
@@ -1343,7 +1425,8 @@ func (e *Encounter) snapshot() EncounterData {
 			Targeting:      m.Targeting,
 			Mind:           m.Mind,
 			Intimidate:     approachesDataFrom(m.Intimidate),
-			OnIntimidated:  m.OnIntimidated,
+			Persuade:       approachesDataFrom(m.Persuade),
+			Answers:        answersDataFrom(m.Answers),
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -1438,7 +1521,8 @@ func (e *Encounter) snapshot() EncounterData {
 			Targeting:      rm.record.Targeting,
 			Mind:           rm.record.Mind,
 			Intimidate:     approachesDataFrom(rm.record.Intimidate),
-			OnIntimidated:  rm.record.OnIntimidated,
+			Persuade:       approachesDataFrom(rm.record.Persuade),
+			Answers:        answersDataFrom(rm.record.Answers),
 			BlocksMovement: rm.record.BlocksMovement,
 			Faction:        rm.record.Faction,
 			Holds:          append([]IntelID(nil), rm.holds...),
@@ -2045,6 +2129,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := f.validateMemberFaction(m.ID, m.Kind, m.Faction); err != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 		}
+
+		// And an answer table this build could not roll is refused here for
+		// the same reason: LoadEncounter is the trust boundary for a blob
+		// somebody edited, and an unknown outcome key would otherwise sit in
+		// the run looking authored until a player finally spoke to it.
+		if err := validateAnswers(answersFromData(m.Answers)); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		}
 	}
 
 	// The reserve (rpg-project#375, reserve.go): every entry is a member the
@@ -2079,7 +2171,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: reserve %q cell [%g,%g] is covered by placed prop %q: %w: %w",
 				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
-		if err := validateMemberFacts(r.ID, r.SpeedFeet, r.SightFeet, actionViewsFrom(r.Actions), approachesFromData(r.Intimidate)); err != nil {
+		if err := validateMemberFacts(memberFacts{
+			ID: r.ID, SpeedFeet: r.SpeedFeet, SightFeet: r.SightFeet, Actions: actionViewsFrom(r.Actions),
+			Intimidate: approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
+			Answers: answersFromData(r.Answers),
+		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
 		if err := f.validateMemberFaction(r.ID, r.Kind, r.Faction); err != nil {
@@ -2129,10 +2225,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// when it stands on the floor.
 		taught := make([]FactID, 0, len(data.Members)+len(data.Reserve))
 		for _, m := range data.Members {
-			taught = append(taught, m.OnIntimidated)
+			taught = append(taught, taughtFactsOf(m.Answers)...)
 		}
 		for _, r := range data.Reserve {
-			taught = append(taught, r.OnIntimidated)
+			taught = append(taught, taughtFactsOf(r.Answers)...)
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, mintable, data.EverMembers); err != nil {
@@ -2445,7 +2541,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Targeting:      m.Targeting,
 			Mind:           m.Mind,
 			Intimidate:     approachesFromData(m.Intimidate),
-			OnIntimidated:  m.OnIntimidated,
+			Persuade:       approachesFromData(m.Persuade),
+			Answers:        answersFromData(m.Answers),
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}
@@ -2507,7 +2604,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				Targeting:      r.Targeting,
 				Mind:           r.Mind,
 				Intimidate:     approachesFromData(r.Intimidate),
-				OnIntimidated:  r.OnIntimidated,
+				Persuade:       approachesFromData(r.Persuade),
+				Answers:        answersFromData(r.Answers),
 				BlocksMovement: r.BlocksMovement,
 				Faction:        r.Faction,
 			},

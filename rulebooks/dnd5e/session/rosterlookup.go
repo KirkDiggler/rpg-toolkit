@@ -96,3 +96,31 @@ func rosterIDs(roster []encounter.Member) []encounter.MemberID {
 	}
 	return out
 }
+
+// believedStances indexes what ONE VIEWER believes about every member of the
+// roster, by member id — the same batching rosterNames and rosterKinds do, for
+// [Sighting.Stance] (rpg-project#458).
+//
+// PER VIEWER, WHICH IS THE WHOLE POINT, and why this cannot be a roster read
+// like the other two: a name and a kind are facts about the subject and the
+// same for everybody, while a stance is a fact about the pair. The viewer is
+// the member the View was taken for.
+//
+// AN UNKNOWN PAIR IS EMPTY, not "neutral". The composition reports known=false
+// for a subject who is not a member, and neutral for one in no faction; the
+// first is an absence and the second is an answer, and collapsing them would
+// tell a client a departed creature is on nobody's side.
+func believedStances(
+	enc *encounter.Encounter, viewer string, roster []encounter.Member,
+) map[string]string {
+	out := make(map[string]string, len(roster))
+	for _, m := range roster {
+		stance, known := enc.BelievedStance(encounter.MemberID(viewer), m.ID)
+		if !known {
+			continue
+		}
+		out[string(m.ID)] = string(stance)
+	}
+
+	return out
+}

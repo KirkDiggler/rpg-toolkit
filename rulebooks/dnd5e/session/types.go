@@ -636,6 +636,32 @@ type Sighting struct {
 	// name. Lands with rpg-toolkit#1230.
 	Kind MemberKind `json:"kind,omitempty"`
 
+	// Stance is what THIS VIEWER BELIEVES the subject's stance toward them to
+	// be — for a player, the creature's stance toward the party
+	// (rpg-project#458, "The ring: what a player believes about a creature").
+	// One of "hostile", "neutral" or "allied", and EMPTY when the run cannot
+	// answer: a subject who is not a member, or one in no faction at all,
+	// which a world NPC is.
+	//
+	// BESIDE Name AND Kind, NOT INSIDE [Seen], and the placement is the
+	// contract. Seen is the SIGHT CHANNEL's facts — where the subject is and
+	// what its body is doing, gone when the channel is. A stance is a fact
+	// about the viewer's relationship to the subject, held the way a name and
+	// a kind are: a memory keeps it exactly as it keeps those.
+	//
+	// IT EQUALS THE DERIVED STANCE TODAY, so every viewer gets the same
+	// answer and the ring under a token does not change colour. It is carried
+	// PER VIEWER anyway, because a stance read live off the graph can only
+	// ever be true, and a game with no way to lie can never have illusion in
+	// it. `pretend` — a creature showing one stance and holding another — is
+	// where belief and truth will diverge, and when it lands it changes what
+	// [encounter.Encounter.BelievedStance] answers and nothing else.
+	//
+	// PRESENTATION ONLY. It decides nothing about who may be attacked,
+	// threatened or talked to; the composition's own fold does that, and this
+	// is what a client draws.
+	Stance string `json:"stance,omitempty"`
+
 	// Seen is the sight channel's own typed knowledge; see [Seen]. Decoded by
 	// the composition, not by this package — session never unmarshals
 	// Payload itself.
@@ -942,6 +968,35 @@ const (
 	// "intimidated" is the statement of what happened, and the wire's
 	// EVENT_KIND_INTIMIDATED says the same (rpg-api-protos#339).
 	EventIntimidated EventKind = "intimidated"
+
+	// EventPersuaded reports somebody talking a member round — landed or not
+	// (rpg-project#458, the second shenanigan). [EventIntimidated]'s twin,
+	// with its audience and its contract: the beat is the ONLY account of the
+	// roll, and the composition exports the name
+	// ([encounter.BeatPersuaded]) so a rename fails to compile here.
+	EventPersuaded EventKind = "persuaded"
+
+	// EventAnswered is WHAT THE CREATURE DID ABOUT IT: the world's own roll on
+	// the author's answer table after a social verb settled (rpg-project#458,
+	// R1 — "everything visible in the log now, probably not story but the
+	// debug log for sure").
+	//
+	// "ANSWERED", NOT "REACTED", AND THE DISTINCTION IS LOAD-BEARING HERE.
+	// [VerbReact] is D&D's reaction — an interrupt window this seam poses and
+	// a player answers with a held swing. A creature replying to somebody who
+	// spoke to it is a different thing on a different clock, and a client
+	// switching on event kind must not have to tell them apart by context.
+	//
+	// IT CARRIES THE AUTHOR'S LINE, and that is how the player receives what
+	// the goblin says. Nothing else in this build projects "what the player
+	// knows" out of a creature's answer; the line in the story log is the
+	// whole of it this slice.
+	//
+	// AND IT CARRIES THE DIE, with the weights it was rolled against and the
+	// index of the entry that fired, so the table can be replayed from the
+	// log rather than taken on trust. A verdict the author wrote no table for
+	// produces NO beat of this kind at all — absent means absent.
+	EventAnswered EventKind = "answered"
 
 	// EventDoorRevealed is a concealed door entering THIS RECIPIENT's
 	// knowledge — their own search, a crossing, or perceiving it open. The
@@ -1933,6 +1988,77 @@ type IntimidatedBody struct {
 }
 
 func (IntimidatedBody) isEventBody() {}
+
+// PersuadedBody is EventPersuaded's typed body — [IntimidatedBody]'s fields
+// with [IntimidatedBody]'s contracts, because a client that learned one shape
+// must not have to learn a second.
+type PersuadedBody struct {
+	// Actor is who made the appeal.
+	Actor string `json:"actor"`
+
+	// Target is who was appealed to. The witnesses are the beat's audience
+	// and are not listed: a recipient knows it saw this because it was
+	// delivered the beat at all.
+	Target string `json:"target"`
+
+	// DC is what the check had to reach — the creature's own, authored on the
+	// placement or derived from its stat block.
+	DC int `json:"dc"`
+
+	// Total is what the check totalled.
+	Total int `json:"total"`
+
+	// Beaten is whether it landed.
+	Beaten bool `json:"beaten"`
+}
+
+func (PersuadedBody) isEventBody() {}
+
+// AnsweredBody is EventAnswered's typed body: the world's roll on the author's
+// answer table, and what the creature did and said. Not a reaction — see
+// [EventAnswered].
+//
+// EVERY FIELD IS WRITTEN, NONE OMITEMPTY. A reader downstream must not be able
+// to get a third state out of an absent key — `beaten: false`, `entry: 0` and
+// an empty `word` are all answers, and the beat exists at all only when an
+// entry actually fired.
+type AnsweredBody struct {
+	// Creature is whose table was rolled — the member the verb was aimed at.
+	Creature string `json:"creature"`
+
+	// Verb is which social verb produced this, "intimidate" or "persuade" —
+	// the composition's own deed verb, so a reader need not split the outcome
+	// key apart to know.
+	Verb string `json:"verb"`
+
+	// Beaten is the verdict the table was read for, so a client can render
+	// "you failed, and then…" without holding the earlier beat.
+	Beaten bool `json:"beaten"`
+
+	// Roll and Of are the world's die and the sum of the table's weights
+	// (R1). Of is the die SIZE, not the number of entries: 70 and 30 is a
+	// d100.
+	Roll int `json:"roll"`
+	Of   int `json:"of"`
+
+	// Entry is the index of the entry that fired, in the order the author
+	// wrote them. Zero is an answer.
+	Entry int `json:"entry"`
+
+	// Word is the outcome word the entry carried — "fact", "flee", or empty
+	// for an entry that only speaks. Empty is an answer, not a gap.
+	Word string `json:"word"`
+
+	// Say is the author's line, VERBATIM. Empty when they wrote none; the
+	// engine never composes one.
+	Say string `json:"say"`
+
+	// Fact is the world fact the witnesses learned, empty unless Word is
+	// "fact".
+	Fact string `json:"fact"`
+}
+
+func (AnsweredBody) isEventBody() {}
 
 // DoorRevealedBody is EventDoorRevealed's typed body: a concealed door as
 // the recipient's own atlas and door list now carry it — the patch for both

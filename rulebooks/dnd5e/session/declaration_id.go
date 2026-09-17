@@ -31,6 +31,11 @@ const (
 	// can go stale between the read and the click except the budget the row
 	// already reports.
 	variantIntimidateSealed = "session:intimidate:v2"
+	// variantPersuadeSealed is the appeal's own sealed string
+	// (rpg-project#458). ITS OWN, not the threat's: two verbs sharing a
+	// selector would let a client answer one row with the other's id, and the
+	// two land different deeds on a mind.
+	variantPersuadeSealed = "session:persuade:v1"
 	// variantActivatePrefix namespaces an activation's variant so an ability
 	// ref can never collide with a sealed string, however the ref catalog
 	// grows.
@@ -205,7 +210,8 @@ func canonicalSelectorVariant(raw json.RawMessage) (json.RawMessage, error) {
 // under the current version without an explicit bump.
 func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 	switch verb {
-	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbCast, VerbDeathSave, VerbReact, VerbIntimidate:
+	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate, VerbCast, VerbDeathSave, VerbReact,
+		VerbIntimidate, VerbPersuade:
 	default:
 		return fmt.Errorf("unsupported declaration verb %q", verb)
 	}
@@ -248,6 +254,8 @@ func selectorVariant(
 		return json.RawMessage(`"` + variantEndTurnSealed + `"`), nil
 	case VerbIntimidate:
 		return json.RawMessage(`"` + variantIntimidateSealed + `"`), nil
+	case VerbPersuade:
+		return json.RawMessage(`"` + variantPersuadeSealed + `"`), nil
 	case VerbReact:
 		if window == "" {
 			return nil, fmt.Errorf("react declaration requires a window id")

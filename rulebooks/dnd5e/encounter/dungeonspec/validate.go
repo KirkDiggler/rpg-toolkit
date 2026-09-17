@@ -8,6 +8,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -718,6 +719,11 @@ func (v *validation) place() {
 					"this monster declares an intimidate check with no way through it — an ability and a DC",
 					pl.Intimidate)
 			}
+			if pl.Persuade != nil {
+				v.approaches(p+".persuade",
+					"this monster declares a persuade check with no way through it — an ability and a DC",
+					pl.Persuade)
+			}
 			v.placeOn(p, pl)
 			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {
@@ -747,6 +753,9 @@ func (v *validation) place() {
 			}
 			if pl.Intimidate != nil {
 				v.fail(p+".intimidate", "%q is not a monster and cannot be intimidated", pl.Ref)
+			}
+			if pl.Persuade != nil {
+				v.fail(p+".persuade", "%q is not a monster and cannot be persuaded", pl.Ref)
 			}
 			if pl.On != nil {
 				v.fail(p+".on", "%q is not a monster and nothing can be done to it that the world learns", pl.Ref)
@@ -1400,31 +1409,95 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // A DUPLICATE IS ALLOWED AND MEANS SOMETHING. `[scimitar, scimitar]` lists
 // the same weapon twice, which is a pointless loadout rather than a malformed
 // one, and refusing it would be this compiler having an opinion about play.
-// placeOn validates what the world learns from a shenanigan landing on this
-// monster ([PlaceSpec.On], rpg-project#454).
+// placeOn validates the answer table an author wrote on this monster
+// ([PlaceSpec.On], rpg-project#458).
 //
-// THE KEY IS THE VERB, and only the verbs this build actually lands are
-// accepted. An author who wrote `on: { persuaded: … }` meant something real
-// — persuasion is slice two of the shenanigans folder — and a dungeon that
-// accepted the line would silently never fire it. Refusing by name is how
-// they find out on the form instead of at the table.
+// THE KEY IS THE OUTCOME, and only the four outcomes this build lands are
+// accepted. A word the design NAMES and has not built is refused by name in
+// the entry's own decoder ([laterWords]); an outcome key nobody designed is
+// refused here, listing what there is. Either way the author finds out on the
+// form instead of at the table.
+//
+// Five refusals per entry, each its own sentence:
+//
+//   - a weight below 1, which is a row that can never fire;
+//   - two outcome words in one entry, so ordering never has to be guessed;
+//   - an entry with no word and nothing to say, which is a row written for no
+//     reason;
+//   - an empty `fact:`, which says the world learns something and not what;
+//   - an outcome key with no entries at all, which is a table that cannot be
+//     rolled.
+//
+// WHAT IS NOT CHECKED IS THE FACT'S MEMBERSHIP. The dungeon ALLOWS a fact
+// nothing else mentions (R8, pre-release: show the cost) — a `fact` that no
+// disposition waits for is a cost, not a defect, and it joins the run's
+// mintable facts so a world blob may name it.
 func (v *validation) placeOn(path string, pl PlaceSpec) {
-	for _, verb := range sortedKeys(pl.On) {
-		at := fmt.Sprintf("%s.on.%s", path, verb)
-		if verb != OnIntimidated {
-			v.fail(at, "%q is not a verb this build lands: the only one is %q", verb, OnIntimidated)
+	for _, key := range sortedKeys(pl.On) {
+		at := fmt.Sprintf("%s.on.%s", path, key)
+		if !knownAnswerKey(key) {
+			v.fail(at, "%q is not an outcome this build lands: they are %s",
+				key, strings.Join(encounter.AnswerKeys, ", "))
 			continue
 		}
-		if pl.On[verb].Fact == "" {
-			v.fail(at+".fact", "this says the world learns something and does not say what")
+		entries := pl.On[key]
+		if len(entries) == 0 {
+			v.fail(at, "this names an outcome and lists nothing that happens on it")
+			continue
+		}
+		for j, entry := range entries {
+			v.answerEntry(fmt.Sprintf("%s[%d]", at, j), entry)
 		}
 	}
+}
+
+// answerEntry validates one row of one outcome's table.
+func (v *validation) answerEntry(at string, entry AnswerSpec) {
+	if entry.Weight != nil && *entry.Weight < 1 {
+		v.fail(at+".weight", "a weight of %d can never be rolled: omit it for 1, or give it a share",
+			*entry.Weight)
+	}
+
+	// An empty `fact:` is its own sentence rather than a missing word: the
+	// author wrote the key, so they meant to teach something. Reported
+	// INSTEAD of the no-word refusal below, not beside it — two defects for
+	// one mistake sends an author looking for a second problem.
+	if entry.Fact != nil && *entry.Fact == "" {
+		v.fail(at+".fact", "this says the world learns something and does not say what")
+
+		return
+	}
+
+	words := 0
+	if entry.Fact != nil {
+		words++
+	}
+	if entry.Flee != nil {
+		words++
+	}
+	switch {
+	case words > 1:
+		v.fail(at, "an entry does one thing: `fact` and `flee` in the same entry is two")
+	case words == 0 && entry.Say == "":
+		v.fail(at, "this entry does nothing and says nothing")
+	}
+}
+
+// knownAnswerKey reports whether a key is one the composition lands.
+func knownAnswerKey(key string) bool {
+	for _, known := range encounter.AnswerKeys {
+		if key == known {
+			return true
+		}
+	}
+
+	return false
 }
 
 // sortedKeys orders a map's keys so a file with two bad `on:` entries reports
 // them in the same order every run — a validator whose defect list depends on
 // Go's map iteration is one no transcript can compare (C8).
-func sortedKeys(m map[string]OnSpec) []string {
+func sortedKeys(m map[string][]AnswerSpec) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

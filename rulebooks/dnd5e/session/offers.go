@@ -162,6 +162,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
 			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
+			blockedCompiledOffer(VerbPersuade, TargetMember, why),
 			endTurn,
 		)
 	}
@@ -178,6 +179,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
 			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
+			blockedCompiledOffer(VerbPersuade, TargetMember, why),
 			endTurn,
 		)
 	}
@@ -213,6 +215,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
 			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
+			blockedCompiledOffer(VerbPersuade, TargetMember, why),
 			deathSave,
 			endTurn,
 		)
@@ -271,10 +274,17 @@ func (m *Manager) compileOffersFor(
 	// everything else still standing, and a threat belongs on the standing
 	// side: a fighter whose weapon will not compile can still tell a goblin
 	// what is going to happen to it.
-	var intimidate compiledOffer
+	var intimidate, persuade compiledOffer
 	if requested[VerbIntimidate] {
 		var err error
-		intimidate, err = buildIntimidateOffer(enc, sessionID, member, sheet)
+		intimidate, err = buildSocialOffer(enc, m.intimidateVerb(), sessionID, member, sheet)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if requested[VerbPersuade] {
+		var err error
+		persuade, err = buildSocialOffer(enc, m.persuadeVerb(), sessionID, member, sheet)
 		if err != nil {
 			return nil, err
 		}
@@ -353,6 +363,7 @@ func (m *Manager) compileOffersFor(
 				move,
 				endTurn,
 				intimidate,
+				persuade,
 			}, activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
@@ -459,7 +470,7 @@ func (m *Manager) compileOffersFor(
 		attacks = append(attacks, offHandAttack)
 	}
 
-	offers := append(attacks, move, deathSave, endTurn, intimidate)
+	offers := append(attacks, move, deathSave, endTurn, intimidate, persuade)
 	offers = append(offers, activations...)
 	return finishRequestedOffers(requested, append(offers, casts...)...)
 }
@@ -675,51 +686,45 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 	return compiledOffer{declaration: decl, sheet: sheet, verb: VerbMove, slot: SlotNone, variant: variant}, nil
 }
 
-// buildIntimidateOffer compiles the one Intimidate row: priced at the
-// standard action, aimed at anybody who can currently SEE this member
-// (rpg-project#454).
+// buildSocialOffer compiles ONE social row — a threat or an appeal — priced at
+// the standard action and aimed at anybody who can currently SEE this member
+// (rpg-project#454, rpg-project#458).
 //
 // ITS CANDIDATES ARE THE WITNESSES, and the direction is the point. Every
 // other member-targeting row here asks who the ACTOR can see; a threat only
-// reaches somebody who can see who is making it, so this asks the
-// composition the question the verb itself will ask
-// ([encounter.Encounter.Witnesses]). The panel and the door therefore agree,
-// instead of the panel offering a goblin in a dark corridor that the verb
-// then refuses.
+// reaches somebody who can see who is making it, so this asks the composition
+// the question the verb itself will ask ([encounter.Encounter.Witnesses]). The
+// panel and the door therefore agree, instead of the panel offering a goblin
+// in a dark corridor that the verb then refuses.
 //
-// NO REACH GATE, which is the other thing that makes it unlike a swing. A
-// threat carries as far as sight does — "no distance cap beyond sight" is the
+// NO REACH GATE, which is the other thing that makes it unlike a swing. Speech
+// carries as far as sight does — "no distance cap beyond sight" is the
 // design's own decision — so every witness is available and none carries a
 // ShortfallTargetOutOfReach.
-func buildIntimidateOffer(
-	enc *encounter.Encounter, session, member string, sheet *character.Character,
+//
+// ONE BUILDER, TWO VERBS, because the row is the same row: the verb, its
+// selector and its price compiler are the three things that differ, and they
+// arrive as arguments rather than as a second copy of this function.
+func buildSocialOffer(
+	enc *encounter.Encounter, spec socialVerb, session, member string, sheet *character.Character,
 ) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbIntimidate, SlotAction, nil, nil, "", "")
+	id, variant, err := selectorIDFor(session, member, spec.verb, SlotAction, nil, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
 
-	witnesses, err := enc.Witnesses(encounter.MemberID(member))
+	candidates, err := socialCandidates(enc, member)
 	if err != nil {
-		return compiledOffer{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
-	}
-	candidates := make([]targetPreflight, 0, len(witnesses))
-	for _, id := range witnesses {
-		// A member always witnesses their own cell, and threatening
-		// yourself is not a shenanigan.
-		if string(id) == member {
-			continue
-		}
-		candidates = append(candidates, targetPreflight{member: string(id), available: true})
+		return compiledOffer{}, err
 	}
 
-	profile, err := character.CostOfIntimidate(sheet)
+	profile, err := spec.cost(sheet)
 	if err != nil {
 		return compiledOffer{}, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
 
 	decl := Declaration{
-		Verb: VerbIntimidate, Slot: SlotAction, ID: id,
+		Verb: spec.verb, Slot: SlotAction, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(candidates),
 	}
 	switch {
@@ -727,7 +732,7 @@ func buildIntimidateOffer(
 		why := shortfallForPay(sheet, profile, SlotAction)
 		decl.Why = &why
 	case len(candidates) == 0:
-		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be threatened"}
+		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be spoken to"}
 		decl.Why = &why
 	default:
 		decl.Available = true
@@ -740,8 +745,28 @@ func buildIntimidateOffer(
 
 	return compiledOffer{
 		declaration: decl, sheet: sheet, targets: targets,
-		verb: VerbIntimidate, slot: SlotAction, variant: variant,
+		verb: spec.verb, slot: SlotAction, variant: variant,
 	}, nil
+}
+
+// socialCandidates is everybody who can see this member, minus the member
+// themselves — the audience both social verbs aim at.
+func socialCandidates(enc *encounter.Encounter, member string) ([]targetPreflight, error) {
+	witnesses, err := enc.Witnesses(encounter.MemberID(member))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+	}
+	candidates := make([]targetPreflight, 0, len(witnesses))
+	for _, id := range witnesses {
+		// A member always witnesses their own cell, and talking yourself
+		// round is not a shenanigan.
+		if string(id) == member {
+			continue
+		}
+		candidates = append(candidates, targetPreflight{member: string(id), available: true})
+	}
+
+	return candidates, nil
 }
 
 // blockedCompiledOffer is the compiledOffer shape every early per-verb
@@ -994,8 +1019,8 @@ func offerSelectorEqual(a, b compiledOffer) bool {
 }
 
 // verbRank orders declarations in the deterministic output order the seam
-// promises: Attack, Move, Activate, Cast, Death Save, then EndTurn — the order a turn
-// panel renders its controls. Assertions may rely on
+// promises: Attack, Move, Activate, Cast, Intimidate, Persuade, Death Save,
+// then EndTurn — the order a turn panel renders its controls. Assertions may rely on
 // this order; it never depends on candidate state.
 func verbRank(v Verb) int {
 	switch v {
@@ -1015,18 +1040,24 @@ func verbRank(v Verb) int {
 	// panel draws the things you DO to a creature near each other.
 	case VerbIntimidate:
 		return 4
-	case VerbDeathSave:
+	// PERSUADE SITS BESIDE INTIMIDATE, after it, for the reason Cast sits
+	// beside Activate: they are one pair of controls aimed at one creature,
+	// and the threat is listed first because it shipped first and a panel
+	// that reorders itself between releases is one players re-learn.
+	case VerbPersuade:
 		return 5
-	case VerbEndTurn:
+	case VerbDeathSave:
 		return 6
+	case VerbEndTurn:
+		return 7
 	// REACT IS LAST, and it is the only row that can appear on a turn that is
 	// not the member's own. A panel draws the turn's controls first and the
 	// question underneath them, because the question is the thing that is
 	// about to change and the controls are the thing that is greyed out.
 	case VerbReact:
-		return 7
+		return 8
 	default:
-		return 7
+		return 8
 	}
 }
 

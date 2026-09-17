@@ -56,6 +56,24 @@ type CheckInput struct {
 	// [ErrNoRoller]'s standing reason: a silent default puts untestable
 	// randomness into a result that looks fine.
 	Roller dice.Roller
+
+	// Untrained says THIS CHECK TAKES THE UNTRAINED RULE: when the applied
+	// approach resolves to a skill the character has no proficiency in, the
+	// roll is made at disadvantage, recorded as a source named "Untrained"
+	// (untrained.go).
+	//
+	// A DIVERGENCE FROM THE 2014 LETTER, ruled by Kirk on rpg-project#457
+	// (R2), and SCOPED TO SKILL VERBS — Intimidate, Persuade, later Deceive.
+	// RAW puts no penalty on an untrained ability check at all; the
+	// divergence exists so that taking Intimidation at character creation
+	// changes something at the table. The doc that adds a verb says whether
+	// it takes the rule.
+	//
+	// FALSE IS THE LETTER, and it is the zero value for exactly that reason:
+	// Search and Unlock are not skill verbs, they leave this alone, and they
+	// roll as the book says. A caller that forgets the field gets RAW, which
+	// is the safe direction for a house rule to fail in.
+	Untrained bool
 }
 
 // CheckOutput is the check's verdict. All of it is data.
@@ -216,6 +234,19 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 	if selErr != nil {
 		return nil, errors.Join(
 			fmt.Errorf("resolution: check for %q: %w", one.ID(), selErr),
+			surf.teardown(ctx),
+		)
+	}
+
+	// THE UNTRAINED RULE, IN ONE PLACE. Subscribed BEFORE the chain folds, on
+	// the same surface everything else attached to, so it is torn down with
+	// everything else — and it does nothing unless the caller asked for it,
+	// the applied route is a skill, and the character has no training in it.
+	// Emptying untrainedSource's body returns this entry to the 2014 letter
+	// (rpg-project#457 R2).
+	if err := untrainedSource(ctx, surf, ch, in, skill); err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("resolution: check for %q: %w", one.ID(), err),
 			surf.teardown(ctx),
 		)
 	}
@@ -432,6 +463,17 @@ func gatherCheckOffers(
 // list where route three names no rulebook skill or ability is broken content
 // today, not broken content on the day somebody's modifiers make route three
 // best.
+//
+// # It does not know about the untrained rule, and one day it will have to
+//
+// "Best" here is modifier minus DC, and that comparison is blind to
+// [CheckInput.Untrained]: once untrained means disadvantage, an untrained +3
+// is worse than a trained +2, and this would pick the +3. NOT FIXED HERE, and
+// named rather than left to be discovered — no shipped check lists both a
+// trained and an untrained approach for one character, so the comparison has
+// no case to get right yet. The first check that lists both brings the
+// comparison with it (ideas/shenanigans/front-room-goblin.md, "A wrinkle for
+// later, named now").
 func bestApproach(
 	ch *character.Character, approaches []encounter.CheckApproach,
 ) (encounter.CheckApproach, int, skills.Skill, error) {

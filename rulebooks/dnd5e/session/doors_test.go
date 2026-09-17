@@ -280,3 +280,38 @@ func (s *DoorsSuite) TestTheEndedBeatCarriesItsKey() {
 	s.Equal(session.EndedBody{Ending: "out"}, endeds[0],
 		"a client following the stream finally hears HOW the run ended")
 }
+
+// THE UNTRAINED RULE'S SCOPE, at the seam that decides it (rpg-project#457
+// R2). It is SKILL VERBS only — Intimidate, Persuade, later Deceive — and a
+// lock is not one however it is authored, so a checker with no training in the
+// skill the lock names still rolls one die and the 2014 letter.
+//
+// A SKILL-KEYED LOCK IS WHAT MAKES THE SCENE FALSIFIABLE. The tomb's own lock
+// rolls a bare `dex`, which has no training to lack, so a scene built on it
+// would pass whichever way the flag was set. This one names Sleight of Hand
+// against a checker who never took it.
+func (s *DoorsSuite) TestALockDoesNotTakeTheUntrainedRule() {
+	rolled := 0
+	world := gatedWorld(s.T(), encounter.DoorIsLocked(encounter.Lock{
+		Approaches: []encounter.CheckApproach{{Ability: "sleight-of-hand", DC: tombDC}},
+	}))
+
+	s.stream = &fakeStream{}
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
+		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Characters: newFakeCharacters(deftCharacter("alice", 14)), Events: s.stream,
+	})
+	s.Require().NoError(err)
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: world,
+	})
+	s.Require().NoError(err)
+
+	out, err := mgr.Unlock(context.Background(), &session.UnlockInput{
+		Session: "sess", Member: "alice", Door: "gate"})
+	s.Require().NoError(err)
+
+	s.Equal(1, rolled, "one d20: a lock rolls straight however untrained the checker is")
+	s.True(out.Beaten, "10 rolled + 2 dex meets DC 12, exactly as it does on the tomb's own lock")
+}

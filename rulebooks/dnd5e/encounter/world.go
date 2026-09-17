@@ -507,6 +507,67 @@ func (e *Encounter) IsAllied(a, b MemberID) (allied, known bool) {
 	return e.stanceBetween(pairOf(fa, fb)) == StanceAllied, true
 }
 
+// BelievedStance answers what one member BELIEVES about another's side —
+// the fact a per-viewer sighting carries next to a creature's name and kind,
+// and the one a ring under a token is coloured from (rpg-project#458, "The
+// ring: what a player believes about a creature").
+//
+// # Today it is the truth, and that is the honest answer
+//
+// With no deception in play, every viewer believes what the creature shows,
+// and what it shows is the derived stance between their factions — so this
+// returns exactly what [Encounter.IsHostile] and [Encounter.IsAllied] fold,
+// in one word instead of two booleans. Every viewer gets the same answer, and
+// the existing faction ring does not change colour.
+//
+// # It exists per viewer BEFORE anything can lie, deliberately
+//
+// This is the perception law applied to stance. The proto's own doc on
+// sightings says the server must not state a fact a viewer's stale view could
+// be wrong about, "because the fact is exactly what an illusion has to be able
+// to lie about" — and a stance is such a fact. A stance read live off the
+// graph can only ever be true, and a game with no way to lie can never have
+// illusion in it (rpg-project/CLAUDE.md's own worked example).
+//
+// So THIS IS THE ONE PLACE `pretend` WILL MAKE BELIEF AND TRUTH DIVERGE: a
+// creature showing one stance and holding another changes what this function
+// answers for a viewer whose Insight did not beat its Deception, and changes
+// nothing else anywhere. Nothing today reads a per-viewer answer out of a
+// shared one, which is what makes that a later slice's edit rather than a
+// later slice's rewrite.
+//
+// # known
+//
+// False when there is no PAIR to have a stance about, which is two cases and
+// they are the same case: an id that is not a member of this encounter, and a
+// member in NO FACTION, which a world NPC is.
+//
+// THIS USED TO ANSWER NEUTRAL FOR A WORLD NPC, and that was wrong. "Nobody is
+// against them" and "there is no side here to be on" are different statements,
+// and reporting the second as [StanceNeutral] collapsed an ABSENCE into an
+// ANSWER — the defect this repo's own zero-value rule exists to prevent. A
+// client drawing a ring off this would have painted a vendor the same colour
+// as a goblin the party had declared a truce with, and had no way to tell.
+// [Encounter.IsAllied] reports (false, true) for the same pair, and that is a
+// different question: "are they on my side" has a correct false answer, while
+// "what is their stance" has none.
+func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
+	mv, ok := e.members[viewer]
+	if !ok {
+		return "", false
+	}
+	ms, ok := e.members[subject]
+	if !ok {
+		return "", false
+	}
+	fv, fs := factionOf(mv), factionOf(ms)
+	if fv == "" || fs == "" {
+		return "", false
+	}
+
+	return e.stanceBetween(pairOf(fv, fs)), true
+}
+
 // turnablePairs is every pair whose stance a fact can change — the
 // dispositions with an until — sorted, so a stance table folds in one order.
 func (e *Encounter) turnablePairs() []factionPair {

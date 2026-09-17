@@ -914,18 +914,32 @@ type MemberInput struct {
 	// list and never reads a DC.
 	Intimidate []CheckApproach
 
-	// OnIntimidated is the world fact every witness learns when a threat
-	// against this member lands ([dungeonspec.PlaceSpec.On]'s `intimidated`
-	// key, rpg-project#454). Empty when the author asked for none, which is
-	// the common case: a scared goblin does not turn the camp unless
-	// somebody planted the fact that says so.
+	// Persuade is the authored check a character must beat to talk this
+	// member round ([dungeonspec.PlaceSpec.Persuade], rpg-project#458) —
+	// Intimidate's twin on the same machine and carried the same way. Nil
+	// when the author wrote none, and nil MEANS SOMETHING for the same
+	// reason: the rulebook derives the default from the stat block's own
+	// passive Insight, and this composition cannot and must not try (C1).
+	Persuade []CheckApproach
+
+	// Answers is what this member DOES about a social verb's verdict,
+	// keyed by outcome ([AnswerKeys]) with a weighted list of entries
+	// under each ([dungeonspec.PlaceSpec.On], rpg-project#458). Nil when
+	// the author wrote no table, which is the common case: a creature with
+	// nothing authored answers nothing and the world rolls no die.
 	//
-	// THE PLAY RECORD AND THE WORLD JOURNAL ARE BOTH WRITTEN, AND NEITHER
-	// IS THE OTHER'S CACHE (Kirk, 2026-09-16). The deed is this monster's
-	// own memory of who threatened it and goes with the run; the fact is
-	// what the camp comes to know and carries out of it. [Encounter.Intimidate]
-	// writes to each from one seam and copies nothing between them.
-	OnIntimidated FactID
+	// IT REPLACED A SINGLE FACT PER VERB. `OnIntimidated FactID` said one
+	// thing about one outcome and had nowhere to put a line of speech, a
+	// failed attempt, or a creature that runs. There is no second shape
+	// beside this one — a dual representation is the thing this repo bans,
+	// and the migration is in the authoring dialect where authors can read
+	// it (answer.go's own doc).
+	//
+	// VALIDATED AT THIS DOOR ([validateAnswers]): an outcome key this
+	// build does not land, or an entry weighing less than 1, is
+	// [ErrBadAnswer] here rather than an internal error on somebody's
+	// turn.
+	Answers map[string][]Answer
 
 	// BlocksMovement says whether this member refuses a later arrival on
 	// its cell (rpg-toolkit#1434) — a bare fact, the same species as
@@ -1042,18 +1056,34 @@ type ActionView struct {
 // monster's turn asks [MonsterView.Budget] or [SeenMember.InReach] for one.
 // Callers ask this BEFORE any mutation — see [Encounter.Join]'s own call for
 // why that ordering matters there specifically.
-func validateMemberFacts(
-	id MemberID, speedFeet, sightFeet int, actions []ActionView, intimidate []CheckApproach,
-) error {
-	if speedFeet < 0 {
-		return fmt.Errorf("member %s: speed %d feet is negative: %w", id, speedFeet, ErrNoMember)
+// memberFacts is the static half of a member, in the one shape every door
+// validates it through: Setup's roster, Join's arrival and a persisted
+// reserve entry all carry the same facts and must refuse the same defects.
+//
+// A STRUCT RATHER THAN SIX POSITIONAL ARGUMENTS, since the second social verb
+// arrived: two adjacent []CheckApproach parameters are two call sites away
+// from being silently swapped, and the swap would compile.
+type memberFacts struct {
+	ID         MemberID
+	SpeedFeet  int
+	SightFeet  int
+	Actions    []ActionView
+	Intimidate []CheckApproach
+	Persuade   []CheckApproach
+	Answers    map[string][]Answer
+}
+
+func validateMemberFacts(in memberFacts) error {
+	if in.SpeedFeet < 0 {
+		return fmt.Errorf("member %s: speed %d feet is negative: %w", in.ID, in.SpeedFeet, ErrNoMember)
 	}
-	if sightFeet < 0 {
-		return fmt.Errorf("member %s: sight %d feet is negative: %w", id, sightFeet, ErrNoMember)
+	if in.SightFeet < 0 {
+		return fmt.Errorf("member %s: sight %d feet is negative: %w", in.ID, in.SightFeet, ErrNoMember)
 	}
-	for _, a := range actions {
+	for _, a := range in.Actions {
 		if a.RangeFeet < 0 {
-			return fmt.Errorf("member %s: action %q range %d feet is negative: %w", id, a.Ref, a.RangeFeet, ErrNoMember)
+			return fmt.Errorf("member %s: action %q range %d feet is negative: %w",
+				in.ID, a.Ref, a.RangeFeet, ErrNoMember)
 		}
 	}
 	// An authored route with nothing to beat is the same defect a lock's is
@@ -1062,11 +1092,24 @@ func validateMemberFacts(
 	// can never be opened, while a monster that lists no way to frighten it
 	// is every monster — the rulebook derives the DC from its own stat
 	// block (MemberInput.Intimidate).
-	for _, a := range intimidate {
+	for _, a := range in.Intimidate {
 		if a.DC < 1 {
-			return fmt.Errorf("member %s: intimidate approach at DC %d has nothing to beat: %w", id, a.DC, ErrNoMember)
+			return fmt.Errorf("member %s: intimidate approach at DC %d has nothing to beat: %w",
+				in.ID, a.DC, ErrNoMember)
 		}
 	}
+	for _, a := range in.Persuade {
+		if a.DC < 1 {
+			return fmt.Errorf("member %s: persuade approach at DC %d has nothing to beat: %w",
+				in.ID, a.DC, ErrNoMember)
+		}
+	}
+	// A table this composition could not roll is refused at whichever door
+	// the member came in through, never at the roll (answer.go).
+	if err := validateAnswers(in.Answers); err != nil {
+		return fmt.Errorf("member %s: %w", in.ID, err)
+	}
+
 	return nil
 }
 
@@ -1429,12 +1472,15 @@ type Member struct {
 	Targeting string
 	Mind      string
 
-	// Intimidate and OnIntimidated carry forward
-	// [MemberInput.Intimidate]/[MemberInput.OnIntimidated] verbatim — see
-	// those fields' own docs. This is where the session reads the authored
-	// check before it rolls one, exactly as it reads Actions.
-	Intimidate    []CheckApproach
-	OnIntimidated FactID
+	// Intimidate, Persuade and Answers carry forward
+	// [MemberInput.Intimidate]/[MemberInput.Persuade]/[MemberInput.Answers]
+	// verbatim — see those fields' own docs. This is where the session reads
+	// the authored checks before it rolls one, exactly as it reads Actions.
+	// Answers is read by nobody outside this composition; it is on the
+	// roster row so a host can show an author what a placement carries.
+	Intimidate []CheckApproach
+	Persuade   []CheckApproach
+	Answers    map[string][]Answer
 
 	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
 	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
@@ -1475,7 +1521,8 @@ type memberRecord struct {
 	Targeting      string
 	Mind           string
 	Intimidate     []CheckApproach
-	OnIntimidated  FactID
+	Persuade       []CheckApproach
+	Answers        map[string][]Answer
 	BlocksMovement bool
 
 	// Faction is the faction the caller NAMED, or empty for the kind's
@@ -1730,12 +1777,14 @@ type JoinInput struct {
 	Targeting string
 	Mind      string
 
-	// Intimidate and OnIntimidated are this joiner's shenanigan facts,
-	// [MemberInput.Intimidate] and [MemberInput.OnIntimidated] under the
-	// name Join takes them by — a monster that arrives mid-run is as
-	// intimidable as one that started there.
-	Intimidate    []CheckApproach
-	OnIntimidated FactID
+	// Intimidate, Persuade and Answers are this joiner's shenanigan facts,
+	// [MemberInput.Intimidate], [MemberInput.Persuade] and
+	// [MemberInput.Answers] under the names Join takes them by — a monster
+	// that arrives mid-run is as talkable-to as one that started there, and
+	// its table is validated at this door the same way.
+	Intimidate []CheckApproach
+	Persuade   []CheckApproach
+	Answers    map[string][]Answer
 
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.

@@ -164,10 +164,20 @@ type checkOfferWindowPayload struct {
 	Door string `json:"door,omitempty"`
 
 	// Target is who this check was rolled against, so the answer can finish
-	// the same Intimidate the question paused (rpg-project#454). Door's
+	// the same social verb the question paused (rpg-project#454). Door's
 	// sibling, added the way that field's doc said the second verb would
 	// add one.
 	Target string `json:"target,omitempty"`
+
+	// Verb is WHICH social verb was paused, set exactly when Target is
+	// (rpg-project#458). Target alone told the answer which verb to finish
+	// while there was only one; there are two now, and a resumed Persuade
+	// that landed an Intimidate would be a silently wrong deed on a mind.
+	//
+	// REFUSED WHEN IT IS NOT ONE OF THE TWO, at the trust boundary below:
+	// a stored window naming a verb this build cannot finish is one it never
+	// wrote.
+	Verb Verb `json:"verb,omitempty"`
 
 	// Offer is what the audience holds, as the effect that offered it named
 	// itself.
@@ -294,6 +304,18 @@ func thawCheckOfferPayload(raw []byte, audience string) (checkOfferWindowPayload
 		return checkOfferWindowPayload{}, fmt.Errorf(
 			"%w: check offer window payload names %s to finish", ErrInvalidSession,
 			map[bool]string{true: "neither a door nor a target", false: "both a door and a target"}[p.Door == ""])
+	}
+	// And the verb rides with the target, for the target's reason: two social
+	// verbs finish differently, and a window that does not say which is one
+	// this build never wrote.
+	if p.Target != "" && p.Verb != VerbIntimidate && p.Verb != VerbPersuade {
+		return checkOfferWindowPayload{}, fmt.Errorf(
+			"%w: check offer window payload names target %q under verb %q, which is not a social verb",
+			ErrInvalidSession, p.Target, p.Verb)
+	}
+	if p.Door != "" && p.Verb != "" {
+		return checkOfferWindowPayload{}, fmt.Errorf(
+			"%w: check offer window payload names a door and the verb %q", ErrInvalidSession, p.Verb)
 	}
 	if len(p.Frozen) == 0 {
 		return checkOfferWindowPayload{}, fmt.Errorf(

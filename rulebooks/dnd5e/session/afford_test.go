@@ -120,7 +120,7 @@ func (s *AffordSuite) TestAvailableMeansAttackWillNotRefuse() {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbEndTurn,
+		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
 	}, refilled)
 
 	decl := s.attackDecl(out)
@@ -158,7 +158,7 @@ func (s *AffordSuite) TestUnavailableMeansAttackRefusesWithTheSameShortfall() {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbEndTurn,
+		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
 	}, refilled)
 	decl := s.attackDecl(out)
 	s.False(decl.Available, "nothing left to buy a second swing")
@@ -243,18 +243,24 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbEndTurn,
+		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
 	}, refilled)
 	s.True(s.attackDecl(out).Available, "a new turn buys a new swing")
 	s.Equal(session.SlotAction, s.attackDecl(out).Slot)
 }
 
-// TestFreeRoamAffordsNothing is TestFreeRoamChargesNothing's own claim, asked
-// of Afford: a member with no bubble has no economy to report, and the answer
-// is EMPTY, not a Declaration reporting Available:true for a free action —
-// the two would look identical on a boolean and mean different things about
-// why nothing is spent.
-func (s *AffordSuite) TestFreeRoamAffordsNothing() {
+// TestFreeRoamAffordsTheSocialVerbsAndNothingElse is what this scene became
+// when R3 (rpg-project#457) ruled that a social verb is offered outside a
+// fight: "this will be the first getting verbs outside combat".
+//
+// IT USED TO ASSERT AN EMPTY PANEL, on the reasoning that a member with no
+// bubble has no economy to report. The first half of that is still true and
+// the rows say so — SlotNone, no shortfall, nothing to spend — but "no
+// economy" never meant "nothing to do": Move happens in free roam and always
+// did. The front room goblin is the case that made the difference matter, and
+// this scene now pins BOTH halves: the two social verbs are there, and no
+// verb that costs a turn's economy is.
+func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
@@ -270,7 +276,23 @@ func (s *AffordSuite) TestFreeRoamAffordsNothing() {
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal(session.ClockWorld, out.Clock)
-	s.Empty(out.Declarations, "empty, not zero — the economy does not apply on the world clock at all")
+
+	verbs := make([]session.Verb, 0, len(out.Declarations))
+	for _, decl := range out.Declarations {
+		verbs = append(verbs, decl.Verb)
+		s.Equal(session.SlotNone, decl.Slot, "%s: free roam has no slot to draw from", decl.Verb)
+		s.Equal(session.TargetMember, decl.TargetKind, "%s: both verbs aim at somebody", decl.Verb)
+		// Alice is alone in this world, so the rows are unavailable for want
+		// of somebody to speak to — and that is the ONLY reason they can be.
+		// A budget shortfall here would mean the world clock had grown an
+		// economy nobody gave it.
+		s.Require().NotNil(decl.Why, "%s: nobody is here to be spoken to", decl.Verb)
+		s.Equal(session.ShortfallNoTargetInReach, decl.Why.Reason,
+			"%s: the only thing missing in free roam is an audience", decl.Verb)
+		s.Empty(decl.Why.Currency, "%s: nothing is spent, so nothing is short", decl.Verb)
+	}
+	s.Equal([]session.Verb{session.VerbIntimidate, session.VerbPersuade}, verbs,
+		"the social verbs, and no verb that spends a turn's economy")
 }
 
 // TestAffordSavesNothing is TestARefusedSwingWritesNothing's own claim, asked
@@ -437,7 +459,7 @@ func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	}
 	s.Require().Equal([]session.Verb{
 		session.VerbAttack, session.VerbMove, session.VerbActivate,
-		session.VerbCast, session.VerbIntimidate, session.VerbEndTurn,
+		session.VerbCast, session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
 	}, verbs)
 	for _, d := range out.Declarations {
 		s.False(d.Available)
