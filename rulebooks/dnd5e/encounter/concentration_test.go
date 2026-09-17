@@ -101,7 +101,7 @@ func (s *RecordCastSuite) TestTheConcentrationEndedPayload() {
 	s.Equal(
 		`{"beat":"saved","saver":"bard","ability":"constitution","roll":4,"total":6,"dc":10,`+
 			`"succeeded":false,"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"},`+
+			`{"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike","source_id":"hero-1"},`+
 			`"dice":{"notation":"1d20","die_size":20,"original_rolls":[4],"final_rolls":[4],"subtotal":4}},`+
 			`{"source":{"ref":"dnd5e:abilities:constitution","name":"constitution"},"modifier":2}],"total":6},`+
 			`"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"}}`,
@@ -345,7 +345,7 @@ func (s *RecordCastSuite) TestAMadeCheckIsOneSavedBeatAndNothingElse() {
 	s.Equal(
 		`{"beat":"saved","saver":"bard","ability":"constitution","roll":14,"total":16,"dc":10,`+
 			`"succeeded":true,"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"},`+
+			`{"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike","source_id":"hero-1"},`+
 			`"dice":{"notation":"1d20","die_size":20,"original_rolls":[14],"final_rolls":[14],"subtotal":14}},`+
 			`{"source":{"ref":"dnd5e:abilities:constitution","name":"constitution"},"modifier":2}],"total":16},`+
 			`"source":{"ref":"dnd5e:spells:true-strike","name":"True Strike"}}`,

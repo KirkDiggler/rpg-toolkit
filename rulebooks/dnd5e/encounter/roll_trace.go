@@ -191,6 +191,21 @@ func validateRollComponent(component RollComponent) error {
 	if component.Dice == nil && component.Modifier == nil {
 		return fmt.Errorf("must contain dice, a modifier, or both")
 	}
+	if component.Dice != nil && strings.TrimSpace(component.Source.SourceID) == "" {
+		// EVERY DICE POOL NAMES THE ENTITY WHOSE RULE THREW IT
+		// (rpg-project#462 R7). This is PROVENANCE, not a 5e eligibility
+		// question: the same presence rule this file already enforces on
+		// subtractive dice above and on every keep source below, applied to
+		// the pools those two were carved out of.
+		//
+		// It lives HERE rather than in validateRollComponentData because the
+		// damage container validates through that one and carries components
+		// whose provenance rules are its own. This is the path
+		// ValidateRollCalculation takes, which is the path a persisted
+		// calculation is decoded through — so an anonymous pool cannot
+		// survive a round trip and reach a client with nobody behind it.
+		return fmt.Errorf("dice source id is required")
+	}
 	return nil
 }
 
@@ -317,6 +332,16 @@ func validateDiceKeep(trace *DiceTrace) error {
 				"keep rule %q requires both a granted and an imposed source, got %d and %d",
 				keep.Rule, len(keep.Granted), len(keep.Imposed),
 			)
+		}
+		if len(trace.FinalRolls) != 1 {
+			// RAW ROLLS ONE DIE WHEN THE TWO RULES MEET, and so do we. A
+			// cancellation recorded over a pair is not a cancellation: with no
+			// kept indices every face counts toward the subtotal, so the
+			// record would say "cancelled" over a pool that added both dice
+			// together — an advantage or disadvantage whose keep decision went
+			// unrecorded, wearing the one label that hides it.
+			return fmt.Errorf(
+				"keep rule %q rolls one die, got %d faces", keep.Rule, len(trace.FinalRolls))
 		}
 		if len(trace.KeptIndices) != 0 {
 			return fmt.Errorf("keep rule %q keeps no face, got %d kept", keep.Rule, len(trace.KeptIndices))
