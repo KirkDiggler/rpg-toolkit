@@ -103,7 +103,7 @@ func (s *LevelUpSuite) cleric() *Character {
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
 			Spells: []spells.Spell{
-				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith,
+				spells.Bane, spells.Command, spells.HealingWord, spells.Sanctuary,
 			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
@@ -606,14 +606,15 @@ func (s *LevelUpSuite) TestTheMartialClassesTakeLevelTwoWithNoQuestion() {
 
 // --- the prepared caster and the spellbook (R4.6, R4.6a) ------------------
 
-func (s *LevelUpSuite) TestAClericTakesLevelTwoWithNoQuestionAndGainsASlot() {
+func (s *LevelUpSuite) TestAClericTakesLevelTwoWithAnotherPreparationAndGainsASlot() {
 	char := s.cleric()
 	s.Require().Equal(2, char.GetResource(resources.SpellSlotLevel1).Maximum())
-	s.Empty(choices.GetClassChoiceIDsGainedAtLevel(classes.Cleric, 2),
-		"a cleric prepares from its list; level 2 asks nothing")
+	s.Equal(1, char.NextLevelRequirements().Spellbook.Count)
+	s.NotContains(char.NextLevelRequirements().Spellbook.Options, spells.Bless)
 
 	out, err := char.Advance(s.ctx, &AdvanceInput{
 		ClassID:        classes.Cleric,
+		Choices:        []choices.ChoiceData{{Category: shared.ChoiceSpells, Source: shared.SourceClass, ChoiceID: choices.SpellChoiceID(classes.Cleric, 2), SpellSelection: []spells.Spell{spells.GuidingBolt}}},
 		HitPointMethod: HitPointMethodAverage,
 	})
 	s.Require().NoError(err)

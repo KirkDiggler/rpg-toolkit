@@ -2471,7 +2471,7 @@
     },
     "spellbook": {
       "id": "cleric-spells-1",
-      "count": 9,
+      "count": 4,
       "spell_level": 1,
       "options": [
         "bane",
@@ -2484,7 +2484,7 @@
         "inflict-wounds",
         "shield-of-faith"
       ],
-      "label": "Select all supported 1st-level Cleric spells"
+      "label": "Choose 4 Cleric spells to prepare"
     }
   },
   "druid": {

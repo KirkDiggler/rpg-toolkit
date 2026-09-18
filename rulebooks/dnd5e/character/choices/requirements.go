@@ -1923,6 +1923,9 @@ func GetClassRequirementsWithSubclass(class classes.Class, level int, subclass c
 
 	// Apply the modifications
 	ApplySubclassModifications(reqs, mods)
+	if class == classes.Cleric {
+		ExcludeGrantedSpellChoices(reqs, subclass, level)
+	}
 	reqs.Equipment = enrichEquipmentRequirements(reqs.Equipment)
 
 	return reqs

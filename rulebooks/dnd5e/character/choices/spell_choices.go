@@ -134,9 +134,7 @@ var classCantripOptions = map[classes.Class][]spells.Spell{
 	},
 }
 
-// clericSpellsLevel1 is the supported 1st-level cleric list. Creation takes the
-// WHOLE list rather than choosing from it, which is what the cleric's
-// progression placeholder counts and what its label says.
+// clericSpellsLevel1 is the currently executable first-level preparation catalog.
 var clericSpellsLevel1 = []spells.Spell{
 	spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith,
 }
@@ -168,10 +166,8 @@ var classSpellOptions = map[classes.Class]map[int]spellOptionList{
 		1: {
 			singular: "supported 1st-level Cleric spell",
 			plural:   "supported 1st-level Cleric spells",
-			// Temporary spell access while preparation is deferred. These
-			// supported class spells use the existing choice pipeline; this is
-			// not a spellbook or a domain grant, and does not implement a
-			// prepared-spell limit.
+			// Preparation uses the existing spell-choice wire shape. Domain
+			// grants are automatic and do not consume these choices.
 			options: clericSpellsLevel1,
 		},
 	},
@@ -283,15 +279,28 @@ func addDerivedSpellRequirements(reqs *Requirements, classID classes.Class, clas
 		}
 	}
 
-	if gained := row.SpellsKnown - previous.SpellsKnown; gained > 0 {
+	gainedSpells := row.SpellsKnown - previous.SpellsKnown
+	if row.PreparedSpells > 0 {
+		gainedSpells = row.PreparedSpells - previous.PreparedSpells
+	}
+	if gained := gainedSpells; gained > 0 {
 		spellLevel := row.HighestSpellLevel()
 		list := spellOptionsFor(classID, spellLevel)
+		if row.PreparedSpells > 0 {
+			list.options = nil
+			for level := 1; level <= spellLevel; level++ {
+				list.options = append(list.options, spellOptionsFor(classID, level).options...)
+			}
+		}
 		reqs.Spellbook = &SpellbookRequirement{
 			ID:         SpellChoiceID(classID, classLevel),
 			Count:      gained,
 			SpellLevel: spellLevel,
 			Options:    list.options,
 			Label:      spellChoiceLabel(gained, len(list.options), list.singular, list.plural),
+		}
+		if row.PreparedSpells > 0 {
+			reqs.Spellbook.Label = fmt.Sprintf("Choose %d Cleric spells to prepare", gained)
 		}
 	}
 }

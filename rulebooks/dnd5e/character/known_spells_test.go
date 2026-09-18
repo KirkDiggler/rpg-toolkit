@@ -151,6 +151,12 @@ func (s *KnownSpellsSuite) TestTheBardChoosesFourSupportedLevelledSpells() {
 }
 
 func (s *KnownSpellsSuite) TestEveryFourSpellBardSelectionFinalizesAndSurvivesReload() {
+	// Cleric preparation must not change Bard's known-spell creation contract.
+	bard := classes.SpellProgressionAtLevel(classes.Bard, 1)
+	s.Equal(4, bard.SpellsKnown)
+	s.Zero(bard.PreparedSpells)
+	s.Equal(4, choices.GetClassRequirements(classes.Bard).Spellbook.Count)
+
 	options := choices.GetClassRequirements(classes.Bard).Spellbook.Options
 	for omit, unchosen := range options {
 		s.Run(string(unchosen), func() {

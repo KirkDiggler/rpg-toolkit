@@ -93,15 +93,15 @@ func (s *SpellChoiceSuite) TestACantripQuestionArrivesWhenTheColumnMoves() {
 	}
 }
 
-// TestAListTakenWholeSaysSoRatherThanPretendingToBeAChoice — the cleric's
+// TestClericPreparationIsAChoiceRatherThanTheWholeList — the cleric's
 // supported list is asked for entire, and Count equal to the option count is
 // what "no choice" looks like from inside a requirement.
-func (s *SpellChoiceSuite) TestAListTakenWholeSaysSoRatherThanPretendingToBeAChoice() {
+func (s *SpellChoiceSuite) TestClericPreparationIsAChoiceRatherThanTheWholeList() {
 	req := choices.GetClassRequirements(classes.Cleric).Spellbook
 
 	s.Require().NotNil(req)
-	s.Equal(req.Count, len(req.Options))
-	s.Equal("Select all supported 1st-level Cleric spells", req.Label)
+	s.Greater(len(req.Options), req.Count)
+	s.Equal("Choose 4 Cleric spells to prepare", req.Label)
 }
 
 // TestANonCasterIsAskedNothingAtAnyLevel — no progression table, no question,

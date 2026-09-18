@@ -301,6 +301,8 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // castContent is the cast table, keyed by spell id. A spell absent from it has
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
+// Light is intentionally absent: it needs targetable objects and illumination
+// effects. It may be selected or domain-granted, but has no executable cast yet.
 var castContent = map[Spell]castProfileBuilder{
 	InflictWounds: {
 		name:    "Inflict Wounds",

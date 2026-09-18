@@ -19,7 +19,7 @@ func TestRequirementsDetailSuite(t *testing.T) {
 	suite.Run(t, new(RequirementsDetailTestSuite))
 }
 
-func (s *RequirementsDetailTestSuite) TestClericAcquiresAllSupportedFirstLevelSpells() {
+func (s *RequirementsDetailTestSuite) TestClericChoosesFourPreparedSpells() {
 	req := GetClassRequirements(classes.Cleric).Spellbook
 	s.Require().NotNil(req)
 	s.Equal(ClericSpells1, req.ID)
@@ -27,7 +27,7 @@ func (s *RequirementsDetailTestSuite) TestClericAcquiresAllSupportedFirstLevelSp
 	s.Equal([]spells.Spell{
 		spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith,
 	}, req.Options)
-	s.Equal(len(req.Options), req.Count)
+	s.Equal(4, req.Count)
 	for _, option := range req.Options {
 		s.True(spells.HasCastProfile(option))
 		s.Require().NotNil(spells.GetData(option))

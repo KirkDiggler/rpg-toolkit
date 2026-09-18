@@ -155,7 +155,7 @@ func (c *Character) Advance(ctx context.Context, input *AdvanceInput) (*AdvanceO
 	if err := checkGrantsApplicable(grants, input.ClassID, classLevel); err != nil {
 		return nil, err
 	}
-	if err := checkLevelChoices(input, classLevel); err != nil {
+	if err := c.checkLevelChoices(input, classLevel); err != nil {
 		return nil, err
 	}
 
@@ -174,6 +174,16 @@ func (c *Character) Advance(ctx context.Context, input *AdvanceInput) (*AdvanceO
 	}
 	if err := c.checkNothingAlreadyKnown(chosenCantrips, chosenSpells); err != nil {
 		return nil, err
+	}
+
+	if c.classID == classes.Cleric {
+		// Add only newly gained domain spells; existing grants remain on the sheet.
+		grants := choices.ClericSpellGrants(c.subclassID, classLevel)
+		grants = withoutKnown(grants, c.knownSpells)
+		chosenSpells, err = appendSpellGrants(chosenSpells, grants)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	newFeatures, newConditions, err := c.buildGranted(grants, input.ClassID)
@@ -350,8 +360,11 @@ func checkGrantsApplicable(grants []classes.Grant, classID classes.Class, classL
 //
 // A level that grants nothing is a valid level — several classes have them —
 // so an empty requirement set is not by itself an error.
-func checkLevelChoices(input *AdvanceInput, classLevel int) error {
+func (c *Character) checkLevelChoices(input *AdvanceInput, classLevel int) error {
 	required := choices.GetClassRequirementsGainedAtLevel(input.ClassID, classLevel)
+	if input.ClassID == classes.Cleric {
+		choices.ExcludeGrantedSpellChoices(required, c.subclassID, classLevel)
+	}
 	ids := required.ChoiceIDs()
 
 	if len(ids) == 0 {
@@ -414,6 +427,9 @@ func checkLevelChoices(input *AdvanceInput, classLevel int) error {
 // already states it.
 func (c *Character) NextLevelRequirements() *choices.Requirements {
 	reqs := choices.GetClassRequirementsGainedAtLevel(c.classID, c.ClassLevel(c.classID)+1)
+	if c.classID == classes.Cleric {
+		choices.ExcludeGrantedSpellChoices(reqs, c.subclassID, c.ClassLevel(c.classID)+1)
+	}
 
 	// Safe to write to: the class function builds its rows fresh per call
 	// precisely so a caller folding something in cannot edit the table.

@@ -84,11 +84,10 @@ func preparedCasterPlaceholder(creationCount int) []int {
 	return column
 }
 
-// clericPreparedSpellCount is what creation asks a cleric to take: the whole
-// supported 1st-level cleric list. It is read here so the placeholder column
-// and the option list are one fact, and a new supported cleric spell does not
-// leave the two disagreeing.
-const clericPreparedSpellCount = 9
+// clericPreparations adopts only the 2024 Cleric preparation counts. Other
+// class mechanics and domain acquisition retain their existing edition rules.
+// Source: D&D Beyond 2024 Basic Rules, Cleric Features table.
+var clericPreparations = []int{4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22}
 
 // spellProgressions is every class's table. A class absent from this map does
 // not cast at any level.
@@ -103,13 +102,12 @@ var spellProgressions = map[Class]*SpellProgression{
 		SpellSlots:    fullCasterSlots,
 	},
 
-	// Cleric — PHB p.58. Prepared caster: the spells-known column is the
-	// placeholder described on [preparedCasterPlaceholder].
+	// Cleric adopts the 2024 preparation column only (user ruling).
 	Cleric: {
-		SlotReset:     SpellSlotResetLongRest,
-		CantripsKnown: []int{3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5},
-		SpellsKnown:   preparedCasterPlaceholder(clericPreparedSpellCount),
-		SpellSlots:    fullCasterSlots,
+		SlotReset:      SpellSlotResetLongRest,
+		CantripsKnown:  []int{3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5},
+		PreparedSpells: clericPreparations,
+		SpellSlots:     fullCasterSlots,
 	},
 
 	// Druid — PHB p.65. Prepared caster, and creation asks a druid for no
