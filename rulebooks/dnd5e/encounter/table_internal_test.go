@@ -175,3 +175,41 @@ func (s *TableSuite) TestAWholeLegalTableIsAccepted() {
 		},
 	}))
 }
+
+// --- the cause each direction carries ------------------------------------------
+
+// TestEachDirectionNamesItselfInTheCause pins the only thing on the wire that
+// tells a table's two walks apart.
+//
+// BOTH LEAVE AS A [Routed] — a walk to an authored cell and a run from an
+// enemy are each the creature obeying its own orders through the engine's
+// router — and the `moved` and `stayed` beats carry the cause and nothing else
+// about the intent. One ref for both read the bandits' walk to the front room
+// as a rout: a story that answers wrongly, which is worse than one that does
+// not answer.
+func (s *TableSuite) TestEachDirectionNamesItselfInTheCause() {
+	d := TableDriver{}
+	cell := spatialOrigin
+	budget := TurnBudget{MovementFeet: 30}
+
+	toward, ok := d.towardIntent(
+		MonsterView{Budget: budget},
+		Answer{Toward: &Selector{At: &cell}},
+	).(Routed)
+	s.Require().True(ok, "an authored cell goes out routed")
+	s.Equal("encounter:table:toward", toward.Cause.String(), "the word the author wrote")
+
+	away, ok := d.awayIntent(
+		MonsterView{
+			Budget: budget,
+			Seen: []SeenMember{{
+				ID: "intruder", Opposed: true, Standing: true, DistanceCells: 2,
+			}},
+		},
+		Answer{Away: &Selector{Word: SelectorEnemy}},
+	).(Routed)
+	s.Require().True(ok, "and so does a run")
+	s.Equal("encounter:table:away", away.Cause.String(), "which is not the same word")
+
+	s.NotEqual(tableCauseToward, tableCauseAway, "two directions, two causes")
+}

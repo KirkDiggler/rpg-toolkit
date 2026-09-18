@@ -13,18 +13,28 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// tableCauseTable is the cause every beat of a table-driven walk carries, so
-// an observer can tell a creature obeying its own orders from a creature
-// being shoved, commanded or routed by a spell.
+// The cause a table-driven walk carries, so an observer can tell a creature
+// obeying its own orders from a creature being shoved, commanded or routed by
+// a spell — and, since both directions leave as a [Routed], tell the two
+// directions apart.
 //
-// THE TABLE IS THE CAUSE, and naming it is the point. [Routed]'s own doc says
-// "a Move is the member's own decision; a Routed is somebody else's" — which
-// was true when the only Routed was Command's. A table's `away` is the
-// creature's own decision carried out by the engine's router, so the cause
-// names the policy rather than a spell. A walk narrated with no cause is an
-// observer being told a creature walked away for no reason, which is exactly
-// what [DirectInput.Cause] is required to prevent.
-var tableCauseTable = core.Ref{Module: "encounter", Type: "table", ID: "away"}
+// THE TABLE IS THE CAUSE, AND THE WORD IS THE DIRECTION. [Routed]'s own doc
+// says "a Move is the member's own decision; a Routed is somebody else's" —
+// which was true when the only Routed was Command's. A table's `toward` and
+// `away` are the creature's own decision carried out by the engine's router,
+// so the cause names the word the author wrote rather than a spell.
+//
+// ONE REF FOR BOTH WAS A LIE THE STORY COULD NOT RECOVER FROM: the `moved` and
+// `stayed` beats an observer reads carry this ref and nothing else about the
+// intent, so bandits walking to the front room under `toward: {at}` read as
+// bandits running away. A walk narrated with no cause at all is an observer
+// being told a creature walked away for no reason, which is exactly what
+// [DirectInput.Cause] is required to prevent; a walk narrated with the WRONG
+// cause is worse, because it answers.
+var (
+	tableCauseToward = core.Ref{Module: "encounter", Type: "table", ID: "toward"}
+	tableCauseAway   = core.Ref{Module: "encounter", Type: "table", ID: "away"}
+)
 
 // TableDriver is THE ONE DRIVER: it rolls the creature's own authored table
 // under [AnswerTime] and turns the entry that fired into an intent
@@ -173,7 +183,7 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	if at := entry.Toward.At; at != nil {
 		cell := *at
 
-		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseTable}
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
 	}
 
 	target, ok := d.selectMember(view, entry, *entry.Toward)
@@ -206,7 +216,7 @@ func (d TableDriver) awayIntent(view MonsterView, entry Answer) TurnIntent {
 		return Pass{}
 	}
 
-	return Routed{Policy: MoveAway, Anchor: target, Cause: tableCauseTable}
+	return Routed{Policy: MoveAway, Anchor: target, Cause: tableCauseAway}
 }
 
 // pathTo is the route the view already computed toward one member — current

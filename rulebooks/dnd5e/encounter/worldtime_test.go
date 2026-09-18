@@ -702,6 +702,13 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 	s.NotEqual(started, moved, "it walked, which on the walk it never did")
 	s.Less(enc.Distance(moved, target), enc.Distance(started, target), "and it walked TOWARD the cell it was sent at")
 	s.Equal(float64(6), enc.Distance(started, moved), "its whole speed: six cells of a thirty-foot walker")
+
+	// AND THE STORY SAYS WHICH WAY. Both table directions leave as a Routed,
+	// so the cause is the only thing on the wire that tells a walk to an
+	// authored cell from a run for the door.
+	beat := s.beatOf(enc, "moved", "bandit")
+	s.Require().NotNil(beat, "the walk went down the log")
+	s.Equal("encounter:table:toward", beat["cause"], "the word the author wrote")
 }
 
 // TestAWalkThatMovesNobodySaysSo is the second half of the same finding: the
@@ -734,5 +741,7 @@ func (s *WorldTimeSuite) TestAWalkThatMovesNobodySaysSo() {
 
 	beat := s.beatOf(enc, encounter.BeatStayed, goblin)
 	s.Require().NotNil(beat, "and the round it spent going nowhere is in the story")
-	s.Equal("encounter:table:away", beat["cause"], "naming what routed it")
+	s.Equal("encounter:table:toward", beat["cause"],
+		"naming what routed it, and WHICH WAY: a creature sent somewhere it cannot reach "+
+			"is not a creature running")
 }
