@@ -81,6 +81,34 @@ func (s *AnswerTestSuite) beatsOf(
 	return out
 }
 
+// allBeats is one member's whole story, decoded, in the order a client reads
+// it — what an ordering claim has to be made against.
+func (s *AnswerTestSuite) allBeats(enc *encounter.Encounter, who core.EntityID) []map[string]any {
+	story, err := enc.Story(&encounter.StoryInput{Audience: who})
+	s.Require().NoError(err)
+	out := make([]map[string]any, 0, len(story))
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		out = append(out, beat)
+	}
+
+	return out
+}
+
+// whereIsBeat is the position of the first beat of a kind whose `key` names
+// `who`, or -1. Beats name their member under different keys — an arrival
+// says `id`, a deal says `member` — so the key is the caller's.
+func (s *AnswerTestSuite) whereIsBeat(beats []map[string]any, kind, key, who string) int {
+	for i, beat := range beats {
+		if beat["beat"] == kind && beat[key] == who {
+			return i
+		}
+	}
+
+	return -1
+}
+
 func (s *AnswerTestSuite) answeredBeats(enc *encounter.Encounter, who core.EntityID) []map[string]any {
 	story, err := enc.Story(&encounter.StoryInput{Audience: who})
 	s.Require().NoError(err)
@@ -194,6 +222,9 @@ func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encount
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		// The WORLD's die, which only a deal reads here: nobody in this room
+		// has a mix until somebody joins carrying one.
+		Roller: rollsLowest{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 30, 6)},
@@ -520,6 +551,17 @@ func (s *AnswerTestSuite) TestAReservedMemberIsDealtFromTheMixItWasSavedWith() {
 
 	dealt := s.beatsOf(back, alice, encounter.BeatTempered)
 	s.Require().Len(dealt, 1, "and its nerve was dealt at the door it came in through")
+
+	// THE ARRIVAL IS ANNOUNCED FIRST. A client learns who is on the board from
+	// the arrival beat, so a deal in front of it puts a raw id on the one line
+	// that exists to introduce the creature. The constructor keeps the same
+	// rule when it deals after first light.
+	beats := s.allBeats(back, alice)
+	arrivedAt := s.whereIsBeat(beats, "arrived", "id", "straggler")
+	temperedAt := s.whereIsBeat(beats, encounter.BeatTempered, "member", "straggler")
+	s.Require().NotEqual(-1, arrivedAt)
+	s.Require().NotEqual(-1, temperedAt)
+	s.Less(arrivedAt, temperedAt, "it is on the board before the story says what kind of creature it is")
 	s.Equal("straggler", dealt[0]["member"])
 	s.Equal(string(campFaction), dealt[0]["faction"], "the side whose spread it was")
 	s.EqualValues(4, dealt[0]["of"], "one plus two plus one: the shares the author wrote")
@@ -629,4 +671,37 @@ func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse(
 	})
 	s.Require().NoError(err)
 	s.Equal(previous, s.cellOf(enc, goblin), "three rounds is what was written, and three is what it ran")
+}
+
+// A MONSTER THAT JOINS MID-RUN IS ANNOUNCED BEFORE ITS NERVE IS DEALT, which
+// is the arrival's rule at the other door (rpg-project#465).
+//
+// Join is how a host spawns a creature into a running scene, and it deals the
+// faction's mix exactly as Setup and an arrival do. The `joined` beat is where
+// a client learns the member exists, so the deal follows it — and it still
+// happens before the sight refresh below it, because forming a bubble can
+// consult a table and a creature consulted before its deal would roll its
+// orders as the soldier an empty temperament looks like.
+func (s *AnswerTestSuite) TestAJoinerIsAnnouncedBeforeItsNerveIsDealt() {
+	enc := s.neutralFront(encounter.Table{
+		encounter.AnswerTime: {{Weight: 1, Hold: true}},
+	})
+
+	_, err := enc.Join(&encounter.JoinInput{
+		Member: "latecomer", Kind: encounter.KindMonster, Cell: spatial.Position{X: 9, Y: 3},
+		Faction: "goblins", SpeedFeet: 30,
+		Temper: encounter.Temper{Mix: banditMix, Profiles: banditProfiles},
+	})
+	s.Require().NoError(err)
+
+	beats := s.allBeats(enc, alice)
+	joinedAt := s.whereIsBeat(beats, "joined", "member", "latecomer")
+	temperedAt := s.whereIsBeat(beats, encounter.BeatTempered, "member", "latecomer")
+	s.Require().NotEqual(-1, joinedAt, "the join is in the story")
+	s.Require().NotEqual(-1, temperedAt, "and so is the deal")
+	s.Less(joinedAt, temperedAt, "introduced, then described")
+
+	word, _ := beats[temperedAt]["temper"].(string)
+	s.Contains(banditMix, word, "a word out of the mix the joiner carried in")
+	s.Equal("goblins", beats[temperedAt]["faction"], "dealt as the side it joined")
 }

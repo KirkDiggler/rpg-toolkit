@@ -2010,15 +2010,6 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join member %q world clock: %w", in.Member, cerr)
 	}
 
-	// The faction's mix, dealt at this door exactly as it is at Setup's
-	// (design §3): a monster that arrives mid-run gets its own nerve rolled
-	// for it, and the beat says which one it came out as.
-	dealt, terr := e.dealTemperFor(in.Member, in.Temper, uint64(e.clock.ToData().HighWater))
-	if terr != nil {
-		return nil, fmt.Errorf("join: %w", terr)
-	}
-	member.Temper = dealt
-
 	// Store decider if present (monsters only, validated above)
 
 	// The joiner's placed records, seeded as the holdings they are — the
@@ -2065,6 +2056,22 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	seqNum := appendOut.Seq
+
+	// The faction's mix, dealt at this door exactly as it is at Setup's
+	// (design §3): a monster that arrives mid-run gets its own nerve rolled
+	// for it, and the beat says which one it came out as.
+	//
+	// AFTER THE JOIN BEAT AND BEFORE THE SIGHT REFRESH, on both counts for a
+	// reason. The deal's beat names a member the story introduces in the join
+	// beat above, so leading with it would put a raw id on the line that
+	// introduces the creature. And the refresh below can form a bubble, which
+	// can consult a table — a creature consulted before its deal would roll
+	// its orders as the soldier an empty temperament looks like.
+	dealt, terr := e.dealTemperFor(in.Member, in.Temper, clockReadingForBeat)
+	if terr != nil {
+		return nil, fmt.Errorf("join: %w", terr)
+	}
+	member.Temper = dealt
 
 	intelDeltas, formed, err := e.refreshSight(memberIDs)
 	if err != nil {

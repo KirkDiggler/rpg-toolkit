@@ -292,15 +292,6 @@ func (e *Encounter) arriveMember(rm *reservedMember, cause string, at uint64) er
 	if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(id)}); cerr != nil {
 		return fmt.Errorf("arrival of %q world clock: %w", id, cerr)
 	}
-	// And its nerve, if the author left it to the faction: a straggler's
-	// temperament is dealt when it arrives, not when it was written down
-	// (design §3).
-	dealt, terr := e.dealTemperFor(id, record.Temper, at)
-	if terr != nil {
-		return fmt.Errorf("arrival of %q: %w", id, terr)
-	}
-	e.members[id].Temper = dealt
-
 	if err := e.holdings.seedIntel(id, rm.holds); err != nil {
 		return fmt.Errorf("arrival of %q: %w", id, err)
 	}
@@ -316,7 +307,26 @@ func (e *Encounter) arriveMember(rm *reservedMember, cause string, at uint64) er
 	}); err != nil {
 		return fmt.Errorf("arrival of %q: %w", id, err)
 	}
-	return e.appendArrivedBeat(string(id), ArrivedMonster, cell, at)
+	if err := e.appendArrivedBeat(string(id), ArrivedMonster, cell, at); err != nil {
+		return err
+	}
+
+	// And its nerve, if the author left it to the faction: a straggler's
+	// temperament is dealt when it arrives, not when it was written down
+	// (design §3).
+	//
+	// AFTER THE ARRIVAL BEAT, because the deal's beat names a member the story
+	// has not introduced yet. A client learns who is on the board from the
+	// arrival, so a `tempered` beat in front of it is a raw id on the one line
+	// that exists to tell a streamer which creature this is. Setup deals after
+	// first light for exactly this reason, and this is the same door.
+	dealt, terr := e.dealTemperFor(id, record.Temper, at)
+	if terr != nil {
+		return fmt.Errorf("arrival of %q: %w", id, terr)
+	}
+	e.members[id].Temper = dealt
+
+	return nil
 }
 
 // arriveProp brings one reserved prop onto the canvas — the entity it would
