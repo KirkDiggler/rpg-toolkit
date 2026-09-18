@@ -84,6 +84,10 @@ const (
 // declaration, because the same profile is free for a monster's innate cast and
 // an action for a player's.
 type CastProfile struct {
+	// RecipientBlockedBy names conditions that prevent this cast from reaching
+	// a recipient. The restriction is checked before payment, for any caster.
+	RecipientBlockedBy []core.Ref `json:"recipient_blocked_by,omitempty"`
+
 	// Casting classifies the spell for same-turn casting rules independently
 	// of its price. Nil means unclassified, never an assumed action cantrip.
 	// Compiled spell content always supplies it; older hand-built profiles may
@@ -228,6 +232,10 @@ type CastConcentration struct {
 
 // CastEffect declares one condition a cast delivers, and who receives it.
 type CastEffect struct {
+	// IndependentDuration keeps this effect outside the cast's concentration
+	// children. Its own condition owns expiry (for example, a recast cooldown).
+	IndependentDuration bool `json:"independent_duration,omitempty"`
+
 	// Recipient is which party the condition lands on.
 	Recipient CastRecipient `json:"recipient"`
 
@@ -447,6 +455,7 @@ func (p CastProfile) Clone() CastProfile {
 		clone.Healing = &declaration
 	}
 	clone.HealingExcludes = append([]string(nil), p.HealingExcludes...)
+	clone.RecipientBlockedBy = append([]core.Ref(nil), p.RecipientBlockedBy...)
 	if p.Save != nil {
 		save := *p.Save
 		save.Abilities = append([]abilities.Ability(nil), p.Save.Abilities...)
@@ -529,4 +538,26 @@ func (e CastEffect) Clone() CastEffect {
 	clone := e
 	clone.Parameters = append(json.RawMessage(nil), e.Parameters...)
 	return clone
+}
+
+// AllowsRecipient reports the content-authored eligibility of a stored sheet.
+// Unreadable condition data is an error, never permission to cast.
+func (p CastProfile) AllowsRecipient(stored []json.RawMessage) (bool, error) {
+	if len(p.RecipientBlockedBy) == 0 {
+		return true, nil
+	}
+	for _, blob := range stored {
+		var condition struct {
+			Ref core.Ref `json:"ref"`
+		}
+		if err := json.Unmarshal(blob, &condition); err != nil {
+			return false, fmt.Errorf("read cast recipient condition: %w", err)
+		}
+		for _, blocked := range p.RecipientBlockedBy {
+			if condition.Ref.String() == blocked.String() {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
 }
