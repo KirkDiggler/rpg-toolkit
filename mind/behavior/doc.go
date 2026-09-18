@@ -1,54 +1,50 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package behavior is what a monster's mind has to be.
+// Package behavior is the module root, and holds nothing.
 //
-// A mind speaks in names. It is a few judgments and no state of its own:
-// which holdings are one thing, what to call it, which to deal with first,
-// how close to let it get. The ladder is fixed and not the mind's to change.
-// You cannot aim at what you have not named.
+// What is left of this module is the DEEDS CHANNEL and the two packages that
+// own it: [deed] for what a deed is and how it is encoded, and [stage] for
+// landing one on the people who witnessed it. Both are about what a creature
+// COMES TO HOLD. Neither decides anything.
 //
-// Perception is a tool behaviour holds. This package imports mind/perception
-// and reads what an actor holds — handed in as values by whoever owns the
-// store and runs its passes; behaviour never runs one, and writes only
-// through the store's own door to land a deed. Perception never learns an
-// intent exists. That is the whole of the layering, and the arrow points one
-// way (R1).
+// # What was here, and where it went
 //
-// # The nouns
+// This package was the mind: a [Mind] of four judgments — which holdings are
+// one thing, what to call it, which to deal with first, how close to let it
+// get — and a fixed ladder over them that answered what a creature does with
+// its turn. It is deleted (rpg-project#465, ideas/creature-table/design.md
+// §7), not deprecated and not left beside.
 //
-// A [Situation] is everything one actor has to go on: its [Contact] values as
-// folded by its own mind, its [Self], and when. Nothing about anyone else
-// that did not arrive through a channel.
+// A creature decides by rolling on an authored weighted table now, and four
+// things load that die: the rulebook's default table for its kind, the
+// author's orders, its own temperament, and what it has seen and suffered.
+// The reason is not that the ladder was wrong. It is that the ladder was a
+// black box with three words on the lid and a streamer could not open it,
+// while a table is a tool an author can hold — which is the product.
 //
-// A [Mind] is four judgments. Judge is which holdings are one thing. Name is
-// what the actor calls a contact. Rank is which contact it would rather deal
-// with first. Keep is how close it lets things get. A behaviour author writes
-// one type.
+// What the mind got right is kept, and is read from the table rather than
+// reimplemented: the outcome of anything is TESTIMONY a creature holds and
+// never a flag, and who a creature believes is where comes from perception,
+// per observer. That is exactly what [deed] and [stage] still serve.
 //
-// [Decide] is the ladder, and it is not the mind's to change: step away from
-// what is too close, attack a live named creature in reach, walk toward what
-// the mind ranks first, flee what it may not approach, else pass. Every rung
-// arrived with a use case that paid for it (R7).
+// So the vocabulary for reasoning about what a creature holds went with the
+// ladder that read it — Contact, Reading, Reader, Name, Self, Situation,
+// Space, Verb, Intent, and the Game that composed them. Nothing imported them
+// but the ladder and the presets, and a projection of holdings belongs beside
+// whoever is deciding from them: the composition builds its own, per pick,
+// against a board it actually has. Two projections of one truth would be two
+// truths to keep in step.
 //
-// # What a payload means, and how far away it is
+// # The arrow still points one way
 //
-// Perception carries payloads it never decodes. Behaviour decodes only one,
-// the deeds channel it wrote itself. Everything else is read through the
-// caller's [Reader], the way perception's physics is the caller's Reach:
-// this package holds no vocabulary for what a sighting says (R2).
+// This module depends on mind/perception and perception never learns anything
+// about it (R1). What is left of that layering is [stage.Land], which writes
+// through the store's own door and runs no pass of its own.
 //
-// Nor does it hold a map. A place is a string, and what it means — a room,
-// a cell, a hex — is the caller's. The caller's [Space] answers how far apart
-// two places are and where one step toward or away from a place lands
-// (R11). The proofs in this module use rooms joined by doors; a real board
-// uses cells and a pathfinder; the ladder cannot tell the difference.
-//
-// # Inputs and outputs
-//
-// Every function that takes more than one thing takes one Input; every
-// function that answers more than one thing answers one Output, and an error.
-//
-// Design contract: docs/ideas/mind/behavior/design.md (R1–R13). Composition
-// module: depends on core and mind/perception.
+// Design contract: docs/ideas/mind/behavior/design.md, R1–R13 — R7 (the
+// ladder) and R11 (the Space) are retired with the code they bound; R2 (a
+// payload is the caller's to read, except the deeds channel this module
+// wrote) and R9 (a deed lands in each witness's own terms) are what [deed] and
+// [stage] still keep.
 package behavior
