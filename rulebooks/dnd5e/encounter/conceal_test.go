@@ -5,12 +5,15 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -362,26 +365,61 @@ func (s *ConcealSuite) TestSearchRevealsTheDoorToTheSearcherAlone() {
 // TestSearchNeverSaysWhetherThereWasAnythingToFind: a failed check and an
 // empty region answer with the same bytes everywhere a caller can look —
 // the output, every member's story, and the persisted blob.
+//
+// EXCEPT THE CLOCK, which is the one thing a search DOES change now
+// (rpg-project#465): searching is an action and an action costs the searcher a
+// round of the world. That is not a leak — it says the same thing whatever the
+// region held, and it says it about the SEARCHER rather than about the find —
+// so the comparison strips the world's own time and keeps everything else
+// exact. A blob that differed anywhere else would be the answer leaking the
+// question.
 func (s *ConcealSuite) TestSearchNeverSaysWhetherThereWasAnythingToFind() {
 	enc := s.open(findsNothing{}, false)
 
-	before, err := json.Marshal(enc.ToData())
-	s.Require().NoError(err)
+	before := timelessBlob(s.T(), enc)
 
 	failed, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
 	s.Require().NoError(err, "a failed search is an outcome, not an error")
-	afterFailed, err := json.Marshal(enc.ToData())
-	s.Require().NoError(err)
+	afterFailed := timelessBlob(s.T(), enc)
 
 	empty, err := enc.Search(&encounter.SearchInput{Member: loner, Region: cellarRgn})
 	s.Require().NoError(err)
-	afterEmpty, err := json.Marshal(enc.ToData())
-	s.Require().NoError(err)
+	afterEmpty := timelessBlob(s.T(), enc)
 
 	s.Equal(failed, empty, "the two outputs are the same bytes")
-	s.Equal(string(before), string(afterFailed), "a failed check leaves no trace in the blob")
-	s.Equal(string(before), string(afterEmpty), "an empty region leaves the same none")
+	s.Equal(before, afterFailed, "a failed check leaves no trace in the blob")
+	s.Equal(before, afterEmpty, "an empty region leaves the same none")
 }
+
+// timelessBlob is the persisted encounter with the world clock and its own
+// frame beats removed: what a search may not change.
+func timelessBlob(t require.TestingT, enc *encounter.Encounter) string {
+	data := enc.ToData()
+	data.Clock = clock.TickData{}
+
+	kept := data.Log.Entries[:0]
+	for _, entry := range data.Log.Entries {
+		if entry.Tags["tag"] == "clock" {
+			continue
+		}
+		entry.Seq = 0
+		kept = append(kept, entry)
+	}
+	data.Log.Entries = kept
+	data.Log.NextSeq = 0
+
+	bs, err := json.Marshal(data)
+	require.NoError(t, err)
+
+	// And the stamp every percept carries, which is the same clock one level
+	// down: a sight refresh re-confirms what everybody holds at the reading it
+	// runs at, so a round passing moves it for every observer identically. It
+	// says nothing about what was found either.
+	return timeStamp.ReplaceAllString(string(bs), "")
+}
+
+// timeStamp matches a percept's clock reading on the wire.
+var timeStamp = regexp.MustCompile(`"confirmed":\d+,`)
 
 // TestSearchAsksTheResolverOncePerUnfoundDeclaration: the sweep covers
 // exactly the region's concealed doors, hands each one's whole authored

@@ -71,8 +71,8 @@ func (m *Monster) AddWeapon(id weapons.WeaponID) error {
 // SetWeapons replaces every action this monster carries with the named
 // weapons, in the order given.
 //
-// A SETTER, not an adder, and named in the family of [Monster.SetSpeed] and
-// [Monster.SetMind] for that reason: it states what this monster's arms ARE.
+// A SETTER, not an adder, and named in the family of [Monster.SetSpeed] for
+// that reason: it states what this monster's arms ARE.
 // That is what an author naming a placement's actions means — "this goblin
 // carries a bow and nothing else" — and appending could never say it.
 //

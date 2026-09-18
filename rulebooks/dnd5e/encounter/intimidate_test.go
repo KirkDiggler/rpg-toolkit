@@ -40,7 +40,7 @@ func (s *IntimidateTestSuite) scene(members ...encounter.MemberInput) *encounter
 	if len(members) == 0 {
 		members = []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Mind: "coward"},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}},
 			{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
 		}
 	}
@@ -66,7 +66,7 @@ func (s *IntimidateTestSuite) deedOf(
 	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
 	for _, h := range holdings {
-		if h.Subject != deed.Subject(actor) || h.Channel != deed.Channel {
+		if h.Subject != deed.Subject(actor, encounter.DeedIntimidate) || h.Channel != deed.Channel {
 			continue
 		}
 		saw, err := deed.Decode(h.Payload)
@@ -210,9 +210,9 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 	const sergeant = core.EntityID("sergeant")
 
 	open := func(fact encounter.FactID) *encounter.Encounter {
-		var table map[string][]encounter.Answer
+		var table encounter.Table
 		if fact != "" {
-			table = map[string][]encounter.Answer{
+			table = encounter.Table{
 				encounter.AnswerIntimidated: {{Weight: 1, Fact: fact}},
 			}
 		}
@@ -232,7 +232,7 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
 				{ID: sergeant, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-					Faction: campFaction, Answers: table},
+					Faction: campFaction, Table: table},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})
@@ -287,7 +287,7 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	enc := s.scene(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4},
-			Mind: "coward", Intimidate: approaches, Answers: map[string][]encounter.Answer{
+			Intimidate: approaches, Table: encounter.Table{
 				encounter.AnswerIntimidated: {{Weight: 1, Fact: campFact}},
 			}},
 	)
@@ -305,7 +305,7 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	}
 
 	s.Equal(approaches, read(enc).Intimidate)
-	s.Equal(campFact, read(enc).Answers[encounter.AnswerIntimidated][0].Fact)
+	s.Equal(campFact, read(enc).Table[encounter.AnswerIntimidated][0].Fact)
 
 	// Learn the fact first, so the blob carries a `known:fact` this field
 	// mints ONLY because the placement authored it — the trust boundary has
@@ -322,7 +322,7 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	})
 	s.Require().NoError(err)
 	s.Equal(approaches, read(reloaded).Intimidate, "and survives a reload")
-	s.Equal(campFact, read(reloaded).Answers[encounter.AnswerIntimidated][0].Fact,
+	s.Equal(campFact, read(reloaded).Table[encounter.AnswerIntimidated][0].Fact,
 		"the table survives the reload, and the blob's trust boundary accepts the fact it mints")
 }
 

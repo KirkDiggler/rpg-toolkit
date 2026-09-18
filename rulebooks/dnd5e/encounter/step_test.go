@@ -331,18 +331,21 @@ func (s *StepSuite) regionAtCell(cell spatial.Position) encounter.RegionID {
 // locked door, a one-way door, or a doorway spanning more than one cell pair
 // would have had to land in both, in lockstep, forever.
 func (s *StepSuite) TestAStepAndAMonsterStepAgreeOnWhatIsCrossable() {
-	seamWest := stepAbs(stepWestOrigin, spatial.Position{X: 5, Y: 2})
 	seamEast := stepAbs(stepEastOrigin, spatial.Position{X: 0, Y: 2})
 	threshold := stepAbs(stepWestOrigin, stepDoorWestLocal)
 	farSide := stepAbs(stepEastOrigin, stepDoorEastLocal)
 
-	// A goblin standing on the bare seam, intending the cell across it.
-	refused := &onceStepDecider{to: seamEast}
-	enc := s.sceneWithMonster(spatial.Position{X: 5, Y: 2}, refused)
-	_, err := enc.Pump(&encounter.PumpInput{})
+	// A goblin standing on the bare seam, its table sending it at the cell
+	// across it.
+	// ONE CELL OF MOVEMENT, deliberately: with a whole turn's worth the
+	// router would find its way round through the real door and arrive from
+	// the other side, which is a different sentence from the one this test
+	// makes. A budget of one leaves only the seam itself.
+	enc := s.sceneWithMonsterAtPace(spatial.Position{X: 5, Y: 2}, walksTo(seamEast), 5)
+	_, err := aRound(enc)
 	s.Require().NoError(err)
-	s.Require().True(refused.called, "the decider was consulted")
-	s.Equal(seamWest, s.whereIn(enc, goblin), "the monster did not walk through a wall")
+	s.NotEqual(seamEast, s.whereIn(enc, goblin),
+		"the monster did not walk through the wall — with one cell to spend it took the first step of the way round instead")
 
 	// Alice, on the same cell, intending the same one: same answer.
 	_, err = s.enc.Step(&encounter.StepInput{Member: alice, To: seamEast})
@@ -350,9 +353,8 @@ func (s *StepSuite) TestAStepAndAMonsterStepAgreeOnWhatIsCrossable() {
 	s.ErrorIs(err, encounter.ErrBadPlacement)
 
 	// And through the real doorway, both go.
-	crossed := &onceStepDecider{to: farSide}
-	enc = s.sceneWithMonster(stepDoorWestLocal, crossed)
-	_, err = enc.Pump(&encounter.PumpInput{})
+	enc = s.sceneWithMonster(stepDoorWestLocal, walksTo(farSide))
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 	s.Equal(farSide, s.whereIn(enc, goblin), "the monster went through the door")
 
@@ -373,13 +375,22 @@ func (s *StepSuite) TestAStepAndAMonsterStepAgreeOnWhatIsCrossable() {
 // stands ON the doorway cell in half these cases, looking straight through the
 // opening at the whole chamber beyond. An empty room is the honest way to say
 // "nobody has seen anybody".
-func (s *StepSuite) sceneWithMonster(at spatial.Position, decider encounter.Decider) *encounter.Encounter {
+func (s *StepSuite) sceneWithMonster(at spatial.Position, table encounter.Table) *encounter.Encounter {
+	return s.sceneWithMonsterAtPace(at, table, 30)
+}
+
+// sceneWithMonsterAtPace is sceneWithMonster with the walker's speed named,
+// for the case where how far it may go is the whole point.
+func (s *StepSuite) sceneWithMonsterAtPace(
+	at spatial.Position, table encounter.Table, speedFeet int,
+) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: goblin, Kind: encounter.KindMonster, Position: stepSeat(stepWestOrigin, at), Decider: decider},
+			{ID: goblin, Kind: encounter.KindMonster, Position: stepSeat(stepWestOrigin, at),
+				SpeedFeet: speedFeet, Table: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})

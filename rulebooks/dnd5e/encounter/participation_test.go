@@ -237,11 +237,9 @@ func TestDyingRetainsItsExactInitiativeSlotAndCanBecomeActive(t *testing.T) {
 	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
 		bob: {Down: true, Turn: encounter.TurnParticipationWait},
 	}
-	_, err := enc.Pump(&encounter.PumpInput{})
-	require.NoError(t, err)
 	require.Equal(t, []encounter.MemberID{alice, bob, goblin}, clockState(t, enc, alice).Order)
 
-	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	require.NoError(t, err)
 	state := clockState(t, enc, bob)
 	require.Equal(t, bob, state.Active)
@@ -296,7 +294,7 @@ func TestStabilizedAutoPassesInPlaceAndOrdinaryWaitReturnsWithoutReinsertion(t *
 	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
 		bob: {Down: true, Turn: encounter.TurnParticipationAutoPass},
 	}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	require.NoError(t, err)
 	require.Equal(t, []encounter.MemberID{alice, bob, goblin}, clockState(t, enc, alice).Order)
 
@@ -371,7 +369,7 @@ func TestRemoveLeavesInitiativeButKeepsMapAndRoster(t *testing.T) {
 		bob: {Down: true, Turn: encounter.TurnParticipationRemove},
 	}
 
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	require.NoError(t, err)
 	require.Equal(t, []encounter.MemberID{alice, goblin}, clockState(t, enc, alice).Order)
 	require.Equal(t, encounter.ClockWorld, clockState(t, enc, bob).Kind)
@@ -442,7 +440,7 @@ func TestRemovingTheActiveMemberAdvancesExactlyOnce(t *testing.T) {
 	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
 		bob: {Down: true, Turn: encounter.TurnParticipationRemove},
 	}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	require.NoError(t, err)
 	require.Equal(t, alice, clockState(t, enc, alice).Active)
 
@@ -611,7 +609,7 @@ func TestPartyDefeatedFalseWithDyingAndConsciousAlliesKeepsFightOpen(t *testing.
 		bob:   {Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait},
 	}
 
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	require.NoError(t, err)
 	status, err := enc.Status()
 	require.NoError(t, err)

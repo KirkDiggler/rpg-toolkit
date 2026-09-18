@@ -1,145 +1,117 @@
-# mind/behavior — what a mind is meant to do
+# mind/behavior — the creature's table, and the deeds channel
 
-This module is the monster's head. It takes everything one actor believes
-is around it, asks that actor's mind four questions, and answers with one
-intent: attack this, walk toward that, back away, or pass.
+mind/perception says what a creature **knows**. This module says what it
+**does** with that: it rolls an authored weighted table.
 
-It is deliberately small. It holds no map, no dice, no rules and no state
-about the world. The board, the rulebook and the clock all belong to
-whoever calls it. What is written here is only the decision.
-
-How the D&D 5e rulebook configures these minds — which monster gets which
-word, and what each word is tuned to — is the sibling page:
-[rulebooks/dnd5e/behavior](../../rulebooks/dnd5e/behavior/README.md).
-
-## A mind is four judgments and no state
-
-One monster differs from another only in how it answers these four. Nothing
-else about a mind exists.
-
-| Judgment | The question it answers |
+| Here | What it owns |
 |---|---|
-| `Judge` | Which of the things I am holding are one and the same thing? |
-| `Name` | What do I call this thing, now that I have bundled it? |
-| `Rank` | Which of these would I rather deal with first? |
-| `Keep` | How close do I let a live creature get before I back off? |
+| the root package | `Table`, `Layer`, `Pick`, `Deal` — the policy primitive and its evaluator |
+| [`deed`](./deed) | What a deed is — verb, actor, target, place — and how it is encoded on the deeds channel |
+| [`stage`](./stage) | `Land`: telling every witness what they saw, in their own terms |
 
-Two consequences worth knowing. A mind cannot aim at what it has not
-named: an intent targets a `Name`, never an id, so a contact the mind gives
-no word to cannot be attacked, approached or fled. And a mind has no
-memory of its own — everything it knows arrives on the turn, so the same
-inputs always produce the same answer.
+It holds no map, no clock, no rules, and no opinion about what anybody does
+next. The board, the rulebook and the clock all belong to whoever calls it.
 
-## The ladder is fixed
+## The table
 
-Once the mind has ranked the contacts and said how much room it wants, the
-decision is made by a fixed ladder in `Decide`. The mind is consulted at
-`Rank` and `Keep` and nowhere else. **A mind never reorders these rungs**,
-and it cannot add one.
+```go
+out, err := behavior.Pick(ctx, &behavior.PickInput{
+    Key:    behavior.KeyTime,
+    Table:  creature.Table,   // already layered by whoever owns the layers
+    Temper: creature.Temper,  // a word and what it multiplies, or nothing
+    Facts:  facts,            // what the creature holds, projected by the caller
+    Die:    dice,             // Roll(ctx, sides) — the smallest thing this needs
+})
+```
 
-0. A live named creature is nearer than `Keep` allows, and the board finds
-   a step away → **back away** from it.
-1. A live named creature is within the actor's reach → **attack** it.
-2. The first ranked named contact that is placed, is not here already, and
-   is not fenced → **walk toward** it. Alive or remembered; a walk toward a
-   ghost goes to where the ghost was last seen.
-3. A fenced live creature is placed → **back away** from it.
-4. Nothing to act on → **pass**.
+`out` carries every eligible entry with its authored weight, its temperament's
+factor and their product, the die, the face, and the entry that fired. A table
+nobody can replay is a table nobody can trust.
 
-A fence is the frightened condition: a subject the actor may not willingly
-move toward. It forbids approach and nothing else, so a frightened archer
-with the source in reach still shoots at rung 1.
+### Four things load the die
 
-Three rules hold the ladder together:
+1. **The layers.** `Layer(base, over)`: for each key the nearer layer wins
+   WHOLESALE. No merging of entry lists, so an author never has to reason about
+   what was added to what.
+2. **The weights**, as written.
+3. **The temperament.** A percent multiplier per table word, and nothing else:
+   it adds no entries, holds no memory, carries no trigger. `Deal` picks one
+   out of a faction's spread; the vocabulary is the caller's, and any word that
+   arrives with a profile is multiplied by it.
+4. **What the creature has seen and suffered.** An entry's `When` reads the
+   caller's own `Facts` — how close the nearest opposed thing has got, or a
+   deed done to this creature within N units. An entry whose condition is false
+   is ABSENT from the roll, not weighted zero.
 
-- **Live beats remembered.** A ghost is never attacked and never fled, no
-  matter how the mind ranked it. You cannot hit a memory and it cannot hit
-  you. Rung 2 is the one place the mind's ranking chooses between a live
-  target ahead and a ghost behind, and the ladder does not second-guess it.
-- **Unplaced is skipped.** Known to be there but not known where is neither
-  near anything nor in reach of anything.
-- **The two flights differ on purpose.** Keeping range is a preference, so
-  an archer with nowhere to step stands and shoots. Fear is not, so a
-  cornered creature still means to flee, finds nowhere to go, and stays
-  where it is. That is what cornered looks like.
+**Affordability is eligibility.** `Facts.CanAttack` and `Facts.CanMove` say
+what the creature can still pay for, and an entry it cannot pay for is absent
+for the same reason an unmet condition is. A pick that cannot act is noise on
+the log. `hold` is never gated — it is the word that lets a creature with
+nothing left still have HAD its turn — and the zero value is "cannot", so a
+caller that forgets a budget gets a creature that holds rather than one that
+quietly swings.
 
-## One turn, worked
+### What it deliberately does not know
 
-The scene is the bow skeleton, the arrow this module was built for. The
-skeleton stands in the tomb. Alice is four cells away and shot it with a
-crossbow on this same tick. Bob is one cell away with a longsword and has
-attacked nobody.
+One trigger is named here, `KeyTime` — a creature having time is the one thing
+every game has. Every other key is the caller's to name, seal and refuse. The
+words on an entry (`Fact`, `Flee`, `Hold`, `Attack`, `Toward`, `Away`) are
+DATA: this module knows which one fired and has no idea what attacking is or
+where `toward` walks to. A `Selector` is carried and resolved by the caller.
 
-**In** come three holdings, handed over as values by whoever owns the
-perception store:
+That is the composability claim. The table came out of a D&D composition; what
+was D&D about it stayed there.
 
-- `alice`, on the sight channel, current, payload saying where she stands
-  and what is in her hands;
-- `bob`, the same;
-- `deeds|alice`, on the deeds channel, carrying "alice attacked skeleton".
-  A deed is never current — it is always already in the past.
+## What used to be here
 
-**Read.** The caller's `Reader` turns each sight payload into a `Reading`:
-a place, and whether it is a live creature. The deeds payload is the one
-thing this module decodes itself, because it is the one it wrote.
+This module was the monster's head. It took everything an actor believed was
+around it, asked that actor's mind four questions — which holdings are one
+thing, what to call it, which to deal with first, how close to let it get —
+and answered with one intent, through a fixed five-rung ladder.
 
-**Judged.** The skeleton's mind claims that `deeds|alice` and `alice` are
-one thing. Nothing else made that connection — the store filed them apart
-on purpose, so that a dumber monster could hold the same deed and never
-work out who did it.
+All of that is deleted (rpg-project#465, `ideas/creature-table/design.md` §7).
+A creature decides by rolling on an **authored weighted table** now, and four
+things load that die: the rulebook's default table for its kind, the author's
+orders, its own temperament, and what it has seen and suffered.
 
-**Folded.** Two contacts: alice with her deed bundled in, and bob.
+The ladder was not wrong. It was a black box with three words on the lid, and
+a streamer could not open it. A table is a tool an author can hold, and the
+tools are the product.
 
-**Named.** Neither has a word yet, so the mind is asked, and it answers
-with the member id. The name is recorded on the contact's bearer, so the
-next turn finds the word already there.
+## Why the deeds channel stayed
 
-**Ranked.** Alice first: her deed is against this skeleton, it is still
-fresh, and she is still visibly holding something that can shoot back. Bob
-second, because he is merely close.
+The mind got two things right, and the table reads both rather than
+reimplementing them:
 
-**Kept.** The skeleton wants no room — it stands and fights.
+- **The outcome of anything is testimony a creature holds, never a flag.**
+  A creature that was threatened holds a deed saying so, stamped when it
+  happened and never restamped. A table's `when: { attacked: { within: 3 } }`
+  is a question about that testimony, and this is where the testimony is
+  written. A witness holds the freshest deed of EACH KIND by each actor, so a
+  flight it was the target of and a shout it merely watched the same figure
+  make are two memories rather than one overwriting the other.
+- **Who a creature believes is where comes from perception, per observer.**
+  `Land` writes a deed into each witness's own store, naming the figures in it
+  only to witnesses who could actually see them — a witness who could not see
+  the healer learns that a heal happened and not who did it.
 
-**The ladder.** Rung 0 needs a creature nearer than zero, so nothing
-qualifies. Rung 1 finds alice: live, named, placed, and four cells inside
-the eighty-foot bow.
+The rest went with the ladder that read it: `Contact`, `Reading`, `Reader`,
+`Name`, `Self`, `Situation`, `Space`, `Verb`, `Intent` and the `Game`. Nothing
+imported them but the ladder and the presets built on it, and a projection of
+holdings belongs beside whoever is deciding from them — the composition builds
+its own, per pick, against a board it actually has. Two projections of one
+truth would be two truths to keep in step.
 
-**Out** comes one intent: attack, target `alice`. The caller resolves that
-name against what is really there and spends the turn.
+`rulebooks/dnd5e/behavior`, the sibling that configured these minds, is
+deleted outright in the same wave.
 
-Change one thing — alice puts the crossbow away and draws a sword — and
-the ranking changes, so the same ladder swings at bob instead. The rungs
-never moved.
+## The arrow points one way
 
-## What a mind is not allowed to know
+This module depends on `mind/perception`; perception never learns anything
+about it (R1). `Land` writes through the store's own `Report` door and runs no
+perception pass of its own.
 
-- **Perception is a tool it holds, not a thing it drives.** The store
-  belongs to whoever runs the passes. What an actor holds arrives on the
-  turn as values. Behaviour writes back through exactly one door, to land a
-  deed, and nothing about an intent ever crosses back. Perception never
-  learns that intents exist.
-- **Geometry is the caller's.** A place is an opaque string. Whether it
-  means a room, a cell or a hex is the caller's business. The caller's
-  `Space` answers three questions and only three: how far apart two places
-  are, where one step toward lands, and where one step away lands. The
-  proofs in this module use rooms joined by doors; a real board uses cells
-  and a pathfinder; the ladder cannot tell the difference.
-- **No live state, ever.** The mind reads a situation that has already been
-  copied out. A walk is resolved against belief, never against truth, so a
-  monster searching the wrong room is behaving correctly and never leaks a
-  position. Only a swing asks the world whether the thing is actually
-  there.
-- **No vocabulary for content.** This module does not know what a bow is,
-  what hit points are, or what a spell does. A payload it did not write is
-  read by the caller's `Reader`, or decoded by the mind itself if the mind
-  cares.
-
-## Where the rest is written down
-
-- [`docs/ideas/mind/behavior/design.md`](../../docs/ideas/mind/behavior/design.md)
-  — the rules, R1 to R13, and the use case each one was bought with.
-- [`docs/ideas/mind/behavior/scenarios.md`](../../docs/ideas/mind/behavior/scenarios.md)
-  — the arrows: the scenes a player should see, and which piece owns each
-  part of them.
-- [`docs/ideas/mind/behavior/adoption.md`](../../docs/ideas/mind/behavior/adoption.md)
-  — how the D&D 5e encounter pays for all this.
+Design contract: `docs/ideas/mind/behavior/design.md`. R7 (the ladder) and R11
+(the Space) are retired with the code they bound. R2 (a payload is the
+caller's to read, except the deeds channel this module wrote) and R9 (a deed
+lands in each witness's own terms) are what remains.

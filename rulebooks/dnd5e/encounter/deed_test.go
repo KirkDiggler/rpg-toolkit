@@ -40,7 +40,9 @@ func (s *DeedTestSuite) scene() *encounter.Encounter {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Mind: "retaliator"},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4},
+				Temper: encounter.Temper{Word: "coward", Profile: encounter.TemperProfile{
+					Attack: 50, Toward: 50, Away: 300, Flee: 300, Hold: 100}}},
 			{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -78,7 +80,7 @@ func (s *DeedTestSuite) TestAStrikeLandsADeedOnWhoeverSawIt() {
 	})
 	s.Require().NoError(err)
 
-	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice))
+	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice, encounter.DeedAttack))
 	s.Require().True(ok, "the goblin saw alice attack")
 	s.Equal(deed.Channel, held.Channel, "on the deeds channel")
 	s.Empty(held.CurrentVia, "a deed is in the past the moment it exists")
@@ -90,7 +92,7 @@ func (s *DeedTestSuite) TestAStrikeLandsADeedOnWhoeverSawIt() {
 	s.Equal(goblin, saw.Target, "and that it was the one attacked")
 	s.Equal(s.cellOf(enc, alice).String(), saw.Where, "where alice stood, as the board has her")
 
-	_, ok = s.holdingOf(enc, billy, deed.Subject(alice))
+	_, ok = s.holdingOf(enc, billy, deed.Subject(alice, encounter.DeedAttack))
 	s.False(ok, "billy, behind the wall, never learned a shot happened")
 }
 
@@ -109,18 +111,21 @@ func (s *DeedTestSuite) TestAMissIsStillAShotAtYou() {
 	})
 	s.Require().NoError(err)
 
-	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice))
+	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice, encounter.DeedAttack))
 	s.Require().True(ok)
 	saw, err := deed.Decode(held.Payload)
 	s.Require().NoError(err)
 	s.Equal(encounter.DeedAttack, saw.Verb)
 }
 
-// TestTheMindCrossesLikeTargeting: the sheet's word reaches the member
-// record verbatim, and round-trips through Data.
-func (s *DeedTestSuite) TestTheMindCrossesLikeTargeting() {
+// TestTheTemperCrossesLikeTargeting: the word and the profile the caller
+// filled for it reach the member record verbatim, and round-trip through Data
+// (rpg-project#465 — this was the `mind` word, and a mind's numbers lived in
+// Go where nobody could see them).
+func (s *DeedTestSuite) TestTheTemperCrossesLikeTargeting() {
 	enc := s.scene()
-	s.Equal("retaliator", s.mindOf(enc, goblin))
+	s.Equal("coward", s.temperOf(enc, goblin).Word)
+	s.Equal(300, s.temperOf(enc, goblin).Profile.Away, "the numbers cross too — a temper IS its profile")
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
@@ -128,7 +133,8 @@ func (s *DeedTestSuite) TestTheMindCrossesLikeTargeting() {
 		Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
-	s.Equal("retaliator", s.mindOf(reloaded, goblin), "and survives a reload")
+	s.Equal("coward", s.temperOf(reloaded, goblin).Word, "and survives a reload")
+	s.Equal(300, s.temperOf(reloaded, goblin).Profile.Away, "profile and all")
 }
 
 func (s *DeedTestSuite) cellOf(enc *encounter.Encounter, id encounter.MemberID) spatial.Position {
@@ -143,23 +149,23 @@ func (s *DeedTestSuite) cellOf(enc *encounter.Encounter, id encounter.MemberID) 
 	return spatial.Position{}
 }
 
-func (s *DeedTestSuite) mindOf(enc *encounter.Encounter, id encounter.MemberID) string {
+func (s *DeedTestSuite) temperOf(enc *encounter.Encounter, id encounter.MemberID) encounter.Temper {
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	for _, m := range members {
 		if m.ID == id {
-			return m.Mind
+			return m.Temper
 		}
 	}
 	s.Require().Failf("not a member", "%s", id)
-	return ""
+	return encounter.Temper{}
 }
 
-// TestTheViewCarriesWhatAMindNeeds: rule A2. The goblin's view names its
-// mind, carries every holding as values — the sight of alice and the deed
+// TestTheViewCarriesWhatADriverNeeds: rule A2. The goblin's view names its
+// own policy, carries every holding as values — the sight of alice and the deed
 // she just did — stamps when, and precomputes the step away from her, so a
 // driver decides without reaching the canvas.
-func (s *DeedTestSuite) TestTheViewCarriesWhatAMindNeeds() {
+func (s *DeedTestSuite) TestTheViewCarriesWhatADriverNeeds() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
@@ -171,8 +177,7 @@ func (s *DeedTestSuite) TestTheViewCarriesWhatAMindNeeds() {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Mind: "retaliator",
-				SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -190,7 +195,10 @@ func (s *DeedTestSuite) TestTheViewCarriesWhatAMindNeeds() {
 	s.Require().NotEmpty(driver.calls, "the goblin's turn was driven")
 
 	view := driver.calls[0]
-	s.Equal("retaliator", view.Mind, "the sheet's word, verbatim")
+	s.Equal(encounter.Temper{}, view.Temper, "no temperament is a soldier, and stores nothing")
+	s.Require().Len(view.Deeds, 1, "the deed done TO it is decoded onto the view, not left as bytes")
+	s.Equal(encounter.DeedAttack, view.Deeds[0].Kind)
+	s.Equal(alice, view.Deeds[0].Actor, "and it names who did it, which is what `attack: attacker` reads")
 	for _, h := range view.Holdings {
 		s.LessOrEqual(h.Confirmed, view.At, "nothing held is stamped later than the view")
 	}
@@ -200,7 +208,7 @@ func (s *DeedTestSuite) TestTheViewCarriesWhatAMindNeeds() {
 		switch h.Subject {
 		case alice:
 			sawAlice = h.CurrentOn(perception.Sight)
-		case deed.Subject(alice):
+		case deed.Subject(alice, encounter.DeedAttack):
 			sawDeed = h.Channel == deed.Channel
 		}
 	}

@@ -15,8 +15,8 @@ import (
 // external one (and does not need to: this file's whole job is being small).
 type passDriver struct{}
 
-func (passDriver) Act(MonsterView) (TurnIntent, error) {
-	return Pass{}, nil
+func (passDriver) Act(MonsterView) (Decision, error) {
+	return Decision{Intent: Pass{}}, nil
 }
 
 // errPassStrikerNeverAttacks is what passStriker returns if it is ever

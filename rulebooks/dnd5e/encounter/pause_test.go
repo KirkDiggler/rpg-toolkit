@@ -271,6 +271,9 @@ func (s *PauseTestSuite) TestResumingFinishesTheWalkAndTheTurn() {
 	s.Equal([]string{
 		"scene-opened", "bubble-formed", "turn-ended",
 		"moved", encounter.BeatWindowOpened, "moved", "moved", "turn-ended",
+		// The resumed turn is the last of the order, so the round wraps on it
+		// — and a fight round wrapping is the world getting one (design §5).
+		"tick",
 	}, s.beats(enc, alice))
 }
 
@@ -398,9 +401,9 @@ type spinningWalker struct {
 	calls []encounter.MonsterView
 }
 
-func (d *spinningWalker) Act(view encounter.MonsterView) (encounter.TurnIntent, error) {
+func (d *spinningWalker) Act(view encounter.MonsterView) (encounter.Decision, error) {
 	d.calls = append(d.calls, view)
-	return encounter.Move{Path: []spatial.Position{cellAt(5, 2)}}, nil
+	return encounter.Decision{Intent: encounter.Move{Path: []spatial.Position{cellAt(5, 2)}}}, nil
 }
 
 // TestEveryDriveEntryIsANoOpWhilePaused: the fight has exactly one way

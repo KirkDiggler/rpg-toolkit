@@ -147,7 +147,8 @@ func (s *RecordActivationSuite) TestRecordActivationSecondWind() {
 	s.Require().Len(out.Seqs, 2)
 	s.Less(out.Seqs[0], out.Seqs[1], "activation precedes its result")
 	s.Nil(out.IntelDeltas)
-	s.Equal(callsBefore+1, standing.calls, "noticeDown is consulted once for the whole transaction")
+	s.Equal(callsBefore+3, standing.calls,
+		"one consult for the transaction itself, and two more for the round of the world it pays for (rpg-project#465): the percept rebuild and the notice pass")
 
 	wantPayloads := []string{
 		`{"beat":"activated","actor":"fighter","ability":{"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
@@ -276,7 +277,8 @@ func (s *RecordActivationSuite) TestRecordActivationNoResults() {
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Seqs, 1)
-	s.Equal(callsBefore+1, standing.calls)
+	s.Equal(callsBefore+3, standing.calls,
+		"one consult for the transaction itself, and two more for the round of the world it pays for (rpg-project#465): the percept rebuild and the notice pass")
 
 	entries := s.storyEntries(enc, activationGoblin, out.Seqs)
 	s.Equal(`{"beat":"activated","actor":"fighter","ability":{"ref":"dnd5e:combat-abilities:dodge","name":"Dodge"}}`, string(entries[0].Payload))
