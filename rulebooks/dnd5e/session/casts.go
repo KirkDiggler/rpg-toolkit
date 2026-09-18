@@ -280,6 +280,18 @@ func (m *Manager) compileCastOffer(
 	// share the same preflight facts and must not share the mutable
 	// annotations, exactly as two Attack variants must not.
 	candidates = cloneTargetPreflights(candidates)
+	if len(profile.RecipientBlockedBy) > 0 {
+		eligibility, err := resolution.CastRecipientEligibility(profile, input.Participants)
+		if err != nil {
+			return compiledOffer{}, translateResolution(err)
+		}
+		for i := range candidates {
+			if !eligibility[candidates[i].member] {
+				candidates[i].available = false
+				candidates[i].why = &Shortfall{Reason: ShortfallUnavailable, Text: "Target cannot receive this spell while its cooldown is active"}
+			}
+		}
+	}
 	var dependencyWhy *Shortfall
 	for _, failure := range input.DependencyFailures {
 		why := Shortfall{
