@@ -54,7 +54,6 @@ type Monster struct {
 
 	// AI behavior
 	targeting TargetingStrategy
-	mind      Mind
 
 	// reactionSpent is this monster's one reaction meter. See
 	// [Data.ReactionSpent]; the keeper owns every write to it.
@@ -724,7 +723,6 @@ func (m *Monster) ToData() *Data {
 		Speed:            m.speed,
 		Senses:           m.senses,
 		Targeting:        m.targeting,
-		Mind:             m.mind,
 		ReactionSpent:    m.reactionSpent,
 		Actions:          make([]combatActions.Definition, len(m.actions)),
 		Proficiencies:    make([]ProficiencyData, 0, len(m.proficiencies)),

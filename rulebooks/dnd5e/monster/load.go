@@ -97,7 +97,6 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 		speed:            d.Speed,
 		senses:           d.Senses,
 		targeting:        d.Targeting,
-		mind:             d.Mind,
 		reactionSpent:    d.ReactionSpent,
 		subscriptionIDs:  make([]string, 0),
 		actions:          make([]combatActions.Definition, 0, len(d.Actions)),

@@ -43,9 +43,5 @@ func NewGoblin(id string) *monster.Monster {
 
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
-	// A goblin holds no grudge: it keeps its distance and backs away from
-	// whatever closes on it (rpg-toolkit#1745).
-	m.SetMind(monster.MindCoward)
-
 	return m
 }
