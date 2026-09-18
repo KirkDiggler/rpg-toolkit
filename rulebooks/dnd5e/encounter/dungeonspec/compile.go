@@ -238,11 +238,21 @@ type MonsterPlacement struct {
 // lint a file without building a world should not have to build one. A
 // validation failure is returned as a [*ValidationError] carrying every
 // defect, and is an [ErrBadSpec].
+//
+// WHICH DIALECT IS CHOSEN BY VERSION, AND THE SINGLE ROOM OWNS 3 AND ABOVE.
+// Versions 1 and 2 are the region-chain dialect and stay on [Decode]. A
+// version >= 3 is a site document and goes to [DecodeSingleRoom], so a
+// version this build does not speak is refused in the single room's own words
+// ("unsupported version 5 (want 3 or 4)") rather than misread as a malformed
+// v2 dungeon. This dispatch is deliberately BROADER than
+// [acceptedRootVersions]: what the decoder accepts is the version seam's
+// business, and routing the rest here is what makes the refusal about the
+// version instead of about the shape.
 func Load(raw []byte) (Compiled, error) {
 	var version struct {
 		Version int `yaml:"version"`
 	}
-	if err := yaml.Unmarshal(raw, &version); err == nil && version.Version == 3 {
+	if err := yaml.Unmarshal(raw, &version); err == nil && version.Version >= 3 {
 		decoded, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
 		if err != nil {
 			return Compiled{}, err
