@@ -932,11 +932,24 @@ type AnswerSpec struct {
 	// two get different defects because they are different mistakes.
 	Fact *string `yaml:"fact,omitempty"`
 
-	// Flee sends the creature away from whoever spoke to it, its own full
-	// speed, as a directed move — `flee: {}`. An EMPTY MAPPING rather than a
-	// bare word because a word with no body has nowhere to grow: the day
-	// fleeing takes a distance or a destination, `flee: { toward: … }` is an
-	// addition to this file and not a break in every file that has one.
+	// Flee lands a `fled` deed on the creature, naming whoever made it run —
+	// `flee: {}`.
+	//
+	// IT MOVES NOBODY. The running is the creature's own answer on its own
+	// time: the rulebook's default table carries a
+	// `{ when: { fled: { within: 3 } }, away: actor, weight: 3 }` row, so a
+	// creature that has been made to run spends its next rounds walking away
+	// from the one who did it, weighted heavily enough to beat the rest of the
+	// table. An author who wants a different flight writes a different row
+	// rather than a different word here, and a creature whose table has no
+	// `fled` row does not run at all — which is the author's to decide, and
+	// visible to them, in a way a one-shot walk hidden behind this word was
+	// not.
+	//
+	// AN EMPTY MAPPING rather than a bare word because a word with no body has
+	// nowhere to grow: the day fleeing takes a span of its own,
+	// `flee: { within: … }` is an addition to this file and not a break in
+	// every file that has one.
 	Flee *FleeSpec `yaml:"flee,omitempty"`
 
 	// When is the condition this entry is on the table under

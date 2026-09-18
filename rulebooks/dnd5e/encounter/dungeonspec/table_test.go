@@ -23,16 +23,22 @@ import (
 // authored dungeon goes through. Two grammars would drift, and the first thing
 // to drift would be a refusal the author sees and the rulebook does not.
 
-// thugDefaultTable is the rulebook's default table for a thug, VERBATIM as
-// rulebooks/dnd5e ships it (design §2). It lives here as well so this module's
-// validator is pinned against the real thing rather than a paraphrase of it.
-const thugDefaultTable = `
-time:
+// thugDefaultTable is the rulebook's default table, VERBATIM as rulebooks/dnd5e
+// ships it in monster/table (design §2) — character for character, so this
+// module's validator is pinned against the real thing rather than a paraphrase
+// of it. A paraphrase is the one fixture that can pass while the table it
+// stands for is refused, which is the whole failure this test exists to catch.
+//
+// ONE GENERIC TABLE stands behind every monster kind this slice ships, so this
+// is equally what the rulebook answers for a goblin or a skeleton. The name
+// keeps the kind it was first written for.
+const thugDefaultTable = `time:
+  - { when: { fled: { within: 3 } },     away: actor,      weight: 3 }
   - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
   - { when: { enemy: reach },            attack: enemy }
   - { when: { enemy: seen },             toward: enemy }
   - { when: { enemy: remembered },       toward: enemy }
-  - { hold: {} }
+  - { when: { enemy: none },             hold: {} }
 `
 
 // TestTheRulebooksDefaultTableCompiles is layer one of three: a monster kind's
@@ -43,30 +49,40 @@ func TestTheRulebooksDefaultTableCompiles(t *testing.T) {
 	require.NoError(t, err)
 
 	entries := table[encounter.AnswerTime]
-	require.Len(t, entries, 5, "five rows, in the order the rulebook wrote them")
+	require.Len(t, entries, 6, "six rows, in the order the rulebook wrote them")
 
-	require.Equal(t, 3, entries[0].Weight, "the retaliation is the heavy one")
-	require.Equal(t, "attacked", entries[0].When.Deed,
+	require.Equal(t, 3, entries[0].Weight, "the run is weighted as heavily as the retaliation")
+	require.Equal(t, "fled", entries[0].When.Deed,
 		"the author's own past tense: a condition is written from the creature's side")
-	require.Equal(t, encounter.DeedAttack, encounter.DeedVerbFor(entries[0].When.Deed),
+	require.Equal(t, encounter.DeedFled, encounter.DeedVerbFor(entries[0].When.Deed),
 		"and it names the deed the store files under")
-	require.Equal(t, 3, entries[0].When.Within, "the preset's patience, moved into the author's sight")
-	require.Equal(t, encounter.SelectorAttacker, entries[0].Attack.Word)
+	require.Equal(t, 3, entries[0].When.Within, "three rounds of running, in the author's sight")
+	require.Equal(t, encounter.SelectorActor, entries[0].Away.Word,
+		"away from whoever made it run: `flee: {}` lands the deed and THIS row does the walking")
 
-	require.Equal(t, 1, entries[1].Weight, "an omitted weight compiles to 1 here, once")
-	require.Equal(t, encounter.EnemyReach, entries[1].When.Enemy)
-	require.Equal(t, encounter.SelectorEnemy, entries[1].Attack.Word,
+	require.Equal(t, 3, entries[1].Weight, "the retaliation is the other heavy one")
+	require.Equal(t, "attacked", entries[1].When.Deed,
+		"the author's own past tense, again")
+	require.Equal(t, encounter.DeedAttack, encounter.DeedVerbFor(entries[1].When.Deed),
+		"and it names the deed the store files under")
+	require.Equal(t, 3, entries[1].When.Within, "the preset's patience, moved into the author's sight")
+	require.Equal(t, encounter.SelectorAttacker, entries[1].Attack.Word)
+
+	require.Equal(t, 1, entries[2].Weight, "an omitted weight compiles to 1 here, once")
+	require.Equal(t, encounter.EnemyReach, entries[2].When.Enemy)
+	require.Equal(t, encounter.SelectorEnemy, entries[2].Attack.Word,
 		"the swing is under `reach`, which is the band that can land it")
 
-	require.Equal(t, encounter.EnemySeen, entries[2].When.Enemy)
-	require.Equal(t, encounter.SelectorEnemy, entries[2].Toward.Word,
+	require.Equal(t, encounter.EnemySeen, entries[3].When.Enemy)
+	require.Equal(t, encounter.SelectorEnemy, entries[3].Toward.Word,
 		"and `seen` — in sight, out of reach — is where it CLOSES, which the default could not do before")
 
-	require.Equal(t, encounter.EnemyRemembered, entries[3].When.Enemy)
-	require.Equal(t, encounter.SelectorEnemy, entries[3].Toward.Word)
+	require.Equal(t, encounter.EnemyRemembered, entries[4].When.Enemy)
+	require.Equal(t, encounter.SelectorEnemy, entries[4].Toward.Word)
 
-	require.True(t, entries[4].Hold, "and a way out, so a thug with nothing to do stands there")
-	require.Nil(t, entries[4].When, "which is on the table always")
+	require.True(t, entries[5].Hold, "and a way out, so a thug with nothing to do stands there")
+	require.Equal(t, encounter.EnemyNone, entries[5].When.Enemy,
+		"CONDITIONAL, not standing: an unconditional hold is eligible on every roll, so it competes with the swing and a thug in reach stands there half its turns")
 }
 
 // TestADefaultTableCannotNameACell: a kind's table belongs to every creature
