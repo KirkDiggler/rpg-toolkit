@@ -36,6 +36,14 @@ import (
 // same subject and overwrite the last. A deed nobody did is a wiring fault.
 var ErrNoActor = errors.New("stage: a deed has no actor")
 
+// ErrNoVerb reports a deed that does not say what was done. The verb keys the
+// subject beside the actor ([deed.Subject]), so a verbless deed would collapse
+// every verbless deed of one actor onto a single subject and overwrite the
+// last — the same fault as a missing actor, arriving the same way, and refused
+// for the same reason. A `when` condition names a verb, so a deed without one
+// is also a condition nothing could ever satisfy.
+var ErrNoVerb = errors.New("stage: a deed has no verb")
+
 // Store is what Land needs of a perception: exactly the two methods
 // [perception.Perception] has, so the caller hands its own store and
 // nothing wraps it. The store belongs to whoever runs the passes; the stage
@@ -57,19 +65,23 @@ type LandInput struct {
 }
 
 // Land tells every witness what they saw, in their own terms (R9).
-// ErrNoActor if the deed has no actor.
+// ErrNoActor if the deed has no actor, ErrNoVerb if it does not say what was
+// done — both key the subject it is filed under.
 //
 // The deed's actor and target are named to each witness only if the witness
 // currently holds them on sight, or is them: a witness who could not see the
 // healer learns that a heal happened and not who did it, and a witness that
 // was the target knows it was. The deed lands on the
-// deeds channel, one qualified subject per figure, through perception's
-// Report door — so it is held and never current, it is judged by the
+// deeds channel, one qualified subject per figure AND KIND, through
+// perception's Report door — so it is held and never current, it is judged by the
 // witness's mind like everything else, and the store cannot tell it from a
 // lie. Nothing here writes to anybody's sight holding.
 func Land(in *LandInput) error {
 	if in.Deed.Actor == "" {
 		return fmt.Errorf("land: %w", ErrNoActor)
+	}
+	if in.Deed.Verb == "" {
+		return fmt.Errorf("land: %w", ErrNoVerb)
 	}
 
 	for _, witness := range in.Witnesses {
@@ -85,8 +97,11 @@ func Land(in *LandInput) error {
 		_, err = in.Store.Report(perception.ReportInput{
 			Observer: witness,
 			Channel:  deed.Channel,
-			Reports:  []perception.Presence{{ID: deed.Subject(in.Deed.Actor), Payload: deed.Encode(saw)}},
-			At:       in.At,
+			Reports: []perception.Presence{{
+				ID:      deed.Subject(in.Deed.Actor, in.Deed.Verb),
+				Payload: deed.Encode(saw),
+			}},
+			At: in.At,
 		})
 		if err != nil {
 			return err

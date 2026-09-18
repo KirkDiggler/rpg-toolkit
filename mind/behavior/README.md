@@ -87,7 +87,9 @@ reimplementing them:
   A creature that was threatened holds a deed saying so, stamped when it
   happened and never restamped. A table's `when: { attacked: { within: 3 } }`
   is a question about that testimony, and this is where the testimony is
-  written.
+  written. A witness holds the freshest deed of EACH KIND by each actor, so a
+  flight it was the target of and a shout it merely watched the same figure
+  make are two memories rather than one overwriting the other.
 - **Who a creature believes is where comes from perception, per observer.**
   `Land` writes a deed into each witness's own store, naming the figures in it
   only to witnesses who could actually see them — a witness who could not see

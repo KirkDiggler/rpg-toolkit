@@ -59,25 +59,27 @@ func look(t *testing.T, store *perception.Perception, who eyesOn, present []core
 	require.NoError(t, err)
 }
 
-// heldDeed is the deed one witness holds about one actor, and whether it holds
-// any at all.
-func heldDeed(t *testing.T, store *perception.Perception, witness, actor core.EntityID) (deed.Deed, bool) {
+// heldDeed is the deed of one kind one witness holds about one actor, when it
+// holds one at all, and the stamp it is held at.
+func heldDeed(
+	t *testing.T, store *perception.Perception, witness, actor core.EntityID, verb string,
+) (deed.Deed, uint64, bool) {
 	t.Helper()
 
 	held, err := store.Held(witness)
 	require.NoError(t, err)
 
 	for _, h := range held {
-		if h.Channel != deed.Channel || h.Subject != deed.Subject(actor) {
+		if h.Channel != deed.Channel || h.Subject != deed.Subject(actor, verb) {
 			continue
 		}
 		got, derr := deed.Decode(h.Payload)
 		require.NoError(t, derr)
 
-		return got, true
+		return got, h.Confirmed, true
 	}
 
-	return deed.Deed{}, false
+	return deed.Deed{}, 0, false
 }
 
 // A DEED LANDS IN EACH WITNESS'S OWN TERMS, and that is the whole rule.
@@ -131,7 +133,7 @@ func TestALandedDeedNamesOnlyWhatEachWitnessCouldSee(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, held := heldDeed(t, store, tc.witness, "raider")
+			got, _, held := heldDeed(t, store, tc.witness, "raider", "attack")
 
 			require.True(t, held, "every witness holds the deed; what differs is what it says")
 			require.Equal(t, tc.want, got, tc.why)
@@ -157,8 +159,9 @@ func TestALandedDeedIsHeldAndNeverCurrent(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, held, 1)
 	require.Equal(t, deed.Channel, held[0].Channel)
-	require.Equal(t, deed.Subject("alice"), held[0].Subject,
-		"one subject per FIGURE, qualified by channel so it can never collide with a sight holding")
+	require.Equal(t, deed.Subject("alice", "intimidate"), held[0].Subject,
+		"one subject per FIGURE AND KIND, qualified by channel so it can never collide with a "+
+			"sight holding")
 	require.Empty(t, held[0].CurrentVia, "nothing sustains a deed; it happened and it is over")
 	require.Equal(t, uint64(7), held[0].Confirmed, "stamped when it happened, which is what ages it")
 }
@@ -200,4 +203,106 @@ func TestADeedNobodyWitnessedLandsNowhere(t *testing.T) {
 	held, herr := store.Held("alice")
 	require.NoError(t, herr)
 	require.Empty(t, held)
+}
+
+// A WITNESS REMEMBERS EACH KIND OF THING IT SAW SOMEBODY DO, and that is what
+// makes a private memory survive a public one.
+//
+// This is the walk's own scene (rpg-project#465). A goblin fled the barbarian,
+// and its table said to keep running `when: { fled: { within: 3 } }`. One
+// round later it watched that SAME barbarian intimidate a different goblin —
+// so with one subject per actor, the intimidate landed on the handle the
+// flight was filed under and the flight was gone. The goblin stopped running
+// two rounds early because somebody else was shouted at.
+func TestAWitnessHoldsOneDeedOfEachKindPerActor(t *testing.T) {
+	store, err := perception.New()
+	require.NoError(t, err)
+
+	look(t, store, eyesOn{"goblin": {"barbarian", "other"}}, []core.EntityID{"barbarian", "other"}, 1)
+
+	require.NoError(t, stage.Land(&stage.LandInput{
+		Store:     store,
+		Deed:      deed.Deed{Verb: "fled", Actor: "barbarian", Target: "goblin", Where: "front"},
+		Witnesses: []core.EntityID{"goblin"},
+		At:        2,
+	}))
+
+	// The public deed, by the same actor, one round later: what evicted the
+	// private one.
+	require.NoError(t, stage.Land(&stage.LandInput{
+		Store:     store,
+		Deed:      deed.Deed{Verb: "intimidate", Actor: "barbarian", Target: "other", Where: "front"},
+		Witnesses: []core.EntityID{"goblin"},
+		At:        3,
+	}))
+
+	fled, fledAt, heldFled := heldDeed(t, store, "goblin", "barbarian", "fled")
+	require.True(t, heldFled, "the flight it was the target of is still its own memory")
+	require.Equal(t, core.EntityID("goblin"), fled.Target, "and it is still the one who fled")
+	require.Equal(t, uint64(2), fledAt, "aged from when it happened, which is what `within` reads")
+
+	shout, shoutAt, heldShout := heldDeed(t, store, "goblin", "barbarian", "intimidate")
+	require.True(t, heldShout, "and it holds what it watched happen to somebody else too")
+	require.Equal(t, core.EntityID("other"), shout.Target)
+	require.Equal(t, uint64(3), shoutAt, "each kind keeps its own stamp")
+}
+
+// A SECOND DEED OF THE SAME KIND STILL REPLACES THE FIRST — freshest wins,
+// which is the narrowing the per-kind subject deliberately keeps. What a
+// creature holds about somebody is the latest of each thing they were seen to
+// do, not a list of every blow.
+func TestASecondDeedOfOneKindReplacesTheFirst(t *testing.T) {
+	store, err := perception.New()
+	require.NoError(t, err)
+
+	look(t, store, eyesOn{"goblin": {"raider", "alice"}}, []core.EntityID{"raider", "alice"}, 1)
+
+	for _, target := range []core.EntityID{"goblin", "alice"} {
+		at := uint64(2)
+		if target == "alice" {
+			at = 5
+		}
+		require.NoError(t, stage.Land(&stage.LandInput{
+			Store:     store,
+			Deed:      deed.Deed{Verb: "attack", Actor: "raider", Target: target, Where: "yard"},
+			Witnesses: []core.EntityID{"goblin"},
+			At:        at,
+		}))
+	}
+
+	got, at, held := heldDeed(t, store, "goblin", "raider", "attack")
+	require.True(t, held)
+	require.Equal(t, core.EntityID("alice"), got.Target, "the second swing is what it holds")
+	require.Equal(t, uint64(5), at, "stamped when the second one landed")
+
+	all, err := store.Held("goblin")
+	require.NoError(t, err)
+	deeds := 0
+	for _, h := range all {
+		if h.Channel == deed.Channel {
+			deeds++
+		}
+	}
+	require.Equal(t, 1, deeds, "one subject for the kind, not one per swing")
+}
+
+// A deed that does not say what was done is refused for the same reason an
+// actorless one is: the verb keys the subject beside the actor, so a verbless
+// deed would collapse every verbless deed of one actor onto a single handle.
+func TestADeedWithNoVerbIsRefused(t *testing.T) {
+	store, err := perception.New()
+	require.NoError(t, err)
+
+	err = stage.Land(&stage.LandInput{
+		Store:     store,
+		Deed:      deed.Deed{Actor: "raider", Target: "alice", Where: "yard"},
+		Witnesses: []core.EntityID{"alice"},
+		At:        1,
+	})
+
+	require.ErrorIs(t, err, stage.ErrNoVerb)
+
+	held, herr := store.Held("alice")
+	require.NoError(t, herr)
+	require.Empty(t, held, "a refused landing writes nothing at all")
 }
