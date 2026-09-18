@@ -43,6 +43,14 @@ nobody can replay is a table nobody can trust.
    deed done to this creature within N units. An entry whose condition is false
    is ABSENT from the roll, not weighted zero.
 
+**Affordability is eligibility.** `Facts.CanAttack` and `Facts.CanMove` say
+what the creature can still pay for, and an entry it cannot pay for is absent
+for the same reason an unmet condition is. A pick that cannot act is noise on
+the log. `hold` is never gated — it is the word that lets a creature with
+nothing left still have HAD its turn — and the zero value is "cannot", so a
+caller that forgets a budget gets a creature that holds rather than one that
+quietly swings.
+
 ### What it deliberately does not know
 
 One trigger is named here, `KeyTime` — a creature having time is the one thing

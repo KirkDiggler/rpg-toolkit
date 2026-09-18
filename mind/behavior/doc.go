@@ -14,6 +14,10 @@
 //
 //	[Pick] — a table, a temperament, some facts and a die, in;
 //	         the entry that fired and the whole arithmetic, out.
+//	         An entry is on the table when its condition holds AND the
+//	         creature can afford it; either way it is absent, not weighted
+//	         zero, so the candidate list is the honest account of what could
+//	         have happened.
 //	[Deal] — a faction's spread and a die, in; one creature's nerve, out.
 //
 // The deeds channel is the other half, and it is what a table's `when` reads:

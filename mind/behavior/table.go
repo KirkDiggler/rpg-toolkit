@@ -439,12 +439,48 @@ type Facts struct {
 	// earlier sighting.
 	EnemyRemembered bool
 
+	// CanAttack and CanMove are what the creature can still AFFORD this turn
+	// — one attack left, one cell of movement left — and they are part of
+	// ELIGIBILITY, exactly as a [When] is.
+	//
+	// A PICK THAT CANNOT ACT IS NOISE ON THE LOG (ruled on an api-builder
+	// finding). A caller that asks again after a swing would otherwise be
+	// handed `attack` a second time, publish a second identical account of a
+	// roll, and watch nothing happen. An entry the creature cannot pay for is
+	// not on the table, which is the same sentence an unmet condition earns
+	// and for the same reason: the candidate list has to be the honest
+	// account of what the creature could have done.
+	//
+	// THE ZERO VALUE IS "CANNOT", deliberately. A caller that has not thought
+	// about a budget gets a creature that can only hold, which is visible on
+	// the first beat; the inverse default would have let a forgotten field
+	// quietly authorise a swing.
+	CanAttack bool
+	CanMove   bool
+
 	// Deeds is every deed this creature holds against itself.
 	Deeds []HeldDeed
 
 	// Now is the clock's high-water when this pick was made — what a deed's
 	// At is subtracted from to age it.
 	Now uint64
+}
+
+// affords reports whether this creature can still pay for what an entry does.
+//
+// ONLY THE THREE BUDGETED WORDS ARE GATED. A `fact`, a `flee`, a bare line and
+// a `hold` cost nothing a turn can run out of — and `hold` in particular must
+// stay eligible whatever the budget says, because it is the word that lets a
+// creature with nothing left to spend still have had its turn.
+func (f Facts) affords(a Answer) bool {
+	switch {
+	case a.Attack != nil:
+		return f.CanAttack
+	case a.Toward != nil, a.Away != nil:
+		return f.CanMove
+	default:
+		return true
+	}
 }
 
 // holds reports whether a condition is true of these facts. A nil When is a
@@ -612,7 +648,11 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 	candidates := make([]Candidate, 0, len(entries))
 	of := 0
 	for i, entry := range entries {
-		if !entry.When.holds(facts) {
+		// TWO TESTS, AND THEY ARE THE SAME TEST. An entry is on the table
+		// when its condition holds AND the creature can pay for it; either
+		// way it is ABSENT rather than weighted zero, so the candidate list
+		// stays the honest account of what could have happened.
+		if !entry.When.holds(facts) || !facts.affords(entry) {
 			continue
 		}
 		percent := temper.factor(entry)

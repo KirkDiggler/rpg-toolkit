@@ -108,6 +108,12 @@ type TableSuite struct {
 
 func TestTableSuite(t *testing.T) { suite.Run(t, new(TableSuite)) }
 
+// canAct is a creature with a whole turn in front of it: one attack and some
+// movement. AFFORDABILITY IS ELIGIBILITY, and the zero value is "cannot" — so
+// a fixture about what a table CHOOSES has to say the creature could pay for
+// any of it, or it is quietly a fixture about a creature with nothing left.
+var canAct = behavior.Facts{CanAttack: true, CanMove: true}
+
 // anEventKey and anotherEventKey stand for whatever a rulebook calls the
 // events its own verbs settle. THIS MODULE NAMES ONLY [behavior.KeyTime]: a
 // creature having time is the one trigger every game has, and the rest are
@@ -199,10 +205,10 @@ func (s *TableSuite) TestTheFourEnemyBandsAreExclusive() {
 		facts behavior.Facts
 		entry int
 	}{
-		{name: "within reach", facts: behavior.Facts{EnemyInReach: true}, entry: 0},
-		{name: "in sight, out of reach", facts: behavior.Facts{EnemySeen: true}, entry: 1},
-		{name: "lost sight of", facts: behavior.Facts{EnemyRemembered: true}, entry: 2},
-		{name: "never seen", facts: behavior.Facts{}, entry: 3},
+		{name: "within reach", facts: behavior.Facts{EnemyInReach: true, CanAttack: true, CanMove: true}, entry: 0},
+		{name: "in sight, out of reach", facts: behavior.Facts{EnemySeen: true, CanAttack: true, CanMove: true}, entry: 1},
+		{name: "lost sight of", facts: behavior.Facts{EnemyRemembered: true, CanAttack: true, CanMove: true}, entry: 2},
+		{name: "never seen", facts: behavior.Facts{CanAttack: true, CanMove: true}, entry: 3},
 	} {
 		s.Run(tc.name, func() {
 			roller := &facedDie{face: 1}
@@ -242,8 +248,9 @@ func (s *TableSuite) TestASpanIsCountedFromOneAndEndsWhenItSaysSo() {
 	} {
 		s.Run(tc.name, func() {
 			facts := behavior.Facts{
-				Now:   tc.now,
-				Deeds: []behavior.HeldDeed{{Kind: behavior.VerbFled, Actor: "alice", At: 10}},
+				Now:     tc.now,
+				CanMove: true,
+				Deeds:   []behavior.HeldDeed{{Kind: behavior.VerbFled, Actor: "alice", At: 10}},
 			}
 			chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
 				Key: behavior.KeyTime, Table: table, Facts: facts, Die: &facedDie{face: 1}})
@@ -264,8 +271,9 @@ func (s *TableSuite) TestADeedOfAnotherKindIsNotThisCondition() {
 		{Weight: 1, Hold: true},
 	}}
 	facts := behavior.Facts{
-		Now:   11,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Now:     11,
+		CanMove: true,
+		Deeds:   []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -292,6 +300,114 @@ func (s *TableSuite) TestTheAuthorsPastTenseNamesTheStoresVerb() {
 		"and the store's own verb is not a condition word — that is the whole point of the mapping")
 }
 
+// --- affordability -----------------------------------------------------------
+
+// TestWhatACreatureCannotPayForIsNotOnTheTable is the api builder's finding,
+// ruled: affordability is part of eligibility, the same way a `when` is.
+//
+// A PICK THAT CANNOT ACT IS NOISE ON THE LOG. A caller that asks again after a
+// swing was handed `attack` a second time, published a second identical
+// account of a roll, and watched nothing happen. An entry the creature cannot
+// pay for is simply not a candidate.
+func (s *TableSuite) TestWhatACreatureCannotPayForIsNotOnTheTable() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 1, Toward: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 1, Away: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 1, Hold: true},
+	}}
+
+	for _, tc := range []struct {
+		name    string
+		facts   behavior.Facts
+		entries []int
+	}{
+		{
+			name:    "a whole turn in front of it",
+			facts:   behavior.Facts{CanAttack: true, CanMove: true},
+			entries: []int{0, 1, 2, 3},
+		},
+		{
+			name:    "the swing is spent, so the walks and the hold are left",
+			facts:   behavior.Facts{CanMove: true},
+			entries: []int{1, 2, 3},
+		},
+		{
+			name:    "the movement is spent, so the swing and the hold are left",
+			facts:   behavior.Facts{CanAttack: true},
+			entries: []int{0, 3},
+		},
+		{
+			name:    "nothing left to spend, and holding still costs nothing",
+			facts:   behavior.Facts{},
+			entries: []int{3},
+		},
+	} {
+		s.Run(tc.name, func() {
+			chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+				Key: behavior.KeyTime, Table: table, Facts: tc.facts, Die: &facedDie{face: 1}})
+			s.Require().NoError(err)
+			s.Require().NotNil(chosen)
+
+			var on []int
+			for _, c := range chosen.Candidates {
+				on = append(on, c.Entry)
+			}
+			s.Equal(tc.entries, on, "exactly what the creature could have paid for")
+		})
+	}
+}
+
+// TestNothingAffordableIsAHoldWithNoCandidates: a table whose every entry
+// costs something the creature has spent answers the same shape as a table
+// whose every condition is false — the creature had its turn and did nothing,
+// and the caller is told so rather than left to infer it from silence.
+func (s *TableSuite) TestNothingAffordableIsAHoldWithNoCandidates() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 1, Toward: &behavior.Selector{Word: behavior.SelectorEnemy}},
+	}}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().NotNil(chosen)
+	s.True(chosen.Answer.Hold)
+	s.Empty(chosen.Candidates)
+	s.Equal(-1, chosen.Entry)
+	s.Zero(chosen.Roll, "and nothing was rolled, because there was nothing to roll on")
+}
+
+// TestHoldIsAffordableWhateverTheBudgetSays: `hold` is the word that lets a
+// creature with nothing left still have HAD its turn, so it is never gated.
+func (s *TableSuite) TestHoldIsAffordableWhateverTheBudgetSays() {
+	table := behavior.Table{behavior.KeyTime: {{Weight: 1, Hold: true}}}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().NotNil(chosen)
+	s.Require().Len(chosen.Candidates, 1, "an authored hold is a real pick, not the empty one")
+	s.Equal(0, chosen.Entry)
+}
+
+// TestAnEventsWordsCostNothingATurnCanRunOutOf: `fact`, `flee` and a bare line
+// are answers to something that just happened, not spends out of a turn — so
+// affordability never gates them.
+func (s *TableSuite) TestAnEventsWordsCostNothingATurnCanRunOutOf() {
+	table := behavior.Table{anEventKey: {
+		{Weight: 1, Fact: "camp-cowed"},
+		{Weight: 1, Flee: true},
+		{Weight: 1, Say: "nothing doing"},
+	}}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: anEventKey, Table: table, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().NotNil(chosen)
+	s.Len(chosen.Candidates, 3, "all three, on a creature with nothing left to spend")
+}
+
 // --- the loaded die ----------------------------------------------------------
 
 // TestTheBeatsArithmeticAddsUp is R7: every candidate carries its authored
@@ -306,7 +422,7 @@ func (s *TableSuite) TestTheBeatsArithmeticAddsUp() {
 
 	roller := &facedDie{face: 1}
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
-		Key: behavior.KeyTime, Table: table, Temper: temper, Die: roller})
+		Key: behavior.KeyTime, Table: table, Temper: temper, Facts: canAct, Die: roller})
 	s.Require().NoError(err)
 	s.Require().NotNil(chosen)
 
@@ -333,10 +449,11 @@ func (s *TableSuite) TestASoldierIsNoTemperAtAll() {
 	}}
 
 	none, err := behavior.Pick(context.Background(), &behavior.PickInput{
-		Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1}})
+		Key: behavior.KeyTime, Table: table, Facts: canAct, Die: &facedDie{face: 1}})
 	s.Require().NoError(err)
 	soldier, err := behavior.Pick(context.Background(), &behavior.PickInput{
-		Key: behavior.KeyTime, Table: table, Temper: behavior.Temper{Profile: soldierProfile}, Die: &facedDie{face: 1}})
+		Key: behavior.KeyTime, Table: table, Facts: canAct,
+		Temper: behavior.Temper{Profile: soldierProfile}, Die: &facedDie{face: 1}})
 	s.Require().NoError(err)
 
 	s.Equal(none.Candidates, soldier.Candidates)
@@ -391,7 +508,7 @@ func (s *TableSuite) TestTemperamentChangesTheSharesAndTheOdds() {
 			ran := 0
 			for i := 0; i < rolls; i++ {
 				chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
-					Key: behavior.KeyTime, Table: table, Temper: tc.temper, Die: roller})
+					Key: behavior.KeyTime, Table: table, Temper: tc.temper, Facts: canAct, Die: roller})
 				s.Require().NoError(err)
 				s.Require().Equal(tc.of, chosen.Of, "the loaded die is the same size every roll")
 				if chosen.Answer.Away != nil {
@@ -416,7 +533,7 @@ func (s *TableSuite) TestZeroEligibleUnderTimeIsAHoldThatSaysSo() {
 	}}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
-		Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1}})
+		Key: behavior.KeyTime, Table: table, Facts: canAct, Die: &facedDie{face: 1}})
 	s.Require().NoError(err)
 	s.Require().NotNil(chosen, "the creature was asked, so there is a pick")
 	s.True(chosen.Answer.Hold)
@@ -459,7 +576,7 @@ func (s *TableSuite) TestACellSelectorIsCarriedAndNeverRead() {
 	}}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
-		Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1}})
+		Key: behavior.KeyTime, Table: table, Facts: canAct, Die: &facedDie{face: 1}})
 	s.Require().NoError(err)
 	s.Require().NotNil(chosen)
 	s.Require().NotNil(chosen.Answer.Toward)
