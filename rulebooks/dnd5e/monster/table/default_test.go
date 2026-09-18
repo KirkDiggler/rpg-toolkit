@@ -18,13 +18,12 @@ import (
 // (rpg-project `ideas/creature-table/design.md` §2). The shipped table is
 // content an author reads and a walk tunes, so a change to it should be a
 // deliberate change to two places, not a character that drifted in one.
-const wantGeneric = `on:
-  time:
-    - { when: { fled: { within: 3 } },      away: actor,     weight: 3 }
-    - { when: { attacked: { within: 3 } },  attack: attacker, weight: 3 }
-    - { when: { enemy: seen },              attack: enemy }
-    - { when: { enemy: remembered },        toward: enemy }
-    - { hold: {} }
+const wantGeneric = `time:
+  - { when: { fled: { within: 3 } },      away: actor,     weight: 3 }
+  - { when: { attacked: { within: 3 } },  attack: attacker, weight: 3 }
+  - { when: { enemy: seen },              attack: enemy }
+  - { when: { enemy: remembered },        toward: enemy }
+  - { hold: {} }
 `
 
 func TestDefaultIsTheDesignsTable(t *testing.T) {
@@ -33,6 +32,23 @@ func TestDefaultIsTheDesignsTable(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, wantGeneric, got.Source)
+}
+
+// dungeonspec's CompileTable takes the CONTENTS of an `on:` mapping, so a
+// Source carrying its own `on:` header would nest one level too deep and
+// compile to a table with a single trigger nobody named.
+func TestDefaultCarriesNoOnHeader(t *testing.T) {
+	got, err := Default(*refs.Monsters.Goblin())
+	require.NoError(t, err)
+
+	require.NotContains(t, got.Source, "on:", "the header belongs to whoever holds the table, not to the table")
+
+	lines := strings.Split(strings.TrimRight(got.Source, "\n"), "\n")
+	require.Equal(t, "time:", lines[0], "the source starts at a trigger key, at column zero")
+	for _, line := range lines[1:] {
+		require.True(t, strings.HasPrefix(line, "  - "),
+			"an entry sits one level under its trigger, not two: %q", line)
+	}
 }
 
 func TestDefaultAnswersEveryShippedMonsterWithTheSameTable(t *testing.T) {

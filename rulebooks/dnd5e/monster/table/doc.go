@@ -5,9 +5,10 @@
 // a creature rolls on when its author wrote none, and the temperament
 // profiles that load that roll's die.
 //
-// It is CONTENT, and only content. A table here is text in the dungeonspec
-// `on:` grammar and a profile is five numbers; this package neither parses
-// the one nor applies the other. Compiling the grammar belongs to
+// It is CONTENT, and only content. A table here is the text an author writes
+// under `on:` — the mapping's contents, in the dungeonspec grammar — and a
+// profile is five numbers; this package neither parses the one nor applies
+// the other. Compiling the grammar belongs to
 // `rulebooks/dnd5e/encounter/dungeonspec`, and rolling on the compiled table
 // belongs to `rulebooks/dnd5e/encounter`, which owns the dice, the stance
 // graph and what a creature has seen. A table that knew here what `enemy:

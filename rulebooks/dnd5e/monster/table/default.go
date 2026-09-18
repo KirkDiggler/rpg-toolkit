@@ -18,10 +18,13 @@ import (
 // and the cheapest way to make them the same kind of thing is for both to be
 // the grammar an author writes.
 type DefaultTable struct {
-	// Source is the table as a YAML document in the dungeonspec `on:`
-	// grammar: the same text that goes on a faction or a placement. This
-	// package does not parse it; the caller hands it to the compiler that
-	// owns that grammar.
+	// Source is the CONTENTS of an `on:` mapping, as YAML: the trigger keys
+	// and their entries, with no `on:` header of their own. That is what
+	// dungeonspec's CompileTable takes, and it is what an author writes
+	// under `on:` on a faction or a placement — so the rulebook's default
+	// and the author's orders reach the compiler as the same text.
+	//
+	// This package does not parse it.
 	Source string
 }
 
@@ -40,18 +43,18 @@ type DefaultTable struct {
 // There is no `attacked` trigger to go with the `attacked` condition: what a
 // creature does about being hit is decided when it next has time, not when
 // the blow lands (design §2).
-const generic = `on:
-  time:
-    - { when: { fled: { within: 3 } },      away: actor,     weight: 3 }
-    - { when: { attacked: { within: 3 } },  attack: attacker, weight: 3 }
-    - { when: { enemy: seen },              attack: enemy }
-    - { when: { enemy: remembered },        toward: enemy }
-    - { hold: {} }
+const generic = `time:
+  - { when: { fled: { within: 3 } },      away: actor,     weight: 3 }
+  - { when: { attacked: { within: 3 } },  attack: attacker, weight: 3 }
+  - { when: { enemy: seen },              attack: enemy }
+  - { when: { enemy: remembered },        toward: enemy }
+  - { hold: {} }
 `
 
-// Default returns the rulebook's default table for a monster kind, in the
-// dungeonspec `on:` grammar. This is why a placement with no `on:` still
-// fights.
+// Default returns the rulebook's default table for a monster kind, as the
+// contents of an `on:` mapping in the dungeonspec grammar — what
+// dungeonspec's CompileTable takes. This is why a placement with no `on:`
+// still fights.
 //
 // One generic table stands behind every ref this slice: a thug, a goblin and
 // a skeleton all answer with it, because what told them apart before was a
