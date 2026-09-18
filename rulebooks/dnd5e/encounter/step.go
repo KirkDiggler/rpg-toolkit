@@ -158,6 +158,15 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step crossed doors: %w", err)
 	}
 
+	// THE WORLD'S PRICE FOR A WALK, paid after the step has landed and before
+	// the refresh: one cell of PACE on this member, and a round every time the
+	// accrual reaches its own speed (design §5, worldtime.go). Six cells of a
+	// thirty-foot walker is one round; five is none. Nothing at all on the
+	// turn clock, where the round is what prices time.
+	if err := e.spendWorldPace(in.Member); err != nil {
+		return nil, fmt.Errorf("step: %w", err)
+	}
+
 	intelDeltas, formed, err := e.refreshSight(audience)
 	if err != nil {
 		return nil, fmt.Errorf("step refresh sight: %w", err)

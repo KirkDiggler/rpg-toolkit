@@ -44,19 +44,14 @@ func TestVaultChase(t *testing.T) {
 
 	// ---- Beat 1: sight -------------------------------------------------
 	// Alice and the goblin share the corridor, in the open — first light
-	// finds them mutually visible. The goblin's pursuitDecider knows the
-	// gate (static topology, given at construction) and its target
-	// (alice); it never reads encounter state directly — Snapshot +
-	// Holdings + its own construction-time config is all it gets (C2).
-	// The decider is built empty and handed the map once there is one to
-	// hand it: the doorways it needs are the Atlas's, and the Atlas comes
-	// from the encounter it is about to be part of. That ordering IS the
-	// point — a decider takes the same absolute map a host renders, not the
-	// composition's room-shaped topology (rpg-toolkit#1044).
-	pursuit := &pursuitDecider{target: alice}
+	// finds them mutually visible. The goblin's own table is what hunts her:
+	// close on whoever it is opposed to, seen or remembered (hunts()). It
+	// never reads encounter state directly and it is handed no map — the
+	// engine that owns the walls is what finds the way through the gate, and
+	// the creature only says "toward the enemy" (rpg-project#465).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(corridorRoom, 0, 0, 10, 10), rectRegion(vaultRoom, 10, 0, 10, 10)}, Walls: corridorWall,
@@ -64,7 +59,8 @@ func TestVaultChase(t *testing.T) {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 5}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8}, Decider: pursuit},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8},
+				SpeedFeet: 60, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: sanctuaryEnding, Trigger: encounter.TriggerReachedPosition{
@@ -72,10 +68,6 @@ func TestVaultChase(t *testing.T) {
 		},
 	})
 	require.NoError(t, err, "beat 1: the corridor assembles")
-
-	atlas, err := enc.Atlas()
-	require.NoError(t, err, "beat 1: the map exists")
-	pursuit.doorways = atlas.Doorways
 
 	current, _ := seen(t, enc, alice, goblin)
 	require.True(t, current, "beat 1: alice sees the goblin across the open corridor")
@@ -116,16 +108,14 @@ func TestVaultChase(t *testing.T) {
 
 	// ---- Beat 3: the pause (pause is free) ------------------------------
 	// The table closes the Discord activity mid-chase. The host persists
-	// ONE aggregate and rehydrates it later. Deciders are behavior, not
-	// state: the campaign re-attaches a FRESH pursuitDecider at load —
-	// same topology and target, no memory of its own carried over (its
-	// INTEL does — beliefs are state and traveled in the aggregate).
+	// ONE aggregate and rehydrates it later. THE TABLE TRAVELS WITH IT: a
+	// creature's policy is state now, persisted on its own row, so nothing is
+	// re-attached at load and a reloaded goblin hunts for the same reason it
+	// hunted before (its INTEL travels too — beliefs always were state).
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-			goblin: &pursuitDecider{doorways: atlas.Doorways, target: alice},
-		}})
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	require.NoError(t, err, "beat 3: the suspended chase crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
@@ -134,21 +124,19 @@ func TestVaultChase(t *testing.T) {
 	require.Equal(t, cellAt(10, 5), spatial.Position{X: p.X, Y: p.Y}, "beat 3: still at the gate's far cell — loading never re-derives sight")
 
 	// ---- Beat 4: the pursuit through the gate ---------------------------
-	// One pump: the goblin walks to the ghost's last-seen cell, which is on
-	// the far side of the gate. It is ONE step in the composition's terms and
-	// one entry in the output — there is no second list for crossings, because
-	// there is no second mechanism (rpg-toolkit#1106).
-	pumpOut1, err := enc.Pump(&encounter.PumpInput{})
+	// Alice acts, which is what makes time pass; the goblin gets the round and
+	// walks to the ghost's last-seen cell, on the far side of the gate. It is
+	// ONE step in the composition's terms — there is no second mechanism for a
+	// crossing (rpg-toolkit#1106).
+	_, err = aRound(enc)
 	require.NoError(t, err, "beat 4: the pursuit resumes")
-	require.Len(t, pumpOut1.MonsterMoves, 1, "beat 4: the goblin walks toward the last place it saw her")
-	require.Equal(t, goblin, pumpOut1.MonsterMoves[0].Member)
-	// The arrival cell on the MAP: vault-local (0,5) through the vault's
-	// (10,0) anchor. The same cell the movement beat carries — one movement
-	// cannot be reported in two frames (rpg-toolkit#1062).
-	require.Equal(t, cellAt(10, 5), pumpOut1.MonsterMoves[0].To)
+	region, onFloor := enc.RegionAt(whereIs(t, enc, goblin))
+	require.True(t, onFloor)
+	require.Equal(t, encounter.RegionID(vaultRoom), region,
+		"beat 4: the goblin walked toward the last place it saw her, which is through the gate")
 
-	// It's in her chamber now — this pump's own refreshSight already shows
-	// her Current again, where she stopped in beat 2.
+	// It's in her chamber now — the world round's own refreshSight already
+	// shows her Current again, where she stopped in beat 2.
 	current, p = seen(t, enc, goblin, alice)
 	require.True(t, current, "beat 4: the goblin holds alice Current again, having come through the gate")
 	require.Equal(t, cellAt(14, 8), spatial.Position{X: p.X, Y: p.Y}, "beat 4: vault-local (4,8), anchored at (10,0) — one map")
@@ -194,7 +182,10 @@ func TestVaultChase(t *testing.T) {
 			_, e := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 1)})
 			return e
 		},
-		"Pump": func() error { _, e := enc.Pump(&encounter.PumpInput{}); return e },
+		"Search": func() error {
+			_, e := enc.Search(&encounter.SearchInput{Member: alice, Region: vaultRoom})
+			return e
+		},
 		"Join": func() error {
 			_, e := enc.Join(&encounter.JoinInput{
 				Member: "late",
@@ -239,10 +230,20 @@ func TestVaultChase(t *testing.T) {
 		// the gate stopped being a second kind of movement when the field
 		// stopped being a set of rooms (rpg-toolkit#1106). The doorway's name
 		// rides on the middle beat's own payload, not on its kind.
-		"moved",         // beat 2: alice crosses to the gate
-		"moved",         // beat 2: she slips through it
-		"moved",         // beat 2: she moves deeper into the vault
-		"tick", "moved", // beat 4: pump 1, the goblin comes through after her
+		"moved", // beat 2: alice crosses to the gate
+		"moved", // beat 2: she slips through it
+		"moved", // beat 2: she moves deeper into the vault
+		// beat 4: alice acts, which pays the world a round; the goblin rolls
+		// its own table (`answered`) and walks the whole of its speed after
+		// her, a cell and a beat at a time, through the gate.
+		"tick", "answered",
+		"moved", "moved", "moved", "moved", "moved",
+		"moved", "moved", "moved", "moved", "moved",
+		// beat 5: she reaches sanctuary. Her own step pays no round — she is
+		// not fast enough to have walked a pace — but the goblin rolled again
+		// on the round beat 4 raised, because a turn's worth of doing is asked
+		// for until it passes.
+		"answered",
 		"moved", // beat 5: alice reaches sanctuary
 		// beat 5: and the close is narrated. A ReachedPosition ending used to
 		// set the outcome and tell nobody — the host learned from the verb's

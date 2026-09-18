@@ -282,7 +282,7 @@ func (e *Encounter) lastRecordedSeq() uint64 {
 // by hand: this SDK's load-mutate-save shape means nothing is persisted until
 // the verb's own commit, so an error return simply discards the in-memory
 // encounter and leaves the stored world exactly as it was. This mirrors
-// Pump's rule for Decider errors ("aborts atomically... no clock advance, no
+// the retired Pump's rule for driver errors ("aborts atomically... no clock advance, no
 // moves, no beats") using the mechanism this seam already has.
 // bubbleHasPlayer reports whether any member of order has a player.
 func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
@@ -479,7 +479,7 @@ func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, b
 	if err != nil {
 		return 0, false, err
 	}
-	if err := e.announce(out.Milestones); err != nil {
+	if err := e.announce(bubble, out.Milestones); err != nil {
 		return 0, false, err
 	}
 	return seq, out.RoundWrapped, nil
@@ -538,34 +538,94 @@ func (e *Encounter) runTurnIntents(
 	bubble *clock.Turn, active core.EntityID, m *memberRecord,
 	round int, budget *TurnBudget, startJ, bound int,
 ) (seq uint64, roundWrapped bool, deltas map[MemberID]*IntelDelta, err error) {
+	turnDeltas, err := e.runIntents(bubble, active, m, round, budget, startJ, bound, ClockTurn)
+	if err != nil {
+		return 0, false, nil, err
+	}
+
+	// A WINDOW OPENED MID-WALK. The turn is not over — it is waiting on a
+	// player, and everything needed to finish it is stored on the encounter.
+	// Returning here without ending the turn is the whole point: the clock
+	// still says it is this member's turn, because it still is.
+	if e.pausedTurn != nil {
+		return e.lastRecordedSeq(), false, turnDeltas, nil
+	}
+
+	seq, roundWrapped, eerr := e.endDrivenTurn(bubble, active)
+	if eerr != nil {
+		return 0, false, nil, eerr
+	}
+	return seq, roundWrapped, turnDeltas, nil
+}
+
+// runIntents is ONE MEMBER'S TURN'S WORTH OF DOING, on either clock: build the
+// view, ask the [Driver], execute what it answers, repeat until [Pass], the
+// budget or the bound. It ends no clock and spends no budget — the caller owns
+// both, because a fight ends a turn and the world spends a round.
+//
+// THE CLOCK IS A PARAMETER, and it is the only thing that differs. A fight's
+// turn announces every step through [Mover] because that is where a step can
+// provoke; a world round takes its steps straight, because nobody is in a
+// fight and there is no threatened square to leave. An [Attack] is a legal
+// intent on one and [ErrAttackOffTurn] on the other. Everything else — the
+// view, the driver, the pick's beat, the bound, the pause — is one body, which
+// is what keeps "what a creature does with time" from meaning two things.
+//
+// bubble is nil on the world clock and non-nil on a turn; startJ and bound are
+// the anti-spin coordinates [Encounter.driveOneMonsterTurn]'s own doc explains.
+// budget is a POINTER for [Encounter.executeTurnIntent]'s reason: what an
+// intent spends must be visible to the next view, and a resume must charge the
+// same one the pause was stored with.
+func (e *Encounter) runIntents(
+	bubble *clock.Turn, active core.EntityID, m *memberRecord,
+	round int, budget *TurnBudget, startJ, bound int, kind ClockKind,
+) (deltas map[MemberID]*IntelDelta, err error) {
 	activeID := MemberID(active)
 	var turnDeltas map[MemberID]*IntelDelta
 
 	for j := startJ; j < bound; j++ {
 		view, verr := e.buildMonsterView(m, *budget, round)
 		if verr != nil {
-			return 0, false, nil, fmt.Errorf("view: %w", verr)
+			return nil, fmt.Errorf("view: %w", verr)
 		}
 
-		intent, derr := e.turnDriver.Act(view)
+		decision, derr := e.driver.Act(view)
 		if derr != nil {
-			return 0, false, nil, fmt.Errorf("act: %w", derr)
+			return nil, fmt.Errorf("act: %w", derr)
+		}
+
+		// THE PICK'S BEAT COMES FIRST, because the roll is the CAUSE of the
+		// intent below it — the same cause-before-effect law every verb in
+		// this module keeps. A driver that rolled nothing (PassDriver, the
+		// compelled-turn driver) returns a nil pick and nothing is written.
+		//
+		// AND A RE-CONSULT THAT FOUND NOTHING AFFORDABLE WRITES NOTHING. The
+		// turn loop asks again after every executed intent, and a creature
+		// that has spent its swing and its movement answers the empty hold —
+		// no candidates, nothing rolled. The FIRST consult of a turn still
+		// writes it, because "it was asked and had nothing to do" is the
+		// story; a second one would only repeat that the turn is over, which
+		// the turn-ended beat already says (rpg-project#465, ruled on an
+		// api-builder finding).
+		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
+			if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
+				return turnDeltas, berr
+			}
 		}
 
 		done, intentDeltas, dexecerr := e.executeTurnIntent(
-			activeID, m, view, intent, budget, turnCoords{Round: round, Intent: j, Bound: bound})
+			activeID, m, view, decision.Intent, budget,
+			turnCoords{Round: round, Intent: j, Bound: bound, Clock: kind})
 		if dexecerr != nil {
-			return 0, false, nil, fmt.Errorf("execute: %w", dexecerr)
+			return turnDeltas, fmt.Errorf("execute: %w", dexecerr)
 		}
 		turnDeltas = mergeIntelDeltas(turnDeltas, intentDeltas)
 
-		// A WINDOW OPENED MID-WALK. The turn is not over — it is waiting on
-		// a player, and everything needed to finish it is stored on the
-		// encounter. Returning here without ending the turn is the whole
-		// point: the clock still says it is this member's turn, because it
-		// still is.
+		// A REACTOR IS BEING ASKED mid-walk. The caller is told by the
+		// encounter's own pausedTurn rather than a return value, because a
+		// resume finishes this same loop from where it stopped.
 		if e.pausedTurn != nil {
-			return e.lastRecordedSeq(), false, turnDeltas, nil
+			return turnDeltas, nil
 		}
 
 		if done {
@@ -587,20 +647,43 @@ func (e *Encounter) runTurnIntents(
 		if e.outcome != nil {
 			break
 		}
+		if bubble == nil {
+			continue
+		}
 		stillIn, cerr := bubble.Contains(&clock.ContainsInput{ID: active})
 		if cerr != nil {
-			return 0, false, nil, fmt.Errorf("contains: %w", cerr)
+			return turnDeltas, fmt.Errorf("contains: %w", cerr)
 		}
 		if !stillIn {
 			break
 		}
 	}
 
-	seq, roundWrapped, eerr := e.endDrivenTurn(bubble, active)
-	if eerr != nil {
-		return 0, false, nil, eerr
+	return turnDeltas, nil
+}
+
+// appendPickBeat writes the roll a [Driver] made on this member's own table —
+// the same [BeatAnswered] a social verdict's answer writes, under the `time`
+// key, so a reader has one beat to learn rather than two.
+//
+// THE AUDIENCE IS THE MEMBER'S OWN SUBJECT AUDIENCE, which v1 still sends to
+// everyone ([Encounter.audienceFor]). A social answer's audience is the
+// witnesses of the verb that caused it; nothing caused this but time.
+func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick) error {
+	payload, err := json.Marshal(answeredBeatBody(member, "", false, chosen))
+	if err != nil {
+		return fmt.Errorf("pick beat: %w", err)
 	}
-	return seq, roundWrapped, turnDeltas, nil
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:       uint64(e.clock.ToData().HighWater),
+		Audience: e.audienceFor(subjectBeat, member),
+		Tags:     map[string]string{"tag": BeatAnswered},
+		Payload:  payload,
+	}); err != nil {
+		return fmt.Errorf("pick beat: %w", err)
+	}
+
+	return nil
 }
 
 // endDrivenTurn closes one driven member's turn: the clock end, the
@@ -658,7 +741,7 @@ func (e *Encounter) endDrivenTurn(bubble *clock.Turn, active core.EntityID) (uin
 	// from out there would publish this member's turn-end and the next one's
 	// turn-start after the next one had already swung — the exact ordering
 	// [Announcer]'s own doc exists to explain.
-	if aerr := e.announce(out.Milestones); aerr != nil {
+	if aerr := e.announce(bubble, out.Milestones); aerr != nil {
 		return 0, false, fmt.Errorf("announce: %w", aerr)
 	}
 	return seq, out.RoundWrapped, nil
@@ -709,8 +792,8 @@ func boundariesFrom(ms []clock.Milestone) []Boundary {
 // at the moment they were crossed — after the composition has noticed what
 // the advance itself started: a round a declared ending waits for
 // (rpg-project#375, design §3.8; [Encounter.noticeRounds]).
-func (e *Encounter) announce(ms []clock.Milestone) error {
-	if err := e.noticeRounds(ms); err != nil {
+func (e *Encounter) announce(bubble *clock.Turn, ms []clock.Milestone) error {
+	if err := e.noticeRounds(bubble, ms); err != nil {
 		return err
 	}
 	return e.announceBoundaries(boundariesFrom(ms))
@@ -808,6 +891,15 @@ func (e *Encounter) executeTurnIntent(
 		return true, nil, nil
 
 	case Attack:
+		// AN ATTACK OFF THE TURN CLOCK IS AN ERROR, NOT A SKIP
+		// (rpg-project#465, design §2). An enemy in reach on the world clock
+		// is a fight sight that has already formed, so a table that reaches
+		// here is describing a world that cannot happen — and quietly
+		// passing would leave the author's `attack:` entry looking like it
+		// fired and did nothing.
+		if coords.Clock == ClockWorld {
+			return false, nil, fmt.Errorf("%q swung on the world clock: %w", activeID, ErrAttackOffTurn)
+		}
 		if !attackIsInReach(view, it) || budget.AttacksLeft <= 0 {
 			// ErrBadIntent: not a driver malfunction (see the type's own
 			// doc) — this member's turn simply ends, exactly like Pass.
@@ -842,7 +934,7 @@ func (e *Encounter) executeTurnIntent(
 		at := uint64(e.clock.ToData().HighWater)
 		audience := e.audienceFor(subjectBeat, activeID)
 
-		res, werr := e.walkCells(context.Background(), activeID, m, it.Path, audience, at)
+		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, it.Path, audience, at, core.Ref{})
 		if werr != nil {
 			return false, nil, werr
 		}
@@ -854,7 +946,7 @@ func (e *Encounter) executeTurnIntent(
 		// running.
 		budget.MovementFeet -= res.moved * FeetPerCell
 
-		intelDeltas, serr := e.settleWalk(audience, res.moved)
+		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved)
 		if serr != nil {
 			return false, nil, serr
 		}
@@ -915,13 +1007,10 @@ func (e *Encounter) executeTurnIntent(
 		// AN ANCHOR NOBODY IS STANDING ON, on the other hand, IS a decision:
 		// a driver naming a member who has left the map or was never on it
 		// has decided to chase a ghost. ErrBadIntent — this member's turn
-		// simply ends, exactly like Pass.
-		anchorRecord, known := e.members[it.Anchor]
+		// simply ends, exactly like Pass. So is naming both a member and a
+		// cell, or neither: the intent does not say what it is measured from.
+		anchorCell, known := e.routedAnchor(it)
 		if !known {
-			return true, nil, nil
-		}
-		anchorCell, aerr := e.cellOf(anchorRecord)
-		if aerr != nil {
 			return true, nil, nil
 		}
 
@@ -930,33 +1019,46 @@ func (e *Encounter) executeTurnIntent(
 		// turn as well as a fresh one: the pause charged what it walked
 		// before it stored the budget, so a route asked after a resume is
 		// asked for what is left.
-		route, rerr := e.Route(RouteInput{
-			Mover:  activeID,
-			Policy: it.Policy,
-			Anchor: anchorCell,
-			Budget: CellsFromFeet(budget.MovementFeet),
-		})
+		//
+		// AN AUTHORED CELL IS WALKED ONTO, NOT UP TO. [MoveToward] stops
+		// BESIDE its anchor because the anchor is normally a creature and
+		// nobody stands on one; a cell somebody wrote on the map is a place to
+		// BE, and stopping one short of it would be the engine reading
+		// `toward: { at: [3, 4] }` as "near the front room". So an authored
+		// cell routes by the exact-cell search a monster's own path already
+		// uses, and only a member anchor goes through the policy.
+		route, rerr := e.routedRoute(activeID, it, anchorCell, CellsFromFeet(budget.MovementFeet))
 		if rerr != nil {
 			return false, nil, fmt.Errorf("routed %q: %w", activeID, rerr)
 		}
 
-		// NOWHERE TO GO IS STILL THE WHOLE TURN. A creature pinned against a
-		// wall, or already standing beside what it was sent at, has obeyed —
-		// the turn ends with no movement beat and no news, and RouteOutput's
-		// own StoppedBy is dropped because a driven turn has no field to
-		// carry it out on. The "turn-ended" beat that follows is the story.
+		// NOWHERE TO GO IS STILL THE WHOLE TURN — AND IT SAYS SO NOW. A
+		// creature pinned against a wall, or already standing where it was
+		// sent, has obeyed; the turn ends with no movement.
+		//
+		// IT USED TO END IN SILENCE, and that silence cost a walk (Kirk,
+		// rpg-project#465): the bandits spent a round of the world each tick
+		// and nobody could tell from the log whether they had been asked,
+		// had refused, or had been sent somewhere unreachable. A spent round
+		// that moved nobody has to be visible, so the route's own sentence
+		// goes down the story instead of being dropped.
+		at := uint64(e.clock.ToData().HighWater)
+
 		if len(route.Path) == 0 {
+			if berr := e.appendStayedBeat(activeID, it.Cause, route.StoppedBy, at); berr != nil {
+				return false, nil, berr
+			}
+
 			return true, nil, nil
 		}
 
-		at := uint64(e.clock.ToData().HighWater)
 		audience := e.audienceFor(subjectBeat, activeID)
 
 		// forced=false: this creature IS walking, under somebody else's
 		// orders, and it provokes exactly as its own walk would — the rout
 		// Dissonant Whispers already sends through Direct with Provokes
 		// true. Being compelled to run is not being shoved.
-		res, werr := e.walkPath(context.Background(), activeID, m, route.Path, audience, at, it.Cause, false)
+		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, route.Path, audience, at, it.Cause)
 		if werr != nil {
 			return false, nil, werr
 		}
@@ -965,7 +1067,7 @@ func (e *Encounter) executeTurnIntent(
 		// case's rule, for the Move case's reason.
 		budget.MovementFeet -= res.moved * FeetPerCell
 
-		intelDeltas, serr := e.settleWalk(audience, res.moved)
+		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved)
 		if serr != nil {
 			return false, nil, serr
 		}
@@ -1023,6 +1125,12 @@ type turnCoords struct {
 	// Intent is the inner loop's counter for THIS call, and Bound its limit.
 	Intent int
 	Bound  int
+
+	// Clock is which clock this turn's worth of doing is running on —
+	// [ClockTurn] inside a fight, [ClockWorld] for a round of the world. It
+	// is what decides whether a step is announced to the [Mover] and whether
+	// an [Attack] is a legal intent at all.
+	Clock ClockKind
 }
 
 // walkResult reports what one Move intent's cell loop did.
@@ -1046,22 +1154,6 @@ type walkResult struct {
 	// non-nil.
 	from, to spatial.Position
 	pending  []spatial.Position
-}
-
-// walkCells announces and takes each cell of a path in turn — the body of a
-// Move intent's walk, and the body of a resumed one.
-//
-// A WALK A CREATURE CHOSE HAS NO CAUSE, which is what the empty Ref says.
-// Somebody walked because they decided to; there is no effect to name, and a
-// beat that named one would be this composition inventing a reason. The one
-// walker is [Encounter.walkPath]; this is the name a [Move] intent asks for it
-// by. A [Routed] intent calls the walker directly, because its whole point is
-// that somebody else decided.
-func (e *Encounter) walkCells(
-	ctx context.Context, activeID MemberID, m *memberRecord,
-	path []spatial.Position, audience []MemberID, at uint64,
-) (walkResult, error) {
-	return e.walkPath(ctx, activeID, m, path, audience, at, core.Ref{}, false)
 }
 
 // walkPath announces and takes each cell of a path in turn — THE walk, for a
@@ -1183,6 +1275,201 @@ func (e *Encounter) walkPath(
 	}
 
 	return res, nil
+}
+
+// routedAnchor resolves a [Routed] intent's anchor to the cell the policy is
+// measured from: a member's current cell, or the authored one.
+//
+// EXACTLY ONE OF THE TWO, and both-or-neither answers false. A Routed that
+// names a member AND a cell does not say which the walk is about, and one
+// that names neither does not say anything at all; both are decisions a driver
+// could have made differently, which is [ErrBadIntent]'s own line — the turn
+// ends, exactly like Pass.
+func (e *Encounter) routedAnchor(it Routed) (spatial.Position, bool) {
+	named := it.Anchor != ""
+	authored := it.AnchorAt != nil
+	if named == authored {
+		return spatial.Position{}, false
+	}
+	if authored {
+		return *it.AnchorAt, true
+	}
+
+	anchorRecord, known := e.members[it.Anchor]
+	if !known {
+		return spatial.Position{}, false
+	}
+	cell, err := e.cellOf(anchorRecord)
+	if err != nil {
+		return spatial.Position{}, false
+	}
+
+	return cell, true
+}
+
+// appendStayedBeat says that a routed walk moved nobody, and why as far as the
+// route could tell.
+//
+// A FACT ABOUT THE WORLD, NOT A MALFUNCTION, which is why it is a beat rather
+// than an error: a creature with a wall at its back has obeyed its orders and
+// the turn is over. What was wrong before was that the story could not tell
+// that apart from a creature nobody asked.
+//
+// `why` is [RouteOutput.StoppedBy] — the fold's own refusal phrase ("is
+// blocked by dnd5e:props:pillar") — and empty when the route simply had
+// nowhere strictly nearer to offer, which is its own answer.
+func (e *Encounter) appendStayedBeat(member MemberID, cause core.Ref, why string, at uint64) error {
+	payload, err := json.Marshal(map[string]interface{}{
+		"beat":   BeatStayed,
+		"member": string(member),
+		"cause":  cause.String(),
+		"why":    why,
+	})
+	if err != nil {
+		return fmt.Errorf("stayed beat: %w", err)
+	}
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:       at,
+		Audience: e.audienceFor(subjectBeat, member),
+		Tags:     map[string]string{"tag": BeatStayed},
+		Payload:  payload,
+	}); err != nil {
+		return fmt.Errorf("stayed beat: %w", err)
+	}
+
+	return nil
+}
+
+// routedRoute is the cells a [Routed] intent walks: the exact-cell route to an
+// AUTHORED cell, or the policy's own answer for a member anchor.
+//
+// See the Routed case for why the two differ. Both are truncated to the turn's
+// own budget, and both read the same walls, doors and floor every other route
+// in this module reads.
+func (e *Encounter) routedRoute(
+	mover MemberID, it Routed, anchor spatial.Position, budget int,
+) (RouteOutput, error) {
+	if it.AnchorAt == nil {
+		return e.Route(RouteInput{Mover: mover, Policy: it.Policy, Anchor: anchor, Budget: budget})
+	}
+	if budget <= 0 {
+		return RouteOutput{}, nil
+	}
+
+	from, placed := e.canvas.GetEntityPosition(string(mover))
+	if !placed {
+		return RouteOutput{}, nil
+	}
+
+	// ONTO THE CELL IF IT CAN BE, TOWARD IT IF IT CANNOT — and the fallback is
+	// the whole of Kirk's walk (rpg-project#465).
+	//
+	// The exact-cell search is what makes `toward: { at: [3, 4] }` mean "go
+	// THERE" rather than "get near there", which is what an author writing a
+	// cell means. But its goal must be STANDABLE, and a cell with a creature
+	// on it is not: on the walk the bandits were sent at the front room's
+	// (3,3) with a goblin already standing on it, found no route at all, and
+	// took not one step of the twelve they could have walked. An order that
+	// cannot be completed is not an order to stand still.
+	//
+	// So a cell nobody can stop on falls through to [MoveToward], whose own
+	// answer is "the reached cell nearest the anchor, strictly nearer than
+	// where I stand" — which is what "walk to the front room" meant all
+	// along.
+	path, _ := e.routeTo(mover, from, func(cell spatial.Position) bool { return cell == anchor })
+	if len(path) == 0 {
+		return e.Route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget})
+	}
+	if len(path) > budget {
+		path = path[:budget]
+	}
+
+	return RouteOutput{Path: path}, nil
+}
+
+// walkFor is THE walk, chosen by the clock the walker is on.
+//
+// A TURN'S WALK IS ANNOUNCED, A WORLD'S WALK IS NOT, and the asymmetry is the
+// one the retired Pump already stated: "This is the world clock: nobody is in
+// a fight, so there is no threatened square to leave and no reaction to
+// spend." The day a hazard wants to notice a wanderer — a trap in a corridor
+// nobody is fighting in — this is the line that changes, and it changes to the
+// same call the turn clock already makes.
+func (e *Encounter) walkFor(
+	kind ClockKind, ctx context.Context, mover MemberID, m *memberRecord,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
+) (walkResult, error) {
+	if kind == ClockWorld {
+		return e.walkWorld(mover, m, path, audience, at, cause)
+	}
+
+	return e.walkPath(ctx, mover, m, path, audience, at, cause, false)
+}
+
+// walkWorld takes each cell of a path on the world clock: no announcement, no
+// reaction, no pause — the step and its beat, and a wall stops the walk
+// exactly as it stops a turn's.
+//
+// NO down CONSULT PER CELL either, unlike [Encounter.walkPath]'s. That consult
+// exists because an announced step can be answered with a swing that drops the
+// mover mid-walk; nothing here can swing, so asking would be asking a question
+// whose answer cannot change inside the loop. [Encounter.worldThinks] asks it
+// once, before it consults anybody.
+func (e *Encounter) walkWorld(
+	mover MemberID, m *memberRecord,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
+) (walkResult, error) {
+	var res walkResult
+
+	for _, cell := range path {
+		if _, placed := e.canvas.GetEntityPosition(string(mover)); !placed {
+			break
+		}
+		action, stepped := e.stepTo(m, cell)
+		action.cause = cause
+		if !stepped {
+			break
+		}
+		if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
+			return res, fmt.Errorf("world move beat: %w", berr)
+		}
+		res.moved++
+
+		// A DECLARED ENDING STILL FIRES UNDER A CREATURE'S OWN FEET, which
+		// the retired Pump evaluated per executed step and this walk has to
+		// as well: a monster walking onto the tile closes the run exactly as
+		// a player does, subject to the ending's own filter (a monster never
+		// fires an UNFILTERED one — "any player member" is what an empty
+		// filter means). The walk stops there: a closed run records nothing
+		// more.
+		fired, ferr := e.firedReachedPosition(m, cell, at)
+		if ferr != nil {
+			return res, fmt.Errorf("world move ending: %w", ferr)
+		}
+		if fired != nil {
+			break
+		}
+	}
+
+	return res, nil
+}
+
+// settleWalkOn refreshes sight after a walk on the TURN clock, and deliberately
+// not after one on the world clock.
+//
+// THE WORLD'S VERB OWNS THE REFRESH. A round of the world happens inside the
+// verb that raised the clock, and that verb runs exactly one sight refresh of
+// its own afterwards — which is where a creature that walked into an opposed
+// member's sight forms or joins a fight. Refreshing per walked member instead
+// would run the whole sweep once per creature the world thought for, and would
+// form a fight in the middle of the world's own pass, before the rest of the
+// creatures had moved.
+func (e *Encounter) settleWalkOn(kind ClockKind, audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
+	if kind == ClockWorld {
+		return nil, nil
+	}
+
+	return e.settleWalk(audience, moved)
 }
 
 // settleWalk refreshes what a completed walk changed about who can see whom.
@@ -1313,6 +1600,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			remembered = append(remembered, RememberedMember{
 				ID:            subjectID,
 				Kind:          other.Kind,
+				Opposed:       e.opposed(m.ID, subjectID),
 				Position:      pos,
 				DistanceCells: e.Distance(ownCell, pos),
 				Path:          path,
@@ -1370,6 +1658,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		seen = append(seen, SeenMember{
 			ID:            subjectID,
 			Kind:          other.Kind,
+			Opposed:       e.opposed(m.ID, subjectID),
 			Standing:      !down[subjectID],
 			Position:      pos,
 			DistanceCells: dist,
@@ -1388,7 +1677,9 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Position:   ownCell,
 		Actions:    m.Actions,
 		Targeting:  m.Targeting,
-		Mind:       m.Mind,
+		Table:      m.Table,
+		Temper:     m.Temper,
+		Deeds:      heldDeedsAgainst(holdings, m.ID),
 		Holdings:   holdings,
 		At:         uint64(e.clock.ToData().HighWater),
 		Seen:       seen,
@@ -1768,7 +2059,7 @@ func (e *Encounter) formWithParticipation(
 	// carried into the fight — one applied while exploring — would wait for a
 	// turn-start that only arrived after somebody else's turn had already
 	// ended.
-	if aerr := e.announce(formed.Milestones); aerr != nil {
+	if aerr := e.announce(bubble, formed.Milestones); aerr != nil {
 		return nil, fmt.Errorf("form announce: %w", aerr)
 	}
 
@@ -2097,7 +2388,7 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 
 	// The caller's own turn end, announced BEFORE any unplayed member is
 	// driven below — same ordering rule as driveOneMonsterTurn's.
-	if aerr := e.announce(out.Milestones); aerr != nil {
+	if aerr := e.announce(bubble, out.Milestones); aerr != nil {
 		return nil, fmt.Errorf("end turn %q: announce: %w", in.Member, aerr)
 	}
 

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
@@ -207,21 +206,29 @@ func (e *Encounter) firedFact(id FactID, at uint64) error {
 // fight's own clock, never the world's). It advances time by the round, and
 // evaluates every declared round ending. An advance that started no round
 // notices nothing.
-func (e *Encounter) noticeRounds(ms []clock.Milestone) error {
+func (e *Encounter) noticeRounds(bubble *clock.Turn, ms []clock.Milestone) error {
 	for _, m := range ms {
 		if m.Kind != clock.RoundStarted || e.outcome != nil {
 			continue
 		}
-		// A FIGHT ROUND IS ONE UNIT OF TIME, the same unit a free-roam
-		// [Encounter.Pump] is — same driver, same displacement of one
-		// (rpg-toolkit#1725, walk 1). Every stamp this composition writes
-		// reads the world clock's high-water: a percept's Confirmed
+		// A FIGHT ROUND IS ONE UNIT OF TIME, and it is one unit FOR EVERY
+		// MEMBER OF THE FIGHT — each of them lived it (rpg-project#465,
+		// design §5). Every stamp this composition writes reads the world
+		// clock's high-water: a percept's Confirmed
 		// ([Encounter.rebuildPercepts]), a deed's At ([Encounter.landAttack]),
-		// an outcome's, a concealment sweep's. Until this line that high-water
-		// moved ONLY in Pump, so inside a fight nothing aged — a deed landed
-		// in round 1 was exactly as fresh in round 9, and a mind that waits
-		// out a grudge or a last-seen never got to. There is no second
-		// counter: a round is stamped by making the one clock later.
+		// an outcome's, a concealment sweep's. Until this site existed that
+		// high-water moved only in the retired Pump, so inside a fight nothing
+		// aged — a deed landed in round 1 was exactly as fresh in round 9.
+		// There is no second counter: a round is stamped by making the one
+		// clock later.
+		//
+		// PER BUBBLE MEMBER, NAMING EACH AS THE DRIVER. It used to advance
+		// once under the literal driver "world", and the accrual is
+		// max-by-driver: ten rounds of fighting would have put "world" ten
+		// ahead of everybody, and a player's first walk afterwards would have
+		// raised nothing until they had walked ten paces. Advancing once per
+		// fighter under its own name leaves the fight and the world on the
+		// same scale.
 		//
 		// ROUND 1 DOES NOT ADVANCE. It is the formation's own milestone —
 		// [Encounter.Form] announces SetOrder's, which starts at 1 — and
@@ -231,12 +238,23 @@ func (e *Encounter) noticeRounds(ms []clock.Milestone) error {
 		//
 		// Advanced BEFORE the arrivals below: a straggler who was waiting for
 		// this round arrives in it, and is stamped at the round's own time.
+		//
+		// AND THE WORLD THINKS ON IT, which is what makes a creature outside
+		// the fight close one round at a time while the fight runs — the
+		// primitive Alarm needs.
 		if m.Round > 1 {
-			if _, err := e.clock.Advance(&clock.AdvanceInput{
-				Driver:       core.EntityID("world"),
-				Displacement: 1,
-			}); err != nil {
-				return fmt.Errorf("round %d advance: %w", m.Round, err)
+			fighters, oerr := roundDrivers(bubble)
+			if oerr != nil {
+				return fmt.Errorf("round %d: %w", m.Round, oerr)
+			}
+			raised, aerr := e.spendRound(fighters)
+			if aerr != nil {
+				return fmt.Errorf("round %d: %w", m.Round, aerr)
+			}
+			if raised {
+				if terr := e.worldThinks(); terr != nil {
+					return fmt.Errorf("round %d: %w", m.Round, terr)
+				}
 			}
 		}
 		// The round site (design §3.8, R9; reserve.go): whatever waited for
@@ -361,4 +379,27 @@ func (e *Encounter) factRecordsHeldBy(member MemberID) []IntelID {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// roundDrivers is who a wrapped round is advanced for: the members of the
+// fight whose round it is, in the clock's own order.
+//
+// THE BUBBLE IS THREADED RATHER THAN LOOKED UP, and that matters the day a
+// second bubble exists. "Everybody currently in a fight" is the same answer
+// today, because policy allows one bubble — and it would quietly become the
+// wrong one, advancing the far fight's clock for a round it did not live.
+func roundDrivers(bubble *clock.Turn) ([]MemberID, error) {
+	if bubble == nil {
+		return nil, nil
+	}
+	order, err := bubble.Order()
+	if err != nil {
+		return nil, fmt.Errorf("round drivers: %w", err)
+	}
+	out := make([]MemberID, 0, len(order))
+	for _, id := range order {
+		out = append(out, MemberID(id))
+	}
+
+	return out, nil
 }

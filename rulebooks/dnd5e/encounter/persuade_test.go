@@ -41,7 +41,7 @@ func (s *PersuadeTestSuite) scene(members ...encounter.MemberInput) *encounter.E
 	if len(members) == 0 {
 		members = []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Mind: "coward"},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}},
 			{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
 		}
 	}
@@ -68,7 +68,7 @@ func (s *PersuadeTestSuite) deedOf(
 	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
 	for _, h := range holdings {
-		if h.Subject != deed.Subject(actor) || h.Channel != deed.Channel {
+		if h.Subject != deed.Subject(actor, encounter.DeedPersuade) || h.Channel != deed.Channel {
 			continue
 		}
 		saw, err := deed.Decode(h.Payload)
@@ -189,13 +189,13 @@ func (s *PersuadeTestSuite) TestRefusals() {
 // survives a save and a reload.
 func (s *PersuadeTestSuite) TestTheAuthoredAppealCrossesAndSurvivesAReload() {
 	approaches := []encounter.CheckApproach{{Ability: "persuasion", DC: 10}}
-	table := map[string][]encounter.Answer{
+	table := encounter.Table{
 		encounter.AnswerPersuadeFailed: {{Weight: 3, Say: "Go right."}, {Weight: 1, Say: "Go left."}},
 	}
 	enc := s.scene(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4},
-			Persuade: approaches, Answers: table},
+			Persuade: approaches, Table: table},
 	)
 
 	read := func(enc *encounter.Encounter) encounter.Member {
@@ -212,7 +212,7 @@ func (s *PersuadeTestSuite) TestTheAuthoredAppealCrossesAndSurvivesAReload() {
 	}
 
 	s.Equal(approaches, read(enc).Persuade)
-	s.Equal(table, read(enc).Answers)
+	s.Equal(table, read(enc).Table)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
@@ -221,7 +221,7 @@ func (s *PersuadeTestSuite) TestTheAuthoredAppealCrossesAndSurvivesAReload() {
 	})
 	s.Require().NoError(err)
 	s.Equal(approaches, read(reloaded).Persuade, "and survives a reload")
-	s.Equal(table, read(reloaded).Answers, "weights included: a persisted 1 is a 1, not an absence")
+	s.Equal(table, read(reloaded).Table, "weights included: a persisted 1 is a 1, not an absence")
 }
 
 // A persuade route with nothing to beat is the same defect an intimidate one

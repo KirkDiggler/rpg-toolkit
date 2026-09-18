@@ -341,7 +341,7 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"place[0].on", "not a monster"},
 		{"an on outcome this build does not land", `at: [11,3], targeting: lowest-health }`,
 			`at: [11,3], targeting: lowest-health, on: { bribed: [ { fact: paid-off } ] } }`,
-			"place[8].on.bribed", "not an outcome this build lands"},
+			"place[8].on.bribed", "not a trigger this build rolls"},
 		{"an on entry that teaches nothing", `at: [11,3], targeting: lowest-health }`,
 			`at: [11,3], targeting: lowest-health, on: { intimidated: [ { fact: "" } ] } }`,
 			"place[8].on.intimidated[0].fact", "does not say what"},
