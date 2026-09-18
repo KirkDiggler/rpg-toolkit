@@ -44,6 +44,18 @@ func castOutcome(
 	targets := make([]encounter.CastTargetResult, 0, len(cast.Targets))
 	var pushes []castPush
 	for _, target := range cast.Targets {
+		if target.Warded != nil {
+			// A ward stops the target's whole delivery before any save or
+			// effect runs against them — mutually exclusive with Save and
+			// Results by construction (resolution never populates either
+			// alongside Warded), so this target's beat is warded() and
+			// nothing else, and the loop moves straight to the next one.
+			targets = append(targets, encounter.CastTargetResult{
+				Target: encounter.MemberID(target.TargetID),
+				Warded: castWarded(target.Warded, actor),
+			})
+			continue
+		}
 		save, err := castSave(target, cast.Spell)
 		if err != nil {
 			return nil, nil, err
@@ -81,6 +93,24 @@ func castOutcome(
 		})
 	}
 	return targets, pushes, nil
+}
+
+// castWarded projects one target's Sanctuary-style ward onto the story
+// shape — [castSave]'s sibling for the ward's own inverted save, where the
+// CASTER (actor) rolled, not the named target.
+func castWarded(warded *resolution.WardOutcome, actor string) *encounter.WardedDetail {
+	return &encounter.WardedDetail{
+		Source: encounter.MemberID(warded.SourceID),
+		Save: encounter.CastSave{
+			Saver:       encounter.MemberID(actor),
+			Ability:     string(warded.Ability),
+			Roll:        warded.Save.Roll,
+			Total:       warded.Save.Total,
+			DC:          warded.Save.DC,
+			Calculation: rollCalculationFor(warded.Save.Calculation),
+			Succeeded:   warded.Save.Success,
+		},
+	}
 }
 
 // castSave reads the gate's saving throw, or nothing when there was no gate.

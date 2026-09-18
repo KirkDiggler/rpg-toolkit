@@ -42,6 +42,37 @@ get_module_root() {
     fi
 }
 
+# Function to list the staged files that belong to THIS module — the ones whose
+# NEAREST go.mod is this module's own.
+#
+# A prefix match is not enough, and the difference is not theoretical. This
+# repository nests modules inside modules: rulebooks/dnd5e/{encounter,resolution,
+# session} each have a go.mod of their own and are their own release units. A
+# plain `grep "^$module/"` for rulebooks/dnd5e therefore sweeps in every file
+# under those three, and the package list derived from it contains ./encounter
+# and friends — which are not packages of rulebooks/dnd5e at all. go test and
+# golangci-lint both refuse them by name:
+#
+#   main module (github.com/.../rulebooks/dnd5e) does not contain package
+#   github.com/.../rulebooks/dnd5e/encounter
+#
+# and the module is failed by paths it never owned while its own packages pass.
+# Those nested modules get their own check_module run; they do not need, and
+# must not get, a second one from their parent.
+#
+# It bites whenever one commit touches a parent module and a nested one
+# together, which is exactly what merging main into a feature branch does — so
+# the branches that most need the checks were the ones that could not commit.
+module_files() {
+    local module=$1
+    local file
+    for file in $(echo "$STAGED_GO_FILES" | grep "^$module/" || true); do
+        if [[ "$(get_module_root "$file")" == "$module" ]]; then
+            echo "$file"
+        fi
+    done
+}
+
 # Find all modules with changes
 CHANGED_MODULES=$(for file in $STAGED_GO_FILES; do
     get_module_root "$file"
@@ -65,7 +96,7 @@ fi
 get_cache_key() {
     local module=$1
     # Get hash of all Go files in changed packages
-    local MODULE_FILES=$(echo "$STAGED_GO_FILES" | grep "^$module/" || true)
+    local MODULE_FILES=$(module_files "$module")
     local PACKAGES=$(echo "$MODULE_FILES" | xargs -I {} dirname {} | sort -u)
     local FILE_HASH=$(cd "$module" && find $PACKAGES -name "*.go" -type f 2>/dev/null | xargs md5sum 2>/dev/null | md5sum | cut -d' ' -f1)
     echo "$FILE_HASH"
@@ -90,7 +121,7 @@ check_module() {
     echo -e "\n${YELLOW}Checking module: $module_name${NC}"
     
     # Get changed files in this module
-    local MODULE_FILES=$(echo "$STAGED_GO_FILES" | grep "^$module/" || true)
+    local MODULE_FILES=$(module_files "$module")
     if [ -z "$MODULE_FILES" ]; then
         return 0
     fi

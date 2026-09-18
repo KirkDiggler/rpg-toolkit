@@ -205,6 +205,37 @@ func recordStrike(
 	attacker, target string, struck resolution.StrikeOutcome, ref AttackRef, presentationID string,
 	checks []encounter.ConcentrationCheck, breaks []encounter.ConcentrationBreak,
 ) *encounter.RecordInput {
+	if struck.Warded != nil {
+		// NO PresentationID and NO top-level Calculation: both are refused
+		// by encounter.Record on every kind but Struck/Missed, because both
+		// describe an attack roll that never happened here — the ward
+		// stopped this swing before the d20. The warding save's OWN
+		// calculation still rides inside WardedDetail.Save, a different
+		// field with no such restriction.
+		return &encounter.RecordInput{
+			Kind:    encounter.OutcomeWarded,
+			Actor:   encounter.MemberID(attacker),
+			Targets: []encounter.MemberID{encounter.MemberID(target)},
+			Attack: &encounter.AttackIdentity{
+				Ref: ref.Ref, Name: ref.Name, DamageType: string(ref.DamageType),
+			},
+			Warded: &encounter.WardedDetail{
+				Source: encounter.MemberID(struck.Warded.SourceID),
+				Save: encounter.CastSave{
+					Saver:       encounter.MemberID(attacker),
+					Ability:     string(struck.Warded.Ability),
+					Roll:        struck.Warded.Save.Roll,
+					Total:       struck.Warded.Save.Total,
+					DC:          struck.Warded.Save.DC,
+					Calculation: rollCalculationFor(struck.Warded.Save.Calculation),
+					Succeeded:   struck.Warded.Save.Success,
+				},
+			},
+			ConcentrationChecks: checks,
+			ConcentrationBreaks: breaks,
+		}
+	}
+
 	values := map[encounter.OutcomeValue]int{
 		encounter.ValueRoll:    struck.Roll,
 		encounter.ValueTotal:   struck.Total,

@@ -109,6 +109,7 @@ const (
 	Bless            Spell = "bless"
 	Bane             Spell = "bane"
 	ShieldOfFaith    Spell = "shield-of-faith"
+	Sanctuary        Spell = "sanctuary"
 	AnimalFriendship Spell = "animal-friendship"
 	Command          Spell = "command"
 	DisguiseSelf     Spell = "disguise-self"
@@ -289,6 +290,7 @@ var spellName = map[Spell]string{
 	Bless:         "Bless",
 	Bane:          "Bane",
 	ShieldOfFaith: "Shield of Faith",
+	Sanctuary:     "Sanctuary",
 	// Level 2 Damage
 	ScorchingRay:       "Scorching Ray",
 	Shatter:            "Shatter",
