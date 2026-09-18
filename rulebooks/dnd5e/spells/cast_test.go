@@ -775,3 +775,25 @@ func (s *CastContentSuite) TestGuidingBoltDeclaresSpellAttackAndOnHitLight() {
 	s.Equal(*refs.Conditions.GuidingBolt(), a.OnHit[0].Ref)
 	s.Equal("source_id", a.OnHit[0].CounterpartKey)
 }
+
+func (s *CastContentSuite) TestInflictWoundsDeclaresTouchSpellAttack() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.InflictWounds, SpellAttackBonus: 5})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(5, d.Cast.RangeFeet)
+	s.Equal(actions.CastTargetTouch, d.Cast.Target)
+	s.Nil(d.Cast.Attack.Delivery.Ranged)
+	s.Equal(5, d.Cast.Attack.Delivery.Melee.ReachFeet)
+	s.Nil(d.Cast.Concentration)
+	s.Nil(d.Cast.Save)
+	a := d.Cast.Attack
+	s.Require().NotNil(a)
+	s.Equal(actions.AttackCategorySpell, a.Category)
+	s.Equal(5, a.AttackBonus)
+	s.Nil(a.Weapon)
+	s.Nil(a.Ability)
+	s.Equal([]damage.Damage{{Dice: "3d10", Type: damage.Necrotic}}, a.Damage)
+	s.Empty(a.OnHit)
+}

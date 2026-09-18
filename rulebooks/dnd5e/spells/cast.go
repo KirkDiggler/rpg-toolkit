@@ -302,6 +302,21 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
 var castContent = map[Spell]castProfileBuilder{
+	InflictWounds: {
+		name:    "Inflict Wounds",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		cost:    slotCost(resources.SpellSlotLevel1),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 5, Target: actions.CastTargetTouch, MinTargets: 1, MaxTargets: 1,
+				Attack: &actions.AttackProfile{
+					Category: actions.AttackCategorySpell,
+					Delivery: actions.AttackDelivery{Melee: &actions.MeleeDelivery{ReachFeet: 5}},
+					Damage:   []damage.Damage{{Dice: "3d10", Type: damage.Necrotic}},
+				},
+			}
+		},
+	},
 	GuidingBolt: {
 		name:    "Guiding Bolt",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},

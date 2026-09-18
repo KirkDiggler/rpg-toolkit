@@ -39,7 +39,7 @@ func (s *ClericFinalizeSuite) classInput() *SetClassInput {
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
 			Spells: []spells.Spell{
-				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt,
+				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds,
 			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
@@ -108,7 +108,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	}, data.KnownCantrips)
 	s.ElementsMatch([]string{
 		refs.Spells.Bane().String(), refs.Spells.Bless().String(), refs.Spells.Command().String(),
-		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(), refs.Spells.GuidingBolt().String(),
+		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(), refs.Spells.GuidingBolt().String(), refs.Spells.InflictWounds().String(),
 	}, data.KnownSpells)
 	encoded, err = json.Marshal(data)
 	s.Require().NoError(err)
@@ -533,6 +533,21 @@ func (s *ClericFinalizeSuite) TestGuidingBoltCompilesFromNativeClericAfterReload
 	s.Equal(5, d.Cast.Attack.AttackBonus, "Wisdom 16 plus proficiency 2")
 	s.Nil(d.Cast.Attack.Ability, "spellcasting modifier must not be added to radiant damage")
 	s.Equal("4d6", d.Cast.Attack.Damage[0].Dice)
+	_, err = c.StatusView(&StatusViewInput{})
+	s.NoError(err)
+}
+
+func (s *ClericFinalizeSuite) TestInflictWoundsCompilesFromNativeClericAfterReload() {
+	c, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-bolt", events.NewEventBus())
+	s.Require().NoError(err)
+	c, err = Load(context.Background(), c.ToData())
+	s.Require().NoError(err)
+	d := c.CastDefinition(spells.InflictWounds)
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(5, d.Cast.Attack.AttackBonus, "Wisdom 16 plus proficiency 2")
+	s.Nil(d.Cast.Attack.Ability, "spellcasting modifier must not be added to necrotic damage")
+	s.Equal("3d10", d.Cast.Attack.Damage[0].Dice)
 	_, err = c.StatusView(&StatusViewInput{})
 	s.NoError(err)
 }

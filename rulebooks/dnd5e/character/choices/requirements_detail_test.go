@@ -25,7 +25,7 @@ func (s *RequirementsDetailTestSuite) TestClericAcquiresAllSupportedFirstLevelSp
 	s.Equal(ClericSpells1, req.ID)
 	s.Equal(1, req.SpellLevel)
 	s.Equal([]spells.Spell{
-		spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt,
+		spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds,
 	}, req.Options)
 	s.Equal(len(req.Options), req.Count)
 	for _, option := range req.Options {
