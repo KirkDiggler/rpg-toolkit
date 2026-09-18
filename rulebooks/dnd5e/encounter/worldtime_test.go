@@ -357,15 +357,23 @@ func (s *WorldTimeSuite) TestAFactionsMixIsDealtAtTheDoorAndSaysSo() {
 		"aggressive": {Attack: 300, Toward: 300, Away: 25, Flee: 25, Hold: 50},
 	}
 
-	enc := s.hall(
+	mix := encounter.Temper{
+		Mix:      map[string]int{"coward": 1, "soldier": 2, "aggressive": 1},
+		Profiles: profiles,
+	}
+	enc := s.hallWith(
+		[]encounter.DispositionInput{{
+			Between: [2]encounter.FactionID{"vendors", encounter.FactionParty},
+			Stance:  encounter.StanceHostile,
+		}},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
 			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster,
-			Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30,
-			Temper: encounter.Temper{
-				Mix:      map[string]int{"coward": 1, "soldier": 2, "aggressive": 1},
-				Profiles: profiles,
-			}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
+			Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30, Temper: mix},
+		// One that named no side, to pin that the beat carries the RESOLVED
+		// faction rather than the authored blank.
+		encounter.MemberInput{ID: "straggler", Kind: encounter.KindMonster,
+			Position: spatial.Position{X: 28, Y: 7}, SpeedFeet: 30, Temper: mix},
 	)
 
 	// AND THE SCENE OPENED FIRST. A deal is a beat, and a beat inside a scene
@@ -381,6 +389,16 @@ func (s *WorldTimeSuite) TestAFactionsMixIsDealtAtTheDoorAndSaysSo() {
 	s.Equal("aggressive", beat["temper"])
 	s.EqualValues(1, beat["roll"])
 	s.EqualValues(4, beat["of"], "the die is the sum of the shares the author wrote")
+
+	// THE FACTION IS THE DIE'S ENTITY (rpg-project#463): the spread belongs to
+	// the group, and the deal is one roll out of it — so the beat names the
+	// faction that threw the die and not the creature that came out of it.
+	s.Equal("vendors", beat["faction"], "the side whose orders this creature came in under")
+
+	stragglerBeat := s.beatOf(enc, encounter.BeatTempered, "straggler")
+	s.Require().NotNil(stragglerBeat)
+	s.Equal(string(encounter.FactionMonsters), stragglerBeat["faction"],
+		"and a monster that named no side is in the reserved one, resolved rather than left blank")
 
 	members, err := enc.Members()
 	s.Require().NoError(err)

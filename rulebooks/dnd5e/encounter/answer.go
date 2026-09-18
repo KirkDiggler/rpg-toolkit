@@ -320,14 +320,32 @@ func answeredBeatBody(creature MemberID, verb string, beaten bool, chosen *Pick)
 }
 
 // appendTemperedBeat writes which temperament a faction's mix dealt one
-// member, with the face and the die it was rolled on.
+// member, with the faction the die belonged to, the face, and the die it was
+// rolled on.
+//
+// THE FACTION IS THE DIE'S ENTITY (rpg-project#463, design §3): the spread is
+// the FACTION's — "the instructions given to the group" — and the deal is one
+// roll out of it, so the entity whose rule threw the die is the faction and
+// not the creature that came out of it. Every other pick this composition
+// makes names the creature; this one does not, and the beat has to say which,
+// because a tray that draws every die in its owner's set cannot work it out
+// from the member alone.
+//
+// RESOLVED, not as authored: a monster that named no faction is in the
+// reserved `monsters` side, and that is the side whose orders it is under.
 func (e *Encounter) appendTemperedBeat(member MemberID, word string, roll, of int, at uint64) error {
+	faction := FactionID("")
+	if record, ok := e.members[member]; ok {
+		faction = factionOf(record)
+	}
+
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat":   BeatTempered,
-		"member": string(member),
-		"temper": word,
-		"roll":   roll,
-		"of":     of,
+		"beat":    BeatTempered,
+		"member":  string(member),
+		"faction": string(faction),
+		"temper":  word,
+		"roll":    roll,
+		"of":      of,
 	})
 	if err != nil {
 		return fmt.Errorf("temper: marshal beat: %w", err)
