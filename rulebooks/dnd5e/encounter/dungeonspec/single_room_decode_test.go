@@ -82,11 +82,18 @@ func (s *SingleRoomSourceSuite) TestDecodeAcceptsV4RootAheadOfItsKeys() {
 
 	// 2. The version buys no leniency. KnownFields(true) refuses an unknown
 	// root key at 4 exactly as it does at 3.
+	//
+	// The key this asks about is `sites`, which is the DELIBERATELY DEFERRED
+	// word (rpg-project#477, Decision 2: a site's rooms stay flat and nesting
+	// belongs to the layer above). It used to be `factions`, and that is
+	// exactly the point of the change: a version says what a file MAY
+	// contain, so a key arriving inside v4 (rpg-toolkit#1826) stops being
+	// unknown while every key nobody has agreed on stays refused.
 	_, err = DecodeSingleRoom(SingleRoomDecodeInput{
-		Source: append(append([]byte{}, asV4...), []byte("\nfactions: []\n")...),
+		Source: append(append([]byte{}, asV4...), []byte("\nsites: []\n")...),
 	})
 	s.Require().Error(err, "an unknown root key is refused at v4 too")
-	s.Contains(err.Error(), "factions", "and the refusal names the key")
+	s.Contains(err.Error(), "sites", "and the refusal names the key")
 
 	// The source shape walk is version-blind too: a required key missing, or a
 	// scalar of the wrong kind, is refused at the same path at 4 as at 3.

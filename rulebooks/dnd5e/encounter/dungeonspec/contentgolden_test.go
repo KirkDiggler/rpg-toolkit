@@ -34,7 +34,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -107,9 +106,29 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 	files, err := filepath.Glob("testdata/*.yaml")
 	require.NoError(t, err)
-	// The v3 source fixture is decoded by the source suite, not the legacy v2 compiler.
-	files = slices.DeleteFunc(files, func(path string) bool { return filepath.Base(path) == "world-builder-v3.yaml" })
-	require.Len(t, files, 5, "the five authored dungeons this package ships")
+	// THE SINGLE-ROOM FIXTURES ARE IN THE NET NOW (rpg-toolkit#1826, the gap
+	// PR #1824's review deferred here). They compile through [dungeonspec.Load]
+	// like every other content file, and the v3 one is the evidence the site
+	// keys changed nothing: its picture was captured from the compiler BEFORE
+	// `factions`, `faction` and `monsterBindings` existed, and it is unchanged
+	// after them.
+	//
+	// THE SET, NOT THE COUNT. A length pin is a line somebody bumps when a
+	// fixture arrives; naming the files says which dungeons this package
+	// ships, so a deleted one fails as loudly as a new one.
+	names := make([]string, 0, len(files))
+	for _, path := range files {
+		names = append(names, filepath.Base(path))
+	}
+	require.ElementsMatch(t, []string{
+		"reference-raider-camp.yaml",
+		"reference-tomb-heirloom.yaml",
+		"reference-tomb.yaml",
+		"tomb-faced-props.yaml",
+		"tomb-second-skeleton.yaml",
+		"world-builder-v3.yaml",
+		"world-builder-v4-site.yaml",
+	}, names, "the authored dungeons this package ships")
 
 	for _, path := range files {
 		t.Run(filepath.Base(path), func(t *testing.T) {

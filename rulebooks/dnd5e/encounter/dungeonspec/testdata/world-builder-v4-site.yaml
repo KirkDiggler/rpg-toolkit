@@ -1,0 +1,63 @@
+version: 4
+key: front-room-site
+play: {void: transparent, lighting: bright, standing: centre-covered}
+factions:
+  - id: goblins
+    temper: {coward: 2, soldier: 1, aggressive: 1}
+    on:
+      intimidated:
+        - {weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed}
+        - {weight: 30, say: 'Boss! BOSS!', flee: {}}
+      time:
+        - {when: {enemy: reach}, attack: enemy}
+        - {when: {enemy: seen}, toward: enemy}
+dispositions:
+  - {between: [goblins, party], stance: hostile, until: {fact: goblin-cowed}}
+room:
+  version: 3
+  id: room-1
+  name: Front Room
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: {hexRadius: 6, horizontalLimit: 12}
+  scene:
+    version: 1
+    id: scene-1
+    name: Front Room
+    items:
+      - id: table
+        kind: prop
+        assetRef: dnd5e:props:torture-table
+        label: Table
+        transform: {x: -2.25, y: 0, z: 1.3, rotationY: 0.37}
+        heightScale: 1.5
+        parentId: furniture
+    groups:
+      - {id: furniture, kind: group, label: Furniture,
+         transform: {x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37}}
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},
+      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},
+      {q: 0, r: -1}, {q: 1, r: -1}]
+    propDeclarations:
+      table:
+        blocksMovement: true
+        blocksLineOfSight: false
+        footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 0}
+    monsters:
+      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: 0}, faction: goblins}
+      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: -1}}
+      - {id: skeleton-b, ref: 'dnd5e:monsters:skeleton', cell: {q: 0, r: -1}}
+    monsterBindings:
+      goblin-1:
+        on:
+          time:
+            - {when: {enemy: reach}, hold: {}}
+        temper: coward
+        actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']
+      skeleton-a:
+        actions: ['dnd5e:weapons:shortsword']

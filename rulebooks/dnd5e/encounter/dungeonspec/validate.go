@@ -203,6 +203,18 @@ type validation struct {
 	factionMembers map[string][]int
 	mindValid      map[string]bool
 	dispositionAt  map[[2]string]int
+
+	// cellRefusal is the sentence a `{ at: [col, row] }` selector earns in a
+	// dialect that has no frame to resolve one in, or empty where the file
+	// declares an orientation and the cell is checked against the floor.
+	//
+	// THE SINGLE ROOM IS THAT DIALECT (rpg-toolkit#1826, ruling 1): its cells
+	// are axial {q, r} and it declares no orientation, so the same authored
+	// pair would name two different cells in the two dialects. Refused rather
+	// than guessed — and refused INSTEAD of the word/floor rules below, not
+	// beside them, because the frame is the whole defect and two messages for
+	// one mistake sends an author looking for a second problem.
+	cellRefusal string
 }
 
 func (v *validation) fail(path, format string, args ...any) {
@@ -1532,6 +1544,11 @@ func (v *validation) entrySelector(at, _ string, entry AnswerSpec) {
 		return
 	}
 	if sel.At != nil {
+		if v.cellRefusal != "" {
+			v.fail(at+"."+word+".at", "%s", v.cellRefusal)
+
+			return
+		}
 		if word != "toward" {
 			v.fail(at+"."+word,
 				"a cell is somewhere to walk toward, and `%s` acts on a creature (line %d)", word, sel.Line)
