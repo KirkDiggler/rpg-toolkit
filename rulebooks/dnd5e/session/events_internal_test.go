@@ -1482,7 +1482,7 @@ func TestTheStayedBeatSaysAWalkMovedNobody(t *testing.T) {
 		why  string
 	}{
 		{
-			name: "the route names what stopped it",
+			name: "a creature running found a wall, and the route says which",
 			json: `{"beat":"stayed","member":"thug-1","cause":"encounter:table:away",
 				"why":"is blocked by dnd5e:props:pillar"}`,
 			want: StayedBody{
@@ -1490,6 +1490,17 @@ func TestTheStayedBeatSaysAWalkMovedNobody(t *testing.T) {
 				Why: "is blocked by dnd5e:props:pillar",
 			},
 			why: "the fold's own refusal phrase, carried verbatim",
+		},
+		{
+			// THE TWO TABLE CAUSES ARE DISTINCT, and this case is here because
+			// they were not: a `toward` walk used to be labelled "away", so an
+			// observer reading the log saw a creature CLOSING on somebody
+			// described as running from them. Both spellings are asserted so
+			// the pair cannot quietly collapse back into one.
+			name: "a creature closing on an authored cell carries the toward cause",
+			json: `{"beat":"stayed","member":"thug-2","cause":"encounter:table:toward","why":""}`,
+			want: StayedBody{Member: "thug-2", Cause: "encounter:table:toward"},
+			why:  "walking to a cell and walking away from somebody are not one cause",
 		},
 		{
 			name: "nowhere strictly better is an empty why, and that is an answer",
