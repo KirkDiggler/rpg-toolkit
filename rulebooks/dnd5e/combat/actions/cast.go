@@ -84,6 +84,11 @@ const (
 // declaration, because the same profile is free for a monster's innate cast and
 // an action for a player's.
 type CastProfile struct {
+	// Attack declares a spell attack resolved through the ordinary attack chain.
+	// It is exclusive with save/direct delivery. Its damage and on-hit conditions
+	// belong to the attack profile, so a miss cannot deliver either.
+	Attack *AttackProfile `json:"attack,omitempty"`
+
 	// RecipientBlockedBy names conditions that prevent this cast from reaching
 	// a recipient. The restriction is checked before payment, for any caster.
 	RecipientBlockedBy []core.Ref `json:"recipient_blocked_by,omitempty"`
@@ -321,6 +326,18 @@ func (p CastProfile) Validate() error {
 		}
 	}
 
+	if p.Attack != nil {
+		if p.Attack.Category != AttackCategorySpell || p.Save != nil || p.Healing != nil || p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 || p.Move != nil || p.Concentration != nil || p.Area != nil || len(p.HealingExcludes) > 0 || len(p.Options) > 0 {
+			return fmt.Errorf("spell attack cast must carry only its attack delivery")
+		}
+		if p.MinTargets != 1 || p.MaxTargets != 1 || (p.Target != CastTargetOneCreature && p.Target != CastTargetTouch) {
+			return fmt.Errorf("spell attack cast requires one creature")
+		}
+		if err := p.Attack.Validate(); err != nil {
+			return fmt.Errorf("cast attack: %w", err)
+		}
+		return nil
+	}
 	if p.Save != nil {
 		// The gate itself refuses a word that is neither Negated nor Half
 		// (see saves.SaveGate.Validate), so what is left to say here is the
@@ -446,6 +463,10 @@ func (p CastProfile) Validate() error {
 // declarations.
 func (p CastProfile) Clone() CastProfile {
 	clone := p
+	if p.Attack != nil {
+		attack := p.Attack.Clone()
+		clone.Attack = &attack
+	}
 	if p.Casting != nil {
 		casting := *p.Casting
 		clone.Casting = &casting

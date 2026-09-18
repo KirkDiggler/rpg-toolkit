@@ -220,3 +220,8 @@ func (n conditionsNS) Sanctuary() *core.Ref { return conditionSanctuary }
 // obvious wherever it shows up, not a generic immunity flag. Source-qualified
 // per caster: it blocks only that same caster's future Sanctuary wards.
 func (n conditionsNS) SanctuaryImmune() *core.Ref { return conditionSanctuaryImmune }
+
+var conditionGuidingBolt = &core.Ref{Module: Module, Type: TypeConditions, ID: "guiding_bolt"}
+
+// GuidingBolt returns the target-held light consumed by the next attack roll.
+func (n conditionsNS) GuidingBolt() *core.Ref { return conditionGuidingBolt }
