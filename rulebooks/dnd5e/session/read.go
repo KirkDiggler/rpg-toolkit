@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
@@ -526,7 +527,14 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 		// the three refusing capabilities above are what says so — and a
 		// compelled driver here would have no scope to save the condition an
 		// obeyed word can leave behind.
-		driver)
+		driver,
+		// AND NO DIE, in the same spirit as the three refusing capabilities
+		// above: a read advances no clock, so no creature is ever given time on
+		// this world and no table is ever rolled. The composition refuses a
+		// roll with no roller by name (encounter.ErrNoRoller), so a read that
+		// somehow reached one fails loudly rather than quietly throwing dice
+		// nobody meant to throw (rpg-project#465).
+		nil)
 	return enc, err
 }
 
@@ -555,7 +563,8 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 func (m *Manager) loadWorldWithBaseline(
 	ctx context.Context, data *SessionData,
 	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer, sight *sightSeam,
-	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.TurnDriver,
+	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.Driver,
+	roller dice.Roller,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
 	encID := data.Encounter
 
@@ -589,6 +598,13 @@ func (m *Manager) loadWorldWithBaseline(
 		// it has to be able to save what the word left behind, which is the
 		// scope this function has not got. See [compelledDriver].
 		TurnDriver: driver,
+		// THE WORLD'S DIE, and the caller says whether there is one: this
+		// session's shared dice for a write verb, absent for a read that can
+		// never give a creature time (rpg-project#465, design §6). Every pick
+		// a creature makes is rolled through it with the creature as the die's
+		// entity, and a faction's temperament mix is dealt through it at the
+		// door with the faction as the entity.
+		Roller: roller,
 		// The caller says which: a real one bound to a write verb's own
 		// scope, or RefusingStriker{} for a read that must never drive a
 		// turn. See [Manager.loadWorld] and [Manager.openForWrite].

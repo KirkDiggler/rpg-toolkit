@@ -60,6 +60,51 @@ func (s *HoldOutSessionSuite) arrangeTheChiefAtTheDoor(holder, other string) {
 	s.stream.published = nil
 }
 
+// closingDriver is the fixture these three scenes drive with: strike an
+// OPPOSED sighting you can reach, else walk toward it, else stand there.
+//
+// WRITTEN HERE RATHER THAN TAKEN OFF THE SHELF, for the reason
+// [pursuingDriver] is (monster_turn_test.go). These tests are about the stance
+// flip, the dissolution it causes, and the roster a strike reads after
+// somebody Exits mid-fight — not about which policy the shipped content holds.
+// They used to lean on the retired `behavior.Basic` for their walking, and the
+// creature's table is rolled on the composition's own view rather than this
+// twin, so it cannot be wired here at all (rpg-project#465).
+//
+// IT ASKS WHETHER A SIGHTING IS OPPOSED, which is what makes
+// TestAChiefWhoseCampTurnedDoesNotSwing a real test rather than a coincidence:
+// the camp turning does not move alice or make her invisible, it changes whose
+// side she is on, and the driver has to be reading THAT to stop. Opposition is
+// the stance graph's answer projected onto the view; a driver reading Kind
+// instead would swing at her forever.
+type closingDriver struct{}
+
+func (closingDriver) Act(view session.MonsterView) (session.TurnIntent, error) {
+	var target *session.SeenMember
+	for i, seen := range view.Seen {
+		if !seen.Opposed || !seen.Standing {
+			continue
+		}
+		if target == nil || seen.DistanceCells < target.DistanceCells {
+			target = &view.Seen[i]
+		}
+	}
+	if target == nil {
+		return session.Pass{}, nil
+	}
+
+	for _, action := range view.Actions {
+		if target.InReach[action.Ref] {
+			return session.Attack{Target: target.ID, Action: action.Ref}, nil
+		}
+	}
+	if len(target.Path) > 0 {
+		return session.Move{Path: target.Path}, nil
+	}
+
+	return session.Pass{}, nil
+}
+
 // endTurnOf ends a player's turn through the verb, driving whoever the
 // clock lands on next.
 func (s *HoldOutSessionSuite) endTurnOf(who string) error {
@@ -88,7 +133,7 @@ func after(kinds []session.EventKind, from session.EventKind) []session.EventKin
 // the hold-out ends — and his turn ends THERE. The verb succeeds, the
 // ending reaches everyone, and nothing swings after the run closed.
 func (s *HoldOutSessionSuite) TestTheChiefsOwnStepTurnsTheCampAndEndsHisTurn() {
-	s.startWith(campOptions{withEnding: true, driver: session.Behavior(),
+	s.startWith(campOptions{withEnding: true, driver: closingDriver{},
 		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}})
 	s.arrangeTheChiefAtTheDoor("alice", "bob")
 
@@ -113,7 +158,7 @@ func (s *HoldOutSessionSuite) TestTheChiefsOwnStepTurnsTheCampAndEndsHisTurn() {
 // dissolves — and a chief opposed to nobody does not strike the player he
 // was walking toward. Everyone is back on the world clock, unstruck.
 func (s *HoldOutSessionSuite) TestAChiefWhoseCampTurnedDoesNotSwing() {
-	s.startWith(campOptions{withEnding: false, driver: session.Behavior(),
+	s.startWith(campOptions{withEnding: false, driver: closingDriver{},
 		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}})
 	s.arrangeTheChiefAtTheDoor("alice", "bob")
 
@@ -134,7 +179,7 @@ func (s *HoldOutSessionSuite) TestAChiefWhoseCampTurnedDoesNotSwing() {
 // who steps into the yard and strikes the player still there. The departure
 // must not leave a half-removed member on the roster the strike reads.
 func (s *HoldOutSessionSuite) TestTheActiveHolderExitingMidFightLetsTheChiefSwing() {
-	s.startWith(campOptions{withEnding: true, driver: session.Behavior(),
+	s.startWith(campOptions{withEnding: true, driver: closingDriver{},
 		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}})
 	s.arrangeTheChiefAtTheDoor("bob", "alice")
 	s.Require().NoError(s.endTurnOf("alice"))

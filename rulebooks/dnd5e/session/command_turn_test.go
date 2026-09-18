@@ -75,8 +75,16 @@ func (s *CommandTurnSuite) scene(
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = newFakeCharacters(sheets...)
+	// A HOST'S DRIVER, DELIBERATELY, and the dullest one there is. Every test
+	// in this suite is about the COMPELLED path — what a wrapper does for a
+	// member under orders, and what it does for one who is not — so the brain
+	// behind the wrapper only has to be delegable and watchable. The creature's
+	// table is neither from here: it is recognised at the wiring seam and
+	// rolled on the composition's own view, so it never crosses this twin and
+	// cannot be wrapped (rpg-project#465, session.Driver's own doc). A test
+	// that needs a brain with opinions supplies one, as [runsOnce] does below.
 	if s.behind == nil {
-		s.behind = session.Behavior()
+		s.behind = session.Pass{}
 	}
 	s.driver = &recordingBehavior{next: s.behind}
 

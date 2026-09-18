@@ -153,8 +153,10 @@ func assessmentFromDown(members, reported []encounter.MemberID) *encounter.Parti
 // accidentally lean on it for an answer.
 type encPassDriver struct{}
 
-func (encPassDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
-	return encounter.Pass{}, nil
+func (encPassDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
+	// A nil pick: this fixture rolls no table, so the world writes no answer
+	// beat for the turns it takes (rpg-project#465).
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // encQuietAnnouncer is the construction-only Announcer these fixtures wire.

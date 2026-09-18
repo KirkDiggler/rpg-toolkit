@@ -36,8 +36,8 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
 		"the transferred fact rides the world; the advanced stream cursors ride the session")
 
 	s.Run("the looter alone is told about the door", func() {
-		s.Equal([]session.EventKind{session.EventLooted, session.EventDoorRevealed},
-			s.kinds("alice"), "the verb's own beat first, then what it caused")
+		s.Equal([]session.EventKind{session.EventLooted, session.EventDoorRevealed, session.EventTick},
+			s.kinds("alice"), "the verb's own beat first, then what it caused, then the round it spent")
 		body, ok := s.bodyOf("alice", session.EventDoorRevealed).(session.DoorRevealedBody)
 		s.Require().True(ok, "a reveal carries its typed body")
 		s.Equal("veil", body.Door)
@@ -45,7 +45,8 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
 	})
 
 	s.Run("everyone present hears the LOOTED beat and nothing more", func() {
-		s.Equal([]session.EventKind{session.EventLooted}, s.kinds("bob"))
+		s.Equal([]session.EventKind{session.EventLooted, session.EventTick}, s.kinds("bob"),
+			"the loot, and the round it cost the world — but nothing about a door")
 		s.Equal(session.LootedBody{Looter: "alice", Body: "captain"},
 			s.bodyOf("bob", session.EventLooted),
 			"looter and body, and nothing of what moved")
@@ -145,8 +146,9 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBodyAndRefusesAnUpright() {
 	out, err := s.mgr.Loot(ctx, &session.LootInput{
 		Session: "sess", Member: "alice", Target: "captain"})
 	s.Require().NoError(err, "every downed member is lootable")
-	s.Equal([]session.EventKind{session.EventLooted}, s.kinds("alice"),
-		"and an empty body causes nothing")
+	s.Equal([]session.EventKind{session.EventLooted, session.EventTick}, s.kinds("alice"),
+		"and an empty body causes nothing — the tick is the round the verb spent, "+
+			"which an action costs whether or not it found anything")
 	s.False(out.Delivery.Failed)
 }
 
@@ -511,15 +513,24 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 	s.Require().NoError(err)
 
 	s.Equal([]session.EventKind{
-		session.EventLooted, session.EventHeld, session.EventExited, session.EventDropped,
+		session.EventLooted,
+		// THE WORLD CLOCK MOVED, because looting is an action and an action
+		// costs the world a round (rpg-project#465 §5). It is listed rather
+		// than filtered out: time passing is part of the fiction now, it goes
+		// to everybody, and a test about the order beats arrive in is exactly
+		// where that belongs on the record. Hold and Exit raise nothing
+		// further — the clock accrues by DRIVER as a high-water mark, not as a
+		// sum, so bob's second and third acts are still inside his first round.
+		session.EventTick,
+		session.EventHeld, session.EventExited, session.EventDropped,
 		// And the departure changed what alice can see, which is its own
 		// statement on her own stream — bob left the map, so she holds him
 		// as a ghost now.
 		session.EventSighted,
 	}, s.kinds("alice"), "every beat arrived named, and in the order the fiction happened")
 	s.Equal([]session.EventKind{
-		session.EventLooted, session.EventDoorRevealed, session.EventHeld,
-		session.EventExited, session.EventDropped,
+		session.EventLooted, session.EventDoorRevealed, session.EventTick,
+		session.EventHeld, session.EventExited, session.EventDropped,
 	}, s.kinds("bob"), "and the ACTOR's stream is the same list plus what his loot caused, "+
 		"which is the one beat nobody else may see")
 
@@ -527,6 +538,14 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 		for _, e := range s.stream.published {
 			s.NotEqual(session.EventUnknown, e.Kind,
 				"an armless beat would still be delivered, and would narrate nothing")
+			// BODY-LESS BY DESIGN, and named here rather than skipped by a
+			// nil check that would have let a genuinely armless beat through.
+			// A tick says one thing — a round of the world passed — and the
+			// reading is on the beat's own record; there is nothing for a body
+			// to add ([bodyFor]'s own default case says so).
+			if e.Kind == session.EventTick || e.Kind == session.EventSceneOpened {
+				continue
+			}
 			s.NotNil(e.Body, "and every kind this build names decodes its typed body")
 		}
 	})

@@ -694,6 +694,16 @@ func (s *HoldOutSessionSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp
 	s.Run("no beat reached a client as unknown", func() {
 		for _, e := range s.stream.published {
 			s.NotEqual(session.EventUnknown, e.Kind, "an armless beat narrates nothing")
+			// BODY-LESS BY DESIGN, and named rather than skipped by a nil
+			// check that would have let a genuinely armless beat through. A
+			// tick says one thing — a round of the world passed — and the
+			// reading is on the beat's own record; there is nothing for a body
+			// to add ([bodyFor]'s own default case says so). It reaches these
+			// streams at all because the world clock now moves when the party
+			// acts (rpg-project#465 §5).
+			if e.Kind == session.EventTick || e.Kind == session.EventSceneOpened {
+				continue
+			}
 			s.NotNil(e.Body, "and every kind this build names decodes its typed body: %s", e.Kind)
 		}
 	})

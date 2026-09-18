@@ -40,8 +40,20 @@ four supplied capabilities the host wires once — `Events`, `Dice`,
 them (S8, `NewManager`). The last of those is a PAIR, and exactly one of the
 two is set: `TurnDriver` for a stateless driver that serves every session, or
 `TurnDrivers` for a host-owned source asked once per verb for the session that
-verb is about (rpg-toolkit#1734). A stateful driver — `session.Minded` and
-every authored mind after it — wants the second.
+verb is about (rpg-toolkit#1734). Production wires `session.Driver()` — the
+creature's own authored table, rolled through this session's dice
+(rpg-project#465) — which holds nothing between turns and so belongs in the
+first. `TurnDrivers` remains for a host with a stateful driver of its own.
+
+**The one driver is RECOGNISED, not wrapped** ([`driver.go`](./driver.go)).
+Every other driver crosses the boundary by projection — the composition's
+`MonsterView` flattens onto this package's twin on the way in, its `TurnIntent`
+projects back on the way out. The table driver cannot: the twin carries no
+table, no temperament and no deeds, and a pick's arithmetic has nowhere to ride
+back on. So `Manager.resolveTurnDriver` builds `encounter.TableDriver` around
+this session's dice instead, and `session.Driver()` is a marker that refuses if
+anything ever drives it through the twin. If you are adding a driver, you are
+adding a HOST's driver and it goes through the seam like every other.
 
 **The compiled declaration and its selector.** [`afford.go`](./afford.go) prices
 the turn; [`offers.go`](./offers.go), [`casts.go`](./casts.go) and
@@ -62,7 +74,7 @@ each proved at compile time by a `var _` line: `standingSeam`
 ([`conceal.go`](./conceal.go):96, :205), `strikerSeam`
 ([`striker.go`](./striker.go):38), `moverSeam` ([`mover.go`](./mover.go):37),
 `announcerSeam` ([`announcer.go`](./announcer.go):31), `turnDriverSeam`
-([`turndriver.go`](./turndriver.go):246), `initiativeSeam`
+([`turndriver.go`](./turndriver.go):426), `initiativeSeam`
 ([`initiative.go`](./initiative.go)), `sightSeam` ([`sight.go`](./sight.go)),
 and `reactionAttacks` ([`mover.go`](./mover.go):486, the one `resolution`
 capability).

@@ -63,12 +63,12 @@ type compelledDriver struct {
 // It is the seam, not the host's own value: a monster's brain is consulted
 // through exactly the boundary it was consulted through before this wrapper
 // existed.
-func (d compelledDriver) next() encounter.TurnDriver {
+func (d compelledDriver) next() encounter.Driver {
 	return d.scope.driver
 }
 
 // compile-time proof the wrapper satisfies what it is handed to.
-var _ encounter.TurnDriver = compelledDriver{}
+var _ encounter.Driver = compelledDriver{}
 
 // compelledDriverFor wraps one write verb's own driver — the one already on
 // its scope ([writeScope.driver]), which is why this takes no driver argument.
@@ -82,10 +82,20 @@ func (m *Manager) compelledDriverFor(ctx context.Context, scope *writeScope) com
 // compulsion reaches the host's driver having been neither delayed nor
 // rewritten. What a lookup costs on every driven turn is one read of records
 // this verb is already holding.
-func (d compelledDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, error) {
+// A DELEGATED DECISION CROSSES WHOLE, PICK INCLUDED. The driver underneath may
+// be the creature's own table, and the roll that chose its turn is what the
+// story log narrates the turn with (rpg-project#465); unwrapping the intent and
+// rebuilding the decision here would drop the arithmetic on every uncompelled
+// monster in a fight that happened to contain one compelled member.
+//
+// A COMPELLED TURN ROLLS NOTHING, and its decision says so with a nil pick. The
+// creature did not choose this — the word did — so there is no table to show and
+// no candidate list to account for. The walk it takes carries the spell's own
+// cause instead ([encounter.Routed.Cause]).
+func (d compelledDriver) Act(view encounter.MonsterView) (encounter.Decision, error) {
 	commanded, held, err := d.compulsionOn(view.Self)
 	if err != nil {
-		return nil, err
+		return encounter.Decision{}, err
 	}
 	if !held {
 		return d.next().Act(view)
@@ -93,9 +103,14 @@ func (d compelledDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, 
 
 	out, err := d.obey(view.Self, commanded)
 	if err != nil {
-		return nil, err
+		return encounter.Decision{}, err
 	}
-	return compelledIntent(view.Self, out.Effects)
+	intent, err := compelledIntent(view.Self, out.Effects)
+	if err != nil {
+		return encounter.Decision{}, err
+	}
+
+	return encounter.Decision{Intent: intent}, nil
 }
 
 // compulsionOn reads the member's stored conditions and decodes the compulsion

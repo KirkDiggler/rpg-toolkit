@@ -22,7 +22,20 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-func TestBehaviorRoundTripsRememberedRoute(t *testing.T) {
+// The table driver REFUSES to be driven through this package's own view, and
+// the refusal is the point (rpg-project#465).
+//
+// This used to hand the reference driver a twin view with a remembered route
+// on it and assert the step it took. That driver is deleted, and the one that
+// replaced it cannot be asked this way: the twin carries no table, no
+// temperament and no deeds, so a table rolled against it would hold — forever,
+// silently, on a board where nothing errored. [session.Driver] is RECOGNISED
+// at the wiring seam and built one layer down instead, and this pins that
+// nothing can slip past that recognition and get a plausible answer here.
+//
+// What the driver actually decides now belongs to the module that owns the
+// table, and is tested there against the composition's own view.
+func TestTheTableDriverRefusesToBeDrivenThroughTheTwinView(t *testing.T) {
 	view := session.MonsterView{
 		Self: "goblin",
 		Remembered: []session.RememberedMember{{
@@ -32,9 +45,12 @@ func TestBehaviorRoundTripsRememberedRoute(t *testing.T) {
 		}},
 		Budget: session.TurnBudget{MovementFeet: 30},
 	}
-	intent, err := session.Behavior().Act(view)
-	require.NoError(t, err)
-	require.Equal(t, session.Move{Path: []spatial.Position{{X: 1, Y: 2}}}, intent)
+
+	intent, err := session.Driver().Act(view)
+
+	require.Nil(t, intent, "a refusal answers with no intent, not with a plausible one")
+	require.ErrorIs(t, err, session.ErrBadTurnOutcome)
+	require.Contains(t, err.Error(), "goblin", "the refusal names whose turn it was")
 }
 
 // task6ArrivalFixture starts a real session fight, then arranges a persisted
@@ -47,7 +63,7 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	stream := &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
 	})
@@ -107,7 +123,7 @@ func TestSessionMonsterArrivalSaveFailureRollsBackCorrection(t *testing.T) {
 	declarationID := currentEndTurnID(t, mgr, "sess", "fighter")
 	errSave := errors.New("encounter store unavailable")
 	failing, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: &failingEncounters{fakeEncounters: encounters, saveErr: errSave},
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
 	})
@@ -170,7 +186,7 @@ func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
 	// Use a fresh manager to make this a load-path assertion, not an in-memory
 	// object assertion.
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},
 	})
@@ -263,7 +279,7 @@ func (s *MonsterTurnTestSuite) storyBeats(mgr *session.Manager, member string) [
 // nothing about THIS gate is about the dice.
 func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	ctx := context.Background()
-	mgr := s.tombManager(session.Behavior(), testDice{})
+	mgr := s.tombManager(session.Driver(), testDice{})
 
 	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
 		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
@@ -294,13 +310,42 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	s.Require().NotEmpty(beats)
 	s.Equal("turn-ended", beats[0], "fighter's own end-turn beat comes first")
 
-	// Exactly one struck-or-missed beat and the skeleton's own turn ending
+	// Exactly one struck-or-missed beat, and the skeleton's own turn ending
 	// last. Four cells is inside shortbow range, so no move beat is authored.
-	middle := beats[1 : len(beats)-1]
-	s.Require().Len(middle, 1, "the shortbow attack needs no approach")
-	swing := middle[0]
-	s.Contains([]string{"struck", "missed"}, swing)
-	s.Equal("turn-ended", beats[len(beats)-1], "the skeleton's own turn closes the round")
+	//
+	// THE SWING NOW HAS A ROLL IN FRONT OF IT. The skeleton is driven by its
+	// own table (rpg-project#465), so each intent it takes is preceded by the
+	// `answered` beat recording the pick that chose it — the cause before the
+	// effect, which is the law every verb in the composition keeps. What this
+	// gate is about is the swing, so the picks are counted rather than
+	// enumerated: pinning their exact number would pin how many intents a turn
+	// gets, which is the clock's business and not this test's. The count has
+	// already moved once — an affordability rule now stops a creature rolling
+	// for an intent it could not pay for, so the spent skeleton no longer rolls
+	// a second time to be told to hold — and a length here would have had to be
+	// bumped rather than reread.
+	//
+	// AND THE ROUND WRAPPING COSTS THE WORLD A ROUND, which is the last beat:
+	// a fight round wrapping raises the world clock for every member in the
+	// bubble (§5), the primitive that lets a creature outside the fight close
+	// on it one round at a time while it runs.
+	s.Require().GreaterOrEqual(len(beats), 4,
+		"her end, at least one pick and what it did, the skeleton's end, the wrap")
+	s.Equal("tick", beats[len(beats)-1], "the wrap raised the world clock")
+	s.Equal("turn-ended", beats[len(beats)-2], "the skeleton's own turn closes the round")
+
+	middle := beats[1 : len(beats)-2]
+	swings := 0
+	for _, beat := range middle {
+		switch beat {
+		case "struck", "missed":
+			swings++
+		default:
+			s.Equal("answered", beat,
+				"the only other thing a driven turn writes is the roll that chose each intent")
+		}
+	}
+	s.Equal(1, swings, "the shortbow attack needs no approach")
 
 	s.Equal("fighter", out.Next, "a two-member fight wraps straight back to whoever led it")
 	s.True(out.RoundWrapped)
@@ -331,11 +376,9 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	s.NotEmpty(swingBody.Attack.Ref, "Attack{ref, name}: the ref side")
 	s.NotEmpty(swingBody.Attack.Name, "Attack{ref, name}: the name side (resolution#1196)")
 
-	if swing == "struck" {
-		char, err := s.encounters.GetEncounter(ctx, "world") // sanity: world persisted at all
-		s.Require().NoError(err)
-		s.NotNil(char)
-	}
+	char, err := s.encounters.GetEncounter(ctx, "world") // sanity: world persisted at all
+	s.Require().NoError(err)
+	s.NotNil(char)
 }
 
 // (a2) A KindWorld member on the roster alongside the skeleton must not
@@ -345,7 +388,7 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 // fail the whole EndTurn call with ErrNoCharacter (rpg-toolkit#1493).
 func (s *MonsterTurnTestSuite) TestPlacedWorldNPCDoesNotBreakTheMonstersTurn() {
 	ctx := context.Background()
-	mgr := s.tombManager(session.Behavior(), testDice{})
+	mgr := s.tombManager(session.Driver(), testDice{})
 
 	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
 		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
@@ -385,7 +428,7 @@ func (s *MonsterTurnTestSuite) TestPlacedWorldNPCDoesNotBreakTheMonstersTurn() {
 // is no monster's turn here to drive, which is the point.
 func (s *MonsterTurnTestSuite) TestBlindSkeletonBehindAWallNeverJoinsTheFight() {
 	ctx := context.Background()
-	mgr := s.tombManager(session.Behavior(), testDice{})
+	mgr := s.tombManager(session.Driver(), testDice{})
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
@@ -454,10 +497,11 @@ func (s *MonsterTurnTestSuite) TestBadIntentEndsOnlyTheMonstersTurn() {
 	s.True(out.RoundWrapped)
 
 	beats := s.storyBeats(mgr, "fighter")[before:]
-	// Two turn-ended beats and nothing else: no moved (this driver never
-	// moves), no struck or missed (the attack it declared was never in
-	// reach to execute).
-	s.Equal([]string{"turn-ended", "turn-ended"}, beats)
+	// Two turn-ended beats and the round the wrap cost the world, and nothing
+	// else: no moved (this driver never moves), no struck or missed (the
+	// attack it declared was never in reach to execute), and no `answered`
+	// (this driver rolls no table, so it writes no pick).
+	s.Equal([]string{"turn-ended", "turn-ended", "tick"}, beats)
 }
 
 // (d) Sight is read from data: a monster with no stated senses shares the
@@ -536,7 +580,13 @@ func (s *MonsterTurnTestSuite) TestPassDriverStillPasses() {
 	s.Equal("fighter", out.Next)
 	s.True(out.RoundWrapped)
 
-	s.Equal([]string{"turn-ended", "turn-ended"}, s.storyBeats(mgr, "fighter")[before:])
+	// The two turns ending, and the round the wrap cost the world: a fight
+	// round wrapping raises the world clock for every member in the bubble
+	// (rpg-project#465 §5), which is the primitive that lets creatures OUTSIDE
+	// a fight close on it one round at a time while it runs. No `answered`
+	// beat, because this manager's driver is session.Pass{} and a driver that
+	// rolls nothing writes no pick.
+	s.Equal([]string{"turn-ended", "turn-ended", "tick"}, s.storyBeats(mgr, "fighter")[before:])
 }
 
 // (f) A round-2+ driven strike reaches the LIVE SUBSCRIBER, not merely the
@@ -590,7 +640,7 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	fighter.HitPoints, fighter.MaxHitPoints = 100, 100
 
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter),
 		Events:     stream,
@@ -714,7 +764,7 @@ func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 	ctx := context.Background()
 	stream := &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")),
 		Events:     stream,
@@ -787,6 +837,52 @@ func (reachlessAttacker) Act(view session.MonsterView) (session.TurnIntent, erro
 			return session.Attack{Target: seen.ID, Action: view.Actions[0].Ref}, nil
 		}
 	}
+	return session.Pass{}, nil
+}
+
+// pursuingDriver is the fixture the two double-door concealment tests drive
+// with: shoot a player you can SEE, else step one cell along the route toward a
+// player you only REMEMBER, else pass.
+//
+// WRITTEN HERE RATHER THAN TAKEN OFF THE SHELF, and that is the point of it.
+// These tests are about what the SEAM hands a driver — that a concealed
+// member's true cell never reaches one, and that a current sighting takes the
+// decision away from a stale memory. They are not about which policy the
+// shipped driver happens to hold, and they used to lean on the reference
+// driver's own rungs to make their point. That driver is deleted
+// (rpg-project#465), and the one that replaced it is rolled on the
+// composition's own view rather than this twin, so it cannot be wrapped and
+// watched here at all.
+//
+// So the rules it needs are stated in the test that needs them, in fourteen
+// lines, and the invariants survive their author.
+type pursuingDriver struct{}
+
+func (pursuingDriver) Act(view session.MonsterView) (session.TurnIntent, error) {
+	// SIGHT BEFORE MEMORY: a creature that can see where somebody IS does not
+	// walk to where they WERE. In reach already — the goblin carries a bow —
+	// so this is a shot and not a step.
+	for _, seen := range view.Seen {
+		if seen.Kind != session.KindPlayer {
+			continue
+		}
+		for _, action := range view.Actions {
+			if seen.InReach[action.Ref] {
+				return session.Attack{Target: seen.ID, Action: action.Ref}, nil
+			}
+		}
+	}
+
+	// ONE CELL AT A TIME toward the remembered cell, so the view is rebuilt
+	// between steps and a first glimpse can interrupt the chase. An empty path
+	// is a memory pointing at the cell this creature already stands on: it
+	// passes rather than looping a zero-distance chase against itself.
+	for _, memory := range view.Remembered {
+		if memory.Kind == session.KindPlayer && len(memory.Path) > 0 {
+			return session.Move{Path: memory.Path[:1]}, nil
+		}
+	}
+
 	return session.Pass{}, nil
 }
 
@@ -1044,7 +1140,7 @@ func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSes
 	if withDavid {
 		characters = append(characters, armedFighter("david"))
 	}
-	recorder := &recordingBehavior{next: session.Behavior()}
+	recorder := &recordingBehavior{next: pursuingDriver{}}
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: recorder, Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(characters...), Events: session.DiscardEvents{},

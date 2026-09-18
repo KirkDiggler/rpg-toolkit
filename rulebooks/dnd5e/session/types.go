@@ -1009,11 +1009,45 @@ const (
 	// knows" out of a creature's answer; the line in the story log is the
 	// whole of it this slice.
 	//
-	// AND IT CARRIES THE DIE, with the weights it was rolled against and the
-	// index of the entry that fired, so the table can be replayed from the
-	// log rather than taken on trust. A verdict the author wrote no table for
+	// AND IT CARRIES THE DIE, with every eligible entry's arithmetic and the
+	// index of the entry that fired, so the table can be replayed from the log
+	// rather than taken on trust. A verdict the author wrote no table for
 	// produces NO beat of this kind at all — absent means absent.
+	//
+	// IT IS ALSO WHAT A CREATURE DOES WITH ITS TIME (rpg-project#465). The
+	// social four and `time` are keys of ONE table, rolled by one evaluator,
+	// so they share one beat rather than growing a second that would come to
+	// describe the same arithmetic differently. [AnsweredBody.Key] says which
+	// trigger fired; Verb and Beaten are filled for a social key and empty for
+	// `time`, because nothing spoke.
 	EventAnswered EventKind = "answered"
+
+	// EventStayed is A ROUTED WALK THAT MOVED NOBODY: a creature sent
+	// somewhere it could not get to, or already standing where it was sent
+	// (rpg-project#465).
+	//
+	// A FACT ABOUT THE WORLD, NOT A MALFUNCTION. A creature with a wall at its
+	// back has obeyed its orders and its turn is over; what this beat adds is
+	// that the story can now tell that apart from a creature nobody asked.
+	//
+	// IT EXISTS BECAUSE A WALK COST ONE. The bandits spent a round of the world
+	// on every tick and the log could not say whether they had been asked, had
+	// refused, or had been sent somewhere unreachable — a spent round that
+	// moved nobody has to be visible.
+	EventStayed EventKind = "stayed"
+
+	// EventTempered is WHICH TEMPERAMENT A FACTION'S MIX DEALT one creature,
+	// at the moment it entered the run (rpg-project#465, design §3).
+	//
+	// FOUR GOBLINS, ONE TABLE, FOUR BEHAVIOURS — and this is the beat that
+	// lets the streamer see it happen. A mix is dealt once, at the door,
+	// through the world's own dice with the FACTION as the die's entity, and
+	// the result is the creature's for the rest of the run.
+	//
+	// ONLY A MIX WRITES ONE. A placement whose author named the word outright
+	// was never dealt anything, so there is no roll to show and no beat: the
+	// author already answered the question the mix exists to ask.
+	EventTempered EventKind = "tempered"
 
 	// EventDoorRevealed is a concealed door entering THIS RECIPIENT's
 	// knowledge — their own search, a crossing, or perceiving it open. The
@@ -2185,8 +2219,9 @@ type AnsweredBody struct {
 	// wrote them. Zero is an answer.
 	Entry int `json:"entry"`
 
-	// Word is the outcome word the entry carried — "fact", "flee", or empty
-	// for an entry that only speaks. Empty is an answer, not a gap.
+	// Word is the outcome word the entry carried — "fact", "flee", "hold",
+	// "attack", "toward", "away", or empty for an entry that only speaks.
+	// Empty is an answer, not a gap.
 	Word string `json:"word"`
 
 	// Say is the author's line, VERBATIM. Empty when they wrote none; the
@@ -2196,9 +2231,119 @@ type AnsweredBody struct {
 	// Fact is the world fact the witnesses learned, empty unless Word is
 	// "fact".
 	Fact string `json:"fact"`
+
+	// Key is the trigger this table was rolled under — one of the four social
+	// outcomes ("intimidated", "intimidate_failed", "persuaded",
+	// "persuade_failed") or "time", the creature's own turn.
+	//
+	// IT IS WHAT TELLS THE TWO KINDS APART, and it is the field to switch on
+	// rather than Verb: a `time` pick has no verb because nothing spoke, and
+	// reading an empty Verb as "some other kind of social answer" is the third
+	// state this body's every-field-written rule exists to prevent.
+	//
+	// EMPTY ON A BEAT WRITTEN BEFORE THIS FIELD EXISTED. A stored run from the
+	// build before rpg-project#465 decodes with everything else intact and
+	// this key absent, which is the honest account of it: that build rolled
+	// social tables only.
+	Key string `json:"key"`
+
+	// Candidates is every entry that was ELIGIBLE for this roll, in the order
+	// the author wrote them, each with the arithmetic that put it on the die.
+	//
+	// ELIGIBLE, NOT AUTHORED. An entry whose `when` did not hold is absent
+	// from this list rather than present at weight zero, so what a reader adds
+	// up here is exactly what the creature could have done — the honest
+	// account of the roll rather than a menu with some items crossed out.
+	//
+	// EMPTY IS THE HOLD SHAPE. A `time` key with nothing eligible produces no
+	// candidates, a Roll and Of of zero, and an Entry of -1: the creature was
+	// asked and stood there, which the log says rather than saying nothing.
+	Candidates []AnswerCandidate `json:"candidates"`
+
+	// Temper is the word this creature's temperament goes by — "soldier",
+	// "coward", "aggressive" — or empty for a creature nobody gave one, which
+	// is a soldier. Carried so a reader can see WHY the shares are what they
+	// are without holding the `tempered` beat from the start of the run.
+	Temper string `json:"temper"`
 }
 
 func (AnsweredBody) isEventBody() {}
+
+// AnswerCandidate is one eligible entry as the die saw it: the author's own
+// weight, the temperament's multiplier, and their product.
+//
+// EVERY NUMBER THE ROLL WAS MADE OF (design §6, R7). Add Loaded across the
+// candidates and you get [AnsweredBody.Of]; the face lands in exactly one of
+// them. A table nobody can replay is a table nobody can trust.
+type AnswerCandidate struct {
+	// Entry is this candidate's index in the key's authored entry list, so a
+	// reader can point at the line in the file.
+	Entry int `json:"entry"`
+
+	// Weight is the author's own number, before any loading.
+	Weight int `json:"weight"`
+
+	// Percent is the temperament's multiplier for this entry's word, IN
+	// PERCENT: 100 leaves the weight as written, 300 trebles it, 25 quarters
+	// it. A soldier, a fact and a bare line are all 100.
+	Percent int `json:"percent"`
+
+	// Loaded is Weight × Percent — this candidate's share of the die.
+	Loaded int `json:"loaded"`
+}
+
+// StayedBody is EventStayed's typed body: who was sent somewhere, on whose
+// orders, and how far the route could explain why nobody moved.
+//
+// EVERY FIELD IS WRITTEN, [AnsweredBody]'s rule for [AnsweredBody]'s reason —
+// with Why the one that is legitimately empty, and says so.
+type StayedBody struct {
+	// Member is the creature that stayed put.
+	Member string `json:"member"`
+
+	// Cause is what routed it, as a "module:type:id" string — the spell that
+	// compelled it, or the creature's own table. The same cause the walk's own
+	// beats would have carried had it walked, which is what lets a reader put
+	// the two side by side.
+	Cause string `json:"cause"`
+
+	// Why is the route's own refusal phrase — "is blocked by
+	// dnd5e:props:pillar" — or EMPTY when the route simply had nowhere
+	// strictly better to offer.
+	//
+	// EMPTY IS AN ANSWER, not a missing reason: "there was nowhere nearer" is
+	// what a creature already standing where it was sent gets, and it is the
+	// ordinary case rather than a gap. A client that renders this should read
+	// an empty Why as "it had nowhere to go", never as "the engine did not
+	// say".
+	Why string `json:"why"`
+}
+
+func (StayedBody) isEventBody() {}
+
+// TemperedBody is EventTempered's typed body: which temperament a faction's
+// mix dealt one creature, and the roll that dealt it.
+//
+// EVERY FIELD IS WRITTEN, [AnsweredBody]'s rule for [AnsweredBody]'s reason.
+type TemperedBody struct {
+	// Member is the creature that was dealt one.
+	Member string `json:"member"`
+
+	// Temper is the word it came out as — "soldier", "coward", "aggressive".
+	Temper string `json:"temper"`
+
+	// Roll and Of are the face and the die's size: the sum of the mix's
+	// authored shares. `{ coward: 1, soldier: 2, aggressive: 1 }` is a d4.
+	Roll int `json:"roll"`
+	Of   int `json:"of"`
+
+	// Faction is whose mix was dealt from, and whose die it was: a
+	// temperament is dealt with the FACTION as the die's entity, because the
+	// spread belongs to the band rather than to any one of its members.
+	Faction string `json:"faction"`
+}
+
+func (TemperedBody) isEventBody() {}
 
 // DoorRevealedBody is EventDoorRevealed's typed body: a concealed door as
 // the recipient's own atlas and door list now carry it — the patch for both
