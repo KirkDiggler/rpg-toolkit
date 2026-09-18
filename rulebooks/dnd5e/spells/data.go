@@ -308,6 +308,12 @@ var SpellData = map[Spell]*Data{
 		Name:        "Shield of Faith",
 		Description: "Shimmering field grants +2 AC for 10 minutes",
 	},
+	Sanctuary: {
+		ID:          Sanctuary,
+		Level:       1,
+		Name:        "Sanctuary",
+		Description: "Ward a willing creature; attackers must save or choose a new target",
+	},
 
 	// Level 2 Spells
 	ScorchingRay: {

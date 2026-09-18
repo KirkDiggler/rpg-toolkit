@@ -255,6 +255,8 @@ func kindFor(beat string) EventKind {
 		return EventStruck
 	case "missed":
 		return EventMissed
+	case "warded":
+		return EventWarded
 	case "death_save":
 		return EventDeathSave
 	case "activated":
@@ -267,6 +269,8 @@ func kindFor(beat string) EventKind {
 		return EventCast
 	case "cast_missed":
 		return EventCastMissed
+	case "cast_warded":
+		return EventCastWarded
 	case "saved":
 		return EventSaved
 	// The break beat, and it crosses unchanged for the same reason the two
@@ -634,6 +638,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return structBody(payload, true)
 	case EventMissed:
 		return structBody(payload, false)
+	case EventWarded:
+		return wardedEventBody(payload)
 	case EventDeathSave:
 		return deathSaveEventBody(payload)
 	case EventActivated:
@@ -664,6 +670,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return p
+	case EventCastWarded:
+		return castWardedEventBody(payload)
 	case EventSaved:
 		return savedEventBody(payload)
 	case EventConcentrationEnded:
@@ -2037,6 +2045,143 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		Attacker: p.Actor, Target: p.Targets[0],
 		Roll: p.Roll, Total: p.Total, Against: p.Against, Attack: p.Attack.toRef(),
 		Reaction: reaction, PresentationID: p.PresentationID, Calculation: calculation,
+	}
+}
+
+// wardedEventBody reads the composition's warded beat — an attack a
+// Sanctuary-style ward stopped before any roll against the target.
+//
+// STRICT ABOUT THE NESTED OBJECTS TOO, the same discipline [savedEventBody]
+// applies to its own keys: "warded" and its own "save" sub-object are each
+// checked for presence and non-null before any value inside either is read.
+func wardedEventBody(payload []byte) EventBody {
+	outer, ok := strictJSONObject(payload)
+	if !ok {
+		return nil
+	}
+	for _, key := range []string{"actor", "targets", "attack", "warded"} {
+		if value, present := outer[key]; !present || isJSONNull(value) {
+			return nil
+		}
+	}
+	warded, ok := strictJSONObject(outer["warded"])
+	if !ok {
+		return nil
+	}
+	for _, key := range []string{"source", "save"} {
+		if value, present := warded[key]; !present || isJSONNull(value) {
+			return nil
+		}
+	}
+	save, ok := strictJSONObject(warded["save"])
+	if !ok {
+		return nil
+	}
+	for _, key := range []string{"saver", "ability", "roll", "total", "dc", "succeeded"} {
+		if value, present := save[key]; !present || isJSONNull(value) {
+			return nil
+		}
+	}
+
+	var p struct {
+		Actor   string     `json:"actor"`
+		Targets []string   `json:"targets"`
+		Attack  beatAttack `json:"attack"`
+		Warded  struct {
+			Source string `json:"source"`
+			Save   struct {
+				Saver     string `json:"saver"`
+				Ability   string `json:"ability"`
+				Roll      int    `json:"roll"`
+				Total     int    `json:"total"`
+				DC        int    `json:"dc"`
+				Succeeded bool   `json:"succeeded"`
+			} `json:"save"`
+		} `json:"warded"`
+	}
+	if json.Unmarshal(payload, &p) != nil ||
+		p.Actor == "" || len(p.Targets) != 1 || p.Attack.Ref == "" ||
+		p.Warded.Source == "" || p.Warded.Save.Saver != p.Actor ||
+		p.Warded.Save.Ability == "" || p.Warded.Save.Roll < 1 || p.Warded.Save.Roll > 20 ||
+		p.Warded.Save.Succeeded {
+		// The Saver-must-equal-Actor and Succeeded-must-be-false checks
+		// mirror encounter's own Record validation (rpg-toolkit#1813's
+		// prepareWardedBeat/Record) — a payload violating either was never
+		// written by this composition and is refused rather than narrated.
+		return nil
+	}
+
+	var calculation *RollCalculation
+	if raw, present := save["calculation"]; present {
+		if isJSONNull(raw) {
+			return nil
+		}
+		var valid bool
+		calculation, valid = decodeRollCalculation(raw)
+		if !valid || !calculationMatchesD20(calculation, p.Warded.Save.Roll, p.Warded.Save.Total) {
+			return nil
+		}
+	}
+
+	return WardedBody{
+		Attacker: p.Actor, Target: p.Targets[0], Attack: p.Attack.toRef(),
+		Source: p.Warded.Source, Ability: p.Warded.Save.Ability,
+		Roll: p.Warded.Save.Roll, Total: p.Warded.Save.Total, DC: p.Warded.Save.DC,
+		Calculation: calculation,
+	}
+}
+
+// castWardedEventBody reads the composition's cast_warded beat — [WardedBody]'s
+// Cast sibling, FLAT rather than nested because [encounter]'s own
+// castWardedPayload is: the cast door's beats were never structured around a
+// generic outcome map the way Strike's are.
+func castWardedEventBody(payload []byte) EventBody {
+	outer, ok := strictJSONObject(payload)
+	if !ok {
+		return nil
+	}
+	for _, key := range []string{"actor", "target", "source", "spell", "ability", "roll", "total", "dc"} {
+		if value, present := outer[key]; !present || isJSONNull(value) {
+			return nil
+		}
+	}
+
+	var p struct {
+		Actor  string `json:"actor"`
+		Target string `json:"target"`
+		Source string `json:"source"`
+		Spell  struct {
+			Ref  string `json:"ref"`
+			Name string `json:"name"`
+		} `json:"spell"`
+		Ability string `json:"ability"`
+		Roll    int    `json:"roll"`
+		Total   int    `json:"total"`
+		DC      int    `json:"dc"`
+	}
+	if json.Unmarshal(payload, &p) != nil ||
+		p.Actor == "" || p.Target == "" || p.Source == "" ||
+		p.Spell.Ref == "" || p.Spell.Name == "" ||
+		p.Ability == "" || p.Roll < 1 || p.Roll > 20 {
+		return nil
+	}
+
+	var calculation *RollCalculation
+	if raw, present := outer["calculation"]; present {
+		if isJSONNull(raw) {
+			return nil
+		}
+		var valid bool
+		calculation, valid = decodeRollCalculation(raw)
+		if !valid || !calculationMatchesD20(calculation, p.Roll, p.Total) {
+			return nil
+		}
+	}
+
+	return CastWardedBody{
+		Actor: p.Actor, Target: p.Target, Spell: SpellRef{Ref: p.Spell.Ref, Name: p.Spell.Name},
+		Source: p.Source, Ability: p.Ability, Roll: p.Roll, Total: p.Total, DC: p.DC,
+		Calculation: calculation,
 	}
 }
 

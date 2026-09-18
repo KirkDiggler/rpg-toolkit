@@ -810,6 +810,12 @@ const (
 	// EventMissed reports that an attack did not land. See EventStruck.
 	EventMissed EventKind = "missed"
 
+	// EventWarded reports an attack a Sanctuary-style ward stopped before
+	// any roll against the target — the attacker's own failed save against
+	// the warding caster's DC. Not a Missed: there was no attack roll, no
+	// AC comparison, nothing the miss's own fields could honestly carry.
+	EventWarded EventKind = "warded"
+
 	// EventActivated reports the authored ability a member successfully used.
 	// It precedes every EventActivationResult produced by that activation.
 	EventActivated EventKind = "activated"
@@ -830,6 +836,12 @@ const (
 
 	// EventCastMissed reports a supplied miss against one named cast target.
 	EventCastMissed EventKind = "cast_missed"
+
+	// EventCastWarded reports a cast a Sanctuary-style ward stopped before
+	// it reached one named recipient — the caster's own failed save against
+	// the warding caster's DC. A different target in the same multi-target
+	// cast (Bane) is unaffected and gets its own ordinary beat.
+	EventCastWarded EventKind = "cast_warded"
 
 	// EventSaved reports one saving throw a cast's gate produced: who rolled,
 	// what they rolled with, the d20 and what it reached, the DC and whether
@@ -1533,6 +1545,34 @@ type MissedBody struct {
 
 func (MissedBody) isEventBody() {}
 
+// WardedBody is EventWarded's typed body — an attack a Sanctuary-style ward
+// stopped before any roll against the target: the ATTACKER's own failed
+// save against the warding caster's DC.
+//
+// NO SEPARATE SAVER FIELD, the same reasoning [ConcentrationCheck.Save]'s
+// own doc gives for its saver: the saver of a ward's own save IS the
+// attacker — nobody else rolls to break through somebody else's ward — so a
+// second field naming them would be one that could disagree with Attacker.
+type WardedBody struct {
+	Attacker string    `json:"attacker"`
+	Target   string    `json:"target"`
+	Attack   AttackRef `json:"attack"`
+
+	// Source is the caster whose ward blocked this attempt.
+	Source string `json:"source"`
+
+	// Ability, Roll, Total and DC are the attacker's own failed save.
+	Ability string `json:"ability"`
+	Roll    int    `json:"roll"`
+	Total   int    `json:"total"`
+	DC      int    `json:"dc"`
+
+	// Calculation is the authoritative sourced arithmetic for that save.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+}
+
+func (WardedBody) isEventBody() {}
+
 // ActivatedBody is EventActivated's typed body. Ability is copied from the
 // selected server-authored declaration; Session does not derive its name from
 // its ref. Target is empty for abilities that select nobody.
@@ -1552,6 +1592,29 @@ type CastMissedBody struct {
 }
 
 func (CastMissedBody) isEventBody() {}
+
+// CastWardedBody is EventCastWarded's typed body — a cast a Sanctuary-style
+// ward stopped before it reached one named recipient: the CASTER's own
+// failed save against the warding caster's DC, [WardedBody]'s Cast sibling.
+type CastWardedBody struct {
+	Actor  string   `json:"actor"`
+	Target string   `json:"target"`
+	Spell  SpellRef `json:"spell"`
+
+	// Source is the caster whose ward blocked this attempt.
+	Source string `json:"source"`
+
+	// Ability, Roll, Total and DC are the CASTER's own failed save.
+	Ability string `json:"ability"`
+	Roll    int    `json:"roll"`
+	Total   int    `json:"total"`
+	DC      int    `json:"dc"`
+
+	// Calculation is the authoritative sourced arithmetic for that save.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+}
+
+func (CastWardedBody) isEventBody() {}
 
 // CastBody is EventCast's typed body. Spell is copied from the selected
 // server-authored declaration; Session does not derive its name from its ref.
