@@ -194,15 +194,32 @@ type MonsterPlacement struct {
 	// stat block's own passive Insight.
 	Persuade []encounter.CheckApproach `json:"Persuade,omitempty"`
 
-	// Answers is what this monster does about a social verb's verdict,
-	// keyed by outcome ([PlaceSpec.On]) — for a host to hand to
-	// [encounter.MemberInput.Answers] when it spawns the sheet. Nil when
-	// the author authored no table.
+	// Table is this monster's authored policy — what it does, keyed by what
+	// happened ([PlaceSpec.On] laid over [FactionSpec.On]) — for a host to
+	// lay the rulebook's default for the monster's kind UNDER and hand to
+	// [encounter.MemberInput.Table] when it spawns the sheet. Nil when
+	// neither the placement nor its faction authored anything.
+	//
+	// TWO OF THE THREE LAYERS (design §1). The dungeon knows the author's
+	// orders and not the rulebook's defaults — resolving a ref is a
+	// rulebook's job and this package may not import one (C1) — so the host
+	// completes the stack with one more [encounter.Layer] call.
 	//
 	// COMPILED, NOT CARRIED: an omitted weight is resolved to 1 here
-	// ([answersOf]), so what the host hands over is a table every entry of
+	// ([tableOf]), so what the host hands over is a table every entry of
 	// which states its own share.
-	Answers map[string][]encounter.Answer `json:"Answers,omitempty"`
+	Table encounter.Table `json:"Table,omitempty"`
+
+	// Temper is this monster's temperament: the word the author wrote on the
+	// placement, else the faction's word, else the faction's MIX for the
+	// composition to deal one from ([TemperSpec], design §3) — for a host to
+	// fill the profiles on and hand to [encounter.MemberInput.Temper].
+	//
+	// THE PROFILES ARE NOT HERE. What a word MEANS is rulebook content, and
+	// this package cannot import a rulebook; the host looks the numbers up
+	// and fills [encounter.Temper.Profile] (or Profiles, for a mix) on the
+	// way in.
+	Temper encounter.Temper `json:"Temper,omitzero"`
 
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
@@ -769,33 +786,154 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 // number — so the default is resolved once, here, and nothing downstream has
 // to know what "omitted" meant. That is the same move every other compiled
 // default in this file makes.
-func answersOf(on map[string][]AnswerSpec) map[string][]encounter.Answer {
+func tableOf(on map[string][]AnswerSpec) encounter.Table {
 	if on == nil {
 		return nil
 	}
-	out := make(map[string][]encounter.Answer, len(on))
+	out := make(encounter.Table, len(on))
 	for key, entries := range on {
 		rows := make([]encounter.Answer, 0, len(entries))
 		for _, entry := range entries {
-			weight := 1
-			if entry.Weight != nil {
-				weight = *entry.Weight
-			}
-			fact := ""
-			if entry.Fact != nil {
-				fact = *entry.Fact
-			}
-			rows = append(rows, encounter.Answer{
-				Weight: weight,
-				Say:    entry.Say,
-				Fact:   encounter.FactID(fact),
-				Flee:   entry.Flee != nil,
-			})
+			rows = append(rows, answerOf(entry))
 		}
-		out[key] = rows
+		out[encounter.AnswerKey(key)] = rows
 	}
 
 	return out
+}
+
+// answerOf compiles one authored entry: the weight resolved, the condition
+// and the selectors turned into the composition's own shapes.
+func answerOf(entry AnswerSpec) encounter.Answer {
+	weight := 1
+	if entry.Weight != nil {
+		weight = *entry.Weight
+	}
+	fact := ""
+	if entry.Fact != nil {
+		fact = *entry.Fact
+	}
+
+	return encounter.Answer{
+		Weight: weight,
+		Say:    entry.Say,
+		When:   whenOf(entry.When),
+		Fact:   encounter.FactID(fact),
+		Flee:   entry.Flee != nil,
+		Hold:   entry.Hold != nil,
+		Attack: selectorOf(entry.Attack),
+		Toward: selectorOf(entry.Toward),
+		Away:   selectorOf(entry.Away),
+	}
+}
+
+// whenOf compiles a condition, nil staying nil: an entry with no `when` is a
+// standing order and always on the table.
+func whenOf(when *WhenSpec) *encounter.When {
+	if when == nil {
+		return nil
+	}
+
+	return &encounter.When{
+		Enemy: encounter.EnemyWord(when.Enemy), Deed: when.Deed, Within: when.Within,
+	}
+}
+
+// selectorOf compiles a selector, nil staying nil. THE CELL IS CONVERTED HERE,
+// once, through the same authored-offset conversion every other cell in this
+// file goes through: what reaches the composition is a dungeon-absolute
+// position, never an authored pair, so nothing downstream has to know which
+// orientation the file declared.
+func selectorOf(sel *SelectorSpec) *encounter.Selector {
+	if sel == nil {
+		return nil
+	}
+	out := &encounter.Selector{Word: encounter.SelectorWord(sel.Word)}
+	if sel.At != nil {
+		at := authored(*sel.At)
+		out.At = &at
+	}
+
+	return out
+}
+
+// temperOf is a placement's temperament: the word it named, else its
+// faction's word, else its faction's mix.
+//
+// THE PLACEMENT'S WORD WINS AND THE MIX IS NOT DEALT FOR IT (design §3). An
+// author who named this creature's temperament has already answered the
+// question the mix exists to ask, and dealing anyway would overwrite them.
+func temperOf(pl PlaceSpec, faction TemperSpec) encounter.Temper {
+	if pl.Temper != "" {
+		return encounter.Temper{Word: pl.Temper}
+	}
+	if faction.Word != "" {
+		return encounter.Temper{Word: faction.Word}
+	}
+	if len(faction.Mix) == 0 {
+		return encounter.Temper{}
+	}
+	mix := make(map[string]int, len(faction.Mix))
+	for word, share := range faction.Mix {
+		mix[word] = share
+	}
+
+	return encounter.Temper{Mix: mix}
+}
+
+// placedFaction is the faction a placement is in, as authored — empty means
+// the reserved `monsters`, which a faction block may declare and give orders
+// to like any other.
+func placedFaction(pl PlaceSpec) string {
+	if pl.Faction == "" {
+		return encounter.FactionMonsters
+	}
+
+	return pl.Faction
+}
+
+// CompileTable compiles a bare `on:` block — the text a rulebook ships its
+// default table for a monster kind as — through the SAME decoder and the SAME
+// validator an authored dungeon's block goes through (design §1, layer 1).
+//
+// ONE VALIDATOR, TWO CALLERS, which is the whole reason this is exported. The
+// rulebook's defaults are content, written in the same dialect an author
+// writes; compiling them by hand in Go would be a second grammar that could
+// drift from this one, and the first thing to drift would be a refusal the
+// author sees and the rulebook does not.
+//
+// The source is the CONTENTS of an `on:` mapping, not a whole dungeon:
+//
+//	time:
+//	  - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
+//	  - { when: { enemy: seen },             attack: enemy }
+//	  - { hold: {} }
+//
+// A cell selector is refused here rather than checked against a floor: a
+// rulebook's default table belongs to a KIND and not to a map, so there is no
+// floor to check it against and `toward: { at: … }` is an authored dungeon's
+// word.
+func CompileTable(source string) (encounter.Table, error) {
+	var on map[string][]AnswerSpec
+	if err := yaml.Unmarshal([]byte(source), &on); err != nil {
+		return nil, fmt.Errorf("compile table: %w: %w", ErrBadSpec, err)
+	}
+
+	v := &validation{owner: map[spatial.Position]int{}}
+	v.placeOn("table", on)
+	for _, entries := range on {
+		for _, entry := range entries {
+			if _, sel := entrySelectorOf(entry); sel != nil && sel.At != nil {
+				v.fail("table", "a default table belongs to a kind and not to a map, so it cannot name a cell (line %d)",
+					sel.Line)
+			}
+		}
+	}
+	if len(v.errs) > 0 {
+		return nil, fmt.Errorf("compile table: %w: %s", ErrBadSpec, v.errs[0])
+	}
+
+	return tableOf(on), nil
 }
 
 // approachesOf carries an authored check's approaches to the composition's
@@ -817,6 +955,12 @@ func approachesOf(check CheckSpec) []encounter.CheckApproach {
 // region whose floor it stands on.
 func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 	owner := ownerOf(spec, o)
+	factionOn := map[string]map[string][]AnswerSpec{}
+	factionTemper := map[string]TemperSpec{}
+	for _, fa := range spec.Factions {
+		factionOn[fa.ID] = fa.On
+		factionTemper[fa.ID] = fa.Temper
+	}
 	var out []MonsterPlacement
 	for _, p := range spec.Place {
 		if kind, _ := refKind(p.Ref); kind != typeMonsters {
@@ -837,7 +981,8 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 			Actions:    append([]string(nil), p.Actions...),
 			Intimidate: approachesOf(p.Intimidate),
 			Persuade:   approachesOf(p.Persuade),
-			Answers:    answersOf(p.On),
+			Table:      encounter.Layer(tableOf(factionOn[placedFaction(p)]), tableOf(p.On)),
+			Temper:     temperOf(p, factionTemper[placedFaction(p)]),
 			Arrives:    predicateOf(p.Arrives),
 		})
 	}

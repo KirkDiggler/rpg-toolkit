@@ -8,13 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
 // answer.go is THE AUTHOR'S TABLE, AND THE WORLD'S DIE (rpg-project#458,
-// ideas/shenanigans/front-room-goblin.md).
+// rpg-project#465).
 //
 // AN ANSWER IS THE CREATURE'S AUTHORED ANSWER TO A CHECK, ROLLED BY THE WORLD
 // — NOT THE React VERB. "Reaction" is D&D's own rules term and this engine
@@ -30,67 +29,31 @@ import (
 // one die to pick which entry fires. "The setup for the author is what I am
 // most interested in" (Kirk).
 //
-// # It replaced a single fact, and the shape is the point
+// # This file is the social HALF of one table
 //
-// `on: { intimidated: { fact: x } }` taught one fact on one outcome and had
-// nowhere to put a second outcome, a line of speech, or a creature that runs.
-// A LIST PER OUTCOME grows all three without breaking a file: a new outcome is
-// a new key, a new possibility is a new entry, and a new thing a creature can
-// do is a new field on an entry that every older file leaves at its zero
-// value.
+// The entries, the words, the weights and the roll all live in table.go now,
+// because a creature's turn rolls the SAME table under [AnswerTime]
+// (rpg-project#465). What is left here is what a SOCIAL verdict does with a
+// pick: teach the fact, land the `fled` deed, and write the beat.
 //
 // # The die is the world's, and it is seen
 //
 // R1 (Kirk, 2026-09-17): the answer roll goes in the beat and the debug log.
-// So the pick is one die of size sum(weights) rolled through the caller's
+// So the pick is one die of size sum(weight × temper factor) rolled through a
 // supplied roller — never a local rand, never a hash of anything — and the
-// face, the total and the entry index all ride out on [BeatAnswered]. A table
-// nobody can replay is a table nobody can trust.
+// face, the total, every candidate's arithmetic and the entry index all ride
+// out on [BeatAnswered]. A table nobody can replay is a table nobody can
+// trust.
 //
 // # Nothing here decides what an outcome MEANS
 //
 // [Encounter.Intimidate]'s law, one layer on: the verb is told whether the
 // check was beaten and this file is told which entry the die chose. What a
-// `fact` turns, and what a fleeing creature's mind makes of the run, stay
-// where they already live — the disposition graph and rulebooks/dnd5e/behavior.
+// `fact` turns stays where it already lives — the disposition graph — and
+// what a creature does about having fled is its own `time` table's business.
 
-// The four outcomes an author may write an answer table for: one per social
-// verb per verdict.
-//
-// THE KEY IS THE VERB AND THE VERDICT TOGETHER, which is why failure has a
-// table of its own. "A failed Intimidate that raises the alarm makes
-// attempting worse than not attempting. That is deliberate, and it is what
-// gives the untrained rule teeth" (the design). A verb with no table for the
-// outcome that happened does nothing at all and writes no beat — absent means
-// absent, not "the creature shrugged".
-const (
-	// AnswerIntimidated is what the creature does when a threat lands.
-	AnswerIntimidated = "intimidated"
-
-	// AnswerIntimidateFailed is what it does when a threat misses.
-	AnswerIntimidateFailed = "intimidate_failed"
-
-	// AnswerPersuaded is what it does when an appeal lands.
-	AnswerPersuaded = "persuaded"
-
-	// AnswerPersuadeFailed is what it does when an appeal misses.
-	AnswerPersuadeFailed = "persuade_failed"
-)
-
-// AnswerKeys is every outcome key this build accepts, in authored order:
-// each verb's success then its failure. EXPORTED because the authoring
-// dialect refuses every other key by name and must list the ones it takes, and
-// a second copy of the list there is the drift this constant exists to
-// prevent.
-var AnswerKeys = []string{
-	AnswerIntimidated,
-	AnswerIntimidateFailed,
-	AnswerPersuaded,
-	AnswerPersuadeFailed,
-}
-
-// Answer is ONE entry in an outcome's table: how likely it is, what the
-// creature says, and the one thing it does.
+// Answer is ONE entry in a trigger's table: how likely it is, when it is even
+// on the table, what the creature says, and the one thing it does.
 //
 // EXACTLY ONE OUTCOME WORD, OR NONE. An entry that both teaches a fact and
 // sends the creature running is refused at the door rather than ordered here,
@@ -98,11 +61,17 @@ var AnswerKeys = []string{
 // the table). An entry with neither is legal only when it has a line to say:
 // a creature that answers and does nothing is a real outcome, and a creature
 // that neither speaks nor acts is a row the author wrote for no reason.
+//
+// THE WORD IS LEGAL PER KEY (design §2). `fact` and `flee` answer a social
+// verdict; `hold`, `attack`, `toward` and `away` are what a creature does
+// with TIME. A `when` is a `time` word too — a social verdict is already the
+// condition. [validateTable] refuses the crossings by name.
 type Answer struct {
 	// Weight is this entry's share of the table. AT LEAST 1, refused
 	// otherwise: a zero would be an entry that can never fire, sitting in a
-	// file looking like a possibility. Weights are relative and summed by
-	// the picker, so 3 and 1 and 75 and 25 both mean the same thing.
+	// file looking like a possibility. Weights are relative and loaded by
+	// the creature's temperament before they are summed, so 3 and 1 and 75
+	// and 25 both mean the same thing to a soldier.
 	//
 	// The authoring dialect fills an omitted weight with 1 before it gets
 	// here, so every entry that reaches this composition carries its own
@@ -116,6 +85,11 @@ type Answer struct {
 	// disposition.
 	Say string
 
+	// When is the condition this entry is on the table under, or nil for a
+	// standing order. See [When] — an entry whose condition does not hold is
+	// not a candidate for this roll at all.
+	When *When
+
 	// Fact is the world fact every witness learns when this entry fires —
 	// what `on: { intimidated: { fact: … } }` used to be, now one entry of
 	// one outcome's table. Empty means this entry teaches nothing.
@@ -126,20 +100,41 @@ type Answer struct {
 	// is what the camp comes to know and carries out of it.
 	Fact FactID
 
-	// Flee sends the creature away from whoever just spoke to it, for its
-	// own full speed, as a DIRECTED MOVE off anybody's turn (directive.go,
-	// rpg-project#430) — not a flag, and not a driven turn. "A flee flag on
-	// the member is state the driver would have to read live, which rule A2
-	// forbids" (intimidate.md's first broken cut). The deed the verb already
-	// landed is the fear; this is the running.
+	// Flee lands [DeedFled] on this creature, naming whoever just spoke to
+	// it, at now — AND NOTHING ELSE.
 	//
-	// A creature with a wall at its back stays where it is and the beat
-	// still says this entry fired. Not going anywhere is an outcome.
+	// IT DOES NOT STEP. The one-shot directed walk this used to do is gone
+	// (rpg-project#465, design §2): the verb that scared the creature pays a
+	// round on the world clock, the creature's own `time` table reads
+	// `fled: { within: N }`, and the running is `away: actor` on that table
+	// — for as many rounds as the author wrote. A creature that keeps
+	// running while the party walks after it is what the one-shot could
+	// never express.
 	Flee bool
+
+	// Hold is `hold`: this creature does nothing with its time. The `time`
+	// key's [Pass].
+	Hold bool
+
+	// Attack strikes the selected member. REFUSED OFF THE TURN CLOCK
+	// ([ErrAttackOffTurn]): an enemy in reach on the world clock is a fight
+	// sight already formed, so a table that reaches this outside a bubble is
+	// describing a world that cannot happen.
+	Attack *Selector
+
+	// Toward walks toward the selected member's BELIEVED position, or an
+	// authored cell, for this turn's movement.
+	Toward *Selector
+
+	// Away walks away from the selected member, this turn's movement — the
+	// coward's run. Command's and Dissonant Whispers' compelled walks keep
+	// their own engine-driven [Routed] path and do not pass through the
+	// table.
+	Away *Selector
 }
 
 // BeatAnswered is the "beat" value of the story beat appended when the world
-// rolls a creature's answer to a social verb.
+// rolls a creature's answer — to a social verb, or to having time.
 //
 // "answered", NOT "reacted": the React verb owns that word at this seam, and a
 // client switching on beat names must not have to disambiguate an interrupt
@@ -150,14 +145,18 @@ type Answer struct {
 // rename fails to compile there instead of quietly producing a beat nobody
 // renders.
 //
-// IT IS THE ONLY ACCOUNT OF THE ANSWER ROLL, and the author's line reaches
-// the table through it and nowhere else.
+// IT IS THE ONLY ACCOUNT OF THE PICK, and the author's line reaches the table
+// through it and nowhere else.
 const BeatAnswered = "answered"
 
-// answerCauseFlee is the cause every beat of a fleeing creature's directed
-// walk carries, so an observer can tell a rout from a step and from a shove
-// ([DirectInput.Cause] is required for exactly this reason).
-var answerCauseFlee = core.Ref{Module: "encounter", Type: "answer", ID: "flee"}
+// BeatTempered is the "beat" value appended when a faction's authored mix
+// deals one member its temperament — "so the streamer sees which goblin came
+// out the coward" (design §3).
+//
+// ONE PER DEALT MEMBER, AND NONE FOR AN AUTHORED WORD. A placement whose
+// author wrote `temper: coward` rolled nothing, and a beat saying it did
+// would be this composition inventing a die.
+const BeatTempered = "tempered"
 
 // answerInput is one settled verdict looking for the creature's answer to it.
 type answerInput struct {
@@ -165,11 +164,11 @@ type answerInput struct {
 	// was aimed at.
 	creature MemberID
 
-	// actor is who spoke. The anchor a flee runs away from.
+	// actor is who spoke. The one a `flee` entry's deed names.
 	actor MemberID
 
 	// key is the outcome, one of [AnswerKeys].
-	key string
+	key AnswerKey
 
 	// verb is the bare verb name carried onto the beat ("intimidate",
 	// "persuade"), so a reader need not split the key apart to know which
@@ -192,165 +191,91 @@ type answerInput struct {
 
 // answer rolls the creature's answer to a settled verdict and carries it out.
 //
-// NO TABLE, NO ROLL, NO BEAT. A placement that authored nothing for this
-// outcome produces silence, which is distinguishable from an entry that fired
-// and did nothing: one writes no beat at all.
+// NO ELIGIBLE ENTRY, NO ROLL, NO BEAT. A placement that authored nothing for
+// this outcome — or whose every entry's `when` is false — produces silence,
+// which is distinguishable from an entry that fired and did nothing: one
+// writes no beat at all.
 //
-// Order is fact, then walk, then beat — the opposite of the verb's own
-// order and deliberately so. [Encounter.Intimidate] appends its beat first
-// because the threat is the CAUSE of everything after it; this beat is the
-// RESULT, and it reports the entry, the roll and the line that only exist
-// once the pick has been made.
+// Order is fact, then deed, then beat — the opposite of the verb's own order
+// and deliberately so. [Encounter.Intimidate] appends its beat first because
+// the threat is the CAUSE of everything after it; this beat is the RESULT,
+// and it reports the entry, the roll and the line that only exist once the
+// pick has been made.
 func (e *Encounter) answer(ctx context.Context, in answerInput) error {
 	creature, ok := e.members[in.creature]
 	if !ok {
-		return fmt.Errorf("react: creature %q: %w", in.creature, ErrNotMember)
+		return fmt.Errorf("answer: creature %q: %w", in.creature, ErrNotMember)
 	}
-	entries := creature.Answers[in.key]
-	if len(entries) == 0 {
+
+	facts, err := e.factsFor(in.creature)
+	if err != nil {
+		return fmt.Errorf("answer: %w", err)
+	}
+
+	chosen, err := pick(ctx, in.key, creature.Table, creature.Temper, facts, in.roller)
+	if err != nil {
+		return fmt.Errorf("answer: %w", err)
+	}
+	if chosen == nil {
 		return nil
 	}
 
-	total := 0
-	for _, entry := range entries {
-		total += entry.Weight
-	}
-	if total < 1 {
-		// Unreachable: every entry is validated to carry at least 1 at the
-		// door it came in through. Refusing rather than rolling a d0 keeps
-		// the day that stops being true from being a panic in dice.
-		return fmt.Errorf("react: %q weighs %d: %w", in.key, total, ErrBadAnswer)
-	}
-
-	roll, err := in.roller.Roll(ctx, total)
-	if err != nil {
-		return fmt.Errorf("react: %q: %w", in.key, err)
-	}
-
-	index, entry := pickAnswer(entries, roll)
-
-	if entry.Fact != "" {
+	if chosen.Answer.Fact != "" {
 		for _, id := range in.witnesses {
-			if err := e.learnFact(id, entry.Fact, BeatAnswered, in.at); err != nil {
-				return fmt.Errorf("react: %w", err)
+			if err := e.learnFact(id, chosen.Answer.Fact, BeatAnswered, in.at); err != nil {
+				return fmt.Errorf("answer: %w", err)
 			}
 		}
 	}
 
-	if entry.Flee {
-		if err := e.fleeFrom(ctx, in.creature, in.actor); err != nil {
-			return fmt.Errorf("react: %w", err)
+	if chosen.Answer.Flee {
+		if err := e.landFled(in.creature, in.actor, in.at); err != nil {
+			return fmt.Errorf("answer: %w", err)
 		}
 	}
 
-	return e.appendAnsweredBeat(in, index, entry, roll, total)
+	return e.appendAnsweredBeat(in, chosen)
 }
 
-// pickAnswer walks the table accumulating weights and returns the entry the
-// face landed in, with its index.
+// landFled puts [DeedFled] on the creature and nobody else: the memory of
+// having been made to run, naming who did it.
 //
-// AUTHORED ORDER, ACCUMULATED, so the same face always picks the same entry —
-// a table whose answer depended on map iteration is one no transcript could
-// compare (C8). The face is 1..total by the roller's own contract, so the
-// final entry is reachable and the loop always returns inside itself; the
-// fallback exists so a roller that breaks its contract picks the last entry
-// rather than reading off the end.
-func pickAnswer(entries []Answer, roll int) (int, Answer) {
-	acc := 0
-	for i, entry := range entries {
-		acc += entry.Weight
-		if roll <= acc {
-			return i, entry
-		}
-	}
-	last := len(entries) - 1
-
-	return last, entries[last]
-}
-
-// fleeFrom routes a creature as far from the actor as its own speed pays for
-// and walks it there.
+// THE CREATURE'S OWN TESTIMONY. A deed lands on witnesses everywhere else in
+// this module because a deed is what somebody SAW; this one is what the
+// creature KNOWS about itself, and broadcasting it would tell the room a
+// goblin's private state. The subject the store files it under is the actor's,
+// exactly as every other deed's is, so `away: actor` reads the scarer's id
+// straight off it.
 //
-// THE BUBBLE-FREE PAIR, which is the primitive this slice buys (R3): Route
-// reads and Direct writes, neither asks whose turn it is, and neither needs a
-// fight to exist. A neutral goblin in a front room with no initiative order
-// can now run, which is the thing the engine could not do before
-// (ideas/shenanigans/front-room-goblin.md, "Outside a fight").
-//
-// IT DOES NOT PROVOKE. A creature bolting because somebody frightened it is
-// not taking its own move, and the one rule the composition could apply here
-// — an opportunity attack — would be the fight's rule reaching into a room
-// with no fight in it. Dissonant Whispers provokes because the spell says so;
-// nothing says so here.
-//
-// NOWHERE TO GO IS NOT AN ERROR. A creature with a wall at its back stays
-// where it is and the beat still reports the entry that fired: "if Route finds
-// no step, the creature stays and the beat still says the entry fired".
-func (e *Encounter) fleeFrom(ctx context.Context, creature, actor MemberID) error {
-	from, ok := e.members[actor]
-	if !ok {
-		return fmt.Errorf("flee: actor %q: %w", actor, ErrNotMember)
-	}
-	anchor, err := e.cellOf(from)
-	if err != nil {
-		return fmt.Errorf("flee: actor %q: %w", actor, err)
-	}
-
-	runner, ok := e.members[creature]
+// ACTOR IS WHO DID IT TO ME, which is the rule every `when` deed keeps:
+// `attacked`, `intimidated` and `persuaded` all name the doer in Actor and
+// this creature in Target, and `fled` names the one who caused the running.
+func (e *Encounter) landFled(creature, actor MemberID, at uint64) error {
+	record, ok := e.members[creature]
 	if !ok {
 		return fmt.Errorf("flee: creature %q: %w", creature, ErrNotMember)
 	}
-	budget := CellsFromFeet(runner.SpeedFeet)
-	if budget <= 0 {
-		// A roster row that carried no speed. The entry still fired and the
-		// beat still says so; there is simply nothing to walk, and guessing a
-		// distance for a creature nobody said was fast would be this module
-		// inventing a rule.
-		return nil
-	}
-
-	route, err := e.Route(RouteInput{Mover: creature, Policy: MoveAway, Anchor: anchor, Budget: budget})
+	where, err := e.cellOf(record)
 	if err != nil {
-		return fmt.Errorf("flee: %w", err)
-	}
-	if len(route.Path) == 0 {
-		return nil
+		return fmt.Errorf("flee: creature %q: %w", creature, err)
 	}
 
-	if _, err := e.Direct(ctx, DirectInput{
-		Mover: creature, Cause: answerCauseFlee, Route: route.Path, Provokes: false,
-	}); err != nil {
-		return fmt.Errorf("flee: %w", err)
-	}
-
-	return nil
+	return e.landDeedAt(DeedFled, actor, creature, where, []MemberID{creature}, at)
 }
 
 // appendAnsweredBeat writes what the table saw: which creature answered, to
-// which verb and verdict, the die and the weights it was rolled against, the
-// entry that fired, the word it carried and the line the author wrote.
+// which trigger, the die and every candidate's arithmetic, the entry that
+// fired, the word it carried and the line the author wrote.
 //
 // EVERY FIELD IS WRITTEN UNCONDITIONALLY, the `intimidated` beat's rule: a
-// reader downstream must not get a third state out of an absent key. `word` is
-// empty for an entry that only speaks, and that is an answer rather than a
-// gap.
-func (e *Encounter) appendAnsweredBeat(
-	in answerInput, index int, entry Answer, roll, of int,
-) error {
-	payload, err := json.Marshal(map[string]interface{}{
-		"beat":     BeatAnswered,
-		"creature": string(in.creature),
-		"verb":     in.verb,
-		"beaten":   in.beaten,
-		"roll":     roll,
-		"of":       of,
-		"entry":    index,
-		"word":     answerWord(entry),
-		"say":      entry.Say,
-		"fact":     string(entry.Fact),
-	})
+// reader downstream must not get a third state out of an absent key. `word`
+// is empty for an entry that only speaks, `verb` and `beaten` are empty and
+// false for a `time` pick — nothing spoke — and both of those are answers
+// rather than gaps.
+func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
+	payload, err := json.Marshal(answeredBeatBody(in.creature, in.verb, in.beaten, chosen))
 	if err != nil {
-		return fmt.Errorf("react: marshal beat: %w", err)
+		return fmt.Errorf("answer: marshal beat: %w", err)
 	}
 
 	if _, err := e.appendBeat(&record.AppendInput{
@@ -359,7 +284,62 @@ func (e *Encounter) appendAnsweredBeat(
 		Tags:     map[string]string{"tag": BeatAnswered},
 		Payload:  payload,
 	}); err != nil {
-		return fmt.Errorf("react: %w", err)
+		return fmt.Errorf("answer: %w", err)
+	}
+
+	return nil
+}
+
+// answeredBeatBody is the beat's payload for one pick — ONE BODY for a social
+// answer and a `time` pick, so the two can never come to describe their
+// shared arithmetic differently.
+func answeredBeatBody(creature MemberID, verb string, beaten bool, chosen *Pick) map[string]interface{} {
+	candidates := make([]map[string]interface{}, 0, len(chosen.Candidates))
+	for _, c := range chosen.Candidates {
+		candidates = append(candidates, map[string]interface{}{
+			"entry": c.Entry, "weight": c.Weight, "percent": c.Percent, "loaded": c.Loaded,
+		})
+	}
+
+	return map[string]interface{}{
+		"beat":       BeatAnswered,
+		"creature":   string(creature),
+		"key":        string(chosen.Key),
+		"verb":       verb,
+		"beaten":     beaten,
+		"roll":       chosen.Roll,
+		"of":         chosen.Of,
+		"entry":      chosen.Entry,
+		"candidates": candidates,
+		"temper":     chosen.Temper,
+		"word":       answerWord(chosen.Answer),
+		"selector":   selectorWord(chosen.Answer),
+		"say":        chosen.Answer.Say,
+		"fact":       string(chosen.Answer.Fact),
+	}
+}
+
+// appendTemperedBeat writes which temperament a faction's mix dealt one
+// member, with the face and the die it was rolled on.
+func (e *Encounter) appendTemperedBeat(member MemberID, word string, roll, of int, at uint64) error {
+	payload, err := json.Marshal(map[string]interface{}{
+		"beat":   BeatTempered,
+		"member": string(member),
+		"temper": word,
+		"roll":   roll,
+		"of":     of,
+	})
+	if err != nil {
+		return fmt.Errorf("temper: marshal beat: %w", err)
+	}
+
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:       at,
+		Audience: e.audienceFor(tableBeat),
+		Tags:     map[string]string{"tag": BeatTempered},
+		Payload:  payload,
+	}); err != nil {
+		return fmt.Errorf("temper: %w", err)
 	}
 
 	return nil
@@ -374,15 +354,43 @@ func answerWord(entry Answer) string {
 		return "fact"
 	case entry.Flee:
 		return "flee"
+	case entry.Hold:
+		return "hold"
+	case entry.Attack != nil:
+		return "attack"
+	case entry.Toward != nil:
+		return "toward"
+	case entry.Away != nil:
+		return "away"
 	default:
 		return ""
 	}
 }
 
+// selectorWord is the entry's selector as the author wrote it — the word, or
+// "at" for an authored cell, or empty for a word that selects nothing.
+func selectorWord(entry Answer) string {
+	sel := entry.Attack
+	if sel == nil {
+		sel = entry.Toward
+	}
+	if sel == nil {
+		sel = entry.Away
+	}
+	if sel == nil {
+		return ""
+	}
+	if sel.At != nil {
+		return "at"
+	}
+
+	return string(sel.Word)
+}
+
 // answerKeyFor is the outcome key a verb's verdict lands under. One
 // function, so the verbs and the authoring dialect cannot spell the pairing
 // differently.
-func answerKeyFor(verb string, beaten bool) string {
+func answerKeyFor(verb string, beaten bool) AnswerKey {
 	switch {
 	case verb == DeedIntimidate && beaten:
 		return AnswerIntimidated
@@ -395,24 +403,24 @@ func answerKeyFor(verb string, beaten bool) string {
 	}
 }
 
-// validateAnswers refuses a table this composition could not roll: an
-// outcome key it does not know, and an entry that weighs less than 1.
+// validateTable refuses a table this composition could not roll: a trigger
+// key it does not know, an entry that weighs less than 1, a word under a key
+// it is not legal on, and a `when` that names nothing or two things.
 //
 // AT THE DOOR, NOT AT THE ROLL. A placement whose table can never fire is a
 // misconfiguration, and the moment to find out is when the member joins —
 // not when a player finally threatens it and the panel reports an internal
-// error. The authoring dialect refuses the same two things in the author's own
+// error. The authoring dialect refuses the same things in the author's own
 // words; this is the composition refusing them for every other caller,
 // including a persisted blob somebody edited.
-func validateAnswers(answers map[string][]Answer) error {
-	for key, entries := range answers {
-		if !validAnswerKey(key) {
-			return fmt.Errorf("answer %q is not an outcome this build lands: %w", key, ErrBadAnswer)
+func validateTable(table Table) error {
+	for key, entries := range table {
+		if !validTableKey(key) {
+			return fmt.Errorf("answer %q is not a trigger this build rolls: %w", key, ErrBadAnswer)
 		}
 		for i, entry := range entries {
-			if entry.Weight < 1 {
-				return fmt.Errorf("answer %q entry %d weighs %d: %w",
-					key, i, entry.Weight, ErrBadAnswer)
+			if err := validateEntry(key, i, entry); err != nil {
+				return err
 			}
 		}
 	}
@@ -420,9 +428,103 @@ func validateAnswers(answers map[string][]Answer) error {
 	return nil
 }
 
-// validAnswerKey reports whether a key is one of [AnswerKeys].
-func validAnswerKey(key string) bool {
-	for _, known := range AnswerKeys {
+// validateEntry refuses one row: its weight, its word's legality under this
+// key, and its condition's shape.
+func validateEntry(key AnswerKey, i int, entry Answer) error {
+	if entry.Weight < 1 {
+		return fmt.Errorf("answer %q entry %d weighs %d: %w", key, i, entry.Weight, ErrBadAnswer)
+	}
+
+	social := key != AnswerTime
+	word := answerWord(entry)
+	switch word {
+	case "fact", "flee":
+		if !social {
+			return fmt.Errorf("answer %q entry %d: `%s` answers a social verdict, not time: %w",
+				key, i, word, ErrBadAnswer)
+		}
+	case "hold", "attack", "toward", "away":
+		if social {
+			return fmt.Errorf("answer %q entry %d: `%s` is what a creature does with time: %w",
+				key, i, word, ErrBadAnswer)
+		}
+	}
+	if entry.When != nil {
+		if social {
+			return fmt.Errorf("answer %q entry %d: a social verdict is already the condition: %w",
+				key, i, ErrBadAnswer)
+		}
+		if err := validateWhen(entry.When); err != nil {
+			return fmt.Errorf("answer %q entry %d: %w", key, i, err)
+		}
+	}
+	if sel := selectorOf(entry); sel != nil {
+		if sel.Word == SelectorActor && (entry.When == nil || entry.When.Deed == "") {
+			return fmt.Errorf("answer %q entry %d: `actor` names the actor of a deed and this entry names none: %w",
+				key, i, ErrBadAnswer)
+		}
+		if sel.At != nil && entry.Toward == nil {
+			return fmt.Errorf("answer %q entry %d: a cell is somewhere to walk toward, not %s: %w",
+				key, i, word, ErrBadAnswer)
+		}
+	}
+
+	return nil
+}
+
+// validateWhen refuses a condition that names neither an enemy nor a deed, or
+// both, or a span counted from zero.
+func validateWhen(when *When) error {
+	hasEnemy := when.Enemy != ""
+	hasDeed := when.Deed != ""
+	switch {
+	case hasEnemy && hasDeed:
+		return fmt.Errorf("a `when` is one condition, and this is two: %w", ErrBadAnswer)
+	case !hasEnemy && !hasDeed:
+		return fmt.Errorf("a `when` with no condition is on the table always — omit it: %w", ErrBadAnswer)
+	case hasEnemy:
+		for _, known := range EnemyWords {
+			if when.Enemy == known {
+				return nil
+			}
+		}
+
+		return fmt.Errorf("`enemy: %s` is not a condition this build reads: %w", when.Enemy, ErrBadAnswer)
+	}
+
+	known := false
+	for _, deed := range WhenDeeds {
+		if when.Deed == deed {
+			known = true
+		}
+	}
+	if !known {
+		return fmt.Errorf("`%s` is not a deed this build holds: %w", when.Deed, ErrBadAnswer)
+	}
+	if when.Within < 1 {
+		return fmt.Errorf("a span of %d rounds is counted from 1: %w", when.Within, ErrBadAnswer)
+	}
+
+	return nil
+}
+
+// selectorOf is the entry's selector, whichever word carries it, or nil.
+func selectorOf(entry Answer) *Selector {
+	switch {
+	case entry.Attack != nil:
+		return entry.Attack
+	case entry.Toward != nil:
+		return entry.Toward
+	case entry.Away != nil:
+		return entry.Away
+	default:
+		return nil
+	}
+}
+
+// validTableKey reports whether a key is one of [TableKeys].
+func validTableKey(key AnswerKey) bool {
+	for _, known := range TableKeys {
 		if key == known {
 			return true
 		}
@@ -431,18 +533,52 @@ func validAnswerKey(key string) bool {
 	return false
 }
 
-// cloneAnswers deep-copies an answer table so a caller's map and the
-// composition's cannot be the same one — [MemberInput]'s standing rule that
-// nothing crossing this door stays aliased.
-func cloneAnswers(answers map[string][]Answer) map[string][]Answer {
-	if answers == nil {
+// cloneTable deep-copies a table so a caller's map and the composition's
+// cannot be the same one — [MemberInput]'s standing rule that nothing
+// crossing this door stays aliased. The per-entry pointers (When, the three
+// selectors) are copied too: a rulebook's default table is one value shared
+// by every creature of its kind.
+func cloneTable(table Table) Table {
+	if table == nil {
 		return nil
 	}
 
-	out := make(map[string][]Answer, len(answers))
-	for key, entries := range answers {
-		out[key] = append([]Answer(nil), entries...)
+	out := make(Table, len(table))
+	for key, entries := range table {
+		rows := make([]Answer, 0, len(entries))
+		for _, entry := range entries {
+			rows = append(rows, cloneAnswer(entry))
+		}
+		out[key] = rows
 	}
 
 	return out
+}
+
+// cloneAnswer deep-copies one entry's pointers.
+func cloneAnswer(entry Answer) Answer {
+	out := entry
+	if entry.When != nil {
+		when := *entry.When
+		out.When = &when
+	}
+	out.Attack = cloneSelector(entry.Attack)
+	out.Toward = cloneSelector(entry.Toward)
+	out.Away = cloneSelector(entry.Away)
+
+	return out
+}
+
+// cloneSelector deep-copies a selector and the cell it may name.
+func cloneSelector(sel *Selector) *Selector {
+	if sel == nil {
+		return nil
+	}
+	out := *sel
+	if sel.At != nil {
+		at := *sel.At
+		out.At = &at
+	}
+
+	return &out
 }

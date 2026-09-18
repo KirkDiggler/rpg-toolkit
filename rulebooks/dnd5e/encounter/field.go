@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -853,11 +854,6 @@ type MemberInput struct {
 	// (ErrBadPlacement otherwise).
 	Position spatial.Position
 
-	// Decider is the monster's decision-making engine (monsters only).
-	// Players must not have a Decider; passing one for a player will fail validation.
-	// Deciders are NOT persisted; they are re-registered at load.
-	Decider Decider
-
 	// SpeedFeet is how far this member can move on their own turn, in FEET
 	// (Kirk, rpg-project#254 review) — a character's walking speed, or a
 	// monster's SpeedData.Walk. Filled for every kind, the same MEMBER fact
@@ -898,13 +894,6 @@ type MemberInput struct {
 	// composition carries the string and never branches on it.
 	Targeting string
 
-	// Mind names the mind a driver gives this member when nobody is playing
-	// it — the rulebook's own word, "retaliator" today — and, like
-	// Targeting, empty for a player. Opaque here (C1): this composition
-	// carries the string and never branches on it; the driver looks it up
-	// (mind/behavior adoption, rpg-toolkit#1725, rule A5).
-	Mind string
-
 	// Intimidate is the authored check a character must beat to frighten
 	// this member ([dungeonspec.PlaceSpec.Intimidate], rpg-project#454) —
 	// the same list of approaches a lock carries, priced per route. Nil
@@ -922,24 +911,35 @@ type MemberInput struct {
 	// passive Insight, and this composition cannot and must not try (C1).
 	Persuade []CheckApproach
 
-	// Answers is what this member DOES about a social verb's verdict,
-	// keyed by outcome ([AnswerKeys]) with a weighted list of entries
-	// under each ([dungeonspec.PlaceSpec.On], rpg-project#458). Nil when
-	// the author wrote no table, which is the common case: a creature with
-	// nothing authored answers nothing and the world rolls no die.
+	// Table is this member's whole policy — what it does, keyed by what
+	// happened ([Table], rpg-project#465). ALREADY LAYERED by the caller:
+	// the rulebook's default for its kind under the author's orders on its
+	// faction under the author's orders on the placement ([Layer]). Nil when
+	// nothing anywhere authored one, which is a creature that answers
+	// nothing and holds when it has time.
 	//
-	// IT REPLACED A SINGLE FACT PER VERB. `OnIntimidated FactID` said one
-	// thing about one outcome and had nowhere to put a line of speech, a
-	// failed attempt, or a creature that runs. There is no second shape
-	// beside this one — a dual representation is the thing this repo bans,
-	// and the migration is in the authoring dialect where authors can read
-	// it (answer.go's own doc).
+	// IT REPLACED TWO THINGS. `Answers` said what a creature did about a
+	// social verdict and `Mind` named a preset that decided everything else;
+	// two surfaces for one question, one of them a black box a streamer
+	// could not open. There is no second shape beside this one — a dual
+	// representation is the thing this repo bans.
 	//
-	// VALIDATED AT THIS DOOR ([validateAnswers]): an outcome key this
-	// build does not land, or an entry weighing less than 1, is
-	// [ErrBadAnswer] here rather than an internal error on somebody's
-	// turn.
-	Answers map[string][]Answer
+	// VALIDATED AT THIS DOOR ([validateTable]): a trigger key this build
+	// does not roll, an entry weighing less than 1, a word under a key it is
+	// not legal on, or a malformed `when` is [ErrBadAnswer] here rather than
+	// an internal error on somebody's turn.
+	Table Table
+
+	// Temper is the temperament loading this member's die: the word and the
+	// percent profile that word means, or a faction's MIX for this
+	// composition to deal one from at the door ([Temper], design §3).
+	//
+	// THE PROFILE IS THE CALLER'S TO FILL. The words are rulebook content
+	// and this module cannot import the rulebook (C1). The zero value is a
+	// soldier — every factor 100 — so a member nobody gave a temperament to
+	// and one authored `temper: soldier` are the same creature, which is
+	// what "zero values tell the truth" means here.
+	Temper Temper
 
 	// BlocksMovement says whether this member refuses a later arrival on
 	// its cell (rpg-toolkit#1434) — a bare fact, the same species as
@@ -1000,7 +1000,7 @@ type MemberInput struct {
 	// [Encounter.AtlasFor], [Encounter.Story], [Encounter.ClockOf] all answer
 	// as though it were never authored (the never-authored yardstick). Its
 	// facts — Name, Speed, Sight, Actions, Targeting, BlocksMovement, Faction,
-	// Holds, Decider — are kept for the day it arrives, and Position is where
+	// Holds — are kept for the day it arrives, and Position is where
 	// it arrives: it must be standable, refused otherwise (ErrBadPlacement),
 	// exactly as a seat is.
 	//
@@ -1070,7 +1070,7 @@ type memberFacts struct {
 	Actions    []ActionView
 	Intimidate []CheckApproach
 	Persuade   []CheckApproach
-	Answers    map[string][]Answer
+	Table      Table
 }
 
 func validateMemberFacts(in memberFacts) error {
@@ -1106,7 +1106,7 @@ func validateMemberFacts(in memberFacts) error {
 	}
 	// A table this composition could not roll is refused at whichever door
 	// the member came in through, never at the roll (answer.go).
-	if err := validateAnswers(in.Answers); err != nil {
+	if err := validateTable(in.Table); err != nil {
 		return fmt.Errorf("member %s: %w", in.ID, err)
 	}
 
@@ -1333,6 +1333,21 @@ type SetupInput struct {
 	// silently absent.
 	TurnDriver TurnDriver
 
+	// Roller is THE WORLD'S DIE: the shared dice every pick this composition
+	// makes is rolled through — a creature's `time` table on its turn and on
+	// a round of the world, and a faction's temperament mix at the door
+	// (table.go, rpg-project#465).
+	//
+	// OPTIONAL, AND REFUSED LOUDLY AT THE ROLL when it is absent
+	// ([ErrNoRoller]) — the shape Initiative already has. A scene with no
+	// table and no mix rolls nothing, and requiring a die at every door would
+	// make every caller declare one it never uses.
+	//
+	// IT CANNOT BE PER VERB, which is why it is here rather than on an input.
+	// The round site raises the world clock from inside EndTurn, which takes
+	// no die, and a creature's `time` pick happens there.
+	Roller dice.Roller
+
 	// Striker resolves and records a member's attack when a [TurnDriver]
 	// returns an [Attack] intent (rpg-project#254). REQUIRED, for the same
 	// reason TurnDriver is and at the same door: a fight can form with an
@@ -1470,17 +1485,19 @@ type Member struct {
 	SightFeet int
 	Actions   []ActionView
 	Targeting string
-	Mind      string
 
-	// Intimidate, Persuade and Answers carry forward
-	// [MemberInput.Intimidate]/[MemberInput.Persuade]/[MemberInput.Answers]
-	// verbatim — see those fields' own docs. This is where the session reads
-	// the authored checks before it rolls one, exactly as it reads Actions.
-	// Answers is read by nobody outside this composition; it is on the
-	// roster row so a host can show an author what a placement carries.
+	// Intimidate, Persuade, Table and Temper carry forward
+	// [MemberInput.Intimidate]/[MemberInput.Persuade]/[MemberInput.Table]/
+	// [MemberInput.Temper] verbatim — see those fields' own docs. This is
+	// where the session reads the authored checks before it rolls one,
+	// exactly as it reads Actions. Table and Temper are read by nobody
+	// outside this composition; they are on the roster row so a host can show
+	// an author what a placement carries, and so a client can say which
+	// goblin came out the coward.
 	Intimidate []CheckApproach
 	Persuade   []CheckApproach
-	Answers    map[string][]Answer
+	Table      Table
+	Temper     Temper
 
 	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
 	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
@@ -1519,11 +1536,22 @@ type memberRecord struct {
 	SightFeet      int
 	Actions        []ActionView
 	Targeting      string
-	Mind           string
 	Intimidate     []CheckApproach
 	Persuade       []CheckApproach
-	Answers        map[string][]Answer
+	Table          Table
+	Temper         Temper
 	BlocksMovement bool
+
+	// PaceCells is how far this member has walked on the WORLD clock since
+	// it last paid a round for it — the remainder of
+	// [Encounter.spendWorldPace]'s division, persisted (design §5).
+	//
+	// ON THE MEMBER, NOT ON THE CLOCK. Pace is per walker: a 30-foot mover
+	// and a 40-foot one crossing the same corridor together do not owe the
+	// world the same number of rounds, and a counter on the clock would have
+	// to be keyed by member anyway. Persisted because a party that walks
+	// three cells, saves, reloads and walks three more has walked six.
+	PaceCells int
 
 	// Faction is the faction the caller NAMED, or empty for the kind's
 	// default — stored as given, never resolved here, so a member in the
@@ -1678,52 +1706,6 @@ type StepOutput struct {
 	Formed *FormedBubble
 }
 
-// PumpInput contains no parameters; the pump is parameterless in wave 1.
-type PumpInput struct{}
-
-// PumpOutput reports the results of a world tick.
-type PumpOutput struct {
-	// Tick is the exploration clock's reading after the advance.
-	Tick uint64
-
-	// MonsterMoves contains the steps monsters actually took this pump — all
-	// of them, whether or not one went through a doorway. There is no second
-	// list: a crossing is an ordinary step (rpg-toolkit#1106), and the
-	// separate MonsterTraverses that used to sit beside this one described a
-	// mechanism the composition no longer has.
-	//
-	// From and To are DUNGEON-ABSOLUTE — already projected through the room's
-	// origin, so they can be compared with any other absolute coordinate this
-	// composition reports (a [Member]'s Position, an Atlas cell, the position
-	// on this move's own "moved" beat) without the caller redoing the
-	// arithmetic. They are also the frame the decider named the step in: what
-	// the pump reports back is the cell that was asked for.
-	//
-	// No room field, deliberately: an absolute cell does not need one, and
-	// carrying a composition-internal room ID beside a position is the dialect
-	// the seam reshape exists to remove (rpg-toolkit#1062).
-	MonsterMoves []struct {
-		Member MemberID
-		From   spatial.Position
-		To     spatial.Position
-	}
-
-	// IntelDeltas maps member IDs to their updated percepts after all monster actions
-	// (IntelDelta values from the single refreshSight cycle).
-	IntelDeltas map[MemberID]*IntelDelta
-
-	// Seqs contains the sequence numbers of the recorded beats (tick beat
-	// first, then movement beats in decision order).
-	Seqs []uint64
-
-	// Outcome is the encounter outcome if an ending fired; nil otherwise.
-	Outcome *Outcome
-
-	// Formed is set when a monster's own movement started a fight — first
-	// contact with nobody walking, the case a walk-only trigger seam misses.
-	Formed *FormedBubble
-}
-
 // JoinInput names who is arriving and the cell on the map they arrive at.
 //
 // A CELL, NOT A ROOM AND A CELL (rpg-toolkit#1101). This input used to be a
@@ -1760,11 +1742,6 @@ type JoinInput struct {
 	// make sense of.
 	Cell spatial.Position
 
-	// Decider is the monster's decision-making engine (monsters only).
-	// Players must not have a Decider; passing one for a player will fail
-	// validation. Deciders are NOT persisted; they are re-registered at load.
-	Decider Decider
-
 	// SpeedFeet, SightFeet, Actions and Targeting are this member's static
 	// facts — see [MemberInput]'s own fields of the same name for the full
 	// doc. A joiner arriving mid-scene carries them exactly as an authored
@@ -1775,16 +1752,17 @@ type JoinInput struct {
 	SightFeet int
 	Actions   []ActionView
 	Targeting string
-	Mind      string
 
-	// Intimidate, Persuade and Answers are this joiner's shenanigan facts,
-	// [MemberInput.Intimidate], [MemberInput.Persuade] and
-	// [MemberInput.Answers] under the names Join takes them by — a monster
-	// that arrives mid-run is as talkable-to as one that started there, and
-	// its table is validated at this door the same way.
+	// Intimidate, Persuade, Table and Temper are this joiner's own facts,
+	// [MemberInput.Intimidate], [MemberInput.Persuade], [MemberInput.Table]
+	// and [MemberInput.Temper] under the names Join takes them by — a monster
+	// that arrives mid-run is as talkable-to as one that started there, its
+	// table is validated at this door the same way, and a faction mix is
+	// dealt here exactly as it is at Setup.
 	Intimidate []CheckApproach
 	Persuade   []CheckApproach
-	Answers    map[string][]Answer
+	Table      Table
+	Temper     Temper
 
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.

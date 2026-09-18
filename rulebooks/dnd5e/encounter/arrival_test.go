@@ -89,14 +89,15 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 	if walker != "" {
 		w := encounter.MemberInput{ID: alice, Kind: walker, Position: arrivalStart.Add(arrivalVaultOrigin)}
 		if walker == encounter.KindMonster {
-			w.Decider = &patrolDecider{positions: []spatial.Position{vaultCell(arrivalTarget)}}
+			w.SpeedFeet = 5
+			w.Table = walksTo(vaultCell(arrivalTarget))
 		}
 		members = append(members, w)
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   arrivalField(),
 		Members: members,
 		Endings: []encounter.EndingInput{
@@ -158,16 +159,16 @@ func (s *ArrivalSuite) TestAStepDecidesTheEndingByTheSameRules() {
 	}
 }
 
-// TestAPumpDecidesTheEndingByTheSameRules — a monster walks itself onto the
-// tile on its own intel. Only the monster rules apply.
-func (s *ArrivalSuite) TestAPumpDecidesTheEndingByTheSameRules() {
+// TestAWorldRoundDecidesTheEndingByTheSameRules — a monster walks itself onto
+// the tile on its own orders. Only the monster rules apply.
+func (s *ArrivalSuite) TestAWorldRoundDecidesTheEndingByTheSameRules() {
 	for _, tc := range arrivalCases {
 		if tc.kind != encounter.KindMonster {
 			continue
 		}
 		s.Run(tc.name, func() {
 			enc := s.arrivalEncounter(filterID(tc.filter, alice), tc.kind)
-			_, err := enc.Pump(&encounter.PumpInput{})
+			_, err := aRound(enc)
 			s.Require().NoError(err)
 			s.assertFired(tc.fires, !s.open(enc), enc)
 		})

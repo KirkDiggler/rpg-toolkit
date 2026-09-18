@@ -11,69 +11,82 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// TurnDriver decides what a member with no player does when a fight's clock
-// lands on their turn.
+// Driver decides what a member with no player does when it is given time:
+// its turn in a fight, or a round of the world (worldtime.go).
 //
-// # Why this is not Decider
+// # ONE SEAM, CONSULTED ON BOTH CLOCKS (rpg-project#465, ADR-0043 amended)
 //
-// Decider already answers "what does an unplayed member do" — but only in
-// free roam. Pump skips a monster caught in a bubble entirely: "a monster in
-// a fight is not consulted... its decider is skipped until the fight
-// dissolves." That boundary is load-bearing rather than an oversight —
-// Decider's Intent vocabulary (IntentMoveTo, IntentHold) answers WHERE TO BE,
-// and a turn asks a different question, ATTACKING, TARGETING, AND THE ACTION
-// ECONOMY (rpg-project#254 gives it one: [MonsterView], [TurnIntent]).
-// Reusing Decider for a turn would blur the exact clock-kind boundary
-// ClockKind exists to keep sharp: the world thinks on the tick, the fight
-// thinks in turns, and now each has its own driver, and its own vocabulary —
-// TurnIntent rather than Intent, so the two Go types cannot collide.
+// There were two. `Decider` answered "what does an unplayed member do" in
+// free roam with a vocabulary of two words — move to a cell, or hold — and
+// this interface answered a turn's own questions, attacking, targeting and
+// the action economy. The ADR's reason for keeping them apart was exactly
+// that thinness: "Decider's Intent vocabulary answers WHERE TO BE, and a turn
+// asks a different question".
 //
-// # Required, never defaulted — and why that differs from Decider
+// That reason has lapsed, because Decider is deleted. A creature's policy is
+// its authored table now (table.go), the same table on both clocks, and the
+// only difference between having a turn and having a round of the world is
+// the budget in the view. Two seams would be two places for one policy to be
+// consulted, which is the drift this rename ends.
 //
-// Decider is optional per member; a monster with none simply holds forever in
-// free roam, which is locally inert — nothing else in the encounter depends
-// on that monster ever moving. TurnDriver has no such safe default: a member
-// the clock lands on with no driver stalls the ENTIRE bubble, forever, for
-// every member in it — the exact defect rpg-toolkit#1162 exists to close. So
-// it is required at construction like Standing, Sight and Initiative, and for
-// the identical reason: a nil answer here would be this module guessing a
-// rule instead of asking for one. See ADR-0043.
+// # Required, never defaulted
+//
+// A member the clock lands on with no driver stalls the ENTIRE bubble,
+// forever, for every member in it — the exact defect rpg-toolkit#1162 exists
+// to close. So it is required at construction like Standing, Sight and
+// Initiative, and for the identical reason: a nil answer here would be this
+// module guessing a rule instead of asking for one.
 //
 // # One capability, not one per member
 //
-// Unlike Decider, TurnDriver is asked with a member's whole [MonsterView]
-// rather than a bare ID: the same driver instance answers for every unplayed
-// member the clock lands on, keying its own decision off View.Self and
-// whatever View tells it, the same way any Decider already keys off the ID
-// it is handed. There is nothing yet that requires a second capability shape
-// at this seam.
-type TurnDriver interface {
-	// Act decides what a member with no player does on its turn, given
+// The same driver instance answers for every unplayed member the clock lands
+// on, keying its own decision off View.Self and whatever View tells it. The
+// shipped implementation is [TableDriver], which reads the table the view
+// carries; nothing yet requires a second capability shape at this seam.
+type Driver interface {
+	// Act decides what a member with no player does with its time, given
 	// everything this composition is willing to tell it about its own
 	// situation (view) — or returns an error that aborts the caller's whole
-	// verb: see EndTurn and form, both of which consult this synchronously
-	// and persist nothing until the caller's own commit, so a driver
-	// failure here costs nothing but the retry.
+	// verb: see EndTurn, form and [Encounter.worldThinks], all of which
+	// consult this synchronously and persist nothing until the caller's own
+	// commit, so a driver failure here costs nothing but the retry.
 	//
 	// A Go error here is a DRIVER MALFUNCTION — compare [ErrBadIntent],
 	// which a syntactically valid but unexecutable TurnIntent earns
 	// instead, and which does NOT abort the caller (see
 	// [Encounter.driveMonsterTurns]).
-	Act(view MonsterView) (TurnIntent, error)
+	Act(view MonsterView) (Decision, error)
 }
 
-// MonsterView is what a TurnDriver is told about its own situation on its
-// turn — the anti-wall-hack contract [Decider]'s Snapshot already keeps
-// (C2), extended to a turn's own questions that Snapshot cannot express. A
-// driver receives ONLY this: its own static facts, its current sight and held
-// location knowledge, and the turn's remaining budget — never the full
-// encounter, and never another member's concealed live truth.
+// TurnDriver is [Driver]'s former name.
 //
-// A PROJECTION OF THE MEMBER RECORD PLUS THE TURN'S DYNAMIC PARTS (Kirk,
-// rpg-project#254 review): Self, Position, Actions and Targeting are read
-// straight off this member's own [memberRecord] — the same static facts
-// [Member] itself projects — and Seen, Budget and Round are computed fresh
-// for this call, the same static/dynamic split [Sight]'s own doc draws.
+// Deprecated: kept for ONE RELEASE so rulebooks/dnd5e/session compiles
+// against this module's pseudo-version until its own PR renames the field it
+// supplies. It goes in the release after that; a caller writing new code
+// names [Driver].
+type TurnDriver = Driver
+
+// Decision is what a [Driver] answers with: the intent, and the roll that
+// chose it when one was rolled.
+//
+// THE PICK TRAVELS SO THE ENCOUNTER CAN NARRATE IT. A driver that rolled a
+// creature's table knows the whole arithmetic — every eligible entry, its
+// authored weight, the temperament's factor, the face — and the encounter
+// owns the story log. Returning the numbers rather than appending the beat
+// keeps the driver a decision and not a writer, which is what lets a test
+// drive one with no log at all.
+//
+// A NIL PICK IS A DECISION NOBODY ROLLED, and says so by being nil:
+// [PassDriver] and the compelled-turn driver both answer that way, and the
+// encounter appends no answer beat for them. It is not "the pick was lost".
+type Decision struct {
+	// Intent is what this member does.
+	Intent TurnIntent
+
+	// Pick is the roll that chose it, or nil when nothing was rolled.
+	Pick *Pick
+}
+
 type MonsterView struct {
 	// Self is who this view is for.
 	Self MemberID
@@ -94,10 +107,27 @@ type MonsterView struct {
 	// rulebook that authored the string is the one reading it.
 	Targeting string
 
-	// Mind is the mind this member's sheet names, verbatim from
-	// [MemberInput.Mind]; empty when it names none. A driver that gives
-	// members minds looks it up here (rpg-toolkit#1725, rule A5).
-	Mind string
+	// Table is this member's whole policy, already layered: the rulebook's
+	// default for its kind under the author's orders on its faction under
+	// the author's orders on the placement ([Layer]). The [Driver] rolls it;
+	// this composition compiles nothing and decides nothing.
+	Table Table
+
+	// Temper is the temperament loading this member's die — the word it goes
+	// by and the percent profile that word means. The zero value is a
+	// soldier, which is every factor 100.
+	//
+	// ALREADY DEALT. A faction's authored mix is resolved once, at Join,
+	// through the world's dice with the faction as the die's entity; what a
+	// driver sees is the word this member came out as.
+	Temper Temper
+
+	// Deeds is every deed this member holds that was done TO IT, decoded
+	// from Holdings below — what a `when: { attacked: { within: N } }`
+	// condition reads. Projected here rather than left to the driver so the
+	// deeds channel's payload shape stays this module's business (C1) and
+	// every driver ages a deed the same way.
+	Deeds []HeldDeed
 
 	// Holdings is everything this member holds, on every channel, as values
 	// — the raw testimony Seen and Remembered are decoded from, plus what
@@ -155,6 +185,16 @@ type RememberedMember struct {
 	// Kind is whether the remembered member is a player or monster.
 	Kind MemberKind
 
+	// Opposed is whether the stance graph puts this remembered member on the
+	// other side right now — [SeenMember.Opposed]'s twin, and the fact
+	// `enemy: remembered` reads.
+	//
+	// ASKED NOW, NOT REMEMBERED. Where the member stands is stale by
+	// definition; whose side they are on is the graph's answer at this
+	// instant, because a truce made while the goblin was not looking is
+	// still a truce.
+	Opposed bool
+
 	// Position is the remembered, possibly stale, DUNGEON-ABSOLUTE cell.
 	Position spatial.Position
 
@@ -175,6 +215,21 @@ type SeenMember struct {
 
 	// Kind is whether they are a player or a monster.
 	Kind MemberKind
+
+	// Opposed is whether the stance graph puts this sighting on the other
+	// side right now — `opposed(self, them)`, projected onto what this
+	// member can see (design §2).
+	//
+	// PROJECTED, NOT DERIVED BY THE DRIVER. A driver has no graph to ask and
+	// must not get one: opposition is a fact about factions and dispositions
+	// that only the encounter holds, and a driver reading kinds instead
+	// would make every monster hostile to every player forever — which is
+	// exactly what kept the neutral front-room goblin from being possible.
+	//
+	// False for a member in no faction, a world NPC included: "nobody is
+	// against them" is the honest answer, and it is what makes a table's
+	// `enemy: none` true in a room full of vendors.
+	Opposed bool
 
 	// Standing is false when this composition's last standing consult found
 	// them down (see [Standing]) — a driver should not target a body, and
@@ -249,14 +304,14 @@ type TurnBudget struct {
 }
 
 // TurnIntent is a sealed vocabulary (unexported marker method) — a
-// TurnDriver's decision for one Act call.
+// [Driver]'s decision for one Act call.
 //
-// A DIFFERENT TYPE FROM Intent, DELIBERATELY (rpg-project#254). [Decider]'s
-// own sealed vocabulary (IntentMoveTo, IntentHold) answers WHERE TO BE in
-// free roam; a turn asks ATTACKING, TARGETING, AND THE ACTION ECONOMY —
-// different questions with different answers — and naming this TurnIntent
-// keeps the two Go types from colliding rather than overloading one
-// vocabulary to mean two things depending which clock a member is on.
+// NAMED FOR THE TURN AND USED ON BOTH CLOCKS. It was one of two vocabularies:
+// the retired Decider's Intent said WHERE TO BE in free roam and this one said
+// what a turn does. It is deleted (rpg-project#465) and this vocabulary is now
+// the only one — a world round is a turn's worth of doing with no attack in
+// the budget, so it needed no words of its own. The name is kept because
+// renaming a sealed vocabulary every caller switches on buys nothing.
 //
 // FOUR CASES, following this repo's practice for sealed vocabularies at
 // this seam (ADR-0038's rule for Gather | Pose | Request | Done): Pass,
@@ -337,7 +392,8 @@ func (Move) isTurnIntent() {}
 // ADR; the ADR is the Command design (rpg-project ideas/spells/command).
 //
 // Refused with [ErrBadIntent] — the turn simply ends, as [Pass] would — when
-// Anchor names nobody on the map. A Policy this composition does not carry out
+// Anchor names nobody on the map, or when neither (or both) of Anchor and
+// AnchorAt is set. A Policy this composition does not carry out
 // is [ErrUnsupportedPolicy] and a missing Cause is [ErrNoCause], and both of
 // those abort the caller's verb rather than ending the turn: they are the
 // malformed intent the `default` arm already treats that way, not a decision
@@ -349,7 +405,21 @@ type Routed struct {
 	// Anchor is the member the policy is measured from: the thing being
 	// approached, or the thing being fled. Their cell is read off the canvas
 	// at execution, not carried, for [Encounter.placementOf]'s reason.
+	//
+	// EXACTLY ONE OF Anchor AND AnchorAt. A Routed with both, or neither, is
+	// a malformed intent ([ErrBadIntent]).
 	Anchor MemberID
+
+	// AnchorAt is an authored CELL the policy is measured from instead of a
+	// member — what `toward: { at: [col, row] }` compiles to
+	// (rpg-project#465). Dungeon-absolute.
+	//
+	// A SECOND FIELD RATHER THAN A SECOND CASE, because nothing else about
+	// the walk differs: the route, the budget, the step, the pause and the
+	// terminal end are identical, and only WHERE the cell comes from
+	// changes. A cell is not read off the canvas at execution for the reason
+	// a member's is — it cannot move.
+	AnchorAt *spatial.Position
 
 	// Cause is the effect that routed them, and it travels on every beat this
 	// walk appends. REQUIRED ([ErrNoCause]), exactly as [DirectInput.Cause]
@@ -365,7 +435,7 @@ type Routed struct {
 // isTurnIntent marks Routed as a TurnIntent.
 func (Routed) isTurnIntent() {}
 
-// PassDriver is a TurnDriver that always passes — the same v1 answer every
+// PassDriver is a [Driver] that always passes — the same v1 answer every
 // unplayed member's turn used to get automatically before this capability
 // existed, now available as an explicit, reusable supply (rpg-toolkit#1167)
 // rather than every caller hand-rolling one. A hosting seam with nothing
@@ -374,9 +444,10 @@ func (Routed) isTurnIntent() {}
 // (rulebooks/dnd5e/behavior's Basic, or a caller's own) existed.
 type PassDriver struct{}
 
-// Act always returns Pass, unconditionally.
-func (PassDriver) Act(MonsterView) (TurnIntent, error) {
-	return Pass{}, nil
+// Act always returns Pass and no pick: nothing was rolled, so there is
+// nothing for the encounter to narrate.
+func (PassDriver) Act(MonsterView) (Decision, error) {
+	return Decision{Intent: Pass{}}, nil
 }
 
 // RefusingStriker is a Striker for construction-only worlds: an encounter
@@ -384,7 +455,7 @@ func (PassDriver) Act(MonsterView) (TurnIntent, error) {
 // turn — rpg-api's placement probes, a template's own acceptance test, any
 // scene a host constructs only to inspect. Calling Strike on one is a HOST
 // BUG, not a legal outcome a caller should ever see recover: a driven turn
-// that reaches this means some TurnDriver decided to attack in a world with
+// that reaches this means some [Driver] decided to attack in a world with
 // nothing that can carry it out, and the honest answer is a named error
 // rather than a silently fabricated hit — the same reasoning [PassDriver]'s
 // own doc gives for existing at all (rpg-toolkit#1167), one capability over.
@@ -498,14 +569,14 @@ type Boundary struct {
 // A nil Announcer is not "boundaries are switched off". It is "every condition
 // scoped to a turn silently never expires" — which is the bug this capability
 // was introduced to fix, and it went unnoticed for months precisely because
-// nothing said anything. Refused at the door, exactly as [TurnDriver],
+// nothing said anything. Refused at the door, exactly as [Driver],
 // [Striker], Standing and Sight are.
 type Announcer interface {
 	// Announce publishes the boundaries one clock advance crossed, in the
 	// causal order given, before the next member acts.
 	//
 	// An error here is an ANNOUNCER MALFUNCTION and aborts the caller's
-	// whole verb, exactly as [TurnDriver.Act] and [Striker.Strike] errors
+	// whole verb, exactly as [Driver.Act] and [Striker.Strike] errors
 	// do. Nothing is persisted until the caller's own commit, so a failure
 	// costs the retry and nothing else.
 	Announce(ctx context.Context, enc *Encounter, crossed []Boundary) error
@@ -542,7 +613,7 @@ func (RefusingAnnouncer) Announce(context.Context, *Encounter, []Boundary) error
 // the story (and, through it, the same [Encounter.noticeDown] consult every
 // other route to a beat already runs).
 //
-// REQUIRED AT CONSTRUCTION, exactly as [TurnDriver] is and for the same
+// REQUIRED AT CONSTRUCTION, exactly as [Driver] is and for the same
 // reason (ADR-0043): a monster's driver can decide to attack the moment a
 // fight forms, so an encounter that cannot resolve one would stall — or
 // worse, silently drop the swing — before its caller does anything.
@@ -551,7 +622,7 @@ type Striker interface {
 	// of attacker's own [ActionView.Ref] values — and records the outcome
 	// itself via [Encounter.Record]. Errors here are STRIKER MALFUNCTIONS
 	// (a resolution failure, a corrupt sheet) and abort the caller's whole
-	// verb exactly as a [TurnDriver.Act] error does; a miss is not an
+	// verb exactly as a [Driver.Act] error does; a miss is not an
 	// error — it is an ordinary [OutcomeMissed] recorded the same as a hit.
 	Strike(ctx context.Context, enc *Encounter, attacker, target MemberID, action core.Ref) error
 }
@@ -577,7 +648,7 @@ type Striker interface {
 // # Required at construction
 //
 // SUPPLIED, NEVER DEFAULTED (rpg-toolkit#1033), exactly as [Striker] and
-// [TurnDriver] are: an unplayed member's driver can decide to walk the moment a
+// [Driver] are: an unplayed member's driver can decide to walk the moment a
 // fight forms. A nil Mover is not "reactions are switched off" — it is every
 // walk silently unobservable again, which is the state rpg-project#316 exists
 // to end and precisely the shape [Announcer]'s doc warns about, one capability

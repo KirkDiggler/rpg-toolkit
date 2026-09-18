@@ -563,7 +563,7 @@ func (s *HoldOutSuite) TestARoundEndingFiresWhereTheRoundStarts() {
 
 	s.Run("outside any fight the world clock counts nothing", func() {
 		for i := 0; i < 3; i++ {
-			_, err := enc.Pump(&encounter.PumpInput{})
+			_, err := aRound(enc)
 			s.Require().NoError(err)
 		}
 		status, err := enc.Status()

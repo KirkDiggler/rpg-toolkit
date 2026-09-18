@@ -76,7 +76,7 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBody() {
 	// down, and BOTH are lootable — that is the affordance half of P3.
 	enc := s.open(true)
 	s.standing.down = []encounter.MemberID{captain, partner}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	s.Run("a fellow player's empty body is a body, and gives nothing", func() {
@@ -261,7 +261,7 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 
 	s.Run("and may not loot either", func() {
 		fight.down = []encounter.MemberID{captain}
-		_, err := enc.Pump(&encounter.PumpInput{})
+		_, err := aRound(enc)
 		s.Require().NoError(err)
 
 		// Removing the captain from the order may have moved the turn, and
@@ -493,7 +493,7 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 	s.Require().NoError(err, "a field with no concealment needs no concealment capabilities")
 
 	s.standing.down = []encounter.MemberID{captain}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	before, err := enc.AtlasFor(raider)

@@ -183,7 +183,7 @@ func (s *HoldOutSuite) TestTheLetterArrivesAtRoundSixAndNotBefore() {
 
 	s.Run("outside any fight the world clock counts nothing", func() {
 		for i := 0; i < 8; i++ {
-			_, err := enc.Pump(&encounter.PumpInput{})
+			_, err := aRound(enc)
 			s.Require().NoError(err)
 		}
 		absent("after eight ticks")

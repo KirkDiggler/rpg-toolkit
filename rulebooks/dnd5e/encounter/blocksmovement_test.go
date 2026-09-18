@@ -90,7 +90,7 @@ func (s *BlocksMovementSuite) TestAnExistingPlayerWithNoBlocksMovementSetStillDo
 
 func (s *BlocksMovementSuite) TestAnExistingMonsterWithNoBlocksMovementSetStillDoesNotBlock() {
 	enc, err := s.setup(encounter.MemberInput{
-		ID: goblin, Kind: encounter.KindMonster, Position: cellAt(1, 1), Decider: &simpleDecider{},
+		ID: goblin, Kind: encounter.KindMonster, Position: cellAt(1, 1),
 	})
 	s.Require().NoError(err)
 

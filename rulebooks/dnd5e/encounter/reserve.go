@@ -153,10 +153,6 @@ type reservedMember struct {
 	// before: a holding is a fact about a member, and there is no member yet.
 	holds []IntelID
 
-	// decider is the behaviour to attach on arrival, or nil. Never
-	// persisted, like every decider.
-	decider Decider
-
 	// arrives is the predicate. Spent on arrival.
 	arrives Trigger
 }
@@ -296,9 +292,15 @@ func (e *Encounter) arriveMember(rm *reservedMember, cause string, at uint64) er
 	if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(id)}); cerr != nil {
 		return fmt.Errorf("arrival of %q world clock: %w", id, cerr)
 	}
-	if rm.decider != nil {
-		e.deciders[id] = rm.decider
+	// And its nerve, if the author left it to the faction: a straggler's
+	// temperament is dealt when it arrives, not when it was written down
+	// (design §3).
+	dealt, terr := e.dealTemperFor(id, record.Temper, at)
+	if terr != nil {
+		return fmt.Errorf("arrival of %q: %w", id, terr)
 	}
+	e.members[id].Temper = dealt
+
 	if err := e.holdings.seedIntel(id, rm.holds); err != nil {
 		return fmt.Errorf("arrival of %q: %w", id, err)
 	}

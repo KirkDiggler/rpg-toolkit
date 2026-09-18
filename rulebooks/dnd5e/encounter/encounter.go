@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -108,7 +109,6 @@ type Encounter struct {
 	story       *record.Log
 	members     map[MemberID]*memberRecord
 	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
-	deciders    map[MemberID]Decider
 
 	// reserve is every member held back by an arrival predicate
 	// (rpg-project#375, reserve.go): not on the roster, on no clock, in no
@@ -126,6 +126,28 @@ type Encounter struct {
 	// participation below; no play path falls back to the binary answer.
 	standing Standing
 
+	// roller is THE WORLD'S DIE: the shared dice every pick this composition
+	// makes is rolled through, and the one a faction's temperament mix is
+	// dealt from (table.go, rpg-project#465).
+	//
+	// OPTIONAL, AND REFUSED LOUDLY AT THE ROLL when it is absent — the shape
+	// [Encounter.initiative] already has, and for its reason. A scene with no
+	// temperament mix and no `time` table rolls nothing, so requiring one at
+	// every door would make every construction site declare a die it never
+	// uses; a scene that DOES roll and was handed none gets [ErrNoRoller] by
+	// name rather than a silent default.
+	//
+	// IT CANNOT BE PER VERB. The round site raises the world clock from inside
+	// EndTurn, which takes no die, and a creature's `time` pick happens there
+	// — so the die has to be the composition's, not the caller's.
+	roller dice.Roller
+
+	// worldThinking guards [Encounter.worldThinks] against re-entry: the
+	// outer pass owns the world's round, and a nested one would consult the
+	// same creatures twice for one raise. The same shape as `driving`, one
+	// clock over.
+	worldThinking bool
+
 	// participation is the richer half of standing. Required at both
 	// constructors and never defaulted; see [StandingWithParticipation].
 	participation Participation
@@ -142,9 +164,9 @@ type Encounter struct {
 
 	// turnDriver decides what a member with no player does when the clock
 	// lands on their turn. Required at both constructors, for the same reason
-	// standing and sight are, and — unlike deciders — never optional; see
+	// standing and sight are, and never optional; see
 	// [TurnDriver] and ADR-0043.
-	turnDriver TurnDriver
+	driver Driver
 
 	// striker resolves and records an [Attack] intent a TurnDriver returns.
 	// Required at both constructors for the same reason turnDriver is; see
@@ -525,7 +547,7 @@ func validateIntelTargets(f *field, doors []DoorInput) error {
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no
 // endings, empty-or-reserved ending key, duplicate ending key, empty member
-// ID, duplicate member IDs, a player member carrying a Decider (design law
+// ID, duplicate member IDs, a member fact that makes no sense (design law
 // C2), negative member facts, then the field (compileField: the canvas's
 // declarations, region defects, props, walls), doors (validateDoorInputs),
 // member seats (integral, on floor), ending trigger validity, spatial
@@ -588,7 +610,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// with an unplayed member first in the rolled order, so an encounter that
 	// cannot answer "what does this member do" would stall before its caller
 	// does anything (rpg-toolkit#1162). Never defaulted — see ADR-0043 for
-	// why this differs from Decider, which is optional per member.
+	// why a nil one is refused rather than defaulted.
 	if in.TurnDriver == nil {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoTurnDriver)
 	}
@@ -636,7 +658,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		seenEndingKeys[ending.Key] = true
 	}
 
-	// Check member IDs: empty or duplicate; validate deciders
+	// Check member IDs: empty or duplicate; validate the member facts
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range in.Members {
 		if m.ID == "" {
@@ -647,17 +669,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 		seenIDs[m.ID] = true
 
-		// Players cannot carry deciders (design law C2)
-		if m.Kind == KindPlayer && m.Decider != nil {
-			return nil, fmt.Errorf("newencounter: player %s cannot carry a decider: %w", m.ID, ErrNoMember)
-		}
-
-		// Nor can a world NPC (rpg-toolkit#1404, design.md N4): a non-combatant
-		// never acts on its own turn, and a decider would imply it does.
-		if m.Kind == KindWorld && m.Decider != nil {
-			return nil, fmt.Errorf("newencounter: world npc %s cannot carry a decider: %w", m.ID, ErrNoMember)
-		}
-
 		// SpeedFeet, SightFeet and each action's RangeFeet are feet-
 		// denominated facts CellsFromFeet divides by FeetPerCell — a
 		// negative one is not a shorter distance, it is a caller defect
@@ -665,7 +676,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		// budget or reach at the exact moment a monster's turn needs one.
 		if err := validateMemberFacts(memberFacts{
 			ID: m.ID, SpeedFeet: m.SpeedFeet, SightFeet: m.SightFeet, Actions: m.Actions,
-			Intimidate: m.Intimidate, Persuade: m.Persuade, Answers: m.Answers,
+			Intimidate: m.Intimidate, Persuade: m.Persuade, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -789,14 +800,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	e := &Encounter{
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
-		deciders:      make(map[MemberID]Decider),
 		field:         f,
 		initiative:    in.Initiative,
 		standing:      standingWithParticipation,
 		participation: standingWithParticipation,
 		sight:         in.Sight,
 		equipment:     in.Equipment,
-		turnDriver:    in.TurnDriver,
+		driver:        in.TurnDriver,
+		roller:        in.Roller,
 		striker:       in.Striker,
 		mover:         in.Mover,
 		announcer:     in.Announcer,
@@ -856,10 +867,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			SightFeet:      mi.SightFeet,
 			Actions:        mi.Actions,
 			Targeting:      mi.Targeting,
-			Mind:           mi.Mind,
 			Intimidate:     copyApproaches(mi.Intimidate),
 			Persuade:       copyApproaches(mi.Persuade),
-			Answers:        cloneAnswers(mi.Answers),
+			Table:          cloneTable(mi.Table),
+			Temper:         mi.Temper,
 			BlocksMovement: mi.BlocksMovement,
 			Faction:        mi.Faction,
 		}
@@ -871,7 +882,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if mi.Arrives != nil {
 			e.reserveMember(&reservedMember{
 				record: *member, at: f.cellAt(mi.Position), holds: mi.Holds,
-				decider: mi.Decider, arrives: mi.Arrives,
+				arrives: mi.Arrives,
 			})
 			continue
 		}
@@ -899,10 +910,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter member %q world clock: %w", mi.ID, cerr)
 		}
 
-		// Store decider if present (monsters only, validated above)
-		if mi.Decider != nil {
-			e.deciders[mi.ID] = mi.Decider
+		// THE FACTION'S MIX IS DEALT HERE, once, now the member is placed and
+		// there is a beat audience to tell (design §3, worldtime.go). An
+		// authored word deals nothing.
+		dealt, terr := e.dealTemperFor(mi.ID, mi.Temper, 0)
+		if terr != nil {
+			return nil, fmt.Errorf("newencounter: %w", terr)
 		}
+		member.Temper = dealt
 
 		// The author's placed records, seeded as the holdings they are
 		// (design §3). SETUP ONLY — Load replays the journal instead, so
@@ -1078,19 +1093,20 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 
 	region, _ := e.RegionAt(cell)
 	return Member{
-		ID:             record.ID,
-		Kind:           record.Kind,
-		Name:           record.Name,
-		Region:         region,
-		Position:       cell,
-		SpeedFeet:      record.SpeedFeet,
-		SightFeet:      record.SightFeet,
-		Actions:        record.Actions,
-		Targeting:      record.Targeting,
-		Mind:           record.Mind,
+		ID:        record.ID,
+		Kind:      record.Kind,
+		Name:      record.Name,
+		Region:    region,
+		Position:  cell,
+		SpeedFeet: record.SpeedFeet,
+		SightFeet: record.SightFeet,
+		Actions:   record.Actions,
+		Targeting: record.Targeting,
+
 		Intimidate:     copyApproaches(record.Intimidate),
 		Persuade:       copyApproaches(record.Persuade),
-		Answers:        cloneAnswers(record.Answers),
+		Table:          cloneTable(record.Table),
+		Temper:         record.Temper,
 		BlocksMovement: record.BlocksMovement,
 		Faction:        factionOf(record),
 	}, nil
@@ -1513,305 +1529,6 @@ func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Out
 	return &Outcome{Ending: key, At: at, Members: members}, nil
 }
 
-// Pump advances the world by one tick: the exploration clock advances,
-// each monster member (in deterministic order) acts on its own intel via Decider,
-// the complete sight refresh happens once, and the story accrues tick and
-// movement beats. Errors from a decider abort the pump atomically (R5):
-// no clock advance, no moves, no record entries.
-//
-// WHAT PUMP DRIVES IN v1, stated plainly because the answer narrowed: members
-// on the WORLD clock. A bubble member is deliberately not pumped, and under
-// v1's sight model (rpg-toolkit#964) any monster a player could see was in a
-// bubble — so in practice this verb moved the monsters NOBODY HAD SEEN YET.
-// Free-roam monster behaviour is offscreen behaviour.
-//
-// That was a narrowing rather than the intent, and it has started widening
-// back exactly where classify's doc said it would: in how percepts are
-// PRODUCED. rpg-toolkit#1111's per-member sight range makes the drop real, so
-// a monster CAN now be watched by a player it cannot see back without a fight
-// starting — and it keeps being pumped while that is true. #1020 widens it
-// further, and a faction model lets a visible creature be non-hostile. All of
-// them change what forms a bubble, not what Pump does — see classify's doc for
-// the invariant. Pinned by
-// TestPumpStopsMovingAMonsterOnceSeen.
-//
-// Semantics:
-//   - Tick advances by exactly 1 (via clock.Advance with displacement 1).
-//   - Monsters act in deterministic order (stable Members() order, filtered to KindMonster).
-//   - Each decider receives exactly its own Snapshot: its own cell on the map and
-//     its own holdings (anti-wall-hack contract C2 — placement included, not just
-//     sight).
-//   - IntentHold means do nothing; IntentMoveTo names a cell in dungeon-absolute
-//     space and executes through stepTo — one step on the map, whether or not it
-//     goes through a doorway.
-//   - A refused step does NOT abort the pump — a cell no room owns, a wall in the
-//     way, or any other spatial rejection all mean the monster simply fails to
-//     act. Only a decider error aborts.
-//   - After all monster actions: ONE refreshSight for all members, ONE tick beat
-//     (stamped with the new clock reading), then movement beats in decision order
-//     (the same order monsters were consulted in).
-//   - Ending evaluation fires ReachedPosition triggers (only if the filter matches;
-//     empty filter = players only, not monsters) against each action's resulting
-//     cell, in the same decision order.
-//   - Returns PumpOutput with the new Tick reading, the steps monsters took,
-//     deltas, and beats.
-func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
-	// Validation
-	if in == nil {
-		return nil, fmt.Errorf("pump: %w", ErrNilInput)
-	}
-
-	if e.outcome != nil {
-		return nil, fmt.Errorf("pump: %w", ErrClosed)
-	}
-
-	// PHASE 1 — decide. Every decider is consulted BEFORE anything
-	// mutates: a decider error aborts here with zero state touched
-	// (R5 — no clock advance, no moves, no beats). This also means a
-	// later monster's decider error cannot leave an earlier monster's
-	// move half-applied.
-	allMembers, err := e.Members()
-	if err != nil {
-		return nil, fmt.Errorf("pump members: %w", err)
-	}
-
-	// The tick beat's (and every movement beat's) audience, captured HERE
-	// rather than at the append site: a contract-violating decider that
-	// removes itself mid-Decide below still belongs in this tick's beat
-	// audience, because an exited member keeps Story access to the beats
-	// they were present for. tableBeat's policy is "everyone" either way,
-	// but WHICH "everyone" — before or after Phase 1 mutates e.members — is
-	// a real difference, and it is why Pump does not call audienceFor fresh
-	// at each append site the way the other verbs do.
-	audience := e.audienceFor(tableBeat)
-
-	// Who is down, asked before anything is planned: a body has no action to
-	// take, so its decider is not consulted at all rather than consulted and
-	// discarded (a decider is behaviour, and running a corpse's behaviour is
-	// the second census defect — Pump had no standing filter and dead monsters
-	// kept patrolling).
-	//
-	// This is the SECOND consult in a Pump — refreshSight runs another at the
-	// end, through noticeDown, which is what narrates and splices. Deliberate,
-	// both ways round: the answer is not carried forward because carrying it
-	// is a cache ([Standing]), and the narration cannot happen here because a
-	// down beat appended before Pump's own tick beat would break the ordering
-	// law refreshSight states.
-	down, err := e.downNow()
-	if err != nil {
-		return nil, fmt.Errorf("pump standing: %w", err)
-	}
-
-	type plannedAction struct {
-		memberID MemberID
-		intent   Intent
-	}
-	var planned []plannedAction
-
-	for _, m := range allMembers {
-		if m.Kind != KindMonster {
-			continue
-		}
-
-		if down[m.ID] {
-			continue
-		}
-
-		// A monster caught in a bubble is not the world's to think for: the
-		// world thinks on the tick, and a fight thinks in turns. Skipped, not
-		// rejected — being mid-fight is ordinary state, and Pump's job is
-		// everyone else. Its budget entry is gone with it (Form removed it
-		// from the tick), so the Advance below grants it nothing either.
-		bubble, berr := e.bubbleFor(m.ID)
-		if berr != nil {
-			return nil, fmt.Errorf("pump bubble: %w", berr)
-		}
-		if bubble != nil {
-			continue
-		}
-
-		decider, hasDecider := e.deciders[m.ID]
-		if !hasDecider {
-			continue // no decider = hold
-		}
-
-		// The monster's own placement, read fresh from the canvas — never
-		// another member's. A decider that received anyone else's position
-		// would be a wall hack extended to placement, not just sight (C2).
-		ownCell, ok := e.canvas.GetEntityPosition(string(m.ID))
-		if !ok {
-			return nil, fmt.Errorf("pump snapshot position: %w", ErrBadPlacement)
-		}
-
-		// The monster's own holdings and nothing else (C2). Held's
-		// copy-out is intel's documented contract, carried through
-		// mind/perception — no redundant defensive copy here; the
-		// mutating-decider integration test pins the composed guarantee.
-		ownHoldings, err := e.intelLog.Held(m.ID)
-		if err != nil {
-			return nil, fmt.Errorf("pump held_by: %w", err)
-		}
-
-		intent, err := decider.Decide(Snapshot{
-			Position: ownCell,
-			Holdings: ownHoldings,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("pump decide: %w", err)
-		}
-
-		switch intent.(type) {
-		case IntentMoveTo:
-			planned = append(planned, plannedAction{memberID: m.ID, intent: intent})
-		}
-	}
-
-	// PHASE 2 — execute. Nothing below returns a decider-shaped error;
-	// the world now advances.
-	_, err = e.clock.Advance(&clock.AdvanceInput{
-		Driver:       core.EntityID("world"),
-		Displacement: 1,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("pump advance: %w", err)
-	}
-
-	newTickReading := uint64(e.clock.ToData().HighWater)
-
-	// executedAction (declared at package scope, beside stepTo which builds
-	// one) is collected in PLANNED (decision) order regardless of kind, so
-	// beats and ending evaluation below stay in the same deterministic
-	// per-monster order the deciders were consulted in (C8) — not "all moves
-	// then all crossings".
-	var executed []executedAction
-
-	for _, p := range planned {
-		// The REAL member pointer, not a Members()-derived copy: an
-		// executedAction carries it into beats and ending evaluation, and a
-		// value copy of a member who left mid-tick would keep those alive.
-		member := e.members[p.memberID]
-		if member == nil {
-			// A contract-violating decider removed itself from the
-			// encounter (e.g. called Exit on its own member) during
-			// phase 1's Decide. Its planned action has no live member
-			// to execute against — same silent-skip contract as a
-			// spatially-rejected move: absent from output and beats,
-			// the pump otherwise proceeds normally.
-			continue
-		}
-		if intent, ok := p.intent.(IntentMoveTo); ok {
-			// NOT ANNOUNCED THROUGH [Mover], and the omission is deliberate
-			// rather than missed. This is the world clock: nobody is in a
-			// fight, so there is no threatened square to leave and no
-			// reaction to spend. The turn clock's own Move case announces
-			// every cell (executeTurnIntent) because that is where a step can
-			// provoke one.
-			//
-			// The day a hazard wants to notice a wanderer — a trap in a
-			// corridor nobody is fighting in — this is the line that changes,
-			// and it changes to the same call the turn clock already makes.
-			if action, stepped := e.stepTo(member, intent.To); stepped {
-				executed = append(executed, action)
-			}
-		}
-	}
-
-	// Single refreshSight for all members after all monster actions, over
-	// the SAME pre-Phase-1 audience captured above (its own comment there) —
-	// movement beats below reuse it too, for the same reason.
-
-	// Pump's own beats — the tick frame and every action inside it — are
-	// recorded BEFORE sight refreshes: the monsters' walk is the cause,
-	// anything trigger detection appends is its effect (see refreshSight).
-	//
-	// Record the tick beat first (the frame)
-	tickBeatPayload := map[string]interface{}{
-		"beat": "tick",
-		"tick": newTickReading,
-	}
-	tickBeatBytes, _ := json.Marshal(tickBeatPayload)
-
-	tickAppendOut, err := e.appendBeat(&record.AppendInput{
-		At:       newTickReading,
-		Audience: audience,
-		Tags:     map[string]string{"tag": "clock"},
-		Payload:  tickBeatBytes,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("pump append tick beat: %w", err)
-	}
-
-	seqs := []uint64{tickAppendOut.Seq}
-
-	// Then record a beat for each successful action, in decision order.
-	for _, action := range executed {
-		actionSeq, err := e.appendMovementBeat(action, audience, newTickReading)
-		if err != nil {
-			return nil, fmt.Errorf("pump append movement beat: %w", err)
-		}
-		seqs = append(seqs, actionSeq)
-	}
-
-	intelDeltas, formed, err := e.refreshSight(audience)
-	if err != nil {
-		return nil, fmt.Errorf("pump refresh sight: %w", err)
-	}
-
-	// Evaluate ReachedPosition endings, in decision order, against the cell
-	// each step landed on.
-	//
-	// A monster never fires an UNFILTERED ending: the empty filter means "any
-	// player member", which firedReachedPosition enforces by kind, so a
-	// wandering goblin cannot end the scene by standing on the exit.
-	var firedOutcome *Outcome
-	for _, action := range executed {
-		fired, ferr := e.firedReachedPosition(action.member, action.to, newTickReading)
-		if ferr != nil {
-			return nil, fmt.Errorf("pump ending: %w", ferr)
-		}
-		if fired != nil {
-			firedOutcome = fired
-			break
-		}
-	}
-
-	// Build the output. ONE list, in the order the steps were executed —
-	// which is the order the deciders were consulted in (C8).
-	//
-	// It used to be two, split by which mechanism carried the step. The split
-	// was never about the world: a crossing looked different because the
-	// composition had two ways to move somebody, and it has one
-	// (rpg-toolkit#1106). Every cell here is read straight off the canvas, so
-	// what a host reads on this output and what it reads on the same movement's
-	// beat cannot disagree — the drift rpg-toolkit#1062 chased was two
-	// projections of one fact, and there are no projections left.
-	var outputMoves []struct {
-		Member MemberID
-		From   spatial.Position
-		To     spatial.Position
-	}
-	for _, action := range executed {
-		outputMoves = append(outputMoves, struct {
-			Member MemberID
-			From   spatial.Position
-			To     spatial.Position
-		}{
-			Member: action.member.ID,
-			From:   action.from,
-			To:     action.to,
-		})
-	}
-
-	return &PumpOutput{
-		Tick:         newTickReading,
-		MonsterMoves: outputMoves,
-		IntelDeltas:  intelDeltas,
-		Seqs:         seqs,
-		Outcome:      firedOutcome,
-		Formed:       formed,
-	}, nil
-}
-
 // refreshSight rebuilds every observer's percept AND runs trigger detection on
 // what changed, returning the deltas and any fight that started.
 //
@@ -1960,7 +1677,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	//
 	// This choke point used to leave Down nil and cite C8 as the reason it
 	// could not ask participation a second time in one pass. That reading of
-	// C8 was wrong: C8 (design.md's composition laws) is "deciders may be
+	// C8 was wrong: C8 (design.md's composition laws) is "drivers may be
 	// stochastic; the composition itself is deterministic" — a rule about
 	// determinism, not a call budget, and "once per pass" appears nowhere in
 	// [Standing] or [participationState] either. noticeDown already asks
@@ -2159,16 +1876,8 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrNoMember)
 	}
 
-	// Players cannot carry deciders (design law C2)
-	if in.Kind == KindPlayer && in.Decider != nil {
-		return nil, fmt.Errorf("join: player %s cannot carry a decider: %w", in.Member, ErrNoMember)
-	}
-
 	// Nor can a world NPC (rpg-toolkit#1404, design.md N4) — see NewEncounter's
 	// own check for why.
-	if in.Kind == KindWorld && in.Decider != nil {
-		return nil, fmt.Errorf("join: world npc %s cannot carry a decider: %w", in.Member, ErrNoMember)
-	}
 
 	// See NewEncounter's own call to validateMemberFacts for why — ASKED
 	// BEFORE any mutation (canvas.PlaceEntity below is the first one),
@@ -2178,7 +1887,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// rather than simply never having made one (Copilot, PR #1187).
 	if err := validateMemberFacts(memberFacts{
 		ID: in.Member, SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions,
-		Intimidate: in.Intimidate, Persuade: in.Persuade, Answers: in.Answers,
+		Intimidate: in.Intimidate, Persuade: in.Persuade, Table: in.Table,
 	}); err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -2243,10 +1952,10 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		SightFeet:      in.SightFeet,
 		Actions:        in.Actions,
 		Targeting:      in.Targeting,
-		Mind:           in.Mind,
 		Intimidate:     copyApproaches(in.Intimidate),
 		Persuade:       copyApproaches(in.Persuade),
-		Answers:        cloneAnswers(in.Answers),
+		Table:          cloneTable(in.Table),
+		Temper:         in.Temper,
 		BlocksMovement: in.BlocksMovement,
 		Faction:        in.Faction,
 	}
@@ -2258,16 +1967,17 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// the run does.
 	if in.Arrives != nil {
 		e.reserveMember(&reservedMember{
-			record: *member, at: in.Cell, holds: in.Holds, decider: in.Decider, arrives: in.Arrives,
+			record: *member, at: in.Cell, holds: in.Holds, arrives: in.Arrives,
 		})
 		region, _ := e.RegionAt(in.Cell)
 		return &JoinOutput{
 			Reserved: true,
 			Member: Member{
 				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
-				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting, Mind: in.Mind,
+				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting,
 				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
-				Answers:        cloneAnswers(in.Answers),
+				Table:          cloneTable(in.Table),
+				Temper:         in.Temper,
 				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
 			},
 		}, nil
@@ -2294,10 +2004,16 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join member %q world clock: %w", in.Member, cerr)
 	}
 
-	// Store decider if present (monsters only, validated above)
-	if in.Decider != nil {
-		e.deciders[in.Member] = in.Decider
+	// The faction's mix, dealt at this door exactly as it is at Setup's
+	// (design §3): a monster that arrives mid-run gets its own nerve rolled
+	// for it, and the beat says which one it came out as.
+	dealt, terr := e.dealTemperFor(in.Member, in.Temper, uint64(e.clock.ToData().HighWater))
+	if terr != nil {
+		return nil, fmt.Errorf("join: %w", terr)
 	}
+	member.Temper = dealt
+
+	// Store decider if present (monsters only, validated above)
 
 	// The joiner's placed records, seeded as the holdings they are — the
 	// SAME call NewEncounter makes for an authored member, so intel enters a
@@ -2435,7 +2151,6 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// active player leaving a fight with a striking monster next). The
 	// roster changing is the graph's declaration changing too (world.go).
 	delete(e.members, in.Member)
-	delete(e.deciders, in.Member)
 	if err = e.buildWorld(); err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}

@@ -171,7 +171,7 @@ func (s *AtlasRegionsSuite) TestAtlasUnaffectedByLiveState() {
 
 	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(7, 4)})
 	s.Require().NoError(err)
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: "inner"})
 	s.Require().NoError(err)

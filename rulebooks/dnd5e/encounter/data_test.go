@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -87,7 +88,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: -10, Y: 7}},
-			{ID: "g1", Kind: encounter.KindMonster, Position: spatial.Position{X: -2, Y: 7}, Decider: &testDecider{intent: encounter.IntentHold{}}},
+			{ID: "g1", Kind: encounter.KindMonster, Position: spatial.Position{X: -2, Y: 7}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "guarded", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: -7, Y: 10}, Member: core.EntityID("p1")}},
@@ -95,7 +96,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 		},
 	})
 	s.Require().NoError(err)
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	bs, err := json.Marshal(enc.ToData())
@@ -127,7 +128,12 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// snapshotted into the percept at assembly time, alongside position, so
 	// everyoneStanding{}'s answer is observed and encoded rather than left
 	// nil.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"perception":{"intel":{"holdings":{"g1":{"p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3LCJkb3duIjpmYWxzZX0=","channel":"sight","confirmed":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjcsImRvd24iOmZhbHNlfQ==","channel":"sight","confirmed":1,"current_via":["sight"]}}}}},"log":{"next_seq":7,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdfQ=="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdfQ=="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	//
+	// AND THE CLOCK IS DRIVEN BY MEMBERS, never by "world" (rpg-project#465).
+	// The round this fixture wraps advances once per bubble member under that
+	// member's own name — which is what keeps a fight and the world on the
+	// same scale — and the tick frame it raises is the world thinking.
+	expected := `{"clock":{"driver_progress":{"g1":1,"p1":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":2}],"perception":{"intel":{"holdings":{"g1":{"p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3LCJkb3duIjpmYWxzZX0=","channel":"sight","confirmed":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjcsImRvd24iOmZhbHNlfQ==","channel":"sight","confirmed":1,"current_via":["sight"]}}}}},"log":{"next_seq":9,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdfQ=="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdfQ=="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6InAxIiwibmV4dCI6ImcxIn0="},{"seq":7,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":8,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -305,7 +311,6 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 					ID:       "goblin",
 					Kind:     encounter.KindMonster,
 					Position: spatial.Position{X: 8, Y: 8},
-					Decider:  &testDecider{intent: encounter.IntentHold{}},
 				},
 			},
 			Endings: []encounter.EndingInput{
@@ -325,7 +330,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 		// Load from data (without decider for goblin)
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
 		s.Require().NoError(err)
 
 		// Convert to data again
@@ -369,7 +374,6 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 					ID:       "goblin",
 					Kind:     encounter.KindMonster,
 					Position: spatial.Position{X: 9, Y: 9},
-					Decider:  &testDecider{intent: encounter.IntentHold{}},
 				},
 			},
 			Endings: []encounter.EndingInput{
@@ -409,7 +413,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		// Load and verify ghost is still there
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
 		s.Require().NoError(err)
 
 		// Get holdings - ghost should still be Held (not Current)
@@ -474,7 +478,7 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 		// Load and verify everMembers includes the exited player
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
 		s.Require().NoError(err)
 
 		// Story should work for the exited member
@@ -537,7 +541,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 		// Load and verify outcome matches
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
 		s.Require().NoError(err)
 
 		status2, _ := enc2.Status()
@@ -586,9 +590,9 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 
 		// Advance the world to reading 2 BEFORE snapshotting — a reload
 		// that resets the clock is indistinguishable at reading 0.
-		_, err = enc1.Pump(&encounter.PumpInput{})
+		_, err = aRound(enc1)
 		s.Require().NoError(err)
-		_, err = enc1.Pump(&encounter.PumpInput{})
+		_, err = aRound(enc1)
 		s.Require().NoError(err)
 
 		data1 := enc1.ToData()
@@ -599,462 +603,81 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
 		s.Require().NoError(err)
 
-		out, err := enc2.Pump(&encounter.PumpInput{})
+		_, err = aRound(enc2)
 		s.Require().NoError(err)
-		s.Equal(uint64(3), out.Tick, "the reloaded clock continues the sequence — never resets")
+		s.Equal(3, enc2.ToData().Clock.HighWater,
+			"the reloaded clock continues the sequence — never resets")
 	})
 }
 
-// TestMoveWorks verifies Move works on a reloaded encounter.
-func (s *DataTestSuite) TestMoveWorksPostReload() {
-	s.Run("Move works on reloaded encounter", func() {
-		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{
-				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A wall across the room keeps playerA and the
-				// goblin out of each other's sight, so the scene
-				// opens in free roam and the goblin stays the
-				// world's to pump. Co-located and visible would be
-				// a fight at first light (rpg-toolkit#964), and a
-				// fight monster's decider is never consulted.
-				Props: wallRow(5, 1, 8),
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       "playerA",
-					Kind:     encounter.KindPlayer,
-					Position: spatial.Position{X: 1, Y: 1},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     "stairs",
-					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
-				},
-			},
+// TestATableSurvivesAReload pins what replaced decider reattachment
+// (rpg-project#465): a creature's policy is STATE now. It persists on the
+// member's own row, so a reloaded run needs nothing re-attached and no spec
+// re-read — the goblin hunts after the reload for the same reason it hunted
+// before it, and the rat with no table holds.
+func (s *DataTestSuite) TestATableSurvivesAReload() {
+	setup := &encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10), rectRegion("antechamber", 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
+		},
+		Members: []encounter.MemberInput{
+			{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 11, Y: 1}},
+			// A table and a speed: this one walks. The sealed wall keeps it
+			// out of the player's sight, so it stays the world's to think for
+			// rather than being caught in a fight at first light.
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 8},
+				SpeedFeet: 5, Table: walksTo(cellAt(4, 8))},
+			// No table at all, which is the zero value telling the truth: a
+			// creature nobody wrote orders for holds.
+			{ID: "rat", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8}, SpeedFeet: 5},
+		},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Position: spatial.Position{X: 0, Y: 0}}}},
+	}
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	data1 := enc1.ToData()
+	s.Require().NotEmpty(data1.Members, "precondition: the roster persisted")
+	var goblinRow encounter.MemberData
+	for _, m := range data1.Members {
+		if m.ID == "goblin" {
+			goblinRow = m
 		}
+	}
+	s.Require().NotEmpty(goblinRow.Table, "the goblin's own orders are on its row, not in a spec somebody has to re-read")
 
-		enc1, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err)
+	// NOTHING IS RE-ATTACHED. The load input has no seam for behaviour any
+	// more, which is the whole claim: a policy that had to be handed back in
+	// was a policy that could be handed back in DIFFERENTLY.
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+	s.Require().NoError(err)
 
-		data1 := enc1.ToData()
+	ratStarted := whereIs(s.T(), enc2, "rat")
 
-		// Load
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
-		s.Require().NoError(err)
+	_, err = aRound(enc2)
+	s.Require().NoError(err)
 
-		// Move should work
-		out, err := enc2.Step(&encounter.StepInput{
-			Member: "playerA",
-			To:     cellAt(2, 2),
-		})
-
-		s.Require().NoError(err)
-		s.NotNil(out)
-		s.Equal(cellAt(2, 2), out.Stepped.To)
-	})
+	s.Equal(cellAt(7, 8), whereIs(s.T(), enc2, "goblin"),
+		"the reloaded goblin walked one cell of its own authored orders")
+	s.Equal(ratStarted, whereIs(s.T(), enc2, "rat"),
+		"and the one with no orders held, which is what no table means")
 }
 
-// TestGoldenJSONOpen pins the JSON representation of a small open encounter.
-func (s *DataTestSuite) TestGoldenJSONOpen() {
-	s.Run("small open encounter golden JSON", func() {
-		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{
-				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       "p1",
-					Kind:     encounter.KindPlayer,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     "done",
-					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err)
-
-		data := enc.ToData()
-		jsonBytes, err := json.Marshal(data)
-		s.Require().NoError(err)
-
-		// Exact-string pin of the full compact marshal: every wire tag,
-		// omitempty behavior, and field order — a stowaway field or a
-		// renamed tag fails this where a decoded comparison would not.
-		// (log carries the opening beat: a fresh encounter is born with
-		// its first story entry; clock/intel marshal {} per leaf laws.)
-		expectedJSON := `{"clock":{"budgets":{"p1":0}},"perception":{"intel":{}},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":1,"y":2}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
-		s.Equal(expectedJSON, string(jsonBytes))
-	})
-}
-
-// TestGoldenJSONClosed pins the JSON representation of a closed encounter.
-func (s *DataTestSuite) TestGoldenJSONClosed() {
-	s.Run("small closed encounter golden JSON", func() {
-		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{
-				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       "p1",
-					Kind:     encounter.KindPlayer,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     "done",
-					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err)
-
-		// Advance the clock BEFORE closing (#929 T2 second review round —
-		// golden law: every omitempty field must be exercised at least
-		// once; OutcomeData.At omits at tick 0, so a golden that closes
-		// immediately can never prove `at` actually persists a non-zero
-		// value). One Pump advances the world tick to 1, adding its own
-		// "clock" beat to the log ahead of the closing move.
-		_, err = enc.Pump(&encounter.PumpInput{})
-		s.Require().NoError(err)
-
-		// Close the encounter
-		_, err = enc.Step(&encounter.StepInput{
-			Member: "p1",
-			To:     cellAt(0, 0),
-		})
-		s.Require().NoError(err)
-
-		data := enc.ToData()
-		jsonBytes, err := json.Marshal(data)
-		s.Require().NoError(err)
-
-		// Exact-string pin of the closed shape: outcome present with the
-		// fired ending (AT A NON-ZERO TICK — "at":1, the field this golden
-		// exists to exercise) and final member placements; the story
-		// carries all three beats (opening + the pump's tick + the
-		// closing move).
-		//
-		// The outcome member's key is "cell", not "position" (#1068): room1
-		// is anchored at the origin here, so the NUMBERS are unchanged and
-		// only the key moved — which is the entire point of the rename. A
-		// blob written before the flip lands nowhere on today's shape and is
-		// refused by name rather than read in the wrong frame (see
-		// dialect_test.go).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"perception":{"intel":{}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="},{"seq":4,"at":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0IjoiZW5kZWQiLCJlbmRpbmciOiJkb25lIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
-		s.Equal(expectedJSON, string(jsonBytes))
-	})
-}
-
-// TestAliasImmunity verifies mutating ToData result doesn't affect aggregate.
-func (s *DataTestSuite) TestAliasImmunityToData() {
-	s.Run("mutating ToData result doesn't affect aggregate", func() {
-		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{
-				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       "p1",
-					Kind:     encounter.KindPlayer,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     "done",
-					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err)
-
-		data1 := enc.ToData()
-
-		// Mutate the returned data
-		if len(data1.Members) > 0 {
-			data1.Members[0].ID = "mutated"
-		}
-		if len(data1.EverMembers) > 0 {
-			data1.EverMembers[0] = "mutated"
-		}
-		if len(data1.Endings) > 0 {
-			data1.Endings[0].Key = "mutated"
-		}
-		// Lighting's intensity is a pointer (RegionData's doc comment —
-		// presence itself is meaningful, so it can't be a value type) —
-		// mutating THROUGH it must not reach a later call's own fresh pointer.
-		s.Require().NotEmpty(data1.Field.Regions)
-		s.Require().NotNil(data1.Field.Regions[0].Lighting)
-		*data1.Field.Regions[0].Lighting.Intensity = 0.5
-		data1.Field.Regions[0].Cells[0].X = 999
-
-		// Get data again
-		data2 := enc.ToData()
-
-		// Should not be affected by mutation
-		s.NotEqual("mutated", data2.Members[0].ID)
-		s.NotEqual("mutated", data2.EverMembers[0])
-		s.NotEqual("mutated", data2.Endings[0].Key)
-		s.Require().NotNil(data2.Field.Regions[0].Lighting)
-		s.Equal(1.0, *data2.Field.Regions[0].Lighting.Intensity,
-			"ToData must return a FRESH intensity pointer each call, not alias one across calls")
-		s.NotEqual(999.0, data2.Field.Regions[0].Cells[0].X, "nor share a cell slice")
-	})
-}
-
-// TestAliasImmunityLoadEncounter verifies mutating caller's Data doesn't affect loaded aggregate.
-func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
-	s.Run("mutating caller's Data after LoadEncounter doesn't affect loaded aggregate", func() {
-		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{
-				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       "p1",
-					Kind:     encounter.KindPlayer,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     "done",
-					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
-				},
-			},
-		}
-
-		enc1, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err)
-
-		data := enc1.ToData()
-
-		// Load FIRST, then vandalize the caller's Data: the loaded
-		// aggregate must be untouched (load-side deep copy).
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
-		s.Require().NoError(err)
-
-		data.Members[0].ID = "mutated"
-		data.EverMembers[0] = "mutated"
-		data.Endings[0].Key = "mutated"
-		data.Field.Regions[0].ID = "mutated"
-
-		members, err := enc2.Members()
-		s.Require().NoError(err)
-		s.Equal(encounter.MemberID("p1"), members[0].ID,
-			"mutating the caller's Data after load must not reach the aggregate")
-		story, err := enc2.Story(&encounter.StoryInput{Audience: "p1"})
-		s.Require().NoError(err, "p1 still story-visible (everMembers not aliased)")
-		s.Require().NotEmpty(story)
-	})
-}
-
-// TestNoSurveilOnLoad verifies loading mid-fade doesn't refresh to Current.
-func (s *DataTestSuite) TestNoSurveilOnLoad() {
-	s.Run("load consumes intel verbatim — never re-derives sight", func() {
-		// Beliefs and geometry may legally diverge (C2: intel is what
-		// observers BELIEVE, not derivable world state). Build a state
-		// where re-derivation would DISAGREE with the loaded belief:
-		// alice and the goblin in clear line of sight, but alice's
-		// persisted holding says Held (a ghost). A load that re-runs
-		// first-light surveil would resurrect it to Current.
-		enc1, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)}},
-			Members: []encounter.MemberInput{
-				{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-				{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}},
-			},
-			Endings: []encounter.EndingInput{{Key: "stairs",
-				Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}}},
-		})
-		s.Require().NoError(err)
-
-		data := enc1.ToData()
-
-		// Surgical belief edit: alice's holding of the goblin becomes a
-		// ghost (CurrentVia cleared) — legal intel data, divergent from
-		// the clear-LoS geometry.
-		holding := data.Perception.Intel.Holdings["playerA"]["goblin"]
-		holding.CurrentVia = nil
-		data.Perception.Intel.Holdings["playerA"]["goblin"] = holding
-
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
-		s.Require().NoError(err)
-
-		view, err := enc2.View(&encounter.ViewInput{Member: "playerA"})
-		s.Require().NoError(err)
-		s.Require().Len(view, 1)
-		s.False(view[0].CurrentOn(perception.Sight),
-			"the loaded belief (a ghost) must survive verbatim — a load that re-surveils would resurrect it to Current")
-	})
-}
-func (s *DataTestSuite) TestDeciderReattachment() {
-	s.Run("reload with decider resumes monster decision", func() {
-		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{
-				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A wall across the room keeps playerA and the
-				// goblin out of each other's sight, so the scene
-				// opens in free roam and the goblin stays the
-				// world's to pump. Co-located and visible would be
-				// a fight at first light (rpg-toolkit#964), and a
-				// fight monster's decider is never consulted.
-				Props: wallRow(5, 1, 8),
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       "playerA",
-					Kind:     encounter.KindPlayer,
-					Position: spatial.Position{X: 1, Y: 1},
-				},
-				{
-					ID:       "goblin",
-					Kind:     encounter.KindMonster,
-					Position: spatial.Position{X: 8, Y: 8},
-					Decider:  &testDecider{intent: encounter.IntentHold{}},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     "stairs",
-					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
-				},
-			},
-		}
-
-		enc1, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err)
-
-		data1 := enc1.ToData()
-
-		// Load with goblin's decider re-attached
-		decider := &testDecider{
-			intent: encounter.IntentMoveTo{
-				To: cellAt(7, 7),
-			},
-		}
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
-				encounter.MemberID("goblin"): decider,
-			}})
-		s.Require().NoError(err)
-
-		// Pump should execute the decider's move intent
-		out, err := enc2.Pump(&encounter.PumpInput{})
-		s.Require().NoError(err)
-		s.Require().NotNil(out)
-
-		// Goblin should have moved
-		s.Len(out.MonsterMoves, 1)
-		s.Equal(encounter.MemberID("goblin"), out.MonsterMoves[0].Member)
-	})
-}
-
-// TestDeciderReattachmentWithoutDecider verifies monster holds without decider.
-func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
-	s.Run("reload without decider makes monster hold", func() {
-		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			Field: encounter.FieldInput{
-				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A wall across the room keeps playerA and the
-				// goblin out of each other's sight, so the scene
-				// opens in free roam and the goblin stays the
-				// world's to pump. Co-located and visible would be
-				// a fight at first light (rpg-toolkit#964), and a
-				// fight monster's decider is never consulted.
-				Props: wallRow(5, 1, 8),
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       "playerA",
-					Kind:     encounter.KindPlayer,
-					Position: spatial.Position{X: 1, Y: 1},
-				},
-				{
-					ID:       "goblin",
-					Kind:     encounter.KindMonster,
-					Position: spatial.Position{X: 8, Y: 8},
-					Decider:  &testDecider{intent: encounter.IntentHold{}},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     "stairs",
-					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
-				},
-			},
-		}
-
-		enc1, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err)
-
-		data1 := enc1.ToData()
-
-		// Load WITHOUT goblin's decider
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
-		s.Require().NoError(err)
-
-		// Pump should succeed (goblin holds)
-		out, err := enc2.Pump(&encounter.PumpInput{})
-		s.Require().NoError(err)
-		s.Require().NotNil(out)
-
-		// Goblin should not have moved
-		s.Len(out.MonsterMoves, 0)
-	})
-}
-
-// TestDeciderReattachmentNilEntryHolds pins reject-never-crash at the
-// reattachment map itself: a caller-supplied entry that is PRESENT but
-// nil (map[MemberID]Decider{"goblin": nil}, distinct from an ABSENT key —
-// TestDeciderReattachmentWithoutDecider's case) must not panic Pump. A
-// nil entry is equivalent to an absent one: the monster simply holds.
-func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
+// TestALegacyMindKeyIsIgnoredOnLoad pins the retirement of the `mind` word
+// (rpg-project#465, design §7). A blob written when a member's sheet named a
+// preset still LOADS; the key is simply not a field any more, so encoding/json
+// drops it.
+//
+// IGNORED RATHER THAN MIGRATED, and deliberately: there is nothing to migrate
+// it to. The preset the word named is deleted, and what replaced it is the
+// blob's own `table` — which the same blob either carries or does not.
+func (s *DataTestSuite) TestALegacyMindKeyIsIgnoredOnLoad() {
 	setup := &encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
@@ -1064,69 +687,35 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 		},
 		Members: []encounter.MemberInput{
 			{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 8},
-				Decider: &testDecider{intent: encounter.IntentHold{}}},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 8}},
 		},
 		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 			Position: spatial.Position{X: 0, Y: 0}}}},
 	}
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
-	data1 := enc1.ToData()
+
+	raw, err := json.Marshal(enc1.ToData())
+	s.Require().NoError(err)
+	withMind := strings.Replace(string(raw),
+		`"id":"goblin","kind":"monster"`, `"id":"goblin","kind":"monster","mind":"retaliator"`, 1)
+	s.Require().NotEqual(string(raw), withMind, "precondition: the legacy key really is in the bytes")
+
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal([]byte(withMind), &data))
 
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
-			"goblin": nil,
-		}})
-	s.Require().NoError(err, "a present-but-nil reattachment entry must load, not reject")
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+	s.Require().NoError(err, "a blob carrying the retired word still loads")
 
-	s.Require().NotPanics(func() {
-		out, pumpErr := enc2.Pump(&encounter.PumpInput{})
-		s.Require().NoError(pumpErr, "the first pump must not panic on a nil-decider monster")
-		s.Empty(out.MonsterMoves, "a nil-decider monster is absent from decisions and beats — it simply holds")
-	})
-}
-
-// TestDeciderReattachmentMixedNilAndReal pins that a nil entry for one
-// monster does not disturb a real decider re-attached for another in the
-// same reattachment map: the real one decides normally, the nil one holds.
-func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
-	setup := &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Field: encounter.FieldInput{
-			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10), rectRegion("antechamber", 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
-		},
-		Members: []encounter.MemberInput{
-			{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 11, Y: 1}},
-			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 8},
-				Decider: &testDecider{intent: encounter.IntentHold{}}},
-			{ID: "rat", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8},
-				Decider: &testDecider{intent: encounter.IntentHold{}}},
-		},
-		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-			Position: spatial.Position{X: 0, Y: 0}}}},
+	members, err := enc2.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		if m.ID == "goblin" {
+			s.Empty(m.Table, "and the word brought no policy with it — there is nothing for it to have become")
+		}
 	}
-	enc1, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err)
-	data1 := enc1.ToData()
-
-	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: cellAt(3, 8)}}
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
-			"goblin": nil,
-			"rat":    ratDecider,
-		}})
-	s.Require().NoError(err)
-
-	out, err := enc2.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err)
-	s.Require().Len(out.MonsterMoves, 1, "only rat's real decider produces a move")
-	s.Equal(encounter.MemberID("rat"), out.MonsterMoves[0].Member)
-	s.Equal(cellAt(3, 8), out.MonsterMoves[0].To)
 }
 
 // ============================================================================
@@ -1140,15 +729,6 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 // that fixtures invalid in several ways let the last-run check absorb
 // every deletion (7 of 8 checks were individually deletable, suite
 // green). One defect per fixture makes each check's pin falsifiable.
-
-// testDecider returns a fixed intent every time (persistence-test fixture).
-type testDecider struct {
-	intent encounter.Intent
-}
-
-func (d *testDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
-	return d.intent, nil
-}
 
 // rectRegionData is rectRegion, on the wire.
 func rectRegionData(id string, col, row, w, h int) encounter.RegionData {
@@ -1468,19 +1048,6 @@ func (s *DataTestSuite) TestLoadAcceptsHeldUnknownSightLocation() {
 // comment in data.go).
 // ============================================================
 
-// TestLoadRejectsPlayerWithDecider pins C2 at the third seam: a player
-// cannot carry a decider at load any more than at Setup or Join.
-func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
-	data := validEncounterData()
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-			"p1": &spyDecider{},
-		}})
-	s.Require().ErrorIs(err, encounter.ErrInvalidData)
-	s.Require().Contains(err.Error(), "cannot carry a decider")
-}
-
 func (s *DataTestSuite) TestMutation1ToDataAliases() {
 	s.Run("mutation 1: ToData aliases slices", func() {
 		setup := &encounter.SetupInput{
@@ -1658,7 +1225,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 			},
 			Members: []encounter.MemberInput{
 				{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-				{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 9}, Decider: &testDecider{intent: encounter.IntentHold{}}},
+				{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 9}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
@@ -1691,7 +1258,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		data := enc1.ToData()
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 
 		holdings2, _ := enc2.View(&encounter.ViewInput{Member: "playerA"})
 		var goblinCurrentAfter bool
@@ -1732,7 +1299,7 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
 		data2 := enc2.ToData()
 		tick2 := data2.Clock.HighWater
 

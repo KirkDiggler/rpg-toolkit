@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -470,15 +471,15 @@ type ReserveData struct {
 	SightFeet int              `json:"sight_feet,omitempty"`
 	Actions   []ActionViewData `json:"actions,omitempty"`
 	Targeting string           `json:"targeting,omitempty"`
-	Mind      string           `json:"mind,omitempty"`
 
-	// Intimidate, Persuade and Answers are [MemberData]'s shenanigan keys,
+	// Intimidate, Persuade, Table and Temper are [MemberData]'s own keys,
 	// kept for a member still waiting to arrive — its facts are the same
 	// facts, and losing them across a save would make an arrival
-	// unintimidable for reasons nobody authored.
+	// unintimidable, or policyless, for reasons nobody authored.
 	Intimidate []CheckApproachData     `json:"intimidate,omitempty"`
 	Persuade   []CheckApproachData     `json:"persuade,omitempty"`
-	Answers    map[string][]AnswerData `json:"answers,omitempty"`
+	Table      map[string][]AnswerData `json:"table,omitempty"`
+	Temper     TemperData              `json:"temper,omitzero"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -1082,59 +1083,195 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 }
 
 // AnswerData is one authored answer entry on the blob — [Answer], with
-// the same fields and the same presence rules (rpg-project#458).
+// the same fields and the same presence rules (rpg-project#458,
+// rpg-project#465).
 //
 // WEIGHT IS ALWAYS WRITTEN, unlike every other key here. An omitted weight in
 // the AUTHORING dialect means 1; by the time an entry reaches this
 // composition it carries its own number, and persisting a 1 as an absence
 // would put the dialect's default back into a blob that is supposed to be
-// resolved. The other three omit when unset because their absences mean
-// nothing else.
+// resolved. The others omit when unset because their absences mean nothing
+// else.
 type AnswerData struct {
-	Weight int    `json:"weight"`
-	Say    string `json:"say,omitempty"`
-	Fact   FactID `json:"fact,omitempty"`
-	Flee   bool   `json:"flee,omitempty"`
+	Weight int           `json:"weight"`
+	Say    string        `json:"say,omitempty"`
+	When   *WhenData     `json:"when,omitempty"`
+	Fact   FactID        `json:"fact,omitempty"`
+	Flee   bool          `json:"flee,omitempty"`
+	Hold   bool          `json:"hold,omitempty"`
+	Attack *SelectorData `json:"attack,omitempty"`
+	Toward *SelectorData `json:"toward,omitempty"`
+	Away   *SelectorData `json:"away,omitempty"`
 }
 
-// answersDataFrom renders a member's answer table for the blob, nil
-// staying nil for approachesDataFrom's reason: a placement nobody authored a
-// table on writes no key at all.
-func answersDataFrom(answers map[string][]Answer) map[string][]AnswerData {
-	if answers == nil {
+// WhenData is the persistent representation of a [When]: the condition an
+// entry is on the table under.
+type WhenData struct {
+	Enemy  string `json:"enemy,omitempty"`
+	Deed   string `json:"deed,omitempty"`
+	Within int    `json:"within,omitempty"`
+}
+
+// SelectorData is the persistent representation of a [Selector]: the word, or
+// the authored cell.
+type SelectorData struct {
+	Word string        `json:"word,omitempty"`
+	At   *PositionData `json:"at,omitempty"`
+}
+
+// TemperData is the persistent representation of a resolved [Temper]: the
+// word this member came out as and the profile that word means.
+//
+// THE MIX IS NOT HERE, and that is the point. A faction's spread is dealt
+// once, at the door the member came in through, and what persists is the
+// creature that came out of the deal — re-dealing on every load would give a
+// streamer a different goblin every time the run was reopened.
+type TemperData struct {
+	Word    string            `json:"word,omitempty"`
+	Profile TemperProfileData `json:"profile,omitzero"`
+}
+
+// TemperProfileData is the persistent representation of a [TemperProfile]:
+// the percent multiplier per table word.
+type TemperProfileData struct {
+	Attack int `json:"attack,omitempty"`
+	Toward int `json:"toward,omitempty"`
+	Away   int `json:"away,omitempty"`
+	Flee   int `json:"flee,omitempty"`
+	Hold   int `json:"hold,omitempty"`
+}
+
+// tableDataFrom renders a member's table for the blob, nil staying nil for
+// approachesDataFrom's reason: a placement nobody authored a table on, and
+// whose rulebook shipped none, writes no key at all.
+func tableDataFrom(table Table) map[string][]AnswerData {
+	if table == nil {
 		return nil
 	}
-	out := make(map[string][]AnswerData, len(answers))
-	for key, entries := range answers {
+	out := make(map[string][]AnswerData, len(table))
+	for key, entries := range table {
 		rows := make([]AnswerData, 0, len(entries))
 		for _, entry := range entries {
-			rows = append(rows, AnswerData(entry))
+			rows = append(rows, answerDataFrom(entry))
 		}
-		out[key] = rows
+		out[string(key)] = rows
 	}
 
 	return out
 }
 
-// answersFromData resolves a persisted answer table back to the entries it
-// names, nil staying nil for answersDataFrom's reason. What it CANNOT do is
-// judge the table: an unknown key or an unrollable weight is refused by
-// [validateAnswers] at the load's own validation step, where every other
-// blob refusal lives.
-func answersFromData(data map[string][]AnswerData) map[string][]Answer {
+// answerDataFrom renders one entry, pointers and all.
+func answerDataFrom(entry Answer) AnswerData {
+	out := AnswerData{
+		Weight: entry.Weight,
+		Say:    entry.Say,
+		Fact:   entry.Fact,
+		Flee:   entry.Flee,
+		Hold:   entry.Hold,
+		Attack: selectorDataFrom(entry.Attack),
+		Toward: selectorDataFrom(entry.Toward),
+		Away:   selectorDataFrom(entry.Away),
+	}
+	if entry.When != nil {
+		out.When = &WhenData{
+			Enemy: string(entry.When.Enemy), Deed: entry.When.Deed, Within: entry.When.Within,
+		}
+	}
+
+	return out
+}
+
+// selectorDataFrom renders a selector and the cell it may name.
+func selectorDataFrom(sel *Selector) *SelectorData {
+	if sel == nil {
+		return nil
+	}
+	out := &SelectorData{Word: string(sel.Word)}
+	if sel.At != nil {
+		out.At = &PositionData{X: sel.At.X, Y: sel.At.Y}
+	}
+
+	return out
+}
+
+// tableFromData resolves a persisted table back to the entries it names, nil
+// staying nil for tableDataFrom's reason. What it CANNOT do is judge the
+// table: an unknown key, an unrollable weight, a word under the wrong key or
+// a malformed condition is refused by [validateTable] at the load's own
+// validation step, where every other blob refusal lives.
+func tableFromData(data map[string][]AnswerData) Table {
 	if data == nil {
 		return nil
 	}
-	out := make(map[string][]Answer, len(data))
+	out := make(Table, len(data))
 	for key, rows := range data {
 		entries := make([]Answer, 0, len(rows))
 		for _, row := range rows {
-			entries = append(entries, Answer(row))
+			entries = append(entries, answerFromData(row))
 		}
-		out[key] = entries
+		out[AnswerKey(key)] = entries
 	}
 
 	return out
+}
+
+// answerFromData resolves one persisted entry.
+func answerFromData(row AnswerData) Answer {
+	out := Answer{
+		Weight: row.Weight,
+		Say:    row.Say,
+		Fact:   row.Fact,
+		Flee:   row.Flee,
+		Hold:   row.Hold,
+		Attack: selectorFromData(row.Attack),
+		Toward: selectorFromData(row.Toward),
+		Away:   selectorFromData(row.Away),
+	}
+	if row.When != nil {
+		out.When = &When{
+			Enemy: EnemyWord(row.When.Enemy), Deed: row.When.Deed, Within: row.When.Within,
+		}
+	}
+
+	return out
+}
+
+// selectorFromData resolves a persisted selector.
+func selectorFromData(data *SelectorData) *Selector {
+	if data == nil {
+		return nil
+	}
+	out := &Selector{Word: SelectorWord(data.Word)}
+	if data.At != nil {
+		out.At = &spatial.Position{X: data.At.X, Y: data.At.Y}
+	}
+
+	return out
+}
+
+// temperDataFrom renders a member's resolved temperament, the zero value
+// staying zero: a soldier stores nothing, which is what makes a roster of
+// creatures nobody gave a temperament to byte-identical to one written before
+// temperaments existed.
+func temperDataFrom(t Temper) TemperData {
+	return TemperData{
+		Word: t.Word,
+		Profile: TemperProfileData{
+			Attack: t.Profile.Attack, Toward: t.Profile.Toward, Away: t.Profile.Away,
+			Flee: t.Profile.Flee, Hold: t.Profile.Hold,
+		},
+	}
+}
+
+// temperFromData resolves a persisted temperament.
+func temperFromData(d TemperData) Temper {
+	return Temper{
+		Word: d.Word,
+		Profile: TemperProfile{
+			Attack: d.Profile.Attack, Toward: d.Profile.Toward, Away: d.Profile.Away,
+			Flee: d.Profile.Flee, Hold: d.Profile.Hold,
+		},
+	}
 }
 
 // taughtFactsOf is every fact id a member's table can teach — what joins
@@ -1254,23 +1391,35 @@ type MemberData struct {
 	SightFeet int              `json:"sight_feet,omitempty"`
 	Actions   []ActionViewData `json:"actions,omitempty"`
 	Targeting string           `json:"targeting,omitempty"`
-	Mind      string           `json:"mind,omitempty"`
 
-	// Intimidate, Persuade and Answers carry forward the member's
-	// shenanigan facts (rpg-project#454, rpg-project#458) — see
-	// [MemberInput.Intimidate], [MemberInput.Persuade] and
-	// [MemberInput.Answers]. All omit when unset, so a blob written for a
-	// roster with no shenanigans on it is byte-identical to one written
-	// before these keys existed.
+	// Intimidate, Persuade, Table and Temper carry forward the member's
+	// shenanigan facts and its whole policy (rpg-project#454,
+	// rpg-project#458, rpg-project#465) — see [MemberInput.Intimidate],
+	// [MemberInput.Persuade], [MemberInput.Table] and [MemberInput.Temper].
+	// All omit when unset, so a blob written for a roster with none of them
+	// is byte-identical to one written before these keys existed.
 	//
-	// `on_intimidated` IS GONE, not kept beside `answers`. It said one
-	// thing about one outcome; the table says all four, and two spellings of
-	// the same authored fact is the dual representation this repo bans. No
-	// consumer persists this shape yet, so there is no installed base to
-	// migrate — the same argument the placement dialect made when it moved.
+	// `mind` IS GONE, not kept beside `table`. It named a preset that
+	// decided everything the table now decides, and two surfaces for one
+	// question is the dual representation this repo bans. A blob that still
+	// carries the key LOADS, with the key ignored — encoding/json drops what
+	// no field claims — which is the honest answer for a word this build has
+	// no machinery behind: there is nothing to migrate it to that the blob's
+	// own `table` does not already say.
+	//
+	// A LOADED RUN NEEDS NO SPEC. The table persisted here is the LAYERED
+	// one — rulebook under faction under placement — so reopening a run does
+	// not re-read the dungeon file, and a dungeon edited mid-campaign does
+	// not silently rewrite a creature that is already in play.
 	Intimidate []CheckApproachData     `json:"intimidate,omitempty"`
 	Persuade   []CheckApproachData     `json:"persuade,omitempty"`
-	Answers    map[string][]AnswerData `json:"answers,omitempty"`
+	Table      map[string][]AnswerData `json:"table,omitempty"`
+	Temper     TemperData              `json:"temper,omitzero"`
+
+	// Pace is how far this member has walked on the world clock since it
+	// last paid a round for it — memberRecord.PaceCells (design §5). Omits
+	// at zero, which is a member standing on a round boundary.
+	Pace int `json:"pace,omitempty"`
 
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
@@ -1423,10 +1572,11 @@ func (e *Encounter) snapshot() EncounterData {
 			SightFeet:      m.SightFeet,
 			Actions:        actionViewDataFrom(m.Actions),
 			Targeting:      m.Targeting,
-			Mind:           m.Mind,
 			Intimidate:     approachesDataFrom(m.Intimidate),
 			Persuade:       approachesDataFrom(m.Persuade),
-			Answers:        answersDataFrom(m.Answers),
+			Table:          tableDataFrom(m.Table),
+			Temper:         temperDataFrom(m.Temper),
+			Pace:           m.PaceCells,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -1519,10 +1669,10 @@ func (e *Encounter) snapshot() EncounterData {
 			SightFeet:      rm.record.SightFeet,
 			Actions:        actionViewDataFrom(rm.record.Actions),
 			Targeting:      rm.record.Targeting,
-			Mind:           rm.record.Mind,
 			Intimidate:     approachesDataFrom(rm.record.Intimidate),
 			Persuade:       approachesDataFrom(rm.record.Persuade),
-			Answers:        answersDataFrom(rm.record.Answers),
+			Table:          tableDataFrom(rm.record.Table),
+			Temper:         temperDataFrom(rm.record.Temper),
 			BlocksMovement: rm.record.BlocksMovement,
 			Faction:        rm.record.Faction,
 			Holds:          append([]IntelID(nil), rm.holds...),
@@ -1758,10 +1908,10 @@ type LoadEncounterInput struct {
 	// Data is the persisted encounter, as produced by Encounter.ToData.
 	Data EncounterData
 
-	// Deciders re-attaches behaviour to non-player members, keyed by member.
-	// Nil is legal and means no member acts on its own. A player member naming a
-	// Decider here is rejected (design law C2).
-	Deciders map[MemberID]Decider
+	// Roller is THE WORLD'S DIE — see [SetupInput.Roller]. Optional at this
+	// door for the same reason it is optional at that one, and refused at the
+	// roll rather than here.
+	Roller dice.Roller
 
 	// Initiative rolls the order a bubble forms in. REQUIRED, exactly as it is
 	// on SetupInput: a loaded encounter runs trigger detection from its first
@@ -1931,7 +2081,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: Standing does not implement Participation: %w", ErrNoParticipation)
 	}
 
-	data, deciders := input.Data, input.Deciders
+	data := input.Data
 
 	// R5: Validate everything before constructing
 	// No endings
@@ -2134,7 +2284,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// the same reason: LoadEncounter is the trust boundary for a blob
 		// somebody edited, and an unknown outcome key would otherwise sit in
 		// the run looking authored until a player finally spoke to it.
-		if err := validateAnswers(answersFromData(m.Answers)); err != nil {
+		if err := validateTable(tableFromData(m.Table)); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
 	}
@@ -2174,7 +2324,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateMemberFacts(memberFacts{
 			ID: r.ID, SpeedFeet: r.SpeedFeet, SightFeet: r.SightFeet, Actions: actionViewsFrom(r.Actions),
 			Intimidate: approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
-			Answers: answersFromData(r.Answers),
+			Table: tableFromData(r.Table),
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -2225,10 +2375,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// when it stands on the floor.
 		taught := make([]FactID, 0, len(data.Members)+len(data.Reserve))
 		for _, m := range data.Members {
-			taught = append(taught, taughtFactsOf(m.Answers)...)
+			taught = append(taught, taughtFactsOf(m.Table)...)
 		}
 		for _, r := range data.Reserve {
-			taught = append(taught, taughtFactsOf(r.Answers)...)
+			taught = append(taught, taughtFactsOf(r.Table)...)
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, mintable, data.EverMembers); err != nil {
@@ -2421,13 +2571,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	e := &Encounter{
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
-		deciders:      make(map[MemberID]Decider),
 		initiative:    input.Initiative,
 		standing:      standingWithParticipation,
 		participation: standingWithParticipation,
 		sight:         input.Sight,
 		equipment:     input.Equipment,
-		turnDriver:    input.TurnDriver,
+		driver:        input.TurnDriver,
+		roller:        input.Roller,
 		striker:       input.Striker,
 		mover:         input.Mover,
 		announcer:     input.Announcer,
@@ -2539,31 +2689,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			SightFeet:      m.SightFeet,
 			Actions:        actionViewsFrom(m.Actions),
 			Targeting:      m.Targeting,
-			Mind:           m.Mind,
 			Intimidate:     approachesFromData(m.Intimidate),
 			Persuade:       approachesFromData(m.Persuade),
-			Answers:        answersFromData(m.Answers),
+			Table:          tableFromData(m.Table),
+			Temper:         temperFromData(m.Temper),
+			PaceCells:      m.Pace,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
 
-		// Re-attach decider if present and non-nil — a literal nil entry
-		// in the reattachment map is equivalent to an ABSENT one: a
-		// monster without a decider is legal and simply holds (Setup and
-		// Join already treat a nil MemberInput.Decider this way). Storing
-		// a nil Decider interface here would panic Pump's first Decide
-		// call on that monster (reject-never-crash: LoadEncounter is the
-		// trust boundary for the caller-supplied reattachment map too,
-		// not just the persisted bytes). Players cannot carry deciders
-		// regardless (C2, enforced at all three seams: Setup, Join, load).
-		if d, ok := deciders[m.ID]; ok && d != nil {
-			if m.Kind == KindPlayer {
-				return nil, fmt.Errorf("load encounter: player %s cannot carry a decider: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
-			}
-			e.deciders[m.ID] = d
-		}
 	}
 
 	// Put every member on a clock that is not already on one.
@@ -2602,19 +2738,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				SightFeet:      r.SightFeet,
 				Actions:        actionViewsFrom(r.Actions),
 				Targeting:      r.Targeting,
-				Mind:           r.Mind,
 				Intimidate:     approachesFromData(r.Intimidate),
 				Persuade:       approachesFromData(r.Persuade),
-				Answers:        answersFromData(r.Answers),
+				Table:          tableFromData(r.Table),
+				Temper:         temperFromData(r.Temper),
 				BlocksMovement: r.BlocksMovement,
 				Faction:        r.Faction,
 			},
 			at:      spatial.Position{X: r.Cell.X, Y: r.Cell.Y},
 			holds:   append([]IntelID(nil), r.Holds...),
 			arrives: reserveTriggers[i],
-		}
-		if d, ok := deciders[r.ID]; ok && d != nil {
-			rm.decider = d
 		}
 		e.reserveMember(rm)
 	}

@@ -83,7 +83,8 @@ func (s *RecordCastSuite) TestAllMissCastHasNoInventedSaveOrEffect() {
 		Targets: []encounter.CastTargetResult{{Target: castFighter, Missed: true}, {Target: castSkeleton, Missed: true}},
 	})
 	s.Require().NoError(err)
-	s.Equal(before+1, standing.calls)
+	s.Equal(before+3, standing.calls,
+		"one consult for the transaction itself, and two more for the round of the world it pays for")
 	s.Equal([]string{encounter.BeatCast, encounter.BeatCastMissed, encounter.BeatCastMissed}, s.beatNames(s.storyEntries(enc, castBard, out.Seqs)))
 }
 
@@ -262,7 +263,8 @@ func (s *RecordCastSuite) TestAGatedCastReadsCastSaveDamageCondition() {
 	for i := 1; i < len(out.Seqs); i++ {
 		s.Less(out.Seqs[i-1], out.Seqs[i], "beat %d precedes beat %d", i-1, i)
 	}
-	s.Equal(callsBefore+1, standing.calls, "noticeDown is consulted once for the whole transaction")
+	s.Equal(callsBefore+3, standing.calls,
+		"one consult for the transaction itself, and two more for the round of the world it pays for (rpg-project#465): the percept rebuild and the notice pass")
 
 	entries := s.storyEntries(enc, castBard, out.Seqs)
 	s.Equal([]string{"cast", "saved", "damage-applied", "condition-applied"}, s.beatNames(entries))

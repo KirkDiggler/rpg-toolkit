@@ -57,10 +57,9 @@ func TestTombWatch(t *testing.T) {
 	// this scene used to have: spatial v0.9.1 leans around a lone pillar
 	// (see testwalls_test.go), and this crypt needs a sightline that really
 	// cannot get through.
-	goblinPatrol := &patrolDecider{positions: []spatial.Position{cellAt(7, 10), cellAt(6, 10)}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(cryptRoom, 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),
@@ -68,7 +67,8 @@ func TestTombWatch(t *testing.T) {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: bella, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10}, Decider: goblinPatrol},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10},
+				SpeedFeet: 5, Table: walksTo(cellAt(5, 10))},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
@@ -95,18 +95,18 @@ func TestTombWatch(t *testing.T) {
 	// the pump ticks and the goblin takes its first patrol step to (7,10).
 	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(2, 6)})
 	require.NoError(t, err, "beat 2: alice advances")
-	pumpOut, err := enc.Pump(&encounter.PumpInput{})
-	require.NoError(t, err, "beat 2: her activity pumps the clock")
-	require.Equal(t, uint64(1), pumpOut.Tick, "beat 2: the exploration clock ticks once")
+	_, err = aRound(enc)
+	require.NoError(t, err, "beat 2: her activity pays the world a round")
+	require.Equal(t, 1, enc.ToData().Clock.HighWater, "beat 2: the world clock ticks once")
 	_, p := seen(t, enc, alice, goblin)
-	require.Equal(t, cellAt(7, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 2: alice's view tracks the patrol step to (7,10)")
+	require.Equal(t, cellAt(5, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 2: alice's view tracks the step to (5,10)")
 
-	// A second pump brings the goblin back to (6,10) — directly behind
-	// the wall, setting up the ghost.
-	_, err = enc.Pump(&encounter.PumpInput{})
+	// A second round leaves it standing there — it has arrived where its
+	// orders sent it, which is directly in alice's line from (2,6).
+	_, err = aRound(enc)
 	require.NoError(t, err, "beat 2: the watch continues")
 	_, p = seen(t, enc, alice, goblin)
-	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 2: the goblin returns to (6,10), still in alice's sight from (2,6)")
+	require.Equal(t, cellAt(5, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 2: the goblin holds at (5,10), still in alice's sight from (2,6)")
 
 	// ---- Beat 3: the ghost forms -----------------------------------
 	// Alice slips to (6,2): the wall now sits square on the
@@ -117,8 +117,8 @@ func TestTombWatch(t *testing.T) {
 
 	current, p = seen(t, enc, alice, goblin)
 	require.False(t, current, "beat 3: alice's sight of the goblin fades — the ghost forms")
-	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y},
-		"beat 3: her ghost holds the goblin at last-seen (6,10)")
+	require.Equal(t, cellAt(5, 10), spatial.Position{X: p.X, Y: p.Y},
+		"beat 3: her ghost holds the goblin at last-seen (5,10), where its orders had walked it")
 	current, p = seen(t, enc, goblin, alice)
 	require.False(t, current, "beat 3: the goblin loses her too — symmetric")
 	require.Equal(t, cellAt(2, 6), spatial.Position{X: p.X, Y: p.Y}, "beat 3: its ghost of alice is at (2,6) — it never saw her arrive at (6,2)")
@@ -127,22 +127,20 @@ func TestTombWatch(t *testing.T) {
 
 	// ---- Beat 4: the pause (pause is free) -------------------------
 	// The table closes the Discord activity. The host persists ONE
-	// aggregate and rehydrates it later — same encounter, mid-scene.
-	// Deciders are behavior, not state: the campaign re-attaches the
-	// goblin's patrol at load (its route position restarts; its INTEL
-	// does not — beliefs are state and traveled in the aggregate).
+	// aggregate and rehydrates it later — same encounter, mid-scene. The
+	// goblin's ORDERS travel with it now (rpg-project#465): a table is state,
+	// persisted on the member's own row, so nothing is re-attached at load
+	// and its INTEL travels the way it always did.
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-			goblin: &patrolDecider{positions: []spatial.Position{cellAt(7, 10), cellAt(6, 10)}},
-		}})
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
 	current, p = seen(t, enc, alice, goblin)
 	require.False(t, current, "beat 4: the ghost survived the reload")
-	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 4: still at last-seen (6,10) — loading never re-derives sight")
+	require.Equal(t, cellAt(5, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 4: still at last-seen (5,10) — loading never re-derives sight")
 	current, _ = seen(t, enc, bella, goblin)
 	require.True(t, current, "beat 4: bella's live sight survived too")
 
@@ -204,7 +202,10 @@ func TestTombWatch(t *testing.T) {
 			_, e := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 1)})
 			return e
 		},
-		"Pump": func() error { _, e := enc.Pump(&encounter.PumpInput{}); return e },
+		"Search": func() error {
+			_, e := enc.Search(&encounter.SearchInput{Member: alice, Region: cryptRoom})
+			return e
+		},
 		"Join": func() error {
 			_, e := enc.Join(&encounter.JoinInput{
 				Member: "late",
@@ -246,8 +247,12 @@ func TestTombWatch(t *testing.T) {
 		// to watch instead
 		"bubble-formed", "bubble-dissolved",
 		"moved",         // beat 2: alice advances
-		"tick", "moved", // beat 2: pump 1, goblin steps out
-		"tick", "moved", // beat 2: pump 2, goblin steps back
+		// beat 2: a round of the world, the goblin rolls its own table and
+		// steps out; then a second round, on which it holds where its orders
+		// sent it — the roll is still narrated, because being asked is part
+		// of the story.
+		"tick", "answered", "moved",
+		"tick", "answered",
 		"moved",  // beat 3: alice slips behind the wall
 		"joined", // beat 5: cormac (the pause leaves no beat — pause is free)
 		// beat 5: and the goblin sees him arrive — his fight starts AFTER the
