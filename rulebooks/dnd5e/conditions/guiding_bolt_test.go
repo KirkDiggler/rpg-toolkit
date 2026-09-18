@@ -29,6 +29,10 @@ func TestGuidingBoltTargetConsumesOnceForAnyAttacker(t *testing.T) {
 	result := attack("target")
 	require.Len(t, result.AdvantageSources, 1)
 	require.Equal(t, "caster", result.AdvantageSources[0].SourceID)
+	require.True(t, c.IsApplied(), "assembling a chain is not rolling an attack")
+	rolled := &dnd5eEvents.PostRollOfferEvent{AttackerID: "ally", TargetID: "target", Roll: 1}
+	_, err = dnd5eEvents.PostRollOfferChain.On(bus).PublishWithChain(ctx, rolled, events.NewStagedChain[*dnd5eEvents.PostRollOfferEvent](combat.ModifierStages))
+	require.NoError(t, err)
 	require.False(t, c.IsApplied())
 	require.Empty(t, attack("target").AdvantageSources)
 }

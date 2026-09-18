@@ -118,6 +118,12 @@ func (s *GuidingBoltCondition) Apply(ctx context.Context, bus events.EventBus) e
 		return err
 	}
 	s.subscriptionIDs = append(s.subscriptionIDs, attackSub)
+	rolledSub, err := dnd5eEvents.PostRollOfferChain.On(bus).SubscribeWithChain(ctx, s.onRolled)
+	if err != nil {
+		_ = s.Remove(ctx, bus)
+		return err
+	}
+	s.subscriptionIDs = append(s.subscriptionIDs, rolledSub)
 
 	turnEnds := dnd5eEvents.TurnEndTopic.On(bus)
 	turnSub, err := turnEnds.Subscribe(ctx, s.onTurnEnd)
@@ -241,8 +247,8 @@ func (s *GuidingBoltCondition) end(ctx context.Context, reason string) error {
 	return s.Remove(ctx, bus)
 }
 
-// onAttackChain consumes the target's light only when an attack roll against it
-// is actually assembled. Other targets and saving throws cannot consume it.
+// onAttackChain contributes the light before the roll. Consumption waits for
+// the post-roll boundary, so a cancelled attack cannot spend it.
 func (s *GuidingBoltCondition) onAttackChain(ctx context.Context, event dnd5eEvents.AttackChainEvent, c chain.Chain[dnd5eEvents.AttackChainEvent]) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	if event.TargetID != s.MemberID {
 		return c, nil
@@ -253,6 +259,14 @@ func (s *GuidingBoltCondition) onAttackChain(ctx context.Context, event dnd5eEve
 	})
 	if err != nil {
 		return c, err
+	}
+	return c, nil
+}
+
+// onRolled consumes the light after an actual attack roll and before any pause.
+func (s *GuidingBoltCondition) onRolled(ctx context.Context, event *dnd5eEvents.PostRollOfferEvent, c chain.Chain[*dnd5eEvents.PostRollOfferEvent]) (chain.Chain[*dnd5eEvents.PostRollOfferEvent], error) {
+	if event == nil || event.TargetID != s.MemberID {
+		return c, nil
 	}
 	return c, s.end(ctx, "consumed")
 }
