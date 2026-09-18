@@ -19,10 +19,11 @@ import (
 // content an author reads and a walk tunes, so a change to it should be a
 // deliberate change to two places, not a character that drifted in one.
 const wantGeneric = `time:
-  - { when: { fled: { within: 3 } },      away: actor,     weight: 3 }
-  - { when: { attacked: { within: 3 } },  attack: attacker, weight: 3 }
-  - { when: { enemy: seen },              attack: enemy }
-  - { when: { enemy: remembered },        toward: enemy }
+  - { when: { fled: { within: 3 } },     away: actor,      weight: 3 }
+  - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
+  - { when: { enemy: reach },            attack: enemy }
+  - { when: { enemy: seen },             toward: enemy }
+  - { when: { enemy: remembered },       toward: enemy }
   - { hold: {} }
 `
 
@@ -99,7 +100,7 @@ func TestDefaultsEntriesRunInTheOrderTheArgumentNeeds(t *testing.T) {
 	require.NoError(t, err)
 
 	lines := entriesOf(t, got.Source)
-	require.Len(t, lines, 5)
+	require.Len(t, lines, 6)
 
 	require.Contains(t, lines[0], "fled:",
 		"a creature that answered flee runs first, on its own time — which is why `flee` lands a deed and steps nowhere")
@@ -109,14 +110,41 @@ func TestDefaultsEntriesRunInTheOrderTheArgumentNeeds(t *testing.T) {
 		"being struck is answered when the creature next has time, not when the blow lands")
 	require.Contains(t, lines[1], "attack: attacker")
 
-	require.Contains(t, lines[2], "attack: enemy", "failing both, it fights what it can see")
-	require.Contains(t, lines[3], "toward: enemy", "and walks toward what it only remembers")
+	require.Contains(t, lines[2], "enemy: reach")
+	require.Contains(t, lines[2], "attack: enemy", "what is already in reach gets struck")
 
-	require.Equal(t, "- { hold: {} }", lines[4],
+	require.Contains(t, lines[3], "enemy: seen")
+	require.Contains(t, lines[3], "toward: enemy",
+		"an enemy it can only SEE gets closed on — a sighted band that attacked would leave the creature "+
+			"swinging at nothing from across the room")
+
+	require.Contains(t, lines[4], "enemy: remembered")
+	require.Contains(t, lines[4], "toward: enemy", "and one it only remembers gets walked toward")
+
+	require.Equal(t, "- { hold: {} }", lines[5],
 		"hold is last and unconditional, so a table always has an answer and an idle creature is idle on purpose")
-	for i, line := range lines[:4] {
+	for i, line := range lines[:5] {
 		require.Contains(t, line, "when:", "entry %d is conditional — only the fallback is not", i)
 	}
+}
+
+// The `enemy:` bands are exclusive and run near-to-far, so a creature never
+// reads a farther band while a nearer one holds.
+func TestDefaultsEnemyBandsRunNearToFar(t *testing.T) {
+	got, err := Default(*refs.Monsters.Goblin())
+	require.NoError(t, err)
+
+	var bands []string
+	for _, line := range entriesOf(t, got.Source) {
+		for _, band := range []string{"reach", "seen", "remembered", "none"} {
+			if strings.Contains(line, "enemy: "+band) {
+				bands = append(bands, band)
+			}
+		}
+	}
+
+	require.Equal(t, []string{"reach", "seen", "remembered"}, bands,
+		"nearest band first; `none` is unnamed because the unconditional hold already answers it")
 }
 
 // entriesOf pulls the entry lines out of a table's source without parsing the

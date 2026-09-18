@@ -35,19 +35,27 @@ type DefaultTable struct {
 // table of its own — `flee` lands the deed and this entry does the running.
 // A creature that was struck comes for whoever struck it, which is what the
 // retaliator preset did with a grudge and a patience number, now in the
-// author's sight as `within: 3`. Failing both, it fights what it can see,
-// walks toward what it remembers, and holds. `hold` is last and
-// unconditional, so the table always has an answer and a creature with
-// nothing to do does nothing rather than nothing-in-particular.
+// author's sight as `within: 3`.
+//
+// Failing both, it works down the `enemy:` bands, which are exclusive: it
+// strikes what is already in `reach`, CLOSES on what it can only see, walks
+// toward what it merely remembers, and otherwise holds. The `seen` band is
+// `toward`, not `attack`, because a creature that can see you across a room
+// has to cross it first — a table whose only sighted answer was `attack`
+// would leave a monster standing where it spotted you, swinging at nothing.
+//
+// `hold` is last and unconditional, so the table always has an answer and a
+// creature with nothing to do does nothing rather than nothing-in-particular.
 //
 // There is no `attacked` trigger to go with the `attacked` condition: what a
 // creature does about being hit is decided when it next has time, not when
 // the blow lands (design §2).
 const generic = `time:
-  - { when: { fled: { within: 3 } },      away: actor,     weight: 3 }
-  - { when: { attacked: { within: 3 } },  attack: attacker, weight: 3 }
-  - { when: { enemy: seen },              attack: enemy }
-  - { when: { enemy: remembered },        toward: enemy }
+  - { when: { fled: { within: 3 } },     away: actor,      weight: 3 }
+  - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
+  - { when: { enemy: reach },            attack: enemy }
+  - { when: { enemy: seen },             toward: enemy }
+  - { when: { enemy: remembered },       toward: enemy }
   - { hold: {} }
 `
 
