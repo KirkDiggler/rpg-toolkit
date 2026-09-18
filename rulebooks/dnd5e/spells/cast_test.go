@@ -754,3 +754,24 @@ func (s *CastContentSuite) TestOnlyCommandOffersAMenu() {
 		}
 	}
 }
+
+func (s *CastContentSuite) TestGuidingBoltDeclaresSpellAttackAndOnHitLight() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.GuidingBolt, SpellAttackBonus: 5})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(120, d.Cast.RangeFeet)
+	s.Nil(d.Cast.Concentration)
+	s.Nil(d.Cast.Save)
+	a := d.Cast.Attack
+	s.Require().NotNil(a)
+	s.Equal(actions.AttackCategorySpell, a.Category)
+	s.Equal(5, a.AttackBonus)
+	s.Nil(a.Weapon)
+	s.Nil(a.Ability)
+	s.Equal([]damage.Damage{{Dice: "4d6", Type: damage.Radiant}}, a.Damage)
+	s.Require().Len(a.OnHit, 1)
+	s.Equal(*refs.Conditions.GuidingBolt(), a.OnHit[0].Ref)
+	s.Equal("source_id", a.OnHit[0].CounterpartKey)
+}

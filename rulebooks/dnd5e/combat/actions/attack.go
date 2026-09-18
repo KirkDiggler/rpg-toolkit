@@ -238,9 +238,11 @@ func (d AttackDelivery) clone() AttackDelivery {
 // ConditionApplication declares one condition to build and apply after an
 // attack hits. Parameters remain opaque to this package.
 type ConditionApplication struct {
-	Ref        core.Ref        `json:"ref"`
-	Parameters json.RawMessage `json:"parameters,omitempty"`
-	Save       *saves.SaveGate `json:"save,omitempty"`
+	// CounterpartKey binds the attacker ID into the condition parameters.
+	CounterpartKey string          `json:"counterpart_key,omitempty"`
+	Ref            core.Ref        `json:"ref"`
+	Parameters     json.RawMessage `json:"parameters,omitempty"`
+	Save           *saves.SaveGate `json:"save,omitempty"`
 }
 
 // Validate reports whether the declaration names a D&D 5e condition and uses

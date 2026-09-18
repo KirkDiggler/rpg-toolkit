@@ -103,8 +103,7 @@ func (s *GuidingBoltCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 // IsApplied returns true if this condition is currently applied.
 func (s *GuidingBoltCondition) IsApplied() bool { return s.bus != nil }
 
-// Apply subscribes the light to the three boundaries that end it: the
-// turn-end count running out, combat end, and any rest.
+// Apply subscribes the light to attacks, caster turn ends, combat end, and rest.
 func (s *GuidingBoltCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")

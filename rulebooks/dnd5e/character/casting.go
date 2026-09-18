@@ -21,6 +21,7 @@ func (c *Character) CastDefinition(id spells.Spell) *actions.Definition {
 	class := classes.ClassData[c.classID]
 	if class != nil && class.SpellcastingAbility != "" {
 		ability := class.SpellcastingAbility
+		input.SpellAttackBonus = c.ProficiencyBonus() + c.GetAbilityModifier(ability)
 		input.HealingModifiers = []healing.Modifier{{Source: events.RollSource{
 			Ref:  &core.Ref{Module: refs.Module, Type: refs.TypeAbilities, ID: string(ability)},
 			Name: ability.Display(), Label: "Spellcasting modifier", SourceID: c.id,

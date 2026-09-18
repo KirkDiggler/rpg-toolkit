@@ -302,6 +302,22 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // no cast behavior in this build, which is a fact about the build rather than a
 // gap to paper over: nine of the bard's eleven cantrips are absent.
 var castContent = map[Spell]castProfileBuilder{
+	GuidingBolt: {
+		name:    "Guiding Bolt",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		cost:    slotCost(resources.SpellSlotLevel1),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 120, Target: actions.CastTargetOneCreature, MinTargets: 1, MaxTargets: 1,
+				Attack: &actions.AttackProfile{
+					Category: actions.AttackCategorySpell,
+					Delivery: actions.AttackDelivery{Ranged: &actions.RangedDelivery{NormalFeet: 120, LongFeet: 120}},
+					Damage:   []damage.Damage{{Dice: "4d6", Type: damage.Radiant}},
+					OnHit:    []actions.ConditionApplication{{Ref: *refs.Conditions.GuidingBolt(), CounterpartKey: "source_id"}},
+				},
+			}
+		},
+	},
 	Bless: {
 		name:    "Bless",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
@@ -801,6 +817,8 @@ type CastDefinitionInput struct {
 	HealingModifiers []healing.Modifier
 	Spell            Spell
 	SpellSaveDC      int
+	// SpellAttackBonus is proficiency plus the spellcasting ability modifier.
+	SpellAttackBonus int
 }
 
 // CastDefinition returns the action definition for one spell, with SpellSaveDC
@@ -832,6 +850,9 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 	profile := content.build(input.SpellSaveDC)
 	casting := content.casting
 	profile.Casting = &casting
+	if profile.Attack != nil {
+		profile.Attack.AttackBonus = input.SpellAttackBonus
+	}
 	if profile.Healing != nil {
 		profile.Healing.Modifiers = input.HealingModifiers
 		declaration := profile.Healing.Clone()
