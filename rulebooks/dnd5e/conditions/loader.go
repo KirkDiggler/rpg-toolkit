@@ -218,6 +218,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return baned, nil
 	},
+	refs.Conditions.ShieldOfFaith().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		shieldOfFaith := &ShieldOfFaithCondition{}
+		if err := shieldOfFaith.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load shieldOfFaith condition")
+		}
+		return shieldOfFaith, nil
+	},
 	refs.Conditions.Guided().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		guided := &GuidedCondition{}
 		if err := guided.loadJSON(data); err != nil {

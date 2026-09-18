@@ -39,7 +39,7 @@ func (s *ClericFinalizeSuite) classInput() *SetClassInput {
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
 			Spells: []spells.Spell{
-				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds,
+				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith,
 			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
@@ -108,7 +108,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	}, data.KnownCantrips)
 	s.ElementsMatch([]string{
 		refs.Spells.Bane().String(), refs.Spells.Bless().String(), refs.Spells.Command().String(),
-		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(), refs.Spells.GuidingBolt().String(), refs.Spells.InflictWounds().String(),
+		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(), refs.Spells.GuidingBolt().String(), refs.Spells.InflictWounds().String(), refs.Spells.ShieldOfFaith().String(),
 	}, data.KnownSpells)
 	encoded, err = json.Marshal(data)
 	s.Require().NoError(err)
@@ -548,6 +548,19 @@ func (s *ClericFinalizeSuite) TestInflictWoundsCompilesFromNativeClericAfterRelo
 	s.Equal(5, d.Cast.Attack.AttackBonus, "Wisdom 16 plus proficiency 2")
 	s.Nil(d.Cast.Attack.Ability, "spellcasting modifier must not be added to necrotic damage")
 	s.Equal("3d10", d.Cast.Attack.Damage[0].Dice)
+	_, err = c.StatusView(&StatusViewInput{})
+	s.NoError(err)
+}
+
+func (s *ClericFinalizeSuite) TestShieldOfFaithCompilesFromNativeClericAfterReload() {
+	c, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-faith", events.NewEventBus())
+	s.Require().NoError(err)
+	c, err = Load(context.Background(), c.ToData())
+	s.Require().NoError(err)
+	d := c.CastDefinition(spells.ShieldOfFaith)
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
 	_, err = c.StatusView(&StatusViewInput{})
 	s.NoError(err)
 }

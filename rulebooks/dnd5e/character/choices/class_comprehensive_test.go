@@ -846,7 +846,7 @@ func (s *ClassComprehensiveSuite) createClericTestData() *ClassTestData {
 		HasCantrips:  true,
 		CantripCount: 3,
 		HasSpells:    true,
-		SpellCount:   8,
+		SpellCount:   9,
 		SkillList: []shared.SelectionID{
 			skills.History, skills.Insight, skills.Medicine,
 			skills.Persuasion, skills.Religion,
@@ -947,7 +947,7 @@ func (s *ClassComprehensiveSuite) createClericValidBase() *choices.Submissions {
 	subs.Add(choices.Submission{
 		Category: shared.ChoiceSpells, Source: shared.SourceClass, ChoiceID: choices.ClericSpells1,
 		Values: []shared.SelectionID{
-			spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds,
+			spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith,
 		},
 	})
 
