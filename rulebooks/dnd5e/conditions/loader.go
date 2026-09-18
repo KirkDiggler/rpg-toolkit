@@ -232,6 +232,20 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return resistance, nil
 	},
+	refs.Conditions.Sanctuary().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		sanctuary := &SanctuaryCondition{}
+		if err := sanctuary.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load sanctuary condition")
+		}
+		return sanctuary, nil
+	},
+	refs.Conditions.SanctuaryImmune().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		immune := &SanctuaryImmuneCondition{}
+		if err := immune.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load sanctuary immune condition")
+		}
+		return immune, nil
+	},
 	refs.Spells.Shield().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		sh := &ShieldSpellCondition{}
 		if err := sh.loadJSON(data); err != nil {

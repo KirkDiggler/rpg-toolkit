@@ -88,6 +88,110 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 	s.Equal(float64(9), beat["amount"])
 }
 
+// wardScene is [OutcomeTestSuite.scene] with a third member: a Sanctuary
+// ward needs three distinct parties (the attacker who saves, the target it
+// protects, and the caster who cast it), and scene's alice/goblin pair only
+// has two.
+func (s *OutcomeTestSuite) wardScene() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)}, Props: wallRow(6, 4, 8)},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 3}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// wardedSaveDetail is alice's own failed save against goblin's Sanctuary
+// ward — bob cast it. Naming doesn't matter mechanically; wardScene's
+// third member just needs to be someone.
+func wardedSaveDetail() *encounter.WardedDetail {
+	return &encounter.WardedDetail{
+		Source: bob,
+		Save: encounter.CastSave{
+			Saver: alice, Ability: "wisdom", Roll: 6, Total: 8, DC: 15, Succeeded: false,
+			Calculation: attackCalculation(6, 2, 0),
+		},
+	}
+}
+
+// TestAWardedAttackReachesTheStoryAndRejectsMismatches is OutcomeWarded's
+// whole contract, [encounter.RecordInput]'s own half of BeatCastWarded's.
+func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches() {
+	s.Equal([]string{"Source", "Save"}, structFieldNames(encounter.WardedDetail{}),
+		"closed detail has no caller prose field")
+
+	enc := s.wardScene()
+	detail := wardedSaveDetail()
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: detail,
+	})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq)
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("warded", beat["beat"])
+	s.Equal("alice", beat["actor"])
+	s.Equal([]any{"goblin"}, beat["targets"])
+	warded, ok := beat["warded"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("bob", warded["source"])
+	save, ok := warded["save"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("alice", save["saver"])
+	s.Equal(false, save["succeeded"])
+
+	s.Run("missing detail", func() {
+		_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeWarded, Actor: alice})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("detail on the wrong kind", func() {
+		_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: alice, Warded: detail})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("save belongs to the target instead of the actor", func() {
+		inverted := &encounter.WardedDetail{Source: bob, Save: encounter.CastSave{
+			Saver: goblin, Ability: "wisdom", Roll: 6, Total: 8, DC: 15,
+		}}
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: inverted,
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a succeeded save is not a ward", func() {
+		succeeded := wardedSaveDetail()
+		succeeded.Save.Succeeded = true
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: succeeded,
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("unknown source", func() {
+		unknown := &encounter.WardedDetail{Source: "nobody", Save: wardedSaveDetail().Save}
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+}
+
 // TestABoughtItemReachesTheStoryAndRejectsMismatches is OutcomeBought's half
 // of Record, the same shape TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches
 // (participation_test.go) already pins for OutcomeDeathSave: the detail
@@ -703,7 +807,7 @@ func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
 		"DamageComponents", "AdvantageSources", "DisadvantageSources", "Calculation", "DeathSave", "Trade",
-		"PresentationID", "ConcentrationBreaks", "ConcentrationChecks",
+		"Warded", "PresentationID", "ConcentrationBreaks", "ConcentrationChecks",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")

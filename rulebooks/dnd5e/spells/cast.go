@@ -5,6 +5,7 @@ package spells
 
 import (
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"strconv"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -215,6 +216,13 @@ const WordOfRadianceMaxTargets = 32
 // applied to Resistance's identical duration.
 const ResistanceTurnEnds = 10
 
+// SanctuaryReachFeet is Sanctuary's touch reach.
+const SanctuaryReachFeet = 5
+
+// SanctuaryTurnEnds is "up to one minute", [GuidanceTurnEnds]'s own reading
+// applied to Sanctuary's identical duration.
+const SanctuaryTurnEnds = 10
+
 // TrueStrikeTargetParameter is the True Strike condition's parameter naming
 // the creature the advantage is good against.
 const TrueStrikeTargetParameter = "target_id"
@@ -319,6 +327,34 @@ var castContent = map[Spell]castProfileBuilder{
 			return actions.CastProfile{
 				RangeFeet: 60, Target: actions.CastTargetOneCreature, MinTargets: 1, MaxTargets: 1,
 				Healing: &healing.Declaration{Dice: "1d4"}, HealingExcludes: []string{"undead", "construct"},
+			}
+		},
+	},
+	Sanctuary: {
+		name:    "Sanctuary",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
+		cost: &combat.SpendProfile{
+			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
+			Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
+		},
+		build: func(_ int) actions.CastProfile {
+			// Self is a legal touch recipient, [Guidance]'s own reason: CastTargetSelf
+			// is a no-picker mode and cannot stand for "choose yourself among others".
+			// The ward itself — the save an attacker rolls, the retarget, the
+			// self-break, the earned immunity — lives entirely in resolution
+			// (docs/ideas/cleric plan's Sanctuary section); this profile only
+			// delivers the marker condition resolution reads.
+			return actions.CastProfile{
+				RangeFeet: SanctuaryReachFeet, Target: actions.CastTargetTouch,
+				MinTargets: 1, MaxTargets: 1,
+				Effects: []actions.CastEffect{{
+					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Sanctuary(), CounterpartKey: "source_id",
+				}, {
+					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.SanctuaryImmune(), CounterpartKey: "source_id",
+					IndependentDuration: true,
+				}},
+				RecipientBlockedBy: []core.Ref{*refs.Conditions.SanctuaryImmune()},
+				Concentration:      &actions.CastConcentration{TurnEnds: SanctuaryTurnEnds, SkipFirstTurnEnd: true},
 			}
 		},
 	},

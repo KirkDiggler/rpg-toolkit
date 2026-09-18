@@ -5,27 +5,11 @@
 Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811),
 resolution PR [#1812](https://github.com/KirkDiggler/rpg-toolkit/pull/1812),
 and encounter PR [#1813](https://github.com/KirkDiggler/rpg-toolkit/pull/1813).
-This branch was cut before any of the three merged, so it does not carry
-their plan.md text yet — same expected small doc-merge-conflict caveat those
-already recorded for each other.
-
-**Three-way pseudo-version pin, and a real pin-order lesson.** Session
-depends on root, resolution AND encounter, so all three needed pinning to
-their pushed commits. `go get module@sha` — which worked cleanly for a
-single root-only pin on the resolution PR — refused nested-module SHAs here
-("found (root's version) but does not contain package .../resolution"),
-apparently mis-resolving the module boundary when asked for a NESTED
-module's commit directly. Worked around with `go mod edit -require` and the
-canonical pseudo-version format Go actually wants
-(`vX.Y.(Z+1)-0.yyyymmddhhmmss-abcdefabcdef`, the "0." prefix included) —
-`go mod tidy`'s own error message states the exact expected timestamp when
-given a syntactically-valid-but-wrong one, which is what actually unblocked
-this rather than deriving the timestamp correctly by hand. **Also needed a
-small resolution-side patch** (`WardOutcome` gained an explicit `Ability`
-field, `abilities.WIS` set at both construction sites) once it became clear
-session would otherwise have to hardcode `"wisdom"` as a string disconnected
-from the mechanic that already knows it — pushed as a second commit on
-#1812, and session re-pinned to that new commit before continuing.
+All three providers are now merged and released. Session pins root `v0.181.0`,
+resolution `v0.54.0`, and encounter `v0.89.0`; development pseudo-versions are
+replaced. Their implementation notes and the recipient cooldown correction are
+retained below. Resolution supplies the ward save's explicit ability so session
+does not infer a game rule while translating the result.
 
 **Strike**, `recordStrike` (`session/react_post_roll.go`, the shared
 translator both the fresh and resumed swing paths already route through):
@@ -73,13 +57,181 @@ cheaply than assembling a `Spawn`-a-hostile-monster end-to-end scene would
 have, for the same evidence. Full session module build/vet/test/lint
 clean, every pre-existing test unchanged.
 
-**Not done here, and next**: root's `castContent` enablement — the very
-last step, per this plan's own standing discipline of never enabling
-selectable content before every consumer beneath it can represent what
-happens when it fires. Also out of scope: rpg-api/rpg-dnd5e-web adoption,
-which is the actual "web test" the user's "all the way down" goal named,
-and cannot start until root ships a real tag Sanctuary can be selected
-from.
+**Consumer handoff**: root already enables Sanctuary. API #1007 and web #1126
+have exercised the development provider combination. The user observed recipient
+immunity in Story and confirmed Sanctuary was unavailable with no eligible
+targets. After session releases, API must adopt the published provider versions
+and rerun its checks; these browser observations do not claim the full timer
+expiry was manually exercised.
+
+## Sanctuary: encounter slice delivered — a story shape for "warded off"
+
+Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811)
+and resolution PR [#1812](https://github.com/KirkDiggler/rpg-toolkit/pull/1812).
+Both provider PRs are now merged. Their implementation notes and the recipient
+cooldown correction below are retained alongside this encounter record.
+
+**No pin needed.** Checked `rulebooks/dnd5e/encounter/go.mod`: this module
+depends on neither the root `rulebooks/dnd5e` module nor `resolution` at
+all — it is fully generic (MemberID, closed enums, no game-specific ref or
+condition types). The "warded" story shape needed no Sanctuary-specific
+knowledge, so this PR has no cross-repo pin and no merge-order dependency
+on the other two.
+
+**The gap, confirmed before writing anything**: `CastTargetResult` (cast.go)
+only had `Missed bool | Save *CastSave | Results []ActivationResult`, and
+`OutcomeKind` (outcome.go, Strike's closed set) had no arm for "stopped
+before any roll" at all. A warded cast or strike had nowhere to land in the
+story.
+
+**`WardedDetail`** (outcome.go, shared by both paths since cast.go and
+outcome.go are one package): `Source MemberID` (the warding caster) plus
+`Save CastSave` — reusing the existing save shape rather than inventing a
+fourth one, since a ward-blocked save IS an ordinary saving throw, just
+rolled by the ACTOR instead of the recipient. `CastSave` gained JSON tags
+(previously untagged — it had never been marshaled directly, only
+hand-converted field-by-field into `savedPayload`; adding tags is additive
+and doesn't touch that existing path) so `WardedDetail` can be marshaled
+directly the way `DeathSaveDetail`/`TradeDetail` already are in `Record`'s
+generic payload map.
+
+**Strike side**: `OutcomeWarded` joins the closed `OutcomeKind` set (a real
+diff, per that type's own stated cost-of-a-new-kind design). `RecordInput`
+gains `Warded *WardedDetail`, required for that kind and refused on every
+other — `Record`'s own validation checks `Warded.Save.Saver == Actor` (the
+inversion is the point: an ordinary save's saver is whoever it targeted,
+here it's the one who ATTEMPTED the attack), rejects a "successful" ward
+save as a contradiction (a ward beat only exists because the attempt was
+stopped), and reuses `validateRecordedD20` for roll/total/calculation
+agreement.
+
+**Cast side**: new `BeatCastWarded` beat, `CastTargetResult.Warded`
+(mutually exclusive with `Missed`/`Save`/`Results`), and `prepareWardedBeat`
+— NOT a reuse of `prepareSaveBeat`, because that helper's subjects assume
+the two parties in an ordinary recipient save while a ward has three: the
+caster who saved, the target it protected, and the caster who cast the
+ward. Same validation shape as the Strike side, applied per-target so a
+multi-target cast's other recipients are unaffected by one warded one.
+
+Two new test suites (`TestAWardedAttackReachesTheStoryAndRejectsMismatches`
+in outcome_test.go, `TestAWardedTargetReachesTheStoryAndRejectsMismatches`
+in cast_test.go) cover: the beat round-trips through the story verbatim,
+mutual exclusivity, the saver-must-be-the-actor inversion, a "succeeded"
+ward save being rejected as a contradiction, and an unknown source being
+refused. Both files' existing closed-shape guard tests
+(`TestRecordCastClosedShapes`, `TestAnOutcomeCarriesNoProse`) updated to
+include the new fields — deliberately, not a test loosened to pass. Full
+encounter module build/vet/test/lint clean, every pre-existing test
+unchanged.
+
+**Not done here**: session's translation of `resolution.WardOutcome` /
+`CastTargetOutcome.Warded` into these new `RecordInput.Warded` /
+`CastTargetResult.Warded` fields, and whatever live/Story result body the
+API reads (session's own `EventCastMissed`/`CastMissedBody` is the
+precedent for that sibling). Session PR #1814 implements that translation;
+root #1811 has already enabled Sanctuary's cast content.
+
+## Sanctuary: resolution slice 1 delivered — Strike and Cast wards both
+
+Historical implementation notes follow. The later **Recipient cooldown correction
+(2026-09-18)** supersedes the attacker-immunity behavior described in this initial
+slice; the final mechanic gives the Sanctuary recipient the anti-recast cooldown.
+
+Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811)
+(`SanctuaryCondition`/`SanctuaryImmuneCondition`, not yet consumed), built
+against its pushed commit as a pseudo-version per the standing
+develop-outside-in allowance. That PR's own description carries the full
+design (why the ward save runs post-payment rather than in free preflight,
+why self-break and the retarget live in resolution, the user's
+simplification of RAW's 24-hour immunity down to a combat/rest-scoped
+condition) — this entry only records what the resolution half actually
+shipped, since this branch was cut before #1811 merged to main and does not
+carry that section's text yet. **A small doc merge conflict in this file is
+expected** once #1811 merges and this branch rebases; that's an ordinary
+consequence of two sibling in-flight PRs editing the same doc, not a code
+conflict, and is expected to reconcile at merge time.
+
+`resolution/sanctuary.go` (new): `sanctuaryWardsOn`/`sanctuaryImmuneTo`/
+`pendingSanctuaryWards` read the target's and attacker's conditions directly
+via the existing `heldConditions` helper — no bus subscription, matching the
+design's "resolution asks directly" shape. `wardSaveDC` reads the warding
+caster's own `Character.SpellSaveDC()` (Sanctuary is Cleric-only, so always
+a character). `applySanctuaryImmunity` publishes `ConditionAppliedTopic`
+rather than calling `.Apply()` itself, mirroring `prepareCondition`/
+`publishCondition`'s existing shape — the owning keeper is what actually
+applies a condition and marks the sheet dirty. `endSanctuaryIfHeld`
+publishes `ConditionRemovedTopic` then calls `.Remove()`, in that order,
+mirroring `GuidedCondition.end`'s own reasoning: the removal lands on the
+bus while the condition is still the thing that owned it; `.Remove()`'s
+existing `IsApplied` idempotency guard makes it safe that the keeper's own
+`onConditionRemoved` handler will also call `.Remove()` on its reference to
+the same object.
+
+`strikeMachine` (`resolution/strike.go`): a new `sanctuaryStep`, inserted as
+the first step `Start()` returns for a fresh (non-resumed) strike — which
+matters because `Resolve` pays `in.Cost` BEFORE driving the step chain
+`Start()` produced (confirmed by reading `resolve.go`: `start()` then
+`payForMachine()` then `driveStep()`), so anything in that returned chain
+already runs post-payment for free, with no separate "post-payment hook"
+needed. It first calls `endSanctuaryIfHeld` unconditionally (a Strike is
+always an attack), then `wardCheckStep` works through every pending
+Sanctuary ward on the target as nested `requestSave` calls — the existing
+save machine, reused verbatim, not a new suspend mechanism. `StrikeOutcome`
+gained a `Warded *WardOutcome` field; every other field stays zero on a
+blocked attack (no roll ever happened).
+
+**Known, explicitly scoped-out gap**: `wardCheckStep` sets no `onPose` on
+its nested save request. A save can itself be posed (an attacker holding a
+Resistance die on the very save Sanctuary forces, say); today that surfaces
+as `Request`'s existing "a requester cannot be suspended" error rather than
+a graceful pause — a named failure, not silent corruption, but a real gap.
+Documented rather than silently shipped; picking it up means giving Strike a
+second, independent pose/resume shape alongside `strike_pose.go`'s existing
+one for post-roll offers.
+
+Four new tests in `resolution/sanctuary_test.go` cover: a failed ward save
+blocking the attack with zero rolls; a passed save granting immunity while
+the attack proceeds exactly as if unwarded; an attacker who already holds
+immunity skipping the save entirely; and an attacker who holds their OWN
+Sanctuary losing it the instant they attack, regardless of that attack's own
+outcome. Full resolution module build/vet/test/lint clean.
+
+**Cast-side, delivered in a second commit on the same PR.**
+`castMachine.resolveTarget` (`resolution/action.go`) is the injection point.
+The existing per-target `Request`-building logic was pulled into its own
+`castRequest` method so a new `sanctuaryGate` could sit in front of it: it
+asks `gamectx.CastOf(ctx).IsHostile(casterID, targetID)` — reused verbatim
+rather than inventing a per-spell harmful/beneficial classification, since
+none exists anywhere in this content model and Sanctuary's RAW text ("attack
+or a harmful spell") maps naturally onto "a spell aimed at an enemy" (the
+same question Sneak Attack already asks this same way). An unknown or
+non-hostile relationship skips the gate entirely — Cure Wounds, Guidance and
+Healing Word never reach a ward check, by construction, with no per-spell
+opt-out needed. `castMachine` gained a `roller` field (the cast door's own
+Roller was previously only threaded into each target's inner machine, never
+kept on the machine itself) so the ward save has one to roll with.
+
+The Cast/Strike divergence that matters: a multi-target cast (Bane, up to
+three) must not let one warded recipient cancel the others, so
+`wardCastStep`'s failure path records `CastTargetOutcome.Warded` for THAT
+target only and continues to `resolveTarget(index+1)` — the other targets
+in the same cast are untouched. `CastTargetOutcome` gained the same
+`Warded *WardOutcome` field `StrikeOutcome` did; `Save`/`Applied` stay empty
+on a warded target. Self-break (`endSanctuaryIfHeld`) fires once per hostile
+target reached, and is naturally idempotent — after the first call the
+caster no longer holds Sanctuary, so it silently does nothing on any further
+hostile target in the same multi-target cast.
+
+Four more tests in `resolution/sanctuary_test.go`, built on
+`cast_action_test.go`'s existing Bane fixtures (`castFixtures` mirrors
+`CastActionTestSuite.fixtures`'s own trick of using a `ContestDamageTestSuite`
+outside `suite.Run`): a failed ward save blocking Bane on the wolf with the
+action/slot still spent; a passed save granting the bard immunity while
+Bane still lands on the wolf exactly as if unwarded; the caster's own
+Sanctuary ending the moment they cast a hostile Bane; and a Bane cast at an
+ALLY (same faction, so never hostile) never reaching the ward check at all
+despite the ally holding Sanctuary. Full resolution module build/vet/test/
+lint clean, all pre-existing tests (including every Bane fixture) unchanged.
 
 ## Current direction: expand level-one play, preparation deferred
 
@@ -119,6 +271,319 @@ cleanup. Publish one module PR at a time, then consume the real release. API
 adoption may require only a pin; proto changes require an identified wire-shape
 gap. Track toolkit, API and browser evidence independently using the checklist
 below. Preparation is not a prerequisite for continuing this work.
+
+## Sanctuary: inspection (2026-09-17)
+
+The user picked Sanctuary from the level-one Cleric spell list as the next
+inspection candidate, calling it "the weirdest one." 2014 Basic Rules text:
+one bonus action, touch, one willing creature, concentration up to one
+minute. Until the spell ends, any creature that targets the warded creature
+with an attack or a harmful spell must first make a Wisdom saving throw. On a
+failure the attacker must choose a new target or lose the attack/spell — the
+spell does not protect the warded creature from area effects. The spell ends
+if the warded creature makes an attack or casts a spell that affects an
+enemy. A creature that succeeds on the save is immune to that same caster's
+Sanctuary for 24 hours.
+
+Sources: [2014 Sanctuary](https://www.dndbeyond.com/spells/2151-sanctuary).
+
+### It doesn't exist anywhere yet, unlike its neighbors
+
+Confirmed by grep across the whole rulebook: no `sanctuary`/`Sanctuary` hit
+anywhere except one unrelated word in `encounter/encounter.go` (a literal
+"sanctuary tile" in a spatial-placement doc comment, nothing to do with the
+spell). `refs/spells.go` has no `spellSanctuary` singleton and no `ByID` row.
+This is a real difference from Shield of Faith, Guiding Bolt and Inflict
+Wounds — the plan's other named next-candidates — which already have catalog
+refs waiting (`refs/spells.go:81,60,61`) even with no cast content behind
+them yet. Sanctuary needs its ref/catalog entry created from nothing, not
+just its behavior wired up.
+
+### Four separable pieces, wildly different difficulty
+
+**1. The save-and-redirect-or-refuse gate — bounded, reuses two existing
+preflight points.** This is NOT Guidance/Resistance's suspend-and-resume
+shape: the save here belongs to the ATTACKER, is rolled at the moment they
+declare a target, and is resolved synchronously before anything else about
+the attack happens — nobody needs to see a roll and decide whether to spend
+something afterward. `strikeMachine.preflight` (`resolution/strike.go:185`)
+already gates a strike before the attack roll, in the same place range/reach
+is checked (`deliveryRangeState`, line 234); `validateCastTarget` /
+`checkCastTargets` (`resolution/action.go:597,636`) do the equivalent for
+casts, before payment. A Sanctuary check is an addition to those two
+existing gates, not a new capability. What IS missing: every current gate
+in both places REFUSES the whole action outright (stale target, out of
+range, ineligible recipient) — none of them lets the caller retry the same
+action against a different target. Whether "choose a new target or lose the
+attack" needs to be distinguished from an ordinary refusal (client just
+re-declares against someone else) or needs a new retry-in-place response
+shape is an open design question, not settled by anything already built.
+
+**2. Area exemption — free.** `combatActions.CastProfile.Target` already
+distinguishes `CastTargetArea` from single/known-creature targeting (the
+distinction Word of Radiance's own section above relies on). "Doesn't
+protect against area effects" falls out of that for nothing: an AoE cast
+never reaches the per-target gate Sanctuary would hook into.
+
+**3. Self-break on the warded creature's own hostile act — new, narrow.**
+"The spell then ends" the moment the warded creature itself attacks or
+casts a spell affecting an enemy. Confirmed by grep: no existing condition
+in `conditions/` ends itself because its OWN HOLDER took an action —
+concentration ends from external triggers (taking damage, casting a new
+concentration spell) and cleanup subscriptions fire on rest/combat-end, but
+nothing inspects "did the holder just act offensively." This needs its own
+subscription to the holder's own outgoing attack/cast, a shape nothing
+existing provides a template for.
+
+**4. 24-hour same-caster immunity — genuinely unsupported, not just
+unwired.** Checked `conditions.DurationHours` (`conditions/types.go:27`): it
+exists as an enum value, but grep for every file that references it
+(`conditions/types.go` itself and `mechanics/effects/behaviors.go`) turns up
+nothing that ever decrements or checks it against a clock — it is declared
+and unused. `play/clock` is the toolkit's actual time model, and both its
+clocks are explicitly abstract, not wall-clock hours: `Tick` is a
+player-driven world clock, `Turn` a combat-round bubble
+(`play/clock/doc.go`). There is no real-hours tracking anywhere in this
+codebase today. This is not "missing plumbing to wire up" the way Guidance's
+suspend/resume was — it would be the toolkit's first real-world-time-tracking
+feature, and it would exist solely to serve one spell's flavor immunity
+clause.
+
+### Net read
+
+Piece 1 (the actual ward) is a bounded, reusable contribution once the
+retry-vs-refuse question is settled. Pieces 2–3 are small and self-contained.
+Piece 4 is not bounded — it is new infrastructure with no existing seam,
+disproportionate to the one clause it serves. Not implementing yet; this is
+recorded per the plan's own inspection-queue discipline, same as every prior
+candidate, pending the user's direction on: (a) refusal vs. retry-in-place
+for a failed ward save, and (b) whether the 24-hour immunity ships as real
+infrastructure, is simplified (e.g., scoped to the current encounter/rest
+instead of real hours), or is explicitly deferred as a named gap while the
+ward itself goes live — the same kind of scope split the plan already used
+for Search on Guidance.
+
+### User decisions (2026-09-17) and the design they imply
+
+The user resolved both open questions, plus a correction to how piece 1 was
+framed above:
+
+**Immunity: no real time, condition-based instead.** The user noted nothing
+else in this codebase actually tracks real time either — concentration
+itself is turn-counted (`TurnEnds`/`SkipFirstTurnEnd`), not minute-timed — so
+24 real hours is dropped. In its place: a short-lived, source-qualified
+condition placed on the ATTACKER when they succeed their ward save, marking
+them immune to THAT SAME CASTER's Sanctuary specifically (matching RAW's
+"immune to your sanctuary spells," not a blanket immunity), lasting a few
+turns or clearing at combat end — exact duration is an implementation
+choice, not a re-opened gameplay question. This reuses the one live
+duration mechanism the codebase actually has (`TurnEnds`, the mechanism
+Guidance/Bless/Resistance's own concentration already rides), not the dead
+`DurationHours` enum identified above.
+
+**Refusal semantics, clarified — and it corrects piece 1's framing.**
+"Choose a new target" is entirely a CLIENT-side decision: nothing in the
+toolkit forces a redirect or exposes a retry-in-place response. Sanctuary is
+public knowledge in play, so a player/client normally just avoids declaring
+the warded creature as a target when another legal one exists — ordinary
+`Attack`/`Cast` target selection, no new mechanism. What the toolkit does
+have to guarantee, precisely stated by the user: **"if sanctuary fails to
+protect the target, the attack just goes on as normal"** (success = zero
+behavior change downstream) and **"give feedback that sanctuary has eaten
+the action regardless"** on a failed ward save — i.e. the attempted
+attack/cast's cost is spent EVEN THOUGH it does nothing, and the result must
+say so distinctly, not read as a silent no-op or an ordinary miss.
+
+That second half means piece 1 as first written was placed in the wrong
+spot. `strikeMachine.preflight` / `validateCastTarget` both run BEFORE
+charging — "a refused swing rolls nothing, damages nobody, and writes
+nothing at all," confirmed straight from `Manager.Attack`'s own doc comment
+(`session/attack.go:159`) — so a ward check living there would cost the
+attacker NOTHING on a failed save, contradicting "eat the action." The ward
+save has to run AFTER the cost is committed (after the Strike/Cast door
+pays — the same "Gather" point Spare the Dying's stabilization and Toll the
+Dead's damage-pool pick already hook into) and BEFORE the actual
+attack-roll/contest step, as a new intermediate machine step rather than an
+addition to the existing free preflight gates. On success, that step is a
+no-op and the machine proceeds exactly as it does today. On failure, it
+short-circuits straight to a result — no attack roll, no damage/save
+contest for the target — while the action/capacity/slot already spent stays
+spent.
+
+**The still-missing piece: a distinguishable "blocked by Sanctuary"
+result.** Casts already have a precedent for "paid, attempted, no effect,
+explicitly recorded" — `CastOutput.MissedTargets` / `EventCastMissed` /
+`CastMissedBody`, built for the stale-target-policy `attempt` case. A
+Sanctuary-blocked cast can likely reuse or sit beside that shape rather than
+invent a new one — to be confirmed once inside the code, not assumed here.
+Strike has no equivalent today: an unmodified `StrikeOutcome` only knows hit
+vs. miss by AC comparison, with no "attempt voided before the roll, for
+reason X" arm. That is new, bounded surface on `StrikeOutcome`, in the same
+family as the miss/hit split it already has.
+
+Not yet implemented. This restates the design the user's decisions imply;
+building it is the next step once confirmed.
+
+### Naming and the retarget mechanism, confirmed (2026-09-17)
+
+**Two distinct conditions, named so their provenance is obvious at a
+glance** — the user asked specifically that the immunity condition read as
+sanctuary-imposed, not a generic immunity flag:
+
+- `SanctuaryCondition` — the ward itself, on the protected creature. Named
+  like `ResistanceCondition` (verbatim spell name + `Condition`), not like
+  `GuidedCondition`/`BlessedCondition`'s adjective form, because "Sanctuaried"
+  reads worse than the spell name does.
+- `SanctuaryImmuneCondition` — the short-lived, source-qualified condition placed
+  on an ATTACKER who succeeds their save, refusing only that same caster's
+  future Sanctuary wards. `refs.Conditions.Sanctuary()` /
+  `refs.Conditions.SanctuaryImmune()`.
+
+**Retargeting needs no new toolkit mechanism — it already falls out of the
+existing capacity model.** The user's goal: an attacker with more than one
+swing this turn (Extra Attack, off-hand, etc.) can spend a DIFFERENT swing
+against a different target, and that swing resolves completely normally —
+full roll, target saves, helpful conditions, everything. That is already
+exactly how multiple attacks work today: each swing is its own
+`Attack`/Strike call spending one unit of `CapacityAttack`
+(`combat/capacity.go`), independent of any other swing this turn. A
+Sanctuary-voided swing spends its capacity unit for nothing (per the
+cost-commits-on-failure design above); a SEPARATE swing against a different
+target is simply a normal `Attack` call using a capacity unit that was never
+touched by the first one's failure. No redirect API, no linking between the
+two attempts — the existing per-swing capacity accounting already gives the
+player exactly this, and it is why the toolkit doesn't need to build a
+"retry-in-place" response shape.
+
+A single spell cast has no such multi-attempt structure — one action, one
+slot, one target, chosen once. If that one cast is voided by Sanctuary,
+there is nothing left to retry with this turn: "elected to spend their
+action for nothing," exactly the fizzle case the user described, and it
+requires no different handling than the general cost-commits-on-failure
+design already covers.
+
+Self-breaking (piece 3 above, the ward ending when its own holder attacks or
+casts offensively) is unchanged and still in scope.
+
+### Root slice 1 delivered: both conditions, not yet castable
+
+`refs.Spells.Sanctuary()` and `refs.Conditions.Sanctuary()` /
+`SanctuaryImmune()` added to the catalogs. `SanctuaryCondition`
+(`conditions/sanctuary.go`) mirrors `BlessedCondition`'s shape exactly — pure
+marker, no roll subscription, concentration + long-rest teardown only —
+because, per the design above, resolution will read its presence directly
+rather than this condition offering or publishing anything. `SanctuaryImmuneCondition`
+(`conditions/sanctuary_immune.go`) mirrors `InspiredCondition`'s
+combat-end-or-rest ending exactly, minus the offer/take machinery neither of
+these two conditions needs, and is source-qualified (blocks only the
+specific caster named in `SourceID`) the same way Blessed/Guided/Resistance
+already are. Both registered in the condition loader, the factory
+(`createSanctuary`/`createSanctuaryImmune`, mirroring `createGuided`
+exactly), and the display catalog (`conditions/display.go` — added
+proactively rather than left as a gap the way Guided's own entry originally
+was, per that file's own comment). Both cross-package contract tests
+(`ref_contract_test.go`, `long_rest_registry_test.go`) updated and green.
+
+Not yet consumed by anything: no `castContent` entry, not on Cleric's
+spell list, and resolution does not yet look either condition up. Full root
+module build/vet/test/lint clean. Next: resolution — the actual ward-save
+step, the self-break check, and the miss/blocked-outcome shape described
+above.
+
+### Live-testing correction: `SanctuaryImmuneCondition` needed its own clock (2026-09-17)
+
+Live testing after all four Sanctuary PRs were open surfaced a real bug:
+`SanctuaryImmuneCondition` ended only on combat-end or rest (mirroring
+`InspiredCondition`, per the slice above), so it never actually gated
+anything turn-to-turn — a caster could re-Sanctuary the same target on
+consecutive turns with no ward-save gap between them. The user's original
+intent, restated live: "cannot benefit from sanctuary for 24h (we said 10
+turns)" — a turn-count clock was always the agreed design; the shipped
+combat-end-or-rest ending was an implementation mistake, not a design
+change.
+
+Fixed to mirror `BladeWardCondition`'s pattern instead: the condition now
+holds its own `TurnEndsLeft`, ending on whichever of turn-end-count /
+combat-end / rest comes first. The count is `SanctuaryImmuneTurnEnds = 20`,
+not 10 — the user's own live follow-up: "if the spell last 10 turns and the
+immune is 10 turns that won't be as easy to test... let's make the immune
+20 turns so it's at least an impact for testing." Deliberately double the
+ward's own 10-turn duration so the immunity outlasting the spell that
+granted it is something a live table can actually observe, rather than the
+two always expiring together.
+
+Also confirmed directly against RAW in the same exchange: Sanctuary's ward
+is a duration effect, not single-use — it blocks every attack/harmful spell
+targeted at the warded creature for the ward's whole duration, not just the
+first one that triggers it. That part of the original implementation
+(`resolution`'s `sanctuaryWardsOn`/`pendingSanctuaryWards`) was already
+correct; the user's live-test expectation of "one-and-done" was the
+non-RAW read, not the code.
+
+Fixed on the already-open `feat/sanctuary-root` branch (PR #1811) rather
+than a new PR/branch, per this repo's explicit reason for leaving all four
+Sanctuary PRs open through live testing.
+
+### Root slice 2 delivered: enabled — Sanctuary is castable
+
+The last step, per this plan's own standing discipline: never make
+something selectable before every consumer beneath it can represent what
+happens when it fires. Resolution (#1812), encounter (#1813) and session
+(#1814) all landed first; this slice only adds the `castContent` entry and
+the acquisition-list line now that the whole chain can honestly run it.
+
+`spells/cast.go`: a new entry, `Healing Word`'s exact cost shape (bonus
+action + one level-1 slot — `slotCost` only builds a standard-action cost,
+so this is inlined the same way Healing Word's own entry already is rather
+than generalizing a helper for a second data point) combined with
+`Guidance`'s exact delivery shape (touch, self a legal recipient the same
+`CastTargetSelf`-cannot-stand-for-this reason, one `CastEffect` delivering
+the condition via `CounterpartKey: "source_id"`, `Concentration{TurnEnds:
+10, SkipFirstTurnEnd: true}`). `spells/types.go` and `spells/data.go` both
+gained a `Sanctuary` entry too, matching every recent spell's own precedent
+of keeping the informational (and mostly-legacy, per Healing Word's own
+handoff notes) `SpellData` table in sync even though nothing requires it
+for casting to work.
+
+`character/choices/spell_choices.go`: `Sanctuary` added to
+`clericSpellsLevel1`, growing the "select all supported 1st-level spells"
+list from five to six.
+
+**The one non-obvious fix this required**: `classes.clericPreparedSpellCount`
+(`classes/progression_data.go`) — a second, separately-maintained constant
+that has to agree with the options-list length by hand, because the
+`classes` package cannot import `character/choices` to derive it (that
+comment was already on the constant, anticipating exactly this moment).
+Missing this produces a very readable failure — "Must choose exactly 6
+spells, got 5" — across every Cleric creation/level-up test that builds a
+full spell selection, which is how it was actually caught rather than
+reasoned out in advance. Bumped 5 → 6.
+
+That one hardcoded-count fix then cascaded into every existing test fixture
+that hand-lists Cleric's five supported spells: `cleric_finalize_test.go`,
+`level_up_test.go`, `requirements_detail_test.go`,
+`class_comprehensive_test.go` (both the shared valid-submission builder and
+the `SpellCount` table entry), and the `TestCreationRequirementsGolden`
+golden fixture (regenerated with `-update`, diff reviewed — exactly the
+expected `count`/`options`/nothing else). None of these needed new
+assertions, only the existing ones updated to name six spells instead of
+five — the same "loosened to stop failing" line every prior slice in this
+plan has drawn: these are updates to the actual, correct new behavior, not
+weakened checks.
+
+New dedicated coverage: `TestSanctuaryDeclaresTouchBonusActionAndOwnedConcentration`
+in `spells/cast_test.go`, `TestGuidanceDeclaresTouchAndOwnedConcentration`'s
+own shape (definition fields, clone independence, JSON round-trip) — the
+one piece nothing else exercises directly, since the fixture updates above
+only prove Sanctuary compiles as part of a full character, not that its
+`CastDefinition` shape itself is right in isolation.
+
+Full root module build/vet/test/lint clean. **This closes out the toolkit
+side of Sanctuary.** What's left is entirely outside this repository:
+rpg-api and rpg-dnd5e-web adoption, which is the actual "test in web" the
+user's original "all the way down" framing named, and cannot start until
+this PR (and #1812/#1813/#1814 beneath it) ship real tags Sanctuary can be
+pinned to.
 
 ## Guidance: post-roll check-offer plan
 
@@ -1367,3 +1832,17 @@ including selected-self targeting and overlapping-caster acceptance. Preparation
 grants and out-of-combat casting remain separately scheduled work. The eventual API/web
 integration must be observed through the real game before declaring the Cleric journey
 complete. Historical creation/Sacred Flame evidence remains in `implementation.md`.
+
+### Recipient cooldown correction (2026-09-18)
+
+The earlier timer correction did not implement the requested anti-chain-casting
+rule. SanctuaryImmune belongs to the creature RECEIVING Sanctuary, applied at
+cast time, and prevents that creature receiving Sanctuary from any caster for
+20 of its turn ends (existing combat-end/rest cleanup still applies). Its source
+identifies the originating caster only. It is not earned by an attacker passing
+a ward save and does not bypass later ward saves. The cooldown is independent
+of concentration: ending or breaking the 10-turn ward does not clear it.
+
+Content declares both recipient effects, the cooldown's independent lifetime,
+and the condition that rejects a new recipient before payment. Offers and Cast
+must consume that same restriction, including after repository reload.
