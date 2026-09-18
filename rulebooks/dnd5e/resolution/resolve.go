@@ -68,11 +68,6 @@ type Input struct {
 	// World is the encounter the interaction happens in, as the host stored it.
 	World encounter.EncounterData
 
-	// Deciders re-attaches behaviour to non-player members. Nil is legal and
-	// means no member acts on its own. Passed straight through to the
-	// encounter, which owns what a decider may do.
-	Deciders map[encounter.MemberID]encounter.Decider
-
 	// Participants are the sheets of everyone in the interaction. Pass everyone
 	// (R3) — applicability is the effect's predicate, not the caller's guess.
 	Participants []Participant
@@ -98,7 +93,8 @@ type Input struct {
 	// (rpg-toolkit#964): sight starts fights on its own, so an encounter that
 	// cannot order one is an encounter that cannot be loaded. This package
 	// does not know what initiative is and does not want to — it hands over
-	// what the caller supplied, the way Deciders one field up are handed over.
+	// what the caller supplied, the way every other capability on this input
+	// is handed over.
 	Initiative encounter.InitiativeRoller
 
 	// Standing carries the rulebook's participation answer. REQUIRED.
@@ -127,8 +123,8 @@ type Input struct {
 	// The composition still refuses to load without one (rpg-toolkit#1111),
 	// and answering on the caller's behalf — any number at all — would be this
 	// package deciding a 5e rule about light and darkvision it holds none of.
-	// So it is handed over, the way Deciders, Initiative and Standing above
-	// are handed over, and the caller that owns the sheets owns the answer.
+	// So it is handed over, the way Initiative and Standing above are handed
+	// over, and the caller that owns the sheets owns the answer.
 	Sight encounter.Sight
 
 	// Equipment reports what each member is holding. REQUIRED.
@@ -169,8 +165,13 @@ type Input struct {
 	// Exit itself. The composition still refuses to load without one
 	// (rpg-toolkit#1162), and answering on the caller's behalf — "it passes" —
 	// would be this package deciding a rule it holds no opinion on. So it is
-	// handed over, the way Deciders, Initiative, Standing and Sight above are.
-	TurnDriver encounter.TurnDriver
+	// handed over, the way Initiative, Standing and Sight above are.
+	//
+	// TYPED AT [encounter.Driver], the seam's live name: `TurnDriver` is now
+	// a deprecated alias for it and goes in the release after this one
+	// (rpg-project#465). The FIELD keeps its name, because renaming it would
+	// break every caller that sets it for no gain this slice asks for.
+	TurnDriver encounter.Driver
 
 	// CheckResolver resolves an authored find check when a member searches.
 	// REQUIRED EXACTLY WHEN World CARRIES CONCEALED STRUCTURE, and legally
@@ -372,7 +373,6 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       in.World,
-		Deciders:   in.Deciders,
 		Initiative: in.Initiative,
 		Standing:   in.Standing,
 		Sight:      in.Sight,

@@ -99,7 +99,7 @@ runtime object crosses either way.
 It ASKS the caller for everything else, and the `Input` fields say so in their
 own godoc: `Standing`, `Sight`, `TurnDriver`, `CheckResolver`, `Witness` are
 **carried, never consulted** — handed to the composition so a world can be
-loaded at all. `Initiative` and `Deciders` likewise. `Roller` is REQUIRED and
+loaded at all. `Initiative` likewise. `Roller` is REQUIRED and
 never defaulted (rpg-toolkit#1033): a silent default is unreproducible dice in a
 result that looks fine.
 
