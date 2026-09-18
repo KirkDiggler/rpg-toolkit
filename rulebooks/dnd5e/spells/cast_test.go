@@ -132,6 +132,47 @@ func (s *CastContentSuite) TestResistanceDeclaresTouchAndOwnedConcentration() {
 	s.Equal(d, &reloaded)
 }
 
+func (s *CastContentSuite) TestSanctuaryDeclaresTouchBonusActionAndOwnedConcentration() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Sanctuary})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(*refs.Spells.Sanctuary(), d.Ref)
+	s.Equal(1, d.Cast.Casting.Level, "a leveled spell, not a cantrip")
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(actions.CastTargetTouch, d.Cast.Target, "self is a legal touch recipient, unlike CastTargetSelf")
+	s.Equal(5, d.Cast.RangeFeet)
+	s.Equal(1, d.Cast.MinTargets)
+	s.Equal(1, d.Cast.MaxTargets)
+	s.Nil(d.Cast.Save, "the ward save is the ATTACKER's own, rolled in resolution, not this cast's gate")
+	s.Empty(d.Cast.Damage)
+	s.Nil(d.Cast.Healing)
+	s.Require().Len(d.Cast.Effects, 2)
+	s.Equal(*refs.Conditions.SanctuaryImmune(), d.Cast.Effects[1].Ref)
+	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[1].Recipient)
+	s.True(d.Cast.Effects[1].IndependentDuration)
+	s.Require().Len(d.Cast.RecipientBlockedBy, 1)
+	s.Equal(*refs.Conditions.SanctuaryImmune(), d.Cast.RecipientBlockedBy[0])
+	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
+	s.Equal(*refs.Conditions.Sanctuary(), d.Cast.Effects[0].Ref)
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Require().NotNil(d.Cast.Concentration, "up to one minute, the same duration category as Guidance")
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	clone := d.Clone()
+	clone.Cast.Effects[0].CounterpartKey = "wrong"
+	clone.Cast.Concentration.TurnEnds = 1
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	raw, err := json.Marshal(d)
+	s.Require().NoError(err)
+	var reloaded actions.Definition
+	s.Require().NoError(json.Unmarshal(raw, &reloaded))
+	s.Require().NoError(reloaded.Validate())
+	s.Equal(d, &reloaded)
+}
+
 func (s *CastContentSuite) TestHealingWordDeclaresRangedBonusActionHealing() {
 	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
 	s.Require().NotNil(d)

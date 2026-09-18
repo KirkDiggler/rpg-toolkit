@@ -238,6 +238,81 @@ func failedSave() *encounter.CastSave {
 	}
 }
 
+// wardedSave is the CASTER's own failed save against a Sanctuary-style
+// ward — the inversion [encounter.WardedDetail] documents: Saver is castBard
+// (who attempted the cast), never the warded recipient.
+func wardedSave() encounter.CastSave {
+	return encounter.CastSave{
+		Saver: castBard, Ability: "wisdom", Roll: 6, Total: 8, DC: 15, Succeeded: false,
+		Calculation: saveCalculation(viciousMockery, "wisdom", 6, 8),
+	}
+}
+
+// TestAWardedTargetReachesTheStoryAndRejectsMismatches is BeatCastWarded's
+// whole contract: the beat round-trips through the story verbatim, is
+// mutually exclusive with Missed/Save/Results, and refuses a save whose
+// Saver is the target instead of the actor.
+func (s *RecordCastSuite) TestAWardedTargetReachesTheStoryAndRejectsMismatches() {
+	enc := s.scene(everyoneStanding{})
+	warded := &encounter.WardedDetail{Source: castFighter, Save: wardedSave()}
+
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{Target: castSkeleton, Warded: warded}},
+	})
+	s.Require().NoError(err)
+
+	entries := s.storyEntries(enc, castBard, out.Seqs)
+	s.Equal([]string{encounter.BeatCast, encounter.BeatCastWarded}, s.beatNames(entries))
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(entries[1].Payload, &beat))
+	s.Equal(encounter.BeatCastWarded, beat["beat"])
+	s.Equal(string(castBard), beat["actor"])
+	s.Equal(string(castSkeleton), beat["target"])
+	s.Equal(string(castFighter), beat["source"])
+	s.Equal("wisdom", beat["ability"])
+	s.Equal(float64(6), beat["roll"])
+	s.Equal(float64(15), beat["dc"])
+
+	s.Run("mutually exclusive with missed", func() {
+		_, err := enc.RecordCast(&encounter.RecordCastInput{
+			Actor: castBard, Spell: viciousMockery,
+			Targets: []encounter.CastTargetResult{{Target: castSkeleton, Missed: true, Warded: warded}},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("mutually exclusive with save", func() {
+		_, err := enc.RecordCast(&encounter.RecordCastInput{
+			Actor: castBard, Spell: viciousMockery,
+			Targets: []encounter.CastTargetResult{{Target: castSkeleton, Save: failedSave(), Warded: warded}},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("save must belong to the actor, not the target", func() {
+		inverted := &encounter.WardedDetail{Source: castFighter, Save: *failedSave()} // Saver: castSkeleton
+		_, err := enc.RecordCast(&encounter.RecordCastInput{
+			Actor: castBard, Spell: viciousMockery,
+			Targets: []encounter.CastTargetResult{{Target: castSkeleton, Warded: inverted}},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a succeeded save is not a ward", func() {
+		succeeded := wardedSave()
+		succeeded.Succeeded = true
+		_, err := enc.RecordCast(&encounter.RecordCastInput{
+			Actor: castBard, Spell: viciousMockery,
+			Targets: []encounter.CastTargetResult{{
+				Target: castSkeleton, Warded: &encounter.WardedDetail{Source: castFighter, Save: succeeded},
+			}},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
 func viciousMockeryCast() *encounter.RecordCastInput {
 	return &encounter.RecordCastInput{
 		Actor: castBard,
@@ -656,7 +731,7 @@ func (s *RecordCastSuite) TestRecordCastClosedShapes() {
 		[]string{"Saver", "Ability", "Roll", "Total", "DC", "Calculation", "Succeeded"},
 		structFieldNames(encounter.CastSave{}),
 	)
-	s.Equal([]string{"Target", "Missed", "Save", "Results"}, structFieldNames(encounter.CastTargetResult{}))
+	s.Equal([]string{"Target", "Missed", "Save", "Warded", "Results"}, structFieldNames(encounter.CastTargetResult{}))
 	s.Equal(
 		[]string{"Actor", "Spell", "Targets", "ConcentrationBreaks", "ConcentrationChecks"},
 		structFieldNames(encounter.RecordCastInput{}),

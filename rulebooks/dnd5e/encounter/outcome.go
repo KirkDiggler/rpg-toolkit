@@ -78,6 +78,16 @@ const (
 	// OutcomeBought — the data (item type/id/quantity) is identical between
 	// the two directions; only the kind differs.
 	OutcomeSold OutcomeKind = "sold"
+
+	// OutcomeWarded is an attack a Sanctuary-style ward on the target
+	// stopped before any roll against them — the ATTACKER's own failed save
+	// against the warding caster's DC. Not a flag on OutcomeMissed: "warded
+	// off" and "swung and missed" are different facts a reader should not
+	// have to infer from a Warded detail's mere presence beside a struck/
+	// missed beat's own fields, all of which stay meaningless here (there
+	// was no attack roll). Carries WardedDetail the same way OutcomeDeathSave
+	// carries DeathSaveDetail.
+	OutcomeWarded OutcomeKind = "warded"
 )
 
 // OutcomeValue names one number a rulebook outcome carries.
@@ -176,6 +186,10 @@ type RecordInput struct {
 	// what the item does.
 	Trade *TradeDetail
 
+	// Warded carries the authoritative primitive facts for OutcomeWarded. It
+	// is required for that kind and invalid for every other kind.
+	Warded *WardedDetail
+
 	// PresentationID is the rulebook's opaque token for the ONE roll this
 	// beat describes, carried verbatim so the actor who declared it and
 	// every witness reading the same beat hold the same string for it.
@@ -238,6 +252,23 @@ type DeathSaveDetail struct {
 	Continuation      string           `json:"continuation"`
 	PresentationID    string           `json:"presentation_id"`
 	Calculation       *RollCalculation `json:"calculation,omitempty"`
+}
+
+// WardedDetail is the closed, rulebook-neutral story shape for an attack a
+// Sanctuary-style ward stopped: who warded the target off, and the
+// attacker's own failed save against that warder's DC.
+//
+// REUSES CastSave RATHER THAN A FOURTH SAVE SHAPE — a ward-blocked save is
+// the same fact as any other saving throw, just rolled by the ACTOR instead
+// of the recipient. Save.Saver must equal the outcome's own Actor, never
+// the warded Target; the inversion is the whole point of a ward.
+type WardedDetail struct {
+	// Source is the caster whose ward blocked this attempt. Must be a
+	// current member.
+	Source MemberID `json:"source"`
+
+	// Save is the ACTOR's own failed save against Source's DC.
+	Save CastSave `json:"save"`
 }
 
 // TradeDetail is the closed, rulebook-neutral story shape for one traded
@@ -494,7 +525,7 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 
 	switch in.Kind {
-	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeBought, OutcomeSold:
+	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeBought, OutcomeSold, OutcomeWarded:
 	default:
 		return nil, fmt.Errorf("record: outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
@@ -526,6 +557,42 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		}
 	} else if in.Trade != nil {
 		return nil, fmt.Errorf("record: trade detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
+	if in.Kind == OutcomeWarded {
+		if in.Warded == nil {
+			return nil, fmt.Errorf("record: warded detail is required: %w", ErrInvalidData)
+		}
+		if in.Warded.Source == "" {
+			return nil, fmt.Errorf("record: warded source: %w", ErrNoMember)
+		}
+		if _, ok := e.members[in.Warded.Source]; !ok {
+			return nil, fmt.Errorf("record: warded source %q: %w", in.Warded.Source, ErrNoMember)
+		}
+		save := in.Warded.Save
+		// THE INVERSION IS THE WHOLE POINT OF A WARD: an ordinary CastSave's
+		// saver is whoever the effect targeted, but here it is the ACTOR —
+		// the one whose attempt the ward is testing, not the one it protects.
+		if save.Saver != in.Actor {
+			return nil, fmt.Errorf(
+				"record: warded save saver %q must be the actor %q: %w", save.Saver, in.Actor, ErrInvalidData)
+		}
+		if save.Ability == "" {
+			return nil, fmt.Errorf("record: warded save ability: %w", ErrInvalidData)
+		}
+		if save.Roll < 1 || save.Roll > 20 {
+			return nil, fmt.Errorf("record: warded save roll %d is not a d20: %w", save.Roll, ErrInvalidData)
+		}
+		if save.DC < 1 {
+			return nil, fmt.Errorf("record: warded save dc %d: %w", save.DC, ErrInvalidData)
+		}
+		if save.Succeeded {
+			return nil, fmt.Errorf("record: warded save succeeded: %w", ErrInvalidData)
+		}
+		if err := validateRecordedD20(save.Calculation, save.Roll, save.Total); err != nil {
+			return nil, fmt.Errorf("record: warded save calculation: %v: %w", err, ErrInvalidData)
+		}
+	} else if in.Warded != nil {
+		return nil, fmt.Errorf("record: warded detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
 	if in.PresentationID != "" && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
 		return nil, fmt.Errorf("record: presentation id does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
@@ -635,6 +702,9 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 	if in.Trade != nil {
 		payload["trade"] = in.Trade
+	}
+	if in.Warded != nil {
+		payload["warded"] = in.Warded
 	}
 	// Omitted when empty, unlike critical's unconditional false: absent and
 	// "" say the identical thing here — this swing has no shared roll to
