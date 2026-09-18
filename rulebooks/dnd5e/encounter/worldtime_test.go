@@ -343,3 +343,89 @@ func (s *WorldTimeSuite) lastPick(enc *encounter.Encounter, creature encounter.M
 
 	return found
 }
+
+// --- the deal, as the table sees it ------------------------------------------
+
+// TestAFactionsMixIsDealtAtTheDoorAndSaysSo is design §3 at the seam: "so the
+// streamer sees which goblin came out the coward". The deal happens once, when
+// the creature enters the run, and the beat carries the face and the die it
+// was rolled on.
+func (s *WorldTimeSuite) TestAFactionsMixIsDealtAtTheDoorAndSaysSo() {
+	profiles := map[string]encounter.TemperProfile{
+		"coward":     {Attack: 50, Toward: 50, Away: 300, Flee: 300, Hold: 100},
+		"soldier":    {Attack: 100, Toward: 100, Away: 100, Flee: 100, Hold: 100},
+		"aggressive": {Attack: 300, Toward: 300, Away: 25, Flee: 25, Hold: 50},
+	}
+
+	enc := s.hall(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster,
+			Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30,
+			Temper: encounter.Temper{
+				Mix:      map[string]int{"coward": 1, "soldier": 2, "aggressive": 1},
+				Profiles: profiles,
+			}},
+	)
+
+	beat := s.beatOf(enc, encounter.BeatTempered, goblin)
+	s.Require().NotNil(beat, "the deal is a beat, or the streamer never learns which goblin this is")
+	// rollsLowest answers 1, which is the first share of the sorted mix.
+	s.Equal("aggressive", beat["temper"])
+	s.EqualValues(1, beat["roll"])
+	s.EqualValues(4, beat["of"], "the die is the sum of the shares the author wrote")
+
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		if m.ID != goblin {
+			continue
+		}
+		s.Equal("aggressive", m.Temper.Word, "and what was dealt is what the creature now IS")
+		s.Equal(profiles["aggressive"], m.Temper.Profile, "profile and all")
+		s.Empty(m.Temper.Mix, "the spread is spent")
+	}
+}
+
+// TestAnAuthoredWordDealsNothingAndSaysNothing: the author has already
+// answered the question the mix exists to ask, and a beat claiming a die chose
+// this creature's nerve would be the composition inventing a roll.
+func (s *WorldTimeSuite) TestAnAuthoredWordDealsNothingAndSaysNothing() {
+	enc := s.hall(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster,
+			Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30,
+			Temper: encounter.Temper{Word: "coward",
+				Profile: encounter.TemperProfile{Attack: 50, Toward: 50, Away: 300, Flee: 300, Hold: 100}}},
+	)
+
+	s.Nil(s.beatOf(enc, encounter.BeatTempered, goblin), "nothing was rolled, so nothing is narrated")
+
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		if m.ID == goblin {
+			s.Equal("coward", m.Temper.Word, "and the word the author wrote is the word it has")
+		}
+	}
+}
+
+// beatOf is the first beat of a kind naming one member, decoded.
+func (s *WorldTimeSuite) beatOf(
+	enc *encounter.Encounter, kind string, member encounter.MemberID,
+) map[string]any {
+	s.T().Helper()
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == kind && beat["member"] == string(member) {
+			return beat
+		}
+	}
+
+	return nil
+}

@@ -246,7 +246,7 @@ func TestTombWatch(t *testing.T) {
 		// beat 1: they see each other, the fight starts, the party breaks off
 		// to watch instead
 		"bubble-formed", "bubble-dissolved",
-		"moved",         // beat 2: alice advances
+		"moved", // beat 2: alice advances
 		// beat 2: a round of the world, the goblin rolls its own table and
 		// steps out; then a second round, on which it holds where its orders
 		// sent it — the roll is still narrated, because being asked is part

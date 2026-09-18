@@ -359,7 +359,6 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 		return nil, fmt.Errorf("record cast: %w", noticeErr)
 	}
 
-
 	// THE WORLD'S PRICE FOR AN ACTION, paid after the outcome has landed and
 	// before anything refreshes sight (design §5, worldtime.go): one round on
 	// the world clock for the actor, and the world thinks on it. Nothing at

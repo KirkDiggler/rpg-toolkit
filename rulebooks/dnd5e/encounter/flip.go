@@ -257,7 +257,7 @@ func (e *Encounter) noticeRounds(bubble *clock.Turn, ms []clock.Milestone) error
 				}
 			}
 		}
-// The round site (design §3.8, R9; reserve.go): whatever waited for
+		// The round site (design §3.8, R9; reserve.go): whatever waited for
 		// this round of a fight arrives now, before the endings below. A
 		// member arriving refreshes sight inside this call and joins the
 		// fight whose round this is, as a straggler walking into view would.
