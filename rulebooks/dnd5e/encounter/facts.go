@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // facts.go is EXPERIENCE, THE FOURTH THING THAT LOADS THE DIE (design §4).
@@ -34,6 +35,10 @@ import (
 // none` however crowded the room is, which is what keeps the neutral goblin
 // from advancing on the party the first time it has time.
 func (e *Encounter) factsFor(id MemberID) (Facts, error) {
+	self, ok := e.members[id]
+	if !ok {
+		return Facts{}, fmt.Errorf("facts: %q: %w", id, ErrNotMember)
+	}
 	holdings, err := e.intelLog.Held(id)
 	if err != nil {
 		return Facts{}, fmt.Errorf("facts: held by %q: %w", id, err)
@@ -61,20 +66,57 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 		}
 		if h.CurrentOn(perception.Sight) {
 			facts.EnemySeen = true
+			if e.withinReach(self, location.Position) {
+				facts.EnemyInReach = true
+			}
 			continue
 		}
 		facts.EnemyRemembered = true
 	}
 
-	// SEEN WINS OVER REMEMBERED, always. `enemy: remembered` means "I have
-	// lost sight of them", not "I have seen them at some point" — the two
-	// conditions are exclusive so an author can write one entry for each and
-	// know exactly one is on the table.
+	narrowToOneBand(&facts)
+
+	return facts, nil
+}
+
+// withinReach reports whether a cell is inside any of this member's own
+// actions' reach — the SAME test [SeenMember.InReach] makes, so a table that
+// says `attack` under `enemy: reach` can always land it.
+//
+// ANY ACTION, not the longest: InReach is per action and [attackIntent] takes
+// the first one whose target is in reach, so "in reach" means "in reach of
+// something I can do".
+func (e *Encounter) withinReach(m *memberRecord, cell spatial.Position) bool {
+	own, placed := e.canvas.GetEntityPosition(string(m.ID))
+	if !placed {
+		return false
+	}
+	distance := e.Distance(own, cell)
+	for _, a := range m.Actions {
+		if distance <= float64(CellsFromFeet(a.RangeFeet)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// narrowToOneBand keeps the enemy bands EXCLUSIVE: the nearest one that holds
+// is the only one that holds.
+//
+// ENFORCED IN ONE PLACE, and both projections call it. An author writes one
+// entry per band and knows exactly one is on the table; a reader that
+// re-derived the exclusion would be a second place it could stop being true.
+func narrowToOneBand(facts *Facts) {
+	if facts.EnemyInReach {
+		facts.EnemySeen = false
+		facts.EnemyRemembered = false
+
+		return
+	}
 	if facts.EnemySeen {
 		facts.EnemyRemembered = false
 	}
-
-	return facts, nil
 }
 
 // factsFromView is the same projection for a [Driver], which is handed a
@@ -88,19 +130,33 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 func factsFromView(view MonsterView) Facts {
 	facts := Facts{Deeds: view.Deeds, Now: view.At}
 	for _, s := range view.Seen {
-		if s.Opposed {
-			facts.EnemySeen = true
-			break
+		if !s.Opposed {
+			continue
 		}
-	}
-	if !facts.EnemySeen {
-		for _, r := range view.Remembered {
-			if r.Opposed {
-				facts.EnemyRemembered = true
-				break
+		facts.EnemySeen = true
+		// THE SAME REACH AN Attack IS TESTED AGAINST, read off the view the
+		// encounter already computed it onto ([attackIntent] asks the same
+		// map) — so `enemy: reach` and `attack: enemy` can never disagree
+		// about whether the swing lands.
+		//
+		// STANDING IS PART OF IT: a body is not an enemy in reach, and
+		// attackIntent will not swing at one either.
+		if !s.Standing {
+			continue
+		}
+		for _, a := range view.Actions {
+			if s.InReach[a.Ref] {
+				facts.EnemyInReach = true
 			}
 		}
 	}
+	for _, r := range view.Remembered {
+		if r.Opposed {
+			facts.EnemyRemembered = true
+			break
+		}
+	}
+	narrowToOneBand(&facts)
 
 	return facts
 }

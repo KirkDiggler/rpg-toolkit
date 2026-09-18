@@ -78,6 +78,10 @@ func walksTo(cell spatial.Position) encounter.Table {
 // opposed to: the one in sight, else the last place it saw one. The retired
 // pursuit decider, with the coordinate arithmetic left to the engine that
 // owns the walls.
+//
+// IT ONLY CLOSES. There is no `enemy: reach` row, so a creature that arrives
+// beside its quarry holds — these fixtures are about walking, and a swing
+// would put a second claim in every one of them.
 func hunts() encounter.Table {
 	return encounter.Table{
 		encounter.AnswerTime: {

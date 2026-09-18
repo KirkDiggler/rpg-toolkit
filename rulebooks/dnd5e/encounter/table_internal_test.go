@@ -159,13 +159,19 @@ func (s *TableSuite) TestLayerOnNothingIsNothing() {
 
 // --- when --------------------------------------------------------------------
 
-// TestEnemyConditionsReadTheTwoBooleans pins all three values of `enemy:` —
-// and that `seen` and `remembered` are EXCLUSIVE, which is what makes an
-// author able to write one entry for each and know exactly one is on the
-// table.
-func (s *TableSuite) TestEnemyConditionsReadTheTwoBooleans() {
+// TestTheFourEnemyBandsAreExclusive pins the whole ladder, one entry per band:
+// EXACTLY ONE is on the table at any moment, which is what lets an author
+// write one row for each and know which fires.
+//
+// `reach` IS THE BAND THAT MADE THE DEFAULT WORK (ruled on a session-builder
+// finding). `enemy: seen` used to mean "I can see them", so the shipped thug
+// swung at somebody across the room and passed, every round, forever. It means
+// "I can see them and cannot touch them" now, and `reach` is where the swing
+// belongs.
+func (s *TableSuite) TestTheFourEnemyBandsAreExclusive() {
 	table := Table{AnswerTime: {
-		{Weight: 1, When: &When{Enemy: EnemySeen}, Attack: &Selector{Word: SelectorEnemy}},
+		{Weight: 1, When: &When{Enemy: EnemyReach}, Attack: &Selector{Word: SelectorEnemy}},
+		{Weight: 1, When: &When{Enemy: EnemySeen}, Toward: &Selector{Word: SelectorEnemy}},
 		{Weight: 1, When: &When{Enemy: EnemyRemembered}, Toward: &Selector{Word: SelectorEnemy}},
 		{Weight: 1, When: &When{Enemy: EnemyNone}, Hold: true},
 	}}
@@ -175,17 +181,57 @@ func (s *TableSuite) TestEnemyConditionsReadTheTwoBooleans() {
 		facts Facts
 		entry int
 	}{
-		{name: "in sight", facts: Facts{EnemySeen: true}, entry: 0},
-		{name: "lost sight of", facts: Facts{EnemyRemembered: true}, entry: 1},
-		{name: "never seen", facts: Facts{}, entry: 2},
+		{name: "within reach", facts: Facts{EnemyInReach: true}, entry: 0},
+		{name: "in sight, out of reach", facts: Facts{EnemySeen: true}, entry: 1},
+		{name: "lost sight of", facts: Facts{EnemyRemembered: true}, entry: 2},
+		{name: "never seen", facts: Facts{}, entry: 3},
 	} {
 		s.Run(tc.name, func() {
 			roller := &facedRoller{face: 1}
 			chosen, err := pick(context.Background(), AnswerTime, table, Temper{}, tc.facts, roller)
 			s.Require().NoError(err)
 			s.Require().NotNil(chosen)
-			s.Require().Len(chosen.Candidates, 1, "exactly one condition holds, so exactly one entry is on the table")
+			s.Require().Len(chosen.Candidates, 1,
+				"exactly one band holds, so exactly one entry is on the table")
 			s.Equal(tc.entry, chosen.Entry)
+		})
+	}
+}
+
+// TestTheProjectionIsWhatKeepsTheBandsExclusive: the flags are narrowed where
+// they are built, not where they are read, so there is one place the
+// exclusivity can stop being true rather than one per reader.
+func (s *TableSuite) TestTheProjectionIsWhatKeepsTheBandsExclusive() {
+	for _, tc := range []struct {
+		name string
+		in   Facts
+		want Facts
+	}{
+		{
+			name: "in reach clears the two farther bands",
+			in:   Facts{EnemyInReach: true, EnemySeen: true, EnemyRemembered: true},
+			want: Facts{EnemyInReach: true},
+		},
+		{
+			name: "in sight clears remembered",
+			in:   Facts{EnemySeen: true, EnemyRemembered: true},
+			want: Facts{EnemySeen: true},
+		},
+		{
+			name: "and nothing nearer leaves remembered alone",
+			in:   Facts{EnemyRemembered: true},
+			want: Facts{EnemyRemembered: true},
+		},
+		{
+			name: "none of them is none of them",
+			in:   Facts{},
+			want: Facts{},
+		},
+	} {
+		s.Run(tc.name, func() {
+			got := tc.in
+			narrowToOneBand(&got)
+			s.Equal(tc.want, got)
 		})
 	}
 }

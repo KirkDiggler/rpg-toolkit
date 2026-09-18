@@ -29,7 +29,8 @@ import (
 const thugDefaultTable = `
 time:
   - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
-  - { when: { enemy: seen },             attack: enemy }
+  - { when: { enemy: reach },            attack: enemy }
+  - { when: { enemy: seen },             toward: enemy }
   - { when: { enemy: remembered },       toward: enemy }
   - { hold: {} }
 `
@@ -42,7 +43,7 @@ func TestTheRulebooksDefaultTableCompiles(t *testing.T) {
 	require.NoError(t, err)
 
 	entries := table[encounter.AnswerTime]
-	require.Len(t, entries, 4, "four rows, in the order the rulebook wrote them")
+	require.Len(t, entries, 5, "five rows, in the order the rulebook wrote them")
 
 	require.Equal(t, 3, entries[0].Weight, "the retaliation is the heavy one")
 	require.Equal(t, "attacked", entries[0].When.Deed,
@@ -53,14 +54,19 @@ func TestTheRulebooksDefaultTableCompiles(t *testing.T) {
 	require.Equal(t, encounter.SelectorAttacker, entries[0].Attack.Word)
 
 	require.Equal(t, 1, entries[1].Weight, "an omitted weight compiles to 1 here, once")
-	require.Equal(t, encounter.EnemySeen, entries[1].When.Enemy)
-	require.Equal(t, encounter.SelectorEnemy, entries[1].Attack.Word)
+	require.Equal(t, encounter.EnemyReach, entries[1].When.Enemy)
+	require.Equal(t, encounter.SelectorEnemy, entries[1].Attack.Word,
+		"the swing is under `reach`, which is the band that can land it")
 
-	require.Equal(t, encounter.EnemyRemembered, entries[2].When.Enemy)
-	require.Equal(t, encounter.SelectorEnemy, entries[2].Toward.Word)
+	require.Equal(t, encounter.EnemySeen, entries[2].When.Enemy)
+	require.Equal(t, encounter.SelectorEnemy, entries[2].Toward.Word,
+		"and `seen` — in sight, out of reach — is where it CLOSES, which the default could not do before")
 
-	require.True(t, entries[3].Hold, "and a way out, so a thug with nothing to do stands there")
-	require.Nil(t, entries[3].When, "which is on the table always")
+	require.Equal(t, encounter.EnemyRemembered, entries[3].When.Enemy)
+	require.Equal(t, encounter.SelectorEnemy, entries[3].Toward.Word)
+
+	require.True(t, entries[4].Hold, "and a way out, so a thug with nothing to do stands there")
+	require.Nil(t, entries[4].When, "which is on the table always")
 }
 
 // TestADefaultTableCannotNameACell: a kind's table belongs to every creature
@@ -218,6 +224,7 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 	}{
 		{name: "two conditions in one", when: `{ enemy: seen, attacked: { within: 3 } }`, says: "one condition, and this names 2"},
 		{name: "an enemy word nobody reads", when: `{ enemy: nearby }`, says: "not a condition this build reads"},
+		{name: "and the refusal lists the four bands", when: `{ enemy: nearby }`, says: "reach, seen, remembered, none"},
 		{name: "a deed nobody holds", when: `{ insulted: { within: 3 } }`, says: "not a deed this build holds"},
 		{name: "a span counted from zero", when: `{ attacked: { within: 0 } }`, says: "counted from 1"},
 		{name: "a deed with no span", when: `{ attacked: {} }`, says: "names no span"},

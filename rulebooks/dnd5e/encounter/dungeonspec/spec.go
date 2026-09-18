@@ -947,7 +947,8 @@ type AnswerSpec struct {
 	//
 	//	on:
 	//	  time:
-	//	    - { when: { enemy: seen },               attack: enemy }
+	//	    - { when: { enemy: reach },              attack: enemy }
+	//	    - { when: { enemy: seen },               toward: enemy }
 	//	    - { when: { attacked: { within: 3 } },   attack: attacker, weight: 3 }
 	//
 	// An entry whose condition does not hold is NOT ON THE TABLE for that
@@ -1013,6 +1014,7 @@ type HoldSpec struct{}
 // WhenSpec is a condition on what the creature holds: EXACTLY ONE of an
 // enemy state or a deed within a span (rpg-project#465, design §2).
 //
+//	when: { enemy: reach }
 //	when: { enemy: seen }
 //	when: { enemy: remembered }
 //	when: { enemy: none }
@@ -1023,8 +1025,13 @@ type HoldSpec struct{}
 // meant is exactly what a sealed vocabulary exists to avoid. The day a use
 // case pays for `and`, it arrives as its own spelling.
 type WhenSpec struct {
-	// Enemy is `seen`, `remembered` or `none`, or empty when this condition
-	// names a deed instead.
+	// Enemy is one of the four BANDS — `reach`, `seen`, `remembered`, `none`
+	// — or empty when this condition names a deed instead.
+	//
+	// EXCLUSIVE BY DEFINITION: exactly one holds at any moment, so an author
+	// writes one entry per band and knows which fires. `seen` is "in sight
+	// and NOT in reach", which is the gap `toward` is for; `reach` is where a
+	// swing belongs, because a swing at somebody out of reach is a pass.
 	Enemy string
 
 	// Deed is the deed kind — `attacked`, `intimidated`, `persuaded`,

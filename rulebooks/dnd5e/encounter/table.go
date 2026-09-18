@@ -129,25 +129,48 @@ func Layer(base, over Table) Table {
 	return out
 }
 
-// EnemyWord is a `when: { enemy: … }` condition's value: what this creature
-// currently holds about anybody it is opposed to.
+// EnemyWord is a `when: { enemy: … }` condition's value: how close the
+// nearest thing this creature is opposed to has got.
+//
+// FOUR BANDS, AND THEY ARE EXCLUSIVE BY DEFINITION (rpg-project#465, ruled on
+// a session-builder finding). Exactly one of them holds for any creature at
+// any moment, so an author writes one entry per band and knows exactly one is
+// on the table — the same property `seen` and `remembered` already had, now
+// carried through the whole ladder.
+//
+// # Why `reach` exists
+//
+// The shipped default could not close. `enemy: seen` fired `attack: enemy`,
+// and an attack on somebody out of reach is a pass — so a thug that could see
+// the party stood still and swung at nothing, forever. Sight and reach are
+// two different questions and the table had a word for only one of them.
+// With the band, the default reads: swing when they are in reach, WALK when
+// they are merely in sight.
 type EnemyWord string
 
 const (
-	// EnemySeen holds when an opposed member is in this creature's sight.
+	// EnemyReach holds when an opposed member is within this creature's own
+	// reach — the same reach an [Attack] intent is tested against
+	// ([SeenMember.InReach]), so a table that says `attack` under this band
+	// can always land it.
+	EnemyReach EnemyWord = "reach"
+
+	// EnemySeen holds when an opposed member is in this creature's sight AND
+	// NONE IS IN REACH. The band is the gap between seeing and touching,
+	// which is what `toward` is for.
 	EnemySeen EnemyWord = "seen"
 
 	// EnemyRemembered holds when none is in sight but one is held from an
 	// earlier sighting.
 	EnemyRemembered EnemyWord = "remembered"
 
-	// EnemyNone holds when neither.
+	// EnemyNone holds when none of the three does.
 	EnemyNone EnemyWord = "none"
 )
 
-// EnemyWords is every value `enemy:` takes, in the order the design lists
-// them. Exported for the dialect's refusal, [AnswerKeys]'s reason.
-var EnemyWords = []EnemyWord{EnemySeen, EnemyRemembered, EnemyNone}
+// EnemyWords is every value `enemy:` takes, nearest band first. Exported for
+// the dialect's refusal, [AnswerKeys]'s reason.
+var EnemyWords = []EnemyWord{EnemyReach, EnemySeen, EnemyRemembered, EnemyNone}
 
 // WhenDeeds is every word a `when: { <deed>: { within: N } }` condition may
 // name. Exported for the dialect's refusal, [AnswerKeys]'s reason.
@@ -366,14 +389,24 @@ type HeldDeed struct {
 // A PROJECTION, BUILT PER PICK. There is no cache: a creature's facts are its
 // holdings and the clock, both of which the encounter already holds, and a
 // second copy kept between picks would be a second truth to keep in step.
+//
+// THE THREE ENEMY FLAGS ARE EXCLUSIVE, and the projections enforce it rather
+// than every reader re-deriving it: in reach clears seen, and seen clears
+// remembered. That is what makes `enemy: remembered` mean "I have lost sight
+// of them" rather than "I have seen them at some point", and `enemy: seen`
+// mean "I can see them and cannot touch them" rather than "I can see them".
 type Facts struct {
-	// EnemySeen is true when an opposed member is in this creature's sight.
+	// EnemyInReach is true when an opposed member is within this creature's
+	// own reach — the nearest band, and the one that makes `attack` able to
+	// land.
+	EnemyInReach bool
+
+	// EnemySeen is true when an opposed member is in this creature's sight
+	// AND NONE IS IN REACH.
 	EnemySeen bool
 
 	// EnemyRemembered is true when NONE is in sight and one is held from an
-	// earlier sighting. The two are exclusive by construction, which is what
-	// makes `enemy: remembered` mean "I have lost sight of them" rather than
-	// "I have seen them at some point".
+	// earlier sighting.
 	EnemyRemembered bool
 
 	// Deeds is every deed this creature holds against itself.
@@ -392,12 +425,18 @@ func (w *When) holds(f Facts) bool {
 		return true
 	}
 	switch w.Enemy {
+	case EnemyReach:
+		return f.EnemyInReach
 	case EnemySeen:
 		return f.EnemySeen
 	case EnemyRemembered:
 		return f.EnemyRemembered
 	case EnemyNone:
-		return !f.EnemySeen && !f.EnemyRemembered
+		// THE BANDS ARE EXCLUSIVE, so `none` is simply none of them. The
+		// projections that build [Facts] are what keep that true — they clear
+		// the farther flags once a nearer one holds — and this reads the
+		// result rather than re-deciding it.
+		return !f.EnemyInReach && !f.EnemySeen && !f.EnemyRemembered
 	}
 
 	verb := DeedVerbFor(w.Deed)

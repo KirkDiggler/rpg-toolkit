@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -469,4 +470,93 @@ func (s *WorldTimeSuite) beatOf(
 	}
 
 	return nil
+}
+
+// --- the band that made the default work -------------------------------------
+
+// swingRecorder is a Striker that remembers who swung at whom. It records
+// rather than resolves: what this scene is about is whether the table ever got
+// the creature close enough to swing at all.
+type swingRecorder struct {
+	swings []encounter.MemberID
+}
+
+func (r *swingRecorder) Strike(
+	_ context.Context, _ *encounter.Encounter, _, target encounter.MemberID, _ core.Ref,
+) error {
+	r.swings = append(r.swings, target)
+
+	return nil
+}
+
+// TestTheDefaultTableClosesAndThenSwings is the session builder's finding,
+// fixed and pinned end to end.
+//
+// THE SHIPPED DEFAULT COULD NOT CLOSE. `enemy: seen` fired `attack: enemy`,
+// and an attack on somebody out of reach is a pass — so a thug that could see
+// the party stood across the room swinging at nothing, every round, forever.
+// Sight and reach are two different questions and the table had a word for
+// only one of them.
+//
+// With the band: `seen` (in sight, out of reach) walks, `reach` swings. One
+// driven turn does both, because the driver is asked again after every
+// executed intent and the view is rebuilt each time.
+func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
+	striker := &swingRecorder{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: tableDriver(), Roller: rollsLowest{},
+		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  openAir(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			// Four cells away with thirty feet of speed and five of reach: it
+			// cannot touch her where it stands, and it can reach her if it
+			// walks. That gap is the whole scene.
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 1},
+				SpeedFeet: 30,
+				Actions:   []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}},
+				Table:     theDefaultThugTable()},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, on.Kind, "precondition: seeing each other started the fight")
+
+	started := whereIs(s.T(), enc, goblin)
+
+	// Alice ends her turn; the goblin's is driven inside the same call.
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: on.Active})
+	s.Require().NoError(err)
+
+	s.NotEqual(started, whereIs(s.T(), enc, goblin), "it closed, which `enemy: seen` is for")
+	s.Require().Len(striker.swings, 1, "and then it swung, which `enemy: reach` is for")
+	s.Equal(alice, striker.swings[0])
+}
+
+// theDefaultThugTable is the rulebook's default, as rulebooks/dnd5e ships it
+// and as dungeonspec's own test compiles it from the design's §2 text. Written
+// out in Go here because this scene is about what the table DOES, and a scene
+// that also had to parse it would be two claims in one test.
+func theDefaultThugTable() encounter.Table {
+	return encounter.Table{
+		encounter.AnswerTime: {
+			{Weight: 3, When: &encounter.When{Deed: "attacked", Within: 3},
+				Attack: &encounter.Selector{Word: encounter.SelectorAttacker}},
+			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyReach},
+				Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemySeen},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyRemembered},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+			{Weight: 1, Hold: true},
+		},
+	}
 }

@@ -60,7 +60,8 @@ list of entries under each key. The engine rolls it.
 on:
   time:
     - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
-    - { when: { enemy: seen },             attack: enemy }
+    - { when: { enemy: reach },            attack: enemy }
+    - { when: { enemy: seen },             toward: enemy }
     - { when: { enemy: remembered },       toward: enemy }
     - { when: { enemy: none },             toward: { at: [3, 4] } }
     - { when: { fled: { within: 3 } },     away: actor, weight: 5 }
@@ -88,9 +89,16 @@ fires when the creature has time: its turn in a fight, or a round of the world.
    came out the coward. A temperament is a weight profile and nothing else: it
    adds no entries, holds no memory and carries no trigger.
 4. **What the creature has seen and suffered.** `when` reads the creature's own
-   holdings — an opposed member in sight, one remembered from before, or a deed
+   holdings — how close the nearest thing it is opposed to has got, or a deed
    done to it within N rounds. An entry whose condition is false is not on the
    table for that roll; it is ABSENT, not weighted zero.
+
+   The four `enemy:` bands are EXCLUSIVE, and exactly one holds at any moment:
+   `reach` (within this creature's own reach, the same reach an attack is
+   tested against), `seen` (in sight and NOT in reach), `remembered` (none in
+   sight, one held from before), `none`. Writing `attack` under `reach` and
+   `toward` under `seen` is what lets a creature close and then swing —
+   an attack on somebody out of reach is a pass.
 
 ### You are given only what you know
 
