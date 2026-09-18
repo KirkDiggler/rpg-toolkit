@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
@@ -263,9 +264,11 @@ type CastTargetOutcome struct {
 
 // CastOutcome is one paid cast with every target outcome in caller order.
 type CastOutcome struct {
-	Spell    core.Ref
-	CasterID string
-	Targets  []CastTargetOutcome
+	// AttackDamageType is the authored primary attack damage type, including on a miss.
+	AttackDamageType damage.Type
+	Spell            core.Ref
+	CasterID         string
+	Targets          []CastTargetOutcome
 
 	// FollowUps preserves every target's damage follow-ups in target order.
 	FollowUps []FollowUpOutcome
@@ -324,6 +327,9 @@ type castMachine struct {
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	m.cast = cast
 	m.outcome = CastOutcome{Spell: m.spell, CasterID: m.casterID}
+	if m.profile.Attack != nil && len(m.profile.Attack.Damage) > 0 {
+		m.outcome.AttackDamageType = m.profile.Attack.Damage[0].Type
+	}
 
 	// Preflight the complete list before returning any executable step. This is
 	// intentionally construction-only: no rolls, publishes, spends, or removals.
@@ -608,6 +614,9 @@ func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutco
 			outcome.Warded = inner.Warded
 		} else {
 			outcome.Attack = &inner
+			for _, condition := range inner.Conditions {
+				outcome.Applied = append(outcome.Applied, condition.Imposed...)
+			}
 		}
 		return outcome, nil
 	case ContestOutcome:

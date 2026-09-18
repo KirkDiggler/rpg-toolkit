@@ -100,6 +100,8 @@ type StrikeOutcome struct {
 
 // ConditionOutcome records whether one declared on-hit condition landed.
 type ConditionOutcome struct {
+	// Imposed preserves authoritative application and replacement addresses.
+	Imposed []ImposedEffect `json:"imposed,omitempty"`
 	Ref     core.Ref        `json:"ref"`
 	Contest *ContestOutcome `json:"contest,omitempty"`
 	Applied bool            `json:"applied"`
@@ -917,15 +919,10 @@ func (m *strikeMachine) nextCondition(index int) (Step, error) {
 	if application.Save == nil {
 		return publishPreparedCondition(
 			prepared, m.cast, m.in.TargetID, dnd5eEvents.ConditionSourceDamage,
-			// A replaced instance went out on the bus, so the sheet and every
-			// listener are right; a strike's own summary says nothing about it,
-			// because [ConditionOutcome] reports per DECLARED condition whether
-			// it landed and a same-ref replacement is invisible in that
-			// vocabulary. The day a strike needs to report one, this outcome
-			// grows a lane rather than this call growing a translation.
-			func(_ []ImposedEffect) (Step, error) {
+			func(replaced []ImposedEffect) (Step, error) {
+				imposed := append(replaced, prepared.atStake(m.in.TargetID))
 				m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
-					Ref: application.Ref, Applied: true,
+					Ref: application.Ref, Applied: true, Imposed: imposed,
 				})
 				return m.nextCondition(index + 1)
 			},
@@ -941,7 +938,7 @@ func (m *strikeMachine) nextCondition(index int) (Step, error) {
 		prepared:    &prepared,
 	}, func(_ context.Context, contest ContestOutcome) (Step, error) {
 		m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
-			Ref: application.Ref, Contest: &contest, Applied: !contest.Succeeded,
+			Ref: application.Ref, Contest: &contest, Applied: !contest.Succeeded, Imposed: contest.Imposed,
 		})
 		return m.nextCondition(index + 1)
 	}), nil
