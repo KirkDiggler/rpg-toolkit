@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -580,11 +581,31 @@ func arrangementShape(v *yaml.Node, p string, add errSink) {
 // of the workspace presets, finite bounded numbers, a live and acyclic
 // graph, and declaration owners that exist.
 
+// acceptedRootVersions are the ROOT document versions this decoder speaks,
+// lowest first. 4 is the seam, landed AHEAD OF ITS KEYS.
+//
+// A version is a statement about what a file MAY CONTAIN. Two waves want v4:
+// the authored-door contract (rpg-project#468, consumer rpg-dnd5e-web#1117)
+// and the site scope plus `monsterBindings` (rpg-project#477, consumer
+// rpg-dnd5e-web#1136). The decoder accepts 4 BEFORE either wave's keys exist,
+// and the bump lands once so no second bump follows: each key then arrives
+// INSIDE a version rather than behind a new one.
+//
+// Only the ROOT version describes the site document. The embedded room draft
+// is its own separately-versioned artifact (the web persists it as
+// `rpg-room-authoring-draft` v3), so its version stays 3: root 4 with room 3
+// is the only combination the web can currently produce.
+//
+// 4 accepts exactly the keys 3 does and nothing more, so the version buys no
+// leniency. A file containing nothing new has no reason to claim otherwise,
+// and v3 therefore behaves exactly as it always did.
+var acceptedRootVersions = [...]int{3, 4}
+
 func validateSingleRoom(s *SingleRoomSpec) []FieldError {
 	var e []FieldError
 	add := func(p, m string) { e = append(e, FieldError{Path: p, Message: m}) }
-	if s.Version != 3 {
-		add("version", fmt.Sprintf("unsupported version %d (want 3)", s.Version))
+	if !slices.Contains(acceptedRootVersions[:], s.Version) {
+		add("version", fmt.Sprintf("unsupported version %d (want 3 or 4)", s.Version))
 	}
 	if s.Key == "" {
 		add("key", errRequired)

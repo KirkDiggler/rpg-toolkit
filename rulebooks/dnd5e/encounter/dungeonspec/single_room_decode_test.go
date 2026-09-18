@@ -59,6 +59,94 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsUnknownAndSecondDocument() {
 	}
 }
 
+// TestDecodeAcceptsV4RootAheadOfItsKeys is the version seam: the four
+// properties the web's own v4 test asserts for it (singleRoomDungeon.test.ts,
+// "accepts the v4 root ahead of its keys, without loosening strictness"),
+// mirrored here, plus the room-version split and the byte-identity the whole
+// versioning scheme rests on.
+//
+// The mutation replaces the ROOT version line only — exactly as the web's
+// `.replace('version: 3', 'version: 4')` does — leaving the room draft at 3,
+// which is the only combination the web can currently produce.
+func (s *SingleRoomSourceSuite) TestDecodeAcceptsV4RootAheadOfItsKeys() {
+	asV4 := s.swapOne("version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room")
+
+	// 1. A v4 root carrying only v3 keys decodes. The root version is carried
+	// verbatim, and the room's own version is untouched.
+	out, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: asV4})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Spec)
+	s.Equal(4, out.Spec.Version)
+	s.Equal(3, out.Spec.Room.Version)
+
+	// 2. The version buys no leniency. KnownFields(true) refuses an unknown
+	// root key at 4 exactly as it does at 3.
+	_, err = DecodeSingleRoom(SingleRoomDecodeInput{
+		Source: append(append([]byte{}, asV4...), []byte("\nfactions: []\n")...),
+	})
+	s.Require().Error(err, "an unknown root key is refused at v4 too")
+	s.Contains(err.Error(), "factions", "and the refusal names the key")
+
+	// The source shape walk is version-blind too: a required key missing, or a
+	// scalar of the wrong kind, is refused at the same path at 4 as at 3.
+	_, err = DecodeSingleRoom(SingleRoomDecodeInput{
+		Source: s.swapOne("version: 3\nkey: workshop-room", "version: 4.0\nkey: workshop-room"),
+	})
+	s.Require().Error(err, "an integral-looking float root version is still not an integer")
+	s.Contains(err.Error(), "version: must be an integer")
+
+	// 3. A version nobody agreed on (5, or 2) is refused BY NAME, keeping the
+	// offending value and saying what is wanted.
+	for _, tc := range []struct{ name, repl, want string }{
+		{"version 5", "version: 5\nkey: workshop-room", "unsupported version 5 (want 3 or 4)"},
+		{"version 2", "version: 2\nkey: workshop-room", "unsupported version 2 (want 3 or 4)"},
+	} {
+		s.Run(tc.name, func() {
+			_, err := DecodeSingleRoom(SingleRoomDecodeInput{
+				Source: s.swapOne("version: 3\nkey: workshop-room", tc.repl),
+			})
+			s.Require().Error(err)
+			s.Contains(err.Error(), tc.want)
+		})
+	}
+
+	// 4. A v3 document is unchanged, byte for byte. Decoding s.raw and
+	// re-encoding it is stable, and the v4 document — which differs from it
+	// only in the root version — decodes to the SAME bytes once that one digit
+	// is normalized. The seam adds no default, no repair and no second shape.
+	// The existing v3 accept/refuse suite, untouched, is the other half.
+	v3, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: s.raw})
+	s.Require().NoError(err)
+	v3Bytes, err := yaml.Marshal(v3.Spec)
+	s.Require().NoError(err)
+	again, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: v3Bytes})
+	s.Require().NoError(err)
+	againBytes, err := yaml.Marshal(again.Spec)
+	s.Require().NoError(err)
+	s.Equal(string(v3Bytes), string(againBytes), "the v3 round trip is byte-stable")
+
+	out.Spec.Version = 3
+	v4AsV3Bytes, err := yaml.Marshal(out.Spec)
+	s.Require().NoError(err)
+	s.Equal(string(v3Bytes), string(v4AsV3Bytes), "v4-only-in-version decoded to the v3 bytes")
+
+	// 5. The room's own version is still required to be 3. A v4 root whose
+	// room claims 4 is refused, and the refusal names the ROOM's version — not
+	// the root's, which is accepted.
+	bothV4 := s.swapOne("version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room")
+	bothV4 = []byte(strings.Replace(string(bothV4),
+		"  version: 3\n  id: room-1", "  version: 4\n  id: room-1", 1))
+	_, err = DecodeSingleRoom(SingleRoomDecodeInput{Source: bothV4})
+	s.Require().Error(err)
+	var defects *ValidationError
+	s.Require().ErrorAs(err, &defects)
+	s.Contains(defects.Errors,
+		FieldError{Path: "room.version", Message: "unsupported version 4 (want 3)"})
+	for _, d := range defects.Errors {
+		s.NotEqual("version", d.Path, "the accepted root version is not the wrong one")
+	}
+}
+
 // swapOne replaces exactly one occurrence of old, failing when the anchor is
 // not unique: a mutation that matches twice would test the wrong spot.
 func (s *SingleRoomSourceSuite) swapOne(old, repl string) []byte {
