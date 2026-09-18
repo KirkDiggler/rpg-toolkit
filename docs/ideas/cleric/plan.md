@@ -1,5 +1,69 @@
 # Cleric level-one contribution plan
 
+## Sanctuary: session slice delivered — the ward reaches the wire
+
+Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811),
+resolution PR [#1812](https://github.com/KirkDiggler/rpg-toolkit/pull/1812),
+and encounter PR [#1813](https://github.com/KirkDiggler/rpg-toolkit/pull/1813).
+All three providers are now merged and released. Session pins root `v0.181.0`,
+resolution `v0.54.0`, and encounter `v0.89.0`; development pseudo-versions are
+replaced. Their implementation notes and the recipient cooldown correction are
+retained below. Resolution supplies the ward save's explicit ability so session
+does not infer a game rule while translating the result.
+
+**Strike**, `recordStrike` (`session/react_post_roll.go`, the shared
+translator both the fresh and resumed swing paths already route through):
+a `struck.Warded != nil` branch builds `encounter.RecordInput{Kind:
+OutcomeWarded, Warded: &encounter.WardedDetail{...}}` and returns early —
+deliberately NOT setting `PresentationID` or the top-level `Calculation`,
+since `encounter.Record` refuses both on every kind but Struck/Missed (no
+attack roll happened here to correlate a shared token against). `AttackOutput`
+gained `Warded bool` / `WardedBy string`, the same "these fields are not
+answers when this is true" shape `Paused` already documents for itself.
+
+**Cast**, `castOutcome`/new `castWarded` helper (`session/castoutcome.go`):
+a `target.Warded != nil` branch short-circuits before `castSave` even runs,
+appending a `CastTargetResult{Warded: ...}` and continuing to the next
+target — so one warded recipient in a multi-target Bane cast does not touch
+what the loop does for the others. `CastOutput` gained `WardedTargets
+[]string`, `MissedTargets`'s own sibling.
+
+**The wire types**, both new (`session/types.go`): `EventWarded`/`WardedBody`
+(Strike, nested under a `"warded"` key the way `encounter.Record`'s generic
+outcome map writes it) and `EventCastWarded`/`CastWardedBody` (Cast, FLAT —
+`encounter`'s own `castWardedPayload` never used the generic map, so its
+wire shape was already flat and the two decoders necessarily differ in
+shape though not in the facts they check). Neither carries a separate
+"Saver" field: the saver of a ward's own save IS the actor by construction
+(the same reasoning `ConcentrationCheck.Save`'s own doc already gives for
+itself), so a second field naming them would be one that could disagree.
+Both decoders (`session/events.go`) apply the same strict presence/non-null
+key discipline `savedEventBody` already uses, plus two checks nothing else
+needed: the save's saver must equal the beat's actor (the inversion IS the
+point), and `succeeded` must be false (a "successful" ward save is not a
+fact this beat can carry without lying about what happened next).
+
+Four new tests in `session/sanctuary_internal_test.go`, mirroring
+`bless_internal_test.go`'s own established pattern for this exact kind of
+check — `decodeBeat` round-trip plus required-key refusal for both wire
+shapes, and `recordStrike`/`castOutcome` conversion checks — rather than
+driving a full live `Manager` scene through `Attack`/`Cast`. That tradeoff
+is deliberate and worth stating plainly: resolution's and encounter's own
+suites already prove the underlying mechanic (the save timing, the
+cost-commits-on-failure property, the story validation) at their own
+layers, so this slice's job is narrowly to prove the TRANSLATION between
+them is correct — which the internal unit tests do directly and far more
+cheaply than assembling a `Spawn`-a-hostile-monster end-to-end scene would
+have, for the same evidence. Full session module build/vet/test/lint
+clean, every pre-existing test unchanged.
+
+**Consumer handoff**: root already enables Sanctuary. API #1007 and web #1126
+have exercised the development provider combination. The user observed recipient
+immunity in Story and confirmed Sanctuary was unavailable with no eligible
+targets. After session releases, API must adopt the published provider versions
+and rerun its checks; these browser observations do not claim the full timer
+expiry was manually exercised.
+
 ## Sanctuary: encounter slice delivered — a story shape for "warded off"
 
 Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811)
