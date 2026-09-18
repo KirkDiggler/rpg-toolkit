@@ -101,8 +101,11 @@ var _ encounter.StandingWithParticipation = everyoneStanding{}
 // fixtures hand over the one answer that changes nothing.
 type passDriver struct{}
 
-func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
-	return encounter.Pass{}, nil
+func (passDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
+	// A NIL PICK, because this driver rolled nothing. The seam now carries the
+	// roll that chose an intent back beside the intent itself, and a fixture
+	// that fabricated one would put arithmetic on a beat nobody threw.
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // noAttacksExpected is the deterministic Striker every fixture wires. This
