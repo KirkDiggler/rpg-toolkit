@@ -331,14 +331,14 @@ func answeredBeatBody(creature MemberID, verb string, beaten bool, chosen *Pick)
 // because a tray that draws every die in its owner's set cannot work it out
 // from the member alone.
 //
-// RESOLVED, not as authored: a monster that named no faction is in the
-// reserved `monsters` side, and that is the side whose orders it is under.
-func (e *Encounter) appendTemperedBeat(member MemberID, word string, roll, of int, at uint64) error {
-	faction := FactionID("")
-	if record, ok := e.members[member]; ok {
-		faction = factionOf(record)
-	}
-
+// THE DEAL SITE PASSES IT rather than this beat re-deriving it. The faction
+// is what the deal was made FOR — [Encounter.dealTemperFor] has the member in
+// hand and resolves it once — and a beat that looked it up again would be a
+// second place the resolution happens, which is one more place for it to come
+// to disagree.
+func (e *Encounter) appendTemperedBeat(
+	member MemberID, faction FactionID, word string, roll, of int, at uint64,
+) error {
 	payload, err := json.Marshal(map[string]interface{}{
 		"beat":    BeatTempered,
 		"member":  string(member),

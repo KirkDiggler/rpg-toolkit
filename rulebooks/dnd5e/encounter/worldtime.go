@@ -387,11 +387,25 @@ func (e *Encounter) dealTemperFor(member MemberID, temper Temper, at uint64) (Te
 		return Temper{Word: temper.Word, Profile: temper.Profile}, nil
 	}
 
+	// THE FACTION IS THE DIE'S ENTITY (rpg-project#463, design §3): the spread
+	// is the FACTION's — "the instructions given to the group" — and the deal
+	// is one roll out of it, so the entity whose rule threw the die is the
+	// side and not the creature that came out of it. Every other pick this
+	// composition makes names the creature; this one does not, and a tray that
+	// draws each die in its owner's set cannot work that out from the member.
+	//
+	// RESOLVED HERE, ONCE, and as the side the creature is actually on: a
+	// monster that named none is in the reserved `monsters` one.
+	faction := FactionID("")
+	if record, ok := e.members[member]; ok {
+		faction = factionOf(record)
+	}
+
 	dealt, roll, of, err := dealTemper(context.Background(), temper, e.roller)
 	if err != nil {
 		return Temper{}, fmt.Errorf("member %q: %w", member, err)
 	}
-	if err := e.appendTemperedBeat(member, dealt.Word, roll, of, at); err != nil {
+	if err := e.appendTemperedBeat(member, faction, dealt.Word, roll, of, at); err != nil {
 		return Temper{}, fmt.Errorf("member %q: %w", member, err)
 	}
 
