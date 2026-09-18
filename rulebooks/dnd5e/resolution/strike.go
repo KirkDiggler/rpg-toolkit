@@ -314,6 +314,13 @@ func (m *strikeMachine) preflight(ctx context.Context, cast *Participants) error
 				return fmt.Errorf("validate on-hit condition %s: %w", application.Ref.String(), gateErr)
 			}
 		}
+		if application.CounterpartKey != "" {
+			bound, bindErr := writeParameter(application.Ref, application.Parameters, application.CounterpartKey, m.in.AttackerID)
+			if bindErr != nil {
+				return bindErr
+			}
+			application.Parameters = bound
+		}
 		prepared, prepareErr := prepareCondition(application, m.in.TargetID, m.in.Definition.Ref.String())
 		if prepareErr != nil {
 			return prepareErr

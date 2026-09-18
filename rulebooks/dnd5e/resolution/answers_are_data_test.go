@@ -79,6 +79,8 @@ func TestEntriesReturnAnswersNotSheets(t *testing.T) {
 // Every entry is a promise a human made and the compiler cannot keep, so each
 // one says what it is resting on.
 var allowedInterfaceFields = map[string]string{
+	"DirtyMonsters.Actions.Cast.Attack.OnHit.Save.DC":   "sealed in saves; same declarative DC as a direct attack rider",
+	"DirtyCharacters.Actions.Cast.Attack.OnHit.Save.DC": "sealed in saves; same declarative DC as a direct attack rider",
 	// Preflight's refusal causes are prose — they exist to be read by a person
 	// deciding which offer row is dead and why. A sheet smuggled behind an
 	// error would have to survive the entry's own construction, and Preflight
