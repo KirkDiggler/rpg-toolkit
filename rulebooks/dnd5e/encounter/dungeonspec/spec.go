@@ -783,7 +783,7 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
 			"offset", "targeting", "actions", "boss", "holds", "holdable", "faction",
-			"arrives", "intimidate", "persuade", "on":
+			"arrives", "intimidate", "persuade", "on", "temper":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)

@@ -149,9 +149,37 @@ const (
 // them. Exported for the dialect's refusal, [AnswerKeys]'s reason.
 var EnemyWords = []EnemyWord{EnemySeen, EnemyRemembered, EnemyNone}
 
-// WhenDeeds is every deed kind a `when: { <deed>: { within: N } }` condition
-// may name. Exported for the dialect's refusal, [AnswerKeys]'s reason.
-var WhenDeeds = []string{DeedAttack, DeedIntimidate, DeedPersuade, DeedFled}
+// WhenDeeds is every word a `when: { <deed>: { within: N } }` condition may
+// name. Exported for the dialect's refusal, [AnswerKeys]'s reason.
+//
+// THE AUTHOR'S WORDS ARE PAST TENSE, AND THE STORE'S ARE NOT. A condition is
+// written from the CREATURE's side — "I was attacked" — while a deed is
+// recorded from the WITNESS's — "somebody attacked". `attacked` and
+// [DeedAttack] are the same event named from the two ends of it, and
+// [DeedVerbFor] is the one place the two vocabularies meet.
+var WhenDeeds = []string{"attacked", "intimidated", "persuaded", "fled"}
+
+// DeedVerbFor is the deed a `when` word reads: the verb the deeds channel
+// files it under, for the word the author wrote.
+//
+// ONE MAPPING, IN ONE PLACE, so the dialect's refusal list and the evaluator's
+// comparison cannot come to disagree about which word means which deed.
+// An unknown word answers empty, which matches no held deed — the refusal for
+// one lives at the door the table came in through.
+func DeedVerbFor(word string) string {
+	switch word {
+	case "attacked":
+		return DeedAttack
+	case "intimidated":
+		return DeedIntimidate
+	case "persuaded":
+		return DeedPersuade
+	case "fled":
+		return DeedFled
+	default:
+		return ""
+	}
+}
 
 // When is a condition on WHAT THIS CREATURE HOLDS, and an entry whose When
 // does not hold is not on the table for this roll (design §2).
@@ -170,8 +198,10 @@ type When struct {
 	// condition names a deed instead.
 	Enemy EnemyWord
 
-	// Deed is the deed kind this creature must hold AGAINST ITSELF — one of
-	// [WhenDeeds] — or empty when this condition names an enemy instead.
+	// Deed is the word for what this creature must hold AGAINST ITSELF — one
+	// of [WhenDeeds], in the author's own past tense — or empty when this
+	// condition names an enemy instead. [DeedVerbFor] is what turns it into
+	// the verb the deeds channel files under.
 	Deed string
 
 	// Within is how many rounds ago the deed may have landed and still
@@ -370,8 +400,9 @@ func (w *When) holds(f Facts) bool {
 		return !f.EnemySeen && !f.EnemyRemembered
 	}
 
+	verb := DeedVerbFor(w.Deed)
 	for _, d := range f.Deeds {
-		if d.Kind != w.Deed {
+		if verb == "" || d.Kind != verb {
 			continue
 		}
 		// A DEED STAMPED AHEAD OF NOW IS NOT FRESH, IT IS WRONG. Unsigned

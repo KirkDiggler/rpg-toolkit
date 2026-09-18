@@ -919,16 +919,23 @@ func CompileTable(source string) (encounter.Table, error) {
 		return nil, fmt.Errorf("compile table: %w: %w", ErrBadSpec, err)
 	}
 
-	v := &validation{owner: map[spatial.Position]int{}}
-	v.placeOn("table", on)
-	for _, entries := range on {
+	// THE CELL REFUSAL COMES FIRST, before the shared validator runs, and it
+	// has to: the validator checks a cell against the floor, and a kind's
+	// table has no floor to check against. Refusing the word outright is the
+	// honest answer, and doing it here keeps the validator's own floor rule
+	// from being asked a question it cannot have.
+	for key, entries := range on {
 		for _, entry := range entries {
 			if _, sel := entrySelectorOf(entry); sel != nil && sel.At != nil {
-				v.fail("table", "a default table belongs to a kind and not to a map, so it cannot name a cell (line %d)",
-					sel.Line)
+				return nil, fmt.Errorf(
+					"compile table: %w: %s: a default table belongs to a kind and not to a map, so it cannot name a cell (line %d)",
+					ErrBadSpec, key, sel.Line)
 			}
 		}
 	}
+
+	v := &validation{spec: &Spec{Orientation: "pointy"}, owner: map[spatial.Position]int{}}
+	v.placeOn("table", on)
 	if len(v.errs) > 0 {
 		return nil, fmt.Errorf("compile table: %w: %s", ErrBadSpec, v.errs[0])
 	}

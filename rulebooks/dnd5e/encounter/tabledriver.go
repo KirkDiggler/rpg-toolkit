@@ -256,7 +256,7 @@ func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) 
 		if entry.When == nil || entry.When.Deed == "" {
 			return "", false
 		}
-		if held, ok := freshestDeed(view.Deeds, entry.When.Deed); ok && held.Actor != "" {
+		if held, ok := freshestDeed(view.Deeds, DeedVerbFor(entry.When.Deed)); ok && held.Actor != "" {
 			return held.Actor, true
 		}
 

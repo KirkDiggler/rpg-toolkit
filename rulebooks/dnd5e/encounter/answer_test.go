@@ -228,7 +228,7 @@ func (s *AnswerTestSuite) TestAFleeEntryLandsTheDeedAndTheTableDoesTheRunning() 
 	enc := s.neutralFront(encounter.Table{
 		encounter.AnswerIntimidated: {{Weight: 1, Say: "BOSS!", Flee: true}},
 		encounter.AnswerTime: {
-			{Weight: 1, When: &encounter.When{Deed: encounter.DeedFled, Within: 3},
+			{Weight: 1, When: &encounter.When{Deed: "fled", Within: 3},
 				Away: &encounter.Selector{Word: encounter.SelectorActor}},
 			{Weight: 1, Hold: true},
 		},

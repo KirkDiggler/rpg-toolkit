@@ -194,7 +194,7 @@ func (s *TableSuite) TestEnemyConditionsReadTheTwoBooleans() {
 // sides of it. A deed landed N rounds ago still counts; N+1 does not.
 func (s *TableSuite) TestASpanIsCountedFromOneAndEndsWhenItSaysSo() {
 	table := Table{AnswerTime: {
-		{Weight: 1, When: &When{Deed: DeedFled, Within: 3}, Away: &Selector{Word: SelectorActor}},
+		{Weight: 1, When: &When{Deed: "fled", Within: 3}, Away: &Selector{Word: SelectorActor}},
 		{Weight: 1, Hold: true},
 	}}
 
@@ -227,7 +227,7 @@ func (s *TableSuite) TestASpanIsCountedFromOneAndEndsWhenItSaysSo() {
 // attacked is not a creature that ran.
 func (s *TableSuite) TestADeedOfAnotherKindIsNotThisCondition() {
 	table := Table{AnswerTime: {
-		{Weight: 1, When: &When{Deed: DeedFled, Within: 3}, Away: &Selector{Word: SelectorActor}},
+		{Weight: 1, When: &When{Deed: "fled", Within: 3}, Away: &Selector{Word: SelectorActor}},
 		{Weight: 1, Hold: true},
 	}}
 	facts := Facts{Now: 11, Deeds: []HeldDeed{{Kind: DeedAttack, Actor: "alice", At: 10}}}
@@ -510,7 +510,7 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 		},
 		{
 			name:  "a `when` that names two things",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Enemy: EnemySeen, Deed: DeedFled, Within: 1}}}},
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Enemy: EnemySeen, Deed: "fled", Within: 1}}}},
 			says:  "one condition, and this is two",
 		},
 		{
@@ -530,7 +530,7 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 		},
 		{
 			name:  "a span counted from zero",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Deed: DeedFled, Within: 0}}}},
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Deed: "fled", Within: 0}}}},
 			says:  "counted from 1",
 		},
 		{
@@ -565,11 +565,11 @@ func (s *TableSuite) TestAWholeLegalTableIsAccepted() {
 		AnswerPersuaded:        {{Weight: 1, Fact: "camp-cowed"}},
 		AnswerPersuadeFailed:   {{Weight: 1, Say: "Nothing down there."}},
 		AnswerTime: {
-			{Weight: 3, When: &When{Deed: DeedAttack, Within: 3}, Attack: &Selector{Word: SelectorAttacker}},
+			{Weight: 3, When: &When{Deed: "attacked", Within: 3}, Attack: &Selector{Word: SelectorAttacker}},
 			{Weight: 1, When: &When{Enemy: EnemySeen}, Attack: &Selector{Word: SelectorEnemy}},
 			{Weight: 1, When: &When{Enemy: EnemyRemembered}, Toward: &Selector{Word: SelectorEnemy}},
 			{Weight: 1, When: &When{Enemy: EnemyNone}, Toward: &Selector{At: &cell}},
-			{Weight: 5, When: &When{Deed: DeedFled, Within: 3}, Away: &Selector{Word: SelectorActor}},
+			{Weight: 5, When: &When{Deed: "fled", Within: 3}, Away: &Selector{Word: SelectorActor}},
 			{Weight: 1, Hold: true},
 		},
 	}))

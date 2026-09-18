@@ -492,13 +492,7 @@ func validateWhen(when *When) error {
 		return fmt.Errorf("`enemy: %s` is not a condition this build reads: %w", when.Enemy, ErrBadAnswer)
 	}
 
-	known := false
-	for _, deed := range WhenDeeds {
-		if when.Deed == deed {
-			known = true
-		}
-	}
-	if !known {
+	if DeedVerbFor(when.Deed) == "" {
 		return fmt.Errorf("`%s` is not a deed this build holds: %w", when.Deed, ErrBadAnswer)
 	}
 	if when.Within < 1 {
