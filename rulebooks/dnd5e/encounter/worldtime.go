@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
@@ -401,13 +402,13 @@ func (e *Encounter) dealTemperFor(member MemberID, temper Temper, at uint64) (Te
 		faction = factionOf(record)
 	}
 
-	dealt, roll, of, err := dealTemper(context.Background(), temper, e.roller)
+	dealt, err := behavior.Deal(context.Background(), &behavior.DealInput{Temper: temper, Die: e.roller})
 	if err != nil {
 		return Temper{}, fmt.Errorf("member %q: %w", member, err)
 	}
-	if err := e.appendTemperedBeat(member, faction, dealt.Word, roll, of, at); err != nil {
+	if err := e.appendTemperedBeat(member, faction, dealt.Temper.Word, dealt.Roll, dealt.Of, at); err != nil {
 		return Temper{}, fmt.Errorf("member %q: %w", member, err)
 	}
 
-	return dealt, nil
+	return dealt.Temper, nil
 }

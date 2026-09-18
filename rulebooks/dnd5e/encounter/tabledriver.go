@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -72,7 +73,9 @@ type TableDriver struct {
 // do and a reader can see why nothing happened. Silently re-rolling would hide
 // an authoring mistake behind plausible behaviour.
 func (d TableDriver) Act(view MonsterView) (Decision, error) {
-	chosen, err := pick(context.Background(), AnswerTime, view.Table, view.Temper, factsFromView(view), d.Roller)
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: AnswerTime, Table: view.Table, Temper: view.Temper, Facts: factsFromView(view), Die: d.Roller,
+	})
 	if err != nil {
 		return Decision{}, fmt.Errorf("table driver %q: %w", view.Self, err)
 	}
