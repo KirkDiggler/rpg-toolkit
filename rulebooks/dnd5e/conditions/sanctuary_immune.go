@@ -16,8 +16,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// SanctuaryImmuneName is the display name for a creature immune to one
-// caster's Sanctuary after succeeding a ward save against it.
+// SanctuaryImmuneName labels the recipient's cooldown against receiving
+// another Sanctuary, regardless of who would cast it.
 const SanctuaryImmuneName = "Sanctuary Immune"
 
 // SanctuaryImmuneTurnEnds is the user's own settled reading of RAW's 24
@@ -39,29 +39,17 @@ type SanctuaryImmuneConditionData struct {
 	TurnEndsLeft int       `json:"turn_ends_left"`
 }
 
-// NewSanctuaryImmuneConditionInput names the attacker who earned the
-// immunity, the caster it blocks, and the canonical Sanctuary spell ref that
-// justifies the block.
+// NewSanctuaryImmuneConditionInput names the recipient and the caster who
+// applied the cooldown. SourceID is provenance, not a restriction on immunity.
 type NewSanctuaryImmuneConditionInput struct {
 	MemberID  string
 	SourceID  string
 	SourceRef *core.Ref
 }
 
-// SanctuaryImmuneCondition marks an ATTACKER as immune to one specific
-// caster's Sanctuary after succeeding a ward save against it — RAW's "immune
-// to your sanctuary spells", not a blanket immunity, so it is source-qualified
-// exactly like [BlessedCondition] and its siblings.
-//
-// # It holds its own clock, for [SanctuaryImmuneTurnEnds] of the HOLDER's own turn ends
-//
-// RAW is 24 hours; there is no real-time clock anywhere in this rulebook, so
-// the divergence is the user's own settled number rather than an
-// approximation this package invented. Not concentration-linked — this is
-// the attacker's own condition, not the warding caster's — so it holds its
-// own count the way [BladeWardCondition] does, ending on whichever of three
-// boundaries comes first: the turn-end count running out, combat ending, or
-// a rest.
+// SanctuaryImmuneCondition prevents its holder receiving another Sanctuary.
+// It is applied with the ward and persists independently of concentration for
+// SanctuaryImmuneTurnEnds of the holder's turn ends, combat end, or rest.
 type SanctuaryImmuneCondition struct {
 	MemberID  string
 	SourceID  string
@@ -83,14 +71,14 @@ var (
 )
 
 // NewSanctuaryImmuneCondition creates one source-qualified immunity, lasting
-// SanctuaryImmuneTurnEnds of the attacker's own turn ends.
+// SanctuaryImmuneTurnEnds of the recipient's own turn ends.
 func NewSanctuaryImmuneCondition(input NewSanctuaryImmuneConditionInput) (*SanctuaryImmuneCondition, error) {
 	if input.MemberID == "" {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "sanctuary immune condition requires an attacker member")
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "sanctuary immune condition requires a recipient member")
 	}
 	if input.SourceID == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
-			"sanctuary immune condition requires the id of the caster it blocks")
+			"sanctuary immune condition requires the id of the originating caster")
 	}
 	if input.SourceRef == nil || input.SourceRef.String() != refs.Spells.Sanctuary().String() {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "sanctuary immune condition source ref must be Sanctuary")

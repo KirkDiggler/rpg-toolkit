@@ -1599,3 +1599,17 @@ including selected-self targeting and overlapping-caster acceptance. Preparation
 grants and out-of-combat casting remain separately scheduled work. The eventual API/web
 integration must be observed through the real game before declaring the Cleric journey
 complete. Historical creation/Sacred Flame evidence remains in `implementation.md`.
+
+### Recipient cooldown correction (2026-09-18)
+
+The earlier timer correction did not implement the requested anti-chain-casting
+rule. SanctuaryImmune belongs to the creature RECEIVING Sanctuary, applied at
+cast time, and prevents that creature receiving Sanctuary from any caster for
+20 of its turn ends (existing combat-end/rest cleanup still applies). Its source
+identifies the originating caster only. It is not earned by an attacker passing
+a ward save and does not bypass later ward saves. The cooldown is independent
+of concentration: ending or breaking the 10-turn ward does not clear it.
+
+Content declares both recipient effects, the cooldown's independent lifetime,
+and the condition that rejects a new recipient before payment. Offers and Cast
+must consume that same restriction, including after repository reload.

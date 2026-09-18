@@ -5,6 +5,7 @@ package spells
 
 import (
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"strconv"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -348,8 +349,12 @@ var castContent = map[Spell]castProfileBuilder{
 				MinTargets: 1, MaxTargets: 1,
 				Effects: []actions.CastEffect{{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Sanctuary(), CounterpartKey: "source_id",
+				}, {
+					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.SanctuaryImmune(), CounterpartKey: "source_id",
+					IndependentDuration: true,
 				}},
-				Concentration: &actions.CastConcentration{TurnEnds: SanctuaryTurnEnds, SkipFirstTurnEnd: true},
+				RecipientBlockedBy: []core.Ref{*refs.Conditions.SanctuaryImmune()},
+				Concentration:      &actions.CastConcentration{TurnEnds: SanctuaryTurnEnds, SkipFirstTurnEnd: true},
 			}
 		},
 	},
