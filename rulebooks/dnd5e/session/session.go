@@ -257,7 +257,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 // source that reports success and hands over nothing has broken its contract,
 // and is refused here rather than wrapped into a seam that would panic several
 // frames later, in the middle of somebody's turn.
-func (m *Manager) resolveTurnDriver(ctx context.Context, sessionID string) (encounter.TurnDriver, error) {
+func (m *Manager) resolveTurnDriver(ctx context.Context, sessionID string) (encounter.Driver, error) {
 	driver, err := m.turnDrivers.DriverFor(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("turn driver for session %q: %w", sessionID, err)
@@ -265,5 +265,24 @@ func (m *Manager) resolveTurnDriver(ctx context.Context, sessionID string) (enco
 	if driver == nil {
 		return nil, fmt.Errorf("session %q: %w", sessionID, ErrNoTurnDriver)
 	}
-	return turnDriverSeam{driver: driver}, nil
+
+	// [Driver] — the creature's own table — is not wrapped but RECOGNISED, and
+	// built one layer down around this session's dice. It cannot cross the
+	// projecting seam: the twin view carries no table, no temperament and no
+	// deeds, and a pick's arithmetic has nowhere to ride back on. See
+	// [tableDriver] for the whole argument.
+	return encounterDriverFor(driver, m.encounterDice()), nil
+}
+
+// encounterDice is this session's shared randomness in the shape the
+// composition takes.
+//
+// ONE SOURCE, ONE ADAPTER SHAPE, A FRESH VALUE PER ASK. [diceSeam] remembers
+// the first error its caller threw away, which is initiative's need and
+// nobody else's; a value shared between the initiative order and a creature's
+// table would carry one's failure into the other's account of itself. What is
+// shared is the host's Roller underneath, which is the thing that has to be
+// shared for a run to replay.
+func (m *Manager) encounterDice() *diceSeam {
+	return &diceSeam{roller: m.dice}
 }

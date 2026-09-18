@@ -62,24 +62,25 @@ func (s *perSessionDrivers) DriverFor(_ context.Context, sessionID string) (sess
 		return driver, nil
 	}
 
-	// The real stateful value the seam exists for, not a stand-in for one.
-	inner, err := session.Minded(nil)
-	require.NoError(dummyFataler{}, err)
-
-	driver := &mindedPerSession{driver: inner, asked: map[string]int{}}
+	// The driver underneath is deliberately the boring one. What this seam
+	// promises is about WHICH driver a verb gets and how often it asks, not
+	// about what that driver decides — and the stateful mind this was written
+	// against is deleted (rpg-project#465). The per-session memory the test
+	// reads is [mindedPerSession.asked], which was always the observable.
+	driver := &mindedPerSession{driver: session.Pass{}, asked: map[string]int{}}
 	s.built[sessionID] = driver
 	return driver, nil
 }
 
-// mindedPerSession is one session's own driver: a real [session.Minded] with a
-// note of which members THIS driver has been asked about.
+// mindedPerSession is one session's own driver: a note of which members THIS
+// driver has been asked about, over a driver that answers.
 //
-// The note stands in for the driver's own memory because that memory is not
-// observable from out here — behavior.Minded files a mind and a set of names
-// per member id and exposes neither — but it is the same fact at the same
-// granularity: this driver has met this member before. That fact is exactly
-// what leaked when one driver served every session, because member ids are
-// authored per dungeon rather than minted per run.
+// The note IS the per-session memory under test. It was written to stand in
+// for a stateful mind's own memory, which was never observable from out here;
+// that mind is gone and the note is what remains, at the same granularity and
+// holding the same fact: this driver has met this member before. That fact is
+// exactly what leaked when one driver served every session, because member ids
+// are authored per dungeon rather than minted per run.
 type mindedPerSession struct {
 	driver session.TurnDriver
 	asked  map[string]int
@@ -104,13 +105,6 @@ func driven(d *mindedPerSession) []string {
 	}
 	return members
 }
-
-// dummyFataler lets the source report a construction failure through require
-// without holding a *testing.T it would outlive.
-type dummyFataler struct{}
-
-func (dummyFataler) Errorf(string, ...interface{}) {}
-func (dummyFataler) FailNow()                      {}
 
 // driverScene builds ONE Manager over one host source. Two fighters exist so
 // two sessions can each hold a player of their own; the skeletons deliberately

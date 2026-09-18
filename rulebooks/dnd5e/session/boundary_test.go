@@ -124,6 +124,28 @@ var contractTypes = map[string]string{
 	// spatial.Position makes above.
 	"shared.EquipmentType": "contract type: reachable from TradeItem, a caller-constructed field naming what's being traded",
 
+	// Reachable from SpawnInput.Table and SpawnInput.Temper (write.go,
+	// rpg-project#465) — the creature's authored policy and the temperament
+	// loading its die.
+	//
+	// THE HOST NEVER BUILDS ONE, and that is what settles it. A table is
+	// COMPILED, by dungeonspec, out of the author's own `on:` blocks; a
+	// temperament is the word the same compiler read off a placement or a
+	// faction. What a host holds is a value that compiler handed it
+	// (dungeonspec.MonsterPlacement.Table/.Temper) and carries, unread, to
+	// this verb. There is no session-level compiler for it to use instead, so
+	// a twin here would mean converting the composition's own output into a
+	// parallel vocabulary and straight back again — seven types of ceremony
+	// around a value nobody on either side inspects.
+	//
+	// IT SITS HERE AND NOT UNDER persistenceShapes, and the promise is the
+	// reason. These are not opaque bytes we may reshape freely: the table IS
+	// the author's grammar, and dungeon files in rpg-game-assets are written
+	// against it. A change to its shape is a change we ANNOUNCE — which is
+	// exactly what a contract type means.
+	"encounter.Table":  "contract type: the author's own compiled policy, carried from dungeonspec to Spawn",
+	"encounter.Temper": "contract type: the temperament the same compiler read, carried beside the table",
+
 	// Reachable from TradeOffer.Currency (trade.go, rpg-toolkit#1534, Wave
 	// 4). A caller CONSTRUCTS this value (it is the payment offered on
 	// Give, checked against a server-computed price) rather than only

@@ -472,10 +472,13 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	encounters := newFakeEncounters()
 	characters := newCopyingCharacters(s.T(), spentJoinFighter(s.T(), "bob"))
 	// Initiative asks alphabetically: bob rolls 1, skel-1 rolls 20. The
-	// skeleton then hits on 15; the remaining fixed rolls drive its damage.
-	dice := &sequenceDice{rolls: []int{1, 20, 15, 4, 4, 4, 4, 4}}
+	// skeleton then rolls its own table — 15 of a d200 lands on `attack:
+	// enemy`, the first of the two entries its kind's default table offers a
+	// creature with an enemy in sight (rpg-project#465) — hits on 15, and the
+	// remaining fixed rolls drive its damage and its later picks.
+	dice := &sequenceDice{rolls: []int{1, 20, 15, 15, 4, 4, 4, 4, 4, 4}}
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: dice, TurnDriver: session.Behavior(), Events: session.DiscardEvents{},
+		Dice: dice, TurnDriver: session.Driver(), Events: session.DiscardEvents{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	s.Require().NoError(err)

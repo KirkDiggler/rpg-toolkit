@@ -86,7 +86,7 @@ func (s *MoverSeamSuite) disengaging(id string) {
 
 // retreatWalker walks one fixed path the first time it is asked and passes ever
 // after — a monster that deliberately leaves a threatened square, which is the
-// one thing session.Behavior() will never do on its own.
+// one thing session.Driver() will never do on its own.
 type retreatWalker struct {
 	path []spatial.Position
 	gone bool

@@ -140,8 +140,10 @@ func (encQuietAnnouncer) Announce(context.Context, *encounter.Encounter, []encou
 // same however it is entered.
 type encPassDriver struct{}
 
-func (encPassDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
-	return encounter.Pass{}, nil
+func (encPassDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
+	// A nil pick: this driver rolls no table, so the world writes no answer
+	// beat for the turns it takes.
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // memSessions is a SessionRepository over a map. Get-by-id and put-by-id is

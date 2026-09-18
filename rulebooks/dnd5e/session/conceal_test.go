@@ -306,6 +306,25 @@ func eventsFor(published []session.Event, recipient string) []session.Event {
 	return out
 }
 
+// eventsOfKind is eventsFor narrowed to one kind — what a test that says "one
+// door_revealed for the finder" actually means.
+//
+// IT EXISTS BECAUSE THE WORLD CLOCK NOW MOVES (rpg-project#465, design §5). A
+// verb that spends a round appends a `tick` beat beside its own, so a count
+// over a recipient's WHOLE stream is now counting two different facts. Bumping
+// each of those counts from one to two would have pinned the tick by accident
+// in a dozen tests that are not about the clock; naming the kind pins what the
+// test claims and nothing else.
+func eventsOfKind(published []session.Event, recipient string, kind session.EventKind) []session.Event {
+	var out []session.Event
+	for _, e := range eventsFor(published, recipient) {
+		if e.Kind == kind {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // assertDense fails unless the recipient's numbers are consecutive — the
 // gap-oracle kill, stated as one check on the values.
 func (s *ConcealSuite) assertDense(events []session.Event, who string) {
@@ -330,10 +349,11 @@ func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written,
 		"the found fact rides the world; the advanced stream cursors ride the session")
 
-	// The searcher's own stream carries the reveal, typed.
-	alice := eventsFor(s.stream.published, "alice")
+	// The searcher's own stream carries the reveal, typed. Narrowed to the
+	// kind this test is about: a Search spends a round of the world now, so
+	// every member's stream also carries that tick (rpg-project#465 §5).
+	alice := eventsOfKind(s.stream.published, "alice", session.EventDoorRevealed)
 	s.Require().Len(alice, 1, "one door_revealed for the finder")
-	s.Equal(session.EventDoorRevealed, alice[0].Kind)
 	body, ok := alice[0].Body.(session.DoorRevealedBody)
 	s.Require().True(ok, "a reveal event carries its typed body")
 	s.Equal("veil", body.Door)
@@ -343,10 +363,15 @@ func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 		"the body is the patch for the cached atlas's doorway list")
 	s.Empty(body.Approaches, "an unlocked door carries no lock routes")
 
-	// Nobody else hears anything — no beat, and (per-recipient numbering)
-	// no readable hole either.
-	s.Empty(eventsFor(s.stream.published, "bob"))
-	s.Empty(eventsFor(s.stream.published, "carol"))
+	// Nobody else is told about the door — and (per-recipient numbering) no
+	// readable hole is left where their copy would have been.
+	//
+	// THEY DO HEAR THE CLOCK. A Search spends a round of the world, and time
+	// passing is truth grain that goes to the whole run: what detection scopes
+	// is the FINDING, not the passing of a round. So this asks what it means
+	// — nobody else learned about the veil — rather than counting a stream.
+	s.Empty(eventsOfKind(s.stream.published, "bob", session.EventDoorRevealed))
+	s.Empty(eventsOfKind(s.stream.published, "carol", session.EventDoorRevealed))
 
 	// The per-member reads agree with the streams.
 	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
@@ -385,7 +410,7 @@ func (s *ConcealSuite) TestAFailedSearchAndNothingToFindAreIdentical() {
 	failed, err := s.mgr.Search(ctx, &session.SearchInput{
 		Session: "sess", Member: "bob", Region: "hall"})
 	s.Require().NoError(err)
-	failedEvents := len(s.stream.published)
+	failedStream := append([]session.Event(nil), s.stream.published...)
 
 	s.startWith(plainHallWorld(s.T()), dullEyed("bob"))
 	empty, err := s.mgr.Search(ctx, &session.SearchInput{
@@ -394,8 +419,20 @@ func (s *ConcealSuite) TestAFailedSearchAndNothingToFindAreIdentical() {
 
 	s.Equal(empty, failed, "the whole output, compared as a value: a failed roll and a "+
 		"hall with nothing in it answer with the same bytes")
-	s.Zero(failedEvents, "and neither says anything to anybody")
-	s.Empty(s.stream.published)
+
+	// AND NEITHER SAYS ANYTHING THE OTHER DOES NOT. This used to assert both
+	// streams were EMPTY, which stopped being the statement the moment a
+	// Search began to spend a round of the world: both now publish that round's
+	// tick, to everybody (rpg-project#465 §5). Emptiness was never the property
+	// under test — indistinguishability was — so the two streams are compared
+	// to each other, which is strictly the stronger claim and the one the
+	// test's name makes.
+	s.Equal(failedStream, s.stream.published,
+		"a failed roll and a hall with nothing in it publish the same beats to the same people")
+	for _, who := range []string{"alice", "bob", "carol"} {
+		s.Empty(eventsOfKind(s.stream.published, who, session.EventDoorRevealed),
+			"%s learned about no door, because there was none to learn about", who)
+	}
 }
 
 // TestSearchIsPresenceEnforced: the region searched is the one the searcher
@@ -560,7 +597,7 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 	ctx := context.Background()
 	// The real monster behaviour, not Pass: the monster's own turn is what
 	// reaches strikerSeam.Strike, and a passing driver never gets there.
-	s.startDriven(session.Behavior(), concealedWorld(s.T(), encounter.DoorIsClosed()),
+	s.startDriven(session.Driver(), concealedWorld(s.T(), encounter.DoorIsClosed()),
 		armedSearcher("alice"), armedFighter("bob"), dullEyed("carol"))
 
 	// alice finds the veil before contact, so every reload below replays a
@@ -721,11 +758,10 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 		Session: "sess", Member: "mira", Region: "hall"})
 	s.Require().NoError(err)
 
-	events := eventsFor(s.stream.published, "mira")
+	events := eventsOfKind(s.stream.published, "mira", session.EventDoorRevealed)
 	s.Require().Len(events, 1,
 		"flat 10 + 0 investigation meets its DC 10; flat 10 + 5 perception misses its DC 16 — "+
 			"only best-by-margin finds this door")
-	s.Equal(session.EventDoorRevealed, events[0].Kind)
 }
 
 // TestUnlockPicksTheRouteAndReportsItsDC is the applied-route contract on the

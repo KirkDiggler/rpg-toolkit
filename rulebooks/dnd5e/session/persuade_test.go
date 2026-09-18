@@ -42,6 +42,13 @@ type PersuadeSuite struct {
 	// the default — leaves both in FREE ROAM, which is the front room the
 	// whole slice exists for.
 	turnClock bool
+
+	// driver is what drives the goblin when the world gives it time. Nil —
+	// the default — is session.Pass{}, because most scenes here are about a
+	// verb's own roll and a creature taking a turn in the middle of one would
+	// be noise. A scene that wants the world to actually think wires
+	// session.Driver().
+	driver session.TurnDriver
 }
 
 func TestPersuadeSuite(t *testing.T) {
@@ -50,7 +57,7 @@ func TestPersuadeSuite(t *testing.T) {
 
 func (s *PersuadeSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.sheet, s.authored, s.turnClock = talkingFighter("alice"), nil, false
+	s.sheet, s.authored, s.turnClock, s.driver = talkingFighter("alice"), nil, false, nil
 	s.characters = newFakeCharacters(s.sheet)
 }
 
@@ -60,8 +67,12 @@ func (s *PersuadeSuite) SetupTest() {
 func (s *PersuadeSuite) front(rolls []int) *session.Manager {
 	s.characters = newFakeCharacters(s.sheet)
 	roller := &sequenceDice{rolls: rolls}
+	driver := s.driver
+	if driver == nil {
+		driver = session.Pass{}
+	}
 	mgr, err := session.NewManager(&session.Config{
-		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{},
+		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
@@ -264,8 +275,8 @@ func (s *PersuadeSuite) TestAnUntrainedCheckerRollsTheVerbAtDisadvantage() {
 // it was rolled with, the entry that fired and the line the author wrote.
 func (s *PersuadeSuite) TestTheReactionReachesTheStreamAsATypedBeat() {
 	s.authored = func(in *session.SpawnInput) {
-		in.Answers = map[string][]session.Answer{
-			"persuaded": {
+		in.Table = encounter.Table{
+			encounter.AnswerPersuaded: {
 				{Weight: 3, Say: "Bandits took the cellar. Go left at the rope."},
 				{Weight: 1, Say: "Follow me."},
 			},
@@ -289,9 +300,20 @@ func (s *PersuadeSuite) TestTheReactionReachesTheStreamAsATypedBeat() {
 	s.Require().NotNil(found, "the answer reached alice's stream as its own kind")
 	s.Equal(session.AnsweredBody{
 		Creature: "goblin", Verb: encounter.DeedPersuade, Beaten: true,
-		Roll: 2, Of: 4, Entry: 0, Word: "",
+		// THE DIE IS IN LOADED UNITS, and the candidates say why: a weight is
+		// multiplied by its temperament's PERCENT before it reaches the die
+		// (rpg-project#465 §3). This goblin has no temperament, which is a
+		// soldier, which is 100 across the board — so 3 and 1 become 300 and
+		// 100 and the die is a d400. A face of 2 still lands in the first
+		// entry's share, which is why the line it picked did not change.
+		Roll: 2, Of: 400, Entry: 0, Word: "",
 		Say: "Bandits took the cellar. Go left at the rope.", Fact: "",
-	}, found.Body, "the die, the weights it was rolled against, and the author's line verbatim")
+		Key: string(encounter.AnswerPersuaded),
+		Candidates: []session.AnswerCandidate{
+			{Entry: 0, Weight: 3, Percent: 100, Loaded: 300},
+			{Entry: 1, Weight: 1, Percent: 100, Loaded: 100},
+		},
+	}, found.Body, "the die, every eligible entry's arithmetic, and the author's line verbatim")
 }
 
 // A verdict the author wrote no table for produces NO answer beat at all.
@@ -299,8 +321,8 @@ func (s *PersuadeSuite) TestTheReactionReachesTheStreamAsATypedBeat() {
 // nothing distinguishable from nothing being authored.
 func (s *PersuadeSuite) TestAnUnauthoredOutcomeRollsNothing() {
 	s.authored = func(in *session.SpawnInput) {
-		in.Answers = map[string][]session.Answer{
-			"persuade_failed": {{Weight: 1, Say: "Nothing down there, friend."}},
+		in.Table = encounter.Table{
+			encounter.AnswerPersuadeFailed: {{Weight: 1, Say: "Nothing down there, friend."}},
 		}
 	}
 	// ONE face. An answer roll would ask for a second and fail the verb; the
@@ -444,8 +466,8 @@ func guidedTalker(id string) *character.Data {
 func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction() {
 	s.sheet = guidedTalker("alice")
 	s.authored = func(in *session.SpawnInput) {
-		in.Answers = map[string][]session.Answer{
-			"persuaded": {{Weight: 1, Say: "Go left at the rope.", Fact: "bandits-in-cellar"}},
+		in.Table = encounter.Table{
+			encounter.AnswerPersuaded: {{Weight: 1, Say: "Go left at the rope.", Fact: "bandits-in-cellar"}},
 		}
 	}
 	// The d20 (6, which totals 7 and misses DC 9), the Guidance d4 (4, making
@@ -497,8 +519,10 @@ func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction(
 	s.Require().NotNil(answered, "and so did what the goblin did about it")
 	s.Equal(session.AnsweredBody{
 		Creature: "goblin", Verb: encounter.DeedPersuade, Beaten: true,
-		Roll: 1, Of: 1, Entry: 0, Word: "fact",
+		Roll: 1, Of: 100, Entry: 0, Word: "fact",
 		Say: "Go left at the rope.", Fact: "bandits-in-cellar",
+		Key:        string(encounter.AnswerPersuaded),
+		Candidates: []session.AnswerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 100}},
 	}, answered.Body)
 }
 
@@ -672,4 +696,110 @@ func (s *PersuadeSuite) TestATrainedCheckerCarriesNoRule() {
 	s.Equal("1d20", die.Notation)
 	s.Empty(die.KeptIndices)
 	s.Nil(die.Keep, "nobody touched the pool, and the zero value says so")
+}
+
+// THE DIE REACHES THE ENCOUNTER, proved by driving a round of the WORLD rather
+// than by looking at the wiring (rpg-project#465 §5, §6).
+//
+// The composition's Roller is optional at its door and refused loudly at the
+// roll ([encounter.ErrNoRoller]), which is the right shape — a scene with no
+// table and no mix rolls nothing, and requiring a die at every door would make
+// every caller declare one it never uses. What it means for this seam is that a
+// write verb that forgot to hand one over would not fail at construction: it
+// would fail on the first creature given time, in production, in the middle of
+// somebody's verb.
+//
+// So this drives the whole path. Alice speaks to the goblin, which is an action
+// and costs the world a round; the world thinks at that raise and gives every
+// standing creature on the world clock one turn's worth; the goblin rolls its
+// own `time` table. The face on the beat is the one this test seeded, which no
+// arrangement of the wiring can produce by accident.
+func (s *PersuadeSuite) TestAWorldRoundRollsThroughTheSessionsOwnDice() {
+	// An unconditional `hold` is the whole table, deliberately: the point is
+	// that a die was thrown and whose faces it landed on, not what the creature
+	// decided. One entry at weight 1, loaded by the soldier's 100, is a d100.
+	s.driver = session.Driver()
+	s.authored = func(in *session.SpawnInput) {
+		in.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}
+	}
+	// The d20 for the appeal, then the world's own die for the goblin's turn.
+	// Nothing is authored for either verdict, so the appeal itself rolls no
+	// answer and 42 can only be the `time` pick.
+	mgr := s.front([]int{10, 42})
+
+	_, err := s.persuade(mgr)
+	s.Require().NoError(err)
+
+	var answered *session.Event
+	for _, event := range s.events(mgr, "alice") {
+		if event.Kind == session.EventAnswered {
+			answered = &event
+		}
+	}
+	s.Require().NotNil(answered, "the world thought, and a creature's pick is a beat")
+
+	body, ok := answered.Body.(session.AnsweredBody)
+	s.Require().True(ok)
+	s.Equal(string(encounter.AnswerTime), body.Key, "this was time passing, not anybody speaking")
+	s.Empty(body.Verb, "nothing spoke, and an empty verb is that answer rather than a gap")
+	s.False(body.Beaten, "and there was no verdict to be beaten")
+	s.Equal(42, body.Roll, "the face this test seeded, thrown through the session's own dice")
+	s.Equal(100, body.Of, "one entry at weight 1, loaded by the soldier's 100")
+	s.Equal([]session.AnswerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 100}}, body.Candidates)
+	s.Equal("hold", body.Word)
+}
+
+// A FACTION'S MIX IS DEALT AT THE DOOR, and the streamer sees which goblin
+// came out the coward (rpg-project#465 §3, R5).
+//
+// Four goblins off one sheet with one table are four different creatures
+// because their dice are loaded differently, not because they were given
+// different orders. The deal has to be visible for that to be a story rather
+// than an accident, which is what this beat is for — and it is the second
+// place the session's shared dice have to have reached the composition, the
+// first being the picks themselves.
+func (s *PersuadeSuite) TestAFactionsMixDealsATemperamentAndSaysSo() {
+	s.authored = func(in *session.SpawnInput) {
+		// The design's own example spread. Walked in sorted order by the
+		// composition so a seeded roller deals the same word every run:
+		// aggressive 1, coward 1, soldier 2 — a d4 whose first face is the
+		// aggressive one.
+		in.Temper = encounter.Temper{Mix: map[string]int{"coward": 1, "soldier": 2, "aggressive": 1}}
+	}
+	// The one face the deal needs, spent at Spawn. Nothing else rolls: the
+	// appeal below never happens.
+	mgr := s.front([]int{1})
+
+	var dealt *session.Event
+	for _, event := range s.events(mgr, "alice") {
+		if event.Kind == session.EventTempered {
+			dealt = &event
+		}
+	}
+	s.Require().NotNil(dealt, "a dealt temperament is a beat, not a private fact")
+
+	body, ok := dealt.Body.(session.TemperedBody)
+	s.Require().True(ok)
+	s.Equal("goblin", body.Member)
+	s.Equal("aggressive", body.Temper, "face 1 of the sorted mix")
+	s.Equal(1, body.Roll)
+	s.Equal(4, body.Of, "1 + 2 + 1: the author's shares are the die's faces")
+	s.Equal("goblins", body.Faction,
+		"the die belonged to the FACTION — the spread is the instructions given to the group")
+}
+
+// An authored WORD is never dealt for, and writes no beat: the author already
+// answered the question the mix exists to ask.
+func (s *PersuadeSuite) TestAnAuthoredTemperamentIsNotDealtFor() {
+	s.authored = func(in *session.SpawnInput) {
+		in.Temper = encounter.Temper{Word: "coward"}
+	}
+	// NO FACES AT ALL. A deal would ask for one and fail the spawn, which is
+	// the assertion: nothing was rolled.
+	mgr := s.front(nil)
+
+	for _, event := range s.events(mgr, "alice") {
+		s.NotEqual(session.EventTempered, event.Kind,
+			"nothing was dealt, so there is no roll to show")
+	}
 }

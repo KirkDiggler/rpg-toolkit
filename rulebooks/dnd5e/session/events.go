@@ -318,6 +318,12 @@ func kindFor(beat string) EventKind {
 		return EventPersuaded
 	case encounter.BeatAnswered:
 		return EventAnswered
+	// Which temperament a faction's mix dealt one creature at the door
+	// (rpg-project#465). Named by the composition's own exported constant for
+	// BeatAnswered's reason, and it shares that beat's argument: it is the
+	// only account of that roll a client ever gets.
+	case encounter.BeatTempered:
+		return EventTempered
 	// The holdings verbs, named by what the record says (rpg-project#368
 	// §4.1). "looted", "held" and "dropped" are the composition's own words
 	// for what it did, so they cross unchanged — unlike "down"/"downed"
@@ -481,27 +487,67 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		}
 	case EventAnswered:
 		var p struct {
-			Creature string `json:"creature"`
-			Verb     string `json:"verb"`
-			Beaten   bool   `json:"beaten"`
-			Roll     int    `json:"roll"`
-			Of       int    `json:"of"`
-			Entry    int    `json:"entry"`
-			Word     string `json:"word"`
-			Say      string `json:"say"`
-			Fact     string `json:"fact"`
+			Creature   string `json:"creature"`
+			Verb       string `json:"verb"`
+			Beaten     bool   `json:"beaten"`
+			Roll       int    `json:"roll"`
+			Of         int    `json:"of"`
+			Entry      int    `json:"entry"`
+			Word       string `json:"word"`
+			Say        string `json:"say"`
+			Fact       string `json:"fact"`
+			Key        string `json:"key"`
+			Temper     string `json:"temper"`
+			Candidates []struct {
+				Entry   int `json:"entry"`
+				Weight  int `json:"weight"`
+				Percent int `json:"percent"`
+				Loaded  int `json:"loaded"`
+			} `json:"candidates"`
 		}
-		// The creature, the verb and a die that was actually rolled gate the
-		// body. `of` is at least 1 whenever an entry fired, so a zero here is
-		// a beat this build never wrote — and `word` and `say` are both
-		// legitimately empty, which is why neither gates.
-		if json.Unmarshal(payload, &p) != nil || p.Creature == "" || p.Verb == "" || p.Of < 1 {
+		// THE CREATURE IS THE WHOLE GATE, and the two that used to sit beside
+		// it were both retired by the creature's table (rpg-project#465).
+		//
+		// `verb` cannot gate: a `time` pick has none, because nothing spoke.
+		// `of` cannot gate either: a `time` key with nothing eligible is a
+		// HOLD, written with no candidates and a die of zero, and that beat is
+		// the log saying a creature was asked and stood there — dropping it
+		// would turn "fail closed loudly" back into silence.
+		//
+		// `key`, `temper`, `word` and `say` are all legitimately empty, which
+		// is why none of them gates either. A beat from the build before the
+		// table decodes with `key` absent and everything else intact.
+		if json.Unmarshal(payload, &p) != nil || p.Creature == "" {
 			return nil
+		}
+		candidates := make([]AnswerCandidate, 0, len(p.Candidates))
+		for _, c := range p.Candidates {
+			candidates = append(candidates, AnswerCandidate{
+				Entry: c.Entry, Weight: c.Weight, Percent: c.Percent, Loaded: c.Loaded,
+			})
 		}
 		return AnsweredBody{
 			Creature: p.Creature, Verb: p.Verb, Beaten: p.Beaten,
 			Roll: p.Roll, Of: p.Of, Entry: p.Entry,
 			Word: p.Word, Say: p.Say, Fact: p.Fact,
+			Key: p.Key, Candidates: candidates, Temper: p.Temper,
+		}
+	case EventTempered:
+		var p struct {
+			Member  string `json:"member"`
+			Temper  string `json:"temper"`
+			Roll    int    `json:"roll"`
+			Of      int    `json:"of"`
+			Faction string `json:"faction"`
+		}
+		// The member and a word that was actually dealt gate the body. A deal
+		// always names a word — the composition refuses a mix it cannot deal
+		// from at the door — so an empty one is a beat this build never wrote.
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Temper == "" {
+			return nil
+		}
+		return TemperedBody{
+			Member: p.Member, Temper: p.Temper, Roll: p.Roll, Of: p.Of, Faction: p.Faction,
 		}
 	case EventTurnEnded:
 		var p struct {

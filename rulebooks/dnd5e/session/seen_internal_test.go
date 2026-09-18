@@ -83,13 +83,6 @@ func TestMonsterViewAdaptersCarryRememberedPathsByValue(t *testing.T) {
 	}}, projected.Remembered)
 	projected.Remembered[0].Path[0].X = 99
 	require.Equal(t, float64(1), path[0].X, "projected path must not alias encounter view")
-
-	roundTrip, err := unprojectMonsterView(projected)
-	require.NoError(t, err)
-	require.Equal(t, float64(99), roundTrip.Remembered[0].Path[0].X)
-	roundTrip.Remembered[0].Path[1].Y = 88
-	require.Equal(t, float64(3), projected.Remembered[0].Path[1].Y,
-		"unprojected path must not alias session view")
 }
 
 // TestProjectSightingsNonSightChannelGetsNoSeen pins the other half: a
