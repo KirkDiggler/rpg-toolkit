@@ -105,14 +105,14 @@ func (s *DefeatSuite) TestTheLastOfASideDownEndsTheFight() {
 	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, alice), "control: a fight is running")
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal(encounter.ClockWorld, s.clockOf(enc, alice),
 		"the last monster is down, so the fight is over and nobody had to say so")
 	s.Empty(enc.ToData().Bubbles, "a bubble exists only while a fight does")
 
-	s.Equal([]string{"scene-opened", "bubble-formed", "tick", "down", "down", "bubble-dissolved"},
+	s.Equal([]string{"scene-opened", "bubble-formed", "turn-ended", "down", "down", "bubble-dissolved"},
 		s.beatKindsOf(enc, alice),
 		"cause before effect: both bodies are news before the ending they explain")
 }
@@ -126,7 +126,7 @@ func (s *DefeatSuite) TestTheEndingSaysItWasDefeat() {
 	enc := s.trio(down)
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	ending := s.endingBeat(enc, alice)
@@ -183,7 +183,7 @@ func (s *DefeatSuite) TestAFightWithBothSidesStandingNeverSelfDissolves() {
 	enc := s.trio(down)
 
 	down.down = []encounter.MemberID{goblin}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice), "the wolf is still standing")
@@ -218,7 +218,7 @@ func (s *DefeatSuite) TestAFightEmptiedByItsOwnMembersIsNotADefeat() {
 
 	// And now a body, outside the fight, so the world has something to notice.
 	down.down = []encounter.MemberID{goblin}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice),
@@ -241,7 +241,7 @@ func (s *DefeatSuite) TestEveryMemberDownEndsWithAnHonestCause() {
 	enc := s.trio(down)
 
 	down.down = []encounter.MemberID{alice, goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	s.Empty(enc.ToData().Bubbles, "no husk left behind")
@@ -265,7 +265,7 @@ func (s *DefeatSuite) TestTheFightEndsAndNobodyLeaves() {
 	fell := s.positionOf(enc, goblin)
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	members, err := enc.Members()
@@ -295,7 +295,7 @@ func (s *DefeatSuite) TestTheEncounterOutlivesTheFight() {
 	enc := s.trio(down)
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	status, err := enc.Status()
@@ -323,7 +323,7 @@ func (s *DefeatSuite) TestSurvivorsExploreAgain() {
 	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, alice), "control: she is in the fight")
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice), "control: the fight is over")
 
@@ -340,7 +340,7 @@ func (s *DefeatSuite) TestSurvivorsFightAgain() {
 	enc := s.trio(down)
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice))
 
@@ -383,7 +383,7 @@ func (s *DefeatSuite) TestOnlyTheDecidedFightEnds() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal(encounter.ClockWorld, s.clockOf(enc, alice), "her fight is over")

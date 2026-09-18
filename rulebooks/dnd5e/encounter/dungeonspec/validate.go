@@ -115,6 +115,9 @@ func Validate(spec *Spec) []FieldError {
 		// because a mind is a placement, a `{ down }` names one, and a
 		// faction of one is counted from them (rpg-project#375).
 		v.factions()
+		// AND ITS ORDERS, which every placement in it inherits — the same
+		// refusals a placement's own `on:` earns, one layer up (design §1).
+		v.factionOrders()
 		v.place()
 		v.minds()
 		v.exits()
@@ -724,7 +727,8 @@ func (v *validation) place() {
 					"this monster declares a persuade check with no way through it — an ability and a DC",
 					pl.Persuade)
 			}
-			v.placeOn(p, pl)
+			v.placeOn(p, pl.On)
+			v.placeTemper(p, pl)
 			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {
 					v.fail(p+".boss", "region %q already names %q (place[%d]) as its boss", s.Regions[owner].ID, s.Place[prev].Ref, prev)
@@ -1412,47 +1416,56 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // placeOn validates the answer table an author wrote on this monster
 // ([PlaceSpec.On], rpg-project#458).
 //
-// THE KEY IS THE OUTCOME, and only the four outcomes this build lands are
-// accepted. A word the design NAMES and has not built is refused by name in
-// the entry's own decoder ([laterWords]); an outcome key nobody designed is
-// refused here, listing what there is. Either way the author finds out on the
-// form instead of at the table.
+// THE KEY IS THE TRIGGER, and only the five this build rolls are accepted:
+// the four social outcomes, and `time`. A word the design NAMES and has not
+// built is refused by name in the entry's own decoder ([laterWords]); a key
+// nobody designed is refused here, listing what there is. Either way the
+// author finds out on the form instead of at the table.
 //
-// Five refusals per entry, each its own sentence:
+// Refusals per entry, each its own sentence:
 //
 //   - a weight below 1, which is a row that can never fire;
 //   - two outcome words in one entry, so ordering never has to be guessed;
 //   - an entry with no word and nothing to say, which is a row written for no
 //     reason;
 //   - an empty `fact:`, which says the world learns something and not what;
-//   - an outcome key with no entries at all, which is a table that cannot be
+//   - a word under a key it is not legal on: `fact` and `flee` answer a social
+//     verdict, `hold`/`attack`/`toward`/`away` are what a creature does with
+//     time, and a `when` is a time word because a social key IS the condition;
+//   - `at:` on anything but `toward`, because walking away from a fixed cell
+//     is a direction rather than a flight and nothing has paid for one;
+//   - `actor` in an entry whose `when` names no deed, because there is no
+//     actor otherwise;
+//   - an `at:` cell that is not floor, the same refusal a placement's own `at`
+//     earns;
+//   - a trigger key with no entries at all, which is a table that cannot be
 //     rolled.
 //
 // WHAT IS NOT CHECKED IS THE FACT'S MEMBERSHIP. The dungeon ALLOWS a fact
 // nothing else mentions (R8, pre-release: show the cost) — a `fact` that no
 // disposition waits for is a cost, not a defect, and it joins the run's
 // mintable facts so a world blob may name it.
-func (v *validation) placeOn(path string, pl PlaceSpec) {
-	for _, key := range sortedKeys(pl.On) {
+func (v *validation) placeOn(path string, on map[string][]AnswerSpec) {
+	for _, key := range sortedKeys(on) {
 		at := fmt.Sprintf("%s.on.%s", path, key)
-		if !knownAnswerKey(key) {
-			v.fail(at, "%q is not an outcome this build lands: they are %s",
-				key, strings.Join(encounter.AnswerKeys, ", "))
+		if !knownTableKey(key) {
+			v.fail(at, "%q is not a trigger this build rolls: they are %s",
+				key, strings.Join(tableKeyWords(), ", "))
 			continue
 		}
-		entries := pl.On[key]
+		entries := on[key]
 		if len(entries) == 0 {
-			v.fail(at, "this names an outcome and lists nothing that happens on it")
+			v.fail(at, "this names a trigger and lists nothing that happens on it")
 			continue
 		}
 		for j, entry := range entries {
-			v.answerEntry(fmt.Sprintf("%s[%d]", at, j), entry)
+			v.answerEntry(fmt.Sprintf("%s[%d]", at, j), key, entry)
 		}
 	}
 }
 
-// answerEntry validates one row of one outcome's table.
-func (v *validation) answerEntry(at string, entry AnswerSpec) {
+// answerEntry validates one row of one trigger's table.
+func (v *validation) answerEntry(at string, key string, entry AnswerSpec) {
 	if entry.Weight != nil && *entry.Weight < 1 {
 		v.fail(at+".weight", "a weight of %d can never be rolled: omit it for 1, or give it a share",
 			*entry.Weight)
@@ -1468,30 +1481,158 @@ func (v *validation) answerEntry(at string, entry AnswerSpec) {
 		return
 	}
 
-	words := 0
-	if entry.Fact != nil {
-		words++
-	}
-	if entry.Flee != nil {
-		words++
-	}
+	words := entryWords(entry)
 	switch {
-	case words > 1:
-		v.fail(at, "an entry does one thing: `fact` and `flee` in the same entry is two")
-	case words == 0 && entry.Say == "":
-		v.fail(at, "this entry does nothing and says nothing")
+	case len(words) > 1:
+		v.fail(at, "an entry does one thing: `%s` in the same entry is %d (line %d)",
+			strings.Join(words, "` and `"), len(words), entry.Line)
+
+		return
+	case len(words) == 0 && entry.Say == "":
+		v.fail(at, "this entry does nothing and says nothing (line %d)", entry.Line)
+
+		return
+	}
+
+	v.wordLegality(at, key, words, entry)
+	v.entrySelector(at, key, entry)
+}
+
+// wordLegality refuses a word, or a `when`, under a key it is not legal on.
+func (v *validation) wordLegality(at, key string, words []string, entry AnswerSpec) {
+	time := key == string(encounter.AnswerTime)
+	for _, word := range words {
+		switch word {
+		case "fact", "flee":
+			if time {
+				v.fail(at+"."+word,
+					"`%s` answers a social verdict, and `time` is not one (line %d)", word, entry.Line)
+			}
+		default:
+			if !time {
+				v.fail(at+"."+word,
+					"`%s` is what a creature does with time, and `%s` is an outcome (line %d)",
+					word, key, entry.Line)
+			}
+		}
+	}
+	if entry.When != nil && !time {
+		v.fail(at+".when",
+			"`%s` is already the condition — a `when` under it asks when a thing that just happened happened (line %d)",
+			key, entry.When.Line)
 	}
 }
 
-// knownAnswerKey reports whether a key is one the composition lands.
-func knownAnswerKey(key string) bool {
-	for _, known := range encounter.AnswerKeys {
-		if key == known {
+// entrySelector refuses a selector that names a cell where only a member can
+// stand, an `actor` with no deed to have been the actor of, and a cell that
+// is not floor.
+func (v *validation) entrySelector(at, _ string, entry AnswerSpec) {
+	word, sel := entrySelectorOf(entry)
+	if sel == nil {
+		return
+	}
+	if sel.At != nil {
+		if word != "toward" {
+			v.fail(at+"."+word,
+				"a cell is somewhere to walk toward, and `%s` acts on a creature (line %d)", word, sel.Line)
+
+			return
+		}
+		if _, onFloor := v.owner[v.cell(*sel.At)]; !onFloor {
+			v.fail(at+"."+word+".at", "this walks to [%d,%d], which is not floor", sel.At[0], sel.At[1])
+		}
+
+		return
+	}
+	if sel.Word == string(encounter.SelectorActor) && (entry.When == nil || entry.When.Deed == "") {
+		v.fail(at+"."+word,
+			"`actor` is the actor of the deed this entry's `when` names, and this entry names no deed (line %d)",
+			sel.Line)
+	}
+}
+
+// entryWords is the outcome words this entry carries, in the order the design
+// lists them.
+func entryWords(entry AnswerSpec) []string {
+	var out []string
+	if entry.Fact != nil {
+		out = append(out, "fact")
+	}
+	if entry.Flee != nil {
+		out = append(out, "flee")
+	}
+	if entry.Hold != nil {
+		out = append(out, "hold")
+	}
+	if entry.Attack != nil {
+		out = append(out, "attack")
+	}
+	if entry.Toward != nil {
+		out = append(out, "toward")
+	}
+	if entry.Away != nil {
+		out = append(out, "away")
+	}
+
+	return out
+}
+
+// entrySelectorOf is the entry's selector and the word carrying it.
+func entrySelectorOf(entry AnswerSpec) (string, *SelectorSpec) {
+	switch {
+	case entry.Attack != nil:
+		return "attack", entry.Attack
+	case entry.Toward != nil:
+		return "toward", entry.Toward
+	case entry.Away != nil:
+		return "away", entry.Away
+	default:
+		return "", nil
+	}
+}
+
+// placeTemper refuses a temperament this build does not ship. The decoder
+// already refuses an unknown word inside a [TemperSpec]; a placement's own
+// `temper` is a plain string, so this is where its word is checked.
+func (v *validation) placeTemper(path string, pl PlaceSpec) {
+	if pl.Temper == "" {
+		return
+	}
+	if !encounter.ValidTemperWord(pl.Temper) {
+		v.fail(path+".temper", "%q is not a temperament this build ships: they are %s",
+			pl.Temper, strings.Join(encounter.TemperWords, ", "))
+	}
+}
+
+// factionOrders validates every faction's inherited `on:` block and its
+// temperament — the same refusals a placement's own earn, at the layer above
+// (design §1, layer 2).
+func (v *validation) factionOrders() {
+	for i, fa := range v.spec.Factions {
+		v.placeOn(fmt.Sprintf("factions[%d]", i), fa.On)
+	}
+}
+
+// knownTableKey reports whether a key is one the composition rolls.
+func knownTableKey(key string) bool {
+	for _, known := range encounter.TableKeys {
+		if key == string(known) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// tableKeyWords is every trigger key as a string, for a refusal that lists
+// what there is.
+func tableKeyWords() []string {
+	out := make([]string, 0, len(encounter.TableKeys))
+	for _, k := range encounter.TableKeys {
+		out = append(out, string(k))
+	}
+
+	return out
 }
 
 // sortedKeys orders a map's keys so a file with two bad `on:` entries reports

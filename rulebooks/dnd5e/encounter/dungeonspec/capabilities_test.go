@@ -76,8 +76,8 @@ func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.Me
 // should do (rpg-toolkit#1162).
 type passDriver struct{}
 
-func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
-	return encounter.Pass{}, nil
+func (passDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // noAttacksExpected is this package's Striker capability. These scenes are

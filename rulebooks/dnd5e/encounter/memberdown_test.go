@@ -73,7 +73,7 @@ func (s *MemberDownSuite) TestTheNamedMemberDownEndsTheRun() {
 	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, alice), "control: a fight is running")
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	status, err := enc.Status()
@@ -82,7 +82,7 @@ func (s *MemberDownSuite) TestTheNamedMemberDownEndsTheRun() {
 	s.Require().NotNil(status.Outcome)
 	s.Equal(doomKey, status.Outcome.Ending, "and the outcome names the declared ending that fired")
 
-	s.Equal([]string{"scene-opened", "bubble-formed", "tick", "down", "down", "bubble-dissolved", "ended"},
+	s.Equal([]string{"scene-opened", "bubble-formed", "turn-ended", "down", "down", "bubble-dissolved", "ended"},
 		s.beatKindsOf(enc, alice),
 		"the ruled order (rpg-project#269 §6.6): the bodies are news, the fight ends, and only then the run — the close lands on the world clock")
 
@@ -96,7 +96,7 @@ func (s *MemberDownSuite) TestAnotherBodyIsNotTheDoom() {
 	enc := s.doomed(down)
 
 	down.down = []encounter.MemberID{goblin}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	status, err := enc.Status()
@@ -147,7 +147,7 @@ func (s *MemberDownSuite) TestTheDoomSurvivesTheRoundTrip() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	status, err := enc.Status()

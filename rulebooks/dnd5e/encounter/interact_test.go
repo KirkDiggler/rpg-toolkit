@@ -91,7 +91,7 @@ func (s *InteractSuite) TestDistantPlayerIsRefused() {
 func (s *InteractSuite) TestNonPlayerActorIsRefused() {
 	enc, err := s.setup(everyoneSeesTheWholeMap{},
 		encounter.MemberInput{
-			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0), Decider: &simpleDecider{},
+			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0),
 		},
 		encounter.MemberInput{ID: "vendor", Kind: encounter.KindWorld, Position: cellAt(1, 0)},
 	)
@@ -106,7 +106,7 @@ func (s *InteractSuite) TestMonsterTargetIsRefused() {
 	enc, err := s.setup(everyoneSeesTheWholeMap{},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
 		encounter.MemberInput{
-			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(1, 0), Decider: &simpleDecider{},
+			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(1, 0),
 		},
 	)
 	s.Require().NoError(err)

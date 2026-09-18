@@ -55,7 +55,7 @@ func TestAClosedEncounterIsNotClosedAgainByAnArrival(t *testing.T) {
 
 	// Close it the member-down way: the consult notices the body.
 	standing.down = []MemberID{"g1"}
-	_, err = enc.Pump(&PumpInput{})
+	_, _, err = enc.refreshSight(enc.rosterIDs())
 	require.NoError(t, err)
 	require.NotNil(t, enc.outcome, "control: the consult closed the run")
 	require.Equal(t, "boss-down", enc.outcome.Ending)

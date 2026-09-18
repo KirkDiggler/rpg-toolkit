@@ -41,7 +41,7 @@ func (s *WorldNPCSuite) baseSetup(members ...encounter.MemberInput) (*encounter.
 	return encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   worldField(),
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -74,32 +74,10 @@ func (s *WorldNPCSuite) TestJoinMidSceneAlsoAcceptsAWorldNPC() {
 	s.Equal(encounter.KindWorld, out.Member.Kind)
 	s.Nil(out.Formed, "joining a world NPC must never form a fight")
 }
-
-// --- The one enforced rule: no decider, mirroring the player check exactly ---
-
-func (s *WorldNPCSuite) TestSetupRejectsAWorldNPCWithADecider() {
-	_, err := s.baseSetup(encounter.MemberInput{
-		ID: "vendor", Kind: encounter.KindWorld, Position: cellAt(1, 1), Decider: &simpleDecider{},
-	})
-	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrNoMember)
-}
-
-func (s *WorldNPCSuite) TestJoinRejectsAWorldNPCWithADecider() {
-	enc, err := s.baseSetup()
-	s.Require().NoError(err)
-
-	_, err = enc.Join(&encounter.JoinInput{
-		Member: "vendor", Kind: encounter.KindWorld, Cell: cellAt(1, 1), Decider: &simpleDecider{},
-	})
-	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrNoMember)
-}
-
 func (s *WorldNPCSuite) TestPlayersAndMonstersAreUnaffectedByTheNewCheck() {
 	_, err := s.baseSetup(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(3, 3), Decider: &simpleDecider{}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(3, 3)},
 	)
 	s.Require().NoError(err)
 }
@@ -124,20 +102,24 @@ func (s *WorldNPCSuite) TestAPlayerAndAWorldNPCInMutualSightNeverFormABubble() {
 	}
 }
 
-func (s *WorldNPCSuite) TestAMonstersPumpDrivenWalkIntoAWorldNPCFormsNoFight() {
+func (s *WorldNPCSuite) TestAMonstersWorldDrivenWalkIntoAWorldNPCFormsNoFight() {
 	enc, err := s.baseSetup(
 		encounter.MemberInput{
-			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0), Decider: &simpleDecider{},
+			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0),
+			SpeedFeet: 5, Table: walksTo(cellAt(2, 0)),
 		},
 		encounter.MemberInput{ID: "vendor", Kind: encounter.KindWorld, Position: cellAt(1, 0)},
 	)
 	s.Require().NoError(err)
 
-	out, err := enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
-	s.Nil(out.Formed)
 
-	clk, err := enc.ClockOf(&encounter.ClockOfInput{Member: "vendor"})
+	clk, err := enc.ClockOf(&encounter.ClockOfInput{Member: goblin})
+	s.Require().NoError(err)
+	s.Equal(encounter.ClockWorld, clk.Kind, "walking up to a vendor is not a fight")
+
+	clk, err = enc.ClockOf(&encounter.ClockOfInput{Member: "vendor"})
 	s.Require().NoError(err)
 	s.Equal(encounter.ClockWorld, clk.Kind)
 }
@@ -149,7 +131,7 @@ func (s *WorldNPCSuite) TestAMonstersPumpDrivenWalkIntoAWorldNPCFormsNoFight() {
 func (s *WorldNPCSuite) TestTransferRefusesMovingAWorldNPCOntoTheTurnClock() {
 	enc, err := s.baseSetup(
 		encounter.MemberInput{
-			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0), Decider: &simpleDecider{},
+			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0),
 		},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(3, 3)},
 		encounter.MemberInput{ID: "vendor", Kind: encounter.KindWorld, Position: cellAt(1, 0)},
@@ -195,7 +177,7 @@ func (s *WorldNPCSuite) TestPersistenceRoundTripsAWorldNPC() {
 func (s *WorldNPCSuite) TestOldPlayerAndMonsterBlobsStillLoadUnchanged() {
 	enc, err := s.baseSetup(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(3, 3), Decider: &simpleDecider{}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(3, 3)},
 	)
 	s.Require().NoError(err)
 	data := enc.ToData()

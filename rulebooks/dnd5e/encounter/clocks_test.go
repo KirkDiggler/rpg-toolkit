@@ -471,7 +471,7 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	// mechanism today, and the pin here is WHO accrues, not how much.)
 	_, err = enc.Step(&encounter.StepInput{Member: carl, To: cellAt(18, 7)})
 	s.Require().NoError(err)
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	budgets := enc.ToData().Clock.Budgets
@@ -539,8 +539,8 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	after := enc.ToData()
 	s.Empty(after.Bubbles, "a bubble exists only while a fight does")
 	s.Equal(0, after.Clock.Budgets[carl], "re-homed at zero")
-	s.Equal(3, after.Clock.Budgets[dana],
-		"never left, so she kept everything time gave her: one pump, plus the fight's two rounds")
+	s.Equal(2, after.Clock.Budgets[dana],
+		"never left, so she kept everything time gave her: the fight's two rounds, each advanced under a fighter's own name")
 
 	// The story heard it all — dana included, from the other side of the
 	// map. The clock-tagged transcript is the composition's analogue of the
@@ -565,6 +565,9 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 		"turn-ended", "turn-ended",
 		"transferred",
 		"turn-ended", "turn-ended", "turn-ended",
+		// The last turn of the order wraps the round, and a fight round
+		// wrapping is the world getting one (rpg-project#465, design §5).
+		"tick",
 		"bubble-dissolved",
 	}, clockBeats)
 }
@@ -716,26 +719,27 @@ func (s *ClocksTestSuite) TestTheActiveFightMemberCanStep() {
 	s.Equal(spatial.Position{X: 2, Y: 1}, out.Stepped.To)
 }
 
-// TestPumpDoesNotThinkForAFightMonster pins the other half of coexistence:
-// the world thinks on the tick, and a fight thinks in turns. A monster in a
-// bubble is not consulted at all — and the skip is fight-scoped, not
-// permanent: dissolve the fight and the same decider wakes back up.
-func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
-	wanderer := &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 5}}}
+// TestTheWorldDoesNotThinkForAFightMonster pins the other half of
+// coexistence: the world thinks on the tick, and a fight thinks in turns. A
+// monster in a bubble is not consulted at all — and the skip is fight-scoped,
+// not permanent: dissolve the fight and the same table wakes back up.
+func (s *ClocksTestSuite) TestTheWorldDoesNotThinkForAFightMonster() {
+	wanderTo := cellAt(5, 5)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		// Same room, so they see each other at first light and the fight
-		// forms — which is the state this test is about. The goblin's decider
-		// is willing; the world simply is not the thing that consults it any
-		// more.
+		// forms — which is the state this test is about. The goblin's table is
+		// willing; the world simply is not the thing that consults it while a
+		// fight holds it.
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7}, Decider: wanderer},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7},
+				SpeedFeet: 5, Table: walksTo(wanderTo)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "called", Trigger: encounter.TriggerExternal{}},
@@ -743,16 +747,23 @@ func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err)
-	s.Zero(wanderer.callCount, "a fight monster is not the world's to think for")
+	// The world thinks for creatures ON THE WORLD CLOCK, and a fight took
+	// this one off it: whatever the goblin does while the fight holds it, it
+	// does on its own turn and not because a round of the world passed.
+	on, cerr := enc.ClockOf(&encounter.ClockOfInput{Member: goblin})
+	s.Require().NoError(cerr)
+	s.Require().Equal(encounter.ClockTurn, on.Kind)
+	s.Require().Empty(enc.ToData().Clock.Budgets[goblin],
+		"a fight monster has no world budget for the world to spend")
 
 	_, err = enc.Dissolve(&encounter.DissolveInput{Member: goblin})
 	s.Require().NoError(err)
+	started := whereIs(s.T(), enc, goblin)
 
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
-	s.Equal(1, wanderer.callCount, "the skip is fight-scoped: dissolved means free to wander again")
+	s.NotEqual(started, whereIs(s.T(), enc, goblin),
+		"the skip is fight-scoped: dissolved means free to wander again")
 }
 
 // TestADrainedBubbleIsPruned pins the husk rule: a bubble exists only while

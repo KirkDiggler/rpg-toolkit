@@ -49,6 +49,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -298,6 +299,26 @@ type FactionSpec struct {
 	// and a faction of many that waits for a fact and names no mind is
 	// refused ("name a mind, or the faction cannot learn").
 	Mind string `yaml:"mind,omitempty"`
+
+	// On is the author's ORDERS for every placement in this faction — the
+	// same `on:` block a placement writes, inherited (design §1, layer 2).
+	//
+	//	factions:
+	//	  - id: bandits
+	//	    on:
+	//	      time:
+	//	        - { when: { enemy: none }, toward: { at: [3, 4] } }
+	//
+	// LAYERED, NEAREST KEY WINS WHOLESALE. A placement that writes its own
+	// `time` key replaces this one's entirely — there is no merging of entry
+	// lists, so an author never has to reason about what was added to what,
+	// and the cost of overriding a key is visible in the file.
+	On map[string][]AnswerSpec `yaml:"on,omitempty"`
+
+	// Temper is the temperament every placement in this faction has, or a
+	// MIX to deal one from per member ([TemperSpec], design §3). A placement
+	// that names its own word wins, and the mix is not dealt for it.
+	Temper TemperSpec `yaml:"temper,omitempty"`
 }
 
 // DispositionSpec is how two factions stand to each other, and what ends
@@ -762,7 +783,7 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
 			"offset", "targeting", "actions", "boss", "holds", "holdable", "faction",
-			"arrives", "intimidate", "persuade", "on":
+			"arrives", "intimidate", "persuade", "on", "temper":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)
@@ -825,16 +846,24 @@ type ApproachSpec struct {
 // gives the untrained rule teeth" (ideas/shenanigans/front-room-goblin.md).
 const (
 	// OnIntimidated is what the creature does when a threat lands.
-	OnIntimidated = encounter.AnswerIntimidated
+	OnIntimidated = string(encounter.AnswerIntimidated)
 
 	// OnIntimidateFailed is what it does when a threat misses.
-	OnIntimidateFailed = encounter.AnswerIntimidateFailed
+	OnIntimidateFailed = string(encounter.AnswerIntimidateFailed)
 
 	// OnPersuaded is what it does when an appeal lands.
-	OnPersuaded = encounter.AnswerPersuaded
+	OnPersuaded = string(encounter.AnswerPersuaded)
 
 	// OnPersuadeFailed is what it does when an appeal misses.
-	OnPersuadeFailed = encounter.AnswerPersuadeFailed
+	OnPersuadeFailed = string(encounter.AnswerPersuadeFailed)
+
+	// OnTime is what the creature does when it has time: its turn in a
+	// fight, or a round of the world (rpg-project#465).
+	//
+	// PLAIN STRINGS, not [encounter.AnswerKey]. The keys of an `on:` block
+	// are YAML map keys and this package decodes them as written; the
+	// composition's typed key is what they compile TO.
+	OnTime = string(encounter.AnswerTime)
 )
 
 // laterWords are the outcome words this design NAMES and this build does not
@@ -850,6 +879,7 @@ var laterWords = map[string]string{
 	"lure":    "designed and not built yet",
 	"pretend": "designed as the Insight slice and not built yet",
 	"tell":    "not a word: a fact taught to whoever was there is `fact`",
+	"patrol":  "designed and not built yet",
 }
 
 // AnswerSpec is ONE ENTRY in an outcome's table: how likely it is, what the
@@ -902,12 +932,87 @@ type AnswerSpec struct {
 	// two get different defects because they are different mistakes.
 	Fact *string `yaml:"fact,omitempty"`
 
-	// Flee sends the creature away from whoever spoke to it, its own full
-	// speed, as a directed move — `flee: {}`. An EMPTY MAPPING rather than a
-	// bare word because a word with no body has nowhere to grow: the day
-	// fleeing takes a distance or a destination, `flee: { toward: … }` is an
-	// addition to this file and not a break in every file that has one.
+	// Flee lands a `fled` deed on the creature, naming whoever made it run —
+	// `flee: {}`.
+	//
+	// IT MOVES NOBODY. The running is the creature's own answer on its own
+	// time: the rulebook's default table carries a
+	// `{ when: { fled: { within: 3 } }, away: actor, weight: 3 }` row, so a
+	// creature that has been made to run spends its next rounds walking away
+	// from the one who did it, weighted heavily enough to beat the rest of the
+	// table. An author who wants a different flight writes a different row
+	// rather than a different word here, and a creature whose table has no
+	// `fled` row does not run at all — which is the author's to decide, and
+	// visible to them, in a way a one-shot walk hidden behind this word was
+	// not.
+	//
+	// AN EMPTY MAPPING rather than a bare word because a word with no body has
+	// nowhere to grow: the day fleeing takes a span of its own,
+	// `flee: { within: … }` is an addition to this file and not a break in
+	// every file that has one.
 	Flee *FleeSpec `yaml:"flee,omitempty"`
+
+	// When is the condition this entry is on the table under
+	// (rpg-project#465, design §2). `time` ONLY: a social key IS the
+	// condition — `intimidated` already means "the threat landed" — and a
+	// second one under it would be an author asking when a thing that just
+	// happened happened.
+	//
+	//	on:
+	//	  time:
+	//	    - { when: { enemy: reach },              attack: enemy }
+	//	    - { when: { enemy: seen },               toward: enemy }
+	//	    - { when: { attacked: { within: 3 } },   attack: attacker, weight: 3 }
+	//
+	// An entry whose condition does not hold is NOT ON THE TABLE for that
+	// roll — absent rather than weighted zero, so the beat's candidate list
+	// is the honest account of what the creature could have done.
+	When *WhenSpec `yaml:"when,omitempty"`
+
+	// Hold is `hold: {}` — the creature does nothing with its time. `time`
+	// only. An EMPTY MAPPING for [FleeSpec]'s reason: a word with no body has
+	// nowhere to grow.
+	//
+	//	on:
+	//	  time:
+	//	    - { hold: {} }
+	Hold *HoldSpec `yaml:"hold,omitempty"`
+
+	// Attack strikes the selected member. `time` only, and REFUSED off the
+	// turn clock at the table: an enemy in reach on the world clock is a
+	// fight sight already formed.
+	//
+	//	on:
+	//	  time:
+	//	    - { attack: attacker }
+	Attack *SelectorSpec `yaml:"attack,omitempty"`
+
+	// Toward walks toward the selected member's believed position, or an
+	// authored cell, for the turn's movement. `time` only, and the ONLY word
+	// `at:` is legal on — walking away from a fixed cell is a direction
+	// rather than a flight, and nothing has paid for one.
+	//
+	//	on:
+	//	  time:
+	//	    - { when: { enemy: none }, toward: { at: [3, 4] } }
+	Toward *SelectorSpec `yaml:"toward,omitempty"`
+
+	// Away walks away from the selected member for the turn's movement —
+	// the coward's run. `time` only.
+	//
+	//	on:
+	//	  time:
+	//	    - { when: { fled: { within: 3 } }, away: actor, weight: 5 }
+	Away *SelectorSpec `yaml:"away,omitempty"`
+
+	// Line is the file line this entry was written on, captured at decode so
+	// the validator can point an author at it.
+	//
+	// NOT AUTHORED, and `yaml:"-"` says so: the decoder fills it. The
+	// validator's own [FieldError] speaks in paths (`place[2].on.time[0]`),
+	// which names the entry but not the line an editor jumps to, and every
+	// refusal this slice adds is about a line somebody wrote.
+	Line int `yaml:"-"`
 }
 
 // FleeSpec is `flee: {}` — the word, with no options yet. It exists as a type
@@ -915,12 +1020,295 @@ type AnswerSpec struct {
 // is, and so the first option it grows is a field here.
 type FleeSpec struct{}
 
+// HoldSpec is `hold: {}` — the word, with no options. [FleeSpec]'s twin under
+// `time`, and written the same way for the same reason.
+type HoldSpec struct{}
+
+// WhenSpec is a condition on what the creature holds: EXACTLY ONE of an
+// enemy state or a deed within a span (rpg-project#465, design §2).
+//
+//	when: { enemy: reach }
+//	when: { enemy: seen }
+//	when: { enemy: remembered }
+//	when: { enemy: none }
+//	when: { attacked: { within: 3 } }
+//
+// TWO KEYS IS REFUSED, not read as `and`. An author who wrote two meant
+// something — probably "both" — and guessing which of the two readings they
+// meant is exactly what a sealed vocabulary exists to avoid. The day a use
+// case pays for `and`, it arrives as its own spelling.
+type WhenSpec struct {
+	// Enemy is one of the four BANDS — `reach`, `seen`, `remembered`, `none`
+	// — or empty when this condition names a deed instead.
+	//
+	// EXCLUSIVE BY DEFINITION: exactly one holds at any moment, so an author
+	// writes one entry per band and knows which fires. `seen` is "in sight
+	// and NOT in reach", which is the gap `toward` is for; `reach` is where a
+	// swing belongs, because a swing at somebody out of reach is a pass.
+	Enemy string
+
+	// Deed is the deed kind — `attacked`, `intimidated`, `persuaded`,
+	// `fled` — or empty when this condition names an enemy instead.
+	Deed string
+
+	// Within is how many rounds ago the deed may have landed and still
+	// count. AT LEAST 1: a span is counted from 1.
+	Within int
+
+	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
+	// reason.
+	Line int
+}
+
+// withinSpec is the body a deed condition takes: `{ within: N }`.
+type withinSpec struct {
+	Within *int `yaml:"within"`
+}
+
+// UnmarshalYAML reads one condition, refusing two conditions in one `when`,
+// an unknown key by name, and a span counted from zero.
+func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode || len(value.Content) == 0 {
+		return fmt.Errorf("line %d: a `when` is one of { enemy: %s } or { <deed>: { within: N } }",
+			value.Line, strings.Join(enemyWords(), " | "))
+	}
+	if len(value.Content) > 2 {
+		return fmt.Errorf("line %d: a `when` is one condition, and this names %d",
+			value.Line, len(value.Content)/2)
+	}
+
+	key := value.Content[0].Value
+	body := value.Content[1]
+	w.Line = value.Line
+
+	if key == "enemy" {
+		word := body.Value
+		if !knownEnemyWord(word) {
+			return fmt.Errorf("line %d: `enemy: %s` is not a condition this build reads: they are %s",
+				body.Line, word, strings.Join(enemyWords(), ", "))
+		}
+		w.Enemy = word
+
+		return nil
+	}
+
+	if !knownWhenDeed(key) {
+		return fmt.Errorf("line %d: `%s` is not a deed this build holds: they are %s (and `enemy`)",
+			value.Content[0].Line, key, strings.Join(encounter.WhenDeeds, ", "))
+	}
+	var within withinSpec
+	if err := body.Decode(&within); err != nil {
+		return fmt.Errorf("line %d: `%s` takes { within: N }: %w", body.Line, key, err)
+	}
+	if within.Within == nil {
+		return fmt.Errorf("line %d: `%s` names no span — write { within: N }", body.Line, key)
+	}
+	if *within.Within < 1 {
+		return fmt.Errorf("line %d: a span of %d rounds is counted from 1", body.Line, *within.Within)
+	}
+	w.Deed = key
+	w.Within = *within.Within
+
+	return nil
+}
+
+// SelectorSpec names what a `attack`/`toward`/`away` entry acts on: a word,
+// or an authored cell.
+//
+//	attack: enemy
+//	toward: { at: [3, 4] }
+//
+// A SCALAR OR A MAPPING, and the author writes whichever says what they mean.
+// The words are the sealed three; `at:` is legal on `toward` alone, refused
+// elsewhere by the validator with the reason.
+type SelectorSpec struct {
+	// Word is `enemy`, `attacker` or `actor`, or empty when At is written.
+	Word string
+
+	// At is the authored cell, offset [col,row], or nil when Word is
+	// written. It must be floor, the same rule a placement's own `at` keeps.
+	At *[2]int
+
+	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
+	// reason.
+	Line int
+}
+
+// atSpec is the body a cell selector takes: `{ at: [col, row] }`.
+type atSpec struct {
+	At *[2]int `yaml:"at"`
+}
+
+// UnmarshalYAML reads one selector, refusing a word outside the sealed three
+// and a mapping that names anything but `at`.
+func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
+	sel.Line = value.Line
+
+	if value.Kind == yaml.ScalarNode {
+		if !knownSelectorWord(value.Value) {
+			return fmt.Errorf("line %d: %q is not a selector this build resolves: they are %s, or { at: [col, row] }",
+				value.Line, value.Value, strings.Join(selectorWords(), ", "))
+		}
+		sel.Word = value.Value
+
+		return nil
+	}
+
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: a selector is one of %s, or { at: [col, row] }",
+			value.Line, strings.Join(selectorWords(), ", "))
+	}
+	for i := 0; i < len(value.Content); i += 2 {
+		if value.Content[i].Value != "at" {
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.SelectorSpec",
+				value.Content[i].Line, value.Content[i].Value)
+		}
+	}
+	var body atSpec
+	if err := value.Decode(&body); err != nil {
+		return err
+	}
+	if body.At == nil {
+		return fmt.Errorf("line %d: a cell selector is { at: [col, row] }", value.Line)
+	}
+	sel.At = body.At
+
+	return nil
+}
+
+// TemperSpec is a temperament: one word, or a MIX to deal one from
+// (rpg-project#465, design §3).
+//
+//	temper: coward
+//	temper: { coward: 1, soldier: 2, aggressive: 1 }
+//
+// A WORD ON A PLACEMENT, A MIX ON A FACTION — and a faction may carry a word
+// too, which every placement in it then has. "Four goblins, one table, four
+// behaviours": the mix is dealt per member at spawn, through the shared dice
+// with the faction as the die's entity, and the result is a beat so the
+// streamer sees which goblin came out the coward.
+//
+// A PLACEMENT'S OWN WORD WINS and the mix is not dealt for it. An author who
+// named this one's temperament has already answered the question the mix
+// exists to ask.
+type TemperSpec struct {
+	// Word is the authored temperament, or empty when Mix is written.
+	Word string
+
+	// Mix is word → positive share, or nil when Word is written. A share
+	// below 1 is a temperament that can never be dealt, refused by name.
+	Mix map[string]int
+
+	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
+	// reason.
+	Line int
+}
+
+// UnmarshalYAML reads a temperament as a word or a mix, refusing a word
+// outside the sealed list and a share below 1 by name.
+func (t *TemperSpec) UnmarshalYAML(value *yaml.Node) error {
+	t.Line = value.Line
+
+	if value.Kind == yaml.ScalarNode {
+		if !encounter.ValidTemperWord(value.Value) {
+			return fmt.Errorf("line %d: %q is not a temperament this build ships: they are %s",
+				value.Line, value.Value, strings.Join(encounter.TemperWords, ", "))
+		}
+		t.Word = value.Value
+
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: a temper is a word (%s) or a mix of them with shares",
+			value.Line, strings.Join(encounter.TemperWords, " | "))
+	}
+
+	mix := map[string]int{}
+	for i := 0; i < len(value.Content); i += 2 {
+		word := value.Content[i].Value
+		if !encounter.ValidTemperWord(word) {
+			return fmt.Errorf("line %d: %q is not a temperament this build ships: they are %s",
+				value.Content[i].Line, word, strings.Join(encounter.TemperWords, ", "))
+		}
+		var share int
+		if err := value.Content[i+1].Decode(&share); err != nil {
+			return fmt.Errorf("line %d: %q takes a share: %w", value.Content[i+1].Line, word, err)
+		}
+		if share < 1 {
+			return fmt.Errorf("line %d: a share of %d can never be dealt — give %q a share of at least 1",
+				value.Content[i+1].Line, share, word)
+		}
+		mix[word] = share
+	}
+	if len(mix) == 0 {
+		return fmt.Errorf("line %d: a temper mix with nothing in it deals nothing", value.Line)
+	}
+	t.Mix = mix
+
+	return nil
+}
+
+// enemyWords is the sealed `enemy:` vocabulary as strings, for a refusal that
+// lists what there is.
+func enemyWords() []string {
+	out := make([]string, 0, len(encounter.EnemyWords))
+	for _, w := range encounter.EnemyWords {
+		out = append(out, string(w))
+	}
+
+	return out
+}
+
+// knownEnemyWord reports whether a word is one of them.
+func knownEnemyWord(word string) bool {
+	for _, w := range encounter.EnemyWords {
+		if string(w) == word {
+			return true
+		}
+	}
+
+	return false
+}
+
+// knownWhenDeed reports whether a key names a deed a `when` may read.
+func knownWhenDeed(key string) bool {
+	for _, d := range encounter.WhenDeeds {
+		if d == key {
+			return true
+		}
+	}
+
+	return false
+}
+
+// selectorWords is the sealed selector vocabulary as strings.
+func selectorWords() []string {
+	out := make([]string, 0, len(encounter.SelectorWords))
+	for _, w := range encounter.SelectorWords {
+		out = append(out, string(w))
+	}
+
+	return out
+}
+
+// knownSelectorWord reports whether a word is one of them.
+func knownSelectorWord(word string) bool {
+	for _, w := range encounter.SelectorWords {
+		if string(w) == word {
+			return true
+		}
+	}
+
+	return false
+}
+
 // UnmarshalYAML reads one answer entry, refusing the designed-but-unbuilt
 // words by name ([laterWords]) and every unknown key, for
 // [PlaceSpec.UnmarshalYAML]'s reason.
 func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: an answer entry is { weight, say } plus at most one of { fact, flee }",
+		return fmt.Errorf(
+			"line %d: an answer entry is { weight, say, when } plus exactly one of { fact, flee, hold, attack, toward, away }",
 			value.Line)
 	}
 	for i := 0; i < len(value.Content); i += 2 {
@@ -929,7 +1317,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: `%s` is %s (rpg-project#458)", value.Content[i].Line, key, why)
 		}
 		switch key {
-		case "weight", "say", "fact", "flee":
+		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)
@@ -941,6 +1329,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 	*r = AnswerSpec(obj)
+	r.Line = value.Line
 
 	return nil
 }
@@ -1162,6 +1551,17 @@ type PlaceSpec struct {
 	// scared goblin does not turn the camp unless the author planted the
 	// fact that says so.
 	On map[string][]AnswerSpec `yaml:"on,omitempty"`
+
+	// Temper is this placement's temperament, one of the sealed words
+	// ([TemperSpec], design §3) — `temper: coward`. MONSTERS ONLY, refused
+	// on anything else.
+	//
+	// A WORD HERE, A MIX ON THE FACTION. A placement names ONE creature, so
+	// dealing a spread for it would be an author rolling for a goblin they
+	// have already described. Absent means the faction's mix deals one, and
+	// absent with no mix either means a soldier — every factor 100, which is
+	// the zero value telling the truth.
+	Temper string `yaml:"temper,omitempty"`
 
 	// Arrives is the predicate that brings this placement into the run
 	// (rpg-project#375, the hold-out design §2, §3.7, R6). MONSTERS AND

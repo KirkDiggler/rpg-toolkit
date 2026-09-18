@@ -500,7 +500,7 @@ func (s *HoldingsSuite) TestTheLootedIntelKeepsTravelling() {
 	s.Require().NoError(err)
 
 	s.standing.down = []encounter.MemberID{captain, raider}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	s.walkTo(enc, partner, spatial.Position{X: captainCell.X - 1, Y: captainCell.Y})
@@ -528,7 +528,7 @@ func (s *HoldingsSuite) TestLootTakesThePropOffTheBody() {
 
 	s.Run("the carrier falls, still holding it", func() {
 		s.standing.down = []encounter.MemberID{raider}
-		_, err := enc.Pump(&encounter.PumpInput{})
+		_, err := aRound(enc)
 		s.Require().NoError(err)
 		atlas, err := enc.Atlas()
 		s.Require().NoError(err)
@@ -576,7 +576,7 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 	s.Require().NoError(err)
 
 	s.standing.down = []encounter.MemberID{captain, sentry}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	s.walkTo(enc, raider, captainCell)
@@ -650,7 +650,7 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 	s.Require().NoError(err)
 
 	s.standing.down = []encounter.MemberID{captain}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	before, err := enc.AtlasFor(raider)
@@ -1050,7 +1050,7 @@ func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 	s.Require().NoError(err)
 
 	s.standing.down = []encounter.MemberID{captain, sentry}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 	s.walkTo(enc, raider, captainCell)
 
@@ -1131,7 +1131,7 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 	s.Require().NoError(err)
 
 	s.standing.down = []encounter.MemberID{captain}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 	s.walkTo(enc, raider, captainCell)
 	_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
@@ -1238,7 +1238,7 @@ func (s *HoldingsSuite) TestTheScrollKeepsSayingWhatItSays() {
 
 	s.Run("the carrier falls and is looted; the looter learns it too", func() {
 		s.standing.down = []encounter.MemberID{raider}
-		_, perr := enc.Pump(&encounter.PumpInput{})
+		_, perr := aRound(enc)
 		s.Require().NoError(perr)
 
 		s.walkTo(enc, partner, scrollCell)

@@ -15,6 +15,7 @@ package encounter_test
 // hide in.
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -81,14 +82,14 @@ func (s *PursuitSuite) SetupTest() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			// Alice stands at the threshold; the goblin is across the room
 			// with a clear line to her, so first light makes them mutual.
 			{ID: hunted, Kind: encounter.KindPlayer, Position: spatial.Position{X: 25, Y: 13}},
 			{ID: hunter, Kind: encounter.KindMonster, Position: spatial.Position{X: 21, Y: 13},
-				Decider: &pursuitDecider{doorways: doorwaysFrom(field), target: hunted}},
+				SpeedFeet: 30, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -147,14 +148,13 @@ func (s *PursuitSuite) TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne() {
 	s.Require().False(current, "the wall takes her; the sighting becomes a memory")
 	s.Equal(eastThreshold, ghost, "the ghost stands where she was last seen — in the doorway")
 
-	// The pump: the goblin walks to the ghost's cell, which is on the far side
-	// of the doorway. The SAME intent type carries it — there is no crossing
-	// intent, and no crossing mechanism for one to name.
-	first, err := s.enc.Pump(&encounter.PumpInput{})
+	// A round of the world: the goblin walks to the ghost's cell, which is on
+	// the far side of the doorway. The SAME intent type carries it — there is
+	// no crossing intent, and no crossing mechanism for one to name.
+	_, err = aRound(s.enc)
 	s.Require().NoError(err)
-	s.Require().Len(first.MonsterMoves, 1, "it walks toward the last place it saw her")
-	s.Equal(hunter, first.MonsterMoves[0].Member)
-	s.Equal(eastThreshold, first.MonsterMoves[0].To, "through the doorway, in one ordinary step")
+	s.Equal(eastThreshold, s.whereIs(hunter),
+		"it walks toward the last place it saw her, through the doorway, in one ordinary step")
 
 	// And it can see her again, from the chamber it has just entered.
 	current, found := s.sightOf(hunter, hunted)
@@ -162,19 +162,29 @@ func (s *PursuitSuite) TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne() {
 	s.Equal(eastCorner, found, "in the corner she ran to, on the same map")
 }
 
-// TestAStepIntoTheVoidIsRefusedInSilence and its sibling below pin the two
-// ways stepTo declines without complaining. Both matter because the pump must
-// survive a decider that asks for something impossible: an error would abort
-// the tick for every other monster in the encounter.
-func (s *PursuitSuite) TestAStepIntoTheVoidIsRefusedInSilence() {
-	decider := &onceStepDecider{to: spatial.Position{X: 500, Y: 500}}
-	s.freeRoamWith(decider)
+// TestATableNamingTheVoidNeverWalksAnybodyOffTheFloor and its sibling below
+// pin the two ways a walk declines without complaining. Both matter because a
+// round of the world must survive a table that asks for something impossible:
+// an error would abort the round for every other creature in the encounter.
+//
+// THE ROUTER IS WHAT REFUSES, not the step. An author naming a cell off the
+// map gets the nearest the floor allows — the [encounter.MoveToward] policy's
+// own fallback — and never a creature standing in the void. That is a
+// different sentence from the one this test made before the table existed,
+// when a decider handed a raw cell to the step and the step said no; the
+// silent-refusal path is still there under it, and nothing can now reach it
+// with an off-map cell.
+func (s *PursuitSuite) TestATableNamingTheVoidNeverWalksAnybodyOffTheFloor() {
+	s.freeRoamWalkingTo(spatial.Position{X: 500, Y: 500})
 
-	out, err := s.enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err, "an impossible step is not an error")
-	s.True(decider.called, "and the refusal happened in stepTo, not by never being asked")
-	s.Empty(out.MonsterMoves)
-	s.Equal(cellAt(21, 13), s.whereIs(hunter), "so nobody moved")
+	_, err := aRound(s.enc)
+	s.Require().NoError(err, "an impossible destination is not an error")
+	s.True(s.rolled(), "and it really was asked")
+
+	where := s.whereIs(straggler)
+	region, onFloor := s.enc.RegionAt(where)
+	s.True(onFloor, "it is standing on floor, not in the void it was sent at")
+	s.Equal(encounter.RegionID(westID), region, "in the chamber it started in — the void is not a direction out of it")
 }
 
 // TestAStepThroughTheWallIsRefused is the case coordinates alone cannot rule
@@ -187,39 +197,75 @@ func (s *PursuitSuite) TestAStepIntoTheVoidIsRefusedInSilence() {
 func (s *PursuitSuite) TestAStepThroughTheWallIsRefused() {
 	// The east chamber's cell one row ABOVE the doorway: adjacent to the west
 	// chamber's own (25,12) in absolute space, with the seam wall between them.
-	decider := &onceStepDecider{to: cellAt(26, 12)}
-	s.freeRoamWith(decider)
+	// A straggler pressed against the seam wall's north side, ordered at the
+	// cell directly across it: adjacent in absolute space, with the wall
+	// between.
+	s.freeRoamWalkingTo(cellAt(26, 12))
 
-	out, err := s.enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(s.enc)
 	s.Require().NoError(err, "walking into a wall is not an error either")
-	s.True(decider.called, "and it really was asked")
-	s.Empty(out.MonsterMoves, "the wall refused the step")
-	s.Equal(cellAt(21, 13), s.whereIs(hunter), "so the goblin stayed put")
+	s.Equal(cellAt(25, 12), s.whereIs(straggler), "the wall refused the step, so it stayed put")
+	s.True(s.rolled(), "and it really was asked")
 }
 
-// freeRoamWith puts the hunter back on the world clock with the given decider,
-// which is what a refusal pin needs before it means anything.
+// rolled reports whether the hunter's own table was rolled at all — the
+// `answered` beat is the only account of a pick, so its presence is what
+// separates "asked and refused" from "never asked".
 //
-// Both halves are load-bearing. The DISSOLVE matters because first light
-// starts a fight and Pump only consults world-clock monsters — without it a
-// "nobody moved" assertion passes because nobody was ever asked, which is a
-// test that cannot fail. Both refusal pins therefore also assert the decider
-// was called. The RELOAD is how a decider is swapped at all: they are
-// behavior, re-registered at load, never persisted.
-func (s *PursuitSuite) freeRoamWith(decider encounter.Decider) {
+// BOTH REFUSAL PINS NEED IT. First light starts a fight and the world only
+// thinks for creatures outside one, so a "nobody moved" assertion would
+// otherwise pass because nobody was ever consulted, which is a test that
+// cannot fail.
+func (s *PursuitSuite) rolled() bool {
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: hunted})
+	s.Require().NoError(err)
+	for _, e := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(e.Payload, &beat))
+		if beat["beat"] == encounter.BeatAnswered && beat["creature"] == string(straggler) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// freeRoamWalkingTo puts the hunter back on the world clock with a table that
+// sends it at one authored cell, which is what a refusal pin needs before it
+// means anything.
+//
+// THE DISSOLVE IS LOAD-BEARING: first light starts a fight, and the world only
+// thinks for creatures outside one.
+func (s *PursuitSuite) freeRoamWalkingTo(cell spatial.Position) {
 	_, err := s.enc.Dissolve(&encounter.DissolveInput{Member: hunter})
 	s.Require().NoError(err)
 
-	data := s.enc.ToData()
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Data:     data,
-		Deciders: map[encounter.MemberID]encounter.Decider{hunter: decider},
+	seat := cellAt(22, 10)
+	if cell == cellAt(26, 12) {
+		// Against the wall, so the refused step is the wall's doing and not
+		// the distance's.
+		seat = cellAt(25, 12)
+	}
+	_, err = s.enc.Join(&encounter.JoinInput{
+		Member: straggler, Kind: encounter.KindMonster, Cell: seat,
+		SpeedFeet: 5, Table: walksTo(cell),
 	})
 	s.Require().NoError(err)
-	s.enc = enc
+
+	// Arriving in sight of her starts a fight, and a fight monster is not the
+	// world's to think for — so break it off, which is what leaves the
+	// straggler where a refusal pin can reach it.
+	on, err := s.enc.ClockOf(&encounter.ClockOfInput{Member: straggler})
+	s.Require().NoError(err)
+	if on.Kind == encounter.ClockTurn {
+		_, err = s.enc.Dissolve(&encounter.DissolveInput{Member: straggler})
+		s.Require().NoError(err)
+	}
 }
+
+// straggler is the monster the refusal pins order about — joined after the
+// fight is dissolved, so it is the world's to think for.
+const straggler = core.EntityID("straggler")
 
 // whereIs is the member's cell on the map, read from the roster.
 func (s *PursuitSuite) whereIs(member core.EntityID) spatial.Position {

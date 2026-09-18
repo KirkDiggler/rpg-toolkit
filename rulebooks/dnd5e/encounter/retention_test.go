@@ -332,51 +332,52 @@ func (s *RetentionTestSuite) TestUntrimmedEncounterHasNoFloor() {
 // mints more beats than the retention window must leave ALL of them readable
 // in the live Story: PR #1377's review reproduced a verb trimming its own
 // beats mid-verb, past every cursor, so nothing could ever commit them. The
-// window is one and Pump mints two beats in one call — the tick frame and the
-// patroller's movement — so per-append enforcement would destroy the tick
-// beat before Pump returned.
+// window is one and a round of the world mints three beats in one call — the
+// tick frame, the patroller's own pick and its movement — so per-append
+// enforcement would destroy the tick beat before the verb returned.
 //
 // The second half is the boundary doing its job as before: the next ToData
 // emits exactly the window with the floor advanced, and a resume below that
 // floor is refused.
 func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
-	patrol := &patrolDecider{positions: []spatial.Position{cellAt(5, 5), cellAt(3, 3)}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 		},
 		Members: []encounter.MemberInput{
 			// The watcher is sealed in the second room: a monster a player can
-			// see is a monster in a fight, and Pump does not move fight
+			// see is a monster in a fight, and the world does not move fight
 			// members — the wall is what lets the patroller patrol.
 			{ID: "watcher", Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 0}},
-			{ID: "pacer", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}, Decider: patrol},
+			{ID: "pacer", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1},
+				SpeedFeet: 5, Table: walksTo(cellAt(5, 5))},
 		},
 		Endings:   []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 		Retention: 1,
 	})
 	s.Require().NoError(err)
 
-	// One engine call, two beats minted — retention+1 for a window of one.
-	pumpOut, err := enc.Pump(&encounter.PumpInput{})
+	// One engine call, three beats minted — well past retention+1 for a
+	// window of one.
+	_, err = aRound(enc)
 	s.Require().NoError(err)
-	s.Require().Len(pumpOut.MonsterMoves, 1, "the patroller must actually have moved")
+	s.NotEqual(cellAt(1, 1), whereIs(s.T(), enc, "pacer"), "the patroller must actually have moved")
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 0})
 	s.Require().NoError(err)
-	s.Len(entries, 3, "scene-opened, tick, movement: the verb's own beats all survive the verb")
+	s.Len(entries, 4, "scene-opened, tick, pick, movement: the verb's own beats all survive the verb")
 	for i, entry := range entries {
 		s.Equal(uint64(i+1), entry.Seq, "nothing was trimmed out from under the verb")
 	}
 
 	data := enc.ToData()
 	s.Require().Len(data.Log.Entries, 1, "the boundary then emits exactly the window")
-	s.Equal(uint64(3), data.Log.Entries[0].Seq, "and keeps the newest beat")
+	s.Equal(uint64(4), data.Log.Entries[0].Seq, "and keeps the newest beat")
 
-	_, err = enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 2})
+	_, err = enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 3})
 	s.ErrorIs(err, encounter.ErrTrimmed, "the floor advanced with the save, exactly as before")
 }
 

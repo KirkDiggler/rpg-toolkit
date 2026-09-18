@@ -52,12 +52,12 @@ func Example_theDoorway() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 7, Y: 4}},
 			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 4},
-				Decider: &pursuitDecider{doorways: doorwaysFrom(field), target: "alice"}},
+				SpeedFeet: 30, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "done", Trigger: encounter.TriggerExternal{}},
@@ -98,11 +98,11 @@ func Example_theDoorway() {
 	tell(enc, "goblin", "alice")
 
 	// The goblin closes on the ghost, then reaches the doorway and looks
-	// through it — decided from nothing but its own snapshot and what it holds.
+	// through it — decided from nothing but its own table and what it holds.
 	fmt.Println("-- the goblin gives chase, and follows her through --")
 	for i := 0; i < 4; i++ {
-		if _, err := enc.Pump(&encounter.PumpInput{}); err != nil {
-			fmt.Println("pump:", err)
+		if _, err := aRound(enc); err != nil {
+			fmt.Println("round:", err)
 			return
 		}
 	}

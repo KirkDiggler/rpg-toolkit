@@ -310,3 +310,59 @@ whose absence blocks the whole composition may not.** `Decider`'s
 optional, default-to-hold shape and `TurnDriver`'s required,
 refuse-at-construction shape are not in tension — they are the same law
 applied to two different blast radii.
+
+## Amendment, 2026-09-18: one seam, not two (rpg-project#465)
+
+**Status of the decision itself: unchanged.** A monster's turn still has a
+driver, that driver is still a required composition-level capability, and
+the rule at the foot of this document still holds. What has lapsed is the
+REASONING in "What already exists, and what it rules out" — and it is
+recorded here rather than routed around, because a stale reason left in an
+ADR is what the next person builds on.
+
+**The reason, as it was written:** `Decider`'s vocabulary (`Snapshot` →
+`IntentMoveTo | IntentHold`) "is scoped to *where to be*, not *what to do
+on a turn* ... the gap this ADR closes cannot be closed by widening
+`Decider`; it needs its own seam." That was true of the vocabulary as it
+stood, and it is why two seams shipped.
+
+**Why it has lapsed:** `Decider` is deleted (rpg-project#465, the
+creature's table). It was never wired to anything — `session` registered
+none and `Pump` was called only by a workbench — and what replaced it is
+not a widened `Decider` but a different kind of thing entirely: an
+AUTHORED WEIGHTED TABLE, `on:` in the dungeon file, keyed by what
+happened and rolled through the shared dice. The table's `time` key is
+what a creature does when it has time, on either clock; there is no
+separate "where to be" vocabulary left to keep apart from "what to do on a
+turn", because the same table answers both and the only difference is the
+budget in the view.
+
+**The amendment:**
+
+1. `TurnDriver` is renamed `Driver`. A deprecated alias keeps the old name
+   for one release. `Act` now answers a `Decision` — the intent, plus the
+   `Pick` when one was rolled — so a driver stays a decision and the
+   encounter stays the only thing that writes the story.
+2. **One seam, consulted on both clocks.** A fight asks the `Driver` on a
+   member's turn; the world asks the same `Driver`, for the same member,
+   with `AttacksLeft: 0` and a round of the world's own budget
+   (`Encounter.worldThinks`). An `Attack` off the turn clock is
+   `ErrAttackOffTurn` rather than a skipped intent, which is the one place
+   the two clocks still differ in what they will accept.
+3. **The table is the driver's policy.** `TableDriver` is the shipped
+   implementation and it decides nothing: every choice it makes was
+   written by an author, loaded by a temperament, and filtered by what the
+   creature has seen and suffered. A second implementation would be a
+   second policy language, and the reason to have one has not arrived.
+4. `Pump`, `Snapshot`, `Intent`, `IntentMoveTo` and `IntentHold` go with
+   `Decider`. The README section that stated the boundary this ADR quoted
+   goes with them.
+
+**What the rule at the foot of this document now reads against:** the
+`Driver` is required and refuses at construction, for the blast-radius
+reason it always did. There is no longer an optional, default-to-hold
+capability beside it to contrast with — the contrast the rule drew was
+between `Decider` and `TurnDriver`, and only one of the two is left. The
+law survives its example: the composition's new optional capability is the
+`Roller`, absent from a scene that rolls nothing and refused by name
+(`ErrNoRoller`) the moment something does.

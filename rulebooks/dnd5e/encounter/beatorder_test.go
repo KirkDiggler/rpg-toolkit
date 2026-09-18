@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -24,7 +25,7 @@ import (
 //
 // The law is stated at [refreshSight]; these are its seven guards. Setup ruled
 // it first (a scene records that it opened before it records a fight starting
-// inside it), and trigger detection then arrived at Move, Traverse, Pump and
+// inside it), and trigger detection then arrived at Move, Traverse, a world round and
 // Join. Two of the four (Traverse via TestTraverseBeatPinned, Join via
 // TestTombWatch) inverted the moment trigger detection moved inside
 // refreshSight; the other two were latent only because nothing asserted them.
@@ -182,22 +183,25 @@ func (s *BeatOrderTestSuite) TestStepBeforeItFights() {
 	s.inOrder(enc, alice, "scene-opened", "moved", "bubble-formed")
 }
 
-// TestPumpBeforeItFights pins Pump's half, and Pump is the verb the whole
-// placement argument rests on: here NOBODY walks — the monster does. Pump's
-// own beats are the tick frame AND the action inside it, so both precede the
-// fight the action caused.
-func (s *BeatOrderTestSuite) TestPumpBeforeItFights() {
-	enc := s.blockedScene(&patrolDecider{positions: []spatial.Position{cellAt(0, 10)}})
+// TestAWorldRoundBeforeItFights pins the world's half, and it is the case the
+// whole placement argument rests on: here NOBODY walks — the monster does. A
+// round of the world writes the tick frame, the goblin's own pick and the step
+// it took, and all three precede the fight that step caused.
+func (s *BeatOrderTestSuite) TestAWorldRoundBeforeItFights() {
+	enc := s.blockedScene(walksTo(cellAt(6, 3)))
 
-	out, err := enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "the goblin steps out from behind the wall and is seen")
-	s.Require().Len(out.Seqs, 2, "pump's own beats: the tick frame and the goblin's step")
-	for _, seq := range out.Seqs {
-		s.Greater(out.Formed.Seq, seq, "the world moves, THEN the fight starts")
+	// Rounds until it comes round the wall and is seen. The wall is what makes
+	// the walk take several: the scene's whole point is that the world moving
+	// is what starts the fight, and it has to get there first.
+	for i := 0; i < 30; i++ {
+		_, err := aRound(enc)
+		s.Require().NoError(err)
+		if slices.Contains(s.beatKinds(enc, alice), "bubble-formed") {
+			break
+		}
 	}
 
-	s.inOrder(enc, alice, "scene-opened", "tick", "moved", "bubble-formed")
+	s.inOrder(enc, alice, "scene-opened", "tick", "answered", "moved", "bubble-formed")
 }
 
 // TestJoinBeforeItFights pins Join's half. Cormac connects late and lands in
@@ -254,18 +258,22 @@ func (s *BeatOrderTestSuite) TestOpenDoorOpensBeforeItFights() {
 // blockedScene opens the shared set with alice at (6,2) and the goblin at
 // (6,10) — the wall spans x=4..8 at y=6, so the file they share is blocked and
 // first light starts no fight. Each verb under test is then the sole cause of
-// the one that follows. An optional decider drives the goblin for the Pump pin.
-func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encounter.Encounter {
+// the one that follows. An optional table drives the goblin for the
+// world-round pin.
+func (s *BeatOrderTestSuite) blockedScene(table ...encounter.Table) *encounter.Encounter {
 	monster := encounter.MemberInput{
 		ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10},
 	}
-	if len(decider) > 0 {
-		monster.Decider = decider[0]
+	driver := encounter.TurnDriver(passDriver{})
+	if len(table) > 0 {
+		monster.Table = table[0]
+		monster.SpeedFeet = 30
+		driver = tableDriver()
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: wallRoom(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
