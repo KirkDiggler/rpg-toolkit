@@ -99,7 +99,7 @@ func TestSanctuaryBlocksAnAttackOnAFailedWardSave(t *testing.T) {
 	require.Equal(t, 1, roller.calls, "only the ward save was ever rolled")
 }
 
-func TestSanctuarySaveSuccessGrantsImmunityAndTheAttackProceeds(t *testing.T) {
+func TestSanctuarySaveSuccessDoesNotGrantAttackerImmunity(t *testing.T) {
 	target := actionHero()
 	target.Conditions = []json.RawMessage{sanctuaryJSON(t, heroID)}
 
@@ -125,21 +125,19 @@ func TestSanctuarySaveSuccessGrantsImmunityAndTheAttackProceeds(t *testing.T) {
 	require.Nil(t, outcome.Warded)
 	require.NotZero(t, outcome.Roll, "the attack proceeded exactly as if there were no ward")
 
-	require.Len(t, out.DirtyMonsters, 1)
-	require.True(t,
-		hasConditionRef(t, out.DirtyMonsters[0].Conditions, refs.Conditions.SanctuaryImmune().String()),
-		"the wolf earned immunity to cleric-1's Sanctuary by passing the save",
-	)
+	for _, dirty := range out.DirtyMonsters {
+		require.False(t, hasConditionRef(t, dirty.Conditions, refs.Conditions.SanctuaryImmune().String()))
+	}
 }
 
-func TestSanctuaryImmunitySkipsTheSaveEntirely(t *testing.T) {
+func TestRecipientCooldownDoesNotSkipWardSaves(t *testing.T) {
 	target := actionHero()
 	target.Conditions = []json.RawMessage{sanctuaryJSON(t, heroID)}
 	attacker := monsters.NewWolf(wolfID).ToData()
 	attacker.Conditions = []json.RawMessage{sanctuaryImmuneJSON(t, wolfID)}
 
-	// No save roll scripted at all: a queued read would fail the test outright.
-	roller := &actionRoller{singles: []int{15}, damage: [][]int{{4}}}
+	// A recipient cooldown must not bypass the aggressor's ward save.
+	roller := &actionRoller{singles: []int{20, 15}, damage: [][]int{{4}}}
 	machine, err := NewAction(&ActionInput{
 		Definition: validMeleeDefinition(), AttackerID: wolfID, TargetID: heroID, Roller: roller,
 	})
@@ -158,7 +156,7 @@ func TestSanctuaryImmunitySkipsTheSaveEntirely(t *testing.T) {
 	outcome := out.Outcome.(StrikeOutcome)
 	require.Nil(t, outcome.Warded)
 	require.NotZero(t, outcome.Roll)
-	require.Equal(t, 2, roller.calls, "one attack roll and one damage roll — no ward save")
+	require.Equal(t, 3, roller.calls, "ward save, attack and damage all roll")
 }
 
 func TestAttackingEndsTheAttackersOwnSanctuary(t *testing.T) {
@@ -234,7 +232,7 @@ func TestSanctuaryBlocksABaneTargetOnAFailedWardSave(t *testing.T) {
 	require.Equal(t, 1, payer.Resources[resources.SpellSlotLevel1].Current, "and so is the slot")
 }
 
-func TestSanctuarySaveSuccessGrantsImmunityAndBaneStillLandsOnTheWolf(t *testing.T) {
+func TestSanctuarySaveSuccessDoesNotGrantCasterImmunity(t *testing.T) {
 	fixtures := castFixtures(t)
 	wolf := fixtures.wolfData()
 	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
@@ -260,9 +258,9 @@ func TestSanctuarySaveSuccessGrantsImmunityAndBaneStillLandsOnTheWolf(t *testing
 	require.Nil(t, outcome.Targets[0].Warded)
 	require.NotNil(t, outcome.Targets[0].Save, "Bane's own contest ran exactly as if there were no ward")
 
-	require.True(t,
+	require.False(t,
 		hasConditionRef(t, fixtures.sheet(out, bardID).Conditions, refs.Conditions.SanctuaryImmune().String()),
-		"the bard earned immunity to cleric-1's Sanctuary by passing the ward save",
+		"a successful ward save must not grant the hostile caster the recipient's cooldown",
 	)
 }
 

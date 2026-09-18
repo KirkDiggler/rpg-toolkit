@@ -233,15 +233,7 @@ func (m *strikeMachine) wardCheckStep(
 				}
 				return Done{Outcome: m.outcome}, nil
 			}
-			return Gather{
-				name: "sanctuary immunity",
-				run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-					if err := applySanctuaryImmunity(ctx, bus, cast, m.in.AttackerID, ward.SourceID); err != nil {
-						return nil, err
-					}
-					return m.wardCheckStep(cast, pending, index+1, next), nil
-				},
-			}, nil
+			return m.wardCheckStep(cast, pending, index+1, next), nil
 		})
 }
 

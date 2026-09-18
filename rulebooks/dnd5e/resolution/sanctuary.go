@@ -52,33 +52,13 @@ func sanctuaryWardsOn(cast *Participants, memberID string) []*conditions.Sanctua
 	return wards
 }
 
-// sanctuaryImmuneTo reports whether attackerID already holds immunity to
-// casterID's Sanctuary, earned by a prior successful ward save this fight.
-func sanctuaryImmuneTo(cast *Participants, attackerID, casterID string) bool {
-	for _, condition := range heldConditions(cast, attackerID) {
-		if immune, ok := condition.(*conditions.SanctuaryImmuneCondition); ok && immune.SourceID == casterID {
-			return true
-		}
-	}
-	return false
-}
-
-// pendingSanctuaryWards is sanctuaryWardsOn filtered down to the casters
-// attackerID is not already immune to — the ones that still need a save.
-// Empty when attackerID and targetID are the same: nothing stops a warded
-// creature from targeting itself, and RAW's ward is about who ELSE targets
-// it.
+// pendingSanctuaryWards returns wards the aggressor must save against.
+// A recipient's recast cooldown never grants an aggressor a save bypass.
 func pendingSanctuaryWards(cast *Participants, attackerID, targetID string) []*conditions.SanctuaryCondition {
 	if attackerID == targetID {
 		return nil
 	}
-	var pending []*conditions.SanctuaryCondition
-	for _, ward := range sanctuaryWardsOn(cast, targetID) {
-		if !sanctuaryImmuneTo(cast, attackerID, ward.SourceID) {
-			pending = append(pending, ward)
-		}
-	}
-	return pending
+	return sanctuaryWardsOn(cast, targetID)
 }
 
 // wardSaveDC reads the warding caster's own spell save DC. Sanctuary is
@@ -107,33 +87,6 @@ func wardSaveInput(attackerID string, ward *conditions.SanctuaryCondition, dc in
 		},
 		Roller: roller,
 	}
-}
-
-// applySanctuaryImmunity grants attackerID the short immunity to casterID's
-// Sanctuary that a successful ward save earns. It PUBLISHES rather than
-// calls Apply itself — [prepareCondition]/[publishCondition]'s own shape:
-// the owning keeper (character/monster) is the one thing that both applies a
-// condition to its bus AND marks the sheet dirty for persistence, so every
-// delivered condition reaches the bus this way rather than by resolution
-// calling Apply directly.
-func applySanctuaryImmunity(ctx context.Context, bus events.EventBus, cast *Participants, attackerID, casterID string) error {
-	immune, err := conditions.NewSanctuaryImmuneCondition(conditions.NewSanctuaryImmuneConditionInput{
-		MemberID: attackerID, SourceID: casterID, SourceRef: refs.Spells.Sanctuary(),
-	})
-	if err != nil {
-		return err
-	}
-	target, err := cast.entity(attackerID)
-	if err != nil {
-		return err
-	}
-	if err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
-		Target: target, Type: dnd5eEvents.ConditionType(immune.Ref().ID),
-		Source: dnd5eEvents.ConditionSourceSpell, Condition: immune,
-	}); err != nil {
-		return fmt.Errorf("apply sanctuary immunity to %q: %w", attackerID, err)
-	}
-	return nil
 }
 
 // endSanctuaryIfHeld ends actorID's OWN Sanctuary ward, if they hold one, the

@@ -325,6 +325,9 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 	// intentionally construction-only: no rolls, publishes, spends, or removals.
 	for i := range m.targets {
 		target := &m.targets[i]
+		if err := validateRecipientCooldown(&m.profile, cast, target.targetID); err != nil {
+			return nil, err
+		}
 		first, err := target.inner.Start(ctx, cast)
 		if err != nil {
 			return nil, fmt.Errorf("target %d %q: %w", i, target.targetID, err)
@@ -467,15 +470,7 @@ func (m *castMachine) wardCastStep(
 				})
 				return m.resolveTarget(index + 1), nil
 			}
-			return Gather{
-				name: "sanctuary immunity",
-				run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-					if err := applySanctuaryImmunity(ctx, bus, m.cast, m.casterID, ward.SourceID); err != nil {
-						return nil, err
-					}
-					return m.wardCastStep(pending, wardIndex+1, target, index, next), nil
-				},
-			}, nil
+			return m.wardCastStep(pending, wardIndex+1, target, index, next), nil
 		})
 }
 
@@ -519,7 +514,7 @@ func (m *castMachine) hold(outcome CastOutcome) Gather {
 			})
 			for _, target := range outcome.Targets {
 				for _, applied := range target.Applied {
-					if applied.Kind != ImposedCondition || applied.Ref == nil {
+					if applied.Kind != ImposedCondition || applied.Ref == nil || m.independentEffect(applied.Ref) {
 						continue
 					}
 					address := applied.Address
@@ -998,4 +993,14 @@ func writeParameter(ref core.Ref, parameters json.RawMessage, key, value string)
 	}
 
 	return bound, nil
+}
+
+// independentEffect identifies content whose duration is not concentration-owned.
+func (m *castMachine) independentEffect(ref *core.Ref) bool {
+	for _, effect := range m.profile.Effects {
+		if effect.IndependentDuration && effect.Ref.String() == ref.String() {
+			return true
+		}
+	}
+	return false
 }
