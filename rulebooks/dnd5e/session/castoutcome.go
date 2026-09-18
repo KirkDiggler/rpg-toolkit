@@ -88,8 +88,13 @@ func castOutcome(
 			}
 			results = append(results, result)
 		}
+		var attack *encounter.RecordInput
+		if target.Attack != nil {
+			attack = recordStrike(actor, target.TargetID, *target.Attack,
+				AttackRef{Ref: spell.Ref, Name: spell.Name, DamageType: DamageType(cast.AttackDamageType)}, "", nil, nil)
+		}
 		targets = append(targets, encounter.CastTargetResult{
-			Target: encounter.MemberID(target.TargetID), Missed: target.Missed, Save: save, Results: results,
+			Target: encounter.MemberID(target.TargetID), Missed: target.Missed, Save: save, Results: results, Attack: attack,
 		})
 	}
 	return targets, pushes, nil
