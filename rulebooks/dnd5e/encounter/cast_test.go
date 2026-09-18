@@ -731,7 +731,7 @@ func (s *RecordCastSuite) TestRecordCastClosedShapes() {
 		[]string{"Saver", "Ability", "Roll", "Total", "DC", "Calculation", "Succeeded"},
 		structFieldNames(encounter.CastSave{}),
 	)
-	s.Equal([]string{"Target", "Missed", "Save", "Warded", "Results"}, structFieldNames(encounter.CastTargetResult{}))
+	s.Equal([]string{"Attack", "Target", "Missed", "Save", "Warded", "Results"}, structFieldNames(encounter.CastTargetResult{}))
 	s.Equal(
 		[]string{"Actor", "Spell", "Targets", "ConcentrationBreaks", "ConcentrationChecks"},
 		structFieldNames(encounter.RecordCastInput{}),
@@ -1039,4 +1039,47 @@ func (s *RecordCastSuite) TestAMovedResultRequiresTheSpellThatMovedThem() {
 		})
 		s.Require().Error(err)
 	}
+}
+
+func (s *RecordCastSuite) TestAttackCastRecordsRollBeforeLightAndReplays() {
+	enc := s.scene(everyoneStanding{})
+	spell := encounter.SpellIdentity{Ref: "dnd5e:spells:guiding-bolt", Name: "Guiding Bolt"}
+	attack := &encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: castBard, Targets: []encounter.MemberID{castSkeleton},
+		Attack:      &encounter.AttackIdentity{Ref: spell.Ref, Name: spell.Name, DamageType: "radiant"},
+		Values:      map[encounter.OutcomeValue]int{encounter.ValueRoll: 17, encounter.ValueTotal: 22, encounter.ValueAgainst: 13, encounter.ValueAmount: 8},
+		Calculation: attackCalculation(17, 5, 0),
+	}
+	input := &encounter.RecordCastInput{Actor: castBard, Spell: spell, Targets: []encounter.CastTargetResult{{Target: castSkeleton, Attack: attack,
+		Results: []encounter.ActivationResult{{Kind: encounter.ResultConditionApplied, Name: "Guiding Bolt", Address: &encounter.ConditionAddress{MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:guiding_bolt", SourceID: string(castBard)}}},
+	}}}
+	beforeSeq, err := enc.NextStorySeq()
+	s.Require().NoError(err)
+	attack.Actor = castFighter
+	_, err = enc.RecordCast(input)
+	s.Error(err)
+	afterSeq, seqErr := enc.NextStorySeq()
+	s.Require().NoError(seqErr)
+	s.Equal(beforeSeq, afterSeq, "invalid attack leaves no partial cast")
+	attack.Actor = castBard
+	out, err := enc.RecordCast(input)
+	s.Require().NoError(err)
+	before := s.storyEntries(enc, castBard, out.Seqs)
+	s.Equal([]string{encounter.BeatCast, "struck", "condition-applied"}, s.beatNames(before))
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+	s.Equal(before, s.storyEntries(loaded, castBard, out.Seqs))
+	attack.Kind = encounter.OutcomeMissed
+	input.Targets[0].Results = nil
+	delete(attack.Values, encounter.ValueAmount)
+	out, err = loaded.RecordCast(input)
+	s.Require().NoError(err)
+	s.Equal([]string{encounter.BeatCast, "missed"}, s.beatNames(s.storyEntries(loaded, castBard, out.Seqs)))
 }
