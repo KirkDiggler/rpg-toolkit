@@ -79,6 +79,7 @@ var (
 	spellBless               = &core.Ref{Module: Module, Type: TypeSpells, ID: "bless"}
 	spellBane                = &core.Ref{Module: Module, Type: TypeSpells, ID: "bane"}
 	spellShieldOfFaith       = &core.Ref{Module: Module, Type: TypeSpells, ID: "shield-of-faith"}
+	spellSanctuary           = &core.Ref{Module: Module, Type: TypeSpells, ID: "sanctuary"}
 	spellAnimalFriendship    = &core.Ref{Module: Module, Type: TypeSpells, ID: "animal-friendship"}
 	spellCommand             = &core.Ref{Module: Module, Type: TypeSpells, ID: "command"}
 	spellDisguiseSelf        = &core.Ref{Module: Module, Type: TypeSpells, ID: "disguise-self"}
@@ -269,6 +270,7 @@ func (n spellsNS) HealingWord() *core.Ref         { return spellHealingWord }
 func (n spellsNS) Bless() *core.Ref               { return spellBless }
 func (n spellsNS) Bane() *core.Ref                { return spellBane }
 func (n spellsNS) ShieldOfFaith() *core.Ref       { return spellShieldOfFaith }
+func (n spellsNS) Sanctuary() *core.Ref           { return spellSanctuary }
 func (n spellsNS) AnimalFriendship() *core.Ref    { return spellAnimalFriendship }
 func (n spellsNS) Command() *core.Ref             { return spellCommand }
 func (n spellsNS) DisguiseSelf() *core.Ref        { return spellDisguiseSelf }
@@ -451,6 +453,7 @@ var spellByID = map[string]*core.Ref{
 	"bless":                         spellBless,
 	"bane":                          spellBane,
 	"shield-of-faith":               spellShieldOfFaith,
+	"sanctuary":                     spellSanctuary,
 	"animal-friendship":             spellAnimalFriendship,
 	"command":                       spellCommand,
 	"disguise-self":                 spellDisguiseSelf,

@@ -39,6 +39,319 @@ adoption may require only a pin; proto changes require an identified wire-shape
 gap. Track toolkit, API and browser evidence independently using the checklist
 below. Preparation is not a prerequisite for continuing this work.
 
+## Sanctuary: inspection (2026-09-17)
+
+The user picked Sanctuary from the level-one Cleric spell list as the next
+inspection candidate, calling it "the weirdest one." 2014 Basic Rules text:
+one bonus action, touch, one willing creature, concentration up to one
+minute. Until the spell ends, any creature that targets the warded creature
+with an attack or a harmful spell must first make a Wisdom saving throw. On a
+failure the attacker must choose a new target or lose the attack/spell — the
+spell does not protect the warded creature from area effects. The spell ends
+if the warded creature makes an attack or casts a spell that affects an
+enemy. A creature that succeeds on the save is immune to that same caster's
+Sanctuary for 24 hours.
+
+Sources: [2014 Sanctuary](https://www.dndbeyond.com/spells/2151-sanctuary).
+
+### It doesn't exist anywhere yet, unlike its neighbors
+
+Confirmed by grep across the whole rulebook: no `sanctuary`/`Sanctuary` hit
+anywhere except one unrelated word in `encounter/encounter.go` (a literal
+"sanctuary tile" in a spatial-placement doc comment, nothing to do with the
+spell). `refs/spells.go` has no `spellSanctuary` singleton and no `ByID` row.
+This is a real difference from Shield of Faith, Guiding Bolt and Inflict
+Wounds — the plan's other named next-candidates — which already have catalog
+refs waiting (`refs/spells.go:81,60,61`) even with no cast content behind
+them yet. Sanctuary needs its ref/catalog entry created from nothing, not
+just its behavior wired up.
+
+### Four separable pieces, wildly different difficulty
+
+**1. The save-and-redirect-or-refuse gate — bounded, reuses two existing
+preflight points.** This is NOT Guidance/Resistance's suspend-and-resume
+shape: the save here belongs to the ATTACKER, is rolled at the moment they
+declare a target, and is resolved synchronously before anything else about
+the attack happens — nobody needs to see a roll and decide whether to spend
+something afterward. `strikeMachine.preflight` (`resolution/strike.go:185`)
+already gates a strike before the attack roll, in the same place range/reach
+is checked (`deliveryRangeState`, line 234); `validateCastTarget` /
+`checkCastTargets` (`resolution/action.go:597,636`) do the equivalent for
+casts, before payment. A Sanctuary check is an addition to those two
+existing gates, not a new capability. What IS missing: every current gate
+in both places REFUSES the whole action outright (stale target, out of
+range, ineligible recipient) — none of them lets the caller retry the same
+action against a different target. Whether "choose a new target or lose the
+attack" needs to be distinguished from an ordinary refusal (client just
+re-declares against someone else) or needs a new retry-in-place response
+shape is an open design question, not settled by anything already built.
+
+**2. Area exemption — free.** `combatActions.CastProfile.Target` already
+distinguishes `CastTargetArea` from single/known-creature targeting (the
+distinction Word of Radiance's own section above relies on). "Doesn't
+protect against area effects" falls out of that for nothing: an AoE cast
+never reaches the per-target gate Sanctuary would hook into.
+
+**3. Self-break on the warded creature's own hostile act — new, narrow.**
+"The spell then ends" the moment the warded creature itself attacks or
+casts a spell affecting an enemy. Confirmed by grep: no existing condition
+in `conditions/` ends itself because its OWN HOLDER took an action —
+concentration ends from external triggers (taking damage, casting a new
+concentration spell) and cleanup subscriptions fire on rest/combat-end, but
+nothing inspects "did the holder just act offensively." This needs its own
+subscription to the holder's own outgoing attack/cast, a shape nothing
+existing provides a template for.
+
+**4. 24-hour same-caster immunity — genuinely unsupported, not just
+unwired.** Checked `conditions.DurationHours` (`conditions/types.go:27`): it
+exists as an enum value, but grep for every file that references it
+(`conditions/types.go` itself and `mechanics/effects/behaviors.go`) turns up
+nothing that ever decrements or checks it against a clock — it is declared
+and unused. `play/clock` is the toolkit's actual time model, and both its
+clocks are explicitly abstract, not wall-clock hours: `Tick` is a
+player-driven world clock, `Turn` a combat-round bubble
+(`play/clock/doc.go`). There is no real-hours tracking anywhere in this
+codebase today. This is not "missing plumbing to wire up" the way Guidance's
+suspend/resume was — it would be the toolkit's first real-world-time-tracking
+feature, and it would exist solely to serve one spell's flavor immunity
+clause.
+
+### Net read
+
+Piece 1 (the actual ward) is a bounded, reusable contribution once the
+retry-vs-refuse question is settled. Pieces 2–3 are small and self-contained.
+Piece 4 is not bounded — it is new infrastructure with no existing seam,
+disproportionate to the one clause it serves. Not implementing yet; this is
+recorded per the plan's own inspection-queue discipline, same as every prior
+candidate, pending the user's direction on: (a) refusal vs. retry-in-place
+for a failed ward save, and (b) whether the 24-hour immunity ships as real
+infrastructure, is simplified (e.g., scoped to the current encounter/rest
+instead of real hours), or is explicitly deferred as a named gap while the
+ward itself goes live — the same kind of scope split the plan already used
+for Search on Guidance.
+
+### User decisions (2026-09-17) and the design they imply
+
+The user resolved both open questions, plus a correction to how piece 1 was
+framed above:
+
+**Immunity: no real time, condition-based instead.** The user noted nothing
+else in this codebase actually tracks real time either — concentration
+itself is turn-counted (`TurnEnds`/`SkipFirstTurnEnd`), not minute-timed — so
+24 real hours is dropped. In its place: a short-lived, source-qualified
+condition placed on the ATTACKER when they succeed their ward save, marking
+them immune to THAT SAME CASTER's Sanctuary specifically (matching RAW's
+"immune to your sanctuary spells," not a blanket immunity), lasting a few
+turns or clearing at combat end — exact duration is an implementation
+choice, not a re-opened gameplay question. This reuses the one live
+duration mechanism the codebase actually has (`TurnEnds`, the mechanism
+Guidance/Bless/Resistance's own concentration already rides), not the dead
+`DurationHours` enum identified above.
+
+**Refusal semantics, clarified — and it corrects piece 1's framing.**
+"Choose a new target" is entirely a CLIENT-side decision: nothing in the
+toolkit forces a redirect or exposes a retry-in-place response. Sanctuary is
+public knowledge in play, so a player/client normally just avoids declaring
+the warded creature as a target when another legal one exists — ordinary
+`Attack`/`Cast` target selection, no new mechanism. What the toolkit does
+have to guarantee, precisely stated by the user: **"if sanctuary fails to
+protect the target, the attack just goes on as normal"** (success = zero
+behavior change downstream) and **"give feedback that sanctuary has eaten
+the action regardless"** on a failed ward save — i.e. the attempted
+attack/cast's cost is spent EVEN THOUGH it does nothing, and the result must
+say so distinctly, not read as a silent no-op or an ordinary miss.
+
+That second half means piece 1 as first written was placed in the wrong
+spot. `strikeMachine.preflight` / `validateCastTarget` both run BEFORE
+charging — "a refused swing rolls nothing, damages nobody, and writes
+nothing at all," confirmed straight from `Manager.Attack`'s own doc comment
+(`session/attack.go:159`) — so a ward check living there would cost the
+attacker NOTHING on a failed save, contradicting "eat the action." The ward
+save has to run AFTER the cost is committed (after the Strike/Cast door
+pays — the same "Gather" point Spare the Dying's stabilization and Toll the
+Dead's damage-pool pick already hook into) and BEFORE the actual
+attack-roll/contest step, as a new intermediate machine step rather than an
+addition to the existing free preflight gates. On success, that step is a
+no-op and the machine proceeds exactly as it does today. On failure, it
+short-circuits straight to a result — no attack roll, no damage/save
+contest for the target — while the action/capacity/slot already spent stays
+spent.
+
+**The still-missing piece: a distinguishable "blocked by Sanctuary"
+result.** Casts already have a precedent for "paid, attempted, no effect,
+explicitly recorded" — `CastOutput.MissedTargets` / `EventCastMissed` /
+`CastMissedBody`, built for the stale-target-policy `attempt` case. A
+Sanctuary-blocked cast can likely reuse or sit beside that shape rather than
+invent a new one — to be confirmed once inside the code, not assumed here.
+Strike has no equivalent today: an unmodified `StrikeOutcome` only knows hit
+vs. miss by AC comparison, with no "attempt voided before the roll, for
+reason X" arm. That is new, bounded surface on `StrikeOutcome`, in the same
+family as the miss/hit split it already has.
+
+Not yet implemented. This restates the design the user's decisions imply;
+building it is the next step once confirmed.
+
+### Naming and the retarget mechanism, confirmed (2026-09-17)
+
+**Two distinct conditions, named so their provenance is obvious at a
+glance** — the user asked specifically that the immunity condition read as
+sanctuary-imposed, not a generic immunity flag:
+
+- `SanctuaryCondition` — the ward itself, on the protected creature. Named
+  like `ResistanceCondition` (verbatim spell name + `Condition`), not like
+  `GuidedCondition`/`BlessedCondition`'s adjective form, because "Sanctuaried"
+  reads worse than the spell name does.
+- `SanctuaryImmuneCondition` — the short-lived, source-qualified condition placed
+  on an ATTACKER who succeeds their save, refusing only that same caster's
+  future Sanctuary wards. `refs.Conditions.Sanctuary()` /
+  `refs.Conditions.SanctuaryImmune()`.
+
+**Retargeting needs no new toolkit mechanism — it already falls out of the
+existing capacity model.** The user's goal: an attacker with more than one
+swing this turn (Extra Attack, off-hand, etc.) can spend a DIFFERENT swing
+against a different target, and that swing resolves completely normally —
+full roll, target saves, helpful conditions, everything. That is already
+exactly how multiple attacks work today: each swing is its own
+`Attack`/Strike call spending one unit of `CapacityAttack`
+(`combat/capacity.go`), independent of any other swing this turn. A
+Sanctuary-voided swing spends its capacity unit for nothing (per the
+cost-commits-on-failure design above); a SEPARATE swing against a different
+target is simply a normal `Attack` call using a capacity unit that was never
+touched by the first one's failure. No redirect API, no linking between the
+two attempts — the existing per-swing capacity accounting already gives the
+player exactly this, and it is why the toolkit doesn't need to build a
+"retry-in-place" response shape.
+
+A single spell cast has no such multi-attempt structure — one action, one
+slot, one target, chosen once. If that one cast is voided by Sanctuary,
+there is nothing left to retry with this turn: "elected to spend their
+action for nothing," exactly the fizzle case the user described, and it
+requires no different handling than the general cost-commits-on-failure
+design already covers.
+
+Self-breaking (piece 3 above, the ward ending when its own holder attacks or
+casts offensively) is unchanged and still in scope.
+
+### Root slice 1 delivered: both conditions, not yet castable
+
+`refs.Spells.Sanctuary()` and `refs.Conditions.Sanctuary()` /
+`SanctuaryImmune()` added to the catalogs. `SanctuaryCondition`
+(`conditions/sanctuary.go`) mirrors `BlessedCondition`'s shape exactly — pure
+marker, no roll subscription, concentration + long-rest teardown only —
+because, per the design above, resolution will read its presence directly
+rather than this condition offering or publishing anything. `SanctuaryImmuneCondition`
+(`conditions/sanctuary_immune.go`) mirrors `InspiredCondition`'s
+combat-end-or-rest ending exactly, minus the offer/take machinery neither of
+these two conditions needs, and is source-qualified (blocks only the
+specific caster named in `SourceID`) the same way Blessed/Guided/Resistance
+already are. Both registered in the condition loader, the factory
+(`createSanctuary`/`createSanctuaryImmune`, mirroring `createGuided`
+exactly), and the display catalog (`conditions/display.go` — added
+proactively rather than left as a gap the way Guided's own entry originally
+was, per that file's own comment). Both cross-package contract tests
+(`ref_contract_test.go`, `long_rest_registry_test.go`) updated and green.
+
+Not yet consumed by anything: no `castContent` entry, not on Cleric's
+spell list, and resolution does not yet look either condition up. Full root
+module build/vet/test/lint clean. Next: resolution — the actual ward-save
+step, the self-break check, and the miss/blocked-outcome shape described
+above.
+
+### Live-testing correction: `SanctuaryImmuneCondition` needed its own clock (2026-09-17)
+
+Live testing after all four Sanctuary PRs were open surfaced a real bug:
+`SanctuaryImmuneCondition` ended only on combat-end or rest (mirroring
+`InspiredCondition`, per the slice above), so it never actually gated
+anything turn-to-turn — a caster could re-Sanctuary the same target on
+consecutive turns with no ward-save gap between them. The user's original
+intent, restated live: "cannot benefit from sanctuary for 24h (we said 10
+turns)" — a turn-count clock was always the agreed design; the shipped
+combat-end-or-rest ending was an implementation mistake, not a design
+change.
+
+Fixed to mirror `BladeWardCondition`'s pattern instead: the condition now
+holds its own `TurnEndsLeft`, ending on whichever of turn-end-count /
+combat-end / rest comes first. The count is `SanctuaryImmuneTurnEnds = 20`,
+not 10 — the user's own live follow-up: "if the spell last 10 turns and the
+immune is 10 turns that won't be as easy to test... let's make the immune
+20 turns so it's at least an impact for testing." Deliberately double the
+ward's own 10-turn duration so the immunity outlasting the spell that
+granted it is something a live table can actually observe, rather than the
+two always expiring together.
+
+Also confirmed directly against RAW in the same exchange: Sanctuary's ward
+is a duration effect, not single-use — it blocks every attack/harmful spell
+targeted at the warded creature for the ward's whole duration, not just the
+first one that triggers it. That part of the original implementation
+(`resolution`'s `sanctuaryWardsOn`/`pendingSanctuaryWards`) was already
+correct; the user's live-test expectation of "one-and-done" was the
+non-RAW read, not the code.
+
+Fixed on the already-open `feat/sanctuary-root` branch (PR #1811) rather
+than a new PR/branch, per this repo's explicit reason for leaving all four
+Sanctuary PRs open through live testing.
+
+### Root slice 2 delivered: enabled — Sanctuary is castable
+
+The last step, per this plan's own standing discipline: never make
+something selectable before every consumer beneath it can represent what
+happens when it fires. Resolution (#1812), encounter (#1813) and session
+(#1814) all landed first; this slice only adds the `castContent` entry and
+the acquisition-list line now that the whole chain can honestly run it.
+
+`spells/cast.go`: a new entry, `Healing Word`'s exact cost shape (bonus
+action + one level-1 slot — `slotCost` only builds a standard-action cost,
+so this is inlined the same way Healing Word's own entry already is rather
+than generalizing a helper for a second data point) combined with
+`Guidance`'s exact delivery shape (touch, self a legal recipient the same
+`CastTargetSelf`-cannot-stand-for-this reason, one `CastEffect` delivering
+the condition via `CounterpartKey: "source_id"`, `Concentration{TurnEnds:
+10, SkipFirstTurnEnd: true}`). `spells/types.go` and `spells/data.go` both
+gained a `Sanctuary` entry too, matching every recent spell's own precedent
+of keeping the informational (and mostly-legacy, per Healing Word's own
+handoff notes) `SpellData` table in sync even though nothing requires it
+for casting to work.
+
+`character/choices/spell_choices.go`: `Sanctuary` added to
+`clericSpellsLevel1`, growing the "select all supported 1st-level spells"
+list from five to six.
+
+**The one non-obvious fix this required**: `classes.clericPreparedSpellCount`
+(`classes/progression_data.go`) — a second, separately-maintained constant
+that has to agree with the options-list length by hand, because the
+`classes` package cannot import `character/choices` to derive it (that
+comment was already on the constant, anticipating exactly this moment).
+Missing this produces a very readable failure — "Must choose exactly 6
+spells, got 5" — across every Cleric creation/level-up test that builds a
+full spell selection, which is how it was actually caught rather than
+reasoned out in advance. Bumped 5 → 6.
+
+That one hardcoded-count fix then cascaded into every existing test fixture
+that hand-lists Cleric's five supported spells: `cleric_finalize_test.go`,
+`level_up_test.go`, `requirements_detail_test.go`,
+`class_comprehensive_test.go` (both the shared valid-submission builder and
+the `SpellCount` table entry), and the `TestCreationRequirementsGolden`
+golden fixture (regenerated with `-update`, diff reviewed — exactly the
+expected `count`/`options`/nothing else). None of these needed new
+assertions, only the existing ones updated to name six spells instead of
+five — the same "loosened to stop failing" line every prior slice in this
+plan has drawn: these are updates to the actual, correct new behavior, not
+weakened checks.
+
+New dedicated coverage: `TestSanctuaryDeclaresTouchBonusActionAndOwnedConcentration`
+in `spells/cast_test.go`, `TestGuidanceDeclaresTouchAndOwnedConcentration`'s
+own shape (definition fields, clone independence, JSON round-trip) — the
+one piece nothing else exercises directly, since the fixture updates above
+only prove Sanctuary compiles as part of a full character, not that its
+`CastDefinition` shape itself is right in isolation.
+
+Full root module build/vet/test/lint clean. **This closes out the toolkit
+side of Sanctuary.** What's left is entirely outside this repository:
+rpg-api and rpg-dnd5e-web adoption, which is the actual "test in web" the
+user's original "all the way down" framing named, and cannot start until
+this PR (and #1812/#1813/#1814 beneath it) ship real tags Sanctuary can be
+pinned to.
+
 ## Guidance: post-roll check-offer plan
 
 The user chose Guidance as the next inspection candidate from the current
@@ -1286,3 +1599,17 @@ including selected-self targeting and overlapping-caster acceptance. Preparation
 grants and out-of-combat casting remain separately scheduled work. The eventual API/web
 integration must be observed through the real game before declaring the Cleric journey
 complete. Historical creation/Sacred Flame evidence remains in `implementation.md`.
+
+### Recipient cooldown correction (2026-09-18)
+
+The earlier timer correction did not implement the requested anti-chain-casting
+rule. SanctuaryImmune belongs to the creature RECEIVING Sanctuary, applied at
+cast time, and prevents that creature receiving Sanctuary from any caster for
+20 of its turn ends (existing combat-end/rest cleanup still applies). Its source
+identifies the originating caster only. It is not earned by an attacker passing
+a ward save and does not bypass later ward saves. The cooldown is independent
+of concentration: ending or breaking the 10-turn ward does not clear it.
+
+Content declares both recipient effects, the cooldown's independent lifetime,
+and the condition that rejects a new recipient before payment. Offers and Cast
+must consume that same restriction, including after repository reload.
