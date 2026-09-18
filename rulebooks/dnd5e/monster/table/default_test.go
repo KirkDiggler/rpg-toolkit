@@ -24,7 +24,7 @@ const wantGeneric = `time:
   - { when: { enemy: reach },            attack: enemy }
   - { when: { enemy: seen },             toward: enemy }
   - { when: { enemy: remembered },       toward: enemy }
-  - { hold: {} }
+  - { when: { enemy: none },             hold: {} }
 `
 
 func TestDefaultIsTheDesignsTable(t *testing.T) {
@@ -121,10 +121,21 @@ func TestDefaultsEntriesRunInTheOrderTheArgumentNeeds(t *testing.T) {
 	require.Contains(t, lines[4], "enemy: remembered")
 	require.Contains(t, lines[4], "toward: enemy", "and one it only remembers gets walked toward")
 
-	require.Equal(t, "- { hold: {} }", lines[5],
-		"hold is last and unconditional, so a table always has an answer and an idle creature is idle on purpose")
-	for i, line := range lines[:5] {
-		require.Contains(t, line, "when:", "entry %d is conditional — only the fallback is not", i)
+	require.Contains(t, lines[5], "enemy: none")
+	require.Contains(t, lines[5], "hold: {}", "holding is what a creature does when there is nobody, and it is last")
+}
+
+// An unconditional entry is eligible on EVERY roll, so an unconditional `hold`
+// competes with the attack and the walk and a monster in reach stands there
+// half its turns. A table with no eligible entry is already a hold, so the
+// condition costs the creature nothing.
+func TestDefaultHasNoUnconditionalEntry(t *testing.T) {
+	got, err := Default(*refs.Monsters.Thug())
+	require.NoError(t, err)
+
+	for i, line := range entriesOf(t, got.Source) {
+		require.Contains(t, line, "when:",
+			"entry %d is eligible on every roll and would compete with the words that do something: %q", i, line)
 	}
 }
 
@@ -143,8 +154,8 @@ func TestDefaultsEnemyBandsRunNearToFar(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, []string{"reach", "seen", "remembered"}, bands,
-		"nearest band first; `none` is unnamed because the unconditional hold already answers it")
+	require.Equal(t, []string{"reach", "seen", "remembered", "none"}, bands,
+		"nearest band first, and every band is named — including the one that holds")
 }
 
 // entriesOf pulls the entry lines out of a table's source without parsing the

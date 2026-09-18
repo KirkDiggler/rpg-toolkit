@@ -39,13 +39,18 @@ type DefaultTable struct {
 //
 // Failing both, it works down the `enemy:` bands, which are exclusive: it
 // strikes what is already in `reach`, CLOSES on what it can only see, walks
-// toward what it merely remembers, and otherwise holds. The `seen` band is
-// `toward`, not `attack`, because a creature that can see you across a room
-// has to cross it first — a table whose only sighted answer was `attack`
-// would leave a monster standing where it spotted you, swinging at nothing.
+// toward what it merely remembers, and holds when there is nobody. The `seen`
+// band is `toward`, not `attack`, because a creature that can see you across
+// a room has to cross it first — a table whose only sighted answer was
+// `attack` would leave a monster standing where it spotted you, swinging at
+// nothing.
 //
-// `hold` is last and unconditional, so the table always has an answer and a
-// creature with nothing to do does nothing rather than nothing-in-particular.
+// EVERY entry is conditional, `hold` included. An unconditional `hold` is
+// eligible on every roll, so it competes with the attack and the walk and a
+// monster in reach stands there half its turns. `hold` belongs to the one
+// band that means nobody is there; a table with no eligible entry is already
+// a hold, which the engine answers and says in the beat, so the condition
+// costs the creature nothing and stops it costing the creature its turn.
 //
 // There is no `attacked` trigger to go with the `attacked` condition: what a
 // creature does about being hit is decided when it next has time, not when
@@ -56,7 +61,7 @@ const generic = `time:
   - { when: { enemy: reach },            attack: enemy }
   - { when: { enemy: seen },             toward: enemy }
   - { when: { enemy: remembered },       toward: enemy }
-  - { hold: {} }
+  - { when: { enemy: none },             hold: {} }
 `
 
 // Default returns the rulebook's default table for a monster kind, as the
