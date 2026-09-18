@@ -342,6 +342,20 @@ var longRestCases = map[string]longRestCase{
 		// Inspired's own divergence from a real-time RAW duration.
 		removalReason: "rest",
 	},
+	refs.Conditions.GuidingBolt().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"guiding_bolt"},
+			"member_id":"member-1","source_id":"cleric-1",
+			"source_ref":{"module":"dnd5e","type":"spells","id":"guiding-bolt"},"turn_ends_left":2
+		}`),
+		ownerID:          "member-1",
+		expectedRef:      refs.Conditions.GuidingBolt(),
+		expectedSourceID: "cleric-1",
+		outcome:          longRestRemove,
+		// "rest", not "long rest": the immunity ends on ANY rest, mirroring
+		// Inspired's own divergence from a real-time RAW duration.
+		removalReason: "rest",
+	},
 	refs.Conditions.Baned().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"baned"},

@@ -72,6 +72,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.Helped().String():            {Name: "Helped"},
 	refs.Conditions.Inspired().String():          {Name: InspiredName},
 	refs.Conditions.BladeWard().String():         {Name: BladeWardName},
+	refs.Conditions.GuidingBolt().String():       {Name: GuidingBoltName},
 	refs.Conditions.TrueStrike().String():        {Name: TrueStrikeName},
 	refs.Conditions.ViciousMockery().String():    {Name: ViciousMockeryName},
 	refs.Conditions.Commanded().String():         {Name: CommandedName},

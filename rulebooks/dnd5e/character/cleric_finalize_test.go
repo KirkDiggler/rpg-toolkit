@@ -39,7 +39,7 @@ func (s *ClericFinalizeSuite) classInput() *SetClassInput {
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
 			Spells: []spells.Spell{
-				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary,
+				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt,
 			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
@@ -108,7 +108,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	}, data.KnownCantrips)
 	s.ElementsMatch([]string{
 		refs.Spells.Bane().String(), refs.Spells.Bless().String(), refs.Spells.Command().String(),
-		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(),
+		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(), refs.Spells.GuidingBolt().String(),
 	}, data.KnownSpells)
 	encoded, err = json.Marshal(data)
 	s.Require().NoError(err)
@@ -521,3 +521,18 @@ func (s *ClericFinalizeSuite) TestReplacingClassAndDomainReplacesTheirGrants() {
 }
 
 func TestClericFinalizeSuite(t *testing.T) { suite.Run(t, new(ClericFinalizeSuite)) }
+
+func (s *ClericFinalizeSuite) TestGuidingBoltCompilesFromNativeClericAfterReload() {
+	c, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-bolt", events.NewEventBus())
+	s.Require().NoError(err)
+	c, err = Load(context.Background(), c.ToData())
+	s.Require().NoError(err)
+	d := c.CastDefinition(spells.GuidingBolt)
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(5, d.Cast.Attack.AttackBonus, "Wisdom 16 plus proficiency 2")
+	s.Nil(d.Cast.Attack.Ability, "spellcasting modifier must not be added to radiant damage")
+	s.Equal("4d6", d.Cast.Attack.Damage[0].Dice)
+	_, err = c.StatusView(&StatusViewInput{})
+	s.NoError(err)
+}
