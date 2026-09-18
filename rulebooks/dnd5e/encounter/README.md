@@ -50,118 +50,118 @@ accidentally contain a rule. A ledger cannot peek at the payload it is holding.
 Somebody still has to put them together — that is this module, and keeping the
 assembly in one place is what lets the pieces stay small.
 
-## Writing a decider
+## Writing a creature's table
 
-**A decider is monster intelligence.** One method:
+**A creature's whole policy is an authored table.** There is no behaviour code
+to write: `on:` in the dungeon file, keyed by what happened, with a weighted
+list of entries under each key. The engine rolls it.
 
-```go
-type Decider interface {
-    Decide(snap Snapshot) (Intent, error)
-}
+```yaml
+on:
+  time:
+    - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
+    - { when: { enemy: seen },             attack: enemy }
+    - { when: { enemy: remembered },       toward: enemy }
+    - { when: { enemy: none },             toward: { at: [3, 4] } }
+    - { when: { fled: { within: 3 } },     away: actor, weight: 5 }
+    - { hold: {} }
+  intimidated:
+    - { weight: 70, say: "Fine, fine!", fact: camp-cowed }
+    - { weight: 30, say: "BOSS!", flee: {} }
 ```
+
+Five triggers. The four social ones — `intimidated`, `intimidate_failed`,
+`persuaded`, `persuade_failed` — fire inside the verb that settled. `time`
+fires when the creature has time: its turn in a fight, or a round of the world.
+
+### Four things load the die
+
+1. **The rulebook's default table for the monster's kind.** Content, shipped
+   beside the stat block. This is why a placement with no `on:` still fights.
+2. **The author's orders**, on a faction (inherited by every placement in it)
+   or on the placement itself. For each key the NEAREST layer that names it
+   wins WHOLESALE — no merging, so an author never has to reason about what was
+   added to what, and overriding a key visibly costs the entries under it.
+3. **Temperament.** `temper: coward` on a placement, or a mix on the faction
+   (`temper: { coward: 1, soldier: 2, aggressive: 1 }`) dealt per member at
+   spawn through the shared dice, with a beat so the streamer sees which goblin
+   came out the coward. A temperament is a weight profile and nothing else: it
+   adds no entries, holds no memory and carries no trigger.
+4. **What the creature has seen and suffered.** `when` reads the creature's own
+   holdings — an opposed member in sight, one remembered from before, or a deed
+   done to it within N rounds. An entry whose condition is false is not on the
+   table for that roll; it is ABSENT, not weighted zero.
 
 ### You are given only what you know
 
-```go
-type Snapshot struct {
-    Room     string          // your own current region
-    Position spatial.Position // your own position within it
-    Holdings []intel.Holding  // your own held intel — nothing more
-}
-```
+A driver receives a `MonsterView` and nothing else: its own position, actions,
+table and temperament, its own sight and held location knowledge, the deeds
+done to it, and the budget it has to spend. That is the **anti-wall-hack
+contract (C2)**, and it is structural — there is no field on the view that
+reaches the world or another member's live truth. Opposition is the one fact
+the view carries that the creature could not work out alone, and it is
+projected onto each sighting as `Opposed` rather than handed over as a graph.
 
-That is the **anti-wall-hack contract (C2)**, and it is structural rather than a
-convention: there is no field on `Snapshot` that reaches the world or another
-member's live truth, so a decider cannot cheat even by accident. What it gets
-instead is *belief* — percepts that may be stale, and may be false. An illusion
-is ordinary testimony here. A monster chasing a player who moved away two ticks
-ago is behaving correctly.
+### The roll is seen
 
-Note that the contract covers **placement**, not just sight: a decider learns
-where *it* stands, never where anyone else stands except through its own
-percepts.
+Every pick is one die of `Σ (weight × temperament factor)`, rolled through the
+shared dice, and the whole arithmetic goes on the `answered` beat: every
+eligible entry with its authored weight, its factor and their product, the
+total, the face, and the entry that fired. A table nobody can replay is a table
+nobody can trust.
 
-### You return an intent, not an action
+### What a round of the world guarantees you
 
-`Intent` is a sealed type — two today:
+There is no tick verb. **The world clock advances only because somebody acts**
+— a walk pays a round every `SpeedFeet / 5` cells, an action pays one for its
+actor, a fight round wrapping pays one per fighter — and every advance names
+its own member as the driver. Standing still is free.
 
-| Intent | Means |
-|---|---|
-| `IntentMoveTo{To}` | step to a cell on the map |
-| `IntentHold{}` | do nothing this tick |
+When an advance raises the high-water, the world thinks, inside the same call:
 
-`To` is DUNGEON-ABSOLUTE, like everything else a decider is given. There is no
-separate intent for crossing a doorway: a doorway's two cells are adjacent in
-absolute space, so "step through the door" and "step next to me" are the same
-sentence, and the composition works out which mechanism carries it.
+- **Deterministic order.** Creatures are consulted in stable clock-member
+  order.
+- **A table and a budget, or nothing.** A monster with no `on:` table is not
+  consulted at all: holding is what an absent table means, and asking would
+  cost the round a standing consult and a sight sweep to produce a world
+  nobody changed.
+- **One turn's worth per unit of budget**, with `AttacksLeft: 0`. A creature
+  two rounds behind — one that was in a fight while the party walked — gets
+  both when the fight lets it go.
+- **An `Attack` off the turn clock is an error**, not a skipped intent. An
+  enemy in reach on the world clock is a fight sight that has already formed.
+- **A refused step does not abort the round.** A cell no region owns, a wall
+  in the way: that creature simply gets nowhere this round, and everything
+  else proceeds.
+- **Sight refreshes once**, after every creature has moved — then the fight
+  that anybody walked into forms by the ordinary path.
+- **A monster in a fight is not consulted.** The world thinks on the tick and
+  a fight thinks in turns; `Form` takes a fighter off the world clock, so the
+  world has nothing to give it. Your driver never needs to detect "am I in
+  combat".
 
-You return what you *want*. The composition decides whether it happens and makes
-it happen. This is what keeps a decider testable: it is a pure function from a
-struct to a struct, and a unit test needs no encounter at all.
+### What decides, and how you change it
 
-### A worked example
-
-The pursuit decider from `pump_test.go`, which is about as much as a decider
-ever needs to do:
-
-```go
-func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
-    for _, h := range snap.Holdings {
-        if h.Subject != intel.Subject(p.target) {
-            continue
-        }
-        var seen encounter.SightPayload
-        if err := json.Unmarshal(h.Payload, &seen); err != nil {
-            return nil, err
-        }
-        // A percept in another room is out of this simple pursuer's reach.
-        if snap.Room != seen.Room {
-            return encounter.IntentHold{}, nil
-        }
-        // Standing exactly where the percept places them: try a door, else wait.
-        if snap.Position.X == seen.X && snap.Position.Y == seen.Y {
-            /* ... look for a connection at this cell ... */
-            return encounter.IntentHold{}, nil
-        }
-        return encounter.IntentMoveTo{To: spatial.Position{X: seen.X, Y: seen.Y}}, nil
-    }
-    return encounter.IntentHold{}, nil // never seen them — nothing to chase
-}
-```
-
-Read the last line carefully: **no percept means no pursuit.** The monster is not
-told the player is absent; it simply holds nothing about them. That falls out of
-the contract rather than being coded defensively.
-
-### What `Pump` guarantees you
-
-`Pump` advances the world one tick, and its ordering is the part worth knowing:
-
-- **Two phases.** *Every* decider is consulted before *anything* executes. So no
-  decider can observe another monster's move within the same tick — the pack does
-  not get a free turn order advantage, and you never have to reason about who was
-  polled first.
-- **Deterministic order.** Monsters act in stable `Members()` order.
-- **A decider error aborts the pump atomically.** No clock advance, no moves, no
-  record beats. Return an error only when you genuinely cannot decide.
-- **A rejected step does not abort.** A cell no region owns, a wall between you
-  and it, or a step the spatial rules refuse: each just means that monster fails
-  to act this tick. Everything else proceeds.
-- **Sight refreshes once**, after all actions — then one tick beat, then the
-  movement beats in decision order.
-- **A monster in a fight is not consulted.** `Pump` is the world thinking, and
-  a monster caught in a turn bubble (`Form`) belongs to the fight, not the
-  world — its decider is skipped entirely until the fight dissolves or the
-  monster transfers out. Your decider never needs to detect "am I in combat";
-  if it is being asked, it is free-roaming.
+A creature's whole policy is its **table**: `on:`, in the dungeon file, keyed
+by what happened — the four social verdicts, and `time` for having time. The
+engine supplies one `Driver` seam and one implementation of it, `TableDriver`,
+which decides nothing: it rolls the table, loaded by the creature's
+temperament, filtered by what the creature has seen and suffered, and turns the
+entry that fired into an intent. Changing what a monster does is editing
+content, not writing Go.
 
 ### What you cannot express yet
 
-**There is no attack intent.** Movement, pursuit, positioning, patrol, and
-traversal are all expressible today; attacking, targeting and the action economy
-are wave-4 work (see `docs/ideas/session-sdk/plan.md`). Worth knowing before
-choosing a first task — behavior that decides *where to be* is buildable now,
-behavior that decides *what to do to someone* is not.
+**A creature cannot be told to go and look somewhere.** The words are
+`hold`, `attack`, `toward`, `away`, `fact` and `flee`, and a selector names a
+creature or an authored cell. A creature that walks to where it last saw
+somebody and finds nobody there holds: "walk through that door and look" is a
+word nobody has written yet. `alarm`, `lure`, `pretend` and `patrol` are
+designed and refused by name.
+
+**A temperament may not add entries, hold memory or carry a trigger.** It is a
+weight profile and nothing else. The moment it grows one of those it is the
+retired mind ladder again under a new name.
 
 ## Capabilities you must supply
 
@@ -209,7 +209,7 @@ the same seam and neither has to know the other exists.
 one — the composition asks at the choke point where it already asks about sight,
 so every route to zero is noticed without that route knowing this interface
 exists. A member reported down is on no side of a contact, has no turn, and gets
-no `Pump` action, while staying on the map, in the roster, and recordable
+no round of the world, while staying on the map, in the roster, and recordable
 against. Answer only about the members you are asked about; a name that was not
 in the question is refused as a mis-wiring rather than ignored.
 
@@ -222,8 +222,10 @@ other caller of the consult is a verb looking at a world something else changed.
 
 | File | Holds |
 |---|---|
-| `encounter.go` | the aggregate: setup, verbs, `Pump`, member management |
-| `decider.go` | `Decider`, `Snapshot`, `Intent` and its three implementations |
+| `encounter.go` | the aggregate: setup, verbs, member management |
+| `table.go` | `Table`, `Layer`, the temperament, and the one evaluator |
+| `tabledriver.go` | the one `Driver`: a table rolled, a word turned into an intent |
+| `worldtime.go` | what a verb costs the world clock, and the world thinking on it |
 | `trigger.go` | `InitiativeRoller` and the classification that starts a fight |
 | `standing.go` | `Standing`, and the world noticing who is down |
 | `sight.go` | `Sight`, and how far each member can see this refresh |

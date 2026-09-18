@@ -36,8 +36,8 @@
 // arrival cell with that lawful complete percept. An absent subject remembered
 // at the exact cell becomes Held + Unknown without exposing its concealed live
 // position. Encounter-owned [IntelDelta] values surface the correction for
-// persistence; public Step and free-roam Pump do not independently correct
-// location testimony.
+// persistence; public Step and the world's own round do not independently
+// correct location testimony.
 //
 // The composition holds no rules of its own that it could hold instead.
 // InitiativeRoller, Participation, and Sight are SUPPLIED at construction and
@@ -55,9 +55,32 @@
 // and Dissolve re-homes everyone to the tick. A fight also ENDS ITSELF when a
 // supplied Remove leaves it without a Contact side — [ByDefeat], with no
 // caller, the mirror of sight starting one. Everyone not in the fight keeps
-// free-roaming while it runs; everyone in it is the fight's alone — Step and
-// Pump are world-clock verbs and will not act for a fight member. Which clock somebody is on is always askable, per member, via
-// ClockOf.
+// free-roaming while it runs; everyone in it is the fight's alone — Step is a
+// world-clock verb and will not act for a fight member, and a fight member is
+// not on the world clock for the world to think for. Which clock somebody is
+// on is always askable, per member, via ClockOf.
+//
+// # Time on the world clock (rpg-project#465)
+//
+// The world clock advances ONLY BECAUSE SOMEBODY ACTS. A walk pays one round
+// per PACE — every CellsFromFeet(SpeedFeet) cells, the remainder carried on
+// the member and persisted. Every verb the turn clock would price as an action
+// pays one round for its actor, after its outcome has landed: Intimidate,
+// Persuade, Search, Unlock, Interact, Loot, RecordCast, RecordActivation. A
+// fight round wrapping pays one round PER BUBBLE MEMBER, each naming itself.
+// Standing still is free, said plainly: a party that talks to a goblin and
+// waits sees nothing move.
+//
+// Every advance names its MEMBER as the driver, never a literal "world". The
+// leaf accrues by driver as max rather than sum, so four players walking six
+// cells together is one round and not four — and a driver called "world" would
+// have made a long fight the front runner forever.
+//
+// When time passes, THE WORLD THINKS, inside the same call that raised the
+// high-water and after the verb's own beats: every standing monster on the
+// world clock with budget and a table is given one turn's worth of doing per
+// unit, rolls its `time` table, and spends one. A creature that walks into an
+// opposed member's sight forms or joins a fight by the ordinary path.
 //
 // # Concealment: the run composes its world (rpg-toolkit#1371)
 //

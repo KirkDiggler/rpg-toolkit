@@ -282,7 +282,7 @@ func (e *Encounter) lastRecordedSeq() uint64 {
 // by hand: this SDK's load-mutate-save shape means nothing is persisted until
 // the verb's own commit, so an error return simply discards the in-memory
 // encounter and leaves the stored world exactly as it was. This mirrors
-// Pump's rule for Decider errors ("aborts atomically... no clock advance, no
+// the retired Pump's rule for driver errors ("aborts atomically... no clock advance, no
 // moves, no beats") using the mechanism this seam already has.
 // bubbleHasPlayer reports whether any member of order has a player.
 func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {

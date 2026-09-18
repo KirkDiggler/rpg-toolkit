@@ -27,10 +27,11 @@ import (
 //	R3  a MONSTER arrives, filter names it      -> fires (a named filter overrides kind)
 //	R4  a PLAYER arrives, filter names SOMEBODY ELSE -> does NOT fire
 //
-// The ways in: Step (a host walks somebody), Pump (a monster acts on its own
-// intel) and Join (somebody arrives mid-scene, possibly straight onto the
-// tile). Pump carries only the monster rules, because Pump only moves monsters
-// — stated rather than quietly skipped.
+// The ways in: Step (a host walks somebody), a round of the world (a monster
+// walks on its own orders) and Join (somebody arrives mid-scene, possibly
+// straight onto the tile). The world's round carries only the monster rules,
+// because a world round only moves monsters — stated rather than quietly
+// skipped.
 //
 // The fixture seals the vault off from the annex where the watching player
 // stands. That is load-bearing rather than scenery: sight is geometry since S0,

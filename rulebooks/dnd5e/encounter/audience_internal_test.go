@@ -57,7 +57,7 @@ func TestAudienceForPolicy(t *testing.T) {
 
 	t.Run("tableBeat with no subjects falls back to the live roster", func(t *testing.T) {
 		require.Equal(t, roster, enc.audienceFor(tableBeat),
-			"Pump's tick beat and Exit's exit beat both call it exactly this way")
+			"the world's tick beat and Exit's exit beat both call it exactly this way")
 	})
 
 	t.Run("tableBeat with subjects returns them verbatim, unsorted", func(t *testing.T) {

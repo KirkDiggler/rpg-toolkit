@@ -25,7 +25,7 @@ import (
 //
 // The law is stated at [refreshSight]; these are its seven guards. Setup ruled
 // it first (a scene records that it opened before it records a fight starting
-// inside it), and trigger detection then arrived at Move, Traverse, Pump and
+// inside it), and trigger detection then arrived at Move, Traverse, a world round and
 // Join. Two of the four (Traverse via TestTraverseBeatPinned, Join via
 // TestTombWatch) inverted the moment trigger detection moved inside
 // refreshSight; the other two were latent only because nothing asserted them.
