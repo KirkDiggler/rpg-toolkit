@@ -1324,14 +1324,18 @@ type SetupInput struct {
 	// empty" is a distinction only the rulebook can draw.
 	Equipment Equipment
 
-	// TurnDriver decides what a member with no player does when the fight's
-	// clock lands on their turn (rpg-toolkit#1162). REQUIRED — a fight can
-	// form at first light with an unplayed member first in initiative, so an
-	// encounter that cannot answer this would stall before its caller does
-	// anything. Refused at construction (ErrNoTurnDriver). There is no default
-	// — see ADR-0043 for why this capability, unlike Decider, may not be
-	// silently absent.
-	TurnDriver TurnDriver
+	// TurnDriver decides what a member with no player does when it is given
+	// time — its turn in a fight, or a round of the world (rpg-toolkit#1162,
+	// rpg-project#465). REQUIRED: a fight can form at first light with an
+	// unplayed member first in initiative, so an encounter that cannot answer
+	// this would stall before its caller does anything. Refused at
+	// construction (ErrNoTurnDriver), with no default — see ADR-0043.
+	//
+	// THE TYPE IS [Driver] NOW; the FIELD keeps its old name for one release,
+	// alongside the deprecated [TurnDriver] alias, so a caller can adopt the
+	// rename in its own PR rather than in this module's. Both go together in
+	// the release after.
+	TurnDriver Driver
 
 	// Roller is THE WORLD'S DIE: the shared dice every pick this composition
 	// makes is rolled through — a creature's `time` table on its turn and on
@@ -1348,7 +1352,7 @@ type SetupInput struct {
 	// no die, and a creature's `time` pick happens there.
 	Roller dice.Roller
 
-	// Striker resolves and records a member's attack when a [TurnDriver]
+	// Striker resolves and records a member's attack when a [Driver]
 	// returns an [Attack] intent (rpg-project#254). REQUIRED, for the same
 	// reason TurnDriver is and at the same door: a fight can form with an
 	// unplayed member ready to swing the moment it forms, so an encounter

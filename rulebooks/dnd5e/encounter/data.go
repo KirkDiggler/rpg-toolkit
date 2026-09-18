@@ -1940,15 +1940,16 @@ type LoadEncounterInput struct {
 	// use site, and never defaulted.
 	Equipment Equipment
 
-	// TurnDriver decides what a member with no player does when the fight's
-	// clock lands on their turn. REQUIRED, exactly as it is on SetupInput: a
-	// loaded encounter's bubble can land on an unplayed member the moment it
-	// is reconstituted, so a blob that comes back without one is as unusable
-	// as a Setup without one (rpg-toolkit#1162, ADR-0043). Refused at the
-	// door, never guarded at the use site, and never defaulted.
-	TurnDriver TurnDriver
+	// TurnDriver decides what a member with no player does when it is given
+	// time. REQUIRED, exactly as it is on SetupInput: a loaded encounter's
+	// bubble can land on an unplayed member the moment it is reconstituted,
+	// so a blob that comes back without one is as unusable as a Setup without
+	// one (rpg-toolkit#1162, ADR-0043). Refused at the door, never guarded at
+	// the use site, and never defaulted. The type is [Driver] now; the field
+	// keeps its name for one release — see [SetupInput.TurnDriver].
+	TurnDriver Driver
 
-	// Striker resolves and records a member's attack when a TurnDriver
+	// Striker resolves and records a member's attack when a [Driver]
 	// returns an Attack intent. REQUIRED, exactly as it is on SetupInput and
 	// for the same reason (rpg-project#254): a loaded encounter's bubble can
 	// land on an unplayed member ready to swing the moment it is
