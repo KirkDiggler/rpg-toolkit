@@ -200,7 +200,9 @@ func (s *SanctuaryImmuneCondition) onTurnEnd(ctx context.Context, event dnd5eEve
 	}
 	s.TurnEndsLeft--
 	if s.TurnEndsLeft > 0 {
-		return nil
+		return dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(ctx, dnd5eEvents.ConditionStateChangedEvent{
+			MemberID: s.MemberID, ConditionRef: s.Ref(),
+		})
 	}
 	return s.end(ctx, "expired")
 }

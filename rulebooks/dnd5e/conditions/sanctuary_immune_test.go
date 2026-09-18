@@ -45,7 +45,7 @@ func (s *SanctuaryImmuneSuite) TestRoundTripAndDisplay() {
 	s.Equal("Sanctuary Immune", display.Name)
 }
 
-func (s *SanctuaryImmuneSuite) TestRequiresAttackerAndBlockedCaster() {
+func (s *SanctuaryImmuneSuite) TestRequiresRecipientAndOriginatingCaster() {
 	for _, input := range []NewSanctuaryImmuneConditionInput{
 		{SourceID: "cleric", SourceRef: refs.Spells.Sanctuary()},
 		{MemberID: "goblin-1", SourceRef: refs.Spells.Sanctuary()},
@@ -172,4 +172,24 @@ func (s *SanctuaryImmuneSuite) TestApplyingTwiceIsRefused() {
 	condition := s.condition("cleric-a")
 	s.Require().NoError(condition.Apply(ctx, bus))
 	s.Require().Error(condition.Apply(ctx, bus))
+}
+
+func (s *SanctuaryImmuneSuite) TestEveryTickPublishesPersistedStateChange() {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	condition := s.condition("cleric-a")
+	s.Require().NoError(condition.Apply(ctx, bus))
+	var changed []dnd5eEvents.ConditionStateChangedEvent
+	_, err := dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx, func(_ context.Context, event dnd5eEvents.ConditionStateChangedEvent) error {
+		changed = append(changed, event)
+		return nil
+	})
+	s.Require().NoError(err)
+	s.Require().NoError(dnd5eEvents.TurnEndTopic.On(bus).Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: "someone-else"}))
+	s.Empty(changed)
+	s.Require().NoError(dnd5eEvents.TurnEndTopic.On(bus).Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: condition.MemberID}))
+	s.Require().Len(changed, 1)
+	s.Equal(condition.MemberID, changed[0].MemberID)
+	s.Equal(condition.Ref(), changed[0].ConditionRef)
+	s.Equal(SanctuaryImmuneTurnEnds-1, condition.TurnEndsLeft)
 }
