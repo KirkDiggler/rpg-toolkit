@@ -43,10 +43,6 @@ func NewThug(id string) *monster.Monster {
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
-	// A thug comes for whoever hit it and does not care what they picked up
-	// afterwards (rpg-toolkit#1745).
-	m.SetMind(monster.MindBerserker)
-
 	// Note: Pack Tactics trait (advantage when ally adjacent to target)
 	// is applied when the monster is loaded into combat via LoadFromData with an event bus.
 
