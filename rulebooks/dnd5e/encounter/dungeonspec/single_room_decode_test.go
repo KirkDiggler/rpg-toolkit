@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 )
@@ -62,8 +63,8 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsUnknownAndSecondDocument() {
 // TestDecodeAcceptsV4RootAheadOfItsKeys is the version seam: the four
 // properties the web's own v4 test asserts for it (singleRoomDungeon.test.ts,
 // "accepts the v4 root ahead of its keys, without loosening strictness"),
-// mirrored here, plus the room-version split and the byte-identity the whole
-// versioning scheme rests on.
+// mirrored here, plus the room-version split and the version-neutrality the
+// whole versioning scheme rests on.
 //
 // The mutation replaces the ROOT version line only — exactly as the web's
 // `.replace('version: 3', 'version: 4')` does — leaving the room draft at 3,
@@ -110,11 +111,22 @@ func (s *SingleRoomSourceSuite) TestDecodeAcceptsV4RootAheadOfItsKeys() {
 		})
 	}
 
-	// 4. A v3 document is unchanged, byte for byte. Decoding s.raw and
-	// re-encoding it is stable, and the v4 document — which differs from it
-	// only in the root version — decodes to the SAME bytes once that one digit
-	// is normalized. The seam adds no default, no repair and no second shape.
-	// The existing v3 accept/refuse suite, untouched, is the other half.
+	// 4. The seam is VERSION-NEUTRAL: the v4 document — which differs from
+	// s.raw only in the root version — decodes to the SAME spec once that one
+	// digit is normalized, and the v3 decode is round-trip stable. Both
+	// comparisons are over the MARSHALED [SingleRoomSpec], not the source
+	// document: yaml.Marshal of a decode is not the file's bytes, so what is
+	// pinned here is the decoded shape. The seam adds no default, no repair
+	// and no second shape.
+	//
+	// What this does NOT prove is that the v3 decode is what it was before the
+	// change: both operands are produced by this build, so a change that moved
+	// v3 and v4 alike would pass. The v3 fixture's committed picture is owed by
+	// the keys increment (rpg-toolkit#1826), which brings this fixture — and
+	// the v4 one beside it — into the golden walk that
+	// contentgolden_test.go filters it out of today. Until then the v3 half
+	// rests on the diff: for v == 3 the accept predicate is the one it always
+	// was, and nothing else on this path reads the root version.
 	v3, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: s.raw})
 	s.Require().NoError(err)
 	v3Bytes, err := yaml.Marshal(v3.Spec)
@@ -123,19 +135,18 @@ func (s *SingleRoomSourceSuite) TestDecodeAcceptsV4RootAheadOfItsKeys() {
 	s.Require().NoError(err)
 	againBytes, err := yaml.Marshal(again.Spec)
 	s.Require().NoError(err)
-	s.Equal(string(v3Bytes), string(againBytes), "the v3 round trip is byte-stable")
+	s.Equal(string(v3Bytes), string(againBytes), "the v3 decode is round-trip stable")
 
 	out.Spec.Version = 3
 	v4AsV3Bytes, err := yaml.Marshal(out.Spec)
 	s.Require().NoError(err)
-	s.Equal(string(v3Bytes), string(v4AsV3Bytes), "v4-only-in-version decoded to the v3 bytes")
+	s.Equal(string(v3Bytes), string(v4AsV3Bytes), "v4-only-in-version decoded to the v3 spec")
 
 	// 5. The room's own version is still required to be 3. A v4 root whose
 	// room claims 4 is refused, and the refusal names the ROOM's version — not
 	// the root's, which is accepted.
 	bothV4 := s.swapOne("version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room")
-	bothV4 = []byte(strings.Replace(string(bothV4),
-		"  version: 3\n  id: room-1", "  version: 4\n  id: room-1", 1))
+	bothV4 = s.swapOneIn(bothV4, "  version: 3\n  id: room-1", "  version: 4\n  id: room-1")
 	_, err = DecodeSingleRoom(SingleRoomDecodeInput{Source: bothV4})
 	s.Require().Error(err)
 	var defects *ValidationError
@@ -147,11 +158,27 @@ func (s *SingleRoomSourceSuite) TestDecodeAcceptsV4RootAheadOfItsKeys() {
 	}
 }
 
-// swapOne replaces exactly one occurrence of old, failing when the anchor is
-// not unique: a mutation that matches twice would test the wrong spot.
+// swapOne replaces exactly one occurrence of old in the fixture, failing when
+// the anchor is not unique: a mutation that matches twice would test the wrong
+// spot.
 func (s *SingleRoomSourceSuite) swapOne(old, repl string) []byte {
-	s.Require().Equal(1, strings.Count(string(s.raw), old), "mutation anchor must appear exactly once: "+old)
-	return []byte(strings.Replace(string(s.raw), old, repl, 1))
+	return swapOneIn(s.T(), s.raw, old, repl)
+}
+
+// swapOneIn is swapOne over a haystack the caller supplies, so a mutation
+// CHAINED onto an already-edited document keeps the same uniqueness guard as
+// the first one — and so a plain test function can use it too.
+func (s *SingleRoomSourceSuite) swapOneIn(hay []byte, old, repl string) []byte {
+	return swapOneIn(s.T(), hay, old, repl)
+}
+
+// swapOneIn replaces exactly one occurrence of old in hay, failing the test
+// when the anchor is not unique: a mutation that matches twice would test the
+// wrong spot.
+func swapOneIn(t require.TestingT, hay []byte, old, repl string) []byte {
+	require.Equal(t, 1, strings.Count(string(hay), old),
+		"mutation anchor must appear exactly once: "+old)
+	return []byte(strings.Replace(string(hay), old, repl, 1))
 }
 
 func (s *SingleRoomSourceSuite) itemsBlock() (int, int) {

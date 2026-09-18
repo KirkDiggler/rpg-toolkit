@@ -239,15 +239,30 @@ type MonsterPlacement struct {
 // validation failure is returned as a [*ValidationError] carrying every
 // defect, and is an [ErrBadSpec].
 //
-// WHICH DIALECT IS CHOSEN BY VERSION, AND THE SINGLE ROOM OWNS 3 AND ABOVE.
-// Versions 1 and 2 are the region-chain dialect and stay on [Decode]. A
-// version >= 3 is a site document and goes to [DecodeSingleRoom], so a
-// version this build does not speak is refused in the single room's own words
-// ("unsupported version 5 (want 3 or 4)") rather than misread as a malformed
-// v2 dungeon. This dispatch is deliberately BROADER than
-// [acceptedRootVersions]: what the decoder accepts is the version seam's
-// business, and routing the rest here is what makes the refusal about the
-// version instead of about the shape.
+// THE VERSION DECIDES THE DIALECT, AND THE SINGLE ROOM OWNS 3 AND ABOVE.
+// Versions 1 and 2 are the region-chain dialect and stay on [Decode]; a
+// version >= 3 is a site document and goes to [DecodeSingleRoom]. The version
+// decides and the shape does not, which is what buys the refusal: a
+// SITE-SHAPED document carrying a version this build does not speak is
+// refused in the single room's own words ("unsupported version 5 (want 3 or
+// 4)") rather than misread as a malformed v2 dungeon. This dispatch is
+// deliberately BROADER than [acceptedRootVersions]: what the decoder accepts
+// is the version seam's business, and routing the rest here is what makes the
+// refusal about the version instead of about the shape.
+//
+// The rule has two measured edges, and each is the rule working rather than a
+// hole in it:
+//
+//   - A v2-SHAPED document relabelled 4 is routed here too, and meets a
+//     [SingleRoomSpec] shape error ("field name not found in type
+//     dungeonspec.SingleRoomSpec") instead of the v2 decoder's "version 4,
+//     which this build does not speak". A file whose version and shape
+//     contradict each other has earned a shape error: the version is the
+//     claim the document made, and it is held to it.
+//   - A document with NO usable root version — the key missing, or 0 — has
+//     made no site-document claim at all, so it still meets the v2 decoder
+//     and fails in v2's words. The dispatch buys nothing for a file that
+//     never said which dialect it is written in.
 func Load(raw []byte) (Compiled, error) {
 	var version struct {
 		Version int `yaml:"version"`

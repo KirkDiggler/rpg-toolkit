@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -207,9 +206,7 @@ func TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder(t *testing.T) {
 
 	// A v4 root carrying only v3 keys compiles through Load, to the SAME world
 	// the v3 document compiles to: the version is not content.
-	v4 := []byte(strings.Replace(string(raw),
-		"version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room", 1))
-	require.NotEqual(t, string(raw), string(v4), "the root version anchor must match")
+	v4 := swapOneIn(t, raw, "version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room")
 	compiled, err := Load(v4)
 	require.NoError(t, err)
 	require.NotNil(t, compiled.Field.RoomScene, "the single-room compiler ran")
@@ -219,8 +216,7 @@ func TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder(t *testing.T) {
 	// A version nobody agreed on meets the SINGLE ROOM's refusal by name — not
 	// a v2 shape error naming play or room, which is what the == 3 dispatch
 	// produced for a well-formed v4 site.
-	v5 := []byte(strings.Replace(string(raw),
-		"version: 3\nkey: workshop-room", "version: 5\nkey: workshop-room", 1))
+	v5 := swapOneIn(t, raw, "version: 3\nkey: workshop-room", "version: 5\nkey: workshop-room")
 	_, err = Load(v5)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported version 5 (want 3 or 4)")
