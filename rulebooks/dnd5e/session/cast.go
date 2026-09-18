@@ -108,6 +108,12 @@ type CastOutput struct {
 	// MissedTargets names attempted recipients the cast did not reach, in
 	// caller order. Details also appear as EventCastMissed story entries.
 	MissedTargets []string `json:"missed_targets,omitempty"`
+	// WardedTargets names attempted recipients a Sanctuary-style ward
+	// stopped before any save or effect ran against them, in caller order.
+	// Details also appear as EventCastWarded story entries. A different
+	// target in the same multi-target cast is unaffected and never appears
+	// here.
+	WardedTargets []string `json:"warded_targets,omitempty"`
 	// Spell is the spell that was cast, echoed back — so a caller that
 	// dispatched by selector learns what the selector meant without parsing
 	// it.
@@ -542,10 +548,13 @@ func (m *Manager) finishCast(
 	}
 
 	var singleSave *encounter.CastSave
-	var missedTargets []string
+	var missedTargets, wardedTargets []string
 	for _, target := range targetResults {
 		if target.Missed {
 			missedTargets = append(missedTargets, string(target.Target))
+		}
+		if target.Warded != nil {
+			wardedTargets = append(wardedTargets, string(target.Target))
 		}
 	}
 	if len(targetResults) == 1 {
@@ -553,6 +562,7 @@ func (m *Manager) finishCast(
 	}
 	return &CastOutput{
 		MissedTargets: missedTargets,
+		WardedTargets: wardedTargets,
 		Spell:         spell,
 		Saved:         castSaveReport(singleSave),
 		Caught:        caught,

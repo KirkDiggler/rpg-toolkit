@@ -70,6 +70,18 @@ var (
 	// creature, spendable on one later saving throw.
 	conditionResistance = &core.Ref{Module: Module, Type: TypeConditions, ID: "resistance"}
 
+	// Sanctuary (docs/ideas/cleric): the ward on the protected creature.
+	// Checked directly by resolution at attack/cast declaration time rather
+	// than offered or subscribed around — see [conditionsNS.Sanctuary].
+	conditionSanctuary = &core.Ref{Module: Module, Type: TypeConditions, ID: "sanctuary"}
+
+	// SanctuaryImmune (docs/ideas/cleric): the short immunity a creature earns
+	// against one specific caster's Sanctuary after succeeding its ward save —
+	// RAW's 24 hours, simplified to end at combat end or a rest rather than
+	// tracked in real time (this rulebook has no real-time clock at all; see
+	// [conditionsNS.SanctuaryImmune]).
+	conditionSanctuaryImmune = &core.Ref{Module: Module, Type: TypeConditions, ID: "sanctuary_immune"}
+
 	// Reaction conditions (Wave 2.11d) — universal-by-default reactions that
 	// subscribe to the appropriate chain and publish ReactionTriggerEvents
 	// when their predicate matches AND gamectx.IsReactionReady returns true.
@@ -196,3 +208,15 @@ func (n conditionsNS) Guided() *core.Ref { return conditionGuided }
 // creature Resistance touches and holding the d4 it can spend on one later
 // saving throw.
 func (n conditionsNS) Resistance() *core.Ref { return conditionResistance }
+
+// Sanctuary returns the ref for the SanctuaryCondition, applied to the
+// creature Sanctuary wards. It offers nothing and modifies no roll of its
+// own holder's — resolution reads its presence directly at the moment
+// another creature targets the ward with an attack or a harmful spell.
+func (n conditionsNS) Sanctuary() *core.Ref { return conditionSanctuary }
+
+// SanctuaryImmune returns the ref for the SanctuaryImmuneCondition, applied
+// to an ATTACKER who succeeded a ward save — named so its provenance is
+// obvious wherever it shows up, not a generic immunity flag. Source-qualified
+// per caster: it blocks only that same caster's future Sanctuary wards.
+func (n conditionsNS) SanctuaryImmune() *core.Ref { return conditionSanctuaryImmune }
