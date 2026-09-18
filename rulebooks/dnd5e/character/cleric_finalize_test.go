@@ -39,7 +39,7 @@ func (s *ClericFinalizeSuite) classInput() *SetClassInput {
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
 			Spells: []spells.Spell{
-				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith,
+				spells.Bane, spells.Command, spells.HealingWord, spells.Sanctuary,
 			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},
@@ -108,7 +108,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	}, data.KnownCantrips)
 	s.ElementsMatch([]string{
 		refs.Spells.Bane().String(), refs.Spells.Bless().String(), refs.Spells.Command().String(),
-		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(), refs.Spells.GuidingBolt().String(), refs.Spells.InflictWounds().String(), refs.Spells.ShieldOfFaith().String(),
+		refs.Spells.CureWounds().String(), refs.Spells.HealingWord().String(), refs.Spells.Sanctuary().String(),
 	}, data.KnownSpells)
 	encoded, err = json.Marshal(data)
 	s.Require().NoError(err)
@@ -495,6 +495,7 @@ func (s *ClericFinalizeSuite) TestReplacingClassAndDomainReplacesTheirGrants() {
 	draft := s.draft(s.classInput())
 	light := s.classInput()
 	light.SubclassID = classes.LightDomain
+	light.Choices.Cantrips = []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Resistance}
 	light.Choices.Equipment[1].OptionID = choices.ClericArmorScale
 	s.Require().NoError(draft.SetClass(light))
 	char, err := draft.ToCharacter(context.Background(), "light-cleric", events.NewEventBus())
@@ -563,4 +564,63 @@ func (s *ClericFinalizeSuite) TestShieldOfFaithCompilesFromNativeClericAfterRelo
 	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
 	_, err = c.StatusView(&StatusViewInput{})
 	s.NoError(err)
+}
+
+func (s *ClericFinalizeSuite) TestFourPreparationsPlusLifeDomainGrantsSurviveReload() {
+	input := s.classInput()
+	input.Choices.Spells = []spells.Spell{spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith, spells.HealingWord}
+	c, err := s.draft(input).ToCharacter(context.Background(), "prepared-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	loaded, err := Load(context.Background(), c.ToData())
+	s.Require().NoError(err)
+	s.Len(loaded.KnownSpells(), 6)
+	s.ElementsMatch([]string{
+		refs.Spells.GuidingBolt().String(), refs.Spells.InflictWounds().String(),
+		refs.Spells.ShieldOfFaith().String(), refs.Spells.HealingWord().String(),
+		refs.Spells.Bless().String(), refs.Spells.CureWounds().String(),
+	}, loaded.ToData().KnownSpells)
+	for _, choice := range loaded.ToData().Levels[0].Choices {
+		if choice.Category == shared.ChoiceSpells {
+			s.ElementsMatch(input.Choices.Spells, choice.SpellSelection)
+			s.Len(choice.SpellSelection, 4, "domain spells never become preparation choices")
+		}
+	}
+	_, err = loaded.StatusView(&StatusViewInput{})
+	s.NoError(err)
+}
+
+func (s *ClericFinalizeSuite) TestPreparationCountAndAutomaticGrantCannotBeSpentAsChoices() {
+	for _, prepared := range [][]spells.Spell{
+		{spells.Bane, spells.Command, spells.HealingWord},
+		{spells.Bane, spells.Command, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt},
+		{spells.Bless, spells.Command, spells.HealingWord, spells.Sanctuary},
+		{spells.Bane, spells.Bane, spells.HealingWord, spells.Sanctuary},
+	} {
+		draft := s.draft(s.classInput())
+		invalid := s.classInput()
+		invalid.Choices.Spells = prepared
+		err := draft.SetClass(invalid)
+		if err == nil {
+			_, err = draft.ToCharacter(context.Background(), "invalid-preparation", events.NewEventBus())
+		}
+		s.Error(err)
+	}
+}
+
+func (s *ClericFinalizeSuite) TestLightDomainAddsDeferredLightBeyondThreeCantrips() {
+	input := s.classInput()
+	input.SubclassID = classes.LightDomain
+	input.Choices.Equipment[1].OptionID = choices.ClericArmorScale
+	input.Choices.Cantrips = []spells.Spell{spells.Guidance, spells.SacredFlame, spells.Resistance}
+	c, err := s.draft(input).ToCharacter(context.Background(), "light-domain", events.NewEventBus())
+	s.Require().NoError(err)
+	loaded, err := Load(context.Background(), c.ToData())
+	s.Require().NoError(err)
+	s.Len(loaded.KnownCantrips(), 4)
+	s.Contains(loaded.ToData().KnownCantrips, refs.Spells.Light().String())
+	s.Nil(loaded.CastDefinition(spells.Light), "Light awaits object targeting, not a no-op cast")
+	s.Len(loaded.KnownSpells(), 6)
+	s.Contains(loaded.ToData().KnownSpells, refs.Spells.BurningHands().String())
+	s.Contains(loaded.ToData().KnownSpells, refs.Spells.FaerieFire().String())
+	s.NotContains(loaded.ToData().KnownSpells, refs.Spells.CureWounds().String())
 }

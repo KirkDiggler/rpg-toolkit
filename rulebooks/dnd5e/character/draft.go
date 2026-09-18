@@ -30,6 +30,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // Draft represents a character in the creation process
@@ -656,6 +657,20 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	knownSpells, err := compileKnownSpells(d.choices, shared.ChoiceSpells, "spell")
 	if err != nil {
 		return nil, err
+	}
+
+	// Cleric domain grants are additional to chosen preparations and cantrips.
+	if d.class == classes.Cleric {
+		knownSpells, err = appendSpellGrants(knownSpells, choices.ClericSpellGrants(d.subclass, 1))
+		if err != nil {
+			return nil, err
+		}
+		if mods := choices.GetSubclassModifications(d.subclass); mods != nil {
+			knownCantrips, err = appendSpellGrants(knownCantrips, mods.GrantedCantrips)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Create the character
@@ -2084,4 +2099,25 @@ func (d *Draft) initializeStandardCombatAbilities(char *Character) {
 	// Hide - consumes action economy to attempt a Stealth check (become hidden)
 	hideAbility := combatabilities.NewHide(char.id + "-hide")
 	_ = char.AddCombatAbility(hideAbility)
+}
+
+// appendSpellGrants resolves automatic grants through the same catalog as choices.
+func appendSpellGrants(selected []*core.Ref, grants []spells.Spell) ([]*core.Ref, error) {
+	compiled, err := compileKnownSpells([]choices.ChoiceData{{Category: shared.ChoiceSpells, SpellSelection: grants}}, shared.ChoiceSpells, "domain spell")
+	if err != nil {
+		return nil, err
+	}
+	for _, grant := range compiled {
+		found := false
+		for _, existing := range selected {
+			if existing.String() == grant.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			selected = append(selected, grant)
+		}
+	}
+	return selected, nil
 }

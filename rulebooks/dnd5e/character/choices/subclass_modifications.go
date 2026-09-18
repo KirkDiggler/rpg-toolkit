@@ -2,6 +2,7 @@ package choices
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
@@ -148,6 +149,7 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 	},
 
 	classes.LightDomain: {
+		// Light remains non-executable until objects can be targeted and illuminated.
 		GrantedCantrips: []spells.Spell{spells.Light},
 		GrantedSpells: []SpellGrant{
 			{Level: 1, Spells: []spells.Spell{spells.BurningHands, spells.FaerieFire}},
@@ -322,5 +324,45 @@ func createMartialDomainModifications(domainName string, domainSpells []SpellGra
 			},
 		},
 		GrantedSpells: domainSpells,
+	}
+}
+
+// ClericSpellGrants returns the domain spells always prepared at a Cleric level.
+// It returns a fresh list so consumers cannot mutate the authored grant table.
+func ClericSpellGrants(subclass classes.Subclass, classLevel int) []spells.Spell {
+	mods := GetSubclassModifications(subclass)
+	if mods == nil {
+		return nil
+	}
+	var granted []spells.Spell
+	for _, grant := range mods.GrantedSpells {
+		if grant.Level <= classLevel {
+			granted = append(granted, grant.Spells...)
+		}
+	}
+	return granted
+}
+
+// ExcludeGrantedSpellChoices keeps automatic domain grants outside paid choices.
+func ExcludeGrantedSpellChoices(reqs *Requirements, subclass classes.Subclass, classLevel int) {
+	granted := ClericSpellGrants(subclass, classLevel)
+	if reqs.Spellbook != nil {
+		options := make([]spells.Spell, 0, len(reqs.Spellbook.Options))
+		for _, option := range reqs.Spellbook.Options {
+			if !slices.Contains(granted, option) {
+				options = append(options, option)
+			}
+		}
+		reqs.Spellbook.Options = options
+	}
+	mods := GetSubclassModifications(subclass)
+	if reqs.Cantrips != nil && mods != nil {
+		options := make([]spells.Spell, 0, len(reqs.Cantrips.Options))
+		for _, option := range reqs.Cantrips.Options {
+			if !slices.Contains(mods.GrantedCantrips, option) {
+				options = append(options, option)
+			}
+		}
+		reqs.Cantrips.Options = options
 	}
 }

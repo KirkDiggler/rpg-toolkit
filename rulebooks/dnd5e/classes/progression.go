@@ -56,11 +56,16 @@ type SpellProgression struct {
 	// table comment says which:
 	//   - a KNOWN caster (bard, sorcerer, ranger, warlock) counts spells known;
 	//   - a wizard counts the spells in its spellbook;
-	//   - a PREPARED caster (cleric, druid, paladin) prepares from its whole
+	//   - Cleric uses PreparedSpells instead;
+	//   - other PREPARED casters (druid, paladin) prepare from their whole
 	//     class list and has no "known" count at all, so its column is a
 	//     placeholder holding what creation asks for today and nothing moves
 	//     until prepared casting lands (rpg-project#445).
 	SpellsKnown []int
+
+	// PreparedSpells counts chosen preparations, excluding automatic subclass grants.
+	// Only Cleric currently adopts the 2024 preparation progression.
+	PreparedSpells []int
 
 	// SpellSlots is the slots a class of this level has, lowest spell level
 	// first: index 0 is 1st-level slots. Nil means none at that class level.
@@ -81,6 +86,9 @@ type SpellProgressionRow struct {
 	// SpellsKnown is how many spells this class knows at ClassLevel, in the
 	// sense [SpellProgression.SpellsKnown] describes for this class.
 	SpellsKnown int
+
+	// PreparedSpells is the number of chosen preparations at this class level.
+	PreparedSpells int
 
 	// SpellSlots is the slots this class has at ClassLevel, lowest first. It is
 	// a copy: the table is shared and a caller must not be able to edit it.
@@ -128,11 +136,12 @@ func SpellProgressionAtLevel(classID Class, classLevel int) SpellProgressionRow 
 	}
 
 	return SpellProgressionRow{
-		ClassLevel:    classLevel,
-		CantripsKnown: columnAt(progression.CantripsKnown, classLevel),
-		SpellsKnown:   columnAt(progression.SpellsKnown, classLevel),
-		SpellSlots:    slotsAt(progression.SpellSlots, classLevel),
-		SlotReset:     progression.SlotReset,
+		ClassLevel:     classLevel,
+		CantripsKnown:  columnAt(progression.CantripsKnown, classLevel),
+		SpellsKnown:    columnAt(progression.SpellsKnown, classLevel),
+		PreparedSpells: columnAt(progression.PreparedSpells, classLevel),
+		SpellSlots:     slotsAt(progression.SpellSlots, classLevel),
+		SlotReset:      progression.SlotReset,
 	}
 }
 

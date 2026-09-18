@@ -1790,7 +1790,8 @@ func (c *Character) SpellSaveDC() int {
 // from the outside, and core.Ref is a mutable struct.
 func (c *Character) KnownCantrips() []*core.Ref { return cloneSpellRefs(c.knownCantrips) }
 
-// KnownSpells returns the leveled spells this character knows, as content
+// KnownSpells returns leveled spell access (Cleric preparations plus domain
+// grants, or known/spellbook spells for other classes), as content
 // refs, under [Character.KnownCantrips]'s copying rule.
 func (c *Character) KnownSpells() []*core.Ref { return cloneSpellRefs(c.knownSpells) }
 

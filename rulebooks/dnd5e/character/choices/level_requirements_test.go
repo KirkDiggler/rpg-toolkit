@@ -46,14 +46,14 @@ func (s *LevelRequirementsTestSuite) TestAFighterThirdLevelGainsTheSubclassChoic
 		"the archetype is the only thing level 3 newly asks for")
 }
 
-func (s *LevelRequirementsTestSuite) TestAClericGainsItsDomainAtLevelOneAndNothingAtTwo() {
+func (s *LevelRequirementsTestSuite) TestAClericGainsItsDomainAtOneAndAnotherPreparationAtTwo() {
 	atOne := GetClassChoiceIDsGainedAtLevel(classes.Cleric, 1)
 	atTwo := GetClassChoiceIDsGainedAtLevel(classes.Cleric, 2)
 
 	domain := GetClassRequirementsGainedAtLevel(classes.Cleric, 1).Subclass
 	s.Require().NotNil(domain, "a cleric picks its domain at level 1")
 	s.Contains(atOne, domain.ID)
-	s.Empty(atTwo, "and is asked for nothing new at level 2")
+	s.Equal([]ChoiceID{SpellChoiceID(classes.Cleric, 2)}, atTwo)
 }
 
 func (s *LevelRequirementsTestSuite) TestAWizardGainsItsSchoolAndTwoSpellbookSpellsAtLevelTwo() {

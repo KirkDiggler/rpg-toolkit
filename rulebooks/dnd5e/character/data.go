@@ -106,7 +106,9 @@ type Data struct {
 
 	// KnownCantrips and KnownSpells are what this character knows, as
 	// canonical content refs ("dnd5e:spells:vicious-mockery"), written by the
-	// choice pipeline at creation.
+	// choice pipeline at creation. For Clerics, KnownSpells is spell access:
+	// chosen preparations plus automatic domain grants. The level record keeps
+	// the chosen inputs separately; grants do not count toward preparation.
 	//
 	// REFS RATHER THAN NAMES OR ENUM VALUES, because a known spell is content
 	// and this sheet holds an identity for it rather than a copy of it

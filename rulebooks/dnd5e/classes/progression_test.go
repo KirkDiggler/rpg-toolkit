@@ -37,7 +37,13 @@ func (s *SpellProgressionSuite) TestEveryTableStatesAValueForEveryLevel() {
 				return
 			}
 			s.Len(progression.CantripsKnown, classes.MaxClassLevel)
-			s.Len(progression.SpellsKnown, classes.MaxClassLevel)
+			if classID == classes.Cleric {
+				s.Empty(progression.SpellsKnown)
+				s.Len(progression.PreparedSpells, classes.MaxClassLevel)
+			} else {
+				s.Len(progression.SpellsKnown, classes.MaxClassLevel)
+				s.Empty(progression.PreparedSpells)
+			}
 			s.Len(progression.SpellSlots, classes.MaxClassLevel)
 		})
 	}
