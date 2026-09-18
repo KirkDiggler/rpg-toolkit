@@ -44,7 +44,7 @@ Dependency direction is generally **Core → Mechanics / Play primitives → Too
 | Mechanics | `mechanics/effects`, `features`, `proficiency`, `resources` | Rule-agnostic mechanic building blocks |
 | Play primitives | `play/clock`, `intel`, `interrupt`, `record` | Small reusable time, knowledge, interruption, and record contracts; these currently depend only on Core |
 | Tools | `tools/environments`, `selectables`, `spatial`, `spawn` | Environment graphs, weighted selection, positioning, and placement |
-| Rulebooks and live D&D 5e stack | `rulebooks/dnd5e`, `rulebooks/dnd5e/behavior`, `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/resolution`, `rulebooks/dnd5e/session` | D&D 5e content and rules, encounter composition, interaction resolution, monster behavior, and the host-facing session seam |
+| Rulebooks and live D&D 5e stack | `rulebooks/dnd5e`, `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/resolution`, `rulebooks/dnd5e/session` | D&D 5e content and rules, encounter composition, interaction resolution, and the host-facing session seam |
 
 The top-level `behavior/` and `spawn/` directories contain package-design stubs,
 not additional Go modules or usable implementations. Use the module map in the
