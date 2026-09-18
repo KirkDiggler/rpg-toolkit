@@ -257,6 +257,40 @@ module build/vet/test/lint clean. Next: resolution — the actual ward-save
 step, the self-break check, and the miss/blocked-outcome shape described
 above.
 
+### Live-testing correction: `SanctuaryImmuneCondition` needed its own clock (2026-09-17)
+
+Live testing after all four Sanctuary PRs were open surfaced a real bug:
+`SanctuaryImmuneCondition` ended only on combat-end or rest (mirroring
+`InspiredCondition`, per the slice above), so it never actually gated
+anything turn-to-turn — a caster could re-Sanctuary the same target on
+consecutive turns with no ward-save gap between them. The user's original
+intent, restated live: "cannot benefit from sanctuary for 24h (we said 10
+turns)" — a turn-count clock was always the agreed design; the shipped
+combat-end-or-rest ending was an implementation mistake, not a design
+change.
+
+Fixed to mirror `BladeWardCondition`'s pattern instead: the condition now
+holds its own `TurnEndsLeft`, ending on whichever of turn-end-count /
+combat-end / rest comes first. The count is `SanctuaryImmuneTurnEnds = 20`,
+not 10 — the user's own live follow-up: "if the spell last 10 turns and the
+immune is 10 turns that won't be as easy to test... let's make the immune
+20 turns so it's at least an impact for testing." Deliberately double the
+ward's own 10-turn duration so the immunity outlasting the spell that
+granted it is something a live table can actually observe, rather than the
+two always expiring together.
+
+Also confirmed directly against RAW in the same exchange: Sanctuary's ward
+is a duration effect, not single-use — it blocks every attack/harmful spell
+targeted at the warded creature for the ward's whole duration, not just the
+first one that triggers it. That part of the original implementation
+(`resolution`'s `sanctuaryWardsOn`/`pendingSanctuaryWards`) was already
+correct; the user's live-test expectation of "one-and-done" was the
+non-RAW read, not the code.
+
+Fixed on the already-open `feat/sanctuary-root` branch (PR #1811) rather
+than a new PR/branch, per this repo's explicit reason for leaving all four
+Sanctuary PRs open through live testing.
+
 ### Root slice 2 delivered: enabled — Sanctuary is castable
 
 The last step, per this plan's own standing discipline: never make
