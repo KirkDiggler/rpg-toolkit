@@ -1,5 +1,22 @@
 # mind/behavior — adoption in the D&D 5e encounter
 
+**Status:** SUPERSEDED (2026-09-18, rpg-project#465). This document records how
+the mind ladder was adopted into the encounter — rule A5's `mind` word on a
+monster sheet, the preset each word named, the per-session driver source that
+kept one stateful mind from serving every party at once. The ladder and the
+presets are deleted; `rulebooks/dnd5e/behavior` is deleted outright.
+
+What replaced them: a creature's policy is its authored table, layered rulebook
+→ faction → placement, and its temperament is a weight profile that loads the
+die. `session.Driver()` is the one driver, it is stateless, and it decides
+nothing.
+
+**Rule A6 outlived the mind it was written for.** `Config.TurnDrivers` and the
+host-owned cache behind it remain, because the argument was never about minds:
+a session's lifetime is the host's and the Manager is stateless per verb, so a
+cache here would have no owner. It is simply no longer the shipped driver's
+reason to exist.
+
 **Status:** IN PROGRESS
 **Why:** [rpg-toolkit#1725](https://github.com/KirkDiggler/rpg-toolkit/issues/1725).
 **Rulings (Kirk, 2026-09-13):** the mind's name lives on the monster
