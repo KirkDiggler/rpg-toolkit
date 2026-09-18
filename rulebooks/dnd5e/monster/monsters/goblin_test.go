@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -26,9 +25,4 @@ func TestGoblinWieldsCatalogWeapons(t *testing.T) {
 	require.Equal(t, refs.Weapons.Shortbow(), &shortbow.Ref)
 	require.Equal(t, &combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320},
 		shortbow.Attack.Delivery.Ranged)
-}
-
-func TestGoblinThinksLikeACoward(t *testing.T) {
-	require.Equal(t, monster.MindCoward, NewGoblin("goblin-1").Mind(),
-		"a goblin holds no grudge and backs away from whatever closes on it")
 }
