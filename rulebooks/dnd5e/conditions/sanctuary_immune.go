@@ -20,12 +20,23 @@ import (
 // caster's Sanctuary after succeeding a ward save against it.
 const SanctuaryImmuneName = "Sanctuary Immune"
 
+// SanctuaryImmuneTurnEnds is the user's own settled reading of RAW's 24
+// hours, longer than Sanctuary's own 10-turn ward duration on purpose: equal
+// numbers would make the immunity and the ward always expire together,
+// which is untestable (nothing distinguishes "the immunity outlasted the
+// ward" from "they always end at the same time"). Twice the ward's own
+// duration gives a real window to observe the immunity surviving past the
+// spell that granted it. Fixed rather than content-authored: nothing varies
+// this per caster or per level.
+const SanctuaryImmuneTurnEnds = 20
+
 // SanctuaryImmuneConditionData is the persisted source-qualified immunity.
 type SanctuaryImmuneConditionData struct {
-	Ref       *core.Ref `json:"ref"`
-	MemberID  string    `json:"member_id"`
-	SourceID  string    `json:"source_id"`
-	SourceRef *core.Ref `json:"source_ref"`
+	Ref          *core.Ref `json:"ref"`
+	MemberID     string    `json:"member_id"`
+	SourceID     string    `json:"source_id"`
+	SourceRef    *core.Ref `json:"source_ref"`
+	TurnEndsLeft int       `json:"turn_ends_left"`
 }
 
 // NewSanctuaryImmuneConditionInput names the attacker who earned the
@@ -42,18 +53,25 @@ type NewSanctuaryImmuneConditionInput struct {
 // to your sanctuary spells", not a blanket immunity, so it is source-qualified
 // exactly like [BlessedCondition] and its siblings.
 //
-// # It ends with the fight or a rest, not with a clock
+// # It holds its own clock, for [SanctuaryImmuneTurnEnds] of the HOLDER's own turn ends
 //
-// RAW is 24 hours. There is no real-time clock anywhere in this rulebook
-// (docs/ideas/cleric/plan.md's Sanctuary section confirmed it: even
-// concentration is turn-counted, not minute-timed), so the divergence is
-// named rather than approximated — [InspiredCondition]'s own precedent for
-// exactly this situation. The immunity lasts until combat ends or the holder
-// rests, whichever comes first.
+// RAW is 24 hours; there is no real-time clock anywhere in this rulebook, so
+// the divergence is the user's own settled number rather than an
+// approximation this package invented. Not concentration-linked — this is
+// the attacker's own condition, not the warding caster's — so it holds its
+// own count the way [BladeWardCondition] does, ending on whichever of three
+// boundaries comes first: the turn-end count running out, combat ending, or
+// a rest.
 type SanctuaryImmuneCondition struct {
 	MemberID  string
 	SourceID  string
 	SourceRef *core.Ref
+
+	// TurnEndsLeft is how many of the HOLDER's own turn ends remain —
+	// [BladeWardCondition.TurnEndsLeft]'s own reasoning: counted here rather
+	// than derived from a round, because a TurnEndEvent may carry no round
+	// at all.
+	TurnEndsLeft int
 
 	bus             events.EventBus
 	subscriptionIDs []string
@@ -64,7 +82,8 @@ var (
 	_ dnd5eEvents.ConditionAddressProvider = (*SanctuaryImmuneCondition)(nil)
 )
 
-// NewSanctuaryImmuneCondition creates one source-qualified immunity.
+// NewSanctuaryImmuneCondition creates one source-qualified immunity, lasting
+// SanctuaryImmuneTurnEnds of the attacker's own turn ends.
 func NewSanctuaryImmuneCondition(input NewSanctuaryImmuneConditionInput) (*SanctuaryImmuneCondition, error) {
 	if input.MemberID == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "sanctuary immune condition requires an attacker member")
@@ -78,9 +97,10 @@ func NewSanctuaryImmuneCondition(input NewSanctuaryImmuneConditionInput) (*Sanct
 	}
 
 	return &SanctuaryImmuneCondition{
-		MemberID:  input.MemberID,
-		SourceID:  input.SourceID,
-		SourceRef: refs.Spells.Sanctuary(),
+		MemberID:     input.MemberID,
+		SourceID:     input.SourceID,
+		SourceRef:    refs.Spells.Sanctuary(),
+		TurnEndsLeft: SanctuaryImmuneTurnEnds,
 	}, nil
 }
 
@@ -100,8 +120,8 @@ func (s *SanctuaryImmuneCondition) ConditionAddress() dnd5eEvents.ConditionAddre
 // IsApplied returns true if this condition is currently applied.
 func (s *SanctuaryImmuneCondition) IsApplied() bool { return s.bus != nil }
 
-// Apply subscribes the immunity to the two boundaries that end it: combat end
-// and any rest.
+// Apply subscribes the immunity to the three boundaries that end it: the
+// turn-end count running out, combat end, and any rest.
 func (s *SanctuaryImmuneCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
@@ -111,10 +131,18 @@ func (s *SanctuaryImmuneCondition) Apply(ctx context.Context, bus events.EventBu
 	}
 	s.bus = bus
 
+	turnEnds := dnd5eEvents.TurnEndTopic.On(bus)
+	turnSub, err := turnEnds.Subscribe(ctx, s.onTurnEnd)
+	if err != nil {
+		s.bus = nil
+		return rpgerr.Wrap(err, "failed to subscribe to turn end topic")
+	}
+	s.subscriptionIDs = append(s.subscriptionIDs, turnSub)
+
 	combatEnds := dnd5eEvents.CombatEndTopic.On(bus)
 	combatSub, err := combatEnds.Subscribe(ctx, s.onCombatEnd)
 	if err != nil {
-		s.bus = nil
+		_ = s.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to combat end topic")
 	}
 	s.subscriptionIDs = append(s.subscriptionIDs, combatSub)
@@ -156,10 +184,11 @@ func (s *SanctuaryImmuneCondition) Remove(ctx context.Context, bus events.EventB
 // ToJSON serializes the source-qualified condition without runtime state.
 func (s *SanctuaryImmuneCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(SanctuaryImmuneConditionData{
-		Ref:       refs.Conditions.SanctuaryImmune(),
-		MemberID:  s.MemberID,
-		SourceID:  s.SourceID,
-		SourceRef: refs.Spells.Sanctuary(),
+		Ref:          refs.Conditions.SanctuaryImmune(),
+		MemberID:     s.MemberID,
+		SourceID:     s.SourceID,
+		SourceRef:    refs.Spells.Sanctuary(),
+		TurnEndsLeft: s.TurnEndsLeft,
 	})
 }
 
@@ -171,11 +200,25 @@ func (s *SanctuaryImmuneCondition) loadJSON(data json.RawMessage) error {
 	s.MemberID = stored.MemberID
 	s.SourceID = stored.SourceID
 	s.SourceRef = refs.Spells.Sanctuary()
+	s.TurnEndsLeft = stored.TurnEndsLeft
 	return nil
 }
 
-// onCombatEnd ends the immunity with the fight, [InspiredCondition]'s own
-// divergence from a real-time RAW duration.
+// onTurnEnd spends one of the holder's own turn ends and ends the immunity
+// when the count runs out. Other members' turns do not own this clock.
+func (s *SanctuaryImmuneCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
+	if event.SubjectID != s.MemberID {
+		return nil
+	}
+	s.TurnEndsLeft--
+	if s.TurnEndsLeft > 0 {
+		return nil
+	}
+	return s.end(ctx, "expired")
+}
+
+// onCombatEnd ends the immunity with the fight, in case combat ends before
+// the turn-end count runs out.
 func (s *SanctuaryImmuneCondition) onCombatEnd(ctx context.Context, event dnd5eEvents.CombatEndEvent) error {
 	if event.SubjectID != s.MemberID {
 		return nil
