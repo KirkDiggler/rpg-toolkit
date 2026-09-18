@@ -61,6 +61,13 @@ type AttackOutput struct {
 	// Damage is what was dealt. Zero on a miss.
 	Damage int `json:"damage,omitempty"`
 
+	// Warded reports that a Sanctuary-style ward on the target stopped this
+	// attack before any roll — Roll, Total, Against, Hit, Critical and
+	// Damage all stay zero/false, the same "these are not answers" shape
+	// Paused documents below. WardedBy names the caster whose ward it was.
+	Warded   bool   `json:"warded,omitempty"`
+	WardedBy string `json:"warded_by,omitempty"`
+
 	// Paused reports that the swing STOPPED to ask the attacker something and
 	// has not landed yet. When it is true, Hit, Critical, Damage and Against
 	// are not answers — Against is zero because the AC has deliberately not
@@ -394,6 +401,10 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
+	var wardedBy string
+	if struck.Warded != nil {
+		wardedBy = struck.Warded.SourceID
+	}
 	return &AttackOutput{
 		Roll:         struck.Roll,
 		Total:        struck.Total,
@@ -401,6 +412,8 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Hit:          struck.Hit,
 		Critical:     struck.Critical,
 		Damage:       struck.Damage,
+		Warded:       struck.Warded != nil,
+		WardedBy:     wardedBy,
 		Seq:          scope.deliveredSeq(in.Attacker, recorded.Seq),
 		FollowUpSeqs: deliveredSeqs(scope, in.Attacker, recorded.FollowUpSeqs),
 		Saved:        report,

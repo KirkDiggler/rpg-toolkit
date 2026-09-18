@@ -88,7 +88,7 @@ func preparedCasterPlaceholder(creationCount int) []int {
 // supported 1st-level cleric list. It is read here so the placeholder column
 // and the option list are one fact, and a new supported cleric spell does not
 // leave the two disagreeing.
-const clericPreparedSpellCount = 5
+const clericPreparedSpellCount = 6
 
 // spellProgressions is every class's table. A class absent from this map does
 // not cast at any level.
