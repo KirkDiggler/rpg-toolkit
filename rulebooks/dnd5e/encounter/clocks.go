@@ -598,7 +598,16 @@ func (e *Encounter) runIntents(
 		// intent below it — the same cause-before-effect law every verb in
 		// this module keeps. A driver that rolled nothing (PassDriver, the
 		// compelled-turn driver) returns a nil pick and nothing is written.
-		if decision.Pick != nil {
+		//
+		// AND A RE-CONSULT THAT FOUND NOTHING AFFORDABLE WRITES NOTHING. The
+		// turn loop asks again after every executed intent, and a creature
+		// that has spent its swing and its movement answers the empty hold —
+		// no candidates, nothing rolled. The FIRST consult of a turn still
+		// writes it, because "it was asked and had nothing to do" is the
+		// story; a second one would only repeat that the turn is over, which
+		// the turn-ended beat already says (rpg-project#465, ruled on an
+		// api-builder finding).
+		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
 			if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
 				return turnDeltas, berr
 			}

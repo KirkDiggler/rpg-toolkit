@@ -47,6 +47,14 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 	facts := Facts{
 		Deeds: heldDeedsAgainst(holdings, id),
 		Now:   uint64(e.clock.ToData().HighWater),
+		// NOTHING A SOCIAL VERDICT CAN ANSWER WITH IS PAID OUT OF A TURN.
+		// `fact`, `flee` and a bare line cost nothing a budget runs out of,
+		// and the three budgeted words are refused under a social key at
+		// every door a table comes in through ([validateTable]). Saying
+		// "cannot" here would read as a creature with nothing left, which is
+		// not what this projection knows or means.
+		CanAttack: true,
+		CanMove:   true,
 	}
 
 	for _, h := range holdings {
@@ -128,7 +136,19 @@ func narrowToOneBand(facts *Facts) {
 // anti-wall-hack contract holding for opposition exactly as it holds for
 // position.
 func factsFromView(view MonsterView) Facts {
-	facts := Facts{Deeds: view.Deeds, Now: view.At}
+	facts := Facts{
+		Deeds: view.Deeds,
+		Now:   view.At,
+		// AFFORDABILITY IS ELIGIBILITY (rpg-project#465, ruled on an
+		// api-builder finding): what the creature can still pay for this turn
+		// decides which entries are on the table at all. The budget is the
+		// turn's own, so a creature asked again after its swing is not handed
+		// `attack` a second time — and on the world clock, where the budget
+		// carries no attacks at all, a table's `attack` row is simply never a
+		// candidate.
+		CanAttack: view.Budget.AttacksLeft > 0,
+		CanMove:   CellsFromFeet(view.Budget.MovementFeet) > 0,
+	}
 	for _, s := range view.Seen {
 		if !s.Opposed {
 			continue

@@ -560,3 +560,80 @@ func theDefaultThugTable() encounter.Table {
 		},
 	}
 }
+
+// TestASpentCreatureIsNotAskedToSwingAgain is the api builder's finding on the
+// live stack, fixed and pinned.
+//
+// WHAT HAPPENED. The turn loop asks again after every executed intent — an
+// attack that lands still leaves movement to spend — so a creature whose table
+// said `attack` was handed `attack` a SECOND time with no attack left, a
+// second identical `answered` beat went down the log, and nothing happened. A
+// pick that cannot act is noise, and two accounts of one swing is a story
+// nobody can read.
+//
+// AFFORDABILITY IS ELIGIBILITY now. The second consult finds the `attack` row
+// off the table, rolls the `hold` beneath it, and the turn ends. The log
+// carries one account of the swing.
+func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
+	striker := &swingRecorder{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: tableDriver(), Roller: rollsLowest{},
+		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  openAir(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			// Already in reach, so its first roll is the swing and nothing
+			// has to walk first.
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1},
+				SpeedFeet: 30,
+				Actions:   []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}},
+				// ONLY `attack`, and nothing else: with no `hold` beneath it
+				// the second consult has nothing at all on the table, which
+				// is the empty pick this rule is really about.
+				Table: encounter.Table{encounter.AnswerTime: {
+					{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyReach},
+						Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+				}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, on.Kind, "precondition: they are in a fight")
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: on.Active})
+	s.Require().NoError(err)
+
+	s.Require().Len(striker.swings, 1, "it swung once, which is all it could pay for")
+
+	picks := s.picksOf(enc, goblin)
+	s.Require().Len(picks, 1, "and the log carries ONE account of that swing, not two")
+	s.Equal("attack", picks[0]["word"])
+}
+
+// picksOf is every `answered` beat naming one creature, decoded, in order.
+func (s *WorldTimeSuite) picksOf(enc *encounter.Encounter, creature encounter.MemberID) []map[string]any {
+	s.T().Helper()
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+
+	var out []map[string]any
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == encounter.BeatAnswered && beat["creature"] == string(creature) {
+			out = append(out, beat)
+		}
+	}
+
+	return out
+}
