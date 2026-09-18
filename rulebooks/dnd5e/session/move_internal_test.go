@@ -71,8 +71,11 @@ func assessmentFromDown(members, reported []encounter.MemberID) *encounter.Parti
 // regardless of which internal verb's test needs an encounter built.
 type passDriver struct{}
 
-func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
-	return encounter.Pass{}, nil
+func (passDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
+	// A NIL PICK: this driver rolls no table, so the world writes no answer
+	// beat for the turns it takes (rpg-project#465). A fixture that fabricated
+	// one would put arithmetic on a beat nobody threw.
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // walkWorld is two regions of DIFFERENT sizes, painted away from the origin.

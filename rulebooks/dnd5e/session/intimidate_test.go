@@ -429,12 +429,20 @@ func (s *IntimidateSuite) goblinAt(mgr *session.Manager) spatial.Position {
 
 // The acceptance case, end to end: the fighter threatens the archer goblin,
 // beats its DC, and the goblin spends its whole next turn running away from
-// her instead of opening with the bow it is holding. Nothing decided that but
-// the deed this verb landed.
+// her instead of opening with the bow it is holding.
+//
+// WHAT DECIDES IT IS NOW TWO AUTHORED LINES, and that is the slice's whole
+// argument (rpg-project#465). The author writes `flee` under `intimidated`, so
+// the beaten threat lands a `fled` deed on the goblin; the rulebook's own
+// default table answers `away: actor` while that deed is fresh, so the running
+// happens on the goblin's OWN time. The preset that used to read the deed and
+// decide to run is deleted, and nothing was lost: a streamer can read both of
+// those lines and change either.
 func (s *IntimidateSuite) TestACowedGoblinRunsInsteadOfShooting() {
-	driver, err := session.Minded(nil)
-	s.Require().NoError(err)
-	mgr := s.aYardDriven(driver, []int{10, 8, 3})
+	s.authored = func(in *session.SpawnInput) {
+		in.Table = encounter.Table{encounter.AnswerIntimidated: {{Weight: 1, Flee: true}}}
+	}
+	mgr := s.aYardDriven(session.Driver(), []int{10, 1, 1})
 
 	s.Require().Equal(spatial.Position{X: 5, Y: 1}, s.goblinAt(mgr))
 
@@ -443,16 +451,31 @@ func (s *IntimidateSuite) TestACowedGoblinRunsInsteadOfShooting() {
 	s.Require().True(out.Beaten)
 
 	s.endTurn(mgr, "alice")
-	s.Equal(spatial.Position{X: 5, Y: 5}, s.goblinAt(mgr),
-		"six cells of movement spent putting distance between it and her")
+	// THE FARTHEST CELL IT COULD REACH, not the first step that helped. The
+	// one-shot `fleeFrom` walk this replaced stepped away a cell at a time;
+	// `away` hands the composition a POLICY and the composition routes it, so
+	// the goblin spends its whole movement getting as far from alice at (1,1)
+	// as the floor allows. The board is what knows where the corners are.
+	s.Equal(spatial.Position{X: 4, Y: 7}, s.goblinAt(mgr),
+		"its whole movement spent putting the hall between it and her")
 }
 
 // And the control, one die different: a missed threat lands nothing, so the
 // same goblin on the same board stands exactly where it was and shoots.
 func (s *IntimidateSuite) TestAnUncowedGoblinStandsAndShoots() {
-	driver, err := session.Minded(nil)
-	s.Require().NoError(err)
-	mgr := s.aYardDriven(driver, []int{5, 8, 3})
+	// The d20 that misses, then the goblin's own `time` roll on its turn:
+	// `attack: enemy` and `hold` are the two eligible entries of the
+	// rulebook's default table, a d200 with no temperament loading it, and a
+	// face of 1 lands in the attack's share. Then the swing's own two faces.
+	//
+	// NOTHING IS AUTHORED HERE, which is the control's point twice over: the
+	// threat missed, so no `fled` deed was landed, AND this goblin has no
+	// `intimidate_failed` line for the miss to roll on — so the only die
+	// between the check and the bow is the one that chose the bow.
+	mgr := s.aYardDriven(session.Driver(), []int{5, 1, 8, 3, 200})
+	// A turn is asked for intents until it is spent, so the goblin rolls its
+	// table a second time with its bow already fired; 200 of 200 lands on
+	// `hold` and the turn closes.
 
 	out, err := s.threaten(mgr)
 	s.Require().NoError(err)
@@ -470,32 +493,40 @@ func (s *IntimidateSuite) TestAnUncowedGoblinStandsAndShoots() {
 	s.True(shot, "nothing frightened it, so it used its bow")
 }
 
-// A CORNERED COWARD STILL SHOOTS, and that is the ladder's own law rather
-// than a hole in the fear: "keeping range is a preference — an archer that
-// cannot step away stands and shoots" (mind/behavior's ladder, rung 0). This
-// eight-by-eight hall is small enough to reach the wall in one turn, so the
-// frightened goblin runs out of floor and then uses the bow.
+// A CORNERED COWARD SPENDS ITS TURN RUNNING AND DOES NOT SHOOT, and this test
+// is here because the answer used to be the opposite one.
 //
-// Worth pinning because it is the thing a walk will see and could mistake
-// for the fear not working. The sibling finding is rpg-toolkit#1758, where a
-// fleeing coward orbits its pursuer instead of leaving the room.
-func (s *IntimidateSuite) TestACorneredCowardShootsAnyway() {
-	driver, err := session.Minded(nil)
-	s.Require().NoError(err)
-	mgr := s.aYardDriven(driver, []int{10, 8, 3})
+// The mind ladder had a law about it — "keeping range is a preference; an
+// archer that cannot step away stands and shoots" (rung 0) — and that law is
+// deleted with the ladder (rpg-project#465 §7). The table has no rung beneath
+// a word: `away` is a whole turn spent going somewhere, terminal by
+// construction, and a creature that rolled it and then found the wall has
+// still spent its turn on it. It rolls again NEXT turn, on a table that offers
+// `attack: enemy` beside the running, so an archer with its back to the wall
+// is not frozen — it is one round slower to start shooting than it used to be.
+//
+// THAT IS A CHANGE A WALK WILL SEE, which is the whole reason this is pinned
+// rather than deleted: the difference between "the fear is not working" and
+// "the fear costs a round here" is exactly the kind of thing a streamer would
+// report as a bug. It is also what a table lets an author fix without us —
+// an `intimidated` entry that says `attack: actor` instead of `flee`, or a
+// weight that leaves room for the bow.
+func (s *IntimidateSuite) TestACorneredCowardSpendsItsTurnRunning() {
+	s.authored = func(in *session.SpawnInput) {
+		in.Table = encounter.Table{encounter.AnswerIntimidated: {{Weight: 1, Flee: true}}}
+	}
+	mgr := s.aYardDriven(session.Driver(), []int{10, 1, 1})
 
-	_, err = s.threaten(mgr)
+	_, err := s.threaten(mgr)
 	s.Require().NoError(err)
 	s.endTurn(mgr, "alice")
 
-	s.Require().Equal(spatial.Position{X: 5, Y: 5}, s.goblinAt(mgr), "it ran to the wall")
-	shot := false
+	s.Require().Equal(spatial.Position{X: 4, Y: 7}, s.goblinAt(mgr),
+		"it ran as far from her as the hall allows")
 	for _, beat := range s.beats(mgr, "alice") {
-		if beat == "struck" || beat == "missed" {
-			shot = true
-		}
+		s.NotContains([]string{"struck", "missed"}, beat,
+			"the run was the whole turn — `away` is terminal, and the ladder's rung 0 is gone")
 	}
-	s.True(shot, "and with nowhere left to go it shot")
 }
 
 // guide hands alice a Guidance die on her stored sheet — GuidedUnlockSuite's
@@ -622,8 +653,8 @@ func (s *IntimidateSuite) TestAnUnauthoredSpawnStillDerives() {
 func (s *IntimidateSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 	const fact = "sergeant-cowed"
 	s.authored = func(in *session.SpawnInput) {
-		in.Answers = map[string][]session.Answer{
-			"intimidated": {{Weight: 1, Fact: fact}},
+		in.Table = encounter.Table{
+			encounter.AnswerIntimidated: {{Weight: 1, Fact: encounter.FactID(fact)}},
 		}
 		in.Faction = "raiders"
 	}

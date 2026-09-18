@@ -178,18 +178,47 @@ type SpawnInput struct {
 	// means DERIVED, not ungated.
 	Persuade []DoorApproach
 
-	// Answers is what this monster DOES about a social verb's verdict,
-	// keyed by outcome — the author's `place[].on` (rpg-project#458),
-	// forwarded untouched.
+	// Table is what this monster DOES — its whole policy, keyed by what
+	// happened: the four social verdicts and `time`, the creature's own turn
+	// (rpg-project#465, ideas/creature-table/design.md §1).
 	//
-	// IT REPLACED `OnIntimidated string`, which named one fact on one outcome
-	// and had nowhere to put a line of speech, a failed attempt, or a
-	// creature that runs. There is no second spelling beside it: two
-	// representations of one authored fact is what this repo bans.
+	// THE AUTHOR'S TWO LAYERS, ALREADY LAID. Hand over
+	// [dungeonspec.MonsterPlacement.Table] verbatim: the compiler laid the
+	// placement's `on:` over its faction's before it ever reached the host.
+	// This verb lays the THIRD layer — the rulebook's default table for the
+	// monster's kind — UNDERNEATH, so a placement with no `on:` at all still
+	// fights, and a placement that named `time` replaces the default's `time`
+	// wholesale rather than adding to it.
 	//
-	// Empty is the ordinary case: a creature with nothing authored answers
-	// nothing and the world rolls no die.
-	Answers map[string][]Answer
+	// IT REPLACED TWO FIELDS. `Answers` said what a creature did about a
+	// social verdict and the sheet's `mind` word named a Go preset that
+	// decided everything else — two surfaces for one question, one of them a
+	// black box an author could not open. There is no second spelling beside
+	// this one: the social keys are keys of this same table.
+	//
+	// Nil is the ordinary case, and it does NOT mean a creature that does
+	// nothing: it means the rulebook's default speaks alone.
+	Table encounter.Table
+
+	// Temper is the temperament loading this monster's die — the author's
+	// `place[].temper`, or the word its faction's mix deals it
+	// (design §3, R5). Hand over [dungeonspec.MonsterPlacement.Temper]
+	// verbatim; this verb fills in what the word MEANS from the rulebook
+	// before the composition sees it.
+	//
+	// A WEIGHT PROFILE AND NOTHING ELSE. It adds no entries where a table is
+	// silent, it has no triggers, and it holds no memory. Four goblins off
+	// one sheet with one table are four different creatures because their
+	// dice are loaded differently, not because they were given different
+	// orders.
+	//
+	// The zero value is a soldier — every word at 100 — so a monster nobody
+	// gave a temperament and one authored `temper: soldier` are the same
+	// creature. A word this rulebook does not know REFUSES the spawn rather
+	// than degrading to a soldier: a placement whose `temper:` was mistyped
+	// would otherwise play perfectly well and nobody would learn the word
+	// never landed.
+	Temper encounter.Temper
 
 	// Faction is the side this monster fights on — the author's placement
 	// from the dungeon file's `place[].faction` (rpg-project#375, the
@@ -529,7 +558,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// composition's own rule (rpg-project#375, R4), and nothing about the
 	// players' side is authorable — see SpawnInput.Faction.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", "", false, nil, "", nil,
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil, "", nil,
 		// A PLAYER IS NOT A SOCIAL TARGET in this build: the social verbs
 		// refuse a target with no monster stat block to derive a DC from, so
 		// there is nothing for a joining character to carry.
@@ -594,10 +623,12 @@ func discoveryStanding(scope *writeScope) (map[string]bool, error) {
 // because a spawned monster is session-scoped: it has no existence outside this
 // fight and nothing durable to look up.
 //
-// A decider is not supplied here. Deciders are never persisted and are
-// re-registered at load, so behaviour arrives with the wave that brings it. A
-// monster spawned today is placed, perceived, and remembered correctly; it
-// simply does not act on its own.
+// WHAT IT DOES IS SETTLED HERE, ONCE. The author's orders arrive on Table, the
+// rulebook's default for the monster's kind is laid underneath them, and the
+// temperament's word is resolved to the numbers it means — all before the
+// member exists, so a creature that reaches the board has a policy or the
+// spawn was refused (rpg-project#465). Nothing re-registers at load and nothing
+// arrives later: the table is persisted with the member.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef, ErrBadRef,
 // ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter,
@@ -675,10 +706,36 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// back to (rpg-project#254 design §5) — see sight.go's doc for why
 	// baking a decision in here, at spawn time, would be the wrong place
 	// to make it.
+	// THE THIRD LAYER GOES ON BEFORE THE MEMBER DOES. The author's two
+	// arrived already laid (SpawnInput.Table); the rulebook's default for this
+	// monster's kind goes underneath them here, which is the whole reason a
+	// placement with no `on:` still fights. Refused rather than defaulted: a
+	// creature placed with no policy would stand there looking like a choice
+	// somebody made.
+	// The sheet's own ref, which instantiate just resolved from in.Ref: the
+	// rulebook answers a default table for a KIND, and a ref is what names a
+	// kind.
+	folded, err := foldedTable(sheet.Ref, in.Table)
+	if err != nil {
+		return nil, fmt.Errorf("spawn %q: %w", in.ID, err)
+	}
+
+	// AND WHAT LOADS ITS DIE. An authored word becomes the percent profile the
+	// rulebook says it means; a faction's mix becomes every word's profile for
+	// the composition to deal one from at Join, with the faction as the die's
+	// entity; nothing stays nothing, which is a soldier. An unknown word
+	// refuses the spawn — see [resolvedTemper].
+	temper, err := resolvedTemper(in.Temper)
+	if err != nil {
+		return nil, fmt.Errorf("spawn %q: %w", in.ID, err)
+	}
+
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
 		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
-		sheet.Targeting.String(), sheet.Mind.String(), false, in.Holds, in.Faction, in.Arrives,
-		socialPlacement{Intimidate: in.Intimidate, Persuade: in.Persuade, Answers: in.Answers})
+		sheet.Targeting.String(), false, in.Holds, in.Faction, in.Arrives,
+		socialPlacement{
+			Intimidate: in.Intimidate, Persuade: in.Persuade, Table: folded, Temper: temper,
+		})
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -766,7 +823,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	// No faction: a world NPC is never a side (rpg-toolkit#1404), and the
 	// composition puts a member of this kind in no faction at all.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "", "", blocksMovement, nil, "", nil,
+		0, 0, nil, "", blocksMovement, nil, "", nil,
 		// A world NPC is not a monster and carries no authored check.
 		socialPlacement{})
 	if err != nil {
@@ -802,7 +859,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 // kills the pins on both. Same reasoning, one layer up.
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
-	speedFeet, sightFeet int, actions []encounter.ActionView, targeting, mind string, blocksMovement bool,
+	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
 	holds []string, faction string, arrives Arrival, social socialPlacement,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
@@ -843,15 +900,10 @@ func place(
 		// playing them. Both callers (Join, Spawn) compute these off the
 		// sheet or catalog content they just loaded and hand them straight
 		// through; see each verb's own doc for where its values come from.
-		SpeedFeet: speedFeet,
-		SightFeet: sightFeet,
-		Actions:   actions,
-		Targeting: targeting,
-		// The mind the sheet names, forwarded as the word it was written
-		// (rpg-toolkit#1725, rule A5) — opaque here exactly as Targeting is.
-		// A member whose sheet names none crosses empty, and the driver
-		// alone decides what an unnamed mind means.
-		Mind:           mind,
+		SpeedFeet:      speedFeet,
+		SightFeet:      sightFeet,
+		Actions:        actions,
+		Targeting:      targeting,
 		BlocksMovement: blocksMovement,
 		// The author's placed records, converted at the boundary and nowhere
 		// else — a []string in, the composition's own IntelID out (S2: no
@@ -873,7 +925,18 @@ func place(
 		// string on both sides, so it crosses untouched.
 		Intimidate: checkApproachesOf(social.Intimidate),
 		Persuade:   checkApproachesOf(social.Persuade),
-		Answers:    answersOf(social.Answers),
+		// The creature's whole policy, already three layers deep
+		// (rpg-project#465): the rulebook's default for its kind under the
+		// author's faction orders under the author's placement orders. Laid
+		// by whichever verb built this placement, never here — this function
+		// places what it was handed.
+		Table: social.Table,
+		// And what loads its die, with the word's meaning already filled in
+		// from the rulebook. A faction's MIX crosses intact: the composition
+		// deals one word from it at this very door, through the world's dice
+		// with the faction as the die's entity, and writes the beat that says
+		// which goblin came out the coward.
+		Temper: social.Temper,
 	})
 	if err != nil {
 		return nil, translate(err)
@@ -1079,7 +1142,13 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		ctx, data, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
 		announcerSeam{m: m, scope: scope}, scope.sight,
 		checkSeam{m: m, scope: scope}, witnessSeam{scope: scope},
-		m.compelledDriverFor(ctx, scope))
+		m.compelledDriverFor(ctx, scope),
+		// THE SESSION'S SHARED DICE, because this verb can advance a clock and
+		// a clock that advances gives creatures time (rpg-project#465). Every
+		// write verb loads through here, so there is one answer to "can a table
+		// be rolled on this world" and it is yes for every write and no for
+		// every read.
+		m.encounterDice())
 	if err != nil {
 		return nil, err
 	}
@@ -1180,7 +1249,7 @@ type writeScope struct {
 	// sight that is merely wasteful, but with one that could ever answer
 	// differently it is two capabilities in one call driving turns with two
 	// different brains. Resolved once, carried, and the answer is the verb's.
-	driver encounter.TurnDriver
+	driver encounter.Driver
 
 	// sight is the SAME *sightSeam the live encounter holds — see the
 	// type's own doc on why a pointer, not a value. place adds a member
@@ -1299,6 +1368,10 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 		// composition's own verbs, so the driver the new encounter carries
 		// must be the one that reads this scope.
 		TurnDriver: m.compelledDriverFor(ctx, scope),
+		// And the die, rebound for the same reason: this replaces scope.enc,
+		// and the world that comes back from a resolution is still one a
+		// creature can be given time on before this verb commits.
+		Roller: m.encounterDice(),
 		// Bound to the SAME scope, not rebuilt: this replaces scope.enc, and
 		// strikerSeam only ever reads scope.enc from inside a later Strike
 		// call, well after this assignment lands (rpg-project#254).

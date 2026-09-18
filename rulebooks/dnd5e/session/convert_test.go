@@ -158,27 +158,41 @@ var omitted = map[string]string{
 		"MonsterView.Seen, and a roster listing has no use for the raw range itself",
 	"encounter.Member.Actions":   "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Actions",
 	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
-	"encounter.Member.Mind":      "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Mind",
 
-	// Intimidate, Persuade and Answers (rpg-project#454, rpg-project#458)
-	// are the placement's authored shenanigan facts, read by ONE consumer:
-	// the social verbs, which ask the composition for them at the moment they
-	// need a DC and hand the DC straight back on the response. A roster
-	// listing answers "who is here, and where"; a creature's difficulty class
-	// is not part of that question, and the number reaches a client on the
-	// response and on the verb's own beat either way.
+	// Intimidate, Persuade, Table and Temper (rpg-project#454, #458, #465)
+	// are the placement's authored facts, read by ONE consumer: the social
+	// verbs, which ask the composition for a DC at the moment they need one
+	// and hand it straight back on the response. A roster listing answers
+	// "who is here, and where"; a creature's difficulty class is not part of
+	// that question, and the number reaches a client on the response and on
+	// the verb's own beat either way.
 	//
 	// THE TABLE IS THE AUTHOR'S, NOT THE CLIENT'S. What the creature will do
 	// and say is the setup, and projecting it onto a roster row would hand
 	// every player the goblin's script before anybody spoke to it. What they
-	// get is the `answered` beat after it fires — the line, the die, and the
-	// entry that won. Project these when a real reader needs them ahead of
-	// the roll, the way SpeedFeet and friends will be.
+	// get is the `answered` beat after an entry fires — the line, the die,
+	// every eligible entry's arithmetic, and the entry that won. Project these
+	// when a real reader needs them ahead of the roll, the way SpeedFeet and
+	// friends will be.
 	"encounter.Member.Intimidate": "the authored check the social verbs read at roll time; " +
 		"the DC reaches a client on the response and the beat, not on a roster row",
 	"encounter.Member.Persuade": "Intimidate's twin, omitted for Intimidate's reason",
-	"encounter.Member.Answers": "the author's script for what the creature does and says; a client " +
+	"encounter.Member.Table": "the author's script for what the creature does and says; a client " +
 		"reads it as the `answered` beat AFTER an entry fires, never as a roster row it could read ahead",
+	"encounter.Member.Temper": "the loading on that script's die, omitted for Table's reason; which " +
+		"temperament a faction's mix dealt reaches a client as the `tempered` beat",
+
+	// The table's own three fields on the driver's view, omitted for the
+	// reason [tableDriver] exists (rpg-project#465): the ONE driver that reads
+	// them takes the composition's own view directly, because a pick's
+	// arithmetic has nowhere to ride back on this package's TurnIntent. A host
+	// driver is handed what it can act on, and a table is not one of those
+	// things. TestTheTableDoesNotCrossToAHostsDriver pins it from the other
+	// side.
+	"encounter.MonsterView.Table":  "read by encounter.TableDriver on the composition's own view, never through this twin",
+	"encounter.MonsterView.Temper": "Table's companion, omitted for Table's reason",
+	"encounter.MonsterView.Deeds": "the deeds a `when` condition reads, decoded from Holdings — which " +
+		"IS carried, so a host driver that wants them reads the same testimony the table does",
 
 	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
 	// occupancy check at Join/Step time — it decides whether an arrival is

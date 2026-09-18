@@ -13,15 +13,23 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// TurnDriver decides what a member with no player does when a fight's clock
-// lands on their turn. Required.
+// TurnDriver decides what a member with no player does when it is given time:
+// its turn in a fight, or a round of the world. Required.
 //
-// This package's own twin of encounter.TurnDriver (S2): a host implementing
-// encounter's interface directly would name a module this SDK intends to
-// keep replaceable underneath it. Wire behavior.Basic (import path
-// github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior) for a real
-// driver, or session.Pass{} for v1's original whole answer — every unplayed
-// member's turn ends the moment the clock reaches it.
+// This package's own twin of encounter.Driver (S2): a host implementing the
+// composition's interface directly would name a module this SDK intends to
+// keep replaceable underneath it.
+//
+// WIRE [Driver] — the creature's own authored table, which is what every
+// monster in a real run is driven by (rpg-project#465). session.Pass{} remains
+// for v1's original whole answer: every unplayed member's turn ends the moment
+// the clock reaches it, which is what a workbench and most fixtures want.
+//
+// A HOST'S OWN DRIVER ROLLS NOTHING, and the view it is handed says so: this
+// twin carries no table, no temperament and no deeds, because the one driver
+// that reads those never crosses this boundary (see [tableDriver]). What a
+// driver written against this interface gets is what it always got — position,
+// actions, sight, memory, budget — and what it answers with is an intent.
 type TurnDriver interface {
 	// Act decides what member does on their turn, given everything this SDK
 	// is willing to tell it about the member's own situation (view), or
@@ -131,12 +139,6 @@ type MonsterView struct {
 	// "closest" means already knows.
 	Targeting string
 
-	// Mind is the mind this member's sheet names, verbatim; empty when it
-	// names none. Opaque here for Targeting's own reason (S2): the
-	// rulebook that authored the word is the one that looks it up
-	// (rpg-toolkit#1725, rule A5).
-	Mind string
-
 	// Holdings is everything this member holds, on every channel, as
 	// values — the raw testimony Seen and Remembered are decoded from,
 	// plus what they drop (a deeds-channel holding, for one). A driver
@@ -172,6 +174,14 @@ type RememberedMember struct {
 
 	// Kind is whether the remembered member is a player or monster.
 	Kind MemberKind
+
+	// Opposed is whether the stance graph puts this remembered member on the
+	// other side right now — [SeenMember.Opposed]'s twin.
+	//
+	// ASKED NOW, NOT REMEMBERED. Where they stand is stale by definition;
+	// whose side they are on is the graph's answer at this instant, because a
+	// truce made while the creature was not looking is still a truce.
+	Opposed bool
 
 	// Position is the member's last-known dungeon-absolute cell and may be stale.
 	Position spatial.Position
@@ -249,6 +259,20 @@ type SeenMember struct {
 
 	// Kind is whether they are a player or a monster.
 	Kind MemberKind
+
+	// Opposed is whether the stance graph puts this sighting on the other side
+	// RIGHT NOW (rpg-project#465).
+	//
+	// PROJECTED, NEVER DERIVED BY A DRIVER. A driver has no stance graph to
+	// ask and must not get one: who is against whom is a fact about factions
+	// and dispositions that only the composition holds, and a driver reading
+	// [Kind] instead would make every monster hostile to every player forever
+	// — which is exactly what kept a neutral goblin from being possible.
+	//
+	// False for a member in no faction, a world NPC included: "nobody is
+	// against them" is the honest answer, and it is what lets a creature stand
+	// quietly in a room full of vendors.
+	Opposed bool
 
 	// Standing is false when this member is known to be down.
 	Standing bool
@@ -397,37 +421,56 @@ func (Routed) isTurnIntent() {}
 // encounter.TurnIntent on the way out.
 //
 // Unexported for the reason every seam in this file is: if the host had to
-// satisfy encounter.TurnDriver directly, replacing the composition would
-// break every host that implemented it.
+// satisfy encounter.Driver directly, replacing the composition would break
+// every host that implemented it.
 type turnDriverSeam struct {
 	driver TurnDriver
 }
 
 // Act translates one member's view and intent across the boundary.
-func (s turnDriverSeam) Act(view encounter.MonsterView) (encounter.TurnIntent, error) {
+//
+// THE PICK IS ALWAYS NIL, and that is a statement rather than an omission. A
+// [Decision] carries the roll that chose an intent when one was rolled
+// (rpg-project#465); a driver on this side of the boundary was handed a view
+// with no table in it and rolled nothing, so the composition writes no answer
+// beat for the turn it takes. The one driver that DOES roll never comes
+// through here — see [tableDriver].
+func (s turnDriverSeam) Act(view encounter.MonsterView) (encounter.Decision, error) {
 	intent, err := s.driver.Act(projectMonsterView(view))
 	if err != nil {
-		return nil, err
+		return encounter.Decision{}, err
 	}
 
 	switch it := intent.(type) {
 	case Pass, *Pass:
-		return encounter.Pass{}, nil
+		return encounter.Decision{Intent: encounter.Pass{}}, nil
 	case Attack:
-		return attackToEncounter(view.Self, it)
+		return decisionOf(attackToEncounter(view.Self, it))
 	case *Attack:
-		return attackToEncounter(view.Self, *it)
+		return decisionOf(attackToEncounter(view.Self, *it))
 	case Move:
-		return encounter.Move{Path: it.Path}, nil
+		return encounter.Decision{Intent: encounter.Move{Path: it.Path}}, nil
 	case *Move:
-		return encounter.Move{Path: it.Path}, nil
+		return encounter.Decision{Intent: encounter.Move{Path: it.Path}}, nil
 	case Routed:
-		return routedToEncounter(view.Self, it)
+		return decisionOf(routedToEncounter(view.Self, it))
 	case *Routed:
-		return routedToEncounter(view.Self, *it)
+		return decisionOf(routedToEncounter(view.Self, *it))
 	default:
-		return nil, fmt.Errorf("turn driver %q: %w: %T", view.Self, ErrBadTurnOutcome, intent)
+		return encounter.Decision{}, fmt.Errorf("turn driver %q: %w: %T", view.Self, ErrBadTurnOutcome, intent)
 	}
+}
+
+// decisionOf wraps one translated intent as the rolless decision every driver
+// on this side of the boundary makes. It exists so the four translating arms
+// above read as one line each rather than three, and so "a host's driver
+// rolled nothing" is written once.
+func decisionOf(intent encounter.TurnIntent, err error) (encounter.Decision, error) {
+	if err != nil {
+		return encounter.Decision{}, err
+	}
+
+	return encounter.Decision{Intent: intent}, nil
 }
 
 // attackToEncounter parses an Attack's Action string back into the core.Ref
@@ -472,7 +515,7 @@ func routedToEncounter(self encounter.MemberID, it Routed) (encounter.TurnIntent
 }
 
 // compile-time proof the adapter satisfies what it is handed to.
-var _ encounter.TurnDriver = turnDriverSeam{}
+var _ encounter.Driver = turnDriverSeam{}
 
 // projectMonsterView turns the composition's own MonsterView into this
 // package's own twin — the boring, load-bearing translation S2 is the price
@@ -492,6 +535,7 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 		seen[i] = SeenMember{
 			ID:            string(sm.ID),
 			Kind:          MemberKind(sm.Kind),
+			Opposed:       sm.Opposed,
 			Standing:      sm.Standing,
 			Position:      sm.Position,
 			DistanceCells: sm.DistanceCells,
@@ -505,6 +549,7 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 		remembered[i] = RememberedMember{
 			ID:            string(rm.ID),
 			Kind:          MemberKind(rm.Kind),
+			Opposed:       rm.Opposed,
 			Position:      rm.Position,
 			DistanceCells: rm.DistanceCells,
 			Path:          append([]spatial.Position(nil), rm.Path...),
@@ -524,7 +569,6 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 		Position:   view.Position,
 		Actions:    actions,
 		Targeting:  view.Targeting,
-		Mind:       view.Mind,
 		Holdings:   holdings,
 		At:         view.At,
 		Seen:       seen,
@@ -554,27 +598,6 @@ func projectHolding(h perception.Holding) Holding {
 		Subject:    string(h.Subject),
 		Payload:    append([]byte(nil), h.Payload...),
 		Channel:    string(h.Channel),
-		Observed:   h.Observed,
-		Confirmed:  h.Confirmed,
-		CurrentVia: via,
-	}
-}
-
-// unprojectHolding is projectHolding's exact reverse, for the seams that
-// hand a view back to a driver written against the composition's own types.
-func unprojectHolding(h Holding) perception.Holding {
-	var via []perception.Channel
-	if len(h.CurrentVia) > 0 {
-		via = make([]perception.Channel, len(h.CurrentVia))
-		for i, c := range h.CurrentVia {
-			via[i] = perception.Channel(c)
-		}
-	}
-
-	return perception.Holding{
-		Subject:    core.EntityID(h.Subject),
-		Payload:    append([]byte(nil), h.Payload...),
-		Channel:    perception.Channel(h.Channel),
 		Observed:   h.Observed,
 		Confirmed:  h.Confirmed,
 		CurrentVia: via,

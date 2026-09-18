@@ -1343,3 +1343,201 @@ func TestAnAttemptBeatWithImpossibleArithmeticDoesNotType(t *testing.T) {
 	require.Nil(t, bodyFor(EventIntimidated, []byte(payload)),
 		"a total of 7 cannot be the roll behind a beat reporting 14")
 }
+
+// The creature's table writes ONE beat for a social answer and for a
+// creature's own turn, and this pins that one decoder reads both
+// (rpg-project#465 §6, R7).
+func TestTheAnsweredBeatCarriesTheWholeRoll(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+		want AnsweredBody
+	}{
+		{
+			name: "a social answer names its verb and its verdict",
+			json: `{"beat":"answered","creature":"goblin","key":"intimidated","verb":"intimidate",
+				"beaten":true,"roll":56,"of":160,"entry":1,"temper":"coward",
+				"candidates":[{"entry":0,"weight":70,"percent":50,"loaded":3500},
+				              {"entry":1,"weight":30,"percent":300,"loaded":9000}],
+				"word":"flee","selector":"","say":"You win! I'm going!","fact":""}`,
+			want: AnsweredBody{
+				Creature: "goblin", Key: "intimidated", Verb: "intimidate", Beaten: true,
+				Roll: 56, Of: 160, Entry: 1, Temper: "coward",
+				Candidates: []AnswerCandidate{
+					{Entry: 0, Weight: 70, Percent: 50, Loaded: 3500},
+					{Entry: 1, Weight: 30, Percent: 300, Loaded: 9000},
+				},
+				Word: "flee", Say: "You win! I'm going!",
+			},
+		},
+		{
+			name: "a time pick has no verb, and that is an answer rather than a gap",
+			json: `{"beat":"answered","creature":"thug-1","key":"time","verb":"","beaten":false,
+				"roll":220,"of":500,"entry":2,"temper":"",
+				"candidates":[{"entry":0,"weight":3,"percent":100,"loaded":300},
+				              {"entry":2,"weight":1,"percent":100,"loaded":100},
+				              {"entry":4,"weight":1,"percent":100,"loaded":100}],
+				"word":"attack","selector":"enemy","say":"","fact":""}`,
+			want: AnsweredBody{
+				Creature: "thug-1", Key: "time", Roll: 220, Of: 500, Entry: 2,
+				Candidates: []AnswerCandidate{
+					{Entry: 0, Weight: 3, Percent: 100, Loaded: 300},
+					{Entry: 2, Weight: 1, Percent: 100, Loaded: 100},
+					{Entry: 4, Weight: 1, Percent: 100, Loaded: 100},
+				},
+				Word: "attack",
+			},
+		},
+		{
+			// FAIL CLOSED LOUDLY, said on the wire: a `time` key with nothing
+			// eligible is a hold, written with no candidates, a die of zero and
+			// an entry of -1. The old decoder gated on `of` being at least 1 and
+			// would have DROPPED this beat — turning "the creature was asked and
+			// stood there" back into silence, which is the exact distinction the
+			// design's hold exists to make.
+			name: "a hold with nothing eligible is a beat, not a silence",
+			json: `{"beat":"answered","creature":"goblin","key":"time","verb":"","beaten":false,
+				"roll":0,"of":0,"entry":-1,"temper":"soldier","candidates":[],
+				"word":"hold","selector":"","say":"","fact":""}`,
+			want: AnsweredBody{
+				Creature: "goblin", Key: "time", Roll: 0, Of: 0, Entry: -1,
+				Temper: "soldier", Candidates: []AnswerCandidate{}, Word: "hold",
+			},
+		},
+		{
+			// LEGACY TOLERANCE. A run stored by the build before the creature's
+			// table has no `key`, no `candidates` and no `temper` — that build
+			// rolled social tables only. It decodes with everything it did write
+			// intact, and the absent key reads as absent rather than as a beat
+			// this decoder refuses.
+			name: "a beat from before the table decodes without its key",
+			json: `{"beat":"answered","creature":"goblin","verb":"persuade","beaten":true,
+				"roll":2,"of":4,"entry":0,"word":"","say":"Go left at the rope.","fact":""}`,
+			want: AnsweredBody{
+				Creature: "goblin", Verb: "persuade", Beaten: true,
+				Roll: 2, Of: 4, Entry: 0, Candidates: []AnswerCandidate{},
+				Say: "Go left at the rope.",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+
+			require.Equal(t, EventAnswered, kind)
+			require.Equal(t, tc.want, body)
+		})
+	}
+}
+
+// A payload with no creature on it is not an answer this build wrote, and the
+// creature is the ONE field that gates — `verb` and `of` both stopped being
+// able to (see the decoder's own comment).
+func TestAnAnswerWithNobodyAnsweringIsRefused(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"answered","creature":"","key":"time","roll":1,"of":100,"entry":0}`))
+
+	require.Equal(t, EventAnswered, kind, "the kind still maps — it is the body that is unreadable")
+	require.Nil(t, body)
+}
+
+// Which temperament a faction's mix dealt one creature, with the roll that
+// dealt it (rpg-project#465 §3).
+func TestTheTemperedBeatNamesWhoCameOutTheCoward(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"tempered","member":"goblin-3","temper":"coward","roll":1,"of":4,"faction":"goblins"}`))
+
+	require.Equal(t, EventTempered, kind)
+	require.Equal(t, TemperedBody{
+		Member: "goblin-3", Temper: "coward", Roll: 1, Of: 4, Faction: "goblins",
+	}, body)
+}
+
+// A deal always names a word — the composition refuses a mix it cannot deal
+// from at the door — so an empty one is a beat this build never wrote.
+func TestATemperedBeatWithNoWordIsRefused(t *testing.T) {
+	for _, payload := range []string{
+		`{"beat":"tempered","member":"goblin-3","temper":"","roll":1,"of":4}`,
+		`{"beat":"tempered","member":"","temper":"coward","roll":1,"of":4}`,
+	} {
+		kind, body := decodeBeat([]byte(payload))
+
+		require.Equal(t, EventTempered, kind)
+		require.Nil(t, body)
+	}
+}
+
+// A routed walk that moved nobody says so, and says how far the route could
+// explain it (rpg-project#465).
+//
+// The kind exists because its absence cost a walk: the bandits spent a round of
+// the world on every tick and the log could not tell a creature that had been
+// asked and could not move from one nobody asked at all.
+func TestTheStayedBeatSaysAWalkMovedNobody(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+		want StayedBody
+		why  string
+	}{
+		{
+			name: "a creature running found a wall, and the route says which",
+			json: `{"beat":"stayed","member":"thug-1","cause":"encounter:table:away",
+				"why":"is blocked by dnd5e:props:pillar"}`,
+			want: StayedBody{
+				Member: "thug-1", Cause: "encounter:table:away",
+				Why: "is blocked by dnd5e:props:pillar",
+			},
+			why: "the fold's own refusal phrase, carried verbatim",
+		},
+		{
+			// THE TWO TABLE CAUSES ARE DISTINCT, and this case is here because
+			// they were not: a `toward` walk used to be labelled "away", so an
+			// observer reading the log saw a creature CLOSING on somebody
+			// described as running from them. Both spellings are asserted so
+			// the pair cannot quietly collapse back into one.
+			name: "a creature closing on an authored cell carries the toward cause",
+			json: `{"beat":"stayed","member":"thug-2","cause":"encounter:table:toward","why":""}`,
+			want: StayedBody{Member: "thug-2", Cause: "encounter:table:toward"},
+			why:  "walking to a cell and walking away from somebody are not one cause",
+		},
+		{
+			name: "nowhere strictly better is an empty why, and that is an answer",
+			json: `{"beat":"stayed","member":"goblin","cause":"dnd5e:spells:command","why":""}`,
+			want: StayedBody{Member: "goblin", Cause: "dnd5e:spells:command"},
+			why: "a creature already standing where it was sent gets no phrase — " +
+				"empty means it had nowhere to go, never that the engine did not say",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+
+			require.Equal(t, EventStayed, kind)
+			require.Equal(t, tc.want, body, tc.why)
+		})
+	}
+}
+
+// The member and the cause gate this body; `why` cannot, because empty is its
+// ordinary value and gating on it would drop the beat the kind exists for.
+func TestAStayedBeatWithNoMemberOrCauseIsRefused(t *testing.T) {
+	for _, payload := range []string{
+		`{"beat":"stayed","member":"","cause":"encounter:table:away","why":""}`,
+		`{"beat":"stayed","member":"thug-1","cause":"","why":"is blocked by a wall"}`,
+	} {
+		kind, body := decodeBeat([]byte(payload))
+
+		require.Equal(t, EventStayed, kind, "the kind maps; it is the body that is unreadable")
+		require.Nil(t, body)
+	}
+}
+
+// The composition's own word for the beat is what this seam decodes, so a
+// rename over there fails to compile here rather than quietly producing a beat
+// nobody renders — the rule every kind named by constant in this file keeps.
+func TestTheStayedKindIsTheCompositionsOwnWord(t *testing.T) {
+	require.Equal(t, encounter.BeatStayed, string(EventStayed))
+}

@@ -46,7 +46,7 @@ func (s *ReactWindowSuite) SetupTest() {
 
 // pathWalker walks each named monster one fixed path on its first turn and
 // passes ever after — a monster that deliberately leaves a threatened square,
-// which is the one thing session.Behavior() will never do on its own.
+// which is the one thing session.Driver() will never do on its own.
 //
 // KEYED BY MEMBER, unlike rung 2's single-shot retreatWalker, because the
 // done-when scene needs two skeletons to walk on their OWN turns rather than

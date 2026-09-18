@@ -20,7 +20,7 @@
 //	    Events:          stream,
 //	    Dice:            roller,
 //	    PresentationIDs: presentationIDs,
-//	    TurnDriver:      session.Pass{},
+//	    TurnDriver:      session.Driver(),
 //	})
 //
 //	out, err := mgr.Move(ctx, &session.MoveInput{Session: s, Member: m, Path: p})

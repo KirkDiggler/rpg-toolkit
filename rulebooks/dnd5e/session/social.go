@@ -433,65 +433,30 @@ func (m *Manager) poseSocialWindow(
 	}, nil
 }
 
-// Answer is ONE entry in an authored answer table, in this seam's own
-// vocabulary (rpg-project#458) — the creature's authored answer to a check,
-// rolled by the world. NOT [VerbReact], which is D&D's reaction and an
-// interrupt window this seam already owns that word for.
+// socialPlacement is the half of a placement that says what the creature COSTS
+// and what it DOES — what an author priced, and the table it answers from.
 //
-// SPELLED HERE RATHER THAN IMPORTED (S2): no composition type crosses this
-// seam's exported surface, so a host hands over these and [answersOf]
-// converts at the boundary — the same move [DoorApproach] makes for a check.
-type Answer struct {
-	// Weight is this entry's share of the table, AT LEAST 1. The authoring
-	// dialect resolves an omitted weight to 1 before a host ever sees one;
-	// the composition refuses anything lower.
-	Weight int `json:"weight"`
-
-	// Say is the creature's line, carried verbatim onto the beat. Empty means
-	// it says nothing.
-	Say string `json:"say,omitempty"`
-
-	// Fact is the world fact every witness learns when this entry fires.
-	// Empty means it teaches nothing.
-	Fact string `json:"fact,omitempty"`
-
-	// Flee sends the creature away from whoever spoke to it, for its own full
-	// speed, as a directed move off anybody's turn.
-	Flee bool `json:"flee,omitempty"`
-}
-
-// socialPlacement is the shenanigan half of a placement — what an author
-// priced and what the creature does about it.
+// A STRUCT RATHER THAN FOUR MORE POSITIONAL ARGUMENTS on [place], which already
+// takes thirteen: two adjacent []DoorApproach parameters are one careless call
+// away from being silently swapped, and the swap would compile.
 //
-// A STRUCT RATHER THAN THREE MORE POSITIONAL ARGUMENTS on [place], which
-// already takes fourteen: two adjacent []DoorApproach parameters are one
-// careless call away from being silently swapped, and the swap would compile.
+// `Answers` USED TO SIT HERE, with a [session.Answer] twin beside it and a
+// converter under it. It is gone rather than kept beside Table: the four social
+// outcomes are KEYS of the same table now (rpg-project#465), and carrying both
+// would be the dual representation this repo bans — with the added defect that
+// a host filling one and not the other would get a creature whose social
+// answers and whose turns came from different files.
 type socialPlacement struct {
 	Intimidate []DoorApproach
 	Persuade   []DoorApproach
-	Answers    map[string][]Answer
-}
 
-// answersOf converts an authored answer table to the composition's shape
-// at the boundary and nowhere else, nil staying nil so a placement that
-// authored none crosses as none.
-func answersOf(answers map[string][]Answer) map[string][]encounter.Answer {
-	if answers == nil {
-		return nil
-	}
-	out := make(map[string][]encounter.Answer, len(answers))
-	for key, entries := range answers {
-		rows := make([]encounter.Answer, 0, len(entries))
-		for _, entry := range entries {
-			rows = append(rows, encounter.Answer{
-				Weight: entry.Weight,
-				Say:    entry.Say,
-				Fact:   encounter.FactID(entry.Fact),
-				Flee:   entry.Flee,
-			})
-		}
-		out[key] = rows
-	}
+	// Table is the creature's whole policy, ALREADY FOLDED: the rulebook's
+	// default for its kind under the author's two layers. Whichever verb built
+	// this placement did the folding ([foldedTable]); [place] carries it.
+	Table encounter.Table
 
-	return out
+	// Temper is its temperament with the profile already filled in from the
+	// rulebook, or a faction's mix for the composition to deal one from
+	// ([resolvedTemper]).
+	Temper encounter.Temper
 }
