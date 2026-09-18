@@ -797,3 +797,26 @@ func (s *CastContentSuite) TestInflictWoundsDeclaresTouchSpellAttack() {
 	s.Equal([]damage.Damage{{Dice: "3d10", Type: damage.Necrotic}}, a.Damage)
 	s.Empty(a.OnHit)
 }
+
+func (s *CastContentSuite) TestShieldOfFaithDeclaresBonusActionAndOwnedProtection() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ShieldOfFaith})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+	s.Equal(1, d.Cast.Casting.Level)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	s.Zero(d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(60, d.Cast.RangeFeet)
+	s.Equal(actions.CastTargetKnownCreature, d.Cast.Target)
+	s.Equal(1, d.Cast.MinTargets)
+	s.Equal(1, d.Cast.MaxTargets)
+	s.Require().Len(d.Cast.Effects, 1)
+	s.Equal(*refs.Conditions.ShieldOfFaith(), d.Cast.Effects[0].Ref)
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Require().NotNil(d.Cast.Concentration)
+	s.Equal(100, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.Nil(d.Cast.Attack)
+	s.Nil(d.Cast.Save)
+}

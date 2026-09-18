@@ -196,6 +196,27 @@ func (m *Monster) AC() int {
 	return m.ac
 }
 
+// EffectiveAC folds temporary protection over the authored stat-block AC.
+// As with characters, an attached sheet is required so loaded conditions cannot
+// silently disappear from combat calculations.
+func (m *Monster) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error) {
+	if m.bus == nil {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "effective AC needs an attached monster")
+	}
+	event := &combat.ACChainEvent{CharacterID: m.id, Breakdown: &combat.ACBreakdown{}}
+	event.Breakdown.AddComponent(combat.ACComponent{Type: combat.ACSourceBase, Value: m.ac})
+	staged := events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages)
+	modified, err := combat.ACChain.On(m.bus).PublishWithChain(ctx, event, staged)
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "publish monster AC chain")
+	}
+	result, err := modified.Execute(ctx, event)
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "fold monster AC chain")
+	}
+	return result.Breakdown, nil
+}
+
 // HasShieldEquipped answers FALSE, always, and the constant is the rule rather
 // than a stub. Implements combat.Combatant interface.
 //

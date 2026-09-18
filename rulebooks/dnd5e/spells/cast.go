@@ -347,6 +347,21 @@ var castContent = map[Spell]castProfileBuilder{
 			}
 		},
 	},
+	ShieldOfFaith: {
+		name:    "Shield of Faith",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
+		cost: &combat.SpendProfile{
+			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
+			Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
+		},
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 60, Target: actions.CastTargetKnownCreature, MinTargets: 1, MaxTargets: 1,
+				Effects:       []actions.CastEffect{{Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.ShieldOfFaith(), CounterpartKey: "source_id"}},
+				Concentration: &actions.CastConcentration{TurnEnds: 100, SkipFirstTurnEnd: true},
+			}
+		},
+	},
 	HealingWord: {
 		name:    "Healing Word",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},

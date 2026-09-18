@@ -292,6 +292,18 @@ var longRestCases = map[string]longRestCase{
 		outcome:          longRestRemove,
 		removalReason:    "long rest",
 	},
+	refs.Conditions.ShieldOfFaith().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"conditions","id":"shield_of_faith"},
+			"member_id":"member-1","source_id":"cleric-1",
+			"source_ref":{"module":"dnd5e","type":"spells","id":"shield-of-faith"}
+		}`),
+		ownerID:          "member-1",
+		expectedRef:      refs.Conditions.ShieldOfFaith(),
+		expectedSourceID: "cleric-1",
+		outcome:          longRestRemove,
+		removalReason:    "long rest",
+	},
 	refs.Conditions.Guided().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"guided"},

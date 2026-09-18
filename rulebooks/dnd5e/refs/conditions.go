@@ -225,3 +225,8 @@ var conditionGuidingBolt = &core.Ref{Module: Module, Type: TypeConditions, ID: "
 
 // GuidingBolt returns the target-held light consumed by the next attack roll.
 func (n conditionsNS) GuidingBolt() *core.Ref { return conditionGuidingBolt }
+
+var conditionShieldOfFaith = &core.Ref{Module: Module, Type: TypeConditions, ID: "shield_of_faith"}
+
+// ShieldOfFaith returns the recipient's concentration-owned AC protection.
+func (n conditionsNS) ShieldOfFaith() *core.Ref { return conditionShieldOfFaith }
