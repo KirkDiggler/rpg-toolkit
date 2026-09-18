@@ -1429,3 +1429,19 @@ func (s *CastSuite) TestAWordSentToASpellWithNoMenuIsRefused() {
 	s.NotContains(err.Error(), "resolution", "this door refused it, not the layer below")
 	s.Equal(beforeRolls, s.dice.next)
 }
+
+// TestATouchCastOffersSelfAsACandidate pins a real bug found live: Guidance
+// (and Resistance, and any other CastTargetTouch condition-delivery spell)
+// fell through buildTargetPreflight's shared candidate universe, which
+// deliberately excludes the caster — correct for an Attack offer, wrong
+// here, where self is a legal touch recipient by the profile's own design
+// (CastTargetSelf is a no-picker mode and cannot stand for "choose yourself
+// among others" — Guidance/Resistance/Cure Wounds's own doc comments all
+// say so). recoveryCandidates already seeds self for the healing/
+// stabilize branch; the plain touch branch never did.
+func (s *CastSuite) TestATouchCastOffersSelfAsACandidate() {
+	s.scene(castingCleric(), 2)
+	row := s.castRow(spells.Guidance)
+	_, found := castCandidate(s.T(), row, "cleric")
+	s.True(found, "self must be offered as a touch target: %#v", row.Candidates)
+}
