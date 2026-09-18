@@ -482,6 +482,18 @@ func (m *Manager) finishCast(
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
+	// Spell attack dice are presented through the shared struck/missed event.
+	// Allocate before adopting any writes, and preserve the token in Story.
+	for i := range targetResults {
+		if targetResults[i].Attack != nil {
+			token := m.presentationIDs.Generate()
+			if err := validatePresentationID(token); err != nil {
+				return nil, fmt.Errorf("cast: %w", err)
+			}
+			targetResults[i].Attack.PresentationID = token
+		}
+	}
+
 	// THE ROUTE IS TAKEN BEFORE THE RECORD AND THE WALK AFTER IT, which is the
 	// whole of how a push is ordered here. Route is a pure computation and
 	// writes nothing, so the cast's own beat can say the blast moved somebody
