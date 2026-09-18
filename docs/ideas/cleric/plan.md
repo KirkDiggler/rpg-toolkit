@@ -1,6 +1,77 @@
 # Cleric level-one contribution plan
 
+## Sanctuary: encounter slice delivered — a story shape for "warded off"
+
+Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811)
+and resolution PR [#1812](https://github.com/KirkDiggler/rpg-toolkit/pull/1812).
+Both provider PRs are now merged. Their implementation notes and the recipient
+cooldown correction below are retained alongside this encounter record.
+
+**No pin needed.** Checked `rulebooks/dnd5e/encounter/go.mod`: this module
+depends on neither the root `rulebooks/dnd5e` module nor `resolution` at
+all — it is fully generic (MemberID, closed enums, no game-specific ref or
+condition types). The "warded" story shape needed no Sanctuary-specific
+knowledge, so this PR has no cross-repo pin and no merge-order dependency
+on the other two.
+
+**The gap, confirmed before writing anything**: `CastTargetResult` (cast.go)
+only had `Missed bool | Save *CastSave | Results []ActivationResult`, and
+`OutcomeKind` (outcome.go, Strike's closed set) had no arm for "stopped
+before any roll" at all. A warded cast or strike had nowhere to land in the
+story.
+
+**`WardedDetail`** (outcome.go, shared by both paths since cast.go and
+outcome.go are one package): `Source MemberID` (the warding caster) plus
+`Save CastSave` — reusing the existing save shape rather than inventing a
+fourth one, since a ward-blocked save IS an ordinary saving throw, just
+rolled by the ACTOR instead of the recipient. `CastSave` gained JSON tags
+(previously untagged — it had never been marshaled directly, only
+hand-converted field-by-field into `savedPayload`; adding tags is additive
+and doesn't touch that existing path) so `WardedDetail` can be marshaled
+directly the way `DeathSaveDetail`/`TradeDetail` already are in `Record`'s
+generic payload map.
+
+**Strike side**: `OutcomeWarded` joins the closed `OutcomeKind` set (a real
+diff, per that type's own stated cost-of-a-new-kind design). `RecordInput`
+gains `Warded *WardedDetail`, required for that kind and refused on every
+other — `Record`'s own validation checks `Warded.Save.Saver == Actor` (the
+inversion is the point: an ordinary save's saver is whoever it targeted,
+here it's the one who ATTEMPTED the attack), rejects a "successful" ward
+save as a contradiction (a ward beat only exists because the attempt was
+stopped), and reuses `validateRecordedD20` for roll/total/calculation
+agreement.
+
+**Cast side**: new `BeatCastWarded` beat, `CastTargetResult.Warded`
+(mutually exclusive with `Missed`/`Save`/`Results`), and `prepareWardedBeat`
+— NOT a reuse of `prepareSaveBeat`, because that helper's subjects assume
+the two parties in an ordinary recipient save while a ward has three: the
+caster who saved, the target it protected, and the caster who cast the
+ward. Same validation shape as the Strike side, applied per-target so a
+multi-target cast's other recipients are unaffected by one warded one.
+
+Two new test suites (`TestAWardedAttackReachesTheStoryAndRejectsMismatches`
+in outcome_test.go, `TestAWardedTargetReachesTheStoryAndRejectsMismatches`
+in cast_test.go) cover: the beat round-trips through the story verbatim,
+mutual exclusivity, the saver-must-be-the-actor inversion, a "succeeded"
+ward save being rejected as a contradiction, and an unknown source being
+refused. Both files' existing closed-shape guard tests
+(`TestRecordCastClosedShapes`, `TestAnOutcomeCarriesNoProse`) updated to
+include the new fields — deliberately, not a test loosened to pass. Full
+encounter module build/vet/test/lint clean, every pre-existing test
+unchanged.
+
+**Not done here**: session's translation of `resolution.WardOutcome` /
+`CastTargetOutcome.Warded` into these new `RecordInput.Warded` /
+`CastTargetResult.Warded` fields, and whatever live/Story result body the
+API reads (session's own `EventCastMissed`/`CastMissedBody` is the
+precedent for that sibling). Session PR #1814 implements that translation;
+root #1811 has already enabled Sanctuary's cast content.
+
 ## Sanctuary: resolution slice 1 delivered — Strike and Cast wards both
+
+Historical implementation notes follow. The later **Recipient cooldown correction
+(2026-09-18)** supersedes the attacker-immunity behavior described in this initial
+slice; the final mechanic gives the Sanctuary recipient the anti-recast cooldown.
 
 Continues root PR [#1811](https://github.com/KirkDiggler/rpg-toolkit/pull/1811)
 (`SanctuaryCondition`/`SanctuaryImmuneCondition`, not yet consumed), built
