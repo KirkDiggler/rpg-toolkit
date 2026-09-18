@@ -637,3 +637,102 @@ func (s *WorldTimeSuite) picksOf(enc *encounter.Encounter, creature encounter.Me
 
 	return out
 }
+
+// --- Kirk's walk: the bandits who never left the hall -------------------------
+
+// TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedToward is Kirk's walk
+// finding, reproduced and fixed (rpg-project#465).
+//
+// WHAT HE SAW. Ten rounds of the world went by, the bandits picked their one
+// entry — `toward: { at: [3,3] }`, the front room — on every one of them, and
+// their budgets were spent. Not one `moved` beat existed for either of them.
+// They never left the cells they arrived on.
+//
+// WHY. A goblin was standing on (3,3). The exact-cell search that makes
+// `toward: { at: … }` mean "go THERE" needs its goal to be STANDABLE, and a
+// cell with a creature on it is not — so it found no route at all, and the
+// bandits took none of the twelve steps they could have walked. An order that
+// cannot be completed is not an order to stand still.
+//
+// The exact cell is still preferred; a cell nobody can stop on falls through
+// to the approach policy, whose answer is "as near as I can get".
+func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedToward() {
+	target := cellAt(3, 3)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: tableDriver(), Roller: rollsLowest{},
+		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  openAir(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
+			Factions: []encounter.FactionInput{
+				{ID: "bandits", Mind: "bandit"},
+				{ID: "squatters", Mind: "squatter"},
+			},
+			// Nobody is against anybody, so no fight forms and the bandit
+			// stays the world's to think for — the state the walk was in.
+			Dispositions: []encounter.DispositionInput{
+				{Between: [2]encounter.FactionID{"bandits", encounter.FactionParty}, Stance: encounter.StanceNeutral},
+				{Between: [2]encounter.FactionID{"squatters", encounter.FactionParty}, Stance: encounter.StanceNeutral},
+				{Between: [2]encounter.FactionID{"bandits", "squatters"}, Stance: encounter.StanceNeutral},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30},
+			// THE CELL IS TAKEN, which is the whole scene.
+			{ID: "squatter", Kind: encounter.KindMonster, Faction: "squatters",
+				Position: spatial.Position{X: 3, Y: 3}, SpeedFeet: 30},
+			{ID: "bandit", Kind: encounter.KindMonster, Faction: "bandits",
+				Position: spatial.Position{X: 15, Y: 3}, SpeedFeet: 30,
+				Table: walksTo(target)},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	s.Require().Equal(target, whereIs(s.T(), enc, "squatter"), "precondition: somebody is on the ordered cell")
+	started := whereIs(s.T(), enc, "bandit")
+
+	_, err = enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	s.Require().NoError(err)
+
+	moved := whereIs(s.T(), enc, "bandit")
+	s.NotEqual(started, moved, "it walked, which on the walk it never did")
+	s.Less(enc.Distance(moved, target), enc.Distance(started, target), "and it walked TOWARD the cell it was sent at")
+	s.Equal(float64(6), enc.Distance(started, moved), "its whole speed: six cells of a thirty-foot walker")
+}
+
+// TestAWalkThatMovesNobodySaysSo is the second half of the same finding: the
+// bandits' rounds were being spent and the story said nothing, so a reader
+// could not tell a creature that refused from one nobody asked from one sent
+// somewhere it could not reach.
+func (s *WorldTimeSuite) TestAWalkThatMovesNobodySaysSo() {
+	// Ordered at the cell it is already standing on: an order it has already
+	// obeyed, and the shortest way to a route with nowhere to go.
+	standing := cellAt(25, 6)
+
+	enc := s.hallWith(
+		[]encounter.DispositionInput{{
+			Between: [2]encounter.FactionID{"vendors", encounter.FactionParty},
+			Stance:  encounter.StanceNeutral,
+		}},
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
+			Position: spatial.Position{X: 25, Y: 6}, SpeedFeet: 30,
+			Table: walksTo(standing)},
+	)
+
+	s.Require().Equal(standing, whereIs(s.T(), enc, goblin), "precondition: it is already there")
+
+	_, err := enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	s.Require().NoError(err)
+
+	s.Equal(standing, whereIs(s.T(), enc, goblin), "it is already where it was sent, so it goes nowhere")
+
+	beat := s.beatOf(enc, encounter.BeatStayed, goblin)
+	s.Require().NotNil(beat, "and the round it spent going nowhere is in the story")
+	s.Equal("encounter:table:away", beat["cause"], "naming what routed it")
+}

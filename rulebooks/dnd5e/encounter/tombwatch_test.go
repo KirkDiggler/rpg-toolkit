@@ -248,11 +248,13 @@ func TestTombWatch(t *testing.T) {
 		"bubble-formed", "bubble-dissolved",
 		"moved", // beat 2: alice advances
 		// beat 2: a round of the world, the goblin rolls its own table and
-		// steps out; then a second round, on which it holds where its orders
-		// sent it — the roll is still narrated, because being asked is part
-		// of the story.
+		// steps out; then a second round, on which it has ARRIVED where its
+		// orders sent it and says so. Both halves are narrated: the roll,
+		// because being asked is part of the story, and the `stayed`,
+		// because a spent round that moved nobody must be visible (Kirk's
+		// walk, rpg-project#465).
 		"tick", "answered", "moved",
-		"tick", "answered",
+		"tick", "answered", "stayed",
 		"moved",  // beat 3: alice slips behind the wall
 		"joined", // beat 5: cormac (the pause leaves no beat — pause is free)
 		// beat 5: and the goblin sees him arrive — his fight starts AFTER the

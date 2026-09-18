@@ -72,6 +72,16 @@ import (
 // through it and nowhere else.
 const BeatAnswered = "answered"
 
+// BeatStayed is the "beat" value appended when a routed walk moves nobody: a
+// creature was sent somewhere and went nowhere.
+//
+// A SPENT ROUND THAT MOVED NOBODY MUST BE VISIBLE (Kirk's walk,
+// rpg-project#465). The world had been spending the bandits' rounds and
+// narrating nothing, so the log could not tell a creature that refused from
+// one nobody asked from one sent somewhere it could not reach. It carries the
+// cause that routed it and the route's own sentence about why it stopped.
+const BeatStayed = "stayed"
+
 // BeatTempered is the "beat" value appended when a faction's authored mix
 // deals one member its temperament — "so the streamer sees which goblin came
 // out the coward" (design §3).

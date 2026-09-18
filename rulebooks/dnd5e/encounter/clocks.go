@@ -1032,16 +1032,26 @@ func (e *Encounter) executeTurnIntent(
 			return false, nil, fmt.Errorf("routed %q: %w", activeID, rerr)
 		}
 
-		// NOWHERE TO GO IS STILL THE WHOLE TURN. A creature pinned against a
-		// wall, or already standing beside what it was sent at, has obeyed —
-		// the turn ends with no movement beat and no news, and RouteOutput's
-		// own StoppedBy is dropped because a driven turn has no field to
-		// carry it out on. The "turn-ended" beat that follows is the story.
+		// NOWHERE TO GO IS STILL THE WHOLE TURN — AND IT SAYS SO NOW. A
+		// creature pinned against a wall, or already standing where it was
+		// sent, has obeyed; the turn ends with no movement.
+		//
+		// IT USED TO END IN SILENCE, and that silence cost a walk (Kirk,
+		// rpg-project#465): the bandits spent a round of the world each tick
+		// and nobody could tell from the log whether they had been asked,
+		// had refused, or had been sent somewhere unreachable. A spent round
+		// that moved nobody has to be visible, so the route's own sentence
+		// goes down the story instead of being dropped.
+		at := uint64(e.clock.ToData().HighWater)
+
 		if len(route.Path) == 0 {
+			if berr := e.appendStayedBeat(activeID, it.Cause, route.StoppedBy, at); berr != nil {
+				return false, nil, berr
+			}
+
 			return true, nil, nil
 		}
 
-		at := uint64(e.clock.ToData().HighWater)
 		audience := e.audienceFor(subjectBeat, activeID)
 
 		// forced=false: this creature IS walking, under somebody else's
@@ -1297,6 +1307,39 @@ func (e *Encounter) routedAnchor(it Routed) (spatial.Position, bool) {
 	return cell, true
 }
 
+// appendStayedBeat says that a routed walk moved nobody, and why as far as the
+// route could tell.
+//
+// A FACT ABOUT THE WORLD, NOT A MALFUNCTION, which is why it is a beat rather
+// than an error: a creature with a wall at its back has obeyed its orders and
+// the turn is over. What was wrong before was that the story could not tell
+// that apart from a creature nobody asked.
+//
+// `why` is [RouteOutput.StoppedBy] — the fold's own refusal phrase ("is
+// blocked by dnd5e:props:pillar") — and empty when the route simply had
+// nowhere strictly nearer to offer, which is its own answer.
+func (e *Encounter) appendStayedBeat(member MemberID, cause core.Ref, why string, at uint64) error {
+	payload, err := json.Marshal(map[string]interface{}{
+		"beat":   BeatStayed,
+		"member": string(member),
+		"cause":  cause.String(),
+		"why":    why,
+	})
+	if err != nil {
+		return fmt.Errorf("stayed beat: %w", err)
+	}
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:       at,
+		Audience: e.audienceFor(subjectBeat, member),
+		Tags:     map[string]string{"tag": BeatStayed},
+		Payload:  payload,
+	}); err != nil {
+		return fmt.Errorf("stayed beat: %w", err)
+	}
+
+	return nil
+}
+
 // routedRoute is the cells a [Routed] intent walks: the exact-cell route to an
 // AUTHORED cell, or the policy's own answer for a member anchor.
 //
@@ -1317,7 +1360,26 @@ func (e *Encounter) routedRoute(
 	if !placed {
 		return RouteOutput{}, nil
 	}
+
+	// ONTO THE CELL IF IT CAN BE, TOWARD IT IF IT CANNOT — and the fallback is
+	// the whole of Kirk's walk (rpg-project#465).
+	//
+	// The exact-cell search is what makes `toward: { at: [3, 4] }` mean "go
+	// THERE" rather than "get near there", which is what an author writing a
+	// cell means. But its goal must be STANDABLE, and a cell with a creature
+	// on it is not: on the walk the bandits were sent at the front room's
+	// (3,3) with a goblin already standing on it, found no route at all, and
+	// took not one step of the twelve they could have walked. An order that
+	// cannot be completed is not an order to stand still.
+	//
+	// So a cell nobody can stop on falls through to [MoveToward], whose own
+	// answer is "the reached cell nearest the anchor, strictly nearer than
+	// where I stand" — which is what "walk to the front room" meant all
+	// along.
 	path, _ := e.routeTo(mover, from, func(cell spatial.Position) bool { return cell == anchor })
+	if len(path) == 0 {
+		return e.Route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget})
+	}
 	if len(path) > budget {
 		path = path[:budget]
 	}
