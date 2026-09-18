@@ -193,9 +193,8 @@ type EffectiveACCalculator interface {
 // [EffectiveACCalculator].
 //
 // A combatant that does NOT implement the interface is a different case
-// entirely and keeps its AC(): a monster's stat block AC is a real authored
-// value, not a cached derivation, so reading it is correct rather than a
-// fallback.
+// entirely and keeps its authored AC(). Characters and monsters both fold
+// their attached condition chains, so temporary protection is included.
 func GetEffectiveAC(ctx context.Context, c Member) (int, error) {
 	calc, ok := c.(EffectiveACCalculator)
 	if !ok {

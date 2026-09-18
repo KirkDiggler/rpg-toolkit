@@ -517,6 +517,72 @@ type RecordOutput struct {
 // than a hole in it, and the caller's obligation is doc.go's whole answer to it
 // — drop the encounter unsaved.
 func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
+	prepared, err := e.prepareRecord(in)
+	if err != nil {
+		return nil, err
+	}
+	beatBytes, subjects := prepared[0].payload, prepared[0].subjects
+	targets := subjects[1:]
+	breakBeats := prepared[1:]
+
+	appended, err := e.appendBeat(&record.AppendInput{
+		At:       uint64(e.clock.ToData().HighWater),
+		Audience: e.audienceFor(subjectBeat, subjects...),
+		Tags:     map[string]string{"tag": "outcome"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("record: %w", err)
+	}
+
+	// The checks and the break ride in behind the beat that caused them, at
+	// the same clock reading and through the same append, so the story holds
+	// the blow, every roll it asked for and everything it ended as one train
+	// from one call.
+	followUpSeqs := make([]uint64, 0, len(breakBeats))
+	for i, beat := range breakBeats {
+		appendedFollowUp, followUpErr := e.appendBeat(&record.AppendInput{
+			At:       uint64(e.clock.ToData().HighWater),
+			Audience: e.audienceFor(subjectBeat, beat.subjects...),
+			Tags:     map[string]string{"tag": "outcome"},
+			Payload:  beat.payload,
+		})
+		if followUpErr != nil {
+			return nil, fmt.Errorf("record: concentration beat %d: %w", i, followUpErr)
+		}
+		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
+	}
+
+	// And now the world finds out what that beat just changed. AFTER the append,
+	// never before: the outcome is the cause, and a down beat ahead of the strike
+	// that explains it would be a story told backwards. See the godoc.
+	//
+	// A stabilized or recovered Death Save carries an explicit turn
+	// continuation. Recording it happens inside the already-active turn, so it
+	// neither auto-passes that slot nor reconciles a retained one-sided bubble
+	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
+	// control until the eventual turn-settlement boundary.
+	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
+		if err := e.landAttack(in.Actor, targets); err != nil {
+			return nil, fmt.Errorf("record: %w", err)
+		}
+	}
+
+	pass := participationPassInput{}
+	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
+		pass.deferReconcile = true
+	}
+	_, intelDeltas, nerr := e.noticeDown(pass)
+	if nerr != nil {
+		return nil, fmt.Errorf("record: %w", nerr)
+	}
+
+	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
+}
+
+// prepareRecord validates and marshals an outcome without mutating Story.
+// Cast transactions reuse it so an invalid later result cannot strand an attack.
+func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, error) {
 	if in == nil {
 		return nil, fmt.Errorf("record: %w", ErrNilInput)
 	}
@@ -758,60 +824,6 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 	breakBeats = append(checkBeats, breakBeats...)
 
-	// subjectBeat, subjects are the actor and targets — v1 still sends
-	// everyone (audienceFor's doc).
-	subjects := append([]MemberID{in.Actor}, targets...)
-	appended, err := e.appendBeat(&record.AppendInput{
-		At:       uint64(e.clock.ToData().HighWater),
-		Audience: e.audienceFor(subjectBeat, subjects...),
-		Tags:     map[string]string{"tag": "outcome"},
-		Payload:  beatBytes,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("record: %w", err)
-	}
-
-	// The checks and the break ride in behind the beat that caused them, at
-	// the same clock reading and through the same append, so the story holds
-	// the blow, every roll it asked for and everything it ended as one train
-	// from one call.
-	followUpSeqs := make([]uint64, 0, len(breakBeats))
-	for i, beat := range breakBeats {
-		appendedFollowUp, followUpErr := e.appendBeat(&record.AppendInput{
-			At:       uint64(e.clock.ToData().HighWater),
-			Audience: e.audienceFor(subjectBeat, beat.subjects...),
-			Tags:     map[string]string{"tag": "outcome"},
-			Payload:  beat.payload,
-		})
-		if followUpErr != nil {
-			return nil, fmt.Errorf("record: concentration beat %d: %w", i, followUpErr)
-		}
-		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
-	}
-
-	// And now the world finds out what that beat just changed. AFTER the append,
-	// never before: the outcome is the cause, and a down beat ahead of the strike
-	// that explains it would be a story told backwards. See the godoc.
-	//
-	// A stabilized or recovered Death Save carries an explicit turn
-	// continuation. Recording it happens inside the already-active turn, so it
-	// neither auto-passes that slot nor reconciles a retained one-sided bubble
-	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
-	// control until the eventual turn-settlement boundary.
-	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
-		if err := e.landAttack(in.Actor, targets); err != nil {
-			return nil, fmt.Errorf("record: %w", err)
-		}
-	}
-
-	pass := participationPassInput{}
-	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
-		pass.deferReconcile = true
-	}
-	_, intelDeltas, nerr := e.noticeDown(pass)
-	if nerr != nil {
-		return nil, fmt.Errorf("record: %w", nerr)
-	}
-
-	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
+	prepared := []preparedActivationBeat{{payload: beatBytes, subjects: append([]MemberID{in.Actor}, targets...)}}
+	return append(prepared, breakBeats...), nil
 }

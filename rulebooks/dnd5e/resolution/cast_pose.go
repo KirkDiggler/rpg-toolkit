@@ -146,7 +146,13 @@ func NewCastResumed(in *CastResumeInput) (Machine, error) {
 			ErrBadFrozen, frozen.Index, len(frozen.Targets))
 	}
 
-	resumedInner, err := newContestResumed(frozen.Contest, in.Answer, in.Roller)
+	var resumedInner Machine
+	var err error
+	if frozen.Definition.Cast.Attack != nil {
+		resumedInner, err = NewStrikeResumed(&StrikeResumeInput{Frozen: frozen.Contest, Answer: in.Answer, Roller: in.Roller})
+	} else {
+		resumedInner, err = newContestResumed(frozen.Contest, in.Answer, in.Roller)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +226,9 @@ func (m *castResumeMachine) Start(ctx context.Context, cast *Participants) (Step
 			// charged the caster, and is not re-decided here.
 			var inner Machine
 			var err error
-			if gated {
+			if m.definition.Cast.Attack != nil {
+				inner, err = newAttackCast(m.definition, m.cast.casterID, target.targetID, m.roller)
+			} else if gated {
 				inner, err = newGatedCast(m.definition, m.cast.casterID, target.targetID, m.option, cause, m.roller)
 			} else {
 				inner, err = newGatelessCast(m.definition, m.cast.casterID, target.targetID, m.option, m.roller)

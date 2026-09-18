@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
@@ -207,7 +208,9 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	for _, targetID := range targetIDs {
 		var inner Machine
 		var err error
-		if profile.Save != nil {
+		if profile.Attack != nil {
+			inner, err = newAttackCast(definition, casterID, targetID, in.Roller)
+		} else if profile.Save != nil {
 			inner, err = newGatedCast(definition, casterID, targetID, in.Option, cause, in.Roller)
 		} else {
 			inner, err = newGatelessCast(definition, casterID, targetID, in.Option, in.Roller)
@@ -245,8 +248,10 @@ type CastTargetOutcome struct {
 	TargetID string
 	// Missed reports an attempted delivery to an outdated location. It never
 	// carries the recipient's actual position.
-	Missed  bool
-	Save    *ContestOutcome
+	Missed bool
+	Save   *ContestOutcome
+	// Attack preserves the spell attack roll and its delivered consequences.
+	Attack  *StrikeOutcome
 	Applied []ImposedEffect
 
 	// Warded is set when this target's own Sanctuary ward stopped the cast
@@ -259,9 +264,11 @@ type CastTargetOutcome struct {
 
 // CastOutcome is one paid cast with every target outcome in caller order.
 type CastOutcome struct {
-	Spell    core.Ref
-	CasterID string
-	Targets  []CastTargetOutcome
+	// AttackDamageType is the authored primary attack damage type, including on a miss.
+	AttackDamageType damage.Type
+	Spell            core.Ref
+	CasterID         string
+	Targets          []CastTargetOutcome
 
 	// FollowUps preserves every target's damage follow-ups in target order.
 	FollowUps []FollowUpOutcome
@@ -320,6 +327,9 @@ type castMachine struct {
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	m.cast = cast
 	m.outcome = CastOutcome{Spell: m.spell, CasterID: m.casterID}
+	if m.profile.Attack != nil && len(m.profile.Attack.Damage) > 0 {
+		m.outcome.AttackDamageType = m.profile.Attack.Damage[0].Type
+	}
 
 	// Preflight the complete list before returning any executable step. This is
 	// intentionally construction-only: no rolls, publishes, spends, or removals.
@@ -377,6 +387,10 @@ func (m *castMachine) resolveTarget(index int) Step {
 			return m.resolveTarget(index + 1), nil
 		}}
 	}
+	if m.profile.Attack != nil {
+		// The strike owns both Sanctuary checks for an attack cast.
+		return m.castRequest(target, index)
+	}
 	return m.sanctuaryGate(target, index)
 }
 
@@ -395,6 +409,9 @@ func (m *castMachine) castRequest(target castTargetMachine, index int) Step {
 				return nil, err
 			}
 			m.outcome.Targets = append(m.outcome.Targets, shaped)
+			if shaped.Attack != nil {
+				m.outcome.FollowUps = append(m.outcome.FollowUps, shaped.Attack.FollowUps...)
+			}
 			if shaped.Save != nil {
 				m.outcome.FollowUps = append(m.outcome.FollowUps, shaped.Save.FollowUps...)
 			}
@@ -589,6 +606,19 @@ func (m startedMachine) Start(context.Context, *Participants) (Step, error) { re
 func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutcome, error) {
 	outcome := CastTargetOutcome{TargetID: targetID}
 	switch inner := out.(type) {
+	case StrikeOutcome:
+		if m.profile.Attack == nil {
+			return CastTargetOutcome{}, fmt.Errorf("%w: non-attack cast produced a strike", ErrBadStep)
+		}
+		if inner.Warded != nil {
+			outcome.Warded = inner.Warded
+		} else {
+			outcome.Attack = &inner
+			for _, condition := range inner.Conditions {
+				outcome.Applied = append(outcome.Applied, condition.Imposed...)
+			}
+		}
+		return outcome, nil
 	case ContestOutcome:
 		if m.profile.Save == nil {
 			return CastTargetOutcome{}, fmt.Errorf("%w: %s has no gate and contested a save", ErrBadStep, m.spell.String())
@@ -1003,4 +1033,12 @@ func (m *castMachine) independentEffect(ref *core.Ref) bool {
 		}
 	}
 	return false
+}
+
+// newAttackCast delegates a cast's attack delivery to the ordinary strike path.
+// Payment belongs to the outer cast; the inner definition declares no cost.
+func newAttackCast(definition combatActions.Definition, casterID, targetID string, roller dice.Roller) (Machine, error) {
+	attack := definition.Cast.Attack.Clone()
+	return NewStrike(&StrikeInput{AttackerID: casterID, TargetID: targetID,
+		Definition: combatActions.Definition{Ref: definition.Ref, Name: definition.Name, Attack: &attack}, Roller: roller}), nil
 }

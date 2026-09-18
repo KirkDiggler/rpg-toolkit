@@ -138,7 +138,7 @@ var classCantripOptions = map[classes.Class][]spells.Spell{
 // WHOLE list rather than choosing from it, which is what the cleric's
 // progression placeholder counts and what its label says.
 var clericSpellsLevel1 = []spells.Spell{
-	spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary,
+	spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith,
 }
 
 // classSpellOptions is each class's spell list by SPELL level — not class

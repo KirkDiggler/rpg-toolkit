@@ -754,3 +754,69 @@ func (s *CastContentSuite) TestOnlyCommandOffersAMenu() {
 		}
 	}
 }
+
+func (s *CastContentSuite) TestGuidingBoltDeclaresSpellAttackAndOnHitLight() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.GuidingBolt, SpellAttackBonus: 5})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(120, d.Cast.RangeFeet)
+	s.Nil(d.Cast.Concentration)
+	s.Nil(d.Cast.Save)
+	a := d.Cast.Attack
+	s.Require().NotNil(a)
+	s.Equal(actions.AttackCategorySpell, a.Category)
+	s.Equal(5, a.AttackBonus)
+	s.Nil(a.Weapon)
+	s.Nil(a.Ability)
+	s.Equal([]damage.Damage{{Dice: "4d6", Type: damage.Radiant}}, a.Damage)
+	s.Require().Len(a.OnHit, 1)
+	s.Equal(*refs.Conditions.GuidingBolt(), a.OnHit[0].Ref)
+	s.Equal("source_id", a.OnHit[0].CounterpartKey)
+}
+
+func (s *CastContentSuite) TestInflictWoundsDeclaresTouchSpellAttack() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.InflictWounds, SpellAttackBonus: 5})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(5, d.Cast.RangeFeet)
+	s.Equal(actions.CastTargetTouch, d.Cast.Target)
+	s.Nil(d.Cast.Attack.Delivery.Ranged)
+	s.Equal(5, d.Cast.Attack.Delivery.Melee.ReachFeet)
+	s.Nil(d.Cast.Concentration)
+	s.Nil(d.Cast.Save)
+	a := d.Cast.Attack
+	s.Require().NotNil(a)
+	s.Equal(actions.AttackCategorySpell, a.Category)
+	s.Equal(5, a.AttackBonus)
+	s.Nil(a.Weapon)
+	s.Nil(a.Ability)
+	s.Equal([]damage.Damage{{Dice: "3d10", Type: damage.Necrotic}}, a.Damage)
+	s.Empty(a.OnHit)
+}
+
+func (s *CastContentSuite) TestShieldOfFaithDeclaresBonusActionAndOwnedProtection() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ShieldOfFaith})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+	s.Equal(1, d.Cast.Casting.Level)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	s.Zero(d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(60, d.Cast.RangeFeet)
+	s.Equal(actions.CastTargetKnownCreature, d.Cast.Target)
+	s.Equal(1, d.Cast.MinTargets)
+	s.Equal(1, d.Cast.MaxTargets)
+	s.Require().Len(d.Cast.Effects, 1)
+	s.Equal(*refs.Conditions.ShieldOfFaith(), d.Cast.Effects[0].Ref)
+	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Require().NotNil(d.Cast.Concentration)
+	s.Equal(100, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.Nil(d.Cast.Attack)
+	s.Nil(d.Cast.Save)
+}

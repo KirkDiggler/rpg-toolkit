@@ -116,12 +116,16 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createCommanded(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Concentrating().ID:
 		condition, err = createConcentrating(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.ShieldOfFaith().ID:
+		condition, err = createShieldOfFaith(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Guided().ID:
 		condition, err = createGuided(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Resistance().ID:
 		condition, err = createResistance(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Sanctuary().ID:
 		condition, err = createSanctuary(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.GuidingBolt().ID:
+		condition, err = createGuidingBolt(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.SanctuaryImmune().ID:
 		condition, err = createSanctuaryImmune(input.Config, input.MemberID, input.SourceRef)
 	default:
@@ -653,4 +657,45 @@ func createConcentrating(config json.RawMessage, memberID, sourceRef string) (*C
 	})
 	condition.Children = cfg.Children
 	return condition, nil
+}
+
+// createGuidingBolt builds the on-hit target light from its originating caster.
+func createGuidingBolt(config json.RawMessage, memberID, sourceRef string) (*GuidingBoltCondition, error) {
+	var cfg sanctuaryImmuneConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse guiding bolt config")
+		}
+	}
+
+	ref, err := core.ParseString(sourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse guiding bolt source ref: %s", sourceRef)
+	}
+
+	return NewGuidingBoltCondition(NewGuidingBoltConditionInput{
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+	})
+}
+
+type shieldOfFaithConfig struct {
+	SourceID string `json:"source_id"`
+}
+
+func createShieldOfFaith(config json.RawMessage, memberID, sourceRef string) (*ShieldOfFaithCondition, error) {
+	var cfg shieldOfFaithConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse shieldOfFaith config")
+		}
+	}
+
+	ref, err := core.ParseString(sourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse shieldOfFaith source ref: %s", sourceRef)
+	}
+
+	return NewShieldOfFaithCondition(NewShieldOfFaithConditionInput{
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+	})
 }

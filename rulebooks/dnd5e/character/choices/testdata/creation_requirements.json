@@ -2471,7 +2471,7 @@
     },
     "spellbook": {
       "id": "cleric-spells-1",
-      "count": 6,
+      "count": 9,
       "spell_level": 1,
       "options": [
         "bane",
@@ -2479,7 +2479,10 @@
         "command",
         "cure-wounds",
         "healing-word",
-        "sanctuary"
+        "sanctuary",
+        "guiding-bolt",
+        "inflict-wounds",
+        "shield-of-faith"
       ],
       "label": "Select all supported 1st-level Cleric spells"
     }

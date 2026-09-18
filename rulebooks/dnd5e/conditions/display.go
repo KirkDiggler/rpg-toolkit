@@ -72,6 +72,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.Helped().String():            {Name: "Helped"},
 	refs.Conditions.Inspired().String():          {Name: InspiredName},
 	refs.Conditions.BladeWard().String():         {Name: BladeWardName},
+	refs.Conditions.GuidingBolt().String():       {Name: GuidingBoltName},
 	refs.Conditions.TrueStrike().String():        {Name: TrueStrikeName},
 	refs.Conditions.ViciousMockery().String():    {Name: ViciousMockeryName},
 	refs.Conditions.Commanded().String():         {Name: CommandedName},
@@ -90,6 +91,7 @@ var displayCatalog = map[string]Display{
 	// same "no display catalog entry" error since it merged. Fixed here
 	// rather than filed separately since it is a one-line addition to the
 	// exact catalog Resistance's own entry touches, for the same reason.
+	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName},
 	refs.Conditions.Guided().String():          {Name: GuidedName},
 	refs.Conditions.Resistance().String():      {Name: ResistanceName},
 	refs.Conditions.Sanctuary().String():       {Name: SanctuaryName},

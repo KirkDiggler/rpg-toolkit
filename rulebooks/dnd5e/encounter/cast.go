@@ -205,6 +205,9 @@ type CastSave struct {
 // name another recipient (for example the caster); caller target order remains
 // the ordering authority.
 type CastTargetResult struct {
+	// Attack is the ordinary struck/missed outcome delivered by this spell.
+	// Its actor, target, and source must agree with the enclosing cast.
+	Attack *RecordInput
 	Target MemberID
 	// Missed is a supplied delivery outcome, mutually exclusive with Save,
 	// Results, and Warded. False preserves the existing save/effect
@@ -377,6 +380,13 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 		seqs = append(seqs, appended.Seq)
 	}
 
+	for _, target := range in.Targets {
+		if target.Attack != nil {
+			if err := e.landAttack(in.Actor, []MemberID{target.Target}); err != nil {
+				return nil, fmt.Errorf("record cast: %w", err)
+			}
+		}
+	}
 	_, intelDeltas, noticeErr := e.noticeDown()
 	if noticeErr != nil {
 		return nil, fmt.Errorf("record cast: %w", noticeErr)
@@ -421,10 +431,10 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		if _, duplicate := seenTargets[target.Target]; duplicate {
 			return nil, fmt.Errorf("record cast: target %d %q is duplicated: %w", i, target.Target, ErrInvalidData)
 		}
-		if target.Missed && (target.Save != nil || len(target.Results) != 0 || target.Warded != nil) {
+		if target.Missed && (target.Save != nil || len(target.Results) != 0 || target.Warded != nil || target.Attack != nil) {
 			return nil, fmt.Errorf("record cast: target %d %q missed but carries a save, results, or ward: %w", i, target.Target, ErrInvalidData)
 		}
-		if target.Warded != nil && (target.Save != nil || len(target.Results) != 0) {
+		if target.Warded != nil && (target.Save != nil || len(target.Results) != 0 || target.Attack != nil) {
 			return nil, fmt.Errorf("record cast: target %d %q warded but carries a save or results: %w", i, target.Target, ErrInvalidData)
 		}
 		seenTargets[target.Target] = struct{}{}
@@ -489,6 +499,22 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 				payload: wardedBytes, subjects: wardedSubjects,
 			})
 			continue
+		}
+
+		if target.Attack != nil {
+			attack := target.Attack
+			if target.Save != nil || (attack.Kind != OutcomeStruck && attack.Kind != OutcomeMissed) ||
+				attack.Actor != in.Actor || len(attack.Targets) != 1 || attack.Targets[0] != target.Target ||
+				attack.Attack == nil || attack.Attack.Ref != in.Spell.Ref || attack.Attack.Name != in.Spell.Name ||
+				attack.Reaction != nil || len(attack.ConcentrationChecks) != 0 || len(attack.ConcentrationBreaks) != 0 ||
+				(attack.Kind == OutcomeMissed && len(target.Results) != 0) {
+				return nil, fmt.Errorf("record cast: target %d attack contradicts cast: %w", targetIndex, ErrInvalidData)
+			}
+			attackBeats, attackErr := e.prepareRecord(attack)
+			if attackErr != nil {
+				return nil, attackErr
+			}
+			prepared = append(prepared, attackBeats...)
 		}
 		if target.Save != nil {
 			savedBytes, savedSubjects, saveErr := e.prepareSaveBeat(
