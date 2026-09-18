@@ -368,6 +368,13 @@ func (s *WorldTimeSuite) TestAFactionsMixIsDealtAtTheDoorAndSaysSo() {
 			}},
 	)
 
+	// AND THE SCENE OPENED FIRST. A deal is a beat, and a beat inside a scene
+	// that has not opened yet is one nobody can follow — the law every other
+	// beat this constructor writes keeps.
+	kinds := s.beatKinds(enc)
+	s.Require().Equal("scene-opened", kinds[0])
+	s.Contains(kinds[1:], encounter.BeatTempered)
+
 	beat := s.beatOf(enc, encounter.BeatTempered, goblin)
 	s.Require().NotNil(beat, "the deal is a beat, or the streamer never learns which goblin this is")
 	// rollsLowest answers 1, which is the first share of the sorted mix.
@@ -409,6 +416,22 @@ func (s *WorldTimeSuite) TestAnAuthoredWordDealsNothingAndSaysNothing() {
 			s.Equal("coward", m.Temper.Word, "and the word the author wrote is the word it has")
 		}
 	}
+}
+
+// beatKinds is every beat the story tells, in order, by kind.
+func (s *WorldTimeSuite) beatKinds(enc *encounter.Encounter) []string {
+	s.T().Helper()
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	out := make([]string, 0, len(story))
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		out = append(out, beat["beat"].(string))
+	}
+
+	return out
 }
 
 // beatOf is the first beat of a kind naming one member, decoded.

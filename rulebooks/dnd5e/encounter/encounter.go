@@ -910,15 +910,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter member %q world clock: %w", mi.ID, cerr)
 		}
 
-		// THE FACTION'S MIX IS DEALT HERE, once, now the member is placed and
-		// there is a beat audience to tell (design §3, worldtime.go). An
-		// authored word deals nothing.
-		dealt, terr := e.dealTemperFor(mi.ID, mi.Temper, 0)
-		if terr != nil {
-			return nil, fmt.Errorf("newencounter: %w", terr)
-		}
-		member.Temper = dealt
-
 		// The author's placed records, seeded as the holdings they are
 		// (design §3). SETUP ONLY — Load replays the journal instead, so
 		// intel somebody already looted is not handed back to the body.
@@ -972,6 +963,21 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// beat onward — which is the property the perception stream is for.
 	if serr := e.appendSightedBeats(firstLight, nil, uint64(e.clock.ToData().HighWater)); serr != nil {
 		return nil, fmt.Errorf("newencounter first light: %w", serr)
+	}
+
+	// THE FACTION'S MIXES ARE DEALT HERE, once each, and here is AFTER the
+	// scene has opened (design §3, worldtime.go). Each deal is a beat — that
+	// is its whole point, so the streamer sees which goblin came out the
+	// coward — and a beat inside a scene that has not opened yet is one
+	// nobody can follow, which is the law every other beat in this
+	// constructor keeps. An authored word deals nothing and writes nothing.
+	for _, id := range memberIDs {
+		member := e.members[id]
+		dealt, terr := e.dealTemperFor(id, member.Temper, 0)
+		if terr != nil {
+			return nil, fmt.Errorf("newencounter: %w", terr)
+		}
+		member.Temper = dealt
 	}
 
 	// Concealment's own first light, AFTER the scene has opened and BEFORE
