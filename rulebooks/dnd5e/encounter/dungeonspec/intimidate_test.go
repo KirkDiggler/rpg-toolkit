@@ -46,15 +46,15 @@ func TestAnAuthoredTableReachesTheHost(t *testing.T) {
 		{Ability: "persuasion", DC: 10},
 	}, chief.Persuade)
 
-	require.Equal(t, map[string][]encounter.Answer{
-		dungeonspec.OnIntimidated: {
+	require.Equal(t, encounter.Table{
+		encounter.AnswerIntimidated: {
 			{Weight: 70, Say: "Fine, fine!", Fact: "sergeant-cowed"},
 			{Weight: 30, Say: "BOSS!", Flee: true},
 		},
-		dungeonspec.OnIntimidateFailed: {{Weight: 1, Say: "Big talk."}},
-		dungeonspec.OnPersuaded:        {{Weight: 1, Fact: "sergeant-cowed"}},
-		dungeonspec.OnPersuadeFailed:   {{Weight: 1, Say: "Nothing down there, friend."}},
-	}, chief.Answers)
+		encounter.AnswerIntimidateFailed: {{Weight: 1, Say: "Big talk."}},
+		encounter.AnswerPersuaded:        {{Weight: 1, Fact: "sergeant-cowed"}},
+		encounter.AnswerPersuadeFailed:   {{Weight: 1, Say: "Nothing down there, friend."}},
+	}, chief.Table)
 }
 
 // An omitted weight compiles to 1, resolved HERE so nothing downstream has to
@@ -71,7 +71,7 @@ func TestAnOmittedWeightCompilesToOne(t *testing.T) {
 		{Weight: 1, Say: "one"},
 		{Weight: 1, Say: "two"},
 		{Weight: 1, Say: "three"},
-	}, compiled.Monsters[0].Answers[dungeonspec.OnIntimidated])
+	}, compiled.Monsters[0].Table[encounter.AnswerIntimidated])
 }
 
 // Absent is the common case and it compiles to nil, not to an empty map — the
@@ -84,7 +84,7 @@ func TestAMonsterNobodyPricedCarriesNothing(t *testing.T) {
 	for _, m := range compiled.Monsters {
 		require.Nil(t, m.Intimidate, "%s prices no threat", m.ID)
 		require.Nil(t, m.Persuade, "%s prices no appeal", m.ID)
-		require.Nil(t, m.Answers, "%s answers nothing", m.ID)
+		require.Nil(t, m.Table, "%s answers nothing", m.ID)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestAFactNothingElseMentionsIsAllowed(t *testing.T) {
 			"fact: nobody-waits-for-this }, { weight: 30", 1))))
 	require.NoError(t, err)
 	require.Equal(t, encounter.FactID("nobody-waits-for-this"),
-		compiled.Monsters[0].Answers[dungeonspec.OnIntimidated][0].Fact)
+		compiled.Monsters[0].Table[encounter.AnswerIntimidated][0].Fact)
 }
 
 // TestTheNewKeysAreKnownToTheDecoder: a yaml tag alone is not enough —
@@ -130,7 +130,7 @@ func onTable(t *testing.T, body string) string {
 // author can see what they meant to write.
 func TestAnUnknownOutcomeKeyIsRefused(t *testing.T) {
 	requireDefect(t, defectsIn(t, onTable(t, `{ bribed: [ { say: "ok" } ] }`)),
-		"place[0].on.bribed", `"bribed" is not an outcome this build lands`,
+		"place[0].on.bribed", `"bribed" is not a trigger this build rolls`,
 		"intimidated, intimidate_failed, persuaded, persuade_failed")
 }
 

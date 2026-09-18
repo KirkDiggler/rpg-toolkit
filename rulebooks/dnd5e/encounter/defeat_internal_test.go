@@ -78,7 +78,7 @@ func TestADecidedFightRefusesToCountAGhost(t *testing.T) {
 	// The bug, fabricated: the wolf leaves the ROSTER and stays in the order.
 	delete(enc.members, "wolf")
 
-	_, err = enc.Pump(&PumpInput{})
+	_, _, err = enc.refreshSight(enc.rosterIDs())
 	require.Error(t, err, "a fight cannot be decided by counting who is left out of the roster")
 	require.ErrorIs(t, err, ErrInvalidData)
 	require.ErrorContains(t, err, "not a member")

@@ -215,8 +215,8 @@ func (rogueTurnIntent) isTurnIntent() {}
 // rogueDriver always returns the sealed vocabulary's own defect.
 type rogueDriver struct{}
 
-func (rogueDriver) Act(MonsterView) (TurnIntent, error) {
-	return rogueTurnIntent{}, nil
+func (rogueDriver) Act(MonsterView) (Decision, error) {
+	return Decision{Intent: rogueTurnIntent{}}, nil
 }
 
 // TestADriverReturningAnUnrecognisedIntentIsErrBadTurnOutcome pins the

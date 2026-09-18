@@ -31,13 +31,6 @@ const (
 	endingStairs = "stairs"
 )
 
-// simpleDecider is a minimal test decider that holds.
-type simpleDecider struct{}
-
-func (s *simpleDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
-	return encounter.IntentHold{}, nil
-}
-
 type EncounterTestSuite struct {
 	suite.Suite
 }
@@ -1641,17 +1634,6 @@ func (s *EncounterTestSuite) TestJoinValidation() {
 		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
 	})
 
-	s.Run("join player with decider rejected", func() {
-		enc := s.newBasicEncounter()
-		fixedDecider := &simpleDecider{}
-		_, err := enc.Join(&encounter.JoinInput{
-			Member:  core.EntityID("charlie"),
-			Kind:    encounter.KindPlayer,
-			Cell:    cellAt(5, 5),
-			Decider: fixedDecider,
-		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember, "player with decider should fail")
-	})
 }
 
 func (s *EncounterTestSuite) TestJoinOnStairsFiresEnding() {
@@ -1996,7 +1978,7 @@ func (s *EncounterTestSuite) TestAllMutatingVerbsReturnErrClosedPostClose() {
 		s.Require().ErrorIs(err, encounter.ErrClosed)
 
 		// Pump on closed: ErrClosed
-		_, err = enc.Pump(&encounter.PumpInput{})
+		_, err = aRound(enc)
 		s.Require().ErrorIs(err, encounter.ErrClosed)
 
 		// End on closed: ErrClosed

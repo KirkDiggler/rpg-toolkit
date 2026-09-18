@@ -143,6 +143,14 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 		return nil, fmt.Errorf("interact: append beat: %w", err)
 	}
 
+	// THE WORLD'S PRICE FOR AN ACTION, paid after the outcome has landed and
+	// before anything refreshes sight (design §5, worldtime.go): one round on
+	// the world clock for the actor, and the world thinks on it. Nothing at
+	// all for a member inside a fight, where the round is what prices time.
+	if err := e.spendWorldAction(in.Actor); err != nil {
+		return nil, err
+	}
+
 	return &InteractOutput{Target: in.Target, Seq: out.Seq}, nil
 }
 

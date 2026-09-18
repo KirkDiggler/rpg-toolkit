@@ -38,8 +38,14 @@ func (s *RecordActivationSuite) TestStabilizationCastSurvivesReloadWithoutInvent
 			s.Require().NoError(err)
 			s.Require().Len(out.Seqs, 2, "cast and stabilization only")
 			s.Less(out.Seqs[0], out.Seqs[1])
-			s.Equal(callsBefore+1, standing.calls)
-			s.Equal(worldBefore.Clock, enc.ToData().Clock)
+			s.Equal(callsBefore+3, standing.calls,
+				"one consult for the transaction itself, and two more for the round of the world it pays for (rpg-project#465): the percept rebuild and the notice pass")
+			// THE CLOCK MOVED, and that is the point of the slice this
+			// assertion was written before (rpg-project#465): a cast is an
+			// action, and an action pays one round of the world clock for
+			// its actor. What must NOT have changed is everything else.
+			s.Equal(worldBefore.Clock.HighWater+1, enc.ToData().Clock.HighWater,
+				"the cast paid the world a round")
 			s.Equal(worldBefore.Bubbles, enc.ToData().Bubbles)
 			s.Equal(worldBefore.Members, enc.ToData().Members)
 

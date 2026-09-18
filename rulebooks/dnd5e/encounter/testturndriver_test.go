@@ -26,8 +26,8 @@ import (
 // without reaching for the production one by accident.
 type passDriver struct{}
 
-func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
-	return encounter.Pass{}, nil
+func (passDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // errPassStrikerNeverAttacks is what passStriker returns if it is ever

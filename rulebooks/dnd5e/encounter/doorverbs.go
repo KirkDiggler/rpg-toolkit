@@ -396,6 +396,17 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
 	}
 
+	// THE WORLD'S PRICE FOR AN ACTION (design §5, worldtime.go): one round on
+	// the world clock for whoever tried the lock, paid after the door has
+	// landed in the state it is in. Nothing at all for a member inside a
+	// fight, where the round is what prices time — and nothing when nobody's
+	// hands are named, because there is no actor to charge.
+	if in.Actor != "" {
+		if err := e.spendWorldAction(in.Actor); err != nil {
+			return nil, fmt.Errorf("unlock %q: %w", door.id, err)
+		}
+	}
+
 	return &UnlockOutput{
 		Door:        door.id,
 		Beaten:      in.Beaten,

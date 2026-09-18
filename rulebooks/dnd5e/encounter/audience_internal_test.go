@@ -57,7 +57,7 @@ func TestAudienceForPolicy(t *testing.T) {
 
 	t.Run("tableBeat with no subjects falls back to the live roster", func(t *testing.T) {
 		require.Equal(t, roster, enc.audienceFor(tableBeat),
-			"Pump's tick beat and Exit's exit beat both call it exactly this way")
+			"the world's tick beat and Exit's exit beat both call it exactly this way")
 	})
 
 	t.Run("tableBeat with subjects returns them verbatim, unsorted", func(t *testing.T) {
@@ -235,10 +235,9 @@ func TestCallSiteClassification(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// tick: nobody left with a decider and a live turn to take, but the
+	// tick: nobody left on the world clock with a round to spend, but the
 	// tick frame itself still gets recorded.
-	_, err = enc.Pump(&PumpInput{})
-	require.NoError(t, err)
+	require.NoError(t, enc.worldThinks())
 
 	// joined + exited: carl passes through.
 	_, err = enc.Join(&JoinInput{Member: "carl", Kind: KindPlayer, Cell: spatial.Position{X: 3, Y: 3}, SpeedFeet: 30, SightFeet: 60})

@@ -327,16 +327,16 @@ type scriptedDriver struct {
 	calls   []encounter.MonsterView
 }
 
-func (d *scriptedDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, error) {
+func (d *scriptedDriver) Act(view encounter.MonsterView) (encounter.Decision, error) {
 	d.calls = append(d.calls, view)
 	i := len(d.calls) - 1
 	if i < len(d.errs) && d.errs[i] != nil {
-		return nil, d.errs[i]
+		return encounter.Decision{}, d.errs[i]
 	}
 	if i < len(d.intents) {
-		return d.intents[i], nil
+		return encounter.Decision{Intent: d.intents[i]}, nil
 	}
-	return encounter.Pass{}, nil
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // stagedSight keeps the first sight refresh broad enough to form the fight,
@@ -613,6 +613,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemember
 	s.Equal(encounter.RememberedMember{
 		ID:            alice,
 		Kind:          encounter.KindPlayer,
+		Opposed:       true,
 		Position:      cellAt(2, 2),
 		DistanceCells: enc.Distance(cellAt(3, 2), cellAt(2, 2)),
 		Path:          []spatial.Position{cellAt(2, 2)},
@@ -986,9 +987,10 @@ func (s *MonsterTurnTestSuite) TestMoveIntoVoidStopsPartwayWithoutEndingTheTurn(
 // effect — the same v1 behaviour every scene got automatically before this
 // capability existed.
 func (s *MonsterTurnTestSuite) TestPassDriverAlwaysPasses() {
-	intent, err := (encounter.PassDriver{}).Act(encounter.MonsterView{Self: goblin})
+	decision, err := (encounter.PassDriver{}).Act(encounter.MonsterView{Self: goblin})
 	s.Require().NoError(err)
-	s.Equal(encounter.Pass{}, intent)
+	s.Equal(encounter.Pass{}, decision.Intent)
+	s.Nil(decision.Pick, "a driver that rolled nothing has no pick for the encounter to narrate")
 }
 
 // TestADriverMalfunctionAbortsTheWholeCall: unlike ErrBadIntent, a driver's
@@ -1802,18 +1804,18 @@ type killEveryoneStandingDriver struct {
 	action core.Ref
 }
 
-func (d killEveryoneStandingDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, error) {
+func (d killEveryoneStandingDriver) Act(view encounter.MonsterView) (encounter.Decision, error) {
 	for _, sm := range view.Seen {
 		if sm.Standing && sm.InReach[d.action] {
-			return encounter.Attack{Target: sm.ID, Action: d.action}, nil
+			return encounter.Decision{Intent: encounter.Attack{Target: sm.ID, Action: d.action}}, nil
 		}
 	}
 	for _, sm := range view.Seen {
 		if sm.Standing && len(sm.Path) > 0 {
-			return encounter.Move{Path: sm.Path}, nil
+			return encounter.Decision{Intent: encounter.Move{Path: sm.Path}}, nil
 		}
 	}
-	return encounter.Pass{}, nil
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
 }
 
 // TestADownedTeammateDoesNotHandTheDrivenMonsterASecondTurn is the RED

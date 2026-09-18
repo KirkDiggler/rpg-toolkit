@@ -46,8 +46,7 @@ func (s *FightTimeTestSuite) scene(driver encounter.TurnDriver) *encounter.Encou
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Mind: "retaliator",
-				SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -124,7 +123,7 @@ func (s *FightTimeTestSuite) TestADeedAgesWhileTheFightRuns() {
 	})
 	s.Require().NoError(err)
 
-	landed, ok := s.holdingOf(enc, goblin, deed.Subject(alice))
+	landed, ok := s.holdingOf(enc, goblin, deed.Subject(alice, encounter.DeedAttack))
 	s.Require().True(ok, "the goblin saw the shot")
 	s.Require().Equal(deed.Channel, landed.Channel)
 
@@ -139,7 +138,7 @@ func (s *FightTimeTestSuite) TestADeedAgesWhileTheFightRuns() {
 	var seen perception.Holding
 	found := false
 	for _, h := range view.Holdings {
-		if h.Subject == deed.Subject(alice) {
+		if h.Subject == deed.Subject(alice, encounter.DeedAttack) {
 			seen, found = h, true
 		}
 	}

@@ -53,6 +53,27 @@ const DeedIntimidate = "intimidate"
 // [DeedIntimidate]'s reason.
 const DeedPersuade = "persuade"
 
+// DeedFled is the verb a creature's own memory of having been made to run
+// lands under: what the creature would say happened TO IT when a `flee` entry
+// fired (rpg-project#465, ideas/creature-table/design.md §2).
+//
+// ACTOR IS WHO CAUSED IT, not who ran. That is the rule every deed a `when`
+// condition reads keeps — [DeedAttack], [DeedIntimidate] and [DeedPersuade]
+// all name the doer in Actor and the creature in Target — and it is what
+// makes `away: actor` on the creature's own `time` table run away from the
+// one who scared it rather than from itself.
+//
+// IT LANDS ON THE CREATURE AND NOBODY ELSE ([Encounter.landFled]), which is
+// the difference between this verb and the other three. A deed is normally
+// what a witness SAW; this one is what the creature KNOWS about itself, and
+// telling the room would publish a goblin's private state.
+//
+// THERE IS NO RUNNING IN IT. The deed is the whole of what `flee` does: the
+// verb that scared the creature pays a round on the world clock, and the
+// creature's own `time` table reading `fled: { within: N }` is what walks it
+// away, for as many rounds as the author wrote.
+const DeedFled = "fled"
+
 // landAttack tells every member whose senses reach the actor's cell that
 // the actor attacked, through perception's own Report door, in each
 // witness's terms (mind/behavior rule A4: a deed is landed where the fact
@@ -107,11 +128,24 @@ func (e *Encounter) audienceOf(actor MemberID) (spatial.Position, []core.EntityI
 func (e *Encounter) landDeed(
 	verb string, actor, target MemberID, where spatial.Position, witnesses []core.EntityID,
 ) error {
+	return e.landDeedAt(verb, actor, target, where, witnesses, uint64(e.clock.ToData().HighWater))
+}
+
+// landDeedAt is [Encounter.landDeed] with the stamp named rather than read.
+//
+// THE STAMP IS THE CAUSE'S, NOT THE LANDING'S. A verb reads the clock once at
+// its start and every beat and deed it produces carries that one reading, so
+// a verb that advances the world clock on its way out cannot leave its own
+// deed stamped a round after the thing that caused it. Every caller that has
+// a reading in hand passes it; landDeed is the name for "now".
+func (e *Encounter) landDeedAt(
+	verb string, actor, target MemberID, where spatial.Position, witnesses []core.EntityID, at uint64,
+) error {
 	if err := stage.Land(&stage.LandInput{
 		Store:     e.intelLog,
 		Deed:      deed.Deed{Verb: verb, Actor: actor, Target: target, Where: where.String()},
 		Witnesses: witnesses,
-		At:        uint64(e.clock.ToData().HighWater),
+		At:        at,
 	}); err != nil {
 		return fmt.Errorf("deed: %w", err)
 	}

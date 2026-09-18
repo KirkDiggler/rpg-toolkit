@@ -72,7 +72,7 @@ supplied capability, never as a new import.** Every one of these is required at
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
 `MembersIn`, `RegionAt`, `Region`, `Distance`, `Canvas`, `Grid`, `Atlas`/`AtlasFor`,
 `Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`IsHostile`/`IsAllied`, `Status`, `Route`,
-and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Pump`, `Transfer`, `EndTurn`,
+and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Transfer`, `EndTurn`,
 `Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Record`, `End`,
 plus the two continue-verbs a held walk is finished with — `ResumeTurn` for a paused turn and
 `ResumeDirective` for a held directive, told apart by `HeldDirective()`.

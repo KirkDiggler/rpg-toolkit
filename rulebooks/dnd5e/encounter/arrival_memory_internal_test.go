@@ -27,13 +27,13 @@ type propagationDriver struct {
 	calls   int
 }
 
-func (d *propagationDriver) Act(MonsterView) (TurnIntent, error) {
+func (d *propagationDriver) Act(MonsterView) (Decision, error) {
 	i := d.calls
 	d.calls++
 	if i < len(d.intents) {
-		return d.intents[i], nil
+		return Decision{Intent: d.intents[i]}, nil
 	}
-	return Pass{}, nil
+	return Decision{Intent: Pass{}}, nil
 }
 
 type propagationSight struct{}
@@ -241,13 +241,16 @@ func TestDrivenArrivalLeavesTheMemoryAlone(t *testing.T) {
 			},
 		},
 		{
-			name:       "pump refresh",
+			name:       "world refresh",
 			withBubble: true,
 			noticeDown: true,
 			act: func(t *testing.T, enc *Encounter) map[MemberID]*IntelDelta {
-				out, err := enc.Pump(&PumpInput{})
+				// The refresh the retired Pump ran at the end of its tick,
+				// asked directly: the verb is gone (rpg-project#465) and what
+				// this case is about is the refresh, not the verb.
+				deltas, _, err := enc.refreshSight(enc.rosterIDs())
 				require.NoError(t, err)
-				return out.IntelDeltas
+				return deltas
 			},
 		},
 		{

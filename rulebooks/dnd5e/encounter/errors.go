@@ -572,6 +572,29 @@ var (
 	// somebody's turn.
 	ErrBadAnswer = errors.New("encounter: answer table cannot be rolled")
 
+	// ErrAttackOffTurn is returned when a [Driver] answers a round of the
+	// WORLD clock with an [Attack] (rpg-project#465, design §2).
+	//
+	// AN ERROR, NOT A SKIPPED INTENT, which is what separates it from
+	// [ErrBadIntent]. An enemy in reach on the world clock is a fight sight
+	// that has already formed, so there is no world in which this is a
+	// decision a creature could legitimately make — and passing quietly
+	// would leave an author's `attack:` entry looking like it fired and did
+	// nothing.
+	ErrAttackOffTurn = errors.New("encounter: attack off the turn clock")
+
+	// ErrBadTemper is returned when a faction's authored temperament mix
+	// cannot be dealt: a share below 1, which can never come up, or a word
+	// in the mix that nothing says the meaning of (table.go,
+	// rpg-project#465).
+	//
+	// THE PROFILES ARE THE CALLER'S TO SUPPLY. The three words are rulebook
+	// content and this module cannot import the rulebook (C1), so a mix
+	// naming a word with no profile beside it is refused at the door the
+	// member came in through rather than dealt and silently applied as a
+	// soldier.
+	ErrBadTemper = errors.New("encounter: temperament mix cannot be dealt")
+
 	// ErrNotVisible is returned when Interact's target is not in the
 	// actor's current sight — a target once seen but not seen now refuses
 	// identically to one never seen at all, the same "current, not held"

@@ -369,7 +369,7 @@ func (s *HoldingsSuite) drop(enc *encounter.Encounter) {
 	s.standing.down = []encounter.MemberID{captain}
 	// The composition notices a body on the next sight refresh, the same way
 	// the game does. Pump is the cheapest verb that runs one.
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 }
 

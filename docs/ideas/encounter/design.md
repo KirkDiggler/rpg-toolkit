@@ -51,7 +51,10 @@ This is NOT a play/ leaf — it composes them. Its own laws:
   depend on it. (Recorded wart: spatial should grow bus-free loading;
   candidate follow-up issue.)
 - **C5 (no background time)** — no goroutines, no timers. The clock
-  advances only inside `Pump`.
+  advances only because somebody acts. *(Still true, and truer: `Pump` is
+  deleted and the clock now advances inside the VERBS — a walk pays a round
+  per pace, an action pays one for its actor, a fight round wrapping pays one
+  per fighter. rpg-project#465.)*
 - **C6 (family signatures)** — R3 carries: single `*XxxInput`,
   `*XxxOutput`, error-last, `ErrNilInput` guarded first; persistence
   pair by value.
@@ -102,7 +105,7 @@ nothing the caller needs rides anywhere else.
 | `Join(JoinInput{Member, Room, Position, Decider?})` | The ambient is always there to join. Places via managed seam, surveils the joiner's first percept AND refreshes observers who now see them, appends beat, returns deltas. |
 | `Exit(ExitInput{Member})` | Member leaves with carry-forward: removed from field, their final `MemberOutcome` returned; their intel holdings REMAIN in the aggregate (the archive) but the returned carry includes their holdings for the campaign to seed sequels. Encounter auto-closes (`Outcome` with ending `"emptied"`? NO — see close semantics) when membership empties: wave-1 law — emptying WITHOUT a declared ending having fired closes with the reserved ending key `abandoned`. |
 | `Move(MoveInput{Member, To Position})` | Continuous player movement (same-room, wave 1; door transitions are a plan task via the managed Transition + PlacementRequired flow). Spatial managed move → surveil cycle for affected observers → record beat → evaluate `ReachedPosition` endings → deltas out. If an ending fires, the Output carries the `Outcome` and the encounter is closed. |
-| `Pump(PumpInput{})` | The activity tick: advances `clock.Tick`, then for each monster member (deterministic order): `Decide(HeldBy(monster))` → execute the intent through the same managed seam as players → surveil cycle → record beats. Then ending evaluation. Pacing/quantization of pumps is the HOST's affair (open question recorded in brainstorm §6); the composition just executes one tick per call. |
+| ~~`Pump(PumpInput{})`~~ | **STRUCK, rpg-project#465.** There is no tick verb. A verb that raises the world clock makes the world think inside its own call: every standing monster on the world clock with budget and a table gets one turn's worth of doing, and the verb's own sight refresh follows. Pacing is not the host's affair either — the party's own acting is what sets it. |
 | `End(EndInput{Ending Key})` | The external trigger: validates the key was declared `External`, closes with the Outcome. |
 
 **Close semantics:** closed = Outcome exists. Every mutating verb on a
@@ -169,7 +172,8 @@ is: behavior re-attaches at load, state never contains it).
 - **AC1 (the tomb watch)** — one narrative scene test: Setup builds a
   crypt room with pillar boundaries; two players and one goblin (fixture
   wander decider); the goblin crosses behind a pillar → player A's
-  holding fades to ghost at last-seen; A moves (`Move`) and `Pump`s —
+  holding fades to ghost at last-seen; A moves (`Move`), which pays the
+  world a round —
   the goblin steps, A's percept refreshes; the goblin *sees A back*
   (its own holding — symmetric intel); A reaches the stairs position →
   `ReachedPosition` ending fires → Outcome carries both players'

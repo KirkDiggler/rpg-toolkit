@@ -126,10 +126,9 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 		Regions: []encounter.RegionInput{rectRegion("corridor", 0, 0, 10, 10), rectRegion("vault", 10, 0, 10, 10)}, Walls: vaultChaseHexSeamWall(),
 		Doors: []encounter.DoorInput{gate},
 	}
-	pursuit := &pursuitDecider{doorways: doorwaysFrom(field), target: alice}
 	return &encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 5}},
@@ -152,7 +151,8 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 			// loses her AT the threshold, which is what leaves the ghost on
 			// the corridor's own gate cell one step away, and what makes the
 			// decider reach for the doorway on its second think.
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 4}, Decider: pursuit},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 4},
+				SpeedFeet: 60, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "sanctuary", Trigger: encounter.TriggerReachedPosition{
@@ -347,9 +347,7 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-			goblin: &pursuitDecider{doorways: doorwaysFrom(vaultChaseHexSetup().Field), target: alice},
-		}})
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	require.NoError(t, err, "the suspended chase crosses a process boundary")
 	enc = enc2
 	proj.useEncounter(enc) // SAME projector, reloaded enc — the transcript keeps accumulating
@@ -365,29 +363,29 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	require.Equal(t, beforeReload, afterReload, "beat 3: the projected position is unchanged by the reload")
 
 	// ---- Beat 4: the pursuit crosses too ----------------------------------
-	pumpOut1, err := enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	require.NoError(t, err, "beat 4: the pursuit resumes")
-	require.Len(t, pumpOut1.MonsterMoves, 1, "beat 4: the goblin steps toward the threshold")
-	// The pump reports where it walked on the MAP — no room needed to read it,
-	// and no arithmetic to redo (rpg-toolkit#1062). It went to the ghost, and
-	// the ghost stands on the last cell it saw her on: the corridor's own gate
-	// cell, which is the fourth thing her path recorded. Asserted as that
+	// Where it walked, read off the roster on the MAP — no room needed to read
+	// it, and no arithmetic to redo (rpg-toolkit#1062). It went to the ghost,
+	// and the ghost stands on the last cell it saw her on: the corridor's own
+	// gate cell, which is the fourth thing her path recorded. Asserted as that
 	// entry rather than as a literal, so the two cannot drift apart — and note
 	// that the absolute cell is NOT the pair either of them was authored as
-	// (rpg-toolkit#1127), which is exactly why the pump reports absolute.
-	require.Equal(t, alicePath[3], pumpOut1.MonsterMoves[0].To)
-	goblinPath = append(goblinPath, proj.locate(string(goblin), "move", pumpOut1.MonsterMoves[0].To))
+	// (rpg-toolkit#1127), which is exactly why every cell here is absolute.
+	require.Equal(t, alicePath[3], whereIs(t, enc, goblin),
+		"beat 4: the goblin walks its whole speed after her, to the last cell it saw her on")
+	goblinPath = append(goblinPath, proj.locate(string(goblin), "move", whereIs(t, enc, goblin)))
 
-	pumpOut2, err := enc.Pump(&encounter.PumpInput{})
-	require.NoError(t, err, "beat 4: the goblin follows her through")
-	require.Len(t, pumpOut2.MonsterMoves, 1, "beat 4: the goblin comes through the gate")
-	// Standing on the ghost and she is not there, the decider reaches for the
-	// door it is standing in — so vault-local (0,5) through the vault's (10,0)
-	// anchor: the same absolute cell alice's own step landed on, and the same
-	// cell the movement beat carries. ONE list, because there is one kind of
-	// step.
-	require.Equal(t, throughTheGate, pumpOut2.MonsterMoves[0].To)
-	goblinPath = append(goblinPath, proj.locate(string(goblin), "arrive via gate", pumpOut2.MonsterMoves[0].To))
+	// A second round, and it STAYS. Standing on the ghost with nobody there,
+	// its orders have nothing left to say: `toward: enemy` is already
+	// satisfied by the cell it is on. The old decider crossed the door here,
+	// because it was Go code that knew about doors; a table names a creature
+	// and lets the engine that owns the walls find the way, and "walk through
+	// that door and look" is a word nobody has written yet.
+	_, err = aRound(enc)
+	require.NoError(t, err, "beat 4: the goblin has arrived and stands on it")
+	require.Equal(t, alicePath[3], whereIs(t, enc, goblin), "beat 4: still on the ghost")
+	_ = throughTheGate
 
 	// ---- Beat 5: sanctuary ------------------------------------------------
 	for _, to := range []spatial.Position{{X: 1, Y: 6}, {X: 2, Y: 6}} {
@@ -433,7 +431,15 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	// the room boundary is invisible in world space.
 	grid := continuityGrid(spatial.GridShapeHex)
 	require.Equal(t, 1.0, grid.Distance(alicePath[3], alicePath[4]), "alice's doorway crossing is distance exactly 1")
-	require.Equal(t, 1.0, grid.Distance(goblinPath[1], goblinPath[2]), "the goblin's doorway crossing is distance exactly 1")
+	// THE GOBLIN NO LONGER CROSSES, and that is the table saying what it can
+	// say (rpg-project#465). Its orders name a CREATURE — "toward the enemy" —
+	// and the engine that owns the walls routes to where it believes that
+	// creature is. Standing on the ghost with nobody there, the orders are
+	// satisfied and it holds; the old decider crossed because it was Go code
+	// that had been handed a list of doorways. "Walk through that door and
+	// look" is a word nobody has written yet.
+	require.Equal(t, 1.0, grid.Distance(goblinPath[0], goblinPath[1]),
+		"the goblin's own approach is continuous, a cell at a time")
 
 	// ---- The transcript, pinned exactly ------------------------------------
 	// Human-readable in the house style, doubling as documentation of what
@@ -463,10 +469,9 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 		"alice move: vault(0,6) -> absolute(7,6)",
 		"alice reload checkpoint: vault(0,6) -> absolute(7,6)",
 		"goblin move: corridor(9,5) -> absolute(7,5)",
-		"goblin arrive via gate: vault(0,5) -> absolute(8,5)",
 		"alice move: vault(1,6) -> absolute(8,6)",
 		"alice move: vault(2,6) -> absolute(9,6)",
 		"alice outcome: vault(2,6) -> absolute(9,6)",
-		"goblin outcome: vault(0,5) -> absolute(8,5)",
+		"goblin outcome: corridor(9,5) -> absolute(7,5)",
 	}, proj.transcript, "the story IS the projected continuity, told in order")
 }

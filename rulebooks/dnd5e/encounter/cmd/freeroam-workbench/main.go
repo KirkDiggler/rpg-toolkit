@@ -24,7 +24,7 @@
 //
 //	go run ./cmd/freeroam-workbench
 //
-// Commands: step <name> <x> <y> | pump | view <name> | story <name> |
+// Commands: step <name> <x> <y> | view <name> | story <name> |
 // join <name> <x> <y> | exit <name> | end withdrew | save <file> |
 // load <file> | atlas | status | help | quit
 //
@@ -58,27 +58,24 @@ const (
 	passageID = "passage"
 )
 
-// patrol is the goblin's route brain: a fixed loop of waypoints.
-type patrol struct {
-	route []spatial.Position
-	step  int
-}
-
-// Decide returns the next waypoint regardless of what the goblin
-// believes — a deliberately dumb decider; the point of the workbench is
-// watching the courier loop, not clever monsters.
-func (p *patrol) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
-	target := p.route[p.step%len(p.route)]
-	p.step++
-	return encounter.IntentMoveTo{To: target}, nil
-}
-
-func goblinPatrol() *patrol {
-	// Waypoints are authored [col,row] pairs; a decider speaks absolute
-	// axial cells, so each is converted once here.
-	return &patrol{route: []spatial.Position{
-		cellAt(7, 10), cellAt(8, 9), cellAt(7, 8), cellAt(6, 9), cellAt(6, 10),
-	}}
+// goblinTable is the goblin's whole policy, as an author would write it:
+// walk toward the party when it can see them, toward where it last saw them
+// when it cannot, and otherwise stand there.
+//
+// THE PATROL LOOP THAT USED TO BE HERE IS GONE with `Decider` and `Pump`
+// (rpg-project#465). It was a Go object walking a fixed route regardless of
+// what the goblin believed; a table is the same demonstration an author can
+// read, and — being the real seam — it is the one the world drives.
+func goblinTable() encounter.Table {
+	return encounter.Table{
+		encounter.AnswerTime: {
+			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemySeen},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyRemembered},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+			{Weight: 1, Hold: true},
+		},
+	}
 }
 
 // dungeonSetup builds the tomb-watch crypt's SetupInput — split out from
@@ -139,8 +136,8 @@ func dungeonSetup() *encounter.SetupInput {
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: "bella", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: "goblin", Kind: encounter.KindMonster,
-				Position: spatial.Position{X: 6, Y: 10}, Decider: goblinPatrol()},
+			{ID: "goblin", Kind: encounter.KindMonster, SpeedFeet: 30,
+				Position: spatial.Position{X: 6, Y: 10}, Table: goblinTable()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
@@ -427,9 +424,9 @@ const legend = `  @ you   A/B/C capitals: seen NOW   a/b/g lowercase: ghost at l
   other like any other cell; the view flips to whichever region you land in
   every <x> <y> you type is a column and row as drawn; the world speaks axial`
 
-const commands = `  step <name> <x> <y>   walk one cell (column, row as drawn; the world holds
-                        still — you pump it)
-  pump                  a tick passes: the goblin patrols, sights refresh
+const commands = `  step <name> <x> <y>   walk one cell (column, row as drawn; every sixth cell
+                        of a 30-foot walker pays a round, and the world
+                        thinks on it: the goblin closes, sights refresh)
   view <name>           world truth beside <name>'s beliefs
   story <name>          the record, as <name> is allowed to hear it
   join <name> <x> <y>   a late player joins the ambient
@@ -495,23 +492,6 @@ func main() {
 				fmt.Printf("  through %s (%s)\n", d.ID, d.State)
 			}
 			showView(enc, core.EntityID(args[1]))
-			if out.Outcome != nil {
-				printStatus(enc)
-			}
-		case "pump":
-			out, err := enc.Pump(&encounter.PumpInput{})
-			if err != nil {
-				fmt.Println(" ", err)
-				continue
-			}
-			fmt.Printf("  tick %d", out.Tick)
-			for _, mv := range out.MonsterMoves {
-				// Absolute cells, same as the atlas above prints — a prowl in
-				// the ossuary (anchored at (12,0)) reads on the same map as
-				// one in the crypt (rpg-toolkit#1062).
-				fmt.Printf("; %s prowls (%g,%g)->(%g,%g) on the map", mv.Member, mv.From.X, mv.From.Y, mv.To.X, mv.To.Y)
-			}
-			fmt.Println()
 			if out.Outcome != nil {
 				printStatus(enc)
 			}
@@ -585,15 +565,13 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Equipment: noHandsAreObserved{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-					"goblin": goblinPatrol(),
-				}})
+				Sight: torchAndDarkvision{}, Equipment: noHandsAreObserved{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue
 			}
 			enc = loaded
-			fmt.Println("  reloaded — beliefs traveled as state; the patrol re-attached as behavior")
+			fmt.Println("  reloaded — beliefs AND the goblin's table traveled as state; nothing re-attaches")
 			showView(enc, "alice")
 		default:
 			fmt.Println("  ? try: help")

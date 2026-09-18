@@ -284,6 +284,17 @@ func (e *Encounter) social(ctx context.Context, in socialInput) (socialOutput, e
 		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, err)
 	}
 
+	// THE WORLD'S PRICE FOR AN ACTION, paid after the answer has landed — the
+	// fact it taught, the deed it lodged, the running it set up — and before
+	// anything refreshes sight (design §5, worldtime.go). It is what makes a
+	// cowed goblin keep running while the party talks: the verb that scared it
+	// pays the round its own `time` table then spends.
+	//
+	// Nothing at all for a member inside a fight, where the round prices time.
+	if err := e.spendWorldAction(in.actor); err != nil {
+		return socialOutput{}, fmt.Errorf("%s: %w", in.verb, err)
+	}
+
 	return socialOutput{beaten: in.beaten, witnesses: witnesses, seq: seq}, nil
 }
 

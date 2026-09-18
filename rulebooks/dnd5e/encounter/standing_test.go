@@ -58,10 +58,18 @@ const wolf = encounter.MemberID("wolf")
 // window would make "what the story says" a question about trimming.
 // TestAForgottenDeathIsToldAgain sets its own, on purpose.
 func (s *deathScene) scene(standing encounter.Standing, members ...encounter.MemberInput) *encounter.Encounter {
+	return s.sceneDriven(standing, passDriver{}, members...)
+}
+
+// sceneDriven is scene with the driver named — for the one fixture whose
+// monster is supposed to actually walk.
+func (s *deathScene) sceneDriven(
+	standing encounter.Standing, driver encounter.TurnDriver, members ...encounter.MemberInput,
+) *encounter.Encounter {
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Initiative: orderAsGiven{}, TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
@@ -74,15 +82,25 @@ func (s *deathScene) scene(standing encounter.Standing, members ...encounter.Mem
 	return enc
 }
 
-// pair is alice and a goblin in plain sight of each other, the goblin pacing
-// between two cells so a tick has something to show.
+// pair is alice and a goblin in plain sight of each other.
 func (s *deathScene) pair(standing encounter.Standing) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+	)
+}
+
+// pacingPair is pair with the goblin given somewhere to walk, so a round of
+// the world has something to show.
+func (s *deathScene) pacingPair(standing encounter.Standing) *encounter.Encounter {
+	s.T().Helper()
+
+	return s.sceneDriven(standing, tableDriver(),
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10},
-			Decider: &patrolDecider{positions: []spatial.Position{cellAt(1, 10), cellAt(0, 10)}}},
+			SpeedFeet: 5, Table: walksTo(spatial.Position{X: 2, Y: 10})},
 	)
 }
 
@@ -239,7 +257,7 @@ func (s *StandingSuite) TestALoadedEncounterAsksToo() {
 	s.Require().Equal([]encounter.MemberID{alice, goblin, wolf}, s.orderOf(enc, alice),
 		"the blob was saved mid-fight, with all three in the order")
 
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal([]encounter.MemberID{alice, wolf}, s.orderOf(enc, alice),
@@ -283,7 +301,7 @@ func (s *StandingSuite) TestACorpseDoesNotJoinAFightAlreadyRunning() {
 		"the fight formed without the body")
 	s.Equal(encounter.ClockWorld, s.clockOf(enc, wolf))
 
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal([]encounter.MemberID{alice, goblin}, s.orderOf(enc, alice),
@@ -307,7 +325,7 @@ func (s *StandingSuite) TestADownMemberLeavesTheTurnOrder() {
 	s.Require().Equal([]encounter.MemberID{alice, goblin, wolf}, s.orderOf(enc, alice))
 
 	down.down = []encounter.MemberID{goblin}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal([]encounter.MemberID{alice, wolf}, s.orderOf(enc, alice),
@@ -330,7 +348,7 @@ func (s *StandingSuite) TestTheSpliceIsNotWhatEndsTheFight() {
 	enc := s.trio(down)
 
 	down.down = []encounter.MemberID{goblin}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
 	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice),
@@ -339,8 +357,13 @@ func (s *StandingSuite) TestTheSpliceIsNotWhatEndsTheFight() {
 
 	// And the fight that pin used to describe — every monster down — is over.
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
+	// The order is alice and the wolf now, so one round of it is two turns.
+	if s.clockOf(enc, alice) == encounter.ClockTurn {
+		_, err = aRound(enc)
+		s.Require().NoError(err)
+	}
 
 	s.Equal(encounter.ClockWorld, s.clockOf(enc, alice),
 		"the last one down ends it, with no caller (ByDefeat)")
@@ -358,25 +381,23 @@ func (s *StandingSuite) TestTheSpliceIsNotWhatEndsTheFight() {
 // the first half of this test and fails here.
 func (s *StandingSuite) TestACorpseDoesNotWalk() {
 	down := &downList{down: []encounter.MemberID{goblin}}
-	enc := s.pair(down)
+	enc := s.pacingPair(down)
 	fell := s.positionOf(enc, goblin)
 
-	// It is on the WORLD clock, which is the only place Pump thinks for
-	// anybody — so the tick below skipping it is the standing filter and not
+	// It is on the WORLD clock, which is the only place the world thinks for
+	// anybody — so the round below skipping it is the standing filter and not
 	// the bubble filter that was already there.
 	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, goblin))
 
-	out, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
-	s.Empty(out.MonsterMoves, "a body has nowhere to be")
-	s.Equal(fell, s.positionOf(enc, goblin), "and is still where it fell")
+	s.Equal(fell, s.positionOf(enc, goblin), "a body has nowhere to be, and is still where it fell")
 
 	down.down = nil
-	out, err = enc.Pump(&encounter.PumpInput{})
+	_, err = aRound(enc)
 	s.Require().NoError(err)
 
-	s.Require().Len(out.MonsterMoves, 1, "the rulebook says it is standing, so it walks")
-	s.NotEqual(fell, s.positionOf(enc, goblin))
+	s.NotEqual(fell, s.positionOf(enc, goblin), "the rulebook says it is standing, so it walks")
 }
 
 // --- the story says so ----------------------------------------------------
@@ -405,7 +426,7 @@ func (s *StandingSuite) TestTheStorySaysItOnce() {
 	enc := s.pair(&downList{down: []encounter.MemberID{goblin}})
 
 	for i := 0; i < 3; i++ {
-		_, err := enc.Pump(&encounter.PumpInput{})
+		_, err := aRound(enc)
 		s.Require().NoError(err)
 	}
 
@@ -465,7 +486,7 @@ func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 
 	collect()
 	for i := 0; i < 8; i++ {
-		_, perr := enc.Pump(&encounter.PumpInput{})
+		_, perr := aRound(enc)
 		s.Require().NoError(perr)
 		collect()
 		enc.ToData() // the save is what lets the window forget (#1381)
@@ -491,20 +512,21 @@ func (s *StandingSuite) TestTheSceneOpensThenNoticesThenFights() {
 		"and the fight is the two who could have one")
 }
 
-// TestThePumpTicksThenNotices is the same law at the verb where a body most
-// often appears: the tick is the cause, everything the world notices inside it
-// is the effect, and the transfer out of the fight follows the notice that
-// caused it.
-func (s *StandingSuite) TestThePumpTicksThenNotices() {
+// TestARoundActsThenNotices is the same law at the verb where a body most
+// often appears: the turn ending is the cause, everything the world notices
+// inside it is the effect, and the transfer out of the fight follows the
+// notice that caused it. The tick is last, because the round of the world the
+// fight's own round pays for comes after the fight has noticed its body.
+func (s *StandingSuite) TestARoundActsThenNotices() {
 	down := &downList{}
 	enc := s.trio(down)
 	s.Require().Equal([]string{"scene-opened", "bubble-formed"}, s.beatKindsOf(enc, alice))
 
 	down.down = []encounter.MemberID{goblin}
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 	s.Require().NoError(err)
 
-	s.Equal([]string{"scene-opened", "bubble-formed", "tick", "down", "transferred"},
+	s.Equal([]string{"scene-opened", "bubble-formed", "turn-ended", "down", "transferred", "turn-ended", "tick"},
 		s.beatKindsOf(enc, alice))
 }
 
@@ -568,7 +590,7 @@ func (s *StandingSuite) TestADownAnswerNamingAStrangerIsRefused() {
 	before := s.positionOf(enc, goblin)
 
 	rulebook.lying = true
-	_, err := enc.Pump(&encounter.PumpInput{})
+	_, err := aRound(enc)
 
 	s.Require().ErrorIs(err, encounter.ErrNotMember)
 	s.Equal(before, s.positionOf(enc, goblin), "and nothing moved on the way to the refusal")
