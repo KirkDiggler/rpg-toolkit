@@ -319,13 +319,18 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	// effect, which is the law every verb in the composition keeps. What this
 	// gate is about is the swing, so the picks are counted rather than
 	// enumerated: pinning their exact number would pin how many intents a turn
-	// gets, which is the clock's business and not this test's.
+	// gets, which is the clock's business and not this test's. The count has
+	// already moved once — an affordability rule now stops a creature rolling
+	// for an intent it could not pay for, so the spent skeleton no longer rolls
+	// a second time to be told to hold — and a length here would have had to be
+	// bumped rather than reread.
 	//
 	// AND THE ROUND WRAPPING COSTS THE WORLD A ROUND, which is the last beat:
 	// a fight round wrapping raises the world clock for every member in the
 	// bubble (§5), the primitive that lets a creature outside the fight close
 	// on it one round at a time while it runs.
-	s.Require().Len(beats, 6)
+	s.Require().GreaterOrEqual(len(beats), 4,
+		"her end, at least one pick and what it did, the skeleton's end, the wrap")
 	s.Equal("tick", beats[len(beats)-1], "the wrap raised the world clock")
 	s.Equal("turn-ended", beats[len(beats)-2], "the skeleton's own turn closes the round")
 

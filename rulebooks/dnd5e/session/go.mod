@@ -5,16 +5,16 @@ go 1.24.1
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
-	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.4.0
+	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.4.1-0.20260918042742-5b37761502d8
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.180.1-0.20260918030227-6f4220d81e7f
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.88.1-0.20260918030506-cf3a250a5462
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.53.1-0.20260918030714-38f762e13988
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.180.1-0.20260918033500-23d3360664fe
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.88.1-0.20260918043016-140826f59f50
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.53.1-0.20260918043427-0fdac33ce60e
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.15.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/stretchr/testify v1.11.1
