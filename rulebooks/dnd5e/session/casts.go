@@ -252,6 +252,21 @@ func (m *Manager) compileCastOffer(
 		if err != nil {
 			return compiledOffer{}, err
 		}
+		if profile.Target == combatActions.CastTargetTouch {
+			// buildTargetPreflight excludes the caster from its own candidate
+			// universe by design (offers.go: "A world NPC is never an attack
+			// candidate" sits beside the same exclusion for the actor) —
+			// correct for an Attack offer, wrong for a touch cast, where self
+			// is a legal recipient by the profile's own design (CastTargetSelf
+			// is a no-picker mode and cannot stand for "choose yourself among
+			// others" — Guidance/Resistance/Cure Wounds's own doc comments).
+			// Filtered IN at this call site rather than widening
+			// targetPreflightFunc's signature, offers.go's own precedent for
+			// exactly this kind of per-caller adjustment (see its comment on
+			// filtering world NPCs out, the mirror case).
+			candidates = append(candidates, targetPreflight{member: input.Member, available: true})
+			sort.Slice(candidates, func(i, j int) bool { return candidates[i].member < candidates[j].member })
+		}
 		candidates, err = filterAttackTargets(ctx, candidates, input.Participants)
 		if err != nil {
 			return compiledOffer{}, err
