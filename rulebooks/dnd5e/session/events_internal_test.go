@@ -1467,3 +1467,66 @@ func TestATemperedBeatWithNoWordIsRefused(t *testing.T) {
 		require.Nil(t, body)
 	}
 }
+
+// A routed walk that moved nobody says so, and says how far the route could
+// explain it (rpg-project#465).
+//
+// The kind exists because its absence cost a walk: the bandits spent a round of
+// the world on every tick and the log could not tell a creature that had been
+// asked and could not move from one nobody asked at all.
+func TestTheStayedBeatSaysAWalkMovedNobody(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+		want StayedBody
+		why  string
+	}{
+		{
+			name: "the route names what stopped it",
+			json: `{"beat":"stayed","member":"thug-1","cause":"encounter:table:away",
+				"why":"is blocked by dnd5e:props:pillar"}`,
+			want: StayedBody{
+				Member: "thug-1", Cause: "encounter:table:away",
+				Why: "is blocked by dnd5e:props:pillar",
+			},
+			why: "the fold's own refusal phrase, carried verbatim",
+		},
+		{
+			name: "nowhere strictly better is an empty why, and that is an answer",
+			json: `{"beat":"stayed","member":"goblin","cause":"dnd5e:spells:command","why":""}`,
+			want: StayedBody{Member: "goblin", Cause: "dnd5e:spells:command"},
+			why: "a creature already standing where it was sent gets no phrase — " +
+				"empty means it had nowhere to go, never that the engine did not say",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+
+			require.Equal(t, EventStayed, kind)
+			require.Equal(t, tc.want, body, tc.why)
+		})
+	}
+}
+
+// The member and the cause gate this body; `why` cannot, because empty is its
+// ordinary value and gating on it would drop the beat the kind exists for.
+func TestAStayedBeatWithNoMemberOrCauseIsRefused(t *testing.T) {
+	for _, payload := range []string{
+		`{"beat":"stayed","member":"","cause":"encounter:table:away","why":""}`,
+		`{"beat":"stayed","member":"thug-1","cause":"","why":"is blocked by a wall"}`,
+	} {
+		kind, body := decodeBeat([]byte(payload))
+
+		require.Equal(t, EventStayed, kind, "the kind maps; it is the body that is unreadable")
+		require.Nil(t, body)
+	}
+}
+
+// The composition's own word for the beat is what this seam decodes, so a
+// rename over there fails to compile here rather than quietly producing a beat
+// nobody renders — the rule every kind named by constant in this file keeps.
+func TestTheStayedKindIsTheCompositionsOwnWord(t *testing.T) {
+	require.Equal(t, encounter.BeatStayed, string(EventStayed))
+}

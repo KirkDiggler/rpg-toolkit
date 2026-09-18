@@ -1010,6 +1010,20 @@ const (
 	// `time`, because nothing spoke.
 	EventAnswered EventKind = "answered"
 
+	// EventStayed is A ROUTED WALK THAT MOVED NOBODY: a creature sent
+	// somewhere it could not get to, or already standing where it was sent
+	// (rpg-project#465).
+	//
+	// A FACT ABOUT THE WORLD, NOT A MALFUNCTION. A creature with a wall at its
+	// back has obeyed its orders and its turn is over; what this beat adds is
+	// that the story can now tell that apart from a creature nobody asked.
+	//
+	// IT EXISTS BECAUSE A WALK COST ONE. The bandits spent a round of the world
+	// on every tick and the log could not say whether they had been asked, had
+	// refused, or had been sent somewhere unreachable — a spent round that
+	// moved nobody has to be visible.
+	EventStayed EventKind = "stayed"
+
 	// EventTempered is WHICH TEMPERAMENT A FACTION'S MIX DEALT one creature,
 	// at the moment it entered the run (rpg-project#465, design §3).
 	//
@@ -2214,6 +2228,35 @@ type AnswerCandidate struct {
 	// Loaded is Weight × Percent — this candidate's share of the die.
 	Loaded int `json:"loaded"`
 }
+
+// StayedBody is EventStayed's typed body: who was sent somewhere, on whose
+// orders, and how far the route could explain why nobody moved.
+//
+// EVERY FIELD IS WRITTEN, [AnsweredBody]'s rule for [AnsweredBody]'s reason —
+// with Why the one that is legitimately empty, and says so.
+type StayedBody struct {
+	// Member is the creature that stayed put.
+	Member string `json:"member"`
+
+	// Cause is what routed it, as a "module:type:id" string — the spell that
+	// compelled it, or the creature's own table. The same cause the walk's own
+	// beats would have carried had it walked, which is what lets a reader put
+	// the two side by side.
+	Cause string `json:"cause"`
+
+	// Why is the route's own refusal phrase — "is blocked by
+	// dnd5e:props:pillar" — or EMPTY when the route simply had nowhere
+	// strictly better to offer.
+	//
+	// EMPTY IS AN ANSWER, not a missing reason: "there was nowhere nearer" is
+	// what a creature already standing where it was sent gets, and it is the
+	// ordinary case rather than a gap. A client that renders this should read
+	// an empty Why as "it had nowhere to go", never as "the engine did not
+	// say".
+	Why string `json:"why"`
+}
+
+func (StayedBody) isEventBody() {}
 
 // TemperedBody is EventTempered's typed body: which temperament a faction's
 // mix dealt one creature, and the roll that dealt it.

@@ -324,6 +324,12 @@ func kindFor(beat string) EventKind {
 	// only account of that roll a client ever gets.
 	case encounter.BeatTempered:
 		return EventTempered
+	// A routed walk that moved nobody (rpg-project#465). Named by the
+	// composition's own exported constant for BeatAnswered's reason, and with
+	// the same weight behind it: it is the ONLY account a client gets of a
+	// round that was spent and changed nothing.
+	case encounter.BeatStayed:
+		return EventStayed
 	// The holdings verbs, named by what the record says (rpg-project#368
 	// §4.1). "looted", "held" and "dropped" are the composition's own words
 	// for what it did, so they cross unchanged — unlike "down"/"downed"
@@ -532,6 +538,22 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Word: p.Word, Say: p.Say, Fact: p.Fact,
 			Key: p.Key, Candidates: candidates, Temper: p.Temper,
 		}
+	case EventStayed:
+		var p struct {
+			Member string `json:"member"`
+			Cause  string `json:"cause"`
+			Why    string `json:"why"`
+		}
+		// THE MEMBER AND THE CAUSE GATE, AND `why` CANNOT. A routed walk always
+		// names what routed it — the composition refuses a Routed with no cause
+		// — so an empty one is a beat this build never wrote. An empty `why` is
+		// the ORDINARY case, which is a creature that had nowhere strictly
+		// better to go, and gating on it would drop exactly the beat this kind
+		// was added to stop losing.
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Cause == "" {
+			return nil
+		}
+		return StayedBody{Member: p.Member, Cause: p.Cause, Why: p.Why}
 	case EventTempered:
 		var p struct {
 			Member  string `json:"member"`
