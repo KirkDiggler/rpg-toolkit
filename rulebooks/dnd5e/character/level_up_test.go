@@ -103,7 +103,7 @@ func (s *LevelUpSuite) cleric() *Character {
 			Skills:   []skills.Skill{skills.Medicine, skills.Religion},
 			Cantrips: []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Light},
 			Spells: []spells.Spell{
-				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord,
+				spells.Bane, spells.Bless, spells.Command, spells.CureWounds, spells.HealingWord, spells.Sanctuary,
 			},
 			Equipment: []EquipmentChoiceSelection{
 				{ChoiceID: choices.ClericWeapons, OptionID: choices.ClericWeaponMace},

@@ -120,6 +120,10 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createGuided(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Resistance().ID:
 		condition, err = createResistance(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.Sanctuary().ID:
+		condition, err = createSanctuary(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.SanctuaryImmune().ID:
+		condition, err = createSanctuaryImmune(input.Config, input.MemberID, input.SourceRef)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -539,6 +543,59 @@ func createResistance(config json.RawMessage, memberID, sourceRef string) (*Resi
 	}
 
 	return NewResistanceCondition(NewResistanceConditionInput{
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+	})
+}
+
+// sanctuaryConfig is the config structure for the sanctuary condition.
+// SourceID is the cleric who cast Sanctuary.
+type sanctuaryConfig struct {
+	SourceID string `json:"source_id"`
+}
+
+// createSanctuary creates a sanctuary condition from config. The member is
+// the creature Sanctuary wards. Mirrors [createGuided] exactly.
+func createSanctuary(config json.RawMessage, memberID, sourceRef string) (*SanctuaryCondition, error) {
+	var cfg sanctuaryConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse sanctuary config")
+		}
+	}
+
+	ref, err := core.ParseString(sourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse sanctuary source ref: %s", sourceRef)
+	}
+
+	return NewSanctuaryCondition(NewSanctuaryConditionInput{
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+	})
+}
+
+// sanctuaryImmuneConfig is the config structure for the sanctuary immune
+// condition. SourceID is the caster whose Sanctuary this immunity blocks.
+type sanctuaryImmuneConfig struct {
+	SourceID string `json:"source_id"`
+}
+
+// createSanctuaryImmune creates a sanctuary immune condition from config.
+// The member is the attacker who succeeded the ward save. Mirrors
+// [createGuided] exactly.
+func createSanctuaryImmune(config json.RawMessage, memberID, sourceRef string) (*SanctuaryImmuneCondition, error) {
+	var cfg sanctuaryImmuneConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse sanctuary immune config")
+		}
+	}
+
+	ref, err := core.ParseString(sourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse sanctuary immune source ref: %s", sourceRef)
+	}
+
+	return NewSanctuaryImmuneCondition(NewSanctuaryImmuneConditionInput{
 		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
 	})
 }

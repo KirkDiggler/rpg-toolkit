@@ -48,6 +48,18 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
+	sanctuary, err := NewSanctuaryCondition(NewSanctuaryConditionInput{
+		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.Sanctuary(),
+	})
+	if err != nil {
+		panic(err)
+	}
+	sanctuaryImmune, err := NewSanctuaryImmuneCondition(NewSanctuaryImmuneConditionInput{
+		MemberID: "goblin-1", SourceID: "cleric-1", SourceRef: refs.Spells.Sanctuary(),
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	return map[string]dnd5eEvents.ConditionBehavior{
 		"raging":            &RagingCondition{CharacterID: "m1"},
@@ -78,6 +90,8 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"blessed":           blessed,
 		"guided":            guided,
 		"resistance":        resistance,
+		"sanctuary":         sanctuary,
+		"sanctuary_immune":  sanctuaryImmune,
 		"vicious_mockery":   NewViciousMockeryCondition("m1", "bard-1", ""),
 		"unconscious":       NewUnconsciousCondition("m1", roller),
 		"opportunity":       NewOpportunityAttackCondition("m1"),
