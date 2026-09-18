@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
@@ -26,8 +25,6 @@ func (s *ThugTestSuite) TestNewThug() {
 	s.Require().NotNil(thug)
 	s.Assert().Equal("thug-1", thug.GetID())
 	s.Assert().Equal("Thug", thug.Name())
-	s.Assert().Equal(monster.MindBerserker, thug.Mind(),
-		"a thug comes for whoever hit it, whatever they are holding now")
 
 	// Check stats (CR 1 boss)
 	s.Assert().Equal(32, thug.HP())

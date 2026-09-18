@@ -79,7 +79,6 @@ func (s *PureLoadTestSuite) sheet() *Data {
 		Proficiencies: []ProficiencyData{{Skill: "stealth", Bonus: 4}},
 		Conditions:    []json.RawMessage{s.immunityBlob()},
 		Targeting:     TargetLowestHP,
-		Mind:          MindRetaliator,
 	}
 }
 
