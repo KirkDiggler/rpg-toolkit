@@ -1,5 +1,29 @@
 # mind/behavior — Design (the WHAT)
 
+**Status:** THE LADDER IS RETIRED (2026-09-18, rpg-project#465). What this
+document designs — the `Mind` of four judgments, the fixed `Decide` ladder over
+them, `Situation`, `Self`, `Space`, `Verb`, `Intent`, `Contact` and the `Game`
+that composed them — is deleted from the module, not deprecated and not left
+beside. A creature decides by rolling on an **authored weighted table** now:
+`rpg-project/ideas/creature-table/design.md`, §7's deletion table.
+
+The ladder was not wrong. It was a black box with three words on the lid, and a
+streamer could not open it; a table is a tool an author can hold, and the tools
+are the product. R7 (the ladder) and R11 (the Space) are retired with the code
+they bound.
+
+**What survives, and why:** the deeds channel — `behavior/deed` and
+`behavior/stage`'s `Land`. R2 (a payload is the caller's to read, except the
+deeds channel this module wrote) and R9 (a deed lands in each witness's own
+terms) are the rules it keeps. The table reads that testimony rather than
+reimplementing it: `when: { attacked: { within: 3 } }` is a question about what
+`Land` wrote.
+
+**Read below as the record of a design that shipped and was superseded**, not
+as a description of the module. The rules are still worth reading — the
+argument that testimony is never a flag, and that who a creature believes is
+where is per-observer, is what the table inherited.
+
 **Status:** IMPLEMENTED
 **Module:** `github.com/KirkDiggler/rpg-toolkit/mind/behavior` (packages `behavior`, `behavior/deed`, `behavior/stage`)
 **Why:** [rpg-toolkit#1718](https://github.com/KirkDiggler/rpg-toolkit/issues/1718).

@@ -5,9 +5,10 @@
 // observer would say they saw somebody DO.
 //
 // A deed is testimony like any other. It lands on its own channel through
-// perception's Report door, one subject per figure the witness saw act, and
-// it names actor and target only if the witness could see them. It is
-// always in the past the moment it exists, so a deed is never current.
+// perception's Report door, one subject per figure the witness saw act AND
+// per kind of thing they were seen to do, and it names actor and target only
+// if the witness could see them. It is always in the past the moment it
+// exists, so a deed is never current.
 //
 // That is the rule the whole module rests on (R9): a deed on its own
 // channel, and only a mind's Judge can attach it to the figure standing
@@ -36,10 +37,34 @@ const kind = "deed"
 // ErrNotADeed reports a payload this package did not write.
 var ErrNotADeed = errors.New("deed: payload is not a deed")
 
-// Subject is the subject a figure's deeds are held under: the actor's id
-// qualified by channel, so it can never collide with the witness's sight
-// holding of the same figure. Perception's rule 11 says to qualify and its
-// Qualify owns the separator; this is where behaviour asks.
+// kindSeparator joins the two halves of a deed subject: whose deed it is, and
+// which deed of theirs. It is deed's own and NOT perception's qualifier —
+// that one keeps a channel's subjects from colliding with a sight holding's,
+// and this is the grammar inside deed's half of it.
+//
+// The result is a HANDLE and nothing parses it back apart, which is why one
+// separator is enough: a mind that read a subject to find out what happened
+// would be reading the filing system, and the worked minds read the payload.
+const kindSeparator = "#"
+
+// Subject is the subject one of a figure's deeds is held under: the actor's
+// id and the deed's verb, qualified by channel so it can never collide with
+// the witness's sight holding of the same figure. Perception's rule 11 says
+// to qualify and its Qualify owns that separator; this is where behaviour
+// asks.
+//
+// ONE SUBJECT PER ACTOR AND KIND, not per actor (rpg-project#465). The store
+// keeps one payload per subject, so a subject keyed on the actor alone meant
+// an actor's newest witnessed deed EVICTED every older one of theirs: a
+// goblin that fled the barbarian lost its own flight the moment it watched
+// that same barbarian intimidate somebody else, and its table's
+// `when: { fled: { within: 3 } }` stopped holding a round into the three the
+// author wrote. Private memory overwritten by public testimony, from the same
+// actor, is not a thing any author can reason about.
+//
+// A second deed of the SAME kind by the same actor still replaces the first,
+// which is the shape that was always wanted: what a creature holds about
+// somebody is the freshest of each thing they were seen to do.
 //
 // The subject carries the actor's identity on purpose: attaching a deed to a
 // figure is a claim that deeds|X and X are one thing, and a mind cannot make
@@ -47,8 +72,8 @@ var ErrNotADeed = errors.New("deed: payload is not a deed")
 // the witness could vouch for; what the subject says is the handle the store
 // files it under. A mind that reads handles as testimony is reading the
 // filing system, and the worked minds do not.
-func Subject(actor core.EntityID) core.EntityID {
-	return perception.Qualify(Channel, actor)
+func Subject(actor core.EntityID, verb string) core.EntityID {
+	return perception.Qualify(Channel, core.EntityID(string(actor)+kindSeparator+verb))
 }
 
 // Deed is one figure doing one thing to another, somewhere.
@@ -60,11 +85,13 @@ func Subject(actor core.EntityID) core.EntityID {
 // kept only if the witness currently holds them on sight, and empty means
 // the witness saw the deed and not the doer, or nobody it could see.
 //
-// One subject per actor, and perception keeps one payload per subject, so
-// a witness holds an actor's LATEST deed and nothing before it. A mind that
-// prefers the healer forgets the heal the moment the healer's next witnessed
-// deed lands. That is the store's shape and a consequence to know, not yet a
-// cost any use case has paid to change.
+// One subject per actor AND VERB (see [Subject]), and perception keeps one
+// payload per subject, so a witness holds an actor's latest deed OF EACH KIND
+// and nothing before it. A creature that was fled from and then talked past
+// holds both; a creature attacked twice holds the second blow. The narrower
+// shape — one subject per actor, the actor's latest deed and nothing else —
+// is what shipped first, and the price came due the first time a table read a
+// private deed across rounds of public ones (rpg-project#465).
 type Deed struct {
 	// Verb is what was done: "heal", "attack", "intimidate".
 	Verb string
