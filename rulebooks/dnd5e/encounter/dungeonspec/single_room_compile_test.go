@@ -193,6 +193,37 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 	})
 }
 
+// TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder is the dispatch half
+// of the version seam. Load is the entry point consumers actually use, and a
+// version it routes to the v2 decoder is misreported as a malformed v2 dungeon
+// ("field play not found in type dungeonspec.Spec") rather than refused as a
+// version this build does not speak.
+func TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder(t *testing.T) {
+	raw, err := os.ReadFile("testdata/world-builder-v3.yaml")
+	require.NoError(t, err)
+	v3, err := Load(raw)
+	require.NoError(t, err)
+
+	// A v4 root carrying only v3 keys compiles through Load, to the SAME world
+	// the v3 document compiles to: the version is not content.
+	v4 := swapOneIn(t, raw, "version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room")
+	compiled, err := Load(v4)
+	require.NoError(t, err)
+	require.NotNil(t, compiled.Field.RoomScene, "the single-room compiler ran")
+	require.Equal(t, v3, compiled, "v4-only-in-version compiled to the v3 world")
+	require.Equal(t, "workshop-room", compiled.Key)
+
+	// A version nobody agreed on meets the SINGLE ROOM's refusal by name — not
+	// a v2 shape error naming play or room, which is what the == 3 dispatch
+	// produced for a well-formed v4 site.
+	v5 := swapOneIn(t, raw, "version: 3\nkey: workshop-room", "version: 5\nkey: workshop-room")
+	_, err = Load(v5)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported version 5 (want 3 or 4)")
+	require.NotContains(t, err.Error(), "field play not found")
+	require.NotContains(t, err.Error(), "field room not found")
+}
+
 // TestSingleRoomValidationPaths locks source attribution for every placement
 // failure. In particular, it prevents offset-frame coordinates and the old
 // "last monster" report from returning to author-facing diagnostics.
