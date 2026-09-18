@@ -51,11 +51,52 @@ func TestParseTemperRefusesWhatNoAuthorWrote(t *testing.T) {
 // a soldier. What it must never be is an all-zero profile, which would not
 // weight the creature's table but silence it.
 func TestAnAbsentTemperIsASoldier(t *testing.T) {
-	require.Equal(t, TemperSoldier.Profile(), Temper("").Profile())
+	absent, err := Temper("").Profile()
+	require.NoError(t, err)
+
+	soldier, err := TemperSoldier.Profile()
+	require.NoError(t, err)
+
+	require.Equal(t, soldier, absent)
+}
+
+// The empty word is the ONLY one Profile supplies on a caller's behalf. A
+// mistyped `temper:` that answered a soldier's profile would play as a
+// perfectly well-behaved creature and nobody would learn the word never
+// landed — the silent degrade this refusal exists to prevent.
+func TestProfileRefusesAWordNoAuthorWrote(t *testing.T) {
+	tests := []struct {
+		name  string
+		input Temper
+	}{
+		{name: "a typo for soldier", input: "solider"},
+		{name: "a retired mind word", input: "berserker"},
+		{name: "an unknown word", input: "brave"},
+		{name: "wrong case", input: "Coward"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.input.Profile()
+
+			require.Error(t, err)
+			require.Equal(t, Profile{}, got, "the refused profile is the zero, and the zero is not a soldier")
+			require.NotEqual(t, profiles[TemperSoldier], got, "an unknown word must never quietly play as a soldier")
+			require.Contains(t, err.Error(), "invalid temper")
+			require.Contains(t, err.Error(), string(tc.input), "the refusal quotes the word the author wrote")
+			for _, word := range authorable {
+				require.Contains(t, err.Error(), word.String(),
+					"Profile and ParseTemper refuse in the same words")
+			}
+		})
+	}
 }
 
 func TestSoldierLeavesEveryAuthoredWeightAsWritten(t *testing.T) {
-	require.Equal(t, Profile{Attack: 100, Toward: 100, Away: 100, Flee: 100, Hold: 100}, TemperSoldier.Profile())
+	got, err := TemperSoldier.Profile()
+
+	require.NoError(t, err)
+	require.Equal(t, Profile{Attack: 100, Toward: 100, Away: 100, Flee: 100, Hold: 100}, got)
 }
 
 // Reflection rather than five named asserts: a word added to Profile without a
@@ -81,9 +122,14 @@ func TestEveryAuthorableWordHasNumbers(t *testing.T) {
 
 // The words mean something, and what they mean is which way the die leans.
 func TestCowardAndAggressiveLeanOppositeWays(t *testing.T) {
-	coward := TemperCoward.Profile()
-	aggressive := TemperAggressive.Profile()
-	soldier := TemperSoldier.Profile()
+	coward, err := TemperCoward.Profile()
+	require.NoError(t, err)
+
+	aggressive, err := TemperAggressive.Profile()
+	require.NoError(t, err)
+
+	soldier, err := TemperSoldier.Profile()
+	require.NoError(t, err)
 
 	require.Greater(t, coward.Away, coward.Attack, "a coward would rather be elsewhere than in reach")
 	require.Greater(t, coward.Flee, soldier.Flee, "and runs where a soldier would not")

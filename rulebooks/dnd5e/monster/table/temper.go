@@ -78,18 +78,29 @@ var profiles = map[Temper]Profile{
 // Profile returns the weight profile this temperament loads onto a table's
 // words.
 //
-// Total, and never the zero Profile. The empty Temper is a caller that named
-// no temperament, and the design says that is a soldier; anything else cannot
-// have come from an author, because ParseTemper is the only door and it
-// refuses every word but these three. A soldier's even die is the honest
-// answer to both, where an all-zero profile would quietly delete the
-// creature's whole table.
-func (t Temper) Profile() Profile {
-	if p, ok := profiles[t]; ok {
-		return p
+// The empty Temper is a caller that named no temperament, and the design says
+// that is a soldier: it answers the even profile with no error. That is the
+// only word this method supplies on a caller's behalf.
+//
+// Every other word it does not know is REFUSED. Answering "solider" with a
+// soldier's profile would be a silent degrade — a placement whose `temper:`
+// was mistyped would play as a perfectly well-behaved creature and nobody
+// would ever learn the word never landed. A refusal is the one thing that
+// cannot be mistaken for the author getting what they asked for.
+//
+// The returned Profile is the zero value on refusal and must not be used; it
+// is not a soldier, and reading it as one would weight nothing and silence
+// every word on the creature's table.
+func (t Temper) Profile() (Profile, error) {
+	if t == "" {
+		return profiles[TemperSoldier], nil
 	}
 
-	return profiles[TemperSoldier]
+	if p, ok := profiles[t]; ok {
+		return p, nil
+	}
+
+	return Profile{}, fmt.Errorf("invalid temper %q (must be one of %s)", string(t), vocabulary())
 }
 
 // String is the author-facing label, the inverse of ParseTemper.
@@ -116,10 +127,18 @@ func ParseTemper(s string) (Temper, error) {
 		}
 	}
 
+	return "", fmt.Errorf("invalid temper %q (must be one of %s)", s, vocabulary())
+}
+
+// vocabulary renders the authorable words for a refusal. ParseTemper and
+// Profile share it so the two doors into this package refuse in the same
+// words — an author who mistyped should not have to work out which of two
+// different messages was about their placement.
+func vocabulary() string {
 	words := make([]string, len(authorable))
 	for i, temper := range authorable {
 		words[i] = fmt.Sprintf("%q", temper)
 	}
 
-	return "", fmt.Errorf("invalid temper %q (must be one of %s)", s, strings.Join(words, ", "))
+	return strings.Join(words, ", ")
 }
