@@ -476,10 +476,14 @@ type ReserveData struct {
 	// kept for a member still waiting to arrive — its facts are the same
 	// facts, and losing them across a save would make an arrival
 	// unintimidable, or policyless, for reasons nobody authored.
+	//
+	// TEMPER IS THE UNDEALT SHAPE HERE, which is the difference between a
+	// member on the board and one still waiting: this one's deal has not
+	// happened yet. See [UndealtTemperData].
 	Intimidate []CheckApproachData     `json:"intimidate,omitempty"`
 	Persuade   []CheckApproachData     `json:"persuade,omitempty"`
 	Table      map[string][]AnswerData `json:"table,omitempty"`
-	Temper     TemperData              `json:"temper,omitzero"`
+	Temper     UndealtTemperData       `json:"temper,omitzero"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -1131,6 +1135,37 @@ type TemperData struct {
 	Profile TemperProfileData `json:"profile,omitzero"`
 }
 
+// UndealtTemperData is the persistent representation of a temperament that
+// has NOT been dealt yet: what a member still waiting to arrive was written
+// down with — a word the author chose, or the faction's MIX it will be dealt
+// one word out of at the door it comes in through.
+//
+// A SECOND SHAPE BECAUSE IT IS A SECOND STATE, not a looser [TemperData].
+// A member on the board has a creature the deal produced, and its mix is
+// discarded on purpose so a reload cannot re-deal it. A member in the reserve
+// has nothing to discard: its deal happens when it arrives (design §3), and a
+// save taken before then that dropped the mix handed the arrival an empty
+// temperament and no `tempered` beat at all. rpg-api saves after every RPC, so
+// on a live stack that was every straggler, every time — the walk's bandits
+// arrived as soldiers nobody had dealt.
+//
+// Two shapes rather than a Mix key on [TemperData] keeps "a member's stored
+// temperament never carries a mix" a fact about the TYPE, which is the only
+// version of that rule a future reader cannot misread.
+type UndealtTemperData struct {
+	// Word and Profile are an authored temperament, passed straight through
+	// by the deal — the author already answered the question a mix asks.
+	Word    string            `json:"word,omitempty"`
+	Profile TemperProfileData `json:"profile,omitzero"`
+
+	// Mix is the faction's authored spread, word → positive share, and
+	// Profiles is what each of its words means. Both are the deal's INPUT
+	// and neither survives it: what the member stores after arriving is a
+	// [TemperData] holding the word that came out.
+	Mix      map[string]int               `json:"mix,omitempty"`
+	Profiles map[string]TemperProfileData `json:"profiles,omitempty"`
+}
+
 // TemperProfileData is the persistent representation of a [TemperProfile]:
 // the percent multiplier per table word.
 type TemperProfileData struct {
@@ -1254,24 +1289,75 @@ func selectorFromData(data *SelectorData) *Selector {
 // creatures nobody gave a temperament to byte-identical to one written before
 // temperaments existed.
 func temperDataFrom(t Temper) TemperData {
-	return TemperData{
-		Word: t.Word,
-		Profile: TemperProfileData{
-			Attack: t.Profile.Attack, Toward: t.Profile.Toward, Away: t.Profile.Away,
-			Flee: t.Profile.Flee, Hold: t.Profile.Hold,
-		},
+	return TemperData{Word: t.Word, Profile: temperProfileDataFrom(t.Profile)}
+}
+
+// temperProfileDataFrom renders one profile. Named because both temperament
+// shapes render it and a reserved member renders a map of them.
+func temperProfileDataFrom(p TemperProfile) TemperProfileData {
+	return TemperProfileData{
+		Attack: p.Attack, Toward: p.Toward, Away: p.Away, Flee: p.Flee, Hold: p.Hold,
+	}
+}
+
+// temperProfileFromData resolves one persisted profile.
+func temperProfileFromData(d TemperProfileData) TemperProfile {
+	return TemperProfile{
+		Attack: d.Attack, Toward: d.Toward, Away: d.Away, Flee: d.Flee, Hold: d.Hold,
 	}
 }
 
 // temperFromData resolves a persisted temperament.
 func temperFromData(d TemperData) Temper {
-	return Temper{
-		Word: d.Word,
-		Profile: TemperProfile{
-			Attack: d.Profile.Attack, Toward: d.Profile.Toward, Away: d.Profile.Away,
-			Flee: d.Profile.Flee, Hold: d.Profile.Hold,
-		},
+	return Temper{Word: d.Word, Profile: temperProfileFromData(d.Profile)}
+}
+
+// undealtTemperDataFrom renders a reserved member's UNDEALT temperament, mix
+// and profiles included: the deal has not happened, so everything it will need
+// to happen has to survive the save.
+func undealtTemperDataFrom(t Temper) UndealtTemperData {
+	out := UndealtTemperData{
+		Word:    t.Word,
+		Profile: temperProfileDataFrom(t.Profile),
 	}
+	if len(t.Mix) > 0 {
+		out.Mix = make(map[string]int, len(t.Mix))
+		for word, share := range t.Mix {
+			out.Mix[word] = share
+		}
+	}
+	if len(t.Profiles) > 0 {
+		out.Profiles = make(map[string]TemperProfileData, len(t.Profiles))
+		for word, profile := range t.Profiles {
+			out.Profiles[word] = temperProfileDataFrom(profile)
+		}
+	}
+
+	return out
+}
+
+// undealtTemperFromData resolves a persisted undealt temperament, so a
+// reserved member reloaded is the member that was written down and the deal
+// at its arrival is the deal Setup would have made.
+func undealtTemperFromData(d UndealtTemperData) Temper {
+	out := Temper{
+		Word:    d.Word,
+		Profile: temperProfileFromData(d.Profile),
+	}
+	if len(d.Mix) > 0 {
+		out.Mix = make(map[string]int, len(d.Mix))
+		for word, share := range d.Mix {
+			out.Mix[word] = share
+		}
+	}
+	if len(d.Profiles) > 0 {
+		out.Profiles = make(map[string]TemperProfile, len(d.Profiles))
+		for word, profile := range d.Profiles {
+			out.Profiles[word] = temperProfileFromData(profile)
+		}
+	}
+
+	return out
 }
 
 // taughtFactsOf is every fact id a member's table can teach — what joins
@@ -1672,7 +1758,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Intimidate:     approachesDataFrom(rm.record.Intimidate),
 			Persuade:       approachesDataFrom(rm.record.Persuade),
 			Table:          tableDataFrom(rm.record.Table),
-			Temper:         temperDataFrom(rm.record.Temper),
+			Temper:         undealtTemperDataFrom(rm.record.Temper),
 			BlocksMovement: rm.record.BlocksMovement,
 			Faction:        rm.record.Faction,
 			Holds:          append([]IntelID(nil), rm.holds...),
@@ -2742,7 +2828,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				Intimidate:     approachesFromData(r.Intimidate),
 				Persuade:       approachesFromData(r.Persuade),
 				Table:          tableFromData(r.Table),
-				Temper:         temperFromData(r.Temper),
+				Temper:         undealtTemperFromData(r.Temper),
 				BlocksMovement: r.BlocksMovement,
 				Faction:        r.Faction,
 			},

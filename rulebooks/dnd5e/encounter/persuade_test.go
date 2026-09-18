@@ -68,7 +68,7 @@ func (s *PersuadeTestSuite) deedOf(
 	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
 	for _, h := range holdings {
-		if h.Subject != deed.Subject(actor) || h.Channel != deed.Channel {
+		if h.Subject != deed.Subject(actor, encounter.DeedPersuade) || h.Channel != deed.Channel {
 			continue
 		}
 		saw, err := deed.Decode(h.Payload)

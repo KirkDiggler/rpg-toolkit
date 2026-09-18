@@ -418,3 +418,215 @@ func (s *AnswerTestSuite) setupWith(table encounter.Table) *encounter.SetupInput
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	}
 }
+
+// --- the straggler's nerve, across a save ------------------------------------
+
+// banditMix is a faction's authored spread and what each of its words means —
+// the `temper: { coward: 1, soldier: 2, aggressive: 1 }` an author writes,
+// with the rulebook's numbers behind it.
+var (
+	banditMix      = map[string]int{"coward": 1, "soldier": 2, "aggressive": 1}
+	banditProfiles = map[string]encounter.TemperProfile{
+		"coward":     {Attack: 50, Toward: 50, Away: 300, Flee: 300, Hold: 100},
+		"soldier":    {Attack: 100, Toward: 100, Away: 100, Flee: 100, Hold: 100},
+		"aggressive": {Attack: 300, Toward: 200, Away: 50, Flee: 50, Hold: 50},
+	}
+)
+
+// straggler is the front room with somebody still to come: the goblin's table
+// teaches a fact when it is threatened, and a bandit waits on that fact with
+// its temperament UNDEALT — the faction's mix, because a straggler is dealt at
+// the door it arrives through and not when it was written down.
+func (s *AnswerTestSuite) straggler() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Roller: rollsLowest{},
+		Field: encounter.FieldInput{
+			Canvas:   openAir(),
+			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 12, 6)},
+			Factions: []encounter.FactionInput{{ID: campFaction, Mind: core.EntityID(goblin)}},
+			Dispositions: []encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
+				Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
+				Faction: campFaction, SpeedFeet: 30,
+				Table: encounter.Table{
+					encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}},
+				}},
+			{ID: "straggler", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 3},
+				Faction: campFaction, SpeedFeet: 30,
+				Arrives: encounter.TriggerFact{Fact: campFact},
+				Temper:  encounter.Temper{Mix: banditMix, Profiles: banditProfiles}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	return enc
+}
+
+// reload round-trips an encounter through its own blob, the way the host does
+// between two RPCs — which on a live stack is between EVERY two.
+func (s *AnswerTestSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
+	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:      enc.ToData(),
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+
+	return out
+}
+
+// A STRAGGLER'S UNDEALT MIX SURVIVES THE SAVE, so the creature that walks in is
+// the creature the author described (rpg-project#465, the walk's first
+// finding).
+//
+// A member on the board stores the temperament it was DEALT and discards the
+// mix on purpose: re-dealing on every load would hand a streamer a different
+// goblin each time the run was reopened. A member still in the reserve has not
+// been dealt yet, and the blob was rendering it through the dealt shape — so
+// the spread went in the bin the first time the encounter was saved, and the
+// arrival was handed an empty temperament with no `tempered` beat at all.
+// rpg-api saves after every RPC, which made that every straggler on the real
+// stack: the walk's bandits arrived as soldiers nobody had dealt.
+func (s *AnswerTestSuite) TestAReservedMemberIsDealtFromTheMixItWasSavedWith() {
+	enc := s.straggler()
+
+	data := enc.ToData()
+	s.Require().Len(data.Reserve, 1, "precondition: it is waiting, not standing")
+	s.Equal(banditMix, data.Reserve[0].Temper.Mix, "the spread it has not been dealt from yet")
+	s.Len(data.Reserve[0].Temper.Profiles, len(banditProfiles), "and what every word in it means")
+	s.Empty(data.Reserve[0].Temper.Word, "nothing has been dealt, so there is no word to store")
+
+	// The save, then the threat that plants the fact the straggler waits on.
+	back := s.reload(enc)
+	_, err := back.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+
+	arrived := s.beatsOf(back, alice, "arrived")
+	s.Require().Len(arrived, 1, "the fact brought it in")
+	s.Equal("straggler", arrived[0]["id"])
+
+	dealt := s.beatsOf(back, alice, encounter.BeatTempered)
+	s.Require().Len(dealt, 1, "and its nerve was dealt at the door it came in through")
+	s.Equal("straggler", dealt[0]["member"])
+	s.Equal(string(campFaction), dealt[0]["faction"], "the side whose spread it was")
+	s.EqualValues(4, dealt[0]["of"], "one plus two plus one: the shares the author wrote")
+	word, _ := dealt[0]["temper"].(string)
+	s.Contains(banditMix, word, "a word out of the mix, not an empty temperament")
+
+	// AND THE CREATURE STORES WHAT THE DEAL PRODUCED: the word, that word's
+	// numbers, and no mix — the member shape, now that it is a member.
+	after := back.ToData()
+	s.Empty(after.Reserve, "it is on the board")
+	var stored encounter.TemperData
+	for _, m := range after.Members {
+		if m.ID == "straggler" {
+			stored = m.Temper
+		}
+	}
+	s.Equal(word, stored.Word, "the same word the beat announced")
+	profile := banditProfiles[word]
+	s.Equal(profile.Away, stored.Profile.Away, "with the numbers the author gave that word")
+	s.Equal(profile.Attack, stored.Profile.Attack)
+}
+
+// --- one memory per actor AND kind -------------------------------------------
+
+// neutralFrontPair is [AnswerTestSuite.neutralFront] with a SECOND goblin for
+// alice to shout at: the same room, the same camp, nothing hostile, and a
+// creature standing out of the first one's way whose only job is to be
+// somebody else.
+func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:   openAir(),
+			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 30, 6)},
+			Factions: []encounter.FactionInput{{ID: "goblins", Mind: core.EntityID(goblin)}},
+			Dispositions: []encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{"goblins", encounter.FactionParty},
+				Stance:  encounter.StanceNeutral,
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
+				Faction: "goblins", SpeedFeet: 30, Table: table},
+			{ID: "cousin", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 5},
+				Faction: "goblins", SpeedFeet: 30},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	return enc
+}
+
+// A CREATURE DOES NOT FORGET WHAT WAS DONE TO IT BECAUSE THE SAME PERSON THEN
+// DID SOMETHING TO SOMEBODY ELSE (rpg-project#465, the walk's second finding).
+//
+// The goblin fled alice and its table says to keep running for three rounds.
+// Alice spends those rounds threatening the OTHER goblin, in full view of the
+// first. Every one of those deeds is hers, and while a witness held one deed
+// per ACTOR the second one landed on the handle the flight was filed under:
+// the goblin stopped running a round in, because somebody else got shouted at.
+// A deed is held per actor and KIND now, so the flight ages out on the
+// schedule the author wrote and on nothing else.
+func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse() {
+	enc := s.neutralFrontPair(encounter.Table{
+		encounter.AnswerIntimidated: {{Weight: 1, Say: "BOSS!", Flee: true}},
+		encounter.AnswerTime: {
+			{Weight: 1, When: &encounter.When{Deed: "fled", Within: 3},
+				Away: &encounter.Selector{Word: encounter.SelectorActor}},
+			{Weight: 1, Hold: true},
+		},
+	})
+
+	start := s.cellOf(enc, goblin)
+	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+
+	previous := s.cellOf(enc, goblin)
+	s.Greater(enc.Distance(s.cellOf(enc, alice), previous), enc.Distance(s.cellOf(enc, alice), start),
+		"it ran on the round the threat paid for")
+
+	// ROUNDS TWO AND THREE, spent on the cousin. Each threat pays the world a
+	// round, so the fleeing goblin gets its consult — and what it holds about
+	// alice now includes something that happened to somebody else.
+	for round := 2; round <= 3; round++ {
+		_, ierr := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+			Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+		})
+		s.Require().NoError(ierr)
+
+		now := s.cellOf(enc, goblin)
+		s.Greater(enc.Distance(s.cellOf(enc, alice), now), enc.Distance(s.cellOf(enc, alice), previous),
+			"round %d: the flight is its own memory and the shouting is not", round)
+		previous = now
+	}
+
+	// AND IT STILL STOPS WHEN THE AUTHOR SAID IT WOULD. Surviving the eviction
+	// is not outliving the span: the deed is four rounds old and `within: 3`
+	// no longer holds.
+	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{
+		Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+	s.Equal(previous, s.cellOf(enc, goblin), "three rounds is what was written, and three is what it ran")
+}

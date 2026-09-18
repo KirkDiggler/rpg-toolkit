@@ -123,7 +123,7 @@ func (s *FightTimeTestSuite) TestADeedAgesWhileTheFightRuns() {
 	})
 	s.Require().NoError(err)
 
-	landed, ok := s.holdingOf(enc, goblin, deed.Subject(alice))
+	landed, ok := s.holdingOf(enc, goblin, deed.Subject(alice, encounter.DeedAttack))
 	s.Require().True(ok, "the goblin saw the shot")
 	s.Require().Equal(deed.Channel, landed.Channel)
 
@@ -138,7 +138,7 @@ func (s *FightTimeTestSuite) TestADeedAgesWhileTheFightRuns() {
 	var seen perception.Holding
 	found := false
 	for _, h := range view.Holdings {
-		if h.Subject == deed.Subject(alice) {
+		if h.Subject == deed.Subject(alice, encounter.DeedAttack) {
 			seen, found = h, true
 		}
 	}

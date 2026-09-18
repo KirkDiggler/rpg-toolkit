@@ -80,7 +80,7 @@ func (s *DeedTestSuite) TestAStrikeLandsADeedOnWhoeverSawIt() {
 	})
 	s.Require().NoError(err)
 
-	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice))
+	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice, encounter.DeedAttack))
 	s.Require().True(ok, "the goblin saw alice attack")
 	s.Equal(deed.Channel, held.Channel, "on the deeds channel")
 	s.Empty(held.CurrentVia, "a deed is in the past the moment it exists")
@@ -92,7 +92,7 @@ func (s *DeedTestSuite) TestAStrikeLandsADeedOnWhoeverSawIt() {
 	s.Equal(goblin, saw.Target, "and that it was the one attacked")
 	s.Equal(s.cellOf(enc, alice).String(), saw.Where, "where alice stood, as the board has her")
 
-	_, ok = s.holdingOf(enc, billy, deed.Subject(alice))
+	_, ok = s.holdingOf(enc, billy, deed.Subject(alice, encounter.DeedAttack))
 	s.False(ok, "billy, behind the wall, never learned a shot happened")
 }
 
@@ -111,7 +111,7 @@ func (s *DeedTestSuite) TestAMissIsStillAShotAtYou() {
 	})
 	s.Require().NoError(err)
 
-	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice))
+	held, ok := s.holdingOf(enc, goblin, deed.Subject(alice, encounter.DeedAttack))
 	s.Require().True(ok)
 	saw, err := deed.Decode(held.Payload)
 	s.Require().NoError(err)
@@ -208,7 +208,7 @@ func (s *DeedTestSuite) TestTheViewCarriesWhatADriverNeeds() {
 		switch h.Subject {
 		case alice:
 			sawAlice = h.CurrentOn(perception.Sight)
-		case deed.Subject(alice):
+		case deed.Subject(alice, encounter.DeedAttack):
 			sawDeed = h.Channel == deed.Channel
 		}
 	}
