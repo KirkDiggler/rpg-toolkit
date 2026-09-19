@@ -41,24 +41,15 @@ func (a *WrathOfTheStorm) Ref() *core.Ref { return refs.Features.WrathOfTheStorm
 // Status reports the feature's privately-owned Wrath of the Storm resource through
 // the non-mutating status surface, without serializing ToJSON. The owner is
 // not required: Wrath of the Storm owns its own [RecoverableResource].
-func (a *WrathOfTheStorm) Status(*StatusInput) (*StatusOutput, error) {
-	if a.resource == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "wrath of the storm feature has no resource")
+func (a *WrathOfTheStorm) Status(in *StatusInput) (*StatusOutput, error) {
+	if in == nil || in.Owner == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "wrath of the storm status requires an owner resource reader")
 	}
-	name := a.name
-	if name == "" {
-		name = "Wrath of the Storm"
+	current, maximum, ok := in.Owner.ResourceStatus(resources.WrathOfTheStorm)
+	if !ok {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not carry wrath of the storm")
 	}
-	return &StatusOutput{Status: &Status{
-		Ref:  *refs.Features.WrathOfTheStorm(),
-		Name: name,
-		Resource: &ResourceStatus{
-			Key:     resources.WrathOfTheStorm,
-			Name:    "Wrath of the Storm",
-			Current: a.resource.Current(),
-			Maximum: a.resource.Maximum(),
-		},
-	}}, nil
+	return &StatusOutput{Status: &Status{Ref: *refs.Features.WrathOfTheStorm(), Name: "Wrath of the Storm", Resource: &ResourceStatus{Key: resources.WrathOfTheStorm, Name: "Wrath of the Storm", Current: current, Maximum: maximum}}}, nil
 }
 
 // Name returns the display name for the Wrath of the Storm feature.
@@ -75,13 +66,8 @@ func (a *WrathOfTheStorm) GetType() core.EntityType {
 }
 
 // CanActivate implements core.Action[FeatureInput]
-func (a *WrathOfTheStorm) CanActivate(_ context.Context, _ core.Entity, input FeatureInput) error {
-	// Check if we have uses remaining
-	if !a.resource.IsAvailable() {
-		return rpgerr.New(rpgerr.CodeResourceExhausted, "no wrath of the storm uses remaining")
-	}
-
-	return nil
+func (a *WrathOfTheStorm) CanActivate(context.Context, core.Entity, FeatureInput) error {
+	return rpgerr.New(rpgerr.CodeInvalidArgument, "Wrath of the Storm is offered only after a hit")
 }
 
 // Apply subscribes the recoverable resource to the event bus for automatic rest recovery.
@@ -165,5 +151,5 @@ func (a *WrathOfTheStorm) ToJSON() (json.RawMessage, error) {
 
 // ActionType returns the action economy cost to activate wrath of the storm (free - it grants an extra action)
 func (a *WrathOfTheStorm) ActionType() combat.ActionType {
-	return combat.ActionFree
+	return combat.ActionReaction
 }

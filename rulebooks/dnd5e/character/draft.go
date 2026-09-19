@@ -2001,6 +2001,15 @@ func buildClassResources(
 			built[resources.RageCharges] = rageResource
 		}
 
+	case classes.Cleric:
+		if char.subclassID == classes.TempestDomain {
+			maxUses := char.abilityScores.Modifier(abilities.WIS)
+			if maxUses < 1 {
+				maxUses = 1
+			}
+			built[resources.WrathOfTheStorm] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{ID: string(resources.WrathOfTheStorm), Maximum: maxUses, CharacterID: char.id, ResetType: coreResources.ResetLongRest})
+		}
+
 	case classes.Bard:
 		// Bardic Inspiration uses - Charisma modifier, minimum one, recovered
 		// on long rest. The minimum is RAW and is what keeps a bard with a
