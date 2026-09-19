@@ -329,7 +329,7 @@ func createDeflectMissiles(config json.RawMessage, characterID string) (*Deflect
 
 func createWrathOfTheStorm(_ json.RawMessage, characterID string) (*WrathOfTheStorm, error) {
 	if characterID == "" {
-		return nil, fmt.Errorf("Wrath of the Storm requires its owner")
+		return nil, fmt.Errorf("wrath of the storm requires its owner")
 	}
 	return &WrathOfTheStorm{id: refs.Features.WrathOfTheStorm().ID, name: "Wrath of the Storm", characterID: characterID}, nil
 }

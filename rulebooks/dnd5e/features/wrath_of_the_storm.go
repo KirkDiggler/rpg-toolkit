@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -52,7 +53,7 @@ func (w *WrathOfTheStorm) ActionType() coreCombat.ActionType { return coreCombat
 
 // CanActivate refuses standalone use: only an offered hit reaction can pay for Wrath.
 func (w *WrathOfTheStorm) CanActivate(context.Context, core.Entity, FeatureInput) error {
-	return fmt.Errorf("Wrath of the Storm is offered only after a hit")
+	return fmt.Errorf("wrath of the storm is offered only after a hit")
 }
 
 // Activate refuses standalone use without spending anything.
@@ -63,7 +64,7 @@ func (w *WrathOfTheStorm) Activate(ctx context.Context, owner core.Entity, input
 // Status projects the owner's authoritative resource pool.
 func (w *WrathOfTheStorm) Status(in *StatusInput) (*StatusOutput, error) {
 	if in == nil || in.Owner == nil {
-		return nil, fmt.Errorf("Wrath of the Storm requires an owner resource reader")
+		return nil, fmt.Errorf("wrath of the storm requires an owner resource reader")
 	}
 	current, maximum, ok := in.Owner.ResourceStatus(resources.WrathOfTheStorm)
 	if !ok {
@@ -75,7 +76,7 @@ func (w *WrathOfTheStorm) Status(in *StatusInput) (*StatusOutput, error) {
 // Apply attaches the offer hook. The modifier receives the publisher's context.
 func (w *WrathOfTheStorm) Apply(ctx context.Context, bus events.EventBus) error {
 	if w.subscription != "" {
-		return fmt.Errorf("Wrath of the Storm already attached")
+		return fmt.Errorf("wrath of the storm already attached")
 	}
 	id, err := dndEvents.PostHitChain.On(bus).SubscribeWithChain(ctx, w.onHit)
 	if err != nil {
@@ -109,17 +110,21 @@ func (w *WrathOfTheStorm) onHit(_ context.Context, e *dndEvents.PostHitEvent, c 
 		if !ok || combat.IsDown(owner) || !owner.CanReact() {
 			return e, nil
 		}
-		if conditions, ok := owner.(interface{ HasCondition(*core.Ref) bool }); ok && conditions.HasCondition(refs.Conditions.Incapacitated()) {
-			return e, nil
-		}
-		reader, ok := owner.(ResourceReader)
+		state, ok := cast.(interface {
+			ResourceStatus(string, coreResources.ResourceKey) (int, int, bool)
+			HasCondition(string, *core.Ref) (bool, bool)
+		})
 		if !ok {
 			return e, nil
 		}
-		current, _, known := reader.ResourceStatus(resources.WrathOfTheStorm)
+		if incapacitated, known := state.HasCondition(w.characterID, refs.Conditions.Incapacitated()); !known || incapacitated {
+			return e, nil
+		}
+		current, _, known := state.ResourceStatus(w.characterID, resources.WrathOfTheStorm)
 		if !known || current < 1 {
 			return e, nil
 		}
+
 		sight, ok := cast.(interface {
 			SeesWithin(string, string, int) (bool, bool)
 		})
@@ -150,7 +155,7 @@ func (w *WrathOfTheStorm) loadJSON(data json.RawMessage) error {
 		return err
 	}
 	if d.CharacterID == "" {
-		return fmt.Errorf("Wrath of the Storm requires its owner")
+		return fmt.Errorf("wrath of the storm requires its owner")
 	}
 	w.id, w.name, w.characterID = d.ID, d.Name, d.CharacterID
 	return nil

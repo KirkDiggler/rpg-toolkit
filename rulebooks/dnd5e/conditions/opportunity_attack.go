@@ -270,6 +270,13 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		return c, nil
 	}
 
+	// Opportunity attacks require seeing the creature that leaves reach.
+	if sight, ok := gamectx.Visibility(ctx); ok {
+		if visible, known := sight.SeesWithin(o.MemberID, event.EntityID, 1000000); known && !visible {
+			return c, nil
+		}
+	}
+
 	// Predicate matched — publish the trigger event for the orchestrator.
 	triggerTopic := dnd5eEvents.ReactionTriggerTopic.On(o.bus)
 	if pubErr := triggerTopic.Publish(ctx, dnd5eEvents.ReactionTriggerEvent{
