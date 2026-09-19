@@ -6,7 +6,7 @@ import (
 )
 
 func TestSightAreaSegmentCrossing(t *testing.T) {
-	grid := spatial.NewHexGrid(spatial.Pointy, 5)
+	grid := spatial.NewHexGrid(spatial.HexGridConfig{Width: 100, Height: 100})
 	a := SightArea{Center: spatial.Position{X: 0, Y: 0}, RadiusFeet: 20}
 	if !areaCrosses(a, spatial.Position{X: -30, Y: 0}, spatial.Position{X: 30, Y: 0}, grid) {
 		t.Fatal("line through area should be blocked")
