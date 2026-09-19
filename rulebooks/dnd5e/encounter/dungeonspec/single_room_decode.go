@@ -351,6 +351,10 @@ func sourceShapeErrors(root *yaml.Node) []FieldError {
 		requireString(play, "lighting", "play", add)
 		requireString(play, "standing", "play", add)
 	}
+	// THE SITE SCOPE IS WALKED BEFORE THE ROOM, so a typo in a faction is
+	// reported as the typo it is rather than as a room problem — the order
+	// the web's own decoder keeps (singleRoomDungeon.ts).
+	siteScopeShape(doc, add)
 	if room := requireMapping(doc, "room", "", add); room != nil {
 		roomShape(room, add)
 	}
@@ -502,6 +506,7 @@ func gameplayShape(gp *yaml.Node, add errSink) {
 			monsterShape(m, fmt.Sprintf("room.room.monsters[%d]", i), add)
 		}
 	}
+	monsterBindingsShape(gp, add)
 }
 
 // cellShape reads an axial cell. Both coordinates are required, and the
@@ -532,6 +537,10 @@ func monsterShape(m *yaml.Node, p string, add errSink) {
 	if c := requiredNode(m, "cell", p, add); c != nil {
 		cellShape(c, p+".cell", add)
 	}
+	// The side it is on is OPTIONAL — absent means the kind's default — and
+	// may be neither null nor empty, because "" is the same bytes as absence
+	// with a different meaning.
+	optionalReference(m, "faction", p, add)
 }
 
 // declarationShape is the shared shape for prop and arrangement-template
@@ -629,6 +638,11 @@ func validateSingleRoom(s *SingleRoomSpec) []FieldError {
 		add("room."+d.Path, d.Message)
 	}
 	gameplayValues(&s.Room.Gameplay, s.Room.Workspace.HexRadius, &s.Room.Scene, add)
+	// THE SITE SCOPE AND THE ORDERS LAST, and judged by the validators the
+	// v2 dialect already ships (see single_room_site.go): every refusal about
+	// a faction, a disposition, a membership or an orders block is the one
+	// an author already gets from the other dialect, at this dialect's paths.
+	siteValues(s, add)
 	return e
 }
 

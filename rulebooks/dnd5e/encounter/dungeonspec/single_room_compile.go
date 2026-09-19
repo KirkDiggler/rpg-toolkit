@@ -9,9 +9,25 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// CompileSingleRoom lowers the complete v3 source into the existing encounter
-// field contract. Source cells are axial; FieldInput remains the legacy offset
-// frame and is reached only through the canonical spatial inverse.
+// CompileSingleRoom lowers the complete single-room source into the existing
+// encounter field contract. Source cells are axial; FieldInput remains the
+// legacy offset frame and is reached only through the canonical spatial
+// inverse.
+//
+// THE SITE SCOPE AND THE ORDERS COMPILE THROUGH THE V2 COMPILERS
+// (rpg-project#477, rpg-toolkit#1826). `factions:` and `dispositions:` go
+// through [factionsOf] and [dispositionsOf] over the adapted spec
+// ([siteSpec]), so the faction-of-one mind rule and the predicate compilation
+// are the same ones the other dialect gets; a creature's compiled orders are
+// [monstersOf]'s own three lines — its faction's table with its own laid over
+// wholesale, its word beating its faction's mix, and its actions verbatim in
+// the authored order.
+//
+// A DOCUMENT WITH NONE OF THOSE KEYS COMPILES TO WHAT IT ALWAYS DID.
+// [encounter.Layer] of two nil tables is nil, [temperOf] of two absences is
+// the zero temper, and an absent faction stays the empty string the reserved
+// `monsters` side is written as — so every field they fill is omitted from
+// the committed pictures exactly as before.
 func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if in.Spec == nil {
 		return Compiled{}, singleRoomCompileError("source", "single room spec is nil")
@@ -20,6 +36,14 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, &ValidationError{Errors: errs}
 	}
 	spec := in.Spec
+	// The sides, and each creature's orders, read through the one adapter.
+	site := siteSpec(spec)
+	factionOn := make(map[string]map[string][]AnswerSpec, len(spec.Factions))
+	factionTemper := make(map[string]TemperSpec, len(spec.Factions))
+	for _, fa := range spec.Factions {
+		factionOn[fa.ID] = fa.On
+		factionTemper[fa.ID] = fa.Temper
+	}
 	o := spatial.HexOrientationPointyTop
 	cells := make([]spatial.Position, 0, len(spec.Room.Gameplay.WalkableHexes))
 	for _, c := range spec.Room.Gameplay.WalkableHexes {
@@ -37,6 +61,11 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		Regions:   []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
 		Placed:    props,
 		Start:     nil,
+		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
+		// is seeded from them at every Setup and Load, so they have to be
+		// where the field is. Nil when the site declares none.
+		Factions:     factionsOf(site),
+		Dispositions: dispositionsOf(site),
 	}
 	starts := []spatial.Position{}
 	if spec.Room.Gameplay.PartyStart == nil {
@@ -48,14 +77,23 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if occupied[*spec.Room.Gameplay.PartyStart] {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "is occupied")
 	}
-	for _, m := range spec.Room.Gameplay.Monsters {
+	for i, m := range spec.Room.Gameplay.Monsters {
 		if m.Cell == *spec.Room.Gameplay.PartyStart || occupied[m.Cell] {
-			return Compiled{}, singleRoomCompileError(fmt.Sprintf("room.room.monsters[%d].cell", len(monsters)), "is occupied")
+			return Compiled{}, singleRoomCompileError(fmt.Sprintf("room.room.monsters[%d].cell", i), "is occupied")
 		}
 		occupied[m.Cell] = true
 		at := axialOffset(m.Cell, o)
 		starts = append(starts, at)
-		monsters = append(monsters, MonsterPlacement{ID: m.ID, Ref: m.Ref, Region: spec.Room.Gameplay.ImplicitRegionID, At: at})
+		// pl is this creature as the v2 compilers read it: its membership from
+		// the actor, its orders from its binding. Index-aligned by [siteSpec].
+		pl := site.Place[i]
+		monsters = append(monsters, MonsterPlacement{
+			ID: m.ID, Ref: m.Ref, Region: spec.Room.Gameplay.ImplicitRegionID, At: at,
+			Faction: m.Faction,
+			Actions: append([]string(nil), pl.Actions...),
+			Table:   encounter.Layer(tableOf(factionOn[placedFaction(pl)]), tableOf(pl.On)),
+			Temper:  temperOf(pl, factionTemper[placedFaction(pl)]),
+		})
 	}
 	// Validate each source placement independently. Besides identifying the
 	// actual failing placement (rather than the last one in the batch), this
@@ -97,7 +135,12 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "has no free seat")
 	}
 	field.Start = &encounter.FieldStart{At: starts[0]}
-	return Compiled{Key: spec.Key, Name: spec.Room.Scene.Name, Field: field, PartyStart: party, Monsters: monsters}, nil
+	return Compiled{
+		Key: spec.Key, Name: spec.Room.Scene.Name, Field: field, PartyStart: party, Monsters: monsters,
+		// The same lists the field carries, surfaced for a host that wants to
+		// read what the site declares without reaching into it ([Compiled]).
+		Factions: field.Factions, Dispositions: field.Dispositions,
+	}, nil
 }
 
 // CompileSingleRoomInput supplies a decoded single-room specification.
