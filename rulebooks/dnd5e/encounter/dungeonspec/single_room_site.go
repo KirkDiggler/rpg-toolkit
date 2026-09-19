@@ -72,8 +72,9 @@ const errLiveRoomMonster = "must name a live room monster"
 // [validation.dispositions] says "the disposition does not say its stance" in
 // an author's own words, and two defects for one mistake sends an author
 // looking for a second problem. An unknown key inside any of these blocks is
-// named by `KnownFields(true)`, with the key and the type that has no such
-// field, exactly as everywhere else in this document.
+// caught by `KnownFields(true)` and named at its own path, with the keys that
+// block does take — exactly as everywhere else in this document, and in either
+// dialect (rpg-project#481, R2; unknown_key.go).
 
 // siteScopeShape reads the optional root scope: `factions` and
 // `dispositions`, each a list of mappings.

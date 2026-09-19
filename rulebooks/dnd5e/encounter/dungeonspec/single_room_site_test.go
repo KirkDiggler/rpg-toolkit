@@ -217,40 +217,120 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 }
 
 // TestUnknownKeysInsideTheSiteKeysAreNamed is the strictness half, and it
-// reports differently on purpose: `KnownFields(true)` refuses an unknown key
-// at DECODE, before any path exists to hang it on, so what an author gets is
-// the key and the type that has no such field — the same refusal an unknown
-// key anywhere else in this document earns.
+// reports the same way everything else here does: the key at the author's own
+// address for it, and the keys that shape does take (rpg-project#481, R2).
+//
+// It used to read differently on purpose — `KnownFields(true)` refuses at
+// DECODE and the path was said to be gone by then — and that was the defect,
+// not the design. The path is still in the source, which the decoder was
+// handed; unknown_key.go walks it back. Both dialects run the same
+// translation, so a misspelled key reads the same whether it was written in a
+// site document or a region chain.
 func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 	raw, err := os.ReadFile(v4SitePath)
 	require.NoError(t, err)
 	cases := []struct {
-		name, old, repl, key, typ string
+		name, old, repl string
+		want            FieldError
 	}{
 		{
-			name: "inside an orders block", key: "mind", typ: "dungeonspec.RoomMonsterBinding",
+			name: "inside an orders block",
 			old:  "        temper: coward",
 			repl: "        temper: coward\n        mind: goblin-1",
+			want: FieldError{
+				Path:    "room.room.monsterBindings.goblin-1.mind",
+				Message: `"mind" is not a key this build reads: they are actions, on, temper`,
+			},
 		},
 		{
-			name: "inside a faction", key: "stance", typ: "dungeonspec.FactionSpec",
+			name: "inside a faction",
 			old:  "  - id: goblins",
 			repl: "  - id: goblins\n    stance: hostile",
+			want: FieldError{
+				Path:    "factions[0].stance",
+				Message: `"stance" is not a key this build reads: they are id, mind, on, temper`,
+			},
 		},
 		{
-			name: "beside a creature", key: "temper", typ: "dungeonspec.RoomMonsterSource",
+			name: "beside a creature",
 			old:  "cell: {q: 0, r: -1}}",
 			repl: "cell: {q: 0, r: -1}, temper: coward}",
+			want: FieldError{
+				Path:    "room.room.monsters[2].temper",
+				Message: `"temper" is not a key this build reads: they are cell, faction, id, ref`,
+			},
+		},
+		{
+			name: "at the root of the site document",
+			old:  "key: front-room-site",
+			repl: "key: front-room-site\nheight: 8",
+			want: FieldError{
+				Path: "height",
+				Message: `"height" is not a key this build reads: ` +
+					"they are dispositions, factions, key, play, room, version",
+			},
+		},
+		{
+			name: "in the play block",
+			old:  "play: {void: transparent,",
+			repl: "play: {viod: transparent,",
+			want: FieldError{
+				Path:    "play.viod",
+				Message: `"viod" is not a key this build reads: they are lighting, standing, void`,
+			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Load(swapOneIn(t, raw, tc.old, tc.repl))
 			require.Error(t, err)
+			require.ErrorIs(t, err, ErrBadSpec)
 			var validation *ValidationError
 			require.ErrorAs(t, err, &validation)
 			require.Len(t, validation.Errors, 1)
-			require.Contains(t, validation.Errors[0].Message, "field "+tc.key+" not found in type "+tc.typ)
+			require.Equal(t, tc.want, validation.Errors[0])
+			require.NotContains(t, validation.Errors[0].Message, "dungeonspec.",
+				"an author is told about their file, not about Go")
+			require.NotContains(t, validation.Errors[0].Message, "not found in type")
+		})
+	}
+}
+
+// TestTheSiteDocumentReportsEveryUnknownKey is the list half, in the dialect
+// the World Builder actually authors: two misspellings come back as two
+// defects, so fixing one does not send the author round again for the next.
+func TestTheSiteDocumentReportsEveryUnknownKey(t *testing.T) {
+	raw, err := os.ReadFile(v4SitePath)
+	require.NoError(t, err)
+	source := swapOneIn(t, raw, "key: front-room-site", "key: front-room-site\nheight: 8")
+	source = swapOneIn(t, source, "        temper: coward", "        tempre: coward")
+
+	_, err = Load(source)
+	var validation *ValidationError
+	require.ErrorAs(t, err, &validation)
+	require.Equal(t, []FieldError{
+		{Path: "height", Message: `"height" is not a key this build reads: ` +
+			"they are dispositions, factions, key, play, room, version"},
+		{Path: "room.room.monsterBindings.goblin-1.tempre",
+			Message: `"tempre" is not a key this build reads: they are actions, on, temper`},
+	}, validation.Errors, "both of them, in the order they were written")
+}
+
+// TestThePresentationStaysTheCodecsToJudge is the rule the translation must
+// not have quietly broken. `scene`, `coordinateFrame` and `workspace` are the
+// World Builder's own content and this decoder reads only the values play
+// depends on out of them (rpg-project#479, R3), so an unknown key in there is
+// still no defect of this package's.
+func TestThePresentationStaysTheCodecsToJudge(t *testing.T) {
+	raw, err := os.ReadFile(v4SitePath)
+	require.NoError(t, err)
+	for name, swap := range map[string][2]string{
+		"in a scene item":         {"        label: Table", "        label: Table\n        wobble: 3"},
+		"in the coordinate frame": {"{horizontalPlane: world-xz,", "{horizontalPlain: world-xz,"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(swapOneIn(t, raw, swap[0], swap[1]))
+			require.NoError(t, err, "strictness over the presentation belongs to the codec that owns it")
 		})
 	}
 }

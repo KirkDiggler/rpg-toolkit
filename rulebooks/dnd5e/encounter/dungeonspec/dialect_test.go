@@ -122,8 +122,8 @@ connectors: []
 `
 	errs := s.validate(v1)
 	s.Require().NotEmpty(errs)
-	joined := strings.Join(paths(errs), " ")
-	s.Contains(joined, "line", "unknown keys are refused at the line the decoder found them")
+	s.Subset(paths(errs), []string{"height", "rooms", "connectors"},
+		"every stale key is refused at its own path, not at a line (rpg-project#481)")
 	var messages []string
 	for _, e := range errs {
 		messages = append(messages, e.Message)
@@ -132,6 +132,8 @@ connectors: []
 	s.Contains(all, "height")
 	s.Contains(all, "rooms")
 	s.Contains(all, "connectors")
+	s.NotContains(all, "dungeonspec.", "an author is told about their file, not about Go")
+	s.NotContains(all, "not found in type")
 
 	// And with only the version wrong, it is the version that is named.
 	errs = s.validate(s.tombWith("version: 2", "version: 1"))
@@ -156,8 +158,12 @@ func (s *DialectSuite) TestADungeonMustBeOneDocumentOfKnownKeys() {
 	s.Run("an unknown key", func() {
 		errs := s.validate(s.tombWith("void: opaque", "void: opaque\nheight: 8"))
 		s.Require().Len(errs, 1)
-		s.Contains(errs[0].Message, "height")
-		s.Contains(errs[0].Path, "line")
+		s.Equal(dungeonspec.FieldError{
+			Path: "height",
+			Message: `"height" is not a key this build reads: they are dispositions, doors, endings, ` +
+				`exits, factions, intel, key, name, orientation, place, regions, scenarios, ` +
+				`scenery, start, version, void, walls`,
+		}, errs[0], "the key at its own path, and the keys there are instead")
 	})
 }
 

@@ -294,21 +294,25 @@ func TestTheCampAllowsWhatTheDesignAllows(t *testing.T) {
 }
 
 // TestThePredicateDecodesStrictly is the grammar's own gate: exactly one
-// form, no unknown key, and each refusal names the line.
+// form, no unknown key, and each refusal named — an unknown key at its PATH
+// (rpg-project#481), and the rest at the line, because a form that says
+// nothing is not about any one key.
 func TestThePredicateDecodesStrictly(t *testing.T) {
 	scenes := []struct {
-		name, predicate, want string
+		name, predicate, path, want string
 	}{
-		{"two forms", "{ fact: saved-wiseman, round: 6 }", "says both `fact` and `round`"},
-		{"no form", "{}", "says nothing"},
-		{"an empty form", "{ fact: }", "`fact` says nothing"},
-		{"an unknown key", "{ facts: saved-wiseman }", "field facts not found in type dungeonspec.PredicateSpec"},
-		{"is outside the stance form", "{ fact: saved-wiseman, is: neutral }", "field is not found"},
-		{"a stance with no is", "{ stance: { between: [raiders, party] } }", "does not say which stance"},
-		{"a stance with no between", "{ stance: { is: neutral } }", "does not say which pair"},
+		{"two forms", "{ fact: saved-wiseman, round: 6 }", "", "says both `fact` and `round`"},
+		{"no form", "{}", "", "says nothing"},
+		{"an empty form", "{ fact: }", "", "`fact` says nothing"},
+		{"an unknown key", "{ facts: saved-wiseman }", "dispositions[0].until.facts",
+			`"facts" is not a key this build reads`},
+		{"is outside the stance form", "{ fact: saved-wiseman, is: neutral }", "dispositions[0].until.is",
+			`"is" is not a key this build reads`},
+		{"a stance with no is", "{ stance: { between: [raiders, party] } }", "", "does not say which stance"},
+		{"a stance with no between", "{ stance: { is: neutral } }", "", "does not say which pair"},
 		{"a stance with an unknown key", "{ stance: { between: [raiders, party], is: neutral, was: hostile } }",
-			"field was not found in type dungeonspec.StancePredicateSpec"},
-		{"a scalar", "round", "a predicate is exactly one of"},
+			"dispositions[0].until.stance.was", `"was" is not a key this build reads`},
+		{"a scalar", "round", "", "a predicate is exactly one of"},
 	}
 	for _, sc := range scenes {
 		t.Run(sc.name, func(t *testing.T) {
@@ -317,6 +321,13 @@ func TestThePredicateDecodesStrictly(t *testing.T) {
 			require.Error(t, err)
 			require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
 			require.Contains(t, err.Error(), sc.want)
+			if sc.path == "" {
+				return
+			}
+			var verr *dungeonspec.ValidationError
+			require.ErrorAs(t, err, &verr)
+			require.Contains(t, verr.Errors, dungeonspec.FieldError{Path: sc.path, Message: sc.want},
+				"the key is named at the author's address for it")
 		})
 	}
 }

@@ -138,17 +138,27 @@ func TestArrivesRefusesEachWrongLine(t *testing.T) {
 // TestArrivesDecodesStrictly is the grammar's own refusals, reached through
 // `arrives`: a predicate that says nothing, one that says two things, and a
 // key this build does not know.
+//
+// The unknown key carries a PATH like every other defect (rpg-project#481):
+// the predicate's hand-written refusal is spelled the way `KnownFields` spells
+// its own, so it is walked back to the author's address for the key along with
+// them. The other two are not about a key and keep the line.
 func TestArrivesDecodesStrictly(t *testing.T) {
-	scenes := []struct{ name, replacement, want string }{
-		{"says nothing", "arrives: { }", "says nothing"},
-		{"says two things", "arrives: { round: 6, down: chief }", "says both"},
-		{"an unknown key", "arrives: { when: 6 }", "field when not found"},
+	scenes := []struct{ name, replacement, path, want string }{
+		{"says nothing", "arrives: { }", "", "says nothing"},
+		{"says two things", "arrives: { round: 6, down: chief }", "", "says both"},
+		{"an unknown key", "arrives: { when: 6 }", "place[3].arrives.when",
+			`"when" is not a key this build reads`},
 	}
 	for _, sc := range scenes {
 		t.Run(sc.name, func(t *testing.T) {
-			_, err := dungeonspec.Load([]byte(edited(t, zombie1Line, strings.Replace(zombie1Line, "arrives: { down: chief }", sc.replacement, 1))))
+			source := edited(t, zombie1Line, strings.Replace(zombie1Line, "arrives: { down: chief }", sc.replacement, 1))
+			_, err := dungeonspec.Load([]byte(source))
 			require.Error(t, err)
 			require.Contains(t, err.Error(), sc.want)
+			if sc.path != "" {
+				requireRefusedAt(t, refusals(t, source), sc.path, sc.want)
+			}
 		})
 	}
 }
@@ -260,8 +270,8 @@ func TestEndingsRefuseEachWrongLine(t *testing.T) {
 	}
 
 	t.Run("a key this build does not know", func(t *testing.T) {
-		_, err := dungeonspec.Load([]byte(withEndings(t, "  - { id: x, when: { round: 6 }, then: party }\n")))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "field then not found")
+		source := withEndings(t, "  - { id: x, when: { round: 6 }, then: party }\n")
+		requireRefusedAt(t, refusals(t, source), "endings[0].then",
+			`"then" is not a key this build reads`, "they are id, when")
 	})
 }
