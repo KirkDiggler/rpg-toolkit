@@ -36,6 +36,7 @@ type sightReach struct {
 	// sight — the same room every other geometry question in this pass is
 	// asked of.
 	canvas *canvasRoom
+	areas  map[string]SightArea
 }
 
 // Reaches answers with exactly the two filters the nested loop applied, in
@@ -75,5 +76,13 @@ func (s sightReach) Reaches(_ perception.Channel, observer, subject core.EntityI
 		return false
 	}
 
-	return !s.canvas.IsLineOfSightBlocked(observerCell, subjectCell)
+	if s.canvas.IsLineOfSightBlocked(observerCell, subjectCell) {
+		return false
+	}
+	for _, area := range s.areas {
+		if areaCrosses(area, observerCell, subjectCell, s.canvas.GetGrid()) {
+			return false
+		}
+	}
+	return true
 }

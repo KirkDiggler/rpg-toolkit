@@ -6,6 +6,7 @@ package encounter
 import "errors"
 
 var (
+	ErrStrikePaused = errors.New("strike paused")
 	// ErrNilInput is returned when a nil *XxxInput is passed to an operation.
 	// Indicates a caller defect.
 	ErrNilInput = errors.New("nil input")

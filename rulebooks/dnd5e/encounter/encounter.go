@@ -140,7 +140,8 @@ type Encounter struct {
 	// IT CANNOT BE PER VERB. The round site raises the world clock from inside
 	// EndTurn, which takes no die, and a creature's `time` pick happens there
 	// — so the die has to be the composition's, not the caller's.
-	roller dice.Roller
+	roller     dice.Roller
+	sightAreas map[string]SightArea
 
 	// worldThinking guards [Encounter.worldThinks] against re-entry: the
 	// outer pass owns the world's round, and a nested one would consult the

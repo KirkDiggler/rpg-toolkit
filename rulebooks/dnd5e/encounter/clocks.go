@@ -916,6 +916,11 @@ func (e *Encounter) executeTurnIntent(
 		// cancellation propagated from the host, that is the day to revisit
 		// this rather than the day to speculatively add it everywhere now.
 		if serr := e.striker.Strike(context.Background(), e, activeID, it.Target, it.Action); serr != nil {
+			if errors.Is(serr, ErrStrikePaused) {
+				budget.AttacksLeft = 0
+				e.pausedTurn = &pausedTurn{member: activeID, round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound, afterStrike: true}
+				return false, nil, nil
+			}
 			return false, nil, fmt.Errorf("strike: %w", serr)
 		}
 		budget.AttacksLeft = 0
