@@ -179,11 +179,13 @@ type ActivationResult struct {
 // and ability, an optional selected target, and zero or more results in the
 // exact synchronous order the rulebook produced them.
 type RecordActivationInput struct {
-	Actor   MemberID
-	Target  MemberID
-	Ability ActivationIdentity
-	Results []ActivationResult
-	Save    *CastSave
+	Actor               MemberID
+	Target              MemberID
+	Ability             ActivationIdentity
+	Results             []ActivationResult
+	Save                *CastSave
+	ConcentrationChecks []ConcentrationCheck
+	ConcentrationBreaks []ConcentrationBreak
 }
 
 // RecordActivationOutput reports where every transaction beat landed and any
