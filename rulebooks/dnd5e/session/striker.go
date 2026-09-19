@@ -161,7 +161,7 @@ func (s strikerSeam) Strike(
 		return nil
 
 	case resolution.SequenceOutcome:
-		return s.recordSequence(enc, in, produced, attackerData.Actions, out)
+		return s.recordSequence(enc, in, produced, attackerData.Actions)
 
 	default:
 		return fmt.Errorf("strike: %w: strike produced %T", ErrInvalidWorld, out.Outcome)
@@ -191,19 +191,20 @@ func (s strikerSeam) Strike(
 // and two swings in one action are one attack as far as a witness is
 // concerned.
 //
-// # Concentration rides the LAST beat
+// # Concentration rides the swing that forced it
 //
-// Resolution hands the checks and breaks over for the whole interaction, in
-// one pair of lists, because that is the grain its collector works at. They
-// go on the final beat rather than on every one: repeating them per swing
-// would record a defender's single save two or three times, and splitting
-// them here would mean this seam re-deriving which blow caused which — a rule,
-// on the wrong side of the seam. The cost is that a check made against the
-// first blow is reported on the last beat of the same action; the day that
-// matters, the split belongs in resolution's own per-step outcome.
+// Each step carries its OWN checks and breaks (Kirk's ruling, 2026-09-20), so
+// this seam copies two slice headers per beat and still knows nothing about
+// what is in them. That is the same arrangement recordStrike already documents
+// for a lone swing, and it is why the split lives in resolution rather than
+// here: which blow caused which break is a rule, and a seam that worked it out
+// would be a seam having an opinion.
+//
+// out.ConcentrationChecks and out.ConcentrationBreaks are EMPTY for a
+// sequence, deliberately, so reading both places cannot record one save twice.
 func (s strikerSeam) recordSequence(
 	enc *encounter.Encounter, in *AttackInput, sequence resolution.SequenceOutcome,
-	repertoire []combatActions.Definition, out *resolution.Output,
+	repertoire []combatActions.Definition,
 ) error {
 	if len(sequence.Steps) == 0 {
 		// Refused rather than returned as a quiet success: a sequence that
@@ -223,15 +224,8 @@ func (s strikerSeam) recordSequence(
 				ErrBadAttack, sequence.Action.String(), step.Action.String())
 		}
 
-		last := index == len(sequence.Steps)-1
-		var checks []encounter.ConcentrationCheck
-		var breaks []encounter.ConcentrationBreak
-		if last {
-			checks, breaks = out.ConcentrationChecks, out.ConcentrationBreaks
-		}
-
 		recorded := recordStrike(in.Attacker, in.Target, step.Strike,
-			attackRefFor(component), "", checks, breaks)
+			attackRefFor(component), "", step.ConcentrationChecks, step.ConcentrationBreaks)
 		if _, err := enc.Record(recorded); err != nil {
 			return fmt.Errorf("strike: step %d: %w", index, translate(err))
 		}

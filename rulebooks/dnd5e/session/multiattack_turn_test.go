@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -275,4 +277,84 @@ func indexOf(beats []string, kind string) int {
 	}
 
 	return 0
+}
+
+// holdSpellAfterJoin puts a concentration hold on a sheet that is already
+// seated, and it has to happen AFTER Join: Join rebuilds the sheet from the
+// character store and a condition authored before it is simply gone by the
+// time anybody swings (it also refreshes hit points to maximum, which is the
+// same trap one floor down).
+//
+// Only the hold, no child — a passed check strips nothing, so a child would
+// be scenery.
+func (s *MonsterTurnTestSuite) holdSpellAfterJoin(chars *fakeCharacters, id string) {
+	s.T().Helper()
+
+	seated, err := chars.GetCharacter(context.Background(), id)
+	s.Require().NoError(err)
+
+	hold := conditions.NewConcentratingCondition(
+		id, refs.Spells.TrueStrike().String(), "True Strike", spells.TrueStrikeTurnEnds)
+	blob, err := hold.ToJSON()
+	s.Require().NoError(err)
+
+	seated.Conditions = append(seated.Conditions, json.RawMessage(blob))
+	s.Require().NoError(chars.SaveCharacter(context.Background(), seated))
+}
+
+// TestEachSwingsConcentrationCheckLandsBehindItsOwnBeat is Kirk's per-hit
+// ruling where the player actually sees it: the story.
+//
+// A concentration check rides in behind the beat that caused it, so a
+// multiattack that forced two checks reads struck, saved, struck, saved — one
+// blow, the roll it forced, the next blow, the roll IT forced. The folded
+// shape this replaces read struck, struck, saved, saved, which tells the
+// player the defender rolled twice at the end of the action and hides which
+// blow each roll answered.
+func (s *MonsterTurnTestSuite) TestEachSwingsConcentrationCheckLandsBehindItsOwnBeat() {
+	ctx := context.Background()
+
+	chars := newFakeCharacters(armedFighter("fighter"))
+	mgr, err := session.NewManager(&session.Config{
+		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: chars, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
+	})
+	s.Require().NoError(err)
+	s.holdSpellAfterJoin(chars, "fighter")
+
+	_, err = mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "goblin-boss-1", Ref: refs.Monsters.GoblinBoss().String(),
+		Position: spatial.Position{X: 1, Y: 0},
+	})
+	s.Require().NoError(err)
+
+	before := len(s.storyBeats(mgr, "fighter"))
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "fighter",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
+	})
+	s.Require().NoError(err)
+
+	// Just the swings and the rolls they forced, in order — the picks and the
+	// turn bookends are not what this is about.
+	var train []string
+	for _, beat := range s.storyBeats(mgr, "fighter")[before:] {
+		if beat == "struck" || beat == "missed" || beat == "saved" {
+			train = append(train, beat)
+		}
+	}
+
+	s.Equal([]string{"struck", "saved", "struck", "saved"}, train,
+		"each check rides in behind the blow that forced it, never folded onto the end")
 }
