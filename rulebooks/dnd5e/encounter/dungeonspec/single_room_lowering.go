@@ -35,7 +35,9 @@ import (
 //	                                    by name — the one frame number, and
 //	                                    nothing else from the frame.
 //	room.workspace.hexRadius            bounds the walkable cells
-//	                                    (walkableValues).
+//	                                    (walkableValues). Required to be
+//	                                    POSITIVE: a floor of radius zero or
+//	                                    less is not a floor.
 //	room.scene.name                     the compiled dungeon's display name
 //	                                    ([Compiled.Name]) — the one
 //	                                    non-numeric value the lowering reads,
@@ -58,8 +60,9 @@ import (
 // than the editor's own bounds: a number play reads that was never authored
 // (a silent zero is a real pose, a real scale and a real floor radius), a
 // number that is not finite (a NaN radius compares false against every cell
-// and would quietly widen the floor), and a duplicate item id (the join
-// would pick one of two poses for the same declaration). The editor's scalar
+// and would quietly widen the floor), a workspace radius that is not
+// positive (no cell stands on a floor that size), and a duplicate item id
+// (the join would pick one of two poses for the same declaration). The editor's scalar
 // bounds, its workspace presets, its frame vocabulary, its item and group
 // caps and its parent/support graph left with the presentation.
 
@@ -81,9 +84,10 @@ type roomRead struct {
 
 	// WorkspaceHexRadius is `room.workspace.hexRadius`, the floor bound
 	// walkable cells are measured against. WorkspaceKnown is false when it
-	// was not authored as a finite number — the defect names that, and the
-	// floor bound is not applied on top of it, so one missing number reports
-	// as one defect rather than as every cell being off the floor.
+	// was not authored as a finite POSITIVE number — the defect names that,
+	// and the floor bound is not applied on top of it, so one unreadable
+	// number reports as one defect rather than as every cell being off the
+	// floor.
 	WorkspaceHexRadius float64
 	WorkspaceKnown     bool
 
@@ -123,8 +127,18 @@ func readRoom(r *RoomSource) (roomRead, []FieldError) {
 		add("room.coordinateFrame.hexRadius", "must be 1")
 	}
 
+	// A radius of zero or less is the SAME LIE AS AN ABSENT ONE, arriving as
+	// a value: at 0 every cell but the origin measures outside the floor, and
+	// at a negative radius the origin does too, so the one unreadable number
+	// would report as one defect per authored cell. Named once, here, with
+	// its own sentence — the shape the frame's "must be 1" already takes —
+	// and the floor bound is then not applied on top of it.
 	if v, ok := sceneNumber(resolveNode(&r.Workspace), "hexRadius", "room.workspace", add); ok {
-		out.WorkspaceHexRadius, out.WorkspaceKnown = v, true
+		if v <= 0 {
+			add("room.workspace.hexRadius", "must be positive")
+		} else {
+			out.WorkspaceHexRadius, out.WorkspaceKnown = v, true
+		}
 	}
 
 	scene := resolveNode(&r.Scene)

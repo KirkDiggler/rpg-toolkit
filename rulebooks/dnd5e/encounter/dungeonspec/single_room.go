@@ -56,19 +56,26 @@ type SingleRoomPlay struct {
 // inside any of the three is not this decoder's business.
 //
 // They marshal back to YAML as the nodes they are, so a host that re-emits a
-// decoded document gets the author's own bytes back. They are NOT JSON
-// fields: a yaml.Node has no honest JSON shape, and a package that does not
-// model the presentation has nothing to put there.
+// decoded document gets the author's own bytes back.
+//
+// THIS TYPE IS YAML, AND SAYS SO. It carries no JSON tags at all: a
+// [yaml.Node] has no honest JSON shape, so a JSON round trip of a room would
+// carry the gameplay half and silently drop the presentation — a document
+// that looks like it survived and did not. The room is authored as YAML,
+// stored as YAML (rpg-api's dungeon registry "never re-marshals a file:
+// GetDungeon hands back exactly the bytes that were Put"), and re-emitted as
+// YAML. Nothing marshals it as JSON, and the missing tags are what keeps
+// that from starting by accident.
 type RoomSource struct {
-	Version int    `yaml:"version" json:"version"`
-	ID      string `yaml:"id" json:"id"`
-	Name    string `yaml:"name" json:"name"`
+	Version int    `yaml:"version"`
+	ID      string `yaml:"id"`
+	Name    string `yaml:"name"`
 
-	CoordinateFrame yaml.Node `yaml:"coordinateFrame" json:"-"`
-	Workspace       yaml.Node `yaml:"workspace" json:"-"`
-	Scene           yaml.Node `yaml:"scene" json:"-"`
+	CoordinateFrame yaml.Node `yaml:"coordinateFrame"`
+	Workspace       yaml.Node `yaml:"workspace"`
+	Scene           yaml.Node `yaml:"scene"`
 
-	Gameplay RoomGameplaySource `yaml:"room" json:"room"`
+	Gameplay RoomGameplaySource `yaml:"room"`
 }
 
 // RoomCell is an authored axial hex coordinate.

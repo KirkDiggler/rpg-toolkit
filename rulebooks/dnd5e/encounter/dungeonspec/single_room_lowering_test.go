@@ -175,6 +175,42 @@ func TestTheLoweringRefusesEveryNumberPlayReads(t *testing.T) {
 	}
 }
 
+// TestANonPositiveWorkspaceRadiusIsOneDefect is the second half of the
+// missing-radius rule, and the one a flag alone did not cover: an absent
+// `hexRadius` is named once and the floor bound is skipped, but an AUTHORED 0
+// or -6 read as a usable bound and every walkable cell was then blamed for
+// sitting outside it — eight defects for -6 on this fixture, seven for 0.
+//
+// A floor of radius zero or less is not a floor. It is the same lie as the
+// absent number wearing a value, so it is refused the same way: once, at its
+// own path, before anything is measured against it.
+func TestANonPositiveWorkspaceRadiusIsOneDefect(t *testing.T) {
+	raw := fixtureSource(t)
+	for _, radius := range []string{"0", "-6"} {
+		t.Run("hexRadius "+radius, func(t *testing.T) {
+			_, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: swapOneIn(t, raw,
+				"workspace: {hexRadius: 6, horizontalLimit: 12}",
+				"workspace: {hexRadius: "+radius+", horizontalLimit: 12}")})
+			require.Error(t, err)
+			var defects *ValidationError
+			require.ErrorAs(t, err, &defects)
+			require.Equal(t, []FieldError{{Path: "room.workspace.hexRadius", Message: "must be positive"}},
+				defects.Errors, "one unusable radius, one defect — never one per cell")
+		})
+	}
+
+	// And the smallest positive radius the metric can answer for is still a
+	// floor: the bound is about sign, not about the editor's presets.
+	oneCell := swapOneIn(t, raw, "workspace: {hexRadius: 6, horizontalLimit: 12}",
+		"workspace: {hexRadius: 0.5, horizontalLimit: 12}")
+	oneCell = swapOneIn(t, oneCell, "    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},\n"+
+		"      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},\n"+
+		"      {q: 0, r: -1}, {q: 1, r: -1}]\n", "    walkableHexes: [{q: 0, r: 0}]\n")
+	oneCell = swapOneIn(t, oneCell, "cell: {q: 2, r: 0}", "cell: {q: 0, r: 0}")
+	_, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: oneCell})
+	require.NoError(t, err, "a positive radius is a floor, however small")
+}
+
 // TestAnUndeclaredPropNeedsNoPose is the scoping rule the read set implies:
 // the three numbers are required of the props a declaration NAMES, because
 // those are the ones a footprint is placed from. A prop that blocks nothing
