@@ -184,6 +184,12 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 		return nil, err
 	}
 	if m.resume != nil {
+		if m.resume.frozen.PostHitPhase {
+			if m.resume.answer == OfferKeep {
+				return Done{Outcome: *m.resume.frozen.Outcome}, nil
+			}
+			return nil, fmt.Errorf("%w: post-hit option execution is pending root payment wiring", ErrBadStep)
+		}
 		return m.resumeStep(), nil
 	}
 	return m.sanctuaryStep(cast), nil

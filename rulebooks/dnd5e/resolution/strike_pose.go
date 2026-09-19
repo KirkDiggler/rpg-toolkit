@@ -150,6 +150,18 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 	if err := json.Unmarshal(in.Frozen, &frozen); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
 	}
+	if frozen.PostHitPhase {
+		if frozen.Outcome == nil || frozen.PostHit == nil {
+			return nil, fmt.Errorf("%w: incomplete post-hit phase", ErrBadFrozen)
+		}
+		if in.Answer != OfferKeep && in.Option == "" {
+			return nil, fmt.Errorf("%w: post-hit spend requires an option", ErrNotOffered)
+		}
+		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Roller: in.Roller})
+		machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
+		return machine, nil
+	}
+
 	if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion {
 		return nil, fmt.Errorf("%w: kind %q version %d is not one this build froze",
 			ErrBadFrozen, frozen.Kind, frozen.Version)
