@@ -76,10 +76,10 @@ func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
 	draft := s.draft(input)
 	char, err := draft.ToCharacter(context.Background(), "tempest-wrath", events.NewEventBus())
 	s.Require().NoError(err)
-	data := char.ToData()
 	s.Equal(3, char.GetResource(resources.WrathOfTheStorm).Maximum())
 	s.Require().NoError(char.GetResource(resources.WrathOfTheStorm).Use(1))
 	s.Equal(2, char.GetResource(resources.WrathOfTheStorm).Current())
+	data := char.ToData()
 	encoded, err := json.Marshal(data)
 	s.Require().NoError(err)
 	var stored Data
