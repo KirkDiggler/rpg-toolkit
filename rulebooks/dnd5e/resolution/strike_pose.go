@@ -376,6 +376,7 @@ func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error
 	choices := make([]Choice, 0, len(offer.Options))
 	for _, option := range offer.Options {
 		options = append(options, option.ID)
+		choices = append(choices, Choice{ID: option.ID, Label: option.Label})
 	}
 	options = append(options, string(ReactionDecline))
 	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, PostHitPhase: true, Outcome: &m.outcome, PostHit: &offer})

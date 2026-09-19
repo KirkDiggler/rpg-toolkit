@@ -301,7 +301,11 @@ func checkFor(
 func followUpsOf(outcome Outcome) []FollowUpOutcome {
 	switch produced := outcome.(type) {
 	case StrikeOutcome:
-		return produced.FollowUps
+		checks := append([]FollowUpOutcome(nil), produced.FollowUps...)
+		if produced.Retaliation != nil {
+			checks = append(checks, produced.Retaliation.Result.FollowUps...)
+		}
+		return checks
 	case CastOutcome:
 		return produced.FollowUps
 	case ContestOutcome:
