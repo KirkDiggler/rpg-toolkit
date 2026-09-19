@@ -295,9 +295,13 @@ func checkFor(
 
 // followUpsOf reads the checks off whichever outcome ran them.
 //
-// A CLOSED SWITCH over the two machines that apply damage, with no default
-// beyond "none". The third damage source that calls reportDamage adds its arm
-// here, which is the same one-line cost the shared step already asks of it.
+// A CLOSED SWITCH over the machines that apply damage, with no default beyond
+// "none". The next damage source that calls reportDamage adds its arm here,
+// which is the same one-line cost the shared step already asks of it.
+//
+// A sequence pays that cost by flattening: its blows each come back with their
+// own checks, and a defender who held a spell through the first and lost it to
+// the second is only recorded correctly if both reach this list.
 func followUpsOf(outcome Outcome) []FollowUpOutcome {
 	switch produced := outcome.(type) {
 	case StrikeOutcome:
@@ -305,6 +309,8 @@ func followUpsOf(outcome Outcome) []FollowUpOutcome {
 	case CastOutcome:
 		return produced.FollowUps
 	case ContestOutcome:
+		return produced.FollowUps
+	case SequenceOutcome:
 		return produced.FollowUps
 	default:
 		return nil
