@@ -975,21 +975,84 @@ func memberActionsFrom(attack *resolution.AttackFacts) ([]encounter.ActionView, 
 	}}, nil
 }
 
-// memberActionsFromMonster projects every attack definition directly into the
-// composition's opaque action view.
+// memberActionsFromMonster projects every executable definition directly into
+// the composition's opaque action view, in AUTHOR ORDER — which is what a
+// driver reads, so a stat block listing Multiattack first is a monster that
+// reaches for its Multiattack first.
 func memberActionsFromMonster(definitions []combatActions.Definition) []encounter.ActionView {
 	views := make([]encounter.ActionView, 0, len(definitions))
 	for _, definition := range definitions {
-		if definition.Attack == nil {
-			continue
+		switch {
+		case definition.Attack != nil:
+			views = append(views, encounter.ActionView{
+				Ref: definition.Ref, Name: definition.Name,
+				RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
+				Kind:      deliveryKind(definition.Attack.Delivery),
+			})
+		case definition.Sequence != nil:
+			view, projectable := sequenceActionView(definition, definitions)
+			if projectable {
+				views = append(views, view)
+			}
 		}
-		views = append(views, encounter.ActionView{
-			Ref: definition.Ref, Name: definition.Name,
-			RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
-			Kind:      deliveryKind(definition.Attack.Delivery),
-		})
 	}
 	return views
+}
+
+// sequenceActionView projects a multiattack the way the composition asks a
+// single swing to be projected: one maximum range, one kind.
+//
+// # The range is the SMALLEST step's, not the largest
+//
+// RangeFeet is what [encounter.SeenMember.InReach] answers with, and a driver
+// that took a Multiattack because ONE of its steps could reach would send the
+// other step out of range — where the strike machine refuses, and a refusal
+// from a Striker aborts the caller's whole verb. Every step has to land, so
+// the binding distance is the shortest one.
+//
+// # The kind is melee only when every step is
+//
+// Kind is the rulebook's own word and the composition never branches on it,
+// so what matters is that it does not lie. A script mixing a bite and a
+// thrown spear is not a melee action, and calling it one would be this seam
+// picking a word off the first step and hoping.
+//
+// A sequence whose steps this monster does not carry is left OUT, which is the
+// projection saying what resolution would say: it is not executable. That
+// cannot happen for content in this repository — a registry-wide test in the
+// rulebook resolves every authored sequence — so this is the door refusing
+// data from somewhere else rather than a case with a use.
+func sequenceActionView(
+	definition combatActions.Definition, repertoire []combatActions.Definition,
+) (encounter.ActionView, bool) {
+	components, err := combatActions.ResolveSequence(definition, repertoire)
+	if err != nil {
+		return encounter.ActionView{}, false
+	}
+
+	rangeFeet := 0
+	melee := true
+	for index, component := range components {
+		if component.Definition.Attack == nil {
+			return encounter.ActionView{}, false
+		}
+		delivery := component.Definition.Attack.Delivery
+		if index == 0 || delivery.MaxRangeFeet() < rangeFeet {
+			rangeFeet = delivery.MaxRangeFeet()
+		}
+		if !delivery.IsMelee() {
+			melee = false
+		}
+	}
+
+	kind := "ranged"
+	if melee {
+		kind = "melee"
+	}
+
+	return encounter.ActionView{
+		Ref: definition.Ref, Name: definition.Name, RangeFeet: rangeFeet, Kind: kind,
+	}, true
 }
 
 func deliveryKind(delivery combatActions.AttackDelivery) string {

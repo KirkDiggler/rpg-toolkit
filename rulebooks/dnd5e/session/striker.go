@@ -99,6 +99,12 @@ func (s strikerSeam) Strike(
 		Definition: definition,
 		AttackerID: string(attacker),
 		TargetID:   string(target),
+		// The attacker's WHOLE action list, because a sequence's steps name
+		// components off it and this seam is the one place holding the stat
+		// block they live on. Supplied for every arm: a strike ignores it,
+		// and branching here on which arm the definition populated would put
+		// profile dispatch on this side of the seam.
+		Components: attackerData.Actions,
 		Roller:     &diceSeam{roller: s.m.dice},
 	})
 	if err != nil {
@@ -136,21 +142,114 @@ func (s strikerSeam) Strike(
 		return fmt.Errorf("strike: %w", translateResolution(err))
 	}
 
-	struck, ok := out.Outcome.(resolution.StrikeOutcome)
-	if !ok {
-		return fmt.Errorf("strike: %w: strike produced %T", ErrInvalidWorld, out.Outcome)
-	}
-
+	// Sheets are written ONCE for the whole interaction, before any beat is
+	// recorded, whether the action landed one blow or several.
 	if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
 		return fmt.Errorf("strike: %w", err)
 	}
 
 	in := &AttackInput{Attacker: string(attacker), Target: string(target)}
-	// NO PRESENTATION TOKEN: nobody declared this roll. A monster's swing is
-	// resolved by the driver, no client simulated its die, and there is
-	// therefore no throw for a witness to correlate against — see recordFor.
-	if _, err := enc.Record(recordFor(in, struck, definition, "", out)); err != nil {
-		return fmt.Errorf("strike: %w", translate(err))
+
+	switch produced := out.Outcome.(type) {
+	case resolution.StrikeOutcome:
+		// NO PRESENTATION TOKEN: nobody declared this roll. A monster's swing
+		// is resolved by the driver, no client simulated its die, and there is
+		// therefore no throw for a witness to correlate against — see recordFor.
+		if _, err := enc.Record(recordFor(in, produced, definition, "", out)); err != nil {
+			return fmt.Errorf("strike: %w", translate(err))
+		}
+		return nil
+
+	case resolution.SequenceOutcome:
+		return s.recordSequence(enc, in, produced, attackerData.Actions, out)
+
+	default:
+		return fmt.Errorf("strike: %w: strike produced %T", ErrInvalidWorld, out.Outcome)
 	}
+}
+
+// recordSequence writes ONE BEAT PER SWING.
+//
+// # Why not one beat for the whole multiattack
+//
+// Because a beat is a roll. Every field the story keeps about an attack — the
+// d20 and its keep record, the total, the AC it was compared against, the
+// damage components, whether it crit — is singular, and a beat carrying two
+// swings could only answer each of those once. The client that draws a die
+// tray draws one throw per beat for the same reason.
+//
+// So the goblin boss's Multiattack is two Struck/Missed beats in order, each
+// naming the COMPONENT that swung — "Scimitar", not "Multiattack" — because
+// that is the identity a client maps to a model, an icon and a damage type,
+// and it is what actually hit.
+//
+// # The deed is landed twice and keyed once
+//
+// Encounter.Record lands an attack deed keyed actor#verb, so the second swing
+// overwrites the first's. That is the right answer rather than a gap: a `when`
+// condition reading "this creature was attacked" wants the fact, not a count,
+// and two swings in one action are one attack as far as a witness is
+// concerned.
+//
+// # Concentration rides the LAST beat
+//
+// Resolution hands the checks and breaks over for the whole interaction, in
+// one pair of lists, because that is the grain its collector works at. They
+// go on the final beat rather than on every one: repeating them per swing
+// would record a defender's single save two or three times, and splitting
+// them here would mean this seam re-deriving which blow caused which — a rule,
+// on the wrong side of the seam. The cost is that a check made against the
+// first blow is reported on the last beat of the same action; the day that
+// matters, the split belongs in resolution's own per-step outcome.
+func (s strikerSeam) recordSequence(
+	enc *encounter.Encounter, in *AttackInput, sequence resolution.SequenceOutcome,
+	repertoire []combatActions.Definition, out *resolution.Output,
+) error {
+	if len(sequence.Steps) == 0 {
+		// Refused rather than returned as a quiet success: a sequence that
+		// produced no swing is a machine defect, and a silent return would
+		// look exactly like a turn where nothing was in reach.
+		return fmt.Errorf("strike: %w: %s swung nothing", ErrInvalidWorld, sequence.Action.String())
+	}
+
+	for index, step := range sequence.Steps {
+		component, found := definitionFor(repertoire, step.Action)
+		if !found {
+			// Unreachable through resolution, which resolved these very refs
+			// against this very list before the first swing. Named anyway,
+			// because a beat labelled with the wrong weapon is worse than a
+			// turn that failed.
+			return fmt.Errorf("strike: %w: %s swung %s, which the attacker does not carry",
+				ErrBadAttack, sequence.Action.String(), step.Action.String())
+		}
+
+		last := index == len(sequence.Steps)-1
+		var checks []encounter.ConcentrationCheck
+		var breaks []encounter.ConcentrationBreak
+		if last {
+			checks, breaks = out.ConcentrationChecks, out.ConcentrationBreaks
+		}
+
+		recorded := recordStrike(in.Attacker, in.Target, step.Strike,
+			attackRefFor(component), "", checks, breaks)
+		if _, err := enc.Record(recorded); err != nil {
+			return fmt.Errorf("strike: step %d: %w", index, translate(err))
+		}
+	}
+
 	return nil
+}
+
+// definitionFor finds one action in the attacker's own list. Linear, over a
+// stat block's worth of entries.
+func definitionFor(
+	repertoire []combatActions.Definition, ref core.Ref,
+) (combatActions.Definition, bool) {
+	for i := range repertoire {
+		if repertoire[i].Ref == ref {
+			return repertoire[i], true
+		}
+	}
+
+	return combatActions.Definition{}, false
 }
