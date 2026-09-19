@@ -326,6 +326,15 @@ func (p CastProfile) Validate() error {
 		}
 	}
 
+	if p.Area != nil && p.Area.ObscuresSight {
+		if p.Area.Footprint.Origin != AreaOriginPoint || p.Area.Footprint.Shape != AreaRadius ||
+			p.Concentration == nil || p.Save != nil || p.Attack != nil || p.Healing != nil ||
+			p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 ||
+			p.Move != nil || len(p.Options) > 0 || p.Area.Catches != AreaCatchesEveryone {
+			return fmt.Errorf("sight-obscuring area requires only a point-centred radius and concentration")
+		}
+	}
+
 	if p.Attack != nil {
 		if p.Attack.Category != AttackCategorySpell || p.Save != nil || p.Healing != nil || p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 || p.Move != nil || p.Concentration != nil || p.Area != nil || len(p.HealingExcludes) > 0 || len(p.Options) > 0 {
 			return fmt.Errorf("spell attack cast must carry only its attack delivery")
@@ -386,7 +395,7 @@ func (p CastProfile) Validate() error {
 			return fmt.Errorf("stabilization requires an unopposed touch cast without other effects or concentration")
 		}
 	}
-	if len(p.Damage) == 0 && len(p.DamageIfInjured) == 0 && len(p.Effects) == 0 && p.Healing == nil && !p.Stabilize {
+	if len(p.Damage) == 0 && len(p.DamageIfInjured) == 0 && len(p.Effects) == 0 && p.Healing == nil && !p.Stabilize && (p.Area == nil || !p.Area.ObscuresSight) {
 		return fmt.Errorf("cast must declare damage, a delivered condition, healing, or stabilization")
 	}
 	if len(p.Damage) > 0 {

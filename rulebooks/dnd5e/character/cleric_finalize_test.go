@@ -70,6 +70,26 @@ func (s *ClericFinalizeSuite) draft(input *SetClassInput) *Draft {
 	return draft
 }
 
+func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
+	input := s.classInput()
+	input.SubclassID = classes.TempestDomain
+	draft := s.draft(input)
+	char, err := draft.ToCharacter(context.Background(), "tempest-wrath", events.NewEventBus())
+	s.Require().NoError(err)
+	s.Equal(3, char.GetResource(resources.WrathOfTheStorm).Maximum())
+	s.Require().NoError(char.GetResource(resources.WrathOfTheStorm).Use(1))
+	s.Equal(2, char.GetResource(resources.WrathOfTheStorm).Current())
+	data := char.ToData()
+	encoded, err := json.Marshal(data)
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(encoded, &stored))
+	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
+	s.Require().NoError(err)
+	s.Equal(2, loaded.GetResource(resources.WrathOfTheStorm).Current())
+	s.Equal(3, loaded.GetResource(resources.WrathOfTheStorm).Maximum())
+}
+
 func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	draft := s.draft(s.classInput())
 	s.True(draft.IsClassComplete(), "the selected domain must reach validation")

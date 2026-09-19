@@ -53,6 +53,9 @@ const (
 	// you" and extends away, so a caster excluded by projection alone would
 	// still have the first five feet of the cube standing on their square.
 	AreaOriginCasterEdge AreaOrigin = "caster-edge"
+
+	// AreaOriginPoint centres a footprint on the selected map point.
+	AreaOriginPoint AreaOrigin = "point"
 )
 
 // Footprint is a shape in space. It says WHERE. It never says WHO.
@@ -99,7 +102,7 @@ func (f Footprint) Validate() error {
 		return fmt.Errorf("unknown area shape %q", f.Shape)
 	}
 	switch f.Origin {
-	case AreaOriginCaster, AreaOriginCasterEdge:
+	case AreaOriginCaster, AreaOriginCasterEdge, AreaOriginPoint:
 	default:
 		return fmt.Errorf("unknown area origin %q", f.Origin)
 	}
@@ -146,6 +149,10 @@ type CastArea struct {
 
 	// Catches is which creatures standing in the footprint this cast affects.
 	Catches AreaCatches `json:"catches"`
+
+	// ObscuresSight persists the footprint as a sight-only volume held by the
+	// cast's concentration. It affects perception continuously, not recipients.
+	ObscuresSight bool `json:"obscures_sight,omitempty"`
 }
 
 // Validate reports whether the area declares a legal footprint and a known
