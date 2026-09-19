@@ -41,6 +41,36 @@ type SessionData struct {
 	// Encounter is the ID of the encounter this session plays in.
 	Encounter string `json:"encounter"`
 
+	// Dungeon is the content key the world was loaded under, as the host
+	// gave it (rpg-project#479).
+	//
+	// WHICH DUNGEON A SESSION IS PLAYING IS THE RECORD'S FACT, and this is
+	// the only place it is written down. The encounter holds the world that
+	// was compiled from that entry and has no idea which entry that was; the
+	// registry holds the authored file and has no idea who is playing it.
+	// The key is what joins them, and a host needs it to fetch the room's
+	// appearance — which the engine deliberately no longer carries — from
+	// the same bytes the field was compiled from. It reaches a client on
+	// [Atlas.DungeonKey].
+	//
+	// VERBATIM, AND NOTHING READS IT. No verb resolves it, no rule consults
+	// it, and this package never asks a registry anything: it is carried
+	// from [StartSessionInput.Dungeon] to the atlas and no further. A key
+	// that names nothing is a content miss the host discovers when it
+	// fetches.
+	//
+	// A MUTABLE KEY, KNOWINGLY. The file under it can be re-put while this
+	// session is live, and then the scene a player sees changes while the
+	// geometry stays what was compiled at launch. That is acceptable and
+	// visible pre-v1, and the fix when it stops being acceptable is the
+	// registry's — an immutable revision, pinned here instead of a key —
+	// never the encounter's (design R1).
+	//
+	// A session written before this field has no dungeon key and unmarshals
+	// to empty, which reads as "no key was given" — the same thing every
+	// session before this field was.
+	Dungeon string `json:"dungeon,omitempty"`
+
 	// Windows is the ledger of open interrupt windows — who has been asked
 	// something and what they may answer (play/interrupt).
 	//
