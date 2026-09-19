@@ -20,7 +20,6 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 | The live map | [`canvas.go`](./canvas.go) | `Canvas()` hands out the actual `spatial.Room`, behind a view that refuses every write by name. |
 | Walls, doors, props, scenery, sealed cells | [`atlas.go`](./atlas.go), [`door.go`](./door.go), [`field.go`](./field.go) | Standable is what an owner grants minus what a wall takes away. |
 | Placed footprint contributors | [`placed_props.go`](./placed_props.go) | An authored rectangle in the canonical plane with independent movement/sight answers. Centre contact closes standing; segment interior closes a crossing; sight reads them as SOFT lane obstructions through `SightLanes`. No anchor cell, no fake entity, no runtime move protocol — a changed placement is a recompilation. |
-| Room scene presentation | [`room_scene.go`](./room_scene.go), [`room_scene_validate.go`](./room_scene_validate.go) | The typed v3 visual scene authored beside the field: validated and deep-copied at construction, carried losslessly on the blob and the atlas, read by no gameplay geometry. One validator ([`ValidateRoomScene`]) owns the values, and the supported combination is one unconcealed region — everything else is refused, never half-projected. |
 | What each member KNOWS about location | [`sight.go`](./sight.go), [`sightreach.go`](./sightreach.go), [`projection.go`](./projection.go), [`conceal.go`](./conceal.go) | `mind/perception` holds testimony opaquely; this module gives it its `Known(position)`/`Unknown` meaning ([ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md)). |
 | The clock topology | [`clocks.go`](./clocks.go) | Every member is on exactly one clock (R6). The world tick is the default; a fight is a turn bubble. `ClockOf` ([clocks.go:81](./clocks.go#L81)) answers per member. |
 | Factions and stance | [`disposition.go`](./disposition.go), [`world.go`](./world.go) | Nothing stores a stance. It is derived on every question from the declaration plus the known facts. |
@@ -50,6 +49,16 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 - **Storage.** It hands out `EncounterData` ([data.go](./data.go)); the host persists it.
 - **What an archetype implies.** W5: a region's archetype and lighting are authored, required,
   carried unread, and NEVER decide a mechanic.
+- **What a room LOOKS like.** Assets, transforms, lights, labels, groups, the editor's workspace
+  and its coordinate frame are the World Builder's, and the player is served them by dungeon key
+  — never by this module ([rpg-project#479](https://github.com/KirkDiggler/rpg-project/issues/479),
+  R2). The engine held the whole authored scene on `FieldInput`, on the record under `room_scene`
+  and on the atlas until 2026-09-19, and read three numbers per prop out of it. Those three
+  numbers are now lowered at the source boundary into `PlacedPropInput`
+  ([placed_props.go](./placed_props.go), and the lowering itself in
+  [dungeonspec/single_room_lowering.go](./dungeonspec/single_room_lowering.go)); no type here names an
+  asset, a transform, a light or a workspace, and a record saved with the old key simply loads
+  without it ([legacy_room_scene_key_test.go](./legacy_room_scene_key_test.go)).
 
 ## Questions it answers, questions it asks
 

@@ -38,6 +38,24 @@
 // ready to hand to [encounter.NewEncounter] as it stands, and a roster of
 // placements that still need somebody who knows what a skeleton is.
 //
+// # What it may not judge
+//
+// The World Builder's PRESENTATION (rpg-project#479, R3). The single-room
+// dialect's document carries the authored scene — assets, labels, groups,
+// parents, supports, height scales, point lights, the coordinate frame's axis
+// words, the workspace's drawing limit — and this package carries it as the
+// [gopkg.in/yaml.v3.Node] it was authored as, without modelling or judging
+// any of it. It reads out of it exactly the values play depends on: the
+// frame's hexRadius (which the placement adapter's scale is calibrated to),
+// the workspace's hexRadius (which bounds the floor), the scene's name (which
+// names the dungeon) and, per prop a `propDeclarations` entry names, the
+// three transform numbers that place its footprint. single_room_lowering.go is
+// the one reader and lists every one of them by path.
+//
+// The consequence is the point: an unknown key inside `scene` is the web
+// codec's business, not this decoder's, and the editor's scalar bounds no
+// longer have to change in two languages at once.
+//
 // # Validation is path-addressed
 //
 // [Validate] reports EVERY defect it finds, each naming the YAML path of the
