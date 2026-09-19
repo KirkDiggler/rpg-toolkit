@@ -56,6 +56,15 @@ func (e *Encounter) AddSightArea(in *SightAreaInput) error {
 	e.sightAreas[a.ID] = a
 	return nil
 }
+func (e *Encounter) ReplaceSightAreas(data []SightAreaData) error {
+	if err := validateSightAreasData(data); err != nil {
+		return err
+	}
+	next := sightAreasFromData(data)
+	e.sightAreas = next
+	return nil
+}
+
 func (e *Encounter) RemoveSightArea(sourceID string) bool {
 	removed := false
 	for id, a := range e.sightAreas {
