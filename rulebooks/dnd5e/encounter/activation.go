@@ -403,17 +403,6 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 		prepared = append(prepared, preparedActivationBeat{payload: savedBytes, subjects: subjects})
 	}
 
-	checks, err := e.prepareConcentrationChecks("record activation", in.Actor, in.ConcentrationChecks)
-	if err != nil {
-		return nil, err
-	}
-	breaks, err := e.prepareConcentrationBreaks("record activation", in.Actor, in.ConcentrationBreaks)
-	if err != nil {
-		return nil, err
-	}
-	prepared = append(prepared, checks...)
-	prepared = append(prepared, breaks...)
-
 	for i, result := range in.Results {
 		resultPayload, validationErr := e.prepareActivationResult("record activation", i, result)
 		if validationErr != nil {
@@ -432,6 +421,17 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 			subjects: []MemberID{in.Actor, activationResultTarget(result)},
 		})
 	}
+
+	checks, err := e.prepareConcentrationChecks("record activation", in.Actor, in.ConcentrationChecks)
+	if err != nil {
+		return nil, err
+	}
+	breaks, err := e.prepareConcentrationBreaks("record activation", in.Actor, in.ConcentrationBreaks)
+	if err != nil {
+		return nil, err
+	}
+	prepared = append(prepared, checks...)
+	prepared = append(prepared, breaks...)
 
 	return prepared, nil
 }

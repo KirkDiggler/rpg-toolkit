@@ -98,6 +98,9 @@ func (e *Encounter) SightAreasFor(member MemberID) []SightArea {
 	return out
 }
 func sightAreasDataFrom(in map[string]SightArea) []SightAreaData {
+	if len(in) == 0 {
+		return nil
+	}
 	ids := make([]string, 0, len(in))
 	for id := range in {
 		ids = append(ids, id)
