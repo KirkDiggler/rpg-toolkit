@@ -49,6 +49,23 @@ func defectsIn(t *testing.T, source string) []string {
 	return out
 }
 
+// decodeDefects is [defectsIn] for the scenes that never reach validation:
+// the file is refused by the DECODER, and each refusal comes back rendered the
+// same "path: message" way so a scene asserts on both halves of it.
+func decodeDefects(t *testing.T, source string) []string {
+	t.Helper()
+	_, err := dungeonspec.Decode([]byte(source))
+	require.Error(t, err, "these scenes are about the decoder, so the file must not decode")
+	var verr *dungeonspec.ValidationError
+	require.ErrorAs(t, err, &verr)
+	out := make([]string, 0, len(verr.Errors))
+	for _, e := range verr.Errors {
+		out = append(out, e.Error())
+	}
+
+	return out
+}
+
 // requireDefect asserts exactly one defect matches, and reports every defect
 // when none does — a scene that silently matched the wrong one would be a
 // test that cannot fail.
