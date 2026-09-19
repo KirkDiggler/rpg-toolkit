@@ -107,6 +107,11 @@ wrote.
 Every step is preflighted before the first is run, because half a multiattack
 cannot be taken back.
 
+Each entry in `SequenceOutcome.Steps` names the component that swung beside
+the blow it produced, so a consumer writing a beat per step says "scimitar"
+rather than walking the definition's step list in parallel and trusting the
+two to stay aligned.
+
 **The stop rule is about the target, not the blow.** A miss does not end a
 sequence — "two attacks with its scimitar" is two swings whatever the first
 one rolled. A downed target does, and `SequenceOutcome.Unswung` reports how

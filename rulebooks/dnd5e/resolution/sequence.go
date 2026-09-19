@@ -33,7 +33,7 @@ type SequenceOutcome struct {
 
 	// Steps are the component outcomes, in declared order, one per step that
 	// actually ran.
-	Steps []StrikeOutcome
+	Steps []SequenceStepOutcome
 
 	// Unswung is how many declared steps never happened because the target
 	// went down, and zero when the whole script ran.
@@ -53,6 +53,24 @@ type SequenceOutcome struct {
 }
 
 func (SequenceOutcome) isOutcome() {}
+
+// SequenceStepOutcome is one step's component identity and the blow it
+// produced.
+//
+// THE REF IS CARRIED RATHER THAN LEFT TO BE WORKED OUT. A consumer writing a
+// beat per step names the component — a scimitar blow, not "Multiattack" —
+// and the only other way to know which component a step was is to walk the
+// definition's step list in parallel and trust the two to stay aligned. That
+// is a reconstruction, and it would go wrong silently the first time a
+// sequence gained a reason to skip a step in the middle rather than truncate.
+type SequenceStepOutcome struct {
+	// Action is the component definition's ref — the scimitar, not the
+	// script that swung it.
+	Action core.Ref
+
+	// Strike is the blow itself, in the same shape a lone swing produces.
+	Strike StrikeOutcome
+}
 
 // newSequence reads a sequence profile and builds one component machine per
 // step over the actor's own repertoire.
@@ -237,7 +255,9 @@ func (m *sequenceMachine) resolveStep(index int) Step {
 			if !ok {
 				return nil, fmt.Errorf("%w: sequence step %d produced %T", ErrBadStep, index, out)
 			}
-			m.outcome.Steps = append(m.outcome.Steps, struck)
+			m.outcome.Steps = append(m.outcome.Steps, SequenceStepOutcome{
+				Action: step.action, Strike: struck,
+			})
 			m.outcome.FollowUps = append(m.outcome.FollowUps, struck.FollowUps...)
 
 			// THE STOP RULE, and it is about the TARGET rather than the blow.

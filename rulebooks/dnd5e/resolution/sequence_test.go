@@ -97,7 +97,11 @@ func TestSequenceRollsOneD20PerStepAndOnlyTheDeclaredOneKeepsLowest(t *testing.T
 	require.Len(t, sequence.Steps, 2)
 	require.Zero(t, sequence.Unswung)
 
-	first := sequence.Steps[0]
+	require.Equal(t, validMeleeDefinition().Ref, sequence.Steps[0].Action,
+		"each step names the component that swung, so a beat can say \"claw\"")
+	require.Equal(t, validMeleeDefinition().Ref, sequence.Steps[1].Action)
+
+	first := sequence.Steps[0].Strike
 	require.Equal(t, 18, first.Roll)
 	require.True(t, first.Hit)
 	require.Empty(t, first.Folded.DisadvantageSources,
@@ -106,7 +110,7 @@ func TestSequenceRollsOneD20PerStepAndOnlyTheDeclaredOneKeepsLowest(t *testing.T
 	require.Equal(t, []int{18}, firstDice.OriginalRolls, "one die, because nothing was imposed on it")
 	require.Nil(t, firstDice.Keep, "no rule met on this pool, and the zero value says so")
 
-	second := sequence.Steps[1]
+	second := sequence.Steps[1].Strike
 	require.Equal(t, 4, second.Roll, "the low face is the one that counts")
 	require.False(t, second.Hit)
 	require.Len(t, second.Folded.DisadvantageSources, 1)
@@ -154,11 +158,13 @@ func TestSequenceStepsPreserveTheDeclaredOrder(t *testing.T) {
 
 	sequenceOut := out.Outcome.(SequenceOutcome)
 	require.Len(t, sequenceOut.Steps, 2)
-	require.Equal(t, 19, sequenceOut.Steps[0].Roll, "the bite is declared first and rolls first")
-	require.True(t, sequenceOut.Steps[0].Hit)
-	require.Equal(t, 5, sequenceOut.Steps[0].Damage, "2d4+1 rolled 2 and 2")
-	require.Equal(t, 3, sequenceOut.Steps[1].Roll)
-	require.False(t, sequenceOut.Steps[1].Hit)
+	require.Equal(t, bite.Ref, sequenceOut.Steps[0].Action, "the bite is declared first")
+	require.Equal(t, 19, sequenceOut.Steps[0].Strike.Roll, "and rolls first")
+	require.True(t, sequenceOut.Steps[0].Strike.Hit)
+	require.Equal(t, 5, sequenceOut.Steps[0].Strike.Damage, "2d4+1 rolled 2 and 2")
+	require.Equal(t, claw.Ref, sequenceOut.Steps[1].Action)
+	require.Equal(t, 3, sequenceOut.Steps[1].Strike.Roll)
+	require.False(t, sequenceOut.Steps[1].Strike.Hit)
 }
 
 // TestAMissDoesNotEndASequence is half the stop rule. "The goblin makes two
@@ -173,8 +179,8 @@ func TestAMissDoesNotEndASequence(t *testing.T) {
 
 	sequence := out.Outcome.(SequenceOutcome)
 	require.Len(t, sequence.Steps, 2, "the second swing happened")
-	require.False(t, sequence.Steps[0].Hit)
-	require.True(t, sequence.Steps[1].Hit)
+	require.False(t, sequence.Steps[0].Strike.Hit)
+	require.True(t, sequence.Steps[1].Strike.Hit)
 	require.Zero(t, sequence.Unswung, "nothing was cancelled, so nothing is reported as cancelled")
 }
 
@@ -193,8 +199,8 @@ func TestADownedTargetEndsASequence(t *testing.T) {
 
 	sequence := out.Outcome.(SequenceOutcome)
 	require.Len(t, sequence.Steps, 1)
-	require.True(t, sequence.Steps[0].Hit)
-	require.Equal(t, 8, sequence.Steps[0].Damage, "1d6+2 rolled 6, against four hit points")
+	require.True(t, sequence.Steps[0].Strike.Hit)
+	require.Equal(t, 8, sequence.Steps[0].Strike.Damage, "1d6+2 rolled 6, against four hit points")
 	require.Equal(t, 1, sequence.Unswung,
 		"the swing that never came is reported, not left to be reconstructed")
 	require.Empty(t, roller.pairs, "no second d20 was ever asked for")
