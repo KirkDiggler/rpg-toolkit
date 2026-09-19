@@ -331,8 +331,8 @@ func Compile(spec *Spec) (Compiled, error) {
 		// The sides ride the FIELD too (rpg-project#375): the graph is seeded
 		// from them at every Setup and Load, so they have to be where the
 		// field is.
-		Factions:     factionsOf(spec),
-		Dispositions: dispositionsOf(spec),
+		Factions:     factionsOf(spec.Factions, placedMembers(spec)),
+		Dispositions: dispositionsOf(spec.Dispositions),
 		// The way in rides the FIELD, so it survives being stored: a start
 		// kept only on Compiled would be lost the moment the dungeon was
 		// saved, and a live session's map could never answer for it
@@ -407,42 +407,41 @@ func intelOf(spec *Spec) []encounter.IntelRecord {
 // standing in a faction, so a declared mind that falls or leaves is a
 // faction that cannot learn (R7 — accidental succession is still
 // succession). See [singletonMind].
-func factionsOf(spec *Spec) []encounter.FactionInput {
+func factionsOf(factions []FactionSpec, cast members) []encounter.FactionInput {
 	var out []encounter.FactionInput
-	for _, fa := range spec.Factions {
+	for _, fa := range factions {
 		mind := fa.Mind
 		if mind == "" {
-			mind = singletonMind(spec, fa.ID)
+			mind = singletonMind(cast, fa.ID)
 		}
 		out = append(out, encounter.FactionInput{ID: fa.ID, Mind: encounter.MemberID(mind)})
 	}
 	return out
 }
 
-// singletonMind is the id of a faction's one monster placement, or "" when
-// the faction has none, several, or one with no id to name.
-func singletonMind(spec *Spec, faction string) string {
-	var only *PlaceSpec
+// singletonMind is the id of a faction's one creature, or "" when the faction
+// has none, several, or one with no id to name.
+func singletonMind(cast members, faction string) string {
+	only := ""
 	n := 0
-	for i := range spec.Place {
-		pl := &spec.Place[i]
-		if kind, _ := refKind(pl.Ref); kind != typeMonsters || placementFaction(*pl) != faction {
+	for _, m := range cast.all {
+		if !m.isMonster() || m.side() != faction {
 			continue
 		}
-		only = pl
+		only = m.id
 		n++
 	}
 	if n != 1 {
 		return ""
 	}
-	return only.ID
+	return only
 }
 
 // dispositionsOf carries the authored dispositions through, each until
 // compiled to the composition's own trigger by [predicateOf]. Nil when none.
-func dispositionsOf(spec *Spec) []encounter.DispositionInput {
+func dispositionsOf(dispositions []DispositionSpec) []encounter.DispositionInput {
 	var out []encounter.DispositionInput
-	for _, d := range spec.Dispositions {
+	for _, d := range dispositions {
 		di := encounter.DispositionInput{Between: d.Between, Stance: encounter.Stance(d.Stance)}
 		if d.Until != nil {
 			di.Until = predicateOf(d.Until)
@@ -888,9 +887,9 @@ func selectorOf(sel *SelectorSpec) *encounter.Selector {
 // THE PLACEMENT'S WORD WINS AND THE MIX IS NOT DEALT FOR IT (design §3). An
 // author who named this creature's temperament has already answered the
 // question the mix exists to ask, and dealing anyway would overwrite them.
-func temperOf(pl PlaceSpec, faction TemperSpec) encounter.Temper {
-	if pl.Temper != "" {
-		return encounter.Temper{Word: pl.Temper}
+func temperOf(word string, faction TemperSpec) encounter.Temper {
+	if word != "" {
+		return encounter.Temper{Word: word}
 	}
 	if faction.Word != "" {
 		return encounter.Temper{Word: faction.Word}
@@ -904,17 +903,6 @@ func temperOf(pl PlaceSpec, faction TemperSpec) encounter.Temper {
 	}
 
 	return encounter.Temper{Mix: mix}
-}
-
-// placedFaction is the faction a placement is in, as authored — empty means
-// the reserved `monsters`, which a faction block may declare and give orders
-// to like any other.
-func placedFaction(pl PlaceSpec) string {
-	if pl.Faction == "" {
-		return encounter.FactionMonsters
-	}
-
-	return pl.Faction
 }
 
 // CompileTable compiles a bare `on:` block — the text a rulebook ships its
@@ -959,10 +947,19 @@ func CompileTable(source string) (encounter.Table, error) {
 		}
 	}
 
-	v := &validation{spec: &Spec{Orientation: "pointy"}, owner: map[spatial.Position]int{}}
-	v.placeOn("table", on)
-	if len(v.errs) > 0 {
-		return nil, fmt.Errorf("compile table: %w: %s", ErrBadSpec, v.errs[0])
+	// ONE GRAMMAR, TWO CALLERS, and here a third with no document under it at
+	// all: a kind's default table names no creature and stands on no floor, so
+	// the cast is empty and the frame is never reached — the loop above
+	// refused every `at:` before this line.
+	var errs []FieldError
+	g := newGrammar(grammarInput{
+		Add:     func(path, message string) { errs = append(errs, FieldError{Path: path, Message: message}) },
+		Members: newMembers(nil),
+		Cells:   floorCells{orientation: orientations["pointy"], owner: map[spatial.Position]int{}},
+	})
+	g.placeOn("table", on)
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("compile table: %w: %s", ErrBadSpec, errs[0])
 	}
 
 	return tableOf(on), nil
@@ -983,16 +980,73 @@ func approachesOf(check CheckSpec) []encounter.CheckApproach {
 	return out
 }
 
+// inherited is what each declared faction hands the creatures in it: the
+// answer table its members lay their own over, and the temperament they fall
+// back to. Indexed once per compile, by [inheritedOrders], and read by
+// [ordersOf] per creature.
+type inherited struct {
+	on     map[string]map[string][]AnswerSpec
+	temper map[string]TemperSpec
+}
+
+// inheritedOrders indexes the declared factions' orders. The two maps are
+// keyed by faction id, and a creature on a side nobody declared simply finds
+// nothing — which is the zero value telling the truth, not a defect: the
+// reserved `monsters` side is a side whether or not a block declares it.
+func inheritedOrders(factions []FactionSpec) inherited {
+	out := inherited{
+		on:     make(map[string]map[string][]AnswerSpec, len(factions)),
+		temper: make(map[string]TemperSpec, len(factions)),
+	}
+	for _, fa := range factions {
+		out.on[fa.ID] = fa.On
+		out.temper[fa.ID] = fa.Temper
+	}
+
+	return out
+}
+
+// creatureOrders is one creature as the orders compile reads it: who it is,
+// which side it is on, and the three things a faction would otherwise supply.
+//
+// THE DIALECT DECIDES WHERE THESE COME FROM and the compile does not care: in
+// the v2 document all three are keys on the placement itself, and in the
+// single room they come off the creature's orders block, keyed by its id.
+// What they MEAN is the same, which is why there is one function below and
+// not one per dialect (rpg-project#484, design §2).
+type creatureOrders struct {
+	ID      string
+	Ref     string
+	Faction string
+	On      map[string][]AnswerSpec
+	Temper  string
+	Actions []string
+}
+
+// ordersOf is a creature's compiled orders: its faction's answer table with
+// its own laid over KEY BY KEY and the nearer layer winning wholesale, its own
+// temperament word beating its faction's word or mix, and its arms verbatim in
+// the author's order.
+//
+// The returned placement carries NOTHING GEOMETRIC — no region and no cell.
+// Each dialect fills those in its own frame, which is the whole reason this
+// function can be shared.
+func ordersOf(c creatureOrders, from inherited) MonsterPlacement {
+	side := sideOf(c.Faction)
+
+	return MonsterPlacement{
+		ID: c.ID, Ref: c.Ref, Faction: c.Faction,
+		Actions: append([]string(nil), c.Actions...),
+		Table:   encounter.Layer(tableOf(from.on[side]), tableOf(c.On)),
+		Temper:  temperOf(c.Temper, from.temper[side]),
+	}
+}
+
 // monstersOf is every authored monster, in authored order, each naming the
 // region whose floor it stands on.
 func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 	owner := ownerOf(spec, o)
-	factionOn := map[string]map[string][]AnswerSpec{}
-	factionTemper := map[string]TemperSpec{}
-	for _, fa := range spec.Factions {
-		factionOn[fa.ID] = fa.On
-		factionTemper[fa.ID] = fa.Temper
-	}
+	from := inheritedOrders(spec.Factions)
 	var out []MonsterPlacement
 	for _, p := range spec.Place {
 		if kind, _ := refKind(p.Ref); kind != typeMonsters {
@@ -1006,17 +1060,19 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		for _, id := range p.Holds {
 			holds = append(holds, spec.Key+"/"+id)
 		}
-		out = append(out, MonsterPlacement{
-			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
-			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
-			ID: p.ID, Holds: holds, Faction: p.Faction,
-			Actions:    append([]string(nil), p.Actions...),
-			Intimidate: approachesOf(p.Intimidate),
-			Persuade:   approachesOf(p.Persuade),
-			Table:      encounter.Layer(tableOf(factionOn[placedFaction(p)]), tableOf(p.On)),
-			Temper:     temperOf(p, factionTemper[placedFaction(p)]),
-			Arrives:    predicateOf(p.Arrives),
-		})
+		mp := ordersOf(creatureOrders{
+			ID: p.ID, Ref: p.Ref, Faction: p.Faction,
+			On: p.On, Temper: p.Temper, Actions: p.Actions,
+		}, from)
+		mp.Region = owner[encounter.HexCellAt(o, p.At[0], p.At[1])]
+		mp.At = authored(p.At)
+		mp.Targeting = targeting
+		mp.Boss = p.Boss
+		mp.Holds = holds
+		mp.Intimidate = approachesOf(p.Intimidate)
+		mp.Persuade = approachesOf(p.Persuade)
+		mp.Arrives = predicateOf(p.Arrives)
+		out = append(out, mp)
 	}
 	return out
 }
