@@ -368,6 +368,21 @@ type scriptedStriker struct {
 	}
 }
 
+type pausingStriker struct {
+	calls int
+	pause bool
+}
+
+func (s *pausingStriker) Strike(_ context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref) error {
+	s.calls++
+	if s.pause {
+		s.pause = false
+		return encounter.ErrStrikePaused
+	}
+	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: attacker, Targets: []encounter.MemberID{target}, Attack: &encounter.AttackIdentity{Ref: action.String(), Name: "Test Strike", DamageType: "bludgeoning"}})
+	return err
+}
+
 func (s *scriptedStriker) Strike(
 	_ context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
 ) error {
@@ -841,6 +856,36 @@ func (s *MonsterTurnTestSuite) TestAttackExecutesAndConsumesTheBudget() {
 		}
 	}
 	s.True(sawMissed, "the striker's recorded outcome is in the story: %+v", beats)
+}
+
+// TestPausedStrikeSurvivesReloadAndDoesNotStrikeTwice proves that a pause raised
+// by the monster's attack is a resumable turn boundary: the original attack is
+// not replayed after reload, and the turn advances to the next actor.
+func (s *MonsterTurnTestSuite) TestPausedStrikeSurvivesReloadAndDoesNotStrikeTwice() {
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Attack{Target: alice, Action: testMeleeAction},
+	}}
+	striker := &pausingStriker{pause: true}
+	enc := s.adjacentSkeletonEncounter(driver, striker)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.True(enc.Paused())
+	data := enc.ToData()
+	s.Require().NotNil(data.PausedTurn)
+	s.True(data.PausedTurn.AfterStrike)
+
+	resumedStriker := &pausingStriker{}
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Striker: resumedStriker, Mover: quietMover{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+	_, err = loaded.ResumeTurn(context.Background())
+	s.Require().NoError(err)
+	s.Equal(1, striker.calls, "the paused attack was called once before the restart")
+	s.Equal(0, resumedStriker.calls, "resuming after a strike pause must not replay the hit")
 }
 
 // TestAttackOnOutOfReachTargetEndsTheTurnWithoutAborting is the brief's own
