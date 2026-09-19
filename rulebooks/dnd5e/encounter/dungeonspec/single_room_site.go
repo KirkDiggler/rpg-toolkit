@@ -18,20 +18,21 @@ import (
 //
 // # Nothing here is a second dialect
 //
-// Every shape is the v2 root's, every refusal is the v2 validator's, and the
-// only thing this file writes is the ADAPTER between them: the single-room
-// document seen as the [Spec] those validators already read ([siteSpec]), and
-// the paths their defects are reported at. Paths are part of the contract —
-// the World Builder draws each refusal on the thing it names — so they are
-// this dialect's own (`room.room.monsters[2].faction`,
+// Every shape is the v2 root's and every refusal is the one gameplay
+// grammar's (grammar.go). What this file writes is the dialect's HALF of that
+// call: the cast it placed, the frame it has for a cell, and the paths its
+// defects are reported at. Paths are part of the contract — the World Builder
+// draws each refusal on the thing it names — so they are this dialect's own
+// (`room.room.monsters[2].faction`,
 // `room.room.monsterBindings.goblin-1.on.time[0]`), which is why each
-// validator is called with the path rather than having one rewritten after
-// the fact.
+// grammar function is called with the path rather than having one rewritten
+// after the fact.
 //
-// The precedent is [CompileTable], which already runs [validation.placeOn]
-// over a `Spec{Orientation: "pointy"}` it builds for the purpose: one
-// grammar, two callers, because the first thing a second copy would drift on
-// is a refusal the author sees and the engine does not.
+// This used to reach the grammar by BUILDING A FAKE v2 DOCUMENT and running
+// the v2 validator over it. The types were always shared; only the functions
+// were not, and a fake owner was standing in for the ownership question
+// (rpg-project#484). They are shared now, and nothing here impersonates
+// anything.
 //
 // # The one refusal this dialect adds
 //
@@ -50,11 +51,14 @@ const singleRoomCellSelector = "at is not a place a single room can name yet: it
 	"cell is an offset in a document orientation this dialect does not have; name enemy, attacker or actor, " +
 	"or wait for the sites layer"
 
-// errLiveRoomMonster is the orders block's owner rule, in
-// [errLiveSceneProp]'s own shape: a declaration may not outlive the thing it
-// declares. The web's room draft keeps the same discipline, dropping a
-// binding when its creature is removed.
-const errLiveRoomMonster = "must name a live room monster"
+// singleRoomCells is this dialect's answer to [cells]: it names no cell at
+// all. Not framed, so the refusal above is the whole defect and the word
+// carrying the selector is never judged beside it.
+type singleRoomCells struct{}
+
+func (singleRoomCells) cellAt([2]int) cellAnswer {
+	return cellAnswer{refusal: singleRoomCellSelector}
+}
 
 // # Source shape
 //
@@ -68,8 +72,8 @@ const errLiveRoomMonster = "must name a live room monster"
 // because "" and absence are the same bytes meaning different things.
 //
 // It deliberately does NOT ask whether a required word is present.
-// [validation.factions] says "the faction has no id" and
-// [validation.dispositions] says "the disposition does not say its stance" in
+// [grammar.factions] says "the faction has no id" and
+// [grammar.dispositions] says "the disposition does not say its stance" in
 // an author's own words, and two defects for one mistake sends an author
 // looking for a second problem. An unknown key inside any of these blocks is
 // caught by `KnownFields(true)` and named at its own path, with the keys that
@@ -140,87 +144,82 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 
 // # Decoded values
 //
-// siteSpec is the single-room document seen as the [Spec] the v2 faction
-// validators and compilers read: the declared sides as they stand, and one
-// synthetic [PlaceSpec] per authored monster carrying its id, its ref, its
-// membership and — from its binding, when it has one — its orders.
+// roomMembers is the cast this dialect hands the grammar: every authored
+// creature, in authored order, as who it is, what it is and which side it is
+// on. Index-aligned with `monsters:`, so a defect about a membership is
+// reported at `room.room.monsters[i].faction`.
 //
-// SYNTHETIC IN THE PLACEMENTS ONLY, and deliberately so: `faction`, `on`,
-// `temper` and `actions` are the whole of what those validators and
-// [monstersOf] read off a placement here. Geometry is NOT carried across —
-// [PlaceSpec.At] stays zero — because the single room's cells are axial and
-// its own compiler already judges them in the author's frame. Nothing in this
-// file asks a geometric question, which is what makes that safe.
-func siteSpec(s *SingleRoomSpec) *Spec {
-	out := &Spec{Key: s.Key, Factions: s.Factions, Dispositions: s.Dispositions}
-	out.Place = make([]PlaceSpec, 0, len(s.Room.Gameplay.Monsters))
-	for _, m := range s.Room.Gameplay.Monsters {
-		pl := PlaceSpec{ID: m.ID, Ref: m.Ref, Faction: m.Faction}
-		if b, bound := s.Room.Gameplay.MonsterBindings[m.ID]; bound {
-			pl.On, pl.Temper, pl.Actions = b.On, b.Temper, b.Actions
-		}
-		out.Place = append(out.Place, pl)
+// EVERY MEMBER HERE IS A MONSTER. `monsters:` is the only list this dialect
+// places; its props are scenery, declared under their own key and nameable by
+// nothing that takes a member id.
+func roomMembers(gp *RoomGameplaySource) members {
+	all := make([]member, 0, len(gp.Monsters))
+	for _, m := range gp.Monsters {
+		all = append(all, member{id: m.ID, ref: m.Ref, faction: m.Faction})
 	}
-	return out
+
+	return newMembers(all)
 }
 
-// siteValues judges the site scope and the orders with the v2 validators, at
-// this dialect's paths.
+// siteGrammar judges the site scope and the orders with the one gameplay
+// grammar, at this dialect's paths.
 //
 // The ORDER is [Validate]'s own, and each dependency is real: the factions are
 // indexed before a membership can name one, the memberships are counted before
 // a mind or a faction-of-one is judged, and the dispositions come last because
 // an `until` is judged against the whole stance table.
-func siteValues(s *SingleRoomSpec, add errSink) {
+func siteGrammar(s *SingleRoomSpec, add errSink) {
 	gp := &s.Room.Gameplay
-	// NO "DID THIS DOCUMENT AUTHOR ANY OF IT" SHORTCUT. Every validator below
+	// NO "DID THIS DOCUMENT AUTHOR ANY OF IT" SHORTCUT. Every function below
 	// is INERT on a document that declares nothing — no faction to index, no
 	// membership but the reserved one, no orders block to judge — and the v3
 	// fixture's committed picture is the evidence. A guard would buy nothing
 	// and would silently skip whatever check is added here next.
-	v := &validation{spec: siteSpec(s), cellRefusal: singleRoomCellSelector}
-	v.factions()
-	v.factionOrders()
-	v.placeIDs = make(map[string]int, len(v.spec.Place))
-	for i := range v.spec.Place {
-		pl := v.spec.Place[i]
-		if _, dup := v.placeIDs[pl.ID]; pl.ID != "" && !dup {
-			v.placeIDs[pl.ID] = i
-		}
-		// EVERY PLACEMENT HERE IS A MONSTER. `monsters:` is the only list
-		// this dialect places, and [monsterValues] already refuses a ref that
-		// is not one, at `room.room.monsters[i].ref` — so asking refKind
+	g := newGrammar(grammarInput{
+		Add:          add,
+		Factions:     s.Factions,
+		Dispositions: s.Dispositions,
+		Members:      roomMembers(gp),
+		Cells:        singleRoomCells{},
+	})
+	g.factions()
+	g.factionOrders()
+	for i, m := range g.members.all {
+		// EVERY MEMBER HERE IS A MONSTER, and the kind says so rather than
+		// being read back off the ref: [monsterValues] already refuses a ref
+		// that is not one, at `room.room.monsters[i].ref`, so asking refKind
 		// again would report a second defect for the one bad ref.
-		v.placeFaction(fmt.Sprintf("room.room.monsters[%d]", i), i, pl, typeMonsters)
-		if _, bound := gp.MonsterBindings[pl.ID]; !bound {
+		g.placeFaction(fmt.Sprintf("room.room.monsters[%d]", i), i, m, typeMonsters)
+		b, bound := gp.MonsterBindings[m.id]
+		if !bound {
 			continue
 		}
-		at := "room.room.monsterBindings." + pl.ID
-		v.placeOn(at, pl.On)
-		v.placeTemper(at, pl)
-		v.placeActions(at, pl)
+		at := "room.room.monsterBindings." + m.id
+		g.placeOn(at, b.On)
+		g.placeTemper(at, b.Temper)
+		g.placeActions(at, b.Actions)
 	}
-	v.minds()
-	v.dispositions()
+	g.minds()
+	g.dispositions()
 	// A binding whose creature is gone is refused the way a prop declaration
-	// with no live owner is. Sorted, because a map's iteration order is not a
-	// defect list an author can compare run to run.
-	for _, id := range sortedBindings(gp.MonsterBindings) {
-		if _, live := v.placeIDs[id]; !live {
-			v.fail("room.room.monsterBindings."+id, "%s", errLiveRoomMonster)
+	// with no live owner is — a declaration may not outlive the thing it
+	// declares, and the web's room draft keeps the same discipline by dropping
+	// a binding when its creature is removed. Sorted, because a map's
+	// iteration order is not a defect list an author can compare run to run.
+	for _, id := range sortedBindingIDs(gp.MonsterBindings) {
+		if _, live := g.members.indexOf(id); !live {
+			add("room.room.monsterBindings."+id, "must name a live room monster")
 		}
-	}
-	for _, e := range v.errs {
-		add(e.Path, e.Message)
 	}
 }
 
-// sortedBindings orders the orders blocks' ids, for [sortedKeys]' reason.
-func sortedBindings(bindings map[string]RoomMonsterBinding) []string {
+// sortedBindingIDs orders the orders blocks' ids, for [sortedKeys]' reason.
+func sortedBindingIDs(bindings map[string]RoomMonsterBinding) []string {
 	out := make([]string, 0, len(bindings))
 	for id := range bindings {
 		out = append(out, id)
 	}
 	sort.Strings(out)
+
 	return out
 }

@@ -570,11 +570,12 @@ func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	read, defects := readRoom(&s.Room)
 	e = append(e, defects...)
 	gameplayValues(&s.Room.Gameplay, read, add)
-	// THE SITE SCOPE AND THE ORDERS LAST, and judged by the validators the
-	// v2 dialect already ships (see single_room_site.go): every refusal about
-	// a faction, a disposition, a membership or an orders block is the one
-	// an author already gets from the other dialect, at this dialect's paths.
-	siteValues(s, add)
+	// THE SITE SCOPE AND THE ORDERS LAST, and judged by the one gameplay
+	// grammar (grammar.go, see single_room_site.go for this dialect's half of
+	// the call): every refusal about a faction, a disposition, a membership or
+	// an orders block is the one an author already gets from the other
+	// dialect, at this dialect's paths.
+	siteGrammar(s, add)
 
 	return read, e
 }

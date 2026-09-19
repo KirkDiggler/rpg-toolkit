@@ -21,14 +21,14 @@ import (
 // asset, a light or a workspace. single_room_lowering.go lists every value this
 // compile reads from the presentation, by path.
 //
-// THE SITE SCOPE AND THE ORDERS COMPILE THROUGH THE V2 COMPILERS
-// (rpg-project#477, rpg-toolkit#1826). `factions:` and `dispositions:` go
-// through [factionsOf] and [dispositionsOf] over the adapted spec
-// ([siteSpec]), so the faction-of-one mind rule and the predicate compilation
-// are the same ones the other dialect gets; a creature's compiled orders are
-// [monstersOf]'s own three lines — its faction's table with its own laid over
+// THE SITE SCOPE AND THE ORDERS COMPILE THROUGH THE SHARED COMPILERS
+// (rpg-project#477, rpg-toolkit#1826; rpg-project#484). `factions:` and
+// `dispositions:` go through [factionsOf] and [dispositionsOf] over this
+// dialect's own cast, so the faction-of-one mind rule and the predicate
+// compilation are the same ones the other dialect gets; a creature's compiled
+// orders are [ordersOf] — its faction's table with its own laid over
 // wholesale, its word beating its faction's mix, and its actions verbatim in
-// the authored order.
+// the authored order. Neither dialect writes those three lines itself.
 //
 // A DOCUMENT WITH NONE OF THOSE KEYS COMPILES TO WHAT IT ALWAYS DID.
 // [encounter.Layer] of two nil tables is nil, [temperOf] of two absences is
@@ -44,14 +44,9 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, &ValidationError{Errors: errs}
 	}
 	spec := in.Spec
-	// The sides, and each creature's orders, read through the one adapter.
-	site := siteSpec(spec)
-	factionOn := make(map[string]map[string][]AnswerSpec, len(spec.Factions))
-	factionTemper := make(map[string]TemperSpec, len(spec.Factions))
-	for _, fa := range spec.Factions {
-		factionOn[fa.ID] = fa.On
-		factionTemper[fa.ID] = fa.Temper
-	}
+	// The cast this dialect placed, and what each declared side hands it.
+	cast := roomMembers(&spec.Room.Gameplay)
+	from := inheritedOrders(spec.Factions)
 	o := spatial.HexOrientationPointyTop
 	cells := make([]spatial.Position, 0, len(spec.Room.Gameplay.WalkableHexes))
 	for _, c := range spec.Room.Gameplay.WalkableHexes {
@@ -70,8 +65,8 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
 		// is seeded from them at every Setup and Load, so they have to be
 		// where the field is. Nil when the site declares none.
-		Factions:     factionsOf(site),
-		Dispositions: dispositionsOf(site),
+		Factions:     factionsOf(spec.Factions, cast),
+		Dispositions: dispositionsOf(spec.Dispositions),
 	}
 	starts := []spatial.Position{}
 	if spec.Room.Gameplay.PartyStart == nil {
@@ -90,16 +85,16 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		occupied[m.Cell] = true
 		at := axialOffset(m.Cell, o)
 		starts = append(starts, at)
-		// pl is this creature as the v2 compilers read it: its membership from
-		// the actor, its orders from its binding. Index-aligned by [siteSpec].
-		pl := site.Place[i]
-		monsters = append(monsters, MonsterPlacement{
-			ID: m.ID, Ref: m.Ref, Region: spec.Room.Gameplay.ImplicitRegionID, At: at,
-			Faction: m.Faction,
-			Actions: append([]string(nil), pl.Actions...),
-			Table:   encounter.Layer(tableOf(factionOn[placedFaction(pl)]), tableOf(pl.On)),
-			Temper:  temperOf(pl, factionTemper[placedFaction(pl)]),
-		})
+		// Its membership comes off the actor and its orders off the binding —
+		// absent is the zero block, which orders nothing.
+		b := spec.Room.Gameplay.MonsterBindings[m.ID]
+		mp := ordersOf(creatureOrders{
+			ID: m.ID, Ref: m.Ref, Faction: m.Faction,
+			On: b.On, Temper: b.Temper, Actions: b.Actions,
+		}, from)
+		mp.Region = spec.Room.Gameplay.ImplicitRegionID
+		mp.At = at
+		monsters = append(monsters, mp)
 	}
 	// Validate each source placement independently. Besides identifying the
 	// actual failing placement (rather than the last one in the batch), this

@@ -161,6 +161,17 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 			},
 		},
 		{
+			name: "a cell under a word that is not `toward`, which is still the frame's defect",
+			old:  "            - {when: {enemy: reach}, hold: {}}",
+			repl: "            - {when: {enemy: none}, attack: {at: [3, 4]}}",
+			want: FieldError{
+				Path: "room.room.monsterBindings.goblin-1.on.time[0].attack.at",
+				Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
+					"cell is an offset in a document orientation this dialect does not have; " +
+					"name enemy, attacker or actor, or wait for the sites layer",
+			},
+		},
+		{
 			name: "a temperament this build does not ship",
 			old:  "        temper: coward",
 			repl: "        temper: brave",
@@ -495,10 +506,40 @@ func TestTheSiteScopeShapeWalkNamesItsDefects(t *testing.T) {
 	}
 }
 
+// TestTheFactionLevelCellSelectorIsRefusedToo is the `at` refusal one layer
+// up (rpg-project#484, design §3). A faction's inherited `on:` block is judged
+// by the same grammar a creature's own is, and a single room has no more of a
+// frame for a cell there than it has inside a binding — so the sentence and
+// the shape of the path are the same, with `factions[0]` in front of it
+// instead of the creature's id.
+//
+// It was reachable and pinned by nothing until the grammar split; #1834's
+// review named it and deferred it here.
+func TestTheFactionLevelCellSelectorIsRefusedToo(t *testing.T) {
+	raw, err := os.ReadFile(v4SitePath)
+	require.NoError(t, err)
+	source := swapOneIn(t, raw,
+		"        - {when: {enemy: reach}, attack: enemy}",
+		"        - {when: {enemy: none}, toward: {at: [3, 4]}}")
+
+	_, err = Load(source)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrBadSpec)
+	var validation *ValidationError
+	require.ErrorAs(t, err, &validation)
+	require.Contains(t, validation.Errors, FieldError{
+		Path: "factions[0].on.time[0].toward.at",
+		Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
+			"cell is an offset in a document orientation this dialect does not have; " +
+			"name enemy, attacker or actor, or wait for the sites layer",
+	})
+}
+
 // TestTheV2DialectStillResolvesCellSelectors is the other side of the `at`
-// refusal, and the reason it is a field on the validator rather than a check
-// in the shared walk: the dialect that HAS an orientation still resolves a
-// cell against its floor, and still refuses one that is not floor.
+// refusal, and the reason the frame is an input the dialect supplies rather
+// than a check in the shared grammar: the dialect that HAS an orientation
+// still resolves a cell against its floor, and still refuses one that is not
+// floor.
 func TestTheV2DialectStillResolvesCellSelectors(t *testing.T) {
 	// Legal in v2: the cell is floor, the selector is on `toward`.
 	source := strings.Replace(theSameCampInVersionTwo,

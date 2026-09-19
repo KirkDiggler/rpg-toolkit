@@ -25,6 +25,35 @@
 // `version: 1` is refused by name, and the reference tomb is re-authored in
 // version 2 and compiles to the identical atlas (golden_test.go).
 //
+// # One gameplay grammar, two geometry dialects
+//
+// Two dialects are authored here, and they differ ONLY in how they describe
+// space. The v2 document paints named regions cell by cell in absolute
+// [col,row] under a declared orientation; the single-room document
+// (single_room.go, the one the World Builder writes) draws one room in axial
+// {q, r} and declares no orientation at all.
+//
+// Everything that is not space is ONE grammar, shared by both: the factions an
+// author declares, the dispositions between them, the answer tables, the
+// temperaments and the arms. Their types were always shared ([FactionSpec],
+// [DispositionSpec], [AnswerSpec], [SelectorSpec], [TemperSpec]); since
+// rpg-project#484 the FUNCTIONS are too — grammar.go holds the validators and
+// [ordersOf] holds the compile, and each dialect calls them with its own paths.
+//
+// A dialect hands the grammar exactly two things, and they are exactly what a
+// dialect owns:
+//
+//   - the CAST it placed ([members]) — who exists, what each one is, and which
+//     side it is on;
+//   - the FRAME it resolves a cell in ([cells]) — the v2 dialect looks an
+//     authored pair up in the floor its regions painted, and the single room
+//     names no cell at all and says so.
+//
+// The single-room dialect used to reach the grammar by building a fake v2
+// [Spec] and running the v2 validator over it. Nothing does that now, and a
+// validator that needs a THIRD input from its dialect is a design change
+// rather than another parameter.
+//
 // # What it may not know
 //
 // This package compiles GEOMETRY and carries everything else. It resolves no
