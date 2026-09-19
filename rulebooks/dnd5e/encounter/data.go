@@ -2662,6 +2662,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
+ sightAreas:sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
 		initiative:    input.Initiative,
