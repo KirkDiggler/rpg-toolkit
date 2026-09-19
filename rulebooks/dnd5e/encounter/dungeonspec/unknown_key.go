@@ -13,8 +13,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// AN UNKNOWN KEY IS NAMED AT ITS PATH, LIKE EVERY OTHER DEFECT
-// (rpg-project#481, R2).
+// AN UNKNOWN KEY IS NAMED AT ITS PATH, LIKE EVERY OTHER DEFECT, IN BOTH
+// DIALECTS (rpg-project#481, R2).
 //
 // `KnownFields(true)` catches the typo — that is what it is for — but what it
 // says is a fact about Go: "line 129: field tempre not found in type
@@ -25,6 +25,12 @@ import (
 // drawn on a canvas and a Go type name is not a sentence, so the one decode
 // defect an author causes most often was the one defect they could not be
 // shown.
+//
+// NEITHER DIALECT HAD IT. The design note for #481 said the single room
+// already walked its unknown keys back to a path and the region chain did not;
+// measured, [DecodeSingleRoom] handed yaml.v3's own string through as one
+// pathless defect exactly as [Decode] did. One mapping serves both, which is
+// what R2's "the contract holds for both dialects" asks for.
 //
 // The translation is two lookups over what is already in hand. The offending
 // key's LINE is in yaml.v3's own message and the file is still in the caller's
@@ -199,14 +205,21 @@ var (
 // yaml.v3 puts in its refusal ("dungeonspec.FactionSpec"), or nothing for a
 // shape whose grammar this cannot read off the struct.
 //
-// Reflected off [Spec] rather than listed, so a key added to a shape is
-// offered by the refusal the day it exists and a key removed stops being
-// offered the day it goes. A list written here would be a second spelling of
-// the grammar, and a second spelling drifts.
+// Reflected off the two dialect roots rather than listed, so a key added to a
+// shape is offered by the refusal the day it exists and a key removed stops
+// being offered the day it goes. A list written here would be a second
+// spelling of the grammar, and a second spelling drifts.
+//
+// BOTH ROOTS, ONE REGISTRY. [Spec] and [SingleRoomSpec] share most of their
+// shapes — a faction is a faction in either dialect — and the ones they do not
+// share are reached from one root each. Walking both with one `seen` records
+// every shape exactly once, under the type name yaml.v3 would have printed.
 func authoredKeysOfType(typeName string) []string {
 	knownKeysOnce.Do(func() {
 		knownKeys = map[string][]string{}
-		collectAuthoredKeys(reflect.TypeOf(Spec{}), map[reflect.Type]bool{}, knownKeys)
+		seen := map[reflect.Type]bool{}
+		collectAuthoredKeys(reflect.TypeOf(Spec{}), seen, knownKeys)
+		collectAuthoredKeys(reflect.TypeOf(SingleRoomSpec{}), seen, knownKeys)
 	})
 
 	return knownKeys[typeName]

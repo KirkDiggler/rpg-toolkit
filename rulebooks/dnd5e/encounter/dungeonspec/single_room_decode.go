@@ -60,9 +60,10 @@ const (
 //
 // Strictness is about the file, not just the decoded value. Unknown keys,
 // empty input, a second YAML document, duplicate keys and scalar kinds that
-// do not fit their field all fail with the offending line named — over the
-// GAMEPLAY grammar: the root, `play`, `room` above the presentation, and
-// `room.room` with every site key. A v3 document is COMPLETE there: every
+// do not fit their field all fail with the offending thing named — an unknown
+// key at its PATH and with the keys that shape does take (rpg-project#481, R2;
+// unknown_key.go), the rest at the line — over the GAMEPLAY grammar: the root,
+// `play`, `room` above the presentation, and `room.room` with every site key. A v3 document is COMPLETE there: every
 // required field must be authored, because a key the decoder never saw would
 // silently become the Go zero value. Missing play values, monster cells,
 // declaration flags and footprint corners are each refused at the YAML path
@@ -112,7 +113,11 @@ func DecodeSingleRoom(in SingleRoomDecodeInput) (*SingleRoomDecodeResult, error)
 	dec.KnownFields(true)
 	var spec SingleRoomSpec
 	if err := dec.Decode(&spec); err != nil {
-		return nil, singleRoomErrors(err.Error())
+		// An unknown key comes back at its path and in this package's own
+		// words, the same translation [Decode] runs — see unknown_key.go. The
+		// two dialects share the shapes and they share the refusal
+		// (rpg-project#481, R2).
+		return nil, &ValidationError{Errors: decodeErrors(err, in.Source)}
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
