@@ -202,10 +202,31 @@ type Atlas struct {
 	// the camera on a decision nobody made.
 	Start *AtlasStart `json:"start,omitempty"`
 
-	// RoomSceneJSON is the canonical, validated room presentation encoded as
-	// JSON. An empty string means the authored world predates room scenes;
-	// non-empty values are never silently discarded when invalid.
-	RoomSceneJSON string `json:"room_scene_json,omitempty"`
+	// DungeonKey is the content key the world under this map was loaded
+	// under — what a host fetches the room's APPEARANCE by, from the same
+	// registry entry the field was compiled from (rpg-project#479).
+	//
+	// NOT THE SCENE ITSELF, and that is the whole change. What stood here
+	// before was the World Builder's authored document in full: validated by
+	// the engine and carried whole through four layers so a play view could
+	// draw it. What a room looks like is content and belongs to the World
+	// Builder; what the engine reads from that document is three numbers per
+	// prop, and those are already here as [AtlasProp]. So the map names the
+	// file and a host reads the picture out of it with the codec that owns
+	// one.
+	//
+	// CARRIED VERBATIM, AS THE HOST GAVE IT. This seam does not parse it,
+	// namespace it or check that anything answers to it — a key that names
+	// nothing is a content miss the host discovers when it fetches, and
+	// inventing a refusal here would mean this package deciding what a
+	// content registry holds.
+	//
+	// EMPTY IS THE HONEST ABSENCE, not a default. It means no key was ever
+	// given: a host that launched a world it had assembled itself rather
+	// than one loaded from a registry entry, which is what EVERY session
+	// before this field was. A client seeing it empty fetches nothing and
+	// draws what the map alone says, exactly as it did before.
+	DungeonKey string `json:"dungeon_key,omitempty"`
 }
 
 // AtlasStart is the authored way in: a cell, and the direction the party is

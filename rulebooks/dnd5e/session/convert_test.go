@@ -95,9 +95,6 @@ var renamed = map[string]struct{ outer, reason string }{
 	"encounter.Atlas.Orientation": {outer: "Layout",
 		reason: "the frame an author typed in becomes the layout a client draws in — same " +
 			"two values, a different question, and a different name so they cannot be confused"},
-	"encounter.Atlas.RoomScene": {outer: "RoomSceneJSON",
-		reason: "the canonical encounter presentation is validated and encoded as JSON so no inner scene type crosses S2"},
-
 	// Confirmed is "when this payload was last landed, whether or not it
 	// changed" (mind/perception's own doc) — exactly what Sighting.At has
 	// always meant ("the clock reading when this knowledge was last
