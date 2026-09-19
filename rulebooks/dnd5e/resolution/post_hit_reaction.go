@@ -5,20 +5,17 @@ type ReactionChoice string
 
 const ReactionDecline ReactionChoice = "decline"
 
-// PostHitReaction carries settled rules facts for a generic retaliation.
+// PostHitReaction is the resolution-side projection of events.PostHitOffer.
+// The event package owns the canonical wire shape; this type documents the
+// settled facts a generic retaliation machine consumes.
 type PostHitReaction struct {
-	ReactorID    string           `json:"reactor_id"`
-	SourceID     string           `json:"source_id"`
-	ConditionRef string           `json:"condition_ref"`
-	Options      []ReactionOption `json:"options"`
-	SaveAbility  string           `json:"save_ability"`
-	SaveDC       int              `json:"save_dc"`
-	DamageDice   string           `json:"damage_dice"`
-	DamageType   string           `json:"damage_type"`
-}
-
-// ReactionOption is content-authored; resolution does not interpret its key.
-type ReactionOption struct {
-	Key   ReactionChoice `json:"key"`
-	Label string         `json:"label"`
+	ReactorID    string `json:"reactor_id"`
+	SourceID     string `json:"source_id"`
+	ConditionRef string `json:"condition_ref"`
+	Option       string `json:"option"`
+	SaveAbility  string `json:"save_ability"`
+	SaveDC       int    `json:"save_dc"`
+	DamageDice   string `json:"damage_dice"`
+	DamageType   string `json:"damage_type"`
+	HalfOnSave   bool   `json:"half_on_save"`
 }
