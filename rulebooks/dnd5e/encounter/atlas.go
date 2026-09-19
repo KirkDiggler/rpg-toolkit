@@ -79,19 +79,6 @@ type Atlas struct {
 	// so there is nothing live to fold — the compiled list, copied out.
 	Placed []AtlasPlacedProp
 
-	// RoomScene is the validated room scene presentation the field was
-	// constructed with (issue #1753), copied out per call — doubles, empty
-	// lists and pointer leaves included, never the compiled one's own.
-	//
-	// NIL for a field without one, and nil it stays. A field that carries
-	// one is single-room v3 content: one unconcealed region, no concealed
-	// structure anywhere ([compileField] and the construction seams refuse
-	// the unsupported combinations), so the full scene is construction
-	// truth here exactly as the floor is. What a MEMBER may be shown is
-	// [Encounter.AtlasFor]'s question, and it refuses the combinations it
-	// cannot project rather than transmitting a hidden layout.
-	RoomScene *RoomScenePresentation
-
 	// Sealed is every cell in [Atlas.Cells] NOBODY CAN STAND ON, sorted by
 	// coordinate: scenery, and the cells walls leave no room in.
 	//
@@ -322,9 +309,6 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		Boundaries:  make([]AtlasBoundary, 0, len(f.walls)),
 		Doorways:    make([]AtlasDoorway, 0, len(e.doors)),
 		Segments:    make([]AtlasSegment, 0, len(f.segments)),
-		// The presentation, copied out fresh per call: mutating one atlas's
-		// scene must never reach the compiled field or another snapshot.
-		RoomScene: copyRoomScene(f.roomScene),
 	}
 
 	for _, s := range f.segments {

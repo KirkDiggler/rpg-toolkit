@@ -10,21 +10,28 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"gopkg.in/yaml.v3"
 )
 
-// The scene/frame/workspace VALUE validators — the workspace presets, the
-// scalar bounds mirrored from the editor's own validators (world-building
-// serialization.ts / roomDraft.ts at height head), and the frame's approved
-// words — live in the encounter package now ([encounter.ValidateRoomScene],
-// the one owner beside the types they judge). This decoder keeps the YAML
-// shape walk and delegates the decoded values to it, so the two seams cannot
-// diverge.
+// THE SHAPE WALK STOPS AT THE PRESENTATION (rpg-project#479, R3). The
+// scene, the coordinate frame and the workspace are the World Builder's
+// content: the editor's scalar bounds, its workspace presets, its frame
+// vocabulary, its item and group caps and its parent/support graph were
+// mirrored here and are gone, along with the typed shapes they judged. What
+// this decoder still reads out of those three subtrees is the handful of
+// values play depends on, and single_room_lowering.go names every one of them
+// by path and by the gameplay fact that needs it.
+//
+// STRICTNESS OVER THE PRESENTATION BELONGS TO THE CODEC THAT OWNS IT — the
+// web's, which already validates the draft it authors and refuses what it
+// does not know. An unknown key inside `scene`, `coordinateFrame` or
+// `workspace` therefore decodes here without a word. Strictness over the
+// GAMEPLAY grammar is unchanged: KnownFields(true) and the shape walk below
+// still cover the root, `play`, `room.room` and every site key, and a typo
+// in any of them is still refused at its own path.
 
 // Approved gameplay values (the play block's policies, and the ref type
-// monster placements carry). The frame and scene vocabulary lives beside
-// [encounter.ValidateRoomScene] now.
+// monster placements carry).
 const (
 	transparentVoid     = "transparent"
 	brightLighting      = "bright"
@@ -53,43 +60,46 @@ const (
 //
 // Strictness is about the file, not just the decoded value. Unknown keys,
 // empty input, a second YAML document, duplicate keys and scalar kinds that
-// do not fit their field all fail with the offending line named. A v3
-// document is COMPLETE: every required field must be authored, because a key
-// the decoder never saw would silently become the Go zero value. Missing
-// play values, coordinate-frame entries, workspace numbers, scene
-// identities, item transforms, monster cells, declaration flags and
-// footprint corners are each refused at the YAML path that is wrong.
+// do not fit their field all fail with the offending line named — over the
+// GAMEPLAY grammar: the root, `play`, `room` above the presentation, and
+// `room.room` with every site key. A v3 document is COMPLETE there: every
+// required field must be authored, because a key the decoder never saw would
+// silently become the Go zero value. Missing play values, monster cells,
+// declaration flags and footprint corners are each refused at the YAML path
+// that is wrong.
 //
-// Explicit null is never a v3 value. Optional fields (heightScale,
-// parentId, supportId, pointLight, partyStart) may be ABSENT, but an
-// authored null is refused: absence means "not supplied", null means
-// "supplied nothing", and silently reading both as zero would lose that
-// distinction. Integer fields (the version fields and every cell q/r) must
-// be authored as integer scalars, because yaml.v3 would otherwise truncate
-// 0.5 into the int 0 without a word; string identifiers must be authored as
-// text for the same reason.
+// Explicit null is never a v3 value. Optional gameplay fields (partyStart, a
+// monster's faction, a creature's orders) may be ABSENT, but an authored
+// null is refused: absence means "not supplied", null means "supplied
+// nothing", and silently reading both as zero would lose that distinction.
+// Integer fields (the version fields and every cell q/r) must be authored as
+// integer scalars, because yaml.v3 would otherwise truncate 0.5 into the int
+// 0 without a word; string identifiers must be authored as text for the same
+// reason.
 //
 // # What it validates
 //
-// play and the coordinate frame carry only their approved values. The
-// workspace must be one of the editor presets (6/12, 10/20, 14/28).
-// Transforms, light numbers, footprints and heightScale are finite and
-// within the bounds the editor enforces; item and group counts match the
-// editor caps. Walkable cells are unique and stay inside the workspace
-// radius; monster and party-start cells are required and integral, but
-// whether they STAND is the compiler's question, not a floor-membership
-// rule.
+// play carries only its approved values. Walkable cells are unique and stay
+// inside the workspace radius; monster and party-start cells are required
+// and integral, but whether they STAND is the compiler's question, not a
+// floor-membership rule.
 //
-// The parent/support graph is validated as one graph at any length: a prop's
-// parentId names a group, its supportId names a prop, a group's parentId
-// names a group, and the whole graph must be acyclic. propDeclarations must
-// name live scene props; arrangementDeclarations are template declarations
-// and may name IDs that were never instantiated. Declaration flags and
-// footprints are validated identically for both. Monster refs are checked
-// for grammar and the `monsters` type only — no rulebook definition is
-// resolved (design C1). `monsters` is required and may be empty;
-// `partyStart` is optional while editing, so a draft without it is valid
-// source, and no playable result is implied by any successful decode.
+// propDeclarations must name live scene props; arrangementDeclarations are
+// template declarations and may name IDs that were never instantiated.
+// Declaration flags and footprints are validated identically for both.
+// Monster refs are checked for grammar and the `monsters` type only — no
+// rulebook definition is resolved (design C1). `monsters` is required and
+// may be empty; `partyStart` is optional while editing, so a draft without
+// it is valid source, and no playable result is implied by any successful
+// decode.
+//
+// # What it does NOT validate
+//
+// The presentation (`room.coordinateFrame`, `room.workspace`, `room.scene`).
+// It is carried as the authored nodes it is, and only the values play
+// depends on are read out of it — single_room_lowering.go names them, and the
+// codec that owns the scene is the one that judges the rest
+// (rpg-project#479, R3).
 //
 // The returned spec preserves exactly what was authored: no defaults, no
 // repairs, no second scene shape. Every defect comes back as one
@@ -115,7 +125,7 @@ func DecodeSingleRoom(in SingleRoomDecodeInput) (*SingleRoomDecodeResult, error)
 	if err := yaml.Unmarshal(in.Source, &root); err != nil {
 		return nil, singleRoomErrors(err.Error())
 	}
-	errs := validateSingleRoom(&spec)
+	_, errs := validateSingleRoom(&spec)
 	errs = append(errs, sourceShapeErrors(&root)...)
 	if len(errs) > 0 {
 		sortFieldErrors(errs)
@@ -361,42 +371,16 @@ func sourceShapeErrors(root *yaml.Node) []FieldError {
 	return e
 }
 
+// roomShape walks the room's GAMEPLAY keys. `coordinateFrame`, `workspace`
+// and `scene` are deliberately absent from it: the presentation is content
+// and this decoder reads only the values play depends on out of it, at
+// single_room_lowering.go's own paths (rpg-project#479, R3).
 func roomShape(room *yaml.Node, add errSink) {
 	requireInteger(room, "version", "room", add)
 	requireString(room, "id", "room", add)
 	requireString(room, "name", "room", add)
-	if frame := requireMapping(room, "coordinateFrame", "room", add); frame != nil {
-		requireString(frame, "horizontalPlane", "room.coordinateFrame", add)
-		requireString(frame, "verticalAxis", "room.coordinateFrame", add)
-		requireString(frame, "distanceUnit", "room.coordinateFrame", add)
-		requireNumber(frame, "hexRadius", "room.coordinateFrame", add)
-		requireString(frame, "footprintFrame", "room.coordinateFrame", add)
-	}
-	if ws := requireMapping(room, "workspace", "room", add); ws != nil {
-		requireNumber(ws, "hexRadius", "room.workspace", add)
-		requireNumber(ws, "horizontalLimit", "room.workspace", add)
-	}
-	if scene := requireMapping(room, "scene", "room", add); scene != nil {
-		sceneShape(scene, add)
-	}
 	if gameplay := requireMapping(room, "room", "room", add); gameplay != nil {
 		gameplayShape(gameplay, add)
-	}
-}
-
-func sceneShape(scene *yaml.Node, add errSink) {
-	requireInteger(scene, "version", "room.scene", add)
-	requireString(scene, "id", "room.scene", add)
-	requireString(scene, "name", "room.scene", add)
-	if items := requireSequence(scene, "items", "room.scene", add); items != nil {
-		for i, it := range items.Content {
-			itemShape(it, fmt.Sprintf("room.scene.items[%d]", i), add)
-		}
-	}
-	if groups := requireSequence(scene, "groups", "room.scene", add); groups != nil {
-		for i, g := range groups.Content {
-			groupShape(g, fmt.Sprintf("room.scene.groups[%d]", i), add)
-		}
 	}
 }
 
@@ -413,27 +397,6 @@ func entryShape(n *yaml.Node, p string, add errSink) {
 	}
 }
 
-// itemShape covers one scene prop. Transform coordinates are required
-// because a missing x would silently become 0 — a real pose.
-func itemShape(it *yaml.Node, p string, add errSink) {
-	it = resolveNode(it)
-	entryShape(it, p, add)
-	if it == nil || it.Kind != yaml.MappingNode {
-		return
-	}
-	requireString(it, "id", p, add)
-	requireString(it, "kind", p, add)
-	requireString(it, "assetRef", p, add)
-	requireString(it, "label", p, add)
-	transformShape(it, p, add)
-	optionalNode(it, "heightScale", p, add)
-	optionalReference(it, "parentId", p, add)
-	optionalReference(it, "supportId", p, add)
-	if l := optionalNode(it, "pointLight", p, add); l != nil {
-		lightShape(l, p+".pointLight", add)
-	}
-}
-
 // optionalReference permits absence but refuses an authored null or an
 // authored empty string: a reference left out is absent, while "" is a name
 // that names nothing.
@@ -442,42 +405,6 @@ func optionalReference(m *yaml.Node, key, p string, add errSink) {
 	if n != nil && n.Kind == yaml.ScalarNode && n.Tag == "!!str" && n.Value == "" {
 		add(fieldPath(p, key), "must not be empty")
 	}
-}
-
-func groupShape(g *yaml.Node, p string, add errSink) {
-	g = resolveNode(g)
-	entryShape(g, p, add)
-	if g == nil || g.Kind != yaml.MappingNode {
-		return
-	}
-	requireString(g, "id", p, add)
-	requireString(g, "kind", p, add)
-	requireString(g, "label", p, add)
-	transformShape(g, p, add)
-	optionalReference(g, "parentId", p, add)
-}
-
-func transformShape(m *yaml.Node, p string, add errSink) {
-	if t := requireMapping(m, "transform", p, add); t != nil {
-		for _, k := range [...]string{"x", "y", "z", "rotationY"} {
-			requireNumber(t, k, p+".transform", add)
-		}
-	}
-}
-
-// lightShape covers one authored point light: enabled, offset and the three
-// scalars must all be authored, because each would otherwise silently become
-// its zero value (a light at intensity 0, at the origin, in black).
-func lightShape(l *yaml.Node, p string, add errSink) {
-	requireBoolean(l, "enabled", p, add)
-	if o := requireMapping(l, "offset", p, add); o != nil {
-		for _, k := range [...]string{"x", "y", "z"} {
-			requireNumber(o, k, p+".offset", add)
-		}
-	}
-	requireString(l, "color", p, add)
-	requireNumber(l, "intensity", p, add)
-	requireNumber(l, "range", p, add)
 }
 
 func gameplayShape(gp *yaml.Node, add errSink) {
@@ -585,10 +512,10 @@ func arrangementShape(v *yaml.Node, p string, add errSink) {
 
 // # Decoded-value validation
 //
-// The shape walk guarantees every field was authored with the right kind.
-// This walk asks whether the authored values are legal: approved enums, one
-// of the workspace presets, finite bounded numbers, a live and acyclic
-// graph, and declaration owners that exist.
+// The shape walk guarantees every GAMEPLAY field was authored with the right
+// kind. This walk asks whether the authored values are legal: approved
+// enums, finite bounded footprints, declaration owners that exist, and the
+// handful of presentation values play reads (single_room_lowering.go).
 
 // acceptedRootVersions are the ROOT document versions this decoder speaks,
 // lowest first. 4 is the seam, landed AHEAD OF ITS KEYS.
@@ -610,7 +537,10 @@ func arrangementShape(v *yaml.Node, p string, add errSink) {
 // and v3 therefore behaves exactly as it always did.
 var acceptedRootVersions = [...]int{3, 4}
 
-func validateSingleRoom(s *SingleRoomSpec) []FieldError {
+// validateSingleRoom judges one decoded document, and hands back the
+// lowering of its presentation beside the defects — one walk, so the values
+// the compile carries out are exactly the ones validation looked at.
+func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	var e []FieldError
 	add := func(p, m string) { e = append(e, FieldError{Path: p, Message: m}) }
 	if !slices.Contains(acceptedRootVersions[:], s.Version) {
@@ -629,21 +559,19 @@ func validateSingleRoom(s *SingleRoomSpec) []FieldError {
 	if s.Room.Name == "" {
 		add("room.name", errRequired)
 	}
-	// THE SCENE'S ONE VALIDATOR (see this file's top): the presentation the
-	// compiler will carry is judged by the encounter-owned walk, and each
-	// defect is prefixed back onto the source path it sits at — the same
-	// paths frameValues/sceneValues always reported, now asked once.
-	presentation := presentationCopy(s.Room)
-	for _, d := range encounter.ValidateRoomScene(&presentation) {
-		add("room."+d.Path, d.Message)
-	}
-	gameplayValues(&s.Room.Gameplay, s.Room.Workspace.HexRadius, &s.Room.Scene, add)
+	// THE LOWERING (single_room_lowering.go): the values play reads out of the
+	// authored presentation, and every one it needed and could not read,
+	// named at its own source path. Nothing else about the scene is judged.
+	read, defects := readRoom(&s.Room)
+	e = append(e, defects...)
+	gameplayValues(&s.Room.Gameplay, read, add)
 	// THE SITE SCOPE AND THE ORDERS LAST, and judged by the validators the
 	// v2 dialect already ships (see single_room_site.go): every refusal about
 	// a faction, a disposition, a membership or an orders block is the one
 	// an author already gets from the other dialect, at this dialect's paths.
 	siteValues(s, add)
-	return e
+
+	return read, e
 }
 
 func playValues(play SingleRoomPlay, add errSink) {
@@ -658,16 +586,12 @@ func playValues(play SingleRoomPlay, add errSink) {
 	}
 }
 
-func gameplayValues(gp *RoomGameplaySource, radius float64, scene *encounter.RoomVisualScene, add errSink) {
+func gameplayValues(gp *RoomGameplaySource, read roomRead, add errSink) {
 	if gp.ImplicitRegionID == "" {
 		add("room.room.implicitRegionId", errRequired)
 	}
-	itemIDs := make(map[string]bool, len(scene.Items))
-	for i := range scene.Items {
-		itemIDs[scene.Items[i].ID] = true
-	}
-	walkableValues(gp.WalkableHexes, radius, add)
-	propDeclarationValues(gp.PropDeclarations, itemIDs, add)
+	walkableValues(gp.WalkableHexes, read.WorkspaceHexRadius, read.WorkspaceKnown, add)
+	propDeclarationValues(gp.PropDeclarations, read.ItemIDs, add)
 	arrangementDeclarationValues(gp.ArrangementDeclarations, add)
 	monsterValues(gp.Monsters, add)
 }
@@ -676,7 +600,12 @@ func gameplayValues(gp *RoomGameplaySource, radius float64, scene *encounter.Roo
 // workspace. A monster's own cell is checked for shape only: whether it
 // STANDS is decided by final standability at compile time, never by floor
 // membership here.
-func walkableValues(cells []RoomCell, radius float64, add errSink) {
+//
+// known says whether `room.workspace.hexRadius` was authored as a finite
+// number. When it was not, the lowering has already named that at its own
+// path and the floor bound is not applied on top of it — one missing number
+// reports as one defect, not as every cell being off a floor of radius zero.
+func walkableValues(cells []RoomCell, radius float64, known bool, add errSink) {
 	seen := make(map[RoomCell]string, len(cells))
 	for i, c := range cells {
 		p := fmt.Sprintf("room.room.walkableHexes[%d]", i)
@@ -684,7 +613,7 @@ func walkableValues(cells []RoomCell, radius float64, add errSink) {
 			add(p, "duplicate cell")
 		}
 		seen[c] = p
-		if float64(cubeDistance(c)) > radius {
+		if known && float64(cubeDistance(c)) > radius {
 			add(p, "outside the workspace floor")
 		}
 	}

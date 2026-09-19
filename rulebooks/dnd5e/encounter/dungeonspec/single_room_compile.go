@@ -14,6 +14,13 @@ import (
 // legacy offset frame and is reached only through the canonical spatial
 // inverse.
 //
+// THE PRESENTATION DOES NOT COME WITH IT (rpg-project#479). The authored
+// scene is content, served to the player by dungeon key; what crosses into
+// the field is the geometry the lowering read out of it —
+// [encounter.PlacedPropInput] per declared prop, and nothing that names an
+// asset, a light or a workspace. single_room_lowering.go lists every value this
+// compile reads from the presentation, by path.
+//
 // THE SITE SCOPE AND THE ORDERS COMPILE THROUGH THE V2 COMPILERS
 // (rpg-project#477, rpg-toolkit#1826). `factions:` and `dispositions:` go
 // through [factionsOf] and [dispositionsOf] over the adapted spec
@@ -32,7 +39,8 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if in.Spec == nil {
 		return Compiled{}, singleRoomCompileError("source", "single room spec is nil")
 	}
-	if errs := validateSingleRoom(in.Spec); len(errs) > 0 {
+	read, errs := validateSingleRoom(in.Spec)
+	if len(errs) > 0 {
 		return Compiled{}, &ValidationError{Errors: errs}
 	}
 	spec := in.Spec
@@ -54,13 +62,11 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if err != nil {
 		return Compiled{}, singleRoomCompileError("room.room.propDeclarations", err.Error())
 	}
-	presentation := presentationCopy(spec.Room)
 	field := encounter.FieldInput{
-		RoomScene: &presentation,
-		Canvas:    encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
-		Regions:   []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
-		Placed:    props,
-		Start:     nil,
+		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
+		Placed:  props,
+		Start:   nil,
 		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
 		// is seeded from them at every Setup and Load, so they have to be
 		// where the field is. Nil when the site declares none.
@@ -136,7 +142,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	}
 	field.Start = &encounter.FieldStart{At: starts[0]}
 	return Compiled{
-		Key: spec.Key, Name: spec.Room.Scene.Name, Field: field, PartyStart: party, Monsters: monsters,
+		Key: spec.Key, Name: read.Name, Field: field, PartyStart: party, Monsters: monsters,
 		// The same lists the field carries, surfaced for a host that wants to
 		// read what the site declares without reaching into it ([Compiled]).
 		Factions: field.Factions, Dispositions: field.Dispositions,
@@ -196,23 +202,4 @@ func deriveSingleRoomSeats(cells []spatial.Position, start spatial.Position, mon
 		seats[i].Region = ""
 	}
 	return seats
-}
-
-func presentationCopy(r RoomSource) encounter.RoomScenePresentation {
-	p := encounter.RoomScenePresentation{Version: 1, Frame: r.CoordinateFrame, Workspace: r.Workspace, Scene: r.Scene}
-	p.Scene.Items = make([]encounter.RoomSceneItem, len(r.Scene.Items))
-	copy(p.Scene.Items, r.Scene.Items)
-	p.Scene.Groups = make([]encounter.RoomSceneGroup, len(r.Scene.Groups))
-	copy(p.Scene.Groups, r.Scene.Groups)
-	for i := range p.Scene.Items {
-		if r.Scene.Items[i].HeightScale != nil {
-			v := *r.Scene.Items[i].HeightScale
-			p.Scene.Items[i].HeightScale = &v
-		}
-		if r.Scene.Items[i].PointLight != nil {
-			v := *r.Scene.Items[i].PointLight
-			p.Scene.Items[i].PointLight = &v
-		}
-	}
-	return p
 }
