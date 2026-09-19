@@ -86,8 +86,9 @@ type frozenStrike struct {
 	// pauses after damage for a defender reaction. The continuation is
 	// intentionally opaque to the strike roll path; the host answers with
 	// Option and the strike is never rerolled.
-	PostHitPhase bool           `json:"post_hit_phase,omitempty"`
-	Outcome      *StrikeOutcome `json:"outcome,omitempty"`
+	PostHitPhase bool                      `json:"post_hit_phase,omitempty"`
+	Outcome      *StrikeOutcome            `json:"outcome,omitempty"`
+	PostHit      *dnd5eEvents.PostHitOffer `json:"post_hit,omitempty"`
 }
 
 // strikeResume is a frozen strike plus the answer it came back with.
@@ -352,4 +353,17 @@ func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) err
 		return fmt.Errorf("publish offer taken: %w", err)
 	}
 	return nil
+}
+
+func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error) {
+	options := make([]string, 0, len(offer.Options)+1)
+	for _, option := range offer.Options {
+		options = append(options, option.ID)
+	}
+	options = append(options, string(ReactionDecline))
+	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, PostHitPhase: true, Outcome: &m.outcome, PostHit: &offer})
+	if err != nil {
+		return nil, fmt.Errorf("%w: freeze post-hit reaction: %v", ErrBadFrozen, err)
+	}
+	return Pose{Ask: Ask{Audience: offer.ReactorID, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Options: options}, Frozen: frozen}, nil
 }
