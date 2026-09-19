@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
@@ -45,11 +46,19 @@ func (s *BrownBearTestSuite) TestNewBrownBear() {
 	s.Assert().Equal(40, speed.Walk)
 	s.Assert().Equal(30, speed.Climb)
 
-	// Component attacks remain; multiattack waits for a sequence profile.
+	// Multiattack first, so a driver reading this list in order reaches for
+	// the bear's own line before either component; the components stay
+	// listed beneath it because that is what the script names.
 	actions := bear.Actions()
-	s.Require().Len(actions, 2)
-	s.Equal(refs.MonsterActions.BrownBearBite(), &actions[0].Ref)
-	s.Equal(refs.MonsterActions.BrownBearClaw(), &actions[1].Ref)
+	s.Require().GreaterOrEqual(len(actions), 3)
+	s.Equal(refs.MonsterActions.BrownBearMultiattack(), &actions[0].Ref)
+	s.Require().NotNil(actions[0].Sequence)
+	s.Equal([]combatActions.SequenceStep{
+		{Action: *refs.MonsterActions.BrownBearBite()},
+		{Action: *refs.MonsterActions.BrownBearClaw()},
+	}, actions[0].Sequence.Steps, "the SRD's one bite and one claw, in that order")
+	s.Equal(refs.MonsterActions.BrownBearBite(), &actions[1].Ref)
+	s.Equal(refs.MonsterActions.BrownBearClaw(), &actions[2].Ref)
 }
 
 func (s *BrownBearTestSuite) TestBrownBearTraits() {

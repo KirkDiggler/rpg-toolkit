@@ -64,10 +64,19 @@ func TestAssembledWeaponLinesMatchTheSRD(t *testing.T) {
 			4, "1d6", damage.Slashing, 2, melee5, nil},
 		{"goblin", monsters.NewGoblin, 1, ref("shortbow"), "Shortbow",
 			4, "1d6", damage.Piercing, 2, nil, shortbowRange},
-		{"thug", monsters.NewThug, 0, ref("mace"), "Mace",
+		// The thug's components sit at 1 and 2: its Multiattack is authored
+		// first so a driver reaches for the stat block's own line.
+		{"thug", monsters.NewThug, 1, ref("mace"), "Mace",
 			4, "1d6", damage.Bludgeoning, 2, melee5, nil},
-		{"thug", monsters.NewThug, 1, ref("heavy-crossbow"), "Heavy Crossbow",
+		{"thug", monsters.NewThug, 2, ref("heavy-crossbow"), "Heavy Crossbow",
 			2, "1d10", damage.Piercing, 0, nil, heavyCrossbowRange},
+		// The goblin boss, for the same reason, plus the javelin's melee
+		// half — its thrown 30/120 band has nowhere to land on an
+		// exactly-one delivery union and is not faked here.
+		{"goblin boss", monsters.NewGoblinBoss, 1, ref("scimitar"), "Scimitar",
+			4, "1d6", damage.Slashing, 2, melee5, nil},
+		{"goblin boss", monsters.NewGoblinBoss, 2, ref("javelin"), "Javelin",
+			2, "1d6", damage.Piercing, 0, melee5, nil},
 		{"bandit", monsters.NewBanditMelee, 0, ref("scimitar"), "Scimitar",
 			3, "1d6", damage.Slashing, 1, melee5, nil},
 		{"bandit", monsters.NewBanditMelee, 1, ref("light-crossbow"), "Light Crossbow",
@@ -137,10 +146,17 @@ func TestAssembledWeaponLinesMatchTheSRD(t *testing.T) {
 // The skeleton captain's longsword is the one exception and is named here so
 // the exception is a recorded fact rather than an oversight — it was outside
 // this slice's scope and derives exactly the same way whenever it is taken.
+//
+// THE ATTACK ARM IS WHAT THE CUT WAS ABOUT. A multiattack carries an authored
+// monster_actions ref and always should: "two scimitar attacks, the second at
+// disadvantage" is the monster's own line and no catalog entry describes it.
+// So the weapon-ref requirement is asked of the swings, and the sequences are
+// checked for the opposite — an authored ref, never a weapon's.
 func TestNoMonsterCarriesAWeaponShapedActionRef(t *testing.T) {
 	rearmed := map[string]func(string) *monster.Monster{
 		"skeleton":      monsters.NewSkeleton,
 		"goblin":        monsters.NewGoblin,
+		"goblin boss":   monsters.NewGoblinBoss,
 		"thug":          monsters.NewThug,
 		"bandit":        monsters.NewBanditMelee,
 		"bandit archer": monsters.NewBanditRanged,
@@ -149,6 +165,12 @@ func TestNoMonsterCarriesAWeaponShapedActionRef(t *testing.T) {
 	for name, build := range rearmed {
 		t.Run(name, func(t *testing.T) {
 			for _, action := range build(name + "-1").Actions() {
+				if action.Sequence != nil {
+					require.Equal(t, refs.TypeMonsterActions, action.Ref.Type,
+						"%s's %q is authored content, not a catalog entry",
+						name, action.Name)
+					continue
+				}
 				require.Equal(t, refs.TypeWeapons, action.Ref.Type,
 					"%s's %q should carry the weapon's ref, not an authored one",
 					name, action.Name)

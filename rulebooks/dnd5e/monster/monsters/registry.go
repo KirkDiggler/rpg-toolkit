@@ -36,6 +36,7 @@ var byRef = map[string]Constructor{
 	refs.Monsters.BanditArcher().String():    NewBanditRanged,
 	refs.Monsters.Thug().String():            NewThug,
 	refs.Monsters.Goblin().String():          NewGoblin,
+	refs.Monsters.GoblinBoss().String():      NewGoblinBoss,
 	refs.Monsters.AnimatedArmor().String():   NewAnimatedArmor,
 }
 

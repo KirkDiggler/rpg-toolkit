@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
@@ -50,12 +51,18 @@ func (s *AnimatedArmorTestSuite) TestNewAnimatedArmor() {
 	speed := armor.Speed()
 	s.Assert().Equal(25, speed.Walk)
 
-	// Check actions - one slam. The SRD's Multiattack (two slams) is deferred
-	// with the rest of the roster, so a second registered action here would be
-	// a mechanism nothing drives.
+	// The SRD's Multiattack (two slams) first, then the one slam it scripts
+	// twice. One component, two steps: a sequence is a script over a
+	// repertoire, not a second copy of the attack.
 	actions := armor.Actions()
-	s.Require().Len(actions, 1)
-	s.Assert().Equal(refs.MonsterActions.AnimatedArmorSlam(), &actions[0].Ref)
+	s.Require().GreaterOrEqual(len(actions), 2)
+	s.Assert().Equal(refs.MonsterActions.AnimatedArmorMultiattack(), &actions[0].Ref)
+	s.Require().NotNil(actions[0].Sequence)
+	s.Assert().Equal([]combatActions.SequenceStep{
+		{Action: *refs.MonsterActions.AnimatedArmorSlam()},
+		{Action: *refs.MonsterActions.AnimatedArmorSlam()},
+	}, actions[0].Sequence.Steps)
+	s.Assert().Equal(refs.MonsterActions.AnimatedArmorSlam(), &actions[1].Ref)
 }
 
 // TestAnimatedArmorCarriesBothImmunities is the reason this monster needed a

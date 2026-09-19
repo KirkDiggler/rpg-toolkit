@@ -13,8 +13,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewAnimatedArmor creates a CR 1 animated armor with a slam attack and
-// immunity to poison and psychic damage.
+// NewAnimatedArmor creates a CR 1 animated armor that makes two slam attacks,
+// with immunity to poison and psychic damage.
 //
 // The first monster here carrying TWO damage immunities. That works because
 // AddTraitData appends to a slice and the loader builds a fresh condition per
@@ -26,9 +26,6 @@ import (
 // Deliberately NOT represented, each because the mechanism does not exist —
 // not because the SRD was skimmed:
 //
-//   - Multiattack (two slams). Deferred until a sequence profile and machine
-//     exist, the same sentence brown_bear/ghoul/thug/skeleton_captain carry.
-//     One slam is registered; the armor hits once.
 //   - Condition immunities (blinded, charmed, deafened, exhaustion,
 //     frightened, paralyzed, petrified, poisoned). monstertraits offers
 //     Immunity/Vulnerability/PackTactics/UndeadFortitude — damage immunity
@@ -55,6 +52,19 @@ func NewAnimatedArmor(id string) *monster.Monster {
 			abilities.INT: 1,  // -5
 			abilities.WIS: 3,  // -4
 			abilities.CHA: 1,  // -5
+		},
+	})
+
+	// The SRD's "makes two melee attacks" over the one melee attack this
+	// armor has, then the component it scripts.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.AnimatedArmorMultiattack(),
+		Name: "Multiattack",
+		Sequence: &combatActions.SequenceProfile{
+			Steps: []combatActions.SequenceStep{
+				{Action: *refs.MonsterActions.AnimatedArmorSlam()},
+				{Action: *refs.MonsterActions.AnimatedArmorSlam()},
+			},
 		},
 	})
 
