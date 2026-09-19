@@ -39,13 +39,29 @@ import (
 // the fresh cast door does, [Manager.poseCastWindow], rather than a second
 // copy of it.
 func (m *Manager) answerCastOffer(
-	ctx context.Context, scope *writeScope, window interrupt.Window, choice ReactChoice,
+	ctx context.Context, scope *writeScope, window interrupt.Window, choice ReactChoice, option string,
 ) (*ReactOutput, error) {
 	payload, err := thawCastOfferPayload(window.Payload, string(window.Audience))
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
 
+	if choice == ReactHold && option != "" {
+		return nil, fmt.Errorf("%w: hold carries no option", ErrNotOffered)
+	}
+	if len(payload.Options) > 0 && choice == ReactStrike {
+		found := false
+		for _, o := range payload.Options {
+			if o.ID == option {
+				found = true
+			}
+		}
+		if !found {
+			return nil, ErrNotOffered
+		}
+	} else if option != "" {
+		return nil, ErrNotOffered
+	}
 	answer := resolution.OfferKeep
 	if choice == ReactStrike {
 		answer = resolution.OfferSpend
@@ -54,6 +70,7 @@ func (m *Manager) answerCastOffer(
 	resumed, err := resolution.NewCastResumed(&resolution.CastResumeInput{
 		Frozen: payload.Frozen,
 		Answer: answer,
+		Option: option,
 		// The offered die is rolled with the HOST'S dice, through the same
 		// seam every other roll in this package takes.
 		Roller: &diceSeam{roller: m.dice},
@@ -141,11 +158,19 @@ func castOfferDeclaration(session, member string, window interrupt.Window) (Decl
 	offer := payload.Offer
 	return Declaration{
 		Verb:       VerbReact,
-		Slot:       SlotNone,
+		Slot:       castOfferSlot(payload.Options),
+		Options:    payload.Options,
 		Available:  true,
 		ID:         id,
 		Reaction:   &offer,
 		TargetKind: TargetNone,
 		Candidates: []TargetCandidate{},
 	}, nil
+}
+
+func castOfferSlot(options []CastOption) Slot {
+	if len(options) > 0 {
+		return SlotReaction
+	}
+	return SlotNone
 }

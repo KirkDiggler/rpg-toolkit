@@ -453,7 +453,7 @@ func sortCastOffers(offers []compiledOffer) {
 // refuses the same content at the door, and a shape-less area cast that
 // prompted for a cell would ask the player to aim nothing.
 func areaTargetKind(area *combatActions.CastArea) TargetKind {
-	if area != nil && area.Footprint.Origin == combatActions.AreaOriginCasterEdge {
+	if area != nil && (area.Footprint.Origin == combatActions.AreaOriginCasterEdge || area.Footprint.Origin == combatActions.AreaOriginPoint) {
 		return TargetCell
 	}
 	return TargetArea
