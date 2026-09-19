@@ -100,6 +100,9 @@ type CastResumeInput struct {
 	// Answer is [OfferSpend] or [OfferKeep]. REQUIRED.
 	Answer OfferAnswer
 
+	// Option forwards a provider-authored post-hit choice.
+	Option string
+
 	// Roller rolls the offered die, and rolls for every target beyond the
 	// one that posed that has not yet made its own save. REQUIRED: the same
 	// interaction, the same roller, whether or not any one target suspended
