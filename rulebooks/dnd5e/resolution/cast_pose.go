@@ -149,7 +149,7 @@ func NewCastResumed(in *CastResumeInput) (Machine, error) {
 	var resumedInner Machine
 	var err error
 	if frozen.Definition.Cast.Attack != nil {
-		resumedInner, err = NewStrikeResumed(&StrikeResumeInput{Frozen: frozen.Contest, Answer: in.Answer, Roller: in.Roller})
+		resumedInner, err = NewStrikeResumed(&StrikeResumeInput{Frozen: frozen.Contest, Answer: in.Answer, Option: in.Option, Roller: in.Roller})
 	} else {
 		resumedInner, err = newContestResumed(frozen.Contest, in.Answer, in.Roller)
 	}

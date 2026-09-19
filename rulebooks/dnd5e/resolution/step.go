@@ -116,6 +116,9 @@ type Ask struct {
 	// that was not asked.
 	Options []string
 
+	// Choices carries provider-authored option labels for reaction windows.
+	Choices []Choice
+
 	// Roll is the d20 as rolled and Total the number the offer would join.
 	// TARGET AC IS DELIBERATELY ABSENT: a player who could see it would be
 	// deciding "does this close the gap" rather than "is this worth spending",
@@ -154,7 +157,15 @@ type Ask struct {
 // A machine that poses twice in one call is not designed here and is not
 // refused here: the driver returns the FIRST pose and stops, and the second
 // simply never happens because the run is over.
+type Choice struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
 type Pose struct {
+	// SettledStrike is populated only for the initial post-hit reaction pose.
+	SettledStrike *StrikeOutcome `json:"settled_strike,omitempty"`
+
 	// Ask is the question.
 	Ask Ask
 

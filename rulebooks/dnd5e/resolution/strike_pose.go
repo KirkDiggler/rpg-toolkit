@@ -86,6 +86,7 @@ type frozenStrike struct {
 	// pauses after damage for a defender reaction. The continuation is
 	// intentionally opaque to the strike roll path; the host answers with
 	// Option and the strike is never rerolled.
+	Retaliation  json.RawMessage           `json:"retaliation,omitempty"`
 	PostHitPhase bool                      `json:"post_hit_phase,omitempty"`
 	Outcome      *StrikeOutcome            `json:"outcome,omitempty"`
 	PostHit      *dnd5eEvents.PostHitOffer `json:"post_hit,omitempty"`
@@ -151,10 +152,13 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
 	}
 	if frozen.PostHitPhase {
-		if frozen.Outcome == nil || frozen.PostHit == nil {
+		if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion || frozen.AttackerID == "" || frozen.TargetID == "" {
+			return nil, fmt.Errorf("%w: invalid post-hit identity", ErrBadFrozen)
+		}
+		if frozen.Outcome == nil || frozen.PostHit == nil || frozen.PostHit.ReactorID != frozen.TargetID || !frozen.Outcome.Hit {
 			return nil, fmt.Errorf("%w: incomplete post-hit phase", ErrBadFrozen)
 		}
-		if in.Answer != OfferKeep && in.Option == "" {
+		if len(frozen.Retaliation) == 0 && in.Answer != OfferKeep && in.Option == "" {
 			return nil, fmt.Errorf("%w: post-hit spend requires an option", ErrNotOffered)
 		}
 		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Roller: in.Roller})
@@ -369,6 +373,7 @@ func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) err
 
 func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error) {
 	options := make([]string, 0, len(offer.Options)+1)
+	choices := make([]Choice, 0, len(offer.Options))
 	for _, option := range offer.Options {
 		options = append(options, option.ID)
 	}
@@ -377,5 +382,5 @@ func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error
 	if err != nil {
 		return nil, fmt.Errorf("%w: freeze post-hit reaction: %v", ErrBadFrozen, err)
 	}
-	return Pose{Ask: Ask{Audience: offer.ReactorID, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Options: options}, Frozen: frozen}, nil
+	return Pose{SettledStrike: &m.outcome, Ask: Ask{Audience: offer.ReactorID, Choices: choices, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Options: options}, Frozen: frozen}, nil
 }
