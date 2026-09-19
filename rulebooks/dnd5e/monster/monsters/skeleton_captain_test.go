@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
@@ -51,10 +52,16 @@ func (s *SkeletonCaptainTestSuite) TestNewSkeletonCaptain() {
 	speed := captain.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// The component attack remains; multiattack waits for a sequence profile.
+	// Multiattack first, then the component it scripts twice.
 	actions := captain.Actions()
-	s.Require().Len(actions, 1)
-	s.Equal(refs.MonsterActions.SkeletonCaptainLongsword(), &actions[0].Ref)
+	s.Require().GreaterOrEqual(len(actions), 2)
+	s.Equal(refs.MonsterActions.SkeletonCaptainMultiattack(), &actions[0].Ref)
+	s.Require().NotNil(actions[0].Sequence)
+	s.Equal([]combatActions.SequenceStep{
+		{Action: *refs.MonsterActions.SkeletonCaptainLongsword()},
+		{Action: *refs.MonsterActions.SkeletonCaptainLongsword()},
+	}, actions[0].Sequence.Steps, "two longsword swings, neither penalised")
+	s.Equal(refs.MonsterActions.SkeletonCaptainLongsword(), &actions[1].Ref)
 }
 
 func (s *SkeletonCaptainTestSuite) TestSkeletonCaptainTraitsIncludedInData() {
