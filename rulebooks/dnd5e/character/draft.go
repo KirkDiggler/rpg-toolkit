@@ -2,6 +2,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -1386,6 +1387,19 @@ func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) 
 			}
 			featureList = append(featureList, output.Feature)
 		}
+	}
+
+	if d.class == classes.Cleric && d.subclass == classes.TempestDomain {
+		uses := d.baseAbilityScores.Modifier(abilities.WIS)
+		if uses < 1 {
+			uses = 1
+		}
+		cfg, _ := json.Marshal(map[string]int{"uses": uses})
+		output, err := features.CreateFromRef(&features.CreateFromRefInput{Ref: refs.Features.WrathOfTheStorm().String(), Config: cfg, CharacterID: characterID})
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to create Wrath of the Storm")
+		}
+		featureList = append(featureList, output.Feature)
 	}
 
 	return featureList, nil

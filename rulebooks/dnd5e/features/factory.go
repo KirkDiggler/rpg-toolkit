@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // CreateFromRefInput provides input for creating a feature from a ref string
@@ -67,6 +68,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createRage(input.Config, input.CharacterID)
 	case refs.Features.SecondWind().ID:
 		feature, err = createSecondWind(input.Config, input.CharacterID)
+	case refs.Features.WrathOfTheStorm().ID:
+		feature, err = createWrathOfTheStorm(input.Config, input.CharacterID)
 	case refs.Features.ActionSurge().ID:
 		feature, err = createActionSurge(input.Config, input.CharacterID)
 	case refs.Features.FlurryOfBlows().ID:
@@ -322,4 +325,19 @@ func createDeflectMissiles(config json.RawMessage, characterID string) (*Deflect
 		monkLevel:   monkLevel,
 		dexModifier: dexModifier,
 	}, nil
+}
+
+func createWrathOfTheStorm(config json.RawMessage, characterID string) (*WrathOfTheStorm, error) {
+	var cfg struct {
+		Uses int `json:"uses"`
+	}
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse wrath of the storm config")
+		}
+	}
+	if cfg.Uses < 1 {
+		cfg.Uses = 1
+	}
+	return &WrathOfTheStorm{id: refs.Features.WrathOfTheStorm().ID, name: "Wrath of the Storm", characterID: characterID, resource: combat.NewRecoverableResource(combat.RecoverableResourceConfig{ID: string(resources.WrathOfTheStorm), Maximum: cfg.Uses, CharacterID: characterID, ResetType: coreResources.ResetLongRest})}, nil
 }
