@@ -31,7 +31,7 @@ const encounterPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encoun
 // View joins this set for ranged healing. In the pinned encounter v0.76.0,
 // it validates membership and reads intel.Held only; it neither refreshes
 // perception nor consults Sight, Standing, or another capability.
-var encounterReach = []string{"Canvas", "IsAllied", "IsHostile", "ToData", "View"}
+var encounterReach = []string{"AddSightArea", "Canvas", "IsAllied", "IsHostile", "RemoveSightArea", "SeesWithin", "ToData", "View"}
 
 // TestResolveTouchesTheEncounterThroughTwoMethods is the half of the reentrancy
 // invariant that only this package can hold.
