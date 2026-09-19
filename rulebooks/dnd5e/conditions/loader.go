@@ -218,6 +218,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return baned, nil
 	},
+	refs.Conditions.DivineFavor().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		divineFavor := &DivineFavorCondition{}
+		if err := divineFavor.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load divineFavor condition")
+		}
+		return divineFavor, nil
+	},
 	refs.Conditions.ShieldOfFaith().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		shieldOfFaith := &ShieldOfFaithCondition{}
 		if err := shieldOfFaith.loadJSON(data); err != nil {

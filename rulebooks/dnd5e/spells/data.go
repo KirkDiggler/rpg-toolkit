@@ -302,6 +302,10 @@ var SpellData = map[Spell]*Data{
 		Name:        "Bane",
 		Description: "Curse enemies to subtract 1d4 from attack rolls and saves",
 	},
+	DivineFavor: {
+		ID: DivineFavor, Level: 1, Name: "Divine Favor",
+		Description: "Your weapon hits deal an extra 1d4 radiant damage; concentration, up to 1 minute",
+	},
 	ShieldOfFaith: {
 		ID:          ShieldOfFaith,
 		Level:       1,
