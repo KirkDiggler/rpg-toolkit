@@ -1054,8 +1054,8 @@ func (d *Draft) compileProficiencies(
 		}
 	}
 
-	// Apply the supported creation proficiency grants for Life and War.
-	if d.class == classes.Cleric && (d.subclass == classes.LifeDomain || d.subclass == classes.WarDomain) {
+	// Apply level-1 heavy-armor grants from cleric domains. Domain proficiencies are additive to the cleric base proficiencies.
+	if d.class == classes.Cleric && (d.subclass == classes.LifeDomain || d.subclass == classes.TempestDomain || d.subclass == classes.WarDomain) {
 		for _, category := range choices.GetSubclassModifications(d.subclass).GrantedProficiencies.Armor {
 			armorProfs = append(armorProfs, proficiencies.Armor(category))
 		}
@@ -1063,7 +1063,7 @@ func (d *Draft) compileProficiencies(
 
 	// War grants all martial weapons. The runtime proficiency is "martial",
 	// not the picker categories "martial-melee" and "martial-ranged".
-	if d.class == classes.Cleric && d.subclass == classes.WarDomain {
+	if d.class == classes.Cleric && (d.subclass == classes.WarDomain || d.subclass == classes.TempestDomain) {
 		weaponProfs = append(weaponProfs, proficiencies.WeaponMartial)
 	}
 
