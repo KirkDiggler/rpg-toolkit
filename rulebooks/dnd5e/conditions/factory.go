@@ -116,6 +116,12 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createCommanded(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Concentrating().ID:
 		condition, err = createConcentrating(input.Config, input.MemberID, input.SourceRef)
+	case refs.Conditions.DivineFavor().ID:
+		var ref *core.Ref
+		ref, err = core.ParseString(input.SourceRef)
+		if err == nil {
+			condition, err = NewDivineFavorCondition(NewDivineFavorConditionInput{MemberID: input.MemberID, SourceID: input.MemberID, SourceRef: ref})
+		}
 	case refs.Conditions.ShieldOfFaith().ID:
 		condition, err = createShieldOfFaith(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Guided().ID:

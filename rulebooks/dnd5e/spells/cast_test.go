@@ -820,3 +820,27 @@ func (s *CastContentSuite) TestShieldOfFaithDeclaresBonusActionAndOwnedProtectio
 	s.Nil(d.Cast.Attack)
 	s.Nil(d.Cast.Save)
 }
+
+func (s *CastContentSuite) TestDivineFavorDeclaresBonusActionAndOwnedProtection() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.DivineFavor})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+	s.Equal(1, d.Cast.Casting.Level)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	s.Zero(d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(5, d.Cast.RangeFeet)
+	s.Equal(actions.CastTargetSelf, d.Cast.Target)
+	s.Zero(d.Cast.MinTargets)
+	s.Zero(d.Cast.MaxTargets)
+	s.Require().Len(d.Cast.Effects, 1)
+	s.Equal(*refs.Conditions.DivineFavor(), d.Cast.Effects[0].Ref)
+	s.Empty(d.Cast.Effects[0].CounterpartKey)
+	s.Equal(actions.CastRecipientCaster, d.Cast.Effects[0].Recipient)
+	s.Require().NotNil(d.Cast.Concentration)
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.Nil(d.Cast.Attack)
+	s.Nil(d.Cast.Save)
+}

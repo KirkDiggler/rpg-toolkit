@@ -349,6 +349,21 @@ var castContent = map[Spell]castProfileBuilder{
 			}
 		},
 	},
+	DivineFavor: {
+		name:    "Divine Favor",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
+		cost: &combat.SpendProfile{
+			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
+			Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
+		},
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 5, Target: actions.CastTargetSelf,
+				Effects:       []actions.CastEffect{{Recipient: actions.CastRecipientCaster, Ref: *refs.Conditions.DivineFavor()}},
+				Concentration: &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true},
+			}
+		},
+	},
 	ShieldOfFaith: {
 		name:    "Shield of Faith",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
