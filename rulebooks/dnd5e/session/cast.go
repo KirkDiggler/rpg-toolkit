@@ -348,6 +348,11 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", ErrStaleDeclaration)
 	}
 	definition := selected.spell
+	if definition.Cast.Area != nil && definition.Cast.Area.Footprint.Origin == combatActions.AreaOriginPoint {
+		if in.Cell == nil || !scope.enc.PointReachable(casterAt, *in.Cell, definition.Cast.RangeFeet) {
+			return nil, fmt.Errorf("cast: %w: selected point is out of range or obstructed", ErrBadCast)
+		}
+	}
 
 	if err := castOption(definition, in.Option); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
@@ -362,7 +367,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// declared and the roster the composition placed — never from what the
 	// caller sent, which castTargets has just confirmed was nobody.
 	var caught *areaCaught
-	if definition.Cast != nil && definition.Cast.Target == combatActions.CastTargetArea {
+	if definition.Cast != nil && definition.Cast.Target == combatActions.CastTargetArea && !definition.Cast.Area.ObscuresSight {
 		caught, err = deriveAreaMembers(scope.enc, definition.Cast, in.Member, roster, in.Cell)
 		if err != nil {
 			return nil, fmt.Errorf("cast: %w", err)
@@ -370,6 +375,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	}
 
 	machine, err := resolution.NewAction(&resolution.ActionInput{
+		AreaCenter: in.Cell,
 		Definition: definition.Clone(),
 		AttackerID: in.Member,
 		TargetIDs:  targets,
@@ -537,6 +543,16 @@ func (m *Manager) finishCast(
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))
 	}
 
+	if completed, ok := out.Outcome.(resolution.CastOutcome); ok {
+		for _, target := range completed.Targets {
+			if target.Attack != nil {
+				if err := m.recordRetaliation(scope, target.Attack.Retaliation, &resolution.Output{}); err != nil {
+					return nil, reportUnrecorded(scope, err)
+				}
+			}
+		}
+	}
+
 	// The pushes, now that the cast beat naming them is on the story. A
 	// failure here leaves the cast recorded and the shove untaken, which is
 	// the same shape RecordCast's own failure has and is reported the same
@@ -602,7 +618,7 @@ func (m *Manager) poseCastWindow(
 	if ask.Offer.Ref == nil || ask.Offer.Name == "" {
 		return nil, fmt.Errorf("cast: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
 	}
-	if len(ask.Options) != 2 {
+	if len(ask.Options) != 2 && len(ask.Choices) == 0 {
 		return nil, fmt.Errorf("cast: %w: the machine posed %d answers and this seam poses two",
 			ErrInvalidWorld, len(ask.Options))
 	}
@@ -619,8 +635,13 @@ func (m *Manager) poseCastWindow(
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
+	options := make([]CastOption, 0, len(ask.Choices))
+	for _, o := range ask.Choices {
+		options = append(options, CastOption{ID: o.ID, Label: o.Label})
+	}
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
 	payload, err := marshalCastOfferPayload(castOfferWindowPayload{
+		Options:  options,
 		Audience: ask.Audience,
 		Caster:   member,
 		Spell:    spell,
@@ -647,6 +668,13 @@ func (m *Manager) poseCastWindow(
 	scope.data.Windows = scope.ledger.ToData()
 	scope.touched = true
 
+	if len(ask.Choices) > 0 {
+		report, delivery, err := m.commit(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		return &CastOutput{Spell: spell, Posed: true, Persisted: report, Delivery: delivery}, nil
+	}
 	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
 		Audience: encounter.MemberID(ask.Audience),
 		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
@@ -752,7 +780,7 @@ func castTargets(
 				return nil, fmt.Errorf("%w: spell %q needs a cell to aim at",
 					ErrBadCast, definition.Ref.String())
 			}
-			if *aim.cell == aim.casterAt {
+			if profile.Area != nil && profile.Area.Footprint.Origin == combatActions.AreaOriginCasterEdge && *aim.cell == aim.casterAt {
 				return nil, fmt.Errorf(
 					"%w: spell %q cannot be aimed at the caster's own cell, which is no direction",
 					ErrBadCast, definition.Ref.String())

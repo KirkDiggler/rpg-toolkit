@@ -210,6 +210,9 @@ const (
 	// FootprintOriginCasterEdge places a box's near-edge midpoint on the
 	// caster cell's boundary along the bearing toward the aimed cell.
 	FootprintOriginCasterEdge FootprintOrigin = "caster-edge"
+
+	// FootprintOriginPoint centres the footprint on the selected map cell.
+	FootprintOriginPoint FootprintOrigin = "point"
 )
 
 // Footprint is seam-owned area presentation copied from the provider's cast
@@ -803,6 +806,9 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 	kind, err := windowKindOf(window.Payload)
 	if err != nil {
 		return Declaration{}, err
+	}
+	if kind == windowKindPostHit {
+		return postHitDeclaration(session, member, window)
 	}
 	if kind == windowKindPostRoll {
 		return postRollDeclaration(session, member, window)
