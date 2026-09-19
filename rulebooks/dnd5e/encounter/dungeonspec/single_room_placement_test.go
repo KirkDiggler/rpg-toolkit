@@ -65,10 +65,9 @@ func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsMapTheApprovedFrame()
 func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsSortByID() {
 	yes, no := true, false
 	spec := RoomSource{
-		Scene: encounter.RoomVisualScene{Items: []encounter.RoomSceneItem{
-			{ID: "b", Kind: encounter.RoomSceneKindProp, Transform: encounter.RoomSceneTransform{X: 1}},
-			{ID: "a", Kind: encounter.RoomSceneKindProp, Transform: encounter.RoomSceneTransform{X: 2}},
-		}},
+		Scene: sceneNodeFrom(s.T(), "items:\n"+
+			"  - {id: b, transform: {x: 1, z: 0, rotationY: 0}}\n"+
+			"  - {id: a, transform: {x: 2, z: 0, rotationY: 0}}\n"),
 		Gameplay: RoomGameplaySource{PropDeclarations: map[string]RoomPropDeclaration{
 			"b": {BlocksMovement: &yes, BlocksLineOfSight: &no, Footprint: RoomFootprint{Width: 1, Depth: 1}},
 			"a": {BlocksMovement: &no, BlocksLineOfSight: &yes, Footprint: RoomFootprint{Width: 1, Depth: 1}},
@@ -98,10 +97,10 @@ func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsAreAbsentWithoutDecla
 
 func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsRefuseIneligibleSources() {
 	yes := true
+	onlyTable := "items:\n  - {id: table, transform: {x: 1, z: 0, rotationY: 0}}\n"
+
 	dangling := &RoomSource{
-		Scene: encounter.RoomVisualScene{Items: []encounter.RoomSceneItem{
-			{ID: "table", Kind: encounter.RoomSceneKindProp, Transform: encounter.RoomSceneTransform{X: 1}},
-		}},
+		Scene: sceneNodeFrom(s.T(), onlyTable),
 		Gameplay: RoomGameplaySource{PropDeclarations: map[string]RoomPropDeclaration{
 			"ghost": {BlocksMovement: &yes, BlocksLineOfSight: &yes,
 				Footprint: RoomFootprint{Width: 1, Depth: 1}},
@@ -111,9 +110,7 @@ func (s *SingleRoomPlacementSuite) TestCanonicalPlacedPropsRefuseIneligibleSourc
 	s.Require().Error(err, "a declaration naming no live prop is refused, not skipped")
 
 	flagless := &RoomSource{
-		Scene: encounter.RoomVisualScene{Items: []encounter.RoomSceneItem{
-			{ID: "table", Kind: encounter.RoomSceneKindProp},
-		}},
+		Scene: sceneNodeFrom(s.T(), onlyTable),
 		Gameplay: RoomGameplaySource{PropDeclarations: map[string]RoomPropDeclaration{
 			"table": {Footprint: RoomFootprint{Width: 1, Depth: 1}},
 		}},

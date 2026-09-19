@@ -1,6 +1,6 @@
 package dungeonspec
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+import "gopkg.in/yaml.v3"
 
 // SingleRoomSpec is the authoring document for one playable room, and the
 // SITE document that room belongs to (rpg-project#477, Decision 1).
@@ -42,15 +42,33 @@ type SingleRoomPlay struct {
 	Standing string `yaml:"standing" json:"standing"`
 }
 
-// RoomSource contains a room's presentation and gameplay authoring data.
+// RoomSource contains a room's gameplay authoring data, and carries the
+// World Builder's presentation beside it AS THE AUTHORED NODES IT IS
+// (rpg-project#479, R3).
+//
+// THE PRESENTATION IS CONTENT AND THIS PACKAGE DOES NOT MODEL IT. Assets,
+// labels, groups, parents, supports, height scales and point lights belong
+// to the World Builder; the player is served the authored file by dungeon
+// key and the codec that owns those words (the web's) is the one that judges
+// them. [CoordinateFrame], [Workspace] and [Scene] are therefore YAML nodes,
+// carried verbatim and walked for exactly the values play depends on —
+// single_room_lowering.go names every one of them, by path. An unknown key
+// inside any of the three is not this decoder's business.
+//
+// They marshal back to YAML as the nodes they are, so a host that re-emits a
+// decoded document gets the author's own bytes back. They are NOT JSON
+// fields: a yaml.Node has no honest JSON shape, and a package that does not
+// model the presentation has nothing to put there.
 type RoomSource struct {
-	Version         int                          `yaml:"version" json:"version"`
-	ID              string                       `yaml:"id" json:"id"`
-	Name            string                       `yaml:"name" json:"name"`
-	CoordinateFrame encounter.RoomSceneFrame     `yaml:"coordinateFrame" json:"coordinateFrame"`
-	Workspace       encounter.RoomSceneWorkspace `yaml:"workspace" json:"workspace"`
-	Scene           encounter.RoomVisualScene    `yaml:"scene" json:"scene"`
-	Gameplay        RoomGameplaySource           `yaml:"room" json:"room"`
+	Version int    `yaml:"version" json:"version"`
+	ID      string `yaml:"id" json:"id"`
+	Name    string `yaml:"name" json:"name"`
+
+	CoordinateFrame yaml.Node `yaml:"coordinateFrame" json:"-"`
+	Workspace       yaml.Node `yaml:"workspace" json:"-"`
+	Scene           yaml.Node `yaml:"scene" json:"-"`
+
+	Gameplay RoomGameplaySource `yaml:"room" json:"room"`
 }
 
 // RoomCell is an authored axial hex coordinate.

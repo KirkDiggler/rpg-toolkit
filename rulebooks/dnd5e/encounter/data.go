@@ -217,28 +217,6 @@ type FieldData struct {
 	// simply loads with none.
 	Placed []PlacedPropData `json:"placed,omitempty"`
 
-	// RoomScene is the validated room scene presentation the field was
-	// constructed with (issue #1753), carried verbatim: doubles, empty
-	// lists, pointers and all — the ONE shape the runtime, the blob and the
-	// atlas speak, never a parallel wrapper with its own defaults.
-	//
-	// OPTIONAL, and nil stays nil on every carrier: a field without one is
-	// every field authored before v3, and a nil here is the whole of what
-	// those blobs meant. A nil pointer also survives the wire exactly: the
-	// key is omitted when nil, and a JSON round trip of an authored empty
-	// scene carries "items": [] rather than null, because the snapshot it
-	// was written from held an empty list, not absence.
-	//
-	// LOADED THROUGH THE SAME VALIDATOR the field was built under
-	// (compileField — [ValidateRoomScene]'s one walk): a presentation
-	// version this build does not carry, a malformed scene, or the
-	// combination with concealed structure is refused at load by name,
-	// never reinterpreted. The version is EXPLICIT — there is no
-	// EncounterData-level version to bump, and none is assumed; this key
-	// carries its own, and a future one is a dialect change this build
-	// refuses rather than guesses at.
-	RoomScene *RoomScenePresentation `json:"room_scene,omitempty"`
-
 	// Intel is the authored knowledge records, in authored order
 	// (rpg-project#372). Scenery's omitempty rule: omitted and empty are the
 	// same fact, so a blob written before intel existed simply loads with
@@ -1865,11 +1843,6 @@ func fieldDataFrom(f *field) FieldData {
 		}
 	}
 
-	// The presentation, freshly copied per call (room_scene.go's one copy):
-	// two ToData calls must not alias one scene, and mutating the returned
-	// blob must not reach the running field.
-	out.RoomScene = copyRoomScene(f.roomScene)
-
 	if len(f.intel) > 0 {
 		out.Intel = make([]IntelData, len(f.intel))
 		for i, rec := range f.intel {
@@ -2294,18 +2267,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if input.Witness == nil {
 			return nil, fmt.Errorf("load encounter: %w", ErrNoWitness)
 		}
-	}
-	// The room scene presentation rides a single unconcealed room (issue
-	// #1753): a blob carrying both the scene and concealed structure is a
-	// combination this build never wrote — the scene is the room's FULL
-	// layout, and a member projection that filtered it honestly would have
-	// to guess which mesh stands in whose room. compileField already
-	// refused concealed regions; this refuses concealed doors, the other
-	// half of the same combination, before anything is constructed (R5).
-	if fieldConcealed && fieldInput.RoomScene != nil {
-		return nil, fmt.Errorf(
-			"load encounter: room scene presentation rides one unconcealed region and the field carries concealed structure: %w: %w",
-			ErrInvalidData, ErrNoField)
 	}
 	// Validate members: no duplicates, cells present, integral and floor
 	seenIDs := make(map[MemberID]bool)
@@ -3047,9 +3008,8 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	in := FieldInput{
-		Canvas:    CanvasInput{Void: void, Orientation: orientation},
-		Regions:   make([]RegionInput, len(fd.Regions)),
-		RoomScene: fd.RoomScene,
+		Canvas:  CanvasInput{Void: void, Orientation: orientation},
+		Regions: make([]RegionInput, len(fd.Regions)),
 	}
 
 	for i, rd := range fd.Regions {

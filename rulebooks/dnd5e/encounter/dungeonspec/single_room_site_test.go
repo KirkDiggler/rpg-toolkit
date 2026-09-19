@@ -277,9 +277,17 @@ func TestAbsenceRoundTripsAsAbsence(t *testing.T) {
 	// And it is still the same document: re-decoding the marshaled bytes gives
 	// back what was decoded, so "absent" survived the round trip as absence
 	// rather than as a value that happens to print as nothing.
+	//
+	// Compared as DOCUMENTS, because the presentation rides as a [yaml.Node]
+	// that remembers where it was authored and a re-emitted file has its own
+	// line numbers (rpg-project#479).
 	again, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: encoded})
 	require.NoError(t, err)
-	require.Equal(t, decoded.Spec, again.Spec)
+	againBytes, err := yaml.Marshal(again.Spec)
+	require.NoError(t, err)
+	require.Equal(t, string(encoded), string(againBytes))
+	require.Nil(t, again.Spec.Factions)
+	require.Nil(t, again.Spec.Room.Gameplay.MonsterBindings)
 }
 
 // TestTheV4FixtureRoundTripsItsSiteKeys is the other direction: everything the
