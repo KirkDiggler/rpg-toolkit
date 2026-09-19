@@ -349,6 +349,22 @@ var castContent = map[Spell]castProfileBuilder{
 			}
 		},
 	},
+	FogCloud: {
+		name:    "Fog Cloud",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		cost:    slotCost(resources.SpellSlotLevel1),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 120, Target: actions.CastTargetArea,
+				Area: &actions.CastArea{
+					Footprint: actions.Footprint{Shape: actions.AreaRadius, SizeFeet: 20, Origin: actions.AreaOriginPoint},
+					Catches:   actions.AreaCatchesEveryone, ObscuresSight: true,
+				},
+				// One hour in the current turn-count model. Wind dispersal is deferred.
+				Concentration: &actions.CastConcentration{TurnEnds: 600, SkipFirstTurnEnd: true},
+			}
+		},
+	},
 	DivineFavor: {
 		name:    "Divine Favor",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
