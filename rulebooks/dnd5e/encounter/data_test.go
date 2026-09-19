@@ -1369,3 +1369,25 @@ func (s *DataTestSuite) TestRememberedArrivalTestimonyPersists() {
 	}
 	s.Require().True(rememberedBilly, "the ghost the goblin walked through is still remembered")
 }
+
+func (s *DataTestSuite) TestSightAreasSurviveLoadAndReload() {
+	data := validEncounterData()
+	data.SightAreas = []encounter.SightAreaData{{
+		ID: "fog-1", SourceID: "spell-1", Name: "Fog", Ref: "fog-cloud",
+		Center: encounter.PositionData{X: 2, Y: 2}, RadiusFeet: 20,
+	}}
+	load := func(d encounter.EncounterData) *encounter.Encounter {
+		loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
+			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: d,
+		})
+		s.Require().NoError(err)
+		return loaded
+	}
+	first := load(data)
+	s.Require().Len(first.SightAreasFor("p1"), 1)
+	reloaded := load(first.ToData())
+	s.Require().Equal([]string{"fog-1"}, []string{reloaded.SightAreasFor("p1")[0].ID})
+	s.Equal("spell-1", reloaded.SightAreasFor("p1")[0].SourceID)
+}

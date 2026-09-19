@@ -53,6 +53,9 @@ func (e *Encounter) AddSightArea(in *SightAreaInput) error {
 	if _, ok := e.sightAreas[a.ID]; ok {
 		return fmt.Errorf("sight area %q exists: %w", a.ID, ErrInvalidData)
 	}
+	if e.sightAreas == nil {
+		e.sightAreas = make(map[string]SightArea)
+	}
 	e.sightAreas[a.ID] = a
 	return nil
 }
@@ -86,11 +89,22 @@ func (e *Encounter) SightAreasFor(member MemberID) []SightArea {
 	if !ok {
 		return nil
 	}
+	reach, err := e.sight.Sight([]MemberID{member})
+	if err != nil {
+		return nil
+	}
+	maxDistance, ok := reach[member]
+	if !ok || maxDistance < 0 {
+		return nil
+	}
 	out := make([]SightArea, 0)
 	for _, a := range e.sightAreas {
 		c := spatial.Position{X: a.Center.X, Y: a.Center.Y}
 		r := float64(a.RadiusFeet) / float64(FeetPerCell)
-		if e.canvas.GetGrid().Distance(pos, c) <= r || !e.canvas.IsLineOfSightBlocked(pos, c) {
+		distance := e.canvas.GetGrid().Distance(pos, c)
+		// A member standing inside the area can always see its own footprint;
+		// otherwise both supplied sight range and the wall ray bound visibility.
+		if distance <= r || (distance <= float64(maxDistance) && !e.canvas.IsLineOfSightBlocked(pos, c)) {
 			out = append(out, a)
 		}
 	}

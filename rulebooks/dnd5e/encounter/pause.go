@@ -181,7 +181,7 @@ type PausedTurnData struct {
 	// [Routed] intent and false for a [Move]. Omitted when false, for Cause's
 	// reason.
 	Terminal    bool
-	AfterStrike bool `json:"terminal,omitempty"`
+	AfterStrike bool `json:"after_strike,omitempty"`
 }
 
 // TurnBudgetData is the persistent representation of a [TurnBudget].
@@ -334,7 +334,7 @@ func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}) e
 	} else if len(d.Remaining) == 0 {
 		return fmt.Errorf("load encounter paused turn %q: nothing left to walk: %w", d.Member, ErrInvalidData)
 	}
-	if d.To != d.Remaining[0] {
+	if !d.AfterStrike && d.To != d.Remaining[0] {
 		return fmt.Errorf(
 			"load encounter paused turn %q: the announced cell is not the first cell left to walk: %w",
 			d.Member, ErrInvalidData)
