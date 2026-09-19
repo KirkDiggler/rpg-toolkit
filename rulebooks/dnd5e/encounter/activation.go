@@ -183,6 +183,7 @@ type RecordActivationInput struct {
 	Target  MemberID
 	Ability ActivationIdentity
 	Results []ActivationResult
+	Save    *CastSave
 }
 
 // RecordActivationOutput reports where every transaction beat landed and any
@@ -387,11 +388,18 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 	if in.Target != "" {
 		activationSubjects = append(activationSubjects, in.Target)
 	}
-	prepared := make([]preparedActivationBeat, 0, len(in.Results)+1)
+	prepared := make([]preparedActivationBeat, 0, len(in.Results)+2)
 	prepared = append(prepared, preparedActivationBeat{
 		payload:  activationBytes,
 		subjects: activationSubjects,
 	})
+	if in.Save != nil {
+		savedBytes, subjects, saveErr := e.prepareSaveBeat("record activation", in.Actor, in.Save, spellIdentityPayload{Ref: in.Ability.Ref, Name: in.Ability.Name})
+		if saveErr != nil {
+			return nil, saveErr
+		}
+		prepared = append(prepared, preparedActivationBeat{payload: savedBytes, subjects: subjects})
+	}
 
 	for i, result := range in.Results {
 		resultPayload, validationErr := e.prepareActivationResult("record activation", i, result)
