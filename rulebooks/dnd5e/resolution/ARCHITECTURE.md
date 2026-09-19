@@ -112,6 +112,15 @@ the blow it produced, so a consumer writing a beat per step says "scimitar"
 rather than walking the definition's step list in parallel and trusting the
 two to stay aligned.
 
+**Concentration is recorded per swing**, not per action (Kirk's ruling,
+2026-09-20). A concentration check is a roll a defender made against ONE blow,
+so it rides that blow's step along with the break it caused, exactly as a lone
+strike's rides its own outcome. `Output.ConcentrationChecks` and
+`ConcentrationBreaks` are therefore EMPTY for a sequence — one place, so a
+consumer cannot record the same save twice by reading both. A fact no swing's
+own check explains (a caster dropped to zero by the blow, whose fact carries no
+save to match) rides the last step rather than being guessed at.
+
 **The stop rule is about the target, not the blow.** A miss does not end a
 sequence — "two attacks with its scimitar" is two swings whatever the first
 one rolled. A downed target does, and `SequenceOutcome.Unswung` reports how

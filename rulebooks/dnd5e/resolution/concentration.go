@@ -72,8 +72,21 @@ func collectConcentrationEnds(ctx context.Context, bus events.EventBus) (*concen
 func (c *concentrationCollector) checks(
 	cast *Participants, outcome Outcome,
 ) ([]encounter.ConcentrationCheck, error) {
+	return c.checksFrom(cast, followUpsOf(outcome))
+}
+
+// checksFrom is [concentrationCollector.checks] over a follow-up list the
+// caller chose, rather than over a whole outcome's.
+//
+// SPLIT OUT FOR THE SEQUENCE, which records per swing: every other machine
+// asks about its one interaction and gets exactly what it got before, while a
+// multiattack asks once per step and gets that step's own rolls. The body is
+// unchanged — the only thing that moved is where the list comes from.
+func (c *concentrationCollector) checksFrom(
+	cast *Participants, followUps []FollowUpOutcome,
+) ([]encounter.ConcentrationCheck, error) {
 	made := make([]encounter.ConcentrationCheck, 0)
-	for _, check := range followUpsOf(outcome) {
+	for _, check := range followUps {
 		if check.Save.Result == nil || !check.Save.Result.Success {
 			continue
 		}
@@ -219,13 +232,20 @@ func encounterRollSources(sources []dnd5eEvents.RollSource) []encounter.RollSour
 // gets a nil save, which is the honest zero — a caster at zero hit points, or
 // one whose spell ran out, rolled nothing.
 func (c *concentrationCollector) breaks(outcome Outcome) ([]encounter.ConcentrationBreak, error) {
-	if len(c.facts) == 0 {
+	return breaksFrom(c.facts, followUpsOf(outcome))
+}
+
+// breaksFrom is [concentrationCollector.breaks] over the facts and follow-ups
+// the caller chose, for [concentrationCollector.checksFrom]'s reason.
+func breaksFrom(
+	facts []dnd5eEvents.ConcentrationEndedEvent, checks []FollowUpOutcome,
+) ([]encounter.ConcentrationBreak, error) {
+	if len(facts) == 0 {
 		return nil, nil
 	}
 
-	checks := followUpsOf(outcome)
-	breaks := make([]encounter.ConcentrationBreak, 0, len(c.facts))
-	for _, fact := range c.facts {
+	breaks := make([]encounter.ConcentrationBreak, 0, len(facts))
+	for _, fact := range facts {
 		removed, err := removedResults(fact)
 		if err != nil {
 			return nil, err
@@ -346,4 +366,87 @@ func publishRemoval(removal *ConditionRemoval, next func(ImposedEffect) (Step, e
 			return next(removalEffect(removal.Owner, removal.Reason))
 		},
 	}
+}
+
+// attributeToSteps moves one interaction's concentration record onto the SWING
+// that caused it (Kirk's ruling, 2026-09-20).
+//
+// # Why per swing rather than per action
+//
+// A beat is a roll, and a concentration check is a roll a defender made
+// against ONE blow. Folding a multiattack's checks onto its last beat would
+// say a defender rolled twice at the end of an action rather than once against
+// each swing — and worse, it would hide the ordering that matters: a hold that
+// broke on the first blow was already gone when the second landed, and a
+// record that reports both at the end cannot show that.
+//
+// # How a fact finds its swing
+//
+// By its own save. A break reasoned "damage" is the consequence of a check
+// some caster just rolled, and that check is on exactly one step's follow-ups
+// — the step whose damage forced it. [checkFor] is the same pairing the
+// interaction-level projection already uses; all this does is ask it per step
+// and claim the fact for the first step that answers.
+//
+// # The tail, and why it rides the last swing
+//
+// A hold can also end mid-sequence for a reason no swing's own check explains
+// — a caster dropped to zero hit points by the blow, say, whose fact carries
+// no save to match. Nothing in the record says which swing it happened on, and
+// this package will not guess: those ride the LAST step, where "by the end of
+// this action, this also ended" is true rather than invented. Claiming is
+// first-come and one fact is claimed once, so nothing is ever recorded twice.
+func (c *concentrationCollector) attributeToSteps(
+	cast *Participants, sequence SequenceOutcome,
+) (SequenceOutcome, error) {
+	if len(sequence.Steps) == 0 {
+		return sequence, nil
+	}
+
+	steps := make([]SequenceStepOutcome, len(sequence.Steps))
+	copy(steps, sequence.Steps)
+	claimed := make([]bool, len(c.facts))
+
+	for i := range steps {
+		followUps := steps[i].Strike.FollowUps
+
+		made, err := c.checksFrom(cast, followUps)
+		if err != nil {
+			return SequenceOutcome{}, err
+		}
+		steps[i].ConcentrationChecks = made
+
+		var caused []dnd5eEvents.ConcentrationEndedEvent
+		for index, fact := range c.facts {
+			if claimed[index] || checkFor(followUps, fact) == nil {
+				continue
+			}
+			claimed[index] = true
+			caused = append(caused, fact)
+		}
+		broke, err := breaksFrom(caused, followUps)
+		if err != nil {
+			return SequenceOutcome{}, err
+		}
+		steps[i].ConcentrationBreaks = broke
+	}
+
+	var unclaimed []dnd5eEvents.ConcentrationEndedEvent
+	for index, fact := range c.facts {
+		if !claimed[index] {
+			unclaimed = append(unclaimed, fact)
+		}
+	}
+	if len(unclaimed) > 0 {
+		last := len(steps) - 1
+		broke, err := breaksFrom(unclaimed, steps[last].Strike.FollowUps)
+		if err != nil {
+			return SequenceOutcome{}, err
+		}
+		steps[last].ConcentrationBreaks = append(steps[last].ConcentrationBreaks, broke...)
+	}
+
+	sequence.Steps = steps
+
+	return sequence, nil
 }

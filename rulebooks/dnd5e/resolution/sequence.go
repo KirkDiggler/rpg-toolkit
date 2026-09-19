@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -49,6 +50,11 @@ type SequenceOutcome struct {
 	// a defender's concentration check against each blow's damage. Flattened
 	// rather than kept per-step because [followUpsOf] reads one list off an
 	// outcome and a sequence is the fourth damage source it reads.
+	//
+	// The RECORD of those checks is not flattened: it rides each step, see
+	// [SequenceStepOutcome.ConcentrationChecks]. This list is the raw rolls,
+	// still reachable whole for anything that reads an outcome's follow-ups
+	// without knowing what produced them.
 	FollowUps []FollowUpOutcome
 }
 
@@ -70,6 +76,23 @@ type SequenceStepOutcome struct {
 
 	// Strike is the blow itself, in the same shape a lone swing produces.
 	Strike StrikeOutcome
+
+	// ConcentrationChecks are the checks a defender MADE against this swing's
+	// damage, and ConcentrationBreaks the holds it ended.
+	//
+	// PER SWING, NOT PER ACTION (Kirk's ruling, 2026-09-20). A concentration
+	// check is a roll made against ONE blow, so it belongs on that blow's
+	// beat, exactly as a lone strike's does. They are filled by
+	// [concentrationCollector.attributeToSteps] after the machine has run,
+	// because a hold ends on the bus and the collector is the only thing
+	// listening; see its doc for how a fact finds its swing.
+	//
+	// THE INTERACTION-LEVEL LISTS ARE EMPTY FOR A SEQUENCE. [Output] carries
+	// ConcentrationChecks and ConcentrationBreaks for every other machine and
+	// carries none for this one, so there is exactly one place these live and
+	// a consumer cannot record the same save twice by reading both.
+	ConcentrationChecks []encounter.ConcentrationCheck
+	ConcentrationBreaks []encounter.ConcentrationBreak
 }
 
 // newSequence reads a sequence profile and builds one component machine per
