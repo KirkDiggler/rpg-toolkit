@@ -180,7 +180,7 @@ type PausedTurnData struct {
 	// Terminal is whether finishing the walk finishes the turn — true for a
 	// [Routed] intent and false for a [Move]. Omitted when false, for Cause's
 	// reason.
-	Terminal    bool
+	Terminal    bool `json:"terminal,omitempty"`
 	AfterStrike bool `json:"after_strike,omitempty"`
 }
 
