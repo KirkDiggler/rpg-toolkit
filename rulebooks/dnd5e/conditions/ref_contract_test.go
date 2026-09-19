@@ -36,6 +36,12 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
+	divineFavor, err := NewDivineFavorCondition(NewDivineFavorConditionInput{
+		MemberID: "m1", SourceID: "m1", SourceRef: refs.Spells.DivineFavor(),
+	})
+	if err != nil {
+		panic(err)
+	}
 	shieldOfFaith, err := NewShieldOfFaithCondition(NewShieldOfFaithConditionInput{
 		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.ShieldOfFaith(),
 	})
@@ -73,6 +79,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	}
 	return map[string]dnd5eEvents.ConditionBehavior{
 		"shield_of_faith":   shieldOfFaith,
+		"divine_favor":      divineFavor,
 		"guiding_bolt":      guidingBolt,
 		"raging":            &RagingCondition{CharacterID: "m1"},
 		"brutal_critical":   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "m1", Level: 9, Roller: roller}),

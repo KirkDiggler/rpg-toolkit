@@ -1054,12 +1054,17 @@ func (d *Draft) compileProficiencies(
 		}
 	}
 
-	// Life's creation proficiency is authored in the existing subclass data.
-	// Other domain grants and spell/feature behavior remain a separate migration.
-	if d.class == classes.Cleric && d.subclass == classes.LifeDomain {
+	// Apply the supported creation proficiency grants for Life and War.
+	if d.class == classes.Cleric && (d.subclass == classes.LifeDomain || d.subclass == classes.WarDomain) {
 		for _, category := range choices.GetSubclassModifications(d.subclass).GrantedProficiencies.Armor {
 			armorProfs = append(armorProfs, proficiencies.Armor(category))
 		}
+	}
+
+	// War grants all martial weapons. The runtime proficiency is "martial",
+	// not the picker categories "martial-melee" and "martial-ranged".
+	if d.class == classes.Cleric && d.subclass == classes.WarDomain {
+		weaponProfs = append(weaponProfs, proficiencies.WeaponMartial)
 	}
 
 	// Collect from race grants

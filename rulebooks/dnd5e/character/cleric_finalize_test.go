@@ -624,3 +624,51 @@ func (s *ClericFinalizeSuite) TestLightDomainAddsDeferredLightBeyondThreeCantrip
 	s.Contains(loaded.ToData().KnownSpells, refs.Spells.FaerieFire().String())
 	s.NotContains(loaded.ToData().KnownSpells, refs.Spells.CureWounds().String())
 }
+
+func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveAttacks() {
+	input := s.classInput()
+	input.SubclassID = classes.WarDomain
+	draft := s.draft(input)
+	encoded, err := json.Marshal(draft.ToData())
+	s.Require().NoError(err)
+	var saved DraftData
+	s.Require().NoError(json.Unmarshal(encoded, &saved))
+	char, err := LoadDraftFromData(&saved).ToCharacter(context.Background(), "war-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	encoded, err = json.Marshal(char.ToData())
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(encoded, &stored))
+	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
+	s.Require().NoError(err)
+	s.ElementsMatch([]proficiencies.Armor{proficiencies.ArmorLight, proficiencies.ArmorMedium, proficiencies.ArmorShields, proficiencies.ArmorHeavy}, loaded.ToData().ArmorProficiencies)
+	s.ElementsMatch([]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}, loaded.ToData().WeaponProficiencies)
+	for _, id := range []shared.EquipmentID{weapons.Longsword, weapons.Longbow, weapons.Mace} {
+		weapon, err := weapons.GetByID(id)
+		s.Require().NoError(err)
+		s.True(loaded.IsProficientWith(&weapon), string(id))
+	}
+	// Exercise the attack compiler with a martial melee weapon, then a ranged
+	// one; the persisted proficiency must contribute +2 to accuracy only.
+	for _, id := range []shared.EquipmentID{weapons.Longsword, weapons.Longbow} {
+		attackData := loaded.ToData()
+		attackData.Inventory = append(attackData.Inventory, InventoryItemData{Type: shared.EquipmentTypeWeapon, ID: string(id), Quantity: 1})
+		attackData.EquipmentSlots = EquipmentSlots{SlotMainHand: string(id)}
+		loaded, err = LoadFromData(context.Background(), attackData, events.NewEventBus())
+		s.Require().NoError(err)
+		trained, err := AssembleAttack(loaded, &AssembleAttackInput{Slot: SlotMainHand})
+		s.Require().NoError(err)
+		loaded.weaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple}
+		untrained, err := AssembleAttack(loaded, &AssembleAttackInput{Slot: SlotMainHand})
+		s.Require().NoError(err)
+		s.Equal(2, trained.Attack.AttackBonus-untrained.Attack.AttackBonus)
+		s.Equal(trained.Attack.Damage, untrained.Attack.Damage)
+		loaded.weaponProficiencies = stored.WeaponProficiencies
+	}
+	// Switching away before finalization must not leak War's proficiencies.
+	life := s.classInput()
+	s.Require().NoError(draft.SetClass(life))
+	char, err = draft.ToCharacter(context.Background(), "life-cleric", events.NewEventBus())
+	s.Require().NoError(err)
+	s.NotContains(char.ToData().WeaponProficiencies, proficiencies.WeaponMartial)
+}

@@ -230,3 +230,8 @@ var conditionShieldOfFaith = &core.Ref{Module: Module, Type: TypeConditions, ID:
 
 // ShieldOfFaith returns the recipient's concentration-owned AC protection.
 func (n conditionsNS) ShieldOfFaith() *core.Ref { return conditionShieldOfFaith }
+
+var conditionDivineFavor = &core.Ref{Module: Module, Type: TypeConditions, ID: "divine_favor"}
+
+// DivineFavor returns the caster's concentration-owned radiant weapon bonus.
+func (n conditionsNS) DivineFavor() *core.Ref { return conditionDivineFavor }
