@@ -675,7 +675,7 @@ func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 		"Before", "After", "HitPoints", "Successes", "Failures", "SuccessesNeeded",
 		"FailuresRemaining", "Stabilized", "Dead",
 	}, structFieldNames(encounter.StabilizationDetail{}))
-	s.Equal([]string{"Actor", "Target", "Ability", "Results", "Save"}, structFieldNames(encounter.RecordActivationInput{}))
+	s.Equal([]string{"Actor", "Target", "Ability", "Results", "Save", "ConcentrationChecks", "ConcentrationBreaks"}, structFieldNames(encounter.RecordActivationInput{}))
 	s.Equal([]string{"Seqs", "IntelDeltas"}, structFieldNames(encounter.RecordActivationOutput{}))
 }
 
