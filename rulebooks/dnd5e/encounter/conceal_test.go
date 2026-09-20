@@ -500,6 +500,10 @@ func (s *ConcealSuite) TestOpeningInPresenceRevealsToPerceivers() {
 
 	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
+	// Up to the door first: a door opens only from within reach of it
+	// (rpg-toolkit#1856), and this scene is about who hears it swing.
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
+	s.Require().NoError(err)
 
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
@@ -539,6 +543,10 @@ func (s *ConcealSuite) TestALatePerceiverGetsTheirRevealOnArrival() {
 
 	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
+	// Up to the door first (rpg-toolkit#1856); the late arrival below is
+	// the seeker's, not the opener's.
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
+	s.Require().NoError(err)
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
@@ -564,6 +572,10 @@ func (s *ConcealSuite) TestCrossingAnUnknownOpenDoorTeachesIt() {
 	enc := s.open(findsEverything{}, false)
 
 	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
+	s.Require().NoError(err)
+	// Up to the door first (rpg-toolkit#1856), on the hall side, leaving
+	// the crossing itself to the buddy below.
+	_, err = enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(3, concealRow)})
 	s.Require().NoError(err)
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
 	s.Require().NoError(err)
