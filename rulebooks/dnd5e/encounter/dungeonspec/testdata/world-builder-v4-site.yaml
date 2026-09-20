@@ -33,6 +33,11 @@ room:
         transform: {x: -2.25, y: 0, z: 1.3, rotationY: 0.37}
         heightScale: 1.5
         parentId: furniture
+      - id: cellar-door
+        kind: prop
+        assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+        label: Cellar Door
+        transform: {x: 2.6, y: 0, z: 0, rotationY: 0}
     groups:
       - {id: furniture, kind: group, label: Furniture,
          transform: {x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37}}
@@ -46,12 +51,22 @@ room:
         blocksMovement: true
         blocksLineOfSight: false
         footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}
+      # The door's declaration is its FOOTPRINT and nothing else: both flags
+      # stay false because the door's state decides what it blocks, and a
+      # `true` here is refused by name (rpg-project#485, R3).
+      cellar-door:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.35, depth: 1.8, offsetX: 0, offsetZ: 0}
     arrangementDeclarations: {}
     partyStart: {q: 0, r: 0}
     monsters:
       - {id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: 0}, faction: goblins}
       - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: -1}}
       - {id: skeleton-b, ref: 'dnd5e:monsters:skeleton', cell: {q: 0, r: -1}}
+    # The leaf stands across the one crossing into the goblin's cell, shut.
+    doorBindings:
+      cellar-door: {closed: true}
     monsterBindings:
       goblin-1:
         on:

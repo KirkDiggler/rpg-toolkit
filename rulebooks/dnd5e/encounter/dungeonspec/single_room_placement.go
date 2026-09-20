@@ -100,20 +100,32 @@ func (r *RoomSource) CanonicalPlacedProps() ([]encounter.PlacedPropInput, error)
 // placedPropFrom is the adapter itself, one declaration and one authored pose
 // to one canonical placement — the exact mapping this file's doc pins.
 func placedPropFrom(id string, decl RoomPropDeclaration, t scenePose) encounter.PlacedPropInput {
-	k := feetPerSourceUnit
-
 	return encounter.PlacedPropInput{
-		ID: id,
-		Placement: spatial.FootprintPlacement{
-			Footprint: spatial.Footprint{Box: &spatial.Box{
-				D: decl.Footprint.Width * k, // D lies along the facing: the name swap
-				W: decl.Footprint.Depth * k,
-			}},
-			Origin:      spatial.Point{X: t.X * k, Y: t.Z * k},
-			Facing:      -t.RotationY * 180 / math.Pi, // positive Three Y yaw turns +X toward -Z
-			LocalOffset: spatial.Point{X: decl.Footprint.OffsetX * k, Y: decl.Footprint.OffsetZ * k},
-		},
+		ID:                id,
+		Placement:         placedFootprintFrom(decl, t),
 		BlocksMovement:    *decl.BlocksMovement,
 		BlocksLineOfSight: *decl.BlocksLineOfSight,
+	}
+}
+
+// placedFootprintFrom is the GEOMETRY HALF of the adapter: the rectangle and
+// the pose, with no opinion about what the thing blocks.
+//
+// Split out because a DOOR is the same rectangle with a different answer to
+// that question (single_room_doors.go): its blocking follows its state, so it
+// needs the shape without the flags — and it must be the SAME shape, arrived
+// at by the same arithmetic, or a door would sit somewhere its own prop
+// declaration does not.
+func placedFootprintFrom(decl RoomPropDeclaration, t scenePose) spatial.FootprintPlacement {
+	k := feetPerSourceUnit
+
+	return spatial.FootprintPlacement{
+		Footprint: spatial.Footprint{Box: &spatial.Box{
+			D: decl.Footprint.Width * k, // D lies along the facing: the name swap
+			W: decl.Footprint.Depth * k,
+		}},
+		Origin:      spatial.Point{X: t.X * k, Y: t.Z * k},
+		Facing:      -t.RotationY * 180 / math.Pi, // positive Three Y yaw turns +X toward -Z
+		LocalOffset: spatial.Point{X: decl.Footprint.OffsetX * k, Y: decl.Footprint.OffsetZ * k},
 	}
 }

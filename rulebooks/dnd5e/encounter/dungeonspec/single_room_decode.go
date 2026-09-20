@@ -439,6 +439,7 @@ func gameplayShape(gp *yaml.Node, add errSink) {
 		}
 	}
 	monsterBindingsShape(gp, add)
+	doorBindingsShape(gp, add)
 }
 
 // cellShape reads an axial cell. Both coordinates are required, and the

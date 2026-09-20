@@ -61,6 +61,16 @@ type contentGolden struct {
 	PartyStart  []dungeonspec.Seat             `json:"party_start"`
 	Monsters    []dungeonspec.MonsterPlacement `json:"monsters"`
 
+	// Placed and Doors are THE TWO GEOMETRIES A FOOTPRINT CAN BE
+	// (rpg-project#485, rpg-toolkit#1850). Both were invisible in this
+	// picture before, which meant a change to how a footprint compiles — or
+	// to what state a door starts in — showed up in no golden at all.
+	//
+	// OMITTED WHEN EMPTY, so a file that authors neither writes exactly the
+	// bytes it wrote before they were pictured.
+	Placed []encounter.AtlasPlacedProp `json:"placed,omitempty"`
+	Doors  []goldenDoor                `json:"doors,omitempty"`
+
 	// Scenarios is what this slice added that a host can observe and the
 	// atlas does not carry (rpg-project#368). Exits, prop ids and
 	// holdability all ride in the atlas above, which is already here.
@@ -72,6 +82,42 @@ type contentGolden struct {
 	// factions existed picture byte-identically.
 	Factions     []encounter.FactionInput     `json:"factions,omitempty"`
 	Dispositions []encounter.DispositionInput `json:"dispositions,omitempty"`
+}
+
+// goldenDoor is one compiled door in the committed picture: what it is
+// called, the state it was AUTHORED in, and the one geometry it stands in.
+//
+// The state is carried as the WORD it is, for the reason the void and the
+// orientation are: [encounter.DoorState] is an interface and would marshal to
+// `{}`, which is a picture that shows nothing.
+type goldenDoor struct {
+	ID        string                      `json:"id"`
+	State     string                      `json:"state"`
+	Lock      []encounter.CheckApproach   `json:"lock,omitempty"`
+	Concealed []encounter.CheckApproach   `json:"concealed,omitempty"`
+	Edges     []encounter.DoorEdge        `json:"edges,omitempty"`
+	Placement *spatial.FootprintPlacement `json:"placement,omitempty"`
+}
+
+// goldenDoorsOf renders the compiled doors for the picture, in the order the
+// field carries them.
+func goldenDoorsOf(doors []encounter.DoorInput) []goldenDoor {
+	out := make([]goldenDoor, 0, len(doors))
+	for _, d := range doors {
+		g := goldenDoor{
+			ID:        d.ID,
+			State:     string(d.State.Kind()),
+			Concealed: d.Concealed,
+			Edges:     d.Edges,
+			Placement: d.Placement,
+		}
+		if lock, locked := d.State.Lock(); locked {
+			g.Lock = lock.Approaches
+		}
+		out = append(out, g)
+	}
+
+	return out
 }
 
 func contentGoldenOf(t *testing.T, path string) contentGolden {
@@ -93,6 +139,8 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		Scenarios:    compiled.Scenarios,
 		Factions:     compiled.Factions,
 		Dispositions: compiled.Dispositions,
+		Placed:       atlas.Placed,
+		Doors:        goldenDoorsOf(compiled.Field.Doors),
 	}
 }
 

@@ -54,6 +54,18 @@
 // validator that needs a THIRD input from its dialect is a design change
 // rather than another parameter.
 //
+// A DOOR IS THE SAME SPLIT, ONE NOUN DOWN (rpg-project#485). Its STATE —
+// `closed`, and the `locked` check — is grammar: the same [CheckSpec] with
+// the same nil-vs-empty law and the same sentences, judged once for both
+// dialects ([grammar.doorState]) and compiled once ([doorStateOf]). Its
+// GEOMETRY is the dialect's: a v2 door is a position on a wall, and a
+// single-room door is the footprint its own `propDeclarations` entry draws,
+// because that dialect has no walls to stand one in. So the single room
+// declares three things about a placed item, each keyed by its id —
+// `propDeclarations` (the shape), `doorBindings` (the door's state) and
+// `monsterBindings` (a creature's orders) — and [encounter.DoorInput] takes
+// one geometry or the other, never both.
+//
 // # What it may not know
 //
 // This package compiles GEOMETRY and carries everything else. It resolves no

@@ -61,7 +61,15 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
 		Regions: []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
 		Placed:  props,
-		Start:   nil,
+		// THE DOORS, standing as the footprints their prop declarations draw
+		// (rpg-project#485, single_room_doors.go). A door item is in BOTH
+		// lists and that is not a duplicate: `Placed` is the rectangle the
+		// map DRAWS and reports in its atlas, carrying the two flags the
+		// author left false, and this is the same rectangle with its state
+		// deciding what it blocks. One authored footprint, one adapter, two
+		// questions.
+		Doors: singleRoomDoors(spec.Key, &spec.Room.Gameplay, read),
+		Start: nil,
 		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
 		// is seeded from them at every Setup and Load, so they have to be
 		// where the field is. Nil when the site declares none.
