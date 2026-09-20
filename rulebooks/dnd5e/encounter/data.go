@@ -803,22 +803,33 @@ func factDataFrom(f journal.Fact) FactData {
 // is holdings.go's, and a second copy of it would be a second thing to be
 // wrong.
 func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID) error {
-	props := make(map[PropID]bool, len(f.props))
+	// BOTH KINDS OF PROP (rpg-toolkit#1854). A placed footprint is held,
+	// dropped and arrives through these same facts, so a boundary that knew
+	// only the legacy list would refuse every save of a run in which somebody
+	// picked one up — which is what it did, caught on the #1854 walk when a
+	// held placed letter turned the camp and the dissolve reloaded the world.
+	// The id namespace is shared by construction (compilePlaced refuses a
+	// collision), so one set cannot hide two things.
+	props := make(map[PropID]bool, len(f.props)+len(f.placed))
+	arrivals := make(map[PropID]bool, len(f.props)+len(f.placed))
 	for _, p := range f.props {
 		if p.ID != "" {
 			props[p.ID] = true
+			if p.Arrives != nil {
+				arrivals[p.ID] = true
+			}
+		}
+	}
+	for i := range f.placed {
+		p := &f.placed[i]
+		props[p.id] = true
+		if p.arrives != nil {
+			arrivals[p.id] = true
 		}
 	}
 	members := make(map[string]bool, len(everMembers))
 	for _, id := range everMembers {
 		members[string(id)] = true
-	}
-
-	arrivals := make(map[PropID]bool, len(f.props))
-	for _, p := range f.props {
-		if p.ID != "" && p.Arrives != nil {
-			arrivals[p.ID] = true
-		}
 	}
 
 	for i, fd := range data.Facts {

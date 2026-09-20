@@ -529,17 +529,60 @@ func (s *PlacedOrdersSuite) TestAPlacementHoldingARecordNobodyDeclaredIsRefused(
 
 // --- Persistence: the three orders survive the blob ---
 
-// A reload rebuilds the same answers from the same bytes: what is holdable,
-// what it carries, and what is still in reserve.
-func (s *PlacedOrdersSuite) TestTheThreeOrdersSurviveASaveAndLoad() {
-	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+// reloadOf saves the run and loads it back — the round trip every verb makes
+// at the host seam, where a blob is checked before it is trusted.
+func (s *PlacedOrdersSuite) reloadOf(enc *encounter.Encounter) *encounter.Encounter {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
+	s.Require().NoError(err, "the run this module just wrote is one it can read")
+
+	return reloaded
+}
+
+// A RUN IN WHICH A PLACEMENT WAS TAKEN, BROUGHT SOMETHING IN AND WAS PUT
+// DOWN AGAIN RELOADS — all three holdings facts about a footprint, across the
+// boundary that decides whether a blob is trusted.
+//
+// FOUND ON THE WALK, not here (rpg-toolkit#1854). The load boundary checks
+// that every `held:`, `dropped:` and `arrived:` fact names a prop the field
+// places, and it knew only the legacy list — so the first save after somebody
+// picked up a placed letter was a save the next verb refused to read. Nothing
+// in this file caught it, because every reload here was of a run where
+// nothing had happened yet; the stack caught it the moment a held letter
+// turned a camp and the dissolve reloaded the world.
+func (s *PlacedOrdersSuite) TestARunThatHeldDroppedAndArrivedAPlacementReloads() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2), bella: authoredAt(5, 5)})
+
+	s.learnTheWord(enc)
+	s.Require().Contains(s.placedIDs(enc), encounter.PropID(theBarricade), "the arrival happened")
+
+	s.Run("a held placement reloads", func() {
+		held := s.reloadOf(enc)
+		s.NotContains(s.placedIDs(held), encounter.PropID(theScroll), "still in somebody's hands")
+		s.Contains(s.placedIDs(held), encounter.PropID(theBarricade), "and still on the floor")
+	})
+
+	out, err := enc.Exit(&encounter.ExitInput{Member: alice})
 	s.Require().NoError(err)
+	s.Require().Nil(out.Closed)
+	dropped := s.placedNamed(enc, theScroll)
+
+	s.Run("and so does a dropped one, where it was dropped", func() {
+		reloaded := s.reloadOf(enc)
+		s.Equal(dropped.Placement.Origin, s.placedNamed(reloaded, theScroll).Placement.Origin,
+			"the rectangle comes back standing where it was put down")
+	})
+}
+
+// A reload rebuilds the same answers from the same bytes: what is holdable,
+// what it carries, and what is still in reserve.
+func (s *PlacedOrdersSuite) TestTheThreeOrdersSurviveASaveAndLoad() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+	reloaded := s.reloadOf(enc)
 
 	s.NotContains(s.placedIDs(reloaded), encounter.PropID(theBarricade),
 		"a reserved rectangle is still in reserve")
