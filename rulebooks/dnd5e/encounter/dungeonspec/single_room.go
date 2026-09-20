@@ -19,6 +19,14 @@ import "gopkg.in/yaml.v3"
 // neither decodes, compiles and marshals exactly as it did before these keys
 // existed, which is what lets every room authored before the site scope
 // survive it untouched.
+//
+// # The third root key, and the same reason
+//
+// [SingleRoomSpec.Intel] joined them for rule 3 of the placement law
+// (rpg-project#488): what is NOT PLACED lives at the root. A record of
+// knowledge is a thing in the file like a door — declared once, referred to
+// by name from whatever carries it ([RoomMonsterBinding.Holds]) — and it
+// stands nowhere, so there is no placed thing to key it by.
 type SingleRoomSpec struct {
 	Version int            `yaml:"version" json:"version"`
 	Key     string         `yaml:"key" json:"key"`
@@ -31,6 +39,21 @@ type SingleRoomSpec struct {
 	// Dispositions are how those sides stand to each other, in authored
 	// order. Optional; the shape and every refusal are [DispositionSpec]'s.
 	Dispositions []DispositionSpec `yaml:"dispositions,omitempty" json:"dispositions,omitempty"`
+
+	// Intel is the knowledge this site declared, in authored order — the v2
+	// root's own key ([Spec.Intel], rpg-project#488 R1 rule 3) reaching this
+	// dialect unchanged: the same [IntelSpec] shape, the same required and
+	// unique id, the same "a record says exactly one thing it reveals".
+	// Optional; absent means none.
+	//
+	// ONE TARGET IN THIS DIALECT, AND IT IS `fact`. [RevealsSpec.Door] is
+	// REFUSED by name at `intel[<i>].reveals.door` (rpg-project#488 R3), in
+	// the shape [RoomDoorBinding.Concealed]'s refusal takes: revealing the
+	// way to a door means something, it just needs a CONCEALED door on a
+	// crossing to mean it, and a single room has no crossing to hide one on.
+	// The field stays on the shared shape so the refusal can be a sentence at
+	// the author's own path instead of "not a key this build reads".
+	Intel []IntelSpec `yaml:"intel,omitempty" json:"intel,omitempty"`
 
 	Room RoomSource `yaml:"room" json:"room"`
 }
@@ -114,11 +137,11 @@ type RoomMonsterSource struct {
 // RoomMonsterBinding is one creature's ORDERS: what it does, what it is like,
 // and what it fights with (rpg-project#477, Decision 4).
 //
-// One of the three declaration kinds on a placed thing, beside
-// `propDeclarations` and `doorBindings`, and keyed the same way: by the id of
-// the thing it is about. A binding naming a creature no `monsters:` entry
-// declares is refused exactly as a prop declaration with no live owner is —
-// a declaration can never outlive the thing it names.
+// One of the FOUR declaration kinds on a placed thing, beside
+// `propDeclarations`, `doorBindings` and `propBindings`, and keyed the same
+// way: by the id of the thing it is about. A binding naming a creature no
+// `monsters:` entry declares is refused exactly as a prop declaration with no
+// live owner is — a declaration can never outlive the thing it names.
 //
 // EVERY FIELD IS OPTIONAL, and the common state of this whole block is
 // absence: a creature with nothing to override needs no binding at all.
@@ -146,13 +169,141 @@ type RoomMonsterBinding struct {
 	// ORDER IS THE POINT: both drivers take the first action whose target is
 	// in reach, so this list is never sorted and never deduplicated.
 	Actions []string `yaml:"actions,omitempty" json:"actions,omitempty"`
+
+	// Holds is the intel records this creature carries from spawn, by record
+	// id — [PlaceSpec.Holds]'s field and its one refusal (rpg-project#488 R1,
+	// the key table's "who carries it"): a record id this document does not
+	// declare under root `intel:` is refused by name at
+	// `…monsterBindings.<id>.holds[<j>]`.
+	//
+	// ORDERS, NOT IDENTITY, which is why it is here and not on the
+	// `monsters:` entry (rule 1). "The captain is not a role: it is a monster
+	// holding a record, and nothing in the game needs the word captain."
+	//
+	// THE SAME RECORD MAY BE HELD BY SEVERAL CREATURES, for [PlaceSpec.Holds]'
+	// reason: intel copies rather than moving, so two guards may both know the
+	// way in and looting either teaches it. Not refused as a duplicate.
+	Holds []string `yaml:"holds,omitempty" json:"holds,omitempty"`
+
+	// Intimidate is the check a character must beat to frighten this creature
+	// — [PlaceSpec.Intimidate]'s shape and its sentences (rpg-project#454;
+	// rpg-project#488 R5), the same approach list a lock carries, priced per
+	// route.
+	//
+	// OMITTED MEANS DERIVED, NOT UNGATED: absent, the rulebook rolls
+	// Intimidation against the stat block's own passive Insight. The
+	// NIL-VS-EMPTY LAW IS [RoomDoorBinding.Locked]'s — nil is "the author
+	// said nothing", and `intimidate: []` is an authored check that forgot to
+	// say how it is beaten, refused by name.
+	Intimidate CheckSpec `yaml:"intimidate,omitempty" json:"intimidate,omitempty"`
+
+	// Persuade is [RoomMonsterBinding.Intimidate]'s twin — the check to talk
+	// this creature round ([PlaceSpec.Persuade], rpg-project#458;
+	// rpg-project#488 R5). The same shape, the same derived default when
+	// absent, and the same nil-vs-empty law.
+	Persuade CheckSpec `yaml:"persuade,omitempty" json:"persuade,omitempty"`
+
+	// Arrives is the predicate that brings this creature into the run —
+	// [PlaceSpec.Arrives]'s field and [PredicateSpec]'s one grammar
+	// (rpg-project#488 R1, the key table's "something that comes in later").
+	// Optional: absent means it stands there from the first frame, as every
+	// creature in this dialect did before this key existed.
+	//
+	// A CREATURE WITH A PREDICATE IS IN RESERVE until it holds — on no map
+	// and in no roster, then placed at its authored `cell:` with an `arrived`
+	// beat. Refused when it can never hold, by the liveness rule every
+	// predicate in this document meets: a creature waiting on its own fall,
+	// or a ring of reserved creatures each waiting on another's.
+	Arrives *PredicateSpec `yaml:"arrives,omitempty" json:"arrives,omitempty"`
+}
+
+// RoomPropBinding is one placed item's ORDERS: what the party can do with it,
+// what it carries, and whether it is here yet (rpg-project#488, R1).
+//
+// The FOURTH declaration kind on a placed thing, after `propDeclarations`,
+// `monsterBindings` and `doorBindings`, KEYED BY THE SAME LAW: the id of the
+// placed item it is about, which must be an id `propDeclarations` declares.
+//
+//	propBindings:
+//	  heirloom: { holdable: true }
+//	  letter:   { holdable: true, holds: [wisemans-letter], arrives: { round: 6 } }
+//
+// # Definition, state, orders — and which is which
+//
+// `propDeclarations` is the item's DEFINITION: its footprint and what it
+// blocks, which is the World Builder's own (world-builder-vs-dungeon-builder).
+// `doorBindings` is a door's STATE. This is what a PLACED prop DOES, which is
+// a binding by rule 1 of the placement law — identity on the actor, orders on
+// the binding. An item may carry the definition (required, it is where the
+// footprint comes from) plus at most ONE of the other two.
+//
+// # What it may not be, and why each one says so
+//
+// An id no `propDeclarations` entry owns has no prop to give orders to. An id
+// that is ALSO a door is a door somebody picks up, and nothing says what that
+// means until a use case does. An id naming an arrangement TEMPLATE is orders
+// inside a stamp, which nothing remaps yet — the same refusal an arrangement
+// door gets. Each is refused by name at its own path.
+//
+// # It decodes today and does not compile yet, and that is deliberate
+//
+// A v4 item compiles to [encounter.PlacedPropInput], a FOOTPRINT, whose own
+// doc says it: "a placed footprint is not holdable, does not arrive from
+// reserve". Holdable, holds and arrives hang off the legacy
+// [encounter.PropInput], which needs a content ref and an anchor cell a v4
+// item has neither of. So [CompileSingleRoom] REFUSES this block by name
+// ([propBindingNoPrimitive]) rather than carrying it inert — the primitive is
+// rpg-toolkit#1854, and a key the engine accepts and silently drops is the
+// one thing worse than a key it refuses.
+type RoomPropBinding struct {
+	// Holdable is whether a member can pick this prop up
+	// ([PlaceSpec.Holdable], [encounter.PropInput.Holdable]). Optional.
+	//
+	// A PLAIN BOOL, unlike v2's pointer, and the difference is the keying
+	// law rather than a relaxation. v2's is a pointer only so a MONSTER that
+	// wrote `holdable: false` can be told it cannot declare that at all; this
+	// block is keyed by a prop id, so there is no monster here to refuse and
+	// nothing for the pointer to distinguish. What is left is
+	// [encounter.PropInput.Holdable]'s own rule — "there is only one thing
+	// 'said nothing about holdable' can mean: a thing nobody declared
+	// holdable stays scenery" — which is exactly why
+	// [RoomDoorBinding.Closed] is a plain bool too.
+	Holdable bool `yaml:"holdable,omitempty" json:"holdable,omitempty"`
+
+	// Holds is the intel records this prop carries, by record id —
+	// [RoomMonsterBinding.Holds]'s field on the other holder, with the same
+	// refusal ([PlaceSpec.Holds], R6).
+	//
+	// THE RECORD STAYS ON THE PROP. Picking it up teaches whoever holds it
+	// and the paper does not stop saying what it says, so a scroll handed on
+	// teaches the next holder too. That is why intel does not need a fight to
+	// test: "if we want to test the intel we need to be able to place it on a
+	// few things — not the hardest monster to kill in the game."
+	//
+	// A prop that carries records need NOT be Holdable. Authoring one nobody
+	// can pick up is inert, not an error.
+	Holds []string `yaml:"holds,omitempty" json:"holds,omitempty"`
+
+	// Arrives is the predicate that brings this prop onto the floor —
+	// [RoomMonsterBinding.Arrives]'s field on a prop, the same
+	// [PredicateSpec] and the same liveness rule. Optional: absent means it
+	// is there from the first frame.
+	//
+	// A PROP THAT ARRIVES IS NOWHERE UNTIL ITS PREDICATE HOLDS, exactly as a
+	// creature is. The authored scene still carries its node — presentation
+	// is content — and what is on the floor is the engine's `placed` answer,
+	// never the scene (R1).
+	Arrives *PredicateSpec `yaml:"arrives,omitempty" json:"arrives,omitempty"`
 }
 
 // RoomDoorBinding is one placed item's DOOR STATE: that the item is a door at
 // all, and what state it is resting in (rpg-project#485, R2).
 //
 // The THIRD declaration kind on a placed thing, after `propDeclarations` and
-// `monsterBindings`, keyed the same way: by the id of the thing it is about.
+// `monsterBindings` and before `propBindings`, keyed the same way: by the id
+// of the thing it is about. An id in BOTH this block and `propBindings` is a
+// door somebody picks up, and is refused by name until a use case says what
+// that means (rpg-project#488, R1).
 //
 //	doorBindings:
 //	  cellar-door: { closed: true }
@@ -235,6 +386,18 @@ type RoomGameplaySource struct {
 	// EVERY ID HERE ALSO NEEDS A PROP DECLARATION, because that is where the
 	// door's footprint comes from; a binding without one is refused by name.
 	DoorBindings map[string]RoomDoorBinding `yaml:"doorBindings,omitempty" json:"doorBindings,omitempty"`
+
+	// PropBindings is what each placed prop DOES — holdable, what it carries,
+	// whether it is here yet — under its stable id (rpg-project#488, R1). The
+	// FOURTH declaration kind, under the same keying law as the three above.
+	// Optional, and ABSENT WHEN NO PROP HAS ORDERS: a room that declares none
+	// writes exactly the bytes it wrote before this key existed.
+	//
+	// EVERY ID HERE ALSO NEEDS A PROP DECLARATION, for [RoomDoorBinding]'s
+	// reason one kind over, and may not be a door or an arrangement template.
+	// See [RoomPropBinding] for why this block decodes and does not yet
+	// compile.
+	PropBindings map[string]RoomPropBinding `yaml:"propBindings,omitempty" json:"propBindings,omitempty"`
 }
 
 // SingleRoomDecodeInput supplies YAML source for decoding.

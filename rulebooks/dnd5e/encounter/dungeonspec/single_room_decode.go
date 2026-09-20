@@ -370,6 +370,10 @@ func sourceShapeErrors(root *yaml.Node) []FieldError {
 	// reported as the typo it is rather than as a room problem — the order
 	// the web's own decoder keeps (singleRoomDungeon.ts).
 	siteScopeShape(doc, add)
+	// THE RECORDS BEFORE THE ROOM, for [siteScopeShape]'s reason one key
+	// over: a `holds:` inside the room names one of these, so a typo in a
+	// record is reported as the typo it is rather than as a holder problem.
+	intelShape(doc, add)
 	if room := requireMapping(doc, "room", "", add); room != nil {
 		roomShape(room, add)
 	}
@@ -440,6 +444,7 @@ func gameplayShape(gp *yaml.Node, add errSink) {
 	}
 	monsterBindingsShape(gp, add)
 	doorBindingsShape(gp, add)
+	propBindingsShape(gp, add)
 }
 
 // cellShape reads an axial cell. Both coordinates are required, and the

@@ -164,6 +164,13 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 	// THE SET, NOT THE COUNT. A length pin is a line somebody bumps when a
 	// fixture arrives; naming the files says which dungeons this package
 	// ships, so a deleted one fails as loudly as a new one.
+	//
+	// THE GLOB IS ONE DIRECTORY DEEP, AND THAT IS LOAD-BEARING
+	// (rpg-project#488). testdata/decode-only/ holds a v4 document that
+	// decodes and is then REFUSED at compile — `propBindings`, until a placed
+	// footprint can be held (rpg-toolkit#1854) — so it is not a dungeon this
+	// package ships and has no picture to commit. prop_bindings_test.go reads
+	// it by name.
 	names := make([]string, 0, len(files))
 	for _, path := range files {
 		names = append(names, filepath.Base(path))
@@ -176,6 +183,8 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"tomb-second-skeleton.yaml",
 		"world-builder-v3.yaml",
 		"world-builder-v4-site.yaml",
+		"world-builder-v4-front-room.yaml",
+		"world-builder-v4-raider-camp.yaml",
 	}, names, "the authored dungeons this package ships")
 
 	for _, path := range files {

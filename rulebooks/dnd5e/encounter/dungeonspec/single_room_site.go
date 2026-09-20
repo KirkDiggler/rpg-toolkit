@@ -139,6 +139,15 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 		// [optionalReference]'s case: a name that names nothing.
 		optionalReference(b, "temper", p, add)
 		optionalNode(b, "actions", p, add)
+		// AND THE FOUR GAMEPLAY KEYS (rpg-project#488,
+		// single_room_gameplay.go). Each is judged here for the same one
+		// thing: an authored `null` that the typed decode would read as the
+		// Go zero value — a `holds:` the author emptied, a check they
+		// deleted, a predicate that is now no predicate at all.
+		optionalNode(b, "holds", p, add)
+		optionalNode(b, "intimidate", p, add)
+		optionalNode(b, "persuade", p, add)
+		optionalNode(b, "arrives", p, add)
 	}
 }
 
@@ -184,6 +193,11 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	})
 	g.factions()
 	g.factionOrders()
+	// THE RECORDS BEFORE ANY HOLDER, which is [validation.intel]'s own
+	// ordering reason: the orders loop below asks whether a `holds:` names a
+	// record that exists, so the universe it may name has to be indexed
+	// first (rpg-project#488, single_room_gameplay.go).
+	declared := intelRecords(s.Intel, add)
 	for i, m := range g.members.all {
 		// EVERY MEMBER HERE IS A MONSTER, and the kind says so rather than
 		// being read back off the ref: [monsterValues] already refuses a ref
@@ -198,9 +212,23 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		g.placeOn(at, b.On)
 		g.placeTemper(at, b.Temper)
 		g.placeActions(at, b.Actions)
+		// AND THE GAMEPLAY KEYS THE SAME BINDING CARRIES (rpg-project#488
+		// R1/R5). In this loop rather than in one of their own, so they are
+		// judged for the LIVE cast only: a binding whose creature is gone is
+		// named once, below, and asking a second question about its contents
+		// would send an author looking for a second problem.
+		bindingHolds(g, at, m.id, b.Holds, declared)
+		bindingChecks(g, at, b)
 	}
 	g.minds()
 	g.dispositions()
+	// THE PROP ORDERS AND THE ARRIVALS (rpg-project#488,
+	// single_room_gameplay.go). Here rather than in the loop above because
+	// neither is about the cast: a prop binding is about a placed thing, and
+	// an `arrives:` predicate may name a `{ stance }`, which is judged
+	// against the whole table [grammar.dispositions] just built.
+	propBindingValues(gp, g, declared)
+	singleRoomArrivals(gp, g)
 	// A binding whose creature is gone is refused the way a prop declaration
 	// with no live owner is — a declaration may not outlive the thing it
 	// declares, and the web's room draft keeps the same discipline by dropping
