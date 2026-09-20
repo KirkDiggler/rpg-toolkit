@@ -118,9 +118,16 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 	}
 
 	// THE PROBE LAW, as the whole gate. Nothing in this field has that id,
-	// for anybody: there is no secret to keep and nothing to point at.
+	// for anybody: there is no secret to keep and nothing to point at. Both
+	// lists are asked, because both kinds of thing can be taken since
+	// rpg-toolkit#1854 and the id namespace is shared by construction
+	// (compilePlaced refuses a collision), so at most one can answer.
 	index := e.field.propIndexOf(in.Target)
 	if index < 0 {
+		if placed := e.field.placedIndexOf(in.Target); placed >= 0 {
+			return e.holdPlaced(in, &e.field.placed[placed])
+		}
+
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
 	}
 
@@ -152,7 +159,7 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
 	}
 
-	if _, holdable := e.field.holdable[in.Target]; !holdable {
+	if !e.field.holdable[in.Target] {
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNotHoldable)
 	}
 	if moved && placement.gone {
@@ -170,25 +177,135 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 		return nil, err
 	}
 
-	at := uint64(e.clock.ToData().HighWater)
-	if err := e.holdings.markHeld(in.Member, in.Target); err != nil {
+	return e.takeProp(in.Member, in.Target)
+}
+
+// holdPlaced is [Encounter.Hold] for a FOOTPRINT (rpg-toolkit#1854), in the
+// same validation order and with the same refusals, asked of a rectangle
+// instead of a cell.
+//
+// Three questions change shape and only three, because a placement has no
+// anchor cell:
+//
+//   - IN RESERVE and ALREADY HELD are one read of the same fold every other
+//     query uses ([placedFold.stands]): a rectangle that is not on the floor
+//     is either waiting or in somebody's hands, and the journal says which.
+//   - SHOWN THIS MEMBER is the probe law asked of the member's own atlas:
+//     the placement is shown when its rectangle stands on a cell that atlas
+//     lists. Not a second copy of the concealment rules — the same
+//     projection [Encounter.showsCellTo] asks, read for a shape rather than
+//     a point.
+//   - REACH is [refuseOutOfReachCell] — THE LEGACY RULE, unchanged: grid
+//     distance from the member, Range 0 meaning adjacent — applied to every
+//     cell the placement stands on. Standing on one is distance zero;
+//     beside one is distance one. There is no footprint distance and no new
+//     flag (rpg-project#488 R1).
+//
+// Everything after the reach test is [Encounter.takeProp], shared with the
+// legacy path: one thing happens when a thing is picked up.
+func (e *Encounter) holdPlaced(in *HoldInput, p *placedContributor) (*HoldOutput, error) {
+	now := e.field.placedNow()
+	placement, standing := now.stands(p)
+	if !standing {
+		// NOT ON THE FLOOR IS NOT HERE. Reserved and already-taken are told
+		// apart below only for a placement the member can actually see: a
+		// reserved one is refused as an id that names nothing, exactly as a
+		// reserved legacy prop is, because "not yet" would confirm a thing
+		// no map shows.
+		if p.arrives != nil && !e.holdings.propPlacements()[p.id].arrived {
+			return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
+		}
+
+		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrAlreadyHeld)
+	}
+
+	cells := e.field.placedCells(placement)
+	shown, err := e.showsAnyCellTo(in.Member, cells)
+	if err != nil {
 		return nil, fmt.Errorf("hold: %w", err)
 	}
-	if err := e.holdings.holdProp(in.Member, in.Target, "hold"); err != nil {
+	if !shown {
+		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
+	}
+
+	if !e.field.holdable[in.Target] {
+		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNotHoldable)
+	}
+	if err := e.refuseOffTurn("hold", in.Member); err != nil {
+		return nil, err
+	}
+	from, placed := e.canvas.GetEntityPosition(string(in.Member))
+	if !placed {
+		return nil, fmt.Errorf("hold: member %q: %w", in.Member, ErrBadPlacement)
+	}
+	inReach := false
+	for _, cell := range cells {
+		if e.refuseOutOfReachCell("hold", from, cell, in.Range, string(in.Target)) == nil {
+			inReach = true
+			break
+		}
+	}
+	if !inReach {
+		return nil, fmt.Errorf("hold: %s: %w", in.Target, ErrOutOfRange)
+	}
+
+	return e.takeProp(in.Member, in.Target)
+}
+
+// showsAnyCellTo is the probe law's question asked of a SHAPE: is any of the
+// cells this thing stands on in the member's own atlas.
+//
+// One atlas build for the whole set rather than one per cell — the same
+// projection [Encounter.showsCellTo] reads, and its error rule verbatim: a
+// wiring fault is returned, never folded into "not shown", because the probe
+// law is about what a player may infer and not a reason to lie to the
+// operator.
+func (e *Encounter) showsAnyCellTo(member MemberID, cells []spatial.Position) (bool, error) {
+	atlas, err := e.AtlasFor(member)
+	if err != nil {
+		return false, fmt.Errorf("atlas for %q: %w", member, err)
+	}
+	shown := make(map[spatial.Position]bool, len(atlas.Cells))
+	for _, c := range atlas.Cells {
+		shown[c] = true
+	}
+	for _, c := range cells {
+		if shown[c] {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// takeProp is WHAT HAPPENS WHEN A THING IS PICKED UP, whichever kind of
+// thing it is: the two holdings facts, the `held` beat to everyone present,
+// what the thing teaches whoever holds it, and who was standing with them.
+//
+// Shared by [Encounter.Hold] and [Encounter.holdPlaced] so a legacy prop and
+// a footprint cannot come to differ in what a take RECORDS — the rules that
+// differ are the ones about where the thing is, and they are all above this
+// line.
+func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error) {
+	at := uint64(e.clock.ToData().HighWater)
+	if err := e.holdings.markHeld(member, target); err != nil {
+		return nil, fmt.Errorf("hold: %w", err)
+	}
+	if err := e.holdings.holdProp(member, target, "hold"); err != nil {
 		return nil, fmt.Errorf("hold: %w", err)
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
 		"beat":   "held",
-		"holder": string(in.Member),
-		"prop":   string(in.Target),
+		"holder": string(member),
+		"prop":   string(target),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("hold: marshal beat: %w", err)
 	}
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       at,
-		Audience: e.audienceFor(subjectBeat, in.Member),
+		Audience: e.audienceFor(subjectBeat, member),
 		Tags:     map[string]string{"tag": "hold"},
 		Payload:  payload,
 	}); err != nil {
@@ -200,7 +317,7 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 	// looting one off a body uses — and any DOOR_REVEALED it causes follows
 	// the `held` beat, because the verb's own beat precedes its consequences
 	// ([Encounter.refreshSight]'s law).
-	if err := e.applyPropReveals(in.Member, in.Target, at); err != nil {
+	if err := e.applyPropReveals(member, target, at); err != nil {
 		return nil, fmt.Errorf("hold: %w", err)
 	}
 

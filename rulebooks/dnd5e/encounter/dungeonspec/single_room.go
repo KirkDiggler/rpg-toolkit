@@ -245,19 +245,23 @@ type RoomMonsterBinding struct {
 // inside a stamp, which nothing remaps yet — the same refusal an arrangement
 // door gets. Each is refused by name at its own path.
 //
-// # It decodes today and does not compile yet, and that is deliberate
+// # Where the three keys land
 //
-// A v4 item compiles to [encounter.PlacedPropInput], a FOOTPRINT, whose own
-// doc says it: "a placed footprint is not holdable, does not arrive from
-// reserve". Holdable, holds and arrives hang off the legacy
-// [encounter.PropInput], which needs a content ref and an anchor cell a v4
-// item has neither of. So [CompileSingleRoom] REFUSES this block by name
-// ([propBindingNoPrimitive]) rather than carrying it inert — the primitive is
-// rpg-toolkit#1854, and a key the engine accepts and silently drops is the
-// one thing worse than a key it refuses.
+// A v4 item compiles to [encounter.PlacedPropInput], a FOOTPRINT, and since
+// rpg-toolkit#1854 a footprint carries all three: [applyPropBindings] lays
+// them onto the placement the item's own declaration produced, through the
+// compilers the monster binding already uses. Reach is DERIVED from the
+// rectangle rather than authored — the legacy hold rule applied to every cell
+// the footprint stands on ([encounter.PlacedPropInput.Holdable]) — so nothing
+// here asks for the anchor cell a v4 item does not have.
+//
+// This block used to DECODE and not COMPILE, refused by name while that
+// primitive was missing. Said here rather than deleted, because the refusal
+// is what the World Builder saw for a release and its sentence named the
+// issue that lifted it.
 type RoomPropBinding struct {
 	// Holdable is whether a member can pick this prop up
-	// ([PlaceSpec.Holdable], [encounter.PropInput.Holdable]). Optional.
+	// ([PlaceSpec.Holdable], [encounter.PlacedPropInput.Holdable]). Optional.
 	//
 	// A PLAIN BOOL, unlike v2's pointer, and the difference is the keying
 	// law rather than a relaxation. v2's is a pointer only so a MONSTER that

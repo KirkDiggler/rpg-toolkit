@@ -75,11 +75,22 @@ import (
 // obstruction, opaque alternate origin). Neither implies the other, and
 // neither is defaulted.
 //
-// NOT A LEGACY PROP. A placed footprint is not holdable, does not arrive
-// from reserve, carries no content ref and no [PropInput.Facing] word:
-// none of those protocols exist for it in this slice, and a changed or
+// NOT A LEGACY PROP, and the line moved once (rpg-toolkit#1854). A placed
+// footprint CAN be held and CAN arrive from reserve — the three fields
+// below are [PropInput]'s own, with [PropInput]'s own meanings, because
+// "what a placed thing does" is one protocol and two of them would be two
+// answers. What stays true is the rest of the sentence: a placed footprint
+// carries no content ref and no [PropInput.Facing] word, and a changed or
 // removed placement is a RECOMPILATION, not a runtime verb. Legacy props
 // keep their own path untouched; the two lists never share an ID.
+//
+// # Where a footprint STANDS, since it has no anchor cell
+//
+// Three protocols need a cell for a thing whose geometry is a rectangle in
+// the plane: reach, the probe law's visibility gate, and the cell an
+// arrival fact names. [field.placedCells] is the one answer all three ask,
+// and it derives rather than authors — see its own comment for the rule and
+// why nearest-centre is exact rather than approximate.
 type PlacedPropInput struct {
 	// ID names the placement. REQUIRED non-empty and unique — among placed
 	// contributors and against every legacy [PropInput.ID], because a cell
@@ -100,6 +111,59 @@ type PlacedPropInput struct {
 	// SOFT lane obstruction (see [canvasRoom.IsLineOfSightBlocked]), subject
 	// to the same lean-around rule as an occluding entity.
 	BlocksLineOfSight bool
+
+	// Holdable is whether a member can pick this placement up
+	// ([PropInput.Holdable], rpg-toolkit#1854). Optional, and FALSE IS THE
+	// HONEST ZERO VALUE for [PropInput.Holdable]'s reason: a thing nobody
+	// declared holdable stays scenery, which is what every placed footprint
+	// was before this field existed.
+	//
+	// TAKING IT IS THE LEGACY REACH RULE, DERIVED (rpg-project#488 R1).
+	// [Encounter.Hold] measures [refuseOutOfReachCell] — grid distance from
+	// the member's cell, Range 0 meaning adjacent — against every cell this
+	// placement stands on ([field.placedCells]). Standing on one of them is
+	// distance zero and in reach; being next to one is distance one and in
+	// reach. No second threshold exists for a footprint, and none is
+	// authored.
+	//
+	// A HELD PLACEMENT IS OFF THE FLOOR FOR EVERYONE: its rectangle blocks
+	// no step, closes no crossing, obstructs no lane and is absent from
+	// [Atlas.Placed], folded from the same `held:` fact a legacy prop's
+	// disappearance folds from (holdings.go). Dropping it puts the
+	// rectangle back with its origin on the cell it was dropped on.
+	Holdable bool
+
+	// Holds is the intel records this placement carries, by record id
+	// ([PropInput.Holds], rpg-project#372 R6). Optional; omitted means none.
+	//
+	// [PropInput.Holds]' rule verbatim, because it is the same rule: the
+	// records are CONSTRUCTION TRUTH and they STAY WITH THE THING, so a
+	// scroll handed on or dropped and picked up again teaches the next
+	// holder too. A record this field does not declare is refused at
+	// construction (ErrNoIntel), and a placement that carries records need
+	// not be Holdable — inert, not an error.
+	Holds []IntelID
+
+	// Arrives is the predicate that brings this placement onto the floor
+	// ([PropInput.Arrives], rpg-project#375). Nil — the zero value, and
+	// every placement authored before arrivals existed — means it is there
+	// from the first frame.
+	//
+	// A PLACEMENT WITH A PREDICATE IS IN RESERVE, and the never-authored
+	// yardstick governs it exactly as it governs a reserved legacy prop: its
+	// rectangle blocks nothing, closes nothing, obstructs nothing, is absent
+	// from [Atlas.Placed], and [Encounter.Hold] refuses it as an id that
+	// names nothing (the probe law). When the predicate holds it is placed
+	// WHERE THE AUTHOR DREW IT — a rectangle needs no free cell to stand on
+	// and a footprint needs no floor, so nothing searches for room the way
+	// [Encounter.arrivalCell] does for a prop or a member — with the same
+	// `arrived:<id>@<cell>` fact and the same `arrived` beat every arrival
+	// writes. The cell in that fact is [field.placedCells]' first, which is
+	// where the thing stands.
+	//
+	// Refused at construction when it can never hold (ErrNoField), by the
+	// liveness rule [field.validatePropArrivals] applies to every prop.
+	Arrives Trigger
 }
 
 // placedContributor is one compiled placed prop: the input's facts, deep
@@ -111,7 +175,20 @@ type placedContributor struct {
 	placement         spatial.FootprintPlacement
 	blocksMovement    bool
 	blocksLineOfSight bool
+
+	// holdable, holds and arrives are the three orders a placement can
+	// carry (rpg-toolkit#1854), deep-copied like everything else here.
+	holdable bool
+	holds    []IntelID
+	arrives  Trigger
 }
+
+// mutable reports whether this contributor can leave the floor or arrive
+// onto it — the one question that decides whether a query has to fold the
+// journal at all. A placement that is neither holdable nor reserved stands
+// where it was compiled for the whole run, so every read of it costs
+// exactly what it cost before #1854.
+func (p *placedContributor) mutable() bool { return p.holdable || p.arrives != nil }
 
 // placedPlaneCellWidth is the across-flats width, in feet, of the plane the
 // placed facts are measured in: every cell is [FeetPerCell] across, the one
@@ -172,11 +249,169 @@ func (f *field) compilePlaced(in []PlacedPropInput) error {
 			},
 			blocksMovement:    p.BlocksMovement,
 			blocksLineOfSight: p.BlocksLineOfSight,
+			holdable:          p.Holdable,
+			holds:             append([]IntelID(nil), p.Holds...),
+			arrives:           p.Arrives,
 		}
 		seenID[p.ID] = true
+		// ONE HOLDABLE INDEX, BOTH KINDS (rpg-toolkit#1854, R-D). "Is this
+		// a thing that can be picked up" is a question about the FIELD, and
+		// [Encounter.Hold] and [validateEndingTriggers] must not have to ask
+		// it twice and risk two answers. The id namespace is already shared
+		// — the collision above is what makes that safe.
+		if p.Holdable {
+			f.holdable[p.ID] = true
+		}
 	}
 
 	return nil
+}
+
+// placedIndexOf is the index of the placed contributor with this id, or -1 —
+// [field.propIndexOf] for the other list, and linear for its reason.
+func (f *field) placedIndexOf(id PropID) int {
+	if id == "" {
+		return -1
+	}
+	for i := range f.placed {
+		if f.placed[i].id == id {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// placedCells is WHERE A FOOTPRINT STANDS, in cells — the one derivation
+// three protocols ask (rpg-toolkit#1854): [Encounter.Hold]'s reach, the
+// probe law's visibility gate, and the cell an arrival fact names.
+//
+// The rule has two clauses and no third:
+//
+//  1. Every cell of this field whose centre the rectangle covers —
+//     stationary [spatial.TraceFootprint] contact, the module's ONE standing
+//     query ([field.standingBlocks], [Encounter.CellAt],
+//     [ValidateStaticPlacements]). A table that spans three cells stands on
+//     three.
+//  2. When it covers none, the cell whose centre is NEAREST its origin.
+//
+// THE SECOND CLAUSE IS EXACT, NOT AN APPROXIMATION, and it exists because
+// most takeable things are smaller than a hex. A 0.3-unit scroll is a 0.87ft
+// square on a 5ft cell (dungeonspec's feetPerSourceUnit) and covers a centre
+// only if the author happened to drop it on one — the World Builder's own
+// raider letter covers zero of its room's nineteen cells. Nearest-centre is
+// the right answer rather than a fallback guess because a hex grid's cells
+// ARE the Voronoi cells of their centres: the nearest centre to a point is
+// the hex that point lies in. So clause 2 says "a thing smaller than a hex
+// stands in the hex it is in", which is what a table would say.
+//
+// NEVER EMPTY for a compiled field — compileRegions refuses a field with no
+// cells — so no caller needs a "stands nowhere" branch and no holdable
+// placement can be unreachable from everywhere. Sorted in the field's own
+// cell order, ties in clause 2 broken by [cellBefore] (C8).
+//
+// A trace error counts as covering, the fail-closed rule every other reader
+// of this geometry applies; compilePlaced makes it unreachable.
+func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
+	var covered []spatial.Position
+	var nearest spatial.Position
+	var nearestD2 float64
+	found := false
+
+	for _, cell := range f.cells {
+		centre := f.plane.CellCentre(cell)
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: p, From: centre, To: centre,
+		})
+		if err != nil || contact.Contact {
+			covered = append(covered, cell)
+			continue
+		}
+		dx, dy := centre.X-p.Origin.X, centre.Y-p.Origin.Y
+		d2 := dx*dx + dy*dy
+		if !found || d2 < nearestD2 || (d2 == nearestD2 && cellBefore(cell, nearest)) {
+			found, nearest, nearestD2 = true, cell, d2
+		}
+	}
+	if len(covered) > 0 {
+		return covered
+	}
+	if !found {
+		return nil
+	}
+
+	return []spatial.Position{nearest}
+}
+
+// placedFold is ONE journal fold per query, taken only if a query actually
+// reaches a placement that can move.
+//
+// A field whose placements are all scenery — every field authored before
+// #1854, and every v4 room whose props are furniture — never folds at all,
+// so standing, crossing and the sight lanes cost exactly what they cost
+// before. A field with one holdable letter folds once per query rather than
+// once per contributor, which is the same discipline [holdings.fold]'s own
+// "one walk, two answers" comment states.
+type placedFold struct {
+	f      *field
+	folded bool
+	at     map[PropID]propPlacement
+}
+
+// placedNow starts a fold for one query. Held by value at the call site: it
+// is a per-query scratch, never state.
+func (f *field) placedNow() placedFold { return placedFold{f: f} }
+
+// stands is where one contributor's rectangle is RIGHT NOW, and whether it
+// is on the floor at all.
+//
+// Three answers, and they are [PropInput.Arrives]' and [Encounter.Hold]'s
+// own, asked of a rectangle instead of a cell:
+//
+//   - In reserve (a predicate that has not held) — not on the floor.
+//   - Held (a `held:` fact with no later `dropped:`) — not on the floor.
+//   - Dropped — on the floor with its ORIGIN moved to the cell it was
+//     dropped on, shape and facing untouched. That is what picking a thing
+//     up and putting it down somewhere means for a rectangle, and it is the
+//     one place a placement's geometry is not construction truth.
+//
+// An ARRIVAL does not move it: the author drew where it stands, a footprint
+// needs no free cell, and the arrival's own cell is the fact's spelling
+// rather than a new pose ([PlacedPropInput.Arrives]).
+//
+// THE FIRST LINE DECIDES NOTHING, and is said out loud rather than left for
+// the next reader to test. A contributor that is neither holdable nor
+// reserved has no `held:`, `dropped:` or `arrived:` fact to its name — only a
+// holdable thing can be taken, and only a taken thing can be dropped — so
+// every branch below would fall through to the same answer for it. Deleting
+// the guard changes no result and no test kills it; what it saves is the
+// journal walk, which is why a field of plain furniture costs exactly what it
+// cost before #1854.
+func (pf *placedFold) stands(p *placedContributor) (spatial.FootprintPlacement, bool) {
+	if !p.mutable() {
+		return p.placement, true
+	}
+	if !pf.folded {
+		pf.folded = true
+		if pf.f.holdings != nil {
+			pf.at = pf.f.holdings.propPlacements()
+		}
+	}
+	state := pf.at[p.id]
+	if p.arrives != nil && !state.arrived {
+		return spatial.FootprintPlacement{}, false
+	}
+	if state.gone {
+		return spatial.FootprintPlacement{}, false
+	}
+	if state.dropped {
+		moved := p.placement
+		moved.Origin = pf.f.plane.CellCentre(state.at)
+
+		return moved, true
+	}
+
+	return p.placement, true
 }
 
 // validatePlacement refuses a placement whose geometry is missing,
@@ -275,13 +510,22 @@ func (f *field) blockingDoorFootprints() []*doorRecord {
 // applies to the same class of impossible answer.
 func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
 	centre := f.plane.CellCentre(cell)
+	now := f.placedNow()
 	for i := range f.placed {
 		p := &f.placed[i]
 		if !p.blocksMovement {
 			continue
 		}
+		// A PLACEMENT THAT IS NOT ON THE FLOOR CLOSES NOTHING
+		// (rpg-toolkit#1854): one waiting in reserve and one somebody is
+		// carrying are both absent, exactly as a reserved legacy prop is off
+		// the canvas and a held one is out of every atlas.
+		placement, standing := now.stands(p)
+		if !standing {
+			continue
+		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: p.placement, From: centre, To: centre,
+			Placement: placement, From: centre, To: centre,
 		})
 		if err != nil || contact.Contact {
 			return p.id, true
@@ -346,13 +590,18 @@ func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 // caller deciding a step refuses rather than guesses (the bool seams below
 // fail closed for the same reason).
 func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) {
+	now := f.placedNow()
 	for i := range f.placed {
 		p := &f.placed[i]
 		if !p.blocksMovement {
 			continue
 		}
+		placement, standing := now.stands(p)
+		if !standing {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: p.placement,
+			Placement: placement,
 			From:      f.plane.CellCentre(from),
 			To:        f.plane.CellCentre(to),
 		})
@@ -391,13 +640,18 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 // and SightLanes routes around it through the origin-exclusion rule its own
 // contract names ("At excludes origins with Contact").
 func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
+	now := f.placedNow()
 	for i := range f.placed {
 		p := &f.placed[i]
 		if !p.blocksLineOfSight {
 			continue
 		}
+		placement, standing := now.stands(p)
+		if !standing {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: p.placement,
+			Placement: placement,
 			From:      f.plane.CellCentre(from),
 			To:        f.plane.CellCentre(to),
 		})
@@ -435,13 +689,18 @@ func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
 // through.
 func (f *field) sightBlocksOriginAt(cell spatial.Position) (bool, error) {
 	centre := f.plane.CellCentre(cell)
+	now := f.placedNow()
 	for i := range f.placed {
 		p := &f.placed[i]
 		if !p.blocksLineOfSight {
 			continue
 		}
+		placement, standing := now.stands(p)
+		if !standing {
+			continue
+		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: p.placement, From: centre, To: centre,
+			Placement: placement, From: centre, To: centre,
 		})
 		if err != nil {
 			return false, fmt.Errorf("placed prop %q: %w", p.id, err)
@@ -483,3 +742,14 @@ func (e *Encounter) crossingBlocked(from, to spatial.Position) (PropID, bool, er
 
 	return e.field.crossingBlocks(from, to)
 }
+
+// attachHoldings gives the field the run's holdings reader, so the four
+// placed-geometry queries can ask where each rectangle is right now
+// (rpg-toolkit#1854).
+//
+// THE READER, NOT A SNAPSHOT — [field.attachDoorFootprints]' rule for the
+// second kind of thing that changes mid-scene. Called by both construction
+// seams once the journal exists; a field compiled without a run keeps nil
+// here and reads the authored geometry, which is what a field nobody is
+// playing is.
+func (f *field) attachHoldings(h *holdings) { f.holdings = h }

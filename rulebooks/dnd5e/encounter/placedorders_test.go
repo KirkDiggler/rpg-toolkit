@@ -1,0 +1,572 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package encounter_test
+
+// placedorders_test.go is A PLACED FOOTPRINT CAN BE HELD AND CAN ARRIVE
+// (rpg-toolkit#1854, rpg-project#488 R1) — the three orders a rectangle now
+// carries, proved through the exported verbs rather than through the compile.
+//
+// # What each claim is, and what would break it
+//
+//   - REACH IS DERIVED. A placement has no anchor cell, so [Encounter.Hold]
+//     applies the LEGACY reach rule — grid distance, Range 0 meaning adjacent
+//     — to every cell the footprint stands on. Two fixtures carry that: a
+//     fifteen-foot slab covering three cells, taken from beside the far one
+//     rather than only from beside its origin; and a scroll SMALLER THAN A
+//     HEX covering no cell centre at all, which stands in the hex it lies in.
+//     The second is the World Builder's own case — a 0.3-unit item is a
+//     0.87ft square on a 5ft cell — and a rule that only read covered centres
+//     would make every such thing unreachable from everywhere.
+//
+//   - ARRIVING IS ABSENT. Until its predicate holds, a reserved placement is
+//     on no map, closes no cell and obstructs no lane: the never-authored
+//     yardstick, asked of a rectangle. All three are asserted BEFORE and
+//     AFTER, through [Encounter.Atlas], [Encounter.CellAt] and the canvas's
+//     own sight, so a claim that only checked the atlas could not pass.
+//
+//   - ONE STORE. Held, dropped and what it teaches go through the holdings
+//     journal exactly as a legacy prop's do, which is why the fact a placed
+//     letter carries can bring a LEGACY prop in from reserve in the same
+//     breath as a placed one: a fact is a fact, whichever kind of thing
+//     taught it.
+//
+// NOTHING HERE RE-IMPLEMENTS THE GEOMETRY. Every expected cell comes from
+// spatial's own embedding through [centreOf], the same frame the field
+// compiles, and every distance the reach claims depends on is asserted with
+// [Encounter.Distance] rather than assumed from a picture.
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
+
+const (
+	// theSlab is a fifteen-foot table covering three cells in a row —
+	// holdable, so "any covered cell" has something to be about.
+	theSlab = "slab"
+
+	// theScroll is smaller than a hex and covers no cell centre: the
+	// fallback clause of [field.placedCells], and the World Builder's
+	// authored letter.
+	theScroll = "scroll"
+
+	// theBarricade waits in reserve and blocks both facts when it comes.
+	theBarricade = "barricade"
+
+	// theNotes is what the scroll says; theWord is the fact it teaches.
+	theNotes = "scroll-notes"
+	theWord  = "the-word"
+
+	// thePrize is a LEGACY prop waiting on the same fact — the control that
+	// makes "exactly as for a legacy prop" an assertion rather than a claim.
+	thePrize = "prize"
+
+	// theWayOut is the exit the recovery ending is bound to.
+	theWayOut = "way-out"
+)
+
+// slabOrigin, scrollOrigin and barricadeOrigin are the three placements'
+// poses, named so the assertions can talk about where each thing is.
+var (
+	// The slab is centred on cell (2,4) and reaches five feet either side of
+	// it, so the centres of (1,4) and (3,4) fall inside it too.
+	slabCentre = cellAt(2, 4)
+
+	// The scroll lies a foot and a bit off cell (2,2)'s centre: inside that
+	// hex, on no centre at all.
+	scrollHex = cellAt(2, 2)
+
+	// The barricade stands across cell (1,0) — thirty feet of it, which is
+	// every lane between the two sides of the hall.
+	barricadeHex = cellAt(1, 0)
+)
+
+// PlacedOrdersSuite runs every scene on the one hall below.
+type PlacedOrdersSuite struct {
+	suite.Suite
+}
+
+func TestPlacedOrdersSuite(t *testing.T) {
+	suite.Run(t, new(PlacedOrdersSuite))
+}
+
+// slabPlacement is the three-cell table: five feet across the row, fifteen
+// along it, centred on (2,4).
+func slabPlacement() spatial.FootprintPlacement {
+	centre := centreOf(slabCentre)
+
+	return spatial.FootprintPlacement{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 5, D: 15}},
+		Origin:    centre,
+	}
+}
+
+// scrollPlacement is a ten-inch square sitting a foot off cell (2,2)'s
+// centre — the shape a World Builder item actually compiles to.
+func scrollPlacement() spatial.FootprintPlacement {
+	centre := centreOf(scrollHex)
+
+	return coveredBox(0.87, spatial.Point{X: centre.X + 1.2, Y: centre.Y})
+}
+
+// ordersField is the hall: a slab, a scroll that teaches a fact, a barricade
+// and a prize both waiting on that fact, and one way out.
+func ordersField() encounter.FieldInput {
+	return encounter.FieldInput{
+		Canvas:  openAir(),
+		Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
+		Intel: []encounter.IntelRecord{
+			{ID: theNotes, Reveals: encounter.RevealTargets{Fact: theWord}},
+		},
+		Props: []encounter.PropInput{
+			func() encounter.PropInput {
+				p := holdableProp(thePrize, "dnd5e:props:chest", spatial.Position{X: 5, Y: 5})
+				p.Arrives = encounter.TriggerFact{Fact: theWord}
+
+				return p
+			}(),
+		},
+		Placed: []encounter.PlacedPropInput{
+			{ID: theSlab, Placement: slabPlacement(), Holdable: true},
+			{ID: theScroll, Placement: scrollPlacement(), Holdable: true, Holds: []encounter.IntelID{theNotes}},
+			{
+				ID: theBarricade, Placement: thinWall(0.2, 30, 0, centreOf(barricadeHex)),
+				BlocksMovement: true, BlocksLineOfSight: true,
+				Arrives: encounter.TriggerFact{Fact: theWord},
+			},
+		},
+		Exits: []encounter.FieldExit{{ID: theWayOut, At: spatial.Position{X: 0, Y: 5}}},
+	}
+}
+
+// authoredAt is one AUTHORED offset seat — the frame [encounter.MemberInput]
+// and [encounter.FieldExit] speak, as against the absolute cells every verb
+// and every read speak ([cellAt] converts).
+func authoredAt(col, row int) spatial.Position {
+	return spatial.Position{X: float64(col), Y: float64(row)}
+}
+
+// open builds the hall with the members standing where the scene wants them,
+// in authored seats.
+func (s *PlacedOrdersSuite) open(
+	at map[encounter.MemberID]spatial.Position, endings ...encounter.EndingInput,
+) *encounter.Encounter {
+	members := make([]encounter.MemberInput, 0, len(at))
+	for _, id := range []encounter.MemberID{alice, bella} {
+		cell, standing := at[id]
+		if !standing {
+			continue
+		}
+		members = append(members, encounter.MemberInput{ID: id, Kind: encounter.KindPlayer, Position: cell})
+	}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field:   ordersField(),
+		Members: members,
+		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, endings...),
+	})
+	s.Require().NoError(err)
+
+	return enc
+}
+
+// build opens the hall on an edited field and hands back whatever
+// construction answered — the seam the refusal scenes are about.
+func (s *PlacedOrdersSuite) build(field encounter.FieldInput) (*encounter.Encounter, error) {
+	return encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field:   field,
+		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: authoredAt(2, 2)}},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+}
+
+// placedIDs is every footprint on the truth-grain atlas, by id.
+func (s *PlacedOrdersSuite) placedIDs(enc *encounter.Encounter) []encounter.PropID {
+	atlas, err := enc.Atlas()
+	s.Require().NoError(err)
+	out := make([]encounter.PropID, 0, len(atlas.Placed))
+	for _, p := range atlas.Placed {
+		out = append(out, p.ID)
+	}
+
+	return out
+}
+
+// placedNamed is one footprint on the atlas, required to be there.
+func (s *PlacedOrdersSuite) placedNamed(enc *encounter.Encounter, id encounter.PropID) encounter.AtlasPlacedProp {
+	atlas, err := enc.Atlas()
+	s.Require().NoError(err)
+	for _, p := range atlas.Placed {
+		if p.ID == id {
+			return p
+		}
+	}
+	s.Require().FailNowf("no such placement", "%q is not on the atlas", id)
+
+	return encounter.AtlasPlacedProp{}
+}
+
+// propIDsOn is every legacy prop on the truth-grain atlas, by id.
+func (s *PlacedOrdersSuite) propIDsOn(enc *encounter.Encounter) []encounter.PropID {
+	atlas, err := enc.Atlas()
+	s.Require().NoError(err)
+	out := make([]encounter.PropID, 0, len(atlas.Props))
+	for _, p := range atlas.Props {
+		out = append(out, p.ID)
+	}
+
+	return out
+}
+
+// --- (1) Reach: the legacy rule, applied to every cell the footprint stands on ---
+
+// A slab covering three cells is in reach from beside ANY of them, and the
+// far one is two cells from its origin — which is what makes this a claim
+// about the footprint rather than about where the author put its centre.
+func (s *PlacedOrdersSuite) TestASlabIsTakenFromBesideAnyCellItCovers() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(4, 4)})
+	reach := cellAt(4, 4)
+
+	s.Require().Equal(float64(1), enc.Distance(reach, cellAt(3, 4)),
+		"the taker is beside the slab's far cell")
+	s.Require().Equal(float64(2), enc.Distance(reach, slabCentre),
+		"and two cells from the one its origin sits on, which the legacy rule alone would refuse")
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theSlab})
+	s.Require().NoError(err, "a covered cell within reach is within reach")
+	s.NotContains(s.placedIDs(enc), encounter.PropID(theSlab), "and it leaves the floor for everyone")
+}
+
+// Standing ON a cell the footprint covers is distance zero, which the legacy
+// rule already admits: a holdable thing blocks no movement, so you walk onto
+// it to take it.
+func (s *PlacedOrdersSuite) TestASlabIsTakenFromOnTopOfIt() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(1, 4)})
+	s.Require().Equal(float64(0), enc.Distance(cellAt(1, 4), cellAt(1, 4)),
+		"they are standing on a cell the slab covers")
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theSlab})
+	s.Require().NoError(err)
+}
+
+// And a cell that is beside NO covered cell is out of range, by name.
+func (s *PlacedOrdersSuite) TestASlabIsRefusedFromOutsideTheReachOfEveryCoveredCell() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(5, 1)})
+	far := cellAt(5, 1)
+
+	for _, covered := range []spatial.Position{cellAt(1, 4), slabCentre, cellAt(3, 4)} {
+		s.Require().Greater(enc.Distance(far, covered), float64(1),
+			"the taker is beyond reach of every cell the slab stands on")
+	}
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theSlab})
+	s.Require().ErrorIs(err, encounter.ErrOutOfRange)
+}
+
+// A thing SMALLER THAN A HEX covers no cell centre and still stands
+// somewhere: the hex it lies in. Taken from that hex and from beside it,
+// refused from two cells away — the same three answers the slab gives.
+func (s *PlacedOrdersSuite) TestAScrollTooSmallToCoverACentreStandsInItsOwnHex() {
+	s.Run("from the hex it lies in", func() {
+		enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+		_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theScroll})
+		s.Require().NoError(err)
+	})
+
+	s.Run("from beside it", func() {
+		enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(3, 2)})
+		s.Require().Equal(float64(1), enc.Distance(cellAt(3, 2), scrollHex))
+		_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theScroll})
+		s.Require().NoError(err)
+	})
+
+	s.Run("and not from two cells away", func() {
+		enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(4, 2)})
+		s.Require().Equal(float64(2), enc.Distance(cellAt(4, 2), scrollHex))
+		_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theScroll})
+		s.Require().ErrorIs(err, encounter.ErrOutOfRange)
+	})
+}
+
+// A placement nobody declared holdable is scenery, and says so by name
+// rather than by the probe law's evasive refusal: there is no secret in a
+// barricade the member can see.
+func (s *PlacedOrdersSuite) TestAPlacementNobodyDeclaredHoldableIsRefusedByName() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+	s.learnTheWord(enc)
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theBarricade})
+	s.Require().ErrorIs(err, encounter.ErrNotHoldable)
+}
+
+// Taking it twice is ErrAlreadyHeld, the legacy answer for a thing that has
+// left the floor.
+func (s *PlacedOrdersSuite) TestTakingAPlacementTwiceIsRefused() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theScroll})
+	s.Require().NoError(err)
+
+	_, err = enc.Hold(&encounter.HoldInput{Member: alice, Target: theScroll})
+	s.Require().ErrorIs(err, encounter.ErrAlreadyHeld)
+}
+
+// --- (2) Arriving: absent from the atlas, from the cell fold and from sight ---
+
+// learnTheWord takes the scroll, which teaches the fact both reserved things
+// are waiting on.
+func (s *PlacedOrdersSuite) learnTheWord(enc *encounter.Encounter) {
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theScroll})
+	s.Require().NoError(err)
+}
+
+func (s *PlacedOrdersSuite) TestAReservedPlacementIsNowhereUntilItsPredicateHolds() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+	canvas, err := enc.Canvas()
+	s.Require().NoError(err)
+
+	s.Run("before: on no map, closing no cell, obstructing no lane", func() {
+		s.NotContains(s.placedIDs(enc), encounter.PropID(theBarricade))
+		s.Require().Equal(encounter.PassageStandable,
+			enc.CellAt(encounter.CellAtInput{Cell: barricadeHex}).Passage,
+			"a rectangle that has not come closes nothing")
+		s.False(canvas.IsLineOfSightBlocked(cellAt(-2, 0), cellAt(2, 0)),
+			"and obstructs nothing")
+	})
+
+	s.learnTheWord(enc)
+
+	s.Run("after: on the map, closing its cells, obstructing the lane", func() {
+		s.Contains(s.placedIDs(enc), encounter.PropID(theBarricade))
+		fact := enc.CellAt(encounter.CellAtInput{Cell: barricadeHex})
+		s.Require().Equal(encounter.PassageBlocked, fact.Passage)
+		named := false
+		for _, contrib := range fact.Contribs {
+			if contrib.Kind == encounter.ContribProp && contrib.ID == theBarricade {
+				named = true
+			}
+		}
+		s.True(named, "and the cell fold says which rectangle closed it")
+		s.True(canvas.IsLineOfSightBlocked(cellAt(-2, 0), cellAt(2, 0)),
+			"thirty feet of it blocks every lane")
+	})
+}
+
+// The arrival writes the SAME journal kind and the SAME beat a legacy prop's
+// does — one predicate, one fact, both kinds of thing, in one pass.
+func (s *PlacedOrdersSuite) TestAPlacementArrivesWithTheSameBeatALegacyPropDoes() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+	s.Require().NotContains(s.propIDsOn(enc), encounter.PropID(thePrize))
+
+	s.learnTheWord(enc)
+
+	s.Contains(s.propIDsOn(enc), encounter.PropID(thePrize), "the legacy prop came")
+	s.Contains(s.placedIDs(enc), encounter.PropID(theBarricade), "and so did the footprint")
+
+	arrived := beatsOfKindFor(s.T(), enc, alice, "arrived")
+	kinds := map[string]string{}
+	for _, beat := range arrived {
+		id, _ := beat["id"].(string)
+		kind, _ := beat["kind"].(string)
+		kinds[id] = kind
+	}
+	s.Equal(encounter.ArrivedProp, kinds[thePrize], "a legacy prop arrives as a prop")
+	s.Equal(encounter.ArrivedProp, kinds[theBarricade], "and a footprint arrives as the same kind of thing")
+}
+
+// A reserved placement is refused as an id that names NOTHING, never as
+// "not yet" — the probe law, which is the only reason the reserved refusal
+// is not ErrNotHoldable.
+func (s *PlacedOrdersSuite) TestAReservedPlacementIsRefusedAsAnIdThatNamesNothing() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(1, 0)})
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theBarricade})
+	s.Require().ErrorIs(err, encounter.ErrNoProp)
+	s.Equal(`hold: "barricade": no such prop`, err.Error())
+
+	_, unknown := enc.Hold(&encounter.HoldInput{Member: alice, Target: "no-such-thing"})
+	s.Require().ErrorIs(unknown, encounter.ErrNoProp)
+	s.Equal(`hold: "no-such-thing": no such prop`, unknown.Error(),
+		"byte for byte the answer for an id that names nothing, but for the id")
+}
+
+// --- (3) What it carries is learned on taking it, exactly as a prop's is ---
+
+// The scroll's record reaches the taker: the proof is that the fact it
+// reveals brought BOTH reserved things in, which only happens if the
+// placement's Holds went through the same routine a legacy prop's does.
+func (s *PlacedOrdersSuite) TestWhatAPlacementCarriesIsAppliedOnTakingIt() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+
+	s.Require().NotContains(s.propIDsOn(enc), encounter.PropID(thePrize),
+		"nothing has taught the fact yet")
+
+	s.learnTheWord(enc)
+
+	s.Contains(s.propIDsOn(enc), encounter.PropID(thePrize),
+		"the record the placement carries was applied to whoever took it")
+}
+
+// --- (4) Dropped: back on the floor, at the cell it was dropped on ---
+
+// A carrier who leaves from anywhere but a bound exit drops what they held
+// (R9), and a dropped rectangle lands with its ORIGIN on that cell — same
+// shape, same facing, new place.
+func (s *PlacedOrdersSuite) TestADroppedPlacementLandsOnTheCellItWasDroppedOn() {
+	standing := cellAt(5, 1)
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(1, 4), bella: authoredAt(5, 5)})
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theSlab})
+	s.Require().NoError(err)
+	s.Require().NotContains(s.placedIDs(enc), encounter.PropID(theSlab))
+
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: standing})
+	s.Require().NoError(err)
+	out, err := enc.Exit(&encounter.ExitInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Nil(out.Closed, "they left through no bound exit, so the run goes on")
+
+	dropped := s.placedNamed(enc, theSlab)
+	s.Equal(centreOf(standing), dropped.Placement.Origin,
+		"the rectangle stands where they put it down")
+	s.Equal(slabPlacement().Facing, dropped.Placement.Facing, "turned no differently")
+	s.Equal(*slabPlacement().Footprint.Box, *dropped.Placement.Footprint.Box, "and the same shape")
+}
+
+// --- (5) A scenario's artifact may be a placement ---
+
+// The recovery ending names a PLACED artifact, and the run ends when it is
+// carried out through the bound exit — the tomb-heirloom scene with the
+// prize authored as a footprint.
+func (s *PlacedOrdersSuite) TestCarryingAPlacedArtifactOutEndsTheRun() {
+	const recovered = "recovered"
+	wayOut := cellAt(0, 5)
+	enc := s.open(
+		map[encounter.MemberID]spatial.Position{alice: authoredAt(1, 4)},
+		encounter.EndingInput{Key: recovered, Trigger: encounter.TriggerExitedHolding{
+			Exit: theWayOut, Item: theSlab,
+		}},
+	)
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theSlab})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: wayOut})
+	s.Require().NoError(err)
+
+	out, err := enc.Exit(&encounter.ExitInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Closed, "they carried the artifact out")
+	s.Equal(recovered, out.Closed.Ending)
+}
+
+// An ending naming a placement nobody declared holdable is refused at
+// construction, by the same sentence a legacy prop earns: the one holdable
+// index answers for both kinds of thing.
+func (s *PlacedOrdersSuite) TestAnEndingOnAPlacementNobodyCanTakeIsRefused() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field:   ordersField(),
+		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: authoredAt(1, 4)}},
+		Endings: []encounter.EndingInput{{Key: "recovered", Trigger: encounter.TriggerExitedHolding{
+			Exit: theWayOut, Item: theBarricade,
+		}}},
+	})
+	s.Require().ErrorIs(err, encounter.ErrNoEnding)
+}
+
+// --- Construction: the two things a placement's orders may not say ---
+
+// A placement whose arrival predicate can never hold is refused at
+// construction, by the liveness rule every prop's arrival meets and in the
+// sentence a legacy prop earns — "prop %q's arrival", because an author who
+// wrote `arrives:` under propBindings wrote the same key.
+func (s *PlacedOrdersSuite) TestAPlacementWaitingOnAPredicateThatCannotHoldIsRefused() {
+	field := ordersField()
+	for i := range field.Placed {
+		if field.Placed[i].ID == theBarricade {
+			field.Placed[i].Arrives = encounter.TriggerRound{Round: 0}
+		}
+	}
+
+	_, err := s.build(field)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().ErrorContains(err, `prop "barricade"'s arrival`,
+		"named as the prop it is, not as a second kind of thing")
+	s.Require().ErrorContains(err, "a round is counted from 1",
+		"and judged by the one predicate validator")
+}
+
+// A placement carrying a record this field does not declare is refused at
+// construction, the same mistake a legacy prop's dangling record is —
+// knowledge the author thinks they placed and did not.
+func (s *PlacedOrdersSuite) TestAPlacementHoldingARecordNobodyDeclaredIsRefused() {
+	field := ordersField()
+	for i := range field.Placed {
+		if field.Placed[i].ID == theScroll {
+			field.Placed[i].Holds = []encounter.IntelID{"no-such-record"}
+		}
+	}
+
+	_, err := s.build(field)
+	s.Require().ErrorIs(err, encounter.ErrNoIntel)
+	s.Require().ErrorContains(err, `prop "scroll" holds intel "no-such-record"`,
+		"named by its id, because a placement has no content ref to name it by")
+}
+
+// --- Persistence: the three orders survive the blob ---
+
+// A reload rebuilds the same answers from the same bytes: what is holdable,
+// what it carries, and what is still in reserve.
+func (s *PlacedOrdersSuite) TestTheThreeOrdersSurviveASaveAndLoad() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(2, 2)})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:      enc.ToData(),
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+
+	s.NotContains(s.placedIDs(reloaded), encounter.PropID(theBarricade),
+		"a reserved rectangle is still in reserve")
+	s.True(s.placedNamed(reloaded, theScroll).Holdable, "and the scroll can still be picked up")
+
+	s.learnTheWord(reloaded)
+
+	s.Contains(s.placedIDs(reloaded), encounter.PropID(theBarricade),
+		"the predicate still brings it in")
+	s.Contains(s.propIDsOn(reloaded), encounter.PropID(thePrize),
+		"and the record it carried still teaches the fact")
+}
+
+// beatsOfKindFor reads one member's story and keeps the beats of one kind —
+// the read [HoldingsSuite.beatsOfKind] makes, available to this suite too.
+func beatsOfKindFor(t *testing.T, enc *encounter.Encounter, member core.EntityID, kind string) []map[string]any {
+	t.Helper()
+	story, err := enc.Story(&encounter.StoryInput{Audience: member})
+	require.NoError(t, err)
+	var out []map[string]any
+	for _, entry := range story {
+		var beat map[string]any
+		require.NoError(t, json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == kind {
+			out = append(out, beat)
+		}
+	}
+
+	return out
+}

@@ -8,6 +8,8 @@ import (
 	"sort"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // single_room_gameplay.go is WHAT THE ROOM IS FOR, IN THE SINGLE-ROOM DIALECT
@@ -35,26 +37,25 @@ import (
 //	propBindings.<id>.holds[<j>]             PlaceSpec.Holds
 //	propBindings.<id>.arrives                PlaceSpec.Arrives
 //
-// # The two things this dialect says NO to, and why each is a sentence
+// # The one thing this dialect says NO to, and why it is a sentence
 //
-// `intel[<i>].reveals.door` (R3) and the whole `propBindings` block are
-// refused BY NAME rather than left as unknown keys. Both words mean
-// something: a record CAN reveal the way to a door, and a placed prop CAN be
-// picked up — in the engine, today, from the other dialect. What is missing
-// is the thing underneath each. A revealed door wants a CONCEALED door on a
-// crossing and this dialect has no crossings (the sites layer); a held prop
-// wants a placed footprint that can be held and can arrive
-// (rpg-toolkit#1854). So the author is told that, at the path they wrote it
-// at, in the shape `doorBindings.<id>.concealed` already uses.
+// `intel[<i>].reveals.door` (R3) is refused BY NAME rather than left as an
+// unknown key. The word means something — a record CAN reveal the way to a
+// door, in the engine, today, from the other dialect — and what is missing
+// is the thing underneath it: a revealed door wants a CONCEALED door on a
+// crossing, and this dialect has no crossings (the sites layer). So the
+// author is told that, at the path they wrote it at, in the shape
+// `doorBindings.<id>.concealed` already uses. It is a DOCUMENT defect, so
+// [validateSingleRoom] refuses it and the decode fails.
 //
-// THE TWO REFUSALS SIT AT DIFFERENT SEAMS, on purpose. `reveals.door` is a
-// DOCUMENT defect — there is no legal document containing it — so it is
-// refused by [validateSingleRoom] and a decode fails. `propBindings` is a
-// legal document the engine cannot RUN yet, so it decodes with every refusal
-// below applied and [CompileSingleRoom] is where it stops. That is what lets
-// the World Builder author the block, round-trip it and grade it today
-// ("carry the shape, let the engine grade it", rpg-dnd5e-web#1171) while the
-// engine still fails closed and loudly rather than accepting a key it drops.
+// `propBindings` USED TO BE THE SECOND ONE, and is not any more
+// (rpg-toolkit#1854). It was refused at COMPILE while it decoded, because a
+// v4 item compiled to a footprint and holdable/holds/arrives lived only on
+// the legacy prop. A placed footprint can now be held and can now arrive, so
+// the block compiles: [applyPropBindings] lays the three keys onto the
+// placement the item's declaration already produced, through the same
+// compilers the monster binding's keys go through. The ownership refusals
+// below did not move — they are about the document and always were.
 
 // The sentences this file adds, verbatim. Constants for
 // single_room_doors.go's reason: the same defect always reports the same
@@ -90,14 +91,6 @@ const (
 	// slice deciding what a carried door leaves behind (R1).
 	propIsADoor = "a door that is also picked up is not something this build plays: this id is a door under " +
 		"doorBindings, so give the prop an id of its own, or drop one of the two bindings"
-
-	// propBindingNoPrimitive is the COMPILE refusal (rpg-toolkit#1854): the
-	// document is legal and the engine has nowhere to put it. Named at the
-	// binding's own path so the World Builder draws it on the block the
-	// author filled in.
-	propBindingNoPrimitive = "a placed prop cannot be held and cannot arrive in this build: a v4 item compiles to a " +
-		"footprint, and holdable/holds/arrives live on the legacy prop, which needs a content ref and an " +
-		"anchor cell this dialect does not have; author the prop plain, or wait for rpg-toolkit#1854"
 )
 
 // # Source shape
@@ -373,20 +366,37 @@ func sortedPropBindingIDs(bindings map[string]RoomPropBinding) []string {
 
 // # The lowering
 
-// propBindingRefusals is what [CompileSingleRoom] answers for a document that
-// gives a prop orders: one defect per binding, at its own path, naming the
-// primitive that is missing (rpg-toolkit#1854).
+// applyPropBindings lays a placed item's ORDERS onto the footprint its
+// declaration already compiled (rpg-project#488 R1, rpg-toolkit#1854).
 //
-// NOT CARRIED INERT, and that is the point. The alternative is a compile that
-// accepts `holdable: true` and produces a world where nothing can be picked
-// up — a key the engine reads and drops, which is the fail-silent this
-// repository refuses. Nil for a document that binds no prop, so every room
-// authored before this key existed compiles exactly as it did.
-func propBindingRefusals(gp *RoomGameplaySource) []FieldError {
-	var out []FieldError
-	for _, id := range sortedPropBindingIDs(gp.PropBindings) {
-		out = append(out, FieldError{Path: "room.room.propBindings." + id, Message: propBindingNoPrimitive})
+// The three keys go through the SAME compilers a v2 placement's do —
+// [intelHoldingsOf] for the records, [predicateOf] for the arrival, and the
+// bare bool for holdable — so the fourth declaration kind adds no compiler of
+// its own, exactly as the monster binding's four keys added none.
+//
+// KEYED BY ITEM ID, and the binding is matched to the placement by that id
+// alone: `propDeclarations` is where the footprint comes from and this is
+// what the thing DOES, which is the placement law's own split. A binding
+// whose id no declaration owns never reaches here — [propBindingValues]
+// refuses it by name, along with an id that is also a door and an id inside
+// an arrangement.
+//
+// AN ITEM WITH NO BINDING READS THE ZERO ONE, and that is the rule rather
+// than an accident this loop has to guard against. Every field of
+// [RoomPropBinding] means "said nothing" at its zero value, by that type's
+// own law — a thing nobody declared holdable stays scenery, holds nothing
+// and is there from the first frame — so the map miss IS the answer, and a
+// `if !bound { continue }` would only be a second spelling of it. A document
+// that binds no prop therefore compiles exactly as it did before this key
+// existed.
+//
+// Mutates in place, because there is one list of placements and a second
+// copy of it would be a second answer about what is on the floor.
+func applyPropBindings(key string, props []encounter.PlacedPropInput, bindings map[string]RoomPropBinding) {
+	for i := range props {
+		b := bindings[props[i].ID]
+		props[i].Holdable = b.Holdable
+		props[i].Holds = intelHoldingsOf(key, b.Holds)
+		props[i].Arrives = predicateOf(b.Arrives)
 	}
-
-	return out
 }

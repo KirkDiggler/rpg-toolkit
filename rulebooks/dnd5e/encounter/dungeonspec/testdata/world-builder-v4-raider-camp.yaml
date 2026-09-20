@@ -8,14 +8,15 @@
 # Intel and the same Holds/Arrives on every creature that carries one. Geometry
 # is not claimed, for the front room's reason.
 #
-# ONE THING MOVED HOLDER, AND IT IS THE WHOLE OF WHAT V4 CANNOT DO YET. In v2
-# the Wiseman's letter is a PROP that arrives at the gate on round 6 and holds
-# the record. A v4 item compiles to a footprint, which cannot be held and does
-# not arrive (rpg-toolkit#1854), so the same beat is authored on the holder v4
-# does compile: a MESSENGER walks in on round 6 carrying the record. That is
-# not a workaround for the test — "a monster carries it from spawn" is the
-# v2 precedent and the record is identical either way — and the prop spelling
-# is kept, refused, in testdata/decode-only/.
+# ONE THING MOVED HOLDER, AND IT NO LONGER HAS TO. In v2 the Wiseman's letter
+# is a PROP that arrives at the gate on round 6 and holds the record. When
+# this file was written a v4 item compiled to a footprint that could not be
+# held and did not arrive, so the same beat was authored on the holder v4 did
+# compile: a MESSENGER walks in on round 6 carrying the record. That is still
+# a true document and still the thing this file proves — "a monster carries it
+# from spawn" is the v2 precedent and the record is identical either way.
+# rpg-toolkit#1854 gave a placed footprint both, and the prop spelling is the
+# compiling document testdata/world-builder-v4-raider-letter.yaml.
 version: 4
 key: raider-camp-v4
 play: { void: transparent, lighting: bright, standing: centre-covered }
