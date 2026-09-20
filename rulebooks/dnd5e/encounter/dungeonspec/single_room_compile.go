@@ -30,6 +30,17 @@ import (
 // wholesale, its word beating its faction's mix, and its actions verbatim in
 // the authored order. Neither dialect writes those three lines itself.
 //
+// WHAT THE ROOM IS FOR COMPILES THE SAME WAY (rpg-project#488,
+// single_room_gameplay.go). The root's `intel:` is minted by the shared
+// [intelRecordsOf]; a creature's `holds:`, `intimidate:`, `persuade:` and
+// `arrives:` go through [intelHoldingsOf], [approachesOf] and [predicateOf] —
+// the four compilers [monstersOf] already calls for a v2 placement. One key,
+// one compiler, two dialects.
+//
+// `propBindings` is the ONE key that decodes and does not compile: it is
+// refused by name at each binding's path ([propBindingNoPrimitive]) until a
+// placed footprint can be held and can arrive (rpg-toolkit#1854).
+//
 // A DOCUMENT WITH NONE OF THOSE KEYS COMPILES TO WHAT IT ALWAYS DID.
 // [encounter.Layer] of two nil tables is nil, [temperOf] of two absences is
 // the zero temper, and an absent faction stays the empty string the reserved
@@ -44,6 +55,17 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, &ValidationError{Errors: errs}
 	}
 	spec := in.Spec
+	// THE ONE KEY THIS DIALECT DECODES AND CANNOT RUN (rpg-project#488 R1;
+	// rpg-toolkit#1854). `propBindings` is a legal document — every refusal
+	// in single_room_gameplay.go has already passed — and the engine has
+	// nowhere to put it: a v4 item compiles to a FOOTPRINT, and holdable,
+	// holds and arrives live on the legacy prop, which wants a content ref
+	// and an anchor cell this dialect does not have. Refused by name at each
+	// binding's own path rather than carried inert, because a key the engine
+	// reads and drops is the failure mode this repository refuses.
+	if refusals := propBindingRefusals(&spec.Room.Gameplay); len(refusals) > 0 {
+		return Compiled{}, &ValidationError{Errors: refusals}
+	}
 	// The cast this dialect placed, and what each declared side hands it.
 	cast := roomMembers(&spec.Room.Gameplay)
 	from := inheritedOrders(spec.Factions)
@@ -70,6 +92,11 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// questions.
 		Doors: singleRoomDoors(spec.Key, &spec.Room.Gameplay, read),
 		Start: nil,
+		// THE RECORDS, minted `<key>/<id>` by the shared [intelRecordsOf] —
+		// the composition reads a record's reveals when it changes hands, so
+		// the table has to be where the field is. Nil when the site declares
+		// none.
+		Intel: intelRecordsOf(spec.Key, spec.Intel),
 		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
 		// is seeded from them at every Setup and Load, so they have to be
 		// where the field is. Nil when the site declares none.
@@ -102,6 +129,16 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		}, from)
 		mp.Region = spec.Room.Gameplay.ImplicitRegionID
 		mp.At = at
+		// AND THE FOUR GAMEPLAY KEYS THE BINDING CARRIES (rpg-project#488
+		// R1/R5), each through the SAME compiler the v2 dialect's placement
+		// goes through: the records it holds minted by [intelHoldingsOf], the
+		// two social checks by [approachesOf], and the predicate that brings
+		// it in by [predicateOf]. Absent is nil in every one of them, which is
+		// why a document with no orders pictures exactly as it did before.
+		mp.Holds = intelHoldingsOf(spec.Key, b.Holds)
+		mp.Intimidate = approachesOf(b.Intimidate)
+		mp.Persuade = approachesOf(b.Persuade)
+		mp.Arrives = predicateOf(b.Arrives)
 		monsters = append(monsters, mp)
 	}
 	// Validate each source placement independently. Besides identifying the
@@ -148,7 +185,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		Key: spec.Key, Name: read.Name, Field: field, PartyStart: party, Monsters: monsters,
 		// The same lists the field carries, surfaced for a host that wants to
 		// read what the site declares without reaching into it ([Compiled]).
-		Factions: field.Factions, Dispositions: field.Dispositions,
+		Intel: field.Intel, Factions: field.Factions, Dispositions: field.Dispositions,
 	}, nil
 }
 

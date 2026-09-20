@@ -384,14 +384,34 @@ func endingsOf(spec *Spec) []encounter.EndingInput {
 // record's `reveals` agree on within one file, and the composition matches
 // the two by that word; a fact belongs to the story, not to the door table.
 func intelOf(spec *Spec) []encounter.IntelRecord {
+	return intelRecordsOf(spec.Key, spec.Intel)
+}
+
+// intelRecordsOf is the minting itself, shared by BOTH DIALECTS
+// (rpg-project#488): a record is a root declaration in either document and
+// `<key>/<id>` is the one id the composition's tables are keyed by, so a
+// second spelling of it is exactly the drift one grammar exists to prevent.
+// Nil when the file declares none.
+func intelRecordsOf(key string, records []IntelSpec) []encounter.IntelRecord {
 	var out []encounter.IntelRecord
-	for _, rec := range spec.Intel {
-		r := encounter.IntelRecord{ID: encounter.IntelID(spec.Key + "/" + rec.ID)}
+	for _, rec := range records {
+		r := encounter.IntelRecord{ID: encounter.IntelID(key + "/" + rec.ID)}
 		if rec.Reveals.Door != "" {
-			r.Reveals.Door = encounter.DoorID(spec.Key + "/" + rec.Reveals.Door)
+			r.Reveals.Door = encounter.DoorID(key + "/" + rec.Reveals.Door)
 		}
 		r.Reveals.Fact = rec.Reveals.Fact
 		out = append(out, r)
+	}
+	return out
+}
+
+// intelHoldingsOf is the compiled record ids one holder carries — the same
+// `<key>/<id>` minting, for [MonsterPlacement.Holds]. Nil when it holds
+// nothing, so a creature that carries none pictures as it always did.
+func intelHoldingsOf(key string, holds []string) []string {
+	var out []string
+	for _, id := range holds {
+		out = append(out, key+"/"+id)
 	}
 	return out
 }
@@ -1066,10 +1086,6 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		if p.Targeting != nil {
 			targeting = *p.Targeting
 		}
-		var holds []string
-		for _, id := range p.Holds {
-			holds = append(holds, spec.Key+"/"+id)
-		}
 		mp := ordersOf(creatureOrders{
 			ID: p.ID, Ref: p.Ref, Faction: p.Faction,
 			On: p.On, Temper: p.Temper, Actions: p.Actions,
@@ -1078,7 +1094,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		mp.At = authored(p.At)
 		mp.Targeting = targeting
 		mp.Boss = p.Boss
-		mp.Holds = holds
+		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
 		mp.Intimidate = approachesOf(p.Intimidate)
 		mp.Persuade = approachesOf(p.Persuade)
 		mp.Arrives = predicateOf(p.Arrives)

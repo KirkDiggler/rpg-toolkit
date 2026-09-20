@@ -1,0 +1,75 @@
+# The Wiseman's letter, as the PROP v2 authors it (rpg-project#488, R1) — a
+# v4 document that DECODES and does not COMPILE, which is the whole reason it
+# lives here instead of beside the shipped content.
+#
+# testdata/*.yaml is the set of dungeons this package ships, and every one of
+# them compiles to a committed picture. This one cannot: `propBindings` is a
+# legal block with every one of its refusals passed, and the engine has
+# nowhere to put it — a v4 item compiles to a FOOTPRINT, and holdable, holds
+# and arrives live on the legacy prop, which wants a content ref and an anchor
+# cell this dialect does not have (rpg-toolkit#1854). So the compile refuses
+# it by name at `room.room.propBindings.letter` rather than carrying a
+# `holdable: true` the world then drops.
+#
+# The document is kept because it is the exact bytes the World Builder emits
+# today (rpg-dnd5e-web#1177: carry the shape, let the engine grade it), and
+# because it is what #1854's done-when compiles. prop_bindings_test.go reads
+# it from here: the decode accepts it whole, and the compile names the one
+# thing that is missing.
+version: 4
+key: raider-letter-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+factions:
+  - { id: raiders, mind: chief }
+dispositions:
+  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
+intel:
+  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }
+
+room:
+  version: 3
+  id: room-1
+  name: The Raider Camp
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Raider Camp
+    items:
+      - id: letter
+        kind: prop
+        assetRef: dnd5e:props:scroll
+        label: The Wiseman's Letter
+        transform: {x: -1.5, y: 0, z: 0.75, rotationY: 0}
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
+      {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
+      {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
+      {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
+      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0}]
+    # A HOLDABLE PROP IS WALKED ONTO TO BE TAKEN, so it blocks nothing —
+    # which is what every v2 holdable declares too.
+    propDeclarations:
+      letter:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.3, depth: 0.3, offsetX: 0, offsetZ: 0}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsters:
+      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', cell: {q: 2, r: -1}, faction: raiders}
+    monsterBindings: {}
+    # THE FOURTH DECLARATION KIND, all three of its keys. The letter is not on
+    # the ground when the party comes in: a messenger drops it at the gate
+    # when round 6 of a fight starts.
+    propBindings:
+      letter:
+        holdable: true
+        holds: [wisemans-letter]
+        arrives: { round: 6 }

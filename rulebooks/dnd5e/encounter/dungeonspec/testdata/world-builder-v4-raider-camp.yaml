@@ -1,0 +1,85 @@
+# The raider camp, in v4 (rpg-project#488, slices "Knowledge" and "The clock")
+# — the gameplay half of testdata/reference-raider-camp.yaml re-authored in
+# the dialect the World Builder emits.
+#
+# THE CLAIM THIS FILE MAKES is compile equivalence on the keys the slice adds:
+# the record, who holds it, and the two predicates that bring a creature in.
+# raider_camp_v4_test.go compiles the v2 file beside it and requires the same
+# Intel and the same Holds/Arrives on every creature that carries one. Geometry
+# is not claimed, for the front room's reason.
+#
+# ONE THING MOVED HOLDER, AND IT IS THE WHOLE OF WHAT V4 CANNOT DO YET. In v2
+# the Wiseman's letter is a PROP that arrives at the gate on round 6 and holds
+# the record. A v4 item compiles to a footprint, which cannot be held and does
+# not arrive (rpg-toolkit#1854), so the same beat is authored on the holder v4
+# does compile: a MESSENGER walks in on round 6 carrying the record. That is
+# not a workaround for the test — "a monster carries it from spawn" is the
+# v2 precedent and the record is identical either way — and the prop spelling
+# is kept, refused, in testdata/decode-only/.
+version: 4
+key: raider-camp-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+# The camp is one faction, and the chief is its MIND: the faction knows what
+# its mind knows. Read the letter to the scout and nothing flips, because a
+# scout is not the camp's mind.
+factions:
+  - { id: raiders, mind: chief }
+
+# Hostile to the party UNTIL the chief comes to know the party saved the
+# Wiseman — the fact the letter reveals.
+dispositions:
+  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
+
+# The letter says so. A FACT IS DECLARED BY MENTION: nothing declares
+# `saved-wiseman`, this record and the disposition above simply agree on the
+# word, and the composition matches the two by it.
+intel:
+  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }
+
+room:
+  version: 3
+  id: room-1
+  name: The Raider Camp
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Raider Camp
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
+      {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
+      {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
+      {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
+      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsters:
+      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', cell: {q: 2, r: -1}, faction: raiders}
+      - {id: scout, ref: 'dnd5e:monsters:skeleton', cell: {q: 0, r: 0}, faction: raiders}
+      - {id: messenger, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: 1}, faction: raiders}
+      - {id: reinforcement-1, ref: 'dnd5e:monsters:zombie', cell: {q: -1, r: 2}, faction: raiders}
+      - {id: reinforcement-2, ref: 'dnd5e:monsters:zombie', cell: {q: 0, r: 2}, faction: raiders}
+      - {id: reinforcement-3, ref: 'dnd5e:monsters:zombie', cell: {q: -2, r: 2}, faction: raiders}
+    monsterBindings:
+      # THE RECORD ARRIVES ON THE CLOCK. Hold out six rounds and the way to
+      # turn the camp walks in; drop the messenger and take it off the body.
+      messenger:
+        holds: [wisemans-letter]
+        arrives: { round: 6 }
+      # AND IF THE CHIEF FALLS INSTEAD, three zombies come through the gate.
+      # Until its predicate holds a creature is NOWHERE — on no map and in no
+      # roster — exactly as if it had never been written.
+      reinforcement-1:
+        arrives: { down: chief }
+      reinforcement-2:
+        arrives: { down: chief }
+      reinforcement-3:
+        arrives: { down: chief }
