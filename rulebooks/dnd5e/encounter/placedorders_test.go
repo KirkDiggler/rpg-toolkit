@@ -61,6 +61,11 @@ const (
 	// theBarricade waits in reserve and blocks both facts when it comes.
 	theBarricade = "barricade"
 
+	// theTag is a sub-hex prop whose LOCAL OFFSET puts its box in a
+	// different hex from its origin — the case that tells "where the
+	// rectangle is" apart from "where its origin is".
+	theTag = "tag"
+
 	// theNotes is what the scroll says; theWord is the fact it teaches.
 	theNotes = "scroll-notes"
 	theWord  = "the-word"
@@ -87,7 +92,23 @@ var (
 	// The barricade stands across cell (1,0) — thirty feet of it, which is
 	// every lane between the two sides of the hall.
 	barricadeHex = cellAt(1, 0)
+
+	// The tag's ORIGIN is cell (2,2)'s centre; its box sits 6.2 feet along
+	// the facing from there, which is inside cell (3,2) and covers no centre
+	// at all.
+	tagOriginHex = cellAt(2, 2)
+	tagBoxHex    = cellAt(3, 2)
 )
+
+// tagPlacement is the offset sub-hex prop: a ten-inch square pushed out of
+// the hex its origin sits in.
+func tagPlacement() spatial.FootprintPlacement {
+	return spatial.FootprintPlacement{
+		Footprint:   spatial.Footprint{Box: &spatial.Box{W: 0.87, D: 0.87}},
+		Origin:      centreOf(tagOriginHex),
+		LocalOffset: spatial.Point{X: 6.2},
+	}
+}
 
 // PlacedOrdersSuite runs every scene on the one hall below.
 type PlacedOrdersSuite struct {
@@ -137,6 +158,7 @@ func ordersField() encounter.FieldInput {
 		Placed: []encounter.PlacedPropInput{
 			{ID: theSlab, Placement: slabPlacement(), Holdable: true},
 			{ID: theScroll, Placement: scrollPlacement(), Holdable: true, Holds: []encounter.IntelID{theNotes}},
+			{ID: theTag, Placement: tagPlacement(), Holdable: true},
 			{
 				ID: theBarricade, Placement: thinWall(0.2, 30, 0, centreOf(barricadeHex)),
 				BlocksMovement: true, BlocksLineOfSight: true,
@@ -299,6 +321,60 @@ func (s *PlacedOrdersSuite) TestAScrollTooSmallToCoverACentreStandsInItsOwnHex()
 		_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theScroll})
 		s.Require().ErrorIs(err, encounter.ErrOutOfRange)
 	})
+}
+
+// A placement's cells follow its RECTANGLE, not its origin: a local offset
+// puts the box in a different hex, and that is the hex it is taken from.
+//
+// The pair is the whole claim. Beside the box's hex takes it; beside the
+// ORIGIN'S hex — two cells from the box — does not. A rule that measured from
+// the origin would answer the other way round on both.
+func (s *PlacedOrdersSuite) TestAPlacementStandsWhereItsRectangleIsNotWhereItsOriginIs() {
+	s.Require().NotEqual(tagOriginHex, tagBoxHex, "the fixture puts the two apart")
+
+	s.Run("beside the hex the box is in", func() {
+		enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(4, 2)})
+		s.Require().Equal(float64(1), enc.Distance(cellAt(4, 2), tagBoxHex))
+		s.Require().Equal(float64(2), enc.Distance(cellAt(4, 2), tagOriginHex),
+			"and two cells from the origin, which a rule reading the origin would refuse")
+
+		_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theTag})
+		s.Require().NoError(err)
+	})
+
+	s.Run("and not from beside the hex its origin is in", func() {
+		enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(1, 2)})
+		s.Require().Equal(float64(1), enc.Distance(cellAt(1, 2), tagOriginHex))
+		s.Require().Equal(float64(2), enc.Distance(cellAt(1, 2), tagBoxHex))
+
+		_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theTag})
+		s.Require().ErrorIs(err, encounter.ErrOutOfRange)
+	})
+}
+
+// The centre this module computes is the one SPATIAL measures — the pin on
+// two lines that had to be repeated because spatial does not export them.
+//
+// NOT A TAUTOLOGY. The tag's rectangle stands 6.2 feet from its origin and is
+// ten inches across, so the origin is nowhere near it: a centre computed
+// without the local offset, or with the rotation the other way round, lands
+// outside the box and spatial's own contact query says so.
+func (s *PlacedOrdersSuite) TestAPlacementsCentreIsTheOneSpatialMeasures() {
+	placement := tagPlacement()
+	placement.Facing = 37 // an angle no axis snaps to
+
+	centre := encounter.ExportedPlacedCentre(placement)
+	inside, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+		Placement: placement, From: centre, To: centre,
+	})
+	s.Require().NoError(err)
+	s.True(inside.Contact, "the point this module calls the centre is inside spatial's own rectangle")
+
+	atOrigin, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+		Placement: placement, From: placement.Origin, To: placement.Origin,
+	})
+	s.Require().NoError(err)
+	s.False(atOrigin.Contact, "and the origin is not, which is why the offset has to be applied")
 }
 
 // A placement nobody declared holdable is scenery, and says so by name

@@ -282,65 +282,96 @@ func (f *field) placedIndexOf(id PropID) int {
 	return -1
 }
 
+// placedCentre is the plane point at the middle of a placement's rectangle:
+// its origin with the box's local offset applied ALONG and ACROSS the facing,
+// which is what [spatial.FootprintPlacement.LocalOffset] means by "the
+// footprint's own along/across axes, before Facing".
+//
+// MIRRORED RATHER THAN ASKED, because spatial does not export it: the two
+// lines below are `footprintBox`'s own (placed_footprint.go), and the module
+// boundary is the only reason they are repeated. A second reading of one
+// basis is the defect this workspace has paid for twice
+// (rpg-toolkit#1141, #1150), so it is pinned rather than trusted —
+// TestAPlacementsCentreIsTheOneSpatialMeasures requires the point this
+// returns to be inside the rectangle spatial itself traces, for a placement
+// whose ORIGIN is not.
+func placedCentre(p spatial.FootprintPlacement) spatial.Point {
+	a := math.Mod(p.Facing, 360) * math.Pi / 180
+	along := spatial.Point{X: math.Cos(a), Y: math.Sin(a)}
+	across := spatial.Point{X: -math.Sin(a), Y: math.Cos(a)}
+
+	return spatial.Point{
+		X: p.Origin.X + along.X*p.LocalOffset.X + across.X*p.LocalOffset.Y,
+		Y: p.Origin.Y + along.Y*p.LocalOffset.X + across.Y*p.LocalOffset.Y,
+	}
+}
+
 // placedCells is WHERE A FOOTPRINT STANDS, in cells — the one derivation
-// three protocols ask (rpg-toolkit#1854): [Encounter.Hold]'s reach, the
-// probe law's visibility gate, and the cell an arrival fact names.
+// three protocols ask (rpg-toolkit#1854): [Encounter.Hold]'s reach, the probe
+// law's visibility gate, and the cell an arrival fact names.
 //
-// The rule has two clauses and no third:
+// THE UNION OF TWO THINGS, with no branch between them:
 //
-//  1. Every cell of this field whose centre the rectangle covers —
+//  1. every cell of this field whose centre the rectangle covers —
 //     stationary [spatial.TraceFootprint] contact, the module's ONE standing
 //     query ([field.standingBlocks], [Encounter.CellAt],
-//     [ValidateStaticPlacements]). A table that spans three cells stands on
-//     three.
-//  2. When it covers none, the cell whose centre is NEAREST its origin.
+//     [ValidateStaticPlacements]). A table spanning three cells stands on
+//     three;
+//  2. the one cell that contains the rectangle's own CENTRE
+//     ([placedCentre]) — not its origin, because a local offset can put the
+//     origin outside the box entirely.
 //
-// THE SECOND CLAUSE IS EXACT, NOT AN APPROXIMATION, and it exists because
-// most takeable things are smaller than a hex. A 0.3-unit scroll is a 0.87ft
-// square on a 5ft cell (dungeonspec's feetPerSourceUnit) and covers a centre
-// only if the author happened to drop it on one — the World Builder's own
-// raider letter covers zero of its room's nineteen cells. Nearest-centre is
-// the right answer rather than a fallback guess because a hex grid's cells
-// ARE the Voronoi cells of their centres: the nearest centre to a point is
-// the hex that point lies in. So clause 2 says "a thing smaller than a hex
-// stands in the hex it is in", which is what a table would say.
+// THE SECOND IS EXACT, NOT A FALLBACK GUESS. A hex grid's cells are the
+// Voronoi cells of their centres, so the nearest centre to a point is the hex
+// that point lies in. Nothing is conditional: a hex-sized prop gets the set it
+// would have got from clause 1 alone, because its own cell is already covered;
+// a prop SMALLER than a hex gets exactly the hex it sits in, which is what a
+// table would say about it.
 //
-// NEVER EMPTY for a compiled field — compileRegions refuses a field with no
-// cells — so no caller needs a "stands nowhere" branch and no holdable
-// placement can be unreachable from everywhere. Sorted in the field's own
-// cell order, ties in clause 2 broken by [cellBefore] (C8).
+// Clause 2 is why this rule exists at all. Most takeable things are smaller
+// than a hex — dungeonspec's feetPerSourceUnit makes the World Builder's own
+// 0.3-unit letter a 0.87ft square on a 5ft cell, and it covers ZERO of its
+// room's nineteen cell centres — so clause 1 alone would leave every such
+// thing standing nowhere, reachable from nowhere and seen by nobody.
+//
+// NEVER EMPTY for a compiled field, because compileRegions refuses a field
+// with no cells: no caller needs a "stands nowhere" branch. Returned in the
+// field's own cell order, ties in clause 2 broken by [cellBefore] (C8).
 //
 // A trace error counts as covering, the fail-closed rule every other reader
 // of this geometry applies; compilePlaced makes it unreachable.
 func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
-	var covered []spatial.Position
-	var nearest spatial.Position
-	var nearestD2 float64
-	found := false
+	centre := placedCentre(p)
+	stands := make(map[spatial.Position]bool, len(f.cells))
 
+	var own spatial.Position
+	var ownD2 float64
+	found := false
 	for _, cell := range f.cells {
-		centre := f.plane.CellCentre(cell)
+		at := f.plane.CellCentre(cell)
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: p, From: centre, To: centre,
+			Placement: p, From: at, To: at,
 		})
 		if err != nil || contact.Contact {
-			covered = append(covered, cell)
-			continue
+			stands[cell] = true
 		}
-		dx, dy := centre.X-p.Origin.X, centre.Y-p.Origin.Y
-		d2 := dx*dx + dy*dy
-		if !found || d2 < nearestD2 || (d2 == nearestD2 && cellBefore(cell, nearest)) {
-			found, nearest, nearestD2 = true, cell, d2
+		dx, dy := at.X-centre.X, at.Y-centre.Y
+		if d2 := dx*dx + dy*dy; !found || d2 < ownD2 || (d2 == ownD2 && cellBefore(cell, own)) {
+			found, own, ownD2 = true, cell, d2
 		}
 	}
-	if len(covered) > 0 {
-		return covered
-	}
-	if !found {
-		return nil
+	if found {
+		stands[own] = true
 	}
 
-	return []spatial.Position{nearest}
+	out := make([]spatial.Position, 0, len(stands))
+	for _, cell := range f.cells {
+		if stands[cell] {
+			out = append(out, cell)
+		}
+	}
+
+	return out
 }
 
 // placedFold is ONE journal fold per query, taken only if a query actually

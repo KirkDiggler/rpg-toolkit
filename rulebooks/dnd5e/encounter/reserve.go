@@ -490,6 +490,14 @@ func propEntityOf(index int, p PropInput) *propEntity {
 // thing stands. It is what the `arrived` beat carries so a client can point
 // at the right hex, and it is never read back as the placement's pose — a
 // rectangle that came is at its authored origin, and only a DROP moves one.
+//
+// THE EMPTY GUARD IS UNREACHABLE, and said out loud rather than left for the
+// next reader to test. [field.placedCells] unions the covered centres with
+// the cell the rectangle's own centre lies in, and compileRegions refuses a
+// field with no cells, so the set is never empty for a compiled field — no
+// test kills the branch, and a mutation pass says so. It stays because the
+// alternative is indexing a slice on the strength of an argument made
+// somewhere else.
 func (e *Encounter) arrivePlacedProp(p *placedContributor, cause string, at uint64) error {
 	cells := e.field.placedCells(p.placement)
 	if len(cells) == 0 {
