@@ -59,6 +59,12 @@ func TestAPropsOrdersDecodeWhole(t *testing.T) {
 // And the compile refuses it by name, at the binding's own path, naming what
 // is missing. This is the assertion that fails if the refusal is ever quietly
 // dropped in favour of carrying the keys inert.
+//
+// THIS TEST IS MEANT TO FLIP, and the sentence it pins names the issue that
+// flips it. When rpg-toolkit#1854 lands — a placed footprint that can be held
+// and can arrive — the refusal goes, this test fails, and what replaces it is
+// a compile-equivalence assertion against the v2 letter's Holdable, Holds and
+// Arrives. A test that named no issue would just look broken that day.
 func TestAPropsOrdersAreRefusedAtCompileUntilThePrimitive(t *testing.T) {
 	raw, err := os.ReadFile(theLetterAsAProp) //nolint:gosec // a test reading its own fixture
 	require.NoError(t, err)

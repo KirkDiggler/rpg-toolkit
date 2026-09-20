@@ -191,7 +191,17 @@ func TestAHolderCarriesTheCompiledRecordIDInBothDialects(t *testing.T) {
 	require.Equal(t, []string{"raider-camp-v4/wisemans-letter"},
 		monsterNamed(t, v4, "messenger").Holds,
 		"the v4 holder names the record by its compiled id")
-	require.Nil(t, monsterNamed(t, v4, "chief").Holds, "and a creature that holds nothing carries nil")
+
+	// TWO HOLDERS OF ONE RECORD IS A LAW, NOT A DUPLICATE: intel copies
+	// rather than moving, so two guards may both know the way in and looting
+	// either teaches it. Nothing in either dialect refuses it, and the two
+	// carry the identical compiled id.
+	require.Equal(t, monsterNamed(t, v4, "messenger").Holds, monsterNamed(t, v4, "chief").Holds,
+		"the chief carries the same record, by the same id")
+
+	// And a creature that holds nothing carries nil, which is what keeps a
+	// document with no records picturing as it always did.
+	require.Nil(t, monsterNamed(t, v4, "scout").Holds)
 
 	// The v2 camp puts the record on a PROP rather than on a creature, which
 	// is the one thing v4 cannot do yet (rpg-toolkit#1854). The minting is

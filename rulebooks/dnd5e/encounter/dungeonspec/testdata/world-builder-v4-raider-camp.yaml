@@ -69,7 +69,21 @@ room:
       - {id: reinforcement-2, ref: 'dnd5e:monsters:zombie', cell: {q: 0, r: 2}, faction: raiders}
       - {id: reinforcement-3, ref: 'dnd5e:monsters:zombie', cell: {q: -2, r: 2}, faction: raiders}
     monsterBindings:
-      # THE RECORD ARRIVES ON THE CLOCK. Hold out six rounds and the way to
+      # TWO CREATURES HOLD ONE RECORD, and that is a law rather than a
+      # duplicate: intel COPIES rather than moving, so two guards may both
+      # know the way in and looting either teaches it. Nothing refuses it.
+      #
+      # THE CHIEF'S COPY IS THE DEAD END, ON PURPOSE. He is the faction's
+      # MIND, so taking the letter off his body means the camp has nobody
+      # left to learn it (R7 — a declared mind that falls cannot learn). The
+      # dungeon ALLOWS that and the SCENARIO is where a hold-out nobody can
+      # win is refused (R8), which is why it is authored here rather than
+      # refused here.
+      chief:
+        holds: [wisemans-letter]
+      # THE RECORD ARRIVES ON THE CLOCK, and the messenger's copy is the one
+      # a party can actually use: drop him, take the letter, and the chief is
+      # still alive to be told. Hold out six rounds and the way to
       # turn the camp walks in; drop the messenger and take it off the body.
       messenger:
         holds: [wisemans-letter]
