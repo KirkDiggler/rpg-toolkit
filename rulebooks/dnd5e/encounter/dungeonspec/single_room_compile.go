@@ -37,9 +37,12 @@ import (
 // the four compilers [monstersOf] already calls for a v2 placement. One key,
 // one compiler, two dialects.
 //
-// `propBindings` is the ONE key that decodes and does not compile: it is
-// refused by name at each binding's path ([propBindingNoPrimitive]) until a
-// placed footprint can be held and can arrive (rpg-toolkit#1854).
+// `propBindings` compiles the same way (rpg-toolkit#1854): its three keys are
+// laid onto the placement the item's own declaration produced, by
+// [applyPropBindings], through [intelHoldingsOf] and [predicateOf] — the
+// compilers the monster binding already uses. It was refused at this seam
+// until a placed footprint could be held and could arrive; it can, so it is
+// not.
 //
 // A DOCUMENT WITH NONE OF THOSE KEYS COMPILES TO WHAT IT ALWAYS DID.
 // [encounter.Layer] of two nil tables is nil, [temperOf] of two absences is
@@ -55,17 +58,6 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, &ValidationError{Errors: errs}
 	}
 	spec := in.Spec
-	// THE ONE KEY THIS DIALECT DECODES AND CANNOT RUN (rpg-project#488 R1;
-	// rpg-toolkit#1854). `propBindings` is a legal document — every refusal
-	// in single_room_gameplay.go has already passed — and the engine has
-	// nowhere to put it: a v4 item compiles to a FOOTPRINT, and holdable,
-	// holds and arrives live on the legacy prop, which wants a content ref
-	// and an anchor cell this dialect does not have. Refused by name at each
-	// binding's own path rather than carried inert, because a key the engine
-	// reads and drops is the failure mode this repository refuses.
-	if refusals := propBindingRefusals(&spec.Room.Gameplay); len(refusals) > 0 {
-		return Compiled{}, &ValidationError{Errors: refusals}
-	}
 	// The cast this dialect placed, and what each declared side hands it.
 	cast := roomMembers(&spec.Room.Gameplay)
 	from := inheritedOrders(spec.Factions)
@@ -79,6 +71,10 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if err != nil {
 		return Compiled{}, singleRoomCompileError("room.room.propDeclarations", err.Error())
 	}
+	// AND WHAT EACH PLACED ITEM DOES (rpg-project#488 R1, rpg-toolkit#1854).
+	// The declaration gave the footprint; the binding gives the orders, laid
+	// onto the same placement rather than onto a second list of props.
+	applyPropBindings(spec.Key, props, spec.Room.Gameplay.PropBindings)
 	field := encounter.FieldInput{
 		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
 		Regions: []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},

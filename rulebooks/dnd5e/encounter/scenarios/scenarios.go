@@ -111,8 +111,12 @@ type Scenario interface {
 // the geometry: it binds ids, and the two questions it asks about them are
 // here. The caller builds this from a [dungeonspec.Compiled] in one place.
 type DungeonFacts struct {
-	// Props is every placed prop's id to whether it is holdable. A prop with
-	// no id is not in here — a scenario cannot bind a thing with no name.
+	// Props is every prop's id to whether it is holdable — BOTH KINDS OF
+	// PROP (rpg-toolkit#1854): a legacy prop standing on a cell, and a placed
+	// footprint. A scenario binds an id and asks whether it can be picked up,
+	// and neither question has a different answer for a rectangle. A prop
+	// with no id is not in here — a scenario cannot bind a thing with no
+	// name; a placement always has one.
 	Props map[encounter.PropID]bool
 
 	// Exits is every authored exit's id.
@@ -150,7 +154,7 @@ type FactionFacts struct {
 // is declared.
 func FactsFrom(field encounter.FieldInput) *DungeonFacts {
 	facts := &DungeonFacts{
-		Props:    make(map[encounter.PropID]bool, len(field.Props)),
+		Props:    make(map[encounter.PropID]bool, len(field.Props)+len(field.Placed)),
 		Exits:    make(map[encounter.ExitID]bool, len(field.Exits)),
 		Factions: make(map[encounter.FactionID]FactionFacts, 2+len(field.Factions)),
 		Reveals:  make(map[encounter.FactID]bool),
@@ -192,6 +196,17 @@ func FactsFrom(field encounter.FieldInput) *DungeonFacts {
 		}
 	}
 	for _, p := range field.Props {
+		if p.ID != "" {
+			facts.Props[p.ID] = p.Holdable
+		}
+	}
+	// AND THE FOOTPRINTS, into the SAME map (rpg-toolkit#1854). One lookup
+	// for "is there a thing with this id and can it be taken", because a
+	// second one would be a second answer and the binding an author wrote
+	// (`recover-the-artifact: { artifact: heirloom }`) names an id without
+	// saying which list drew it. The two lists cannot collide: the field
+	// refuses an id that appears in both.
+	for _, p := range field.Placed {
 		if p.ID != "" {
 			facts.Props[p.ID] = p.Holdable
 		}

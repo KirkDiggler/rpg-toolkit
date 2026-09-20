@@ -366,10 +366,8 @@ func (e *Encounter) factRecordsHeldBy(member MemberID) []IntelID {
 		case item.record != "":
 			consider(item.record)
 		case item.prop != "":
-			if i := e.field.propIndexOf(item.prop); i >= 0 {
-				for _, id := range e.field.props[i].Holds {
-					consider(id)
-				}
+			for _, id := range e.field.propHolds(item.prop) {
+				consider(id)
 			}
 		}
 	}

@@ -308,16 +308,17 @@ func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
 //
 // A prop this field does not have carries nothing, which is unreachable from
 // either caller: both resolve the prop before they get here.
+//
+// EITHER KIND OF PROP (rpg-toolkit#1854), through [field.propHolds]: a
+// scroll on a table and a table that IS the scroll teach the same way, and
+// which list the author wrote it in is not a rule about reading it.
 func (e *Encounter) applyPropReveals(to MemberID, prop PropID, at uint64) error {
-	index := e.field.propIndexOf(prop)
-	if index < 0 {
-		return nil
-	}
-	for _, id := range e.field.props[index].Holds {
+	for _, id := range e.field.propHolds(prop) {
 		if err := e.applyReveals(to, id, at); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 

@@ -245,6 +245,13 @@ type AtlasPlacedProp struct {
 	// enforces, carried so a host need not guess from the shape.
 	BlocksMovement    bool
 	BlocksLineOfSight bool
+
+	// Holdable is whether a member can pick this placement up
+	// ([PlacedPropInput.Holdable], rpg-toolkit#1854) — [AtlasProp.Holdable]'s
+	// field on the other kind of thing, carried for its reason: a client
+	// offers the verb on a thing it is already drawing rather than asking a
+	// second question about it.
+	Holdable bool
 }
 
 // AtlasBoundary is one wall or barrier crossing, with both endpoints in
@@ -319,13 +326,26 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	// id (C8 — every list on this snapshot is sorted, and this one's
 	// coordinate is a name). Copies, never the compiled contributors':
 	// mutating the result never reaches internal state.
-	for _, p := range f.placed {
-		box := *p.placement.Footprint.Box
+	//
+	// AND WHERE EACH ONE IS RIGHT NOW (rpg-toolkit#1854), on the truth grain
+	// the legacy props below are folded on: one waiting in reserve is on no
+	// map, one somebody picked up is on no map, and one that was dropped
+	// stands with its origin on the cell it was dropped on. The same fold
+	// standing, crossing and sight read, so no two answers exist.
+	nowPlaced := f.placedNow()
+	for i := range f.placed {
+		p := &f.placed[i]
+		placement, standing := nowPlaced.stands(p)
+		if !standing {
+			continue
+		}
+		box := *placement.Footprint.Box
 		out.Placed = append(out.Placed, AtlasPlacedProp{
 			ID:                p.id,
-			Placement:         p.placement,
+			Placement:         placement,
 			BlocksMovement:    p.blocksMovement,
 			BlocksLineOfSight: p.blocksLineOfSight,
+			Holdable:          p.holdable,
 		})
 		out.Placed[len(out.Placed)-1].Placement.Footprint.Box = &box
 	}

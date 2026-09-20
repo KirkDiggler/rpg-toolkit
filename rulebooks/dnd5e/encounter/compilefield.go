@@ -168,11 +168,26 @@ type field struct {
 	// argument, one noun over.
 	exitCells map[ExitID]spatial.Position
 
-	// holdable is every prop id the author declared holdable, to its index
-	// in props. Built here because "is this a thing that can be picked up"
-	// is a question about the FIELD, asked by [Encounter.Hold] and by the
-	// ending validation, and neither should walk the prop list to answer it.
-	holdable map[PropID]int
+	// holdable is every prop id the author declared holdable — LEGACY PROPS
+	// AND PLACED FOOTPRINTS IN ONE SET (rpg-toolkit#1854). Built here
+	// because "is this a thing that can be picked up" is a question about
+	// the FIELD, asked by [Encounter.Hold] and by the ending validation, and
+	// neither should walk a prop list to answer it, let alone two lists and
+	// risk two answers. The id namespace is shared by construction
+	// (compilePlaced refuses a collision), which is what makes one set safe.
+	holdable map[PropID]bool
+
+	// holdings is the run's WHO-HAS-WHAT reader, attached by the two
+	// construction seams ([NewEncounter], [LoadEncounter]) so the placed
+	// contributors can be asked where they are right now.
+	//
+	// THE READER ITSELF, NEVER A SNAPSHOT — [field.doorFootprints]' rule for
+	// the second kind of thing that changes mid-scene. A placement somebody
+	// picked up stops blocking the moment the fact is appended, with nothing
+	// here to invalidate, and a field compiled without a run (validation
+	// seams such as [ValidateStaticPlacements]) has nil here and reads the
+	// authored geometry, which is what a field nobody is playing is.
+	holdings *holdings
 
 	// factions and dispositions are the authored sides, deep-copied, in
 	// authored order — construction truth, what ToData writes back out
@@ -430,7 +445,7 @@ func (f *field) compileScenery(scenery []spatial.Position) error {
 // on a floor cell of its own.
 func (f *field) compileProps(props []PropInput) error {
 	f.props = make([]PropInput, len(props))
-	f.holdable = map[PropID]int{}
+	f.holdable = map[PropID]bool{}
 	seen := make(map[spatial.Position]bool, len(props))
 	seenID := make(map[PropID]int, len(props))
 
@@ -472,7 +487,7 @@ func (f *field) compileProps(props []PropInput) error {
 			}
 			seenID[p.ID] = i
 			if p.Holdable {
-				f.holdable[p.ID] = i
+				f.holdable[p.ID] = true
 			}
 		} else if p.Holdable {
 			// A TAKEABLE PROP MUST BE NAMEABLE. Without an id, every atlas
@@ -922,4 +937,24 @@ func cellBefore(a, b spatial.Position) bool {
 	}
 
 	return a.Y < b.Y
+}
+
+// propHolds is the intel records the prop with this id carries, WHICHEVER
+// LIST IT IS IN — [PropInput.Holds] for a legacy prop,
+// [PlacedPropInput.Holds] for a footprint (rpg-toolkit#1854).
+//
+// One question with one answer, because "what does holding this teach me" is
+// about the thing rather than about how its author drew it. The two lists
+// cannot both answer: compilePlaced refuses an id that collides. Empty for an
+// id this field does not have, which every caller reaches only after
+// resolving the prop.
+func (f *field) propHolds(id PropID) []IntelID {
+	if i := f.propIndexOf(id); i >= 0 {
+		return f.props[i].Holds
+	}
+	if i := f.placedIndexOf(id); i >= 0 {
+		return f.placed[i].holds
+	}
+
+	return nil
 }

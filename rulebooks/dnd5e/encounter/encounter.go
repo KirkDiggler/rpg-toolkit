@@ -488,7 +488,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			if eh.Item == "" {
 				return fmt.Errorf("ending %q names no item to be holding: %w", ei.Key, ErrNoEnding)
 			}
-			if _, holdable := f.holdable[eh.Item]; !holdable {
+			if !f.holdable[eh.Item] {
 				return fmt.Errorf("ending %q waits for %q to be held, and no prop with that id is holdable: %w",
 					ei.Key, eh.Item, ErrNoEnding)
 			}
@@ -759,6 +759,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			}
 		}
 	}
+	// AND SO MAY A PLACED FOOTPRINT (rpg-toolkit#1854). Named by its id
+	// rather than by a ref, because a placement has none — the id is what an
+	// author wrote under propBindings and what they are looking at.
+	for i := range f.placed {
+		for _, id := range f.placed[i].holds {
+			if _, declared := f.intelByID[id]; !declared {
+				return nil, fmt.Errorf("newencounter: prop %q holds intel %q: %w", f.placed[i].id, id, ErrNoIntel)
+			}
+		}
+	}
 
 	// A member's faction must be one this field has, and a faction's mind
 	// must be in that faction (rpg-project#375) — asked here, before
@@ -812,6 +822,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// keeps such a field's blob byte-identical to what it was before.
 	e.world = newEncounterWorld()
 	e.holdings = newHoldings(e.world.log)
+
+	// AND THE FIELD IS GIVEN THE SAME READER (rpg-toolkit#1854). A placed
+	// footprint can be picked up and can wait in reserve, so the four queries
+	// that measure rectangles have to be able to ask where each one is right
+	// now — the reader itself, never a snapshot, exactly as the doors are
+	// held as their records (placed_props.go).
+	f.attachHoldings(e.holdings)
 
 	// The two concealment capabilities, held exactly when the field carries
 	// concealed structure (rpg-toolkit#1371); the world exists either way.

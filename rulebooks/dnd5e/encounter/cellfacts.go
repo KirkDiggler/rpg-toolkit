@@ -140,13 +140,23 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 	// overlapping tables do not erase each other's fact.
 	if len(e.field.placed) > 0 {
 		centre := e.field.plane.CellCentre(in.Cell)
+		now := e.field.placedNow()
 		for i := range e.field.placed {
 			p := &e.field.placed[i]
 			if !p.blocksMovement {
 				continue
 			}
+			// ONE ANSWER WITH [field.standingBlocks] (rpg-toolkit#1854): a
+			// placement in reserve or in somebody's hands closes no cell, and
+			// the fold that says so is the same one the step's own refusal
+			// reads — a router that saw a table nobody can walk into any more
+			// would hand back a path around nothing.
+			placement, standing := now.stands(p)
+			if !standing {
+				continue
+			}
 			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-				Placement: p.placement, From: centre, To: centre,
+				Placement: placement, From: centre, To: centre,
 			})
 			if err != nil || contact.Contact {
 				fact.Passage = PassageBlocked

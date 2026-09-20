@@ -400,6 +400,21 @@ type PlacedPropData struct {
 	// absence cannot mean anything but the zero value.
 	BlocksMovement    bool `json:"blocks_movement"`
 	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+
+	// Holdable, Holds and Arrives mirror the three orders a placement can
+	// carry ([PlacedPropInput], rpg-toolkit#1854). NONE IS REQUIRED AT LOAD,
+	// on [PropData]'s own rule for the same three: omitted and
+	// written-as-the-zero-value are the same fact, so a blob from before
+	// #1854 loads as a footprint nobody can pick up that is there from the
+	// first frame — which is exactly what every placement was.
+	//
+	// PERSISTED, and Holds has to be, for [PropData.Holds]' reason: a host
+	// that saves between verbs rebuilds the field from these bytes, and a
+	// placement whose records did not survive the round trip would be a
+	// scroll that taught the first person to pick it up and nobody after.
+	Holdable bool         `json:"holdable,omitempty"`
+	Holds    []IntelID    `json:"holds,omitempty"`
+	Arrives  *TriggerData `json:"arrives,omitempty"`
 }
 
 // PlacementData is the persistent representation of a
@@ -788,22 +803,33 @@ func factDataFrom(f journal.Fact) FactData {
 // is holdings.go's, and a second copy of it would be a second thing to be
 // wrong.
 func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID) error {
-	props := make(map[PropID]bool, len(f.props))
+	// BOTH KINDS OF PROP (rpg-toolkit#1854). A placed footprint is held,
+	// dropped and arrives through these same facts, so a boundary that knew
+	// only the legacy list would refuse every save of a run in which somebody
+	// picked one up — which is what it did, caught on the #1854 walk when a
+	// held placed letter turned the camp and the dissolve reloaded the world.
+	// The id namespace is shared by construction (compilePlaced refuses a
+	// collision), so one set cannot hide two things.
+	props := make(map[PropID]bool, len(f.props)+len(f.placed))
+	arrivals := make(map[PropID]bool, len(f.props)+len(f.placed))
 	for _, p := range f.props {
 		if p.ID != "" {
 			props[p.ID] = true
+			if p.Arrives != nil {
+				arrivals[p.ID] = true
+			}
+		}
+	}
+	for i := range f.placed {
+		p := &f.placed[i]
+		props[p.id] = true
+		if p.arrives != nil {
+			arrivals[p.id] = true
 		}
 	}
 	members := make(map[string]bool, len(everMembers))
 	for _, id := range everMembers {
 		members[string(id)] = true
-	}
-
-	arrivals := make(map[PropID]bool, len(f.props))
-	for _, p := range f.props {
-		if p.ID != "" && p.Arrives != nil {
-			arrivals[p.ID] = true
-		}
 	}
 
 	for i, fd := range data.Facts {
@@ -1879,12 +1905,19 @@ func fieldDataFrom(f *field) FieldData {
 			// Fresh box, never the compiled one's own: two ToData calls must
 			// not alias one rectangle (PlacedPropData's rule, the input copy's
 			// reason twice over).
-			out.Placed[i] = PlacedPropData{
+			ppd := PlacedPropData{
 				ID:                p.id,
 				Placement:         placementDataFrom(p.placement),
 				BlocksMovement:    p.blocksMovement,
 				BlocksLineOfSight: p.blocksLineOfSight,
+				Holdable:          p.holdable,
+				Holds:             append([]IntelID(nil), p.holds...),
 			}
+			if p.arrives != nil {
+				td := triggerDataFrom(p.arrives)
+				ppd.Arrives = &td
+			}
+			out.Placed[i] = ppd
 		}
 	}
 
@@ -2751,6 +2784,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// The canvas, with every prop that has arrived from reserve standing
 	// where it landed — folded from the facts just replayed — and every prop
 	// still waiting kept off it (reserve.go).
+	// The field's own reader for the placed contributors, attached before
+	// anything measures one (rpg-toolkit#1854, [field.holdings]).
+	f.attachHoldings(e.holdings)
 	e.canvas, err = f.compileCanvas(e.doors, e.holdings.arrivedProps())
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
@@ -3133,12 +3169,22 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	for _, ppd := range fd.Placed {
-		in.Placed = append(in.Placed, PlacedPropInput{
+		placed := PlacedPropInput{
 			ID:                ppd.ID,
 			Placement:         placementFromData(ppd.Placement),
 			BlocksMovement:    ppd.BlocksMovement,
 			BlocksLineOfSight: ppd.BlocksLineOfSight,
-		})
+			Holdable:          ppd.Holdable,
+			Holds:             append([]IntelID(nil), ppd.Holds...),
+		}
+		if ppd.Arrives != nil {
+			t, err := triggerFromData(*ppd.Arrives)
+			if err != nil {
+				return FieldInput{}, fmt.Errorf("prop %q arrives: %w", ppd.ID, err)
+			}
+			placed.Arrives = t
+		}
+		in.Placed = append(in.Placed, placed)
 	}
 
 	for _, ed := range fd.Exits {
