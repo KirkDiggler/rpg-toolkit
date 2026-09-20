@@ -439,6 +439,62 @@ func entrySelectorOf(entry AnswerSpec) (string, *SelectorSpec) {
 	}
 }
 
+// The two sentences a door's authored checks are refused empty with. Constant
+// and shared, because a lock nobody can pick means the same thing to an author
+// whichever dialect drew the room — and a second spelling of either is exactly
+// the drift one grammar exists to prevent (rpg-project#484).
+const (
+	errLockNoWayThrough     = "this locked door needs at least one way through it — an ability and a DC"
+	errConcealedNoWayToFind = "this concealed door needs at least one way to find it — an ability and a DC"
+)
+
+// approaches validates one authored check: at least one approach, each naming
+// the ability it rolls and a DC of at least 1.
+//
+// THE EMPTY-CHECK SENTENCE IS THE CALLER'S, worded for the form-filler at the
+// door, since "the check has no approaches" means one thing on a lock and
+// another on a concealment; every per-approach refusal names the field that is
+// missing at the row that misses it.
+//
+// ONE CHECK GRAMMAR, UNDER EITHER GEOMETRY. A v2 door is a position on a wall
+// and a single-room door is a footprint, and the lock on them is the same lock
+// — so this moved here from [validation] when the second dialect grew one
+// (rpg-project#485, R2), rather than being written a second time beside the
+// second door.
+func (g *grammar) approaches(path, none string, check CheckSpec) {
+	if len(check) == 0 {
+		g.fail(path, "%s", none)
+
+		return
+	}
+	for j, a := range check {
+		ap := fmt.Sprintf("%s[%d]", path, j)
+		if a.Ability == "" {
+			g.fail(ap+".ability", "the approach does not say which ability it rolls")
+		}
+		if a.DC < 1 {
+			g.fail(ap+".dc", "an approach with dc %d has nothing to beat", a.DC)
+		}
+	}
+}
+
+// doorState validates the state half of an authored door — the keys a v2
+// [DoorSpec] and a single-room [RoomDoorBinding] share, at whichever path the
+// dialect names them by.
+//
+// WHAT IT DOES NOT ASK IS WHERE THE DOOR IS. A position on a wall and a
+// footprint are the two geometries (encounter.DoorInput), and each dialect
+// refuses its own in its own coordinates — the grammar owns no geometry for
+// the reason it owns no cells.
+func (g *grammar) doorState(path string, locked, concealed CheckSpec) {
+	if locked != nil {
+		g.approaches(path+".locked", errLockNoWayThrough, locked)
+	}
+	if concealed != nil {
+		g.approaches(path+".concealed", errConcealedNoWayToFind, concealed)
+	}
+}
+
 // placeTemper refuses a temperament this build does not ship. The decoder
 // already refuses an unknown word inside a [TemperSpec]; a creature's own
 // `temper` is a plain word in either dialect, so this is where it is checked.

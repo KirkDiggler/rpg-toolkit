@@ -211,6 +211,10 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 			add("room.room.monsterBindings."+id, "must name a live room monster")
 		}
 	}
+	// AND THE DOORS, judged by the same grammar's state half
+	// (single_room_doors.go). Last, because a door is about a PLACED thing
+	// rather than about the cast, and nothing above it depends on one.
+	doorBindingValues(gp, g, add)
 }
 
 // sortedBindingIDs orders the orders blocks' ids, for [sortedKeys]' reason.

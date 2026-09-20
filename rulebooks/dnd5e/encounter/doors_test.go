@@ -255,9 +255,10 @@ func (s *DoorSuite) TestAGateIsOneThingNotFour() {
 func (s *DoorSuite) TestNoEdgeCarriesAStateOfItsOwn() {
 	s.Equal([]string{"From", "To"}, structFieldNames(encounter.DoorEdge{}),
 		"an edge is two cells and nothing else — a blocking flag here would be a second truth")
-	s.Equal([]string{"ID", "Edges", "State", "Concealed"}, structFieldNames(encounter.Door{}),
-		"and the state is the DOOR's, held once for however many edges it has — "+
-			"Concealed is construction truth like the edges, not a second state")
+	s.Equal([]string{"ID", "Edges", "Placement", "State", "Concealed"}, structFieldNames(encounter.Door{}),
+		"and the state is the DOOR's, held ONCE — for however many edges it has, and for the footprint "+
+			"a single-room door stands as instead (rpg-project#485). Concealed and Placement are "+
+			"construction truth like the edges: a second GEOMETRY is not a second state")
 }
 
 // TestADoorMustSayWhatStateItIsIn is #1033's law again: a door with no declared

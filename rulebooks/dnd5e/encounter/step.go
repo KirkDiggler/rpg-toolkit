@@ -261,6 +261,16 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 			return executedAction{}, fmt.Errorf("crossing from %v into %v: %w", here, to, cerr)
 		}
 		if prop != "" {
+			// A SHUT DOOR REFUSES AS A DOOR, whichever geometry it stands in
+			// (rpg-project#485, R1). A footprint door registers no boundary,
+			// so it comes back through the crossing fold as the thing in the
+			// way — and a caller told "the crossing is through
+			// front-room/cellar-door" cannot tell that the answer is to open
+			// it. The sentences and the sentinels are the edge door's own,
+			// below; this is the same law reaching the second geometry.
+			if door := e.field.doorAcrossCrossing(here, to); door != nil {
+				return executedAction{}, shutDoorRefusal(door)
+			}
 			return executedAction{}, fmt.Errorf("the crossing from %v into %v is through %q: %w",
 				here, to, prop, ErrBadPlacement)
 		}
@@ -283,6 +293,12 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// the way a door always has.
 
 	if fact := e.CellAt(CellAtInput{Cell: to, Mover: member.ID}); fact.Passage == PassageBlocked && !crossingBlocked {
+		// THE DESTINATION IS A SHUT DOOR'S OWN CELL when a footprint door
+		// covers it — the same refusal a crossing through one earns, because
+		// it is the same door and the same answer: open it.
+		if door := e.field.doorStandingOn(to); door != nil {
+			return executedAction{}, shutDoorRefusal(door)
+		}
 		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
 	}
 
@@ -329,10 +345,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 				// OpenDoor's refusal does; a merely-shut door is its own
 				// answer; and ErrBadPlacement goes back to meaning what its
 				// name says — the position itself is not usable.
-				if lock, locked := door.state.Lock(); locked {
-					return executedAction{}, fmt.Errorf("door %q is locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
-				}
-				return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrDoorShut)
+				return executedAction{}, shutDoorRefusal(door)
 			}
 		}
 

@@ -668,6 +668,22 @@ type DoorData struct {
 	State string     `json:"state"`
 	Lock  *LockData  `json:"lock,omitempty"`
 
+	// Placement is the door's FOOTPRINT when it stands as one rather than
+	// in crossings (rpg-project#485, R1) — [PlacementData], the same shape
+	// a placed prop persists its geometry as.
+	//
+	// ABSENT FOR AN EDGE DOOR, which is every door in every blob written
+	// before footprint doors existed, so those blobs load unchanged. A door
+	// carries exactly one geometry: present here means `edges` is empty,
+	// and the shared validator refuses any other combination at load
+	// exactly as it refuses it at construction.
+	//
+	// IT HAS TO BE HERE. A footprint door's blocking is measured from this
+	// rectangle on every read, so a blob that dropped it would load a door
+	// that names a state and stops nothing — a closed door somebody walks
+	// through after a save.
+	Placement *PlacementData `json:"placement,omitempty"`
+
 	// Concealed is the authored find check, absent for the door that was
 	// never concealed — which is every door in every blob written before
 	// concealment existed, so those blobs load unchanged. Present means
@@ -1028,12 +1044,41 @@ func replayWorldFacts(w *encounterWorld, data *WorldData) error {
 	return nil
 }
 
+// placementDataFrom renders one canonical footprint placement for the blob,
+// and placementFromData reads it back. ONE SPELLING EACH WAY: a placed prop
+// and a footprint door persist the same geometry, and two copies of this
+// arithmetic is two things to get out of step.
+//
+// The box is freshly allocated on the way back in, never shared: two doors
+// loaded from one blob must not alias one rectangle.
+func placementDataFrom(p spatial.FootprintPlacement) PlacementData {
+	return PlacementData{
+		Footprint:   FootprintData{W: p.Footprint.Box.W, D: p.Footprint.Box.D},
+		Origin:      PositionData{X: p.Origin.X, Y: p.Origin.Y},
+		Facing:      p.Facing,
+		LocalOffset: PositionData{X: p.LocalOffset.X, Y: p.LocalOffset.Y},
+	}
+}
+
+func placementFromData(d PlacementData) spatial.FootprintPlacement {
+	return spatial.FootprintPlacement{
+		Footprint:   spatial.Footprint{Box: &spatial.Box{W: d.Footprint.W, D: d.Footprint.D}},
+		Origin:      spatial.Point{X: d.Origin.X, Y: d.Origin.Y},
+		Facing:      d.Facing,
+		LocalOffset: spatial.Point{X: d.LocalOffset.X, Y: d.LocalOffset.Y},
+	}
+}
+
 // doorDataFrom renders a door record for the blob.
 func doorDataFrom(d *doorRecord) DoorData {
 	out := DoorData{
 		ID:    d.id,
 		Edges: make([]EdgeData, 0, len(d.edges)),
 		State: string(d.state.Kind()),
+	}
+	if d.placement != nil {
+		placement := placementDataFrom(*d.placement)
+		out.Placement = &placement
 	}
 	for _, e := range d.edges {
 		out.Edges = append(out.Edges, EdgeData{
@@ -1418,7 +1463,12 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 				To:   spatial.Position{X: e.To.X, Y: e.To.Y},
 			})
 		}
-		out = append(out, DoorInput{ID: dd.ID, Edges: edges, State: state, Concealed: approachesFromData(dd.Concealed)})
+		in := DoorInput{ID: dd.ID, Edges: edges, State: state, Concealed: approachesFromData(dd.Concealed)}
+		if dd.Placement != nil {
+			placement := placementFromData(*dd.Placement)
+			in.Placement = &placement
+		}
+		out = append(out, in)
 	}
 
 	return out, nil
@@ -1830,13 +1880,8 @@ func fieldDataFrom(f *field) FieldData {
 			// not alias one rectangle (PlacedPropData's rule, the input copy's
 			// reason twice over).
 			out.Placed[i] = PlacedPropData{
-				ID: p.id,
-				Placement: PlacementData{
-					Footprint:   FootprintData{W: p.placement.Footprint.Box.W, D: p.placement.Footprint.Box.D},
-					Origin:      PositionData{X: p.placement.Origin.X, Y: p.placement.Origin.Y},
-					Facing:      p.placement.Facing,
-					LocalOffset: PositionData{X: p.placement.LocalOffset.X, Y: p.placement.LocalOffset.Y},
-				},
+				ID:                p.id,
+				Placement:         placementDataFrom(p.placement),
 				BlocksMovement:    p.blocksMovement,
 				BlocksLineOfSight: p.blocksLineOfSight,
 			}
@@ -3089,13 +3134,8 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 
 	for _, ppd := range fd.Placed {
 		in.Placed = append(in.Placed, PlacedPropInput{
-			ID: ppd.ID,
-			Placement: spatial.FootprintPlacement{
-				Footprint:   spatial.Footprint{Box: &spatial.Box{W: ppd.Placement.Footprint.W, D: ppd.Placement.Footprint.D}},
-				Origin:      spatial.Point{X: ppd.Placement.Origin.X, Y: ppd.Placement.Origin.Y},
-				Facing:      ppd.Placement.Facing,
-				LocalOffset: spatial.Point{X: ppd.Placement.LocalOffset.X, Y: ppd.Placement.LocalOffset.Y},
-			},
+			ID:                ppd.ID,
+			Placement:         placementFromData(ppd.Placement),
 			BlocksMovement:    ppd.BlocksMovement,
 			BlocksLineOfSight: ppd.BlocksLineOfSight,
 		})

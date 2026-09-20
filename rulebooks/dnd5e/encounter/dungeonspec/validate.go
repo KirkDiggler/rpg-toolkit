@@ -478,14 +478,12 @@ func (v *validation) doors() {
 		} else {
 			ids[d.ID] = i
 		}
-		if d.Locked != nil {
-			v.approaches(p+".locked",
-				"this locked door needs at least one way through it — an ability and a DC", d.Locked)
-		}
-		if d.Concealed != nil {
-			v.approaches(p+".concealed",
-				"this concealed door needs at least one way to find it — an ability and a DC", d.Concealed)
-		}
+		// THE STATE HALF IS THE SHARED GRAMMAR'S (rpg-project#484, #485):
+		// the lock and the concealment mean the same thing in either
+		// dialect, so they are judged in one place. What stays here is the
+		// geometry — the side midpoint, the one wall, the crossing — which
+		// is this dialect's own and nobody else's.
+		v.g.doorState(p, d.Locked, d.Concealed)
 
 		at, ok := v.position(p, "at", g, d.At)
 		if !ok {
@@ -553,28 +551,6 @@ func (v *validation) wallLabel(i int) string {
 	}
 
 	return wallPath(i)
-}
-
-// approaches validates one authored check: at least one approach, each naming
-// the ability it rolls and a DC of at least 1. The empty-check refusal is the
-// caller's sentence — worded for the form-filler at the door, since "the
-// check has no approaches" means one thing on a lock and another on a
-// concealment — and every per-approach refusal names the field that is
-// missing at the row that misses it.
-func (v *validation) approaches(path, none string, check CheckSpec) {
-	if len(check) == 0 {
-		v.fail(path, "%s", none)
-		return
-	}
-	for j, a := range check {
-		ap := fmt.Sprintf("%s[%d]", path, j)
-		if a.Ability == "" {
-			v.fail(ap+".ability", "the approach does not say which ability it rolls")
-		}
-		if a.DC < 1 {
-			v.fail(ap+".dc", "an approach with dc %d has nothing to beat", a.DC)
-		}
-	}
 }
 
 func (v *validation) start() {
@@ -732,12 +708,12 @@ func (v *validation) place() {
 			// naming an ability and a DC. Absent is legal and means the
 			// rulebook derives it ([PlaceSpec.Intimidate]).
 			if pl.Intimidate != nil {
-				v.approaches(p+".intimidate",
+				v.g.approaches(p+".intimidate",
 					"this monster declares an intimidate check with no way through it — an ability and a DC",
 					pl.Intimidate)
 			}
 			if pl.Persuade != nil {
-				v.approaches(p+".persuade",
+				v.g.approaches(p+".persuade",
 					"this monster declares a persuade check with no way through it — an ability and a DC",
 					pl.Persuade)
 			}

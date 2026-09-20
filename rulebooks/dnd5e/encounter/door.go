@@ -55,6 +55,19 @@ import (
 // nothing for two edges of one gate to disagree ABOUT. That makes "a gate opens
 // as one thing" structural rather than something the verbs have to remember to
 // do, and it is pinned that way (TestNoEdgeCarriesAStateOfItsOwn).
+//
+// # And a door that stands in no crossing at all (rpg-project#485)
+//
+// The paragraphs above say a door is a name and a state over geometry that
+// was already expressible. Edges were the only such geometry when they were
+// written; a PLACED FOOTPRINT (placed_props.go) is the second, and the
+// single-room dialect's doors stand as one because that dialect has no walls
+// to put a door in. Nothing above changes: the state machine, the three
+// verbs, the lock, the beats and the refusal sentences are the ones this file
+// already had, and what a door BLOCKS is still its state's answer and only
+// its state's answer. What a footprint door adds is where that answer is
+// asked — the placed-footprint queries, per read, instead of a boundary
+// registration. [DoorInput] takes one geometry or the other, never both.
 
 // DoorID names one door.
 //
@@ -226,16 +239,46 @@ type DoorEdge struct {
 	To spatial.Position
 }
 
-// DoorInput authors one door: a name, the edges it stands in, and the state
-// they are all in.
+// DoorInput authors one door: a name, the GEOMETRY it stands in, and the
+// state that geometry is in.
+//
+// # Two geometries, one state (rpg-project#485, R1)
+//
+// A door is a name and a state over something the map already had. Which
+// something depends on how the room was drawn, and there are exactly two:
+//
+//   - EDGES, the v2 dialect's. A door is a position on a wall, and the
+//     crossings it opens are edges between adjacent floor cells.
+//   - A FOOTPRINT, the single-room dialect's. That dialect has no walls —
+//     "walls are currently just props that block los and movement", so
+//     placing a door IN one no longer means anything — and a door there is
+//     a placed rectangle like every other prop, whose blocking follows the
+//     door's state instead of a pair of authored flags.
+//
+// EXACTLY ONE, never both and never neither: a door with two geometries
+// would be two things sharing one state, which is the defect [DoorEdge]'s
+// missing flags exist to prevent, one level up.
 type DoorInput struct {
 	// ID is the door's unique identifier.
 	ID DoorID
 
 	// Edges are the crossings this door stands in — at least one, and as many
 	// as the gate is wide. They share one state, which is the whole design;
-	// see this file's own doc comment.
+	// see this file's own doc comment. Empty for a footprint door.
 	Edges []DoorEdge
+
+	// Placement is the door's FOOTPRINT: the canonical rectangle it stands
+	// as, in the same plane and the same units [PlacedPropInput.Placement]
+	// is measured in, and refused by the same [validatePlacement]. Nil for
+	// an edge door.
+	//
+	// WHAT IT BLOCKS IS THE STATE'S ANSWER, never a flag: closed and locked
+	// block movement and sight, open blocks neither. That is the whole
+	// difference between this and a placed prop, and it is why the blocking
+	// flags are refused on a door item in the authoring dialect — a flag
+	// here would be a second truth the state would have to be kept in step
+	// with (rpg-toolkit#1846, ruled: state wins).
+	Placement *spatial.FootprintPlacement
 
 	// State is what state the door starts in. REQUIRED — see [DoorState].
 	State DoorState
@@ -266,7 +309,13 @@ type Door struct {
 
 	// Edges are the crossings it stands in, dungeon-absolute. Freshly
 	// allocated per call — this is a copy-out read, like [Encounter.Atlas].
+	// EMPTY for a footprint door, which stands in no crossing at all.
 	Edges []DoorEdge
+
+	// Placement is the footprint it stands as, or nil for an edge door —
+	// [DoorInput.Placement], read back. Freshly allocated per call, box
+	// included, as the edges are.
+	Placement *spatial.FootprintPlacement
 
 	// State is its state RIGHT NOW, not the one it was authored in.
 	State DoorState
@@ -285,9 +334,18 @@ type Door struct {
 type doorRecord struct {
 	id        DoorID
 	edges     []DoorEdge
+	placement *spatial.FootprintPlacement
 	state     DoorState
 	concealed []CheckApproach
 }
+
+// blocks is what this door's geometry does right now: its state's answer,
+// for the edges and the footprint alike.
+//
+// One question, one place to ask it. [registerDoor] puts this on the edges
+// and the placed-footprint queries ask it per read, so an edge door and a
+// footprint door cannot come to disagree about what "closed" means.
+func (d *doorRecord) blocks() bool { return d.state.blocks() }
 
 // Doors reports every door, in stable ID order, with the state each is in now.
 //
@@ -320,6 +378,7 @@ func (e *Encounter) Doors() []Door {
 		out = append(out, Door{
 			ID:        d.id,
 			Edges:     append([]DoorEdge(nil), d.edges...),
+			Placement: copyPlacement(d.placement),
 			State:     d.state,
 			Concealed: copyApproaches(d.concealed),
 		})
@@ -390,6 +449,9 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 		if d.State == nil {
 			return fmt.Errorf("door %q does not say what state it is in (DoorInput.State): %w", d.ID, ErrBadDoor)
 		}
+		if err := validateDoorGeometry(d); err != nil {
+			return err
+		}
 		if lock, locked := d.State.Lock(); locked {
 			if err := validateCheck(d.ID, "is locked and lists no way through", lock.Approaches); err != nil {
 				return err
@@ -399,10 +461,6 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 			if err := validateCheck(d.ID, "is concealed and lists no way to find it", d.Concealed); err != nil {
 				return err
 			}
-		}
-
-		if len(d.Edges) == 0 {
-			return fmt.Errorf("door %q stands in no edges: %w", d.ID, ErrBadDoor)
 		}
 
 		for _, raw := range d.Edges {
@@ -450,6 +508,59 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 	return nil
 }
 
+// validateDoorGeometry refuses a door that stands in the wrong number of
+// geometries, and measures the footprint of one that stands in a rectangle.
+//
+// EXACTLY ONE (rpg-project#485, R1). A door with neither is a name and a
+// state over nothing; a door with both is one state over two shapes, which
+// is the disagreement [DoorEdge]'s missing flags exist to prevent. The
+// footprint goes through [validatePlacement] — the same refusals a placed
+// prop's geometry earns, because it is the same geometry in the same plane.
+//
+// CONCEALMENT IS REFUSED ON A FOOTPRINT DOOR, and that is fail-closed
+// rather than arbitrary. The concealed-door laws are written for a door on
+// a crossing: a step refused with spatial's own sentence (step.go), an
+// audience of knowers (doorverbs.go), the probe law. A footprint door is
+// reported as a cell contributor by [Encounter.CellAt], which every route
+// reads and which has no mover-shaped secret to keep — so a concealed one
+// would leak its own existence through the map. Refused here until a use
+// case pays for the answer, which is also what the single-room dialect
+// tells an author who writes `concealed:` (rpg-toolkit#1850).
+func validateDoorGeometry(d DoorInput) error {
+	switch {
+	case len(d.Edges) == 0 && d.Placement == nil:
+		return fmt.Errorf("door %q stands in no edges and has no footprint: %w", d.ID, ErrBadDoor)
+	case len(d.Edges) > 0 && d.Placement != nil:
+		return fmt.Errorf(
+			"door %q stands in edges AND as a footprint, and a door has one geometry: %w", d.ID, ErrBadDoor)
+	case d.Placement == nil:
+		return nil
+	}
+	if d.Concealed != nil {
+		return fmt.Errorf("door %q is a footprint and concealed, which nothing has built yet: %w", d.ID, ErrBadDoor)
+	}
+	if err := validatePlacement(*d.Placement); err != nil {
+		return fmt.Errorf("door %q: %w", d.ID, err)
+	}
+
+	return nil
+}
+
+// copyPlacement deep-copies a footprint placement, box included, with nil
+// staying nil — an edge door must read back as one. [compilePlaced]'s rule:
+// the box is the one pointer in a placement, and a caller editing theirs
+// must not reach a running field.
+func copyPlacement(p *spatial.FootprintPlacement) *spatial.FootprintPlacement {
+	if p == nil {
+		return nil
+	}
+	box := *p.Footprint.Box
+	out := *p
+	out.Footprint.Box = &box
+
+	return &out
+}
+
 // validateCheck rejects a malformed approach list: empty, or any approach
 // with nothing to beat. The empty-list sentence is the caller's, because a
 // lock nobody can pick and a concealment nobody can find are different
@@ -477,6 +588,26 @@ func copyApproaches(approaches []CheckApproach) []CheckApproach {
 	}
 
 	return append([]CheckApproach(nil), approaches...)
+}
+
+// shutDoorRefusal is what a walker is told by a door that will not let them
+// through: the door's name, what it is doing, and — when it is locked — what
+// beating it would take.
+//
+// ONE SENTENCE PAIR FOR BOTH GEOMETRIES (rpg-project#485, R1). An edge door
+// is found along the travel ray and a footprint door is found by the
+// crossing and standing traces, but what they say is identical, because
+// which shape a door stands in is not something the refused walker can act
+// on and its STATE is. Three cases, three sentinels (rpg-toolkit#1135): a
+// locked door names its stakes as [Encounter.OpenDoor]'s refusal does, a
+// merely-shut door is its own answer, and ErrBadPlacement stays what its
+// name says — the position itself is not usable.
+func shutDoorRefusal(door *doorRecord) error {
+	if lock, locked := door.state.Lock(); locked {
+		return fmt.Errorf("door %q is locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
+	}
+
+	return fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrDoorShut)
 }
 
 // lockLabel renders a lock for a refusal — "DC 12 (dex)", or the routes
@@ -517,7 +648,13 @@ func doorRecordsFrom(doors []DoorInput) ([]*doorRecord, map[DoorID]*doorRecord) 
 		for _, e := range d.Edges {
 			edges = append(edges, normalizeDoorEdge(e))
 		}
-		rec := &doorRecord{id: d.ID, edges: edges, state: d.State, concealed: copyApproaches(d.Concealed)}
+		rec := &doorRecord{
+			id:        d.ID,
+			edges:     edges,
+			placement: copyPlacement(d.Placement),
+			state:     d.State,
+			concealed: copyApproaches(d.Concealed),
+		}
 		records = append(records, rec)
 		byID[d.ID] = rec
 	}

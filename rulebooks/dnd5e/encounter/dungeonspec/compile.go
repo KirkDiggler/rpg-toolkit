@@ -781,24 +781,34 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 		// other — and two files describing one dungeon must compile to one
 		// door, not to two orderings of it.
 		crossing := normalizedCrossing(here, there)
-		var state encounter.DoorState
-		switch {
-		case d.Locked != nil:
-			state = encounter.DoorIsLocked(encounter.Lock{Approaches: approachesOf(d.Locked)})
-		case d.Closed:
-			state = encounter.DoorIsClosed()
-		default:
-			state = encounter.DoorIsOpen()
-		}
 		out = append(out, encounter.DoorInput{
 			ID:        encounter.DoorID(spec.Key + "/" + d.ID),
 			Edges:     []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
-			State:     state,
+			State:     doorStateOf(d.Locked, d.Closed),
 			Concealed: approachesOf(d.Concealed),
 		})
 	}
 
 	return out
+}
+
+// doorStateOf is the state an authored door starts in, from the two keys that
+// say so — v2's [DoorSpec] and the single room's [RoomDoorBinding] carry the
+// same pair and mean the same thing by it (rpg-project#485, R2).
+//
+// LOCKED OUTRANKS CLOSED, because a locked door is shut by definition and
+// [DoorSpec.Closed] says `closed` is ignored beside it; neither is an open
+// doorway. Written once so the two dialects cannot come to disagree about
+// what `locked: [...]` with no `closed:` means.
+func doorStateOf(locked CheckSpec, closed bool) encounter.DoorState {
+	switch {
+	case locked != nil:
+		return encounter.DoorIsLocked(encounter.Lock{Approaches: approachesOf(locked)})
+	case closed:
+		return encounter.DoorIsClosed()
+	default:
+		return encounter.DoorIsOpen()
+	}
 }
 
 // answersOf carries the authored answer table to the composition's shape,

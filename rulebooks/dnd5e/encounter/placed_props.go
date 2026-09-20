@@ -40,6 +40,22 @@ import (
 // .IsLineOfSightBlocked). Footprint props are SOFT obstructions there — a
 // thin blocker leans around like an occluding entity does, never like a wall
 // — per the approved sight-lanes contract.
+//
+// # The second kind of contributor: a door (rpg-project#485, R1)
+//
+// A door that stands as a FOOTPRINT rather than in a crossing is measured by
+// the same four queries, with one difference and only one: what it blocks is
+// its [DoorState]'s answer, asked per read, rather than two flags fixed at
+// compile. Closed and locked block movement and sight; open blocks neither,
+// and is skipped before any geometry is traced.
+//
+// So there is no second geometry and no second algorithm — the rectangle,
+// the plane, the contact rule and the interior rule are the ones above. The
+// door is held as the RECORD ([field.doorFootprints]), so
+// [Encounter.OpenDoor] writing one state is the whole of "the door opened":
+// nothing here is rebuilt, invalidated or re-registered, and no snapshot of
+// the state exists to fall behind. That is why a shut door and its own open
+// self cannot disagree.
 
 // PlacedPropInput is one authored footprint placement on the field: a named,
 // canonical rectangle with the two blocking answers its author gave it.
@@ -206,6 +222,40 @@ func validatePlacement(p spatial.FootprintPlacement) error {
 	return nil
 }
 
+// attachDoorFootprints holds the doors that stand as rectangles, so every
+// query below can ask one what it blocks right now (rpg-project#485, R1).
+//
+// THE RECORDS THEMSELVES, not copies of their state. A door's state is the
+// one thing about it a verb changes mid-scene, and a snapshot taken here
+// would be the second answer [Encounter.OpenDoor] then had to remember to
+// update — the exact duality [DoorEdge] has no flags in order to avoid.
+func (f *field) attachDoorFootprints(doors []*doorRecord) {
+	f.doorFootprints = nil
+	for _, d := range doors {
+		if d.placement != nil {
+			f.doorFootprints = append(f.doorFootprints, d)
+		}
+	}
+}
+
+// blockingDoorFootprints is every footprint door whose state blocks right
+// now — closed or locked. An open one is skipped entirely: it is the gap
+// that was there before the door existed, exactly as an open edge door's
+// crossings block nothing.
+func (f *field) blockingDoorFootprints() []*doorRecord {
+	if len(f.doorFootprints) == 0 {
+		return nil
+	}
+	out := make([]*doorRecord, 0, len(f.doorFootprints))
+	for _, d := range f.doorFootprints {
+		if d.blocks() {
+			out = append(out, d)
+		}
+	}
+
+	return out
+}
+
 // standingBlocks answers CENTRE-COVERED STANDING: which movement-blocking
 // placed contributor, if any, has the queried cell's centre on or inside its
 // rectangle. Stationary [spatial.TraceFootprint] contact — the published
@@ -214,17 +264,22 @@ func validatePlacement(p spatial.FootprintPlacement) error {
 // contributors rather than refusing asks the CellAt fold, which reports
 // every one.
 //
+// A SHUT FOOTPRINT DOOR IS ONE OF THEM, asked last so an authored prop keeps
+// the sentence it already had when both cover a cell. Its id is the door's,
+// which is what [Encounter.blockedBy] needs to say a door is in the way
+// rather than a table.
+//
 // A trace error cannot occur for a compiled field (compilePlaced refuses
 // non-finite geometry), and the movement fold treats the day one somehow
 // arises as blocked — fail closed, the rule spatial's own sight boolean
 // applies to the same class of impossible answer.
 func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
+	centre := f.plane.CellCentre(cell)
 	for i := range f.placed {
 		p := &f.placed[i]
 		if !p.blocksMovement {
 			continue
 		}
-		centre := f.plane.CellCentre(cell)
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 			Placement: p.placement, From: centre, To: centre,
 		})
@@ -232,8 +287,52 @@ func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
 			return p.id, true
 		}
 	}
+	for _, d := range f.blockingDoorFootprints() {
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: *d.placement, From: centre, To: centre,
+		})
+		if err != nil || contact.Contact {
+			return d.id, true
+		}
+	}
 
 	return "", false
+}
+
+// doorStandingOn is the shut footprint door covering a cell's centre, or
+// nil. The same stationary contact [field.standingBlocks] measures, asked
+// for the door itself rather than its id — what [Encounter.stepMember]
+// needs to refuse a step with the door's own sentence and sentinel.
+func (f *field) doorStandingOn(cell spatial.Position) *doorRecord {
+	centre := f.plane.CellCentre(cell)
+	for _, d := range f.blockingDoorFootprints() {
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: *d.placement, From: centre, To: centre,
+		})
+		if err != nil || contact.Contact {
+			return d
+		}
+	}
+
+	return nil
+}
+
+// doorAcrossCrossing is the shut footprint door lying across the straight
+// crossing between two cells, or nil — [field.crossingBlocks]' interior
+// test, asked for the door rather than its id.
+func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
+	for _, d := range f.blockingDoorFootprints() {
+		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: *d.placement,
+			From:      f.plane.CellCentre(from),
+			To:        f.plane.CellCentre(to),
+		})
+		if err != nil || trace.Interior {
+			return d
+		}
+	}
+
+	return nil
 }
 
 // crossingBlocks answers INTERIOR CROSSING: which movement-blocking placed
@@ -264,6 +363,23 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 			return p.id, true, nil
 		}
 	}
+	// AND THE SHUT DOORS THAT STAND AS RECTANGLES. A closed door's leaf lies
+	// between two cells exactly as a thin table does, and this is the read
+	// that sees it: the canvas registered no boundary for it, so without
+	// this the step would walk through the door.
+	for _, d := range f.blockingDoorFootprints() {
+		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: *d.placement,
+			From:      f.plane.CellCentre(from),
+			To:        f.plane.CellCentre(to),
+		})
+		if err != nil {
+			return d.id, true, fmt.Errorf("door %q: %w", d.id, err)
+		}
+		if trace.Interior {
+			return d.id, true, nil
+		}
+	}
 
 	return "", false, nil
 }
@@ -292,6 +408,22 @@ func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
 			return true, nil
 		}
 	}
+	// A SHUT DOOR BLOCKS SIGHT AS WELL AS MOVEMENT, whichever geometry it
+	// stands in: an edge door's crossings are registered blocking both, and
+	// a footprint door's rectangle is read here. One state, both facts.
+	for _, d := range f.blockingDoorFootprints() {
+		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: *d.placement,
+			From:      f.plane.CellCentre(from),
+			To:        f.plane.CellCentre(to),
+		})
+		if err != nil {
+			return false, fmt.Errorf("door %q: %w", d.id, err)
+		}
+		if trace.Interior {
+			return true, nil
+		}
+	}
 
 	return false, nil
 }
@@ -302,17 +434,28 @@ func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
 // it marks, which is how a covered cell stops being a lane somebody leans
 // through.
 func (f *field) sightBlocksOriginAt(cell spatial.Position) (bool, error) {
+	centre := f.plane.CellCentre(cell)
 	for i := range f.placed {
 		p := &f.placed[i]
 		if !p.blocksLineOfSight {
 			continue
 		}
-		centre := f.plane.CellCentre(cell)
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 			Placement: p.placement, From: centre, To: centre,
 		})
 		if err != nil {
 			return false, fmt.Errorf("placed prop %q: %w", p.id, err)
+		}
+		if contact.Contact {
+			return true, nil
+		}
+	}
+	for _, d := range f.blockingDoorFootprints() {
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: *d.placement, From: centre, To: centre,
+		})
+		if err != nil {
+			return false, fmt.Errorf("door %q: %w", d.id, err)
 		}
 		if contact.Contact {
 			return true, nil

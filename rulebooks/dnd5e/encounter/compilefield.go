@@ -121,6 +121,19 @@ type field struct {
 	// lanes; see placed_props.go.
 	placed []placedContributor
 
+	// doorFootprints are THE DOORS THAT STAND AS RECTANGLES (rpg-project#485,
+	// R1): every door whose geometry is a footprint rather than a set of
+	// edges, held as the records themselves so every read asks the door's
+	// LIVE state. A closed one contributes exactly what a movement- and
+	// sight-blocking placed prop contributes; an open one contributes
+	// nothing; and opening it is [Encounter.OpenDoor] writing one state, not
+	// this list being rebuilt.
+	//
+	// Attached by [field.compileCanvas], which is where both construction
+	// seams hand the compiled door records over — so a field that was built
+	// without doors has none of these, exactly as it has no canvas.
+	doorFootprints []*doorRecord
+
 	// plane is the continuous frame the placed facts are measured in: this
 	// field's own hex layout at FeetPerCell across the flats, so a cell
 	// centre means the same point to a footprint as to the grid that
@@ -859,6 +872,14 @@ func (f *field) compileCanvas(doors []*doorRecord, arrived map[PropID]spatial.Po
 			return nil, err
 		}
 	}
+
+	// AND THE ONES THAT STAND AS RECTANGLES. A footprint door registers no
+	// boundary — it has no crossing to put one on — so it is held beside the
+	// placed contributors and asked its state on every read
+	// (placed_props.go). Set here rather than at compilePlaced because this
+	// is where both seams hand the records over, and the records are what
+	// carry the live state.
+	f.attachDoorFootprints(doors)
 
 	return &canvasRoom{BasicRoom: canvas, field: f}, nil
 }

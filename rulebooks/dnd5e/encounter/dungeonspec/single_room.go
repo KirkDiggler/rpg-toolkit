@@ -114,8 +114,8 @@ type RoomMonsterSource struct {
 // RoomMonsterBinding is one creature's ORDERS: what it does, what it is like,
 // and what it fights with (rpg-project#477, Decision 4).
 //
-// The THIRD declaration kind on a placed thing, after `propDeclarations` and
-// ahead of the proposed `doorBindings`, and keyed the same way: by the id of
+// One of the three declaration kinds on a placed thing, beside
+// `propDeclarations` and `doorBindings`, and keyed the same way: by the id of
 // the thing it is about. A binding naming a creature no `monsters:` entry
 // declares is refused exactly as a prop declaration with no live owner is —
 // a declaration can never outlive the thing it names.
@@ -148,6 +148,56 @@ type RoomMonsterBinding struct {
 	Actions []string `yaml:"actions,omitempty" json:"actions,omitempty"`
 }
 
+// RoomDoorBinding is one placed item's DOOR STATE: that the item is a door at
+// all, and what state it is resting in (rpg-project#485, R2).
+//
+// The THIRD declaration kind on a placed thing, after `propDeclarations` and
+// `monsterBindings`, keyed the same way: by the id of the thing it is about.
+//
+//	doorBindings:
+//	  cellar-door: { closed: true }
+//	  gate-1:      { closed: true, locked: [{ ability: str, dc: 15 }] }
+//
+// # It is v2's door state, and only that
+//
+// The keys are [DoorSpec]'s with `at` removed: the same [CheckSpec], the same
+// nil-vs-empty rule, the same sentences, judged by the one shared grammar
+// (grammar.go). `at` is the GEOMETRY, and the geometry is the dialect's own
+// to supply — a v2 door is a position on a wall, and this dialect has no
+// walls to put one on. Here the door's shape is its `propDeclarations` entry:
+// the same footprint every other placed thing gets, with the door's state
+// deciding what it blocks instead of two authored flags.
+//
+// # What it does NOT take
+//
+// `concealed` is refused by name at its own path, in the shape the `at:`
+// refusal takes ([singleRoomCellSelector]): the concealed-door laws are
+// written for a door on a crossing, and a hidden rectangle standing in the
+// middle of a room is a picture question the World Builder has not asked yet.
+// It is a field here rather than an unknown key so the author gets that
+// sentence at `…doorBindings.<id>.concealed` instead of "not a key this build
+// reads" — the word means something, it is simply not built.
+type RoomDoorBinding struct {
+	// Closed is whether the door is RESTING shut. Optional; absent is an open
+	// doorway, which is [DoorSpec.Closed]'s own rule — absence is a real
+	// state here rather than an unanswered question, which is why this key is
+	// not required the way a declaration's two blocking flags are.
+	//
+	// Ignored when Locked is set: a locked door is shut by definition.
+	Closed bool `yaml:"closed,omitempty" json:"closed,omitempty"`
+
+	// Locked, when present, makes the door locked behind the check it
+	// carries. [DoorSpec.Locked]'s shape and its law: NIL IS "NOT LOCKED",
+	// and `locked: []` is an authored lock that forgot to say how it is
+	// beaten — refused by name.
+	Locked CheckSpec `yaml:"locked,omitempty" json:"locked,omitempty"`
+
+	// Concealed is refused in this dialect (R2). Carried on the shape only
+	// so the refusal can be a sentence at this key's own path; nothing reads
+	// it, and nothing compiles it.
+	Concealed CheckSpec `yaml:"concealed,omitempty" json:"concealed,omitempty"`
+}
+
 // RoomFootprint describes a prop's movement-blocking footprint.
 type RoomFootprint struct {
 	Width   float64 `yaml:"width" json:"width"`
@@ -176,6 +226,15 @@ type RoomGameplaySource struct {
 	// Optional, and ABSENT WHEN NOBODY HAS ANY: a room whose creatures
 	// override nothing writes the bytes it wrote before this key existed.
 	MonsterBindings map[string]RoomMonsterBinding `yaml:"monsterBindings,omitempty" json:"monsterBindings,omitempty"`
+
+	// DoorBindings is which placed items are doors, and the state each one
+	// rests in, under its stable id (rpg-project#485). Optional, and ABSENT
+	// WHEN THE ROOM HAS NO DOORS — a room that declares none writes exactly
+	// the bytes it wrote before this key existed.
+	//
+	// EVERY ID HERE ALSO NEEDS A PROP DECLARATION, because that is where the
+	// door's footprint comes from; a binding without one is refused by name.
+	DoorBindings map[string]RoomDoorBinding `yaml:"doorBindings,omitempty" json:"doorBindings,omitempty"`
 }
 
 // SingleRoomDecodeInput supplies YAML source for decoding.
