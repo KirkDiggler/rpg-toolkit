@@ -52,6 +52,9 @@ type fakeConditionOwner struct {
 	// character does not use it: its slot count IS its meter.
 	reactionSpent bool
 
+	// hp is what GetHitPoints answers, and its zero value is not neutral:
+	// combat.IsDown is a pull read of the sheet, so a fake left unset is a
+	// downed creature. A scene that wants one standing says so.
 	hp, maxHP        int
 	ac               int
 	proficiencyBonus int
