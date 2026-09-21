@@ -865,6 +865,14 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	// verb that refused bob now names the lock's own refusal path for her.
 	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
 	s.Require().NoError(err)
+	// Up to the lock first: hands pick locks, and one across the hall is not
+	// a lock this attempt ever touched (rpg-toolkit#1856, arriving with
+	// encounter v0.97.1). The seat moves; the claim does not — what this
+	// scene pins is WHOSE knowledge the lock is read through.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0)}})
+	s.Require().NoError(err)
 	out, err := s.mgr.Unlock(ctx, &session.UnlockInput{Session: "sess", Member: "alice", Door: "veil"})
 	s.Require().NoError(err)
 	s.True(out.Beaten, "flat 10 + 2 DEX meets DC 12 — the finder rolls the real lock")
@@ -904,6 +912,15 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 		sharpEyed("alice"), dullEyed("bob"), dullEyed("carol"))
 
 	_, err := s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	s.Require().NoError(err)
+	// Up to the door first: a door opens only from beside it
+	// (rpg-toolkit#1856, arriving with encounter v0.97.1). The walk is
+	// published before the reset below, so this scene still starts at the
+	// swing — who learns from it is what is pinned, not where the hand that
+	// swung it stood.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0)}})
 	s.Require().NoError(err)
 
 	s.stream.published = nil
