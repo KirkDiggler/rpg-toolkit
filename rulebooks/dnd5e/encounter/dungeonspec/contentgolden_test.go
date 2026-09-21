@@ -77,6 +77,14 @@ type contentGolden struct {
 	Intel     []encounter.IntelRecord      `json:"intel"`
 	Scenarios map[string]map[string]string `json:"scenarios"`
 
+	// Concealments is what the document HIDES, lowered from whichever
+	// dialect's words said so (rpg-project#490). It was invisible in this
+	// picture before — the region's flag rode Regions and the door's rode
+	// Doors — so a change to how a secret lowers now shows up here as a diff
+	// a reviewer reads. OMITTED WHEN EMPTY, so a file that hides nothing
+	// writes exactly the bytes it wrote before this line existed.
+	Concealments []encounter.ConcealmentInput `json:"concealments,omitempty"`
+
 	// Endings is the other half of what a document says about its own run,
 	// and it was invisible here — like [contentGolden.Placed] and
 	// [contentGolden.Doors] before rpg-project#485 — which meant a change to
@@ -105,7 +113,6 @@ type goldenDoor struct {
 	ID        string                      `json:"id"`
 	State     string                      `json:"state"`
 	Lock      []encounter.CheckApproach   `json:"lock,omitempty"`
-	Concealed []encounter.CheckApproach   `json:"concealed,omitempty"`
 	Edges     []encounter.DoorEdge        `json:"edges,omitempty"`
 	Placement *spatial.FootprintPlacement `json:"placement,omitempty"`
 }
@@ -118,7 +125,6 @@ func goldenDoorsOf(doors []encounter.DoorInput) []goldenDoor {
 		g := goldenDoor{
 			ID:        d.ID,
 			State:     string(d.State.Kind()),
-			Concealed: d.Concealed,
 			Edges:     d.Edges,
 			Placement: d.Placement,
 		}
@@ -147,6 +153,7 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		PartyStart:   compiled.PartyStart,
 		Monsters:     compiled.Monsters,
 		Intel:        compiled.Intel,
+		Concealments: compiled.Concealments,
 		Scenarios:    compiled.Scenarios,
 		Endings:      compiled.Endings,
 		Factions:     compiled.Factions,
@@ -198,6 +205,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"world-builder-v4-raider-camp.yaml",
 		"world-builder-v4-raider-letter.yaml",
 		"world-builder-v4-tomb-heirloom.yaml",
+		"world-builder-v4-tomb-vault.yaml",
 	}, names, "the authored dungeons this package ships")
 
 	for _, path := range files {

@@ -822,7 +822,8 @@ func (v *validation) exits() {
 
 // intel validates the authored knowledge records (design §2): each has an
 // id, no two share one, and each says exactly one thing it reveals that this
-// dungeon actually has.
+// dungeon actually has — and, for a door, that something hides it
+// (rpg-project#490, R7).
 //
 // RUN BEFORE place(), which asks whether a holder names a record that
 // exists — the same ordering reason scenery runs before walls.
@@ -830,9 +831,11 @@ func (v *validation) intel() {
 	s := v.spec
 	v.intelIDs = map[string]int{}
 	doorIDs := map[string]bool{}
-	for _, d := range s.Doors {
+	doorAt := map[string]int{}
+	for i, d := range s.Doors {
 		if d.ID != "" {
 			doorIDs[d.ID] = true
+			doorAt[d.ID] = i
 		}
 	}
 
@@ -860,6 +863,19 @@ func (v *validation) intel() {
 		case rec.Reveals.Door != "" && !doorIDs[rec.Reveals.Door]:
 			v.fail(p+".reveals.door",
 				"intel %q reveals door %q, and no door in this dungeon has that id", rec.ID, rec.Reveals.Door)
+		// A RECORD GIVES AWAY A SECRET, NOT A HINGE (rpg-project#490, R7).
+		// The engine's target is the concealment holding the door, so a
+		// record naming a door nothing hides has nothing to give away. This
+		// used to be LEGAL AND INERT — "revealing the way to a door anyone
+		// can already see tells nobody anything" — and inert is what it
+		// stopped being worth: there is no concealment to resolve it to, so
+		// the lowering would hand the composition a record that reveals the
+		// empty string.
+		case rec.Reveals.Door != "" && s.Doors[doorAt[rec.Reveals.Door]].Concealed == nil:
+			v.fail(p+".reveals.door",
+				"intel %q reveals door %q, and nothing hides that door — "+
+					"a record gives away a secret, so conceal the door or the room it opens onto",
+				rec.ID, rec.Reveals.Door)
 		}
 	}
 }
@@ -1143,6 +1159,7 @@ func (v *validation) concealment() {
 			"this room can only be entered through a concealed door — "+
 				"conceal the room too, or give it another way in")
 	}
+
 }
 
 // wayIn is one way between two regions: which two, and how it reads from each

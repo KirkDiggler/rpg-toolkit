@@ -82,63 +82,73 @@
 // unit, rolls its `time` table, and spends one. A creature that walks into an
 // opposed member's sight forms or joins a fight by the ordinary path.
 //
-// # Concealment: the run composes its world (rpg-toolkit#1371)
+// # Concealment: the run composes its world (rpg-toolkit#1371, rpg-project#490)
 //
-// A field may carry CONCEALED STRUCTURE — doors behind an authored find
-// check, regions authored as hidden space (dungeonspec carries both since
-// v0.41.0) — and the composition acts on it. Who knows what is a journal of
-// audience-scoped facts folded per member (world v0.3.0's journal + graph,
-// seeded from the field at construction, persisted on EncounterData.World);
-// two more capabilities arrive SUPPLIED, exactly when concealment exists and
-// never defaulted: [CheckResolver] rolls a find check, [Witness] answers who
-// currently perceives an open concealed door. The laws, each pinned in
-// conceal_test.go and conceallaw_test.go:
+// A field may declare CONCEALMENTS — one noun per secret, each with an id,
+// the checks that find it, and the cells, doors and props it hides
+// ([ConcealmentInput]) — and the composition acts on them. Who knows what is
+// a journal of audience-scoped facts folded per member (world v0.3.0's
+// journal + graph, seeded from the field at construction, persisted on
+// EncounterData.World); two more capabilities arrive SUPPLIED, exactly when a
+// concealment exists and never defaulted: [CheckResolver] rolls a find check,
+// [Witness] answers who currently perceives a hidden door standing open. The
+// laws, each pinned in concealment_test.go, conceal_test.go and
+// conceallaw_test.go:
 //
-//   - [Encounter.Search] sweeps a region's concealed declarations; success
-//     is audienced to the searcher alone, and NO output — not the answer,
-//     not the story, not the blob — ever says whether there was something
-//     to find.
-//   - Two knowledge moments: finding a door reveals the DOOR; the region
-//     behind it arrives only on perceiving the door OPEN (present at the
-//     opening, walking up later, or crossing it — causes are exemplary,
-//     not a closed set). PRESENCE PIERCES: an occupant of a concealed
-//     region knows it from frame one.
+//   - [Encounter.Search] sweeps the concealments a region TOUCHES, one roll
+//     per secret rather than per hidden thing; success is audienced to the
+//     searcher alone, and NO output — not the answer, not the story, not the
+//     blob — ever says whether there was something to find.
+//   - ONE KNOWLEDGE MOMENT. A door carried its own find check and a region
+//     its own flag until rpg-project#490, so finding a door revealed the
+//     DOOR and the room behind it arrived only on perceiving that door open.
+//     A concealment is one noun: finding it gives you its cells, its doors
+//     and its props together. The causes are exemplary and not a closed set
+//     — a search, an intel record, crossing a member door, stepping onto its
+//     floor, perceiving a member door open, perceiving a creature standing
+//     on it. PRESENCE PIERCES: an occupant of hidden floor knows it from
+//     frame one.
 //   - [Encounter.AtlasFor] and [Encounter.DoorsFor] answer as one member
-//     under the never-authored yardstick: a concealed unfound door is
-//     absent from every list and masked as an ordinary wall, whichever
-//     side or sides of it are hidden (at the neighbouring run's height); an
-//     unrevealed region's cells, entry and props are byte-identical to
-//     never authored. Its BOUNDARY with visible space is not (rpg-toolkit
-//     #1419): every crossing into hidden space — authored wall, concealed
-//     door, or bare unwalled seam — reads as an ordinary wall, because a
-//     wall a step cannot cross is the ordinary case and floor that ends in
-//     nothing is the anomaly. Only a crossing wholly inside hidden space,
-//     bordering no visible cell at all, stays withheld.
-//   - The PROBE LAW: everywhere a door id is spoken, a concealed unfound
-//     door answers not-found, byte-identical to an id that names nothing.
-//     The MOVE LAW: a step stopped by one refuses byte-identical to a wall.
-//   - Reveals reach members as recipient-scoped beats (door_revealed,
-//     region_revealed — the wire's DOOR_REVEALED/REGION_REVEALED), and a
-//     concealed door's own state beats go to its knowers alone. A region
-//     reveal is a PATCH for the recipient's cached atlas, so it carries the
-//     room's own slice AND the walls they did not have a moment ago — the
-//     segments newly presented to them, and the cells of the room nobody
-//     stands on (rpg-toolkit#1480). A client draws walls from segments, so a
-//     reveal without them opens a secret onto a room with no walls. THE
-//     FRONTIER STOP (second-round ruling): a step whose destination lies
-//     inside a concealed region is delivered only to that region's knowers
-//     and the mover — the trail stops at the concealment boundary, resumes
-//     on reveal, and is never backfilled. Everything else non-detection
-//     stays full data until v1.0 (sight-scoped movement with last-known
-//     ghosts is the ruling's own named follow-up).
+//     under the never-authored yardstick: an unfound hidden door is absent
+//     from every list and masked as an ordinary wall, whichever side or
+//     sides of it are hidden (at the neighbouring run's height); hidden
+//     cells, the props standing on them and the props the secret names are
+//     byte-identical to never authored, and a region entry is TRIMMED to
+//     what survives rather than dropped. A FOOTPRINT door may be a member:
+//     it is withheld like a prop and the cells its rectangle stands on go
+//     with it, which is how a rectangle with no crossing to mask keeps its
+//     secret. Its BOUNDARY with visible space is not never-authored
+//     (rpg-toolkit#1419): every crossing into hidden space — authored wall,
+//     hidden door, or bare unwalled seam — reads as an ordinary wall,
+//     because a wall a step cannot cross is the ordinary case and floor that
+//     ends in nothing is the anomaly. Only a crossing wholly inside hidden
+//     space, bordering no visible cell at all, stays withheld.
+//   - The PROBE LAW: everywhere a door or prop id is spoken, a hidden one
+//     the actor has not found answers not-found, byte-identical to an id
+//     that names nothing. The MOVE LAW: a step stopped by one refuses
+//     byte-identical to a wall.
+//   - Reveals reach members as ONE recipient-scoped beat
+//     ([BeatConcealmentRevealed] — the wire's CONCEALMENT_REVEALED), and a
+//     hidden door's own state beats go to its knowers alone. The beat is a
+//     PATCH for the recipient's cached atlas, so it carries the secret's own
+//     slice AND the walls they did not have a moment ago — the segments
+//     newly presented to them, and the cells nobody stands on
+//     (rpg-toolkit#1480). A client draws walls from segments, so a reveal
+//     without them opens a secret onto a room with no walls. THE FRONTIER
+//     STOP (second-round ruling): a step whose destination lies on hidden
+//     floor is delivered only to that secret's knowers and the mover — the
+//     trail stops at the concealment boundary, resumes on reveal, and is
+//     never backfilled. Everything else non-detection stays full data until
+//     v1.0 (sight-scoped movement with last-known ghosts is the ruling's own
+//     named follow-up).
 //   - STATE IS REVERSIBLE; KNOWLEDGE IS NOT (second-round ruling).
 //     Concealment never globally ends — there is no [graph.Reveal] in the
 //     seeding, only per-member pierces — so a re-closed door is a wall to
 //     strangers again, while every member who ever perceived it keeps a
 //     visible shut door, and a mapped room stays mapped, forever.
 //
-// A field with no concealment requires neither capability and sweeps
-// nothing, which keeps every existing dungeon's blob exactly as it was.
+// A field that hides nothing requires neither capability and sweeps
+// nothing, which keeps every plain dungeon's blob exactly as it was.
 //
 // # Sides: the run composes ONE world (rpg-project#375)
 //

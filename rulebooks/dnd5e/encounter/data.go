@@ -56,17 +56,16 @@ type EncounterData struct {
 	// exactly what those encounters meant.
 	Doors []DoorData `json:"doors,omitempty"`
 	// World is the run's KNOWLEDGE: the journal facts recording who has
-	// found which concealed door, perceived which concealed region
-	// (rpg-toolkit#1371), and come to know which fact (rpg-project#375).
-	// PRESENT WHEN THE FIELD CARRIES CONCEALED STRUCTURE, OR WHEN ANYBODY
+	// found which concealment (rpg-toolkit#1371, rpg-project#490), and come
+	// to know which fact (rpg-project#375).
+	// PRESENT WHEN THE FIELD DECLARES A CONCEALMENT, OR WHEN ANYBODY
 	// HAS LEARNED A FACT — a plain dungeon nobody learned anything in writes
 	// no key at all, the exact bytes every pre-concealment blob already has,
-	// and a blob carrying an empty world for a field with nothing concealed
+	// and a blob carrying an empty world for a field that hides nothing
 	// is refused at load (a shape this build never writes). Absent on a
-	// concealed field is legal and means nobody has learned anything yet —
-	// which is every blob written between v0.41.0's carried concealment and
-	// this field existing (an occupant of a concealed region in such a blob
-	// is pierced at load, so presence holds from frame one for reloads too).
+	// concealing field is legal and means nobody has learned anything yet
+	// (an occupant of hidden floor in such a blob is pierced at load, so
+	// presence holds from frame one for reloads too).
 	// The graph the facts fold against is NOT stored: it is construction
 	// truth, reseeded from the field and the roster at every load, so it
 	// cannot drift from the dungeon — and neither is any stance: a pair's
@@ -223,6 +222,12 @@ type FieldData struct {
 	// none.
 	Intel []IntelData `json:"intel,omitempty"`
 
+	// Concealments are the authored concealments, in authored order, with
+	// cells in the AUTHORED offset frame ([FieldInput.Concealments],
+	// rpg-project#490). Scenery's omitempty rule: omitted and empty are the
+	// same fact, so a field that hides nothing writes no key at all.
+	Concealments []ConcealmentData `json:"concealments,omitempty"`
+
 	// Exits are the authored ways out, in authored order, with cells in the
 	// AUTHORED offset frame ([FieldInput.Exits], rpg-project#368). Scenery's
 	// omitempty rule: omitted and empty are the same fact, so a blob written
@@ -308,12 +313,20 @@ type RegionData struct {
 	Archetype string         `json:"archetype"`
 	Lighting  *LightingData  `json:"lighting"`
 
-	// Concealed mirrors [RegionInput.Concealed]. NOT REQUIRED AT LOAD,
-	// unlike Lighting, and PropData.Facing states the rule: omitted and
-	// written-as-false are the same fact by design, so an old blob simply
-	// unmarshals to false and a never-concealed region writes no key at
-	// all — the exact bytes every pre-concealment blob already has.
-	Concealed bool `json:"concealed,omitempty"`
+	// Concealed is a TOMBSTONE: the key a region wrote while a region was
+	// the thing that could be hidden (rpg-toolkit#1371 through
+	// rpg-project#490), kept solely so a blob carrying it is refused BY
+	// NAME rather than loaded as a region whose secret quietly evaporated.
+	//
+	// FieldData.Rooms' precedent, and the standing fail-loudly ruling
+	// behind it (rpg-toolkit#1053/#1068): a changed shape gets a detectable
+	// name so the old dialect lands nowhere. A region that said nothing
+	// wrote no key, so every blob of an unconcealed region loads unchanged;
+	// a blob that hid one says which dialect it is in.
+	//
+	// json.RawMessage because nothing decodes it: the only question asked is
+	// whether the key was present at all.
+	Concealed json.RawMessage `json:"concealed,omitempty"`
 }
 
 // LightingData is the persistent representation of a [Lighting] block.
@@ -490,11 +503,18 @@ type ReserveData struct {
 type IntelData struct {
 	ID IntelID `json:"id"`
 
-	// Door is what the record reveals, when that is a door. One key per
-	// target, omitted when unset — the same shape [RevealTargets] has, and
-	// a persisted record naming a target this build does not know is refused
-	// at load rather than carried.
-	Door DoorID `json:"door,omitempty"`
+	// Concealment is what the record reveals, when that is a secret. One
+	// key per target, omitted when unset — the same shape [RevealTargets]
+	// has, and a persisted record naming a target this build does not know
+	// is refused at load rather than carried.
+	//
+	// It was `door` until the concealment primitive landed
+	// (rpg-project#490): a blob carrying the old key simply loads as a
+	// record that reveals nothing, which compileIntel refuses by name at the
+	// record, and the field's own `concealed` tombstones
+	// ([RegionData.Concealed], [DoorData.Concealed]) refuse such a blob
+	// before it ever gets here.
+	Concealment ConcealmentID `json:"concealment,omitempty"`
 
 	// Fact is what the record reveals, when that is a fact
 	// (rpg-project#375) — the second key, under the same rule.
@@ -699,13 +719,32 @@ type DoorData struct {
 	// through after a save.
 	Placement *PlacementData `json:"placement,omitempty"`
 
-	// Concealed is the authored find check, absent for the door that was
-	// never concealed — which is every door in every blob written before
-	// concealment existed, so those blobs load unchanged. Present means
-	// non-empty: a blob whose door is concealed with no way to find it is
-	// refused at load by the same shared validator that refuses it at
-	// construction.
-	Concealed []CheckApproachData `json:"concealed,omitempty"`
+	// Concealed is a TOMBSTONE, [RegionData.Concealed]'s twin on the other
+	// retired flag: the key a door wrote while a door carried its own find
+	// check, kept solely so a blob carrying it is refused BY NAME rather
+	// than loaded as a door whose secret quietly evaporated
+	// (rpg-project#490). A door that was never hidden wrote no key, so every
+	// such blob loads unchanged.
+	Concealed json.RawMessage `json:"concealed,omitempty"`
+}
+
+// ConcealmentData is the persistent representation of a [ConcealmentInput]:
+// the checks, the optional passive tell, and the three lists of what it
+// hides. Cells are in the AUTHORED offset frame, as written; they are
+// converted at load through the same compileField Setup runs.
+//
+// Checks is written without omitempty — a concealment with no way to find it
+// is refused at both seams, so an absent list is a defect rather than a
+// shorter spelling, and the blob says which. Notice keeps nil-vs-empty the
+// way [ConcealmentInput.Notice] does: omitted is "no passive tell", and a
+// written empty list is the defect both seams refuse.
+type ConcealmentData struct {
+	ID     string              `json:"id"`
+	Checks []CheckApproachData `json:"checks"`
+	Notice []CheckApproachData `json:"notice,omitempty"`
+	Cells  []PositionData      `json:"cells,omitempty"`
+	Doors  []string            `json:"doors,omitempty"`
+	Props  []string            `json:"props,omitempty"`
 }
 
 // EdgeData is the persistent representation of a [DoorEdge]: one crossing,
@@ -998,20 +1037,13 @@ func worldDataFrom(w *encounterWorld) *WorldData {
 // `known:fact:<id>` naming another dungeon's fact is refused exactly as a
 // door of another dungeon is.
 func validateWorldFacts(
-	data *WorldData, regions []RegionInput, doors []DoorInput, facts []FactID, everMembers []MemberID,
+	data *WorldData, concealments []ConcealmentInput, facts []FactID, everMembers []MemberID,
 ) error {
 	// kind -> the subject that kind's writer always records; "" for a fact
 	// kind, whose subject is its own actor.
 	minted := make(map[string]string)
-	for _, r := range regions {
-		if r.Concealed {
-			minted[string(regionKnownKind(r.ID))] = string(regionEntityID(r.ID))
-		}
-	}
-	for _, d := range doors {
-		if d.Concealed != nil {
-			minted[string(doorKnownKind(d.ID))] = string(doorEntityID(d.ID))
-		}
+	for _, c := range concealments {
+		minted[string(concealmentKnownKind(c.ID))] = string(concealmentEntityID(c.ID))
 	}
 	for _, id := range facts {
 		minted[string(factKnownKind(id))] = ""
@@ -1115,14 +1147,12 @@ func doorDataFrom(d *doorRecord) DoorData {
 	if lock, locked := d.state.Lock(); locked {
 		out.Lock = &LockData{Approaches: approachesDataFrom(lock.Approaches)}
 	}
-	out.Concealed = approachesDataFrom(d.concealed)
 
 	return out
 }
 
 // approachesDataFrom renders a check's approaches for the blob, nil staying
-// nil so a door that was never concealed writes no key at all — the exact
-// bytes every pre-concealment blob already has.
+// nil so an absent check writes no key at all.
 func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 	if approaches == nil {
 		return nil
@@ -1478,6 +1508,13 @@ func doorStateFromData(id string, name string, lock *LockData) (DoorState, error
 func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 	out := make([]DoorInput, 0, len(doors))
 	for _, dd := range doors {
+		// The retired flag, checked first — [DoorData.Concealed]'s tombstone,
+		// for [RegionData.Concealed]'s reason.
+		if len(dd.Concealed) > 0 {
+			return nil, fmt.Errorf(
+				"door %q carries `concealed`, the flag this build does not speak: hiding is a concealment "+
+					"naming the door now (rpg-project#490), recreate the save: %w", dd.ID, ErrBadDoor)
+		}
 		state, err := doorStateFromData(dd.ID, dd.State, dd.Lock)
 		if err != nil {
 			return nil, err
@@ -1489,7 +1526,7 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 				To:   spatial.Position{X: e.To.X, Y: e.To.Y},
 			})
 		}
-		in := DoorInput{ID: dd.ID, Edges: edges, State: state, Concealed: approachesFromData(dd.Concealed)}
+		in := DoorInput{ID: dd.ID, Edges: edges, State: state}
 		if dd.Placement != nil {
 			placement := placementFromData(*dd.Placement)
 			in.Placement = &placement
@@ -1862,9 +1899,23 @@ func fieldDataFrom(f *field) FieldData {
 		intensity := r.Lighting.Intensity
 		out.Regions[i] = RegionData{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
-			Lighting:  &LightingData{Intensity: &intensity},
-			Concealed: r.Concealed,
+			Lighting: &LightingData{Intensity: &intensity},
 		}
+	}
+
+	for i := range f.concealments {
+		c := &f.concealments[i]
+		cd := ConcealmentData{
+			ID:     c.id,
+			Checks: approachesDataFrom(c.checks),
+			Notice: approachesDataFrom(c.notice),
+			Doors:  append([]string(nil), c.doors...),
+			Props:  append([]string(nil), c.props...),
+		}
+		for _, at := range c.authoredCells {
+			cd.Cells = append(cd.Cells, PositionData{X: at.X, Y: at.Y})
+		}
+		out.Concealments = append(out.Concealments, cd)
 	}
 
 	if len(f.scenery) > 0 {
@@ -1924,7 +1975,7 @@ func fieldDataFrom(f *field) FieldData {
 	if len(f.intel) > 0 {
 		out.Intel = make([]IntelData, len(f.intel))
 		for i, rec := range f.intel {
-			out.Intel[i] = IntelData{ID: rec.ID, Door: rec.Reveals.Door, Fact: rec.Reveals.Fact}
+			out.Intel[i] = IntelData{ID: rec.ID, Concealment: rec.Reveals.Concealment, Fact: rec.Reveals.Fact}
 		}
 	}
 
@@ -2332,12 +2383,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 
 	// Concealment (rpg-toolkit#1371): the two capabilities are required
-	// exactly when the field carries concealed structure — SetupInput's own
+	// exactly when the field declares a concealment — SetupInput's own
 	// rule, applied at the load door — and the persisted world must agree
-	// with the field it rides beside: a world for a field with nothing
-	// concealed is a blob whose two halves disagree, and its facts must all
-	// be ones this field's structure mints.
-	fieldConcealed := fieldHasConcealment(fieldInput.Regions, doorInputs)
+	// with the field it rides beside: a world for a field that hides nothing
+	// is a blob whose two halves disagree, and its facts must all be ones
+	// this field's concealments mint.
+	if err = validateConcealmentDoors(f, doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
+	fieldConcealed := fieldHasConcealment(fieldInput.Concealments)
 	if fieldConcealed {
 		if input.CheckResolver == nil {
 			return nil, fmt.Errorf("load encounter: %w", ErrNoCheckResolver)
@@ -2487,13 +2542,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 
 	// The persisted knowledge must be knowledge this field can mint: a
-	// concealed door or region it has, or a fact it mentions. A world key on
-	// a field with nothing concealed and nothing learned is a shape this
-	// build never writes — an edited blob, refused by name.
+	// concealment it declares, or a fact it mentions. A world key on a field
+	// that hides nothing and has learned nothing is a shape this build never
+	// writes — an edited blob, refused by name.
 	if data.World != nil {
 		if !fieldConcealed && len(data.World.Facts) == 0 {
 			return nil, fmt.Errorf(
-				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
+				"load encounter: blob carries a world but the field declares no concealment: %w", ErrInvalidData)
 		}
 		// The roster's and the reserve's own authored facts count as
 		// mintable too — see mintedFactIDs. Both lists, because a member
@@ -2507,7 +2562,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			taught = append(taught, taughtFactsOf(r.Table)...)
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
-		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, mintable, data.EverMembers); err != nil {
+		if err = validateWorldFacts(data.World, fieldInput.Concealments, mintable, data.EverMembers); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}
@@ -2722,8 +2777,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// construction).
 	e.doors, e.doorsByID = doorRecordsFrom(doorInputs)
 
-	// The concealment capabilities, held exactly when the field carries
-	// concealed structure; the world exists either way (world.go).
+	// The concealment capabilities, held exactly when the field declares a
+	// concealment; the world exists either way (world.go).
 	if fieldConcealed {
 		e.checkResolver = input.CheckResolver
 		e.witness = input.Witness
@@ -2742,11 +2797,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	// A record's target must name a door this field declares — the SAME
-	// check NewEncounter makes, against the same compiled field, so a blob
-	// and a fresh setup refuse identically rather than one loading what the
-	// other would not build.
-	if err = validateIntelTargets(f, doorInputs); err != nil {
+	// A record's target must name a concealment this field declares — the
+	// SAME check NewEncounter makes, against the same compiled field, so a
+	// blob and a fresh setup refuse identically rather than one loading what
+	// the other would not build.
+	if err = validateIntelTargets(f); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
@@ -2940,13 +2995,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 
 	// Presence pierces AT LOAD too, for a still-open encounter: an occupant
-	// of a concealed region must not wait for the first refresh-bearing
-	// verb to know the floor under their feet — the one reachable case is a
-	// blob from before the world existed, whose occupant arrives here with
-	// no occupancy fact (see sweepOccupancy). A no-op on every blob this
-	// build wrote, so the byte-identical round-trip holds; on the old blob
-	// it writes the fact and the recipient's reveal beat, which the next
-	// save persists.
+	// of hidden floor must not wait for the first refresh-bearing verb to
+	// know the floor under their feet — the one reachable case is a blob
+	// whose occupant arrives here with no occupancy fact (see
+	// sweepOccupancy). A no-op on every blob this build wrote, so the
+	// byte-identical round-trip holds; on such a blob it writes the fact and
+	// the recipient's reveal beat, which the next save persists.
 	if e.outcome == nil {
 		if err := e.sweepOccupancy(uint64(e.clock.ToData().HighWater)); err != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
@@ -3093,6 +3147,17 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		Regions: make([]RegionInput, len(fd.Regions)),
 	}
 
+	// The retired flags, checked before anything is built — see
+	// [RegionData.Concealed] for why a rename alone would be the wrong
+	// message.
+	for _, rd := range fd.Regions {
+		if len(rd.Concealed) > 0 {
+			return FieldInput{}, fmt.Errorf(
+				"region %q carries `concealed`, the flag this build does not speak: hiding is a concealment "+
+					"listing the region's cells now (rpg-project#490), recreate the save: %w", rd.ID, ErrNoField)
+		}
+	}
+
 	for i, rd := range fd.Regions {
 		if rd.Lighting == nil {
 			return FieldInput{}, fmt.Errorf("region %q: %w", rd.ID, ErrRegionLightingMissing)
@@ -3108,9 +3173,22 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		}
 		in.Regions[i] = RegionInput{
 			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
-			Lighting:  &Lighting{Intensity: *rd.Lighting.Intensity},
-			Concealed: rd.Concealed,
+			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
 		}
+	}
+
+	for _, cd := range fd.Concealments {
+		c := ConcealmentInput{
+			ID:     cd.ID,
+			Checks: approachesFromData(cd.Checks),
+			Notice: approachesFromData(cd.Notice),
+			Doors:  append([]DoorID(nil), cd.Doors...),
+			Props:  append([]PropID(nil), cd.Props...),
+		}
+		for _, at := range cd.Cells {
+			c.Cells = append(c.Cells, spatial.Position{X: at.X, Y: at.Y})
+		}
+		in.Concealments = append(in.Concealments, c)
 	}
 
 	for _, sd := range fd.Scenery {
@@ -3199,7 +3277,9 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	for _, rd := range fd.Intel {
-		in.Intel = append(in.Intel, IntelRecord{ID: rd.ID, Reveals: RevealTargets{Door: rd.Door, Fact: rd.Fact}})
+		in.Intel = append(in.Intel, IntelRecord{
+			ID: rd.ID, Reveals: RevealTargets{Concealment: rd.Concealment, Fact: rd.Fact},
+		})
 	}
 
 	for _, fa := range fd.Factions {

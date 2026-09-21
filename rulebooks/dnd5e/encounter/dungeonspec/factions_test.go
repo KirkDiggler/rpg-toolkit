@@ -268,7 +268,7 @@ func TestTheCampAllowsWhatTheDesignAllows(t *testing.T) {
 			"the singleton default is declared at compile, never inferred by the run")
 	})
 	t.Run("an until fact no record reveals — the dungeon allows, the scenario refuses", func(t *testing.T) {
-		source := edited(t, intelLine, `  - { id: wisemans-letter, reveals: { door: gate-yard } }`)
+		source := edited(t, intelLine, `  - { id: wisemans-letter, reveals: { fact: some-other-word } }`)
 		require.Empty(t, defectsIn(t, source))
 	})
 	t.Run("monsters and party may be named in a disposition", func(t *testing.T) {

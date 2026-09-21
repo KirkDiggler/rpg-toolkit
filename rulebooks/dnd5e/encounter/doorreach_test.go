@@ -407,7 +407,7 @@ func (s *DoorReachSuite) TestAFarHandIsToldItCannotReachRatherThanWhatTheLockCos
 }
 
 // TestTheProbeLawStillOutranksReach is the other half of the order, and the
-// one a leak would be worse for: a concealed door nobody has found answers
+// one a leak would be worse for: a hidden door nobody has found answers
 // "no such door" BYTE-IDENTICALLY whether the guesser is beside it or across
 // the room.
 //
@@ -416,7 +416,11 @@ func (s *DoorReachSuite) TestAFarHandIsToldItCannotReachRatherThanWhatTheLockCos
 // law exists to deny (rpg-project#350).
 func (s *DoorReachSuite) TestTheProbeLawStillOutranksReach() {
 	field := doorField(3, encounter.DoorIsClosed(), theDoor, reachRow)
-	field.Doors[0].Concealed = []encounter.CheckApproach{{Ability: "perception", DC: 15}}
+	field.Concealments = []encounter.ConcealmentInput{{
+		ID:     "the-secret",
+		Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+		Doors:  []encounter.DoorID{theDoor},
+	}}
 
 	answers := make([]string, 0, 2)
 	for _, seat := range []spatial.Position{authoredAt(1, reachRow), authoredAt(0, reachRow)} {

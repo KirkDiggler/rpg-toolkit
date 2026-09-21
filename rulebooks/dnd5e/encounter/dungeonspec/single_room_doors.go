@@ -43,10 +43,17 @@ import (
 //
 // A door with no `propDeclarations` entry has no shape at all. A door id that
 // names an ARRANGEMENT template is a door inside a stamp, which nothing
-// remaps yet (R5). And `concealed` is a hidden rectangle in the middle of a
-// room — a picture question the builder has not asked (R2). Each is refused
-// by name, in the shape [singleRoomCellSelector] takes: what is wrong, what
-// to write instead, and what would make it legal.
+// remaps yet (R5). Each is refused by name, in the shape
+// [singleRoomCellSelector] takes: what is wrong, what to write instead, and
+// what would make it legal.
+//
+// `concealed` USED TO BE THE THIRD ONE, and is not any more
+// (rpg-project#490). A hidden rectangle in the middle of a room was the
+// picture question the builder had not asked; the concealment primitive is
+// the answer, and the word moved to the root — a door is hidden by being
+// listed in a `concealments.<id>.props`. It is not a key on this block at
+// all now, so writing it earns the unknown-key refusal with the keys this
+// block does take.
 
 // The three refusals this dialect adds, verbatim. Constants so the same
 // defect always reports the same words, and so a test can pin the sentence an
@@ -65,13 +72,6 @@ const (
 	doorInArrangement = "a door inside an arrangement is not something this build stamps yet: " +
 		"this id names an arrangement template, so declare the door on a placed item of its own, " +
 		"or wait for the arrangement door"
-
-	// doorConcealed is `concealed:` in this dialect — the word means
-	// something, it is simply not built here, so it is refused as itself
-	// rather than as an unknown key.
-	doorConcealed = "concealed is not something a single room can declare yet: a door is a placed footprint " +
-		"here and a hidden one is a picture question the builder has not asked; author the door plain, " +
-		"or wait for the sites layer"
 
 	// doorStateDecidesBlocking is either blocking flag authored TRUE on a
 	// door item (R3, rpg-toolkit#1846).
@@ -149,12 +149,10 @@ func doorBindingValues(gp *RoomGameplaySource, g *grammar, add errSink) {
 			}
 		}
 
-		if binding.Concealed != nil {
-			add(p+".concealed", doorConcealed)
-		}
 		// AND THE STATE ITSELF, by the one shared grammar: the lock a v2
-		// door gets, with v2's sentences, at this dialect's path. Concealed
-		// is refused above rather than judged, so it is not handed on.
+		// door gets, with v2's sentences, at this dialect's path. Whether
+		// the door is HIDDEN is not a door key in either dialect's engine
+		// any more, so nothing is handed on beside the lock.
 		g.doorState(p, binding.Locked, nil)
 	}
 }

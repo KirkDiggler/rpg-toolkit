@@ -85,16 +85,17 @@ import (
 // words, and a test pins the sentence an author reads rather than a
 // paraphrase of it.
 const (
-	// intelRevealsDoor is `reveals: { door }` in this dialect (R3) — the word
-	// means something, it simply needs a crossing to mean it.
-	intelRevealsDoor = "a door is not something a single room can reveal yet: revealing the way to one needs a " +
-		"concealed door on a crossing, and this dialect's doors are footprints standing in the open; " +
-		"write `fact: <id>`, or wait for the sites layer"
+	// intelRevealsDoor is `reveals: { door }` in this dialect — the word
+	// names the hinge, and what a record gives away is the secret holding it
+	// (rpg-project#490, R7). Retargeted rather than deleted: the author
+	// wrote a real word and the sentence says where the right one is.
+	intelRevealsDoor = "a door is not what a record gives away: reveal the concealment that holds it — " +
+		"write `concealment: <id>` naming one of this room's `concealments`"
 
 	// intelRevealsNothing is a record the author started and did not finish.
-	// v2's sentence with its `door:` half removed, because `door:` is not a
-	// thing an author may write here at all.
-	intelRevealsNothing = "does not say what it reveals — `fact: <id>`"
+	// v2's sentence with its `door:` half replaced by this dialect's own
+	// target, because `door:` is not a thing an author may write here.
+	intelRevealsNothing = "does not say what it reveals — `concealment: <id>` or `fact: <id>`"
 
 	// propNeedsDeclaration is a binding whose item declares no prop. The
 	// prop's geometry IS its declaration, so this is not a missing field, it
@@ -143,6 +144,7 @@ func intelShape(doc *yaml.Node, add errSink) {
 		optionalReference(rec, "id", p, add)
 		if reveals := optionalNode(rec, "reveals", p, add); reveals != nil && reveals.Kind == yaml.MappingNode {
 			optionalReference(reveals, "door", p+".reveals", add)
+			optionalReference(reveals, "concealment", p+".reveals", add)
 			optionalReference(reveals, "fact", p+".reveals", add)
 		}
 	}
@@ -247,15 +249,17 @@ func propBindingsShape(gp *yaml.Node, add errSink) {
 // intelRecords validates the root's knowledge records and hands back every id
 // this document declares — the universe a `holds:` may name.
 //
-// [validation.intel]'s three rules, at this dialect's paths: an id, no two
-// the same, and exactly one thing revealed. The fourth (a `door` that no door
-// in the file has) is not asked, because `door` is refused outright here (R3)
-// and asking whether a word this dialect forbids names something real would
-// be a second defect for the one mistake.
+// [validation.intel]'s four rules, at this dialect's paths: an id, no two
+// the same, exactly one thing revealed, and a `concealment` this room
+// declares. A `door` is not asked whether it names something real, because
+// `door` is refused outright here (R3, retargeted by rpg-project#490 R7) and
+// asking whether a word this dialect forbids names something would be a
+// second defect for the one mistake.
 //
-// RUN BEFORE THE BINDINGS, which ask whether a holder names a record that
-// exists — the ordering v2 keeps for the same reason.
-func intelRecords(records []IntelSpec, add errSink) map[string]bool {
+// RUN AFTER THE CONCEALMENTS, whose ids it checks a `reveals` against, and
+// BEFORE THE BINDINGS, which ask whether a holder names a record that exists
+// — the ordering v2 keeps for the same reason.
+func intelRecords(records []IntelSpec, concealments map[string]bool, add errSink) map[string]bool {
 	declared := map[string]bool{}
 	at := map[string]int{}
 	for i, rec := range records {
@@ -277,7 +281,14 @@ func intelRecords(records []IntelSpec, add errSink) map[string]bool {
 		switch {
 		case rec.Reveals.Door != "":
 			add(p+".reveals.door", intelRevealsDoor)
-		case rec.Reveals.Fact == "":
+		case rec.Reveals.Concealment != "" && rec.Reveals.Fact != "":
+			add(p+".reveals", fmt.Sprintf(
+				"intel %q reveals both a concealment and a fact, and a record reveals exactly one thing", rec.ID))
+		case rec.Reveals.Concealment != "" && !concealments[rec.Reveals.Concealment]:
+			add(p+".reveals.concealment", fmt.Sprintf(
+				"intel %q reveals concealment %q, and no concealment in this room has that id",
+				rec.ID, rec.Reveals.Concealment))
+		case rec.Reveals.Concealment == "" && rec.Reveals.Fact == "":
 			add(p+".reveals", fmt.Sprintf("intel %q %s", rec.ID, intelRevealsNothing))
 		}
 	}
