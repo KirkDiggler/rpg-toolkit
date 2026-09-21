@@ -20,7 +20,8 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 | The live map | [`canvas.go`](./canvas.go) | `Canvas()` hands out the actual `spatial.Room`, behind a view that refuses every write by name. |
 | Walls, doors, props, scenery, sealed cells | [`atlas.go`](./atlas.go), [`door.go`](./door.go), [`field.go`](./field.go) | Standable is what an owner grants minus what a wall takes away. |
 | Placed footprint contributors | [`placed_props.go`](./placed_props.go) | An authored rectangle in the canonical plane with independent movement/sight answers. Centre contact closes standing; segment interior closes a crossing; sight reads them as SOFT lane obstructions through `SightLanes`. No anchor cell, no fake entity, no runtime move protocol — a changed placement is a recompilation. |
-| What each member KNOWS about location | [`sight.go`](./sight.go), [`sightreach.go`](./sightreach.go), [`projection.go`](./projection.go), [`conceal.go`](./conceal.go) | `mind/perception` holds testimony opaquely; this module gives it its `Known(position)`/`Unknown` meaning ([ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md)). |
+| What each member KNOWS about location | [`sight.go`](./sight.go), [`sightreach.go`](./sightreach.go), [`projection.go`](./projection.go), [`conceal.go`](./conceal.go), [`concealment.go`](./concealment.go) | `mind/perception` holds testimony opaquely; this module gives it its `Known(position)`/`Unknown` meaning ([ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md)). |
+| What a field HIDES | [`concealment.go`](./concealment.go) | ONE noun per secret ([rpg-project#490](https://github.com/KirkDiggler/rpg-project/issues/490)): cells, doors and props are hidden by belonging to a `ConcealmentInput`, and a cell, a door or a prop belongs to at most one. A region no longer carries a `concealed` flag and neither does a door. |
 | The clock topology | [`clocks.go`](./clocks.go) | Every member is on exactly one clock (R6). The world tick is the default; a fight is a turn bubble. `ClockOf` ([clocks.go:81](./clocks.go#L81)) answers per member. |
 | Factions and stance | [`disposition.go`](./disposition.go), [`world.go`](./world.go) | Nothing stores a stance. It is derived on every question from the declaration plus the known facts. |
 | The story, and endings | [`record`-backed `Story`](./encounter.go#L1091), [`trigger.go`](./trigger.go) | Beats are audienced; an ending is an authored predicate, not a threshold inferred here. |
@@ -75,8 +76,8 @@ supplied capability, never as a new import.** Every one of these is required at
 | how that member's swing resolves | `Striker` ([turndriver.go:473](./turndriver.go#L473)) | `ErrNoStriker` |
 | who should hear about a step before it happens, and what a FORCED one means | `Mover` ([turndriver.go](./turndriver.go)), asked with a [`MoveStep`](./turndriver.go) | `ErrNoMover` |
 | who should hear a turn or fight boundary | `Announcer` ([turndriver.go:427](./turndriver.go#L427)) | `ErrNoAnnouncer` |
-| did the search find the hidden thing | `CheckResolver` ([conceal.go:81](./conceal.go#L81)) | `ErrNoCheckResolver`, when the field carries concealment |
-| who perceives this open concealed door | `Witness` ([conceal.go:127](./conceal.go#L127)) | `ErrNoWitness`, same condition |
+| did the search find the hidden thing | `CheckResolver` ([conceal.go](./conceal.go)) | `ErrNoCheckResolver`, when the field declares a concealment |
+| who perceives this open hidden door | `Witness` ([conceal.go](./conceal.go)) | `ErrNoWitness`, same condition |
 
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
 `MembersIn`, `RegionAt`, `Region`, `Distance`, `Canvas`, `Grid`, `Atlas`/`AtlasFor`,

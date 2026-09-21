@@ -192,17 +192,25 @@ func (s *SingleRoomDoorSuite) TestStateWinsOverTheBlockingFlags() {
 	s.Require().NoError(err)
 }
 
-// TestConcealedIsRefusedInThisDialect is R2: the word means something, it is
-// simply not built here, so it is refused as itself at its own path rather
-// than as a key nobody has heard of.
-func (s *SingleRoomDoorSuite) TestConcealedIsRefusedInThisDialect() {
+// TestConcealedIsNoLongerADoorKey is where the R2 refusal went
+// (rpg-project#490). `concealed:` was a key on this block, refused by name
+// while a hidden rectangle in the middle of a room was a picture question
+// nobody had answered. The concealment primitive answered it, and the word
+// MOVED to the root: a door is hidden by being listed in a
+// `concealments.<id>.props`.
+//
+// So the right sentence now is the unknown-key one, which says what this
+// block DOES take — a word that belongs somewhere else earns that, where a
+// word that belonged nowhere earned a refusal of its own.
+func (s *SingleRoomDoorSuite) TestConcealedIsNoLongerADoorKey() {
 	errs := s.defects(s.siteWith(theDoorBinding,
 		"      cellar-door: {closed: true, concealed: [{ability: perception, dc: 15}]}\n"))
 
 	s.Require().Len(errs, 1)
-	s.Equal("room.room.doorBindings.cellar-door.concealed", errs[0].Path)
-	s.True(strings.HasPrefix(errs[0].Message, "concealed is not something a single room can declare yet:"),
-		"the `at:` refusal's own shape: what is wrong, then what to write instead")
+	s.Equal(dungeonspec.FieldError{
+		Path:    "room.room.doorBindings.cellar-door.concealed",
+		Message: `"concealed" is not a key this build reads: they are closed, locked`,
+	}, errs[0])
 }
 
 // TestTheLockIsTheOneCheckGrammar: `locked` is v2's [DoorSpec.Locked] — the
@@ -272,7 +280,7 @@ func (s *SingleRoomDoorSuite) TestAnUnknownDoorKeyIsNamedAtItsPath() {
 	s.Require().Len(errs, 1)
 	s.Equal(dungeonspec.FieldError{
 		Path:    "room.room.doorBindings.cellar-door.shut",
-		Message: `"shut" is not a key this build reads: they are closed, concealed, locked`,
+		Message: `"shut" is not a key this build reads: they are closed, locked`,
 	}, errs[0])
 }
 

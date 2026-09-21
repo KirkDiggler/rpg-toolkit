@@ -74,9 +74,11 @@ type Atlas struct {
 	// geometry draws exactly what the engine enforces and nothing has to
 	// re-derive it from cells.
 	//
-	// CONSTRUCTION TRUTH like every other list here: a placement has no
-	// runtime lifetime in this slice (no move/hold/drop protocol exists),
-	// so there is nothing live to fold — the compiled list, copied out.
+	// FILTERED BY [Encounter.AtlasFor], never sliced: a placement a
+	// concealment hides, or one standing on floor the recipient cannot see,
+	// is withheld whole (rpg-project#490). This list used to be withheld
+	// WHOLESALE under any concealment, which stopped being honest the moment
+	// a footprint door could be the secret.
 	Placed []AtlasPlacedProp
 
 	// Sealed is every cell in [Atlas.Cells] NOBODY CAN STAND ON, sorted by
@@ -187,10 +189,11 @@ type AtlasRegion struct {
 	// Lighting is the region's light level, carried unread.
 	Lighting Lighting
 
-	// Concealed is whether the region is authored as hidden space, carried
-	// unread — [RegionInput.Concealed]. What a non-knower's atlas withholds
-	// is the world layer's business (rpg-project#351), not a snapshot's.
-	Concealed bool
+	// A REGION NO LONGER REPORTS WHETHER IT IS HIDDEN. It carried
+	// `Concealed bool` while a region was the thing that could be hidden;
+	// the concealment primitive replaced the flag (rpg-project#490), and
+	// what a non-knower's atlas withholds is [Encounter.AtlasFor]'s
+	// business — which TRIMS this entry's cells rather than dropping it.
 }
 
 // AtlasProp is one authored thing standing on the floor, as the map reports
@@ -386,7 +389,6 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Cells:     append([]spatial.Position(nil), f.regionCells[r.ID]...),
 			Archetype: r.Archetype,
 			Lighting:  *r.Lighting,
-			Concealed: r.Concealed,
 		})
 	}
 	sort.Slice(out.Regions, func(i, j int) bool { return out.Regions[i].ID < out.Regions[j].ID })

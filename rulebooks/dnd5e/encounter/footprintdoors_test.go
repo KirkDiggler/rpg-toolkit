@@ -65,6 +65,10 @@ func footprintDoorField(state encounter.DoorState) encounter.FieldInput {
 
 func placementPtr(p spatial.FootprintPlacement) *spatial.FootprintPlacement { return &p }
 
+// placementPtrValue is [placementPtr]'s twin for the list that takes a
+// placement by value.
+func placementPtrValue(p spatial.FootprintPlacement) spatial.FootprintPlacement { return p }
+
 func (s *FootprintDoorSuite) setup(field encounter.FieldInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
@@ -261,8 +265,7 @@ func (s *FootprintDoorSuite) TestASavedLeafComesBackShutAndStillBlocking() {
 }
 
 // TestADoorHasOneGeometry is the construction law: exactly one shape, never
-// two and never none, and no concealed rectangle until something has paid for
-// what a hidden one means.
+// two and never none.
 func (s *FootprintDoorSuite) TestADoorHasOneGeometry() {
 	both := footprintDoorField(encounter.DoorIsClosed())
 	both.Doors[0].Edges = []encounter.DoorEdge{{From: cellAt(0, 0), To: cellAt(1, 0)}}
@@ -289,18 +292,105 @@ func (s *FootprintDoorSuite) TestADoorHasOneGeometry() {
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrBadDoor)
 
-	hidden := footprintDoorField(encounter.DoorIsClosed())
-	hidden.Doors[0].Concealed = []encounter.CheckApproach{{Ability: "perception", DC: 15}}
-	_, err = encounter.NewEncounter(&encounter.SetupInput{
+}
+
+// TestAFootprintDoorMayBeHidden is THE REFUSAL THAT WAS BUILT
+// (rpg-project#490, E1). A footprint door earned "a footprint and concealed,
+// which nothing has built yet" until the concealment primitive landed,
+// because a hidden rectangle a route reads as a cell contributor would have
+// leaked its own existence through the map.
+//
+// What closed that hole is the concealment counting the cells the rectangle
+// STANDS ON as its own: the floor goes with the door, so an unaware observer
+// sees neither a door nor a hole where one is. Four claims, one per way the
+// secret could leak:
+//
+//  1. the door is absent from their door list and their doorways;
+//  2. its rectangle is absent from Atlas.Placed;
+//  3. the cells it covers are absent from their Cells — no hole;
+//  4. everything else placed in the hall is STILL THERE, which is what makes
+//     claim 2 a filter rather than the old wholesale withholding.
+func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
+	field := footprintDoorField(encounter.DoorIsClosed())
+	// THE V4 SHAPE, mirrored: that dialect compiles a door item into BOTH
+	// lists — the rectangle the map draws, under the item's own id, and the
+	// door whose state decides what it blocks, under `<key>/<id>`
+	// (single_room_compile.go). So the leaf has a placed twin, and an
+	// ordinary table beside it so the projection has something to keep as
+	// well as something to withhold.
+	field.Placed = []encounter.PlacedPropInput{
+		{ID: "cellar-door", Placement: placementPtrValue(leafAcrossTheHall())},
+		{ID: "table", Placement: thinWall(4, 4, 0, spatial.Point{X: 2.5, Y: 0})},
+	}
+	field.Concealments = []encounter.ConcealmentInput{{
+		ID:     "cellar",
+		Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+		Doors:  []encounter.DoorID{theLeaf},
+	}}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Field:   hidden,
+		CheckResolver: findsEverything{}, Witness: nobodyPerceives{},
+		Field:   field,
+		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
-	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrBadDoor)
-	s.Contains(err.Error(), "concealed")
+	s.Require().NoError(err, "a footprint door in a concealment is legal now")
+
+	blind, err := enc.AtlasFor(alice)
+	s.Require().NoError(err)
+
+	for _, dw := range blind.Doorways {
+		s.Require().NotEqual(theLeaf, dw.Door, "no doorway names the secret")
+	}
+	doors, err := enc.DoorsFor(alice)
+	s.Require().NoError(err)
+	for _, d := range doors {
+		s.Require().NotEqual(theLeaf, d.ID, "nor the door list")
+	}
+
+	placedIDs := map[encounter.PropID]bool{}
+	for _, p := range blind.Placed {
+		placedIDs[p.ID] = true
+	}
+	s.False(placedIDs["cellar-door"],
+		"the leaf's drawn rectangle is withheld — it stands on floor this observer cannot see, "+
+			"which is how the v4 twin is covered without the concealment naming it twice")
+	s.True(placedIDs["table"],
+		"and the table beside it is not — Atlas.Placed is FILTERED now, not withheld wholesale")
+
+	// The cells the leaf covers go with it: a hole in the floor exactly
+	// where the secret is would be the tell the masquerade exists to remove.
+	full, err := enc.Atlas()
+	s.Require().NoError(err)
+	s.Greater(len(full.Cells), len(blind.Cells), "the covered floor is withheld with the door")
+	blindCells := map[spatial.Position]bool{}
+	for _, c := range blind.Cells {
+		blindCells[c] = true
+	}
+	s.False(blindCells[cellAt(2, 1)], "the leaf stands on this cell, so it hides with it")
+	s.False(blindCells[cellAt(2, 3)], "and on this one")
+
+	// And finding it hands the whole secret over.
+	_, err = enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	s.Require().NoError(err)
+	found, err := enc.AtlasFor(alice)
+	s.Require().NoError(err)
+	s.Equal(full.Cells, found.Cells, "the finder's floor is the whole floor again")
+	foundIDs := map[encounter.PropID]bool{}
+	for _, p := range found.Placed {
+		foundIDs[p.ID] = true
+	}
+	s.True(foundIDs["cellar-door"], "and the leaf's drawn rectangle arrives with it")
+	foundDoors, err := enc.DoorsFor(alice)
+	s.Require().NoError(err)
+	listed := false
+	for _, d := range foundDoors {
+		listed = listed || d.ID == theLeaf
+	}
+	s.True(listed, "as does the door itself")
 }
 
 // TestASeatIsNeverInsideAShutLeaf: the authored-placement check that the

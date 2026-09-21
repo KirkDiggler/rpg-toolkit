@@ -297,7 +297,10 @@ func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, bud
 		return RouteOutput{}
 	}
 
-	field, ok := e.floodFrom(mover, from, nil, budget)
+	// UNGATED BY THE MOVER'S OWN PICTURE (rpg-project#490, E7): a directive
+	// is nobody's choice, so a wall that is only a wall to them does not
+	// shape where they are pushed to.
+	field, ok := e.floodFrom(mover, "", from, nil, budget)
 	if !ok {
 		return RouteOutput{StoppedBy: "the floor could not be flooded"}
 	}
@@ -370,7 +373,10 @@ func (e *Encounter) routeToward(mover MemberID, from, anchor spatial.Position, b
 		return RouteOutput{}
 	}
 
-	field, ok := e.floodFrom(mover, from, nil, budget)
+	// UNGATED BY THE MOVER'S OWN PICTURE (rpg-project#490, E7): a directive
+	// is nobody's choice, so a wall that is only a wall to them does not
+	// shape where they are pushed to.
+	field, ok := e.floodFrom(mover, "", from, nil, budget)
 	if !ok {
 		return RouteOutput{StoppedBy: "the floor could not be flooded"}
 	}

@@ -256,26 +256,19 @@ func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
 		return nil
 	}
 
-	if rec.Reveals.Door != "" {
-		// Nothing to reveal when: the door is not this field's, the door is
-		// not concealed, or the receiver already knows it.
-		//
-		// THE SECOND CLAUSE IS REDUNDANT AND KEPT ON PURPOSE. knowsDoor folds
-		// a graph that declares only CONCEALED doors as entities, and
-		// graph.State.Visible answers true for anything it was never told
-		// about — so an unconcealed door is "already known" to everybody and
-		// the third clause alone would decide this case. A mutation pass
-		// proves it: dropping `d.concealed == nil` kills no test. It stays
-		// because removing it would make this rule — "an unconcealed door
-		// has nothing to reveal" — true only by an undocumented default of a
-		// package one layer down, and the next person to read the graph's
-		// contract differently would silently start narrating reveals for
-		// open doorways.
-		d, ok := e.doorsByID[rec.Reveals.Door]
-		if !ok || d.concealed == nil || e.world.knowsDoor(to, d.id) {
+	if rec.Reveals.Concealment != "" {
+		// Nothing to reveal when the concealment is not this field's — which
+		// construction already refused ([validateIntelTargets]) — or when the
+		// receiver already knows it. The first clause is the unreachable
+		// guard [Encounter.applyReveals]' own doc argues for above: indexing
+		// and using the zero value would turn "not declared" into "a secret
+		// that reveals nothing", which looks exactly like a working record
+		// whose secret is already out.
+		c := e.field.concealmentOf(rec.Reveals.Concealment)
+		if c == nil || e.world.knowsConcealment(to, c.id) {
 			return nil
 		}
-		if err := e.revealDoorTo(to, d, "looted the way to it", at); err != nil {
+		if err := e.revealConcealmentTo(to, c, "looted the way to it", at); err != nil {
 			return err
 		}
 	}

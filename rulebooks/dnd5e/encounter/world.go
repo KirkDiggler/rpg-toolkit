@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/KirkDiggler/rpg-toolkit/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
@@ -28,7 +27,7 @@ import (
 // # What the graph declares
 //
 // Entities: every faction (the two reserved ones and the declared ones),
-// every current member, and the concealed regions and doors. Edges:
+// every current member, and the concealments. Edges:
 // `belongs-to` from each member to its faction, and the stance edges —
 // `hostile-to` or `allied-with`, one per direction — for every pair of
 // factions, declared or default (disposition.go). Reducers: a [graph.Raise]
@@ -67,8 +66,8 @@ const (
 )
 
 // factKnownPrefix and factKnownKind are the fact kind that records a member
-// coming to know a fact — `known:fact:<id>`, beside `known:door:` and
-// `known:region:`. The fact's ACTOR and SUBJECT are both the learner, and its
+// coming to know a fact — `known:fact:<id>`, beside `known:concealment:`.
+// The fact's ACTOR and SUBJECT are both the learner, and its
 // audience is the learner alone: the subject is what [graph.Raise] flags, the
 // audience is whose fold carries it.
 const factKnownPrefix = "known:fact:"
@@ -89,16 +88,16 @@ type encounterWorld struct {
 	structure *graph.World
 	log       *journal.Journal
 
-	// concealedDoors is every concealed door's ID, sorted (C8 — the sweep
-	// walks it, and beat order is observable).
-	concealedDoors []DoorID
-
-	// concealedRegions is every region authored as hidden space.
-	concealedRegions map[RegionID]bool
-
-	// doorRegions maps each concealed door to the concealed regions its
-	// edges touch, sorted — the regions perceiving it OPEN reveals.
-	doorRegions map[DoorID][]RegionID
+	// concealments is every concealment's ID, sorted (C8 — the sweep walks
+	// it, and beat order is observable).
+	//
+	// ONE LIST WHERE THERE WERE THREE. It replaced `concealedDoors`,
+	// `concealedRegions` and the `doorRegions` index that tied them
+	// together — the index existed only because finding a door and learning
+	// the room behind it were two knowledge moments that had to be kept in
+	// step. They are one moment now (rpg-project#490, R1), so the thing
+	// that kept them in step has nothing left to do.
+	concealments []ConcealmentID
 
 	// minds is each faction's mind AS THE GRAPH WAS DECLARED: the declared
 	// one while it is a current member, else the faction's sole current
@@ -119,9 +118,7 @@ func newEncounterWorld() *encounterWorld { return &encounterWorld{log: journal.N
 // conceals reports whether the field hid anything — the question the
 // projection asks before withholding, and the storage boundary asks before
 // writing a world key for a field nobody has learned anything in.
-func (w *encounterWorld) conceals() bool {
-	return len(w.concealedDoors) > 0 || len(w.concealedRegions) > 0
-}
+func (w *encounterWorld) conceals() bool { return len(w.concealments) > 0 }
 
 // knowledgeFacts is every fact of a knowledge kind, in append order — the
 // half of the one journal [EncounterData.World] carries.
@@ -145,53 +142,27 @@ func (e *Encounter) buildWorld() error {
 		w = &encounterWorld{log: journal.New()}
 		e.world = w
 	}
-	w.concealedRegions = make(map[RegionID]bool)
-	w.doorRegions = make(map[DoorID][]RegionID)
-	w.concealedDoors = nil
+	w.concealments = nil
 	w.minds = make(map[FactionID]MemberID)
 	w.observers = make(map[factionPair][]MemberID)
 
 	cfg := graph.Config{Membership: worldMembership}
 
-	// Concealed structure, pierced per entity by its own minted kind — one
+	// The concealments, pierced per entity by their own minted kind — one
 	// kind per entity, because a pierce fires on kind alone: a shared kind
-	// would reveal every door on any door's find.
-	for _, r := range e.field.regions {
-		if !r.Concealed {
-			continue
-		}
-		w.concealedRegions[r.ID] = true
-		cfg.Entities = append(cfg.Entities, graph.Entity{ID: regionEntityID(r.ID), Kind: "region", Concealed: true})
+	// would give away every secret on any one of them being found.
+	for i := range e.field.concealments {
+		c := &e.field.concealments[i]
+		w.concealments = append(w.concealments, c.id)
+		cfg.Entities = append(cfg.Entities, graph.Entity{
+			ID: concealmentEntityID(c.id), Kind: "concealment", Concealed: true,
+		})
 		cfg.Pierces = append(cfg.Pierces, graph.Pierce{
-			On:       regionKnownKind(r.ID),
-			Entities: []journal.EntityID{regionEntityID(r.ID)},
+			On:       concealmentKnownKind(c.id),
+			Entities: []journal.EntityID{concealmentEntityID(c.id)},
 		})
 	}
-	for _, d := range e.doors {
-		if d.concealed == nil {
-			continue
-		}
-		w.concealedDoors = append(w.concealedDoors, d.id)
-		cfg.Entities = append(cfg.Entities, graph.Entity{ID: doorEntityID(d.id), Kind: "door", Concealed: true})
-		cfg.Pierces = append(cfg.Pierces, graph.Pierce{
-			On:       doorKnownKind(d.id),
-			Entities: []journal.EntityID{doorEntityID(d.id)},
-		})
-		// The concealed regions this door guards: the regions its edge
-		// endpoints stand in, deduplicated and sorted. Perceiving the door
-		// OPEN reveals exactly these.
-		seen := make(map[RegionID]bool)
-		for _, edge := range d.edges {
-			for _, cell := range []spatial.Position{edge.From, edge.To} {
-				if r, owned := e.field.regionOf(cell); owned && w.concealedRegions[r] && !seen[r] {
-					seen[r] = true
-					w.doorRegions[d.id] = append(w.doorRegions[d.id], r)
-				}
-			}
-		}
-		sort.Strings(w.doorRegions[d.id])
-	}
-	sort.Strings(w.concealedDoors)
+	sort.Strings(w.concealments)
 
 	// The sides: every faction, allied with itself, and the declared or
 	// default stance between every pair, one edge per direction.
@@ -355,14 +326,13 @@ func (w *encounterWorld) knowledgeOf(member MemberID) *graph.State {
 	return w.structure.StateFor(journal.EntityID(member), w.log)
 }
 
-// knowsDoor reports whether a member's own fold shows the door.
-func (w *encounterWorld) knowsDoor(member MemberID, id DoorID) bool {
-	return w.knowledgeOf(member).Visible(doorEntityID(id))
-}
-
-// knowsRegion reports whether a member's own fold shows the region.
-func (w *encounterWorld) knowsRegion(member MemberID, id RegionID) bool {
-	return w.knowledgeOf(member).Visible(regionEntityID(id))
+// knowsConcealment reports whether a member's own fold shows the
+// concealment. A concealment this graph was never told about — every one, on
+// a field that hides nothing — folds as visible, which is what
+// [graph.State.Visible] answers for anything undeclared and is the honest
+// answer here: there is no secret to not know.
+func (w *encounterWorld) knowsConcealment(member MemberID, id ConcealmentID) bool {
+	return w.knowledgeOf(member).Visible(concealmentEntityID(id))
 }
 
 // knowsFact is THE ONE FOLD FOR KNOWLEDGE OF A FACT (design §3.3; no reader
@@ -380,26 +350,15 @@ func (w *encounterWorld) knowsFact(member MemberID, id FactID) bool {
 	return false
 }
 
-// learnDoor writes the fact that pierces one door for one member alone.
-// cause is a human-readable trace ([journal.Outcome.Detail]) — the causes
-// are exemplary, and the journal records which one it was.
-func (w *encounterWorld) learnDoor(member MemberID, id DoorID, cause string) error {
+// learnConcealment writes the fact that pierces one concealment for one
+// member alone. cause is a human-readable trace
+// ([journal.Outcome.Detail]) — the causes are exemplary, and the journal
+// records which one it was.
+func (w *encounterWorld) learnConcealment(member MemberID, id ConcealmentID, cause string) error {
 	_, err := w.log.Append(journal.Fact{
-		Kind:     doorKnownKind(id),
+		Kind:     concealmentKnownKind(id),
 		Actor:    journal.EntityID(member),
-		Subject:  doorEntityID(id),
-		Audience: journal.Audience{journal.EntityID(member)},
-		Outcome:  journal.Outcome{Detail: cause},
-	})
-	return err
-}
-
-// learnRegion writes the fact that pierces one region for one member alone.
-func (w *encounterWorld) learnRegion(member MemberID, id RegionID, cause string) error {
-	_, err := w.log.Append(journal.Fact{
-		Kind:     regionKnownKind(id),
-		Actor:    journal.EntityID(member),
-		Subject:  regionEntityID(id),
+		Subject:  concealmentEntityID(id),
 		Audience: journal.Audience{journal.EntityID(member)},
 		Outcome:  journal.Outcome{Detail: cause},
 	})

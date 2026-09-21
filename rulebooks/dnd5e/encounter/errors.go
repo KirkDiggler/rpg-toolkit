@@ -454,6 +454,30 @@ var (
 	// where ErrBadDoor is a field that could not be built.
 	ErrNoDoor = errors.New("no such door")
 
+	// ErrNoConcealment is a concealment this field does not declare, named
+	// by something that needs one — an intel record's `reveals`
+	// (rpg-project#490, R7).
+	//
+	// Separate from ErrBadConcealment the way ErrNoDoor is separate from
+	// ErrBadDoor: this is a declaration pointing at something that is not
+	// there, where ErrBadConcealment is a concealment that could not be
+	// built.
+	ErrNoConcealment = errors.New("no such concealment")
+
+	// ErrBadConcealment is a concealment that cannot be part of a field
+	// (rpg-project#490): an empty or duplicated id, no checks at all, an
+	// authored `notice` with nothing to beat, an approach at a DC of zero, a
+	// cell that is not floor this field has, a concealment that hides
+	// nothing — and the three overlaps, each naming BOTH declarations,
+	// because a cell, a door or a prop belongs to at most one secret (R4)
+	// and an author looking at one of them needs to be told which other one
+	// it collides with.
+	//
+	// A door it names that the field does not declare is ErrNoDoor, for
+	// ErrNoConcealment's reason one noun over: the concealment is fine and
+	// the thing it points at is missing.
+	ErrBadConcealment = errors.New("bad concealment")
+
 	// ErrNoExit is a way out that is not one: an authored exit with no id,
 	// two exits sharing one, an exit standing where nobody's feet can go,
 	// or a verb naming an exit this field does not declare

@@ -150,6 +150,24 @@ type field struct {
 	// where the record says what it reveals.
 	intelByID map[IntelID]IntelRecord
 
+	// concealments is THE ONE THING THAT HIDES (rpg-project#490,
+	// concealment.go): the authored concealments, deep-copied, in authored
+	// order, each carrying its cells twice — the authored frame for ToData
+	// and the absolute one every read asks. Empty for a field with no
+	// secret, which is what every field was before this list existed.
+	concealments []concealment
+
+	// concealmentIndex, concealmentOfCell, concealmentOfDoor and
+	// concealmentOfProp are the reverse reads: which concealment holds this
+	// id, this cell, this door, this prop. Built once, because "does this
+	// belong to a secret" is asked by the projection, the sweep, the probe
+	// law and the move law, and four walks of the list would be four places
+	// to answer it differently.
+	concealmentIndex  map[ConcealmentID]int
+	concealmentOfCell map[spatial.Position]ConcealmentID
+	concealmentOfDoor map[DoorID]ConcealmentID
+	concealmentOfProp map[PropID]ConcealmentID
+
 	// exits is the authored ways out, deep-copied, in the AUTHORED frame —
 	// what ToData writes back out beside the regions and the props.
 	exits []FieldExit
@@ -307,6 +325,15 @@ func compileField(in FieldInput) (*field, error) {
 	if err := f.compileIntel(in.Intel); err != nil {
 		return nil, err
 	}
+	// THE CONCEALMENTS after the regions, the scenery, the props and the
+	// placed footprints, because every one of those is something a
+	// concealment can name: a cell must be floor this field has, and a prop
+	// must be one of the two lists. The doors it names are checked by
+	// [validateConcealmentDoors] once the caller holds them, exactly as a
+	// record's target is.
+	if err := f.compileConcealments(in.Concealments); err != nil {
+		return nil, err
+	}
 	// THE SIDES LAST (rpg-project#375): a disposition's predicate can name a
 	// member or a fact, neither of which this field checks against anything
 	// — members arrive later, facts are declared by mention — so the only
@@ -391,8 +418,7 @@ func (f *field) compileRegions(regions []RegionInput) error {
 		lighting := *r.Lighting
 		f.regions[i] = RegionInput{
 			ID: r.ID, Name: r.Name, Archetype: r.Archetype, Lighting: &lighting,
-			Cells:     append([]spatial.Position(nil), r.Cells...),
-			Concealed: r.Concealed,
+			Cells: append([]spatial.Position(nil), r.Cells...),
 		}
 	}
 	sortCells(f.cells)
@@ -576,10 +602,10 @@ func (f *field) propIndexOf(id PropID) int {
 // and says something it reveals — then indexes them for the one read that
 // matters, which is [Encounter.transferHoldings] asking what a record means.
 //
-// WHAT A RECORD REVEALS IS NOT CHECKED HERE. The doors are the caller's to
-// know at this point ([validateIntelTargets] runs once they are built), and
-// splitting it that way keeps this function about the records themselves —
-// the same split compileField already makes for a door's edges.
+// WHAT A RECORD REVEALS IS NOT CHECKED HERE. The concealments are compiled
+// after the records ([validateIntelTargets] runs once the whole field is
+// built), and splitting it that way keeps this function about the records
+// themselves — the same split compileField already makes for a door's edges.
 func (f *field) compileIntel(records []IntelRecord) error {
 	f.intel = append([]IntelRecord(nil), records...)
 	f.intelByID = make(map[IntelID]IntelRecord, len(records))
@@ -593,18 +619,19 @@ func (f *field) compileIntel(records []IntelRecord) error {
 		}
 		// A RECORD THAT REVEALS NOTHING is one an author started and did not
 		// finish. Refused rather than carried as a holding that does nothing
-		// — nothing is defaulted, and there is no "reveals the nearest door"
-		// (rpg-toolkit#1033).
+		// — nothing is defaulted, and there is no "reveals the nearest
+		// secret" (rpg-toolkit#1033).
 		if rec.Reveals == (RevealTargets{}) {
 			return fmt.Errorf("intel record %q does not say what it reveals: %w", rec.ID, ErrNoIntel)
 		}
 		// EXACTLY ONE TARGET (rpg-project#375, design §2): a record that
-		// reveals a door AND a fact is two records the author wrote as one,
-		// and which of the two a holder learns first is not a question this
-		// composition should answer for them.
-		if rec.Reveals.Door != "" && rec.Reveals.Fact != "" {
-			return fmt.Errorf("intel record %q reveals both door %q and fact %q, and a record reveals exactly one thing: %w",
-				rec.ID, rec.Reveals.Door, rec.Reveals.Fact, ErrNoIntel)
+		// reveals a concealment AND a fact is two records the author wrote
+		// as one, and which of the two a holder learns first is not a
+		// question this composition should answer for them.
+		if rec.Reveals.Concealment != "" && rec.Reveals.Fact != "" {
+			return fmt.Errorf(
+				"intel record %q reveals both concealment %q and fact %q, and a record reveals exactly one thing: %w",
+				rec.ID, rec.Reveals.Concealment, rec.Reveals.Fact, ErrNoIntel)
 		}
 		f.intelByID[rec.ID] = rec
 	}

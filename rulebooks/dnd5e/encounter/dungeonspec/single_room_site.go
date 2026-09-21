@@ -197,7 +197,12 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	// ordering reason: the orders loop below asks whether a `holds:` names a
 	// record that exists, so the universe it may name has to be indexed
 	// first (rpg-project#488, single_room_gameplay.go).
-	declared := intelRecords(s.Intel, add)
+	// THE SECRETS BEFORE THE RECORDS, because a record's `reveals` names one
+	// — the ordering reason the records themselves come before a holder
+	// (rpg-project#490). After the floor and the declarations, which every
+	// refusal about a concealment is about.
+	concealments := singleRoomConcealmentValues(s, g, add)
+	declared := intelRecords(s.Intel, concealments, add)
 	for i, m := range g.members.all {
 		// EVERY MEMBER HERE IS A MONSTER, and the kind says so rather than
 		// being read back off the ref: [monsterValues] already refuses a ref
