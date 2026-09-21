@@ -37,6 +37,14 @@ import (
 // the four compilers [monstersOf] already calls for a v2 placement. One key,
 // one compiler, two dialects.
 //
+// AND SO DOES THE RUN ITSELF (rpg-project#488, slice 1). The root's `exits:`
+// go through the one [exitsOf] with this dialect's frame spent on the way in
+// ([RoomExit], R2); `endings:` and `scenarios:` go through [endingsOf] and
+// [scenariosOf] unchanged, because neither names a cell and neither has a
+// half a dialect could own. One key, one compiler, two dialects — and an
+// exit's cell is put through the same standability `partyStart` is, at the
+// exit's own path.
+//
 // `propBindings` compiles the same way (rpg-toolkit#1854): its three keys are
 // laid onto the placement the item's own declaration produced, by
 // [applyPropBindings], through [intelHoldingsOf] and [predicateOf] — the
@@ -99,6 +107,15 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		Factions:     factionsOf(spec.Factions, cast),
 		Dispositions: dispositionsOf(spec.Dispositions),
 	}
+	// THE WAYS OUT, lowered by the one [exitsOf] the other dialect uses, with
+	// this dialect's frame spent on the way in (rpg-project#488 R2). Held
+	// aside until every cell below has been judged: they join the field after
+	// the placement walk, exactly as the start does, so a bad exit is named
+	// at its own path rather than as whichever cell happened to be asked
+	// about first.
+	exits := exitsOf(spec.Exits, func(ex RoomExit) (string, spatial.Position) {
+		return ex.ID, axialOffset(ex.Cell, o)
+	})
 	starts := []spatial.Position{}
 	if spec.Room.Gameplay.PartyStart == nil {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "is required")
@@ -158,6 +175,20 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 			at   spatial.Position
 		}{path: fmt.Sprintf("room.room.monsters[%d].cell", i), cell: m.Cell, at: starts[i+1]})
 	}
+	// AND EVERY WAY OUT, because an exit is the same kind of authored cell a
+	// start is (rpg-project#488 R2). v2 answers this against the floor its
+	// regions painted; this dialect has one standability and it is the one
+	// above — a walkable hex, nothing blocking standing on it, and a shut
+	// door's footprint counted as occupying its cells. Asked at the exit's
+	// own path and in the author's own axial frame, like every placement
+	// here.
+	for i, ex := range exits {
+		placements = append(placements, struct {
+			path string
+			cell RoomCell
+			at   spatial.Position
+		}{path: fmt.Sprintf("exits[%d].cell", i), cell: spec.Exits[i].Cell, at: ex.At})
+	}
 	for _, placement := range placements {
 		if err := encounter.ValidateStaticPlacements(field, []spatial.Position{placement.at}); err != nil {
 			var placementErr *encounter.StaticPlacementError
@@ -177,11 +208,22 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "has no free seat")
 	}
 	field.Start = &encounter.FieldStart{At: starts[0]}
+	// AND THE WAYS OUT RIDE THE FIELD, for the start's reason ([Compiled.Field]):
+	// they are part of the world the composition runs, so a copy kept only on
+	// Compiled would be lost the moment the dungeon was saved.
+	field.Exits = exits
 	return Compiled{
 		Key: spec.Key, Name: read.Name, Field: field, PartyStart: party, Monsters: monsters,
 		// The same lists the field carries, surfaced for a host that wants to
 		// read what the site declares without reaching into it ([Compiled]).
 		Intel: field.Intel, Factions: field.Factions, Dispositions: field.Dispositions,
+		// AND WHAT THE ROOM IS FOR (rpg-project#488): the endings this
+		// document authored, each `when` compiled by the one [predicateOf],
+		// and the scenario bindings deep-copied so a caller cannot reach back
+		// into the spec through the map it is handed. Both through the shared
+		// compilers, both nil when the document declares none.
+		Scenarios: scenariosOf(spec.Scenarios),
+		Endings:   endingsOf(spec.Endings),
 	}, nil
 }
 

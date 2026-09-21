@@ -17,6 +17,13 @@
 # from spawn" is the v2 precedent and the record is identical either way.
 # rpg-toolkit#1854 gave a placed footprint both, and the prop spelling is the
 # compiling document testdata/world-builder-v4-raider-letter.yaml.
+#
+# SLICE 1 ADDED THE WAY OUT, THE BINDING AND AN ENDING (rpg-project#488). The
+# exit and the scenario are the v2 camp's own two lines; the ending is not —
+# the v2 camp authors none at its root, and `hold-out` is a SCENARIO's ending
+# there. Written here so this dialect's `endings:` has a document that
+# exercises it, and pinned against a v2 document authoring the identical line
+# rather than against this camp's twin.
 version: 4
 key: raider-camp-v4
 play: { void: transparent, lighting: bright, standing: centre-covered }
@@ -38,6 +45,26 @@ dispositions:
 intel:
   - { id: wisemans-letter, reveals: { fact: saved-wiseman } }
 
+# The way out, at the gate. THE CELL IS THIS DIALECT'S OWN FRAME (R2): axial
+# {q, r} rather than v2's `at: [col, row]`, and `{q: 0, r: 3}` is the axial
+# cell that lowers to the offset `[1,3]` the v2 camp writes — which is what
+# lets the two compiled exits be required equal.
+exits:
+  - { id: front-gate, cell: { q: 0, r: 3 } }
+
+# Hold out six rounds. NOT the same claim as the binding below: `hold-out`
+# there is the scenario the camp is authored for, and this is an ending the
+# DOCUMENT declares in its own file (rpg-project#375, R10). A scenario's own
+# field is sugar for one of these, which is the pin arrivals_test.go makes in
+# the other dialect.
+endings:
+  - { id: held-out, when: { round: 6 } }
+
+# The scenario this camp is authored for. `raiders` is the faction declared
+# above, and a faction is bindable for exactly this reason (`convince`).
+scenarios:
+  hold-out: { convince: raiders }
+
 room:
   version: 3
   id: room-1
@@ -54,11 +81,14 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
+    # The last cell is THE GATE the exit above stands in — one hex south of
+    # {q: 0, r: 2}, so the floor is still one connected camp.
     walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
       {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
       {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
       {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
-      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0}]
+      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0},
+      {q: 0, r: 3}]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}

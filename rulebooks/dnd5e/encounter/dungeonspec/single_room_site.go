@@ -221,6 +221,11 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		bindingChecks(g, at, b)
 	}
 	g.minds()
+	// THE WAYS OUT, in [Validate]'s own position for them — after the cast is
+	// indexed and before the dispositions — so the ids a scenario binding may
+	// name are all in hand by the time one is read (rpg-project#488,
+	// single_room_gameplay.go).
+	exits := singleRoomExits(s.Exits, g)
 	g.dispositions()
 	// THE PROP ORDERS AND THE ARRIVALS (rpg-project#488,
 	// single_room_gameplay.go). Here rather than in the loop above because
@@ -229,6 +234,13 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	// against the whole table [grammar.dispositions] just built.
 	propBindingValues(gp, g, declared)
 	singleRoomArrivals(gp, g)
+	// THE ENDINGS AND THE BINDINGS, last of the gameplay keys and in
+	// [Validate]'s order: an ending's `when` may name a `{ stance }` or a
+	// `{ down }`, so it waits for the whole table and the whole cast; a
+	// binding may name anything this document declares, so it waits for the
+	// exits as well.
+	g.endings(s.Endings)
+	g.scenarios(s.Scenarios, singleRoomBindable(gp, g, exits))
 	// A binding whose creature is gone is refused the way a prop declaration
 	// with no live owner is — a declaration may not outlive the thing it
 	// declares, and the web's room draft keeps the same discipline by dropping

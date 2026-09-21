@@ -29,6 +29,9 @@ import (
 // What each key maps to, and the v2 field it copies:
 //
 //	intel[<i>]                               Spec.Intel            (spec.go)
+//	exits[<i>]                               Spec.Exits, `cell` for `at`
+//	endings[<i>]                             Spec.Endings
+//	scenarios.<id>.<field>                   Spec.Scenarios
 //	monsterBindings.<id>.holds[<j>]          PlaceSpec.Holds
 //	monsterBindings.<id>.intimidate          PlaceSpec.Intimidate
 //	monsterBindings.<id>.persuade            PlaceSpec.Persuade
@@ -36,6 +39,26 @@ import (
 //	propBindings.<id>.holdable               PlaceSpec.Holdable
 //	propBindings.<id>.holds[<j>]             PlaceSpec.Holds
 //	propBindings.<id>.arrives                PlaceSpec.Arrives
+//
+// # The three root keys the run is made of, and the one half that is ours
+//
+// `exits:`, `endings:` and `scenarios:` are judged by the one shared grammar
+// (grammar.go, [exitIDs.declare], [grammar.endings], [grammar.scenarios]),
+// which is where every sentence about them lives for BOTH dialects. Two
+// things stay here, and both are this dialect's own:
+//
+//   - AN EXIT'S CELL. v2 writes an absolute `at: [col,row]` and checks it
+//     against the floor its regions painted; this document writes
+//     `cell: {q, r}` and its cells are put through the one standability
+//     [encounter.ValidateStaticPlacements] answers, which is what
+//     `partyStart` and every monster cell already go through
+//     (single_room_compile.go). A way out is the same kind of authored cell
+//     as a way in, and the two answering differently would be the bug.
+//   - WHAT A SCENARIO BINDING MAY NAME. v2 puts props and creatures in one
+//     `place:` list, so "a placement id" covers both; this dialect places
+//     creatures under `monsters:` and declares its props under
+//     `propDeclarations`, so [singleRoomBindable] offers the two separately.
+//     Exits and factions are the same in each.
 //
 // # The one thing this dialect says NO to, and why it is a sentence
 //
@@ -125,6 +148,72 @@ func intelShape(doc *yaml.Node, add errSink) {
 	}
 }
 
+// runShape reads the three optional root keys the run itself is made of:
+// the ways out, the endings, and the scenario bindings. [intelShape]'s
+// reasons throughout — the typed decode refuses a value of the wrong KIND
+// outright but reads an authored `null` as the Go zero value without a word,
+// and whether a REQUIRED word is present is left to the walk that has the
+// author's own sentence for it.
+//
+// ONE KEY IS REQUIRED HERE ANYWAY, AND IT IS AN EXIT'S CELL. An id left out
+// has a sentence of its own below ("the exit has no id"), so asking twice
+// would send an author looking for a second problem; a cell left out has no
+// honest default to fall back on, because `{q: 0, r: 0}` is a real hex
+// somebody may have painted. Missing is named at `exits[<i>].cell` rather
+// than silently becoming the origin — [monsterShape]'s own line for the same
+// reason.
+func runShape(doc *yaml.Node, add errSink) {
+	if exits := optionalNode(doc, "exits", "", add); exits != nil {
+		for i, ex := range exits.Content {
+			p := fmt.Sprintf("exits[%d]", i)
+			entryShape(ex, p, add)
+			if ex = resolveNode(ex); ex == nil || ex.Kind != yaml.MappingNode {
+				continue
+			}
+			optionalReference(ex, "id", p, add)
+			if cell := requiredNode(ex, "cell", p, add); cell != nil {
+				cellShape(cell, p+".cell", add)
+			}
+		}
+	}
+	if endings := optionalNode(doc, "endings", "", add); endings != nil {
+		for i, e := range endings.Content {
+			p := fmt.Sprintf("endings[%d]", i)
+			entryShape(e, p, add)
+			if e = resolveNode(e); e == nil || e.Kind != yaml.MappingNode {
+				continue
+			}
+			optionalReference(e, "id", p, add)
+			optionalNode(e, "when", p, add)
+		}
+	}
+	scenariosShape(doc, add)
+}
+
+// scenariosShape reads the optional scenario bindings: a mapping of scenario
+// id to that scenario's bindings.
+//
+// THE BINDINGS THEMSELVES ARE NOT WALKED, and that is deliberate rather than
+// an omission: a binding authored `artifact:` with nothing after it decodes
+// to the empty string, and [grammar.scenarios] already says "scenario %q
+// binds %s to nothing" about exactly that — the sentence an author can act
+// on, and the one the other dialect gives them. What is named here is the
+// case that has no sentence anywhere else: a whole scenario emptied to null,
+// which would otherwise be a binding block that binds nothing without a word.
+func scenariosShape(doc *yaml.Node, add errSink) {
+	scenarios := optionalNode(doc, "scenarios", "", add)
+	if scenarios == nil || scenarios.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(scenarios.Content); i += 2 {
+		p := "scenarios." + scenarios.Content[i].Value
+		bindings := resolveNode(scenarios.Content[i+1])
+		if bindings == nil || isNull(bindings) {
+			add(p, errNotNull)
+		}
+	}
+}
+
 // propBindingsShape reads the optional prop orders, keyed by item id —
 // [doorBindingsShape]'s walk, one declaration kind over, and for its reason:
 // an authored `null` under a key that would otherwise read as the Go zero
@@ -194,6 +283,60 @@ func intelRecords(records []IntelSpec, add errSink) map[string]bool {
 	}
 
 	return declared
+}
+
+// singleRoomExits indexes this document's ways out and refuses the half of an
+// exit that is not about a frame — [exitIDs.declare]'s two sentences, at the
+// same `exits[<i>].id` path the other dialect uses, because it is the same
+// key.
+//
+// THE CELL IS ANSWERED AT THE COMPILE, by the standability `partyStart`
+// already goes through (single_room_compile.go). It is not asked here for
+// [validateSingleRoom]'s own reason: this walk has the document and not the
+// floor, and the floor is what "somebody can stand there" is a question
+// about — footprints and door states included, neither of which is a fact
+// about the authored list of walkable hexes.
+//
+// The index it returns is the universe a scenario binding may name an exit
+// from.
+func singleRoomExits(exits []RoomExit, g *grammar) exitIDs {
+	declared := make(exitIDs, len(exits))
+	for i, ex := range exits {
+		declared.declare(g, i, ex.ID)
+	}
+
+	return declared
+}
+
+// singleRoomBindable is THIS DIALECT'S UNIVERSE of ids a scenario binding may
+// name (design law C1): a placed creature, a declared prop, an exit, or a
+// faction.
+//
+// TWO ENTRIES WHERE v2 HAS ONE, and the split is the dialect's rather than a
+// relaxation. v2 puts props and creatures in one `place:` list, so a single
+// "placement id" answers for both; here `monsters:` places the cast and
+// `propDeclarations` declares the props, and a scenario that binds an
+// artifact is naming the second kind. An arrangement TEMPLATE is not offered:
+// nothing stamps one yet, which is the refusal [propInArrangement] already
+// gives a binding that names one.
+//
+// A FACTION IS BINDABLE TOO (rpg-project#375: `convince`), the reserved ones
+// included — whether the scenario can do anything with `party` is the
+// scenario's own refusal.
+func singleRoomBindable(gp *RoomGameplaySource, g *grammar, exits exitIDs) func(string) bool {
+	return func(named string) bool {
+		if _, ok := g.members.indexOf(named); ok {
+			return true
+		}
+		if _, ok := gp.PropDeclarations[named]; ok {
+			return true
+		}
+		if _, ok := exits[named]; ok {
+			return true
+		}
+
+		return g.factionExists(named)
+	}
 }
 
 // bindingHolds refuses a holder naming a record this document does not

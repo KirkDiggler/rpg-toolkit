@@ -374,6 +374,11 @@ func sourceShapeErrors(root *yaml.Node) []FieldError {
 	// over: a `holds:` inside the room names one of these, so a typo in a
 	// record is reported as the typo it is rather than as a holder problem.
 	intelShape(doc, add)
+	// AND THE THREE KEYS THE RUN ITSELF IS MADE OF, still before the room:
+	// a scenario binds the things the room places, so a typo in an exit is
+	// reported as the typo it is rather than as a binding problem
+	// (rpg-project#488, single_room_gameplay.go).
+	runShape(doc, add)
 	if room := requireMapping(doc, "room", "", add); room != nil {
 		roomShape(room, add)
 	}

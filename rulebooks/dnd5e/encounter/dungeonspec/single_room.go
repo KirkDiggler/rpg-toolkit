@@ -20,13 +20,30 @@ import "gopkg.in/yaml.v3"
 // existed, which is what lets every room authored before the site scope
 // survive it untouched.
 //
-// # The third root key, and the same reason
+// # The other four root keys, and the same reason
 //
-// [SingleRoomSpec.Intel] joined them for rule 3 of the placement law
-// (rpg-project#488): what is NOT PLACED lives at the root. A record of
-// knowledge is a thing in the file like a door — declared once, referred to
-// by name from whatever carries it ([RoomMonsterBinding.Holds]) — and it
-// stands nowhere, so there is no placed thing to key it by.
+// [SingleRoomSpec.Intel], [SingleRoomSpec.Exits], [SingleRoomSpec.Endings]
+// and [SingleRoomSpec.Scenarios] joined them for rule 3 of the placement law
+// (rpg-project#488): what is NOT PLACED lives at the root, beside `factions`
+// and `dispositions`. A record of knowledge is a thing in the file like a
+// door — declared once, referred to by name from whatever carries it
+// ([RoomMonsterBinding.Holds]) — and it stands nowhere, so there is no placed
+// thing to key it by. A way out, an ending and a scenario binding are the
+// same: none of them is a thing standing on the floor.
+//
+// EACH IS THE V2 ROOT'S OWN KEY IN THIS DIALECT, with its v2 shape, its v2
+// sentences and its v2 refusals at this dialect's paths — because a second
+// spelling of "how the run ends" is the drift a shared dialect exists to
+// prevent. The v2 spellings are [Spec.Intel], [Spec.Exits], [Spec.Endings]
+// and [Spec.Scenarios].
+//
+// ONE OF THEM CARRIES A CELL, AND ONLY ITS FRAME DIFFERS. A v2 exit is
+// authored `at: [col, row]`, an absolute offset pair in the orientation that
+// document declares; this dialect has no orientation and its cells are axial,
+// so an exit here is authored `cell: {q, r}` — [RoomPartyStart]'s own shape,
+// by ruling (rpg-project#488 R2). Everything else about an exit is v2's: the
+// id it must have, the id no two may share, and the standable floor it must
+// stand on. See [RoomExit].
 type SingleRoomSpec struct {
 	Version int            `yaml:"version" json:"version"`
 	Key     string         `yaml:"key" json:"key"`
@@ -55,7 +72,81 @@ type SingleRoomSpec struct {
 	// the author's own path instead of "not a key this build reads".
 	Intel []IntelSpec `yaml:"intel,omitempty" json:"intel,omitempty"`
 
+	// Exits are the ways out of this room, in authored order — the v2 root's
+	// own key ([Spec.Exits]) reaching this dialect with its cell in this
+	// dialect's frame (rpg-project#488 R2). Optional; absent means none.
+	//
+	// STRUCTURE, NOT SCENARIO, which is [Spec.Exits]' own reason for sitting
+	// beside the way in rather than inside a quest: a room has ways out
+	// whatever the party is there for. `partyStart` is NOT implicitly one of
+	// these — nothing is defaulted (rpg-toolkit#1033) — so a room whose
+	// entrance is also its way out says so in one line.
+	Exits []RoomExit `yaml:"exits,omitempty" json:"exits,omitempty"`
+
+	// Endings are the ways this room's run can end, in authored order — the
+	// v2 root's own key ([Spec.Endings], [EndingSpec]) reaching this dialect
+	// unchanged: the same required and unique id, the same required `when`,
+	// the same liveness rule. Optional; absent means none of its own, and the
+	// scenarios this document binds still declare theirs.
+	//
+	// THE PREDICATE GRAMMAR, SAME AS EVERY OTHER SINK. `when` is the
+	// [PredicateSpec] a disposition's `until` and a binding's `arrives`
+	// already are, judged by the one grammar and compiled by the one
+	// [predicateOf].
+	Endings []EndingSpec `yaml:"endings,omitempty" json:"endings,omitempty"`
+
+	// Scenarios binds this room to the scenarios it is authored for: a map
+	// from scenario id to that scenario's bindings, each binding a field key
+	// to the id of something in this document — [Spec.Scenarios] verbatim,
+	// the same Go shape. Optional; absent means none.
+	//
+	// CARRIED OPAQUELY, AND VALIDATED ONLY AS REFERENCES. This package checks
+	// exactly one thing about a binding: that its value names something this
+	// document declares — a monster, a declared prop, an exit or a faction.
+	// What the keys mean, which are required, and whether the thing named is
+	// the right KIND of thing are the scenario package's own refusals, asked
+	// at its `New(cfg)` in form-filler words. Design law C1 is the reason:
+	// this package never resolves content, and a scenario is content.
+	Scenarios map[string]map[string]string `yaml:"scenarios,omitempty" json:"scenarios,omitempty"`
+
 	Room RoomSource `yaml:"room" json:"room"`
+}
+
+// RoomExit is one authored way out: an id, and the cell a member stands on to
+// leave through it (rpg-project#488 R2).
+//
+//	exits:
+//	  - { id: entrance, cell: { q: 1, r: 3 } }
+//
+// [ExitSpec] with `at` replaced by `cell`, and that swap is the whole
+// difference between the dialects. `at` is an absolute [col,row] offset pair
+// resolved through a document `orientation`, and this dialect declares none —
+// its cells are axial — so the same bytes would name two different cells in
+// the two dialects. The shape it takes here is [RoomPartyStart]'s, which is
+// the point: a way out is the same kind of authored cell as a way in, and the
+// two answering differently about one cell would be the bug.
+//
+// A DOOR'S HEX IS A THRESHOLD, and an exit standing in one composes with it
+// without a second spelling: a closed or locked door blocks movement, so
+// nobody stands on an exit cell inside one until it is opened — DoorState's
+// own law, needing no rule of its own (R2). Exit-as-door is the sites layer's
+// question, deferred and not foreclosed.
+type RoomExit struct {
+	// ID names the exit within this document, and is what a scenario binding
+	// names. REQUIRED non-empty and unique — [ExitSpec.ID]'s rule and its
+	// sentences: a binding that named an ambiguous exit would have no answer.
+	ID string `yaml:"id" json:"id"`
+
+	// Cell is where somebody stands to leave through it, in this dialect's
+	// axial frame. REQUIRED — an exit with no cell has no honest default,
+	// since `{q: 0, r: 0}` is a real hex somebody may have painted.
+	//
+	// Must be STANDABLE, which is [ExitSpec.At]'s rule answered by this
+	// dialect's own geometry: the cell is put through the same
+	// [encounter.ValidateStaticPlacements] `partyStart` and every monster
+	// cell goes through, at this exit's own path. An exit nobody can stand on
+	// is a run nobody can leave.
+	Cell RoomCell `yaml:"cell" json:"cell"`
 }
 
 // SingleRoomPlay declares the runtime assumptions required by a single room.
