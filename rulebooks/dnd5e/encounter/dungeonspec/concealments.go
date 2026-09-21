@@ -20,6 +20,19 @@ import (
 // of them. What CHANGED is the thing underneath, and one lowering is where
 // the two words meet the one noun.
 //
+// # EVERY RULE BELOW IS THIS ADAPTER'S, NOT THE PRIMITIVE'S
+//
+// [encounter.ConcealmentInput] knows nothing about regions, suites, scenery
+// strips or which door guards what. It knows an id, some checks, and three
+// lists of things that belong to it. The merge in this file exists because
+// ONE v2 DOCUMENT can say a thing the one noun cannot — a hidden room per
+// flag, several of them behind one secret door — and something has to decide
+// what that document means. That decision is the adapter's, it is made once,
+// here, and it is visible in the compiled output rather than hidden in the
+// engine. The single-room dialect makes no such decision: its author names
+// the secret outright (single_room_concealments.go), so there is nothing to
+// infer and no merge to do.
+//
 // # The three rules, and the one thing they are all saying
 //
 //  1. A CONCEALED REGION becomes a concealment whose cells are the region's,

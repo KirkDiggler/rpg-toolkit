@@ -275,6 +275,30 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 				here, to, prop, ErrBadPlacement)
 		}
 		crossingBlocked = crossed
+
+		// THE MASQUERADE IS GEOMETRY FOR WHOEVER CANNOT SEE PAST IT
+		// (rpg-project#490, E7). A crossing this member's own atlas draws as
+		// wall refuses their step as a wall does — with the CANVAS'S OWN
+		// SENTENCE, byte for byte, because a refusal that read differently
+		// would let a guesser walk the perimeter and find the secret by the
+		// error message.
+		//
+		// BEFORE THE DESTINATION CHECK, which is this file's existing law
+		// stated one case wider: what is in the way is answered before what
+		// is on the cell, so a creature standing in the hidden room is never
+		// named by a refusal the mover earned at its wall.
+		//
+		// A DRIVEN WALK IS NOT GATED HERE and needs no flag to say so: a
+		// push reveals the secret to the mover BEFORE the step it is about
+		// to take ([Encounter.walkPath]), so by the time this runs the wall
+		// is not a wall to them any more. Being shoved through it is the
+		// illusion breaking, which is the whole of what a forced move
+		// through a secret means.
+		if e.masqueradeBlocks(member.ID, here, to) {
+			return executedAction{}, fmt.Errorf(
+				"movemember: %w: entity %s cannot cross movement-blocking boundary from %v to %v",
+				ErrBadPlacement, member.ID, here, to)
+		}
 	}
 
 	// WHAT IS IN THE WAY IS ANSWERED BEFORE WHAT IS ON THE CELL. A shut door
@@ -353,11 +377,21 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	}
 
 	action := executedAction{member: member, from: from, to: to}
-	for _, door := range e.doorsAlong(from, to) {
-		action.doors = append(action.doors, CrossedDoor{ID: door.id, State: door.state.Kind()})
-	}
+	action.doors = e.crossedDoors(from, to)
 
 	return action, nil
+}
+
+// crossedDoors is every door a move from one cell to another passes through,
+// as the step reports them — [Encounter.doorsAlong] in the shape a beat and
+// the concealment cause both read.
+func (e *Encounter) crossedDoors(from, to spatial.Position) []CrossedDoor {
+	var out []CrossedDoor
+	for _, door := range e.doorsAlong(from, to) {
+		out = append(out, CrossedDoor{ID: door.id, State: door.state.Kind()})
+	}
+
+	return out
 }
 
 // stepTo is the pump's way in: the same step, refused SILENTLY.

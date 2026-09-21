@@ -14,6 +14,7 @@ package encounter_test
 // concealment IS.
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -194,64 +195,106 @@ func (s *ConcealmentSuite) TestTheNoticeIsCarriedAndUnread() {
 	s.Require().NoError(s.setup(plain))
 }
 
-// TestSteppingOntoHiddenFloorRevealsIt is THE REVEAL CAUSE THE NOUN ADDED
-// (rpg-project#490, E3). A concealment need not have a door at all — cells
-// with no door are a secret alcove (R8) — so "crossed a hidden door" could
-// not be the whole of the crossing cause any more. Walking ONTO the floor is
-// perceiving the secret as directly as perception gets.
-func (s *ConcealmentSuite) TestSteppingOntoHiddenFloorRevealsIt() {
-	walker := core.EntityID("walker")
-	field := encounter.FieldInput{
+// alcoveField is a hall with its far column hidden by a doorless secret — a
+// secret alcove (R8), where the boundary an unaware observer sees is the
+// synthesized one the masquerade stands on every bare visible/hidden
+// adjacency, and the author drew no wall at all.
+func alcoveField() encounter.FieldInput {
+	return encounter.FieldInput{
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{
 			rectRegion("hall", 0, 0, 3, 4),
 			rectRegion("alcove", 3, 0, 1, 4),
 		},
-		// NO DOOR AND NO WALL between the two: the alcove is a secret
-		// alcove, and the boundary a non-knower sees is the synthesized one
-		// the masquerade stands on every bare visible/hidden adjacency.
 		Concealments: []encounter.ConcealmentInput{{
 			ID: "alcove", Checks: vaultCheck(), Cells: rectCells(3, 0, 1, 4),
 		}},
 	}
+}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
-		Field: field,
-		Members: []encounter.MemberInput{
-			{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+// TestTheMasqueradeIsGeometryForWhoeverCannotSeePastIt is RULING E7
+// (rpg-project#490): "a wall is a wall is a wall" cuts both ways.
+//
+// The rule that made every crossing into hidden space READ as wall
+// (rpg-toolkit#1419) answered one half of the tell — floor that ends in
+// nothing and still refuses a step. This is the other half: a wall the
+// picture shows and the geometry lets through. A client that trusts the
+// atlas never offers the step, so the only caller who can take it is one
+// that ignored the picture — and the server accepting it is both a tell
+// (walk the perimeter, find the wall that is not there) and a cheat.
+//
+// Four claims, which are the four halves of the ruling.
+func (s *ConcealmentSuite) TestTheMasqueradeIsGeometryForWhoeverCannotSeePastIt() {
+	walker := core.EntityID("walker")
+	seat := encounter.MemberInput{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}}
+
+	s.Run("an unaware mover's voluntary step is refused", func() {
+		enc := s.play(alcoveField(), findsNothing{}, seat)
+
+		blind, err := enc.AtlasFor(walker)
+		s.Require().NoError(err)
+		_, masked := hasBoundary(blind, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1})
+		s.Require().True(masked, "their atlas draws a wall on this crossing")
+
+		_, err = enc.Step(&encounter.StepInput{Member: walker, To: cellAt(3, 1)})
+		s.Require().Error(err, "and a wall is a wall")
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Empty(s.revealsFor(enc, walker), "a refusal teaches nothing — it is a wall, and walls teach nothing")
 	})
-	s.Require().NoError(err)
 
-	blind, err := enc.AtlasFor(walker)
-	s.Require().NoError(err)
-	s.NotContains(blind.Cells, cellAt(3, 1), "the alcove's floor is not theirs yet")
-	_, masked := hasBoundary(blind, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1})
-	s.True(masked, "and what they see there is a wall — the synthesized one, on a bare adjacency")
+	// THE SENTENCE IS THE CANVAS'S OWN, BYTE FOR BYTE. A refusal that read
+	// differently would let a guesser walk the perimeter and find the secret
+	// by the error message — which is the probe law, asked of movement.
+	// Compared against a REAL authored wall on the SAME crossing, so the day
+	// tools/spatial rewords its refusal this fails rather than drifting.
+	s.Run("and its sentence is a real wall's, byte for byte", func() {
+		secret := s.play(alcoveField(), findsNothing{}, seat)
+		_, hidden := secret.Step(&encounter.StepInput{Member: walker, To: cellAt(3, 1)})
+		s.Require().Error(hidden)
 
-	// AND THE WALL IS THE PICTURE, NOT THE GEOMETRY. The author drew no wall,
-	// so the canvas has none and the step is legal — which is R8 exactly:
-	// "reveal the concealment and the boundary opens where the author left
-	// the gap". Walking into the gap IS the revealing.
-	_, err = enc.Step(&encounter.StepInput{Member: walker, To: cellAt(3, 1)})
-	s.Require().NoError(err)
+		walled := alcoveField()
+		walled.Concealments = nil
+		walled.Walls = []encounter.WallInput{wall(2, 1, 3, 1)}
+		plain := s.play(walled, findsNothing{}, seat)
+		_, real := plain.Step(&encounter.StepInput{Member: walker, To: cellAt(3, 1)})
+		s.Require().Error(real)
 
-	reveals := s.revealsFor(enc, walker)
-	s.Require().Len(reveals, 1, "stepping onto it taught the walker")
-	s.Equal("alcove", reveals[0]["concealment"])
-	s.Len(reveals[0]["cells"], 4, "the whole column rides the beat, not just the cell they stood on")
-	s.Empty(reveals[0]["doors"], "a secret alcove has no door to name")
+		s.Equal(real.Error(), hidden.Error(),
+			"the secret and the wall refuse in the same words, so neither can be told from the other")
+	})
 
-	after, err := enc.AtlasFor(walker)
-	s.Require().NoError(err)
-	s.Contains(after.Cells, cellAt(3, 1), "and the floor is theirs")
-	_, stillMasked := hasBoundary(after, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1})
-	s.False(stillMasked, "with the wall that was never there gone from the picture too")
+	s.Run("a mover who knows it walks through", func() {
+		enc := s.play(alcoveField(), findsEverything{}, seat)
+		_, err := enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		s.Require().NoError(err)
+		s.Require().Len(s.revealsFor(enc, walker), 1)
+
+		_, err = enc.Step(&encounter.StepInput{Member: walker, To: cellAt(3, 1)})
+		s.Require().NoError(err, "the author drew no wall, and they can see that now")
+	})
+
+	// FORCED MOVEMENT IS NOT GATED, and being shoved through the wall is the
+	// illusion breaking. It reveals the secret to the mover, and it reveals
+	// it FIRST — the precondition of the push landing rather than its
+	// consequence (walkPath's own note).
+	s.Run("a shove through it lands, and teaches the one who was shoved", func() {
+		enc := s.play(alcoveField(), findsNothing{}, seat)
+
+		out, err := enc.Direct(context.Background(), encounter.DirectInput{
+			Mover: walker, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(3, 1)},
+		})
+		s.Require().NoError(err)
+		s.Equal(1, out.Moved, "the push landed — nobody chose this, so no picture gated it")
+
+		reveals := s.revealsFor(enc, walker)
+		s.Require().Len(reveals, 1, "and the one who was shoved knows why they went through")
+		s.Equal("alcove", reveals[0]["concealment"])
+
+		after, err := enc.AtlasFor(walker)
+		s.Require().NoError(err)
+		_, stillMasked := hasBoundary(after, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1})
+		s.False(stillMasked, "the wall that was never there is gone from their picture too")
+	})
 }
 
 // TestAnOccupantOfAnAlcoveKnowsItFromFrameOne is the presence cause asked of

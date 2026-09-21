@@ -357,6 +357,53 @@ func (e *Encounter) hiddenFrom(member MemberID) hiddenView {
 	return out
 }
 
+// masqueradeBlocks is THE MASQUERADE AS GEOMETRY (rpg-project#490, E7):
+// whether a crossing reads as WALL in this member's own atlas without a wall
+// standing there in the field.
+//
+// "A wall is a wall is a wall" cuts both ways. The rule that made every
+// crossing into hidden space read as wall (rpg-toolkit#1419) was written
+// against one half of the tell — floor that ends in nothing and still refuses
+// a step. The other half is this one: a wall the picture shows and the
+// geometry lets through. A client that trusts the atlas never offers the
+// step, so the only caller who can take it is one that ignored the picture —
+// and the server accepting it is both a tell (walk the perimeter, find the
+// wall that is not there) and a cheat.
+//
+// THE THREE CASES MIRROR [Encounter.AtlasFor]'S OWN PASSES EXACTLY, because
+// what this answers is "would that function draw a wall here for this
+// member", and two computations of one truth is how a projection and a step
+// learn to disagree:
+//
+//  1. A DOOR STANDS IN THE CROSSING. Masked (pass 2) exactly when the member
+//     has not found the concealment holding it — and not masked when they
+//     have, whichever side is hidden, because pass 3 excludes every door's
+//     own crossing found or not. So a door they know about is the door's own
+//     state's business and never this rule's.
+//  2. ONE ENDPOINT HIDDEN, ONE NOT, and nothing standing in the crossing.
+//     Synthesized as an ordinary wall (pass 3).
+//  3. BOTH ENDPOINTS HIDDEN. Withheld, not masked — nobody visible borders
+//     it — and the member cannot be standing on a hidden cell without
+//     knowing it (presence pierces), so there is no crossing to judge.
+//
+// An AUTHORED wall on the crossing is real geometry and refuses through the
+// canvas before this is ever consulted; answering true for one as well costs
+// nothing and says the same thing.
+func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position) bool {
+	if member == "" || !e.world.conceals() {
+		return false
+	}
+	hidden := e.hiddenFrom(member)
+	if hidden.cells[from] && hidden.cells[to] {
+		return false
+	}
+	if door := e.doorOnEdge(from, to); door != nil {
+		return hidden.doors[door.id]
+	}
+
+	return hidden.cells[from] != hidden.cells[to]
+}
+
 // placedTouchesHidden reports whether a placement stands on any cell this
 // recipient cannot see. Asked of the rectangle's own cells
 // ([field.placedCells]) — the one derivation reach, the probe law and an

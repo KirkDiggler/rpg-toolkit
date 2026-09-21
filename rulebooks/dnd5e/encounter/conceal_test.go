@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -641,10 +642,17 @@ func (s *ConcealSuite) TestALatePerceiverGetsTheirRevealOnArrival() {
 	s.Len(reveals[0]["cells"], 24, "and the room behind it, in the same message")
 }
 
-// TestCrossingAnUnknownOpenDoorTeachesIt: walking through a hidden door is
-// perceiving the secret, whatever the witness would have said — the crossing
-// writes the fact and the reveal beat before the step's own refresh runs.
-func (s *ConcealSuite) TestCrossingAnUnknownOpenDoorTeachesIt() {
+// TestAnUnknownOpenDoorIsAWallToWalkIntoAndTeachesWhoeverIsShovedThroughIT
+// is E7 asked of the OTHER masquerade — a hidden door's own crossing, rather
+// than a bare visible/hidden seam (rpg-project#490).
+//
+// It was TestCrossingAnUnknownOpenDoorTeachesIt, and it walked buddy through
+// an OPEN veil-door they had not found: legal then, because an open door
+// registers no boundary and the mask lived only in the picture. That is the
+// hole E7 closes. The claim the old test made — crossing teaches the crosser,
+// whatever the witness would have said — is kept whole; what changed is which
+// crossings a member may choose to make.
+func (s *ConcealSuite) TestAnUnknownOpenDoorIsAWallToWalkIntoAndTeachesWhoeverIsShovedThrough() {
 	enc := s.open(findsEverything{}, false)
 
 	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
@@ -659,18 +667,30 @@ func (s *ConcealSuite) TestCrossingAnUnknownOpenDoorTeachesIt() {
 
 	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(5, concealRow)})
 	s.Require().NoError(err)
-	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(4, concealRow)})
-	s.Require().NoError(err, "the open veil-door is crossable")
 
-	reveals := s.beatsFor(enc, buddy, encounter.BeatConcealmentRevealed)
-	s.Require().Len(reveals, 1, "crossing taught the crosser")
-	s.Equal(veilConceal, reveals[0]["concealment"])
-	_, named := revealNames(reveals[0], veilDoor)
-	s.True(named, "naming the door they walked through")
+	s.Run("walking into it is refused as a wall", func() {
+		_, werr := enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(4, concealRow)})
+		s.Require().Error(werr, "the door stands OPEN and is still a wall to somebody who has not found it")
+		s.Require().ErrorIs(werr, encounter.ErrBadPlacement)
+		s.Empty(s.beatsFor(enc, buddy, encounter.BeatConcealmentRevealed), "and it teaches them nothing")
+	})
 
-	doors, err := enc.DoorsFor(buddy)
-	s.Require().NoError(err)
-	s.True(doorsListed(doors, veilDoor))
+	s.Run("being shoved through it teaches the crosser", func() {
+		_, derr := enc.Direct(context.Background(), encounter.DirectInput{
+			Mover: buddy, Cause: veilShove, Route: []spatial.Position{cellAt(4, concealRow)},
+		})
+		s.Require().NoError(derr)
+
+		reveals := s.beatsFor(enc, buddy, encounter.BeatConcealmentRevealed)
+		s.Require().Len(reveals, 1, "the shove taught the one who was shoved")
+		s.Equal(veilConceal, reveals[0]["concealment"])
+		_, named := revealNames(reveals[0], veilDoor)
+		s.True(named, "naming the door they went through")
+
+		doors, derr := enc.DoorsFor(buddy)
+		s.Require().NoError(derr)
+		s.True(doorsListed(doors, veilDoor))
+	})
 
 	// The shared moved beat said nothing: one payload cannot name a secret
 	// to knowers without naming it to everyone, so a hidden door never
@@ -681,6 +701,9 @@ func (s *ConcealSuite) TestCrossingAnUnknownOpenDoorTeachesIt() {
 		}
 	}
 }
+
+// veilShove is the cause the directed walks in this file travel under.
+var veilShove = core.Ref{Module: "dnd5e", Type: "spells", ID: "thunderwave"}
 
 // TestKnowledgeRidesTheBlob: load-act-save — the facts persist under the
 // world key, a reload folds to the same knowledge, and an unchanged

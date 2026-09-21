@@ -16,6 +16,16 @@ import (
 // single_room_concealments.go is THE ROOT `concealments:` KEY IN THE
 // SINGLE-ROOM DIALECT (rpg-project#490, R1/R2/R4/R7).
 //
+// # THE AUTHOR NAMES THE SECRET, so nothing is inferred
+//
+// The v2 adapter has to WORK OUT what a document meant: which concealed rooms
+// are one suite, which concealed door guards the room at the far end of a
+// scenery strip (concealments.go). Those rules are that adapter's, invented
+// to give one meaning to a dialect that can say more than the one noun can
+// hold. This dialect needs none of them. An author writes the secret down —
+// its id, its checks, its cells, the things it hides — and the lowering
+// carries it across without deciding anything.
+//
 // # Nothing here is a second dialect
 //
 // The shape is [ConcealmentSpec] and the checks are judged by the one shared

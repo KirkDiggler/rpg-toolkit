@@ -344,7 +344,10 @@ func Compile(spec *Spec) (Compiled, error) {
 		Exits:    exitsOf(spec.Exits, v2Exit),
 		Intel:    intelOf(spec, orientation, ways),
 		// WHAT THIS DUNGEON HIDES, lowered from the two words this dialect
-		// spells it with (concealments.go, rpg-project#490).
+		// spells it with (concealments.go, rpg-project#490). THE MERGE RULES
+		// ARE THIS ADAPTER'S — a suite of hidden rooms is one secret because
+		// one noun holds each cell once, and deciding that is the v2 reader's
+		// job rather than the primitive's.
 		Concealments: concealmentsOf(spec, orientation, ways),
 		// The sides ride the FIELD too (rpg-project#375): the graph is seeded
 		// from them at every Setup and Load, so they have to be where the
