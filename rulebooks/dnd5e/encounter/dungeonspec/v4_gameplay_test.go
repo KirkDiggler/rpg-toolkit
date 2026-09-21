@@ -8,8 +8,11 @@ package dungeonspec_test
 //
 // # The claim, and how it is tested
 //
-// The v4 dialect gained six gameplay keys, and every one of them is a v2 key
-// reaching this dialect unchanged. A claim of that shape is not proved by
+// The v4 dialect gained six gameplay keys in slices 2 and 3 — the root's
+// `intel:`, four on a creature's orders and three on a prop's — and every one
+// of them is a v2 key reaching this dialect unchanged. (Slice 1's three root
+// keys are the same claim, proved the same way, in v4_run_test.go.) A claim
+// of that shape is not proved by
 // asserting that a field is populated — it is proved by authoring the SAME
 // GAMEPLAY in both dialects and requiring the same compiled answer. So each
 // of the two documents below is compiled beside its v2 counterpart and the
@@ -456,6 +459,12 @@ func TestAnAuthoredNullUnderANewKeyIsRefused(t *testing.T) {
 		room string
 	}{
 		{key: "intel", path: "intel[0]", root: "intel:\n  -"},
+		{key: "exits", path: "exits[0]", root: "exits:\n  -"},
+		{key: "an exit's cell", path: "exits[0].cell", root: "exits:\n  - { id: entrance, cell: }"},
+		{key: "endings", path: "endings[0]", root: "endings:\n  -"},
+		{key: "when", path: "endings[0].when", root: "endings:\n  - { id: held-out, when: }"},
+		{key: "a scenario", path: "scenarios.recover-the-artifact",
+			root: "scenarios:\n  recover-the-artifact:"},
 		{key: "holds", path: "room.room.monsterBindings.goblin-1.holds",
 			room: "    monsterBindings:\n      goblin-1:\n        holds:"},
 		{key: "intimidate", path: "room.room.monsterBindings.goblin-1.intimidate",
@@ -507,6 +516,27 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 			message: `"dor" is not a key this build reads: they are door, fact`,
 		},
 		{
+			name:    "inside a way out",
+			root:    "exits:\n  - { id: entrance, cel: { q: 0, r: 0 } }",
+			path:    "exits[0].cel",
+			message: `"cel" is not a key this build reads: they are cell, id`,
+		},
+		{
+			name:    "inside an ending",
+			root:    "endings:\n  - { id: held-out, whn: { round: 6 } }",
+			path:    "endings[0].whn",
+			message: `"whn" is not a key this build reads: they are id, when`,
+		},
+		{
+			// A PREDICATE READS ITSELF BY HAND here too, so an ending's
+			// `when` is named at its path with no list — [PredicateSpec]'s
+			// own refusal, reached from the third sink that takes one.
+			name:    "inside an ending's predicate",
+			root:    "endings:\n  - { id: held-out, when: { rounds: 6 } }",
+			path:    "endings[0].when.rounds",
+			message: `"rounds" is not a key this build reads`,
+		},
+		{
 			name:    "inside a priced check's approach",
 			room:    "    monsterBindings:\n      goblin-1:\n        intimidate: [{ abilty: str, dc: 5 }]",
 			path:    "room.room.monsterBindings.goblin-1.intimidate[0].abilty",
@@ -541,12 +571,13 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 	}
 }
 
-// The root's own key list gained `intel` and a creature's orders gained four
+// The root's own key list gained `intel`, then `exits`, `endings` and
+// `scenarios` (rpg-project#488, slice 1), and a creature's orders gained four
 // — reflected, not listed, so an author offered a key always gets one that
 // exists.
 func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 	requireExactDefect(t, refusals(t, v4With("heigth: 3", "")), "heigth",
-		`"heigth" is not a key this build reads: they are dispositions, factions, intel, key, play, room, version`)
+		`"heigth" is not a key this build reads: they are dispositions, endings, exits, factions, intel, key, play, room, scenarios, version`)
 
 	requireExactDefect(t, refusals(t, v4With("", "    monsterBindings:\n      goblin-1: { tempre: coward }")),
 		"room.room.monsterBindings.goblin-1.tempre",

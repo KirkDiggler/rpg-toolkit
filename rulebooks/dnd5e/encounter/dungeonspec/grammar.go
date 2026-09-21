@@ -542,7 +542,7 @@ func tableKeyWords() []string {
 // sortedKeys orders a map's keys so a file with two bad `on:` entries reports
 // them in the same order every run — a validator whose defect list depends on
 // Go's map iteration is one no transcript can compare (C8).
-func sortedKeys(m map[string][]AnswerSpec) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
@@ -550,6 +550,122 @@ func sortedKeys(m map[string][]AnswerSpec) []string {
 	sort.Strings(out)
 
 	return out
+}
+
+// # What the room is for: the way out, the ending, and the binding
+//
+// The three root keys below are the last of the v2 root to reach the
+// single-room dialect (rpg-project#488, slice 1), and they reach it as these
+// functions rather than as a second spelling. `exits:`, `endings:` and
+// `scenarios:` mean the same thing in both documents and are authored under
+// the same paths, so every sentence an author reads about one is written
+// here once. What a dialect keeps for itself is named at each function, and
+// there is exactly one such thing: the frame an exit's cell is in.
+
+// exitIDs is one document's ways out, indexed as they are read: every
+// declared id to the position that declared it. It is also the universe a
+// scenario binding may name an exit from.
+type exitIDs map[string]int
+
+// declare judges one authored way out's id and indexes it — the two things an
+// exit must get right WHATEVER FRAME ITS CELL IS IN ([ExitSpec.ID],
+// [RoomExit.ID]): it has an id, and no exit before it had that id. A binding
+// that named an ambiguous exit would have no answer.
+//
+// THE CELL IS THE DIALECT'S OWN, and is deliberately not asked about here.
+// v2 resolves an absolute [col,row] against the floor its regions painted;
+// the single room puts axial {q, r} through the same standability its
+// `partyStart` goes through (rpg-project#488 R2). One answer per frame, at
+// the exit's own path, in words about what that frame has under the cell.
+//
+// Called from inside each dialect's own walk rather than over the whole list,
+// so an author reads one exit's defects together instead of every id followed
+// by every cell.
+func (x exitIDs) declare(g *grammar, index int, id string) {
+	p := fmt.Sprintf("exits[%d].id", index)
+	switch prev, dup := x[id]; {
+	case id == "":
+		g.fail(p, "the exit has no id")
+	case dup:
+		g.fail(p, "exit %q is already declared at exits[%d]", id, prev)
+	default:
+		x[id] = index
+	}
+}
+
+// endings judges the authored ways a run can end (rpg-project#375, R10): an
+// id, no two alike, and a predicate that is one and can hold — "an ending
+// nobody can reach" refused in the file's own path exactly as the run refuses
+// it at construction ([encounter.ErrNoEnding]).
+//
+// NOTHING HERE IS A DIALECT'S OWN. An ending names no cell and needs no
+// frame, so `endings:` is [EndingSpec] verbatim in either document and these
+// are its refusals in both.
+//
+// RUN AFTER THE DISPOSITIONS, in both: a `{ stance }` is judged against the
+// whole stance table, and a `{ down }` names a placement.
+func (g *grammar) endings(endings []EndingSpec) {
+	at := map[string]int{}
+	for i, e := range endings {
+		p := fmt.Sprintf("endings[%d]", i)
+		switch prev, dup := at[e.ID]; {
+		case e.ID == "":
+			g.fail(p+".id", "the ending has no id")
+		case dup:
+			g.fail(p+".id", "ending %q is already declared at endings[%d]", e.ID, prev)
+		default:
+			at[e.ID] = i
+		}
+		if e.When == nil {
+			g.fail(p+".when", "the ending does not say when it fires — %s", predicateForms)
+			continue
+		}
+		g.predicate(p+".when", e.When, nil)
+	}
+}
+
+// scenarios judges the scenario bindings, and judges EXACTLY ONE THING about
+// them: that every binding's value names something this document declares
+// (design law C1, ruled 2026-09-01 — "the dungeon spec stores
+// {scenario_id, bindings} as pure references").
+//
+// WHAT IS DELIBERATELY NOT CHECKED HERE, and where it is checked instead:
+// whether the scenario id is one that exists, which keys it wants, which are
+// required, and whether the thing a key names is the right KIND of thing — a
+// prop where a prop is wanted, an exit where an exit is wanted, and holdable
+// when the scenario is about carrying something out. Every one of those is a
+// fact about a SCENARIO, and a scenario is content this package may not
+// resolve. They are the scenario package's own refusals, made at its
+// `New(cfg, compiled)` in form-filler words, where the author is looking at
+// the form that asked the question.
+//
+// So the refusal here is about the FILE: a binding that names nothing is a
+// dangling reference whatever scenario reads it, and this package is the one
+// layer that can see the whole file at once.
+//
+// `names` IS THE DIALECT'S UNIVERSE, and it is the only thing that differs
+// between the two. v2 places props and creatures in one `place:` list, so a
+// placement id covers both; the single room places creatures under `monsters:`
+// and declares its props under `propDeclarations`, so it offers the two
+// separately. Exits and factions are named the same way in each.
+//
+// Enumeration is sorted by scenario id and then by field key, because a Go
+// map range is not, and a refusal list whose order changes between runs is
+// one nobody can diff (C8).
+func (g *grammar) scenarios(scenarios map[string]map[string]string, names func(string) bool) {
+	for _, id := range sortedKeys(scenarios) {
+		bindings := scenarios[id]
+		for _, k := range sortedKeys(bindings) {
+			named := bindings[k]
+			p := fmt.Sprintf("scenarios.%s.%s", id, k)
+			switch {
+			case named == "":
+				g.fail(p, "scenario %q binds %s to nothing", id, k)
+			case !names(named):
+				g.fail(p, "scenario %q binds %s to %q, and nothing in this dungeon has that id", id, k, named)
+			}
+		}
+	}
 }
 
 // placeActions validates the weapons an author armed a monster with

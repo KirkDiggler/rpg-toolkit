@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -186,8 +185,9 @@ type validation struct {
 	doorAt map[[2]spatial.Position]int
 
 	// exitIDs is every authored exit id to the index that declared it, the
-	// other half of what a binding may name.
-	exitIDs map[string]int
+	// other half of what a binding may name — indexed by the one [exitIDs]
+	// both dialects declare their ways out through (grammar.go).
+	exitIDs exitIDs
 
 	// intelIDs is every authored intel record id to the index that declared
 	// it — built by intel(), read by place() to answer "does this holder
@@ -795,16 +795,14 @@ func (v *validation) place() {
 // [encounter.ErrNoEnding]'s liveness hole reached from the outside.
 func (v *validation) exits() {
 	s := v.spec
-	v.exitIDs = map[string]int{}
+	v.exitIDs = exitIDs{}
 	for i, ex := range s.Exits {
 		p := fmt.Sprintf("exits[%d]", i)
-		if ex.ID == "" {
-			v.fail(p+".id", "the exit has no id")
-		} else if prev, dup := v.exitIDs[ex.ID]; dup {
-			v.fail(p+".id", "exit %q is already declared at exits[%d]", ex.ID, prev)
-		} else {
-			v.exitIDs[ex.ID] = i
-		}
+		// THE ID IS THE SHARED HALF ([exitIDs.declare], grammar.go): an exit
+		// has one, and no two have the same one, whatever frame the cell is
+		// in. The three refusals below it are this dialect's own, and they
+		// are about the floor this document's regions painted.
+		v.exitIDs.declare(v.g, i, ex.ID)
 
 		at := v.cell(ex.At)
 		if v.sceneryAt[at] {
@@ -867,64 +865,34 @@ func (v *validation) intel() {
 }
 
 // scenarios validates the scenario bindings, and validates EXACTLY ONE THING
-// about them: that every binding's value names a placement id or an exit id
-// that exists in this file (design law C1, ruled 2026-09-01 — "the dungeon
-// spec stores {scenario_id, bindings} as pure references").
+// about them: that every binding's value names something this file declares
+// (design law C1, ruled 2026-09-01 — "the dungeon spec stores
+// {scenario_id, bindings} as pure references").
 //
-// WHAT IS DELIBERATELY NOT CHECKED HERE, and where it is checked instead:
-// whether the scenario id is one that exists, which keys it wants, which are
-// required, and whether the thing a key names is the right KIND of thing —
-// a prop where a prop is wanted, an exit where an exit is wanted, and
-// holdable when the scenario is about carrying something out. Every one of
-// those is a fact about a SCENARIO, and a scenario is content this package
-// may not resolve. They are the scenario package's own refusals, made at its
-// `New(cfg, compiled)` in form-filler words, where the author is looking at
-// the form that asked the question.
-//
-// So the refusal here is about the FILE: a binding that names nothing is a
-// dangling reference whatever scenario reads it, and this package is the one
-// layer that can see the whole file at once.
-//
-// Enumeration is sorted by scenario id and then by field key, because a Go
-// map range is not, and a refusal list whose order changes between runs is
-// one nobody can diff.
+// THE WHOLE RULE IS THE SHARED GRAMMAR'S ([grammar.scenarios], grammar.go,
+// rpg-project#488), which is where the sentence, the sorted enumeration and
+// the long answer to "why is the KIND not checked here" all live. What this
+// dialect supplies is [validation.bindable]: the universe of ids it declares.
 func (v *validation) scenarios() {
-	s := v.spec
-	ids := make([]string, 0, len(s.Scenarios))
-	for id := range s.Scenarios {
-		ids = append(ids, id)
+	v.g.scenarios(v.spec.Scenarios, v.bindable)
+}
+
+// bindable is THIS DIALECT'S UNIVERSE of ids a scenario binding may name: a
+// placement — which here is props and creatures alike, because v2 puts both
+// in one `place:` list — an exit, or a faction.
+//
+// A FACTION IS BINDABLE TOO (rpg-project#375: `convince`), the reserved ones
+// included — whether the scenario can do anything with `party` is the
+// scenario's own refusal.
+func (v *validation) bindable(named string) bool {
+	if _, ok := v.g.members.indexOf(named); ok {
+		return true
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		bindings := s.Scenarios[id]
-		keys := make([]string, 0, len(bindings))
-		for k := range bindings {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			named := bindings[k]
-			p := fmt.Sprintf("scenarios.%s.%s", id, k)
-			if named == "" {
-				v.fail(p, "scenario %q binds %s to nothing", id, k)
-				continue
-			}
-			if _, ok := v.g.members.indexOf(named); ok {
-				continue
-			}
-			if _, ok := v.exitIDs[named]; ok {
-				continue
-			}
-			// A faction is bindable too (rpg-project#375: `convince`),
-			// the reserved ones included — whether the scenario can do
-			// anything with `party` is the scenario's own refusal.
-			if v.g.factionExists(named) {
-				continue
-			}
-			v.fail(p, "scenario %q binds %s to %q, and nothing in this dungeon has that id",
-				id, k, named)
-		}
+	if _, ok := v.exitIDs[named]; ok {
+		return true
 	}
+
+	return v.g.factionExists(named)
 }
 
 // arrivals validates every placement's `arrives` (rpg-project#375, design
@@ -1007,25 +975,12 @@ func (v *validation) placeLabel(i int) string {
 // reach" is refused here in the file's own path exactly as the run refuses it
 // at construction (ErrNoEnding).
 //
+// THE WHOLE RULE IS THE SHARED GRAMMAR'S (grammar.go, rpg-project#488): an
+// ending names no cell, so there is no half of it this dialect owns and the
+// single-room dialect is judged by the same function.
+//
 // RUN AFTER dispositions(), for arrivals()' reason.
-func (v *validation) endings() {
-	ids := map[string]int{}
-	for i, e := range v.spec.Endings {
-		p := fmt.Sprintf("endings[%d]", i)
-		if e.ID == "" {
-			v.fail(p+".id", "the ending has no id")
-		} else if prev, dup := ids[e.ID]; dup {
-			v.fail(p+".id", "ending %q is already declared at endings[%d]", e.ID, prev)
-		} else {
-			ids[e.ID] = i
-		}
-		if e.When == nil {
-			v.fail(p+".when", "the ending does not say when it fires — %s", predicateForms)
-			continue
-		}
-		v.g.predicate(p+".when", e.When, nil)
-	}
-}
+func (v *validation) endings() { v.g.endings(v.spec.Endings) }
 
 // axialSteps are the six unit crossings out of an axial hex cell. Fixed and
 // orientation-free BY CONSTRUCTION: orientation is spent converting the

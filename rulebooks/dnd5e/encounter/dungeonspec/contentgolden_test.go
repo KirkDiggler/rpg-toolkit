@@ -77,6 +77,17 @@ type contentGolden struct {
 	Intel     []encounter.IntelRecord      `json:"intel"`
 	Scenarios map[string]map[string]string `json:"scenarios"`
 
+	// Endings is the other half of what a document says about its own run,
+	// and it was invisible here — like [contentGolden.Placed] and
+	// [contentGolden.Doors] before rpg-project#485 — which meant a change to
+	// how an authored `when` compiles showed up in no golden at all. A
+	// trigger marshals as the concrete struct it is, and the four forms are
+	// told apart by the field each one carries.
+	//
+	// OMITTED WHEN EMPTY, so every file that authors no ending writes exactly
+	// the bytes it wrote before this line existed.
+	Endings []encounter.EndingInput `json:"endings,omitempty"`
+
 	// Factions and Dispositions are the sides (rpg-project#375). Omitted
 	// when a file declares none, so the four dungeons authored before
 	// factions existed picture byte-identically.
@@ -137,6 +148,7 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		Monsters:     compiled.Monsters,
 		Intel:        compiled.Intel,
 		Scenarios:    compiled.Scenarios,
+		Endings:      compiled.Endings,
 		Factions:     compiled.Factions,
 		Dispositions: compiled.Dispositions,
 		Placed:       atlas.Placed,
@@ -185,6 +197,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"world-builder-v4-front-room.yaml",
 		"world-builder-v4-raider-camp.yaml",
 		"world-builder-v4-raider-letter.yaml",
+		"world-builder-v4-tomb-heirloom.yaml",
 	}, names, "the authored dungeons this package ships")
 
 	for _, path := range files {

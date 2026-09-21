@@ -1,0 +1,108 @@
+# The heirloom tomb, in v4 (rpg-project#488, slice 1 "the prize and the way
+# out") — the gameplay half of testdata/reference-tomb-heirloom.yaml
+# re-authored as ONE room in the dialect the World Builder emits.
+#
+# THE CLAIM THIS FILE MAKES is compile equivalence on the three keys the slice
+# adds: the way out, what the room is for, and the prize that is bound to it.
+# v4_gameplay_test.go compiles the v2 file beside it and requires the same
+# Field.Exits and the same Compiled.Scenarios. Geometry is not claimed — v2
+# paints four regions and walls them, and this dialect has one room and no
+# walls — which is why the exit cell below is chosen to LOWER to the cell v2
+# authors its exit at, and nothing else about the floor is compared.
+#
+# WHAT IS MISSING FROM IT, AND WHY EACH ONE IS MISSING:
+#
+#   - THE VAULT AND ITS CONCEALED DOOR. A concealed door wants a crossing and
+#     a single room has none (rpg-project#488 R3); a concealed region is the
+#     sites layer's. So there is no vault here and the heirloom stands in the
+#     OPEN, on the tomb floor, until rooms are joined at seams.
+#   - BOTH INTEL RECORDS. `vault-map` and `hall-notes` each reveal a DOOR,
+#     which is refused by name in this dialect for the reason above. A record
+#     revealing a FACT is the raider camp's business
+#     (testdata/world-builder-v4-raider-camp.yaml); this file declares none,
+#     and the scroll below carries nothing.
+#   - THE HALL, THE ENTRANCE AND THE TWO SEAMS. One room, so one floor.
+#
+# WHAT IS KEPT is everything the slice is about: the captain, the heirloom as
+# a holdable placed prop, the hall scroll beside it as a second one, the
+# `entrance` exit standing on the cell the party comes in at, and the
+# recover-the-artifact binding that names both.
+version: 4
+key: tomb-heirloom-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+# The way out. `partyStart` is NOT implicitly one of these — nothing is
+# defaulted — so the way the party came in is authored here in one line, on
+# the same cell, exactly as the v2 tomb authors it at `[1,3]`.
+#
+# THE CELL IS THIS DIALECT'S OWN FRAME (R2): axial {q, r}, `partyStart`'s
+# shape, not v2's `at: [col, row]` offset pair. `{q: 0, r: 3}` is the axial
+# cell that lowers to the offset cell `[1,3]` the v2 file writes, which is
+# what lets the two Field.Exits be required equal.
+exits:
+  - { id: entrance, cell: { q: 0, r: 3 } }
+
+# The scenario this room is authored for, bound to the two things it needs.
+# This package checks only that both values name something in this document —
+# `heirloom` is a declared prop and `entrance` is the exit above. What the
+# keys MEAN is the scenario package's own question (design law C1).
+scenarios:
+  recover-the-artifact:
+    artifact: heirloom
+    exit: entrance
+
+room:
+  version: 3
+  id: room-1
+  name: The Tomb
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Tomb
+    items:
+      - id: heirloom
+        kind: prop
+        assetRef: dnd5e:props:reliquary
+        label: The Heirloom
+        transform: {x: -4.5, y: 0, z: 0.9, rotationY: 0}
+      - id: hall-scroll
+        kind: prop
+        assetRef: dnd5e:props:scroll
+        label: A Scroll
+        transform: {x: -1.7, y: 0, z: 2.6, rotationY: 0}
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: -3, r: 0}, {q: -2, r: 0}, {q: -1, r: 0}, {q: 0, r: 0}, {q: 1, r: 0},
+      {q: -3, r: 1}, {q: -2, r: 1}, {q: -1, r: 1}, {q: 0, r: 1}, {q: 1, r: 1},
+      {q: -3, r: 2}, {q: -2, r: 2}, {q: -1, r: 2}, {q: 0, r: 2}, {q: 1, r: 2},
+      {q: -3, r: 3}, {q: -2, r: 3}, {q: -1, r: 3}, {q: 0, r: 3}, {q: 1, r: 3}]
+    # A HOLDABLE PROP IS WALKED ONTO TO BE TAKEN, so it blocks nothing —
+    # which is what every v2 holdable declares too.
+    propDeclarations:
+      heirloom:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.4, depth: 0.4, offsetX: 0, offsetZ: 0}
+      hall-scroll:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.3, depth: 0.3, offsetX: 0, offsetZ: 0}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 3}
+    # The same skeleton captain, carrying NO boss flag: this room ends because
+    # a scenario says so, not because a monster has a flag on it (design R8).
+    # In v2 he holds the vault map; here there is no vault and no record to
+    # hold, so he is a creature standing between the party and the prize.
+    monsters:
+      - {id: captain, ref: 'dnd5e:monsters:skeleton-captain', cell: {q: -3, r: 0}}
+    monsterBindings: {}
+    # THE PRIZE, AND THE PAPER BESIDE IT. Both are takeable; neither carries a
+    # record, because the two the v2 tomb declares both reveal a door.
+    propBindings:
+      heirloom: { holdable: true }
+      hall-scroll: { holdable: true }
