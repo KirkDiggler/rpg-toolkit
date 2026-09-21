@@ -1565,3 +1565,115 @@ func hiddenEdgeWorld(t fataler) *encounter.EncounterData {
 	data := enc.ToData()
 	return &data
 }
+
+// nicheSecret names the concealment that takes three cells out of the hall
+// without taking the hall.
+const nicheSecret = "niche-secret"
+
+// nicheCells is the corner of the hall the niche hides: three of the room's
+// own thirty-six cells, authored, far from where anybody stands.
+func nicheCells() []spatial.Position {
+	return []spatial.Position{cell(5, 4), cell(4, 5), cell(5, 5)}
+}
+
+// partlySecretWorld is ONE ROOM WITH A PIECE CUT OUT OF IT: a 6x6 hall whose
+// far corner belongs to a concealment, and nothing else hidden anywhere. No
+// door, because a door would be a second way to learn the secret and this
+// fixture is about the room.
+//
+// It is the case a region FLAG could not express and the primitive can. A
+// flag meant a whole room was secret or none of it was; a concealment is
+// cells, so a secret can be a niche in a room people are standing in — which
+// is why the reveal beat has to carry the room back WHOLE rather than carry
+// the cells and leave the entry a trim of the truth.
+func partlySecretWorld(t fataler) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing:      encEveryoneStanding{},
+		CheckResolver: encNeverResolves{},
+		Witness:       encNeverWitnesses{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
+			Concealments: []encounter.ConcealmentInput{{
+				ID:     nicheSecret,
+				Checks: vaultFind(),
+				Cells:  nicheCells(),
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("building partly secret world: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+// TestAPartlySecretRoomComesBackWhole is the `regions` REPLACEMENT, driven end
+// to end (rpg-project#490 E4).
+//
+// A REGION IS TRIMMED, NOT DROPPED. An observer who has not found the niche is
+// sent the hall with those three cells cut out of it — a room entry that is a
+// slice of the truth rather than the truth. The cells arrive on the reveal, so
+// without this field the finder would hold three cells that their own cached
+// region entry does not list, and the only thing that could reconcile them is
+// a full atlas refetch the beat never asked for.
+//
+// So the claim is arithmetic and hard to satisfy by accident: the room the
+// beat carries is the WHOLE room, cells the recipient already had included —
+// not the slice that was withheld, which is what `cells` already says, and not
+// the trim they were holding.
+func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
+	ctx := context.Background()
+	s.startWith(partlySecretWorld(s.T()), sharpEyed("alice"), dullEyed("bob"))
+
+	// What a non-knower holds: the hall, three cells short of itself.
+	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Require().Len(before.Regions, 1, "one room, whether or not part of it is a secret")
+	s.Equal("hall", before.Regions[0].ID)
+	s.Len(before.Regions[0].Cells, 33,
+		"the entry is REBUILT without the hidden cells rather than withheld — a niche is "+
+			"not a reason to stop telling somebody which room they are standing in")
+
+	_, err = s.mgr.Search(ctx, &session.SearchInput{
+		Session: "sess", Member: "alice", Region: "hall"})
+	s.Require().NoError(err)
+
+	found := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	s.Require().Len(found, 1)
+	body, ok := found[0].Body.(session.ConcealmentRevealedBody)
+	s.Require().True(ok)
+
+	s.Len(body.Cells, 3, "the beat's cells are what was withheld: the niche and nothing else")
+
+	s.Require().Len(body.Regions, 1, "and the one room it was cut out of")
+	s.Equal("hall", body.Regions[0].ID)
+	s.Len(body.Regions[0].Cells, 36,
+		"carried WHOLE — a replacement for the trim, not a second copy of the cells: "+
+			"33 the finder already had plus the 3 she just learned")
+	s.Equal(before.Regions[0].Archetype, body.Regions[0].Archetype,
+		"with the per-area facts a client dresses the room with")
+	s.Equal(before.Regions[0].Lighting, body.Regions[0].Lighting)
+
+	// The patch and the map agree, which is the whole point of deriving one
+	// from the other: applying this entry to the cache is a refetch.
+	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Len(after.Regions, 1)
+	s.Equal(body.Regions[0], after.Regions[0],
+		"the room the beat carries IS the room her own atlas now answers, field for field")
+
+	// And bob, who searched nothing, still holds the trim.
+	still, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Require().Len(still.Regions, 1)
+	s.Len(still.Regions[0].Cells, 33, "a secret found is found by its finder alone")
+}

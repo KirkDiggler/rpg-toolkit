@@ -1050,7 +1050,8 @@ func TestConcealmentRevealedCarriesTheWholeSecret(t *testing.T) {
 		],
 		"regions": [
 			{"id": "vault", "name": "Vault",
-			 "cells": [{"x": 4, "y": 0}, {"x": 4, "y": 1}],
+			 "cells": [{"x": 3, "y": 0}, {"x": 3, "y": 1},
+			           {"x": 4, "y": 0}, {"x": 4, "y": 1}],
 			 "archetype": "crypt",
 			 "lighting": {"intensity": 0.2}}
 		],
@@ -1079,10 +1080,18 @@ func TestConcealmentRevealedCarriesTheWholeSecret(t *testing.T) {
 	// hidden cells trimmed out of it, or did not hold it at all; this is the
 	// replacement, not an addition, so the whole entry has to survive the
 	// decode — id, name, cells, archetype and lighting alike.
+	//
+	// THE ROOM HERE IS DELIBERATELY BIGGER THAN THE SECRET: four cells, of
+	// which two are the hidden ones this beat also carries under `cells`. A
+	// fixture whose room was exactly the secret would decode identically
+	// whether the field meant "the whole room" or "the slice that was
+	// withheld", and those are different instructions to a client.
 	require.Len(t, revealed.Regions, 1, "the one region this secret took cells from")
 	require.Equal(t, AtlasRegion{
 		ID: "vault", Name: "Vault",
-		Cells:     []spatial.Position{{X: 4, Y: 0}, {X: 4, Y: 1}},
+		Cells: []spatial.Position{
+			{X: 3, Y: 0}, {X: 3, Y: 1}, {X: 4, Y: 0}, {X: 4, Y: 1},
+		},
 		Archetype: "crypt",
 		Lighting:  Lighting{Intensity: 0.2},
 	}, revealed.Regions[0])
