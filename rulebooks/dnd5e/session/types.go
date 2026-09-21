@@ -1070,20 +1070,22 @@ const (
 	// author already answered the question the mix exists to ask.
 	EventTempered EventKind = "tempered"
 
-	// EventDoorRevealed is a concealed door entering THIS RECIPIENT's
-	// knowledge — their own search, a crossing, or perceiving it open. The
-	// body is the patch for the recipient's cached atlas and door list:
-	// the door's doorways and live state, plus the lock's approaches when
-	// locked. Always recipient-scoped to exactly one member (detection
-	// beats are per-player from birth).
-	EventDoorRevealed EventKind = "door_revealed"
-
-	// EventRegionRevealed is a concealed region entering THIS RECIPIENT's
-	// knowledge — perceiving its door open, or standing inside it. The
-	// body carries the region's whole atlas slice as the recipient's own
-	// atlas now answers it: entry, props, and every boundary touching its
-	// cells. Always recipient-scoped to exactly one member.
-	EventRegionRevealed EventKind = "region_revealed"
+	// EventConcealmentRevealed is a concealment entering THIS RECIPIENT's
+	// knowledge — their own search, a looted record naming it, crossing
+	// into it, perceiving one of its doors standing open, or seeing a
+	// creature stand on its floor. Always recipient-scoped to exactly one
+	// member (detection beats are per-player from birth).
+	//
+	// ONE BEAT, WHERE THERE WERE TWO (rpg-project#490, E4). A door's find
+	// wrote "door_revealed" and the room behind it wrote "region_revealed",
+	// because a field said "hidden" in two unrelated ways and finding the
+	// door was a different knowledge moment from learning what it guarded.
+	// A concealment is ONE noun and one moment, so the patch is one message
+	// carrying the whole of what was withheld — see
+	// [ConcealmentRevealedBody]. Neither older kind is decoded any more:
+	// nothing writes them, and a seam that still answered them would be
+	// claiming to read a wire that no longer speaks.
+	EventConcealmentRevealed EventKind = "concealment_revealed"
 
 	// EventSighted is a change in THIS RECIPIENT's own perception: members
 	// who came into their view, and members whose view of them was lost.
@@ -1110,9 +1112,9 @@ const (
 	// offered on every downed member, a body with nothing transfers nothing,
 	// and this beat is identical either way: no list, no count, no flag. What
 	// actually moved reaches the LOOTER ALONE as the kind that carries it —
-	// intel arrives as EventDoorRevealed on their own stream, byte-identical
-	// to the reveal a successful search produces. Everyone present hears
-	// this one.
+	// intel arrives as EventConcealmentRevealed on their own stream,
+	// byte-identical to the reveal a successful search produces. Everyone
+	// present hears this one.
 	EventLooted EventKind = "looted"
 
 	// EventHeld reports that a member picked a holdable prop up.
@@ -1121,9 +1123,9 @@ const (
 	// not a secret, so this goes to everyone present and every recipient's
 	// atlas loses the prop. A client patches its cached Atlas by removing the
 	// prop with this id — the load-once, beat-refreshed law running in the
-	// subtractive direction, where EventDoorRevealed runs it in the additive
-	// one — and a refetch agrees, because Atlas omits held props for
-	// everyone.
+	// subtractive direction, where EventConcealmentRevealed runs it in the
+	// additive one — and a refetch agrees, because Atlas omits held props
+	// for everyone.
 	EventHeld EventKind = "held"
 
 	// EventDropped reports that a holding landed back on the map.
@@ -2366,10 +2368,13 @@ type TemperedBody struct {
 
 func (TemperedBody) isEventBody() {}
 
-// DoorRevealedBody is EventDoorRevealed's typed body: a concealed door as
-// the recipient's own atlas and door list now carry it — the patch for both
-// cached reads.
-type DoorRevealedBody struct {
+// RevealedDoor is one door a concealment hid, as the recipient's own door
+// list and atlas now carry it — the patch for both cached reads.
+//
+// A LIST ELEMENT RATHER THAN A BODY, because a concealment may hide several
+// doors and reveals all of them at once. This is what the retired
+// "door_revealed" body carried for exactly one.
+type RevealedDoor struct {
 	// Door is the door's identifier.
 	Door string `json:"door"`
 
@@ -2382,6 +2387,11 @@ type DoorRevealedBody struct {
 	// Doorways is every edge of the door, ready to append to the cached
 	// atlas's doorway list — a wide door's edges arrive together, Door
 	// filled on each.
+	//
+	// EMPTY FOR A FOOTPRINT DOOR, which stands in no crossing and has no
+	// doorway to append (rpg-project#485). Its rectangle reaches the
+	// recipient through the atlas re-read, not through this list — see
+	// [ConcealmentRevealedBody]'s own doc on what the beat does not carry.
 	Doorways []AtlasDoorway `json:"doorways,omitempty"`
 
 	// Approaches is the lock's authored routes, present only while the
@@ -2389,53 +2399,90 @@ type DoorRevealedBody struct {
 	Approaches []DoorApproach `json:"approaches,omitempty"`
 }
 
-func (DoorRevealedBody) isEventBody() {}
+// ConcealmentRevealedBody is [EventConcealmentRevealed]'s typed body: the
+// whole of what one concealment was withholding from this recipient, exactly
+// as their own Atlas and Doors reads now answer it — derived by the
+// composition from those answers, so the patch and the map cannot disagree.
+//
+// APPLY IT TO THE CACHED ATLAS, field by field, and the result is what a
+// refetch would say: the load-once, beat-refreshed law (rpg-project#264).
+// Three of the fields are additions, two are replacements, and the doc on
+// each says which, because getting that wrong is how a client ends up with a
+// room it can see and cannot walk into.
+//
+// # What it does NOT carry
+//
+// A hidden PLACED footprint — a v4 door, a v4 bookcase — is not here.
+// [Atlas.Placed] is not on this wire at all (rpg-api-protos#351), so a key
+// for it would invent a shape no consumer speaks. Such a thing reaches the
+// recipient when they re-read their own atlas, which is what this beat tells
+// them to do.
+type ConcealmentRevealedBody struct {
+	// Concealment is the secret's identifier — the one noun everything else
+	// in this body belonged to. Required: a body naming no concealment is
+	// refused rather than decoded.
+	Concealment string `json:"concealment"`
 
-// RegionRevealedBody is EventRegionRevealed's typed body: the region's whole
-// atlas slice, exactly as the recipient's own Atlas read now answers it —
-// derived from that answer by the composition, so the patch and the map
-// cannot disagree.
-type RegionRevealedBody struct {
-	// Region is the region's atlas entry: id, name, cells, archetype,
-	// lighting.
-	Region AtlasRegion `json:"region"`
+	// Cells is every cell the concealment hid, dungeon-absolute and sorted.
+	// AN ADDITION to the cached atlas's own cell list. Empty for a
+	// concealment that hides only a door or a prop — a hidden crossing has
+	// no floor of its own.
+	Cells []spatial.Position `json:"cells,omitempty"`
 
-	// Props is everything standing on the region's cells.
+	// Props is everything the concealment hid: what stands on its cells,
+	// and the props it hides wherever they stand. AN ADDITION.
 	Props []AtlasProp `json:"props,omitempty"`
 
-	// Boundaries is every boundary touching the region's cells that the
+	// Doors is the doors it hid, with their live state and their doorways,
+	// in the concealment's own authored order. AN ADDITION to both the
+	// cached door list and the cached doorway list.
+	Doors []RevealedDoor `json:"doors,omitempty"`
+
+	// Regions is each region the concealment touched, arriving WHOLE.
+	//
+	// A REPLACEMENT, entry by entry: an unaware recipient was sent the
+	// region with the hidden cells dropped out of it, or was not sent it at
+	// all when every cell was hidden, so the entry they hold is a trim of
+	// the truth and the cache's copy is discarded in favour of this one.
+	// Regions the concealment did not touch are untouched.
+	//
+	// Empty is meaningful and legitimate: a concealment that hides no floor
+	// — a hidden crossing, a bookcase that is not what it looks like — trims
+	// no region, so there is nothing to put back.
+	Regions []AtlasRegion `json:"regions,omitempty"`
+
+	// Boundaries is every boundary touching the concealment's cells that the
 	// recipient may now see — border walls included, still withholding any
-	// shared with a hidden neighbour.
+	// shared with a secret they have not found. AN ADDITION.
 	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
 
 	// Segments is the walls the recipient DID NOT HAVE AND NOW DOES: the ones
-	// inside the room being revealed, which were withheld with it, and not the
-	// border walls they could already see (rpg-toolkit#1480).
+	// inside the space being revealed, which were withheld with it, and not
+	// the border walls they could already see (rpg-toolkit#1480).
 	//
-	// A DIFFERENCE, not a slice of the room, because a segment carries no
-	// footprint to ask which cells it stands on — see [AtlasSegment]. Apply
-	// these to the cached atlas and its Segments is what Atlas would now
-	// answer; the composition pins that agreement byte for byte.
+	// A DIFFERENCE AND AN ADDITION, not a slice of the space, because a
+	// segment carries no footprint to ask which cells it stands on — see
+	// [AtlasSegment]. Apply these to the cached atlas and its Segments is
+	// what Atlas would now answer; the composition pins that agreement byte
+	// for byte.
 	Segments []AtlasSegment `json:"segments,omitempty"`
 
-	// Sealed is the cells of the revealed region nobody can stand on. A
-	// recipient who has just been handed the room's cells still needs telling
-	// which of them are not a place to put feet.
+	// Sealed is the cells of the revealed space nobody can stand on. A
+	// recipient who has just been handed the floor still needs telling which
+	// of it is not a place to put feet.
 	//
-	// APPLY IT AS A REPLACEMENT WITHIN THE ROOM, NOT AS AN ADDITION — this is
-	// the one place the two new fields behave differently, and getting it
-	// wrong leaves a room you can see and cannot walk into at its edges.
-	// Cells LEAVE the sealed set on a reveal: the floor a presented wall
-	// stands on reaches a non-knower as ownerless, which is floor nobody
-	// stands on, and becomes ordinary standable floor the moment the room is
-	// theirs. So for the cells in [RegionRevealedBody.Region], this list is
-	// the whole answer and the cache's previous one is discarded; everything
-	// outside the room is untouched. Segments, by contrast, are a pure
-	// addition and nothing ever leaves.
+	// APPLY IT AS A REPLACEMENT WITHIN [ConcealmentRevealedBody.Cells], NOT
+	// AS AN ADDITION — getting this wrong leaves a room you can see and
+	// cannot walk into at its edges. Cells LEAVE the sealed set on a reveal:
+	// the footing of a wall presented to a non-knower reaches them as
+	// ownerless floor, which is floor nobody stands on, and is ordinary
+	// standable floor the moment the secret is theirs. So for those cells
+	// this list is the whole answer and the cache's previous one is
+	// discarded; everything outside them is untouched.
 	Sealed []spatial.Position `json:"sealed,omitempty"`
 }
 
-func (RegionRevealedBody) isEventBody() {}
+func (ConcealmentRevealedBody) isEventBody() {}
 
 // SightedBody is [EventSighted]'s typed body: who entered this recipient's
 // view, and who left it.

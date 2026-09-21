@@ -22,7 +22,7 @@ import (
 // transfers nothing, and this verb's response is IDENTICAL either way: no
 // found list, no transferred count, no flag. What the looter gained reaches
 // them the way all world change reaches anybody — as their own
-// recipient-scoped EventDoorRevealed, the same beat a successful search
+// recipient-scoped EventConcealmentRevealed, the same beat a successful search
 // produces (design P4) — and everyone present hears EventLooted, which names
 // looter and body and nothing of what moved.
 //

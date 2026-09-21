@@ -200,7 +200,7 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 //
 // Knowledge truth rather than construction truth now: unchanged by movement,
 // joins, exits or endings, and PATCHED by the member's own reveal beats
-// (EventDoorRevealed, EventRegionRevealed) — the load-once, beat-refreshed
+// (EventConcealmentRevealed) — the load-once, beat-refreshed
 // shape. For a world with no concealment nothing is ever withheld and the
 // answer is the whole map, exactly as before.
 //

@@ -168,8 +168,8 @@
 // LOOT'S ANSWER NEVER LEAKS THE QUESTION. Loot is offered on every downed
 // member and its response is identical whether the body carried the run's
 // only secret or nothing: no found list, no count, no flag. What moved
-// reaches the LOOTER ALONE — intel as their own EventDoorRevealed, which is
-// the beat a successful search already sends, through the same
+// reaches the LOOTER ALONE — intel as their own EventConcealmentRevealed,
+// which is the beat a successful search already sends, through the same
 // recipient-scoped path — while everyone present hears EventLooted, naming
 // looter and body and nothing else.
 //

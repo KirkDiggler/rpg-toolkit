@@ -298,10 +298,14 @@ func kindFor(beat string) EventKind {
 		return EventDowned
 	case "door":
 		return EventDoor
-	case "door_revealed":
-		return EventDoorRevealed
-	case "region_revealed":
-		return EventRegionRevealed
+	// One secret entering one recipient's knowledge. Named by the
+	// composition's own exported constant, for BeatSighted's reason below
+	// and with the same wave behind it (rpg-project#490): "door_revealed"
+	// and "region_revealed" were two beats for one moment, nothing writes
+	// either any more, and neither is decoded here — a seam that still
+	// answered them would claim to read a wire that no longer speaks.
+	case encounter.BeatConcealmentRevealed:
+		return EventConcealmentRevealed
 	// A change in one recipient's own perception. The composition exports
 	// this string by name, as it does for the two window beats, precisely
 	// because this decoder was written against it in the same wave — so a
@@ -348,7 +352,7 @@ func kindFor(beat string) EventKind {
 		return EventDropped
 	// THE WORD CHANGES HERE, like "down"/"downed" above: the composition
 	// names the noun ("stance", the thing that changed) and the wire names
-	// the event, beside "fight_ended" and "door_revealed". A stance turning
+	// the event, beside "fight_ended" and "concealment_revealed". A stance turning
 	// is truth grain and goes to everyone (rpg-project#375, design §6).
 	case "stance":
 		return EventStanceChanged
@@ -723,42 +727,42 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DroppedBody{Member: p.Member, Prop: p.Prop, At: p.Position}
-	case EventDoorRevealed:
-		// The composition writes doorways as bare from/to pairs; the body
-		// re-carries them as [AtlasDoorway] entries with Door filled, so
-		// the patch appends to the cached atlas's own list without reshaping.
+	case EventConcealmentRevealed:
+		// The payload's cells, props, regions, boundaries, segments and
+		// sealed cells carry exactly this package's atlas field names — the
+		// beat is the recipient's own atlas answer, sliced — so the types
+		// decode directly. Only the doors need reshaping: the composition
+		// writes each one's doorways as bare from/to pairs, and the body
+		// re-carries them as [AtlasDoorway] entries with Door filled, so a
+		// client appends to the cached atlas's own doorway list without
+		// reshaping anything itself.
 		var p struct {
-			Door       string         `json:"door"`
-			State      string         `json:"state"`
-			Doorways   []AtlasDoorway `json:"doorways"`
-			Approaches []DoorApproach `json:"approaches"`
+			Concealment string             `json:"concealment"`
+			Cells       []spatial.Position `json:"cells"`
+			Props       []AtlasProp        `json:"props"`
+			Doors       []RevealedDoor     `json:"doors"`
+			Regions     []AtlasRegion      `json:"regions"`
+			Boundaries  []AtlasBoundary    `json:"boundaries"`
+			Segments    []AtlasSegment     `json:"segments"`
+			Sealed      []spatial.Position `json:"sealed"`
 		}
-		if json.Unmarshal(payload, &p) != nil || p.Door == "" || p.State == "" {
+		// REFUSED IF IT NAMES NO SECRET. Every other field may honestly be
+		// empty — a concealment can hide only a door, only a prop, only
+		// floor — but the id is the one thing the recipient cannot do
+		// without: it is what the patch is ABOUT, and a body carrying cells
+		// belonging to nothing is a beat that should never have been
+		// written. The retired door beat's required-door guard, one noun up.
+		if json.Unmarshal(payload, &p) != nil || p.Concealment == "" {
 			return nil
 		}
-		for i := range p.Doorways {
-			p.Doorways[i].Door = p.Door
+		for i := range p.Doors {
+			for j := range p.Doors[i].Doorways {
+				p.Doors[i].Doorways[j].Door = p.Doors[i].Door
+			}
 		}
-		return DoorRevealedBody{
-			Door: p.Door, State: p.State,
-			Doorways: p.Doorways, Approaches: p.Approaches,
-		}
-	case EventRegionRevealed:
-		// The payload's region, props, boundaries, segments and sealed cells
-		// carry exactly this package's atlas field names — the beat is the
-		// recipient's own atlas answer, sliced — so the types decode directly.
-		var p struct {
-			Region     AtlasRegion        `json:"region"`
-			Props      []AtlasProp        `json:"props"`
-			Boundaries []AtlasBoundary    `json:"boundaries"`
-			Segments   []AtlasSegment     `json:"segments"`
-			Sealed     []spatial.Position `json:"sealed"`
-		}
-		if json.Unmarshal(payload, &p) != nil || p.Region.ID == "" {
-			return nil
-		}
-		return RegionRevealedBody{
-			Region: p.Region, Props: p.Props, Boundaries: p.Boundaries,
+		return ConcealmentRevealedBody{
+			Concealment: p.Concealment, Cells: p.Cells, Props: p.Props,
+			Doors: p.Doors, Regions: p.Regions, Boundaries: p.Boundaries,
 			Segments: p.Segments, Sealed: p.Sealed,
 		}
 	case EventSighted:
