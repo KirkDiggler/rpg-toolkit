@@ -420,6 +420,11 @@ func (s *ConcealLawSuite) TestAProbedConcealedDoorAnswersNotFound() {
 	s.Run("a knower gets the real door", func() {
 		_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
 		s.Require().NoError(err)
+		// Up to the door first: a door opens only from within reach of it
+		// (rpg-toolkit#1856), and what this scene is about is the answer a
+		// knower gets, not how far they stood.
+		_, err = enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(4, concealRow)})
+		s.Require().NoError(err)
 		_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
 		s.Require().NoError(err, "found, the door answers as itself")
 	})
@@ -538,6 +543,10 @@ func (s *ConcealLawSuite) TestAStepInsideAHiddenRoomStopsAtTheFrontier() {
 	// — and ordinary updates resume for them alone, without backfill.
 	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
+	// Up to the door first (rpg-toolkit#1856): reach is not what this scene
+	// is about, and the annex side of the seam is where a hand has to be.
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
+	s.Require().NoError(err)
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
@@ -560,6 +569,10 @@ func (s *ConcealLawSuite) TestAWitnessedCrossingKeepsTheWatcherReceiving() {
 	enc := s.open(findsEverything{}, false)
 
 	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	s.Require().NoError(err)
+	// Up to the door first (rpg-toolkit#1856), stopping one short of the
+	// seam so the crossing below is still a crossing.
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
 	s.Require().NoError(err)
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy, seeker}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
@@ -592,6 +605,10 @@ func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() 
 	// The veil-door: seeker finds it, opens it, shuts it. Nobody perceives.
 	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
 	s.Require().NoError(err)
+	// Both hands walk up to their door first (rpg-toolkit#1856); the cycle
+	// this scene drives is open-and-close, not reach.
+	_, err = enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(4, concealRow)})
+	s.Require().NoError(err)
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
 	s.Require().NoError(err)
 	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: veilDoor, Actor: seeker})
@@ -600,6 +617,8 @@ func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() 
 	// The vault-door: buddy finds it, opens it (perceiving it open — the
 	// region arrives), shuts it again.
 	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
 	s.Require().NoError(err)
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})

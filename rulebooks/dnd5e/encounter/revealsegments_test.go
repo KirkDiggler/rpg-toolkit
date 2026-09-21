@@ -140,7 +140,11 @@ func (s *RevealSegmentsSuite) open(resolver encounter.CheckResolver) *encounter.
 		CheckResolver: resolver, Witness: s.witness,
 		Field: s.vaultField(),
 		Members: []encounter.MemberInput{
-			{ID: finder, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			// BESIDE THE PANEL, because a door opens only from within
+			// reach of it (rpg-toolkit#1856) and every scene here opens
+			// this one. The hall runs x0..3; (2,1) is one cell from the
+			// seam the panel hides in.
+			{ID: finder, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
