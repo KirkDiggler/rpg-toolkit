@@ -120,6 +120,14 @@ type OpenDoorOutput struct {
 // door that does not exist FOR THIS MEMBER: a concealed door the member has
 // not found answers exactly like no door at all (the composition's probe
 // law), so nothing here may look the door up first and answer differently.
+//
+// A MEMBER OUT OF REACH OF THE DOOR refuses with ErrOutOfRange: the
+// composition's Hold rule, measured against every cell the door stands on,
+// reach zero meaning adjacent (rpg-toolkit#1856). It is judged BEFORE the
+// lock, so a hand across the room is told it cannot reach and never what the
+// lock would cost — and AFTER the probe law, so a concealed door nobody has
+// found still answers as no door at all rather than confirming there is
+// something to be out of range of.
 func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("opendoor: %w", ErrNilInput)
@@ -231,6 +239,13 @@ type UnlockOutput struct {
 // rules live once, behind resolution's door). Resolution picks the member's
 // best listed route; this seam fills the composition's Applied with it and
 // reports that route's DC outward.
+//
+// A MEMBER OUT OF REACH OF THE DOOR refuses with ErrOutOfRange before any of
+// that: hands pick locks, and a lock across the room is not one this attempt
+// ever touched (rpg-toolkit#1856 — the composition's Hold rule, adjacent to
+// any cell the door stands on). No die is thrown for a lock out of reach,
+// and the refusal names reach rather than the DC. The probe law still
+// outranks it, as it does for [Manager.OpenDoor].
 //
 // THE LOCK IS READ THROUGH THE MEMBER'S OWN KNOWLEDGE
 // ([encounter.Encounter.DoorsFor]): a concealed door the member has not
