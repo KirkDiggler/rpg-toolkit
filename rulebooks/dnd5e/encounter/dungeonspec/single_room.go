@@ -63,14 +63,31 @@ type SingleRoomSpec struct {
 	// unique id, the same "a record says exactly one thing it reveals".
 	// Optional; absent means none.
 	//
-	// ONE TARGET IN THIS DIALECT, AND IT IS `fact`. [RevealsSpec.Door] is
-	// REFUSED by name at `intel[<i>].reveals.door` (rpg-project#488 R3), in
-	// the shape [RoomDoorBinding.Concealed]'s refusal takes: revealing the
-	// way to a door means something, it just needs a CONCEALED door on a
-	// crossing to mean it, and a single room has no crossing to hide one on.
-	// The field stays on the shared shape so the refusal can be a sentence at
-	// the author's own path instead of "not a key this build reads".
+	// TWO TARGETS IN THIS DIALECT: `fact` and `concealment`.
+	// [RevealsSpec.Door] is REFUSED by name at `intel[<i>].reveals.door`
+	// (rpg-project#488 R3, retargeted by rpg-project#490 R7): a record never
+	// revealed the hinge, it revealed the vault, and this dialect names the
+	// vault directly under root `concealments:`. The field stays on the
+	// shared shape so the refusal can be a sentence at the author's own path
+	// instead of "not a key this build reads".
 	Intel []IntelSpec `yaml:"intel,omitempty" json:"intel,omitempty"`
+
+	// Concealments are the secrets this room hides, keyed by id
+	// (rpg-project#490, R1). Optional; absent means it hides nothing, which
+	// is what every room authored before this key existed does.
+	//
+	// ONE NOUN, AND EVERYTHING HIDDEN BELONGS TO IT. A concealment lists the
+	// cells it hides and the placed things it hides — doors, wall props, a
+	// bookcase, the heirloom behind it — and nothing else in the file says
+	// "hidden". `doorBindings.<id>.concealed` is gone: a door is hidden by
+	// being listed in a concealment's `props`, which is the same sentence
+	// said once for the door and for the room behind it.
+	//
+	// AT THE ROOT, beside `intel:` and `factions:`, by rule 3 of the
+	// placement law (rpg-project#488): a secret is not a thing standing on
+	// the floor, it is a fact about several things that are. See
+	// [ConcealmentSpec].
+	Concealments map[string]ConcealmentSpec `yaml:"concealments,omitempty" json:"concealments,omitempty"`
 
 	// Exits are the ways out of this room, in authored order — the v2 root's
 	// own key ([Spec.Exits]) reaching this dialect with its cell in this
@@ -414,15 +431,16 @@ type RoomPropBinding struct {
 // the same footprint every other placed thing gets, with the door's state
 // deciding what it blocks instead of two authored flags.
 //
-// # What it does NOT take
+// # Where `concealed` went
 //
-// `concealed` is refused by name at its own path, in the shape the `at:`
-// refusal takes ([singleRoomCellSelector]): the concealed-door laws are
-// written for a door on a crossing, and a hidden rectangle standing in the
-// middle of a room is a picture question the World Builder has not asked yet.
-// It is a field here rather than an unknown key so the author gets that
-// sentence at `…doorBindings.<id>.concealed` instead of "not a key this build
-// reads" — the word means something, it is simply not built.
+// It was a key here, refused by name, while a hidden rectangle in the middle
+// of a room was a picture question nobody had answered. The answer is the
+// concealment primitive (rpg-project#490): the key MOVED to the root, where
+// a door is hidden by being listed in a `concealments.<id>.props` beside the
+// cells and the things it hides. It is not a key on this block at all any
+// more, so an author who writes it gets the unknown-key refusal with the
+// keys this block does take — which is the right sentence now, because the
+// word belongs somewhere else rather than nowhere.
 type RoomDoorBinding struct {
 	// Closed is whether the door is RESTING shut. Optional; absent is an open
 	// doorway, which is [DoorSpec.Closed]'s own rule — absence is a real
@@ -437,11 +455,62 @@ type RoomDoorBinding struct {
 	// and `locked: []` is an authored lock that forgot to say how it is
 	// beaten — refused by name.
 	Locked CheckSpec `yaml:"locked,omitempty" json:"locked,omitempty"`
+}
 
-	// Concealed is refused in this dialect (R2). Carried on the shape only
-	// so the refusal can be a sentence at this key's own path; nothing reads
-	// it, and nothing compiles it.
-	Concealed CheckSpec `yaml:"concealed,omitempty" json:"concealed,omitempty"`
+// ConcealmentSpec is one secret this room hides: what finds it, and what it
+// hides (rpg-project#490, R1).
+//
+//	concealments:
+//	  vault:
+//	    notice: [{ ability: investigation, dc: 12 }]
+//	    checks: [{ ability: perception, dc: 17 }, { ability: investigation, dc: 15 }]
+//	    cells:  [{ q: 12, r: 3 }, { q: 13, r: 3 }]
+//	    props:  [vault-door, inner-wall-1, heirloom]
+//
+// # The cells stay in `walkableHexes` (R2)
+//
+// The author sees the vault at the table; an unaware player is not sent those
+// cells, and the web draws wall on the boundary exactly as it does for any
+// edge of the walkable set. Nobody places a wall to hide a room — omission is
+// the wall. Whether a listed cell is walkable is the ENGINE's refusal at
+// publish, not the web's: the web carries the list and the engine grades it,
+// which is the same split `doorBindings` keeps.
+type ConcealmentSpec struct {
+	// Notice is the PASSIVE tell: the same approach list as Checks,
+	// resolved without dice against an observer's passive score
+	// (rpg-project#490, R6). Optional, and the NIL-VS-EMPTY law is
+	// [RoomDoorBinding.Locked]'s — nil is "no passive tell", and
+	// `notice: []` is an author who said there IS one and did not say what
+	// beats it, refused by name.
+	//
+	// CARRIED AND UNREAD IN THIS SLICE ([encounter.ConcealmentInput.Notice]):
+	// the passive pass is slice 2, and the key is here so an author can
+	// write it today and so the slice that reads it changes no file.
+	Notice CheckSpec `yaml:"notice,omitempty" json:"notice,omitempty"`
+
+	// Checks are the ways a Search can find this, priced per route —
+	// [DoorSpec.Locked]'s shape, beaten by any listed one. REQUIRED
+	// non-empty: a secret nobody can ever find is one the author started and
+	// did not finish.
+	Checks CheckSpec `yaml:"checks,omitempty" json:"checks,omitempty"`
+
+	// Cells are the hexes this hides, in this dialect's axial frame —
+	// [RoomPartyStart]'s shape, for [RoomExit.Cell]'s reason. Every one must
+	// be a `walkableHexes` cell, and no cell may be in two concealments.
+	// Optional: a concealment that hides only placed things lists none.
+	Cells []RoomCell `yaml:"cells,omitempty" json:"cells,omitempty"`
+
+	// Props are the placed things this hides, by the id
+	// `propDeclarations` declares them under — doors, wall props, anything.
+	// Every one must be a declared prop, and no id may be in two
+	// concealments. Optional.
+	//
+	// A DOOR IS JUST A PLACED ID HERE, because a door IS a prop in this
+	// dialect (single_room_doors.go: "a door here is a prop plus a state").
+	// The lowering sorts the ids into the engine's two lists by asking
+	// `doorBindings` which of them are doors; the author never writes the
+	// distinction twice.
+	Props []string `yaml:"props,omitempty" json:"props,omitempty"`
 }
 
 // RoomFootprint describes a prop's movement-blocking footprint.

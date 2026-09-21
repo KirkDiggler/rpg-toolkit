@@ -76,6 +76,17 @@ type Compiled struct {
 	// what their dungeon declares without reaching into the field.
 	Intel []encounter.IntelRecord
 
+	// Concealments are the secrets this dungeon hides, in the order the
+	// field carries them, with ids COMPILED (`<key>/<id>`) exactly as a
+	// door's is (rpg-project#490). Nil when the file hides nothing.
+	//
+	// Also carried on [Compiled.Field] as the composition's own list, which
+	// is the copy that survives a save. This is the same list, surfaced here
+	// for a host that wants to show an author what their dungeon hides
+	// without reaching into the field — [Compiled.Intel]'s reason, one root
+	// declaration over.
+	Concealments []encounter.ConcealmentInput
+
 	// Factions and Dispositions are the sides this dungeon authored, in
 	// authored order, with the predicates compiled to the composition's
 	// triggers (rpg-project#375). Nil when the file declares none. Also
@@ -316,6 +327,10 @@ func Compile(spec *Spec) (Compiled, error) {
 	names := authoredOf(spec)
 	derived := deriveWalls(spec, orientation, floorOf(spec, orientation), nil)
 	doorEdges := doorCrossings(spec, orientation)
+	// WHICH CROSSINGS ARE WAYS, derived once from the walls beside them —
+	// what the concealment lowering asks to find a secret SUITE
+	// (concealments.go).
+	ways := waysOf(derived, doorEdges)
 
 	field := encounter.FieldInput{
 		Canvas:   encounter.CanvasInput{Void: void, Orientation: orientation},
@@ -327,7 +342,10 @@ func Compile(spec *Spec) (Compiled, error) {
 		Sealed:   sealedOf(spec, orientation, derived),
 		Doors:    doorsOf(spec, orientation),
 		Exits:    exitsOf(spec.Exits, v2Exit),
-		Intel:    intelOf(spec),
+		Intel:    intelOf(spec, orientation, ways),
+		// WHAT THIS DUNGEON HIDES, lowered from the two words this dialect
+		// spells it with (concealments.go, rpg-project#490).
+		Concealments: concealmentsOf(spec, orientation, ways),
 		// The sides ride the FIELD too (rpg-project#375): the graph is seeded
 		// from them at every Setup and Load, so they have to be where the
 		// field is.
@@ -359,6 +377,7 @@ func Compile(spec *Spec) (Compiled, error) {
 		Scenarios:    scenariosOf(spec.Scenarios),
 		Endings:      endingsOf(spec.Endings),
 		Intel:        field.Intel,
+		Concealments: field.Concealments,
 		Factions:     field.Factions,
 		Dispositions: field.Dispositions,
 	}, nil
@@ -383,15 +402,23 @@ func endingsOf(endings []EndingSpec) []encounter.EndingInput {
 }
 
 // intelOf carries the authored records through, with ids compiled the way a
-// door's is (`<key>/<id>`) so two dungeons in one process cannot collide —
-// and with the door a record reveals compiled the same way, because that is
-// the id the composition's own door table is keyed by.
+// door's is (`<key>/<id>`) so two dungeons in one process cannot collide.
+//
+// WHAT A v2 RECORD REVEALS IS A CONCEALMENT NOW, and the author still writes
+// `door:` (rpg-project#490, E5). The engine's target moved from the door to
+// the secret holding it, so this dialect resolves the authored door id to the
+// concealment its own lowering put that door in — which is the whole of the
+// retarget, because "the way into the vault" always meant the vault.
 //
 // A FACT IS NOT PREFIXED. It is a word a disposition's `until` and a
 // record's `reveals` agree on within one file, and the composition matches
-// the two by that word; a fact belongs to the story, not to the door table.
-func intelOf(spec *Spec) []encounter.IntelRecord {
-	return intelRecordsOf(spec.Key, spec.Intel)
+// the two by that word; a fact belongs to the story, not to a table.
+func intelOf(spec *Spec, o encounter.Orientation, ways crossingWays) []encounter.IntelRecord {
+	holding := concealmentHoldingDoor(spec, o, ways)
+
+	return intelRecordsOf(spec.Key, spec.Intel, func(rev RevealsSpec) encounter.ConcealmentID {
+		return holding[rev.Door]
+	})
 }
 
 // intelRecordsOf is the minting itself, shared by BOTH DIALECTS
@@ -399,13 +426,20 @@ func intelOf(spec *Spec) []encounter.IntelRecord {
 // `<key>/<id>` is the one id the composition's tables are keyed by, so a
 // second spelling of it is exactly the drift one grammar exists to prevent.
 // Nil when the file declares none.
-func intelRecordsOf(key string, records []IntelSpec) []encounter.IntelRecord {
+//
+// WHICH CONCEALMENT A RECORD REVEALS IS THE DIALECT'S HALF, handed in as
+// `conceal`: v2 resolves an authored `door:` to the concealment its lowering
+// put that door in, and the single-room dialect mints its authored
+// `concealment:` id the way it mints every other root declaration. Both
+// answer the empty string for a record that reveals a fact instead, which is
+// the zero value meaning exactly what it says.
+func intelRecordsOf(
+	key string, records []IntelSpec, conceal func(RevealsSpec) encounter.ConcealmentID,
+) []encounter.IntelRecord {
 	var out []encounter.IntelRecord
 	for _, rec := range records {
 		r := encounter.IntelRecord{ID: encounter.IntelID(key + "/" + rec.ID)}
-		if rec.Reveals.Door != "" {
-			r.Reveals.Door = encounter.DoorID(key + "/" + rec.Reveals.Door)
-		}
+		r.Reveals.Concealment = conceal(rec.Reveals)
 		r.Reveals.Fact = rec.Reveals.Fact
 		out = append(out, r)
 	}
@@ -582,8 +616,7 @@ func regionsOf(spec *Spec) []encounter.RegionInput {
 		intensity := *r.Lighting.Intensity
 		out = append(out, encounter.RegionInput{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
-			Lighting:  &encounter.Lighting{Intensity: intensity},
-			Concealed: r.Concealed,
+			Lighting: &encounter.Lighting{Intensity: intensity},
 		})
 	}
 	return out
@@ -826,10 +859,9 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 		// door, not to two orderings of it.
 		crossing := normalizedCrossing(here, there)
 		out = append(out, encounter.DoorInput{
-			ID:        encounter.DoorID(spec.Key + "/" + d.ID),
-			Edges:     []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
-			State:     doorStateOf(d.Locked, d.Closed),
-			Concealed: approachesOf(d.Concealed),
+			ID:    encounter.DoorID(spec.Key + "/" + d.ID),
+			Edges: []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
+			State: doorStateOf(d.Locked, d.Closed),
 		})
 	}
 

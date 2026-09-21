@@ -100,7 +100,12 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// the composition reads a record's reveals when it changes hands, so
 		// the table has to be where the field is. Nil when the site declares
 		// none.
-		Intel: intelRecordsOf(spec.Key, spec.Intel),
+		Intel: intelRecordsOf(spec.Key, spec.Intel, singleRoomConcealmentOf(spec.Key)),
+		// WHAT THIS ROOM HIDES (rpg-project#490,
+		// single_room_concealments.go): the root's `concealments:`, with the
+		// author's one list of placed ids sorted into the engine's doors and
+		// props. Nil when the room hides nothing.
+		Concealments: singleRoomConcealments(spec.Key, spec, o),
 		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
 		// is seeded from them at every Setup and Load, so they have to be
 		// where the field is. Nil when the site declares none.
@@ -217,6 +222,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// The same lists the field carries, surfaced for a host that wants to
 		// read what the site declares without reaching into it ([Compiled]).
 		Intel: field.Intel, Factions: field.Factions, Dispositions: field.Dispositions,
+		Concealments: field.Concealments,
 		// AND WHAT THE ROOM IS FOR (rpg-project#488): the endings this
 		// document authored, each `when` compiled by the one [predicateOf],
 		// and the scenario bindings deep-copied so a caller cannot reach back

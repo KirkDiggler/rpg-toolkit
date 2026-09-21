@@ -16,14 +16,16 @@ import (
 // they were — the whole truth, the author's and the test's view — and these
 // two reads apply the absence law on top:
 //
-//   - ABSENT FROM EVERY DOOR-LIST: a concealed unfound door's doorways do
-//     not appear in the atlas, nor the door in [Encounter.DoorsFor] —
-//     presence in any list, even marked, leaks the secret.
+//   - ABSENT FROM EVERY DOOR-LIST: an unfound hidden door's doorways do not
+//     appear in the atlas, nor the door in [Encounter.DoorsFor] — presence
+//     in any list, even marked, leaks the secret. A hidden PROP and a hidden
+//     FOOTPRINT DOOR are withheld the same way, from [Atlas.Props] and
+//     [Atlas.Placed], wherever they stand.
 //
 //   - EVERY CROSSING INTO HIDDEN SPACE READS AS A WALL: an authored wall
 //     with one endpoint in hidden space is presented rather than dropped, a
 //     bare visible/hidden adjacency with nothing authored on it gets a
-//     synthesized ordinary one, and a concealed unfound door's edge is
+//     synthesized ordinary one, and an unfound hidden door's edge is
 //     masked the same way regardless of which side is hidden — the
 //     door-between-two-visible-spaces case this always covered, and the
 //     door-into-a-hidden-room case that used to drop the wall along with
@@ -50,12 +52,19 @@ import (
 //
 //   - THE ROOM ITSELF STILL HIDES WITH ITS DOOR: the yardstick governs
 //     SPACE AND CONTENTS, unmoved by the boundary rule above — a
-//     non-knower's cells, region entries and props are byte-identical to an
-//     atlas in which the concealed region was never authored. Only the
-//     BOUNDARY with visible space now differs from that never-authored
-//     twin, because a wall cannot be authored with an off-floor endpoint
-//     (the twin has nowhere to hang one), and an honestly authored dungeon
-//     would still have walled the room that IS there.
+//     non-knower's cells and props are byte-identical to an atlas in which
+//     the hidden floor was never authored. Only the BOUNDARY with visible
+//     space now differs from that never-authored twin, because a wall cannot
+//     be authored with an off-floor endpoint (the twin has nowhere to hang
+//     one), and an honestly authored dungeon would still have walled the
+//     room that IS there.
+//
+//   - A REGION IS TRIMMED, NOT DROPPED (rpg-project#490). A region carried a
+//     `concealed` flag until the concealment primitive landed, so hiding one
+//     meant withholding its whole entry. A concealment hides CELLS, which
+//     may be a region's or a slice of one, so the entry is rebuilt with its
+//     hidden cells removed — and withheld entirely only when none survive,
+//     which is exactly what the flag used to mean.
 //
 // One accepted disclosure, named so it is never mistaken for a bug: a FOUND
 // door's doorways name one cell of hidden floor per entrance — knowing
@@ -76,13 +85,17 @@ import (
 //
 // # What is withheld
 //
-// [Atlas.Placed] is WITHHELD here rather than filtered: a footprint is a
-// continuous rectangle with no anchor cell, and slicing one at a hidden
-// region's edge would invent geometry the author never drew. A concealed
-// legacy field (one that carries placed contributors but no room scene)
-// therefore projects without its placed list — the reader that knows the
-// legacy concealed dialect does not know the new geometry either, and
-// withholding cannot leak what filtering would have had to approximate.
+// [Atlas.Placed] IS FILTERED, and it used to be withheld wholesale
+// (rpg-project#490, E1). The old rule was right for the shape it had: a
+// footprint is a continuous rectangle with no anchor cell, and slicing one at
+// a hidden region's edge would have invented geometry the author never drew,
+// so the whole list went rather than be approximated. Nothing is sliced now.
+// A placement is WITHHELD WHOLE when it belongs to an unfound concealment, or
+// when any cell it stands on is hidden; every other placement is presented
+// exactly as [Encounter.Atlas] reports it. Withholding the list wholesale
+// stopped being honest the moment a footprint DOOR could be a secret: a
+// dungeon whose tables all vanished the instant anything anywhere was hidden
+// is itself a tell, and a bigger one than the rectangle it was protecting.
 func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	if _, ok := e.members[member]; !ok {
 		return Atlas{}, fmt.Errorf("atlas for %q: %w", member, ErrNotMember)
@@ -95,8 +108,8 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		return full, nil
 	}
 
-	hiddenCells, hiddenRegions := e.hiddenFrom(member)
-	unknownDoors := e.unknownDoorsFor(member)
+	hidden := e.hiddenFrom(member)
+	hiddenCells, unknownDoors := hidden.cells, hidden.doors
 
 	out := Atlas{
 		Orientation: full.Orientation,
@@ -113,6 +126,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		Cells:      make([]spatial.Position, 0, len(full.Cells)),
 		Regions:    make([]AtlasRegion, 0, len(full.Regions)),
 		Props:      make([]AtlasProp, 0, len(full.Props)),
+		Placed:     make([]AtlasPlacedProp, 0, len(full.Placed)),
 		Boundaries: make([]AtlasBoundary, 0, len(full.Boundaries)),
 		Doorways:   make([]AtlasDoorway, 0, len(full.Doorways)),
 		Segments:   make([]AtlasSegment, 0, len(full.Segments)),
@@ -151,15 +165,38 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 			out.Sealed = append(out.Sealed, c)
 		}
 	}
+	// A REGION TRIMMED TO WHAT THIS RECIPIENT CAN SEE, and dropped when
+	// nothing of it survives — the never-authored twin of a room that is
+	// wholly a secret has no entry for it at all.
 	for _, r := range full.Regions {
-		if !hiddenRegions[r.ID] {
-			out.Regions = append(out.Regions, r)
+		cells := make([]spatial.Position, 0, len(r.Cells))
+		for _, c := range r.Cells {
+			if !hiddenCells[c] {
+				cells = append(cells, c)
+			}
 		}
+		if len(cells) == 0 {
+			continue
+		}
+		entry := r
+		entry.Cells = cells
+		out.Regions = append(out.Regions, entry)
 	}
 	for _, p := range full.Props {
-		if !hiddenCells[p.At] {
+		if !hiddenCells[p.At] && !hidden.props[p.ID] {
 			out.Props = append(out.Props, p)
 		}
+	}
+	// A PLACEMENT GOES WHOLE OR STAYS WHOLE. Withheld when it belongs to an
+	// unfound concealment — which includes a hidden footprint DOOR, whose
+	// rectangle rides this list under its own id — and withheld when any
+	// cell it stands on is hidden, because a rectangle presented over a hole
+	// in the floor marks the hole.
+	for _, p := range full.Placed {
+		if hidden.props[p.ID] || hidden.doors[p.ID] || e.placedTouchesHidden(p, hiddenCells) {
+			continue
+		}
+		out.Placed = append(out.Placed, p)
 	}
 
 	// Boundaries, in three passes, then restored to the atlas's own sort — a
@@ -169,7 +206,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	//  1. Every authored wall stands UNLESS it is wholly inside hidden
 	//     space (both endpoints hidden) — the never-authored yardstick
 	//     still governing a room's interior nobody visible borders.
-	//  2. Every concealed unfound door's edge is masked as an ordinary
+	//  2. Every unfound hidden door's edge is masked as an ordinary
 	//     wall unless it too is wholly inside hidden space, regardless of
 	//     which single side is hidden — the fix: this used to mask only
 	//     the two-visible-sides case and silently drop the rest.
@@ -184,10 +221,9 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	//     rule exists to make ordinary.
 	//
 	// doorEdge excludes every door's own crossing from pass 3 — found or
-	// not, concealed or not — so a real doorway a member already knows
-	// about never grows a phantom wall beside it, and a still-unfound
-	// concealed door's edge is masked exactly once, by pass 2, never
-	// twice.
+	// not, hidden or not — so a real doorway a member already knows about
+	// never grows a phantom wall beside it, and a still-unfound hidden
+	// door's edge is masked exactly once, by pass 2, never twice.
 	for _, b := range full.Boundaries {
 		if hiddenCells[b.From] && hiddenCells[b.To] {
 			continue
@@ -198,11 +234,11 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	for _, dw := range full.Doorways {
 		doorEdge[normalizeDoorEdge(DoorEdge{From: dw.From, To: dw.To})] = true
 	}
-	for _, id := range e.world.concealedDoors {
-		if !unknownDoors[id] {
+	for _, id := range sortedDoorIDs(unknownDoors) {
+		d, ok := e.doorsByID[id]
+		if !ok {
 			continue
 		}
-		d := e.doorsByID[id]
 		for _, edge := range d.edges {
 			if hiddenCells[edge.From] && hiddenCells[edge.To] {
 				continue
@@ -258,10 +294,10 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 }
 
 // DoorsFor reports every door AS ONE MEMBER KNOWS IT, in the same stable ID
-// order [Encounter.Doors] uses: a concealed door the member has not had
-// revealed is absent, and everything else — never-concealed doors included —
-// is exactly what Doors reports. For a field with no concealment it IS
-// Doors.
+// order [Encounter.Doors] uses: a hidden door the member has not had
+// revealed is absent, and everything else — every door no concealment holds
+// included — is exactly what Doors reports. For a field that hides nothing
+// it IS Doors.
 //
 // Returns ErrNotMember for an ID this encounter does not hold.
 func (e *Encounter) DoorsFor(member MemberID) ([]Door, error) {
@@ -274,7 +310,7 @@ func (e *Encounter) DoorsFor(member MemberID) ([]Door, error) {
 		return all, nil
 	}
 
-	unknown := e.unknownDoorsFor(member)
+	unknown := e.hiddenFrom(member).doors
 	out := make([]Door, 0, len(all))
 	for _, d := range all {
 		if !unknown[d.ID] {
@@ -284,36 +320,74 @@ func (e *Encounter) DoorsFor(member MemberID) ([]Door, error) {
 	return out, nil
 }
 
-// hiddenFrom is the member's hidden floor: every concealed region their fold
-// does not show, and the union of those regions' cells.
-func (e *Encounter) hiddenFrom(member MemberID) (map[spatial.Position]bool, map[RegionID]bool) {
-	hiddenCells := make(map[spatial.Position]bool)
-	hiddenRegions := make(map[RegionID]bool)
-	for r := range e.world.concealedRegions {
-		if e.world.knowsRegion(member, r) {
-			continue
-		}
-		hiddenRegions[r] = true
-		for _, c := range e.field.regionCells[r] {
-			hiddenCells[c] = true
-		}
-	}
-	return hiddenCells, hiddenRegions
+// hiddenView is everything one member has not found: the floor, the doors
+// and the props. ONE WALK OVER THE CONCEALMENTS produces all three, because
+// they are three readings of one fold and a second walk would be a second
+// place for them to disagree about which secrets this member holds.
+type hiddenView struct {
+	cells map[spatial.Position]bool
+	doors map[DoorID]bool
+	props map[PropID]bool
 }
 
-// unknownDoorsFor is every concealed door the member's fold does not show.
-func (e *Encounter) unknownDoorsFor(member MemberID) map[DoorID]bool {
-	out := make(map[DoorID]bool)
-	for _, id := range e.world.concealedDoors {
-		if !e.world.knowsDoor(member, id) {
-			out[id] = true
+// hiddenFrom folds the member's own knowledge into what their atlas
+// withholds. A concealment they have found contributes nothing.
+func (e *Encounter) hiddenFrom(member MemberID) hiddenView {
+	out := hiddenView{
+		cells: make(map[spatial.Position]bool),
+		doors: make(map[DoorID]bool),
+		props: make(map[PropID]bool),
+	}
+	for i := range e.field.concealments {
+		c := &e.field.concealments[i]
+		if e.world.knowsConcealment(member, c.id) {
+			continue
+		}
+		for _, cell := range e.hiddenCellsOf(c) {
+			out.cells[cell] = true
+		}
+		for _, id := range c.doors {
+			out.doors[id] = true
+		}
+		for _, id := range c.props {
+			out.props[id] = true
 		}
 	}
+
+	return out
+}
+
+// placedTouchesHidden reports whether a placement stands on any cell this
+// recipient cannot see. Asked of the rectangle's own cells
+// ([field.placedCells]) — the one derivation reach, the probe law and an
+// arrival fact all ask of a footprint, never a second measurement of it.
+func (e *Encounter) placedTouchesHidden(p AtlasPlacedProp, hiddenCells map[spatial.Position]bool) bool {
+	if len(hiddenCells) == 0 {
+		return false
+	}
+	for _, cell := range e.field.placedCells(p.Placement) {
+		if hiddenCells[cell] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sortedDoorIDs orders a door-id set, so a mask's position in the boundary
+// list cannot depend on Go's map iteration (C8).
+func sortedDoorIDs(ids map[DoorID]bool) []DoorID {
+	out := make([]DoorID, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+
 	return out
 }
 
 // maskHeight is the Height a synthetic boundary carries for one crossing
-// AtlasFor is not presenting as authored — a concealed unfound door's edge
+// AtlasFor is not presenting as authored — an unfound hidden door's edge
 // (pass 2) or a bare visible/hidden adjacency (pass 3): the height of the WALL
 // STANDING THERE, so the synthetic boundary reads as part of it rather than as
 // a notch exactly where the secret is (the Wave 1b pin, generalized by
@@ -329,7 +403,7 @@ func (e *Encounter) unknownDoorsFor(member MemberID) map[DoorID]bool {
 // The file holds the LINE now (rpg-project#360), so the answer is a lookup:
 //
 //  1. the segment the door hides in, when a door stands in this crossing
-//     (design C19 — the wall a concealed door punctures is the wall it should
+//     (design C19 — the wall a hidden door punctures is the wall it should
 //     masquerade as, and the segment names its own doors);
 //  2. otherwise the segment standing on either of the crossing's cells;
 //  3. otherwise — a field built from crossings alone, with no lines authored at

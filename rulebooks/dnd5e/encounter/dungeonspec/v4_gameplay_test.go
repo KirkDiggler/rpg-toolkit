@@ -327,21 +327,21 @@ func TestARecordIsRefusedAsV2RefusesOne(t *testing.T) {
 	t.Run("reveals nothing", func(t *testing.T) {
 		errs := refusals(t, v4With("intel:\n  - { id: letter, reveals: {} }", ""))
 		requireExactDefect(t, errs, "intel[0].reveals",
-			"intel \"letter\" does not say what it reveals — `fact: <id>`")
+			"intel \"letter\" does not say what it reveals — `concealment: <id>` or `fact: <id>`")
 	})
 }
 
-// `reveals: { door }` is REFUSED in this dialect (R3). The word means
-// something — a record CAN reveal the way to a door, in the other dialect,
-// today — so the author is told what is missing rather than that the key does
-// not exist.
-func TestRevealingADoorIsRefusedUntilTheSitesLayer(t *testing.T) {
+// `reveals: { door }` is REFUSED in this dialect, RETARGETED rather than
+// deleted (rpg-project#490, R7). The word names the hinge; what a record
+// gives away is the secret holding it, and this dialect names that secret
+// directly under root `concealments:`. So the author is told where the right
+// word is rather than that the key does not exist.
+func TestRevealingADoorPointsAtTheConcealmentInstead(t *testing.T) {
 	errs := refusals(t, v4With("intel:\n  - { id: vault-map, reveals: { door: vault } }", ""))
 
 	requireExactDefect(t, errs, "intel[0].reveals.door",
-		"a door is not something a single room can reveal yet: revealing the way to one needs a "+
-			"concealed door on a crossing, and this dialect's doors are footprints standing in the open; "+
-			"write `fact: <id>`, or wait for the sites layer")
+		"a door is not what a record gives away: reveal the concealment that holds it — "+
+			"write `concealment: <id>` naming one of this room's `concealments`")
 
 	// ONE DEFECT FOR ONE MISTAKE. A record naming both keys is an author who
 	// wrote a word this dialect does not take beside one it does; telling
@@ -513,7 +513,7 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 			// than a defect: the field stays on the shared shape so the
 			// refusal can be a sentence at its own path, and the key list is
 			// reflected off that shape.
-			message: `"dor" is not a key this build reads: they are door, fact`,
+			message: `"dor" is not a key this build reads: they are concealment, door, fact`,
 		},
 		{
 			name:    "inside a way out",
@@ -577,7 +577,7 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 // exists.
 func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 	requireExactDefect(t, refusals(t, v4With("heigth: 3", "")), "heigth",
-		`"heigth" is not a key this build reads: they are dispositions, endings, exits, factions, intel, key, play, room, scenarios, version`)
+		`"heigth" is not a key this build reads: they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, version`)
 
 	requireExactDefect(t, refusals(t, v4With("", "    monsterBindings:\n      goblin-1: { tempre: coward }")),
 		"room.room.monsterBindings.goblin-1.tempre",

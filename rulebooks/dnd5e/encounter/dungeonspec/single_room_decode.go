@@ -374,6 +374,11 @@ func sourceShapeErrors(root *yaml.Node) []FieldError {
 	// over: a `holds:` inside the room names one of these, so a typo in a
 	// record is reported as the typo it is rather than as a holder problem.
 	intelShape(doc, add)
+	// AND THE SECRETS, before the room for [intelShape]'s reason one key
+	// over: a record's `reveals` names one of these, so a typo in a
+	// concealment is reported as the typo it is rather than as a record
+	// problem (rpg-project#490).
+	concealmentsShape(doc, add)
 	// AND THE THREE KEYS THE RUN ITSELF IS MADE OF, still before the room:
 	// a scenario binds the things the room places, so a typo in an exit is
 	// reported as the typo it is rather than as a binding problem

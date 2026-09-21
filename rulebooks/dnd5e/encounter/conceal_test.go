@@ -25,16 +25,23 @@ import (
 // presence piercing, reveal beats for perceivers and late arrivals, and the
 // blob the knowledge rides.
 //
-// The fixture is one hall with a concealed door in each of two seams:
+// Reshaped onto the ONE CONCEALMENT PRIMITIVE by rpg-project#490: the two
+// retired flags are gone and the scenes are the same scenes, asked of the
+// noun that replaced them. One law changed and it is named where it is
+// pinned — finding a secret now gives you the whole of it, because a
+// concealment is one noun and not two knowledge moments.
 //
-//	x: 0..4 hall | 5..8 annex | 9..11 vault (CONCEALED)
-//	cellar at (0,8)..(3,11), below the hall — no concealed structure at all
+// The fixture is one hall with a hidden door in each of two seams:
 //
-// The hall|annex seam is walled at HEIGHT 2 except row 3 (veil-door,
-// concealed, closed — a concealed door between two VISIBLE spaces, the
-// masquerade case) and row 6 (an open, doorless gap, so the annex is
-// honestly reachable). The annex|vault seam is walled at default height
-// except row 3 (vault-door, concealed, closed — the door a hidden room
+//	x: 0..4 hall | 5..8 annex | 9..11 vault (the `vault` concealment's cells)
+//	cellar at (0,8)..(3,11), below the hall — nothing hidden at all
+//
+// The hall|annex seam is walled at HEIGHT 2 except row 3 (veil-door, hidden
+// by the CELL-LESS `veil-door` concealment, closed — a hidden door between
+// two VISIBLE spaces, the masquerade case) and row 6 (an open, doorless gap,
+// so the annex is honestly reachable). The annex|vault seam is walled at
+// default height except row 3 (vault-door, a member of the `vault`
+// concealment along with every vault cell, closed — the door a hidden room
 // hides behind).
 const (
 	concealRow  = 3
@@ -46,6 +53,12 @@ const (
 	annexRegion = "annex"
 	vaultRegion = "vault"
 	cellarRgn   = "cellar"
+
+	// veilConceal and vaultConceal are the two secrets, ids as the v2
+	// lowering mints them: a lone hidden crossing takes its door's id, and
+	// a hidden room takes the region's.
+	veilConceal  = veilDoor
+	vaultConceal = vaultRegion
 )
 
 var (
@@ -91,19 +104,27 @@ func concealField() encounter.FieldInput {
 		Regions: []encounter.RegionInput{
 			rectRegion(hallRegion, 0, 0, 5, 8),
 			rectRegion(annexRegion, 5, 0, 4, 8),
-			func() encounter.RegionInput {
-				r := rectRegion(vaultRegion, 9, 0, 3, 8)
-				r.Concealed = true
-				return r
-			}(),
+			rectRegion(vaultRegion, 9, 0, 3, 8),
 			rectRegion(cellarRgn, 0, 8, 4, 4),
 		},
 		Walls: append(
 			withHeight(seamWallExcept(4, 8, concealRow, concealGap), seamHeight),
 			seamWallExcept(8, 8, concealRow)...),
 		Doors: []encounter.DoorInput{
-			{ID: veilDoor, Edges: doorEdgesAcross(4, concealRow), State: encounter.DoorIsClosed(), Concealed: veilFind()},
-			{ID: vaultDoor, Edges: doorEdgesAcross(8, concealRow), State: encounter.DoorIsClosed(), Concealed: vaultFind()},
+			{ID: veilDoor, Edges: doorEdgesAcross(4, concealRow), State: encounter.DoorIsClosed()},
+			{ID: vaultDoor, Edges: doorEdgesAcross(8, concealRow), State: encounter.DoorIsClosed()},
+		},
+		// THE TWO SECRETS, exactly what the two retired flags said: a lone
+		// hidden crossing between two visible rooms, and a hidden room whose
+		// cells and whose door are one noun.
+		Concealments: []encounter.ConcealmentInput{
+			{ID: veilConceal, Checks: veilFind(), Doors: []encounter.DoorID{veilDoor}},
+			{
+				ID:     vaultConceal,
+				Checks: vaultFind(),
+				Cells:  rectCells(9, 0, 3, 8),
+				Doors:  []encounter.DoorID{vaultDoor},
+			},
 		},
 	}
 }
@@ -229,6 +250,24 @@ func hasDoorway(atlas encounter.Atlas, door encounter.DoorID) bool {
 	return false
 }
 
+// revealNames reports whether a concealment_revealed beat names a door in
+// its `doors` list, and that door's reported live state.
+func revealNames(beat map[string]any, door encounter.DoorID) (string, bool) {
+	doors, ok := beat["doors"].([]any)
+	if !ok {
+		return "", false
+	}
+	for _, entry := range doors {
+		d, is := entry.(map[string]any)
+		if !is || d["door"] != door {
+			continue
+		}
+		state, _ := d["state"].(string)
+		return state, true
+	}
+	return "", false
+}
+
 // doorsListed reports whether a member-scoped door list carries a door.
 func doorsListed(doors []encounter.Door, id encounter.DoorID) bool {
 	for _, d := range doors {
@@ -241,7 +280,7 @@ func doorsListed(doors []encounter.Door, id encounter.DoorID) bool {
 
 // TestAConcealedFieldRefusesConstructionWithoutItsCapabilities: the two
 // concealment capabilities are supplied-never-defaulted, refused at Setup
-// AND Load exactly when the field carries concealed structure.
+// AND Load exactly when the field declares a concealment.
 func (s *ConcealSuite) TestAConcealedFieldRefusesConstructionWithoutItsCapabilities() {
 	setup := func(resolver encounter.CheckResolver, witness encounter.Witness) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -320,23 +359,25 @@ func (s *ConcealSuite) TestAPlainFieldNeedsNoCapabilitiesAndBuildsNoWorld() {
 	s.Equal(&encounter.SearchOutput{}, out)
 }
 
-// TestSearchRevealsTheDoorToTheSearcherAlone: success writes the fact with
+// TestSearchRevealsTheSecretToTheSearcherAlone: success writes the fact with
 // audience = the searcher, and every read agrees — the beat is on the
 // searcher's story only, the door appears in the searcher's lists only, and
-// a party-mate's atlas still wears the mask. Finding sweeps only the
-// searched region: the vault-door touches no hall cell and stays unfound.
-func (s *ConcealSuite) TestSearchRevealsTheDoorToTheSearcherAlone() {
+// a party-mate's atlas still wears the mask. Finding sweeps only what the
+// searched region touches: the vault is neither in the hall nor beside it,
+// and stays secret.
+func (s *ConcealSuite) TestSearchRevealsTheSecretToTheSearcherAlone() {
 	enc := s.open(findsEverything{}, false)
 
 	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
 	s.Require().NoError(err)
 
-	revealed := s.beatsFor(enc, seeker, "door_revealed")
-	s.Require().Len(revealed, 1, "one door entered the searcher's knowledge")
-	s.Equal(veilDoor, revealed[0]["door"])
-	s.Equal("closed", revealed[0]["state"], "the beat carries the door's live state")
-	s.Empty(s.beatsFor(enc, buddy, "door_revealed"), "the party-mate heard nothing")
-	s.Empty(s.beatsFor(enc, seeker, "region_revealed"), "finding a CLOSED door reveals no region")
+	revealed := s.beatsFor(enc, seeker, encounter.BeatConcealmentRevealed)
+	s.Require().Len(revealed, 1, "one secret entered the searcher's knowledge")
+	s.Equal(veilConceal, revealed[0]["concealment"])
+	state, named := revealNames(revealed[0], veilDoor)
+	s.Require().True(named, "the beat names the door the secret hid")
+	s.Equal("closed", state, "carrying the door's live state")
+	s.Empty(s.beatsFor(enc, buddy, encounter.BeatConcealmentRevealed), "the party-mate heard nothing")
 
 	seekerDoors, err := enc.DoorsFor(seeker)
 	s.Require().NoError(err)
@@ -421,12 +462,16 @@ func timelessBlob(t require.TestingT, enc *encounter.Encounter) string {
 // timeStamp matches a percept's clock reading on the wire.
 var timeStamp = regexp.MustCompile(`"confirmed":\d+,`)
 
-// TestSearchAsksTheResolverOncePerUnfoundDeclaration: the sweep covers
-// exactly the region's concealed doors, hands each one's whole authored
-// approach list over, and never re-rolls a door already found. The annex
-// touches BOTH doors — the veil's far cell is annex floor — so its sweep is
-// the two-declaration case.
-func (s *ConcealSuite) TestSearchAsksTheResolverOncePerUnfoundDeclaration() {
+// TestSearchAsksTheResolverOncePerUnfoundConcealment: the sweep covers
+// exactly the concealments the region touches, hands each one's whole
+// authored approach list over, and never re-rolls one already found. The
+// annex touches BOTH — the veil-door's far cell is annex floor, and the
+// vault's own cells border the annex — so its sweep is the two-secret case.
+//
+// ONE ROLL PER SECRET, NOT PER HIDDEN THING, which is what changed
+// (rpg-project#490, E2): the vault hides a door AND twenty-four cells and
+// earns exactly one check.
+func (s *ConcealSuite) TestSearchAsksTheResolverOncePerUnfoundConcealment() {
 	recorder := &recordingResolver{inner: findsEverything{}}
 	s.witness.perceivers = map[encounter.DoorID][]encounter.MemberID{}
 	enc := s.open(recorder, false)
@@ -434,14 +479,14 @@ func (s *ConcealSuite) TestSearchAsksTheResolverOncePerUnfoundDeclaration() {
 	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
 
-	s.Require().Len(recorder.asked, 2, "one roll per concealed declaration in the region")
-	s.Equal(vaultFind(), recorder.asked[0].Approaches, "sorted door order: vault-door first")
+	s.Require().Len(recorder.asked, 2, "one roll per unfound concealment the region touches")
+	s.Equal(vaultFind(), recorder.asked[0].Approaches, "sorted id order: `vault` first")
 	s.Equal(veilFind(), recorder.asked[1].Approaches, "the whole authored list, verbatim")
 	s.Equal(buddy, core.EntityID(recorder.asked[0].Member))
 
 	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
-	s.Len(recorder.asked, 2, "a found door is never re-rolled")
+	s.Len(recorder.asked, 2, "a found secret is never re-rolled")
 }
 
 // TestSearchRefusesARegionTheSearcherIsNotIn: v1's presence rule — and a
@@ -461,40 +506,62 @@ func (s *ConcealSuite) TestSearchRefusesARegionTheSearcherIsNotIn() {
 
 	s.Equal(
 		strings.ReplaceAll(ghost.Error(), "no-such-region", vaultRegion), hidden.Error(),
-		"a concealed region refuses byte-identically to one that does not exist")
+		"a region behind a secret refuses byte-identically to one that does not exist")
 }
 
-// TestFindingADoorRevealsTheDoorAndNeverTheRegion: the two knowledge
-// moments. Found closed, the vault-door's doorways arrive — including the
-// one cell of hidden floor per entrance, the accepted disclosure — and the
-// vault itself stays byte-identical to never-authored: no cells, no region
-// entry, no boundaries, and no REGION_REVEALED beat.
-func (s *ConcealSuite) TestFindingADoorRevealsTheDoorAndNeverTheRegion() {
+// TestFindingASecretRevealsTheWholeOfIt is THE LAW THAT CHANGED
+// (rpg-project#490, R1, E1).
+//
+// It was TestFindingADoorRevealsTheDoorAndNeverTheRegion, and it pinned the
+// two knowledge moments: finding a door gave you the door, and the room
+// behind it arrived only on perceiving that door OPEN. A concealment is ONE
+// noun — "cells, props and doors are hidden by belonging to it" — so finding
+// it gives you the whole of it in one beat: the door's doorways, the vault's
+// cells, its region entry and the boundaries that were withheld with it.
+//
+// The correction is left visible rather than quietly rewritten, because the
+// two-moment shape was a real ruling and this is the one that replaced it.
+func (s *ConcealSuite) TestFindingASecretRevealsTheWholeOfIt() {
 	enc := s.open(findsEverything{}, false)
 
 	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
 
-	s.Empty(s.beatsFor(enc, buddy, "region_revealed"), "finding is not seeing what is behind")
+	var vault map[string]any
+	for _, beat := range s.beatsFor(enc, buddy, encounter.BeatConcealmentRevealed) {
+		if beat["concealment"] == vaultConceal {
+			vault = beat
+		}
+	}
+	s.Require().NotNil(vault, "the vault is one of the two secrets the annex touches")
+	s.Len(vault["cells"], 24, "the whole 3x8 slice rides the beat")
+	s.NotEmpty(vault["boundaries"], "with every boundary touching its cells")
+	_, named := revealNames(vault, vaultDoor)
+	s.True(named, "and the door it hid, in the same message")
 
 	atlas, err := enc.AtlasFor(buddy)
 	s.Require().NoError(err)
 	s.True(hasDoorway(atlas, vaultDoor), "the found door's doorways arrive")
 
 	vaultCell := cellAt(10, concealRow)
+	holdsCell, holdsRegion := false, false
 	for _, c := range atlas.Cells {
-		s.Require().NotEqual(vaultCell, c, "no vault floor in the atlas")
+		holdsCell = holdsCell || c == vaultCell
 	}
 	for _, r := range atlas.Regions {
-		s.Require().NotEqual(encounter.RegionID(vaultRegion), r.ID, "no vault region entry")
+		holdsRegion = holdsRegion || r.ID == encounter.RegionID(vaultRegion)
 	}
+	s.True(holdsCell, "the floor arrives with the secret")
+	s.True(holdsRegion, "and so does the region entry it was withheld with")
+
+	s.Empty(s.beatsFor(enc, seeker, encounter.BeatConcealmentRevealed),
+		"and nobody who did not search hears any of it")
 }
 
-// TestOpeningInPresenceRevealsToPerceivers: a knower opens the concealed
-// door; the door's own state beat goes to its knowers alone, and every
-// perceiver the witness names gets their recipient-scoped reveals — the
-// door if it is news, and the region behind it, carried as the atlas slice
-// the never-authored answer withheld.
+// TestOpeningInPresenceRevealsToPerceivers: a knower opens the hidden door;
+// the door's own state beat goes to its knowers alone, and every perceiver
+// the witness names gets their recipient-scoped reveal — the whole secret,
+// carried as the atlas slice the never-authored answer withheld.
 func (s *ConcealSuite) TestOpeningInPresenceRevealsToPerceivers() {
 	enc := s.open(findsEverything{}, false)
 
@@ -505,25 +572,32 @@ func (s *ConcealSuite) TestOpeningInPresenceRevealsToPerceivers() {
 	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
 	s.Require().NoError(err)
 
-	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
+	// The SEEKER is the one who learns here: buddy found the vault by
+	// searching for it, and a secret is learned once.
+	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy, seeker}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
 
 	doorBeats := s.beatsFor(enc, buddy, "door")
 	s.Require().NotEmpty(doorBeats, "the knower hears the door move")
-	s.Empty(s.beatsFor(enc, seeker, "door"), "a non-knower never hears a concealed door's state beat")
+	s.Empty(s.beatsFor(enc, loner, "door"), "a non-knower never hears a hidden door's state beat")
 
-	regionBeats := s.beatsFor(enc, buddy, "region_revealed")
-	s.Require().Len(regionBeats, 1, "perceiving the door OPEN reveals the region")
-	region, ok := regionBeats[0]["region"].(map[string]any)
-	s.Require().True(ok)
-	s.Equal(vaultRegion, region["id"])
-	s.Len(region["cells"], 24, "the whole 3x8 slice rides the beat")
-	s.NotEmpty(regionBeats[0]["boundaries"], "with every boundary touching its cells")
+	var revealed map[string]any
+	for _, beat := range s.beatsFor(enc, seeker, encounter.BeatConcealmentRevealed) {
+		if beat["concealment"] == vaultConceal {
+			revealed = beat
+		}
+	}
+	s.Require().NotNil(revealed, "perceiving the door OPEN reveals the secret it hid")
+	s.Len(revealed["cells"], 24, "the whole 3x8 slice rides the beat")
+	s.NotEmpty(revealed["boundaries"], "with every boundary touching its cells")
+	state, named := revealNames(revealed, vaultDoor)
+	s.Require().True(named)
+	s.Equal("open", state, "carrying its LIVE state")
 
-	s.Empty(s.beatsFor(enc, seeker, "region_revealed"), "nobody else perceived it")
+	s.Empty(s.beatsFor(enc, loner, encounter.BeatConcealmentRevealed), "nobody else perceived it")
 
-	atlas, err := enc.AtlasFor(buddy)
+	atlas, err := enc.AtlasFor(seeker)
 	s.Require().NoError(err)
 	found := false
 	for _, r := range atlas.Regions {
@@ -536,8 +610,8 @@ func (s *ConcealSuite) TestOpeningInPresenceRevealsToPerceivers() {
 
 // TestALatePerceiverGetsTheirRevealOnArrival: the enumerated causes are
 // examples, not a closed set — a member who was elsewhere when the door
-// opened perceives present state on any later sight refresh and gets both
-// reveals then.
+// opened perceives present state on any later sight refresh and gets their
+// reveal then.
 func (s *ConcealSuite) TestALatePerceiverGetsTheirRevealOnArrival() {
 	enc := s.open(findsEverything{}, false)
 
@@ -550,7 +624,7 @@ func (s *ConcealSuite) TestALatePerceiverGetsTheirRevealOnArrival() {
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
-	s.Empty(s.beatsFor(enc, seeker, "door_revealed"), "the seeker was not there")
+	s.Empty(s.beatsFor(enc, seeker, encounter.BeatConcealmentRevealed), "the seeker was not there")
 
 	// The seeker walks up: the witness's answer changes, and the next
 	// refresh notices present state.
@@ -558,16 +632,18 @@ func (s *ConcealSuite) TestALatePerceiverGetsTheirRevealOnArrival() {
 	_, err = enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(3, concealRow)})
 	s.Require().NoError(err)
 
-	doorReveals := s.beatsFor(enc, seeker, "door_revealed")
-	s.Require().Len(doorReveals, 1, "the late perceiver gets the door")
-	s.Equal(vaultDoor, doorReveals[0]["door"])
-	s.Equal("open", doorReveals[0]["state"], "carrying its LIVE state")
-	s.Len(s.beatsFor(enc, seeker, "region_revealed"), 1, "and the room behind it")
+	reveals := s.beatsFor(enc, seeker, encounter.BeatConcealmentRevealed)
+	s.Require().Len(reveals, 1, "the late perceiver gets the secret")
+	s.Equal(vaultConceal, reveals[0]["concealment"])
+	state, named := revealNames(reveals[0], vaultDoor)
+	s.Require().True(named)
+	s.Equal("open", state, "carrying its LIVE state")
+	s.Len(reveals[0]["cells"], 24, "and the room behind it, in the same message")
 }
 
-// TestCrossingAnUnknownOpenDoorTeachesIt: walking through a door is
-// perceiving it, whatever the witness would have said — the crossing writes
-// the fact and the reveal beats before the step's own refresh runs.
+// TestCrossingAnUnknownOpenDoorTeachesIt: walking through a hidden door is
+// perceiving the secret, whatever the witness would have said — the crossing
+// writes the fact and the reveal beat before the step's own refresh runs.
 func (s *ConcealSuite) TestCrossingAnUnknownOpenDoorTeachesIt() {
 	enc := s.open(findsEverything{}, false)
 
@@ -579,27 +655,29 @@ func (s *ConcealSuite) TestCrossingAnUnknownOpenDoorTeachesIt() {
 	s.Require().NoError(err)
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
 	s.Require().NoError(err)
-	s.Empty(s.beatsFor(enc, buddy, "door_revealed"), "the witness scripts nobody perceiving")
+	s.Empty(s.beatsFor(enc, buddy, encounter.BeatConcealmentRevealed), "the witness scripts nobody perceiving")
 
 	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(5, concealRow)})
 	s.Require().NoError(err)
 	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(4, concealRow)})
 	s.Require().NoError(err, "the open veil-door is crossable")
 
-	reveals := s.beatsFor(enc, buddy, "door_revealed")
+	reveals := s.beatsFor(enc, buddy, encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1, "crossing taught the crosser")
-	s.Equal(veilDoor, reveals[0]["door"])
+	s.Equal(veilConceal, reveals[0]["concealment"])
+	_, named := revealNames(reveals[0], veilDoor)
+	s.True(named, "naming the door they walked through")
 
 	doors, err := enc.DoorsFor(buddy)
 	s.Require().NoError(err)
 	s.True(doorsListed(doors, veilDoor))
 
 	// The shared moved beat said nothing: one payload cannot name a secret
-	// to knowers without naming it to everyone, so a concealed door never
+	// to knowers without naming it to everyone, so a hidden door never
 	// rides it — the loner, who knows nothing, heard a plain step.
 	for _, beat := range s.beatsFor(enc, loner, "moved") {
-		if named, ok := beat["doors"]; ok {
-			s.NotContains(named, veilDoor, "a concealed door never rides the shared moved beat")
+		if listed, ok := beat["doors"]; ok {
+			s.NotContains(listed, veilDoor, "a hidden door never rides the shared moved beat")
 		}
 	}
 }
@@ -616,8 +694,8 @@ func (s *ConcealSuite) TestKnowledgeRidesTheBlob() {
 	data := enc.ToData()
 	blob, err := json.Marshal(data)
 	s.Require().NoError(err)
-	s.Contains(string(blob), `"world"`, "a concealed field persists its world")
-	s.Contains(string(blob), `"known:door:veil-door"`, "with the searcher's fact")
+	s.Contains(string(blob), `"world"`, "a concealing field persists its world")
+	s.Contains(string(blob), `"known:concealment:veil-door"`, "with the searcher's fact")
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      data,
@@ -659,8 +737,8 @@ func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
 	// A well-formed veil-door fact to corrupt one field at a time.
 	honest := func() encounter.FactData {
 		return encounter.FactData{
-			Kind:     "known:door:veil-door",
-			Subject:  "door:veil-door",
+			Kind:     "known:concealment:veil-door",
+			Subject:  "concealment:veil-door",
 			Actor:    string(seeker),
 			Audience: []string{string(seeker)},
 		}
@@ -676,14 +754,14 @@ func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
 	})
 	s.Run("a kind this field does not mint", func() {
 		f := honest()
-		f.Kind = "known:door:some-other-dungeons-door"
+		f.Kind = "known:concealment:some-other-dungeons-secret"
 		err := load(withFact(f))
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Contains(err.Error(), "does not mint")
 	})
 	s.Run("a subject that does not match its kind", func() {
 		f := honest()
-		f.Subject = "door:vault-door"
+		f.Subject = "concealment:vault"
 		err := load(withFact(f))
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Contains(err.Error(), "does not match its kind")
@@ -702,7 +780,7 @@ func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Contains(err.Error(), "audienced to exactly its actor")
 	})
-	s.Run("a world on a field with nothing concealed", func() {
+	s.Run("a world on a field that hides nothing", func() {
 		plain, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
 			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -719,13 +797,12 @@ func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
 		data.World = &encounter.WorldData{Facts: []encounter.FactData{}}
 		lerr := load(data)
 		s.Require().ErrorIs(lerr, encounter.ErrInvalidData)
-		s.Contains(lerr.Error(), "no concealed structure")
+		s.Contains(lerr.Error(), "declares no concealment")
 	})
 }
 
 // TestAnOldBlobsOccupantIsPiercedAtLoad — PR #1373 review, Minor 4: a blob
-// saved between v0.41.0's carried concealment and the world existing holds
-// an occupant of a concealed region with no occupancy fact. Presence
+// whose occupant stands on hidden floor with no occupancy fact. Presence
 // pierces from frame one applies to loads too: the occupant knows the
 // floor under their feet BEFORE any verb runs, the fact is minted for the
 // next save, and their reveal beat is on their story — while a blob this
@@ -734,12 +811,12 @@ func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
 func (s *ConcealSuite) TestAnOldBlobsOccupantIsPiercedAtLoad() {
 	live := s.open(findsNothing{}, true)
 	data := live.ToData()
-	data.World = nil // the v0.41.0-era dialect: concealment authored, no world key
+	data.World = nil // concealment authored, no world key
 
 	// The simulation strips the FACTS but the story blob keeps Setup's own
 	// reveal beat (a true old blob would carry neither); knowledge is the
 	// facts, so the load must pierce again — measure the beats it ADDS.
-	beatsBefore := len(s.beatsFor(live, lurker, "region_revealed"))
+	beatsBefore := len(s.beatsFor(live, lurker, encounter.BeatConcealmentRevealed))
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      data,
@@ -758,12 +835,13 @@ func (s *ConcealSuite) TestAnOldBlobsOccupantIsPiercedAtLoad() {
 	}
 	s.True(holdsVault, "the occupant knows the floor under their feet before any verb runs")
 
-	s.Len(s.beatsFor(back, lurker, "region_revealed"), beatsBefore+1, "with their reveal minted onto their own story")
-	s.Empty(s.beatsFor(back, seeker, "region_revealed"), "and nobody else's")
+	s.Len(s.beatsFor(back, lurker, encounter.BeatConcealmentRevealed), beatsBefore+1,
+		"with their reveal minted onto their own story")
+	s.Empty(s.beatsFor(back, seeker, encounter.BeatConcealmentRevealed), "and nobody else's")
 
 	found := false
 	for _, f := range back.ToData().World.Facts {
-		if f.Kind == "known:region:"+vaultRegion && f.Actor == string(lurker) {
+		if f.Kind == "known:concealment:"+vaultConceal && f.Actor == string(lurker) {
 			found = true
 		}
 	}

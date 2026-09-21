@@ -123,12 +123,24 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 	// rpg-toolkit#1854 and the id namespace is shared by construction
 	// (compilePlaced refuses a collision), so at most one can answer.
 	index := e.field.propIndexOf(in.Target)
-	if index < 0 {
-		if placed := e.field.placedIndexOf(in.Target); placed >= 0 {
-			return e.holdPlaced(in, &e.field.placed[placed])
-		}
-
+	placedIndex := e.field.placedIndexOf(in.Target)
+	if index < 0 && placedIndex < 0 {
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
+	}
+
+	// AND THE PROBE LAW FOR A PROP A CONCEALMENT HIDES (rpg-project#490).
+	// A hidden prop is withheld from this member's atlas wherever it
+	// stands, INCLUDING on floor they can see — a bookcase that is not what
+	// it looks like is the whole point of hiding one — so the cell test
+	// below cannot answer for it, and without this line a guessed id would
+	// pick the secret up off a visible floor. The refusal is the one an id
+	// that names nothing earns, byte-identical, for that law's own reason.
+	if e.hiddenPropTo(in.Member, in.Target) {
+		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
+	}
+
+	if index < 0 {
+		return e.holdPlaced(in, &e.field.placed[placedIndex])
 	}
 
 	prop := e.field.props[index]
@@ -250,6 +262,18 @@ func (e *Encounter) holdPlaced(in *HoldInput, p *placedContributor) (*HoldOutput
 	}
 
 	return e.takeProp(in.Member, in.Target)
+}
+
+// hiddenPropTo reports whether a prop is a secret THIS member has not found
+// — [Encounter.hiddenDoorTo]'s question, for the other kind of hidden thing.
+// A field built without a world holds no secret and answers false.
+func (e *Encounter) hiddenPropTo(member MemberID, prop PropID) bool {
+	if e.world == nil || e.field == nil {
+		return false
+	}
+	id, hidden := e.field.concealmentOfProp[prop]
+
+	return hidden && !e.world.knowsConcealment(member, id)
 }
 
 // showsAnyCellTo is the probe law's question asked of a SHAPE: is any of the

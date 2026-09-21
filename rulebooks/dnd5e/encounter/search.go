@@ -13,22 +13,24 @@ import (
 // rpg-project#350): the session's Search verb calls this, and everything
 // that keeps a secret secret is decided here rather than at the seam.
 //
-// THE TARGET IS A REGION, NEVER A DOOR: a player cannot target structure
+// THE TARGET IS A REGION, NEVER A SECRET: a player cannot target structure
 // they do not know exists, so the verb names a place to sweep and the world
 // decides what that place holds. Universally attemptable — no prerequisites,
 // no class gate; the barbarian may search. In v1 the named region must be
 // the one the searcher stands in — presence is the host's truth.
+//
+// ONE ROLL PER CONCEALMENT, never per hidden thing (rpg-project#490, E2). A
+// vault hidden behind a door, a bookcase and three cells is ONE secret and
+// one check: rolling per member would give a searcher several chances at the
+// same wall and would leak, through the number of rolls, how much was there.
 //
 // THE ANSWER NEVER LEAKS THE QUESTION. An empty region and a failed check
 // return the same bytes: the output carries nothing that varies with what
 // the region holds — no found list, no roll, no count, no seq — and a
 // failed check writes no fact and no beat, so even the persisted blob is
 // identical. A find reaches the searcher the way all world change reaches
-// anybody: as a recipient-scoped DOOR_REVEALED beat, audience the searcher
-// alone. Finding a door never reveals the region behind it — two knowledge
-// moments, deliberately distinct — with one exception that is not an
-// exception: a door found standing OPEN is a door perceived open, and
-// perceiving a concealed door open is what reveals its region.
+// anybody: as a recipient-scoped CONCEALMENT_REVEALED beat, audience the
+// searcher alone.
 
 // SearchInput declares a search of a region.
 type SearchInput struct {
@@ -52,20 +54,25 @@ type SearchInput struct {
 // been something to find — the one thing a failed search must not learn.
 type SearchOutput struct{}
 
-// Search sweeps a region's concealed declarations: every concealed door
-// with an edge in the region that the searcher has not already found rolls
-// its find check through the injected [CheckResolver] — the resolver
-// applies the searcher's best listed approach — and a success writes the
-// location fact with audience = the searcher alone, plus their
-// DOOR_REVEALED beat.
+// Search sweeps the concealments TOUCHING a region: every one the searcher
+// has not already found rolls its checks through the injected
+// [CheckResolver] — the resolver applies the searcher's best listed
+// approach — and a success writes the knowledge fact with audience = the
+// searcher alone, plus their CONCEALMENT_REVEALED beat.
 //
-// A field with no concealment accepts the verb and sweeps nothing: refusing
+// TOUCHING is [Encounter.concealmentTouchesRegion]: a cell the concealment
+// hides that is in the region or next to one of its cells, or a door of it
+// with an edge endpoint in the region. Next to, and not only in, because a
+// secret's whole point is that its floor is not floor anyone can see they
+// are standing beside.
+//
+// A field that hides nothing accepts the verb and sweeps nothing: refusing
 // it would itself answer the question a search asks.
 //
 // Search refreshes no sight — nothing moved and no geometry changed — but
-// it ends with the same concealment sweep every sight refresh runs, so a
-// find whose door stands open grants the region reveal through the one
-// mechanism that owns perception rather than a special case here.
+// it ends with the same concealment sweep every sight refresh runs, so
+// anything present state now forces lands through the one mechanism that
+// owns perception rather than a special case here.
 //
 // Validation order (R5): nil input → empty member → closed → not a member →
 // not standing in the named region. Errors: ErrNilInput, ErrNoMember,
@@ -95,29 +102,29 @@ func (e *Encounter) Search(in *SearchInput) (*SearchOutput, error) {
 	}
 
 	at := uint64(e.clock.ToData().HighWater)
-	for _, doorID := range e.world.concealedDoors {
-		d := e.doorsByID[doorID]
-		if !e.doorTouchesRegion(d, in.Region) || e.world.knowsDoor(in.Member, d.id) {
+	for _, id := range e.world.concealments {
+		c := e.field.concealmentOf(id)
+		if c == nil || e.world.knowsConcealment(in.Member, c.id) || !e.concealmentTouchesRegion(c, in.Region) {
 			continue
 		}
 
 		verdict, err := e.checkResolver.ResolveCheck(&ResolveCheckInput{
 			Member:     in.Member,
-			Approaches: append([]CheckApproach(nil), d.concealed...),
+			Approaches: append([]CheckApproach(nil), c.checks...),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("search: resolve find for door %q: %w", d.id, err)
+			return nil, fmt.Errorf("search: resolve find for concealment %q: %w", c.id, err)
 		}
 		if !verdict.Beaten {
 			continue
 		}
-		if err := e.revealDoorTo(in.Member, d, "found it by search", at); err != nil {
+		if err := e.revealConcealmentTo(in.Member, c, "found it by search", at); err != nil {
 			return nil, fmt.Errorf("search: %w", err)
 		}
 	}
 
-	// The sweep, for the found-open case and anything else present state
-	// now forces — same call every sight refresh makes.
+	// The sweep, for anything present state now forces — same call every
+	// sight refresh makes.
 	if err := e.sweepConcealment(); err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -133,15 +140,44 @@ func (e *Encounter) Search(in *SearchInput) (*SearchOutput, error) {
 	return &SearchOutput{}, nil
 }
 
-// doorTouchesRegion reports whether any edge endpoint of a door stands in
-// the region — the membership test a region sweep uses.
-func (e *Encounter) doorTouchesRegion(d *doorRecord, region RegionID) bool {
-	for _, edge := range d.edges {
-		for _, cell := range []spatial.Position{edge.From, edge.To} {
-			if r, owned := e.field.regionOf(cell); owned && r == region {
+// concealmentTouchesRegion reports whether a sweep of one region reaches a
+// concealment: a cell it hides that is IN the region or ADJACENT to one of
+// the region's cells, or a door of it with an edge endpoint in the region.
+//
+// ADJACENCY IS THE POINT, not a convenience. A hidden cell is withheld from
+// the searcher's own atlas, so "the region it is in" is a question only the
+// engine can answer and a vault beyond the east wall belongs to no room
+// anybody is standing in. What a searcher can honestly be said to sweep is
+// the floor they are on and what it borders.
+//
+// A FOOTPRINT DOOR IS REACHED THROUGH ITS CELLS, because it stands in no
+// crossing: [Encounter.hiddenCellsOf] already counts the floor a hidden
+// rectangle occupies as the concealment's, and this asks the same set rather
+// than a second one.
+func (e *Encounter) concealmentTouchesRegion(c *concealment, region RegionID) bool {
+	for _, cell := range e.hiddenCellsOf(c) {
+		if r, owned := e.field.regionOf(cell); owned && r == region {
+			return true
+		}
+		for _, neighbor := range adjacencyGrid.GetNeighbors(cell) {
+			if r, owned := e.field.regionOf(neighbor); owned && r == region {
 				return true
 			}
 		}
 	}
+	for _, id := range c.doors {
+		d, ok := e.doorsByID[id]
+		if !ok {
+			continue
+		}
+		for _, edge := range d.edges {
+			for _, cell := range []spatial.Position{edge.From, edge.To} {
+				if r, owned := e.field.regionOf(cell); owned && r == region {
+					return true
+				}
+			}
+		}
+	}
+
 	return false
 }

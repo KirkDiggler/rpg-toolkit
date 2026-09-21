@@ -315,13 +315,27 @@ type IntelSpec struct {
 // than an open map: a target this build does not understand is a record
 // nothing can apply, and it is refused rather than carried hopefully.
 type RevealsSpec struct {
-	// Door is the id of the door this record reveals the way to. Refused
-	// when no door in this dungeon has that id.
+	// Door is the id of the door this record reveals the way to — THE v2
+	// SPELLING, kept because it is this dialect's vocabulary for the thing
+	// it draws. Refused when no door in this dungeon has that id, and
+	// refused when no concealment holds that door: the engine's target is a
+	// CONCEALMENT now (rpg-project#490, R7), so the lowering resolves the
+	// door to the secret holding it and a door anyone can already see is a
+	// record revealing nothing.
 	//
-	// A DECLARED BUT UNCONCEALED DOOR IS LEGAL AND INERT: revealing the way
-	// to a door anyone can already see tells nobody anything, and refusing
-	// it would make this declaration depend on a fact about a different one.
+	// REFUSED BY NAME in the single-room dialect, which has no crossing to
+	// hide a door on — it writes `concealment:` instead ([RevealsSpec.Concealment]).
 	Door string `yaml:"door,omitempty"`
+
+	// Concealment is the id of the concealment this record gives away — the
+	// SINGLE-ROOM dialect's spelling of the same target, because that
+	// dialect declares its secrets at the root under `concealments:` and
+	// names them directly (rpg-project#490, R7).
+	//
+	// Refused when no concealment in the document has that id, and refused
+	// by name in the v2 dialect, whose secrets are spelled with the two
+	// words that dialect already has.
+	Concealment string `yaml:"concealment,omitempty"`
 
 	// Fact is the id of the fact this record reveals (rpg-project#375, the
 	// hold-out design §2) — the second key, arrived with its use case: a

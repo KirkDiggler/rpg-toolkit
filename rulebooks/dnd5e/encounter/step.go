@@ -148,14 +148,14 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step append beat: %w", err)
 	}
 
-	// Crossing a concealed door is perceiving it (rpg-toolkit#1371): a
-	// member who just walked through one knows it now, whatever the
-	// witness would have said — and an open door crossed is an open door
-	// perceived, so the region behind it arrives with it. After the moved
-	// beat (the cause), before the refresh (whose sweep would attribute
-	// this to perception or miss it entirely in the dark).
-	if err := e.learnCrossedDoors(in.Member, action.doors, at); err != nil {
-		return nil, fmt.Errorf("step crossed doors: %w", err)
+	// Crossing INTO a concealment is perceiving it (rpg-toolkit#1371,
+	// rpg-project#490): a member who just walked through a hidden door, or
+	// onto floor a concealment hides, knows the secret now, whatever the
+	// witness would have said about the light. After the moved beat (the
+	// cause), before the refresh (whose sweep would attribute this to
+	// perception or miss it entirely in the dark).
+	if err := e.learnCrossedConcealment(in.Member, action.doors, action.to, at); err != nil {
+		return nil, fmt.Errorf("step crossed concealment: %w", err)
 	}
 
 	// THE WORLD'S PRICE FOR A WALK, paid after the step has landed and before
@@ -329,7 +329,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 					continue
 				}
 				// THE MOVE LAW (rpg-project#351, Wave 1b pin): a step
-				// stopped by a concealed door the mover has not found is
+				// stopped by a hidden door the mover has not found is
 				// refused with spatial's own sentence — byte-identical to
 				// walking into a wall, which is what the mover believes is
 				// there. Naming the door, its state, or its DC would
@@ -337,7 +337,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 				// this door is the first blocking crossing, so it IS what
 				// stopped the step, and attributing the refusal to some
 				// later door would be the story lying.
-				if e.world != nil && door.concealed != nil && !e.world.knowsDoor(member.ID, door.id) {
+				if e.hiddenDoorTo(member.ID, door.id) {
 					break
 				}
 				// Three cases, three sentinels (rpg-toolkit#1135): a locked
