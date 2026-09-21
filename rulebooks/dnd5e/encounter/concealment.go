@@ -318,6 +318,12 @@ func (f *field) concealmentOf(id ConcealmentID) *concealment {
 // every other hidden thing. An EDGE door contributes nothing here: its
 // crossing is masked as wall (projection.go), which is what a wall is.
 //
+// A MEMBER PROP CONTRIBUTES NOTHING HERE, deliberately. The floor under a
+// bookcase that is not what it looks like is ordinary floor, and withholding
+// it would be the tell the bookcase exists to avoid; the prop itself is
+// withheld by membership, wherever it stands. Where those cells DO matter is
+// reach — see [Encounter.memberPropCells].
+//
 // Derived per call rather than compiled, because a footprint door's cells are
 // a question about the FIELD's cell list and the doors arrive beside it.
 // Callers that ask repeatedly build the union once (see [Encounter.hiddenFrom]).
@@ -329,6 +335,30 @@ func (e *Encounter) hiddenCellsOf(c *concealment) []spatial.Position {
 			continue
 		}
 		out = append(out, e.field.placedCells(*d.placement)...)
+	}
+
+	return out
+}
+
+// memberPropCells is WHERE THE THINGS A CONCEALMENT HIDES STAND — a legacy
+// prop's own cell, a placed footprint's [field.placedCells] — for the one
+// question that has to reach a secret hiding no floor: whether a sweep of a
+// region touches it (R5, [Encounter.concealmentTouchesRegion]).
+//
+// NOT HIDDEN FLOOR. These cells stay in every observer's atlas; what is
+// withheld is the thing standing on them. The two sets are separate because
+// they answer different questions, and folding them would hide the floor
+// under a bookcase — which is the tell, not the secret.
+func (e *Encounter) memberPropCells(c *concealment) []spatial.Position {
+	var out []spatial.Position
+	for _, id := range c.props {
+		if i := e.field.propIndexOf(id); i >= 0 {
+			out = append(out, e.field.cellAt(e.field.props[i].At))
+			continue
+		}
+		if i := e.field.placedIndexOf(id); i >= 0 {
+			out = append(out, e.field.placedCells(e.field.placed[i].placement)...)
+		}
 	}
 
 	return out

@@ -300,6 +300,120 @@ func (s *ConcealmentSuite) TestAnOccupantOfAnAlcoveKnowsItFromFrameOne() {
 	s.Len(mine.Regions[0].Cells, 16, "and whole for the one who knows")
 }
 
+// TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf is the `regions` key on
+// the beat (rpg-project#490 E4, rpg-api-protos#352).
+//
+// A concealment hides CELLS, and those cells sit inside an authored region —
+// so a non-knower's region entry is the authored one with the hidden cells
+// taken out, and withheld entirely when none survive. A reveal does not only
+// add floor: it restores the room that floor belongs to. A recipient handed
+// cells with no region to file them under would be holding floor with no
+// name, no lighting and no archetype.
+//
+// A REPLACEMENT, NOT A DIFFERENCE — [Atlas.Sealed]'s law on this beat. The
+// entry comes back LARGER, so a difference could only ever say "here is a
+// room you already have"; the whole entry as it now stands is the news.
+func (s *ConcealmentSuite) TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf() {
+	walker := core.EntityID("walker")
+
+	s.Run("a room that was wholly a secret comes back whole", func() {
+		field := s.twoRoomField()
+		field.Concealments = []encounter.ConcealmentInput{{
+			ID: "vault", Checks: vaultCheck(), Cells: rectCells(3, 0, 3, 4),
+			Doors: []encounter.DoorID{"panel"},
+		}}
+		enc := s.play(field, findsEverything{},
+			encounter.MemberInput{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}})
+
+		blind, err := enc.AtlasFor(walker)
+		s.Require().NoError(err)
+		s.Require().Len(blind.Regions, 1, "the vault has no entry at all for a non-knower")
+
+		_, err = enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		s.Require().NoError(err)
+
+		reveals := s.revealsFor(enc, walker)
+		s.Require().Len(reveals, 1)
+		rooms, ok := reveals[0]["regions"].([]any)
+		s.Require().True(ok)
+		s.Require().Len(rooms, 1, "one room was cut out of, so one room comes back")
+		room, ok := rooms[0].(map[string]any)
+		s.Require().True(ok)
+		s.Equal("vault", room["id"])
+		s.Equal("vault", room["name"])
+		s.Equal(testArchetype, room["archetype"], "with the facts a client dresses it with")
+		s.NotNil(room["lighting"])
+		s.Len(room["cells"], 12, "and every cell of it")
+	})
+
+	s.Run("a room only PART of which was a secret comes back whole too", func() {
+		field := encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
+			Concealments: []encounter.ConcealmentInput{{
+				ID: "alcove", Checks: vaultCheck(), Cells: rectCells(3, 0, 1, 4),
+			}},
+		}
+		enc := s.play(field, findsEverything{},
+			encounter.MemberInput{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}})
+
+		blind, err := enc.AtlasFor(walker)
+		s.Require().NoError(err)
+		s.Require().Len(blind.Regions, 1, "the hall is still their room")
+		s.Require().Len(blind.Regions[0].Cells, 12, "with the alcove's column trimmed out of it")
+
+		_, err = enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		s.Require().NoError(err)
+
+		reveals := s.revealsFor(enc, walker)
+		s.Require().Len(reveals, 1)
+		rooms, ok := reveals[0]["regions"].([]any)
+		s.Require().True(ok)
+		s.Require().Len(rooms, 1)
+		room, ok := rooms[0].(map[string]any)
+		s.Require().True(ok)
+		s.Equal("hall", room["id"])
+		s.Len(room["cells"], 16,
+			"THE WHOLE ENTRY, not the four cells that arrived — a replacement, exactly as `sealed` is")
+	})
+
+	s.Run("a secret that hides no floor names no room", func() {
+		field := s.twoRoomField()
+		field.Concealments = []encounter.ConcealmentInput{{
+			ID: "panel-secret", Checks: vaultCheck(), Props: []encounter.PropID{"idol"},
+		}}
+		enc := s.play(field, findsEverything{},
+			encounter.MemberInput{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}})
+
+		_, err := enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		s.Require().NoError(err)
+
+		reveals := s.revealsFor(enc, walker)
+		s.Require().Len(reveals, 1)
+		s.Empty(reveals[0]["regions"], "a hidden bookcase cuts no room out of anything")
+		s.NotEmpty(reveals[0]["props"], "and the thing itself is the whole of the news")
+	})
+}
+
+// play builds a live encounter the scenes above act on, with the resolver the
+// scene is about.
+func (s *ConcealmentSuite) play(
+	field encounter.FieldInput, resolver encounter.CheckResolver, members ...encounter.MemberInput,
+) *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		CheckResolver: resolver, Witness: nobodyPerceives{},
+		Field:   field,
+		Members: members,
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	return enc
+}
+
 // TestABlobWithARetiredRegionFlagIsRefusedByName is the region tombstone
 // ([encounter.RegionData.Concealed], rpg-project#490) — [DoorData.Concealed]'s
 // twin, and the standing fail-loudly precedent (rpg-toolkit#1053/#1068): a

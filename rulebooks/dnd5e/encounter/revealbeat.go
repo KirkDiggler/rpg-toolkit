@@ -37,13 +37,14 @@ import (
 const BeatConcealmentRevealed = "concealment_revealed"
 
 // appendConcealmentRevealedBeat records that a concealment entered ONE
-// RECIPIENT's knowledge, carrying its whole atlas slice — the cells, the
-// props standing on them and the props it hides wherever they stand, the
-// doors it hides with their LIVE state and their doorways, every boundary
-// touching its cells, THE WALLS IT IS DRAWN WITH and THE CELLS OF IT NOBODY
-// STANDS ON. Border walls and the frontier with any still-hidden neighbour
-// are included, since the never-authored yardstick withheld them all. The
-// beat is the patch for the recipient's cached atlas: the load-once,
+// RECIPIENT's knowledge, carrying its whole atlas slice — the cells, THE
+// ROOMS THEY WERE CUT OUT OF as the recipient now sees them, the props
+// standing on them and the props it hides wherever they stand, the doors it
+// hides with their LIVE state and their doorways, every boundary touching
+// its cells, THE WALLS IT IS DRAWN WITH and THE CELLS OF IT NOBODY STANDS
+// ON. Border walls and the frontier with any still-hidden neighbour are
+// included, since the never-authored yardstick withheld them all. The beat
+// is the patch for the recipient's cached atlas: the load-once,
 // beat-refreshed shape (rpg-project#264).
 //
 // # Segments, and why they are a difference rather than a slice
@@ -137,10 +138,32 @@ func (e *Encounter) appendConcealmentRevealedBeat(
 		}
 	}
 
+	// THE ROOMS THE SECRET WAS CUT OUT OF, as the recipient sees them NOW.
+	//
+	// A concealment hides CELLS, and those cells sit inside an authored
+	// region, so a non-knower's region entry is the authored one with the
+	// hidden cells taken out of it — and withheld entirely when none survive
+	// (projection.go). A reveal therefore does not only ADD floor, it
+	// restores the room that floor belongs to, and a recipient who was
+	// handed cells with no region to file them under would be holding floor
+	// with no lighting, no archetype and no name.
+	//
+	// A REPLACEMENT, not a difference — [Atlas.Sealed]'s law on this beat,
+	// for the same reason. An entry the recipient already had comes back
+	// LARGER, so a difference could only ever say "here is a room you have",
+	// which is not the news. The whole entry, as it now stands, is.
+	regions := make([]AtlasRegion, 0)
+	for _, r := range scoped.Regions {
+		if regionTouches(r, owned) {
+			regions = append(regions, r)
+		}
+	}
+
 	payload := map[string]interface{}{
 		"beat":        BeatConcealmentRevealed,
 		"concealment": c.id,
 		"cells":       cells,
+		"regions":     revealRegionsPayload(regions),
 		"props":       revealPropsPayload(props),
 		"doors":       e.revealDoorsPayload(c),
 		"boundaries":  revealBoundariesPayload(boundaries),
@@ -219,6 +242,41 @@ func newSegments(before, after []AtlasSegment) []AtlasSegment {
 			continue
 		}
 		out = append(out, seg)
+	}
+
+	return out
+}
+
+// regionTouches reports whether a region entry holds any of the cells a
+// concealment hides — the slice test the props and the boundaries already
+// use, asked of a room.
+func regionTouches(r AtlasRegion, owned map[spatial.Position]bool) bool {
+	for _, cell := range r.Cells {
+		if owned[cell] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// revealRegionsPayload renders the rooms a reveal restores, each as the whole
+// entry the recipient's atlas now carries: the id, the name, every cell they
+// now have of it, and the two per-area facts a client dresses it with.
+//
+// The same shape the retired REGION_REVEALED wrote for its one room, carried
+// for however many rooms a secret was cut out of — a concealment is cells,
+// and cells can span two rooms where a region flag could only ever mean one.
+func revealRegionsPayload(regions []AtlasRegion) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(regions))
+	for _, r := range regions {
+		out = append(out, map[string]interface{}{
+			"id":        r.ID,
+			"name":      r.Name,
+			"cells":     r.Cells,
+			"archetype": r.Archetype,
+			"lighting":  map[string]float64{"intensity": r.Lighting.Intensity},
+		})
 	}
 
 	return out

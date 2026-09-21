@@ -61,10 +61,10 @@ type SearchOutput struct{}
 // searcher alone, plus their CONCEALMENT_REVEALED beat.
 //
 // TOUCHING is [Encounter.concealmentTouchesRegion]: a cell the concealment
-// hides that is in the region or next to one of its cells, or a door of it
-// with an edge endpoint in the region. Next to, and not only in, because a
-// secret's whole point is that its floor is not floor anyone can see they
-// are standing beside.
+// hides, a cell a PROP it hides stands on, or a door of it with an edge
+// endpoint in the region — in the region or next to one of its cells. Next
+// to, and not only in, because a secret's whole point is that its floor is
+// not floor anyone can see they are standing beside.
 //
 // A field that hides nothing accepts the verb and sweeps nothing: refusing
 // it would itself answer the question a search asks.
@@ -154,8 +154,17 @@ func (e *Encounter) Search(in *SearchInput) (*SearchOutput, error) {
 // crossing: [Encounter.hiddenCellsOf] already counts the floor a hidden
 // rectangle occupies as the concealment's, and this asks the same set rather
 // than a second one.
+//
+// AND SO IS A HIDDEN PROP — "adjacent to one of its cells, OR TO A PLACED
+// THING IT HIDES" (rpg-project#490, R5). A bookcase that is not what it looks
+// like hides no floor at all: the floor under it is ordinary floor and stays
+// in everyone's atlas, because hiding it would be the tell. Reading only the
+// hidden cells would therefore leave such a secret touching nothing, and a
+// bookcase nobody could ever search for is a secret with no way in — the
+// thing "a concealment lists no way to find it" refuses one declaration
+// earlier.
 func (e *Encounter) concealmentTouchesRegion(c *concealment, region RegionID) bool {
-	for _, cell := range e.hiddenCellsOf(c) {
+	inOrBeside := func(cell spatial.Position) bool {
 		if r, owned := e.field.regionOf(cell); owned && r == region {
 			return true
 		}
@@ -163,6 +172,18 @@ func (e *Encounter) concealmentTouchesRegion(c *concealment, region RegionID) bo
 			if r, owned := e.field.regionOf(neighbor); owned && r == region {
 				return true
 			}
+		}
+
+		return false
+	}
+	for _, cell := range e.hiddenCellsOf(c) {
+		if inOrBeside(cell) {
+			return true
+		}
+	}
+	for _, cell := range e.memberPropCells(c) {
+		if inOrBeside(cell) {
+			return true
 		}
 	}
 	for _, id := range c.doors {
