@@ -48,7 +48,8 @@ type DoorsOutput struct {
 // Doors reports each known door's identity and live state — the dynamic half
 // of the Atlas's doorways. The Atlas says where a door's edges are; this says
 // what each door is doing now. A host reads it once per member and keeps it
-// fresh from EventDoor and EventDoorRevealed beats.
+// fresh from EventDoor and EventConcealmentRevealed beats — the latter
+// carrying every door one secret hid, with its live state.
 //
 // Answered from [encounter.Encounter.DoorsFor] exclusively: the unscoped read
 // is the host's internal whole truth and does not cross this seam for a

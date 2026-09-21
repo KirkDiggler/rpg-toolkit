@@ -96,9 +96,11 @@ const (
 	findDCInvestigation = 14
 )
 
-// veilFind is the veil door's find check: spotted or reasoned out, each
-// route priced separately (the multi-approach ruling).
-func veilFind() []encounter.CheckApproach {
+// vaultFind is the vault's find check: spotted or reasoned out, each route
+// priced separately (the multi-approach ruling). THE CHECKS BELONG TO THE
+// CONCEALMENT, not to the door — one roll finds the secret, never one per
+// hidden thing (rpg-project#490 E2).
+func vaultFind() []encounter.CheckApproach {
 	return []encounter.CheckApproach{
 		{Ability: "perception", DC: findDCPerception},
 		{Ability: "investigation", DC: findDCInvestigation},
@@ -106,17 +108,24 @@ func veilFind() []encounter.CheckApproach {
 }
 
 // concealedWorld is the minimal honest dungeon, at session scale: a visible
-// 6x6 hall, a concealed 6x6 vault, and one concealed door — the veil — as
-// the whole frontier between them. alice and bob stand in the hall with
-// ordinary sight; carol stands in the far corner seeing five feet (one
-// cell), the fixture's way of authoring a member the witness honestly
-// answers "no" about without a second sight model.
+// 6x6 hall, and ONE CONCEALMENT — the vault — holding the far 6x6 room's
+// whole floor and the veil door that is the only frontier between them.
+// alice and bob stand in the hall with ordinary sight; carol stands in the
+// far corner seeing five feet (one cell), the fixture's way of authoring a
+// member the witness honestly answers "no" about without a second sight
+// model.
 //
-//	hall (visible)          vault (concealed)
+// ONE NOUN, WHERE THE FIXTURE USED TO CARRY TWO FLAGS (rpg-project#490 R1).
+// It was a `Concealed: true` region beside a `Concealed: [...]` door, which
+// is exactly the pair the primitive retired — and it is the pair E5's v2
+// lowering folds into a single concealment: the region's cells, every
+// concealed door touching it as a member, the checks unioned.
+//
+//	hall (visible)          vault cells (hidden)
 //	carol . . . . .  |  . . . . . .
 //	  .   . . . . .  |  . . . . . .
 //	  .   . a b . veil  . . . . . .      a=alice(1,1) b=bob(2,1)
-//	                 ^ (5,0)-(6,0), closed, find: veilFind()
+//	                 ^ (5,0)-(6,0), closed, a member of the vault
 func concealedWorld(t fataler, doorState encounter.DoorState) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
@@ -127,14 +136,14 @@ func concealedWorld(t fataler, doorState encounter.DoorState) *encounter.Encount
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
-				concealRegion(rectRegion("vault", 6, 0, 6, 6)),
+				rectRegion("vault", 6, 0, 6, 6),
 			},
-			Walls: axialSeam(0),
+			Walls:        axialSeam(0),
+			Concealments: []encounter.ConcealmentInput{vaultConcealment()},
 			Doors: []encounter.DoorInput{{
-				ID:        "veil",
-				Edges:     []encounter.DoorEdge{{From: cell(5, 0), To: cell(6, 0)}},
-				State:     doorState,
-				Concealed: veilFind(),
+				ID:    "veil",
+				Edges: []encounter.DoorEdge{{From: cell(5, 0), To: cell(6, 0)}},
+				State: doorState,
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -153,10 +162,35 @@ func concealedWorld(t fataler, doorState encounter.DoorState) *encounter.Encount
 	return &data
 }
 
-// concealRegion marks an authored region as hidden space.
-func concealRegion(r encounter.RegionInput) encounter.RegionInput {
-	r.Concealed = true
-	return r
+// vaultSecret is the fixture's one concealment. Named apart from the "vault"
+// REGION on purpose: a region is where the floor is, a concealment is what is
+// hidden, and the two nouns stopped being the same thing when the flag came
+// off the region (rpg-project#490 R1).
+const vaultSecret = "vault-secret"
+
+// vaultConcealment is the fixture's secret: the far room's whole 6x6 floor
+// and the veil door that guards it, hidden by belonging to one noun.
+func vaultConcealment() encounter.ConcealmentInput {
+	return encounter.ConcealmentInput{
+		ID:     vaultSecret,
+		Checks: vaultFind(),
+		Cells:  rectCells(6, 0, 6, 6),
+		Doors:  []encounter.DoorID{"veil"},
+	}
+}
+
+// hexCells converts AUTHORED offset cells into the dungeon-absolute axial
+// frame every wire answer speaks — rectCells' output through the same
+// [encounter.HexCellAt] the field applies once at construction. A reveal
+// beat carries absolute cells; the fixture lists authored ones; saying which
+// frame you mean and converting exactly once is the staggered-corridor
+// lesson.
+func hexCells(authored []spatial.Position) []spatial.Position {
+	out := make([]spatial.Position, 0, len(authored))
+	for _, c := range authored {
+		out = append(out, hexCell(int(c.X), int(c.Y)))
+	}
+	return out
 }
 
 // walledTwinWorld is concealedWorld with the secret replaced by honesty:
@@ -218,7 +252,7 @@ func plainHallWorld(t fataler) *encounter.EncounterData {
 }
 
 // sharpEyed is a searcher whose proficient perception (+2 WIS, +2 prof)
-// beats the veil's DC 12 on a flat 10; investigation stays +0.
+// beats the vault's DC 12 on a flat 10; investigation stays +0.
 func sharpEyed(id string) *character.Data {
 	return &character.Data{
 		ID: id, PlayerID: "player-" + id, Name: "Sharp", Level: 3,
@@ -242,9 +276,9 @@ func dullEyed(id string) *character.Data {
 
 // armedSearcher is a finder who can also fight: attack_test.go's armedFighter
 // — longsword, martial proficiency, STR 16 — given proficient perception, so
-// ONE member can find the veil and then swing inside the fight it does not go
+// ONE member can find the vault and then swing inside the fight it does not go
 // away for. WIS 12 (+1) and proficiency (+2) put testDice's flat 10 at 13,
-// one over the veil's DC 12; investigation stays +0 against DC 14, so she
+// one over the vault's DC 12; investigation stays +0 against DC 14, so she
 // finds it by exactly the route and margin sharpEyed does.
 func armedSearcher(id string) *character.Data {
 	sheet := armedFighter(id)
@@ -307,7 +341,7 @@ func eventsFor(published []session.Event, recipient string) []session.Event {
 }
 
 // eventsOfKind is eventsFor narrowed to one kind — what a test that says "one
-// door_revealed for the finder" actually means.
+// concealment_revealed for the finder" actually means.
 //
 // IT EXISTS BECAUSE THE WORLD CLOCK NOW MOVES (rpg-project#465, design §5). A
 // verb that spends a round appends a `tick` beat beside its own, so a count
@@ -336,9 +370,19 @@ func (s *ConcealSuite) assertDense(events []session.Event, who string) {
 }
 
 // TestSearchRevealsToTheSearcherAlone is the slice's headline scene: alice
-// searches the hall, the veil appears for her alone, and nothing about the
+// searches the hall, the vault appears for her alone, and nothing about the
 // verb — response, delivery, or any other member's stream — tells the table
 // a question was even asked.
+//
+// ONE FIND, THE WHOLE SECRET (rpg-project#490 R1, E4). This scene used to end
+// by pinning that finding the door was NOT seeing behind it: the searcher got
+// a door beat and her atlas still held 36 cells, because a concealed door and
+// a concealed region were two secrets that happened to touch. They are one
+// noun now, and one moment — so the finder gets the floor, the door and the
+// walls in a single beat, and the assertion that the vault "does not exist
+// for alice yet" is not weakened here, it is RETIRED by the ruling. What has
+// to stay true is the half this test is named for, and it does: bob and carol
+// learn nothing at all.
 func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()), sharpEyed("alice"))
@@ -352,26 +396,40 @@ func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 	// The searcher's own stream carries the reveal, typed. Narrowed to the
 	// kind this test is about: a Search spends a round of the world now, so
 	// every member's stream also carries that tick (rpg-project#465 §5).
-	alice := eventsOfKind(s.stream.published, "alice", session.EventDoorRevealed)
-	s.Require().Len(alice, 1, "one door_revealed for the finder")
-	body, ok := alice[0].Body.(session.DoorRevealedBody)
+	alice := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	s.Require().Len(alice, 1, "one concealment_revealed for the finder")
+	body, ok := alice[0].Body.(session.ConcealmentRevealedBody)
 	s.Require().True(ok, "a reveal event carries its typed body")
-	s.Equal("veil", body.Door)
-	s.Equal("closed", body.State, "found is not opened — concealment looks like a shut door")
-	s.Require().Len(body.Doorways, 1)
-	s.Equal(session.AtlasDoorway{Door: "veil", From: cell(5, 0), To: cell(6, 0)}, body.Doorways[0],
-		"the body is the patch for the cached atlas's doorway list")
-	s.Empty(body.Approaches, "an unlocked door carries no lock routes")
+	s.Equal(vaultSecret, body.Concealment, "the patch names the noun it is about")
 
-	// Nobody else is told about the door — and (per-recipient numbering) no
-	// readable hole is left where their copy would have been.
+	s.Require().Len(body.Doors, 1, "the vault hides exactly one door")
+	s.Equal("veil", body.Doors[0].Door)
+	s.Equal("closed", body.Doors[0].State,
+		"found is not opened — concealment looks like a shut door")
+	s.Require().Len(body.Doors[0].Doorways, 1)
+	s.Equal(session.AtlasDoorway{Door: "veil", From: cell(5, 0), To: cell(6, 0)},
+		body.Doors[0].Doorways[0],
+		"the body is the patch for the cached atlas's doorway list")
+	s.Empty(body.Doors[0].Approaches, "an unlocked door carries no lock routes")
+
+	s.ElementsMatch(hexCells(rectCells(6, 0, 6, 6)), body.Cells,
+		"and the floor it hid, dungeon-absolute — the cells the author listed")
+	s.NotEmpty(body.Boundaries,
+		"with every boundary touching that floor, which was withheld with it")
+	s.Empty(body.Segments,
+		"this fixture authors its frontier as boundaries and no wall RUNS, so there "+
+			"are no segments to carry — empty here is the truth, not an omission "+
+			"(the carrying is pinned on a payload that has some, in the decode suite)")
+
+	// Nobody else is told — and (per-recipient numbering) no readable hole is
+	// left where their copy would have been.
 	//
 	// THEY DO HEAR THE CLOCK. A Search spends a round of the world, and time
 	// passing is truth grain that goes to the whole run: what detection scopes
 	// is the FINDING, not the passing of a round. So this asks what it means
-	// — nobody else learned about the veil — rather than counting a stream.
-	s.Empty(eventsOfKind(s.stream.published, "bob", session.EventDoorRevealed))
-	s.Empty(eventsOfKind(s.stream.published, "carol", session.EventDoorRevealed))
+	// — nobody else learned about the vault — rather than counting a stream.
+	s.Empty(eventsOfKind(s.stream.published, "bob", session.EventConcealmentRevealed))
+	s.Empty(eventsOfKind(s.stream.published, "carol", session.EventConcealmentRevealed))
 
 	// The per-member reads agree with the streams.
 	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
@@ -383,22 +441,27 @@ func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 	s.Require().NoError(err)
 	s.Empty(unfound.Doors, "for bob the veil is still nowhere")
 
-	// Finding the door is not seeing behind it: both atlases still hold the
-	// hall alone — 36 cells of a 6x6 region — and the vault stays
-	// never-authored even for the finder.
+	// The atlases split on the find: the finder holds both rooms, the
+	// non-knower still holds the hall alone and the wall that stands in for
+	// the secret.
 	found, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Len(found.Cells, 36, "the vault does not exist for alice yet — she knows a DOOR")
-	s.Require().Len(found.Doorways, 1, "but the doorway is on her map")
+	s.Len(found.Cells, 72, "one noun, one moment: the finder has the vault's floor too")
+	s.Require().Len(found.Doorways, 1, "and the doorway is on her map")
 
 	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
-	s.Len(blind.Cells, 36)
+	s.Len(blind.Cells, 36, "bob's map is the hall and nothing else")
 	s.Empty(blind.Doorways, "bob's map shows no doorway")
 	s.Len(blind.Boundaries, len(found.Boundaries)+1,
 		"encounter v0.45.1's boundary rule masks the unfound veil even where it borders "+
 			"hidden space: floor that ends without a wall but still refuses movement is itself "+
 			"a tell; alice's found doorway replaces exactly that one masquerade wall")
+
+	// The beat is the patch for exactly that difference: applying alice's
+	// own cells to what bob can see is what she can see.
+	s.Equal(len(blind.Cells)+len(body.Cells), len(found.Cells),
+		"the reveal beat carries precisely what the masquerade was withholding")
 }
 
 // TestAFailedSearchAndNothingToFindAreIdentical carries failed-equals-empty
@@ -430,8 +493,8 @@ func (s *ConcealSuite) TestAFailedSearchAndNothingToFindAreIdentical() {
 	s.Equal(failedStream, s.stream.published,
 		"a failed roll and a hall with nothing in it publish the same beats to the same people")
 	for _, who := range []string{"alice", "bob", "carol"} {
-		s.Empty(eventsOfKind(s.stream.published, who, session.EventDoorRevealed),
-			"%s learned about no door, because there was none to learn about", who)
+		s.Empty(eventsOfKind(s.stream.published, who, session.EventConcealmentRevealed),
+			"%s learned about no secret, because there was none to learn about", who)
 	}
 }
 
@@ -719,17 +782,22 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 			Field: encounter.FieldInput{Canvas: pointyCanvas(),
 				Regions: []encounter.RegionInput{
 					rectRegion("hall", 0, 0, 6, 6),
-					concealRegion(rectRegion("vault", 6, 0, 6, 6)),
+					rectRegion("vault", 6, 0, 6, 6),
 				},
 				Walls: axialSeam(0),
+				Concealments: []encounter.ConcealmentInput{{
+					ID: vaultSecret,
+					Checks: []encounter.CheckApproach{
+						{Ability: "perception", DC: 16},
+						{Ability: "investigation", DC: 10},
+					},
+					Cells: rectCells(6, 0, 6, 6),
+					Doors: []encounter.DoorID{"veil"},
+				}},
 				Doors: []encounter.DoorInput{{
 					ID:    "veil",
 					Edges: []encounter.DoorEdge{{From: cell(5, 0), To: cell(6, 0)}},
 					State: encounter.DoorIsClosed(),
-					Concealed: []encounter.CheckApproach{
-						{Ability: "perception", DC: 16},
-						{Ability: "investigation", DC: 10},
-					},
 				}},
 			},
 			Members: []encounter.MemberInput{
@@ -758,10 +826,10 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 		Session: "sess", Member: "mira", Region: "hall"})
 	s.Require().NoError(err)
 
-	events := eventsOfKind(s.stream.published, "mira", session.EventDoorRevealed)
+	events := eventsOfKind(s.stream.published, "mira", session.EventConcealmentRevealed)
 	s.Require().Len(events, 1,
 		"flat 10 + 0 investigation meets its DC 10; flat 10 + 5 perception misses its DC 16 — "+
-			"only best-by-margin finds this door")
+			"only best-by-margin finds this secret")
 }
 
 // TestUnlockPicksTheRouteAndReportsItsDC is the applied-route contract on the
@@ -903,9 +971,17 @@ func (s *ConcealSuite) TestTheMoveLawHoldsAtTheSeam() {
 
 // TestOpeningRevealsToThePerceiversThroughTheOneSeam is the witness scene:
 // the door opens, and who learns is decided by the SAME sight answers the
-// percept machinery uses — alice (finder, in range) gets the room, bob
-// (never searched, in range) gets door and room by seeing it open, carol
-// (five feet of sight, far corner) gets nothing until she walks up.
+// percept machinery uses — alice (finder) already holds the secret and hears
+// only the door move, bob (never searched, in range) learns the whole vault
+// by seeing the wall open, carol (five feet of sight, far corner) gets
+// nothing until she walks up.
+//
+// ALICE'S HALF MOVED, AND THAT IS THE RULING (rpg-project#490 R1). She used
+// to learn the ROOM here, because her search had only found the door; one
+// noun means her search already handed her everything, so what opening it
+// adds for her is a door state and nothing else. The scene still pins what
+// it is named for: three members, three different answers, all of them the
+// witness seam's.
 func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()),
@@ -938,22 +1014,26 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 		return out
 	}
 	s.Contains(kinds(alice), session.EventDoor, "the state change reaches the knower")
-	s.Contains(kinds(alice), session.EventRegionRevealed)
+	s.NotContains(kinds(alice), session.EventConcealmentRevealed,
+		"she found the vault already — a secret is revealed to one member exactly once")
 	s.assertDense(alice, "alice")
 
-	// bob never searched: watching the wall open IS his reveal — door and
-	// room together, and deliberately no door-state beat for the door he
-	// did not know a moment ago.
+	// bob never searched: watching the wall open IS his reveal, and it is ONE
+	// beat carrying the whole secret — no door-state beat for a door he did
+	// not know a moment ago.
 	bob := eventsFor(s.stream.published, "bob")
-	s.Equal([]session.EventKind{session.EventDoorRevealed, session.EventRegionRevealed}, kinds(bob),
-		"perceiving an open concealed door reveals the door and the room behind it")
+	s.Equal([]session.EventKind{session.EventConcealmentRevealed}, kinds(bob),
+		"perceiving a hidden door standing open reveals the concealment it belongs to, once")
 	s.assertDense(bob, "bob")
 
-	region, ok := bob[1].Body.(session.RegionRevealedBody)
+	revealed, ok := bob[0].Body.(session.ConcealmentRevealedBody)
 	s.Require().True(ok)
-	s.Equal("vault", region.Region.ID)
-	s.Len(region.Region.Cells, 36, "the patch carries the region's whole authored slice — 6x6")
-	s.NotEmpty(region.Boundaries, "with every boundary touching its cells, border walls included")
+	s.Equal(vaultSecret, revealed.Concealment)
+	s.Len(revealed.Cells, 36, "the patch carries the secret's whole floor — 6x6")
+	s.NotEmpty(revealed.Boundaries, "with every boundary touching its cells, border walls included")
+	s.Require().Len(revealed.Doors, 1)
+	s.Equal("open", revealed.Doors[0].State,
+		"and the door's LIVE state, which is how he came to be told at all")
 
 	// carol sees five feet from the far corner: the one sight seam answers
 	// "no" for her exactly as her own percepts would, so she learns nothing
@@ -963,10 +1043,8 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	// it is only visible now that a sighting beat reports it. Publishing
 	// her own narrowing view is not leaking the vault.
 	carolHeard := kinds(eventsFor(s.stream.published, "carol"))
-	s.NotContains(carolHeard, session.EventDoorRevealed,
-		"she cannot see the door open, so it is not revealed to her")
-	s.NotContains(carolHeard, session.EventRegionRevealed,
-		"and the room behind it stays off her map")
+	s.NotContains(carolHeard, session.EventConcealmentRevealed,
+		"she cannot see the door open, so the vault is not revealed to her")
 
 	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
 	s.Require().NoError(err)
@@ -983,8 +1061,8 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	s.Require().NoError(err)
 
 	carol := eventsFor(s.stream.published, "carol")
-	s.Contains(kinds(carol), session.EventDoorRevealed, "walking up to an open door reveals it")
-	s.Contains(kinds(carol), session.EventRegionRevealed)
+	s.Contains(kinds(carol), session.EventConcealmentRevealed,
+		"walking up to a hidden door standing open reveals the secret it belongs to")
 	s.assertDense(carol, "carol")
 
 	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
@@ -1021,7 +1099,7 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	s.Require().Len(david, 2)
 	s.Equal(session.EventJoined, david[0].Kind)
 	s.Equal(uint64(1), david[0].Seq, "the joiner's stream starts at 1 — their own numbering, not the record's")
-	s.Equal(session.EventRegionRevealed, david[1].Kind)
+	s.Equal(session.EventConcealmentRevealed, david[1].Kind)
 	s.Equal(uint64(2), david[1].Seq)
 	s.Equal(uint64(1), out.Seq, "the verb's own Seq speaks the actor's numbering too")
 
@@ -1039,14 +1117,17 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 			"who joined, never where — the joined body carries no cell")
 	}
 
-	// Presence pierces the ROOM, not its door: david's map holds the whole
-	// authored floor — the hall was never a secret — plus the vault he
-	// stands in, and still no veil doorway (occupant knows the room, not
-	// its door; the composition's own pin, visible through the seam).
+	// PRESENCE PIERCES THE SECRET, DOOR AND ALL. It used to pierce the room
+	// and leave the door unfound, because a concealed region and a concealed
+	// door were two secrets and standing inside one told you nothing about
+	// the other. They are one noun now (rpg-project#490 R1): you cannot
+	// occupy a secret you do not know exists, and knowing it is knowing all
+	// of it. david's map holds the whole authored floor — the hall was never
+	// a secret — plus the vault he stands in, and the veil with it.
 	occupant, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "david"})
 	s.Require().NoError(err)
 	s.Len(occupant.Cells, 72)
-	s.Empty(occupant.Doorways, "the veil stays unfound even for the room's occupant")
+	s.Len(occupant.Doorways, 1, "one noun: standing in the vault is knowing the vault")
 
 	stranger, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
@@ -1268,4 +1349,331 @@ func (s *ConcealSuite) TestPlainDungeonNumberingIsIdentityForAFoundingMember() {
 	s.Require().NoError(err)
 	s.Equal(uint64(1), out.Seq, "the joiner's first delivered beat is their number 1")
 	s.Greater(world.Log.NextSeq, uint64(2), "while the record is well past it")
+}
+
+// footprintCell is where the fixture's footprint door stands: a cell inside
+// the hall, two cells east of alice and well within her sight, and twelve
+// cells from carol's corner — out of her five feet by any metric.
+func footprintCell() spatial.Position { return hexCell(4, 1) }
+
+// hallPlane is the plane a session field rasterises footprints onto: this
+// fixture's own pointy-top orientation at [encounter.FeetPerCell] across the
+// flats. THE SAME FRAME THE FIELD BUILDS — units.go's five feet turned into
+// a frame — so a box authored at a cell's centre here is a box the field
+// agrees stands on that cell.
+func hallPlane() spatial.HexEmbedding {
+	return spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{
+		Orientation: spatial.HexOrientationPointyTop,
+		CellWidth:   encounter.FeetPerCell,
+	})
+}
+
+// aLeafOn is a door-sized rectangle standing on exactly one cell: a one-foot
+// box at that cell's own centre, far inside a five-foot cell's circumradius,
+// so the field's rasteriser reaches that cell and no neighbour.
+func aLeafOn(cell spatial.Position) *spatial.FootprintPlacement {
+	return &spatial.FootprintPlacement{
+		Footprint: spatial.Footprint{Box: &spatial.Box{W: 1, D: 1}},
+		Origin:    hallPlane().CellCentre(cell),
+	}
+}
+
+// hiddenLeafWorld is the hall with ONE secret in it: a concealment whose only
+// member is a FOOTPRINT door — a leaf standing as a rectangle rather than in
+// a crossing — already open. Nothing else is hidden, so what the witness is
+// asked about is the rectangle and nothing else.
+//
+// alice stands two cells away with ordinary sight; carol is in the far corner
+// with five feet of it. The pair is the fixture's way of authoring one member
+// the seam must answer "yes" about and one it must answer "no" about, through
+// the same sight instrument, with no second sight model anywhere.
+func hiddenLeafWorld(t fataler) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing:      encEveryoneStanding{},
+		CheckResolver: encNeverResolves{},
+		Witness:       encNeverWitnesses{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
+			Concealments: []encounter.ConcealmentInput{{
+				ID:     leafSecret,
+				Checks: vaultFind(),
+				Doors:  []encounter.DoorID{"leaf"},
+			}},
+			Doors: []encounter.DoorInput{{
+				ID:        "leaf",
+				Placement: aLeafOn(footprintCell()),
+				State:     encounter.DoorIsOpen(),
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5), SightFeet: 5},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("building hidden leaf world: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+// leafSecret names the footprint fixture's concealment.
+const leafSecret = "leaf-secret"
+
+// TestAFootprintDoorStandingOpenIsPerceivedThroughItsCells is the
+// PerceiversInput.Cells adoption, driven end to end (rpg-project#490 E7).
+//
+// A FOOTPRINT DOOR STANDS IN NO CROSSING. Until this seam read Cells, the
+// composition could only hand it Edges — and a footprint door's Edges are
+// empty, so the loop fell through and answered "nobody". That is not a
+// refusal anybody would see: it is a secret that could never be perceived by
+// anyone, no matter who stood in front of it with the thing wide open, and
+// the only symptom would be a reveal that never came. Exactly the fail-silent
+// shape this module refuses everywhere else.
+//
+// So the claim is the positive one: the leaf stands open in the middle of the
+// hall, and the member who can see the cell it stands on is told about the
+// secret it belongs to — through the same sight seam, the same canvas and the
+// same range cut the edge path has always used.
+func (s *ConcealSuite) TestAFootprintDoorStandingOpenIsPerceivedThroughItsCells() {
+	ctx := context.Background()
+	s.startWith(hiddenLeafWorld(s.T()), sharpEyed("alice"), dullEyed("carol"))
+
+	// Concealment's trigger detection rides every sight refresh, so one
+	// ordinary step is what makes the question get asked. NOT a Search: a
+	// Search would roll the leaf's own checks, and then a reveal would prove
+	// the dice worked rather than the witness did.
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(2, 0)}})
+	s.Require().NoError(err)
+
+	alice := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	s.Require().Len(alice, 1,
+		"a footprint door standing open is perceived by whoever can see the cell it stands on")
+
+	body, ok := alice[0].Body.(session.ConcealmentRevealedBody)
+	s.Require().True(ok)
+	s.Equal(leafSecret, body.Concealment)
+	s.Require().Len(body.Doors, 1)
+	s.Equal("leaf", body.Doors[0].Door)
+	s.Equal("open", body.Doors[0].State, "which is how she came to be told")
+	s.Empty(body.Doors[0].Doorways,
+		"a footprint door stands in no crossing, so there is no doorway to patch in — "+
+			"its rectangle reaches her through the atlas re-read this beat tells her to make")
+
+	// And the negative half, which is what makes the positive one a claim
+	// about SIGHT rather than about everybody: five feet from the far corner
+	// reaches nothing, and the seam says so.
+	s.Empty(eventsOfKind(s.stream.published, "carol", session.EventConcealmentRevealed),
+		"carol sees five feet: the leaf is not hers to perceive, and the witness agrees")
+
+	found, doorsErr := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(doorsErr)
+	s.Require().Len(found.Doors, 1, "the perceiver's door list holds the leaf")
+	s.Equal("leaf", found.Doors[0].ID)
+
+	blind, blindErr := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "carol"})
+	s.Require().NoError(blindErr)
+	s.Empty(blind.Doors, "and for carol there is still no such door")
+}
+
+// TestTheTwoDoorGeometriesArePerceivedByTheSameMembers is the equivalence the
+// adoption has to earn: EITHER GEOMETRY, ONE QUESTION.
+//
+// The composition fills exactly one of PerceiversInput's two lists — Edges
+// for a crossing, Cells for a rectangle — and this seam is the only thing
+// that decides what those lists MEAN. If it read them as two different
+// questions, a secret could be perceptible in one authoring and not the
+// other for no reason an author could see. So the same hall gets the same
+// open hidden door twice, once as a leaf standing on a cell and once as a
+// crossing at that cell's own edge, and the seam has to name the same people
+// both times: alice, who can see it, and not carol, who cannot.
+//
+// COMPARED AS RECIPIENT SETS, deliberately, rather than asserted separately:
+// two tests each saying "alice" would both still pass on a seam that had
+// simply told everybody.
+func (s *ConcealSuite) TestTheTwoDoorGeometriesArePerceivedByTheSameMembers() {
+	ctx := context.Background()
+
+	perceivedIn := func(world *encounter.EncounterData) []string {
+		s.startWith(world, sharpEyed("alice"), dullEyed("carol"))
+		_, err := s.mgr.Move(ctx, &session.MoveInput{
+			Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(2, 0)}})
+		s.Require().NoError(err)
+
+		var told []string
+		for _, e := range s.stream.published {
+			if e.Kind == session.EventConcealmentRevealed {
+				told = append(told, e.Recipient)
+			}
+		}
+		return told
+	}
+
+	asRectangle := perceivedIn(hiddenLeafWorld(s.T()))
+	asCrossing := perceivedIn(hiddenEdgeWorld(s.T()))
+
+	s.Equal([]string{"alice"}, asRectangle,
+		"the leaf is seen by the member who can see the cell it stands on, and by nobody else")
+	s.Equal(asRectangle, asCrossing,
+		"a door standing ON those cells and a door standing BETWEEN them are the same "+
+			"question asked of the same instruments — one list or the other, never a "+
+			"different answer")
+}
+
+// hiddenEdgeWorld is [hiddenLeafWorld]'s twin with the one thing changed that
+// the equivalence is about: the same secret, the same single member door, the
+// same place — authored as a CROSSING at the leaf cell's own edge instead of
+// as a rectangle standing on it. Everything else, members included, is
+// identical by construction rather than by inspection.
+func hiddenEdgeWorld(t fataler) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing:      encEveryoneStanding{},
+		CheckResolver: encNeverResolves{},
+		Witness:       encNeverWitnesses{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
+			Concealments: []encounter.ConcealmentInput{{
+				ID:     leafSecret,
+				Checks: vaultFind(),
+				Doors:  []encounter.DoorID{"leaf"},
+			}},
+			Doors: []encounter.DoorInput{{
+				ID:    "leaf",
+				Edges: []encounter.DoorEdge{{From: cell(4, 1), To: cell(5, 1)}},
+				State: encounter.DoorIsOpen(),
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5), SightFeet: 5},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("building hidden edge world: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+// nicheSecret names the concealment that takes three cells out of the hall
+// without taking the hall.
+const nicheSecret = "niche-secret"
+
+// nicheCells is the corner of the hall the niche hides: three of the room's
+// own thirty-six cells, authored, far from where anybody stands.
+func nicheCells() []spatial.Position {
+	return []spatial.Position{cell(5, 4), cell(4, 5), cell(5, 5)}
+}
+
+// partlySecretWorld is ONE ROOM WITH A PIECE CUT OUT OF IT: a 6x6 hall whose
+// far corner belongs to a concealment, and nothing else hidden anywhere. No
+// door, because a door would be a second way to learn the secret and this
+// fixture is about the room.
+//
+// It is the case a region FLAG could not express and the primitive can. A
+// flag meant a whole room was secret or none of it was; a concealment is
+// cells, so a secret can be a niche in a room people are standing in — which
+// is why the reveal beat has to carry the room back WHOLE rather than carry
+// the cells and leave the entry a trim of the truth.
+func partlySecretWorld(t fataler) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing:      encEveryoneStanding{},
+		CheckResolver: encNeverResolves{},
+		Witness:       encNeverWitnesses{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
+			Concealments: []encounter.ConcealmentInput{{
+				ID:     nicheSecret,
+				Checks: vaultFind(),
+				Cells:  nicheCells(),
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("building partly secret world: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+// TestAPartlySecretRoomComesBackWhole is the `regions` REPLACEMENT, driven end
+// to end (rpg-project#490 E4).
+//
+// A REGION IS TRIMMED, NOT DROPPED. An observer who has not found the niche is
+// sent the hall with those three cells cut out of it — a room entry that is a
+// slice of the truth rather than the truth. The cells arrive on the reveal, so
+// without this field the finder would hold three cells that their own cached
+// region entry does not list, and the only thing that could reconcile them is
+// a full atlas refetch the beat never asked for.
+//
+// So the claim is arithmetic and hard to satisfy by accident: the room the
+// beat carries is the WHOLE room, cells the recipient already had included —
+// not the slice that was withheld, which is what `cells` already says, and not
+// the trim they were holding.
+func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
+	ctx := context.Background()
+	s.startWith(partlySecretWorld(s.T()), sharpEyed("alice"), dullEyed("bob"))
+
+	// What a non-knower holds: the hall, three cells short of itself.
+	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Require().Len(before.Regions, 1, "one room, whether or not part of it is a secret")
+	s.Equal("hall", before.Regions[0].ID)
+	s.Len(before.Regions[0].Cells, 33,
+		"the entry is REBUILT without the hidden cells rather than withheld — a niche is "+
+			"not a reason to stop telling somebody which room they are standing in")
+
+	_, err = s.mgr.Search(ctx, &session.SearchInput{
+		Session: "sess", Member: "alice", Region: "hall"})
+	s.Require().NoError(err)
+
+	found := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	s.Require().Len(found, 1)
+	body, ok := found[0].Body.(session.ConcealmentRevealedBody)
+	s.Require().True(ok)
+
+	s.Len(body.Cells, 3, "the beat's cells are what was withheld: the niche and nothing else")
+
+	s.Require().Len(body.Regions, 1, "and the one room it was cut out of")
+	s.Equal("hall", body.Regions[0].ID)
+	s.Len(body.Regions[0].Cells, 36,
+		"carried WHOLE — a replacement for the trim, not a second copy of the cells: "+
+			"33 the finder already had plus the 3 she just learned")
+	s.Equal(before.Regions[0].Archetype, body.Regions[0].Archetype,
+		"with the per-area facts a client dresses the room with")
+	s.Equal(before.Regions[0].Lighting, body.Regions[0].Lighting)
+
+	// The patch and the map agree, which is the whole point of deriving one
+	// from the other: applying this entry to the cache is a refetch.
+	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Len(after.Regions, 1)
+	s.Equal(body.Regions[0], after.Regions[0],
+		"the room the beat carries IS the room her own atlas now answers, field for field")
+
+	// And bob, who searched nothing, still holds the trim.
+	still, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Require().Len(still.Regions, 1)
+	s.Len(still.Regions[0].Cells, 33, "a secret found is found by its finder alone")
 }

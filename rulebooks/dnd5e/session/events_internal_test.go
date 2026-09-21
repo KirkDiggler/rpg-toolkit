@@ -1012,31 +1012,49 @@ func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
 	}
 }
 
-// TestRegionRevealedCarriesTheRoomsWallsAndSealedCells is the session half of
-// rpg-toolkit#1480.
+// TestConcealmentRevealedCarriesTheWholeSecret is the session half of
+// rpg-project#490 E4 (and of rpg-toolkit#1480, which it inherits).
 //
-// A client draws walls from segments now, so a reveal that carried a room's
-// boundaries and not its lines would open the secret onto a room with no walls.
-// The payload below is the shape the composition emits — its own atlas answer,
-// sliced, with the field names this package's atlas types already use — so the
-// decode is a straight unmarshal and this test is the pin that the two agree
-// about the names.
+// ONE BEAT NOW CARRIES WHAT TWO USED TO. A door's find wrote "door_revealed"
+// and the room behind it wrote "region_revealed"; a concealment is one noun
+// and one moment, so everything a recipient was being denied arrives together
+// — the floor, the props on it, the doors with their live state and doorways,
+// each touched region WHOLE, the boundaries, the segments it is drawn with
+// and the cells of it nobody stands on.
+//
+// A client draws walls from segments, so a reveal carrying boundaries and not
+// lines would open the secret onto a room with no walls: the tell the
+// masquerade exists to remove, arriving at the moment it matters most. The
+// payload below is the shape the composition emits — its own atlas answer,
+// sliced, with the field names this package's atlas types already use — so
+// the decode is a straight unmarshal and this test is the pin that the two
+// agree about the names.
 //
 // THE COMPOSITION'S SIDE IS PINNED IN THE COMPOSITION, where a real reveal is
 // driven end to end and the beat is checked against the recipient's own
-// AtlasFor byte for byte. This module cannot run that test until its pin moves
-// to the encounter tag that carries it; what it can and must own is that the
-// bytes arriving in this shape land in the right fields.
-func TestRegionRevealedCarriesTheRoomsWallsAndSealedCells(t *testing.T) {
+// AtlasFor byte for byte. What this module can and must own is that the bytes
+// arriving in this shape land in the right fields.
+func TestConcealmentRevealedCarriesTheWholeSecret(t *testing.T) {
 	payload := `{
-		"beat": "region_revealed",
-		"region": {
-			"id": "vault", "name": "Vault",
-			"cells": [{"x": 4, "y": 0}, {"x": 4, "y": 1}],
-			"archetype": "crypt",
-			"lighting": {"intensity": 0.2}
-		},
-		"props": [],
+		"beat": "concealment_revealed",
+		"concealment": "tomb/vault",
+		"cells": [{"x": 4, "y": 0}, {"x": 4, "y": 1}],
+		"props": [
+			{"ref": "dnd5e:props:reliquary", "at": {"x": 4, "y": 1},
+			 "blocks_movement": true, "blocks_line_of_sight": false}
+		],
+		"doors": [
+			{"door": "veil", "state": "locked",
+			 "doorways": [{"from": {"x": 3, "y": 0}, "to": {"x": 4, "y": 0}}],
+			 "approaches": [{"ability": "dex", "dc": 14}]}
+		],
+		"regions": [
+			{"id": "vault", "name": "Vault",
+			 "cells": [{"x": 3, "y": 0}, {"x": 3, "y": 1},
+			           {"x": 4, "y": 0}, {"x": 4, "y": 1}],
+			 "archetype": "crypt",
+			 "lighting": {"intensity": 0.2}}
+		],
 		"boundaries": [
 			{"from": {"x": 3, "y": 1}, "to": {"x": 4, "y": 1},
 			 "blocks_movement": true, "blocks_line_of_sight": true, "height": 2}
@@ -1049,43 +1067,109 @@ func TestRegionRevealedCarriesTheRoomsWallsAndSealedCells(t *testing.T) {
 	}`
 
 	kind, body := decodeBeat([]byte(payload))
-	require.Equal(t, EventRegionRevealed, kind)
+	require.Equal(t, EventConcealmentRevealed, kind)
 
-	region, ok := body.(RegionRevealedBody)
+	revealed, ok := body.(ConcealmentRevealedBody)
 	require.True(t, ok, "the reveal decodes to its own typed body")
-	require.Equal(t, "vault", region.Region.ID)
+	require.Equal(t, "tomb/vault", revealed.Concealment, "the noun the patch is about")
 
-	require.Len(t, region.Segments, 2, "the walls inside the room being revealed")
-	require.Equal(t, AxialPointF{Q: 6, R: 0.5}, region.Segments[0].From,
+	require.Equal(t, []spatial.Position{{X: 4, Y: 0}, {X: 4, Y: 1}}, revealed.Cells,
+		"the floor the secret was withholding")
+
+	// THE REGION ARRIVES WHOLE. An unaware recipient held the entry with the
+	// hidden cells trimmed out of it, or did not hold it at all; this is the
+	// replacement, not an addition, so the whole entry has to survive the
+	// decode — id, name, cells, archetype and lighting alike.
+	//
+	// THE ROOM HERE IS DELIBERATELY BIGGER THAN THE SECRET: four cells, of
+	// which two are the hidden ones this beat also carries under `cells`. A
+	// fixture whose room was exactly the secret would decode identically
+	// whether the field meant "the whole room" or "the slice that was
+	// withheld", and those are different instructions to a client.
+	require.Len(t, revealed.Regions, 1, "the one region this secret took cells from")
+	require.Equal(t, AtlasRegion{
+		ID: "vault", Name: "Vault",
+		Cells: []spatial.Position{
+			{X: 3, Y: 0}, {X: 3, Y: 1}, {X: 4, Y: 0}, {X: 4, Y: 1},
+		},
+		Archetype: "crypt",
+		Lighting:  Lighting{Intensity: 0.2},
+	}, revealed.Regions[0])
+
+	// The door is re-carried as the patch for two cached lists at once, so
+	// its doorway must come back with Door filled — the client appends it to
+	// the atlas's own doorway list without reshaping anything itself.
+	require.Len(t, revealed.Doors, 1)
+	require.Equal(t, "veil", revealed.Doors[0].Door)
+	require.Equal(t, "locked", revealed.Doors[0].State, "its LIVE state at reveal time")
+	require.Equal(t, []AtlasDoorway{{Door: "veil", From: spatial.Position{X: 3, Y: 0},
+		To: spatial.Position{X: 4, Y: 0}}}, revealed.Doors[0].Doorways,
+		"the composition writes a bare from/to pair; the body fills the door id in")
+	require.Equal(t, []DoorApproach{{Ability: "dex", DC: 14}}, revealed.Doors[0].Approaches,
+		"a locked door carries what it would cost to open")
+
+	require.Len(t, revealed.Props, 1, "and the things standing on the hidden floor")
+	require.Equal(t, "dnd5e:props:reliquary", revealed.Props[0].Ref)
+
+	require.Len(t, revealed.Boundaries, 1, "every boundary touching its cells")
+	require.Len(t, revealed.Segments, 2, "the walls inside the space being revealed")
+	require.Equal(t, AxialPointF{Q: 6, R: 0.5}, revealed.Segments[0].From,
 		"fractional axial, halves and all")
-	require.Equal(t, AxialPointF{Q: 5, R: 2.5}, region.Segments[0].To)
-	require.Equal(t, 3.0, region.Segments[0].Height, "a raised wall is drawn raised")
-	require.Zero(t, region.Segments[1].Height, "and one that authored no height keeps the standard")
+	require.Equal(t, AxialPointF{Q: 5, R: 2.5}, revealed.Segments[0].To)
+	require.Equal(t, 3.0, revealed.Segments[0].Height, "a raised wall is drawn raised")
+	require.Zero(t, revealed.Segments[1].Height, "and one that authored no height keeps the standard")
 
-	require.Equal(t, []spatial.Position{{X: 6, Y: 2}}, region.Sealed,
-		"the cells of the room nobody stands on")
+	require.Equal(t, []spatial.Position{{X: 6, Y: 2}}, revealed.Sealed,
+		"the cells of the secret nobody stands on")
 }
 
-// TestRegionRevealedWithoutWallsIsStillARoom — a room with no walls of its own
-// inside it reveals with no segments, and that is an ordinary answer rather
-// than a malformed beat. The empty-is-the-ordinary-case rule the door reveal
-// already follows.
-func TestRegionRevealedWithoutWallsIsStillARoom(t *testing.T) {
+// TestAConcealmentThatHidesOnlyACrossingIsStillARevealed — a secret with no
+// floor of its own (a hidden crossing: one door and nothing else) reveals
+// with no cells, no regions, no segments and no sealed list, and that is an
+// ordinary answer rather than a malformed beat. Every list here may honestly
+// be empty; the empty-is-the-ordinary-case rule the door reveal already
+// followed, now asked of six fields instead of two.
+func TestAConcealmentThatHidesOnlyACrossingIsStillARevealed(t *testing.T) {
 	payload := `{
-		"beat": "region_revealed",
-		"region": {"id": "closet", "name": "Closet", "cells": [{"x": 2, "y": 0}],
-		           "archetype": "crypt", "lighting": {"intensity": 1}},
-		"props": [], "boundaries": []
+		"beat": "concealment_revealed",
+		"concealment": "tomb/hidden-way",
+		"cells": [],
+		"props": [],
+		"doors": [{"door": "crawl", "state": "closed",
+		           "doorways": [{"from": {"x": 2, "y": 0}, "to": {"x": 3, "y": 0}}]}],
+		"boundaries": []
 	}`
 
 	kind, body := decodeBeat([]byte(payload))
-	require.Equal(t, EventRegionRevealed, kind)
+	require.Equal(t, EventConcealmentRevealed, kind)
 
-	region, ok := body.(RegionRevealedBody)
+	revealed, ok := body.(ConcealmentRevealedBody)
 	require.True(t, ok)
-	require.Equal(t, "closet", region.Region.ID)
-	require.Empty(t, region.Segments, "no walls inside it is not a defect")
-	require.Empty(t, region.Sealed, "and nothing sealed is the ordinary case")
+	require.Equal(t, "tomb/hidden-way", revealed.Concealment)
+	require.Len(t, revealed.Doors, 1, "the one thing it hides")
+	require.Empty(t, revealed.Cells, "a crossing has no floor of its own")
+	require.Empty(t, revealed.Regions, "so it trimmed nobody's region and replaces none")
+	require.Empty(t, revealed.Segments, "no walls inside it is not a defect")
+	require.Empty(t, revealed.Sealed, "and nothing sealed is the ordinary case")
+}
+
+// TestAConcealmentRevealNamingNoSecretIsRefused is the required-field guard.
+//
+// Every other list on this body may honestly be empty — the test above is
+// exactly that case — so the id is the one thing a recipient cannot do
+// without: it is what the patch is ABOUT, and cells belonging to nothing
+// cannot be applied to anything. A nil body says the beat should never have
+// been written rather than handing a client a patch with no subject.
+func TestAConcealmentRevealNamingNoSecretIsRefused(t *testing.T) {
+	kind, body := decodeBeat([]byte(`{
+		"beat": "concealment_revealed",
+		"cells": [{"x": 4, "y": 0}],
+		"doors": [{"door": "veil", "state": "closed"}]
+	}`))
+
+	require.Equal(t, EventConcealmentRevealed, kind,
+		"the kind still decodes — it is the BODY that has nothing to say")
+	require.Nil(t, body, "a patch naming no secret is refused, not guessed at")
 }
 
 func TestDeathSaveBodyPreservesAuthoritativeTypedFacts(t *testing.T) {
