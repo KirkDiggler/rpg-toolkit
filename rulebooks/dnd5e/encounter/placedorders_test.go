@@ -38,6 +38,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -519,6 +520,23 @@ func (s *PlacedOrdersSuite) TestADroppedPlacementLandsOnTheCellItWasDroppedOn() 
 		"the rectangle stands where they put it down")
 	s.Equal(slabPlacement().Facing, dropped.Placement.Facing, "turned no differently")
 	s.Equal(*slabPlacement().Footprint.Box, *dropped.Placement.Footprint.Box, "and the same shape")
+
+	// AND IT REPORTS THE CELLS IT STANDS ON NOW, not the ones it was
+	// authored over — the claim [AtlasPlacedProp.Cells] makes about being
+	// asked of the fold's placement rather than the compiled one.
+	//
+	// The two sets are DISJOINT here, which is what makes this an assertion
+	// rather than a restatement: a derivation reading the authored placement
+	// would answer the row the slab was drawn on, four rows away. The
+	// dropped set is smaller because the slab's far end now hangs off the
+	// edge of the hall, which is the floor answering rather than the
+	// rectangle.
+	s.ElementsMatch([]spatial.Position{cellAt(4, 1), standing}, dropped.Cells,
+		"the cells its rectangle covers where it was put down")
+	for _, authored := range []spatial.Position{cellAt(1, 4), slabCentre, cellAt(3, 4)} {
+		s.NotContains(dropped.Cells, authored,
+			"and not one cell of the row it was authored over")
+	}
 }
 
 // --- (5) A scenario's artifact may be a placement ---
@@ -670,6 +688,77 @@ func (s *PlacedOrdersSuite) TestTheThreeOrdersSurviveASaveAndLoad() {
 		"the predicate still brings it in")
 	s.Contains(s.propIDsOn(reloaded), encounter.PropID(thePrize),
 		"and the record it carried still teaches the fact")
+}
+
+// --- (5) The atlas SAYS where a rectangle stands, in cells ---
+
+// A placement reports the cells it stands on, and they are the cells the
+// derivation names: the covered ones for a thing bigger than a hex, and the
+// one hex it lies in for a thing smaller than one (rpg-api-protos#351).
+//
+// THE POINT IS THE CLIENT. A footprint has no anchor cell, so every consumer
+// asking "what is this next to?" had to re-run this module's geometry against
+// this module's plane to find out. The atlas answers instead.
+//
+// THE SET, NOT ITS LENGTH: each claim names the cells it is about, so a
+// fourth cell arriving fails as loudly as one going missing.
+func (s *PlacedOrdersSuite) TestTheAtlasReportsEveryCellAPlacementStandsOn() {
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(0, 0)})
+
+	s.Run("a fifteen-foot slab stands on all three cells it covers", func() {
+		s.ElementsMatch([]spatial.Position{cellAt(1, 4), slabCentre, cellAt(3, 4)},
+			s.placedNamed(enc, theSlab).Cells,
+			"the same three cells the reach scenes above take it from")
+	})
+
+	s.Run("a scroll smaller than a hex stands in exactly the hex it lies in", func() {
+		s.Equal([]spatial.Position{scrollHex}, s.placedNamed(enc, theScroll).Cells,
+			"covering no cell centre at all, so only the centre clause puts it anywhere")
+	})
+
+	s.Run("and it is the hex the RECTANGLE lies in, never the one its origin sits in", func() {
+		s.Require().NotEqual(tagOriginHex, tagBoxHex, "the fixture puts the two apart")
+		s.Equal([]spatial.Position{tagBoxHex}, s.placedNamed(enc, theTag).Cells,
+			"a rule reading the origin would name the other hex")
+	})
+
+	s.Run("in the atlas's own coordinate order", func() {
+		cells := s.placedNamed(enc, theSlab).Cells
+		s.True(sort.SliceIsSorted(cells, func(i, j int) bool {
+			if cells[i].X != cells[j].X {
+				return cells[i].X < cells[j].X
+			}
+
+			return cells[i].Y < cells[j].Y
+		}), "by X then Y, the one order every list on this snapshot is in (C8)")
+	})
+}
+
+// EVERY CELL THE ATLAS NAMES IS A CELL THE VERB GRANTS FROM — the claim the
+// field exists for. A client offering Hold where this list says the member is
+// standing on the thing, and [Encounter.Hold] refusing it, would be two
+// derivations of one geometry disagreeing across the wire; there is one
+// derivation ([field.placedCells]), and reach reads it (hold.go, holdPlaced).
+//
+// Driven off the ATLAS'S OWN LIST rather than off a written-down set, so a
+// cell the snapshot starts reporting has to be one reach grants from too.
+// The converse — a cell beside none of them is refused — is
+// TestASlabIsRefusedFromOutsideTheReachOfEveryCoveredCell above.
+func (s *PlacedOrdersSuite) TestTheCellsTheAtlasNamesAreTheCellsReachJudges() {
+	listed := s.placedNamed(
+		s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(0, 0)}), theSlab).Cells
+	s.Require().NotEmpty(listed, "the slab stands somewhere")
+
+	for _, cell := range listed {
+		// A fresh hall per cell: taking it is what proves reach, and a
+		// thing that has been taken is on no map to take again.
+		enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(0, 0)})
+		_, err := enc.Step(&encounter.StepInput{Member: alice, To: cell})
+		s.Require().NoErrorf(err, "standing on %v, a cell the atlas says the slab is on", cell)
+
+		_, err = enc.Hold(&encounter.HoldInput{Member: alice, Target: theSlab})
+		s.Require().NoErrorf(err, "the verb grants what the atlas offered at %v", cell)
+	}
 }
 
 // beatsOfKindFor reads one member's story and keeps the beats of one kind —

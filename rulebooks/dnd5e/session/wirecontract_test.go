@@ -43,6 +43,17 @@ func TestFalseIsAnAnswerOnTheWire(t *testing.T) {
 			BlocksMovement:    false,
 			BlocksLineOfSight: false,
 		}},
+		// A curtain: a rectangle walked through, seen through, and not
+		// something anybody may pick up — three false answers, and the
+		// message that carries a placement has to say all three
+		// (rpg-api-protos#351).
+		Placed: []session.AtlasPlacedProp{{
+			ID:                "curtain",
+			Placement:         session.FootprintPlacement{Width: 5, Depth: 0.5},
+			BlocksMovement:    false,
+			BlocksLineOfSight: false,
+			Holdable:          false,
+		}},
 	}
 
 	raw, err := json.Marshal(atlas)
@@ -50,12 +61,14 @@ func TestFalseIsAnAnswerOnTheWire(t *testing.T) {
 
 	// Decoded generically, the way a client that is not this package sees it.
 	var wire struct {
-		Props []map[string]json.RawMessage `json:"props"`
-		Walls []map[string]json.RawMessage `json:"boundaries"`
+		Props  []map[string]json.RawMessage `json:"props"`
+		Walls  []map[string]json.RawMessage `json:"boundaries"`
+		Placed []map[string]json.RawMessage `json:"placed"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &wire))
 	require.Len(t, wire.Props, 1)
 	require.Len(t, wire.Walls, 1)
+	require.Len(t, wire.Placed, 1)
 
 	for _, field := range []string{"blocks_movement", "blocks_line_of_sight"} {
 		require.Contains(t, wire.Props[0], field,
@@ -65,7 +78,19 @@ func TestFalseIsAnAnswerOnTheWire(t *testing.T) {
 		require.Contains(t, wire.Walls[0], field,
 			"and so must a boundary: %s", raw)
 		require.Equal(t, "false", string(wire.Walls[0][field]))
+
+		require.Contains(t, wire.Placed[0], field,
+			"and so must a placement, which answers the same two questions: %s", raw)
+		require.Equal(t, "false", string(wire.Placed[0][field]))
 	}
+
+	// HOLDABLE IS THE SAME KIND OF ANSWER on this message: false means
+	// scenery, which is what every placed footprint was before the flag
+	// existed, and a client reading a missing key cannot tell that from a
+	// server too old to have one.
+	require.Contains(t, wire.Placed[0], "holdable",
+		"a rectangle nobody may pick up must SAY so: %s", raw)
+	require.Equal(t, "false", string(wire.Placed[0]["holdable"]))
 }
 
 // TestWallHeightOmitemptyIsDeliberateOnTheWire pins the height field's BYTES

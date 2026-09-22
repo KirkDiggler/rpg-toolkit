@@ -244,6 +244,35 @@ type AtlasPlacedProp struct {
 	// offset — copied out per call.
 	Placement spatial.FootprintPlacement
 
+	// Cells is every cell this placement STANDS ON, in the atlas's own
+	// coordinate order (C8): the cells its rectangle covers, UNION the one
+	// cell the rectangle's own centre lies in. [field.placedCells] is the
+	// derivation, and this is that answer reported rather than re-derived.
+	//
+	// THE ADJACENCY A CLIENT READS, and the reason this field exists
+	// (rpg-api-protos#351). A footprint has no anchor cell, so "what is this
+	// thing next to?" is a geometry question — stationary footprint contact
+	// against every cell centre, plus the hex the centre point itself lies
+	// in for anything smaller than one cell. A client deriving that from
+	// [AtlasPlacedProp.Placement] would need this module's plane, its cell
+	// list and its tie-break to get the same answer, and would get a
+	// different one the day any of the three moved. IT NEVER RE-DERIVES IT:
+	// this list is the answer.
+	//
+	// THE SAME SET [Encounter.Hold]'S REACH JUDGES — holdPlaced in hold.go
+	// applies the legacy reach rule (grid distance, Range 0 meaning
+	// adjacent) to every cell [field.placedCells] returns, which is exactly
+	// this list. So a client offering Hold where this says the member is
+	// adjacent, and the engine refusing it, cannot disagree: one derivation,
+	// one answer, on both sides of the wire. It is also the set the probe
+	// law's visibility gate and an arrival fact's cell read ask
+	// (placed_props.go).
+	//
+	// NEVER EMPTY for a placement on this list: a compiled field has cells,
+	// so the centre clause always names one. Freshly allocated per call like
+	// every other slice here.
+	Cells []spatial.Position
+
 	// BlocksMovement and BlocksLineOfSight are the two answers the engine
 	// enforces, carried so a host need not guess from the shape.
 	BlocksMovement    bool
@@ -305,10 +334,16 @@ type AtlasDoorway struct {
 // ID. Copy-out: every returned slice is freshly allocated per call; mutating
 // the result never reaches internal state.
 //
-// O(cells) per call, which is what an enumerated floor costs and is the
-// honest shape of it: a region IS its cells now, so the list the host wants
-// is the list the composition already holds, copied. The field's cell budget
-// (maxFieldCells) is what bounds this.
+// O(cells) for the floor itself, which is what an enumerated floor costs and
+// is the honest shape of it: a region IS its cells now, so the list the host
+// wants is the list the composition already holds, copied.
+//
+// PLUS O(cells) PER STANDING PLACEMENT, so O(cells x (1+P)) per call for P of
+// them ([AtlasPlacedProp.Cells], rpg-api-protos#351): saying where a
+// rectangle stands is a walk over the floor, and this is the one place that
+// walk is paid rather than three readers and a client each paying it
+// separately. The field's cell budget (maxFieldCells) bounds both terms, and
+// P is the authored placement count, so the product is bounded too.
 func (e *Encounter) Atlas() (Atlas, error) {
 	f := e.field
 	out := Atlas{
@@ -344,8 +379,23 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		}
 		box := *placement.Footprint.Box
 		out.Placed = append(out.Placed, AtlasPlacedProp{
-			ID:                p.id,
-			Placement:         placement,
+			ID:        p.id,
+			Placement: placement,
+			// WHERE IT STANDS, IN CELLS, derived once here rather than by
+			// every reader of this snapshot. Asked of the placement the
+			// fold returned, not of the authored one, so a dropped
+			// rectangle reports the cells it stands on NOW.
+			//
+			// This is the O(cells) walk [field.placedCells] is, once per
+			// standing placement — the cost of stating the derivation
+			// instead of leaving three protocols and one client to repeat
+			// it. AtlasFor pays it ONCE, here, instead of a second time in
+			// the filter: [Encounter.placedTouchesHidden] reads these cells
+			// rather than measuring the rectangle again. On a field that
+			// conceals nothing that filter never ran at all, so such a
+			// field does pay this walk where it paid none — the cost is
+			// stated in [Encounter.Atlas]' own doc rather than hidden here.
+			Cells:             f.placedCells(placement),
 			BlocksMovement:    p.blocksMovement,
 			BlocksLineOfSight: p.blocksLineOfSight,
 			Holdable:          p.holdable,
