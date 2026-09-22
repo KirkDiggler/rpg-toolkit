@@ -171,11 +171,13 @@ func (e *Encounter) aggression(actor, target MemberID, at uint64) error {
 // fail-closed direction of the ambiguity: the alternative reads a betrayal as
 // nothing happening.
 //
-// THE MISSED AND WARDED ARMS ARE NOT ASKED. `Missed` is a delivery outcome
-// supplied by resolution with no roll and no save attached, and `Warded` is a
-// fact about the CASTER's own failed save; R5 rules on the attack roll and on
-// the save asked OF THE RECIPIENT, and widening to either of those on the way
-// past would be this file inventing a ruling it was not given.
+// THE MISSED AND WARDED ARMS ARE NOT ASKED, and neither is a hole. `Missed`
+// is resolution's "attempted delivery to an outdated location" — a spell
+// attack roll that misses arrives on the `Attack` arm as an OutcomeMissed
+// strike and provokes there, exactly as the swing's own miss does. `Warded`
+// is a fact about the CASTER's own failed save against somebody else's
+// Sanctuary, and resolution populates neither a save nor a delivery beside
+// it; what a ward stopped before it reached anyone is its own question.
 func hostileIntent(target CastTargetResult) bool {
 	if target.Attack != nil {
 		return true
