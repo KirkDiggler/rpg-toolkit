@@ -52,9 +52,9 @@ type IntimidateOutput struct {
 	// [IntimidateOutput.Paused].
 	Total int `json:"total"`
 
-	// DC is what it had to reach — the APPLIED route's own difficulty. The
-	// placement's authored number when it named one, and otherwise the
-	// monster's own passive Insight.
+	// DC is what it had to reach — the APPLIED route's own difficulty, which
+	// is always a number the placement's `intimidate:` authored. There is no
+	// derived difficulty (rpg-project#494 R1).
 	DC int `json:"dc"`
 
 	// Applied is the route the attempt actually took — chosen by this seam
@@ -106,21 +106,24 @@ type IntimidateOutput struct {
 }
 
 // Intimidate threatens a member as Member: a real ability check against the
-// target's authored or derived approaches, resolved through the same path
-// Unlock's lock checks take, and answered by whatever the author wrote the
-// creature does about it.
+// target's authored approaches, resolved through the same path Unlock's lock
+// checks take, and answered by whatever the author wrote the creature does
+// about it.
 //
-// # The DC is the monster's, authored or derived
+// # The offer comes from the NPC
 //
-// The placement's `intimidate:` list when the author priced one, and
-// otherwise ONE approach — Intimidation against the stat block's own passive
-// Insight. A goblin is DC 9 and a thug is DC 10, and neither number is stored
-// anywhere: "passive is derived, never stored" (living-world §3).
+// The DC is the placement's `intimidate:` list and nothing else
+// (rpg-project#494 R1). A creature whose binding authored no entries CANNOT
+// be intimidated: this refuses it with ErrNoSocialEntry before anything is
+// rolled, and Afford never offered it in the first place. The derived
+// approach — Intimidation against the stat block's passive Insight — is
+// retired, so absence now means "this creature does not do that" rather than
+// "use the default".
 //
-// NOTHING IS GATED; EVERYTHING IS A CHECK (living-world §13). Every character
-// may attempt this on every monster. What CHANGED is the roll, not the
-// attempt: a character with no Intimidation rolls at disadvantage
-// (rpg-project#457 R2), named in the result's own sources.
+// AMONG THE CREATURES AN AUTHOR WROTE IT ON, nothing is gated and everything
+// is a check (living-world §13): every character may attempt it, and what
+// changes is the roll — a character with no Intimidation rolls at
+// disadvantage (rpg-project#457 R2), named in the result's own sources.
 //
 // # It works on both clocks, and costs an action on only one
 //
@@ -145,7 +148,8 @@ type IntimidateOutput struct {
 // does not get to be the authority.
 //
 // Errors: ErrNilInput, ErrNoMemberID, ErrNoSession, ErrNoEncounter,
-// ErrNotYourTurn, ErrDowned, ErrCannotAfford, ErrNoSheet, ErrUnwitnessed.
+// ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoSocialEntry, ErrCannotAfford,
+// ErrUnwitnessed.
 func (m *Manager) Intimidate(ctx context.Context, in *IntimidateInput) (*IntimidateOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("intimidate: %w", ErrNilInput)

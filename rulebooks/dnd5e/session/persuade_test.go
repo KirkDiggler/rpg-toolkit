@@ -109,6 +109,14 @@ func (s *PersuadeSuite) front(rolls []int) *session.Manager {
 	spawn := &session.SpawnInput{
 		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
 		Position: spatial.Position{X: 5, Y: 1}, Faction: "goblins",
+		// THE AUTHOR WROTE BOTH VERBS ON THIS GOBLIN, because after
+		// rpg-project#494 a creature carries a social verb only when its
+		// binding priced one — an unpriced goblin is refused before any die
+		// is thrown, and every scene here is about what happens after one.
+		// DC 9 is the number the retired derived approach used to produce for
+		// a goblin, so every scripted die still means what its comment says.
+		Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}},
+		Persuade:   []session.DoorApproach{{Ability: "persuasion", DC: 9}},
 	}
 	if s.authored != nil {
 		s.authored(spawn)
@@ -162,7 +170,7 @@ func (s *PersuadeSuite) TestASocialVerbLandsOnTheWorldClock() {
 
 	out, err := s.persuade(mgr)
 	s.Require().NoError(err)
-	s.Equal(9, out.DC, "the goblin's own passive Insight, derived not stored")
+	s.Equal(9, out.DC, "the number the goblin's own binding priced")
 	s.Equal("persuasion", out.Applied.Ability)
 	s.Equal(11, out.Total, "the d20's 10 with CHA 8's -1 and proficiency's +2")
 	s.True(out.Beaten)

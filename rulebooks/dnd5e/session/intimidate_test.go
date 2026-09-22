@@ -4,7 +4,7 @@
 package session_test
 
 // intimidate_test.go is the first shenanigan across the whole seam
-// (rpg-project#454): the price, the derived DC, the refusals, and the deed
+// (rpg-project#454): the price, the authored DC, the refusals, and the deed
 // that reaches the goblin's own mind.
 
 import (
@@ -110,6 +110,16 @@ func (s *IntimidateSuite) aYardDriven(
 	spawn := &session.SpawnInput{
 		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
 		Position: spatial.Position{X: 5, Y: 1},
+		// THE AUTHOR'S HAND IS ON EVERY SCENE IN THIS SUITE, because after
+		// rpg-project#494 a creature carries a social verb only when its
+		// binding priced one: a goblin nobody wrote `intimidate:` on cannot
+		// be threatened at all, and every scene below would be about that
+		// refusal instead of the thing it says it tests. DC 9 is the number
+		// the retired derived approach used to produce for a goblin — 10 plus
+		// its WIS 8 — so every scripted die here still means what its comment
+		// says it means. A scene that wants an unauthored creature clears
+		// this through [IntimidateSuite.authored].
+		Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}},
 	}
 	if s.authored != nil {
 		s.authored(spawn)
@@ -168,14 +178,14 @@ func (s *IntimidateSuite) row(mgr *session.Manager) session.Declaration {
 	return session.Declaration{}
 }
 
-// A goblin's derived DC is 9: 10 + its WIS 8 modifier, and nothing about that
-// number is stored anywhere (rpg-project#454).
-func (s *IntimidateSuite) TestTheDerivedDifficultyIsTheGoblinsPassiveInsight() {
+// The DC is the author's and only ever the author's (rpg-project#494 R1):
+// this goblin's binding priced DC 9, and that is the number the check beats.
+func (s *IntimidateSuite) TestTheDifficultyIsTheAuthoredOne() {
 	out, err := s.threaten(s.aYard([]int{10}))
 	s.Require().NoError(err)
 
-	s.Equal(9, out.DC, "10 + WIS 8's -1")
-	s.Equal("intimidation", out.Applied.Ability, "the one derived route")
+	s.Equal(9, out.DC, "the number the placement priced")
+	s.Equal("intimidation", out.Applied.Ability, "the one authored route")
 	s.Equal(11, out.Total, "the d20's 10 with CHA 8's -1 and proficiency's +2")
 	s.True(out.Beaten, "a total that meets the DC beats it")
 	s.Equal("goblin", out.Target)
@@ -205,9 +215,10 @@ func (s *IntimidateSuite) TestAMissedThreatLandsNothing() {
 	s.False(s.held(mgr, encounter.DeedIntimidate), "nothing for the mind to read")
 }
 
-// The placement's authored list wins whole, and the derived approach is not
-// appended beside it.
-func (s *IntimidateSuite) TestAnAuthoredCheckOverridesTheDerivedOne() {
+// The list the world currently carries is the one that is beaten — an author
+// who repriced this creature repriced the check, and nothing else contributes
+// a route beside theirs.
+func (s *IntimidateSuite) TestTheCurrentAuthoredListIsWhatIsBeaten() {
 	mgr := s.aYard([]int{10})
 
 	stored, err := s.encounters.GetEncounter(context.Background(), "world")
@@ -221,7 +232,7 @@ func (s *IntimidateSuite) TestAnAuthoredCheckOverridesTheDerivedOne() {
 
 	out, err := s.threaten(mgr)
 	s.Require().NoError(err)
-	s.Equal(18, out.DC, "the author's number, not the stat block's 9")
+	s.Equal(18, out.DC, "the author's new number, not the one the spawn carried")
 	s.False(out.Beaten, "a 9 does not reach 18")
 }
 
@@ -296,10 +307,12 @@ func (s *IntimidateSuite) TestRefusals() {
 	s.ErrorIs(err, session.ErrNoMember)
 }
 
-// Threatening another PLAYER is refused rather than given a made-up DC: a
-// character has no stat block to derive passive Insight from, and nobody has
-// brought the use case that would price one.
-func (s *IntimidateSuite) TestAPlayerHasNoDerivedDifficulty() {
+// Threatening another PLAYER is refused by the same law every creature is
+// judged by: nobody authored `intimidate:` on a party member, so there are no
+// entries and there is nothing to roll against. Talking another player round
+// is a use case nobody has brought, and the day somebody does it arrives with
+// its own authored entries.
+func (s *IntimidateSuite) TestAPlayerCarriesNoSocialEntries() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	mgr := s.aYard([]int{10})
 
@@ -311,7 +324,7 @@ func (s *IntimidateSuite) TestAPlayerHasNoDerivedDifficulty() {
 	_, err = mgr.Intimidate(context.Background(), &session.IntimidateInput{
 		Session: "sess", Member: "alice", Target: "bob",
 	})
-	s.Require().ErrorIs(err, session.ErrNoSheet)
+	s.Require().ErrorIs(err, session.ErrNoSocialEntry)
 }
 
 // beats is every beat kind the member's own stream carries, in order.
@@ -468,7 +481,7 @@ func (s *IntimidateSuite) TestAnUncowedGoblinStandsAndShoots() {
 	// rulebook's default table, a d200 with no temperament loading it, and a
 	// face of 1 lands in the attack's share. Then the swing's own two faces.
 	//
-	// NOTHING IS AUTHORED HERE, which is the control's point twice over: the
+	// NO TABLE IS AUTHORED HERE, which is the control's point twice over: the
 	// threat missed, so no `fled` deed was landed, AND this goblin has no
 	// `intimidate_failed` line for the miss to roll on — so the only die
 	// between the check and the bow is the one that chose the bow.
@@ -630,20 +643,34 @@ func (s *IntimidateSuite) TestAnAuthoredCheckSurvivesTheSpawn() {
 
 	out, err := s.threaten(mgr)
 	s.Require().NoError(err)
-	s.Equal(12, out.DC, "the author's number, not the goblin's passive Insight of 9")
+	s.Equal(12, out.DC, "the sergeant's own price, carried through the spawn")
 	s.Equal(session.DoorApproach{Ability: "intimidation", DC: 12}, out.Applied)
-	s.False(out.Beaten, "a 9 does not reach 12 — which the derived DC would have")
+	s.False(out.Beaten, "a 9 does not reach 12")
 }
 
-// And the ordinary placement, so the field's ABSENCE still means derived
-// rather than ungated: the same scene with nothing authored is DC 9.
-func (s *IntimidateSuite) TestAnUnauthoredSpawnStillDerives() {
+// And the field's ABSENCE is the whole ruling: the same scene with nothing
+// authored cannot be threatened at all, and the panel said so before anybody
+// tried (rpg-project#494 R1/R2/R3).
+func (s *IntimidateSuite) TestAnUnauthoredSpawnCannotBeThreatened() {
+	s.authored = func(in *session.SpawnInput) { in.Intimidate = nil }
 	mgr := s.aYard([]int{10})
 
-	out, err := s.threaten(mgr)
+	_, err := s.threaten(mgr)
+	s.Require().ErrorIs(err, session.ErrNoSocialEntry,
+		"there is no derived difficulty left to fall back on")
+
+	row := s.row(mgr)
+	s.False(row.Available, "and the offer withheld it first")
+	s.Require().NotNil(row.Why)
+	s.Equal(session.ShortfallNoSocialEntry, row.Why.Reason)
+	s.Equal("nobody here can be intimidated", row.Why.Text)
+	s.Empty(row.Candidates, "the goblin is not a candidate, not an unavailable one")
+
+	// NOTHING WAS CHARGED on the way to the refusal: the entries are read
+	// before the action is spent, exactly as the sight check is.
+	stored, err := s.characters.GetCharacter(context.Background(), "alice")
 	s.Require().NoError(err)
-	s.Equal(9, out.DC)
-	s.True(out.Beaten)
+	s.Nil(stored.ActionEconomy)
 }
 
 // The world half has the same road to travel. An authored
@@ -729,6 +756,8 @@ func (s *IntimidateSuite) aCamp(fact string, rolls []int) *session.Manager {
 	spawn := &session.SpawnInput{
 		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
 		Position: spatial.Position{X: 5, Y: 1},
+		// [IntimidateSuite.aYard]'s authored check, for the same reason.
+		Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}},
 	}
 	s.authored(spawn)
 	_, err = mgr.Spawn(ctx, spawn)

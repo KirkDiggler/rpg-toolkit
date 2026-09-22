@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -275,18 +276,27 @@ func (m *Manager) compileOffersFor(
 	// side: a fighter whose weapon will not compile can still tell a goblin
 	// what is going to happen to it.
 	var intimidate, persuade compiledOffer
-	if requested[VerbIntimidate] {
-		var err error
-		intimidate, err = buildSocialOffer(enc, m.intimidateVerb(), sessionID, member, sheet)
+	if requested[VerbIntimidate] || requested[VerbPersuade] {
+		// ONE AUDIENCE READ FOR BOTH ROWS. Who can see this member and what
+		// the roster says about them is the same question for a threat and an
+		// appeal, and asking it twice is two reads free to disagree.
+		audience, err := readSocialAudience(enc, member)
 		if err != nil {
 			return nil, err
 		}
-	}
-	if requested[VerbPersuade] {
-		var err error
-		persuade, err = buildSocialOffer(enc, m.persuadeVerb(), sessionID, member, sheet)
-		if err != nil {
-			return nil, err
+		if requested[VerbIntimidate] {
+			if intimidate, err = buildSocialOffer(
+				audience, m.intimidateVerb(), sessionID, member, sheet,
+			); err != nil {
+				return nil, err
+			}
+		}
+		if requested[VerbPersuade] {
+			if persuade, err = buildSocialOffer(
+				audience, m.persuadeVerb(), sessionID, member, sheet,
+			); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -687,8 +697,8 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 }
 
 // buildSocialOffer compiles ONE social row — a threat or an appeal — priced at
-// the standard action and aimed at anybody who can currently SEE this member
-// (rpg-project#454, rpg-project#458).
+// the standard action and aimed at the witnesses an author gave this verb to
+// (rpg-project#454, rpg-project#458, rpg-project#494).
 //
 // ITS CANDIDATES ARE THE WITNESSES, and the direction is the point. Every
 // other member-targeting row here asks who the ACTOR can see; a threat only
@@ -697,23 +707,30 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 // panel and the door therefore agree, instead of the panel offering a goblin
 // in a dark corridor that the verb then refuses.
 //
+// AND THE OFFER COMES FROM THE NPC. Of those witnesses, only the ones whose
+// binding authored this verb's entries are candidates ([socialEntriesOf], R2)
+// — the same read the verb refuses by, so the row cannot offer a creature the
+// door would turn away. A row with an audience and no authored creature in it
+// is unavailable with ShortfallNoSocialEntry, which is a different
+// instruction from having nobody to talk to at all.
+//
 // NO REACH GATE, which is the other thing that makes it unlike a swing. Speech
 // carries as far as sight does — "no distance cap beyond sight" is the
-// design's own decision — so every witness is available and none carries a
+// design's own decision — so every candidate is available and none carries a
 // ShortfallTargetOutOfReach.
 //
 // ONE BUILDER, TWO VERBS, because the row is the same row: the verb, its
 // selector and its price compiler are the three things that differ, and they
 // arrive as arguments rather than as a second copy of this function.
 func buildSocialOffer(
-	enc *encounter.Encounter, spec socialVerb, session, member string, sheet *character.Character,
+	audience socialAudience, spec socialVerb, session, member string, sheet *character.Character,
 ) (compiledOffer, error) {
 	id, variant, err := selectorIDFor(session, member, spec.verb, SlotAction, nil, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
 
-	candidates, err := socialCandidates(enc, member)
+	candidates, err := audience.candidatesFor(spec)
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -727,14 +744,9 @@ func buildSocialOffer(
 		Verb: spec.verb, Slot: SlotAction, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(candidates),
 	}
-	switch {
-	case !combat.CanPay(sheet, profile):
-		why := shortfallForPay(sheet, profile, SlotAction)
-		decl.Why = &why
-	case len(candidates) == 0:
-		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be spoken to"}
-		decl.Why = &why
-	default:
+	if why := socialShortfall(audience, candidates, spec, sheet, profile); why != nil {
+		decl.Why = why
+	} else {
 		decl.Available = true
 	}
 
@@ -749,21 +761,95 @@ func buildSocialOffer(
 	}, nil
 }
 
-// socialCandidates is everybody who can see this member, minus the member
-// themselves — the audience both social verbs aim at.
-func socialCandidates(enc *encounter.Encounter, member string) ([]targetPreflight, error) {
+// socialShortfall is why a social row is not available, or nil when it is —
+// the one place the two clocks agree about the ORDER of the three reasons.
+//
+// THE AUDIENCE COMES BEFORE THE AUTHORING. An actor nobody can see is told
+// nobody can see them, even though no candidate carries entries either: the
+// audience is the first thing missing and naming the second would answer a
+// question the player has not reached yet. A price, when there is one, comes
+// before both — a member who cannot pay could not use the row against anybody.
+//
+// The sheet and profile are nil on the WORLD clock, which has no economy to
+// fall short of (move.go's rule), and the price arm is simply not reached.
+func socialShortfall(
+	audience socialAudience, candidates []targetPreflight, spec socialVerb,
+	sheet *character.Character, profile *combat.SpendProfile,
+) *Shortfall {
+	switch {
+	case sheet != nil && profile != nil && !combat.CanPay(sheet, profile):
+		why := shortfallForPay(sheet, profile, SlotAction)
+		return &why
+	case len(audience.witnesses) == 0:
+		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be spoken to"}
+		return &why
+	case len(candidates) == 0:
+		why := Shortfall{Reason: ShortfallNoSocialEntry, Text: spec.nobody}
+		return &why
+	}
+
+	return nil
+}
+
+// socialAudience is everybody who can see one member, and the roster they are
+// rows of — read ONCE and shared by both social verbs.
+//
+// IT HOLDS THE ROSTER BECAUSE THE FILTER NEEDS IT. Narrowing an audience to
+// the creatures an author gave a verb to is one roster lookup per witness, and
+// a panel that refreshes every frame must not pay a full roster read for each
+// of them ([socialEntriesOf]).
+type socialAudience struct {
+	roster    []encounter.Member
+	witnesses []string
+}
+
+// readSocialAudience asks the composition who can see this member — the
+// audience both social verbs aim at, minus the member themselves.
+func readSocialAudience(enc *encounter.Encounter, member string) (socialAudience, error) {
 	witnesses, err := enc.Witnesses(encounter.MemberID(member))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		return socialAudience{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
 	}
-	candidates := make([]targetPreflight, 0, len(witnesses))
+	roster, err := enc.Members()
+	if err != nil {
+		return socialAudience{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+	}
+
+	seen := make([]string, 0, len(witnesses))
 	for _, id := range witnesses {
 		// A member always witnesses their own cell, and talking yourself
 		// round is not a shenanigan.
 		if string(id) == member {
 			continue
 		}
-		candidates = append(candidates, targetPreflight{member: string(id), available: true})
+		seen = append(seen, string(id))
+	}
+
+	return socialAudience{roster: roster, witnesses: seen}, nil
+}
+
+// candidatesFor is the audience narrowed to the members this verb was
+// AUTHORED on (rpg-project#494 R2) — the row's candidate list.
+//
+// A witness with no entries is dropped rather than listed unavailable, because
+// the row is not offering them at all: a candidate with a Why is somebody the
+// player could reach by moving, and no amount of moving writes an
+// `intimidate:` block.
+//
+// A WITNESS MISSING FROM THE ROSTER FAILS THE READ rather than being skipped.
+// That would mean the composition's sight and its roster disagree about who is
+// in the room, which is a defect to surface, not to paper over with a shorter
+// candidate list nobody can explain.
+func (a socialAudience) candidatesFor(spec socialVerb) ([]targetPreflight, error) {
+	candidates := make([]targetPreflight, 0, len(a.witnesses))
+	for _, id := range a.witnesses {
+		switch _, err := socialEntriesOf(a.roster, id, spec); {
+		case errors.Is(err, ErrNoSocialEntry):
+			continue
+		case err != nil:
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
+		}
+		candidates = append(candidates, targetPreflight{member: id, available: true})
 	}
 
 	return candidates, nil

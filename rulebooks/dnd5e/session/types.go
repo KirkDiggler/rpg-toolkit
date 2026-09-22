@@ -3269,6 +3269,22 @@ const (
 	// this is not a resource shortage. The accompanying text describes the
 	// provider's refusal; its resolution depends on that precondition.
 	ShortfallUnavailable ShortfallReason = "unavailable"
+
+	// ShortfallNoSocialEntry is an audience nobody in which the author gave
+	// this social verb to (rpg-project#494 R2). The verbs refuse it as
+	// ErrNoSocialEntry.
+	//
+	// NOT ShortfallNoTargetInReach, and the difference is the instruction a
+	// client gives. "Nobody can see you to be spoken to" means move or make
+	// yourself seen; this one means there is nobody here this verb works on,
+	// however you stand. Collapsing them would tell a player to walk toward a
+	// goblin that was never written to be talked to.
+	//
+	// THE NO-WITNESS CASE STILL WINS. An actor nobody can see gets
+	// ShortfallNoTargetInReach even though no candidate carries entries
+	// either: the audience is the first thing missing, and naming the second
+	// would answer a question the player has not reached.
+	ShortfallNoSocialEntry ShortfallReason = "no_social_entry"
 )
 
 // Currency names which of a turn's budgets a NO_BUDGET shortfall ran out

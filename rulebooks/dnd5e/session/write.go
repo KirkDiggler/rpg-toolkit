@@ -157,16 +157,17 @@ type SpawnInput struct {
 	// — the author's placement from the dungeon file's `place[].intimidate`
 	// (rpg-project#454), forwarded to the composition untouched.
 	//
-	// THIS IS THE ONLY WAY AN AUTHORED DC REACHES A LIVE MONSTER, and it is
-	// Holds's argument again: a host that resolves monster content at
-	// runtime builds its world empty of members and brings every monster in
-	// through this verb, so a DC that could only be set at construction is a
-	// DC the game never sees. Without this field the sergeant priced at 12
-	// is talked down on its stat block's 10 and nobody can tell.
+	// THIS IS THE ONLY WAY A DC REACHES A LIVE MONSTER, and it is Holds's
+	// argument again: a host that resolves monster content at runtime builds
+	// its world empty of members and brings every monster in through this
+	// verb, so a DC that could only be set at construction is a DC the game
+	// never sees. Without this field the sergeant priced at 12 cannot be
+	// threatened at all.
 	//
-	// EMPTY MEANS DERIVED, NOT UNGATED. Absent — the ordinary case —
-	// [Manager.Intimidate] rolls against the monster's own passive Insight.
-	// Nothing is gated; everything is a check.
+	// EMPTY MEANS THE VERB IS NOT OFFERED (rpg-project#494 R1). Absent,
+	// [Manager.Intimidate] refuses this monster with ErrNoSocialEntry and
+	// Afford never lists it as a candidate. There is no derived difficulty:
+	// a creature gains a social verb in the World Builder or not at all.
 	//
 	// The seam's own approach type, converted at the boundary like Holds and
 	// Actions (S2: no inner type crosses this seam's exported surface).
@@ -175,7 +176,7 @@ type SpawnInput struct {
 	// Persuade is the check a character must beat to talk this monster round
 	// — the author's `place[].persuade` (rpg-project#458), forwarded
 	// untouched. [SpawnInput.Intimidate]'s twin, with its contracts: empty
-	// means DERIVED, not ungated.
+	// means the verb is NOT OFFERED on this monster.
 	Persuade []DoorApproach
 
 	// Table is what this monster DOES — its whole policy, keyed by what

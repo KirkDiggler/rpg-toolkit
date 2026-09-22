@@ -305,6 +305,24 @@ var (
 	// wrong instruction, which is what merging the two would produce.
 	ErrUnwitnessed = errors.New("target did not witness the actor")
 
+	// ErrNoSocialEntry is [Manager.Intimidate]'s and [Manager.Persuade]'s
+	// refusal for a creature whose binding authored no entries for that verb
+	// (rpg-project#494 R3). The offer comes from the NPC: a creature the
+	// World Builder did not give `intimidate:` to cannot be intimidated, and
+	// there is no derived difficulty to fall back on.
+	//
+	// THE DOOR AGREES WITH THE OFFER. Afford drops that creature from the
+	// row's candidates and reports ShortfallNoSocialEntry when no witness
+	// carries any, both by the same read ([socialEntriesOf]). This sentinel
+	// is what a STALE client gets — one echoing a row from before the world
+	// changed — so the two answers are the same answer.
+	//
+	// NOT ErrNoMember, which is a creature that is not there at all, and not
+	// ErrUnwitnessed, which is a creature that is there and did not see you.
+	// This one is present, looking right at you, and authored to have nothing
+	// to say about it. A caller narrating the refusal needs the difference.
+	ErrNoSocialEntry = errors.New("target has no authored entries for this social verb")
+
 	// ErrNotDown is Loot's refusal for a body that is still standing — the
 	// host-seam twin of encounter.ErrNotDown (rpg-project#368 §4.2).
 	//
