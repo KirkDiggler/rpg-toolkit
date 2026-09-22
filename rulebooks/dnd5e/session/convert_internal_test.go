@@ -138,6 +138,7 @@ func TestAnEmptyAtlasProjectsEmptyLists(t *testing.T) {
 
 	require.Empty(t, out.Segments)
 	require.Empty(t, out.Sealed)
+	require.Empty(t, out.Placed, "a dungeon whose author drew no rectangles ranges the same as one that did")
 }
 
 // TestTheStartIsCopiedNotShared pins that projectAtlas hands out its OWN
@@ -177,4 +178,108 @@ func TestTheStartIsCopiedNotShared(t *testing.T) {
 func TestAnAtlasWithNoStartProjectsNil(t *testing.T) {
 	out := projectAtlas(encounter.Atlas{Orientation: encounter.HexesArePointyTop()})
 	require.Nil(t, out.Start)
+}
+
+// TestAPlacedFootprintCrossesTheSeamWhole is the value half of
+// rpg-api-protos#351: every field of a placement arrives, including the one
+// the seam has to reshape.
+//
+// The numbers are deliberately all different — a box wider than it is deep,
+// an origin nowhere near the local offset, a facing that is neither — so a
+// conversion that swapped any pair fails here instead of drawing a table
+// turned ninety degrees in somebody's browser. The box in particular: the
+// composition says W across the facing and D along it, and the authored
+// dialect's own `width` already meant the other one, so a re-swap at this
+// seam is a live mistake rather than a hypothetical.
+func TestAPlacedFootprintCrossesTheSeamWhole(t *testing.T) {
+	stands := []spatial.Position{{X: 2, Y: 0}, {X: 3, Y: 0}, {X: 3, Y: 1}}
+	in := encounter.Atlas{
+		Orientation: encounter.HexesArePointyTop(),
+		Placed: []encounter.AtlasPlacedProp{{
+			ID: "vault-door",
+			Placement: spatial.FootprintPlacement{
+				Footprint:   spatial.Footprint{Box: &spatial.Box{W: 13, D: 0.75}},
+				Origin:      spatial.Point{X: 7.5, Y: 4.25},
+				Facing:      -21.5,
+				LocalOffset: spatial.Point{X: 0.25, Y: -0.5},
+			},
+			Cells:             stands,
+			BlocksMovement:    true,
+			BlocksLineOfSight: false,
+			Holdable:          true,
+		}},
+	}
+
+	out := projectAtlas(in)
+
+	require.Len(t, out.Placed, 1)
+	got := out.Placed[0]
+	require.Equal(t, "vault-door", got.ID, "the author's name, verbatim")
+	require.Equal(t, 13.0, got.Placement.Width, "spatial's W: the extent ACROSS the facing")
+	require.Equal(t, 0.75, got.Placement.Depth, "spatial's D: the extent ALONG it")
+	require.Equal(t, FootprintPoint{X: 7.5, Y: 4.25}, got.Placement.Origin)
+	require.Equal(t, -21.5, got.Placement.Facing, "the exact authored bearing, unsnapped")
+	require.Equal(t, FootprintPoint{X: 0.25, Y: -0.5}, got.Placement.LocalOffset,
+		"the offset the engine traced its cells from, so a client draws it where the engine has it")
+
+	// THE CELLS, WHICH IS WHAT THE FIELD IS FOR. A conversion that dropped
+	// this line would still compile, still return a placement a client could
+	// draw, and still leave that client with no adjacency but the one it
+	// computed itself — the second geometry the field exists to prevent.
+	require.Equal(t, stands, got.Cells,
+		"every cell the composition says the rectangle stands on, in its own order")
+
+	// The two blocking answers are independent, so they are asserted as the
+	// two different values the fixture gave them rather than together.
+	require.True(t, got.BlocksMovement)
+	require.False(t, got.BlocksLineOfSight, "a door nobody can see through is not the only kind")
+	require.True(t, got.Holdable, "the offer a client puts on the thing it is already drawing")
+}
+
+// TestThePlacedCellsAreCopiedNotShared is [TestTheStartIsCopiedNotShared]'s
+// claim on the other new field, and it kills the same tidy-looking mutant:
+// `Cells: p.Cells` compiles, passes every value assertion above, and hands a
+// host the composition's own backing array.
+//
+// INTERNAL for that test's reason — a seam read reloads the encounter every
+// call, so an external version cannot fail whether or not the copy happens.
+func TestThePlacedCellsAreCopiedNotShared(t *testing.T) {
+	inner := []spatial.Position{{X: 2, Y: 0}, {X: 3, Y: 0}}
+	out := projectAtlas(encounter.Atlas{
+		Orientation: encounter.HexesArePointyTop(),
+		Placed: []encounter.AtlasPlacedProp{{
+			ID:        "slab",
+			Placement: spatial.FootprintPlacement{Footprint: spatial.Footprint{Box: &spatial.Box{W: 10, D: 5}}},
+			Cells:     inner,
+		}},
+	})
+
+	require.Len(t, out.Placed, 1)
+	out.Placed[0].Cells[0] = spatial.Position{X: 99, Y: 99}
+	require.Equal(t, spatial.Position{X: 2, Y: 0}, inner[0],
+		"a caller's edit must not reach the composition's snapshot")
+}
+
+// TestAPlacementWithNoBoxProjectsNoSides pins the guard rather than the
+// behaviour it guards.
+//
+// The composition refuses a boxless placement at construction, so this atlas
+// cannot come out of a real field. What the guard buys is that the impossible
+// case is a zero-sided rectangle a reader can SEE is wrong, rather than a nil
+// dereference thrown from inside a host's read verb — and the guard is worth
+// a test because deleting it also compiles.
+func TestAPlacementWithNoBoxProjectsNoSides(t *testing.T) {
+	out := projectAtlas(encounter.Atlas{
+		Orientation: encounter.HexesArePointyTop(),
+		Placed: []encounter.AtlasPlacedProp{{
+			ID:        "boxless",
+			Placement: spatial.FootprintPlacement{Origin: spatial.Point{X: 3, Y: 4}},
+		}},
+	})
+
+	require.Len(t, out.Placed, 1)
+	require.Zero(t, out.Placed[0].Placement.Width)
+	require.Zero(t, out.Placed[0].Placement.Depth)
+	require.Equal(t, FootprintPoint{X: 3, Y: 4}, out.Placed[0].Placement.Origin,
+		"and the rest of the pose still crosses: the guard skips a box, not a placement")
 }
