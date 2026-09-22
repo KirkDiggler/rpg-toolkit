@@ -109,6 +109,17 @@ func (s *AreaSuite) TestAFootprintMustBeAShapeSomebodyCanStandIn() {
 		s.Require().Error(err)
 		s.Contains(err.Error(), "unknown area projection")
 	})
+	s.Run("half-populated membership is refused", func() {
+		err := areaProfile(func(p *actions.CastProfile) { p.Area.MembershipRef = "dnd5e:conditions:in_fog" }).Validate()
+		s.Require().ErrorContains(err, "requires both ref and name")
+	})
+	s.Run("membership without sight obstruction is refused", func() {
+		err := areaProfile(func(p *actions.CastProfile) {
+			p.Area.MembershipRef = "dnd5e:conditions:in_fog"
+			p.Area.MembershipName = "In Fog"
+		}).Validate()
+		s.Require().ErrorContains(err, "requires an obscuring area")
+	})
 }
 
 // TestASubCellFootprintIsNotRefusedHere, and the absence is deliberate.

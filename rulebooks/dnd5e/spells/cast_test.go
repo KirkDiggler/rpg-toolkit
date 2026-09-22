@@ -859,6 +859,8 @@ func (s *CastContentSuite) TestFogCloudDeclaresPersistentSightWithoutRecipientsO
 	s.Equal(actions.AreaOriginPoint, d.Cast.Area.Footprint.Origin)
 	s.Equal(20, d.Cast.Area.Footprint.SizeFeet)
 	s.True(d.Cast.Area.ObscuresSight)
+	s.Equal(refs.Conditions.InFog().String(), d.Cast.Area.MembershipRef)
+	s.Equal("In Fog", d.Cast.Area.MembershipName)
 	s.Equal(600, d.Cast.Concentration.TurnEnds)
 	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
 	s.Empty(d.Cast.Damage)
@@ -871,4 +873,7 @@ func (s *CastContentSuite) TestFogCloudDeclaresPersistentSightWithoutRecipientsO
 	clone = d.Clone()
 	clone.Cast.Area.ObscuresSight = false
 	s.True(d.Cast.Area.ObscuresSight)
+	clone = d.Clone()
+	clone.Cast.Area.MembershipRef = "changed"
+	s.Equal(refs.Conditions.InFog().String(), d.Cast.Area.MembershipRef)
 }

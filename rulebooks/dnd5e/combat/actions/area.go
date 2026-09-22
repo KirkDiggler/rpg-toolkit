@@ -153,6 +153,11 @@ type CastArea struct {
 	// ObscuresSight persists the footprint as a sight-only volume held by the
 	// cast's concentration. It affects perception continuously, not recipients.
 	ObscuresSight bool `json:"obscures_sight,omitempty"`
+
+	// MembershipRef and MembershipName declare the source-qualified membership
+	// condition maintained while a creature occupies this sight-obscuring area.
+	MembershipRef  string `json:"membership_ref,omitempty"`
+	MembershipName string `json:"membership_name,omitempty"`
 }
 
 // Validate reports whether the area declares a legal footprint and a known
@@ -165,6 +170,12 @@ func (a CastArea) Validate() error {
 	case AreaCatchesOthers, AreaCatchesEveryone:
 	default:
 		return fmt.Errorf("unknown area projection %q", a.Catches)
+	}
+	if (a.MembershipRef == "") != (a.MembershipName == "") {
+		return fmt.Errorf("area membership metadata requires both ref and name")
+	}
+	if a.MembershipRef != "" && !a.ObscuresSight {
+		return fmt.Errorf("area membership metadata requires an obscuring area")
 	}
 	return nil
 }
