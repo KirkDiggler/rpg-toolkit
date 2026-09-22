@@ -27,8 +27,8 @@ import (
 //     all ([Encounter.aggression], R3 as R5 rebound it). An author never
 //     writes "if attacked, become hostile" on a camp, and a camp that did
 //     not have the line was never meant to stand there and take it. What
-//     counts as hostile intent is [hostileIntent]: a swing, or a spell that
-//     asks for a save against something that is not a kindness.
+//     counts as hostile intent is [hostileIntent], and it is read off the
+//     DELIVERY rather than off the door it came through.
 //
 // All three end in the same place, [Encounter.settleStances]: one `stance`
 // beat to everyone, the fights that lost their sides and the fight that just
@@ -131,69 +131,93 @@ func (e *Encounter) aggression(actor, target MemberID, at uint64) error {
 	return e.settleStances(before, at)
 }
 
-// hostileIntent answers R5 (rpg-project#493): did this cast deliver hostile
-// intent to this recipient — the one question [Encounter.aggression] and the
-// `attacked` deed are both owed, whichever door the harm came through.
+// hostileIntent answers R5 (rpg-project#493, as the review of #1868 amended
+// it): did this cast deliver hostile intent to this recipient — the one
+// question [Encounter.aggression] and the `attacked` deed are both owed,
+// whichever door the harm came through.
 //
-// # An attack roll, or a save against something that is not a kindness
+// # It reads the DELIVERY, not the arm
 //
 // R3 was written against the SWING, and 5e's damage verbs are heavily
 // save-based: a failed-save Vicious Mockery on a scout of a neutral camp left
 // the pair neutral, the caster on the world clock and the scout with no
 // testimony that anything had been done to it, so even its own
-// `attacked within 3 -> attack: attacker` row never fired. That is the exact
-// fail-silent the design's opening paragraph exists to remove, surviving one
-// delivery over (found by the independent review of #1864, which probed it).
-// R5 rebinds the law to the intent rather than the mechanism: an attack roll,
-// hit or miss, OR a cast that asks a member of another faction for a saving
-// throw against a harmful effect.
+// `attacked within 3 -> attack: attacker` row never fired. R5 rebound the law
+// to the intent — and then enumerated two doors, the attack roll and the
+// save, which is one door short. A magic missile asks for neither and hits
+// anyway; `sleep` lands its condition ungated; resolution already names the
+// shape it will deliver when it is wired. A predicate that asked which ARM
+// was set would answer that third delivery silently wrong, and would
+// contradict itself one branch over, where a save that delivered NOTHING
+// provokes but delivered harm with no arms does not.
 //
-// ON THE ATTEMPT, LANDED OR NOT — the missed swing's rule, for the missed
-// swing's reason. A Vicious Mockery the scout SAVED against was still an
-// attempt to hurt it, and a camp that turns only when the dice land is a camp
-// that forgives a bad roll.
+// So the question asked here is the one the design asks: is this delivery
+// wholly a kindness. Everything that is not provokes, whatever door it came
+// through — an attack roll, a save, or no gate at all.
 //
-// # Harmful is read off the delivery, because nothing here can read intent
+// # The three answers this makes, and why each is right
+//
+// AN ATTACK ROLL PROVOKES HIT OR MISS. A miss is still a shot at you, which
+// is [DeedAttack]'s own rule and [Encounter.Record]'s: OutcomeMissed lands the
+// same deed and the same turn as OutcomeStruck, and a spell attack roll that
+// misses arrives on this arm as exactly that strike.
+//
+// A SAVE ASKED PROVOKES EVEN IF NOTHING LANDED. A Vicious Mockery the scout
+// shrugged off was still an attempt to hurt it, and a camp that turns only
+// when the dice land is a camp that forgives a bad roll. The asked save is
+// the attempt's own evidence.
+//
+// A GATELESS EMPTY DELIVERY PROVOKES NOTHING, and that is the difference
+// between this branch and the one above rather than an inconsistency: with no
+// arm and nothing delivered there is no attempt to read. That is where
+// `Missed` and `Warded` land — resolution's "attempted delivery to an
+// outdated location", and the CASTER's own failed save against somebody
+// else's Sanctuary — and neither is this recipient being harmed.
+//
+// # Kindness is the exemption, because intent cannot be read
 //
 // This composition carries no spell semantics (C1): a [SpellIdentity] is a
 // ref and a name it may not interpret, and no input anywhere says "this
 // effect is harmful". What it CAN read is what the cast delivered, so the
-// exemption the design names — a save that only helps provokes nothing — is
-// stated in the negative and narrowly: a save whose WHOLE delivery to this
-// recipient is a kindness (healing, a condition lifted, a stabilization, a
-// granted capacity) provokes nothing, and everything else provokes.
+// exemption the design names — a delivery that only helps provokes nothing —
+// is stated in the negative and narrowly: healing, a condition lifted, a
+// stabilization, a granted capacity. A gateless buff on an ally is a
+// kindness; a gateless debuff on an enemy is not, and [ResultMoved] is not
+// either — a creature shoved is a creature something was done TO, and it
+// answers the same way through every arm.
 //
-// AN EMPTY DELIVERY PROVOKES, which is the attempt above rather than an
-// oversight: a spell the target resisted outright delivers nothing at all,
-// and that is the case R5 is most about. The residue is one false positive
-// nobody can reach in this build — a beneficial save-gated cast the recipient
-// RESISTED would read as an empty delivery and provoke — and it is the
-// fail-closed direction of the ambiguity: the alternative reads a betrayal as
-// nothing happening.
-//
-// THE MISSED AND WARDED ARMS ARE NOT ASKED, and neither is a hole. `Missed`
-// is resolution's "attempted delivery to an outdated location" — a spell
-// attack roll that misses arrives on the `Attack` arm as an OutcomeMissed
-// strike and provokes there, exactly as the swing's own miss does. `Warded`
-// is a fact about the CASTER's own failed save against somebody else's
-// Sanctuary, and resolution populates neither a save nor a delivery beside
-// it; what a ward stopped before it reached anyone is its own question.
+// The residue is one false positive nobody can reach in this build — a
+// beneficial save-gated cast the recipient RESISTED reads as a save with an
+// empty delivery and provokes — and it is the fail-closed direction of the
+// ambiguity: the alternative reads a betrayal as nothing happening.
 func hostileIntent(target CastTargetResult) bool {
 	if target.Attack != nil {
 		return true
 	}
-	if target.Save == nil {
-		return false
+	if len(target.Results) == 0 {
+		return target.Save != nil
 	}
-	for _, result := range target.Results {
+	return !whollyAKindness(target.Results)
+}
+
+// whollyAKindness is true when every result delivered to one recipient only
+// helps them — the one judgement [hostileIntent] makes about content it may
+// not otherwise interpret.
+//
+// EVERY RESULT, not any: a cast that heals and burns the same creature burned
+// it. An empty list is NOT a kindness, because nothing was given; the caller
+// separates "nothing delivered" from "nothing but help delivered" before it
+// asks.
+func whollyAKindness(results []ActivationResult) bool {
+	for _, result := range results {
 		switch result.Kind {
 		case ResultHealingApplied, ResultConditionRemoved, ResultStabilized, ResultCapacityGranted:
 			continue
 		default:
-			return true
+			return false
 		}
 	}
-	return len(target.Results) == 0
+	return true
 }
 
 // attackable refuses a member that cannot be the target of an attack

@@ -201,20 +201,31 @@
 // intent delivered by a member of one faction to a member of a faction it is
 // NEUTRAL with turns the pair hostile — faction-wide, publicly, immediately,
 // through the same settle and the same `stance` beat an `until` uses. No file
-// writes "if attacked, become hostile", and no file can turn it off. Hostile
-// intent is an attack roll, hit or miss, OR a cast that asks that member for
-// a saving throw against a harmful effect, landed or not (turning.go); both
-// land [DeedAttack] on the recipient, so a creature hurt by a spell testifies
-// to it exactly as one hit by a sword does. An ALLIED pair is not
+// writes "if attacked, become hostile", and no file can turn it off.
+//
+// HOSTILE INTENT IS READ OFF THE DELIVERY, NOT THE DOOR (turning.go). An
+// attack roll provokes hit or miss; a cast that asks that member for a save
+// provokes even when nothing lands, because the attempt is the provocation;
+// and a cast that delivers harm with no roll and no save at all — magic
+// missile's shape — provokes on what it delivered. A delivery that is wholly
+// a kindness provokes through none of them. Every one of them lands
+// [DeedAttack] on the recipient, so a creature hurt by a spell testifies to
+// it exactly as one hit by a sword does. An ALLIED pair is not
 // turned: friendly fire is not betrayal in this cut. Because a turn makes
 // strangers enemies where a later sight refresh would report only Refreshed,
 // the stance site synthesizes that first contact and feeds it through the one
 // formation path — precedence, surprise and straggler-join stay one set of
 // rules (turning.go).
 //
-// A [KindWorld] MEMBER IS NOT A TARGET (rpg-project#493 R4). The attack verbs
-// refuse one by name, before anything is appended, and say how to author a
-// creature that can be attacked instead. It is the ref check in the words this module has:
+// A [KindWorld] MEMBER IS NOT A TARGET, THROUGH ANY HOSTILE DOOR
+// (rpg-project#493 R4). The verbs refuse one by name, before anything is
+// appended, and say how to author a creature that can be attacked instead:
+// a swing, a spell attack, a save asked of it and a harmful gateless delivery
+// are all refused, while a kindness — healing the merchant — still reaches
+// it. A vendor that could hold an `attacked` deed could be provoked into its
+// own attack rows, which is the opposite of the ruling.
+//
+// It is the ref check in the words this module has:
 // a `dnd5e:npcs:*` placed by the session becomes a member of Kind world, and
 // this composition may not import the rulebook that would name the ref (C1).
 // Nothing else is spared — a player may be attacked, and so may every

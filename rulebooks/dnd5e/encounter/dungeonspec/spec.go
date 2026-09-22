@@ -431,9 +431,10 @@ type DispositionSpec struct {
 	//
 	// WHAT NO FILE WRITES is "if attacked, become hostile". Delivering hostile
 	// intent across a neutral pair turns it hostile by law, authored or not
-	// (R3 as R5 rebound it) — an attack roll, hit or miss, or a spell that
-	// asks one of its members for a save against a harmful effect, landed or
-	// not — so a camp is provokable the moment it is neutral.
+	// (R3 as R5 rebound it). What counts is the DELIVERY, not the door it came
+	// through — a swing, a spell that asks for a save, or one that simply
+	// lands its harm — so a camp is provokable the moment it is neutral, and
+	// a delivery that is wholly a kindness provokes nobody.
 	Until *PredicateSpec `yaml:"until,omitempty"`
 }
 

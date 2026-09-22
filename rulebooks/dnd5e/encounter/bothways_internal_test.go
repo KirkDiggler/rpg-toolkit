@@ -7,7 +7,8 @@ package encounter
 // (rpg-project#493, R3), which is the one claim about it that cannot be made
 // from outside: the pair has to turn BEFORE the deed lands, or the very pick
 // the swing provokes reads `enemy: none`. And it is the same claim for the
-// other delivery R5 binds the law to — a spell that asks for a save.
+// other deliveries R5 binds the law to — a spell that asks for a save, and
+// one that lands its harm with no gate at all.
 //
 // A creature's own facts are the projection its table is picked against
 // ([Encounter.factsFor]), and they are unexported because a host never asks
@@ -188,4 +189,92 @@ func TestTheMockedWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 		}
 	}
 	require.True(t, attacked, "and the spell landed the same deed a sword would, against alice by name")
+}
+
+// TestTheMissiledWatcherReadsAnEnemyAndADeedInOnePick is the third delivery
+// door at the grain only this package can see (rpg-project#493, R5 as the
+// review of #1868 amended it): a cast with NO attack roll and NO save, which
+// simply lands nine force damage.
+//
+// THE PROBE THAT FOUND THE HOLE. A predicate that answered by arm read this
+// as nothing having happened — no turn, no deed, the camp still civil while
+// its scout bled — and contradicted itself one branch over, where a save that
+// delivered nothing provoked. Magic missile and `sleep` are both in this
+// toolkit's own catalog, so the shape arrives the day either is wired.
+func TestTheMissiledWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
+	const camp = "goblins"
+	missile := SpellIdentity{Ref: "dnd5e:spells:magic-missile", Name: "Magic Missile"}
+	scimitar := ActionView{
+		Ref:  core.Ref{Module: "dnd5e", Type: "weapons", ID: "scimitar"},
+		Name: "Scimitar", RangeFeet: 5, Kind: "melee",
+	}
+
+	enc, err := NewEncounter(&SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Retention: RetentionUnbounded,
+		Field: FieldInput{
+			Canvas:   CanvasInput{Void: VoidIsTransparent(), Orientation: HexesArePointyTop()},
+			Regions:  []RegionInput{rectRegion("yard", 0, 0, 6, 6)},
+			Factions: []FactionInput{{ID: camp}},
+			Dispositions: []DispositionInput{{
+				Between: [2]FactionID{camp, FactionParty}, Stance: StanceNeutral,
+			}},
+		},
+		Members: []MemberInput{
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30, SightFeet: 60},
+			{
+				ID: "watcher", Kind: KindMonster, Faction: camp, Position: spatial.Position{X: 2, Y: 1},
+				SpeedFeet: 30, SightFeet: 60, Actions: []ActionView{scimitar},
+			},
+		},
+		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	before, err := enc.factsFor("watcher")
+	require.NoError(t, err)
+	require.False(t, before.EnemyInReach, "precondition: a civil camp reads no enemy at all")
+	require.Empty(t, before.Deeds, "precondition: nothing has been done to it")
+
+	_, err = enc.RecordCast(&RecordCastInput{
+		Actor: "alice", Spell: missile,
+		Targets: []CastTargetResult{{
+			Target: "watcher",
+			Results: []ActivationResult{{
+				Kind: ResultDamageApplied, Target: "watcher",
+				Ref: missile.Ref, Name: missile.Name,
+				Amount: 9, Requested: 9, Before: 12, After: 3, DamageType: "force",
+				Calculation: &RollCalculation{
+					Components: []RollComponent{{
+						Source: RollSource{Ref: missile.Ref, Name: missile.Name, SourceID: "alice"},
+						Dice: &DiceTrace{
+							Notation: "3d4", DieSize: 4,
+							OriginalRolls: []int{2, 2, 2}, FinalRolls: []int{2, 2, 2}, Subtotal: 6,
+						},
+					}, {
+						Source:   RollSource{Ref: missile.Ref, Name: missile.Name, SourceID: "alice"},
+						Modifier: func() *int { m := 3; return &m }(),
+					}},
+					Total: 9,
+				},
+			}},
+		}},
+	})
+	require.NoError(t, err)
+
+	after, err := enc.factsFor("watcher")
+	require.NoError(t, err)
+
+	require.True(t, after.EnemyInReach,
+		"the pair turned before the deed landed, so the row that says `enemy: reach` can fire")
+
+	var attacked bool
+	for _, held := range after.Deeds {
+		if held.Kind == DeedAttack && held.Actor == "alice" {
+			attacked = true
+		}
+	}
+	require.True(t, attacked, "and an ungated spell landed the same deed a sword would, against alice by name")
 }
