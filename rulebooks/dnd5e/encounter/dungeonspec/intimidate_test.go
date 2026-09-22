@@ -74,9 +74,9 @@ func TestAnOmittedWeightCompilesToOne(t *testing.T) {
 	}, compiled.Monsters[0].Table[encounter.AnswerIntimidated])
 }
 
-// Absent is the common case and it compiles to nil, not to an empty map — the
-// rulebook derives the DC from the stat block's own passive Insight, and nil
-// is how it knows to.
+// Absent compiles to nil, not to an empty map, and nil is how the rulebook
+// knows the creature carries no social verb at all (rpg-project#494 R1).
+// Every monster in this camp is one nobody wrote a threat or an appeal on.
 func TestAMonsterNobodyPricedCarriesNothing(t *testing.T) {
 	compiled, err := dungeonspec.Load([]byte(campSource(t)))
 	require.NoError(t, err)

@@ -369,9 +369,9 @@ func bindingHolds(g *grammar, path, id string, holds []string, declared map[stri
 // [grammar.approaches] so every per-approach refusal is v2's as well.
 //
 // NIL IS NOT EMPTY, and that is the whole shape of this pair: a nil check is
-// an author who said nothing, and the rulebook derives the DC from the stat
-// block's passive Insight; `intimidate: []` is an author who said there IS a
-// price and did not say what it is. [RoomDoorBinding.Locked]'s law, one
+// an author who said nothing, which leaves the creature without the verb
+// entirely (rpg-project#494 R1); `intimidate: []` is an author who said there
+// IS a price and did not say what it is. [RoomDoorBinding.Locked]'s law, one
 // binding kind over.
 func bindingChecks(g *grammar, path string, b RoomMonsterBinding) {
 	if b.Intimidate != nil {
