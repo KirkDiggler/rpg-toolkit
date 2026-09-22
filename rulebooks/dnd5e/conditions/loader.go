@@ -260,6 +260,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return immune, nil
 	},
+	refs.Conditions.InFog().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		condition := &InFogCondition{}
+		if err := condition.loadJSON(data); err != nil {
+			return nil, err
+		}
+		return condition, nil
+	},
 	refs.Conditions.GuidingBolt().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		immune := &GuidingBoltCondition{}
 		if err := immune.loadJSON(data); err != nil {

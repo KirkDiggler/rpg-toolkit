@@ -41,6 +41,13 @@ type longRestCase struct {
 // name its long-rest rule without deriving either the fixture or expectation
 // from production dispatch.
 var longRestCases = map[string]longRestCase{
+	refs.Conditions.InFog().String(): {
+		data:    json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},"member_id":"member-1","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`),
+		ownerID: "member-1", expectedRef: refs.Conditions.InFog(),
+		// Area reconciliation removes this membership when its cloud expires;
+		// resting the recipient cannot independently remove another caster's fog.
+		outcome: longRestRetain,
+	},
 	refs.Conditions.Raging().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"raging"},

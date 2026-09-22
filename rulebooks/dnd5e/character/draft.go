@@ -2,6 +2,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -1054,8 +1055,8 @@ func (d *Draft) compileProficiencies(
 		}
 	}
 
-	// Apply the supported creation proficiency grants for Life and War.
-	if d.class == classes.Cleric && (d.subclass == classes.LifeDomain || d.subclass == classes.WarDomain) {
+	// Apply level-1 heavy-armor grants from cleric domains. Domain proficiencies are additive to the cleric base proficiencies.
+	if d.class == classes.Cleric && (d.subclass == classes.LifeDomain || d.subclass == classes.TempestDomain || d.subclass == classes.WarDomain) {
 		for _, category := range choices.GetSubclassModifications(d.subclass).GrantedProficiencies.Armor {
 			armorProfs = append(armorProfs, proficiencies.Armor(category))
 		}
@@ -1063,7 +1064,7 @@ func (d *Draft) compileProficiencies(
 
 	// War grants all martial weapons. The runtime proficiency is "martial",
 	// not the picker categories "martial-melee" and "martial-ranged".
-	if d.class == classes.Cleric && d.subclass == classes.WarDomain {
+	if d.class == classes.Cleric && (d.subclass == classes.WarDomain || d.subclass == classes.TempestDomain) {
 		weaponProfs = append(weaponProfs, proficiencies.WeaponMartial)
 	}
 
@@ -1386,6 +1387,19 @@ func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) 
 			}
 			featureList = append(featureList, output.Feature)
 		}
+	}
+
+	if d.class == classes.Cleric && d.subclass == classes.TempestDomain {
+		uses := d.baseAbilityScores.Modifier(abilities.WIS)
+		if uses < 1 {
+			uses = 1
+		}
+		cfg, _ := json.Marshal(map[string]int{"uses": uses})
+		output, err := features.CreateFromRef(&features.CreateFromRefInput{Ref: refs.Features.WrathOfTheStorm().String(), Config: cfg, CharacterID: characterID})
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to create Wrath of the Storm")
+		}
+		featureList = append(featureList, output.Feature)
 	}
 
 	return featureList, nil
@@ -1985,6 +1999,15 @@ func buildClassResources(
 				ResetType:   coreResources.ResetLongRest,
 			})
 			built[resources.RageCharges] = rageResource
+		}
+
+	case classes.Cleric:
+		if char.subclassID == classes.TempestDomain {
+			maxUses := char.abilityScores.Modifier(abilities.WIS)
+			if maxUses < 1 {
+				maxUses = 1
+			}
+			built[resources.WrathOfTheStorm] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{ID: string(resources.WrathOfTheStorm), Maximum: maxUses, CharacterID: char.id, ResetType: coreResources.ResetLongRest})
 		}
 
 	case classes.Bard:

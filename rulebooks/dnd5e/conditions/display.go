@@ -41,6 +41,7 @@ func DisplayFor(ref core.Ref) (Display, bool) {
 // The existing Shield spell condition remains excluded because it is not
 // promoted into status projection; Baned is explicitly status-visible.
 var displayCatalog = map[string]Display{
+	refs.Conditions.InFog().String(): {Name: InFogName, Detail: "Inside Fog Cloud. Sight is blocked by the fog."},
 	// Fighting styles (Fighter).
 	refs.Conditions.FightingStyleArchery().String():             {Name: "Archery"},
 	refs.Conditions.FightingStyleDefense().String():             {Name: "Defense"},

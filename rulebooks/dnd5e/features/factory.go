@@ -3,6 +3,7 @@ package features
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -67,6 +68,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createRage(input.Config, input.CharacterID)
 	case refs.Features.SecondWind().ID:
 		feature, err = createSecondWind(input.Config, input.CharacterID)
+	case refs.Features.WrathOfTheStorm().ID:
+		feature, err = createWrathOfTheStorm(input.Config, input.CharacterID)
 	case refs.Features.ActionSurge().ID:
 		feature, err = createActionSurge(input.Config, input.CharacterID)
 	case refs.Features.FlurryOfBlows().ID:
@@ -322,4 +325,11 @@ func createDeflectMissiles(config json.RawMessage, characterID string) (*Deflect
 		monkLevel:   monkLevel,
 		dexModifier: dexModifier,
 	}, nil
+}
+
+func createWrathOfTheStorm(_ json.RawMessage, characterID string) (*WrathOfTheStorm, error) {
+	if characterID == "" {
+		return nil, fmt.Errorf("wrath of the storm requires its owner")
+	}
+	return &WrathOfTheStorm{id: refs.Features.WrathOfTheStorm().ID, name: "Wrath of the Storm", characterID: characterID}, nil
 }

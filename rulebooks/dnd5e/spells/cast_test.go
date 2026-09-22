@@ -844,3 +844,36 @@ func (s *CastContentSuite) TestDivineFavorDeclaresBonusActionAndOwnedProtection(
 	s.Nil(d.Cast.Attack)
 	s.Nil(d.Cast.Save)
 }
+
+func (s *CastContentSuite) TestFogCloudDeclaresPersistentSightWithoutRecipientsOrDice() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.FogCloud})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(120, d.Cast.RangeFeet)
+	s.Equal(actions.CastTargetArea, d.Cast.Target)
+	s.Equal(0, d.Cast.MinTargets)
+	s.Equal(0, d.Cast.MaxTargets)
+	s.Require().NotNil(d.Cast.Area)
+	s.Equal(actions.AreaOriginPoint, d.Cast.Area.Footprint.Origin)
+	s.Equal(20, d.Cast.Area.Footprint.SizeFeet)
+	s.True(d.Cast.Area.ObscuresSight)
+	s.Equal(refs.Conditions.InFog().String(), d.Cast.Area.MembershipRef)
+	s.Equal("In Fog", d.Cast.Area.MembershipName)
+	s.Equal(600, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.Empty(d.Cast.Damage)
+	s.Empty(d.Cast.Effects)
+	s.Nil(d.Cast.Save)
+	s.Nil(d.Cast.Healing)
+	clone := d.Clone()
+	clone.Cast.Concentration = nil
+	s.Error(clone.Validate())
+	clone = d.Clone()
+	clone.Cast.Area.ObscuresSight = false
+	s.True(d.Cast.Area.ObscuresSight)
+	clone = d.Clone()
+	clone.Cast.Area.MembershipRef = "changed"
+	s.Equal(refs.Conditions.InFog().String(), d.Cast.Area.MembershipRef)
+}
