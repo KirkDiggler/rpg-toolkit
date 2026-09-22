@@ -544,6 +544,24 @@ var (
 	// an empty list a client could mistake for "nothing to ask about yet."
 	ErrOutOfReach = errors.New("no target in reach")
 
+	// ErrNotATarget is Attack's refusal for a member that can never be one:
+	// a world-kind member — an npc — is not something you can attack; author
+	// it as a monster to make it a target (rpg-project#493, R4). The
+	// host-seam twin of encounter.ErrNotATarget.
+	//
+	// NOT ErrStaleDeclaration, which is what this used to be and is the
+	// reason the sentinel exists. "Stale" tells a host to re-read the offers
+	// and try again, and re-reading answers the same thing forever: a
+	// merchant is never in the candidate universe (excludeWorldNPCs) and
+	// nothing a player does changes that. The one thing that does is
+	// authoring the creature as a monster with a disposition, and the
+	// refusal has to say so rather than send the caller round a loop.
+	//
+	// NOT ErrOutOfReach either, for the reason ErrUnwitnessed is not: this
+	// is not a distance, and telling a player to walk closer to a merchant
+	// they may already be standing beside is the wrong instruction.
+	ErrNotATarget = errors.New("target cannot be attacked")
+
 	// ErrCannotAfford is returned when the final payment door cannot pay for
 	// what an actor declared. Move reaches it when the selected path is longer
 	// than the turn's remaining movement (rpg-toolkit#1169). Attack normally

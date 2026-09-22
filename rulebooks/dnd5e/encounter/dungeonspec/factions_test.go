@@ -53,7 +53,7 @@ const (
 	dispoLine   = `  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }`
 	intelLine   = `  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }`
 	letterHolds = `      holds: [wisemans-letter], arrives: { round: 6 } }`
-	notBuilt    = "in this version a disposition turns only on a fact"
+	alliedUntil = "an allied pair has nothing to become"
 )
 
 // TestTheRaiderCampCompiles is the fixture's own gate: the camp is a legal
@@ -193,9 +193,12 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			want: []string{"dispositions[1].between", "already have a disposition at dispositions[0]"},
 		},
 		{
-			name: "an until on a stance that is not hostile",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "stance: hostile", "stance: neutral", 1),
-			want: []string{"dispositions[0].until", "only a hostile pair"},
+			// Neutral takes an until now and turns hostile (rpg-project#493,
+			// R1); allied is the one stance with nothing to become. This
+			// case replaced "an until on a stance that is not hostile".
+			name: "an until on an allied pair",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "stance: hostile", "stance: allied", 1),
+			want: []string{"dispositions[0].until", alliedUntil},
 		},
 		{
 			name: "an unknown faction in a disposition",
@@ -213,20 +216,25 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			want: []string{"dispositions[0].stance", "not a stance"},
 		},
 		{
-			name: "an until on a fall is not built yet",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ down: chief }", 1),
-			want: []string{"dispositions[0].until", notBuilt},
+			// A `{ down }`, a `{ round }` and a `{ stance }` on an until are
+			// accepted now (R2); what is still refused is a predicate that
+			// cannot hold. These three replaced the "not built yet" cases,
+			// and each keeps the line's OWN defect rather than the blanket
+			// one that used to swallow it.
+			name: "an until on the fall of something that cannot fall",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ down: nobody }", 1),
+			want: []string{"dispositions[0].until.down", "not a placement in this dungeon"},
 		},
 		{
-			name: "an until on a round is not built yet",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ round: 6 }", 1),
-			want: []string{"dispositions[0].until", notBuilt},
+			name: "an until on a round counted from zero",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ round: 0 }", 1),
+			want: []string{"dispositions[0].until.round", "counted from 1"},
 		},
 		{
-			name: "an until on another stance is not built yet",
+			name: "an until on a stance the pair can never reach",
 			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }",
 				"{ stance: { between: [monsters, party], is: neutral } }", 1),
-			want: []string{"dispositions[0].until", notBuilt},
+			want: []string{"dispositions[0].until.stance", "can never be neutral"},
 		},
 		{
 			name: "a faction of many waiting for a fact with no mind",

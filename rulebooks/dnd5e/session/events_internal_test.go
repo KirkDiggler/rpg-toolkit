@@ -996,6 +996,28 @@ func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
 		// the beat is the event ("stance_changed"), not the noun.
 		{"stance changed", `{"beat":"stance","between":["goblins","party"],"stance":"neutral"}`,
 			EventStanceChanged, StanceChangedBody{Between: []string{"goblins", "party"}, Stance: "neutral"}},
+		// rpg-project#493: a pair turns four ways now, and the beat says
+		// which. The cause crosses as the composition's own sentence — the
+		// two cases below are an attack and a round, the two a streamer is
+		// most likely to be watching for.
+		{"stance changed by an attack",
+			`{"beat":"stance","between":["goblins","party"],"stance":"hostile","cause":"attacked by alice"}`,
+			EventStanceChanged, StanceChangedBody{
+				Between: []string{"goblins", "party"}, Stance: "hostile", Cause: "attacked by alice"}},
+		{"stance changed at midnight",
+			`{"beat":"stance","between":["guards","party"],"stance":"hostile","cause":"round 3 started"}`,
+			EventStanceChanged, StanceChangedBody{
+				Between: []string{"guards", "party"}, Stance: "hostile", Cause: "round 3 started"}},
+		// AND A CAUSELESS TURN STILL DECODES, which is the assertion that
+		// keeps the arm above from growing a required field: a pair turned by
+		// a faction's MIND carries no cause, the composition writes none on
+		// purpose, and the hold-out's own beat is exactly this shape. The
+		// first case in this group is that beat; this one says the empty
+		// Cause is the reading rather than a decode that gave up.
+		{"stance changed by a mind, with no cause to give",
+			`{"beat":"stance","between":["raiders","party"],"stance":"neutral"}`,
+			EventStanceChanged, StanceChangedBody{
+				Between: []string{"raiders", "party"}, Stance: "neutral", Cause: ""}},
 		// rpg-project#375 step B: a reserved placement entering the run — a
 		// monster or a prop, and the cell it actually landed on.
 		{"a monster arrived", `{"beat":"arrived","id":"reinforcement-1","kind":"monster","cell":{"x":1,"y":4}}`,

@@ -204,6 +204,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"world-builder-v4-front-room.yaml",
 		"world-builder-v4-raider-camp.yaml",
 		"world-builder-v4-raider-letter.yaml",
+		"world-builder-v4-truce.yaml",
 		"world-builder-v4-tomb-heirloom.yaml",
 		"world-builder-v4-tomb-vault.yaml",
 	}, names, "the authored dungeons this package ships")
