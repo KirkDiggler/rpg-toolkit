@@ -5,12 +5,14 @@ package session_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -73,16 +75,28 @@ func xpRoom(t fataler, endings []encounter.EndingInput, players ...string) *enco
 // by writing the stored sheets and then let somebody walk, so the world looks;
 // if the walker were in contact with the monsters, the step would be a turn in
 // a fight and the scene would be about initiative instead.
-func xpCrypt(t fataler) *encounter.EncounterData {
+func xpCrypt(t fataler) *encounter.EncounterData { return xpCryptWith(t) }
+
+// xpCryptWith is the crypt plus any extra players, parked on bob's side of the
+// wall where the fight cannot reach them.
+func xpCryptWith(t fataler, extra ...string) *encounter.EncounterData {
 	occluders := make([]spatial.Position, 0, 10)
 	for y := 0; y < 10; y++ {
 		occluders = append(occluders, spatial.Position{X: 5, Y: float64(y)})
 	}
 
-	return denWith(t, []encounter.MemberInput{
+	members := []encounter.MemberInput{
 		{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 8, Y: 8}},
-	}, occludingProps(occluders...), withdrawable())
+	}
+	for i, id := range extra {
+		members = append(members, encounter.MemberInput{
+			ID: encounter.MemberID(id), Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: float64(7 - i), Y: 8},
+		})
+	}
+
+	return denWith(t, members, occludingProps(occluders...), withdrawable())
 }
 
 // denWith builds the one world shape both fixtures above are variations of.
@@ -548,4 +562,176 @@ func (s *ExperienceTestSuite) TestCrossingAThresholdOpensALevel() {
 	s.Equal(300, after.Experience, "the verb reads the total the fall wrote")
 	s.Equal(2, after.EntitledLevel, "which has earned level 2")
 	s.Equal(1, after.Level, "and the sheet still holds level 1: the gap IS the offer")
+}
+
+// errSettlementSave is a character store refusing one exact write during the
+// settlement, so a scene can ask what a half-paid party leaves behind.
+var errSettlementSave = errors.New("the settlement's character save was refused")
+
+// TestAMonsterWithNoStoredSheetNeverFalls is the upstream half of the
+// settlement's missing-sheet guard, and the reason that guard has no reachable
+// scene of its own.
+//
+// settleOneFall refuses a fallen monster whose sheet is not in the session
+// record (ErrInvalidSession). Nothing in this module can produce that state:
+// standing.go answers "no sheet, no death" — a KindMonster with no entry in
+// SessionData.NPCs is in neither provider list and takes the Conscious
+// compatibility fact — so a sheetless monster never goes down at all, and
+// SessionData.NPCs is only ever appended to (Spawn) or rewritten in place
+// (saveDirty), never shortened. The guard is therefore fail-closed defence
+// against a hand-edited record, not a live path.
+//
+// What IS worth pinning is the behavior above it, because it is what makes the
+// guard unreachable: strip the sheet and the monster stops being able to fall,
+// so the party is never paid and nothing is recorded. A change that let a
+// sheetless monster fall would land in the settlement's refusal instead of
+// here, and this scene is what would notice.
+func (s *ExperienceTestSuite) TestAMonsterWithNoStoredSheetNeverFalls() {
+	s.startCrypt()
+	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+	s.dropTo("goblin", 0)
+
+	data := s.sessions.byID["sess"]
+	kept := make([]monster.Data, 0, len(data.NPCs))
+	for _, npc := range data.NPCs {
+		if npc.ID != "goblin" {
+			kept = append(kept, npc)
+		}
+	}
+	data.NPCs = kept
+
+	s.bobSteps()
+
+	for _, event := range s.stream.published {
+		s.NotEqual(session.EventDowned, event.Kind, "a sheetless monster cannot be seen to fall")
+	}
+	s.Empty(s.grantEvents(), "so nothing is paid and nothing is recorded")
+	s.Zero(s.storedExperience("alice"))
+	s.Zero(s.storedExperience("bob"))
+}
+
+// TestAPayeeTheStoreDoesNotHoldFailsTheVerb pins the second of the three
+// returns the settlement's safety argument runs through.
+//
+// Carol is a KindPlayer on the encounter's roster and the character store does
+// not hold her. That is a real inconsistency, not an ordinary absence, and the
+// settlement returns rather than skipping her: a party quietly paid short is
+// exactly the silent wrong this fails closed against.
+//
+// SHE IS NEITHER IN THE FIGHT NOR WALKING, and that is the fixture's whole
+// point. A missing player who is in the dissolving fight is caught one
+// settlement earlier, by exitDissolvedCombatants, so a scene built on her
+// would pass while saying nothing about this code. Carol stands behind the
+// wall doing nothing, which leaves this settlement the first to look for her.
+//
+// What the verb leaves behind is the ordering law holding: the world is
+// untouched, no beat was recorded, and the two sheets paid BEFORE the failure
+// are named in the report — which is the difference between a caller who
+// repairs and one who retries.
+func (s *ExperienceTestSuite) TestAPayeeTheStoreDoesNotHoldFailsTheVerb() {
+	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: xpCryptWith(s.T(), "carol"),
+	})
+	s.Require().NoError(err)
+	s.stream.published = nil
+
+	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+	s.dropTo("goblin", 0)
+	delete(s.characters.byID, "carol")
+
+	before, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+
+	// The verb's own error keeps its own name. Reusing err for the reads below
+	// would quietly replace it with a nil, and every assertion after that point
+	// would be asking questions of the wrong error.
+	_, verbErr := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{hexCell(8, 7)},
+	})
+
+	s.Require().Error(verbErr)
+	s.ErrorIs(verbErr, session.ErrNoCharacter, "a roster player the store does not hold is an inconsistency")
+
+	after, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+	s.Equal(before, after, "the verb failed before persist, so the world never moved")
+	s.Empty(s.grantEvents(), "and no grant was announced")
+
+	var reported *session.SaveError
+	s.Require().True(errors.As(verbErr, &reported), "the failure carries the report")
+	// TWO NAMES, AND THE COUNT IS THE POINT. The settlement pays each player
+	// and saves that sheet before moving to the next, so alice and bob are
+	// already durable when carol is found missing. A settlement restructured
+	// to load everyone first, or to record its beat before writing, leaves
+	// this list EMPTY — which is how this assertion notices an ordering change
+	// that nothing else in the suite can see.
+	s.Equal([]string{"character:alice", "character:bob"}, reported.Report.Written,
+		"the sheets paid before the failure are named, so the caller repairs rather than retries")
+}
+
+// TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat pins the third return.
+//
+// Alice's share lands and bob's save is refused. The verb fails, the world is
+// untouched, and no grant reaches a client.
+//
+// WHAT THIS SCENE DOES NOT PIN, said plainly because the neighbouring comment
+// could be read as claiming it: it does not by itself catch a settlement that
+// recorded the beat BEFORE saving the sheets. Delivery waits for persist, so a
+// verb that fails anywhere publishes nothing either way, and the stored world
+// is unchanged whichever order the two ran in. The assertion sensitive to that
+// restructure is the Written list in
+// [ExperienceTestSuite.TestAPayeeTheStoreDoesNotHoldFailsTheVerb]: pay-then-
+// next-payee leaves two sheets named, load-everyone-first leaves none. Checked
+// by mutation rather than assumed.
+//
+// ALICE'S SHEET IS DURABLE AT 25 AND THAT IS ADMITTED, NOT HIDDEN. It is the
+// wedge settleExperience's own doc names and the one Manager.persist already
+// admits for a swing's damage (rpg-toolkit#1056): sheets are durable before
+// persist runs, so a retry of this verb would pay her twice. The report naming
+// her is what lets a caller tell that apart from nothing having happened, and
+// asserting it here is the difference between a known cost and a surprise.
+func (s *ExperienceTestSuite) TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	s.stream = &fakeStream{}
+	failing := &failNthArmedSaveCharacters{
+		fakeCharacters: s.characters, failAt: 2, err: errSettlementSave,
+	}
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: failing, Events: s.stream,
+	})
+	s.Require().NoError(err)
+	s.mgr = mgr
+
+	s.startCrypt()
+	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+	s.dropTo("goblin", 0)
+
+	before, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+	failing.armed = true
+
+	// Its own name, for the reason the scene above states.
+	_, verbErr := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{hexCell(8, 7)},
+	})
+
+	s.Require().Error(verbErr)
+	s.ErrorIs(verbErr, session.ErrSaveFailed, "this seam's vocabulary")
+	s.ErrorIs(verbErr, errSettlementSave, "and the host's own cause stays matchable")
+	s.Equal(2, failing.attempts, "alice's share landed before bob's was refused")
+
+	after, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+	s.Equal(before, after, "the verb failed before persist, so the world never moved")
+	s.Empty(s.grantEvents(), "and no grant reached a client")
+
+	var reported *session.SaveError
+	s.Require().True(errors.As(verbErr, &reported), "the failure carries the report")
+	s.Equal([]string{"character:alice"}, reported.Report.Written,
+		"the share written before the failure is named — settleExperience's own admitted wedge")
+	s.Equal([]string{"character:bob"}, reported.Report.Failed, "and the one that did not land is too")
+	s.Equal(25, s.characters.byID["alice"].Experience, "alice's grant really is durable; a retry pays her twice")
+	s.Zero(s.characters.byID["bob"].Experience)
 }
