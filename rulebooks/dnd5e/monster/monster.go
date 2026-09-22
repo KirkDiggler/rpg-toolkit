@@ -52,6 +52,10 @@ type Monster struct {
 	proficiencyBonus int            // Base proficiency bonus (CR-based)
 	proficiencies    map[string]int // skill -> bonus
 
+	// experience is what this monster is worth on its fall. See
+	// [Data.Experience]; zero means worth nothing, and nothing defaults it.
+	experience int
+
 	// AI behavior
 	targeting TargetingStrategy
 
@@ -78,6 +82,7 @@ type Config struct {
 	AC               int
 	AbilityScores    shared.AbilityScores
 	ProficiencyBonus int // CR-based proficiency bonus (default 2 if not set)
+	Experience       int // Authored experience worth; 0 means worth nothing
 }
 
 // New creates a new monster with the specified configuration
@@ -93,6 +98,7 @@ func New(config Config) *Monster {
 		ac:               config.AC,
 		abilityScores:    config.AbilityScores,
 		proficiencyBonus: profBonus,
+		experience:       config.Experience,
 	}
 }
 
@@ -340,6 +346,15 @@ func (m *Monster) AbilityScores() shared.AbilityScores {
 // ProficiencyBonus returns the monster's proficiency bonus (implements Combatant interface)
 func (m *Monster) ProficiencyBonus() int {
 	return m.proficiencyBonus
+}
+
+// Experience returns what this monster is worth in experience points, as its
+// stat block authored it. Zero is a monster worth nothing.
+//
+// The division among the party is not this sheet's business: it hands over the
+// whole worth and the rule that splits it lives with the roster.
+func (m *Monster) Experience() int {
+	return m.experience
 }
 
 // GetSavingThrowModifier returns the monster's modifier for a saving throw.
@@ -741,6 +756,7 @@ func (m *Monster) ToData() *Data {
 		ArmorClass:       m.ac,
 		AbilityScores:    m.abilityScores,
 		ProficiencyBonus: m.proficiencyBonus,
+		Experience:       m.experience,
 		Speed:            m.speed,
 		Senses:           m.senses,
 		Targeting:        m.targeting,

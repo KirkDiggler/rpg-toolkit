@@ -16,11 +16,12 @@ import (
 // NewSkeleton creates a CR 1/4 skeleton with shortsword, shortbow, vulnerability to bludgeoning, and immunity to poison
 func NewSkeleton(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Skeleton",
-		Ref:  refs.Monsters.Skeleton(),
-		HP:   13, // 2d8+4
-		AC:   13, // Armor scraps
+		ID:         id,
+		Name:       "Skeleton",
+		Ref:        refs.Monsters.Skeleton(),
+		HP:         13, // 2d8+4
+		AC:         13, // Armor scraps
+		Experience: 50, // CR 1/4
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 10, // +0
 			abilities.DEX: 14, // +2

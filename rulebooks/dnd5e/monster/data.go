@@ -28,6 +28,16 @@ type Data struct {
 	AbilityScores    shared.AbilityScores `json:"ability_scores"`
 	ProficiencyBonus int                  `json:"proficiency_bonus,omitempty"` // CR-based proficiency bonus
 
+	// Experience is what this monster is worth in experience points, authored
+	// on the stat block: the 2014 SRD value for the challenge rating the block
+	// claims. It is divided among the party on the monster's fall.
+	//
+	// Zero is honest rather than absent-and-guessed: a monster nobody gave a
+	// worth is worth nothing, and the party gets nothing for killing it. No
+	// challenge rating is stored anywhere and no CR table exists here — the
+	// number the table would produce is the number that is authored.
+	Experience int `json:"experience,omitempty"`
+
 	// Movement
 	Speed SpeedData `json:"speed"`
 

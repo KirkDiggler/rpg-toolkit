@@ -49,10 +49,11 @@ type Data struct {
 	// Experience is the total experience this character has earned.
 	//
 	// Cumulative and never debited (design R4.8), and read-only over the wire
-	// (R4.12): nothing in the toolkit awards it yet and no service call writes
-	// it, so a fixture seeds a levelled character by writing this field on the
-	// persisted sheet. The level it entitles the character to is DERIVED from
-	// it and never stored — see [Character.EntitledLevel].
+	// (R4.12): the toolkit awards it on the fall of a monster
+	// ([Character.AddExperience]) and no service call writes it, so a fixture
+	// still seeds a levelled character by writing this field on the persisted
+	// sheet. The level it entitles the character to is DERIVED from it and
+	// never stored — see [Character.EntitledLevel].
 	//
 	// A sheet written before experience existed loads with zero, and load does
 	// not re-check entitlement against it (R4.12a): Advance enforces the rule

@@ -26,6 +26,10 @@ func NewThug(id string) *monster.Monster {
 		Ref:  refs.Monsters.Thug(),
 		HP:   32, // 5d8+10
 		AC:   11, // Leather armor
+		// 200 is CR 1, the rating THIS FILE claims, not the SRD's. The SRD
+		// thug is CR 1/2 and worth 100; these stats are a deliberate variant
+		// and the worth follows the variant's rating, not the book's.
+		Experience: 200, // CR 1
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 15, // +2
 			abilities.DEX: 11, // +0

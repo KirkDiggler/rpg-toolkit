@@ -16,11 +16,12 @@ import (
 // bite and one with its claws, over bite and claw components.
 func NewBrownBear(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Brown Bear",
-		Ref:  refs.Monsters.BrownBear(),
-		HP:   34, // 4d10+12
-		AC:   11, // Natural armor
+		ID:         id,
+		Name:       "Brown Bear",
+		Ref:        refs.Monsters.BrownBear(),
+		HP:         34,  // 4d10+12
+		AC:         11,  // Natural armor
+		Experience: 200, // CR 1
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 19, // +4
 			abilities.DEX: 10, // +0

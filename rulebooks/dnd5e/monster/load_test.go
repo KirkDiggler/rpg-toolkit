@@ -248,6 +248,56 @@ func (s *PureLoadTestSuite) TestAnOlderBlobWithNoMeterHasItsReaction() {
 	s.False(m.ToData().ReactionSpent)
 }
 
+// What a monster is worth is authored, so it has to survive storage: a sheet
+// reloaded between the encounter's start and the monster's fall must still
+// know what the party earns for it.
+func (s *PureLoadTestSuite) TestAuthoredExperienceSurvivesTheRoundTrip() {
+	cases := []struct {
+		name       string
+		experience int
+	}{
+		{name: "the SRD value for a CR 1/4 block", experience: 50},
+		{name: "a monster worth nothing", experience: 0},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := s.sheet()
+			data.Experience = tc.experience
+
+			m, err := Load(s.ctx, data)
+			s.Require().NoError(err)
+
+			s.Equal(tc.experience, m.Experience())
+			s.Equal(tc.experience, m.ToData().Experience)
+			s.Equal(s.marshal(data), s.marshal(m.ToData()))
+		})
+	}
+}
+
+// Zero is the honest answer and not an absent value waiting for a default: the
+// proficiency bonus beside it reads an unstated 0 as 2, and experience
+// deliberately does not.
+func (s *PureLoadTestSuite) TestAnUnauthoredWorthIsNothingRatherThanADefault() {
+	data := s.sheet()
+
+	m, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+
+	s.Zero(m.Experience(), "nothing grants a monster a worth it was not given")
+	s.NotContains(s.marshal(m.ToData()), `"experience"`,
+		"and an unstated worth stays absent from the blob")
+}
+
+// New is the other way a monster gets built, and a worth stated on the Config
+// has to reach ToData by the same route the loaded one does.
+func (s *PureLoadTestSuite) TestAConfiguredWorthReachesTheData() {
+	m := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15, Experience: 50})
+
+	s.Equal(50, m.Experience())
+	s.Equal(50, m.ToData().Experience)
+}
+
 type liveMonsterCondition struct {
 	applied bool
 }

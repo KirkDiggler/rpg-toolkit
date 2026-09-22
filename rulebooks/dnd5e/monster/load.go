@@ -94,6 +94,7 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 		ac:               d.ArmorClass,
 		abilityScores:    d.AbilityScores,
 		proficiencyBonus: profBonus,
+		experience:       d.Experience,
 		speed:            d.Speed,
 		senses:           d.Senses,
 		targeting:        d.Targeting,

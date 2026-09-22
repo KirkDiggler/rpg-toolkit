@@ -5,6 +5,7 @@ package character
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -283,6 +284,128 @@ func (s *LevelUpSuite) TestLoadDoesNotRecheckEntitlement() {
 	s.Require().NoError(err, "a level-2 sheet with no experience still loads")
 	s.Equal(2, reloaded.GetLevel())
 	s.Equal(1, reloaded.EntitledLevel(), "and reads as entitled to less than it holds")
+}
+
+// --- the fall of a monster (R4.8) -----------------------------------------
+
+// The total only grows, so the mutator refuses a grant that is not a gain
+// rather than quietly accepting one. Clamping would let a caller that computed
+// a nonsense share write it and never find out.
+func (s *LevelUpSuite) TestAddExperienceRefusesAGrantThatIsNotAGain() {
+	for _, tc := range []struct {
+		name   string
+		amount int
+	}{
+		{name: "nothing", amount: 0},
+		{name: "a debit", amount: -1},
+		{name: "a large debit", amount: -5000},
+	} {
+		s.Run(tc.name, func() {
+			char := s.bard()
+			char.experience = 500
+			char.dirty = false
+
+			err := char.AddExperience(tc.amount)
+
+			s.Require().Error(err)
+			s.ErrorContains(err, "must be positive")
+			s.ErrorContains(err, fmt.Sprintf("%d", tc.amount), "the refusal names the amount")
+			s.Equal(500, char.Experience(), "the refused grant lands nowhere")
+			s.False(char.IsDirty(), "and leaves nothing to write back")
+		})
+	}
+}
+
+// Each fall adds to the last. Nothing resets, nothing replaces.
+func (s *LevelUpSuite) TestAddExperienceAccumulates() {
+	char := s.bard()
+	char.experience = 0
+
+	s.Require().NoError(char.AddExperience(50))
+	s.Equal(50, char.Experience())
+
+	s.Require().NoError(char.AddExperience(25))
+	s.Require().NoError(char.AddExperience(200))
+	s.Equal(275, char.Experience(), "three monsters fell and the sheet holds all three")
+}
+
+// The grant is state, so the sheet has to report itself dirty or the next
+// write-back discards the whole thing (rpg-toolkit#1087).
+func (s *LevelUpSuite) TestAGrantMarksTheSheetForWriteBack() {
+	char := s.bard()
+	char.dirty = false
+
+	s.Require().NoError(char.AddExperience(1))
+	s.True(char.IsDirty())
+}
+
+// Entitlement is derived, so the level opens the moment the total reaches the
+// threshold and not a point before it. 299 is still level 1.
+func (s *LevelUpSuite) TestAGrantOpensTheLevelExactlyAtTheThreshold() {
+	char := s.bard()
+	char.experience = 250
+
+	s.Require().NoError(char.AddExperience(49))
+	s.Equal(299, char.Experience())
+	s.Equal(1, char.EntitledLevel(), "one short of the threshold entitles nothing")
+
+	s.Require().NoError(char.AddExperience(1))
+	s.Equal(300, char.Experience())
+	s.Equal(2, char.EntitledLevel(), "and the threshold itself opens the level")
+}
+
+// A grant takes no level: it opens one for Advance to take. The record is
+// untouched, which is what keeps the gap between them the "level up available"
+// signal (R4.10).
+func (s *LevelUpSuite) TestAGrantTakesNoLevel() {
+	char := s.bard()
+	char.experience = 0
+	s.Require().Equal(1, char.GetLevel())
+
+	s.Require().NoError(char.AddExperience(1000))
+
+	s.Equal(1, char.GetLevel(), "the character still holds the level it took")
+	s.Equal(3, char.EntitledLevel(), "and is merely entitled to two more")
+}
+
+// The grant has to survive storage, or a party that levels between sessions
+// levels on a total the sheet forgot.
+func (s *LevelUpSuite) TestAGrantSurvivesSaveAndLoad() {
+	char := s.bard()
+	char.experience = 250
+
+	s.Require().NoError(char.AddExperience(50))
+
+	data := char.ToData()
+	s.Equal(300, data.Experience, "ToData carries the granted total")
+
+	reloaded, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+	s.Equal(300, reloaded.Experience())
+	s.Equal(2, reloaded.EntitledLevel(), "and the reloaded sheet is entitled to the level")
+}
+
+// The split is RAW's: evenly among the party, remainder dropped.
+func (s *LevelUpSuite) TestExperienceShareDividesEvenlyAndFloors() {
+	for _, tc := range []struct {
+		name      string
+		total     int
+		partySize int
+		share     int
+	}{
+		{name: "a goblin among four", total: 50, partySize: 4, share: 12},
+		{name: "an even division", total: 200, partySize: 4, share: 50},
+		{name: "a solo adventurer takes the lot", total: 450, partySize: 1, share: 450},
+		{name: "a worth smaller than the party", total: 3, partySize: 5, share: 0},
+		{name: "a monster worth nothing", total: 0, partySize: 4, share: 0},
+		{name: "a party of nobody", total: 200, partySize: 0, share: 0},
+		{name: "a negative party", total: 200, partySize: -2, share: 0},
+		{name: "a negative worth", total: -100, partySize: 4, share: 0},
+	} {
+		s.Run(tc.name, func() {
+			s.Equal(tc.share, ExperienceShare(tc.total, tc.partySize))
+		})
+	}
 }
 
 // --- the bard proof case (R4.4c, R4.6, R4.7) ------------------------------

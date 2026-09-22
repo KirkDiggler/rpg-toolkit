@@ -40,11 +40,12 @@ import (
 //     no "indistinguishable while motionless" concept exist to hang them on.
 func NewAnimatedArmor(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Animated Armor",
-		Ref:  refs.Monsters.AnimatedArmor(),
-		HP:   33, // 6d8+6
-		AC:   18, // Natural armor
+		ID:         id,
+		Name:       "Animated Armor",
+		Ref:        refs.Monsters.AnimatedArmor(),
+		HP:         33,  // 6d8+6
+		AC:         18,  // Natural armor
+		Experience: 200, // CR 1
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 14, // +2
 			abilities.DEX: 11, // +0
