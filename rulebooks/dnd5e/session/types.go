@@ -1145,6 +1145,39 @@ const (
 	// side by side while narrating one exchange.
 	EventDowned EventKind = "downed"
 
+	// EventExperienceGained reports experience the party has ALREADY been
+	// paid (rpg-project#496, R5). One beat per fallen monster: the monster's
+	// authored worth divided equally among the players on the roster at the
+	// moment it fell, each share applied to its sheet and saved before this
+	// beat was ever written.
+	//
+	// It is a receipt, not an offer. Nothing a client does with it changes
+	// anything, and there is no RPC that writes experience — the total is
+	// read-only over the wire (R4.12) and this is how a table learns it
+	// moved without re-reading every sheet.
+	//
+	// EVERY PLAYER HEARS IT, including one who never saw the monster fall.
+	// A share is owed for taking part, and taking part is being on the
+	// roster: a player behind a wall, a player dying on the floor, and the
+	// player who struck the blow are paid the same and told the same. Who
+	// struck is deliberately not here — the fall is anonymous by ruling
+	// (rpg-toolkit#959) and an equal division has no use for a killer.
+	//
+	// WHAT IT DOES NOT CARRY is entitlement. Whether a new total has opened
+	// a level is DERIVED from it (character.EntitledLevel), so putting a
+	// "level up available" flag on this beat would be a second answer to a
+	// question the sheet already answers, free to disagree with it. A client
+	// that wants to know reads the character.
+	//
+	// A GRANT OF ZERO IS NOT A BEAT. A monster worth nothing, or a share
+	// that floors to zero, settles silently: there is no event saying the
+	// party gained nothing.
+	//
+	// The composition's word crosses unchanged, like "held" and "arrived":
+	// "experience_gained" is the statement of what happened, and the wire's
+	// EVENT_KIND_EXPERIENCE_GAINED says the same.
+	EventExperienceGained EventKind = "experience_gained"
+
 	// EventStanceChanged reports that the stance between two factions
 	// turned (rpg-project#375, the hold-out design §3.4–§3.5, §5): a
 	// disposition's `until` held — the faction's mind came to know the fact
@@ -1489,6 +1522,49 @@ type DownedBody struct {
 }
 
 func (DownedBody) isEventBody() {}
+
+// ExperienceGainedBody is EventExperienceGained's typed body: what fell, and
+// what each character was paid for it.
+//
+// WHOLE-PARTY, ONE PER FALLEN MONSTER. Every player on the roster at the fall
+// appears in Grants, and the same body reaches every recipient — this is not
+// a per-recipient slice of a larger truth, it is the whole grant, so a client
+// can narrate "the party gained 50 each" rather than assembling it from
+// everyone's separate beat.
+//
+// See EventExperienceGained on why entitlement is not here.
+type ExperienceGainedBody struct {
+	// Member is the cause: the fallen monster's member id, the same id the
+	// EventDowned beat beside it carried.
+	//
+	// A later slice pays an authored reward when a dungeon's ending fires and
+	// will name the ending here instead — a cause that is not a member. The
+	// field is an identifier either way, which is why there is one field
+	// rather than two (encounter's ExperienceDetail.Member says the same).
+	Member string `json:"member"`
+
+	// Grants is who was paid and how much, sorted by character. Never empty:
+	// a grant nobody received is not a beat.
+	Grants []ExperienceGrant `json:"grants"`
+}
+
+func (ExperienceGainedBody) isEventBody() {}
+
+// ExperienceGrant is one character's share of one grant.
+type ExperienceGrant struct {
+	// Character is who was paid.
+	Character string `json:"character"`
+
+	// Amount is what this fall paid them: the monster's worth divided among
+	// the players on the roster, rounded down. Always positive.
+	Amount int `json:"amount"`
+
+	// Total is their cumulative experience AFTER the grant — the number the
+	// character store now holds, written before this beat was recorded. A
+	// client can answer "how close am I to the next level" from this and the
+	// threshold table without summing every beat it has ever seen.
+	Total int `json:"total"`
+}
 
 // DeathSaveBody is EventDeathSave's typed game result. It contains the same
 // projected provider facts as DeathSaveOutput, excluding persistence/delivery

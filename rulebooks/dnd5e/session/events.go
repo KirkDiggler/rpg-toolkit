@@ -296,6 +296,14 @@ func kindFor(beat string) EventKind {
 	// rename there would be a migration; a translation here is a line.
 	case "down":
 		return EventDowned
+	// The party's receipt for that fall, and an outcome kind like the ones
+	// above — but this one IS pushed, by this package: the composition sees
+	// the body, the session knows what it was worth and who was on the
+	// roster, so the session divides, writes the sheets and hands the beat
+	// back (rpg-project#496, R4). The composition's own word crosses
+	// unchanged; there is no ambiguity here to translate away.
+	case string(encounter.OutcomeExperienceGained):
+		return EventExperienceGained
 	case "door":
 		return EventDoor
 	// One secret entering one recipient's knowledge. Named by the
@@ -697,6 +705,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DownedBody{Member: p.Member}
+	case EventExperienceGained:
+		return experienceGainedBody(payload)
 	case EventLooted:
 		var p struct {
 			Member string `json:"member"`
@@ -851,6 +861,50 @@ func castEventBody(payload []byte) EventBody {
 // never written and one that was written false are different payloads, and a
 // decoder that read a missing key as false would narrate a failed save that
 // nobody rolled. The roll must be a real d20 for the same reason.
+// experienceGainedBody reads the grant off the beat's "experience" object —
+// the composition's own ExperienceDetail, nested exactly as a death save's
+// detail is, not spread across the beat's top level.
+//
+// THE TOP-LEVEL "actor" IS IGNORED on purpose. The composition requires an
+// actor on every beat and this package passes the fallen monster as one, so
+// the id appears twice; the authoritative copy is the one inside the detail,
+// which is also the one a later cause — an ending that pays a reward — will
+// still be able to fill when there is no member to name as actor.
+//
+// Every required field is checked explicitly rather than trusted to
+// Unmarshal, for TestBodyForRefusesAMissingRequiredField's reason: an absent
+// field unmarshals to a zero that reads as a real answer. A grant naming
+// nobody, or paying nothing, leaves the whole body nil — the beat is still
+// delivered with its kind, so a client's sequence stays gapless.
+func experienceGainedBody(payload []byte) EventBody {
+	var p struct {
+		Experience *struct {
+			Member string `json:"member"`
+			Grants []struct {
+				Character string `json:"character"`
+				Amount    int    `json:"amount"`
+				Total     int    `json:"total"`
+			} `json:"grants"`
+		} `json:"experience"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Experience == nil ||
+		p.Experience.Member == "" || len(p.Experience.Grants) == 0 {
+		return nil
+	}
+
+	grants := make([]ExperienceGrant, 0, len(p.Experience.Grants))
+	for _, grant := range p.Experience.Grants {
+		if grant.Character == "" || grant.Amount <= 0 {
+			return nil
+		}
+		grants = append(grants, ExperienceGrant{
+			Character: grant.Character, Amount: grant.Amount, Total: grant.Total,
+		})
+	}
+
+	return ExperienceGainedBody{Member: p.Experience.Member, Grants: grants}
+}
+
 func savedEventBody(payload []byte) EventBody {
 	outer, ok := strictJSONObject(payload)
 	if !ok {
