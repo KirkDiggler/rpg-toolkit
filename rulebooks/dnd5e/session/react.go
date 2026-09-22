@@ -55,6 +55,9 @@ type ReactInput struct {
 	// Choice is [ReactStrike] or [ReactHold]. Anything else is
 	// [ErrNotOffered].
 	Choice ReactChoice
+
+	// Option echoes an authored option from this reaction declaration.
+	Option string
 }
 
 // ReactOutput is what answering a window did.
@@ -148,6 +151,12 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
+	if kind == windowKindPostHit {
+		return m.answerPostHit(ctx, scope, window, in)
+	}
+	if in.Option != "" && kind != windowKindCastOffer {
+		return nil, fmt.Errorf("react: %w: this window offers no options", ErrNotOffered)
+	}
 	if kind == windowKindPostRoll {
 		return m.answerPostRoll(ctx, scope, window, in.Choice)
 	}
@@ -155,7 +164,7 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 		return m.answerCheckOffer(ctx, scope, window, in.Choice)
 	}
 	if kind == windowKindCastOffer {
-		return m.answerCastOffer(ctx, scope, window, in.Choice)
+		return m.answerCastOffer(ctx, scope, window, in.Choice, in.Option)
 	}
 
 	payload, err := thawWindowPayload(window.Payload, string(window.Audience))

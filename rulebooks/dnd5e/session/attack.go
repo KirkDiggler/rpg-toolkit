@@ -468,6 +468,27 @@ func (m *Manager) poseAttackWindow(
 	ctx context.Context, scope *writeScope, in *AttackInput, out *resolution.Output,
 	definition combatActions.Definition, presentationID string,
 ) (*AttackOutput, error) {
+
+	if out.Posed.SettledStrike != nil {
+		if err := m.adopt(ctx, scope, out.World); err != nil {
+			return nil, err
+		}
+		if err := m.saveDirty(ctx, scope, out); err != nil {
+			return nil, err
+		}
+		recorded, err := scope.enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, presentationID, out))
+		if err != nil {
+			return nil, reportUnrecorded(scope, translate(err))
+		}
+		if err = posePostHitWindow(scope, out.Posed); err != nil {
+			return nil, err
+		}
+		report, delivery, err := m.commit(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		return &AttackOutput{Paused: true, Roll: out.Posed.SettledStrike.Roll, Total: out.Posed.SettledStrike.Total, Seq: scope.deliveredSeq(in.Attacker, recorded.Seq), Saved: report, Delivery: delivery, Attack: attackRefFor(definition), PresentationID: presentationID}, nil
+	}
 	ask := out.Posed.Ask
 	if ask.Audience != in.Attacker {
 		// R5, checked on this side of the seam too: this build poses to the
@@ -1126,5 +1147,19 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 			}
 		}
 	}
+	if out.SightAreasChanged {
+		if err := scope.enc.ReplaceSightAreas(out.World.SightAreas); err != nil {
+			return translate(err)
+		}
+		if err := scope.enc.QueueSightAreaTransitions(scope.areaStoryBefore); err != nil {
+			return translate(err)
+		}
+		scope.areaStoryBefore = scope.enc.WorldView().SightAreas
+		if err := scope.enc.RefreshPerception(); err != nil {
+			return translate(err)
+		}
+		scope.touched = true
+	}
+
 	return nil
 }

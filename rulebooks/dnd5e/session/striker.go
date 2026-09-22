@@ -142,6 +142,22 @@ func (s strikerSeam) Strike(
 		return fmt.Errorf("strike: %w", translateResolution(err))
 	}
 
+	if out.Posed != nil {
+		if out.Posed.SettledStrike == nil {
+			return fmt.Errorf("strike: %w: unsupported pre-hit monster question", ErrInvalidWorld)
+		}
+		if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
+			return err
+		}
+		in := &AttackInput{Attacker: string(attacker), Target: string(target)}
+		if _, err := enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, "", out)); err != nil {
+			return translate(err)
+		}
+		if err := posePostHitWindow(s.scope, out.Posed); err != nil {
+			return err
+		}
+		return encounter.ErrStrikePaused
+	}
 	// Sheets are written ONCE for the whole interaction, before any beat is
 	// recorded, whether the action landed one blow or several.
 	if err := s.m.saveDirty(ctx, s.scope, out); err != nil {

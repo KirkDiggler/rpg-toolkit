@@ -205,6 +205,7 @@ type checkOfferWindowPayload struct {
 // [checkOfferWindowPayload]'s cast sibling, holding a saving throw's own
 // pose instead of a check's.
 type castOfferWindowPayload struct {
+	Options []CastOption `json:"options,omitempty"`
 	// Kind is [windowKindCastOffer]. See its doc.
 	Kind string `json:"kind"`
 
@@ -370,7 +371,7 @@ func windowKindOf(raw []byte) (string, error) {
 		return "", fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
 	}
 	switch peek.Kind {
-	case windowKindReaction, windowKindPostRoll, windowKindCheckOffer, windowKindCastOffer:
+	case windowKindReaction, windowKindPostRoll, windowKindCheckOffer, windowKindCastOffer, windowKindPostHit:
 		return peek.Kind, nil
 	default:
 		return "", fmt.Errorf(

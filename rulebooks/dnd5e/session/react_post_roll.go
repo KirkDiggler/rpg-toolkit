@@ -99,12 +99,31 @@ func (m *Manager) answerPostRoll(
 		return nil, fmt.Errorf("react: %w", translateResolution(err))
 	}
 	if out.Posed != nil {
-		// One pose per swing is what this slice drives. A machine that posed
-		// again would mean the resumed half offered a second die, which
-		// nothing builds; storing the second question would be inventing a
-		// design nobody wrote.
-		return nil, fmt.Errorf("react: %w: the resumed strike posed a second question", ErrInvalidWorld)
+		if out.Posed.SettledStrike == nil {
+			return nil, fmt.Errorf("react: %w: unsupported repeated roll question", ErrInvalidWorld)
+		}
+		if err = m.adopt(ctx, scope, out.World); err != nil {
+			return nil, err
+		}
+		if err = m.saveDirty(ctx, scope, out); err != nil {
+			return nil, err
+		}
+		if err = answerWindow(scope, window, choice); err != nil {
+			return nil, err
+		}
+		if _, err = scope.enc.Record(recordStrike(payload.Audience, payload.Target, *out.Posed.SettledStrike, payload.Attack, payload.PresentationID, out.ConcentrationChecks, out.ConcentrationBreaks)); err != nil {
+			return nil, reportUnrecorded(scope, translate(err))
+		}
+		if err = posePostHitWindow(scope, out.Posed); err != nil {
+			return nil, err
+		}
+		report, delivery, err := m.commit(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		return &ReactOutput{Saved: report, Delivery: delivery}, nil
 	}
+
 	struck, ok := out.Outcome.(resolution.StrikeOutcome)
 	if !ok {
 		return nil, fmt.Errorf("react: %w: resumed strike produced %T", ErrInvalidWorld, out.Outcome)
