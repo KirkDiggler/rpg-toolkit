@@ -469,11 +469,19 @@ func (s *BothWaysSuite) TestTheBetrayedTruce() {
 	s.Equal(encounter.StanceHostile, s.stance(enc, bwGoblins, encounter.FactionParty),
 		"the chief still knows what the party did, and it no longer matters")
 
-	stances := s.stanceBeats(enc, alice)
-	s.Require().Len(stances, 2, "the truce, and the truce broken")
-	s.Equal(string(encounter.StanceNeutral), stances[0]["stance"])
-	s.Equal(string(encounter.StanceHostile), stances[1]["stance"])
-	s.Equal("attacked by alice", stances[1]["cause"])
+	// THE SEQUENCE, NOT THE COUNT: what alice was told about this pair, in
+	// order, is the whole claim — a third beat would fail this as loudly as a
+	// missing one, and without a number anybody could bump.
+	told := make([]string, 0)
+	var last map[string]any
+	for _, beat := range s.stanceBeats(enc, alice) {
+		told = append(told, beat["stance"].(string))
+		last = beat
+	}
+	s.Equal([]string{string(encounter.StanceNeutral), string(encounter.StanceHostile)}, told,
+		"the truce, and the truce broken")
+	s.Require().NotNil(last)
+	s.Equal("attacked by alice", last["cause"])
 }
 
 // TestATurnedPairSurvivesASaveAndLoad is the hold-out's A9 for the direction
