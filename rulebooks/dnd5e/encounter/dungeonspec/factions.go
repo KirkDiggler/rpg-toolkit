@@ -177,6 +177,10 @@ func (g *grammar) declaredStance(pair [2]string) (string, *PredicateSpec) {
 // predicate against that table, and the fact-untils against who can learn.
 // RUN AFTER place() and minds(): a `{ down }` names a placement, and the
 // faction-of-one rule counts them.
+//
+// AN UNTIL TAKES ALL FOUR FORMS (rpg-project#493, R2) and turns the pair to
+// the other of hostile and neutral (R1). Only `allied` refuses one outright,
+// because it has no other side to move to.
 func (g *grammar) dispositions() {
 	g.dispositionAt = map[[2]string]int{}
 	for i, d := range g.declaredDispositions {
@@ -202,9 +206,8 @@ func (g *grammar) dispositions() {
 			g.fail(p+".stance", "the disposition does not say its stance: %s", stanceWords)
 		case !stances[d.Stance]:
 			g.fail(p+".stance", "%q is not a stance: %s", d.Stance, stanceWords)
-		case d.Until != nil && d.Stance != string(encounter.StanceHostile):
-			g.fail(p+".until", "only a hostile pair has something to stop doing: this pair is %s, so drop the until or make it hostile",
-				d.Stance)
+		case d.Until != nil && d.Stance == string(encounter.StanceAllied):
+			g.fail(p+".until", "%s: drop the until, or make the pair hostile or neutral", untilOnAllied)
 		}
 		if !pairOK {
 			continue
@@ -227,23 +230,22 @@ func (g *grammar) dispositions() {
 			continue // a pair that failed above has nothing to wait on
 		}
 		p := fmt.Sprintf("dispositions[%d].until", i)
-		// ONLY A FACT TURNS A PAIR IN THIS VERSION (rpg-project#375, R11):
-		// the run settles a pair on a journal fact, and rounds, falls and
-		// other pairs' stances are not journal facts yet. Refused here, at
-		// the line, and again by the run at construction.
-		if d.Until.Fact == "" {
-			g.fail(p, "%s", untilNotBuilt)
-			continue
-		}
 		g.predicate(p, d.Until, &key)
-		g.requireALearner(p, key)
+		// EVERY FORM TURNS A PAIR NOW (rpg-project#493, R2). The "in this
+		// version a disposition turns only on a fact" refusal that stood
+		// here is gone; what survives it is the MIND rule, and only a fact
+		// needs one. A round starts, a monster falls and another pair turns
+		// whether or not anybody in this pair has a mind to notice — those
+		// are the world's truth, not somebody's knowledge.
+		if d.Until.Form() == predicateFact {
+			g.requireALearner(p, key)
+		}
 	}
 }
 
-// untilNotBuilt is the one sentence a round, a fall or a stance on an until
-// gets, in the file and in the run alike.
-const untilNotBuilt = "in this version a disposition turns only on a fact; " +
-	"`until` on a round, a fall, or another stance is not built yet"
+// untilOnAllied is the one sentence an `until` on an allied pair gets, in the
+// file and in the run alike (rpg-project#493, R1).
+const untilOnAllied = "an allied pair has nothing to become"
 
 // requireALearner is the mind rule (design §2): a fact-until between two
 // factions needs one of them able to come to know the fact — a valid mind,
@@ -328,9 +330,32 @@ func (g *grammar) stancePredicate(path string, s *StancePredicateSpec, self *[2]
 	switch {
 	case declared == s.Is:
 		g.fail(path, "%s and %s are %s from the start, so nothing can fire this", key[0], key[1], s.Is)
-	case declared == string(encounter.StanceHostile) && until != nil && s.Is == string(encounter.StanceNeutral):
-		// Reachable: the pair turns neutral when its until holds.
+	case until != nil && s.Is == turnsTo(declared):
+		// Reachable: the pair turns to the other of hostile and neutral
+		// when its own until holds (rpg-project#493, R1).
+	case declared == string(encounter.StanceNeutral) && s.Is == string(encounter.StanceHostile):
+		// Reachable with nothing authored: somebody attacks across a neutral
+		// pair and it is hostile (R3). Every neutral pair can come to blows,
+		// so this arm is why a `{ stance: ..., is: hostile }` over one is
+		// never refused as unreachable any more.
 	default:
 		g.fail(path, "%s and %s can never be %s: they are %s, and nothing turns them", key[0], key[1], s.Is, declared)
+	}
+}
+
+// turnsTo is the stance a declared one moves to when its `until` holds — the
+// OTHER of hostile and neutral ([encounter.DispositionInput.Until]). Allied
+// never turns, and answers itself. THE RUN'S OWN COPY OF THIS RULE is
+// encounter's unexported `turnsTo`; both are three lines over a closed set,
+// and exporting it would put a stance-arithmetic verb on the composition's
+// public surface for one caller.
+func turnsTo(declared string) string {
+	switch declared {
+	case string(encounter.StanceHostile):
+		return string(encounter.StanceNeutral)
+	case string(encounter.StanceNeutral):
+		return string(encounter.StanceHostile)
+	default:
+		return declared
 	}
 }

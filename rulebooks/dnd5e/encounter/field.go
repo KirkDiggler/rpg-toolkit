@@ -125,10 +125,18 @@ type DispositionInput struct {
 	// Stance is the declared posture, one of the closed [Stance] set.
 	Stance Stance
 
-	// Until is the predicate that ends hostility: when it holds, the pair's
-	// stance is [StanceNeutral] (R2). LEGAL ONLY WITH [StanceHostile] — a
-	// neutral or allied pair has nothing to stop doing — and refused
-	// otherwise (ErrNoFaction). Nil means the stance is static.
+	// Until is the predicate that TURNS the pair: when it holds, the stance
+	// becomes the OTHER of hostile and neutral (rpg-project#493, R1) — a
+	// hostile pair goes neutral, a neutral pair goes hostile. REFUSED ON
+	// [StanceAllied] (ErrNoFaction): an allied pair has nothing to become.
+	// Nil means the stance is static.
+	//
+	// ONE UNTIL PER PAIR, and one disposition per pair, so a pair turns at
+	// most once by authoring and never oscillates. What is NOT authored is
+	// the aggression law (R3): a neutral pair somebody attacks across turns
+	// hostile whether or not it has an until, and a pair its own until
+	// already turned neutral turns hostile again if the truce is then
+	// broken.
 	//
 	// A [Trigger], because a predicate IS the sealed set endings already
 	// use: `{ fact: x }` is a [TriggerFact], `{ down: chief }` a

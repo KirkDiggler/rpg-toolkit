@@ -164,12 +164,23 @@ type trigger struct {
 // watching" without anything forming — cannot arise: the step that created the
 // watching was itself classified, and either formed a bubble or was a drop.
 //
-// PARTICIPATION IS THE ONE HOLE IN THAT INDUCTION. A member absent from a
+// PARTICIPATION IS ONE HOLE IN THAT INDUCTION. A member absent from a
 // supplied Contact side can acquire awareness that classifies as nothing; if a
 // later assessment puts them back on a side, that awareness is Refreshed rather
 // than FirstContact. Recovery therefore does not itself restart contact until a
 // later sight transition. The fix belongs in percept production, not by
 // replacing the supplied Contact answer here.
+//
+// A STANCE TURN IS THE OTHER, AND IT IS FILLED (rpg-project#493, R3). Two
+// members who were watching each other while their factions were neutral had
+// their step classified — as nothing, correctly, because they were not
+// opposed. When the pair turns hostile every later refresh reports them
+// Refreshed, so on this function's own law no fight could ever form and a
+// provoked camp would stand there. The answer is not to read state here: it
+// is that the TURN is the transition, and [Encounter.formOnStance] hands this
+// function exactly the first contact that just became true — each member's
+// currently-sighted members on the newly opposed side. Nothing below moved;
+// it was given a delta it had never been given before.
 //
 // # Precedence
 //
@@ -420,6 +431,30 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 	if err != nil {
 		return nil, nil, err
 	}
+
+	formed, verdictDeltas, err := e.applyVerdict(verdict, participation)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return formed, mergeIntelDeltas(outputDeltas, verdictDeltas), nil
+}
+
+// applyVerdict is the DOING half of classification: a fight starts, a
+// straggler joins one, or nothing happens. It returns only the deltas it
+// produced, for the caller to compose with whatever it already holds.
+//
+// SPLIT OUT OF [Encounter.applyTrigger] because a sight refresh is no longer
+// the only thing that can make a fight (rpg-project#493, R3). A stance
+// turning hostile makes enemies of two members who were already looking at
+// each other, and it has to reach initiative through THIS — the same
+// precedence, the same surprise read, the same straggler join, the same
+// formed beat — rather than through a second copy of it standing next to
+// this one and drifting.
+func (e *Encounter) applyVerdict(
+	verdict *trigger, participation *participationState,
+) (*FormedBubble, map[MemberID]*IntelDelta, error) {
+	var outputDeltas map[MemberID]*IntelDelta
 
 	if len(verdict.joined) > 0 {
 		for _, id := range verdict.joined {

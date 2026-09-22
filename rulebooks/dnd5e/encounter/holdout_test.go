@@ -732,19 +732,44 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 		})
 		return err
 	}
-	withUntil := func(t encounter.Trigger) encounter.FieldInput {
+	withStance := func(stance encounter.Stance, t encounter.Trigger) encounter.FieldInput {
 		field := s.compiled.Field
 		field.Dispositions = []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-			Stance:  encounter.StanceHostile, Until: t,
+			Stance:  stance, Until: t,
 		}}
 		return field
 	}
+	withUntil := func(t encounter.Trigger) encounter.FieldInput {
+		return withStance(encounter.StanceHostile, t)
+	}
 
-	s.Run("an until on a member down cannot be settled by the graph yet", func() {
-		err := open(withUntil(encounter.TriggerMemberDown{Member: campChief}))
+	// The three forms that used to be refused wholesale (rpg-project#493,
+	// R2). This subtest replaced "an until on a member down cannot be settled
+	// by the graph yet": the sentence it pinned is gone from the build, and
+	// the opposite claim is the one worth keeping.
+	s.Run("a fall, a round and another pair's stance are all untils now", func() {
+		s.Require().NoError(open(withUntil(encounter.TriggerMemberDown{Member: campChief})))
+		s.Require().NoError(open(withUntil(encounter.TriggerRound{Round: 3})))
+		// And the pair it waits on is reachable only because of the
+		// aggression law: camp and `monsters` are neutral by default with
+		// nothing authored between them, and R3 is what can ever make them
+		// hostile.
+		s.Require().NoError(open(withStance(encounter.StanceNeutral, encounter.TriggerStance{
+			Between: [2]encounter.FactionID{campFaction, encounter.FactionMonsters}, Stance: encounter.StanceHostile,
+		})))
+	})
+	s.Run("an allied pair has nothing to become", func() {
+		err := open(withStance(encounter.StanceAllied, encounter.TriggerRound{Round: 3}))
 		s.Require().ErrorIs(err, encounter.ErrNoFaction)
-		s.Contains(err.Error(), "turns only on a fact")
+		s.Contains(err.Error(), "an allied pair has nothing to become")
+	})
+	s.Run("a disposition cannot wait on its own stance", func() {
+		err := open(withUntil(encounter.TriggerStance{
+			Between: [2]encounter.FactionID{encounter.FactionParty, campFaction}, Stance: encounter.StanceNeutral,
+		}))
+		s.Require().ErrorIs(err, encounter.ErrNoFaction)
+		s.Contains(err.Error(), "wait on its own stance")
 	})
 	s.Run("a stance ending on a pair that can never reach it", func() {
 		err := open(s.compiled.Field, encounter.EndingInput{Key: "peace", Trigger: encounter.TriggerStance{
