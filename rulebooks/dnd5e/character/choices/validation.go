@@ -2,6 +2,8 @@ package choices
 
 import (
 	"fmt"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
@@ -365,28 +367,31 @@ func (v *Validator) validateEquipmentCategory(
 }
 
 func (v *Validator) validateLanguages(req *LanguageRequirement, submissions *Submissions) *ValidationError {
-	// Find language submissions
-	langSubs := submissions.GetByCategory(shared.ChoiceLanguages)
-	if len(langSubs) == 0 {
-		return &ValidationError{
-			Category: shared.ChoiceLanguages,
-			Message:  fmt.Sprintf("Must choose %d languages", req.Count),
+	chosen := []shared.SelectionID{}
+	for _, sub := range submissions.GetByCategory(shared.ChoiceLanguages) {
+		if sub.ChoiceID == req.ID {
+			chosen = append(chosen, sub.Values...)
 		}
 	}
-
-	// Count total languages chosen
-	totalChosen := 0
-	for _, sub := range langSubs {
-		totalChosen += len(sub.Values)
+	fail := func(message string) *ValidationError {
+		return &ValidationError{Category: shared.ChoiceLanguages, ChoiceID: req.ID, Message: message}
 	}
-
-	if totalChosen != req.Count {
-		return &ValidationError{
-			Category: shared.ChoiceLanguages,
-			Message:  fmt.Sprintf("Must choose exactly %d languages, got %d", req.Count, totalChosen),
+	if len(chosen) != req.Count {
+		return fail(fmt.Sprintf("Must choose exactly %d languages, got %d", req.Count, len(chosen)))
+	}
+	seen := map[shared.SelectionID]bool{}
+	for _, id := range chosen {
+		if seen[id] {
+			return fail("Language choices must be distinct")
+		}
+		seen[id] = true
+		if _, err := languages.GetByID(id); err != nil {
+			return fail("Unknown language: " + id)
+		}
+		if len(req.Options) > 0 && !slices.Contains(req.Options, id) {
+			return fail("Language is not in the allowed options: " + id)
 		}
 	}
-
 	return nil
 }
 

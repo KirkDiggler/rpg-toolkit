@@ -33,14 +33,9 @@ type spellOptionList struct {
 	options  []spells.Spell
 }
 
-// bardCantripOptions is the 2014 bard cantrip list GATED to the cantrips this
-// build can cast, which is the one place a class list is filtered.
-//
-// spells.BardCantrips is what a bard's cantrips ARE; [spells.Castable] answers
-// the separate question of which of them do anything here. Every other list in
-// this file was hand-curated against that same question when it was written,
-// so filtering them again would only remove options creation offers today.
-var bardCantripOptions = spells.Castable(spells.BardCantrips)
+// bardCantripOptions includes executable and explicitly catalog-only spells.
+// Both use the same shared spell data as every other class and domain.
+var bardCantripOptions = spells.Selectable(spells.BardCantrips)
 
 // classCantripOptions is each class's cantrip list. A class absent from it has
 // no cantrips at any level, which its progression table says too.

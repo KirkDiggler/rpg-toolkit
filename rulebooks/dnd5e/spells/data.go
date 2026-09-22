@@ -6,6 +6,8 @@ type Data struct {
 	Level       int    // 0 for cantrips, 1-9 for leveled spells
 	Name        string // Display name
 	Description string // Brief description of the spell's effect
+	// NotYetImplemented marks catalog-only content, selectable/grantable but not castable.
+	NotYetImplemented bool
 }
 
 // SpellData is the lookup map for all spell data
@@ -109,10 +111,11 @@ var SpellData = map[Spell]*Data{
 		Description: "Perform a minor magical trick",
 	},
 	Light: {
-		ID:          Light,
-		Level:       0,
-		Name:        "Light",
-		Description: "Touch an object to make it shed bright light",
+		NotYetImplemented: true,
+		ID:                Light,
+		Level:             0,
+		Name:              "Light",
+		Description:       "Touch an object to make it shed bright light",
 	},
 	Guidance: {
 		ID:          Guidance,
@@ -261,10 +264,11 @@ var SpellData = map[Spell]*Data{
 		Description: "Send creatures into magical slumber (5d8 hit points affected)",
 	},
 	CharmPerson: {
-		ID:          CharmPerson,
-		Level:       1,
-		Name:        "Charm Person",
-		Description: "Charm a humanoid to regard you as a friendly acquaintance",
+		NotYetImplemented: true,
+		ID:                CharmPerson,
+		Level:             1,
+		Name:              "Charm Person",
+		Description:       "Charm a humanoid to regard you as a friendly acquaintance",
 	},
 	DetectMagic: {
 		ID:          DetectMagic,
@@ -272,11 +276,17 @@ var SpellData = map[Spell]*Data{
 		Name:        "Detect Magic",
 		Description: "Sense the presence of magic within 30 feet",
 	},
+	DisguiseSelf: {
+		ID: DisguiseSelf, Level: 1, Name: "Disguise Self",
+		Description:       "Create an illusion that changes your appearance",
+		NotYetImplemented: true,
+	},
 	Identify: {
-		ID:          Identify,
-		Level:       1,
-		Name:        "Identify",
-		Description: "Learn the properties of a magic item or spell affecting a creature",
+		NotYetImplemented: true,
+		ID:                Identify,
+		Level:             1,
+		Name:              "Identify",
+		Description:       "Learn the properties of a magic item or spell affecting a creature",
 	},
 	CureWounds: {
 		ID:          CureWounds,

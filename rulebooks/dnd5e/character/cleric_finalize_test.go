@@ -722,3 +722,117 @@ func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveA
 	s.Require().NoError(err)
 	s.NotContains(char.ToData().WeaponProficiencies, proficiencies.WeaponMartial)
 }
+
+func (s *ClericFinalizeSuite) TestNYIDomainGrantsSurviveCreationAndReloadWithoutCasts() {
+	for _, tc := range []struct {
+		domain classes.Subclass
+		grants []spells.Spell
+	}{
+		{classes.LightDomain, []spells.Spell{spells.Light}},
+		{classes.TrickeryDomain, []spells.Spell{spells.CharmPerson, spells.DisguiseSelf}},
+		{classes.KnowledgeDomain, []spells.Spell{spells.Identify}},
+	} {
+		s.Run(string(tc.domain), func() {
+			in := s.classInput()
+			in.SubclassID = tc.domain
+			in.Choices.Cantrips = []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Resistance}
+			in.Choices.Spells = []spells.Spell{spells.Bane, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt}
+			if tc.domain == classes.KnowledgeDomain {
+				in.Choices.SubclassChoices = knowledgeChoices()
+			}
+			draft := s.draft(in)
+			c, err := draft.ToCharacter(context.Background(), "nyi-cleric", events.NewEventBus())
+			s.Require().NoError(err)
+			c, err = Load(context.Background(), c.ToData())
+			s.Require().NoError(err)
+			all := append(c.ToData().KnownCantrips, c.ToData().KnownSpells...)
+			for _, id := range tc.grants {
+				s.Contains(all, refs.Spells.ByID(id).String())
+				s.Nil(c.CastDefinition(id))
+			}
+		})
+	}
+}
+
+func knowledgeChoices() []choices.Submission {
+	return []choices.Submission{
+		{Category: shared.ChoiceSkills, ChoiceID: "cleric-knowledge-skills", Values: []shared.SelectionID{skills.Arcana, skills.History}},
+		{Category: shared.ChoiceLanguages, ChoiceID: "cleric-knowledge-languages", Values: []shared.SelectionID{languages.Elvish, languages.Gnomish}},
+	}
+}
+
+func (s *ClericFinalizeSuite) TestKnowledgeGrantsPersistAndOnlyChosenSkillsDouble() {
+	in := s.classInput()
+	in.SubclassID = classes.KnowledgeDomain
+	in.Choices.Spells = []spells.Spell{spells.Bane, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt}
+	in.Choices.SubclassChoices = knowledgeChoices()
+	draft := s.draft(in)
+	s.True(draft.IsClassComplete())
+	encoded, err := json.Marshal(draft.ToData())
+	s.Require().NoError(err)
+	var stored DraftData
+	s.Require().NoError(json.Unmarshal(encoded, &stored))
+	c, err := LoadDraftFromData(&stored).ToCharacter(context.Background(), "knowledge", events.NewEventBus())
+	s.Require().NoError(err)
+	c, err = Load(context.Background(), c.ToData())
+	s.Require().NoError(err)
+	for _, skill := range []skills.Skill{skills.Arcana, skills.History} {
+		s.Equal(shared.Expert, c.ToData().Skills[skill])
+		s.Equal(c.GetAbilityModifier(abilities.INT)+2*c.ProficiencyBonus(), c.GetSkillModifier(skill))
+	}
+	s.Equal(shared.Proficient, c.ToData().Skills[skills.Religion])
+	s.Equal(c.GetAbilityModifier(abilities.INT)+c.ProficiencyBonus(), c.GetSkillModifier(skills.Religion))
+	s.ElementsMatch([]languages.Language{languages.Common, languages.Dwarvish, languages.Elvish, languages.Gnomish}, c.ToData().Languages)
+	s.Contains(c.ToData().KnownSpells, refs.Spells.Command().String())
+	s.Contains(c.ToData().KnownSpells, refs.Spells.Identify().String())
+	s.Require().NoError(draft.SetClass(s.classInput()))
+	c, err = draft.ToCharacter(context.Background(), "life", events.NewEventBus())
+	s.Require().NoError(err)
+	s.NotContains(c.ToData().Skills, skills.Arcana)
+	s.NotContains(c.ToData().Languages, languages.Elvish)
+}
+
+func (s *ClericFinalizeSuite) TestKnowledgeInvalidChoicesCannotFinalize() {
+	for _, kind := range []string{"duplicate skills", "foreign skill", "duplicate languages", "unknown language", "secret language", "missing languages"} {
+		s.Run(kind, func() {
+			in := s.classInput()
+			in.SubclassID = classes.KnowledgeDomain
+			in.Choices.Spells = []spells.Spell{spells.Bane, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt}
+			in.Choices.SubclassChoices = knowledgeChoices()
+			switch kind {
+			case "duplicate skills":
+				in.Choices.SubclassChoices[0].Values = []shared.SelectionID{skills.Arcana, skills.Arcana}
+			case "foreign skill":
+				in.Choices.SubclassChoices[0].Values[0] = skills.Athletics
+			case "duplicate languages":
+				in.Choices.SubclassChoices[1].Values = []shared.SelectionID{languages.Elvish, languages.Elvish}
+			case "unknown language":
+				in.Choices.SubclassChoices[1].Values[0] = "fake"
+			case "secret language":
+				in.Choices.SubclassChoices[1].Values[0] = languages.ThievesCant
+			case "missing languages":
+				in.Choices.SubclassChoices = in.Choices.SubclassChoices[:1]
+			}
+			draft := s.draft(in)
+			s.False(draft.IsClassComplete())
+			_, err := draft.ToCharacter(context.Background(), "invalid", events.NewEventBus())
+			s.Error(err)
+		})
+	}
+}
+
+func (s *ClericFinalizeSuite) TestKnowledgeRejectsAlreadyKnownLanguageAndForeignChoice() {
+	in := s.classInput()
+	in.SubclassID = classes.KnowledgeDomain
+	in.Choices.Spells = []spells.Spell{spells.Bane, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt}
+	in.Choices.SubclassChoices = knowledgeChoices()
+	in.Choices.SubclassChoices[1].Values[0] = languages.Dwarvish // human's existing choice
+	draft := s.draft(in)
+	_, err := draft.ToCharacter(context.Background(), "duplicate-language", events.NewEventBus())
+	s.ErrorContains(err, "already known")
+	in.Choices.SubclassChoices[0].ChoiceID = "cleric-skills"
+	s.Error(draft.SetClass(in))
+	in = s.classInput()
+	in.Choices.SubclassChoices = knowledgeChoices()
+	s.Error(draft.SetClass(in), "Life cannot submit Knowledge's choices")
+}

@@ -58,17 +58,22 @@ func (s *SpellChoiceSuite) TestTheIdentityCarriesTheClassLevel() {
 	s.NotEqual(choices.SpellChoiceID(classes.Bard, 1), choices.SpellChoiceID(classes.Bard, 2))
 }
 
-// TestABardsCantripsAreGatedToWhatThisBuildCanCast — the one class list that
-// is filtered, because it is the complete 2014 list rather than a hand-curated
-// subset. A cantrip with no cast profile is a choice that produces nothing.
-func (s *SpellChoiceSuite) TestABardsCantripsAreGatedToWhatThisBuildCanCast() {
+// Catalog-only Light is selectable for Bard as well as Cleric, but gains no cast.
+func (s *SpellChoiceSuite) TestBardCantripsIncludeExplicitCatalogEntries() {
 	req := choices.GetClassRequirements(classes.Bard).Cantrips
-
 	s.Require().NotNil(req)
-	s.NotEmpty(req.Options)
-	s.Equal(spells.Castable(spells.BardCantrips), req.Options)
-	for _, option := range req.Options {
-		s.True(spells.HasCastProfile(option), "%s", option)
+	s.Contains(req.Options, spells.Light)
+	s.False(spells.HasCastProfile(spells.Light))
+	for _, id := range spells.Castable(spells.BardCantrips) {
+		s.Contains(req.Options, id)
+	}
+	for _, id := range req.Options {
+		if spells.HasCastProfile(id) {
+			continue
+		}
+		data := spells.GetData(id)
+		s.Require().NotNil(data)
+		s.True(spells.HasCastProfile(id) || data.NotYetImplemented)
 	}
 }
 

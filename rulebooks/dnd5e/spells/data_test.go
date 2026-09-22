@@ -95,3 +95,22 @@ func TestSpellData_KnownSpells(t *testing.T) {
 		}
 	}
 }
+
+func TestNYICatalogSpellsAreNotCastable(t *testing.T) {
+	for _, id := range []Spell{Light, CharmPerson, DisguiseSelf, Identify} {
+		t.Run(id, func(t *testing.T) {
+			data := GetData(id)
+			if data == nil || data.ID != id || !data.NotYetImplemented || data.Name == "" {
+				t.Fatalf("missing shared NYI catalog entry: %s", id)
+			}
+			if len(Castable([]Spell{id})) != 0 {
+				t.Fatalf("NYI spell became castable: %s", id)
+			}
+		})
+	}
+	for _, id := range []Spell{Command, Guidance, Resistance} {
+		if GetData(id).NotYetImplemented || len(Castable([]Spell{id})) != 1 {
+			t.Fatalf("existing shared spell changed: %s", id)
+		}
+	}
+}

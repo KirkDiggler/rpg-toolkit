@@ -345,9 +345,18 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 			classData.SkillCount, len(input.Choices.Skills))
 	}
 
+	subclassChoices, err := compileSubclassChoices(input.SubclassID, input.Choices.SubclassChoices)
+	if err != nil {
+		return err
+	}
+
 	// Clear all existing class choices before recording new ones
 	// This prevents accumulation when changing classes (e.g., Fighter to Barbarian)
 	d.clearChoicesBySource(shared.SourceClass)
+	d.clearChoicesBySource(shared.SourceSubclass)
+	for _, choice := range subclassChoices {
+		d.recordChoice(choice)
+	}
 
 	d.class = input.ClassID
 	d.subclass = input.SubclassID
@@ -633,6 +642,9 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	bgGrant := backgrounds.GetGrants(d.background)
 
 	// Build proficiencies
+	if err := d.validateSubclassLanguages(raceData.Languages); err != nil {
+		return nil, err
+	}
 	skillProfs := d.compileSkills(raceData, bgGrant)
 	if err := validateExpertiseSelections(d.choices, skillProfs); err != nil {
 		return nil, err
@@ -940,8 +952,8 @@ func (d *Draft) recordChoice(choice choices.ChoiceData) {
 	// Remove any existing choice with the same choiceID (for equipment) or same category and source (for others)
 	filtered := make([]choices.ChoiceData, 0, len(d.choices))
 	for _, c := range d.choices {
-		// For equipment choices, check choiceID since we can have multiple equipment choices
-		if choice.Category == shared.ChoiceEquipment && c.Category == shared.ChoiceEquipment {
+		// Equipment and subclass sources can each answer multiple requirements; keep them by choice ID.
+		if (choice.Category == shared.ChoiceEquipment && c.Category == shared.ChoiceEquipment) || (choice.Source == shared.SourceSubclass && c.Source == shared.SourceSubclass) {
 			if c.ChoiceID != choice.ChoiceID {
 				filtered = append(filtered, c)
 			}
@@ -983,6 +995,21 @@ func (d *Draft) compileSkills(raceData *races.Data, bgGrant *backgrounds.Grant) 
 	if bgGrant != nil {
 		for _, skill := range bgGrant.SkillProficiencies {
 			skillMap[skill] = shared.Proficient
+		}
+	}
+
+	// Subclass skill grants carry their rank in the same requirements that
+	// validate the choice. Apply after background skills to preserve the upgrade.
+	reqs := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
+	if reqs != nil {
+		for _, req := range reqs.AdditionalSkills {
+			for _, choice := range d.choices {
+				if choice.Source == shared.SourceSubclass && choice.Category == shared.ChoiceSkills && choice.ChoiceID == req.ID && req.Proficiency == shared.Expert {
+					for _, skill := range choice.SkillSelection {
+						skillMap[skill] = shared.Expert
+					}
+				}
+			}
 		}
 	}
 
@@ -1691,7 +1718,7 @@ func (d *Draft) getBackgroundSubmissions() *choices.Submissions {
 func (d *Draft) getClassSubmissions() *choices.Submissions {
 	classChoices := make([]choices.ChoiceData, 0, len(d.choices))
 	for _, choice := range d.choices {
-		if choice.Source != shared.SourceClass {
+		if choice.Source != shared.SourceClass && choice.Source != shared.SourceSubclass {
 			continue
 		}
 		classChoices = append(classChoices, d.withRecordedChoiceID(choice))
