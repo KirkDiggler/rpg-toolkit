@@ -483,6 +483,23 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 
 	outcome, posed, runErr := driveStep(ctx, surf, first, cast)
 
+	// Retire old volumes before installing a replacement from this cast. The
+	// concentration event owns the lifetime; encounter owns only geometry.
+	areasChanged := false
+	for _, fact := range breaks.facts {
+		areasChanged = enc.RemoveSightArea(fact.CasterID) || areasChanged
+	}
+	if castResult, ok := outcome.(CastOutcome); ok && castResult.SightArea != nil {
+		if err := enc.AddSightArea(castResult.SightArea); err != nil {
+			return nil, errors.Join(err, breaks.stop(ctx), surf.teardown(ctx))
+		}
+		areasChanged = true
+	}
+
+	if err := reconcileFogMembership(ctx, surf.inner, cast, room, enc.WorldView().SightAreas); err != nil {
+		return nil, errors.Join(err, breaks.stop(ctx), surf.teardown(ctx))
+	}
+
 	// R5: revoke everything granted, whether or not the machine succeeded.
 	tearErr := errors.Join(breaks.stop(ctx), surf.teardown(ctx))
 
@@ -510,19 +527,6 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	kept, err := breaks.checks(cast, consequences)
 	if err != nil {
 		return nil, err
-	}
-
-	// Retire old volumes before installing a replacement from this cast. The
-	// concentration event owns the lifetime; encounter owns only geometry.
-	areasChanged := false
-	for _, fact := range breaks.facts {
-		areasChanged = enc.RemoveSightArea(fact.CasterID) || areasChanged
-	}
-	if castResult, ok := outcome.(CastOutcome); ok && castResult.SightArea != nil {
-		if err := enc.AddSightArea(castResult.SightArea); err != nil {
-			return nil, err
-		}
-		areasChanged = true
 	}
 
 	return &Output{

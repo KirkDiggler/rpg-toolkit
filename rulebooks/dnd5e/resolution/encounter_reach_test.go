@@ -35,7 +35,8 @@ const encounterPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encoun
 // external capability. SeesWithin consults Sight for ranges but never Standing
 // or a turn-driving seam; sightSeam is a read-only range projection. Refreshing
 // perception remains in session after dirty sheets are saved.
-var encounterReach = []string{"AddSightArea", "Canvas", "IsAllied", "IsHostile", "RemoveSightArea", "SeesWithin", "ToData", "View"}
+// WorldView is a pure snapshot: no standing consult and no retention mutation.
+var encounterReach = []string{"AddSightArea", "Canvas", "IsAllied", "IsHostile", "RemoveSightArea", "SeesWithin", "ToData", "View", "WorldView"}
 
 // TestResolveTouchesTheEncounterThroughTwoMethods is the half of the reentrancy
 // invariant that only this package can hold.

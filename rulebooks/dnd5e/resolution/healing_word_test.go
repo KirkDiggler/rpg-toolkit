@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
@@ -174,7 +175,7 @@ func (s *CastActionTestSuite) TestHealingWordHealsDyingRecipientBeyondTouch() {
 }
 
 func (s *CastActionTestSuite) TestHealingWordRejectsUnseenOrOutOfRangeBeforePayment() {
-	for _, reason := range []string{"stale sight", "out of range", "wall"} {
+	for _, reason := range []string{"stale sight", "out of range", "wall", "fog-hidden target"} {
 		s.Run(reason, func() {
 			f := s.fixtures()
 			world := f.world()
@@ -196,6 +197,12 @@ func (s *CastActionTestSuite) TestHealingWordRejectsUnseenOrOutOfRangeBeforePaym
 				definition.Cast.RangeFeet = 5
 			case "wall":
 				world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
+			case "fog-hidden target":
+				world.SightAreas = []encounter.SightAreaData{{
+					ID: "fog-1", SourceID: "fog-1", Name: "Fog Cloud",
+					Ref:    refs.Spells.FogCloud().String(),
+					Center: encounter.PositionData{X: 1, Y: 1}, RadiusFeet: 20,
+				}}
 			}
 			roll := &countingCastRoller{facedRoller: facedRoller{other: 4}}
 			machine, err := NewAction(&ActionInput{Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roll})

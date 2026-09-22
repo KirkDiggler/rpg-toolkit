@@ -236,6 +236,11 @@ func rangedHealingReach(room spatial.Room, run *encounter.Encounter, casterID, t
 	if casterID == targetID {
 		return true, nil
 	}
+	// Persisted sightings cannot override a newly obscured line of sight.
+	visible, known := run.SeesWithin(encounter.MemberID(casterID), encounter.MemberID(targetID), rangeFeet)
+	if !known || !visible {
+		return false, nil
+	}
 	holdings, err := run.View(&encounter.ViewInput{Member: encounter.MemberID(casterID)})
 	if err != nil {
 		return false, err
