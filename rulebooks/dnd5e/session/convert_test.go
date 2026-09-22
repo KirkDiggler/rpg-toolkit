@@ -51,6 +51,18 @@ var projectedPairs = []struct {
 	// have to re-derive by experiment.
 	{"AtlasRegion", encounter.AtlasRegion{}, session.AtlasRegion{}},
 	{"AtlasProp", encounter.AtlasProp{}, session.AtlasProp{}},
+	// A placed footprint crosses as a placed footprint (rpg-api-protos#351).
+	// It used to be listed as an omission — "engine-only placement geometry"
+	// — which was true only while movement and sight were the only questions
+	// anyone asked of a rectangle. A client now draws one, and has to know
+	// whether the thing is on the floor at all and whether it can be picked
+	// up, so the list crosses and this pair audits it.
+	//
+	// Placement matches BY NAME and not by type: the inner geometry is
+	// spatial's nested footprint-with-a-box-pointer and the outer is this
+	// package's flat four numbers, which is exactly the S2 translation this
+	// audit assumes everywhere. convert_internal_test.go is the value half.
+	{"AtlasPlacedProp", encounter.AtlasPlacedProp{}, session.AtlasPlacedProp{}},
 	{"AtlasBoundary", encounter.AtlasBoundary{}, session.AtlasBoundary{}},
 	{"AtlasDoorway", encounter.AtlasDoorway{}, session.AtlasDoorway{}},
 	{"Status", encounter.Status{}, session.Status{}},
@@ -108,7 +120,6 @@ var renamed = map[string]struct{ outer, reason string }{
 // reason. Anything absent from a projection and absent from here is a bug, not
 // a decision.
 var omitted = map[string]string{
-	"encounter.Atlas.Placed": "engine-only placement geometry; movement and sight remain encounter answers, and no raw contributor is on this wire",
 	// A record entry names every viewer a beat was addressed to. Returning that
 	// would tell one player which other members exist and were present —
 	// including members they have never perceived and rooms they have never

@@ -90,6 +90,7 @@ func projectAtlas(in encounter.Atlas) Atlas {
 		Layout:     projectLayout(in.Orientation),
 		Cells:      append([]spatial.Position(nil), in.Cells...),
 		Props:      make([]AtlasProp, 0, len(in.Props)),
+		Placed:     make([]AtlasPlacedProp, 0, len(in.Placed)),
 		Boundaries: make([]AtlasBoundary, 0, len(in.Boundaries)),
 		Doorways:   make([]AtlasDoorway, 0, len(in.Doorways)),
 		Regions:    make([]AtlasRegion, 0, len(in.Regions)),
@@ -135,6 +136,46 @@ func projectAtlas(in encounter.Atlas) Atlas {
 			BlocksLineOfSight: prop.BlocksLineOfSight,
 			Facing:            prop.Facing,
 			Offset:            prop.Offset,
+		})
+	}
+
+	// EVERY FIELD, THE CELLS INCLUDED (rpg-api-protos#351). Where a rectangle
+	// stands is derived ONCE, by the composition, and this carries that
+	// answer rather than rasterising the box a second time — a seam that
+	// re-measured it would be the very second geometry
+	// [AtlasPlacedProp.Cells] exists to prevent, one layer earlier than the
+	// client that would otherwise do it.
+	//
+	// THE GEOMETRY IS FLATTENED, not copied as the inner type. The
+	// composition's placement nests a footprint holding a POINTER to a box;
+	// this seam owns four plain numbers and two points instead, so no inner
+	// type crosses the exported surface (S2) and no host holds a pointer into
+	// a snapshot.
+	for _, p := range in.Placed {
+		// A placement with no box cannot reach here: the composition refuses
+		// one at construction (ErrNoField), and a box is what makes a
+		// rectangle a rectangle. Read through a guard anyway, because the
+		// alternative is a nil dereference inside a host's read verb, and a
+		// zero-sided rectangle is a visibly wrong answer rather than a silent
+		// one.
+		var width, depth float64
+		if box := p.Placement.Footprint.Box; box != nil {
+			width, depth = box.W, box.D
+		}
+
+		out.Placed = append(out.Placed, AtlasPlacedProp{
+			ID: string(p.ID),
+			Placement: FootprintPlacement{
+				Width:       width,
+				Depth:       depth,
+				Origin:      FootprintPoint{X: p.Placement.Origin.X, Y: p.Placement.Origin.Y},
+				Facing:      p.Placement.Facing,
+				LocalOffset: FootprintPoint{X: p.Placement.LocalOffset.X, Y: p.Placement.LocalOffset.Y},
+			},
+			BlocksMovement:    p.BlocksMovement,
+			BlocksLineOfSight: p.BlocksLineOfSight,
+			Holdable:          p.Holdable,
+			Cells:             append([]spatial.Position(nil), p.Cells...),
 		})
 	}
 

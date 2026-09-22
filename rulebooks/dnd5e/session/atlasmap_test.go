@@ -97,14 +97,14 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 // instead of passing review.
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
-		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Segments",
+		[]string{"Grid", "Layout", "Cells", "Props", "Placed", "Boundaries", "Doorways", "Segments",
 			"Sealed", "Regions", "Exits", "Start", "DungeonKey"},
 		fieldsOf(session.Atlas{}),
-		"the map is a grid, which way its hexes point, its cells, the things standing on it, "+
-			"its walls as crossings and as lines, its doorways, which cells nobody stands on, "+
-			"its regions, the authored ways out, the authored way in, and the content key a "+
-			"host fetches the room's APPEARANCE by — never the appearance itself "+
-			"(rpg-project#479)",
+		"the map is a grid, which way its hexes point, its cells, the things standing on it as "+
+			"cells and as rectangles, its walls as crossings and as lines, its doorways, which "+
+			"cells nobody stands on, its regions, the authored ways out, the authored way in, "+
+			"and the content key a host fetches the room's APPEARANCE by — never the appearance "+
+			"itself (rpg-project#479)",
 	)
 	s.Equal(
 		[]string{"At", "Facing"},
@@ -141,6 +141,26 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 		[]string{"From", "To", "BlocksMovement", "BlocksLineOfSight", "Height"},
 		fieldsOf(session.AtlasBoundary{}),
 		"a wall is two cells, what it stops, and how tall it stands",
+	)
+	s.Equal(
+		[]string{"ID", "Placement", "BlocksMovement", "BlocksLineOfSight", "Holdable", "Cells"},
+		fieldsOf(session.AtlasPlacedProp{}),
+		"a placement is the author's name for it, the rectangle, what it stops, whether it can "+
+			"be picked up, and the cells the engine says it stands on — and there is NO `held` "+
+			"flag and no `arrived` flag, because a rectangle that is not on the floor is absent "+
+			"from every recipient's map (rpg-api-protos#351)",
+	)
+	s.Equal(
+		[]string{"Width", "Depth", "Origin", "Facing", "LocalOffset"},
+		fieldsOf(session.FootprintPlacement{}),
+		"a pose is two sides, an anchor, a bearing and the box's offset inside its own axes — "+
+			"FLAT, so no inner geometry type and no pointer into a snapshot crosses this seam",
+	)
+	s.Equal(
+		[]string{"X", "Y"},
+		fieldsOf(session.FootprintPoint{}),
+		"a point on the plane is two numbers IN FEET — not a cell, and not the atlas's axial "+
+			"frame, which carries different numbers for the same spot",
 	)
 }
 

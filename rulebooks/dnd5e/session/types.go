@@ -114,6 +114,51 @@ type Atlas struct {
 	// rather than re-flattened here (rpg-toolkit#1130).
 	Props []AtlasProp `json:"props,omitempty"`
 
+	// Placed is every authored FOOTPRINT standing on the map — the rectangles
+	// the World Builder drew — sorted by id (rpg-api-protos#351).
+	//
+	// A DIFFERENT KIND OF THING FROM [Atlas.Props], never an overlapping
+	// list. A prop occupies A CELL and names content a client draws it as; a
+	// placement occupies AN AREA and names only itself — it is the geometry a
+	// door, a table or a bookcase was drawn as, and what it looks like is the
+	// World Builder's business. The two id spaces are ONE, because the
+	// compiler refuses a placement whose name a cell prop already took, so a
+	// client may key both lists together without collision.
+	//
+	// THIS IS WHETHER THE THING IS THERE, which is why it crosses at all. A
+	// client drawing placed geometry out of the authored scene draws the
+	// author's whole drawing, and the drawing says nothing about the run.
+	//
+	// # The absence law
+	//
+	// Three ways a placement fails to be on this list, and NOTHING MARKS ANY
+	// OF THEM — [AtlasProp.ID]'s rule, on the other kind of thing: a flag
+	// would be a second answer to a question absence already answers, and a
+	// client drawing flagged entries would draw furniture nobody can reach.
+	//
+	//   - IT HAS NOT ARRIVED. A placement whose authored predicate has not
+	//     held is in reserve: its rectangle blocks no step, closes no
+	//     crossing, obstructs no lane, and [Manager.Hold] refuses its id as
+	//     one that names nothing. It appears here once the predicate holds,
+	//     standing where the author drew it.
+	//   - SOMEBODY IS HOLDING IT, for everyone at once — a thing that left
+	//     the floor left it for every member, the same truth-grain fold
+	//     [AtlasProp.ID] describes for a cell prop. Dropped afterwards it
+	//     appears again, with its origin on the cell it was dropped on.
+	//   - THIS MEMBER CANNOT SEE WHERE IT STANDS. The PER-OBSERVER clause,
+	//     and the only one that varies between two members of one party: a
+	//     placement standing on any cell a concealment hides from this
+	//     recipient is withheld from their answer WHOLE, byte-identical to an
+	//     atlas in which the author never drew it. Never TRIMMED to the cells
+	//     they are shown — a footing cut down to what somebody can see is
+	//     geometry the author never drew.
+	//
+	// Empty for a dungeon whose author placed none, and for every encounter
+	// stored before placements existed. A client that finds none behaves
+	// exactly as it did before; nothing is defaulted in and no rectangle is
+	// implied by [Atlas.Props].
+	Placed []AtlasPlacedProp `json:"placed,omitempty"`
+
 	// Boundaries is every wall and barrier on the map, sorted by endpoint.
 	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
 
@@ -369,6 +414,168 @@ type AtlasProp struct {
 	// VISUAL ONLY — a prop still occupies its whole cell for movement and
 	// line of sight; this never reaches a rule.
 	Offset [3]float64 `json:"offset"`
+}
+
+// AtlasPlacedProp is one authored FOOTPRINT standing on the map: a rectangle
+// drawn at an angle, the two blocking answers its author gave it, whether it
+// can be picked up, and the cells the engine says it stands on. Mirrors the
+// wire's AtlasPlacedProp (rpg-api-protos#351). Dungeon-absolute.
+//
+// [Atlas.Placed] carries the absence law that decides whether an entry is
+// here at all, and why this list and [Atlas.Props] never share an id.
+type AtlasPlacedProp struct {
+	// ID is the AUTHOR'S NAME for this placement, verbatim from the authored
+	// file — required and unique, unlike [AtlasProp.ID], which most props
+	// leave empty. A rectangle carries no content ref, so this is the only
+	// handle anything binds to, and it is what [Manager.Hold] names as its
+	// target.
+	ID string `json:"id"`
+
+	// Placement is the canonical rectangle — its size in feet, where it sits,
+	// which way it faces, and how far it is nudged inside its own axes.
+	// Always present.
+	//
+	// WHAT A CLIENT DRAWS, AND NOTHING IT DECIDES WITH. Every mechanical
+	// answer about this placement is a field beside this one; see
+	// [AtlasPlacedProp.Cells] for the one a reader would be tempted to
+	// re-derive from the geometry.
+	Placement FootprintPlacement `json:"placement"`
+
+	// BlocksMovement reports whether a member may stand on the cells it
+	// covers and cross the segments it lies across.
+	//
+	// No omitempty, here or on the two below, for [AtlasProp]'s reason: false
+	// is the ANSWER — a rectangle nobody declared blocking is walked through
+	// — not an absent one, and with omitempty it would serialise carrying no
+	// blocking information at all.
+	BlocksMovement bool `json:"blocks_movement"`
+
+	// BlocksLineOfSight reports whether it obstructs a sightline. Independent
+	// of the field above: a bookcase is walked around and seen over, a
+	// curtain is neither, and all four combinations are real content.
+	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+
+	// Holdable is whether a member can pick this placement up — the author's
+	// flag, verbatim.
+	//
+	// [AtlasProp.Holdable]'s law on the other kind of thing: A CLIENT OFFERS
+	// HOLD ONLY WHERE THIS IS TRUE AND NEVER GUESSES FROM AN ID. Every
+	// placement carries an id, so inferring the verb from a name would put a
+	// take button on every wall a door stands in. False is the truth for a
+	// rectangle nobody declared holdable — it is scenery, which is what every
+	// placed footprint was before the flag existed. OFFERING IS NOT
+	// PERMISSION: [Manager.Hold] still refuses out of reach, already held, or
+	// off-turn in a fight.
+	Holdable bool `json:"holdable"`
+
+	// Cells is THE CELLS THE ENGINE SAYS THIS PLACEMENT STANDS ON: every cell
+	// its rectangle covers, union the one cell its own centre lies in, in the
+	// same absolute frame and the same coordinate order [Atlas.Cells] uses.
+	// Never empty for a placement on this list.
+	//
+	// IT IS HERE SO NOBODY RE-DERIVES IT, which is the whole reason the field
+	// exists. A footprint has no anchor cell, so "what is this thing next
+	// to?" is a geometry question — a trace of the rectangle against every
+	// cell of the floor. A CLIENT NEVER DERIVES IT FROM
+	// [AtlasPlacedProp.Placement]: that would run a second geometry beside
+	// the engine's, needing the engine's plane, its cell list and its
+	// tie-break to agree, and it would disagree at exactly the edges that
+	// matter — where a table's corner clips a hex.
+	//
+	// THE SAME SET [Manager.Hold]'S REACH JUDGES, so an offer and a refusal
+	// cannot disagree. Reach is measured from every cell in this list, and
+	// ADJACENT INCLUDES ON TOP OF: standing on one is distance zero and in
+	// reach, standing next to one is distance one and in reach. No second
+	// threshold exists for a footprint and none is authored.
+	//
+	// The centre cell is here even when the rectangle covers no cell centre
+	// at all, which is how a thin door lying along a wall still stands
+	// somewhere: a rectangle needs no floor under it, but the verbs that name
+	// a cell need one to name.
+	Cells []spatial.Position `json:"cells,omitempty"`
+}
+
+// FootprintPlacement is one rectangle on the map's continuous plane: how big
+// it is, where it sits, which way it faces, and how far it is nudged inside
+// its own axes. Mirrors the wire's FootprintPlacement (rpg-api-protos#351).
+//
+// SEAM-OWNED, AND FLAT, rather than the composition's own geometry type. The
+// inner module says this as a nested footprint holding a POINTER to a box —
+// a shape that must not cross this seam's exported surface (S2), both because
+// an inner type crossing it makes a host recompile when it moves and because
+// a shared pointer hands a caller a route into the very box the atlas is
+// supposed to be a snapshot of. Four numbers and two points, copied.
+//
+// NOT THE SPELL-AREA [Footprint] FAMILY, which shares four letters and
+// nothing else: that is a provider-authored OUTLINE for a cast — a shape
+// word, a size in feet and an anchor rule — and it says where to draw a
+// template. This is a resolved pose in the world: a real rectangle standing
+// in a real place, which the engine traces cells from. The two never
+// interconvert, and no reader should look for a [FootprintShape] here.
+type FootprintPlacement struct {
+	// Width is the rectangle's extent ACROSS its facing, in feet.
+	//
+	// ACROSS, not "the author's width". The authoring dialect's `width` lies
+	// ALONG the facing and becomes Depth below — the adapter swaps the names
+	// at the construction boundary, because an author measures a door by the
+	// opening it fills and the plane measures a box by its bearing. What
+	// reaches this seam is already canonical, and nothing here re-swaps it.
+	Width float64 `json:"width"`
+
+	// Depth is its extent ALONG its facing, in feet. See Width for the name
+	// swap the authored dialect performs before this seam.
+	Depth float64 `json:"depth"`
+
+	// Origin is where the placement is anchored on the plane, in feet. The
+	// rectangle is NOT centred here unless LocalOffset is zero — see it.
+	Origin FootprintPoint `json:"origin"`
+
+	// Facing is which way it faces, in DEGREES measured from east in the
+	// plane's numeric frame: positive 90 points south. Any finite angle is
+	// valid and nothing snaps to a hex edge — a placement is drawn at the
+	// angle the author drew it at, which is the whole reason it is not a cell
+	// prop.
+	//
+	// Zero is a REAL FACING (due east), never "not authored": every placement
+	// that reaches this seam was resolved at the construction boundary, which
+	// owns the conversion from the source frame.
+	Facing float64 `json:"facing"`
+
+	// LocalOffset is the box's centre offset from Origin, in feet, in the
+	// PLACEMENT'S OWN AXES: X along the facing, Y across it. Applied in local
+	// axes and then turned by Facing, so the centre is
+	// Origin + along*X + across*Y, with along = (cos Facing, sin Facing) and
+	// across = (-sin Facing, cos Facing).
+	//
+	// Zero — the pose most placements carry — means the rectangle is centred
+	// on Origin. It is a REAL OFFSET, not a nudge for looks: the engine
+	// traces cells from the offset rectangle, so a client that ignores it
+	// draws the thing somewhere the engine does not have it.
+	LocalOffset FootprintPoint `json:"local_offset"`
+}
+
+// FootprintPoint is one point in the map's CONTINUOUS PLANE, IN FEET.
+//
+// NOT A CELL, and not an [AxialPointF] — the difference is the FRAME rather
+// than the precision. An axial point is a fractional q/r in the atlas's own
+// cell frame, where 1 means one cell along an axis. A placement's geometry is
+// measured in feet on the plane the engine traces rectangles in, the unit
+// that plane's cell width was measured in. The same spot carries different
+// numbers in the two frames and neither converts without the layout, so a
+// reader that mistook one for the other would put a table five times too far
+// out.
+//
+// A placed footprint has no anchor cell either: it is a rectangle somebody
+// drew, and asking which cell it is "at" has no authored answer.
+// [AtlasPlacedProp.Cells] is where a placement STANDS; this is where its
+// rectangle SITS.
+type FootprintPoint struct {
+	// X is the eastward coordinate, in feet.
+	X float64 `json:"x"`
+
+	// Y is the coordinate across it in the plane's numeric frame, in feet —
+	// positive southward, the same sense Facing's positive 90 points.
+	Y float64 `json:"y"`
 }
 
 // AtlasBoundary is one wall or barrier crossing between adjacent cells.
@@ -2406,8 +2613,9 @@ type RevealedDoor struct {
 	//
 	// EMPTY FOR A FOOTPRINT DOOR, which stands in no crossing and has no
 	// doorway to append (rpg-project#485). Its rectangle reaches the
-	// recipient through the atlas re-read, not through this list — see
-	// [ConcealmentRevealedBody]'s own doc on what the beat does not carry.
+	// recipient on the atlas re-read this beat asks for, where [Atlas.Placed]
+	// carries it, not through this list — see [ConcealmentRevealedBody]'s own
+	// doc on what the beat does not carry.
 	Doorways []AtlasDoorway `json:"doorways,omitempty"`
 
 	// Approaches is the lock's authored routes, present only while the
@@ -2428,11 +2636,13 @@ type RevealedDoor struct {
 //
 // # What it does NOT carry
 //
-// A hidden PLACED footprint — a v4 door, a v4 bookcase — is not here.
-// [Atlas.Placed] is not on this wire at all (rpg-api-protos#351), so a key
-// for it would invent a shape no consumer speaks. Such a thing reaches the
-// recipient when they re-read their own atlas, which is what this beat tells
-// them to do.
+// A hidden PLACED footprint — a v4 door, a v4 bookcase — is not here. It
+// reaches the recipient on the atlas re-read this beat asks for, where
+// [Atlas.Placed] now carries it (rpg-api-protos#351). A patch key for it
+// would be a SECOND route to the same rectangle: this body exists so a
+// cached atlas can be brought up to date field by field, and a placement is
+// withheld WHOLE or presented WHOLE, so there is no trim for a patch to
+// repair.
 type ConcealmentRevealedBody struct {
 	// Concealment is the secret's identifier — the one noun everything else
 	// in this body belonged to. Required: a body naming no concealment is
