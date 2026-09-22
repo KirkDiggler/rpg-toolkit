@@ -135,6 +135,17 @@ func sightAreasFromData(in []SightAreaData) map[string]SightArea {
 	return out
 }
 
+// SightAreaContains reports whether a point lies inside the runtime sight area.
+// The caller supplies the encounter canvas grid so membership uses the same
+// hex distance and feet-to-cell conversion as sight reach.
+func SightAreaContains(area SightAreaData, point spatial.Position, grid spatial.Grid) bool {
+	if area.RadiusFeet <= 0 {
+		return false
+	}
+	center := spatial.Position{X: area.Center.X, Y: area.Center.Y}
+	return grid.Distance(center, point) <= float64(area.RadiusFeet)/float64(FeetPerCell)
+}
+
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 func areaCrosses(a SightArea, from, to spatial.Position, grid spatial.Grid) bool {
 	r := float64(a.RadiusFeet) / float64(FeetPerCell)
