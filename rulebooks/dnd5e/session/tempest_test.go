@@ -49,6 +49,9 @@ func (s *CastSuite) TestFogCloudPublicCastPersistsWithoutDamageOrDice() {
 	again, err := s.mgr.Areas(context.Background(), &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Equal(areas, again)
+	raw, err := json.Marshal(s.characters.byID["cleric"].Conditions)
+	s.Require().NoError(err)
+	s.Contains(string(raw), refs.Conditions.InFog().String(), "membership persists through reload")
 }
 
 func (s *CastSuite) TestWrathPublicAttackReactPersistsWithoutRepeatingHit() {
@@ -224,5 +227,31 @@ func (s *CastSuite) TestFogCloudExpiresAndRestoresSightAfterReload() {
 	s.Empty(areas)
 	for _, raw := range s.characters.byID["cleric"].Conditions {
 		s.NotContains(string(raw), refs.Conditions.Concentrating().String())
+		s.NotContains(string(raw), refs.Conditions.InFog().String(), "expiry removes membership")
 	}
+}
+
+func (s *CastSuite) TestFogMembershipFollowsPublicMovement() {
+	s.scene(s.tempestSheet(), 20)
+	ctx := context.Background()
+	row := s.castRow(spells.FogCloud)
+	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 7, Y: 1}})
+	s.Require().NoError(err)
+	assertFog := func(want bool) {
+		raw, marshalErr := json.Marshal(s.characters.byID["cleric"].Conditions)
+		s.Require().NoError(marshalErr)
+		if want {
+			s.Contains(string(raw), refs.Conditions.InFog().String())
+		} else {
+			s.NotContains(string(raw), refs.Conditions.InFog().String())
+		}
+	}
+	assertFog(false)
+	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 1}}})
+	s.Require().NoError(err)
+	assertFog(true)
+	s.reloadHealingScene()
+	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 3, Y: 1}, {X: 2, Y: 1}, {X: 1, Y: 1}}})
+	s.Require().NoError(err)
+	assertFog(false)
 }
