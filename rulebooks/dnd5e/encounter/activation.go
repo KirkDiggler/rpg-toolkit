@@ -330,6 +330,10 @@ func (e *Encounter) RecordActivation(in *RecordActivationInput) (*RecordActivati
 		seqs = append(seqs, appended.Seq)
 	}
 
+	if err := e.FlushSightAreaTransitions(); err != nil {
+		return nil, err
+	}
+
 	_, intelDeltas, noticeErr := e.noticeDown()
 	if noticeErr != nil {
 		return nil, fmt.Errorf("record activation: %w", noticeErr)

@@ -553,6 +553,10 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
 	}
 
+	if err := e.FlushSightAreaTransitions(); err != nil {
+		return nil, err
+	}
+
 	// And now the world finds out what that beat just changed. AFTER the append,
 	// never before: the outcome is the cause, and a down beat ahead of the strike
 	// that explains it would be a story told backwards. See the godoc.

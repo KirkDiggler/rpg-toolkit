@@ -11,29 +11,38 @@ import (
 // SightArea is a runtime, sight-only obscuring volume. SourceID is opaque to
 // encounter and lets its owner remove the area when the effect ends.
 type SightArea struct {
-	ID         string
-	SourceID   string
-	Name       string
-	Ref        string
-	Center     spatial.Position
-	RadiusFeet int
+	ID                 string
+	SourceID           string
+	Name               string
+	Ref                string
+	Center             spatial.Position
+	RadiusFeet         int
+	MembershipRef      string
+	MembershipName     string
+	MembershipSourceID string
 }
 
 type SightAreaData struct {
-	ID         string
-	SourceID   string
-	Name       string
-	Ref        string
-	Center     PositionData
-	RadiusFeet int
+	ID                 string
+	SourceID           string
+	Name               string
+	Ref                string
+	Center             PositionData
+	RadiusFeet         int
+	MembershipRef      string
+	MembershipName     string
+	MembershipSourceID string
 }
 type SightAreaInput struct {
-	ID         string
-	SourceID   string
-	Name       string
-	Ref        string
-	Center     spatial.Position
-	RadiusFeet int
+	ID                 string
+	SourceID           string
+	Name               string
+	Ref                string
+	Center             spatial.Position
+	RadiusFeet         int
+	MembershipRef      string
+	MembershipName     string
+	MembershipSourceID string
 }
 
 func (in *SightAreaInput) area() (SightArea, error) {
@@ -43,7 +52,10 @@ func (in *SightAreaInput) area() (SightArea, error) {
 	if in.ID == "" || in.SourceID == "" || in.RadiusFeet <= 0 || !finite(in.Center.X) || !finite(in.Center.Y) {
 		return SightArea{}, fmt.Errorf("sight area: invalid identity or radius: %w", ErrInvalidData)
 	}
-	return SightArea{ID: in.ID, SourceID: in.SourceID, Name: in.Name, Ref: in.Ref, Center: in.Center, RadiusFeet: in.RadiusFeet}, nil
+	if (in.MembershipRef == "") != (in.MembershipName == "") || (in.MembershipRef == "") != (in.MembershipSourceID == "") {
+		return SightArea{}, fmt.Errorf("sight area: membership metadata must be all present or absent: %w", ErrInvalidData)
+	}
+	return SightArea{ID: in.ID, SourceID: in.SourceID, Name: in.Name, Ref: in.Ref, Center: in.Center, RadiusFeet: in.RadiusFeet, MembershipRef: in.MembershipRef, MembershipName: in.MembershipName, MembershipSourceID: in.MembershipSourceID}, nil
 }
 func (e *Encounter) AddSightArea(in *SightAreaInput) error {
 	a, err := in.area()
@@ -123,14 +135,14 @@ func sightAreasDataFrom(in map[string]SightArea) []SightAreaData {
 	out := make([]SightAreaData, 0, len(ids))
 	for _, id := range ids {
 		a := in[id]
-		out = append(out, SightAreaData{ID: a.ID, SourceID: a.SourceID, Name: a.Name, Ref: a.Ref, Center: PositionData{X: a.Center.X, Y: a.Center.Y}, RadiusFeet: a.RadiusFeet})
+		out = append(out, SightAreaData{ID: a.ID, SourceID: a.SourceID, Name: a.Name, Ref: a.Ref, MembershipRef: a.MembershipRef, MembershipName: a.MembershipName, MembershipSourceID: a.MembershipSourceID, Center: PositionData{X: a.Center.X, Y: a.Center.Y}, RadiusFeet: a.RadiusFeet})
 	}
 	return out
 }
 func sightAreasFromData(in []SightAreaData) map[string]SightArea {
 	out := make(map[string]SightArea, len(in))
 	for _, d := range in {
-		out[d.ID] = SightArea{ID: d.ID, SourceID: d.SourceID, Name: d.Name, Ref: d.Ref, Center: spatial.Position{X: d.Center.X, Y: d.Center.Y}, RadiusFeet: d.RadiusFeet}
+		out[d.ID] = SightArea{ID: d.ID, SourceID: d.SourceID, Name: d.Name, Ref: d.Ref, MembershipRef: d.MembershipRef, MembershipName: d.MembershipName, MembershipSourceID: d.MembershipSourceID, Center: spatial.Position{X: d.Center.X, Y: d.Center.Y}, RadiusFeet: d.RadiusFeet}
 	}
 	return out
 }
@@ -179,6 +191,9 @@ func validateSightAreasData(in []SightAreaData) error {
 			return fmt.Errorf("duplicate sight area %q: %w", d.ID, ErrInvalidData)
 		}
 		seen[d.ID] = true
+		if (d.MembershipRef == "") != (d.MembershipName == "") || (d.MembershipRef == "") != (d.MembershipSourceID == "") {
+			return fmt.Errorf("invalid sight area %q membership metadata: %w", d.ID, ErrInvalidData)
+		}
 		_ = sources
 	}
 	return nil

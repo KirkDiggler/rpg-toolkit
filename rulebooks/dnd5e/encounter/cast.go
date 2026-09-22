@@ -387,6 +387,10 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 			}
 		}
 	}
+	if err := e.FlushSightAreaTransitions(); err != nil {
+		return nil, err
+	}
+
 	_, intelDeltas, noticeErr := e.noticeDown()
 	if noticeErr != nil {
 		return nil, fmt.Errorf("record cast: %w", noticeErr)
