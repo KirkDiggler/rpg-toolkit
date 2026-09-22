@@ -1907,9 +1907,25 @@ func (FightEndedBody) isEventBody() {}
 // hostile, neutral or allied — carried as the author's word rather than an
 // enum, the way EndedBody.Ending carries the author's key: what a stance
 // MEANS to a client (which colour, which sentence) is content.
+//
+// # Cause is why, and its absence is an answer
+//
+// A pair turns four ways now (rpg-project#493, R2 and R3): a round the guards
+// were waiting for, a scout falling, another pair turning, or somebody
+// swinging across a neutral pair. Cause is the composition's own sentence for
+// which of those it was — "attacked by alice", "the fall of scout", "round 3
+// started" — carried as text for the same reason Stance is: it is a line a
+// client narrates, not a value it branches on.
+//
+// IT IS EMPTY WHEN A MIND'S KNOWLEDGE TURNED THE PAIR, and that emptiness is
+// the honest reading rather than a hole. The fold is what turned the pair, no
+// cause was ever written, and a client that invented one would be narrating
+// something nobody decided. So a reader shows the reason when there is one and
+// says only that the pair turned when there is not.
 type StanceChangedBody struct {
 	Between []string `json:"between"`
 	Stance  string   `json:"stance"`
+	Cause   string   `json:"cause,omitempty"`
 }
 
 func (StanceChangedBody) isEventBody() {}
