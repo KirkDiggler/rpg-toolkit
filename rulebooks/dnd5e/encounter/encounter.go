@@ -1799,6 +1799,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			positions: positions,
 			cells:     reach,
 			canvas:    e.canvas,
+			areas:     e.sightAreas,
 		},
 	})
 	if err != nil {

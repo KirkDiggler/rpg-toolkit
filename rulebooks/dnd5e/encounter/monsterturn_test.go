@@ -2210,3 +2210,34 @@ func TestARoutedIntentNamingAnUnsupportedPolicyIsRefused(t *testing.T) {
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	require.ErrorIs(t, err, encounter.ErrUnsupportedPolicy)
 }
+
+// Fog must fade both public sight and the monster's current targeting facts.
+// A later persisted position must not replace the location remembered before fog.
+func (s *MonsterTurnTestSuite) TestFogKeepsMovedTargetAtLastKnownLocation() {
+	driver := &scriptedDriver{}
+	enc := s.adjacentSkeletonEncounter(driver, &scriptedStriker{kind: encounter.OutcomeMissed})
+	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{
+		ID: "fog", SourceID: "caster", Center: cellAt(3, 2), RadiusFeet: 20,
+	}))
+	s.Require().NoError(enc.RefreshPerception())
+	holding := requireHolding(s.T(), enc, goblin, alice)
+	requireKnownLocation(s.T(), holding.Payload, cellAt(2, 2))
+	data := enc.ToData()
+	for i := range data.Members {
+		if data.Members[i].ID == alice {
+			moved := cellAt(1, 2)
+			data.Members[i].Cell = &encounter.PositionData{X: moved.X, Y: moved.Y}
+		}
+	}
+	enc = s.loadEncounterData(data, driver)
+	s.Require().NoError(enc.RefreshPerception())
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	s.Empty(driver.calls[0].Seen, "fog must withhold the live position from AI")
+	s.Require().Len(driver.calls[0].Remembered, 1)
+	s.Equal(cellAt(2, 2), driver.calls[0].Remembered[0].Position)
+	s.True(enc.RemoveSightArea("caster"))
+	s.Require().NoError(enc.RefreshPerception())
+	requireKnownLocation(s.T(), requireHolding(s.T(), enc, goblin, alice).Payload, cellAt(1, 2))
+}
