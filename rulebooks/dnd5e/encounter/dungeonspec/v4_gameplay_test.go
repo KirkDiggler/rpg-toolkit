@@ -141,12 +141,12 @@ func TestTheFrontRoomPricesTheSameCheckInBothDialects(t *testing.T) {
 	})
 
 	// OMITTED IS NIL, NOT EMPTY, and that distinction is what tells the
-	// rulebook to derive the DC from the stat block's passive Insight. A
+	// rulebook this creature carries no social verb (rpg-project#494 R1). A
 	// creature nobody priced must compile to nothing in either dialect.
 	t.Run("a creature nobody priced", func(t *testing.T) {
 		was, is := monsterNamed(t, v2, "front-goblin-2"), monsterNamed(t, v4, "front-goblin-2")
 		require.Nil(t, was.Intimidate)
-		require.Nil(t, is.Intimidate, "v4 derives it too, and nil is how the rulebook knows to")
+		require.Nil(t, is.Intimidate, "v4 carries the same silence, and nil is how it says so")
 		require.Nil(t, was.Persuade)
 		require.Nil(t, is.Persuade)
 	})
