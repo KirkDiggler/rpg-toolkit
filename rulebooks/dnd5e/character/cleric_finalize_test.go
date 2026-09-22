@@ -722,3 +722,36 @@ func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveA
 	s.Require().NoError(err)
 	s.NotContains(char.ToData().WeaponProficiencies, proficiencies.WeaponMartial)
 }
+
+func (s *ClericFinalizeSuite) TestNYIDomainGrantsSurviveCreationAndReloadWithoutCasts() {
+	for _, tc := range []struct {
+		domain classes.Subclass
+		grants []spells.Spell
+	}{
+		{classes.LightDomain, []spells.Spell{spells.Light}},
+		{classes.TrickeryDomain, []spells.Spell{spells.CharmPerson, spells.DisguiseSelf}},
+		{classes.KnowledgeDomain, []spells.Spell{spells.Identify}},
+	} {
+		s.Run(string(tc.domain), func() {
+			in := s.classInput()
+			in.SubclassID = tc.domain
+			in.Choices.Cantrips = []spells.Spell{spells.SacredFlame, spells.Guidance, spells.Resistance}
+			in.Choices.Spells = []spells.Spell{spells.Bane, spells.HealingWord, spells.Sanctuary, spells.GuidingBolt}
+			draft := s.draft(in)
+			if tc.domain == classes.KnowledgeDomain {
+				s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Halfling}))
+				draft.recordChoice(choices.ChoiceData{Category: shared.ChoiceSkills, Source: shared.SourceSubclass, ChoiceID: "cleric-knowledge-skills", SkillSelection: []skills.Skill{skills.Arcana, skills.History}})
+				draft.recordChoice(choices.ChoiceData{Category: shared.ChoiceLanguages, Source: shared.SourceSubclass, ChoiceID: "cleric-knowledge-languages", LanguageSelection: []languages.Language{languages.Elvish, languages.Gnomish}})
+			}
+			c, err := draft.ToCharacter(context.Background(), "nyi-cleric", events.NewEventBus())
+			s.Require().NoError(err)
+			c, err = Load(context.Background(), c.ToData())
+			s.Require().NoError(err)
+			all := append(c.ToData().KnownCantrips, c.ToData().KnownSpells...)
+			for _, id := range tc.grants {
+				s.Contains(all, refs.Spells.ByID(id).String())
+				s.Nil(c.CastDefinition(id))
+			}
+		})
+	}
+}
