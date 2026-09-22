@@ -23,10 +23,12 @@ import (
 //     world's own truth, which no flag records until somebody writes one.
 //     [Encounter.turnUntils] is that somebody, and it runs at the sites that
 //     already notice each of those events.
-//   - AN ATTACK ACROSS A NEUTRAL PAIR — nothing authored at all
-//     ([Encounter.aggression], R3). An author never writes "if attacked,
-//     become hostile" on a camp, and a camp that did not have the line was
-//     never meant to stand there and take it.
+//   - HOSTILE INTENT DELIVERED ACROSS A NEUTRAL PAIR — nothing authored at
+//     all ([Encounter.aggression], R3 as R5 rebound it). An author never
+//     writes "if attacked, become hostile" on a camp, and a camp that did
+//     not have the line was never meant to stand there and take it. What
+//     counts as hostile intent is [hostileIntent]: a swing, or a spell that
+//     asks for a save against something that is not a kindness.
 //
 // All three end in the same place, [Encounter.settleStances]: one `stance`
 // beat to everyone, the fights that lost their sides and the fight that just
@@ -127,6 +129,69 @@ func (e *Encounter) aggression(actor, target MemberID, at uint64) error {
 		return err
 	}
 	return e.settleStances(before, at)
+}
+
+// hostileIntent answers R5 (rpg-project#493): did this cast deliver hostile
+// intent to this recipient — the one question [Encounter.aggression] and the
+// `attacked` deed are both owed, whichever door the harm came through.
+//
+// # An attack roll, or a save against something that is not a kindness
+//
+// R3 was written against the SWING, and 5e's damage verbs are heavily
+// save-based: a failed-save Vicious Mockery on a scout of a neutral camp left
+// the pair neutral, the caster on the world clock and the scout with no
+// testimony that anything had been done to it, so even its own
+// `attacked within 3 -> attack: attacker` row never fired. That is the exact
+// fail-silent the design's opening paragraph exists to remove, surviving one
+// delivery over (found by the independent review of #1864, which probed it).
+// R5 rebinds the law to the intent rather than the mechanism: an attack roll,
+// hit or miss, OR a cast that asks a member of another faction for a saving
+// throw against a harmful effect.
+//
+// ON THE ATTEMPT, LANDED OR NOT — the missed swing's rule, for the missed
+// swing's reason. A Vicious Mockery the scout SAVED against was still an
+// attempt to hurt it, and a camp that turns only when the dice land is a camp
+// that forgives a bad roll.
+//
+// # Harmful is read off the delivery, because nothing here can read intent
+//
+// This composition carries no spell semantics (C1): a [SpellIdentity] is a
+// ref and a name it may not interpret, and no input anywhere says "this
+// effect is harmful". What it CAN read is what the cast delivered, so the
+// exemption the design names — a save that only helps provokes nothing — is
+// stated in the negative and narrowly: a save whose WHOLE delivery to this
+// recipient is a kindness (healing, a condition lifted, a stabilization, a
+// granted capacity) provokes nothing, and everything else provokes.
+//
+// AN EMPTY DELIVERY PROVOKES, which is the attempt above rather than an
+// oversight: a spell the target resisted outright delivers nothing at all,
+// and that is the case R5 is most about. The residue is one false positive
+// nobody can reach in this build — a beneficial save-gated cast the recipient
+// RESISTED would read as an empty delivery and provoke — and it is the
+// fail-closed direction of the ambiguity: the alternative reads a betrayal as
+// nothing happening.
+//
+// THE MISSED AND WARDED ARMS ARE NOT ASKED. `Missed` is a delivery outcome
+// supplied by resolution with no roll and no save attached, and `Warded` is a
+// fact about the CASTER's own failed save; R5 rules on the attack roll and on
+// the save asked OF THE RECIPIENT, and widening to either of those on the way
+// past would be this file inventing a ruling it was not given.
+func hostileIntent(target CastTargetResult) bool {
+	if target.Attack != nil {
+		return true
+	}
+	if target.Save == nil {
+		return false
+	}
+	for _, result := range target.Results {
+		switch result.Kind {
+		case ResultHealingApplied, ResultConditionRemoved, ResultStabilized, ResultCapacityGranted:
+			continue
+		default:
+			return true
+		}
+	}
+	return len(target.Results) == 0
 }
 
 // attackable refuses a member that cannot be the target of an attack

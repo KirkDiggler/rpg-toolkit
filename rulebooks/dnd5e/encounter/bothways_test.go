@@ -582,3 +582,174 @@ func (s *BothWaysSuite) TestATurnedPairSurvivesASaveAndLoad() {
 	s.True(known)
 	s.True(hostile)
 }
+
+// bwMockery is the save-gated cantrip every R5 scene is about: Vicious
+// Mockery, one target, a Wisdom save, 1d4 psychic when it lands.
+var bwMockery = encounter.SpellIdentity{Ref: "dnd5e:spells:vicious-mockery", Name: "Vicious Mockery"}
+
+// bwSave is the scout's Wisdom save against that cantrip, made or failed.
+func bwSave(succeeded bool) *encounter.CastSave {
+	roll, total := 6, 8
+	if succeeded {
+		roll, total = 17, 19
+	}
+	return &encounter.CastSave{
+		Saver: bwScout, Ability: "wisdom", Roll: roll, Total: total, DC: 13, Succeeded: succeeded,
+		Calculation: saveCalculation(bwMockery, "wisdom", roll, total),
+	}
+}
+
+// bwPsychic is the 1d4 the failed save let through.
+func bwPsychic() encounter.ActivationResult {
+	return encounter.ActivationResult{
+		Kind: encounter.ResultDamageApplied, Target: bwScout,
+		Ref: bwMockery.Ref, Name: bwMockery.Name,
+		Amount: 3, Requested: 3, Before: 7, After: 4, DamageType: "psychic",
+		Calculation: &encounter.RollCalculation{
+			Components: []encounter.RollComponent{{
+				Source: encounter.RollSource{Ref: bwMockery.Ref, Name: bwMockery.Name, SourceID: string(alice)},
+				Dice: &encounter.DiceTrace{
+					Notation: "1d4", DieSize: 4,
+					OriginalRolls: []int{3}, FinalRolls: []int{3}, Subtotal: 3,
+				},
+			}},
+			Total: 3,
+		},
+	}
+}
+
+// camp is the yard of TestAttackingANeutralCampTurnsItAndFormsTheFight: a
+// neutral goblin camp, a scout in the open and a chief across the yard, and
+// nobody fighting anybody.
+func (s *BothWaysSuite) camp() *encounter.Encounter {
+	enc := s.open(
+		s.yard(
+			[]encounter.FactionInput{{ID: bwGoblins}},
+			[]encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
+				Stance:  encounter.StanceNeutral,
+			}},
+			false,
+		),
+		[]encounter.MemberInput{
+			player(alice, 0, 1),
+			monster(bwScout, bwGoblins, 4, 1),
+			monster(bwChief, bwGoblins, 5, 5),
+		},
+	)
+	s.Require().Equal(encounter.StanceNeutral, s.stance(enc, bwGoblins, encounter.FactionParty))
+	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice), "precondition: nobody is fighting")
+	return enc
+}
+
+// TestAFailedSaveTurnsTheCampTheWaySwingDoes is R5, and it is the review's
+// own probe committed (the independent round on rpg-toolkit#1864): a cantrip
+// that delivers through a SAVE used to leave the camp civil, the caster on
+// the world clock, and the scout with no testimony that anything had been
+// done to it.
+//
+// THE SAME THREE CLAIMS THE SWING SCENE MAKES, deliberately: the pair turned
+// as a camp, the beat says who started it, and everyone who could see it is
+// in the fight. A spell is a different delivery, not a different law.
+func (s *BothWaysSuite) TestAFailedSaveTurnsTheCampTheWaySwingDoes() {
+	enc := s.camp()
+
+	_, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: alice, Spell: bwMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: bwScout, Save: bwSave(false),
+			Results: []encounter.ActivationResult{bwPsychic()},
+		}},
+	})
+	s.Require().NoError(err)
+
+	s.Run("the camp turned, as a camp", func() {
+		s.Equal(encounter.StanceHostile, s.stance(enc, bwGoblins, encounter.FactionParty))
+		hostile, known := enc.IsHostile(alice, bwChief)
+		s.True(known)
+		s.True(hostile, "the chief across the yard is at war too — a pair is a pair")
+	})
+	s.Run("the beat says who started it", func() {
+		beat := s.turnedTo(enc, alice, bwGoblins, encounter.FactionParty)
+		s.Equal(string(encounter.StanceHostile), beat["stance"])
+		s.Equal("attacked by alice", beat["cause"])
+	})
+	s.Run("and everyone who could see it is in the fight", func() {
+		s.Equal(encounter.ClockTurn, s.clockOf(enc, alice))
+		s.Equal(encounter.ClockTurn, s.clockOf(enc, bwScout))
+		s.Equal(encounter.ClockTurn, s.clockOf(enc, bwChief))
+
+		form := s.formed(enc, alice)
+		s.Require().NotNil(form)
+		s.ElementsMatch([]string{string(alice), string(bwScout), string(bwChief)}, engaged(form),
+			"the caster and every member of the camp that could see it")
+	})
+}
+
+// TestASavedCastStillProvokesBecauseTheAttemptIsTheProvocation is the missed
+// swing's rule for the save: the scout shrugged the cantrip off, took nothing
+// at all, and the camp is still at war.
+//
+// A CAMP THAT ONLY TURNS WHEN THE DICE LAND is a camp that forgives a bad
+// roll, and R3 never worked that way for a swing — OutcomeMissed lands the
+// same deed and the same turn as OutcomeStruck. This is that rule reaching
+// the other delivery.
+func (s *BothWaysSuite) TestASavedCastStillProvokesBecauseTheAttemptIsTheProvocation() {
+	enc := s.camp()
+
+	_, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: alice, Spell: bwMockery,
+		Targets: []encounter.CastTargetResult{{Target: bwScout, Save: bwSave(true)}},
+	})
+	s.Require().NoError(err)
+
+	s.Equal(encounter.StanceHostile, s.stance(enc, bwGoblins, encounter.FactionParty),
+		"the spell delivered nothing; the attempt is what the camp answers")
+	beat := s.turnedTo(enc, alice, bwGoblins, encounter.FactionParty)
+	s.Equal("attacked by alice", beat["cause"])
+	s.Equal(encounter.ClockTurn, s.clockOf(enc, bwChief), "and the camp is in the fight")
+}
+
+// TestASaveThatOnlyHelpsProvokesNothing is R5's named exemption, and the one
+// place this module answers "is that harmful" at all.
+//
+// It cannot read a spell's intent — a [encounter.SpellIdentity] is a ref this
+// composition may not interpret (C1) — so it reads the DELIVERY: a save whose
+// whole delivery to the recipient is a kindness turns nobody. Healing a
+// neutral camp's scout through a save-gated cast is not an attack on the
+// camp, and the pair is exactly as it was.
+func (s *BothWaysSuite) TestASaveThatOnlyHelpsProvokesNothing() {
+	enc := s.camp()
+	kindness := encounter.SpellIdentity{Ref: "dnd5e:spells:mass-cure-wounds", Name: "Mass Cure Wounds"}
+
+	_, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: alice, Spell: kindness,
+		Targets: []encounter.CastTargetResult{{
+			Target: bwScout,
+			Save: &encounter.CastSave{
+				Saver: bwScout, Ability: "wisdom", Roll: 6, Total: 8, DC: 13, Succeeded: false,
+				Calculation: saveCalculation(kindness, "wisdom", 6, 8),
+			},
+			Results: []encounter.ActivationResult{{
+				Kind: encounter.ResultHealingApplied, Target: bwScout,
+				Ref: kindness.Ref, Name: kindness.Name,
+				Amount: 5, Requested: 5, Before: 4, After: 9,
+				Calculation: &encounter.RollCalculation{
+					Components: []encounter.RollComponent{{
+						Source: encounter.RollSource{Ref: kindness.Ref, Name: kindness.Name, SourceID: string(alice)},
+						Dice: &encounter.DiceTrace{
+							Notation: "1d8", DieSize: 8,
+							OriginalRolls: []int{5}, FinalRolls: []int{5}, Subtotal: 5,
+						},
+					}},
+					Total: 5,
+				},
+			}},
+		}},
+	})
+	s.Require().NoError(err)
+
+	s.Equal(encounter.StanceNeutral, s.stance(enc, bwGoblins, encounter.FactionParty))
+	s.Empty(s.stanceBeats(enc, alice), "nothing turned, so nothing was announced")
+	s.Nil(s.formed(enc, alice), "and no fight formed")
+}

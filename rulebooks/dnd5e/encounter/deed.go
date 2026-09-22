@@ -14,8 +14,10 @@ import (
 )
 
 // DeedAttack is the verb an attack lands under on the deeds channel: what a
-// witness would say they saw somebody DO when a swing or a shot resolved.
-// Struck or missed, it is the same deed — a miss is still a shot at you.
+// witness would say they saw somebody DO when a swing, a shot or a harmful
+// spell resolved. Struck, missed or saved against, it is the same deed — a
+// miss is still a shot at you, and so is a spell you shrugged off
+// (rpg-project#493, R5; [hostileIntent]).
 const DeedAttack = "attack"
 
 // DeedIntimidate is the verb a beaten Intimidate check lands under: what a
@@ -77,16 +79,25 @@ const DeedFled = "fled"
 // landAttack tells every member whose senses reach the actor's cell that
 // the actor attacked, through perception's own Report door, in each
 // witness's terms (mind/behavior rule A4: a deed is landed where the fact
-// is known and nowhere else, and Record is where an attack is known).
+// is known and nowhere else, and a recorded outcome is where an attack is
+// known).
 //
 // A deed names one target. When an outcome has several, the first in
 // sorted order is the one named; the others are the outcome beat's to
 // tell. No use case has paid for more than one yet.
 //
-// THE AGGRESSION LAW RUNS FIRST (rpg-project#493, R3; turning.go): a swing
-// across a neutral pair makes it hostile, and it has to make it hostile
-// BEFORE this testimony lands, or the very pick the deed provokes reads
-// `enemy: none` on a camp that is already at war. The audience is asked
+// A SPELL COMES THROUGH HERE TOO (rpg-project#493, R5; [hostileIntent]).
+// [Encounter.Record]'s struck and missed kinds are one door and
+// [Encounter.RecordCast] is the other, and the cast's door is no longer only
+// its attack arm: a save asked against a harmful effect lands the same
+// [DeedAttack] on the same recipient, so `attacked: { within: N }` and the
+// `attacker` selector see a spell. The verb is the same because the
+// testimony is: a witness saw somebody try to hurt somebody.
+//
+// THE AGGRESSION LAW RUNS FIRST (rpg-project#493, R3; turning.go): hostile
+// intent across a neutral pair makes it hostile, and it has to make it
+// hostile BEFORE this testimony lands, or the very pick the deed provokes
+// reads `enemy: none` on a camp that is already at war. The audience is asked
 // afterwards for the same reason it is asked at all — a fight forming is a
 // sight refresh, and the witnesses of the deed are the ones there are now.
 func (e *Encounter) landAttack(actor MemberID, targets []MemberID) error {

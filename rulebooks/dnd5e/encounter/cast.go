@@ -380,11 +380,19 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 		seqs = append(seqs, appended.Seq)
 	}
 
+	// PROVOCATION IS THE CAST'S, NOT THE ATTACK ARM'S (rpg-project#493, R5;
+	// [hostileIntent]). Every recipient this cast delivered hostile intent to
+	// goes through the one path a swing goes through — the aggression law
+	// first, then the `attacked` deed — so a creature hurt by a spell learns
+	// it was hurt exactly as one hit by a sword does, and the camp it belongs
+	// to turns. In caller order, per recipient, because each names a pair of
+	// its own and a cast that catches two factions provokes both.
 	for _, target := range in.Targets {
-		if target.Attack != nil {
-			if err := e.landAttack(in.Actor, []MemberID{target.Target}); err != nil {
-				return nil, fmt.Errorf("record cast: %w", err)
-			}
+		if !hostileIntent(target) {
+			continue
+		}
+		if err := e.landAttack(in.Actor, []MemberID{target.Target}); err != nil {
+			return nil, fmt.Errorf("record cast: %w", err)
 		}
 	}
 	_, intelDeltas, noticeErr := e.noticeDown()
@@ -434,6 +442,12 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		// AN NPC IS NOT A TARGET (rpg-project#493, R4). Only the attack arm
 		// is refused: a spell that asks its target for a save is not a swing,
 		// and what a save against a world NPC means is its own question.
+		//
+		// R5 DOES NOT MOVE THIS LINE. Widening provocation to a save-delivered
+		// harm ([hostileIntent]) says what a cast DOES to a member it may
+		// lawfully reach; it says nothing about who may be reached, and R4 is
+		// ruled for the refusal only. A world NPC is in no faction, so the
+		// aggression law finds no pair to turn either way.
 		if target.Attack != nil {
 			if err := e.attackable(fmt.Sprintf("record cast: target %d", i), target.Target); err != nil {
 				return nil, err
