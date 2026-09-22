@@ -896,18 +896,18 @@ type MemberInput struct {
 	// Intimidate is the authored check a character must beat to frighten
 	// this member ([dungeonspec.PlaceSpec.Intimidate], rpg-project#454) —
 	// the same list of approaches a lock carries, priced per route. Nil
-	// when the author wrote none, and nil MEANS SOMETHING: the rulebook
-	// derives the default from the stat block's own passive Insight. This
-	// composition cannot derive it and must not try (C1) — it carries the
-	// list and never reads a DC.
+	// when the author wrote none, and nil MEANS SOMETHING: the creature
+	// cannot be intimidated at all (rpg-project#494 R1). There is no
+	// derived default behind it, and there never was one here — this
+	// composition carries the list and never reads a DC (C1).
 	Intimidate []CheckApproach
 
 	// Persuade is the authored check a character must beat to talk this
 	// member round ([dungeonspec.PlaceSpec.Persuade], rpg-project#458) —
 	// Intimidate's twin on the same machine and carried the same way. Nil
 	// when the author wrote none, and nil MEANS SOMETHING for the same
-	// reason: the rulebook derives the default from the stat block's own
-	// passive Insight, and this composition cannot and must not try (C1).
+	// reason: this creature is not one a player can talk round, and the
+	// rulebook has nothing to fall back on.
 	Persuade []CheckApproach
 
 	// Table is this member's whole policy — what it does, keyed by what

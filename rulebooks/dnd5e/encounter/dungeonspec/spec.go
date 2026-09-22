@@ -1593,12 +1593,18 @@ type PlaceSpec struct {
 	// list other ways through (`{ ability: str, dc: 15 }` flexes a muscle).
 	// MONSTERS ONLY, refused on anything else exactly as Targeting is.
 	//
-	// OMITTED MEANS DERIVED, NOT UNGATED. Absent, the rulebook rolls
-	// Intimidation against the stat block's own passive Insight — 10 + its
-	// Wisdom modifier, plus proficiency if the definition lists Insight, so
-	// a goblin is DC 9 and a thug DC 10. "Nothing is gated; everything is a
-	// check" (living-world §13): every character may attempt this on every
-	// monster, and the DC is the monster's, never a lock on the attempt.
+	// OMITTED MEANS NOT OFFERED (rpg-project#494 R1). Absent, this monster
+	// cannot be intimidated at all: the panel does not list it as a target
+	// and the verb refuses it by name. The derived approach that used to
+	// stand behind an empty key — Intimidation against the stat block's
+	// passive Insight — is RETIRED, because it made absence mean "use the
+	// default" when what an author means by saying nothing is "this creature
+	// does not do that". THE WORLD BUILDER IS THE ONLY PLACE a creature gains
+	// a social verb, and that is the point.
+	//
+	// Among the monsters an author DID write it on, nothing is gated and
+	// everything is a check (living-world §13): every character may attempt
+	// it, and the DC is the monster's, never a lock on the attempt.
 	//
 	// Unlike a lock's, an EMPTY list is not refused as unauthored, because
 	// this key is optional in the first place — `intimidate: []` is refused
@@ -1611,10 +1617,11 @@ type PlaceSpec struct {
 	// list priced per route: `persuade: [{ ability: persuasion, dc: 10 }]`.
 	// MONSTERS ONLY, refused on anything else.
 	//
-	// OMITTED MEANS DERIVED, NOT UNGATED, exactly as Intimidate's is: absent,
-	// the rulebook rolls Persuasion against the stat block's own passive
-	// Insight. An empty list is refused as what it is, a check with no way
-	// through.
+	// OMITTED MEANS NOT OFFERED, exactly as Intimidate's is: absent, this
+	// monster cannot be persuaded. The two keys are read independently, so a
+	// creature written to be reasoned with and not threatened is an ordinary
+	// thing to author. An empty list is still refused as what it is, a check
+	// with no way through.
 	Persuade CheckSpec `yaml:"persuade,omitempty"`
 
 	// On is the ANSWER TABLE: what this monster does about a social verb's

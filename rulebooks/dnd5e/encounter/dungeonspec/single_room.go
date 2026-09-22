@@ -298,8 +298,8 @@ type RoomMonsterBinding struct {
 	// rpg-project#488 R5), the same approach list a lock carries, priced per
 	// route.
 	//
-	// OMITTED MEANS DERIVED, NOT UNGATED: absent, the rulebook rolls
-	// Intimidation against the stat block's own passive Insight. The
+	// OMITTED MEANS NOT OFFERED (rpg-project#494 R1): absent, this creature
+	// cannot be intimidated and no default stands behind the silence. The
 	// NIL-VS-EMPTY LAW IS [RoomDoorBinding.Locked]'s — nil is "the author
 	// said nothing", and `intimidate: []` is an authored check that forgot to
 	// say how it is beaten, refused by name.
@@ -307,8 +307,8 @@ type RoomMonsterBinding struct {
 
 	// Persuade is [RoomMonsterBinding.Intimidate]'s twin — the check to talk
 	// this creature round ([PlaceSpec.Persuade], rpg-project#458;
-	// rpg-project#488 R5). The same shape, the same derived default when
-	// absent, and the same nil-vs-empty law.
+	// rpg-project#488 R5). The same shape, the same silence when absent, and
+	// the same nil-vs-empty law.
 	Persuade CheckSpec `yaml:"persuade,omitempty" json:"persuade,omitempty"`
 
 	// Arrives is the predicate that brings this creature into the run —
