@@ -74,23 +74,12 @@ type Atlas struct {
 	// geometry draws exactly what the engine enforces and nothing has to
 	// re-derive it from cells.
 	//
-	// CONSTRUCTION TRUTH like every other list here: a placement has no
-	// runtime lifetime in this slice (no move/hold/drop protocol exists),
-	// so there is nothing live to fold — the compiled list, copied out.
+	// FILTERED BY [Encounter.AtlasFor], never sliced: a placement a
+	// concealment hides, or one standing on floor the recipient cannot see,
+	// is withheld whole (rpg-project#490). This list used to be withheld
+	// WHOLESALE under any concealment, which stopped being honest the moment
+	// a footprint door could be the secret.
 	Placed []AtlasPlacedProp
-
-	// RoomScene is the validated room scene presentation the field was
-	// constructed with (issue #1753), copied out per call — doubles, empty
-	// lists and pointer leaves included, never the compiled one's own.
-	//
-	// NIL for a field without one, and nil it stays. A field that carries
-	// one is single-room v3 content: one unconcealed region, no concealed
-	// structure anywhere ([compileField] and the construction seams refuse
-	// the unsupported combinations), so the full scene is construction
-	// truth here exactly as the floor is. What a MEMBER may be shown is
-	// [Encounter.AtlasFor]'s question, and it refuses the combinations it
-	// cannot project rather than transmitting a hidden layout.
-	RoomScene *RoomScenePresentation
 
 	// Sealed is every cell in [Atlas.Cells] NOBODY CAN STAND ON, sorted by
 	// coordinate: scenery, and the cells walls leave no room in.
@@ -200,10 +189,11 @@ type AtlasRegion struct {
 	// Lighting is the region's light level, carried unread.
 	Lighting Lighting
 
-	// Concealed is whether the region is authored as hidden space, carried
-	// unread — [RegionInput.Concealed]. What a non-knower's atlas withholds
-	// is the world layer's business (rpg-project#351), not a snapshot's.
-	Concealed bool
+	// A REGION NO LONGER REPORTS WHETHER IT IS HIDDEN. It carried
+	// `Concealed bool` while a region was the thing that could be hidden;
+	// the concealment primitive replaced the flag (rpg-project#490), and
+	// what a non-knower's atlas withholds is [Encounter.AtlasFor]'s
+	// business — which TRIMS this entry's cells rather than dropping it.
 }
 
 // AtlasProp is one authored thing standing on the floor, as the map reports
@@ -254,10 +244,46 @@ type AtlasPlacedProp struct {
 	// offset — copied out per call.
 	Placement spatial.FootprintPlacement
 
+	// Cells is every cell this placement STANDS ON, in the atlas's own
+	// coordinate order (C8): the cells its rectangle covers, UNION the one
+	// cell the rectangle's own centre lies in. [field.placedCells] is the
+	// derivation, and this is that answer reported rather than re-derived.
+	//
+	// THE ADJACENCY A CLIENT READS, and the reason this field exists
+	// (rpg-api-protos#351). A footprint has no anchor cell, so "what is this
+	// thing next to?" is a geometry question — stationary footprint contact
+	// against every cell centre, plus the hex the centre point itself lies
+	// in for anything smaller than one cell. A client deriving that from
+	// [AtlasPlacedProp.Placement] would need this module's plane, its cell
+	// list and its tie-break to get the same answer, and would get a
+	// different one the day any of the three moved. IT NEVER RE-DERIVES IT:
+	// this list is the answer.
+	//
+	// THE SAME SET [Encounter.Hold]'S REACH JUDGES — holdPlaced in hold.go
+	// applies the legacy reach rule (grid distance, Range 0 meaning
+	// adjacent) to every cell [field.placedCells] returns, which is exactly
+	// this list. So a client offering Hold where this says the member is
+	// adjacent, and the engine refusing it, cannot disagree: one derivation,
+	// one answer, on both sides of the wire. It is also the set the probe
+	// law's visibility gate and an arrival fact's cell read ask
+	// (placed_props.go).
+	//
+	// NEVER EMPTY for a placement on this list: a compiled field has cells,
+	// so the centre clause always names one. Freshly allocated per call like
+	// every other slice here.
+	Cells []spatial.Position
+
 	// BlocksMovement and BlocksLineOfSight are the two answers the engine
 	// enforces, carried so a host need not guess from the shape.
 	BlocksMovement    bool
 	BlocksLineOfSight bool
+
+	// Holdable is whether a member can pick this placement up
+	// ([PlacedPropInput.Holdable], rpg-toolkit#1854) — [AtlasProp.Holdable]'s
+	// field on the other kind of thing, carried for its reason: a client
+	// offers the verb on a thing it is already drawing rather than asking a
+	// second question about it.
+	Holdable bool
 }
 
 // AtlasBoundary is one wall or barrier crossing, with both endpoints in
@@ -308,10 +334,16 @@ type AtlasDoorway struct {
 // ID. Copy-out: every returned slice is freshly allocated per call; mutating
 // the result never reaches internal state.
 //
-// O(cells) per call, which is what an enumerated floor costs and is the
-// honest shape of it: a region IS its cells now, so the list the host wants
-// is the list the composition already holds, copied. The field's cell budget
-// (maxFieldCells) is what bounds this.
+// O(cells) for the floor itself, which is what an enumerated floor costs and
+// is the honest shape of it: a region IS its cells now, so the list the host
+// wants is the list the composition already holds, copied.
+//
+// PLUS O(cells) PER STANDING PLACEMENT, so O(cells x (1+P)) per call for P of
+// them ([AtlasPlacedProp.Cells], rpg-api-protos#351): saying where a
+// rectangle stands is a walk over the floor, and this is the one place that
+// walk is paid rather than three readers and a client each paying it
+// separately. The field's cell budget (maxFieldCells) bounds both terms, and
+// P is the authored placement count, so the product is bounded too.
 func (e *Encounter) Atlas() (Atlas, error) {
 	f := e.field
 	out := Atlas{
@@ -322,9 +354,6 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		Boundaries:  make([]AtlasBoundary, 0, len(f.walls)),
 		Doorways:    make([]AtlasDoorway, 0, len(e.doors)),
 		Segments:    make([]AtlasSegment, 0, len(f.segments)),
-		// The presentation, copied out fresh per call: mutating one atlas's
-		// scene must never reach the compiled field or another snapshot.
-		RoomScene: copyRoomScene(f.roomScene),
 	}
 
 	for _, s := range f.segments {
@@ -335,13 +364,41 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	// id (C8 — every list on this snapshot is sorted, and this one's
 	// coordinate is a name). Copies, never the compiled contributors':
 	// mutating the result never reaches internal state.
-	for _, p := range f.placed {
-		box := *p.placement.Footprint.Box
+	//
+	// AND WHERE EACH ONE IS RIGHT NOW (rpg-toolkit#1854), on the truth grain
+	// the legacy props below are folded on: one waiting in reserve is on no
+	// map, one somebody picked up is on no map, and one that was dropped
+	// stands with its origin on the cell it was dropped on. The same fold
+	// standing, crossing and sight read, so no two answers exist.
+	nowPlaced := f.placedNow()
+	for i := range f.placed {
+		p := &f.placed[i]
+		placement, standing := nowPlaced.stands(p)
+		if !standing {
+			continue
+		}
+		box := *placement.Footprint.Box
 		out.Placed = append(out.Placed, AtlasPlacedProp{
-			ID:                p.id,
-			Placement:         p.placement,
+			ID:        p.id,
+			Placement: placement,
+			// WHERE IT STANDS, IN CELLS, derived once here rather than by
+			// every reader of this snapshot. Asked of the placement the
+			// fold returned, not of the authored one, so a dropped
+			// rectangle reports the cells it stands on NOW.
+			//
+			// This is the O(cells) walk [field.placedCells] is, once per
+			// standing placement — the cost of stating the derivation
+			// instead of leaving three protocols and one client to repeat
+			// it. AtlasFor pays it ONCE, here, instead of a second time in
+			// the filter: [Encounter.placedTouchesHidden] reads these cells
+			// rather than measuring the rectangle again. On a field that
+			// conceals nothing that filter never ran at all, so such a
+			// field does pay this walk where it paid none — the cost is
+			// stated in [Encounter.Atlas]' own doc rather than hidden here.
+			Cells:             f.placedCells(placement),
 			BlocksMovement:    p.blocksMovement,
 			BlocksLineOfSight: p.blocksLineOfSight,
+			Holdable:          p.holdable,
 		})
 		out.Placed[len(out.Placed)-1].Placement.Footprint.Box = &box
 	}
@@ -382,7 +439,6 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Cells:     append([]spatial.Position(nil), f.regionCells[r.ID]...),
 			Archetype: r.Archetype,
 			Lighting:  *r.Lighting,
-			Concealed: r.Concealed,
 		})
 	}
 	sort.Slice(out.Regions, func(i, j int) bool { return out.Regions[i].ID < out.Regions[j].ID })

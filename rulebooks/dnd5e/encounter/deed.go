@@ -82,15 +82,26 @@ const DeedFled = "fled"
 // A deed names one target. When an outcome has several, the first in
 // sorted order is the one named; the others are the outcome beat's to
 // tell. No use case has paid for more than one yet.
+//
+// THE AGGRESSION LAW RUNS FIRST (rpg-project#493, R3; turning.go): a swing
+// across a neutral pair makes it hostile, and it has to make it hostile
+// BEFORE this testimony lands, or the very pick the deed provokes reads
+// `enemy: none` on a camp that is already at war. The audience is asked
+// afterwards for the same reason it is asked at all — a fight forming is a
+// sight refresh, and the witnesses of the deed are the ones there are now.
 func (e *Encounter) landAttack(actor MemberID, targets []MemberID) error {
-	where, witnesses, err := e.audienceOf(actor)
-	if err != nil {
-		return err
-	}
-
 	var target MemberID
 	if len(targets) > 0 {
 		target = targets[0]
+	}
+
+	if err := e.aggression(actor, target, uint64(e.clock.ToData().HighWater)); err != nil {
+		return err
+	}
+
+	where, witnesses, err := e.audienceOf(actor)
+	if err != nil {
+		return err
 	}
 
 	return e.landDeed(DeedAttack, actor, target, where, witnesses)

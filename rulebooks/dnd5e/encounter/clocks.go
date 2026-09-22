@@ -1264,6 +1264,26 @@ func (e *Encounter) walkPath(
 			break
 		}
 
+		// THE ILLUSION BREAKS BEFORE THE PUSH LANDS (rpg-project#490, E7).
+		// A creature shoved at a wall that is not a wall learns it is not a
+		// wall — and learns it FIRST, because that is what lets the shove
+		// land at all: [Encounter.stepMember] refuses a crossing the mover's
+		// own atlas draws as wall, and this is the one walk that is nobody's
+		// choice. Ordinary walks never reach it: a creature's own route is
+		// gated by the same rule ([Encounter.floodFrom]), so it plans no
+		// path through a secret, and a concealment already known reveals
+		// nothing here.
+		//
+		// BEFORE THE MOVEMENT BEAT rather than after it, which inverts the
+		// order [Encounter.Step] keeps — deliberately, and it is the honest
+		// order for this cause. On a step the reveal is a CONSEQUENCE of
+		// having walked through; on a push it is the PRECONDITION of the
+		// push landing, and narrating the shove first would be telling the
+		// story backwards.
+		if lerr := e.learnCrossedConcealment(mover, e.crossedDoors(from, cell), cell, at); lerr != nil {
+			return res, fmt.Errorf("move crossed concealment: %w", lerr)
+		}
+
 		action, stepped := e.stepTo(m, cell)
 		action.cause = cause
 		if !stepped {
@@ -1736,7 +1756,7 @@ func (e *Encounter) routeTo(
 		return nil, true
 	}
 
-	field, ok := e.floodFrom(mover, from, nil, 0)
+	field, ok := e.floodFrom(mover, mover, from, nil, 0)
 	if !ok {
 		return nil, false
 	}
@@ -1772,7 +1792,7 @@ func (e *Encounter) routeToRemembered(
 		return nil, true
 	}
 
-	field, ok := e.floodFrom(mover, from, func(cell spatial.Position) bool {
+	field, ok := e.floodFrom(mover, mover, from, func(cell spatial.Position) bool {
 		return cell == target && e.blockedOnlyByCreatures(mover, cell)
 	}, 0)
 	if !ok {
@@ -1790,13 +1810,22 @@ func (e *Encounter) routeToRemembered(
 // fold does not call Blocked. `forgiven` names cells whose blockage does not
 // stop the flood, and may be nil.
 //
+// `walker` is WHOSE OWN PICTURE gates the masquerade (rpg-project#490, E7):
+// a crossing their atlas draws as wall stops this flood exactly as it stops
+// their step, so a creature's own route never plans through a secret it has
+// not found and then stands still when the step refuses — rpg-toolkit#1652's
+// lesson, kept for the one thing a route and a step could newly disagree
+// about. EMPTY MEANS UNGATED, which is what a walk nobody chose is: the two
+// directive routes pass it, because being pushed at a wall that is not a wall
+// is the illusion breaking rather than a path anybody planned.
+//
 // `limit` bounds the flood to cells within that many steps, and ZERO MEANS
 // UNBOUNDED — [spatial.FieldInput.Limit]'s own contract, carried through
 // rather than reinterpreted here. A caller with a real budget of zero has
 // nowhere to go and must say so before it asks, because asking with zero is
 // asking for the whole floor.
 func (e *Encounter) floodFrom(
-	mover MemberID, from spatial.Position, forgiven func(spatial.Position) bool, limit int,
+	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) bool, limit int,
 ) (spatial.FieldOutput, bool) {
 	field, err := spatial.Field(e.canvas.GetGrid(), spatial.FieldInput{
 		Sources: []spatial.Position{from},
@@ -1808,6 +1837,9 @@ func (e *Encounter) floodFrom(
 			// error fails the edge closed — a flood that cannot judge a
 			// crossing does not walk through it.
 			if _, blocked, err := e.crossingBlocked(a, b); err != nil || blocked {
+				return false
+			}
+			if e.masqueradeBlocks(walker, a, b) {
 				return false
 			}
 			if e.CellAt(CellAtInput{Cell: b, Mover: mover}).Passage != PassageBlocked {

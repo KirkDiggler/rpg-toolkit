@@ -1,0 +1,130 @@
+# The raider camp, in v4 (rpg-project#488, slices "Knowledge" and "The clock")
+# — the gameplay half of testdata/reference-raider-camp.yaml re-authored in
+# the dialect the World Builder emits.
+#
+# THE CLAIM THIS FILE MAKES is compile equivalence on the keys the slice adds:
+# the record, who holds it, and the two predicates that bring a creature in.
+# raider_camp_v4_test.go compiles the v2 file beside it and requires the same
+# Intel and the same Holds/Arrives on every creature that carries one. Geometry
+# is not claimed, for the front room's reason.
+#
+# ONE THING MOVED HOLDER, AND IT NO LONGER HAS TO. In v2 the Wiseman's letter
+# is a PROP that arrives at the gate on round 6 and holds the record. When
+# this file was written a v4 item compiled to a footprint that could not be
+# held and did not arrive, so the same beat was authored on the holder v4 did
+# compile: a MESSENGER walks in on round 6 carrying the record. That is still
+# a true document and still the thing this file proves — "a monster carries it
+# from spawn" is the v2 precedent and the record is identical either way.
+# rpg-toolkit#1854 gave a placed footprint both, and the prop spelling is the
+# compiling document testdata/world-builder-v4-raider-letter.yaml.
+#
+# SLICE 1 ADDED THE WAY OUT, THE BINDING AND AN ENDING (rpg-project#488). The
+# exit and the scenario are the v2 camp's own two lines; the ending is not —
+# the v2 camp authors none at its root, and `hold-out` is a SCENARIO's ending
+# there. Written here so this dialect's `endings:` has a document that
+# exercises it, and pinned against a v2 document authoring the identical line
+# rather than against this camp's twin.
+version: 4
+key: raider-camp-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+# The camp is one faction, and the chief is its MIND: the faction knows what
+# its mind knows. Read the letter to the scout and nothing flips, because a
+# scout is not the camp's mind.
+factions:
+  - { id: raiders, mind: chief }
+
+# Hostile to the party UNTIL the chief comes to know the party saved the
+# Wiseman — the fact the letter reveals.
+dispositions:
+  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
+
+# The letter says so. A FACT IS DECLARED BY MENTION: nothing declares
+# `saved-wiseman`, this record and the disposition above simply agree on the
+# word, and the composition matches the two by it.
+intel:
+  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }
+
+# The way out, at the gate. THE CELL IS THIS DIALECT'S OWN FRAME (R2): axial
+# {q, r} rather than v2's `at: [col, row]`, and `{q: 0, r: 3}` is the axial
+# cell that lowers to the offset `[1,3]` the v2 camp writes — which is what
+# lets the two compiled exits be required equal.
+exits:
+  - { id: front-gate, cell: { q: 0, r: 3 } }
+
+# Hold out six rounds. NOT the same claim as the binding below: `hold-out`
+# there is the scenario the camp is authored for, and this is an ending the
+# DOCUMENT declares in its own file (rpg-project#375, R10). A scenario's own
+# field is sugar for one of these, which is the pin arrivals_test.go makes in
+# the other dialect.
+endings:
+  - { id: held-out, when: { round: 6 } }
+
+# The scenario this camp is authored for. `raiders` is the faction declared
+# above, and a faction is bindable for exactly this reason (`convince`).
+scenarios:
+  hold-out: { convince: raiders }
+
+room:
+  version: 3
+  id: room-1
+  name: The Raider Camp
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Raider Camp
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    # The last cell is THE GATE the exit above stands in — one hex south of
+    # {q: 0, r: 2}, so the floor is still one connected camp.
+    walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
+      {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
+      {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
+      {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
+      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0},
+      {q: 0, r: 3}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsters:
+      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', cell: {q: 2, r: -1}, faction: raiders}
+      - {id: scout, ref: 'dnd5e:monsters:skeleton', cell: {q: 0, r: 0}, faction: raiders}
+      - {id: messenger, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: 1}, faction: raiders}
+      - {id: reinforcement-1, ref: 'dnd5e:monsters:zombie', cell: {q: -1, r: 2}, faction: raiders}
+      - {id: reinforcement-2, ref: 'dnd5e:monsters:zombie', cell: {q: 0, r: 2}, faction: raiders}
+      - {id: reinforcement-3, ref: 'dnd5e:monsters:zombie', cell: {q: -2, r: 2}, faction: raiders}
+    monsterBindings:
+      # TWO CREATURES HOLD ONE RECORD, and that is a law rather than a
+      # duplicate: intel COPIES rather than moving, so two guards may both
+      # know the way in and looting either teaches it. Nothing refuses it.
+      #
+      # THE CHIEF'S COPY IS THE DEAD END, ON PURPOSE. He is the faction's
+      # MIND, so taking the letter off his body means the camp has nobody
+      # left to learn it (R7 — a declared mind that falls cannot learn). The
+      # dungeon ALLOWS that and the SCENARIO is where a hold-out nobody can
+      # win is refused (R8), which is why it is authored here rather than
+      # refused here.
+      chief:
+        holds: [wisemans-letter]
+      # THE RECORD ARRIVES ON THE CLOCK, and the messenger's copy is the one
+      # a party can actually use: drop him, take the letter, and the chief is
+      # still alive to be told. Hold out six rounds and the way to
+      # turn the camp walks in; drop the messenger and take it off the body.
+      messenger:
+        holds: [wisemans-letter]
+        arrives: { round: 6 }
+      # AND IF THE CHIEF FALLS INSTEAD, three zombies come through the gate.
+      # Until its predicate holds a creature is NOWHERE — on no map and in no
+      # roster — exactly as if it had never been written.
+      reinforcement-1:
+        arrives: { down: chief }
+      reinforcement-2:
+        arrives: { down: chief }
+      reinforcement-3:
+        arrives: { down: chief }

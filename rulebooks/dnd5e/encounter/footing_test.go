@@ -78,18 +78,19 @@ func hugSeam(rows int) encounter.SegmentInput {
 }
 
 // hugField is a visible hall and a hidden vault either side of that one line,
-// with a concealed door standing in it.
+// with a hidden door standing in it.
 func (s *FootingSuite) hugField(rows int, withDoor bool) encounter.FieldInput {
 	field := encounter.FieldInput{
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{
 			rectRegion("hall", 0, 0, 4, rows),
-			func() encounter.RegionInput {
-				r := rectRegion("vault", 4, 0, 3, rows)
-				r.Concealed = true
-				return r
-			}(),
+			rectRegion("vault", 4, 0, 3, rows),
 		},
+		Concealments: []encounter.ConcealmentInput{{
+			ID:     "vault",
+			Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+			Cells:  rectCells(4, 0, 3, rows),
+		}},
 		// THE CROSSINGS AND THE SEGMENT CARRY THE SAME HEIGHT, because the
 		// compiler derives both from one authored line and cannot make them
 		// differ. A fixture that raised only the segment would be describing
@@ -102,11 +103,9 @@ func (s *FootingSuite) hugField(rows int, withDoor bool) encounter.FieldInput {
 	}
 	field.Walls = withHeight(seamWallExcept(3, rows, 1), 2)
 	field.Doors = []encounter.DoorInput{{
-		ID:        "panel",
-		Edges:     doorEdgesAcross(3, 1),
-		State:     encounter.DoorIsClosed(),
-		Concealed: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+		ID: "panel", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
 	}}
+	field.Concealments[0].Doors = []encounter.DoorID{"panel"}
 	field.Segments[0].DoorIDs = []encounter.DoorID{"panel"}
 
 	return field
@@ -289,19 +288,18 @@ func (s *FootingSuite) TestA10_AMaskTakesTheHeightOfTheWallItHidesIn() {
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{
 			rectRegion("hall", 0, 0, 4, rows),
-			func() encounter.RegionInput {
-				r := rectRegion("vault", 4, 0, 2, rows)
-				r.Concealed = true
-				return r
-			}(),
+			rectRegion("vault", 4, 0, 2, rows),
 		},
+		Concealments: []encounter.ConcealmentInput{{
+			ID:     "vault",
+			Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+			Cells:  rectCells(4, 0, 2, rows),
+			Doors:  []encounter.DoorID{"panel"},
+		}},
 		// No authored walls at all: the panel's crossing was the wall's only
 		// one, and a door's crossing is subtracted from the wall list.
 		Doors: []encounter.DoorInput{{
-			ID:        "panel",
-			Edges:     doorEdgesAcross(3, 1),
-			State:     encounter.DoorIsClosed(),
-			Concealed: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+			ID: "panel", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
 		}},
 		Segments: []encounter.SegmentInput{{
 			Name:      "the panel's wall",

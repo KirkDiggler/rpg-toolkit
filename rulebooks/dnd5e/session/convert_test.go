@@ -95,9 +95,6 @@ var renamed = map[string]struct{ outer, reason string }{
 	"encounter.Atlas.Orientation": {outer: "Layout",
 		reason: "the frame an author typed in becomes the layout a client draws in — same " +
 			"two values, a different question, and a different name so they cannot be confused"},
-	"encounter.Atlas.RoomScene": {outer: "RoomSceneJSON",
-		reason: "the canonical encounter presentation is validated and encoded as JSON so no inner scene type crosses S2"},
-
 	// Confirmed is "when this payload was last landed, whether or not it
 	// changed" (mind/perception's own doc) — exactly what Sighting.At has
 	// always meant ("the clock reading when this knowledge was last
@@ -123,14 +120,6 @@ var omitted = map[string]string{
 	// (rpg-project#256), so a client that wants the name of where somebody
 	// stands looks the cell up once in construction data rather than being
 	// told on every placement read.
-	// A revealed region's entry reaches only members whose own fold shows
-	// it, so "this was authored secret" adds nothing a client may act on:
-	// rendering differs by knowledge, which the per-member atlas already
-	// encodes by presence and absence. Carrying the flag would also put a
-	// concealment marker on the wire for the api to inherit before the wire
-	// asked for one (rpg-api-protos#267 defines no such field).
-	"encounter.AtlasRegion.Concealed": "knowledge is encoded by presence in the member's atlas, not by a flag",
-
 	"encounter.Member.Region": "a region id; the seam reports the cell instead",
 	// The side a member fights on (rpg-project#375) is carried on the
 	// ROSTER row — PublicMember.Faction — the only per-member row on the

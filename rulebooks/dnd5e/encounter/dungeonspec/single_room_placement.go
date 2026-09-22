@@ -36,9 +36,10 @@ import (
 // turns +X toward -Z, and the canonical plane's Y runs south, so a source
 // yaw arrives as the opposite plane angle. And spatial's D runs along the
 // facing while the editor's "width" runs along the owner's own, hence D
-// taking the width and W the depth. HexRadius is REQUIRED to be 1 by the
-// decoder, so the scale needs no second factor; a scene the editor never
-// authored is not this function's input.
+// taking the width and W the depth. `coordinateFrame.hexRadius` is REQUIRED
+// to be 1 by the lowering (single_room_lowering.go), so the scale needs no
+// second factor; a scene the editor never authored is not this function's
+// input.
 //
 // THIS IS NOT THE COMPILE. A decoded spec's placed contributors are one
 // input the full v3 Load/Compile (the next milestone) hands to the encounter
@@ -53,17 +54,18 @@ var feetPerSourceUnit = encounter.FeetPerCell / math.Sqrt(3)
 
 // CanonicalPlacedProps converts one room source's prop declarations into the
 // canonical placed contributors the encounter field consumes: every declared
-// prop paired with its live scene item's world-posed transform, converted by
-// the ONE adapter this file documents. Group poses apply no further render
-// transform — item transforms are already world-posed — and only DECLARED
-// props contribute: an undeclared prop is visual dressing, never inferred
-// blocking.
+// prop paired with the pose the lowering read for its live scene item
+// (single_room_lowering.go), converted by the ONE adapter this file documents.
+// Group poses apply no further render transform — item transforms are
+// already world-posed — and only DECLARED props contribute: an undeclared
+// prop is visual dressing, never inferred blocking.
 //
 // The result is sorted by prop ID (C8: a decode is a pure function of its
 // source, and a map must not leak iteration order into geometry). A
-// declaration naming no live prop item is refused — unreachable from a
-// successful decode (the decoder refuses declarations that name nothing
-// live) and named, not skipped, for a hand-assembled source.
+// declaration naming no live prop item, or one whose pose the scene never
+// authored, is refused — both unreachable from a successful decode (the
+// lowering refuses each at its own path) and named, not skipped, for a
+// hand-assembled source.
 //
 // The flags and the local rectangle ride through unchanged; only the frame
 // is converted. Doubles stay doubles: no float32 narrowing anywhere in the
@@ -73,44 +75,57 @@ func (r *RoomSource) CanonicalPlacedProps() ([]encounter.PlacedPropInput, error)
 		return []encounter.PlacedPropInput{}, nil
 	}
 
-	items := make(map[string]encounter.RoomSceneItem, len(r.Scene.Items))
-	for _, it := range r.Scene.Items {
-		items[it.ID] = it
-	}
+	read, _ := readRoom(r)
 
 	out := make([]encounter.PlacedPropInput, 0, len(r.Gameplay.PropDeclarations))
 	for id, decl := range r.Gameplay.PropDeclarations {
-		item, live := items[id]
-		if !live {
+		pose, posed := read.Poses[id]
+		if !posed {
+			if read.ItemIDs[id] {
+				return nil, fmt.Errorf("prop declaration %q names a scene prop whose transform is not authored", id)
+			}
+
 			return nil, fmt.Errorf("prop declaration %q names no live scene prop", id)
 		}
 		if decl.BlocksMovement == nil || decl.BlocksLineOfSight == nil {
 			return nil, fmt.Errorf("prop declaration %q does not say both blocking answers", id)
 		}
-		out = append(out, placedPropFrom(id, decl, item.Transform))
+		out = append(out, placedPropFrom(id, decl, pose))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 
 	return out, nil
 }
 
-// placedPropFrom is the adapter itself, one declaration and one transform to
-// one canonical placement — the exact mapping this file's doc pins.
-func placedPropFrom(id string, decl RoomPropDeclaration, t encounter.RoomSceneTransform) encounter.PlacedPropInput {
-	k := feetPerSourceUnit
-
+// placedPropFrom is the adapter itself, one declaration and one authored pose
+// to one canonical placement — the exact mapping this file's doc pins.
+func placedPropFrom(id string, decl RoomPropDeclaration, t scenePose) encounter.PlacedPropInput {
 	return encounter.PlacedPropInput{
-		ID: id,
-		Placement: spatial.FootprintPlacement{
-			Footprint: spatial.Footprint{Box: &spatial.Box{
-				D: decl.Footprint.Width * k, // D lies along the facing: the name swap
-				W: decl.Footprint.Depth * k,
-			}},
-			Origin:      spatial.Point{X: t.X * k, Y: t.Z * k},
-			Facing:      -t.RotationY * 180 / math.Pi, // positive Three Y yaw turns +X toward -Z
-			LocalOffset: spatial.Point{X: decl.Footprint.OffsetX * k, Y: decl.Footprint.OffsetZ * k},
-		},
+		ID:                id,
+		Placement:         placedFootprintFrom(decl, t),
 		BlocksMovement:    *decl.BlocksMovement,
 		BlocksLineOfSight: *decl.BlocksLineOfSight,
+	}
+}
+
+// placedFootprintFrom is the GEOMETRY HALF of the adapter: the rectangle and
+// the pose, with no opinion about what the thing blocks.
+//
+// Split out because a DOOR is the same rectangle with a different answer to
+// that question (single_room_doors.go): its blocking follows its state, so it
+// needs the shape without the flags — and it must be the SAME shape, arrived
+// at by the same arithmetic, or a door would sit somewhere its own prop
+// declaration does not.
+func placedFootprintFrom(decl RoomPropDeclaration, t scenePose) spatial.FootprintPlacement {
+	k := feetPerSourceUnit
+
+	return spatial.FootprintPlacement{
+		Footprint: spatial.Footprint{Box: &spatial.Box{
+			D: decl.Footprint.Width * k, // D lies along the facing: the name swap
+			W: decl.Footprint.Depth * k,
+		}},
+		Origin:      spatial.Point{X: t.X * k, Y: t.Z * k},
+		Facing:      -t.RotationY * 180 / math.Pi, // positive Three Y yaw turns +X toward -Z
+		LocalOffset: spatial.Point{X: decl.Footprint.OffsetX * k, Y: decl.Footprint.OffsetZ * k},
 	}
 }

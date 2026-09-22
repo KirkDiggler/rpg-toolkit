@@ -1,0 +1,115 @@
+# The front room, in v4 (rpg-project#488, slice "Knowledge") — the gameplay
+# half of `rpg-api/content/reference-front-room.yaml` re-authored in the
+# dialect the World Builder emits.
+#
+# THE CLAIM THIS FILE MAKES is compile equivalence on the keys the slice adds:
+# the goblin's priced threat and appeal, and the bandits' arrival on a fact.
+# front_room_v4_test.go compiles the v2 gameplay beside it and requires the
+# same Intimidate, Persuade and Arrives. What is NOT claimed is geometry — v2
+# paints three regions and walls them; this dialect has one room and no walls,
+# and that is the dialect, not a difference in what the room is FOR.
+#
+# ONE THING DOES NOT TRANSLATE, AND IT IS REFUSED RATHER THAN FAKED. v2's
+# bandits carry `toward: { at: [3, 3] }` as their standing order — walk west
+# toward the front room when nothing is in sight. `at:` is an offset resolved
+# through a document `orientation`, and this dialect's cells are axial, so the
+# same bytes would name two different cells; the engine refuses it by name
+# until the sites layer. The bandits keep the rest of their table and lose the
+# standing order.
+version: 4
+key: front-room-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+factions:
+  # FOUR GOBLINS, ONE TABLE, FOUR BEHAVIOURS. The mix is a d4 thrown once per
+  # goblin at spawn with the faction as the die's entity, and the table is
+  # written here rather than on a placement precisely so all four share it.
+  - id: goblins
+    temper: { coward: 2, soldier: 1, aggressive: 1 }
+    on:
+      intimidated:
+        - { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don't.", fact: goblin-cowed }
+        - { weight: 30, say: 'Boss! BOSS!', flee: {} }
+      intimidate_failed:
+        - { say: 'Big talk, for someone standing in my doorway.' }
+      persuaded:
+        - { say: 'Bandits took the cellar. Go left at the rope, and mind the third step.' }
+      # A failed appeal, and the lie is a FACT like any other. The bandits'
+      # `arrives` below reads it; there is no truth bit anywhere on the wire.
+      persuade_failed:
+        - { weight: 100, say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.", fact: cellar-is-clear }
+  - id: bandits
+    temper: { coward: 1, soldier: 2, aggressive: 1 }
+
+dispositions:
+  # The whole front room, in one line. Delete it and this becomes a fight.
+  - { between: [goblins, party], stance: neutral }
+  - { between: [bandits, party], stance: hostile }
+
+room:
+  version: 3
+  id: room-1
+  name: Front Room
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: Front Room
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
+      {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
+      {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
+      {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
+      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsters:
+      - {id: front-goblin, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -1}, faction: goblins}
+      - {id: front-goblin-2, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -2}, faction: goblins}
+      - {id: front-goblin-3, ref: 'dnd5e:monsters:goblin', cell: {q: 1, r: 1}, faction: goblins}
+      - {id: front-goblin-4, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: 0}, faction: goblins}
+      - {id: bandit-1, ref: 'dnd5e:monsters:bandit', cell: {q: 0, r: 2}, faction: bandits}
+      - {id: bandit-2, ref: 'dnd5e:monsters:bandit', cell: {q: -1, r: 2}, faction: bandits}
+    monsterBindings:
+      # THE ONE PRICED CREATURE, and the asymmetry is the point: DC 12 to lean
+      # on and DC 10 to talk round, where its stat block would derive 9 for
+      # both. "This goblin would rather be talked to than shouted at" is a
+      # thing an author can now say in v4, and this line is the whole slice.
+      front-goblin:
+        actions: ['dnd5e:weapons:scimitar']
+        intimidate: [{ ability: intimidation, dc: 12 }]
+        persuade: [{ ability: persuasion, dc: 10 }]
+      # THE OTHER THREE ARE DELIBERATELY PLAIN and have no binding at all:
+      # nobody wrote them a DC, so each is checked against its own stat
+      # block's passive Insight. That is the control the walk needs.
+      #
+      # THE BANDITS, TWO ROOMS AWAY IN V2 AND NOT YET ANYWHERE IN EITHER. A
+      # failed appeal mints `cellar-is-clear` and they walk in — the party
+      # followed the goblin's bad directions and met what was down there.
+      bandit-1:
+        actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:light-crossbow']
+        arrives: { fact: cellar-is-clear }
+        on:
+          time:
+            - { when: { fled: { within: 3 } },     away: actor,      weight: 3 }
+            - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
+            - { when: { enemy: reach },            attack: enemy }
+            - { when: { enemy: seen },             toward: enemy }
+            - { when: { enemy: remembered },       toward: enemy }
+      bandit-2:
+        actions: ['dnd5e:weapons:light-crossbow']
+        arrives: { fact: cellar-is-clear }
+        on:
+          time:
+            - { when: { fled: { within: 3 } },     away: actor,      weight: 3 }
+            - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
+            - { when: { enemy: reach },            attack: enemy }
+            - { when: { enemy: seen },             toward: enemy }
+            - { when: { enemy: remembered },       toward: enemy }

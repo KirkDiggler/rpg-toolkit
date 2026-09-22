@@ -257,3 +257,44 @@ func with(base map[string]string, key, value string) map[string]string {
 	out[key] = value
 	return out
 }
+
+// TestAPlacedFootprintIsBindableAsAnArtifact is rpg-toolkit#1854: an item the
+// World Builder drew as a FOOTPRINT is a thing a scenario can name.
+//
+// The binding an author writes — `recover-the-artifact: { artifact: <id> }` —
+// names an id and never says which list the id came from, so the narrowing
+// has to answer for both kinds of prop or the v4 dialect could author an
+// artifact and no scenario could bind it. Its holdability is read the same
+// way: a placement nobody declared holdable is scenery, in the scenario's own
+// words.
+func TestAPlacedFootprintIsBindableAsAnArtifact(t *testing.T) {
+	const placedArtifact, placedScenery, placedExit = "reliquary", "plinth", "way-out"
+	facts := scenarios.FactsFrom(encounter.FieldInput{
+		Placed: []encounter.PlacedPropInput{
+			{ID: placedArtifact, Holdable: true},
+			{ID: placedScenery},
+		},
+		Exits: []encounter.FieldExit{{ID: placedExit}},
+	})
+
+	require.True(t, facts.Props[placedArtifact], "a holdable footprint can be picked up")
+	require.False(t, facts.Props[placedScenery], "and one nobody declared holdable cannot")
+
+	s, ok := scenarios.Lookup(scenarios.RecoverTheArtifactID)
+	require.True(t, ok)
+
+	declared, err := s.New(map[string]string{
+		scenarios.FieldArtifact: placedArtifact,
+		scenarios.FieldExitKey:  placedExit,
+	}, facts)
+	require.NoError(t, err, "a footprint is a thing this dungeon places")
+	require.Equal(t,
+		encounter.TriggerExitedHolding{Exit: placedExit, Item: placedArtifact},
+		declared.Endings[0].Trigger)
+
+	_, err = s.New(map[string]string{
+		scenarios.FieldArtifact: placedScenery,
+		scenarios.FieldExitKey:  placedExit,
+	}, facts)
+	require.ErrorContains(t, err, "scenery", "and the wrong-kind refusal is the one it already had")
+}

@@ -86,7 +86,7 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBody() {
 		// THE SECRECY HALF. A body with nothing must transfer nothing —
 		// which is only true if the transfer reads the holdings of THIS
 		// body rather than of whoever happens to hold something.
-		s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"),
+		s.Require().Empty(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed),
 			"looting an empty body must not hand over somebody else's secret")
 		doors, err := enc.DoorsFor(raider)
 		s.Require().NoError(err)
@@ -98,7 +98,7 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBody() {
 		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
 		s.Require().NoError(err)
 		s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 2)
-		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+		s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 1)
 	})
 }
 
@@ -459,9 +459,16 @@ func (s *HoldingsSuite) TestLoadRefusesABrokenExitedHoldingEnding() {
 	}), encounter.ErrNoEnding)
 }
 
-// TestAnInertKnowledgeLinkTransfersNothingVisible: knowing an ORDINARY door
-// is legal and inert ([MemberInput.Holds]). Looting it writes the holding and
-// causes no reveal, because there is nothing to reveal.
+// TestAnInertKnowledgeLinkTransfersNothingVisible: a record revealing a
+// FACT nobody's stance waits for is legal and inert ([MemberInput.Holds]).
+// Looting it writes the holding and changes no map, because a fact is not a
+// place.
+//
+// IT WAS AN UNCONCEALED DOOR until the concealment primitive landed
+// (rpg-project#490, R7): a record's target is a SECRET now, and "a door
+// anyone can already see" stopped being an expressible target rather than an
+// inert one. The inert case is still worth pinning, so the scene asks it of
+// the target that still has one.
 const plainMap = "plain-map"
 
 func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
@@ -473,7 +480,7 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 			ID: "plain-door", Edges: doorEdgesAcross(2, 3), State: encounter.DoorIsOpen(),
 		}},
 		Intel: []encounter.IntelRecord{
-			{ID: plainMap, Reveals: encounter.RevealTargets{Door: "plain-door"}},
+			{ID: plainMap, Reveals: encounter.RevealTargets{Fact: "the-rumour"}},
 		},
 		Exits: []encounter.FieldExit{{ID: frontGate, At: raiderCell}},
 	}
@@ -504,7 +511,7 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 	after, err := enc.AtlasFor(raider)
 	s.Require().NoError(err)
 	s.Require().Equal(before, after)
-	s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"))
+	s.Require().Empty(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed))
 	s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 1)
 }
 
@@ -708,7 +715,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 	s.Run("a record with no id", func() {
 		err := setup(func(f *encounter.FieldInput) {
 			f.Intel = append(f.Intel, encounter.IntelRecord{
-				Reveals: encounter.RevealTargets{Door: tombVault},
+				Reveals: encounter.RevealTargets{Concealment: vaultSecret},
 			})
 		})
 		s.Require().ErrorIs(err, encounter.ErrNoIntel)
@@ -718,7 +725,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 	s.Run("two records sharing an id", func() {
 		err := setup(func(f *encounter.FieldInput) {
 			f.Intel = append(f.Intel, encounter.IntelRecord{
-				ID: vaultMap, Reveals: encounter.RevealTargets{Door: tombVault},
+				ID: vaultMap, Reveals: encounter.RevealTargets{Concealment: vaultSecret},
 			})
 		})
 		s.Require().ErrorIs(err, encounter.ErrNoIntel)
@@ -726,7 +733,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 	})
 
 	s.Run("a record that reveals nothing", func() {
-		// Nothing is defaulted: there is no "reveals the nearest door".
+		// Nothing is defaulted: there is no "reveals the nearest secret".
 		err := setup(func(f *encounter.FieldInput) {
 			f.Intel = append(f.Intel, encounter.IntelRecord{ID: "empty-map"})
 		})
@@ -734,13 +741,13 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 		s.Require().Contains(err.Error(), "does not say what it reveals")
 	})
 
-	s.Run("a record revealing a door this field does not declare", func() {
+	s.Run("a record revealing a concealment this field does not declare", func() {
 		err := setup(func(f *encounter.FieldInput) {
 			f.Intel = append(f.Intel, encounter.IntelRecord{
-				ID: "cellar-map", Reveals: encounter.RevealTargets{Door: "cellar-hatch"},
+				ID: "cellar-map", Reveals: encounter.RevealTargets{Concealment: "cellar-hatch"},
 			})
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoDoor)
+		s.Require().ErrorIs(err, encounter.ErrNoConcealment)
 		s.Require().Contains(err.Error(), "cellar-hatch")
 	})
 
@@ -761,7 +768,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 
 	s.Run("a prop holding a DECLARED record is legal, holdable or not", func() {
 		// A prop nobody can pick up carrying a record is inert, not an
-		// error — the same call the design makes about an unconcealed door.
+		// error.
 		s.Require().NoError(setup(func(f *encounter.FieldInput) {
 			props := append([]encounter.PropInput(nil), f.Props...)
 			plinth := encounter.PropInput{
@@ -773,18 +780,20 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 		}))
 	})
 
-	s.Run("a record revealing an UNCONCEALED door is legal and inert", func() {
-		// Refusing it would make this record's legality depend on a fact
-		// about a different declaration.
-		s.Require().NoError(setup(func(f *encounter.FieldInput) {
-			f.Doors = append(append([]encounter.DoorInput(nil), f.Doors...), encounter.DoorInput{
-				ID: "open-arch", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsOpen(),
-			})
-			f.Walls = append(seamWallExcept(3, 8, hallGapRow, hallGateRow, 1), seamWallExcept(7, 8, vaultSeamRow)...)
-			f.Intel = append(f.Intel, encounter.IntelRecord{
-				ID: "arch-map", Reveals: encounter.RevealTargets{Door: "open-arch"},
-			})
-		}))
+	s.Run("a concealment naming a door this field does not declare", func() {
+		// The concealment's own dead reference, refused the way a record's
+		// is and with the door's sentinel: the secret is fine and the thing
+		// it points at is missing.
+		err := setup(func(f *encounter.FieldInput) {
+			f.Concealments = append(append([]encounter.ConcealmentInput(nil), f.Concealments...),
+				encounter.ConcealmentInput{
+					ID:     "ghost-secret",
+					Checks: vaultFindCheck(),
+					Doors:  []encounter.DoorID{"cellar-hatch"},
+				})
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoDoor)
+		s.Require().Contains(err.Error(), "cellar-hatch")
 	})
 }
 
@@ -795,7 +804,7 @@ func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 	data := enc.ToData()
 	s.Require().Len(data.Field.Intel, 3, "the field's records persist as structure")
 	s.Require().Equal(vaultMap, data.Field.Intel[0].ID)
-	s.Require().Equal(tombVault, data.Field.Intel[0].Door)
+	s.Require().Equal(vaultSecret, data.Field.Intel[0].Concealment)
 
 	load := func(mutate func(*encounter.EncounterData)) error {
 		blob := enc.ToData()
@@ -812,13 +821,13 @@ func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 
 	s.Require().NoError(load(func(*encounter.EncounterData) {}))
 
-	s.Run("a record pointing at a door the field does not declare", func() {
-		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Door = "cellar-hatch" })
-		s.Require().ErrorIs(err, encounter.ErrNoDoor)
+	s.Run("a record pointing at a concealment the field does not declare", func() {
+		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Concealment = "cellar-hatch" })
+		s.Require().ErrorIs(err, encounter.ErrNoConcealment)
 	})
 
 	s.Run("a record that reveals nothing", func() {
-		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Door = "" })
+		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Concealment = "" })
 		s.Require().ErrorIs(err, encounter.ErrNoIntel)
 	})
 

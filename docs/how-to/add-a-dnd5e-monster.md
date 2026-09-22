@@ -103,7 +103,7 @@ Make a table before editing:
 |---|---|---|---|
 | one attack-roll action | `combat/actions.AttackProfile` | content | factory + round trip |
 | on-hit prone, STR save negates | `ConditionApplication` + `SaveGate` + condition registry | content | declaration + resolution |
-| multiattack sequence | no sequence profile/machine | new mechanic — stop | separate design |
+| multiattack sequence | `combat/actions.SequenceProfile` + `ResolveSequence` | content | factory + sequence resolves |
 
 A content-only monster may use only behavior the current rulebook can express.
 Do not silently omit or approximate unsupported clauses.
@@ -115,7 +115,9 @@ Current action capabilities:
 - ordered typed damage pools;
 - automatic or save-gated on-hit conditions whose refs the condition registry
   can build;
-- no multiattack/sequence compatibility object;
+- an ordered sequence of component actions the same monster carries, with
+  per-step disadvantage and the reason for it (`SequenceProfile`); the steps
+  name component refs, never sub-action names, and nothing chains them itself;
 - no save-area, healing, recharge, legendary/lair, or spellcasting profile
   before its machine exists.
 
@@ -221,7 +223,9 @@ git diff --check
 - [ ] Monster and each authored action have canonical content refs.
 - [ ] Factory authors complete `actions.Definition` literals directly.
 - [ ] Distances are feet and damage pools preserve order.
-- [ ] No executable action object, loader config, adapter, or multiattack placeholder exists.
+- [ ] No executable action object, loader config, or adapter exists.
+- [ ] A multiattack is a `SequenceProfile` authored first, over components the
+      factory also registers on their own.
 - [ ] JSON/load/ToData and deep-clone behavior are tested.
 - [ ] Applicable condition/trait behavior is tested on the real path.
 - [ ] Registry constructs the matching monster ref.

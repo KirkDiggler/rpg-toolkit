@@ -490,7 +490,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			if eh.Item == "" {
 				return fmt.Errorf("ending %q names no item to be holding: %w", ei.Key, ErrNoEnding)
 			}
-			if _, holdable := f.holdable[eh.Item]; !holdable {
+			if !f.holdable[eh.Item] {
 				return fmt.Errorf("ending %q waits for %q to be held, and no prop with that id is holdable: %w",
 					ei.Key, eh.Item, ErrNoEnding)
 			}
@@ -521,26 +521,27 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 }
 
 // validateIntelTargets rejects a record whose target this field does not
-// have: a record revealing a door nobody declared can never tell anybody
-// anything, which is the same dead-declaration hole [ErrNoEnding] refuses
-// for an ending naming an unreachable cell.
+// have: a record revealing a concealment nobody declared can never tell
+// anybody anything, which is the same dead-declaration hole [ErrNoEnding]
+// refuses for an ending naming an unreachable cell.
 //
 // Checked identically at Setup and Load, against the compiled field, with no
 // verb prefix — each caller wraps its own at the call site.
 //
-// WHETHER THE DOOR IS CONCEALED IS NOT ASKED. Revealing the way to a door
-// anyone can already see is inert, not an error, and refusing it would make
-// a record's legality depend on a fact about a different declaration
-// ([RevealTargets.Door]).
-func validateIntelTargets(f *field, doors []DoorInput) error {
-	declared := make(map[DoorID]bool, len(doors))
-	for _, d := range doors {
-		declared[d.ID] = true
-	}
+// THE TARGET IS A CONCEALMENT NOW, NOT A DOOR (rpg-project#490, R7), and
+// that turned an inert declaration into a refused one. A record revealing an
+// UNCONCEALED door used to be legal and do nothing; there is no such record
+// any more, because the only thing a record can reveal is a secret, and
+// naming one this field does not have is the author's mistake rather than a
+// harmless line.
+func validateIntelTargets(f *field) error {
 	for _, rec := range f.intel {
-		if rec.Reveals.Door != "" && !declared[rec.Reveals.Door] {
-			return fmt.Errorf("intel record %q reveals door %q, which this field does not declare: %w",
-				rec.ID, rec.Reveals.Door, ErrNoDoor)
+		if rec.Reveals.Concealment == "" {
+			continue
+		}
+		if f.concealmentOf(rec.Reveals.Concealment) == nil {
+			return fmt.Errorf("intel record %q reveals concealment %q, which this field does not declare: %w",
+				rec.ID, rec.Reveals.Concealment, ErrNoConcealment)
 		}
 	}
 	return nil
@@ -699,31 +700,25 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 
 	// The two concealment capabilities, required exactly when the field
-	// carries concealed structure (rpg-toolkit#1371) — the same
+	// declares a concealment (rpg-toolkit#1371) — the same
 	// supplied-never-defaulted law as the four above, scoped to the fields
-	// that consult them: a plain dungeon needs neither, and a concealed one
+	// that consult them: a plain dungeon needs neither, and a concealing one
 	// refused here is a bug report instead of a secret nobody can ever
 	// find. AFTER the field and door validation on purpose: a malformed
 	// door is the author's earlier mistake, and refusing it as a missing
 	// capability would send them to the wrong seam.
-	if fieldHasConcealment(in.Field.Regions, in.Field.Doors) {
+	// And the doors a concealment names, checked here for [field.intel]'s
+	// reason: the door list reaches this module beside the field.
+	if err = validateConcealmentDoors(f, in.Field.Doors); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
+	if fieldHasConcealment(in.Field.Concealments) {
 		if in.CheckResolver == nil {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoCheckResolver)
 		}
 		if in.Witness == nil {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoWitness)
-		}
-		// THE COMBINATION THE PROJECTION CANNOT FILTER (issue #1753): a room
-		// scene presentation is one room's full layout, and beside concealed
-		// structure there is no member projection of it that does not guess
-		// which mesh stands in whose room. compileField already refused the
-		// region half; the concealed-door half is only known here, beside
-		// the capabilities, and is refused the same way rather than carried
-		// into a field the atlas could not project.
-		if in.Field.RoomScene != nil {
-			return nil, fmt.Errorf(
-				"newencounter: room scene presentation rides one unconcealed region and the field carries concealed structure: %w",
-				ErrNoField)
 		}
 	}
 
@@ -754,7 +749,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// thinks they placed and did not. Whether the door is CONCEALED is
 	// deliberately not asked — revealing an ordinary door is inert, not an
 	// error ([RevealTargets.Door]).
-	if err = validateIntelTargets(f, in.Field.Doors); err != nil {
+	if err = validateIntelTargets(f); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 	for _, mi := range in.Members {
@@ -770,6 +765,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		for _, id := range prop.Holds {
 			if _, declared := f.intelByID[id]; !declared {
 				return nil, fmt.Errorf("newencounter: prop %q holds intel %q: %w", prop.Ref, id, ErrNoIntel)
+			}
+		}
+	}
+	// AND SO MAY A PLACED FOOTPRINT (rpg-toolkit#1854). Named by its id
+	// rather than by a ref, because a placement has none — the id is what an
+	// author wrote under propBindings and what they are looking at.
+	for i := range f.placed {
+		for _, id := range f.placed[i].holds {
+			if _, declared := f.intelByID[id]; !declared {
+				return nil, fmt.Errorf("newencounter: prop %q holds intel %q: %w", f.placed[i].id, id, ErrNoIntel)
 			}
 		}
 	}
@@ -827,9 +832,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	e.world = newEncounterWorld()
 	e.holdings = newHoldings(e.world.log)
 
-	// The two concealment capabilities, held exactly when the field carries
-	// concealed structure (rpg-toolkit#1371); the world exists either way.
-	if fieldHasConcealment(in.Field.Regions, in.Field.Doors) {
+	// AND THE FIELD IS GIVEN THE SAME READER (rpg-toolkit#1854). A placed
+	// footprint can be picked up and can wait in reserve, so the four queries
+	// that measure rectangles have to be able to ask where each one is right
+	// now — the reader itself, never a snapshot, exactly as the doors are
+	// held as their records (placed_props.go).
+	f.attachHoldings(e.holdings)
+
+	// The two concealment capabilities, held exactly when the field declares
+	// a concealment (rpg-toolkit#1371); the world exists either way.
+	if fieldHasConcealment(in.Field.Concealments) {
 		e.checkResolver = in.CheckResolver
 		e.witness = in.Witness
 	}
@@ -984,10 +996,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// Concealment's own first light, AFTER the scene has opened and BEFORE
 	// any fight it might start: presence pierces from the first frame — a
-	// party start inside a concealed region is legal authoring, and the
-	// occupants begin knowing — and a concealed door authored OPEN is
-	// perceivable from frame one too. A no-op for a field with no
-	// concealment.
+	// party start on a concealment's floor is legal authoring, and the
+	// occupants begin knowing — and a hidden door authored OPEN is
+	// perceivable from frame one too. A no-op for a field that hides
+	// nothing.
 	if serr := e.sweepConcealment(); serr != nil {
 		return nil, fmt.Errorf("newencounter first light: %w", serr)
 	}
@@ -1259,8 +1271,8 @@ func (e *Encounter) rosterIDs() []MemberID {
 }
 
 // frontierAudience is THE FRONTIER STOP (ruled on rpg-project#351, second
-// round): a step whose destination lies inside a concealed region is
-// delivered only to the members that region has been revealed to — the
+// round): a step whose destination lies on floor a concealment hides is
+// delivered only to the members that concealment has been revealed to — the
 // trail stops at the concealment boundary, the same knowledge scoping door
 // beats already carry. The mover is always included: you saw yourself do
 // it (their own presence fact lands in this same verb's sweep, but the
@@ -1275,13 +1287,13 @@ func (e *Encounter) rosterIDs() []MemberID {
 // the ONE movement-beat writer, so a player's walk and a monster's pump
 // step are scoped by the same line.
 func (e *Encounter) frontierAudience(action executedAction, audience []MemberID) []MemberID {
-	region, owned := e.field.regionOf(action.to)
-	if !owned || !e.world.concealedRegions[region] {
+	c := e.concealmentOnCell(action.to)
+	if c == nil {
 		return audience
 	}
 	out := make([]MemberID, 0, len(audience))
 	for _, id := range audience {
-		if id == action.member.ID || e.world.knowsRegion(id, region) {
+		if id == action.member.ID || e.world.knowsConcealment(id, c.id) {
 			out = append(out, id)
 		}
 	}
@@ -1399,16 +1411,16 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		// connection name that used to ride here went with the room chain
 		// (rpg-project#256) — a doorway is the door standing in it.
 		//
-		// EXCEPT A CONCEALED ONE (rpg-toolkit#1371). This beat is
-		// audienced to the whole roster, and one shared payload cannot
-		// say a secret to knowers without saying it to everyone — so a
-		// concealed door never rides it, found or not: the mover's own
-		// crossing writes their recipient-scoped DOOR_REVEALED, and what
-		// a door is doing reaches its knowers through its own beats. The
-		// move itself stays narrated for everyone, doors or no doors.
+		// EXCEPT A HIDDEN ONE (rpg-toolkit#1371). This beat is audienced
+		// to the whole roster, and one shared payload cannot say a secret
+		// to knowers without saying it to everyone — so a door a
+		// concealment holds never rides it, found or not: the mover's own
+		// crossing writes their recipient-scoped CONCEALMENT_REVEALED, and
+		// what a door is doing reaches its knowers through its own beats.
+		// The move itself stays narrated for everyone, doors or no doors.
 		ids := make([]string, 0, len(action.doors))
 		for _, d := range action.doors {
-			if rec, ok := e.doorsByID[d.ID]; ok && rec.concealed != nil {
+			if _, hidden := e.hiddenDoorConcealment(d.ID); hidden {
 				continue
 			}
 			ids = append(ids, d.ID)
@@ -1609,7 +1621,7 @@ func (e *Encounter) refreshSightDeclaring(
 	}
 
 	// Concealment's trigger detection rides every sight refresh, for this
-	// function's own reason: perceiving present state — an open concealed
+	// function's own reason: perceiving present state — an open hidden
 	// door, hidden floor underfoot — is a rule about sight, and a rule
 	// wired at the verbs is a rule some verb forgets (rpg-toolkit#1371).
 	// Its reveal beats land after the verb's own beat (the law above) and

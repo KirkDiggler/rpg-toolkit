@@ -35,6 +35,25 @@ type StartSessionInput struct {
 	// It is copied, not referenced: two parties running the same tomb get their
 	// own worlds, and neither can move the other's ogre.
 	World *encounter.EncounterData
+
+	// Dungeon is the content key [StartSessionInput.World] was loaded under
+	// — the host's own name for the registry entry it compiled this world
+	// from (rpg-project#479).
+	//
+	// OPTIONAL, AND TAKEN AS GIVEN. Empty means the host launched a world
+	// with no key, which is what every session before this field was, and a
+	// non-empty one is written down verbatim: this package does not parse
+	// it, namespace it, or check that anything answers to it. It cannot —
+	// only the host knows where its content lives, which is the same reason
+	// World is passed in rather than fetched.
+	//
+	// IT IS NOT AN IDENTITY AND NOTHING READS IT HERE. Two parties running
+	// the same tomb carry the same key and are different sessions; a session
+	// that moves to a second dungeon is a second world, and the key is the
+	// host's to restate. All this field does is reach [Atlas.DungeonKey], so
+	// a play view can fetch the room's appearance from the entry the field
+	// was compiled from.
+	Dungeon string
 }
 
 // StartSessionOutput reports what the new session is and what was written.
@@ -120,7 +139,7 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 	}
 	report.Written = append(report.Written, "encounter:"+in.Encounter)
 
-	data := &SessionData{ID: in.Session, Encounter: in.Encounter}
+	data := &SessionData{ID: in.Session, Encounter: in.Encounter, Dungeon: in.Dungeon}
 	if err := m.sessions.SaveSession(ctx, data); err != nil {
 		report.Failed = append(report.Failed, "session:"+in.Session)
 		return nil, fmt.Errorf("startsession: saving session: %w: %w", ErrSaveFailed, err)

@@ -149,6 +149,6 @@ Each of these gets its diagram in the PR that ships it:
 | A fight ends by defeat | endings as data, the #964 mirror | #1024 |
 | Monster bites back | monster attackers through the behavior work | behavior lane |
 | Action economy spends | Turn choosing actions, Requesting machines below it | #1035 |
-| Multiattack | Request(strike) × N — the economy loop | economy |
+| Multiattack | Request(strike) × N — a profile arm, not an economy | shipped — worth back-filling |
 | Fireball | no attack roll; per-target save-for-half | breath-weapon machine |
 | Grapple on hit | Imposes *without* a gate — direct consequence | second gated condition |

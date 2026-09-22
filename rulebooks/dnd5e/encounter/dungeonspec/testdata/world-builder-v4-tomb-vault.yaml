@@ -1,0 +1,125 @@
+# The heirloom tomb WITH ITS VAULT, in v4 (rpg-project#490) — the thing
+# testdata/world-builder-v4-tomb-heirloom.yaml says it is missing.
+#
+# That file's own header lists what it had to leave out: "THE VAULT AND ITS
+# CONCEALED DOOR. A concealed door wants a crossing and a single room has
+# none; a concealed region is the sites layer's." Both halves of that are
+# answered by the concealment primitive. A secret is not a crossing and not a
+# region — it is a NOUN with an id, and cells, doors and props are hidden by
+# belonging to it. So this dialect can hide a room's far end, the footprint
+# door that opens onto it, and the prize standing behind it, in one block at
+# the root.
+#
+# THE CLAIM THIS FILE MAKES is lowering equivalence with the v2 tomb:
+# testdata/reference-tomb-heirloom.yaml declares `regions[vault].concealed`
+# plus `doors[vault].concealed: [...]`, and v4_gameplay_test.go requires the
+# two documents to compile to the SAME concealment — the same two checks, the
+# same six hidden cells, one member door — ids aside, since each dialect mints
+# under its own key.
+#
+# ONE THING IS AUTHORED HERE THAT v2 CANNOT SAY, and it is the point of the
+# noun: the HEIRLOOM is a member of the secret by name. In v2 the prize is
+# hidden only because it stands on hidden floor; here it is hidden because it
+# belongs to the vault, which is the same answer for this room and a
+# different, stronger one for a bookcase standing in plain sight.
+version: 4
+key: tomb-vault-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+# WHAT THIS ROOM HIDES. `cells` stay in `walkableHexes` — the author sees the
+# vault at the table, and an unaware player is simply not sent those cells
+# (R2). `props` is ONE list of placed ids, doors included, because a door is a
+# prop in this dialect; the compiler sorts them into the engine's two lists by
+# asking `doorBindings` which of them are doors.
+concealments:
+  vault:
+    # The passive tell, carried and unread in this slice (R6, E6): an author
+    # can write it today and the slice that reads it changes no file.
+    notice: [{ ability: investigation, dc: 12 }]
+    # The v2 door's own two approaches, verbatim: spotted, or reasoned out.
+    checks: [{ ability: perception, dc: 15 }, { ability: investigation, dc: 13 }]
+    cells: [{q: 2, r: 0}, {q: 3, r: 0}, {q: 2, r: 1}, {q: 3, r: 1}, {q: 2, r: 2}, {q: 3, r: 2}]
+    props: [vault-door, heirloom]
+
+# The knowledge this site declares. BOTH RECORDS REVEAL THE CONCEALMENT —
+# which is what `reveals: { door }` was always reaching for (R7): a record
+# gives away the vault, not the hinge. The v2 tomb writes the same two records
+# against the same secret, and `door:` stays refused by name in this dialect.
+intel:
+  - { id: vault-map, reveals: { concealment: vault } }
+  - { id: hall-notes, reveals: { concealment: vault } }
+
+exits:
+  - { id: entrance, cell: { q: 0, r: 3 } }
+
+scenarios:
+  recover-the-artifact:
+    artifact: heirloom
+    exit: entrance
+
+room:
+  version: 3
+  id: room-1
+  name: The Tomb
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Tomb
+    items:
+      - id: vault-door
+        kind: prop
+        assetRef: dnd5e:props:door-stone
+        label: The Vault Door
+        transform: {x: 2.598, y: 0, z: 1.5, rotationY: 0}
+      - id: heirloom
+        kind: prop
+        assetRef: dnd5e:props:reliquary
+        label: The Heirloom
+        transform: {x: 6.062, y: 0, z: 1.5, rotationY: 0}
+      - id: hall-scroll
+        kind: prop
+        assetRef: dnd5e:props:scroll
+        label: A Scroll
+        transform: {x: -1.7, y: 0, z: 2.6, rotationY: 0}
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    # THE VAULT'S CELLS ARE WALKABLE FLOOR (R2). Nobody places a wall to hide
+    # a room; omission is the wall, and what an unaware observer is sent is
+    # the engine's answer, not the author's second drawing.
+    walkableHexes: [{q: -3, r: 0}, {q: -2, r: 0}, {q: -1, r: 0}, {q: 0, r: 0}, {q: 1, r: 0},
+      {q: -3, r: 1}, {q: -2, r: 1}, {q: -1, r: 1}, {q: 0, r: 1}, {q: 1, r: 1},
+      {q: -3, r: 2}, {q: -2, r: 2}, {q: -1, r: 2}, {q: 0, r: 2}, {q: 1, r: 2},
+      {q: -3, r: 3}, {q: -2, r: 3}, {q: -1, r: 3}, {q: 0, r: 3}, {q: 1, r: 3},
+      {q: 2, r: 0}, {q: 3, r: 0}, {q: 2, r: 1}, {q: 3, r: 1}, {q: 2, r: 2}, {q: 3, r: 2}]
+    propDeclarations:
+      # STATE DECIDES WHAT A DOOR BLOCKS, so both flags stay false on the door
+      # item and `closed` under doorBindings says the rest (R3).
+      vault-door:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.3, depth: 4.5, offsetX: 0, offsetZ: 0}
+      heirloom:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.4, depth: 0.4, offsetX: 0, offsetZ: 0}
+      hall-scroll:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.3, depth: 0.3, offsetX: 0, offsetZ: 0}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 3}
+    monsters:
+      - {id: captain, ref: 'dnd5e:monsters:skeleton-captain', cell: {q: -3, r: 0},
+         faction: monsters}
+    monsterBindings:
+      captain: { holds: [vault-map] }
+    doorBindings:
+      vault-door: { closed: true }
+    propBindings:
+      heirloom: { holdable: true }
+      hall-scroll: { holdable: true, holds: [hall-notes] }

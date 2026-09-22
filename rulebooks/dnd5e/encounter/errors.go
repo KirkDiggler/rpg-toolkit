@@ -28,6 +28,19 @@ var (
 	// ErrNotMember is returned when an entity is not a member of this encounter.
 	ErrNotMember = errors.New("not a member")
 
+	// ErrNotATarget is returned when a verb points an ATTACK at a member
+	// that cannot be one (rpg-project#493, R4): a world NPC, which is what a
+	// `dnd5e:npcs:*` ref becomes when it is placed.
+	//
+	// FAIL CLOSED AT THE VERB, before anything is appended. A merchant is
+	// placed with no ref, no capabilities and no policy of its own
+	// ([KindWorld]); it has no table to fight with, no faction to be on and
+	// no side for a stance to be about, so an attack on one resolves into a
+	// creature the whole composition is built to leave out. A camp that can
+	// be provoked is authored as a MONSTER with a neutral disposition, and
+	// the refusal says so.
+	ErrNotATarget = errors.New("not a target")
+
 	// ErrNoRegion is returned when [Encounter.MembersIn] is asked about a
 	// region the field does not have. An EMPTY region is an ordinary answer —
 	// "nobody has reached the tomb yet" is a fact worth reporting — so a
@@ -454,6 +467,30 @@ var (
 	// ErrNoField: this is a caller asking about something that is not there,
 	// where ErrBadDoor is a field that could not be built.
 	ErrNoDoor = errors.New("no such door")
+
+	// ErrNoConcealment is a concealment this field does not declare, named
+	// by something that needs one — an intel record's `reveals`
+	// (rpg-project#490, R7).
+	//
+	// Separate from ErrBadConcealment the way ErrNoDoor is separate from
+	// ErrBadDoor: this is a declaration pointing at something that is not
+	// there, where ErrBadConcealment is a concealment that could not be
+	// built.
+	ErrNoConcealment = errors.New("no such concealment")
+
+	// ErrBadConcealment is a concealment that cannot be part of a field
+	// (rpg-project#490): an empty or duplicated id, no checks at all, an
+	// authored `notice` with nothing to beat, an approach at a DC of zero, a
+	// cell that is not floor this field has, a concealment that hides
+	// nothing — and the three overlaps, each naming BOTH declarations,
+	// because a cell, a door or a prop belongs to at most one secret (R4)
+	// and an author looking at one of them needs to be told which other one
+	// it collides with.
+	//
+	// A door it names that the field does not declare is ErrNoDoor, for
+	// ErrNoConcealment's reason one noun over: the concealment is fine and
+	// the thing it points at is missing.
+	ErrBadConcealment = errors.New("bad concealment")
 
 	// ErrNoExit is a way out that is not one: an authored exit with no id,
 	// two exits sharing one, an exit standing where nobody's feet can go,

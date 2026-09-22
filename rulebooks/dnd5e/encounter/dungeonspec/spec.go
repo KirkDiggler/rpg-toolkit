@@ -25,6 +25,47 @@
 // `version: 1` is refused by name, and the reference tomb is re-authored in
 // version 2 and compiles to the identical atlas (golden_test.go).
 //
+// # One gameplay grammar, two geometry dialects
+//
+// Two dialects are authored here, and they differ ONLY in how they describe
+// space. The v2 document paints named regions cell by cell in absolute
+// [col,row] under a declared orientation; the single-room document
+// (single_room.go, the one the World Builder writes) draws one room in axial
+// {q, r} and declares no orientation at all.
+//
+// Everything that is not space is ONE grammar, shared by both: the factions an
+// author declares, the dispositions between them, the answer tables, the
+// temperaments and the arms. Their types were always shared ([FactionSpec],
+// [DispositionSpec], [AnswerSpec], [SelectorSpec], [TemperSpec]); since
+// rpg-project#484 the FUNCTIONS are too — grammar.go holds the validators and
+// [ordersOf] holds the compile, and each dialect calls them with its own paths.
+//
+// A dialect hands the grammar exactly two things, and they are exactly what a
+// dialect owns:
+//
+//   - the CAST it placed ([members]) — who exists, what each one is, and which
+//     side it is on;
+//   - the FRAME it resolves a cell in ([cells]) — the v2 dialect looks an
+//     authored pair up in the floor its regions painted, and the single room
+//     names no cell at all and says so.
+//
+// The single-room dialect used to reach the grammar by building a fake v2
+// [Spec] and running the v2 validator over it. Nothing does that now, and a
+// validator that needs a THIRD input from its dialect is a design change
+// rather than another parameter.
+//
+// A DOOR IS THE SAME SPLIT, ONE NOUN DOWN (rpg-project#485). Its STATE —
+// `closed`, and the `locked` check — is grammar: the same [CheckSpec] with
+// the same nil-vs-empty law and the same sentences, judged once for both
+// dialects ([grammar.doorState]) and compiled once ([doorStateOf]). Its
+// GEOMETRY is the dialect's: a v2 door is a position on a wall, and a
+// single-room door is the footprint its own `propDeclarations` entry draws,
+// because that dialect has no walls to stand one in. So the single room
+// declares three things about a placed item, each keyed by its id —
+// `propDeclarations` (the shape), `doorBindings` (the door's state) and
+// `monsterBindings` (a creature's orders) — and [encounter.DoorInput] takes
+// one geometry or the other, never both.
+//
 // # What it may not know
 //
 // This package compiles GEOMETRY and carries everything else. It resolves no
@@ -37,6 +78,24 @@
 // So the output is deliberately in two halves: a [encounter.FieldInput] that is
 // ready to hand to [encounter.NewEncounter] as it stands, and a roster of
 // placements that still need somebody who knows what a skeleton is.
+//
+// # What it may not judge
+//
+// The World Builder's PRESENTATION (rpg-project#479, R3). The single-room
+// dialect's document carries the authored scene — assets, labels, groups,
+// parents, supports, height scales, point lights, the coordinate frame's axis
+// words, the workspace's drawing limit — and this package carries it as the
+// [gopkg.in/yaml.v3.Node] it was authored as, without modelling or judging
+// any of it. It reads out of it exactly the values play depends on: the
+// frame's hexRadius (which the placement adapter's scale is calibrated to),
+// the workspace's hexRadius (which bounds the floor), the scene's name (which
+// names the dungeon) and, per prop a `propDeclarations` entry names, the
+// three transform numbers that place its footprint. single_room_lowering.go is
+// the one reader and lists every one of them by path.
+//
+// The consequence is the point: an unknown key inside `scene` is the web
+// codec's business, not this decoder's, and the editor's scalar bounds no
+// longer have to change in two languages at once.
 //
 // # Validation is path-addressed
 //
@@ -256,13 +315,27 @@ type IntelSpec struct {
 // than an open map: a target this build does not understand is a record
 // nothing can apply, and it is refused rather than carried hopefully.
 type RevealsSpec struct {
-	// Door is the id of the door this record reveals the way to. Refused
-	// when no door in this dungeon has that id.
+	// Door is the id of the door this record reveals the way to — THE v2
+	// SPELLING, kept because it is this dialect's vocabulary for the thing
+	// it draws. Refused when no door in this dungeon has that id, and
+	// refused when no concealment holds that door: the engine's target is a
+	// CONCEALMENT now (rpg-project#490, R7), so the lowering resolves the
+	// door to the secret holding it and a door anyone can already see is a
+	// record revealing nothing.
 	//
-	// A DECLARED BUT UNCONCEALED DOOR IS LEGAL AND INERT: revealing the way
-	// to a door anyone can already see tells nobody anything, and refusing
-	// it would make this declaration depend on a fact about a different one.
+	// REFUSED BY NAME in the single-room dialect, which has no crossing to
+	// hide a door on — it writes `concealment:` instead ([RevealsSpec.Concealment]).
 	Door string `yaml:"door,omitempty"`
+
+	// Concealment is the id of the concealment this record gives away — the
+	// SINGLE-ROOM dialect's spelling of the same target, because that
+	// dialect declares its secrets at the root under `concealments:` and
+	// names them directly (rpg-project#490, R7).
+	//
+	// Refused when no concealment in the document has that id, and refused
+	// by name in the v2 dialect, whose secrets are spelled with the two
+	// words that dialect already has.
+	Concealment string `yaml:"concealment,omitempty"`
 
 	// Fact is the id of the fact this record reveals (rpg-project#375, the
 	// hold-out design §2) — the second key, arrived with its use case: a
@@ -321,11 +394,12 @@ type FactionSpec struct {
 	Temper TemperSpec `yaml:"temper,omitempty"`
 }
 
-// DispositionSpec is how two factions stand to each other, and what ends
+// DispositionSpec is how two factions stand to each other, and what turns
 // it.
 //
 //	dispositions:
 //	  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
+//	  - { between: [guards, party],  stance: neutral, until: { round: 12 } }
 //
 // One per unordered pair; a pair nobody declares has a default
 // ([encounter.DefaultStance]): `party` is hostile to every faction that did
@@ -338,9 +412,18 @@ type DispositionSpec struct {
 	// Stance is one of hostile, neutral, allied. REQUIRED.
 	Stance string `yaml:"stance"`
 
-	// Until is the predicate that ends hostility; when it holds the stance
-	// becomes neutral (R2). LEGAL ONLY WITH `stance: hostile` — a neutral or
-	// allied pair has nothing to stop doing. Optional. See [PredicateSpec].
+	// Until is the predicate that TURNS the pair: when it holds the stance
+	// becomes the OTHER of hostile and neutral (rpg-project#493, R1). A
+	// hostile pair stands down; a neutral pair turns on you — "the guards
+	// are civil until midnight", "the wolves are calm until you kill the
+	// alpha". REFUSED ON `stance: allied`: an allied pair has nothing to
+	// become. Optional. See [PredicateSpec] — all four forms are legal here,
+	// and only `{ fact }` needs the pair to have a mind, because only a fact
+	// is somebody's knowledge.
+	//
+	// WHAT NO FILE WRITES is "if attacked, become hostile". Attacking across
+	// a neutral pair turns it hostile by law, authored or not (R3), so a
+	// camp is provokable the moment it is neutral.
 	Until *PredicateSpec `yaml:"until,omitempty"`
 }
 

@@ -94,9 +94,14 @@ func newArrivalMemoryEncounter(
 			Regions: []RegionInput{rectRegion("propagation-field", 0, 0, 10, 10)},
 			Doors: []DoorInput{{
 				ID: propagationDoor,
+				// IN THE CALLER'S OWN CROSSING, because a door opens only
+				// from within reach of it (rpg-toolkit#1856) and the caller
+				// is what drives the door case below. Where the door stands
+				// is otherwise nothing to this fixture: sight here is
+				// scripted at range 0, so no geometry reaches a percept.
 				Edges: []DoorEdge{{
-					From: spatial.Position{X: 4, Y: 4},
-					To:   spatial.Position{X: 5, Y: 4},
+					From: spatial.Position{X: 0, Y: 3},
+					To:   spatial.Position{X: 1, Y: 3},
 				}},
 				State: DoorIsClosed(),
 			}},

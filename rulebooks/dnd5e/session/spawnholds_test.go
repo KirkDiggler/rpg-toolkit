@@ -60,12 +60,12 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheRecordsItWasPlacedWith() {
 		Session: "sess", Member: "alice", Target: "latecomer", Range: 2})
 	s.Require().NoError(err)
 
-	s.Run("the looter alone is told about the door", func() {
-		s.Equal([]session.EventKind{session.EventLooted, session.EventDoorRevealed},
+	s.Run("the looter alone is told about the secret", func() {
+		s.Equal([]session.EventKind{session.EventLooted, session.EventConcealmentRevealed},
 			s.kinds("alice"))
-		body, ok := s.bodyOf("alice", session.EventDoorRevealed).(session.DoorRevealedBody)
+		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
 		s.Require().True(ok)
-		s.Equal("veil", body.Door, "the way in came off the body that ARRIVED carrying it")
+		s.Equal(vaultSecret, body.Concealment, "the way in came off the body that ARRIVED carrying it")
 	})
 
 	s.Run("the bystander hears the beat and learns nothing", func() {
@@ -76,12 +76,12 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheRecordsItWasPlacedWith() {
 	})
 
 	s.Run("it is the same reveal an authored captain gives", func() {
-		authored := s.bodyOf("alice", session.EventDoorRevealed)
+		authored := s.bodyOf("alice", session.EventConcealmentRevealed)
 		s.start(true)
 		_, err := s.mgr.Loot(ctx, &session.LootInput{
 			Session: "sess", Member: "alice", Target: "captain"})
 		s.Require().NoError(err)
-		s.Equal(authored, s.bodyOf("alice", session.EventDoorRevealed),
+		s.Equal(authored, s.bodyOf("alice", session.EventConcealmentRevealed),
 			"arriving and being authored are two ways into the world, not two mechanisms")
 	})
 }

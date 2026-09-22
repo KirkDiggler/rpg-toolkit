@@ -15,9 +15,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone is §8 row 2: the
-// looter's own DOOR_REVEALED, and the other member's atlas unchanged.
-func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
+// TestLootOnTheCaptainRevealsTheSecretToTheLooterAlone is §8 row 2: the
+// looter's own CONCEALMENT_REVEALED, and the other member's atlas unchanged.
+func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheSecretToTheLooterAlone() {
 	enc := s.open(true)
 	before := s.atlasBytes(enc, partner)
 	s.drop(enc)
@@ -26,10 +26,10 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
 	_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
 	s.Require().NoError(err)
 
-	s.Run("the looter is told about the door", func() {
-		reveals := s.beatsOfKind(enc, raider, "door_revealed")
+	s.Run("the looter is told about the secret", func() {
+		reveals := s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed)
 		s.Require().Len(reveals, 1)
-		s.Require().Equal(tombVault, reveals[0]["door"])
+		s.Require().Equal(vaultSecret, reveals[0]["concealment"])
 	})
 
 	s.Run("the door is on the looter's own map", func() {
@@ -39,7 +39,7 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
 	})
 
 	s.Run("nobody else hears it and nobody else's map moved", func() {
-		s.Require().Empty(s.beatsOfKind(enc, partner, "door_revealed"))
+		s.Require().Empty(s.beatsOfKind(enc, partner, encounter.BeatConcealmentRevealed))
 		doors, err := enc.DoorsFor(partner)
 		s.Require().NoError(err)
 		s.Require().False(doorsListed(doors, tombVault))
@@ -47,12 +47,18 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
 			"the other member's atlas is unchanged until the door is opened in their presence")
 	})
 
-	s.Run("the room stays hidden — knowing a door is not seeing behind it", func() {
+	s.Run("the room arrives with the door — ONE noun, one moment", func() {
+		// The claim that changed (rpg-project#490, R1). It used to be "the
+		// room stays hidden: knowing a door is not seeing behind it". A
+		// record gives away a SECRET, and the vault's cells and its door
+		// are one secret.
 		atlas, err := enc.AtlasFor(raider)
 		s.Require().NoError(err)
+		holds := false
 		for _, r := range atlas.Regions {
-			s.Require().NotEqual("vault", r.ID, "two knowledge moments, deliberately distinct")
+			holds = holds || r.ID == "vault"
 		}
+		s.Require().True(holds)
 	})
 }
 
@@ -103,11 +109,11 @@ func (s *HoldingsSuite) TestLootOnABodyWithNothingIsIndistinguishable() {
 		s.Require().Empty(blind.Doorways)
 		s.Require().Len(knowing.Doorways, 1, "the found door, and nothing else")
 		s.Require().Equal(tombVault, knowing.Doorways[0].Door)
-		s.Require().Equal(blind.Cells, knowing.Cells, "not one cell of the vault leaked")
-		s.Require().Equal(blind.Regions, knowing.Regions, "and not the room behind it")
-		s.Require().Equal(blind.Props, knowing.Props)
-		s.Require().Len(knowing.Boundaries, len(blind.Boundaries)-1,
-			"the wall the door was masquerading as is the one that went")
+		s.Require().Greater(len(knowing.Cells), len(blind.Cells),
+			"the vault's floor arrives with the secret that hid it")
+		s.Require().Greater(len(knowing.Regions), len(blind.Regions), "and so does its region entry")
+		s.Require().Less(len(knowing.Boundaries), len(blind.Boundaries),
+			"while the masquerade wall the door wore comes off")
 	})
 	s.Run("the looted beat itself is the same beat either way", func() {
 		enc := s.open(false)
@@ -585,12 +591,12 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 	for _, b := range s.beats(enc, raider) {
 		s.T().Logf("BEAT %v", b["beat"])
 	}
-	s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+	s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 1)
 
 	s.Run("the same body a second time has nothing left to give", func() {
 		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
 		s.Require().NoError(err)
-		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+		s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 1)
 	})
 
 	s.Run("a DIFFERENT body that still carries it reveals nothing new", func() {
@@ -599,19 +605,22 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 		// through a body that genuinely still has the intel to give.
 		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: sentry, Range: 2})
 		s.Require().NoError(err)
-		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1,
+		s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 1,
 			"a second arrival of knowledge already held is not a second reveal")
 		s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 3, "and all three loots happened")
 	})
 }
 
-// TestLootingIntelForAnOrdinaryDoorRevealsNothing: knowing an unconcealed
-// door is inert ([MemberInput.Holds]), and inert means no beat — even in a
-// dungeon that DOES carry concealment elsewhere, which is the case the
-// world-is-nil short-circuit does not cover.
+// TestLootingIntelForAFactRevealsNoMap: a record whose target is a FACT
+// changes no geometry, and changes none even in a dungeon that DOES hide
+// things elsewhere — the case the world-is-nil short-circuit does not cover.
+//
+// IT WAS AN UNCONCEALED DOOR until the concealment primitive landed
+// (rpg-project#490, R7): a record's target is a secret now, so the inert
+// case is asked of the target that still has one.
 const gateMap = "gate-map"
 
-func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
+func (s *HoldingsSuite) TestLootingIntelForAFactRevealsNoMap() {
 	// The fixture, with a SECOND opening in the hall|tomb seam at row 1 and
 	// an ordinary door standing in it. Rebuilt rather than appended to: the
 	// seam is a whole wall set, and adding a second copy of it would list
@@ -623,10 +632,9 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 	field.Doors = append(append([]encounter.DoorInput(nil), field.Doors...), encounter.DoorInput{
 		ID: "hall-tomb-gate", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
 	})
-	// A record revealing the ORDINARY gate, beside the one revealing the
-	// concealed vault door.
+	// A record revealing a FACT, beside the ones revealing the two secrets.
 	field.Intel = append(append([]encounter.IntelRecord(nil), field.Intel...), encounter.IntelRecord{
-		ID: gateMap, Reveals: encounter.RevealTargets{Door: "hall-tomb-gate"},
+		ID: gateMap, Reveals: encounter.RevealTargets{Fact: "the-rumour"},
 	})
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -637,10 +645,10 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
-			// The captain knows the ORDINARY gate, not the vault door. The
-			// field still carries concealment, so the world exists and the
-			// only thing standing between this loot and a spurious reveal is
-			// the concealed check itself.
+			// The captain knows a rumour, not a secret. The field still
+			// hides things, so the world exists and the only thing standing
+			// between this loot and a spurious reveal is the target check
+			// itself.
 			{ID: captain, Kind: encounter.KindMonster, Position: partnerCell,
 				Holds: []encounter.IntelID{gateMap}},
 		},
@@ -660,8 +668,8 @@ func (s *HoldingsSuite) TestLootingIntelForAnOrdinaryDoorRevealsNothing() {
 	after, err := enc.AtlasFor(raider)
 	s.Require().NoError(err)
 
-	s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"),
-		"there is nothing to reveal about a door anybody can already see")
+	s.Require().Empty(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed),
+		"a fact is not a place, so no map changed")
 	s.Require().Equal(before, after)
 	s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 1, "and the loot itself happened")
 }
@@ -821,7 +829,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 		s.Require().Equal(map[string]any{
 			"beat": "joined", "member": string(captain),
 		}, joined[0])
-		s.Require().Empty(s.beatsOfKind(enc, partner, "door_revealed"))
+		s.Require().Empty(s.beatsOfKind(enc, partner, encounter.BeatConcealmentRevealed))
 		s.Require().Equal(before, s.atlasBytes(enc, partner),
 			"a monster arriving with the run's only secret moves nobody's map")
 	})
@@ -833,9 +841,9 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 	s.Require().NoError(err)
 
 	s.Run("the looter alone learns the way in", func() {
-		reveals := s.beatsOfKind(enc, raider, "door_revealed")
+		reveals := s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed)
 		s.Require().Len(reveals, 1)
-		s.Require().Equal(tombVault, reveals[0]["door"])
+		s.Require().Equal(vaultSecret, reveals[0]["concealment"])
 
 		doors, derr := enc.DoorsFor(raider)
 		s.Require().NoError(derr)
@@ -843,7 +851,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 	})
 
 	s.Run("and nobody else's bytes moved", func() {
-		s.Require().Empty(s.beatsOfKind(enc, partner, "door_revealed"))
+		s.Require().Empty(s.beatsOfKind(enc, partner, encounter.BeatConcealmentRevealed))
 		doors, derr := enc.DoorsFor(partner)
 		s.Require().NoError(derr)
 		s.Require().False(doorsListed(doors, tombVault))
@@ -1057,7 +1065,7 @@ func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 	s.Run("looting the first teaches the way in", func() {
 		_, lerr := enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
 		s.Require().NoError(lerr)
-		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1)
+		s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 1)
 		doors, derr := enc.DoorsFor(raider)
 		s.Require().NoError(derr)
 		s.Require().True(doorsListed(doors, tombVault))
@@ -1069,7 +1077,7 @@ func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 		// already knows", not "there was nothing to give".
 		_, lerr := enc.Loot(&encounter.LootInput{Member: raider, Target: sentry, Range: 2})
 		s.Require().NoError(lerr)
-		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 1,
+		s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 1,
 			"a second arrival of knowledge already held is not a second reveal")
 		s.Require().Len(s.beatsOfKind(enc, raider, "looted"), 2, "and both loots happened")
 	})
@@ -1094,24 +1102,27 @@ func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 // doors, reveal different doors. That is the property that lets a later
 // `reveals` target arrive without migrating anybody's saves.
 func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
-	// A field with TWO concealed doors and one record, pointed at the second.
+	// A field with THREE secrets and one record, pointed at the third.
 	field := heirloomField()
 	field.Walls = append(
 		seamWallExcept(3, 8, hallGapRow, hallGateRow, 1),
 		seamWallExcept(7, 8, vaultSeamRow)...)
 	field.Doors = append(append([]encounter.DoorInput(nil), field.Doors...), encounter.DoorInput{
-		ID: "hall-gate", Edges: doorEdgesAcross(3, 1),
-		State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
+		ID: "hall-gate", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
 	})
-	// The captain's record now points at the OTHER concealed door; the
-	// scroll keeps its own so the field stays coherent.
+	field.Concealments = append(append([]encounter.ConcealmentInput(nil), field.Concealments...),
+		encounter.ConcealmentInput{
+			ID: "hall-gate-secret", Checks: vaultFindCheck(), Doors: []encounter.DoorID{"hall-gate"},
+		})
+	// The captain's record now points at the OTHER secret; the scroll keeps
+	// its own so the field stays coherent.
 	field.Intel = []encounter.IntelRecord{
-		{ID: vaultMap, Reveals: encounter.RevealTargets{Door: "hall-gate"}},
+		{ID: vaultMap, Reveals: encounter.RevealTargets{Concealment: "hall-gate-secret"}},
 		// The scroll's records still have to be declared — a prop holding a
 		// record the field does not declare is refused at construction, and
 		// this scene is not about that.
-		{ID: scrollNotes, Reveals: encounter.RevealTargets{Door: tombVault}},
-		{ID: scrollMargin, Reveals: encounter.RevealTargets{Door: tombVault}},
+		{ID: scrollNotes, Reveals: encounter.RevealTargets{Concealment: vaultSecret}},
+		{ID: scrollMargin, Reveals: encounter.RevealTargets{Concealment: vaultSecret}},
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -1139,9 +1150,9 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 
 	// The SAME holding — `holds:intel:vault-map` — revealed a different door,
 	// because the field said so. Nothing about the fact changed.
-	reveals := s.beatsOfKind(enc, raider, "door_revealed")
+	reveals := s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1)
-	s.Require().Equal("hall-gate", reveals[0]["door"],
+	s.Require().Equal("hall-gate-secret", reveals[0]["concealment"],
 		"the record is read at transfer, so the field decides what it means")
 
 	doors, err := enc.DoorsFor(raider)
@@ -1170,10 +1181,10 @@ func (s *HoldingsSuite) TestAScrollTeachesWhoeverHoldsIt() {
 		// stopped at the first would look right on a scroll that said one
 		// thing, which is why the fixture's says two.
 		var learned []any
-		for _, b := range s.beatsOfKind(enc, raider, "door_revealed") {
-			learned = append(learned, b["door"])
+		for _, b := range s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed) {
+			learned = append(learned, b["concealment"])
 		}
-		s.Require().ElementsMatch([]any{tombVault, hallGate}, learned)
+		s.Require().ElementsMatch([]any{vaultSecret, gateSecret}, learned)
 
 		doors, derr := enc.DoorsFor(raider)
 		s.Require().NoError(derr)
@@ -1184,7 +1195,7 @@ func (s *HoldingsSuite) TestAScrollTeachesWhoeverHoldsIt() {
 	s.Run("the bystander sees a thing picked up and learns nothing", func() {
 		held := s.beatsOfKind(enc, partner, "held")
 		s.Require().Len(held, 1, "picking it up is public")
-		s.Require().Empty(s.beatsOfKind(enc, partner, "door_revealed"), "what it says is not")
+		s.Require().Empty(s.beatsOfKind(enc, partner, encounter.BeatConcealmentRevealed), "what it says is not")
 		doors, derr := enc.DoorsFor(partner)
 		s.Require().NoError(derr)
 		s.Require().False(doorsListed(doors, tombVault))
@@ -1196,7 +1207,7 @@ func (s *HoldingsSuite) TestAScrollTeachesWhoeverHoldsIt() {
 			switch b["beat"] {
 			case "held":
 				heldAt = i
-			case "door_revealed":
+			case encounter.BeatConcealmentRevealed:
 				revealedAt = i
 			}
 		}
@@ -1234,7 +1245,7 @@ func (s *HoldingsSuite) TestTheScrollKeepsSayingWhatItSays() {
 	s.walkTo(enc, raider, scrollCell)
 	_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: scroll})
 	s.Require().NoError(err)
-	s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 2)
+	s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 2)
 
 	s.Run("the carrier falls and is looted; the looter learns it too", func() {
 		s.standing.down = []encounter.MemberID{raider}
@@ -1246,10 +1257,10 @@ func (s *HoldingsSuite) TestTheScrollKeepsSayingWhatItSays() {
 		s.Require().NoError(lerr)
 
 		var learned []any
-		for _, b := range s.beatsOfKind(enc, partner, "door_revealed") {
-			learned = append(learned, b["door"])
+		for _, b := range s.beatsOfKind(enc, partner, encounter.BeatConcealmentRevealed) {
+			learned = append(learned, b["concealment"])
 		}
-		s.Require().ElementsMatch([]any{tombVault, hallGate}, learned,
+		s.Require().ElementsMatch([]any{vaultSecret, gateSecret}, learned,
 			"looting a body that holds the scroll reads the whole scroll")
 	})
 
@@ -1257,7 +1268,7 @@ func (s *HoldingsSuite) TestTheScrollKeepsSayingWhatItSays() {
 		doors, derr := enc.DoorsFor(raider)
 		s.Require().NoError(derr)
 		s.Require().True(doorsListed(doors, tombVault))
-		s.Require().Len(s.beatsOfKind(enc, raider, "door_revealed"), 2,
+		s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 2,
 			"and they were not told a second time")
 	})
 }
@@ -1275,7 +1286,7 @@ func (s *HoldingsSuite) TestAPropWithNoRecordsTeachesNothing() {
 		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 		s.Require().NoError(err)
 		s.Require().Len(s.beatsOfKind(enc, raider, "held"), 1)
-		s.Require().Empty(s.beatsOfKind(enc, raider, "door_revealed"))
+		s.Require().Empty(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed))
 	})
 
 	s.Run("and the atlas never says which prop carries intel", func() {
@@ -1333,14 +1344,14 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 		s.Require().NoError(herr)
 
 		var learned []any
-		for _, b := range s.beatsOfKind(reloaded, raider, "door_revealed") {
-			learned = append(learned, b["door"])
+		for _, b := range s.beatsOfKind(reloaded, raider, encounter.BeatConcealmentRevealed) {
+			learned = append(learned, b["concealment"])
 		}
-		s.Require().ElementsMatch([]any{tombVault, hallGate}, learned)
+		s.Require().ElementsMatch([]any{vaultSecret, gateSecret}, learned)
 	})
 }
 
-// TestTwoRecordsRevealingOneDoorRevealItOnce is the shipped heirloom tomb's
+// TestTwoRecordsRevealingOneSecretRevealItOnce is the shipped heirloom tomb's
 // own shape, pinned.
 //
 // That dungeon declares TWO records pointing at the SAME door — `vault-map`
@@ -1355,7 +1366,7 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 // this work at all — two records are two things to carry and one thing to
 // learn. Nothing pinned that until this scene: the existing coverage is one
 // record reaching somebody twice, which the same guard happens to handle.
-func (s *HoldingsSuite) TestTwoRecordsRevealingOneDoorRevealItOnce() {
+func (s *HoldingsSuite) TestTwoRecordsRevealingOneSecretRevealItOnce() {
 	// walk runs the identical sequence — read the scroll, kill the captain,
 	// loot the body — and varies ONE thing: whether the captain carried a
 	// record revealing a door the scroll already taught.
@@ -1379,7 +1390,7 @@ func (s *HoldingsSuite) TestTwoRecordsRevealingOneDoorRevealItOnce() {
 		_, err = enc.Loot(&encounter.LootInput{Member: raider, Target: captain})
 		s.Require().NoError(err)
 
-		return len(s.beatsOfKind(enc, raider, "door_revealed")),
+		return len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed)),
 			s.storyBytes(enc, raider), s.atlasBytes(enc, raider),
 			s.storyBytes(enc, partner), enc.ToData()
 	}
@@ -1387,13 +1398,13 @@ func (s *HoldingsSuite) TestTwoRecordsRevealingOneDoorRevealItOnce() {
 	twiceReveals, twiceStory, twiceAtlas, twiceBystander, twiceData := walk(true)
 	onceReveals, onceStory, onceAtlas, onceBystander, _ := walk(false)
 
-	s.Run("the scroll teaches its two doors", func() {
+	s.Run("the scroll teaches its two secrets", func() {
 		s.Require().Equal(2, onceReveals)
 	})
 
-	s.Run("and the captain's record, naming a door already known, narrates nothing", func() {
+	s.Run("and the captain's record, naming a secret already known, narrates nothing", func() {
 		s.Require().Equal(onceReveals, twiceReveals,
-			"they already knew that door; being told again is a beat that did not happen")
+			"they already knew that secret; being told again is a beat that did not happen")
 	})
 
 	s.Run("no second knowledge fact is written", func() {
@@ -1404,11 +1415,11 @@ func (s *HoldingsSuite) TestTwoRecordsRevealingOneDoorRevealItOnce() {
 		s.Require().NotNil(twiceData.World)
 		var learned int
 		for _, f := range twiceData.World.Facts {
-			if f.Kind == "known:door:"+tombVault && f.Actor == string(raider) {
+			if f.Kind == "known:concealment:"+vaultSecret && f.Actor == string(raider) {
 				learned++
 			}
 		}
-		s.Require().Equal(1, learned, "one door learned once, however many records said so")
+		s.Require().Equal(1, learned, "one secret learned once, however many records said so")
 	})
 
 	s.Run("the whole run is what it would be if the captain had carried nothing", func() {

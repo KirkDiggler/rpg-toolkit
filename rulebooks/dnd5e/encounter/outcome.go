@@ -683,6 +683,15 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 		if _, ok := e.members[id]; !ok {
 			return nil, fmt.Errorf("record: target %q: %w", id, ErrNoMember)
 		}
+		// AN NPC IS NOT A TARGET (rpg-project#493, R4), and only a swing is
+		// refused: a trade and a death save name members too, and neither is
+		// an attack. Struck and missed are exactly the two kinds that land a
+		// deed through [Encounter.landAttack].
+		if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
+			if err := e.attackable("record", id); err != nil {
+				return nil, err
+			}
+		}
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i] < targets[j] })
 

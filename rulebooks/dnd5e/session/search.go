@@ -49,7 +49,7 @@ type SearchInput struct {
 // across whole): nothing here varies with what the region held or how a roll
 // went — no found list, no roll, no count. A find reaches the searcher the
 // way all world change reaches anybody: as their own recipient-scoped
-// EventDoorRevealed on their stream. What remains are the seam's two
+// EventConcealmentRevealed on their stream. What remains are the seam's two
 // host-facing reports, which every verb returns and only the host reads.
 type SearchOutput struct {
 	// Saved names what was persisted.
@@ -59,15 +59,17 @@ type SearchOutput struct {
 	Delivery DeliveryReport `json:"delivery"`
 }
 
-// Search sweeps a region for concealed structure as Member.
+// Search sweeps a region for hidden structure as Member.
 //
 // Load-act-save like every verb, and the act is one call: the composition
-// sweeps the region's concealed doors, rolls each unfound one's find check
+// finds every unfound concealment the region TOUCHES, rolls each one's checks
 // through this package's [checkSeam] — the member's real sheet, their best
 // listed approach, dnd5e's own check machinery — and writes any success as a
-// fact and beat for the searcher alone. A world with no concealment accepts
-// the verb and sweeps nothing: refusing it would itself answer the question
-// a search asks.
+// fact and beat for the searcher alone. ONE ROLL PER CONCEALMENT, never one
+// per hidden thing (rpg-project#490 E2): a secret is a noun, and finding it
+// is one question however many doors, cells and props belong to it. A world
+// with no concealment accepts the verb and sweeps nothing: refusing it would
+// itself answer the question a search asks.
 //
 // The sheet is staged BEFORE the composition acts, unconditionally — see
 // [stagedCheck] for why the refusal for an unrollable searcher must not vary

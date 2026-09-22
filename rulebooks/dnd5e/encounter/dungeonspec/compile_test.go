@@ -272,8 +272,7 @@ func (s *CompileSuite) TestADoorIsMintedUnderTheDungeonsKeyInItsAuthoredState() 
 	s.Equal(encounter.Lock{Approaches: []encounter.CheckApproach{{Ability: "dex", DC: 12}}}, lock,
 		"the authored approach list, carried whole")
 
-	s.Nil(open.Concealed, "the tomb conceals neither door — nil is what \"said nothing\" always means")
-	s.Nil(locked.Concealed)
+	s.Nil(c.Field.Concealments, "the tomb hides nothing — no key is what \"said nothing\" always means")
 
 	shut := s.load(s.tombWith("    locked: [{ ability: dex, dc: 12 }]", "    closed: true"))
 	s.Equal(encounter.DoorClosed, shut.Field.Doors[1].State.Kind(), "closed: shut but not locked")
@@ -329,13 +328,13 @@ func (s *CompileSuite) secretTomb(find string) string {
 	return strings.Replace(secret, "  - id: tomb\n", "  - id: tomb\n    concealed: true\n", 1)
 }
 
-// TestAConcealedDoorCarriesItsFindCheckThrough — living-world slice 1, wave 1a
-// (rpg-toolkit#1369): concealment is one more property on the door
-// declaration, its find check an approach list in the same shape as a lock's,
-// carried opaquely to [encounter.DoorInput.Concealed]. It COMPOSES with
-// plain, closed, or locked underneath — the state switch never reads it and
-// it never reads the state.
-func (s *CompileSuite) TestAConcealedDoorCarriesItsFindCheckThrough() {
+// TestAConcealedDoorLowersToAConcealment — the v2 lowering
+// (rpg-project#490, E5). The author writes `doors[].concealed: [...]` exactly
+// as they always did; what reaches the composition is a CONCEALMENT holding
+// that door, with the authored approaches as its checks. Concealment still
+// COMPOSES with plain, closed or locked underneath — the state switch never
+// read it and now cannot, because the door no longer carries it.
+func (s *CompileSuite) TestAConcealedDoorLowersToAConcealment() {
 	const find = "\n    concealed: [{ ability: perception, dc: 15 }, { ability: investigation, dc: 12 }]"
 	wantFind := []encounter.CheckApproach{
 		{Ability: "perception", DC: 15},
@@ -344,36 +343,44 @@ func (s *CompileSuite) TestAConcealedDoorCarriesItsFindCheckThrough() {
 
 	hidden := s.load(s.secretTomb(find))
 	s.Equal(encounter.DoorLocked, hidden.Field.Doors[1].State.Kind(),
-		"concealment does not displace the lock underneath")
-	s.Equal(wantFind, hidden.Field.Doors[1].Concealed,
+		"the secret does not displace the lock underneath")
+	s.Require().Len(hidden.Field.Concealments, 1)
+	s.Equal(wantFind, hidden.Field.Concealments[0].Checks,
 		"the find approaches, in authored order, priced per route")
-	s.Nil(hidden.Field.Doors[0].Concealed, "and the doorway beside it is untouched")
+	s.Equal([]encounter.DoorID{"reference-tomb/hall-tomb"}, hidden.Field.Concealments[0].Doors,
+		"and the doorway beside it is untouched")
 
+	// A LONE HIDDEN CROSSING: a concealed door touching no concealed room
+	// lowers to a cell-less concealment holding just that door, under the
+	// door's own compiled id.
 	plain := s.load(s.tombWithShortcut(find))
 	s.Equal(encounter.DoorOpen, plain.Field.Doors[0].State.Kind(),
-		"a concealed door can stand open underneath — a hidden passage nobody shut")
-	s.Equal(wantFind, plain.Field.Doors[0].Concealed)
+		"a hidden door can stand open underneath — a hidden passage nobody shut")
+	s.Require().Len(plain.Field.Concealments, 1)
+	s.Equal(encounter.ConcealmentID("reference-tomb/shortcut"), plain.Field.Concealments[0].ID)
+	s.Equal(wantFind, plain.Field.Concealments[0].Checks)
+	s.Empty(plain.Field.Concealments[0].Cells, "a hidden crossing hides no floor of its own")
 
 	shut := s.load(strings.Replace(s.secretTomb(find),
 		"    locked: [{ ability: dex, dc: 12 }]", "    closed: true", 1))
 	s.Equal(encounter.DoorClosed, shut.Field.Doors[1].State.Kind())
-	s.Equal(wantFind, shut.Field.Doors[1].Concealed)
+	s.Equal(wantFind, shut.Field.Concealments[0].Checks)
 }
 
-// TestARegionHidesWithItsDoor — the region half of the same slice
-// (rpg-project#351): the concealed marker is declared on the region, carried
-// opaquely to [encounter.RegionInput.Concealed], and never cascaded — the
-// door beside it stays exactly the door the author wrote.
-func (s *CompileSuite) TestARegionHidesWithItsDoor() {
+// TestARegionAndItsDoorLowerToOneConcealment — the region half of the same
+// lowering (rpg-project#351, reshaped by rpg-project#490). The author still
+// declares the two facts separately, and the two of them become ONE noun:
+// the room's cells and the door that hides them, found by that door's checks.
+func (s *CompileSuite) TestARegionAndItsDoorLowerToOneConcealment() {
 	c := s.load(s.secretTomb("\n    concealed: [{ ability: perception, dc: 15 }]"))
-	s.Equal([]bool{false, false, true},
-		[]bool{c.Field.Regions[0].Concealed, c.Field.Regions[1].Concealed, c.Field.Regions[2].Concealed},
-		"the tomb is the secret; the rooms in front of it say nothing")
+	s.Require().Len(c.Field.Concealments, 1, "the tomb is the secret; the rooms in front of it say nothing")
+	s.Equal(encounter.ConcealmentID("reference-tomb/tomb"), c.Field.Concealments[0].ID,
+		"minted under the dungeon's key, like a door and a record")
+	s.NotEmpty(c.Field.Concealments[0].Cells, "the room's floor hides with it")
+	s.Equal([]encounter.DoorID{"reference-tomb/hall-tomb"}, c.Field.Concealments[0].Doors)
 
 	base := s.load(s.tomb)
-	for i, r := range base.Field.Regions {
-		s.False(r.Concealed, "regions[%d] of the shipping tomb authors no concealment", i)
-	}
+	s.Nil(base.Field.Concealments, "the shipping tomb hides nothing")
 }
 
 // TestCompile_DoorInsideARegionIsLegal — a door need not sit on a seam.

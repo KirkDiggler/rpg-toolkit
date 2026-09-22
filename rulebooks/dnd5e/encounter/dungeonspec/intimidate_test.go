@@ -109,10 +109,9 @@ func TestTheNewKeysAreKnownToTheDecoder(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("a typo is still refused by name", func(t *testing.T) {
-		_, err := dungeonspec.Load([]byte(edited(t, chiefLine,
-			strings.Replace(talkativeChief, "persuade:", "persuasion:", 1))))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "field persuasion not found")
+		source := edited(t, chiefLine, strings.Replace(talkativeChief, "persuade:", "persuasion:", 1))
+		requireDefect(t, decodeDefects(t, source), "place[0].persuasion",
+			`"persuasion" is not a key this build reads`)
 	})
 }
 
@@ -155,11 +154,11 @@ func TestADesignedButUnbuiltWordIsRefusedByName(t *testing.T) {
 }
 
 // A key that is neither an outcome word nor a designed one is still a plain
-// unknown field, so a typo reads as a typo.
+// unknown key, so a typo reads as a typo — at the entry's own path, which is
+// what lets the builder draw it on the row it is about (rpg-project#481).
 func TestATypoInAnEntryIsAnUnknownField(t *testing.T) {
-	_, err := dungeonspec.Load([]byte(onTable(t, `{ intimidated: [ { sez: "hi" } ] }`)))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "field sez not found in type dungeonspec.AnswerSpec")
+	requireDefect(t, decodeDefects(t, onTable(t, `{ intimidated: [ { sez: "hi" } ] }`)),
+		"place[0].on.intimidated[0].sez", `"sez" is not a key this build reads`)
 }
 
 // Two words in one entry is refused, so an author never has to guess which

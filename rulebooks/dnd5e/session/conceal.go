@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // conceal.go is THE SEAM'S HALF OF CONCEALMENT (living-world slice 1, wave 1b
@@ -31,7 +32,7 @@ import (
 // STAGED BY THE VERB, BEFORE THE COMPOSITION ACTS, and that ordering is a
 // secrecy law rather than a convenience. The composition consults
 // [encounter.CheckResolver] only when the swept region actually holds an
-// unfound concealed door — so a resolver that fetched the record lazily, at
+// unfound concealment — so a resolver that fetched the record lazily, at
 // consult time, would fail a monster searcher (no loadable character) in
 // exactly and only the rooms with something to find, and the refusal itself
 // would answer the question the search asked. Staging up front makes "who
@@ -291,10 +292,10 @@ func (m *Manager) declineStagedOffer(
 }
 
 // witnessSeam is this package's [encounter.Witness]: who currently perceives
-// an open concealed door, answered FROM THE ONE SIGHT SEAM.
+// a hidden door standing open, answered FROM THE ONE SIGHT SEAM.
 //
 // The consistency obligation (review-1373, on the record): Sight and Witness
-// must agree, because a Sight that sees through an open concealed door while
+// must agree, because a Sight that sees through an open hidden door while
 // Witness denies perception would deliver a hidden-floor percept with no
 // reveal. This seam earns the agreement structurally rather than by promise —
 // the three predicates below are [encounter]'s own percept predicates,
@@ -310,9 +311,27 @@ func (m *Manager) declineStagedOffer(
 //     member exactly at the edge of your sight is inside it"), applied
 //     through [encounter.Encounter.Distance] — the same grid metric.
 //
-// A member perceives the door when they see EITHER endpoint of ANY of its
-// crossings — the cells the composition hands over as "the cells a perceiver
-// would have to see".
+// # Either geometry, one question (rpg-project#490, E7)
+//
+// A door stands in exactly one of two geometries and the composition fills
+// exactly one of [encounter.PerceiversInput]'s two lists to say which: Edges
+// for a door on a crossing, Cells for a footprint door's rectangle. BOTH ARE
+// READ HERE, and they collapse into one question — "which cells would a
+// perceiver have to see?" — because the answer is the same for both: an
+// edge's two endpoints are cells, and a rectangle's footprint is cells, and
+// the three predicates above take a cell either way.
+//
+// Reading only Edges would be the failure this module refuses everywhere
+// else. A footprint door fills Cells and leaves Edges empty, so an
+// Edges-only loop would fall through and answer "nobody" — a secret that
+// could never be perceived by anyone, silently, no matter who stood in front
+// of it. Hence a shared helper rather than a second loop: a rule written
+// twice is a rule that drifts, and the drift would be invisible.
+//
+// A member perceives the door when they see ANY ONE of those cells. For an
+// edge door that is the pre-existing law ("either endpoint of any crossing")
+// unchanged, and for a footprint door it is the same reach the composition's
+// own derivation and probe law ask of a rectangle.
 //
 // Calling back into the live encounter from inside its own verb is the
 // established reentrancy pattern ([strikerSeam] reads Members and Records
@@ -323,6 +342,24 @@ type witnessSeam struct {
 
 // compile-time proof the seam satisfies what it is handed to.
 var _ encounter.Witness = witnessSeam{}
+
+// perceptibleCells is the cells a perceiver would have to see for this door,
+// whichever geometry it stands in: both endpoints of every crossing for an
+// edge door, the rectangle's own cells for a footprint door.
+//
+// The composition fills exactly one of the two lists ([encounter.PerceiversInput]),
+// so in practice exactly one branch contributes — but nothing here depends on
+// that, which is deliberate: a door that somehow arrived with both would be
+// answered about both rather than half-answered about one.
+func perceptibleCells(in *encounter.PerceiversInput) []spatial.Position {
+	out := make([]spatial.Position, 0, 2*len(in.Edges)+len(in.Cells))
+	for _, edge := range in.Edges {
+		out = append(out, edge.From, edge.To)
+	}
+	out = append(out, in.Cells...)
+
+	return out
+}
 
 // Perceivers reports which members currently perceive the door. See the
 // type's own doc for where each predicate comes from.
@@ -345,15 +382,14 @@ func (w witnessSeam) Perceivers(in *encounter.PerceiversInput) ([]encounter.Memb
 		return nil, err
 	}
 
+	want := perceptibleCells(in)
+
 	var out []encounter.MemberID
 	for _, member := range roster {
-		cells := reach[member.ID]
-		for _, edge := range in.Edges {
-			seesFrom := enc.Distance(member.Position, edge.From) <= float64(cells) &&
-				!canvas.IsLineOfSightBlocked(member.Position, edge.From)
-			seesTo := enc.Distance(member.Position, edge.To) <= float64(cells) &&
-				!canvas.IsLineOfSightBlocked(member.Position, edge.To)
-			if seesFrom || seesTo {
+		feet := reach[member.ID]
+		for _, cell := range want {
+			if enc.Distance(member.Position, cell) <= float64(feet) &&
+				!canvas.IsLineOfSightBlocked(member.Position, cell) {
 				out = append(out, member.ID)
 				break
 			}

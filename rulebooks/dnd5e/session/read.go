@@ -35,6 +35,21 @@ type AtlasInput struct {
 type AtlasOfInput struct {
 	// World is the authored content to describe. Required.
 	World *encounter.EncounterData
+
+	// Dungeon is the content key [AtlasOfInput.World] was loaded under, and
+	// it reaches [Atlas.DungeonKey] unchanged — the same field
+	// [Manager.Atlas] fills from the session record, filled here from what
+	// the caller passed because there is no record to ask (rpg-project#479).
+	//
+	// THE ECHO IS THE POINT. An author previewing an entry it has just
+	// compiled gets back the same map a player will get, key included, so
+	// one client code path draws both. Nothing is looked up to produce it:
+	// this is the caller's own string handed back, and a caller that passes
+	// a key naming some other entry is told that key, because this package
+	// has no way to know and no business guessing.
+	//
+	// Optional. Empty means no key was given and the atlas carries none.
+	Dungeon string
 }
 
 // StatusInput asks whether a session's encounter is still running.
@@ -185,7 +200,7 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 //
 // Knowledge truth rather than construction truth now: unchanged by movement,
 // joins, exits or endings, and PATCHED by the member's own reveal beats
-// (EventDoorRevealed, EventRegionRevealed) — the load-once, beat-refreshed
+// (EventConcealmentRevealed) — the load-once, beat-refreshed
 // shape. For a world with no concealment nothing is ever withheld and the
 // answer is the whole map, exactly as before.
 //
@@ -194,6 +209,13 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 // question (rpg-toolkit#1375); [Manager.AtlasOf] still answers whole for an
 // authored world no session holds, which is the author's question, not a
 // member's.
+//
+// AND IT NAMES THE DUNGEON, NOT THE ROOM'S APPEARANCE. [Atlas.DungeonKey]
+// carries the content key this session was launched under, read off the
+// SESSION RECORD rather than off the map, because the composition was never
+// told which authored file its field came from. What the room looks like is
+// content served by that key, and this seam stopped carrying the authored
+// scene when the engine did (rpg-project#479).
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, or ErrNoMember if the member is not in this encounter.
@@ -204,7 +226,7 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 	if in.Member == "" {
 		return nil, fmt.Errorf("atlas: %w", ErrNoMemberID)
 	}
-	enc, err := m.open(ctx, in.Session)
+	enc, data, err := m.openWithRecord(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("atlas: %w", err)
 	}
@@ -214,10 +236,12 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 		return nil, fmt.Errorf("atlas: %w", translate(err))
 	}
 
-	projected, err := projectAtlas(atlas)
-	if err != nil {
-		return nil, fmt.Errorf("atlas: %w", err)
-	}
+	projected := projectAtlas(atlas)
+	// The key is the RECORD's, not the composition's — which is why this is
+	// the one read that opens with its session record in hand. The map says
+	// what the floor is; the record says which authored file that floor was
+	// compiled from, and a host fetches the room's appearance by it.
+	projected.DungeonKey = data.Dungeon
 	return &projected, nil
 }
 
@@ -239,6 +263,12 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 // the other four, which is exactly the defaulted capability this stack
 // forbids.
 //
+// [AtlasOfInput.Dungeon] is the one thing this read cannot derive: there is no
+// session record to ask which entry the world came from, so the caller's own
+// key is echoed onto [Atlas.DungeonKey] — the same field [Manager.Atlas]
+// fills from the record, so a preview and a live map name their dungeon the
+// same way (rpg-project#479).
+//
 // Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil world or one
 // that will not load.
 func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error) {
@@ -255,10 +285,11 @@ func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error)
 		return nil, fmt.Errorf("atlasof: %w", translate(err))
 	}
 
-	projected, err := projectAtlas(atlas)
-	if err != nil {
-		return nil, fmt.Errorf("atlasof: %w", err)
-	}
+	projected := projectAtlas(atlas)
+	// No record to ask, so the caller's own key is echoed back — the same
+	// field [Manager.Atlas] fills from the session record, so what a builder
+	// previews is what the game will play, key included.
+	projected.DungeonKey = in.Dungeon
 	return &projected, nil
 }
 
@@ -466,14 +497,33 @@ func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]Event, error) {
 // Every read verb begins here and none of them saves: S4's save step is simply
 // empty for a read, and S1 holds — nothing is retained after the call.
 func (m *Manager) open(ctx context.Context, sessionID string) (*encounter.Encounter, error) {
+	enc, _, err := m.openWithRecord(ctx, sessionID)
+	return enc, err
+}
+
+// openWithRecord is [Manager.open] with the session record handed back beside
+// the world it points at, for a read whose answer is made of both.
+//
+// [Manager.Atlas] is the only one: the map is the composition's and the
+// dungeon key is the record's, and neither can answer for the other. Every
+// other read takes [Manager.open], because holding a record a verb does not
+// read is how a fact from the table quietly starts deciding something about
+// the world.
+func (m *Manager) openWithRecord(
+	ctx context.Context, sessionID string,
+) (*encounter.Encounter, *SessionData, error) {
 	if sessionID == "" {
-		return nil, ErrNoSessionID
+		return nil, nil, ErrNoSessionID
 	}
 	data, err := m.loadSessionData(ctx, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return m.loadWorld(ctx, data)
+	enc, err := m.loadWorld(ctx, data)
+	if err != nil {
+		return nil, nil, err
+	}
+	return enc, data, nil
 }
 
 // loadSessionData fetches session state, translating the repository's
@@ -716,6 +766,22 @@ func translate(err error) error {
 		// Loot's ordinary refusal: the body is up. Nothing to hide, so this
 		// says what it means (rpg-project#368 §4.2).
 		return fmt.Errorf("%w", ErrNotDown)
+	case errors.Is(err, encounter.ErrNotATarget):
+		// An attack pointed at a world NPC (rpg-project#493, R4). The
+		// composition refuses it at both its own doors — a recorded outcome
+		// and a cast carrying an attack roll — and this is the seam's word
+		// for the same fact.
+		//
+		// NO VERB DRIVES THIS ARM TODAY, and that is deliberate rather than
+		// unnoticed. Every candidate universe on this side already drops
+		// KindWorld members (excludeWorldNPCs), so a swing at a merchant is
+		// refused here, by name, before the composition is asked — Attack's
+		// own gate, which exists because ErrStaleDeclaration was the wrong
+		// sentence for a refusal that can never change. The arm is the same
+		// promise the resolution table below makes: an unmapped sentinel is
+		// a leak the moment its path opens, and the exclusion above it is a
+		// convenience, not a law of this boundary.
+		return fmt.Errorf("%w", ErrNotATarget)
 	case errors.Is(err, encounter.ErrNoProp):
 		// THE PROBE LAW SURVIVES THE SEAM. The composition already answers
 		// every refusal about a prop the member cannot see with a bare

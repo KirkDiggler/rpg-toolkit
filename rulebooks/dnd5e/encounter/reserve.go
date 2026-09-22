@@ -188,6 +188,21 @@ func (f *field) validatePropArrivals() error {
 			return err
 		}
 	}
+	// AND THE FOOTPRINTS (rpg-toolkit#1854). A placed contributor waits on
+	// the same predicate grammar for the same reason, so it meets the same
+	// liveness rule and earns the same sentence — "prop %q's arrival" rather
+	// than a second wording, because an author who wrote `arrives:` under
+	// propBindings wrote the same key.
+	for i := range f.placed {
+		p := &f.placed[i]
+		if p.arrives == nil {
+			continue
+		}
+		if err := f.validatePredicate(fmt.Sprintf("prop %q's arrival", p.id), p.arrives, ErrNoField); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -256,6 +271,23 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 			continue
 		}
 		if err := e.arriveProp(i, cause, at); err != nil {
+			return err
+		}
+	}
+	// AND THE FOOTPRINTS, in authored order after the legacy props
+	// (rpg-toolkit#1854). Same reserve, same predicate, same fact and same
+	// beat; the difference is only what "placed" means for a rectangle —
+	// see [Encounter.arrivePlacedProp].
+	for i := range e.field.placed {
+		p := &e.field.placed[i]
+		if p.arrives == nil || placements[p.id].arrived {
+			continue
+		}
+		cause, ok := holds(p.arrives)
+		if !ok {
+			continue
+		}
+		if err := e.arrivePlacedProp(p, cause, at); err != nil {
 			return err
 		}
 	}
@@ -439,6 +471,49 @@ func propEntityOf(index int, p PropInput) *propEntity {
 		blocksMovement:    *p.BlocksMovement,
 		blocksLineOfSight: *p.BlocksLineOfSight,
 	}
+}
+
+// arrivePlacedProp brings one reserved footprint onto the floor
+// (rpg-toolkit#1854) — then the fact, then the beat, exactly as
+// [Encounter.arriveProp] does for a legacy prop.
+//
+// NOTHING IS PLACED AND NOTHING IS SEARCHED FOR. A legacy prop is a canvas
+// entity on one cell, so its arrival takes a cell and looks for a free one
+// when something stands there. A placed contributor is not an entity and is
+// not on the canvas at all: it is a rectangle the four queries measure, it
+// needs no floor under it, and two of them may overlap. So its arrival is
+// nothing but the fact — from the moment it is appended, standing, crossing,
+// sight and the atlas all see the rectangle its author drew, because all
+// four read the same fold ([placedFold.stands]).
+//
+// The cell the fact names is [field.placedCells]' first, which is where the
+// thing stands. It is what the `arrived` beat carries so a client can point
+// at the right hex, and it is never read back as the placement's pose — a
+// rectangle that came is at its authored origin, and only a DROP moves one.
+//
+// THE EMPTY GUARD IS UNREACHABLE, and said out loud rather than left for the
+// next reader to test. [field.placedCells] unions the covered centres with
+// the cell the rectangle's own centre lies in, and compileRegions refuses a
+// field with no cells, so the set is never empty for a compiled field — no
+// test kills the branch, and a mutation pass says so. It stays because the
+// alternative is indexing a slice on the strength of an argument made
+// somewhere else.
+func (e *Encounter) arrivePlacedProp(p *placedContributor, cause string, at uint64) error {
+	cells := e.field.placedCells(p.placement)
+	if len(cells) == 0 {
+		return fmt.Errorf("arrival of prop %q: its footprint stands on no cell of this field: %w",
+			p.id, ErrBadPlacement)
+	}
+	if _, err := e.holdings.log.Append(journal.Fact{
+		Kind:    arrivedKind(p.id, cells[0]),
+		Actor:   journal.EntityID(p.id),
+		Subject: propSubject(p.id),
+		Outcome: journal.Outcome{Detail: cause},
+	}); err != nil {
+		return fmt.Errorf("arrival of prop %q: %w", p.id, err)
+	}
+
+	return e.appendArrivedBeat(p.id, ArrivedProp, cells[0], at)
 }
 
 // onFall is the `{ down }` question: the member this predicate waits on is

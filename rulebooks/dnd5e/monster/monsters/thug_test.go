@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
@@ -44,16 +45,22 @@ func (s *ThugTestSuite) TestNewThug() {
 	speed := thug.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// The component attacks remain; multiattack waits for a sequence profile.
-	// Melee first, so a thug standing over you swings rather than shoots.
+	// Multiattack first, then the components. Melee before ranged among
+	// those, so a thug standing over you swings rather than shoots.
 	actions := thug.Actions()
-	s.Require().Len(actions, 2)
-	s.Equal(refs.Weapons.Mace(), &actions[0].Ref)
-	s.Equal(refs.Weapons.HeavyCrossbow(), &actions[1].Ref)
+	s.Require().GreaterOrEqual(len(actions), 3)
+	s.Equal(refs.MonsterActions.ThugMultiattack(), &actions[0].Ref)
+	s.Require().NotNil(actions[0].Sequence)
+	s.Equal([]combatActions.SequenceStep{
+		{Action: *refs.Weapons.Mace()},
+		{Action: *refs.Weapons.Mace()},
+	}, actions[0].Sequence.Steps, "two melee attacks, and the mace is the only melee weapon a thug carries")
+	s.Equal(refs.Weapons.Mace(), &actions[1].Ref)
+	s.Equal(refs.Weapons.HeavyCrossbow(), &actions[2].Ref)
 }
 
 func (s *ThugTestSuite) TestThugTraits() {
-	// Thugs have Pack Tactics; their mace remains available while sequence attacks are deferred.
+	// Thugs have Pack Tactics, and their mace is what their Multiattack swings.
 	thug := NewThug("thug-1")
 	s.Require().NotNil(thug)
 

@@ -128,17 +128,21 @@ func heirloomWorld(t fataler, holds bool) *encounter.EncounterData {
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
-				concealRegion(rectRegion("vault", 6, 0, 6, 6)),
+				rectRegion("vault", 6, 0, 6, 6),
 			},
-			Walls: axialSeam(0),
+			Walls:        axialSeam(0),
+			Concealments: []encounter.ConcealmentInput{vaultConcealment()},
 			Intel: []encounter.IntelRecord{
-				{ID: veilMap, Reveals: encounter.RevealTargets{Door: "veil"}},
+				// A RECORD NAMES THE SECRET, NOT THE HINGE (rpg-project#490
+				// R7). `Reveals.Door` was what this reached for and could
+				// never quite say: the map is worth looting because it gives
+				// away the VAULT, and a door nothing hides gives away nothing.
+				{ID: veilMap, Reveals: encounter.RevealTargets{Concealment: vaultSecret}},
 			},
 			Doors: []encounter.DoorInput{{
-				ID:        "veil",
-				Edges:     []encounter.DoorEdge{{From: cell(5, 0), To: cell(6, 0)}},
-				State:     encounter.DoorIsClosed(),
-				Concealed: veilFind(),
+				ID:    "veil",
+				Edges: []encounter.DoorEdge{{From: cell(5, 0), To: cell(6, 0)}},
+				State: encounter.DoorIsClosed(),
 			}},
 			Props: []encounter.PropInput{
 				holdable(heirloomID, "dnd5e:props:reliquary", heirloomCell),

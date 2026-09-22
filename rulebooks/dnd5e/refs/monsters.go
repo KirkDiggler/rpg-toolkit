@@ -25,6 +25,7 @@ var (
 	monsterBanditCaptain = &core.Ref{Module: Module, Type: TypeMonsters, ID: "bandit-captain"}
 	monsterThug          = &core.Ref{Module: Module, Type: TypeMonsters, ID: "thug"}
 	monsterGoblin        = &core.Ref{Module: Module, Type: TypeMonsters, ID: "goblin"}
+	monsterGoblinBoss    = &core.Ref{Module: Module, Type: TypeMonsters, ID: "goblin-boss"}
 
 	// Constructs
 	monsterAnimatedArmor = &core.Ref{Module: Module, Type: TypeMonsters, ID: "animated-armor"}
@@ -57,6 +58,10 @@ func (n monstersNS) BanditArcher() *core.Ref  { return monsterBanditArcher }
 func (n monstersNS) BanditCaptain() *core.Ref { return monsterBanditCaptain }
 func (n monstersNS) Thug() *core.Ref          { return monsterThug }
 func (n monstersNS) Goblin() *core.Ref        { return monsterGoblin }
+
+// GoblinBoss returns the goblin boss's ref. The first monster in the set
+// whose stat block carries a Multiattack the engine can run.
+func (n monstersNS) GoblinBoss() *core.Ref { return monsterGoblinBoss }
 
 // Constructs
 

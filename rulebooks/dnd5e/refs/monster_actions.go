@@ -16,6 +16,18 @@ var (
 	monsterActionSkeletonCaptainLongsword = monsterActionRef("skeleton-captain-longsword")
 	monsterActionWolfBite                 = monsterActionRef("wolf-bite")
 	monsterActionZombieSlam               = monsterActionRef("zombie-slam")
+
+	// The multiattack scripts. A sequence is AUTHORED CONTENT even when
+	// every step it names is a catalog weapon: "two scimitar attacks, the
+	// second at disadvantage" is the goblin boss's own line and no weapon
+	// entry describes it. That is why these have members here while the
+	// scimitar and the mace they name do not (rpg-project#448).
+	monsterActionAnimatedArmorMultiattack   = monsterActionRef("animated-armor-multiattack")
+	monsterActionBrownBearMultiattack       = monsterActionRef("brown-bear-multiattack")
+	monsterActionGhoulMultiattack           = monsterActionRef("ghoul-multiattack")
+	monsterActionGoblinBossMultiattack      = monsterActionRef("goblin-boss-multiattack")
+	monsterActionSkeletonCaptainMultiattack = monsterActionRef("skeleton-captain-multiattack")
+	monsterActionThugMultiattack            = monsterActionRef("thug-multiattack")
 )
 
 func monsterActionRef(id string) *core.Ref {
@@ -72,3 +84,27 @@ func (monsterActionsNS) WolfBite() *core.Ref { return monsterActionWolfBite }
 
 // ZombieSlam returns the zombie's slam definition ref.
 func (monsterActionsNS) ZombieSlam() *core.Ref { return monsterActionZombieSlam }
+
+// AnimatedArmorMultiattack returns the animated armor's two-slam sequence ref.
+func (monsterActionsNS) AnimatedArmorMultiattack() *core.Ref {
+	return monsterActionAnimatedArmorMultiattack
+}
+
+// BrownBearMultiattack returns the brown bear's bite-and-claw sequence ref.
+func (monsterActionsNS) BrownBearMultiattack() *core.Ref { return monsterActionBrownBearMultiattack }
+
+// GhoulMultiattack returns the ghoul's bite-and-claw sequence ref.
+func (monsterActionsNS) GhoulMultiattack() *core.Ref { return monsterActionGhoulMultiattack }
+
+// GoblinBossMultiattack returns the goblin boss's two-scimitar sequence ref.
+func (monsterActionsNS) GoblinBossMultiattack() *core.Ref {
+	return monsterActionGoblinBossMultiattack
+}
+
+// SkeletonCaptainMultiattack returns the skeleton captain's two-longsword sequence ref.
+func (monsterActionsNS) SkeletonCaptainMultiattack() *core.Ref {
+	return monsterActionSkeletonCaptainMultiattack
+}
+
+// ThugMultiattack returns the thug's two-mace sequence ref.
+func (monsterActionsNS) ThugMultiattack() *core.Ref { return monsterActionThugMultiattack }

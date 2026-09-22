@@ -148,14 +148,14 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step append beat: %w", err)
 	}
 
-	// Crossing a concealed door is perceiving it (rpg-toolkit#1371): a
-	// member who just walked through one knows it now, whatever the
-	// witness would have said — and an open door crossed is an open door
-	// perceived, so the region behind it arrives with it. After the moved
-	// beat (the cause), before the refresh (whose sweep would attribute
-	// this to perception or miss it entirely in the dark).
-	if err := e.learnCrossedDoors(in.Member, action.doors, at); err != nil {
-		return nil, fmt.Errorf("step crossed doors: %w", err)
+	// Crossing INTO a concealment is perceiving it (rpg-toolkit#1371,
+	// rpg-project#490): a member who just walked through a hidden door, or
+	// onto floor a concealment hides, knows the secret now, whatever the
+	// witness would have said about the light. After the moved beat (the
+	// cause), before the refresh (whose sweep would attribute this to
+	// perception or miss it entirely in the dark).
+	if err := e.learnCrossedConcealment(in.Member, action.doors, action.to, at); err != nil {
+		return nil, fmt.Errorf("step crossed concealment: %w", err)
 	}
 
 	// THE WORLD'S PRICE FOR A WALK, paid after the step has landed and before
@@ -261,10 +261,44 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 			return executedAction{}, fmt.Errorf("crossing from %v into %v: %w", here, to, cerr)
 		}
 		if prop != "" {
+			// A SHUT DOOR REFUSES AS A DOOR, whichever geometry it stands in
+			// (rpg-project#485, R1). A footprint door registers no boundary,
+			// so it comes back through the crossing fold as the thing in the
+			// way — and a caller told "the crossing is through
+			// front-room/cellar-door" cannot tell that the answer is to open
+			// it. The sentences and the sentinels are the edge door's own,
+			// below; this is the same law reaching the second geometry.
+			if door := e.field.doorAcrossCrossing(here, to); door != nil {
+				return executedAction{}, shutDoorRefusal(door)
+			}
 			return executedAction{}, fmt.Errorf("the crossing from %v into %v is through %q: %w",
 				here, to, prop, ErrBadPlacement)
 		}
 		crossingBlocked = crossed
+
+		// THE MASQUERADE IS GEOMETRY FOR WHOEVER CANNOT SEE PAST IT
+		// (rpg-project#490, E7). A crossing this member's own atlas draws as
+		// wall refuses their step as a wall does — with the CANVAS'S OWN
+		// SENTENCE, byte for byte, because a refusal that read differently
+		// would let a guesser walk the perimeter and find the secret by the
+		// error message.
+		//
+		// BEFORE THE DESTINATION CHECK, which is this file's existing law
+		// stated one case wider: what is in the way is answered before what
+		// is on the cell, so a creature standing in the hidden room is never
+		// named by a refusal the mover earned at its wall.
+		//
+		// A DRIVEN WALK IS NOT GATED HERE and needs no flag to say so: a
+		// push reveals the secret to the mover BEFORE the step it is about
+		// to take ([Encounter.walkPath]), so by the time this runs the wall
+		// is not a wall to them any more. Being shoved through it is the
+		// illusion breaking, which is the whole of what a forced move
+		// through a secret means.
+		if e.masqueradeBlocks(member.ID, here, to) {
+			return executedAction{}, fmt.Errorf(
+				"movemember: %w: entity %s cannot cross movement-blocking boundary from %v to %v",
+				ErrBadPlacement, member.ID, here, to)
+		}
 	}
 
 	// WHAT IS IN THE WAY IS ANSWERED BEFORE WHAT IS ON THE CELL. A shut door
@@ -283,6 +317,12 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// the way a door always has.
 
 	if fact := e.CellAt(CellAtInput{Cell: to, Mover: member.ID}); fact.Passage == PassageBlocked && !crossingBlocked {
+		// THE DESTINATION IS A SHUT DOOR'S OWN CELL when a footprint door
+		// covers it — the same refusal a crossing through one earns, because
+		// it is the same door and the same answer: open it.
+		if door := e.field.doorStandingOn(to); door != nil {
+			return executedAction{}, shutDoorRefusal(door)
+		}
 		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
 	}
 
@@ -313,7 +353,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 					continue
 				}
 				// THE MOVE LAW (rpg-project#351, Wave 1b pin): a step
-				// stopped by a concealed door the mover has not found is
+				// stopped by a hidden door the mover has not found is
 				// refused with spatial's own sentence — byte-identical to
 				// walking into a wall, which is what the mover believes is
 				// there. Naming the door, its state, or its DC would
@@ -321,7 +361,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 				// this door is the first blocking crossing, so it IS what
 				// stopped the step, and attributing the refusal to some
 				// later door would be the story lying.
-				if e.world != nil && door.concealed != nil && !e.world.knowsDoor(member.ID, door.id) {
+				if e.hiddenDoorTo(member.ID, door.id) {
 					break
 				}
 				// Three cases, three sentinels (rpg-toolkit#1135): a locked
@@ -329,10 +369,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 				// OpenDoor's refusal does; a merely-shut door is its own
 				// answer; and ErrBadPlacement goes back to meaning what its
 				// name says — the position itself is not usable.
-				if lock, locked := door.state.Lock(); locked {
-					return executedAction{}, fmt.Errorf("door %q is locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
-				}
-				return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrDoorShut)
+				return executedAction{}, shutDoorRefusal(door)
 			}
 		}
 
@@ -340,11 +377,21 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	}
 
 	action := executedAction{member: member, from: from, to: to}
-	for _, door := range e.doorsAlong(from, to) {
-		action.doors = append(action.doors, CrossedDoor{ID: door.id, State: door.state.Kind()})
-	}
+	action.doors = e.crossedDoors(from, to)
 
 	return action, nil
+}
+
+// crossedDoors is every door a move from one cell to another passes through,
+// as the step reports them — [Encounter.doorsAlong] in the shape a beat and
+// the concealment cause both read.
+func (e *Encounter) crossedDoors(from, to spatial.Position) []CrossedDoor {
+	var out []CrossedDoor
+	for _, door := range e.doorsAlong(from, to) {
+		out = append(out, CrossedDoor{ID: door.id, State: door.state.Kind()})
+	}
+
+	return out
 }
 
 // stepTo is the pump's way in: the same step, refused SILENTLY.
