@@ -235,3 +235,8 @@ var conditionDivineFavor = &core.Ref{Module: Module, Type: TypeConditions, ID: "
 
 // DivineFavor returns the caster's concentration-owned radiant weapon bonus.
 func (n conditionsNS) DivineFavor() *core.Ref { return conditionDivineFavor }
+
+var conditionInFog = &core.Ref{Module: Module, Type: TypeConditions, ID: "in_fog"}
+
+// InFog returns membership in a source-qualified Fog Cloud area, not Blinded.
+func (n conditionsNS) InFog() *core.Ref { return conditionInFog }

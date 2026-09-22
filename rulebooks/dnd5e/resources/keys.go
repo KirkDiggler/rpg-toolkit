@@ -118,6 +118,8 @@ func SpellSlotLevel(spellLevel int) (coreResources.ResourceKey, bool) {
 // therefore cannot become valid-looking status rows by accident.
 func DisplayName(key coreResources.ResourceKey) (string, bool) {
 	switch key {
+	case WrathOfTheStorm:
+		return "Wrath of the Storm", true
 	case RageCharges:
 		return "Rage", true
 	case Ki:

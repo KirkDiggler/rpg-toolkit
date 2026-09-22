@@ -68,6 +68,19 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	var condition dnd5eEvents.ConditionBehavior
 
 	switch ref.ID {
+	case refs.Conditions.InFog().ID:
+		var cfg struct {
+			SourceID string `json:"source_id"`
+		}
+		if err = json.Unmarshal(input.Config, &cfg); err != nil {
+			break
+		}
+		var source *core.Ref
+		source, err = core.ParseString(input.SourceRef)
+		if err == nil {
+			condition, err = NewInFogCondition(NewInFogConditionInput{MemberID: input.MemberID, SourceID: cfg.SourceID, SourceRef: source})
+		}
+
 	case refs.Conditions.UnarmoredDefense().ID:
 		condition, err = createUnarmoredDefense(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Raging().ID:
