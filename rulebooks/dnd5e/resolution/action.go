@@ -83,6 +83,16 @@ type ActionInput struct {
 	// word nobody can obey.
 	Option string
 
+	// Components are the ACTOR's own action definitions, for a definition
+	// carrying a [combatActions.SequenceProfile]. Ignored by every other arm.
+	//
+	// A SEQUENCE IS A SCRIPT OVER A REPERTOIRE, so the steps name refs and
+	// the definitions those refs mean have to arrive from whoever holds the
+	// actor — this package loads no sheets and reads no stat blocks. Supply
+	// the actor's whole list, the sequence definition included; a missing
+	// component is refused at this door rather than skipped mid-swing.
+	Components []combatActions.Definition
+
 	Roller dice.Roller
 }
 
@@ -129,6 +139,9 @@ func NewAction(in *ActionInput) (Machine, error) {
 	}
 	if in.Definition.Cast != nil {
 		return newCast(in, targetIDs)
+	}
+	if in.Definition.Sequence != nil {
+		return newSequence(in, targetIDs)
 	}
 	return nil, fmt.Errorf("%w: definition %q has no supported profile", ErrBadAction, in.Definition.Ref.String())
 }

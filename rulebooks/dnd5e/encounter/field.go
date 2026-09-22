@@ -125,10 +125,18 @@ type DispositionInput struct {
 	// Stance is the declared posture, one of the closed [Stance] set.
 	Stance Stance
 
-	// Until is the predicate that ends hostility: when it holds, the pair's
-	// stance is [StanceNeutral] (R2). LEGAL ONLY WITH [StanceHostile] — a
-	// neutral or allied pair has nothing to stop doing — and refused
-	// otherwise (ErrNoFaction). Nil means the stance is static.
+	// Until is the predicate that TURNS the pair: when it holds, the stance
+	// becomes the OTHER of hostile and neutral (rpg-project#493, R1) — a
+	// hostile pair goes neutral, a neutral pair goes hostile. REFUSED ON
+	// [StanceAllied] (ErrNoFaction): an allied pair has nothing to become.
+	// Nil means the stance is static.
+	//
+	// ONE UNTIL PER PAIR, and one disposition per pair, so a pair turns at
+	// most once by authoring and never oscillates. What is NOT authored is
+	// the aggression law (R3): a neutral pair somebody attacks across turns
+	// hostile whether or not it has an until, and a pair its own until
+	// already turned neutral turns hostile again if the truce is then
+	// broken.
 	//
 	// A [Trigger], because a predicate IS the sealed set endings already
 	// use: `{ fact: x }` is a [TriggerFact], `{ down: chief }` a
@@ -165,8 +173,8 @@ type Lighting struct {
 // region lists the cells it owns, absolute, and the field's floor is the union
 // of every region's cells plus [FieldInput.Scenery], the cells that belong to
 // nobody (rpg-project#360); every other cell on the canvas is void. Only a
-// region's cells are STANDABLE, and only a region's cells carry lighting, an
-// archetype and concealment — those are what having an owner means. A cell in
+// region's cells are STANDABLE, and only a region's cells carry lighting and
+// an archetype — those are what having an owner means. A cell in
 // two regions is refused (W2, ErrRegionOverlap), a region with no cells is
 // refused (ErrRegionEmpty), and there is no other floor.
 //
@@ -222,20 +230,11 @@ type RegionInput struct {
 	// default.
 	Lighting *Lighting
 
-	// Concealed is whether this region is authored as hidden space — the
-	// room that "appears to be a wall unless it is found" (rpg-project#351:
-	// the room hides with its door). DECLARED, never cascaded from a
-	// concealed door: the two are separate authored facts, moved together
-	// by choice, and the content compiler refuses the incoherent
-	// combinations before they reach this seam.
-	//
-	// CARRIED, NOT INTERPRETED — [DoorInput.Concealed]'s law: nothing in
-	// this composition's geometry or projection reads it; withholding a
-	// concealed region from a non-knower's atlas is the world layer's work
-	// (wave 1b). False is the zero value telling the truth: a region that
-	// said nothing was never concealed, which is every region authored
-	// before concealment existed.
-	Concealed bool
+	// A REGION NO LONGER SAYS WHETHER IT IS HIDDEN (rpg-project#490). It
+	// carried `Concealed bool` until the concealment primitive landed, and
+	// what replaced it is [FieldInput.Concealments] — a concealment listing
+	// the region's cells hides exactly what the flag hid, and hides doors
+	// and props beside them, which the flag could not.
 }
 
 // PropInput is one thing standing in a room that is not a creature: a pillar,
@@ -333,8 +332,7 @@ type PropInput struct {
 	//
 	// A record this field does not declare is refused at construction
 	// (ErrNoIntel). A prop that carries records need NOT be [Holdable] —
-	// authoring one that nobody can pick up is inert, not an error, the same
-	// call [RevealTargets.Door] makes about an unconcealed door.
+	// authoring one that nobody can pick up is inert, not an error.
 	Holds []IntelID
 
 	// Holdable is whether a member can pick this prop up (design §5).
@@ -512,22 +510,6 @@ type SegmentInput struct {
 // make its floor, and the props, walls and doors standing on it
 // (rpg-project#256).
 type FieldInput struct {
-	// RoomScene is the lossless presentation authored alongside a v3 room
-	// (issue #1753). VALIDATED AND SNAPSHOT at construction — the ONE
-	// validator ([ValidateRoomScene], room_scene_validate.go, the same walk
-	// the source decoder delegates to) runs at both construction seams, and
-	// the compiled field deep-copies it, so a caller editing their scene
-	// pointer afterwards cannot change a running field, a saved blob or an
-	// atlas. Nil is legal and means a field without one — every field
-	// authored before v3 — and nil it stays on every carrier it rides.
-	//
-	// A field carrying one is SINGLE-ROOM v3 content: one unconcealed
-	// region, no concealed structure anywhere (the scene is one room's full
-	// layout, and no member projection of it beside hidden space is honest —
-	// the unsupported combinations are refused by name, never
-	// half-filtered). Gameplay geometry never reads it.
-	RoomScene *RoomScenePresentation
-
 	// Canvas is what this field DECLARES about the map its regions paint:
 	// what the space between them does to a sightline, and which way its
 	// hexes point. Both REQUIRED: see [Void] and [Orientation] for why this
@@ -554,9 +536,10 @@ type FieldInput struct {
 	//   - STANDABLE is the regions alone. A member seat, a step and an
 	//     ending's trigger cell are all refused on scenery exactly as they
 	//     are refused in the void.
-	//   - OWNER decides visibility and meaning — concealment, lighting,
-	//     archetype — and scenery has none, so it is in EVERY member's
-	//     [Encounter.AtlasFor] and carries no light of its own.
+	//   - OWNER decides meaning — lighting, archetype — and scenery has
+	//     none, so it carries no light of its own. Whether a cell is HIDDEN
+	//     is no longer an owner's answer at all: a [ConcealmentInput] may
+	//     list a scenery cell exactly as it may list an owned one.
 	//   - TRANSPARENT REGARDLESS of [CanvasInput.Void]: scenery is floor, and
 	//     the void declaration is about the space BETWEEN the floor.
 	//
@@ -647,6 +630,18 @@ type FieldInput struct {
 	// shape.
 	Intel []IntelRecord
 
+	// Concealments are the things this field hides, and the checks that
+	// find them (rpg-project#490, concealment.go). Optional; omitted means
+	// the dungeon hides nothing, which is what every field with neither of
+	// the two retired flags was.
+	//
+	// THE ONLY THING IN A FIELD THAT SAYS "HIDDEN". A region no longer
+	// carries a flag and neither does a door; a cell, a door or a prop is
+	// hidden by belonging to one of these, and belongs to at most one.
+	// [CheckResolver] and [Witness] are REQUIRED at construction exactly
+	// when this list is non-empty.
+	Concealments []ConcealmentInput
+
 	// Exits are the authored ways out of this field (rpg-project#368,
 	// design §3.1). Optional; omitted means none, and a field with none
 	// behaves exactly as every field did before this list existed —
@@ -720,24 +715,28 @@ type IntelRecord struct {
 
 // RevealTargets is what an intel record tells whoever learns it.
 //
-// ONE FIELD PER USE CASE, exactly one set. Today that is a door, because the
-// only use case anybody has is the way into the vault. A region, a location,
-// a lock's approach, a camp's disposition — each is a field here, and each
-// arrives WITH the use case that wants it and never ahead of it (design R5).
+// ONE FIELD PER USE CASE, exactly one set. Today that is a concealment and a
+// fact. A location, a lock's approach, a camp's disposition — each is a field
+// here, and each arrives WITH the use case that wants it and never ahead of
+// it (design R5).
 //
 // A STRUCT RATHER THAN AN OPEN MAP, deliberately: a target this build does
 // not understand is a record nothing can apply, and carrying one hopefully
 // would mean a dungeon that loads and a secret that never reveals. Refused
 // at the door instead.
 type RevealTargets struct {
-	// Door is the door this record reveals the way to, or empty. Must name a
-	// door this field declares — refused at construction (ErrNoDoor).
+	// Concealment is the secret this record gives away, or empty. Must name
+	// a concealment this field declares — refused at construction
+	// (ErrNoConcealment).
 	//
-	// A DECLARED BUT UNCONCEALED DOOR IS LEGAL AND INERT, exactly as the
-	// knowledge link it replaced was: revealing the way to a door anyone can
-	// already see tells nobody anything, and refusing it would make this
-	// declaration depend on a fact about a different one.
-	Door DoorID
+	// THIS USED TO BE `Door` (rpg-project#490, R7). A record reveals the
+	// VAULT, not the hinge: "this is what `reveals: { door }` was reaching
+	// for, and it is no longer about doors — it reveals the cells and
+	// everything hidden with them." A door that no concealment holds is a
+	// door anyone can already see, and a record about one told nobody
+	// anything; the target moved to the noun that can be a secret rather
+	// than staying on the one that merely used to carry the flag.
+	Concealment ConcealmentID
 
 	// Fact is the fact this record reveals, or empty (rpg-project#375, the
 	// hold-out design §2) — the second key, arrived with its use case: a
@@ -1377,14 +1376,14 @@ type SetupInput struct {
 	Announcer Announcer
 
 	// CheckResolver resolves an authored find check when a member searches
-	// (rpg-toolkit#1371). REQUIRED exactly when the field carries concealed
-	// structure — a concealed door or region — and refused there at
-	// construction (ErrNoCheckResolver): a concealed door exists to be
-	// searched for, and this module may not roll the find itself
-	// (rpg-toolkit#1033). Unread, and legally nil, for a field with none.
+	// (rpg-toolkit#1371). REQUIRED exactly when the field declares a
+	// [ConcealmentInput], and refused there at construction
+	// (ErrNoCheckResolver): a concealment exists to be searched for, and
+	// this module may not roll the find itself (rpg-toolkit#1033). Unread,
+	// and legally nil, for a field that hides nothing.
 	CheckResolver CheckResolver
 
-	// Witness answers who currently perceives a concealed door standing
+	// Witness answers who currently perceives a concealment's door standing
 	// open (rpg-toolkit#1371). REQUIRED under exactly the same rule as
 	// CheckResolver, refused at the same door (ErrNoWitness): perception's
 	// reach is the host's light-and-sight truth, never this module's guess.

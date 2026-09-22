@@ -45,8 +45,8 @@ func (neverWitnesses) Perceivers(*encounter.PerceiversInput) ([]encounter.Member
 
 // concealedWorld is the smallest field that makes the two capabilities
 // required: a visible hall and a concealed vault beside it. No door and no
-// walls, because fieldHasConcealment is the composition's question and one
-// concealed region already answers it — what this fixture owes the tests
+// walls, because an explicit cell concealment already requires those
+// capabilities — what this fixture owes the tests
 // below is a blob whose load door demands the capabilities, nothing more.
 func concealedWorld(t *testing.T) encounter.EncounterData {
 	t.Helper()
@@ -61,8 +61,12 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 			Canvas: hexCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
-				concealRegion(rectRegion("vault", 6, 0, 6, 6)),
+				rectRegion("vault", 6, 0, 6, 6),
 			},
+			Concealments: []encounter.ConcealmentInput{{
+				ID: "vault-secret", Checks: []encounter.CheckApproach{{Ability: "perception", DC: 12}},
+				Cells: rectRegion("vault", 6, 0, 6, 6).Cells,
+			}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -72,12 +76,6 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 	require.NoError(t, err)
 
 	return enc.ToData()
-}
-
-// concealRegion marks an authored region as hidden space.
-func concealRegion(r encounter.RegionInput) encounter.RegionInput {
-	r.Concealed = true
-	return r
 }
 
 // countingCheckResolver refuses like neverResolves and remembers being asked.

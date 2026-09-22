@@ -5,7 +5,9 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Feature singletons - unexported for controlled access via methods
 var (
-	featureDiscipleOfLife = &core.Ref{Module: Module, Type: TypeFeatures, ID: "disciple_of_life"}
+	featureDiscipleOfLife  = &core.Ref{Module: Module, Type: TypeFeatures, ID: "disciple_of_life"}
+	featureWrathOfTheStorm = &core.Ref{Module: Module, Type: TypeFeatures, ID: "wrath_of_the_storm"}
+
 	// Barbarian
 	featureRage           = &core.Ref{Module: Module, Type: TypeFeatures, ID: "rage"}
 	featureBrutalCritical = &core.Ref{Module: Module, Type: TypeFeatures, ID: "brutal_critical"}
@@ -40,6 +42,9 @@ type featuresNS struct{}
 
 // DiscipleOfLife identifies the Life Domain's leveled-spell healing bonus.
 func (n featuresNS) DiscipleOfLife() *core.Ref { return featureDiscipleOfLife }
+
+// Tempest Cleric
+func (n featuresNS) WrathOfTheStorm() *core.Ref { return featureWrathOfTheStorm }
 
 // Barbarian
 func (n featuresNS) Rage() *core.Ref           { return featureRage }

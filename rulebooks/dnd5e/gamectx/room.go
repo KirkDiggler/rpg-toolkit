@@ -13,6 +13,28 @@ import (
 // roomContextKey is the key type for storing spatial.Room in context.Context.
 type roomContextKey struct{}
 
+// Visibility answers whether an observer can currently see a subject within
+// the supplied range. known distinguishes an installed visibility model from
+// an older or non-spatial caller; callers must preserve their existing
+// behaviour when known is false.
+type VisibilityProvider interface {
+	SeesWithin(observer, subject string, rangeFeet int) (visible, known bool)
+}
+
+// WithVisibility installs the interaction visibility view. Resolution owns
+// the concrete implementation; game rules depend only on this read contract.
+func WithVisibility(ctx context.Context, visibility VisibilityProvider) context.Context {
+	return context.WithValue(ctx, visibilityContextKey{}, visibility)
+}
+
+// Visibility retrieves the optional interaction visibility view.
+func Visibility(ctx context.Context) (VisibilityProvider, bool) {
+	visibility, ok := ctx.Value(visibilityContextKey{}).(VisibilityProvider)
+	return visibility, ok && visibility != nil
+}
+
+type visibilityContextKey struct{}
+
 // WithRoom wraps a context.Context with the provided spatial.Room.
 // Purpose: Enables features and conditions to query entity positions and
 // perform spatial calculations during event processing.

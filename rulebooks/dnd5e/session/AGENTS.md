@@ -71,7 +71,7 @@ view, adopts the world back, saves dirty sheets, then records.
 **The lookups.** Ten capabilities the composition cannot implement for itself,
 each proved at compile time by a `var _` line: `standingSeam`
 ([`standing.go`](./standing.go):47), `checkSeam` and `witnessSeam`
-([`conceal.go`](./conceal.go):96, :205), `strikerSeam`
+([`conceal.go`](./conceal.go):98, :344), `strikerSeam`
 ([`striker.go`](./striker.go):38), `moverSeam` ([`mover.go`](./mover.go):37),
 `announcerSeam` ([`announcer.go`](./announcer.go):31), `turnDriverSeam`
 ([`turndriver.go`](./turndriver.go):426), `initiativeSeam`

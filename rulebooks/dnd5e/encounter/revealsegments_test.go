@@ -59,7 +59,7 @@ func (s *RevealSegmentsSuite) findThenOpen(enc *encounter.Encounter) {
 
 const finder = core.EntityID("finder")
 
-// vaultField is a visible hall and a concealed vault behind a concealed door,
+// vaultField is a visible hall and a hidden vault behind a hidden door,
 // with three walls: the seam the door hides in, and TWO walls wholly inside
 // the vault, which are the ones a non-knower must not be shown and a knower
 // must be.
@@ -73,12 +73,14 @@ func (s *RevealSegmentsSuite) vaultField() encounter.FieldInput {
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{
 			rectRegion("hall", 0, 0, 4, rows),
-			func() encounter.RegionInput {
-				r := rectRegion("vault", 4, 0, 4, rows)
-				r.Concealed = true
-				return r
-			}(),
+			rectRegion("vault", 4, 0, 4, rows),
 		},
+		Concealments: []encounter.ConcealmentInput{{
+			ID:     "vault",
+			Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+			Cells:  rectCells(4, 0, 4, rows),
+			Doors:  []encounter.DoorID{"panel"},
+		}},
 		Walls: withHeight(seamWallExcept(3, rows, 1), 2),
 		// ONE SEALED CELL EACH SIDE. The vault's is what the reveal must
 		// carry; the hall's is what it must not — a patch for one room that
@@ -86,10 +88,7 @@ func (s *RevealSegmentsSuite) vaultField() encounter.FieldInput {
 		// under the room they just found.
 		Sealed: []spatial.Position{{X: 1, Y: 3}, {X: 6, Y: 2}},
 		Doors: []encounter.DoorInput{{
-			ID:        "panel",
-			Edges:     doorEdgesAcross(3, 1),
-			State:     encounter.DoorIsClosed(),
-			Concealed: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+			ID: "panel", Edges: doorEdgesAcross(3, 1), State: encounter.DoorIsClosed(),
 		}},
 		Segments: []encounter.SegmentInput{
 			{
@@ -140,7 +139,11 @@ func (s *RevealSegmentsSuite) open(resolver encounter.CheckResolver) *encounter.
 		CheckResolver: resolver, Witness: s.witness,
 		Field: s.vaultField(),
 		Members: []encounter.MemberInput{
-			{ID: finder, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			// BESIDE THE PANEL, because a door opens only from within
+			// reach of it (rpg-toolkit#1856) and every scene here opens
+			// this one. The hall runs x0..3; (2,1) is one cell from the
+			// seam the panel hides in.
+			{ID: finder, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -231,7 +234,7 @@ func (s *RevealSegmentsSuite) TestTheRevealCarriesTheRoomsWallsAndItsSealedCells
 
 	s.findThenOpen(enc)
 
-	reveals := s.beats(enc, finder, "region_revealed")
+	reveals := s.beats(enc, finder, encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1, "the vault entered the finder's knowledge once")
 	body := reveals[0]
 
@@ -283,7 +286,7 @@ func (s *RevealSegmentsSuite) TestTheRevealAndTheAtlasAgree() {
 	after, err := enc.AtlasFor(finder)
 	s.Require().NoError(err)
 
-	reveals := s.beats(enc, finder, "region_revealed")
+	reveals := s.beats(enc, finder, encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1)
 
 	// SEGMENTS: what they had, plus what the beat added, is what they have.
@@ -337,14 +340,13 @@ func (s *RevealSegmentsSuite) TestSealedIsAReplacementWithinTheRoomAndNotAnAddit
 	after, err := enc.AtlasFor(finder)
 	s.Require().NoError(err)
 
-	reveals := s.beats(enc, finder, "region_revealed")
+	reveals := s.beats(enc, finder, encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1)
 	body := reveals[0]
 
-	// The room's cells, as the beat states them.
+	// The secret's cells, as the beat states them.
 	inRoom := map[spatial.Position]bool{}
-	region := body["region"].(map[string]any)
-	for _, raw := range region["cells"].([]any) {
+	for _, raw := range body["cells"].([]any) {
 		c := raw.(map[string]any)
 		inRoom[spatial.Position{X: c["x"].(float64), Y: c["y"].(float64)}] = true
 	}

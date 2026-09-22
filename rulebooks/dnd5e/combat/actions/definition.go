@@ -22,6 +22,12 @@ type Definition struct {
 	Cost   *combat.SpendProfile `json:"cost,omitempty"`
 	Attack *AttackProfile       `json:"attack,omitempty"`
 	Cast   *CastProfile         `json:"cast,omitempty"`
+
+	// Sequence is the script arm: several component actions the same actor
+	// performs under one declaration, which is the SRD's Multiattack. The
+	// components are ordinary definitions on the same actor, so a sequence
+	// adds a way to SAY a thing rather than a second way to author an attack.
+	Sequence *SequenceProfile `json:"sequence,omitempty"`
 }
 
 // Validate reports whether the definition has complete identity, a valid
@@ -38,6 +44,9 @@ func (d Definition) Validate() error {
 		populated++
 	}
 	if d.Cast != nil {
+		populated++
+	}
+	if d.Sequence != nil {
 		populated++
 	}
 	if populated != 1 {
@@ -58,6 +67,20 @@ func (d Definition) Validate() error {
 			return fmt.Errorf("cast profile is invalid: %w", err)
 		}
 	}
+	if d.Sequence != nil {
+		if err := d.Sequence.Validate(); err != nil {
+			return fmt.Errorf("sequence profile is invalid: %w", err)
+		}
+		// THE ONE REPERTOIRE QUESTION ANSWERABLE FROM HERE. A step naming
+		// this very definition is the cheapest infinite recursion there is,
+		// and it needs no other definition to spot. Every other
+		// component check waits for [ResolveSequence].
+		for index, step := range d.Sequence.Steps {
+			if step.Action == d.Ref {
+				return fmt.Errorf("sequence step %d names the sequence itself", index)
+			}
+		}
+	}
 
 	return nil
 }
@@ -74,6 +97,10 @@ func (d Definition) Clone() Definition {
 	if d.Cast != nil {
 		cast := d.Cast.Clone()
 		clone.Cast = &cast
+	}
+	if d.Sequence != nil {
+		sequence := d.Sequence.Clone()
+		clone.Sequence = &sequence
 	}
 	return clone
 }

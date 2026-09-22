@@ -68,24 +68,43 @@ func (s *AtlasRegionsSuite) reload(enc *encounter.Encounter) *encounter.Encounte
 	return back
 }
 
-// TestAtlas_RegionsCarryConcealment: the concealed marker round-trips through
-// ToData -> Load -> Atlas exactly as lighting does — carried, never read
-// (rpg-project#351, living-world wave 1a) — and a region that authored
-// nothing reports false on the far side, the same fact it went in as.
-func (s *AtlasRegionsSuite) TestAtlas_RegionsCarryConcealment() {
+// TestAtlas_ConcealmentsRoundTripAndTheRegionCarriesNoFlag: a region used to
+// carry `concealed` and the atlas reported it; the concealment primitive
+// replaced the flag with a noun of its own (rpg-project#490), so what
+// round-trips through ToData -> Load is the CONCEALMENT, and a region entry
+// no longer says anything about hiding at all.
+func (s *AtlasRegionsSuite) TestAtlas_ConcealmentsRoundTripAndTheRegionCarriesNoFlag() {
 	field := atlasField()
-	for i := range field.Regions {
-		if field.Regions[i].ID == "tomb" {
-			field.Regions[i].Concealed = true
+	var tombCells []spatial.Position
+	for _, r := range field.Regions {
+		if r.ID == "tomb" {
+			tombCells = append(tombCells, r.Cells...)
 		}
 	}
+	s.Require().NotEmpty(tombCells)
+	field.Concealments = []encounter.ConcealmentInput{{
+		ID:     "tomb-secret",
+		Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+		Cells:  tombCells,
+	}}
 
-	atlas, err := s.reload(s.open(field)).Atlas()
+	back := s.reload(s.open(field))
+
+	s.Require().Equal([]string{"ID", "Name", "Cells", "Archetype", "Lighting"},
+		structFieldNames(encounter.AtlasRegion{}),
+		"a region entry says what it is, where it is and how it looks — never whether it is a secret")
+
+	out := back.ToData().Field.Concealments
+	s.Require().Len(out, 1)
+	s.Equal("tomb-secret", out[0].ID)
+	s.Equal([]encounter.CheckApproachData{{Ability: "perception", DC: 15}}, out[0].Checks)
+	s.Len(out[0].Cells, len(tombCells), "the cells it hides ride the blob, in the authored frame")
+
+	// AND THE UNSCOPED ATLAS IS STILL THE WHOLE TRUTH: hiding is what
+	// AtlasFor withholds, never what Atlas reports.
+	atlas, err := back.Atlas()
 	s.Require().NoError(err)
 	s.Require().Len(atlas.Regions, 3)
-	for _, r := range atlas.Regions {
-		s.Equal(r.ID == "tomb", r.Concealed, "region %q", r.ID)
-	}
 }
 
 // TestAtlas_RegionsCarryLighting: archetype and intensity round-trip through

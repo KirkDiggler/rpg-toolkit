@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -122,14 +121,18 @@ type field struct {
 	// lanes; see placed_props.go.
 	placed []placedContributor
 
-	// roomScene is THE ROOM SCENE PRESENTATION (issue #1753): the validated,
-	// deep-copied v3 visual scene authored beside the field's gameplay
-	// geometry — what ToData and the atlas carry out, never read by gameplay
-	// geometry. Nil for every field without one, and nil it stays: see
-	// [FieldInput.RoomScene]. A compiled field that carries one is a SINGLE
-	// UNCONCEALED-REGION field — compileField refuses the unsupported
-	// combinations the projection could not filter honestly.
-	roomScene *RoomScenePresentation
+	// doorFootprints are THE DOORS THAT STAND AS RECTANGLES (rpg-project#485,
+	// R1): every door whose geometry is a footprint rather than a set of
+	// edges, held as the records themselves so every read asks the door's
+	// LIVE state. A closed one contributes exactly what a movement- and
+	// sight-blocking placed prop contributes; an open one contributes
+	// nothing; and opening it is [Encounter.OpenDoor] writing one state, not
+	// this list being rebuilt.
+	//
+	// Attached by [field.compileCanvas], which is where both construction
+	// seams hand the compiled door records over — so a field that was built
+	// without doors has none of these, exactly as it has no canvas.
+	doorFootprints []*doorRecord
 
 	// plane is the continuous frame the placed facts are measured in: this
 	// field's own hex layout at FeetPerCell across the flats, so a cell
@@ -146,6 +149,24 @@ type field struct {
 	// when a holding changes hands: a holding names a RECORD, and this is
 	// where the record says what it reveals.
 	intelByID map[IntelID]IntelRecord
+
+	// concealments is THE ONE THING THAT HIDES (rpg-project#490,
+	// concealment.go): the authored concealments, deep-copied, in authored
+	// order, each carrying its cells twice — the authored frame for ToData
+	// and the absolute one every read asks. Empty for a field with no
+	// secret, which is what every field was before this list existed.
+	concealments []concealment
+
+	// concealmentIndex, concealmentOfCell, concealmentOfDoor and
+	// concealmentOfProp are the reverse reads: which concealment holds this
+	// id, this cell, this door, this prop. Built once, because "does this
+	// belong to a secret" is asked by the projection, the sweep, the probe
+	// law and the move law, and four walks of the list would be four places
+	// to answer it differently.
+	concealmentIndex  map[ConcealmentID]int
+	concealmentOfCell map[spatial.Position]ConcealmentID
+	concealmentOfDoor map[DoorID]ConcealmentID
+	concealmentOfProp map[PropID]ConcealmentID
 
 	// exits is the authored ways out, deep-copied, in the AUTHORED frame —
 	// what ToData writes back out beside the regions and the props.
@@ -165,11 +186,26 @@ type field struct {
 	// argument, one noun over.
 	exitCells map[ExitID]spatial.Position
 
-	// holdable is every prop id the author declared holdable, to its index
-	// in props. Built here because "is this a thing that can be picked up"
-	// is a question about the FIELD, asked by [Encounter.Hold] and by the
-	// ending validation, and neither should walk the prop list to answer it.
-	holdable map[PropID]int
+	// holdable is every prop id the author declared holdable — LEGACY PROPS
+	// AND PLACED FOOTPRINTS IN ONE SET (rpg-toolkit#1854). Built here
+	// because "is this a thing that can be picked up" is a question about
+	// the FIELD, asked by [Encounter.Hold] and by the ending validation, and
+	// neither should walk a prop list to answer it, let alone two lists and
+	// risk two answers. The id namespace is shared by construction
+	// (compilePlaced refuses a collision), which is what makes one set safe.
+	holdable map[PropID]bool
+
+	// holdings is the run's WHO-HAS-WHAT reader, attached by the two
+	// construction seams ([NewEncounter], [LoadEncounter]) so the placed
+	// contributors can be asked where they are right now.
+	//
+	// THE READER ITSELF, NEVER A SNAPSHOT — [field.doorFootprints]' rule for
+	// the second kind of thing that changes mid-scene. A placement somebody
+	// picked up stops blocking the moment the fact is appended, with nothing
+	// here to invalidate, and a field compiled without a run (validation
+	// seams such as [ValidateStaticPlacements]) has nil here and reads the
+	// authored geometry, which is what a field nobody is playing is.
+	holdings *holdings
 
 	// factions and dispositions are the authored sides, deep-copied, in
 	// authored order — construction truth, what ToData writes back out
@@ -221,33 +257,6 @@ func compileField(in FieldInput) (*field, error) {
 	}
 	if len(in.Regions) == 0 {
 		return nil, fmt.Errorf("field has no regions: %w", ErrNoField)
-	}
-
-	// THE ROOM SCENE PRESENTATION, validated before anything else is built
-	// (R5) — the presentation rides the field and its one owner's validator
-	// runs here for both construction seams (see room_scene_validate.go).
-	// A field carrying one is single-room v3 content: the scene is ONE
-	// room's full layout, so a field with several regions or a concealed one
-	// has no honest projection of it — every member would receive the hidden
-	// layout, or the scene's meshes could not be attributed to a region at
-	// all without guessing ownership from a mesh. Refused, by name, rather
-	// than half-filtered (issue #1753; the supported combination is one
-	// unconcealed region).
-	if in.RoomScene != nil {
-		if len(in.Regions) > 1 {
-			return nil, fmt.Errorf(
-				"room scene presentation is one room's content and the field carries %d regions: %w",
-				len(in.Regions), ErrNoField)
-		}
-		for _, r := range in.Regions {
-			if r.Concealed {
-				return nil, fmt.Errorf(
-					"room scene presentation is one room's content and region %q is concealed: %w", r.ID, ErrNoField)
-			}
-		}
-		if defects := ValidateRoomScene(in.RoomScene); len(defects) > 0 {
-			return nil, fmt.Errorf("room scene presentation: %s: %w", joinRoomSceneDefects(defects), ErrNoField)
-		}
 	}
 
 	f := &field{
@@ -316,6 +325,15 @@ func compileField(in FieldInput) (*field, error) {
 	if err := f.compileIntel(in.Intel); err != nil {
 		return nil, err
 	}
+	// THE CONCEALMENTS after the regions, the scenery, the props and the
+	// placed footprints, because every one of those is something a
+	// concealment can name: a cell must be floor this field has, and a prop
+	// must be one of the two lists. The doors it names are checked by
+	// [validateConcealmentDoors] once the caller holds them, exactly as a
+	// record's target is.
+	if err := f.compileConcealments(in.Concealments); err != nil {
+		return nil, err
+	}
 	// THE SIDES LAST (rpg-project#375): a disposition's predicate can name a
 	// member or a fact, neither of which this field checks against anything
 	// — members arrive later, facts are declared by mention — so the only
@@ -335,23 +353,7 @@ func compileField(in FieldInput) (*field, error) {
 	qMin, qMax, rMin, rMax := cellBounds(f.cells)
 	f.width, f.height = 2*max(-qMin, qMax+1), 2*max(-rMin, rMax+1)
 
-	// The presentation, snapshotted AFTER everything else validated (R5:
-	// no observable state until construction succeeds) — the one deep copy
-	// every carrier goes through, so the caller's own pointer stays theirs.
-	f.roomScene = copyRoomScene(in.RoomScene)
-
 	return f, nil
-}
-
-// joinRoomSceneDefects renders every defect in one error sentence, so a
-// refused presentation names all of what is wrong with it at once.
-func joinRoomSceneDefects(defects []RoomSceneDefect) string {
-	parts := make([]string, 0, len(defects))
-	for _, d := range defects {
-		parts = append(parts, d.Error())
-	}
-
-	return strings.Join(parts, "; ")
 }
 
 // compileRegions builds the owner map and the per-region cell lists, refusing
@@ -416,8 +418,7 @@ func (f *field) compileRegions(regions []RegionInput) error {
 		lighting := *r.Lighting
 		f.regions[i] = RegionInput{
 			ID: r.ID, Name: r.Name, Archetype: r.Archetype, Lighting: &lighting,
-			Cells:     append([]spatial.Position(nil), r.Cells...),
-			Concealed: r.Concealed,
+			Cells: append([]spatial.Position(nil), r.Cells...),
 		}
 	}
 	sortCells(f.cells)
@@ -470,7 +471,7 @@ func (f *field) compileScenery(scenery []spatial.Position) error {
 // on a floor cell of its own.
 func (f *field) compileProps(props []PropInput) error {
 	f.props = make([]PropInput, len(props))
-	f.holdable = map[PropID]int{}
+	f.holdable = map[PropID]bool{}
 	seen := make(map[spatial.Position]bool, len(props))
 	seenID := make(map[PropID]int, len(props))
 
@@ -512,7 +513,7 @@ func (f *field) compileProps(props []PropInput) error {
 			}
 			seenID[p.ID] = i
 			if p.Holdable {
-				f.holdable[p.ID] = i
+				f.holdable[p.ID] = true
 			}
 		} else if p.Holdable {
 			// A TAKEABLE PROP MUST BE NAMEABLE. Without an id, every atlas
@@ -601,10 +602,10 @@ func (f *field) propIndexOf(id PropID) int {
 // and says something it reveals — then indexes them for the one read that
 // matters, which is [Encounter.transferHoldings] asking what a record means.
 //
-// WHAT A RECORD REVEALS IS NOT CHECKED HERE. The doors are the caller's to
-// know at this point ([validateIntelTargets] runs once they are built), and
-// splitting it that way keeps this function about the records themselves —
-// the same split compileField already makes for a door's edges.
+// WHAT A RECORD REVEALS IS NOT CHECKED HERE. The concealments are compiled
+// after the records ([validateIntelTargets] runs once the whole field is
+// built), and splitting it that way keeps this function about the records
+// themselves — the same split compileField already makes for a door's edges.
 func (f *field) compileIntel(records []IntelRecord) error {
 	f.intel = append([]IntelRecord(nil), records...)
 	f.intelByID = make(map[IntelID]IntelRecord, len(records))
@@ -618,18 +619,19 @@ func (f *field) compileIntel(records []IntelRecord) error {
 		}
 		// A RECORD THAT REVEALS NOTHING is one an author started and did not
 		// finish. Refused rather than carried as a holding that does nothing
-		// — nothing is defaulted, and there is no "reveals the nearest door"
-		// (rpg-toolkit#1033).
+		// — nothing is defaulted, and there is no "reveals the nearest
+		// secret" (rpg-toolkit#1033).
 		if rec.Reveals == (RevealTargets{}) {
 			return fmt.Errorf("intel record %q does not say what it reveals: %w", rec.ID, ErrNoIntel)
 		}
 		// EXACTLY ONE TARGET (rpg-project#375, design §2): a record that
-		// reveals a door AND a fact is two records the author wrote as one,
-		// and which of the two a holder learns first is not a question this
-		// composition should answer for them.
-		if rec.Reveals.Door != "" && rec.Reveals.Fact != "" {
-			return fmt.Errorf("intel record %q reveals both door %q and fact %q, and a record reveals exactly one thing: %w",
-				rec.ID, rec.Reveals.Door, rec.Reveals.Fact, ErrNoIntel)
+		// reveals a concealment AND a fact is two records the author wrote
+		// as one, and which of the two a holder learns first is not a
+		// question this composition should answer for them.
+		if rec.Reveals.Concealment != "" && rec.Reveals.Fact != "" {
+			return fmt.Errorf(
+				"intel record %q reveals both concealment %q and fact %q, and a record reveals exactly one thing: %w",
+				rec.ID, rec.Reveals.Concealment, rec.Reveals.Fact, ErrNoIntel)
 		}
 		f.intelByID[rec.ID] = rec
 	}
@@ -913,6 +915,14 @@ func (f *field) compileCanvas(doors []*doorRecord, arrived map[PropID]spatial.Po
 		}
 	}
 
+	// AND THE ONES THAT STAND AS RECTANGLES. A footprint door registers no
+	// boundary — it has no crossing to put one on — so it is held beside the
+	// placed contributors and asked its state on every read
+	// (placed_props.go). Set here rather than at compilePlaced because this
+	// is where both seams hand the records over, and the records are what
+	// carry the live state.
+	f.attachDoorFootprints(doors)
+
 	return &canvasRoom{BasicRoom: canvas, field: f}, nil
 }
 
@@ -954,4 +964,24 @@ func cellBefore(a, b spatial.Position) bool {
 	}
 
 	return a.Y < b.Y
+}
+
+// propHolds is the intel records the prop with this id carries, WHICHEVER
+// LIST IT IS IN — [PropInput.Holds] for a legacy prop,
+// [PlacedPropInput.Holds] for a footprint (rpg-toolkit#1854).
+//
+// One question with one answer, because "what does holding this teach me" is
+// about the thing rather than about how its author drew it. The two lists
+// cannot both answer: compilePlaced refuses an id that collides. Empty for an
+// id this field does not have, which every caller reaches only after
+// resolving the prop.
+func (f *field) propHolds(id PropID) []IntelID {
+	if i := f.propIndexOf(id); i >= 0 {
+		return f.props[i].Holds
+	}
+	if i := f.placedIndexOf(id); i >= 0 {
+		return f.placed[i].holds
+	}
+
+	return nil
 }

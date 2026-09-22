@@ -79,6 +79,13 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// answers all of them with ErrNoProp, which is the probe law and is
 		// pinned as bytes in holdings_test.go rather than here.
 		{"body still standing", encounter.ErrNotDown, ErrNotDown},
+		// An attack pointed at a world NPC (rpg-project#493, R4). Not driven
+		// from a verb: this seam refuses the same swing one layer earlier, by
+		// name, because its candidate universe never held the merchant in the
+		// first place. The arm is here for the reason the resolution arms
+		// below are — the exclusion above it is a convenience, and an
+		// unmapped sentinel leaks the moment that convenience moves.
+		{"npc is not a target", encounter.ErrNotATarget, ErrNotATarget},
 		{"no such prop", encounter.ErrNoProp, ErrNoProp},
 		{"prop is scenery", encounter.ErrNotHoldable, ErrNotHoldable},
 		{"prop already carried", encounter.ErrAlreadyHeld, ErrAlreadyHeld},

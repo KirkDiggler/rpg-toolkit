@@ -5,6 +5,7 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -12,8 +13,12 @@ import (
 )
 
 // NewThug creates a CR 1 thug carrying a mace and a heavy crossbow, with
-// Pack Tactics.
-// Multiattack is deferred until a sequence profile and machine exist.
+// Pack Tactics and the SRD's "makes two melee attacks" Multiattack.
+//
+// TWO MELEE ATTACKS IS TWO MACE ATTACKS. The SRD line does not name a weapon,
+// and the thug carries exactly one melee weapon, so the script names the mace
+// twice. The heavy crossbow stays a component of its own: a thug across the
+// room still shoots.
 func NewThug(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -36,8 +41,20 @@ func NewThug(id string) *monster.Monster {
 	// crossbow to "+2, 1d10" — two different abilities, one assembly
 	// (rpg-project#448). Melee FIRST, so a thug standing over you swings.
 	//
-	// Multiattack is still deferred until a sequence profile and machine
-	// exist; these are the component attacks.
+	// Multiattack first, so a driver reading this list in order reaches for
+	// the thug's own line. The steps name the mace armed below: a sequence
+	// declares what to do with a repertoire, never a new attack of its own.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.ThugMultiattack(),
+		Name: "Multiattack",
+		Sequence: &combatActions.SequenceProfile{
+			Steps: []combatActions.SequenceStep{
+				{Action: *refs.Weapons.Mace()},
+				{Action: *refs.Weapons.Mace()},
+			},
+		},
+	})
+
 	mustAddWeapon(m, weapons.Mace, weapons.HeavyCrossbow)
 
 	// Set movement speed

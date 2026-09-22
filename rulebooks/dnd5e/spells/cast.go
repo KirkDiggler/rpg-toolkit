@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -346,6 +347,25 @@ var castContent = map[Spell]castProfileBuilder{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Blessed(), CounterpartKey: "source_id",
 				}},
 				Concentration: &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true},
+			}
+		},
+	},
+	FogCloud: {
+		name:    "Fog Cloud",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		cost:    slotCost(resources.SpellSlotLevel1),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 120, Target: actions.CastTargetArea,
+				Area: &actions.CastArea{
+					Footprint:      actions.Footprint{Shape: actions.AreaRadius, SizeFeet: 20, Origin: actions.AreaOriginPoint},
+					Catches:        actions.AreaCatchesEveryone,
+					ObscuresSight:  true,
+					MembershipRef:  refs.Conditions.InFog().String(),
+					MembershipName: conditions.InFogName,
+				},
+				// One hour in the current turn-count model. Wind dispersal is deferred.
+				Concentration: &actions.CastConcentration{TurnEnds: 600, SkipFirstTurnEnd: true},
 			}
 		},
 	},

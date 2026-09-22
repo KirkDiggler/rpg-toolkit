@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // doorverbs.go is THE THREE WAYS A DOOR CHANGES (rpg-toolkit#1123).
@@ -39,6 +40,23 @@ import (
 // non-gating is not part of it, and a verb that opens a locked door is a
 // silent-success shape.
 //
+// # And you have to be able to touch it
+//
+// Kirk, 2026-09-21: "Currently I can open a door not next to it." All three
+// verbs REACH for the door and refuse a hand too far from it
+// (rpg-toolkit#1856) — [Encounter.refuseOutOfDoorReach], which is
+// [Encounter.Hold]'s rule unchanged, asked of the door's own cells.
+//
+// The rule is Hold's rather than a door rule because there is nothing about
+// a door that makes reaching for one different from reaching for a table:
+// grid distance, adjacent by default, and standing on the thing is distance
+// zero. A second distance rule here would be the second truth this file's
+// doors have spent three slices not having.
+//
+// It is judged AFTER the probe law and BEFORE the lock, which is the whole
+// reason the order is written down: a member across the room is told they
+// cannot reach the door, never what its lock would cost them.
+//
 // # NOTHING HERE COMPARES ANYTHING
 //
 // Kirk, on this file: "I agree on rules leaking in we need to be diligent." The
@@ -66,7 +84,11 @@ type OpenDoorInput struct {
 
 	// Actor is the member doing it, named on the beat so the story can say
 	// WHO opened the way (rpg-project#269). Optional: empty means the change
-	// has no author to narrate. Non-empty must name a member (ErrNotMember).
+	// has no author to narrate. Non-empty must name a member (ErrNotMember),
+	// and must be able to REACH the door
+	// ([Encounter.refuseOutOfDoorReach]) — an empty one reaches from
+	// nowhere and is not measured, exactly as it probes nothing. A session
+	// always names an actor, so every hand a player drives is measured.
 	Actor MemberID
 }
 
@@ -100,10 +122,15 @@ type OpenDoorOutput struct {
 // the way through one. Refuses an already-open door with ErrBadDoor, for the
 // reason this file's doc comment gives.
 //
-// Validation order (R5 atomicity): nil input → closed → no such door → locked →
-// already open → the change itself.
+// Refuses an actor who cannot REACH the door
+// ([Encounter.refuseOutOfDoorReach]).
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrLocked, ErrBadDoor.
+// Validation order (R5 atomicity): nil input → closed → no such door → the
+// probe law → the actor is a member → reach → locked → already open → the
+// change itself.
+//
+// Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
+// ErrOutOfRange, ErrLocked, ErrBadDoor.
 func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("open door: %w", ErrNilInput)
@@ -121,6 +148,9 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	}
 	if err := e.doorActorOf(in.Actor); err != nil {
 		return nil, fmt.Errorf("open door %q: %w", door.id, err)
+	}
+	if err := e.refuseOutOfDoorReach("open door", door, in.Actor); err != nil {
+		return nil, err
 	}
 
 	if lock, locked := door.state.Lock(); locked {
@@ -184,9 +214,16 @@ type CloseDoorOutput struct {
 // beaten stays unlocked; shutting it gives an ordinary closed door.
 //
 // Refuses an already-closed door, and a locked one — a locked door is closed
-// already, so this would be asking for something that has happened.
+// already, so this would be asking for something that has happened. Refuses
+// an actor who cannot REACH the door
+// ([Encounter.refuseOutOfDoorReach]).
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrBadDoor.
+// Validation order (R5 atomicity): nil input → closed → no such door → the
+// probe law → the actor is a member → reach → already closed → the change
+// itself.
+//
+// Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
+// ErrOutOfRange, ErrBadDoor.
 func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("close door: %w", ErrNilInput)
@@ -204,6 +241,9 @@ func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	}
 	if err := e.doorActorOf(in.Actor); err != nil {
 		return nil, fmt.Errorf("close door %q: %w", door.id, err)
+	}
+	if err := e.refuseOutOfDoorReach("close door", door, in.Actor); err != nil {
+		return nil, err
 	}
 
 	if door.state.Kind() != DoorOpen {
@@ -336,8 +376,16 @@ type UnlockOutput struct {
 //
 // Refuses a door that is not locked (ErrBadDoor) — there is nothing to beat,
 // and answering "beaten" for a door with no lock would be inventing a success.
+// Refuses an actor who cannot REACH the door
+// ([Encounter.refuseOutOfDoorReach]): hands pick locks, and a lock across
+// the room is not one this attempt ever touched.
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrBadDoor.
+// Validation order (R5 atomicity): nil input → closed → no such door → the
+// probe law → the actor is a member → reach → not locked → the applied route
+// → the change itself.
+//
+// Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
+// ErrOutOfRange, ErrBadDoor.
 func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("unlock: %w", ErrNilInput)
@@ -356,6 +404,9 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 
 	if err := e.doorActorOf(in.Actor); err != nil {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
+	}
+	if err := e.refuseOutOfDoorReach("unlock", door, in.Actor); err != nil {
+		return nil, err
 	}
 
 	lock, locked := door.state.Lock()
@@ -457,13 +508,14 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, extra map[str
 
 	// The beat's audience and the refresh's scope are two different
 	// questions now (rpg-toolkit#1371). The BEAT goes to every member who
-	// KNOWS the door: for a never-concealed door that is the whole roster
-	// (full data until v1.0, unchanged), and for a concealed one it is
-	// exactly the members it has been revealed to — computed BEFORE the
-	// refresh below, whose sweep may mint new knowers; a member learning of
-	// the door on this very change gets DOOR_REVEALED there, never this
-	// beat. The REFRESH stays roster-wide regardless: a door changing what
-	// it blocks changes what everyone can see, knower or not.
+	// KNOWS the door: for a door no concealment holds that is the whole
+	// roster (full data until v1.0, unchanged), and for a hidden one it is
+	// exactly the members its concealment has been revealed to — computed
+	// BEFORE the refresh below, whose sweep may mint new knowers; a member
+	// learning of the secret on this very change gets CONCEALMENT_REVEALED
+	// there, never this beat. The REFRESH stays roster-wide regardless: a
+	// door changing what it blocks changes what everyone can see, knower or
+	// not.
 	audience := e.doorBeatAudience(door)
 
 	seq, err := e.appendDoorBeat(door, audience, extra)
@@ -480,26 +532,49 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, extra map[str
 }
 
 // doorBeatAudience is who hears a door's own state-change beat: everyone,
-// for a door that was never concealed (full data until v1.0), and exactly
-// the current members who KNOW the door for a concealed one — as far as
-// concealed structure requires and no further (rpg-project#350;
-// rpg-toolkit#1020's shelf coming due for doors). Sorted, like every
-// audience this module computes (C8).
+// for a door no concealment holds (full data until v1.0), and exactly the
+// current members who KNOW the concealment holding it otherwise — as far as
+// a secret requires and no further (rpg-project#350; rpg-toolkit#1020's
+// shelf coming due for doors). Sorted, like every audience this module
+// computes (C8).
 func (e *Encounter) doorBeatAudience(door *doorRecord) []MemberID {
-	if e.world == nil || door.concealed == nil {
+	id, hidden := e.hiddenDoorConcealment(door.id)
+	if !hidden {
 		return e.audienceFor(subjectBeat)
 	}
 	knowers := make([]MemberID, 0, len(e.members))
-	for _, id := range e.rosterIDs() {
-		if e.world.knowsDoor(id, door.id) {
-			knowers = append(knowers, id)
+	for _, member := range e.rosterIDs() {
+		if e.world.knowsConcealment(member, id) {
+			knowers = append(knowers, member)
 		}
 	}
 	return knowers
 }
 
+// hiddenDoorConcealment is the concealment holding a door, and whether one
+// does at all — the ONE question every concealed-door law asks, so the probe
+// law, the move law, the beat audience and the movement beat cannot come to
+// answer it differently. A field built without a world (a validation seam)
+// holds no secret and answers false.
+func (e *Encounter) hiddenDoorConcealment(door DoorID) (ConcealmentID, bool) {
+	if e.world == nil || e.field == nil {
+		return "", false
+	}
+	id, hidden := e.field.concealmentOfDoor[door]
+
+	return id, hidden
+}
+
+// hiddenDoorTo reports whether a door is a secret THIS member has not found
+// — the question the move law and the probe law both ask, of one member.
+func (e *Encounter) hiddenDoorTo(member MemberID, door DoorID) bool {
+	id, hidden := e.hiddenDoorConcealment(door)
+
+	return hidden && !e.world.knowsConcealment(member, id)
+}
+
 // probeDoor is THE PROBE LAW (ruled on rpg-project#350): everywhere a door
-// id is spoken, a concealed door the acting member has not found answers
+// id is spoken, a hidden door the acting member has not found answers
 // with the same not-found error a door that does not exist answers with —
 // byte-identical, which is why this returns doorOf's own error shape. A
 // DC-naming or state-naming refusal would confirm existence to a guessed
@@ -511,10 +586,7 @@ func (e *Encounter) doorBeatAudience(door *doorRecord) []MemberID {
 // from the side of the seam that composed the dungeon and holds its whole
 // truth — so it probes nothing.
 func (e *Encounter) probeDoor(door *doorRecord, actor MemberID) error {
-	if e.world == nil || door.concealed == nil || actor == "" {
-		return nil
-	}
-	if e.world.knowsDoor(actor, door.id) {
+	if actor == "" || !e.hiddenDoorTo(actor, door.id) {
 		return nil
 	}
 	return fmt.Errorf("door %q: %w", door.id, ErrNoDoor)
@@ -523,9 +595,9 @@ func (e *Encounter) probeDoor(door *doorRecord, actor MemberID) error {
 // appendDoorBeat records what a door did, to the members who know it.
 //
 // The audience arrives computed ([Encounter.doorBeatAudience]): the whole
-// roster for a never-concealed door — whether a member can SEE it move is
-// still #1020's asymmetric perception, not this — and the door's knowers
-// for a concealed one, which is as far as concealed structure requires.
+// roster for a door no concealment holds — whether a member can SEE it move
+// is still #1020's asymmetric perception, not this — and the secret's
+// knowers for a hidden one, which is as far as a secret requires.
 func (e *Encounter) appendDoorBeat(door *doorRecord, audience []MemberID, extra map[string]interface{}) (uint64, error) {
 	payload := map[string]interface{}{
 		"beat":  "door",
@@ -565,6 +637,86 @@ func (e *Encounter) doorActorOf(actor MemberID) error {
 		return fmt.Errorf("actor %q: %w", actor, ErrNotMember)
 	}
 	return nil
+}
+
+// doorCells is WHERE A DOOR IS, in cells — the one answer the reach rule
+// asks of a door, whichever of the two geometries it was authored in
+// ([DoorInput]: exactly one, never both and never neither).
+//
+//   - An EDGE door stands in its CROSSINGS, and a crossing is two cells:
+//     both endpoints of every edge the door holds. A four-hex gate is one
+//     door standing in eight cells, which is [DoorEdge]'s "one state, many
+//     edges" read for position instead of for blocking, and it is why a
+//     wide gate is reachable anywhere along its width.
+//   - A FOOTPRINT door stands where [field.placedCells] says its rectangle
+//     stands — the SAME derivation a placed prop's reach asks
+//     (rpg-toolkit#1854), including its centre-cell clause, so "where is
+//     this thing" has one answer for props and doors alike. A door smaller
+//     than a hex is reachable from the hex it sits in rather than from
+//     nowhere.
+//
+// Deduplicated, so a gate whose edges share an endpoint does not measure it
+// twice. Returned in first-mention edge order, or the field's own cell order
+// for a footprint (C8): no caller reads the order — every one asks "is any
+// of these in reach" — and it is pinned anyway so no refusal can depend on
+// map iteration.
+func (e *Encounter) doorCells(door *doorRecord) []spatial.Position {
+	if door.placement != nil {
+		return e.field.placedCells(*door.placement)
+	}
+
+	out := make([]spatial.Position, 0, len(door.edges)*2)
+	seen := make(map[spatial.Position]bool, len(door.edges)*2)
+	for _, edge := range door.edges {
+		for _, cell := range [2]spatial.Position{edge.From, edge.To} {
+			if seen[cell] {
+				continue
+			}
+			seen[cell] = true
+			out = append(out, cell)
+		}
+	}
+
+	return out
+}
+
+// refuseOutOfDoorReach is A DOOR OPENS ONLY FROM BESIDE IT
+// (rpg-toolkit#1856), shared by all three verbs so they cannot come to
+// disagree about how far a hand reaches.
+//
+// [Encounter.holdPlaced]'s rule verbatim, asked of [Encounter.doorCells]
+// rather than of a placement: [Encounter.refuseOutOfReachCell] — grid
+// distance, reach zero meaning adjacent — against every cell the door stands
+// on, IN REACH OF ANY OF THEM BEING IN REACH. Standing in a door's cell is
+// distance zero; beside one is distance one. There is no door distance, no
+// new flag, and no new sentence (rpg-project#488 R2): what a far-away hand
+// is told is Hold's refusal with this verb's name in front of it.
+//
+// AN EMPTY ACTOR REACHES FROM NOWHERE AND IS NOT MEASURED. That is the
+// existing contract ([OpenDoorInput.Actor]: empty means the change has no
+// author to narrate) and the same hand [Encounter.probeDoor] already lets
+// past — the host's own, changing a dungeon it composed and holds the whole
+// truth of. Every hand a session drives names an actor, so every hand a
+// player drives is measured.
+//
+// A named actor who is not on the canvas is ErrBadPlacement, not a silent
+// pass: [Encounter.Hold] answers the same wiring fault the same way, and
+// measuring from a position nobody has would be inventing one.
+func (e *Encounter) refuseOutOfDoorReach(verb string, door *doorRecord, actor MemberID) error {
+	if actor == "" {
+		return nil
+	}
+	from, placed := e.canvas.GetEntityPosition(string(actor))
+	if !placed {
+		return fmt.Errorf("%s: member %q: %w", verb, actor, ErrBadPlacement)
+	}
+	for _, cell := range e.doorCells(door) {
+		if e.refuseOutOfReachCell(verb, from, cell, 0, string(door.id)) == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s: %s: %w", verb, door.id, ErrOutOfRange)
 }
 
 // doorActorExtra is the actor's ride onto the beat — nil when there is

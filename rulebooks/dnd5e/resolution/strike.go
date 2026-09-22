@@ -33,7 +33,23 @@ type StrikeInput struct {
 	AttackerID string
 	TargetID   string
 	Definition combatActions.Definition
-	Roller     dice.Roller
+
+	// Imposed are disadvantage sources the CALLER brings to this swing,
+	// folded onto the attack chain beside the ones this machine finds for
+	// itself.
+	//
+	// ONE CALLER TODAY: a sequence's second step, carrying the reason its own
+	// definition declared ("second attack of a multiattack"). Sources rather
+	// than a flag, for [rolls.RollD20]'s reason — a keep record names the
+	// rules that met, and a boolean cannot (rpg-project#462).
+	//
+	// They join the chain BEFORE the fold, so an effect that grants advantage
+	// cancels this disadvantage exactly as it cancels the long-range source
+	// this machine appends itself. A caller that added them afterwards would
+	// be imposing a penalty nothing in the game could answer.
+	Imposed []dnd5eEvents.AttackModifierSource
+
+	Roller dice.Roller
 }
 
 // StrikeOutcome is what an attack produced, in enough detail to explain it.
@@ -405,6 +421,16 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 					SourceRef: cloneCoreRef(&m.in.Definition.Ref),
 					SourceID:  m.in.AttackerID,
 					Reason:    "target is beyond normal range",
+				})
+			}
+			// The caller's own, cloned for the same reason and appended after
+			// the machine's so a strike that is both far away and a second
+			// swing reports them in that order.
+			for _, imposed := range m.in.Imposed {
+				event.DisadvantageSources = append(event.DisadvantageSources, dnd5eEvents.AttackModifierSource{
+					SourceRef: cloneCoreRef(imposed.SourceRef),
+					SourceID:  imposed.SourceID,
+					Reason:    imposed.Reason,
 				})
 			}
 

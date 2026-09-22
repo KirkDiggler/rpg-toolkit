@@ -70,6 +70,56 @@ func (s *ClericFinalizeSuite) draft(input *SetClassInput) *Draft {
 	return draft
 }
 
+func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
+	input := s.classInput()
+	input.SubclassID = classes.TempestDomain
+	draft := s.draft(input)
+	char, err := draft.ToCharacter(context.Background(), "tempest-wrath", events.NewEventBus())
+	s.Require().NoError(err)
+	s.Equal(3, char.GetResource(resources.WrathOfTheStorm).Maximum())
+	s.Require().NoError(char.GetResource(resources.WrathOfTheStorm).Use(1))
+	s.Equal(2, char.GetResource(resources.WrathOfTheStorm).Current())
+	inFog, err := conditions.NewInFogCondition(conditions.NewInFogConditionInput{
+		MemberID: char.GetID(), SourceID: "fog-area-1", SourceRef: refs.Spells.FogCloud(),
+	})
+	s.Require().NoError(err)
+	char.conditions = append(char.conditions, inFog)
+	data := char.ToData()
+	encoded, err := json.Marshal(data)
+	s.Require().NoError(err)
+	var stored Data
+	s.Require().NoError(json.Unmarshal(encoded, &stored))
+	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
+	s.Require().NoError(err)
+	s.Equal(2, loaded.GetResource(resources.WrathOfTheStorm).Current())
+	s.Equal(3, loaded.GetResource(resources.WrathOfTheStorm).Maximum())
+	view, err := loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	var wrath *ResourceView
+	for i := range view.View.Resources {
+		if view.View.Resources[i].Key == resources.WrathOfTheStorm {
+			wrath = &view.View.Resources[i]
+			break
+		}
+	}
+	s.Require().NotNil(wrath)
+	s.Equal("Wrath of the Storm", wrath.Name)
+	s.Equal(2, wrath.Current)
+	s.Equal(3, wrath.Maximum)
+	var fog *ConditionView
+	for i := range view.View.Conditions {
+		if view.View.Conditions[i].Ref == *refs.Conditions.InFog() {
+			fog = &view.View.Conditions[i]
+			break
+		}
+	}
+	s.Require().NotNil(fog)
+	s.Equal("In Fog", fog.Name)
+	s.Nil(fog.SourceMember, "area IDs are not party-member identities")
+	s.Require().NoError(loaded.LongRest(context.Background()))
+	s.Equal(3, loaded.GetResource(resources.WrathOfTheStorm).Current())
+}
+
 func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	draft := s.draft(s.classInput())
 	s.True(draft.IsClassComplete(), "the selected domain must reach validation")

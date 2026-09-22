@@ -529,6 +529,25 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, err
 	}
 
+	// A SEQUENCE RECORDS PER SWING (Kirk's ruling, 2026-09-20). A
+	// concentration check is a roll a defender made against ONE blow, so it
+	// belongs on that blow's beat rather than folded onto the end of the
+	// action — and a hold that broke on the first swing was already gone when
+	// the second landed, which a record written at the end cannot show.
+	//
+	// The interaction-level lists are then EMPTIED rather than left beside
+	// the per-step ones: two copies of one save is two places for a consumer
+	// to read it, and the failure that causes is a defender's single roll
+	// appearing twice in the story.
+	if sequence, isSequence := outcome.(SequenceOutcome); isSequence {
+		attributed, attrErr := breaks.attributeToSteps(cast, sequence)
+		if attrErr != nil {
+			return nil, attrErr
+		}
+		outcome = attributed
+		ended, kept = nil, nil
+	}
+
 	return &Output{
 		World:               enc.ToData(),
 		SightAreasChanged:   areasChanged,

@@ -51,6 +51,18 @@ var projectedPairs = []struct {
 	// have to re-derive by experiment.
 	{"AtlasRegion", encounter.AtlasRegion{}, session.AtlasRegion{}},
 	{"AtlasProp", encounter.AtlasProp{}, session.AtlasProp{}},
+	// A placed footprint crosses as a placed footprint (rpg-api-protos#351).
+	// It used to be listed as an omission — "engine-only placement geometry"
+	// — which was true only while movement and sight were the only questions
+	// anyone asked of a rectangle. A client now draws one, and has to know
+	// whether the thing is on the floor at all and whether it can be picked
+	// up, so the list crosses and this pair audits it.
+	//
+	// Placement matches BY NAME and not by type: the inner geometry is
+	// spatial's nested footprint-with-a-box-pointer and the outer is this
+	// package's flat four numbers, which is exactly the S2 translation this
+	// audit assumes everywhere. convert_internal_test.go is the value half.
+	{"AtlasPlacedProp", encounter.AtlasPlacedProp{}, session.AtlasPlacedProp{}},
 	{"AtlasBoundary", encounter.AtlasBoundary{}, session.AtlasBoundary{}},
 	{"AtlasDoorway", encounter.AtlasDoorway{}, session.AtlasDoorway{}},
 	{"Status", encounter.Status{}, session.Status{}},
@@ -95,9 +107,6 @@ var renamed = map[string]struct{ outer, reason string }{
 	"encounter.Atlas.Orientation": {outer: "Layout",
 		reason: "the frame an author typed in becomes the layout a client draws in — same " +
 			"two values, a different question, and a different name so they cannot be confused"},
-	"encounter.Atlas.RoomScene": {outer: "RoomSceneJSON",
-		reason: "the canonical encounter presentation is validated and encoded as JSON so no inner scene type crosses S2"},
-
 	// Confirmed is "when this payload was last landed, whether or not it
 	// changed" (mind/perception's own doc) — exactly what Sighting.At has
 	// always meant ("the clock reading when this knowledge was last
@@ -111,7 +120,6 @@ var renamed = map[string]struct{ outer, reason string }{
 // reason. Anything absent from a projection and absent from here is a bug, not
 // a decision.
 var omitted = map[string]string{
-	"encounter.Atlas.Placed": "engine-only placement geometry; movement and sight remain encounter answers, and no raw contributor is on this wire",
 	// A record entry names every viewer a beat was addressed to. Returning that
 	// would tell one player which other members exist and were present —
 	// including members they have never perceived and rooms they have never
@@ -123,14 +131,6 @@ var omitted = map[string]string{
 	// (rpg-project#256), so a client that wants the name of where somebody
 	// stands looks the cell up once in construction data rather than being
 	// told on every placement read.
-	// A revealed region's entry reaches only members whose own fold shows
-	// it, so "this was authored secret" adds nothing a client may act on:
-	// rendering differs by knowledge, which the per-member atlas already
-	// encodes by presence and absence. Carrying the flag would also put a
-	// concealment marker on the wire for the api to inherit before the wire
-	// asked for one (rpg-api-protos#267 defines no such field).
-	"encounter.AtlasRegion.Concealed": "knowledge is encoded by presence in the member's atlas, not by a flag",
-
 	"encounter.Member.Region": "a region id; the seam reports the cell instead",
 	// The side a member fights on (rpg-project#375) is carried on the
 	// ROSTER row — PublicMember.Faction — the only per-member row on the

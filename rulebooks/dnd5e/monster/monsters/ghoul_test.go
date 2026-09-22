@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
@@ -44,12 +45,18 @@ func (s *GhoulTestSuite) TestNewGhoul() {
 	speed := ghoul.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// Component attacks remain available; multiattack waits for a sequence profile.
+	// Multiattack first, then the components it scripts.
 	actions := ghoul.Actions()
-	s.Require().Len(actions, 2)
-	s.Equal(refs.MonsterActions.GhoulBite(), &actions[0].Ref)
-	s.Equal(refs.MonsterActions.GhoulClaw(), &actions[1].Ref)
-	s.NotEqual(actions[0].Ref, actions[1].Ref)
+	s.Require().GreaterOrEqual(len(actions), 3)
+	s.Equal(refs.MonsterActions.GhoulMultiattack(), &actions[0].Ref)
+	s.Require().NotNil(actions[0].Sequence)
+	s.Equal([]combatActions.SequenceStep{
+		{Action: *refs.MonsterActions.GhoulBite()},
+		{Action: *refs.MonsterActions.GhoulClaw()},
+	}, actions[0].Sequence.Steps, "the SRD's one bite and one claw, in that order")
+	s.Equal(refs.MonsterActions.GhoulBite(), &actions[1].Ref)
+	s.Equal(refs.MonsterActions.GhoulClaw(), &actions[2].Ref)
+	s.NotEqual(actions[1].Ref, actions[2].Ref)
 }
 
 func (s *GhoulTestSuite) TestGhoulTraits() {

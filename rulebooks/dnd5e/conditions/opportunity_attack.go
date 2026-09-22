@@ -61,8 +61,9 @@ type OpportunityAttackConditionData struct {
 // Subscribes to MovementChain. Predicate per move event, in the order the code
 // asks it:
 //   - Mover is not self (no self-OA).
-//   - canReact: the reactor still has its one reaction, which its own keeper
-//     meters — a character's slot, a monster's meter.
+//   - canReact: the reactor is still standing, and still has its one
+//     reaction, which its own keeper meters — a character's slot, a
+//     monster's meter.
 //   - gamectx.IsReactionReady(self, OA-ref) returns true.
 //   - A room is in context; without one the geometry cannot be evaluated and
 //     the condition is a silent no-op.
@@ -113,9 +114,29 @@ func (o *OpportunityAttackCondition) Ref() *core.Ref { return refs.Conditions.Op
 // whose cast went missing, which is precisely the silently-absent-handle
 // failure this whole migration removes. RequireRoom below makes the same
 // choice for the same reason, and so does Protection.
+//
+// # A downed reactor does NOT react
+//
+// The meter is not life, and it was the only thing being asked. A monster
+// dropped to zero stays on the map, and its keeper hands it its one reaction
+// back at the top of every turn, so the meter answered "ready" for as long as
+// the body lay there — a goblin at zero hit points swung at the first
+// character to walk out of its reach. [combat.IsDown] is asked FIRST, ahead of
+// the meter, which is the order resolution's payForMove already asks them in.
+//
+// It is a pull read of the sheet: there is no stored down flag, so the answer
+// moves with the hit points, and a reactor healed back above zero threatens
+// again at the next ask. That is also why the readiness seed at the top of the
+// turn is the wrong place to answer this. A reactor can be standing when the
+// seed is written and dropped before the move it would have reacted to, and a
+// seed cannot be asked a second time.
 func (o *OpportunityAttackCondition) canReact(ctx context.Context) bool {
 	self, ok := member(ctx, o.MemberID)
 	if !ok {
+		return false
+	}
+
+	if combat.IsDown(self) {
 		return false
 	}
 
@@ -245,9 +266,10 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		return c, nil
 	}
 
-	// The meter, and the only one: a reactor that has already spent its
-	// reaction — on this, on Protection, or on a spell that made it flee —
-	// has nothing left to swing with. See canReact.
+	// Life first, then the meter: a reactor at zero hit points has nothing
+	// to swing with whatever its meter says, and one that has already spent
+	// its reaction — on this, on Protection, or on a spell that made it
+	// flee — has nothing left. See canReact.
 	if !o.canReact(ctx) {
 		return c, nil
 	}
@@ -268,6 +290,13 @@ func (o *OpportunityAttackCondition) onMovementChain(
 
 	if !o.isLeavingMyThreatRange(room, event) {
 		return c, nil
+	}
+
+	// Opportunity attacks require seeing the creature that leaves reach.
+	if sight, ok := gamectx.Visibility(ctx); ok {
+		if visible, known := sight.SeesWithin(o.MemberID, event.EntityID, 1000000); known && !visible {
+			return c, nil
+		}
 	}
 
 	// Predicate matched — publish the trigger event for the orchestrator.
@@ -363,7 +392,12 @@ func (o *OpportunityAttackCondition) isLeavingMyThreatRange(
 
 // reach returns the threatener's melee reach in grid units. Defaults to 5ft
 // (1 grid unit). Future: read the holder's equipped weapon for reach-weapon
-// support (10ft for glaives/halberds), and check incapacitated/prone state.
+// support (10ft for glaives/halberds).
+//
+// Life state has come off that list: a downed reactor is refused in canReact,
+// ahead of the meter. What is still unanswered is the rest of incapacitated —
+// a standing reactor that is stunned or paralyzed — and that belongs to the
+// condition that imposes it, not to this geometry.
 func (o *OpportunityAttackCondition) reach() float64 {
 	// Reference combat.DefaultMeleeReach indirectly through the local constant
 	// to avoid creating an import-cycle expectation across the conditions

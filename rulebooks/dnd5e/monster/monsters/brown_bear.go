@@ -12,8 +12,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewBrownBear creates a CR 1 brown bear with bite and claw component attacks.
-// Multiattack is deferred until a sequence profile and machine exist.
+// NewBrownBear creates a CR 1 brown bear that makes two attacks, one with its
+// bite and one with its claws, over bite and claw components.
 func NewBrownBear(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -31,7 +31,19 @@ func NewBrownBear(id string) *monster.Monster {
 		},
 	})
 
-	// Component attacks remain available until a sequence profile exists.
+	// The SRD's "one with its bite and one with its claws", in that order,
+	// then the components it scripts.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.BrownBearMultiattack(),
+		Name: "Multiattack",
+		Sequence: &combatActions.SequenceProfile{
+			Steps: []combatActions.SequenceStep{
+				{Action: *refs.MonsterActions.BrownBearBite()},
+				{Action: *refs.MonsterActions.BrownBearClaw()},
+			},
+		},
+	})
+
 	mustAddAction(m, combatActions.Definition{
 		Ref:  *refs.MonsterActions.BrownBearBite(),
 		Name: "bite",

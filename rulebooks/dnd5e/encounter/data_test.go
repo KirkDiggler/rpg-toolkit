@@ -1369,3 +1369,66 @@ func (s *DataTestSuite) TestRememberedArrivalTestimonyPersists() {
 	}
 	s.Require().True(rememberedBilly, "the ghost the goblin walked through is still remembered")
 }
+
+func (s *DataTestSuite) TestSightAreasSurviveLoadAndReload() {
+	data := validEncounterData()
+	data.SightAreas = []encounter.SightAreaData{{
+		ID: "fog-1", SourceID: "spell-1", Name: "Fog", Ref: "fog-cloud",
+		Center: encounter.PositionData{X: 2, Y: 2}, RadiusFeet: 20,
+	}}
+	load := func(d encounter.EncounterData) *encounter.Encounter {
+		loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
+			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: d,
+		})
+		s.Require().NoError(err)
+		return loaded
+	}
+	first := load(data)
+	s.Require().Len(first.SightAreasFor("p1"), 1)
+	reloaded := load(first.ToData())
+	s.Require().Equal([]string{"fog-1"}, []string{reloaded.SightAreasFor("p1")[0].ID})
+	s.Equal("spell-1", reloaded.SightAreasFor("p1")[0].SourceID)
+}
+
+func (s *DataTestSuite) TestSightAreaMembershipStoryAudienceAndRemoval() {
+	data := validEncounterData()
+	data.Members = append(data.Members,
+		encounter.MemberData{ID: "hidden", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 3, Y: 3}},
+		encounter.MemberData{ID: "visible", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 3, Y: 0}},
+	)
+	data.EverMembers = append(data.EverMembers, "hidden", "visible")
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}})
+	s.Require().NoError(err)
+	// This observer remains obscured before and after the other cloud changes.
+	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{ID: "cover", SourceID: "other", Center: spatial.Position{X: 3, Y: 3}, RadiusFeet: 5}))
+	before := enc.WorldView().SightAreas
+	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{ID: "fog", SourceID: "spell", Center: spatial.Position{X: 1, Y: 1}, RadiusFeet: 5, MembershipRef: "dnd5e:conditions:in_fog", MembershipName: "In Fog", MembershipSourceID: "opaque"}))
+	s.Require().NoError(enc.QueueSightAreaTransitions(before))
+	s.Require().NoError(enc.FlushSightAreaTransitions())
+	for _, id := range []encounter.MemberID{"p1", "visible"} {
+		entries, err := enc.Story(&encounter.StoryInput{Audience: id})
+		s.Require().NoError(err)
+		s.Require().Len(entries, 1, string(id))
+		s.Contains(string(entries[0].Payload), `"condition-applied"`)
+		s.Contains(string(entries[0].Payload), `"opaque"`)
+	}
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "hidden"})
+	s.Require().NoError(err)
+	s.Empty(entries, "an obscured observer must not learn membership transitions")
+	before = enc.WorldView().SightAreas
+	s.Require().True(enc.RemoveSightArea("spell"))
+	s.Require().NoError(enc.QueueSightAreaTransitions(before))
+	s.Require().NoError(enc.FlushSightAreaTransitions())
+	for _, id := range []encounter.MemberID{"p1", "visible"} {
+		entries, err = enc.Story(&encounter.StoryInput{Audience: id})
+		s.Require().NoError(err)
+		s.Require().Len(entries, 2)
+		s.Contains(string(entries[1].Payload), `"condition-removed"`)
+		s.Contains(string(entries[1].Payload), `"reason":"area ended"`)
+	}
+	entries, err = enc.Story(&encounter.StoryInput{Audience: "hidden"})
+	s.Require().NoError(err)
+	s.Empty(entries)
+}

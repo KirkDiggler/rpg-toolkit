@@ -11,10 +11,16 @@ import (
 )
 
 // factions.go is WHO FIGHTS WHOM, IN THE FILE (rpg-project#375, the hold-out
-// design §2): the factions an author declares, the placements in them, the
+// design §2): the factions an author declares, the members in them, the
 // dispositions between them, and every predicate an `until` may carry —
 // each defect reported at the YAML path of the thing that is wrong, in the
 // words a form-filler can act on.
+//
+// THE FACTION HALF OF THE ONE GAMEPLAY GRAMMAR (rpg-project#484). Every
+// function here is a method on [grammar], reads no document, and asks about
+// the cast through [members] — so the same refusals reach an author whichever
+// dialect drew the room. grammar.go holds the value, its two inputs, and the
+// orders half.
 //
 // The run's own compiler refuses the same shapes (encounter/disposition.go),
 // in the composition's words; this file exists so the builder can draw the
@@ -35,22 +41,22 @@ const stanceWords = "hostile, neutral or allied"
 // factions checks the declared factions: an id, not the reserved `party`,
 // no id twice. RUN BEFORE place(), which asks whether a placement's faction
 // exists.
-func (v *validation) factions() {
-	v.factionIDs = map[string]int{}
-	v.factionMembers = map[string][]int{}
-	v.mindValid = map[string]bool{}
-	for i, fa := range v.spec.Factions {
+func (g *grammar) factions() {
+	g.factionIDs = map[string]int{}
+	g.factionMembers = map[string][]int{}
+	g.mindValid = map[string]bool{}
+	for i, fa := range g.declaredFactions {
 		p := fmt.Sprintf("factions[%d]", i)
 		switch fa.ID {
 		case "":
-			v.fail(p+".id", "the faction has no id")
+			g.fail(p+".id", "the faction has no id")
 		case encounter.FactionParty:
-			v.fail(p+".id", "`party` is the players' side and is never declared — name the faction the monsters are in")
+			g.fail(p+".id", "`party` is the players' side and is never declared — name the faction the monsters are in")
 		default:
-			if prev, dup := v.factionIDs[fa.ID]; dup {
-				v.fail(p+".id", "faction %q is already declared at factions[%d]", fa.ID, prev)
+			if prev, dup := g.factionIDs[fa.ID]; dup {
+				g.fail(p+".id", "faction %q is already declared at factions[%d]", fa.ID, prev)
 			} else {
-				v.factionIDs[fa.ID] = i
+				g.factionIDs[fa.ID] = i
 			}
 		}
 	}
@@ -58,73 +64,66 @@ func (v *validation) factions() {
 
 // factionExists reports whether an id names a faction this file has: one
 // of the two reserved ones, or one it declared.
-func (v *validation) factionExists(id string) bool {
+func (g *grammar) factionExists(id string) bool {
 	if id == encounter.FactionParty || id == encounter.FactionMonsters {
 		return true
 	}
-	_, ok := v.factionIDs[id]
+	_, ok := g.factionIDs[id]
 	return ok
 }
 
-// placementFaction is the faction a monster placement is in: the one it
-// named, or the reserved `monsters`.
-func placementFaction(pl PlaceSpec) string {
-	if pl.Faction == "" {
-		return encounter.FactionMonsters
-	}
-	return pl.Faction
-}
-
-// placeFaction checks one placement's `faction` (called from place(), which
+// placeFaction checks one member's `faction` (called from the dialect, which
 // owns the placement loop): a prop cannot have one; a monster's must exist
 // and must not be `party`. Records the membership for the faction-of-one
 // rule either way.
-func (v *validation) placeFaction(p string, i int, pl PlaceSpec, kind string) {
+//
+// THE KIND IS THE CALLER'S ANSWER, not one read back off the ref: a dialect
+// that places only monsters says so, and a dialect that has already refused a
+// malformed ref by name does not get a second defect for it here.
+func (g *grammar) placeFaction(p string, i int, m member, kind string) {
 	if kind != typeMonsters {
-		if pl.Faction != "" {
-			v.fail(p+".faction", "%q is not a monster and cannot be in a faction", pl.Ref)
+		if m.faction != "" {
+			g.fail(p+".faction", "%q is not a monster and cannot be in a faction", m.ref)
 		}
 		return
 	}
 	switch {
-	case pl.Faction == encounter.FactionParty:
-		v.fail(p+".faction", "%q cannot be in `party`: that is the players' side", pl.Ref)
+	case m.faction == encounter.FactionParty:
+		g.fail(p+".faction", "%q cannot be in `party`: that is the players' side", m.ref)
 		return
-	case pl.Faction != "" && !v.factionExists(pl.Faction):
-		v.fail(p+".faction", "%q is in faction %q, and no faction in this dungeon has that id — declare it under `factions:`",
-			pl.Ref, pl.Faction)
+	case m.faction != "" && !g.factionExists(m.faction):
+		g.fail(p+".faction", "%q is in faction %q, and no faction in this dungeon has that id — declare it under `factions:`",
+			m.ref, m.faction)
 		return
 	}
-	faction := placementFaction(pl)
-	v.factionMembers[faction] = append(v.factionMembers[faction], i)
+	g.factionMembers[m.side()] = append(g.factionMembers[m.side()], i)
 }
 
 // minds checks every declared mind: a placement that exists, a monster, and
 // one standing in its own faction. RUN AFTER place(), which built the
 // placement index and the memberships.
-func (v *validation) minds() {
-	for i, fa := range v.spec.Factions {
+func (g *grammar) minds() {
+	for i, fa := range g.declaredFactions {
 		if fa.Mind == "" {
 			continue
 		}
 		p := fmt.Sprintf("factions[%d].mind", i)
-		idx, ok := v.placeIDs[fa.Mind]
+		m, ok := g.members.at(fa.Mind)
 		if !ok {
-			v.fail(p, "faction %q names %q as its mind, and no placement in this dungeon has that id", fa.ID, fa.Mind)
+			g.fail(p, "faction %q names %q as its mind, and no placement in this dungeon has that id", fa.ID, fa.Mind)
 			continue
 		}
-		pl := v.spec.Place[idx]
-		if kind, _ := refKind(pl.Ref); kind != typeMonsters {
-			v.fail(p, "faction %q names %q as its mind, and %q is a prop — a mind is a monster in the faction",
-				fa.ID, fa.Mind, pl.Ref)
+		if !m.isMonster() {
+			g.fail(p, "faction %q names %q as its mind, and %q is a prop — a mind is a monster in the faction",
+				fa.ID, fa.Mind, m.ref)
 			continue
 		}
-		if placementFaction(pl) != fa.ID {
-			v.fail(p, "faction %q names %q as its mind, but %q is in faction %q — a mind is a monster in its own faction",
-				fa.ID, fa.Mind, pl.Ref, placementFaction(pl))
+		if m.side() != fa.ID {
+			g.fail(p, "faction %q names %q as its mind, but %q is in faction %q — a mind is a monster in its own faction",
+				fa.ID, fa.Mind, m.ref, m.side())
 			continue
 		}
-		v.mindValid[fa.ID] = true
+		g.mindValid[fa.ID] = true
 	}
 }
 
@@ -133,26 +132,26 @@ func (v *validation) minds() {
 // sole member the compiler declares as its mind ([singletonMind]). `party`
 // never learns; `monsters` learns only once declared, which is how the
 // unauthored side is given a mind (design §2, R4).
-func (v *validation) cannotLearn(id string) string {
+func (g *grammar) cannotLearn(id string) string {
 	if id == encounter.FactionParty {
 		return "`party` is the players' side and has no mind"
 	}
-	if v.mindValid[id] {
+	if g.mindValid[id] {
 		return ""
 	}
-	if _, declared := v.factionIDs[id]; !declared {
+	if _, declared := g.factionIDs[id]; !declared {
 		return fmt.Sprintf("faction %q is not declared, so it has no mind — declare it under `factions:` to give it one", id)
 	}
-	switch members := v.factionMembers[id]; len(members) {
+	switch roster := g.factionMembers[id]; len(roster) {
 	case 1:
-		if v.spec.Place[members[0]].ID == "" {
+		if g.members.all[roster[0]].id == "" {
 			return fmt.Sprintf("faction %q's one monster has no id to be its mind", id)
 		}
 		return ""
 	case 0:
 		return fmt.Sprintf("faction %q has nobody in it", id)
 	default:
-		return fmt.Sprintf("faction %q has %d monsters and no mind", id, len(members))
+		return fmt.Sprintf("faction %q has %d monsters and no mind", id, len(roster))
 	}
 }
 
@@ -166,9 +165,9 @@ func normalizedPair(a, b string) [2]string {
 
 // declaredStance is the stance a pair was authored with, or its default,
 // and the predicate that ends it — nil for a static stance.
-func (v *validation) declaredStance(pair [2]string) (string, *PredicateSpec) {
-	if idx, ok := v.dispositionAt[pair]; ok {
-		return v.spec.Dispositions[idx].Stance, v.spec.Dispositions[idx].Until
+func (g *grammar) declaredStance(pair [2]string) (string, *PredicateSpec) {
+	if idx, ok := g.dispositionAt[pair]; ok {
+		return g.declaredDispositions[idx].Stance, g.declaredDispositions[idx].Until
 	}
 	return string(encounter.DefaultStance(pair[0], pair[1])), nil
 }
@@ -178,117 +177,119 @@ func (v *validation) declaredStance(pair [2]string) (string, *PredicateSpec) {
 // predicate against that table, and the fact-untils against who can learn.
 // RUN AFTER place() and minds(): a `{ down }` names a placement, and the
 // faction-of-one rule counts them.
-func (v *validation) dispositions() {
-	v.dispositionAt = map[[2]string]int{}
-	for i, d := range v.spec.Dispositions {
+//
+// AN UNTIL TAKES ALL FOUR FORMS (rpg-project#493, R2) and turns the pair to
+// the other of hostile and neutral (R1). Only `allied` refuses one outright,
+// because it has no other side to move to.
+func (g *grammar) dispositions() {
+	g.dispositionAt = map[[2]string]int{}
+	for i, d := range g.declaredDispositions {
 		p := fmt.Sprintf("dispositions[%d]", i)
 		pairOK := true
 		for j, id := range d.Between {
 			bp := fmt.Sprintf("%s.between[%d]", p, j)
 			switch {
 			case id == "":
-				v.fail(bp, "the disposition does not say which faction")
+				g.fail(bp, "the disposition does not say which faction")
 				pairOK = false
-			case !v.factionExists(id):
-				v.fail(bp, "%q is not a faction in this dungeon — declare it under `factions:`, or write `party`", id)
+			case !g.factionExists(id):
+				g.fail(bp, "%q is not a faction in this dungeon — declare it under `factions:`, or write `party`", id)
 				pairOK = false
 			}
 		}
 		if pairOK && d.Between[0] == d.Between[1] {
-			v.fail(p+".between", "a disposition is between two different factions, and this one names %q twice", d.Between[0])
+			g.fail(p+".between", "a disposition is between two different factions, and this one names %q twice", d.Between[0])
 			pairOK = false
 		}
 		switch {
 		case d.Stance == "":
-			v.fail(p+".stance", "the disposition does not say its stance: %s", stanceWords)
+			g.fail(p+".stance", "the disposition does not say its stance: %s", stanceWords)
 		case !stances[d.Stance]:
-			v.fail(p+".stance", "%q is not a stance: %s", d.Stance, stanceWords)
-		case d.Until != nil && d.Stance != string(encounter.StanceHostile):
-			v.fail(p+".until", "only a hostile pair has something to stop doing: this pair is %s, so drop the until or make it hostile",
-				d.Stance)
+			g.fail(p+".stance", "%q is not a stance: %s", d.Stance, stanceWords)
+		case d.Until != nil && d.Stance == string(encounter.StanceAllied):
+			g.fail(p+".until", "%s: drop the until, or make the pair hostile or neutral", untilOnAllied)
 		}
 		if !pairOK {
 			continue
 		}
 		key := normalizedPair(d.Between[0], d.Between[1])
-		if prev, dup := v.dispositionAt[key]; dup {
-			v.fail(p+".between", "%s and %s already have a disposition at dispositions[%d], and one pair has one",
+		if prev, dup := g.dispositionAt[key]; dup {
+			g.fail(p+".between", "%s and %s already have a disposition at dispositions[%d], and one pair has one",
 				key[0], key[1], prev)
 			continue
 		}
-		v.dispositionAt[key] = i
+		g.dispositionAt[key] = i
 	}
 
-	for i, d := range v.spec.Dispositions {
+	for i, d := range g.declaredDispositions {
 		if d.Until == nil {
 			continue
 		}
 		key := normalizedPair(d.Between[0], d.Between[1])
-		if idx, ok := v.dispositionAt[key]; !ok || idx != i {
+		if idx, ok := g.dispositionAt[key]; !ok || idx != i {
 			continue // a pair that failed above has nothing to wait on
 		}
 		p := fmt.Sprintf("dispositions[%d].until", i)
-		// ONLY A FACT TURNS A PAIR IN THIS VERSION (rpg-project#375, R11):
-		// the run settles a pair on a journal fact, and rounds, falls and
-		// other pairs' stances are not journal facts yet. Refused here, at
-		// the line, and again by the run at construction.
-		if d.Until.Fact == "" {
-			v.fail(p, "%s", untilNotBuilt)
-			continue
+		g.predicate(p, d.Until, &key)
+		// EVERY FORM TURNS A PAIR NOW (rpg-project#493, R2). The "in this
+		// version a disposition turns only on a fact" refusal that stood
+		// here is gone; what survives it is the MIND rule, and only a fact
+		// needs one. A round starts, a monster falls and another pair turns
+		// whether or not anybody in this pair has a mind to notice — those
+		// are the world's truth, not somebody's knowledge.
+		if d.Until.Form() == predicateFact {
+			g.requireALearner(p, key)
 		}
-		v.predicate(p, d.Until, &key)
-		v.requireALearner(p, key)
 	}
 }
 
-// untilNotBuilt is the one sentence a round, a fall or a stance on an until
-// gets, in the file and in the run alike.
-const untilNotBuilt = "in this version a disposition turns only on a fact; " +
-	"`until` on a round, a fall, or another stance is not built yet"
+// untilOnAllied is the one sentence an `until` on an allied pair gets, in the
+// file and in the run alike (rpg-project#493, R1).
+const untilOnAllied = "an allied pair has nothing to become"
 
 // requireALearner is the mind rule (design §2): a fact-until between two
 // factions needs one of them able to come to know the fact — a valid mind,
 // or a faction of one. A pair where nobody can learn is an until that can
 // never hold.
-func (v *validation) requireALearner(p string, pair [2]string) {
+func (g *grammar) requireALearner(p string, pair [2]string) {
 	var reasons []string
 	for _, id := range pair {
-		why := v.cannotLearn(id)
+		why := g.cannotLearn(id)
 		if why == "" {
 			return
 		}
 		reasons = append(reasons, why)
 	}
-	v.fail(p, "this until waits for a fact, and %s — name a mind, or the faction cannot learn", strings.Join(reasons, ", and "))
+	g.fail(p, "this until waits for a fact, and %s — name a mind, or the faction cannot learn", strings.Join(reasons, ", and "))
 }
 
 // predicate checks one authored predicate at its path: a round that starts,
 // a placement that exists and can fall, a stance a pair can actually reach.
 // self is the pair an until belongs to, so it cannot wait on itself; nil
 // for a predicate that is not an until.
-func (v *validation) predicate(path string, p *PredicateSpec, self *[2]string) {
+func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 	switch p.Form() {
 	case "":
-		v.fail(path, "this predicate says nothing — %s", predicateForms)
+		g.fail(path, "this predicate says nothing — %s", predicateForms)
 	case predicateRound:
 		if *p.Round < 1 {
-			v.fail(path+".round", "round %d: a round is counted from 1", *p.Round)
+			g.fail(path+".round", "round %d: a round is counted from 1", *p.Round)
 		}
 	case predicateDown:
-		idx, ok := v.placeIDs[p.Down]
+		m, ok := g.members.at(p.Down)
 		if !ok {
-			v.fail(path+".down", "%q is not a placement in this dungeon", p.Down)
+			g.fail(path+".down", "%q is not a placement in this dungeon", p.Down)
 			return
 		}
-		if kind, _ := refKind(v.spec.Place[idx].Ref); kind != typeMonsters {
-			v.fail(path+".down", "%q is a prop, and only a monster can be down", p.Down)
+		if !m.isMonster() {
+			g.fail(path+".down", "%q is a prop, and only a monster can be down", p.Down)
 		}
 	case predicateFact:
 		// Declared by mention: the dungeon allows a fact no record reveals
 		// (R8), and the scenario is where "a hold-out nobody can win" is
 		// refused.
 	case predicateStance:
-		v.stancePredicate(path+".stance", p.Stance, self)
+		g.stancePredicate(path+".stance", p.Stance, self)
 	}
 }
 
@@ -296,25 +297,25 @@ func (v *validation) predicate(path string, p *PredicateSpec, self *[2]string) {
 // differ, a stance word, and a pair that can reach it — not one it holds
 // from the start, and not one it can never hold (design §3.8's liveness
 // rule, in the file's own words).
-func (v *validation) stancePredicate(path string, s *StancePredicateSpec, self *[2]string) {
+func (g *grammar) stancePredicate(path string, s *StancePredicateSpec, self *[2]string) {
 	ok := true
 	for j, id := range s.Between {
 		bp := fmt.Sprintf("%s.between[%d]", path, j)
 		switch {
 		case id == "":
-			v.fail(bp, "the stance does not say which faction")
+			g.fail(bp, "the stance does not say which faction")
 			ok = false
-		case !v.factionExists(id):
-			v.fail(bp, "%q is not a faction in this dungeon — declare it under `factions:`, or write `party`", id)
+		case !g.factionExists(id):
+			g.fail(bp, "%q is not a faction in this dungeon — declare it under `factions:`, or write `party`", id)
 			ok = false
 		}
 	}
 	if ok && s.Between[0] == s.Between[1] {
-		v.fail(path+".between", "a stance is between two different factions, and this one names %q twice", s.Between[0])
+		g.fail(path+".between", "a stance is between two different factions, and this one names %q twice", s.Between[0])
 		ok = false
 	}
 	if !stances[s.Is] {
-		v.fail(path+".is", "%q is not a stance: %s", s.Is, stanceWords)
+		g.fail(path+".is", "%q is not a stance: %s", s.Is, stanceWords)
 		ok = false
 	}
 	if !ok {
@@ -322,16 +323,39 @@ func (v *validation) stancePredicate(path string, s *StancePredicateSpec, self *
 	}
 	key := normalizedPair(s.Between[0], s.Between[1])
 	if self != nil && *self == key {
-		v.fail(path, "a disposition cannot wait on its own stance")
+		g.fail(path, "a disposition cannot wait on its own stance")
 		return
 	}
-	declared, until := v.declaredStance(key)
+	declared, until := g.declaredStance(key)
 	switch {
 	case declared == s.Is:
-		v.fail(path, "%s and %s are %s from the start, so nothing can fire this", key[0], key[1], s.Is)
-	case declared == string(encounter.StanceHostile) && until != nil && s.Is == string(encounter.StanceNeutral):
-		// Reachable: the pair turns neutral when its until holds.
+		g.fail(path, "%s and %s are %s from the start, so nothing can fire this", key[0], key[1], s.Is)
+	case until != nil && s.Is == turnsTo(declared):
+		// Reachable: the pair turns to the other of hostile and neutral
+		// when its own until holds (rpg-project#493, R1).
+	case declared == string(encounter.StanceNeutral) && s.Is == string(encounter.StanceHostile):
+		// Reachable with nothing authored: somebody attacks across a neutral
+		// pair and it is hostile (R3). Every neutral pair can come to blows,
+		// so this arm is why a `{ stance: ..., is: hostile }` over one is
+		// never refused as unreachable any more.
 	default:
-		v.fail(path, "%s and %s can never be %s: they are %s, and nothing turns them", key[0], key[1], s.Is, declared)
+		g.fail(path, "%s and %s can never be %s: they are %s, and nothing turns them", key[0], key[1], s.Is, declared)
+	}
+}
+
+// turnsTo is the stance a declared one moves to when its `until` holds — the
+// OTHER of hostile and neutral ([encounter.DispositionInput.Until]). Allied
+// never turns, and answers itself. THE RUN'S OWN COPY OF THIS RULE is
+// encounter's unexported `turnsTo`; both are three lines over a closed set,
+// and exporting it would put a stance-arithmetic verb on the composition's
+// public surface for one caller.
+func turnsTo(declared string) string {
+	switch declared {
+	case string(encounter.StanceHostile):
+		return string(encounter.StanceNeutral)
+	case string(encounter.StanceNeutral):
+		return string(encounter.StanceHostile)
+	default:
+		return declared
 	}
 }

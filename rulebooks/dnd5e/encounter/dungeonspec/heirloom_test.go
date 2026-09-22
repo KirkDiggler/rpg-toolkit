@@ -49,6 +49,23 @@ func defectsIn(t *testing.T, source string) []string {
 	return out
 }
 
+// decodeDefects is [defectsIn] for the scenes that never reach validation:
+// the file is refused by the DECODER, and each refusal comes back rendered the
+// same "path: message" way so a scene asserts on both halves of it.
+func decodeDefects(t *testing.T, source string) []string {
+	t.Helper()
+	_, err := dungeonspec.Decode([]byte(source))
+	require.Error(t, err, "these scenes are about the decoder, so the file must not decode")
+	var verr *dungeonspec.ValidationError
+	require.ErrorAs(t, err, &verr)
+	out := make([]string, 0, len(verr.Errors))
+	for _, e := range verr.Errors {
+		out = append(out, e.Error())
+	}
+
+	return out
+}
+
 // requireDefect asserts exactly one defect matches, and reports every defect
 // when none does — a scene that silently matched the wrong one would be a
 // test that cannot fail.
@@ -109,10 +126,10 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 		require.Equal(t, []encounter.IntelID{"reference-tomb-heirloom/hall-notes"}, scroll.Holds)
 	})
 
-	t.Run("two records may reveal one door", func(t *testing.T) {
+	t.Run("two records may reveal one secret", func(t *testing.T) {
 		require.Len(t, compiled.Intel, 2)
 		for _, rec := range compiled.Intel {
-			require.Equal(t, encounter.DoorID("reference-tomb-heirloom/vault"), rec.Reveals.Door,
+			require.Equal(t, encounter.ConcealmentID("reference-tomb-heirloom/vault"), rec.Reveals.Concealment,
 				"knowledge is not scarce: the captain knows the way and so does the scroll")
 		}
 	})
@@ -147,15 +164,23 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 		}, compiled.Scenarios)
 	})
 
-	t.Run("the vault is concealed behind a concealed door", func(t *testing.T) {
-		var vault encounter.RegionInput
-		for _, r := range compiled.Field.Regions {
-			if r.ID == "vault" {
-				vault = r
-			}
-		}
-		require.Equal(t, "vault", vault.ID)
-		require.True(t, vault.Concealed)
+	// THE LOWERING (rpg-project#490, E5). The author still writes the two
+	// v2 words — `regions[].concealed: true` and `doors[].concealed: [...]`
+	// — and what reaches the composition is ONE concealment: the room's
+	// cells, the door that hides them, and that door's approaches as the
+	// checks that find the whole thing.
+	t.Run("the vault and its door lower to one concealment", func(t *testing.T) {
+		require.Len(t, compiled.Concealments, 1)
+		vault := compiled.Concealments[0]
+		require.Equal(t, encounter.ConcealmentID("reference-tomb-heirloom/vault"), vault.ID)
+		require.Equal(t, []encounter.DoorID{"reference-tomb-heirloom/vault"}, vault.Doors,
+			"the door is a MEMBER of the secret now, not a thing with a flag of its own")
+		require.Len(t, vault.Checks, 2, "spotted or reasoned out — a check is beaten by any listed route")
+		require.Len(t, vault.Cells, 6, "and the vault's own three-by-two floor hides with it")
+		require.Nil(t, vault.Notice, "the fixture declares no passive tell")
+
+		require.Equal(t, compiled.Concealments, compiled.Field.Concealments,
+			"the same list the field carries, surfaced for a host that reads what the dungeon declares")
 
 		var door encounter.DoorInput
 		for _, d := range compiled.Field.Doors {
@@ -164,7 +189,9 @@ func TestTheHeirloomTombCompiles(t *testing.T) {
 			}
 		}
 		require.Equal(t, encounter.DoorID("reference-tomb-heirloom/vault"), door.ID)
-		require.Len(t, door.Concealed, 2, "spotted or reasoned out — a check is beaten by any listed route")
+		require.Equal(t, encounter.DoorOpen, door.State.Kind(),
+			"what the door is DOING is still its own, and still only its state — "+
+				"the fixture's vault door says nothing about closed or locked, so it stands open")
 	})
 }
 
@@ -258,11 +285,18 @@ func TestIntelRefusals(t *testing.T) {
 		requireDefect(t, defectsIn(t, edited), "intel[1].id", `intel "vault-map" is already declared at intel[0]`)
 	})
 
-	t.Run("revealing an ORDINARY door is legal and inert", func(t *testing.T) {
-		// Not an error, deliberately: refusing it would make this record's
+	t.Run("revealing an ORDINARY door is refused — a record gives away a SECRET", func(t *testing.T) {
+		// THE CLAIM THAT INVERTED (rpg-project#490, R7). It was "legal and
+		// inert": revealing the way to a door anyone can already see told
+		// nobody anything, and refusing it would have made this record's
 		// legality depend on a fact about a different declaration.
+		//
+		// The engine's target is the CONCEALMENT holding the door now, so
+		// there is nothing for such a record to resolve to — it is not inert
+		// any more, it is empty, and an empty record is the one an author
+		// started and did not finish.
 		edited := strings.Replace(source, "reveals: { door: vault }", "reveals: { door: hall-tomb }", 1)
-		require.Empty(t, defectsIn(t, edited))
+		requireDefect(t, defectsIn(t, edited), "intel[0].reveals.door", "nothing hides that door")
 	})
 }
 

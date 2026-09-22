@@ -28,9 +28,11 @@ var ErrBadSpec = errors.New("bad dungeon spec")
 //
 // Path is the author's own address for it — `regions[1].cells[0][3]`,
 // `walls[3]`, `doors[0].edges[1]`, `place[7].blocks_los`, `start` — so a
-// builder can draw the refusal on the canvas at the cell or edge it names. A
-// decode-level defect (yaml the parser could not read, an unknown key) has no
-// path the decoder can name, so it carries the line instead.
+// builder can draw the refusal on the canvas at the cell or edge it names. An
+// UNKNOWN KEY is one of these too (`factions[0].tempre`): the decoder reports
+// it by line, and unknown_key.go walks the source back to the path
+// (rpg-project#481, R2). What is left carrying a line instead of a path is
+// yaml the parser could not read at all, which has no key to address.
 type FieldError struct {
 	Path    string
 	Message string
@@ -73,7 +75,8 @@ func (e *ValidationError) Unwrap() error { return ErrBadSpec }
 // point of view — the author wrote something they meant and the program did
 // not act on it — and yaml.Unmarshal's default is to drop both without a
 // word. KnownFields(true) is the difference between an author debugging why
-// their dungeon has no floor and an error naming the line.
+// their dungeon has no floor and an error naming the key — at its PATH, and in
+// this package's own words rather than Go's, which unknown_key.go explains.
 //
 // EMPTY INPUT FAILS, rather than decoding to a zero-value Spec that would then
 // be refused by Validate for missing everything.
@@ -91,7 +94,7 @@ func Decode(raw []byte) (*Spec, error) {
 		if errors.Is(err, io.EOF) {
 			return nil, &ValidationError{Errors: []FieldError{{Message: "the dungeon spec is empty"}}}
 		}
-		return nil, &ValidationError{Errors: decodeErrors(err)}
+		return nil, &ValidationError{Errors: decodeErrors(err, raw)}
 	}
 
 	// A second Decode reads the next document in the stream, if any. EOF is
@@ -100,7 +103,7 @@ func Decode(raw []byte) (*Spec, error) {
 	var extra Spec
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return nil, &ValidationError{Errors: decodeErrors(err)}
+			return nil, &ValidationError{Errors: decodeErrors(err, raw)}
 		}
 		return nil, &ValidationError{Errors: []FieldError{{
 			Message: "a dungeon spec is one document, and this file has more than one"}}}
@@ -110,9 +113,16 @@ func Decode(raw []byte) (*Spec, error) {
 }
 
 // decodeErrors splits yaml.v3's multi-line unmarshal error into one
-// FieldError per line, each keeping the "line N:" the parser gave it as the
-// nearest thing to a path a decode defect has.
-func decodeErrors(err error) []FieldError {
+// FieldError per defect.
+//
+// EVERY UNKNOWN KEY IN THE FILE, not the first one: KnownFields collects them
+// all into one TypeError and this keeps them all, because an author fixing a
+// typo should not have to run the file again to find the next. Each is walked
+// back to its own path in the source — see unknown_key.go — and every other
+// decode defect keeps the "line N:" the parser gave it, which is the nearest
+// thing to a path yaml the parser could not read has.
+func decodeErrors(err error, raw []byte) []FieldError {
+	keys := indexAuthoredKeys(raw)
 	var out []FieldError
 	for _, line := range strings.Split(err.Error(), "\n") {
 		line = strings.TrimSpace(line)
@@ -123,6 +133,10 @@ func decodeErrors(err error) []FieldError {
 		path := ""
 		if i := strings.Index(line, ": "); i > 0 && strings.HasPrefix(line, "line ") {
 			path, line = line[:i], line[i+2:]
+		}
+		if defect, unknown := unknownKeyDefect(path, line, keys); unknown {
+			out = append(out, defect)
+			continue
 		}
 		out = append(out, FieldError{Path: path, Message: line})
 	}
