@@ -233,6 +233,7 @@ var sessionSentinels = map[string]error{
 	"ErrOutOfRange":           session.ErrOutOfRange,
 	"ErrNotVisible":           session.ErrNotVisible,
 	"ErrUnwitnessed":          session.ErrUnwitnessed,
+	"ErrNoSocialEntry":        session.ErrNoSocialEntry,
 	"ErrNotDown":              session.ErrNotDown,
 	"ErrNoProp":               session.ErrNoProp,
 	"ErrNotHoldable":          session.ErrNotHoldable,

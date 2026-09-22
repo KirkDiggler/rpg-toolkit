@@ -45,9 +45,9 @@ type PersuadeOutput struct {
 	// CARRIED WHILE PAUSED TOO, and it is the PRE-OFFER total then.
 	Total int `json:"total"`
 
-	// DC is what it had to reach — the APPLIED route's own difficulty. The
-	// placement's authored number when it named one, and otherwise the
-	// creature's own passive Insight.
+	// DC is what it had to reach — the APPLIED route's own difficulty, which
+	// is always a number the placement's `persuade:` authored. There is no
+	// derived difficulty (rpg-project#494 R1).
 	DC int `json:"dc"`
 
 	// Applied is the route the attempt actually took — chosen by this seam
@@ -80,17 +80,18 @@ type PersuadeOutput struct {
 }
 
 // Persuade appeals to a member as Member: a real ability check against the
-// target's authored or derived approaches, resolved through the same path
-// Intimidate's take, and answered by whatever the author wrote the creature
-// does about it.
+// target's authored approaches, resolved through the same path Intimidate's
+// take, and answered by whatever the author wrote the creature does about it.
 //
-// # The DC is the creature's, authored or derived
+// # The offer comes from the NPC
 //
-// The placement's `persuade:` list when the author priced one, and otherwise
-// ONE approach — Persuasion against the stat block's own passive Insight.
-// Derived from the SAME number a threat is: a creature reads a liar and a
-// flatterer with the same sense, and giving the two verbs different derived
-// difficulties would be inventing a rule nobody wrote.
+// The DC is the placement's `persuade:` list and nothing else
+// (rpg-project#494 R1) — [Manager.Intimidate]'s rule, shared. A creature
+// whose binding authored no `persuade:` entries cannot be talked round, and
+// this refuses it with ErrNoSocialEntry before anything is rolled. The two
+// verbs are authored independently: a creature may be written to be
+// threatened and not to be reasoned with, which is a thing about the creature
+// rather than a gap.
 //
 // # It works on both clocks, and costs an action on only one
 //
@@ -110,7 +111,8 @@ type PersuadeOutput struct {
 // same for everyone.
 //
 // Errors: ErrNilInput, ErrNoMemberID, ErrNoSession, ErrNoEncounter,
-// ErrNotYourTurn, ErrDowned, ErrCannotAfford, ErrNoSheet, ErrUnwitnessed.
+// ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoSocialEntry, ErrCannotAfford,
+// ErrUnwitnessed.
 func (m *Manager) Persuade(ctx context.Context, in *PersuadeInput) (*PersuadeOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("persuade: %w", ErrNilInput)

@@ -19,6 +19,15 @@ package session
 // against: that is Move's own rule in move.go, and inventing a second answer
 // here would be this seam holding two opinions about what free roam means.
 //
+// # The offer comes from the NPC
+//
+// A creature is offered a social verb ONLY when its binding authored entries
+// for that verb (rpg-project#494 R1). There is no derived difficulty and no
+// default: absence is "this creature does not do that", not "use the
+// rulebook's number". [socialEntriesOf] is the one read that says so, and
+// both the offer (Afford) and the door (the verb) go through it, so the panel
+// and the refusal cannot disagree.
+//
 // Everything else — down, witnesses, approaches, the pose window — was already
 // clock-independent and did not have to change.
 
@@ -33,7 +42,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // socialVerb is everything that differs between a threat and an appeal, in
@@ -47,16 +55,20 @@ type socialVerb struct {
 	// paused window so the answer knows which verb to finish.
 	verb Verb
 
-	// skill is the skill the DERIVED approach rolls when the author priced
-	// none. The authored list, when there is one, wins whole.
-	skill skills.Skill
-
 	// cost compiles what this verb costs on the TURN clock. Nil is not a
 	// free verb; there is no nil.
 	cost func(*character.Character) (*combat.SpendProfile, error)
 
-	// authored reads the placement's own approach list off the roster row.
+	// authored reads the placement's own approach list off the roster row —
+	// the ONLY source of this verb's difficulty (rpg-project#494 R1). Empty
+	// is a creature the author did not give this verb to, not a creature to
+	// derive a number for.
 	authored func(encounter.Member) []encounter.CheckApproach
+
+	// nobody is what Afford says when the actor has an audience and nobody in
+	// it carries this verb's entries — the [ShortfallNoSocialEntry] text, in
+	// the verb's own words rather than assembled from its name.
+	nobody string
 
 	// land is the composition op that records the verdict and rolls the
 	// creature's answer to it.
@@ -80,14 +92,14 @@ type socialLanding struct {
 }
 
 // intimidateVerb is the threat: Intimidation against the target's own
-// difficulty, priced at the standard action, landing a fear the coward's mind
-// reads (rulebooks/dnd5e/behavior).
+// authored difficulty, priced at the standard action, landing a fear the
+// coward's mind reads (rulebooks/dnd5e/behavior).
 func (m *Manager) intimidateVerb() socialVerb {
 	return socialVerb{
 		verb:     VerbIntimidate,
-		skill:    skills.Intimidation,
 		cost:     character.CostOfIntimidate,
 		authored: func(placed encounter.Member) []encounter.CheckApproach { return placed.Intimidate },
+		nobody:   "nobody here can be intimidated",
 		land: func(
 			ctx context.Context, enc *encounter.Encounter, in *socialLanding,
 		) (bool, uint64, error) {
@@ -112,9 +124,9 @@ func (m *Manager) intimidateVerb() socialVerb {
 func (m *Manager) persuadeVerb() socialVerb {
 	return socialVerb{
 		verb:     VerbPersuade,
-		skill:    skills.Persuasion,
 		cost:     character.CostOfPersuade,
 		authored: func(placed encounter.Member) []encounter.CheckApproach { return placed.Persuade },
+		nobody:   "nobody here can be persuaded",
 		land: func(
 			ctx context.Context, enc *encounter.Encounter, in *socialLanding,
 		) (bool, uint64, error) {
@@ -150,13 +162,14 @@ type socialOutcome struct {
 //
 // Validation order, and nothing is charged on the way to a refusal: the
 // session opens, the clock is read, an off-turn actor ON THE TURN CLOCK is
-// refused, a downed actor is refused, the target's approaches are compiled,
+// refused, a downed actor is refused, the target's authored entries are read,
 // the target is checked to be able to SEE the actor, and only then is the
 // action spent — because a threat the target could never have heard must not
 // cost the actor their turn on the way to being told so.
 //
 // Errors: ErrNilInput, ErrNoMemberID, ErrNoSession, ErrNoEncounter,
-// ErrNotYourTurn, ErrDowned, ErrCannotAfford, ErrNoSheet, ErrUnwitnessed.
+// ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoSocialEntry, ErrCannotAfford,
+// ErrUnwitnessed.
 func (m *Manager) speak(
 	ctx context.Context, spec socialVerb, session, member, target string,
 ) (*socialOutcome, error) {
@@ -187,12 +200,16 @@ func (m *Manager) speak(
 		return nil, fmt.Errorf("%s: %w", spec.verb, err)
 	}
 
-	// ASKED BEFORE ANYTHING IS CHARGED. The composition asks again for itself
-	// when the deed actually lands — this read is a read of a moment and it
-	// does not get to be the authority — but a verb the target could never
-	// have heard must not cost the actor their action on the way to being
-	// refused.
-	approaches, err := m.socialApproaches(scope, spec, target)
+	// ASKED BEFORE ANYTHING IS CHARGED, AND BEFORE ANYTHING IS ROLLED. A
+	// creature the author never gave this verb to is refused by name here
+	// (R3, rpg-project#494), so a stale client echoing a row that has since
+	// stopped being offered gets the same answer the panel gives rather than
+	// a check against a number nobody wrote.
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", spec.verb, translate(err))
+	}
+	approaches, err := socialEntriesOf(roster, target, spec)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", spec.verb, err)
 	}
@@ -269,52 +286,41 @@ func (m *Manager) speak(
 	}, nil
 }
 
-// socialApproaches is the check the target prices, or the one its stat block
-// derives.
+// socialEntriesOf is THE ONE READ of what an author priced on a creature for
+// one social verb — the law both the offer and the door go through
+// (rpg-project#494 R1/R2/R3).
 //
-// THE AUTHORED LIST WINS WHOLE. An author who wrote `intimidate:` or
-// `persuade:` priced every route through it, and a derived approach quietly
-// appended beside theirs would be a DC nobody chose sitting next to the DCs
-// they did.
+// THE AUTHORED LIST IS THE WHOLE ANSWER. A creature is offered a social verb
+// when, and only when, its binding wrote entries for it; no entries is
+// [ErrNoSocialEntry], not a difficulty derived from the stat block. That
+// derived approach — the verb's own skill against passive Insight — is
+// RETIRED: it let a creature nobody configured be threatened anyway, which
+// made absence mean "use the default" instead of "this creature does not do
+// that". The World Builder is now the only place a creature gains a social
+// verb, which is the point.
 //
-// The derived one is a single route: the verb's own skill against passive
-// Insight. It needs a monster sheet, so a target with none — a player
-// character — is refused rather than given a made-up number. Talking another
-// player round is a use case nobody has brought, and the day somebody does it
-// arrives with its own DC.
-func (m *Manager) socialApproaches(
-	scope *writeScope, spec socialVerb, target string,
+// IT TAKES THE ROSTER, NOT THE ENCOUNTER, and that is not an accident. Afford
+// asks this question once per witness to build one row's candidates; reading
+// the roster inside would read it once per witness on a panel that refreshes
+// every frame. The caller reads the roster once and every witness is judged
+// by this one body.
+func socialEntriesOf(
+	roster []encounter.Member, target string, spec socialVerb,
 ) ([]encounter.CheckApproach, error) {
-	roster, err := scope.enc.Members()
-	if err != nil {
-		return nil, translate(err)
-	}
-
-	var placed *encounter.Member
 	for i := range roster {
-		if string(roster[i].ID) == target {
-			placed = &roster[i]
-			break
+		if string(roster[i].ID) != target {
+			continue
 		}
-	}
-	if placed == nil {
-		return nil, fmt.Errorf("target %q: %w", target, ErrNoMember)
-	}
-	if authored := spec.authored(*placed); len(authored) > 0 {
-		return authored, nil
+		entries := spec.authored(roster[i])
+		if len(entries) == 0 {
+			return nil, fmt.Errorf(
+				"target %q has no authored %s entries: %w", target, spec.verb, ErrNoSocialEntry)
+		}
+
+		return entries, nil
 	}
 
-	sheet, ok := npcSheet(scope.data, target)
-	if !ok {
-		return nil, fmt.Errorf(
-			"target %q has no stat block to derive a difficulty from, and its placement priced none: %w",
-			target, ErrNoSheet)
-	}
-
-	return []encounter.CheckApproach{{
-		Ability: string(spec.skill),
-		DC:      sheet.PassiveInsight(),
-	}}, nil
+	return nil, fmt.Errorf("target %q: %w", target, ErrNoMember)
 }
 
 // spendOnSocial charges the verb's price on the actor's own sheet and writes

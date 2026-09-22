@@ -864,31 +864,38 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 // a player can use on a creature standing in a doorway with no fight running,
 // which is the whole of what this slice adds to this panel.
 //
-// The candidates are the witnesses, the same set the verb itself will ask for
-// — see [buildSocialOffer], whose direction this shares and whose price it
-// does not.
+// The candidates are the witnesses an author gave the verb to, the same set
+// the verb itself will ask for — see [buildSocialOffer], whose direction and
+// whose candidate law this shares and whose price it does not. A row nobody
+// in the room was authored for is unavailable with ShortfallNoSocialEntry
+// (rpg-project#494 R2); the clock changes what a row COSTS and never who it
+// is offered on.
 func (m *Manager) socialRowsOnTheWorldClock(
 	enc *encounter.Encounter, session, member string,
 ) ([]Declaration, error) {
-	candidates, err := socialCandidates(enc, member)
+	audience, err := readSocialAudience(enc, member)
 	if err != nil {
 		return nil, err
 	}
-	projected := projectCandidates(candidates)
 
 	rows := make([]Declaration, 0, 2)
-	for _, verb := range []Verb{VerbIntimidate, VerbPersuade} {
-		id, _, err := selectorIDFor(session, member, verb, SlotNone, nil, nil, "", "")
+	for _, spec := range []socialVerb{m.intimidateVerb(), m.persuadeVerb()} {
+		candidates, err := audience.candidatesFor(spec)
+		if err != nil {
+			return nil, err
+		}
+		id, _, err := selectorIDFor(session, member, spec.verb, SlotNone, nil, nil, "", "")
 		if err != nil {
 			return nil, err
 		}
 		decl := Declaration{
-			Verb: verb, Slot: SlotNone, ID: id,
-			TargetKind: TargetMember, Candidates: projected,
+			Verb: spec.verb, Slot: SlotNone, ID: id,
+			TargetKind: TargetMember, Candidates: projectCandidates(candidates),
 		}
-		if len(candidates) == 0 {
-			why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be spoken to"}
-			decl.Why = &why
+		// NO SHEET AND NO PROFILE: free roam has no economy to fall short of,
+		// so the shared order skips its price arm rather than waiving one.
+		if why := socialShortfall(audience, candidates, spec, nil, nil); why != nil {
+			decl.Why = why
 		} else {
 			decl.Available = true
 		}
