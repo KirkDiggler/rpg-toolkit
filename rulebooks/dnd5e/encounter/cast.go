@@ -431,6 +431,14 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		if _, duplicate := seenTargets[target.Target]; duplicate {
 			return nil, fmt.Errorf("record cast: target %d %q is duplicated: %w", i, target.Target, ErrInvalidData)
 		}
+		// AN NPC IS NOT A TARGET (rpg-project#493, R4). Only the attack arm
+		// is refused: a spell that asks its target for a save is not a swing,
+		// and what a save against a world NPC means is its own question.
+		if target.Attack != nil {
+			if err := e.attackable(fmt.Sprintf("record cast: target %d", i), target.Target); err != nil {
+				return nil, err
+			}
+		}
 		if target.Missed && (target.Save != nil || len(target.Results) != 0 || target.Warded != nil || target.Attack != nil) {
 			return nil, fmt.Errorf("record cast: target %d %q missed but carries a save, results, or ward: %w", i, target.Target, ErrInvalidData)
 		}

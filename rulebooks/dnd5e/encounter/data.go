@@ -1024,20 +1024,30 @@ func worldDataFrom(w *encounterWorld) *WorldData {
 	return out
 }
 
-// validateWorldFacts rejects persisted knowledge facts this field cannot
-// have produced, before any construction begins (R5). The check is exact,
-// not permissive: this composition writes ONE fact shape — a minted
-// knowledge kind, its entity as subject (the learner, for a fact), a member
-// this encounter has ever had as actor, audienced to that actor alone — so
-// any other shape means the blob was edited, and it is refused by name
-// rather than loaded as knowledge nobody here ever minted (the idle-bubble
-// precedent in this file, applied to the world; PR #1373 review, Minor 2).
+// validateWorldFacts rejects persisted world facts this field cannot have
+// produced, before any construction begins (R5). The check is exact, not
+// permissive, so any other shape means the blob was edited and is refused by
+// name rather than loaded as something nobody here ever minted (the
+// idle-bubble precedent in this file, applied to the world; PR #1373 review,
+// Minor 2).
+//
+// TWO SHAPES, because the one journal now carries two kinds of world fact:
+//
+//   - KNOWLEDGE (`known:`) — a minted knowledge kind, its entity as subject
+//     (the learner, for a fact), a member this encounter has ever had as
+//     actor, audienced to that actor alone.
+//   - A PAIR'S PUBLIC TURN (`settled:`, rpg-project#493) — a kind minted for
+//     a pair this field can actually turn, actor and subject both that
+//     pair's first side, audienced to the two factions and nobody else.
 //
 // facts is every fact id the field can mention ([mintedFactIDs]): a
 // `known:fact:<id>` naming another dungeon's fact is refused exactly as a
-// door of another dungeon is.
+// door of another dungeon is. turnable is [turnablePairsOf], and it refuses
+// the same way: a blob claiming an allied pair turned hostile is claiming
+// something this field has no machinery for.
 func validateWorldFacts(
-	data *WorldData, concealments []ConcealmentInput, facts []FactID, everMembers []MemberID,
+	data *WorldData, concealments []ConcealmentInput, facts []FactID,
+	turnable []factionPair, everMembers []MemberID,
 ) error {
 	// kind -> the subject that kind's writer always records; "" for a fact
 	// kind, whose subject is its own actor.
@@ -1048,12 +1058,24 @@ func validateWorldFacts(
 	for _, id := range facts {
 		minted[string(factKnownKind(id))] = ""
 	}
+	settled := make(map[string]factionPair, 2*len(turnable))
+	for _, pair := range turnable {
+		for _, to := range settledStances {
+			settled[string(settledKind(to, pair))] = pair
+		}
+	}
 	members := make(map[string]bool, len(everMembers))
 	for _, id := range everMembers {
 		members[string(id)] = true
 	}
 
 	for i, f := range data.Facts {
+		if pair, turns := settled[f.Kind]; turns {
+			if err := validateSettledFact(i, f, pair); err != nil {
+				return err
+			}
+			continue
+		}
 		subject, mints := minted[f.Kind]
 		if f.Kind == "" || !mints {
 			return fmt.Errorf("world fact %d names kind %q, which this field's structure does not mint: %w",
@@ -1075,6 +1097,24 @@ func validateWorldFacts(
 				"world fact %d is not audienced to exactly its actor — this module never writes that shape: %w",
 				i, ErrInvalidData)
 		}
+	}
+	return nil
+}
+
+// validateSettledFact is the shape half of [validateWorldFacts] for a pair's
+// public turn: actor and subject are the pair's first side, and the audience
+// is exactly the two factions, in the pair's own normalized order
+// ([encounterWorld.settlePair] writes nothing else).
+func validateSettledFact(i int, f FactData, pair factionPair) error {
+	side := string(factionEntityID(pair.a))
+	if f.Actor != side || f.Subject != side {
+		return fmt.Errorf("world fact %d settles %s and names %q — a turn is written by its pair (want %q): %w",
+			i, pair, f.Actor, side, ErrInvalidData)
+	}
+	want := []string{string(factionEntityID(pair.a)), string(factionEntityID(pair.b))}
+	if len(f.Audience) != len(want) || f.Audience[0] != want[0] || f.Audience[1] != want[1] {
+		return fmt.Errorf(
+			"world fact %d settles %s and is not audienced to exactly those two factions: %w", i, pair, ErrInvalidData)
 	}
 	return nil
 }
@@ -2562,7 +2602,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			taught = append(taught, taughtFactsOf(r.Table)...)
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
-		if err = validateWorldFacts(data.World, fieldInput.Concealments, mintable, data.EverMembers); err != nil {
+		if err = validateWorldFacts(
+			data.World, fieldInput.Concealments, mintable, turnablePairsOf(f), data.EverMembers,
+		); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}

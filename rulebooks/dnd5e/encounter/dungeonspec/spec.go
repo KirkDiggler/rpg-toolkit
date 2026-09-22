@@ -394,11 +394,12 @@ type FactionSpec struct {
 	Temper TemperSpec `yaml:"temper,omitempty"`
 }
 
-// DispositionSpec is how two factions stand to each other, and what ends
+// DispositionSpec is how two factions stand to each other, and what turns
 // it.
 //
 //	dispositions:
 //	  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }
+//	  - { between: [guards, party],  stance: neutral, until: { round: 12 } }
 //
 // One per unordered pair; a pair nobody declares has a default
 // ([encounter.DefaultStance]): `party` is hostile to every faction that did
@@ -411,9 +412,18 @@ type DispositionSpec struct {
 	// Stance is one of hostile, neutral, allied. REQUIRED.
 	Stance string `yaml:"stance"`
 
-	// Until is the predicate that ends hostility; when it holds the stance
-	// becomes neutral (R2). LEGAL ONLY WITH `stance: hostile` — a neutral or
-	// allied pair has nothing to stop doing. Optional. See [PredicateSpec].
+	// Until is the predicate that TURNS the pair: when it holds the stance
+	// becomes the OTHER of hostile and neutral (rpg-project#493, R1). A
+	// hostile pair stands down; a neutral pair turns on you — "the guards
+	// are civil until midnight", "the wolves are calm until you kill the
+	// alpha". REFUSED ON `stance: allied`: an allied pair has nothing to
+	// become. Optional. See [PredicateSpec] — all four forms are legal here,
+	// and only `{ fact }` needs the pair to have a mind, because only a fact
+	// is somebody's knowledge.
+	//
+	// WHAT NO FILE WRITES is "if attacked, become hostile". Attacking across
+	// a neutral pair turns it hostile by law, authored or not (R3), so a
+	// camp is provokable the moment it is neutral.
 	Until *PredicateSpec `yaml:"until,omitempty"`
 }
 
