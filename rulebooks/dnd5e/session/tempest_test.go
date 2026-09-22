@@ -255,3 +255,39 @@ func (s *CastSuite) TestFogMembershipFollowsPublicMovement() {
 	s.Require().NoError(err)
 	assertFog(false)
 }
+
+// A concentration-ending hit must be recorded before refreshed perception can
+// notice the final downed player and close the encounter.
+func (s *CastSuite) TestLethalHitBreakingFogKeepsItsStory() {
+	sheet := s.tempestSheet()
+	sheet.HitPoints = 2
+	pool := sheet.Resources[resources.WrathOfTheStorm]
+	pool.Current = 0
+	sheet.Resources[resources.WrathOfTheStorm] = pool
+	s.scene(sheet, 1, 15, 4, 1)
+	ctx := context.Background()
+	row := s.castRow(spells.FogCloud)
+	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
+	s.Require().NoError(err)
+	s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.Require().NoError(err)
+	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
+	s.Require().NoError(err, "a lethal hit that removes fog must still record and save its outcome")
+	s.Zero(s.characters.byID["cleric"].HitPoints)
+	s.Require().Len(s.beats(session.EventStruck), 1)
+	s.Require().Len(s.beats(session.EventDowned), 1)
+	live := s.beats(session.EventStruck, session.EventDowned)
+	s.Equal(session.EventStruck, live[0].Kind)
+	s.Equal(session.EventDowned, live[1].Kind)
+	s.Less(live[0].Seq, live[1].Seq)
+	s.reloadHealingScene()
+	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	var replay []session.Event
+	for _, event := range story {
+		if event.Kind == session.EventStruck || event.Kind == session.EventDowned {
+			replay = append(replay, event)
+		}
+	}
+	s.Equal(live, replay, "the damaging hit and resulting downed event must survive reload unchanged")
+}
