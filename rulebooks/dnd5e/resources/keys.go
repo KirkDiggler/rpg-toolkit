@@ -10,6 +10,8 @@ import (
 // Resource key constants for D&D 5e class resources.
 // These are used with Character.GetResource() to access resource pools.
 const (
+	WrathOfTheStorm coreResources.ResourceKey = "wrath_of_the_storm"
+
 	// RageCharges is the barbarian's rage uses per long rest.
 	// Maximum depends on barbarian level: 2 at level 1-2, 3 at 3-5, 4 at 6-11, 5 at 12-16, 6 at 17-19.
 	// At level 20, rage becomes unlimited.
@@ -116,6 +118,8 @@ func SpellSlotLevel(spellLevel int) (coreResources.ResourceKey, bool) {
 // therefore cannot become valid-looking status rows by accident.
 func DisplayName(key coreResources.ResourceKey) (string, bool) {
 	switch key {
+	case WrathOfTheStorm:
+		return "Wrath of the Storm", true
 	case RageCharges:
 		return "Rage", true
 	case Ki:

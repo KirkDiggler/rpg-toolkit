@@ -38,9 +38,14 @@ so optional character evidence such as `AbilityContribution` and
 `WeaponContext` is normally nil. Distances are authored in feet. Preserve
 ordered typed damage pools.
 
-Multiattack is intentionally unsupported until a sequence profile and machine
-exist. Factories retain their component attacks; they do not carry a compatibility
-multiattack object.
+Multiattack is a `SequenceProfile` on the definition: an ordered list of steps,
+each naming a component action `core.Ref` the same monster carries plus the
+per-step rules that apply to that step alone (the goblin boss's second scimitar
+swing declares its disadvantage and the reason for it). Factories author the
+sequence FIRST and keep every component listed on its own beneath it;
+`actions.ResolveSequence` matches the steps against the monster's own action
+list and refuses a step that names something the monster does not carry, or
+another sequence. Nothing in a factory chains sub-actions by name.
 
 ## Conditions and traits
 

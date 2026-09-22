@@ -113,17 +113,21 @@ func (s *ConcealLawSuite) TestANonKnowersAtlasIsAnHonestlyAuthoredTwin() {
 	s.True(mask.BlocksLineOfSight)
 }
 
-// TestPresencePiercesFromFrameOne: a member standing inside a concealed
-// region perceives it from the first frame — their atlas carries it and
-// their story opens with the region reveal — while everyone outside stays
-// blind, and the room's own concealed door remains a separate, unfound
-// knowledge moment: absent from the occupant's door list, masked as wall in
-// their geometry (both its sides are spaces the occupant can see).
+// TestPresencePiercesFromFrameOne: a member standing on a concealment's
+// floor perceives it from the first frame — their atlas carries it and
+// their story opens with the reveal — while everyone outside stays blind.
+//
+// THE DOOR ARRIVES WITH THE ROOM NOW (rpg-project#490, R1). It used to be a
+// separate, still-unfound knowledge moment for the occupant; a concealment
+// is one noun, so standing inside the vault is knowing its door too. What
+// the occupant STILL does not have is the OTHER secret — the veil-door's own
+// cell-less concealment, masked as wall in their geometry.
 func (s *ConcealLawSuite) TestPresencePiercesFromFrameOne() {
 	enc := s.open(findsNothing{}, true)
 
-	reveals := s.beatsForLaw(enc, lurker, "region_revealed")
+	reveals := s.beatsForLaw(enc, lurker, encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1, "the occupant's story opens with the reveal")
+	s.Equal(vaultConceal, reveals[0]["concealment"])
 
 	atlas, err := enc.AtlasFor(lurker)
 	s.Require().NoError(err)
@@ -137,15 +141,15 @@ func (s *ConcealLawSuite) TestPresencePiercesFromFrameOne() {
 
 	doors, err := enc.DoorsFor(lurker)
 	s.Require().NoError(err)
-	s.False(doorsListed(doors, vaultDoor), "occupying the room is not finding its door")
-	_, masked := hasBoundary(atlas, spatial.Position{X: 8, Y: concealRow}, spatial.Position{X: 9, Y: concealRow})
-	s.True(masked, "which is masked as wall between two spaces the occupant sees")
+	s.True(doorsListed(doors, vaultDoor), "occupying the room IS knowing its door — one noun, one moment")
+	s.False(doorsListed(doors, veilDoor), "while the OTHER secret, which they are not standing in, stays hidden")
+	_, masked := hasBoundary(atlas, spatial.Position{X: 4, Y: concealRow}, spatial.Position{X: 5, Y: concealRow})
+	s.True(masked, "and the veil-door's crossing is still masked as wall for them")
 
 	// THE BEAT IS THE ATLAS'S OWN PATCH (PR #1373 review, Minor 1): its
 	// boundary list equals, entry for entry, what the occupant's AtlasFor
-	// answers at the vault's cells — the mask at their own still-unfound
-	// door seam included. Expected computed from the atlas, decoded side
-	// normalized through the same JSON both travel as.
+	// answers at the vault's cells. Expected computed from the atlas,
+	// decoded side normalized through the same JSON both travel as.
 	vaultCells := map[string]bool{}
 	for col := 9; col < 12; col++ {
 		for row := 0; row < 8; row++ {
@@ -174,18 +178,6 @@ func (s *ConcealLawSuite) TestPresencePiercesFromFrameOne() {
 	}
 	s.Require().ElementsMatch(expected, got,
 		"the reveal beat and the member-scoped atlas answer with the same boundaries — mask included")
-	maskOnBeat := false
-	edge := doorEdgesAcross(8, concealRow)[0]
-	for _, b := range got {
-		from := b["from"].(map[string]any)
-		to := b["to"].(map[string]any)
-		if (from["x"] == edge.From.X && from["y"] == edge.From.Y && to["x"] == edge.To.X && to["y"] == edge.To.Y) ||
-			(from["x"] == edge.To.X && from["y"] == edge.To.Y && to["x"] == edge.From.X && to["y"] == edge.From.Y) {
-			maskOnBeat = true
-		}
-	}
-	s.True(maskOnBeat, "the patch carries the mask at the occupant's own unfound door seam")
-
 	outsiderAtlas, err := enc.AtlasFor(seeker)
 	s.Require().NoError(err)
 	for _, r := range outsiderAtlas.Regions {
@@ -211,25 +203,23 @@ func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdi
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{
 			rectRegion("antechamber", 0, 0, 3, 4),
-			func() encounter.RegionInput {
-				r := rectRegion("crypt-a", 3, 0, 3, 4)
-				r.Concealed = true
-				return r
-			}(),
-			func() encounter.RegionInput {
-				r := rectRegion("crypt-b", 6, 0, 3, 4)
-				r.Concealed = true
-				return r
-			}(),
+			rectRegion("crypt-a", 3, 0, 3, 4),
+			rectRegion("crypt-b", 6, 0, 3, 4),
 		},
 		// The antechamber|crypt-a seam is walled except the door row; the
 		// crypt-a|crypt-b seam is FULLY walled — a crossing wholly inside
 		// hidden space is nobody's business but the author's.
 		Walls: append(seamWallExcept(2, 4, 1), seamWallRows(5, 0, 4)...),
 		Doors: []encounter.DoorInput{{
-			ID: "crypt-door", Edges: doorEdgesAcross(2, 1),
-			State: encounter.DoorIsClosed(), Concealed: vaultFind(),
+			ID: "crypt-door", Edges: doorEdgesAcross(2, 1), State: encounter.DoorIsClosed(),
 		}},
+		// TWO SECRETS SHARING A WALL, each its own noun: crypt-a holds the
+		// door into it, crypt-b holds nothing but its own floor.
+		Concealments: []encounter.ConcealmentInput{
+			{ID: "crypt-a", Checks: vaultFind(), Cells: rectCells(3, 0, 3, 4),
+				Doors: []encounter.DoorID{"crypt-door"}},
+			{ID: "crypt-b", Checks: vaultFind(), Cells: rectCells(6, 0, 3, 4)},
+		},
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -264,11 +254,11 @@ func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdi
 	_, present = hasBoundary(atlas, spatial.Position{X: 2, Y: 0}, spatial.Position{X: 3, Y: 0})
 	s.True(present, "while the revealed room's other border walls arrive")
 
-	// And the region reveal's own beat carries the same frontier wall — it
-	// touches crypt-a, the room being revealed — but nothing deeper: no
-	// boundary on the beat has BOTH endpoints inside the still-hidden
-	// neighbour, which would mean crypt-b's own interior structure leaked.
-	reveals := s.beatsForLaw(enc, inner, "region_revealed")
+	// And the reveal's own beat carries the same frontier wall — it touches
+	// crypt-a, the space being revealed — but nothing deeper: no boundary on
+	// the beat has BOTH endpoints inside the still-hidden neighbour, which
+	// would mean crypt-b's own interior structure leaked.
+	reveals := s.beatsForLaw(enc, inner, encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1)
 	cryptBCells := map[string]bool{}
 	for col := 6; col < 9; col++ {
@@ -328,11 +318,7 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{
 			rectRegion("foyer", 0, 0, 3, 2),
-			func() encounter.RegionInput {
-				r := rectRegion("den", 3, 0, 3, 2)
-				r.Concealed = true
-				return r
-			}(),
+			rectRegion("den", 3, 0, 3, 2),
 		},
 		// Row 0 carries a raised authored wall (height 3); row 1 is a bare,
 		// unauthored gap — nothing stops a step there but the region still
@@ -352,6 +338,9 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 				{X: 3, Y: 0}, {X: 2, Y: 1},
 			},
 		}},
+		Concealments: []encounter.ConcealmentInput{
+			{ID: "den", Checks: vaultFind(), Cells: rectCells(3, 0, 3, 2)},
+		},
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -387,8 +376,8 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 }
 
 // TestAProbedConcealedDoorAnswersNotFound — the probe law: everywhere a
-// door id is spoken, a concealed unfound door answers byte-identically to a
-// door that does not exist. Never a locked/closed/DC-naming refusal, which
+// door id is spoken, a hidden door the actor has not found answers
+// byte-identically to a door that does not exist. Never a locked/closed/DC-naming refusal, which
 // would confirm existence to a guessed id. A knower gets the door's real
 // answers back.
 func (s *ConcealLawSuite) TestAProbedConcealedDoorAnswersNotFound() {
@@ -419,6 +408,11 @@ func (s *ConcealLawSuite) TestAProbedConcealedDoorAnswersNotFound() {
 
 	s.Run("a knower gets the real door", func() {
 		_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
+		s.Require().NoError(err)
+		// Up to the door first: a door opens only from within reach of it
+		// (rpg-toolkit#1856), and what this scene is about is the answer a
+		// knower gets, not how far they stood.
+		_, err = enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(4, concealRow)})
 		s.Require().NoError(err)
 		_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
 		s.Require().NoError(err, "found, the door answers as itself")
@@ -538,6 +532,10 @@ func (s *ConcealLawSuite) TestAStepInsideAHiddenRoomStopsAtTheFrontier() {
 	// — and ordinary updates resume for them alone, without backfill.
 	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
+	// Up to the door first (rpg-toolkit#1856): reach is not what this scene
+	// is about, and the annex side of the seam is where a hand has to be.
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
+	s.Require().NoError(err)
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
@@ -561,12 +559,16 @@ func (s *ConcealLawSuite) TestAWitnessedCrossingKeepsTheWatcherReceiving() {
 
 	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
+	// Up to the door first (rpg-toolkit#1856), stopping one short of the
+	// seam so the crossing below is still a crossing.
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
+	s.Require().NoError(err)
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy, seeker}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
 
-	s.Len(s.beatsForLaw(enc, seeker, "door_revealed"), 1, "the watcher perceived the door open")
-	s.Len(s.beatsForLaw(enc, seeker, "region_revealed"), 1, "and the room behind it — the existing mechanism")
+	s.Len(s.beatsForLaw(enc, seeker, encounter.BeatConcealmentRevealed), 1,
+		"the watcher perceived the door open, and the secret it hid arrived whole")
 
 	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(8, concealRow)})
 	s.Require().NoError(err)
@@ -592,6 +594,10 @@ func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() 
 	// The veil-door: seeker finds it, opens it, shuts it. Nobody perceives.
 	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
 	s.Require().NoError(err)
+	// Both hands walk up to their door first (rpg-toolkit#1856); the cycle
+	// this scene drives is open-and-close, not reach.
+	_, err = enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(4, concealRow)})
+	s.Require().NoError(err)
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
 	s.Require().NoError(err)
 	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: veilDoor, Actor: seeker})
@@ -600,6 +606,8 @@ func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() 
 	// The vault-door: buddy finds it, opens it (perceiving it open — the
 	// region arrives), shuts it again.
 	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
 	s.Require().NoError(err)
 	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})

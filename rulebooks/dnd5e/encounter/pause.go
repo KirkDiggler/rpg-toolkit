@@ -103,19 +103,20 @@ func (e *StepPausedError) Unwrap() error { return ErrStepPaused }
 // re-derived on resume from the loaded encounter, and a stored copy of either
 // could only ever agree with the roster or lie to it.
 type pausedTurn struct {
-	member    MemberID
-	round     int
-	from      spatial.Position
-	to        spatial.Position
-	remaining []spatial.Position
-	moved     int
-	budget    TurnBudget
-	intent    int
-	bound     int
-	at        uint64
-	audience  []MemberID
-	cause     core.Ref
-	terminal  bool
+	member      MemberID
+	round       int
+	from        spatial.Position
+	to          spatial.Position
+	remaining   []spatial.Position
+	moved       int
+	budget      TurnBudget
+	intent      int
+	bound       int
+	at          uint64
+	audience    []MemberID
+	cause       core.Ref
+	terminal    bool
+	afterStrike bool
 }
 
 // PausedTurnData is the persistent representation of a paused turn — see
@@ -179,7 +180,8 @@ type PausedTurnData struct {
 	// Terminal is whether finishing the walk finishes the turn — true for a
 	// [Routed] intent and false for a [Move]. Omitted when false, for Cause's
 	// reason.
-	Terminal bool `json:"terminal,omitempty"`
+	Terminal    bool `json:"terminal,omitempty"`
+	AfterStrike bool `json:"after_strike,omitempty"`
 }
 
 // TurnBudgetData is the persistent representation of a [TurnBudget].
@@ -198,12 +200,13 @@ func pausedTurnDataFrom(p *pausedTurn) *PausedTurnData {
 		remaining[i] = PositionData{X: c.X, Y: c.Y}
 	}
 	return &PausedTurnData{
-		Member:    p.member,
-		Round:     p.round,
-		From:      PositionData{X: p.from.X, Y: p.from.Y},
-		To:        PositionData{X: p.to.X, Y: p.to.Y},
-		Remaining: remaining,
-		Moved:     p.moved,
+		Member:      p.member,
+		Round:       p.round,
+		From:        PositionData{X: p.from.X, Y: p.from.Y},
+		To:          PositionData{X: p.to.X, Y: p.to.Y},
+		Remaining:   remaining,
+		AfterStrike: p.afterStrike,
+		Moved:       p.moved,
 		Budget: TurnBudgetData{
 			AttacksLeft:  p.budget.AttacksLeft,
 			MovementFeet: p.budget.MovementFeet,
@@ -268,12 +271,13 @@ func pausedTurnFrom(d *PausedTurnData) (*pausedTurn, error) {
 			AttacksLeft:  d.Budget.AttacksLeft,
 			MovementFeet: d.Budget.MovementFeet,
 		},
-		intent:   d.Intent,
-		bound:    d.Bound,
-		at:       d.At,
-		audience: append([]MemberID(nil), d.Audience...),
-		cause:    cause,
-		terminal: d.Terminal,
+		intent:      d.Intent,
+		bound:       d.Bound,
+		at:          d.At,
+		audience:    append([]MemberID(nil), d.Audience...),
+		cause:       cause,
+		terminal:    d.Terminal,
+		afterStrike: d.AfterStrike,
 	}, nil
 }
 
@@ -323,10 +327,14 @@ func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}) e
 	if _, ok := members[core.EntityID(d.Member)]; !ok {
 		return fmt.Errorf("load encounter paused turn: %q is not a member: %w", d.Member, ErrInvalidData)
 	}
-	if len(d.Remaining) == 0 {
+	if d.AfterStrike {
+		if len(d.Remaining) != 0 || d.Budget.AttacksLeft != 0 || d.Moved != 0 {
+			return fmt.Errorf("load encounter paused strike %q: invalid continuation: %w", d.Member, ErrInvalidData)
+		}
+	} else if len(d.Remaining) == 0 {
 		return fmt.Errorf("load encounter paused turn %q: nothing left to walk: %w", d.Member, ErrInvalidData)
 	}
-	if d.To != d.Remaining[0] {
+	if !d.AfterStrike && d.To != d.Remaining[0] {
 		return fmt.Errorf(
 			"load encounter paused turn %q: the announced cell is not the first cell left to walk: %w",
 			d.Member, ErrInvalidData)
@@ -667,6 +675,9 @@ func (e *Encounter) finishPausedIntent(
 	}
 	if downNow[p.member] {
 		return 0, nil, true, nil
+	}
+	if p.afterStrike {
+		return 0, nil, false, nil
 	}
 
 	moved := 0

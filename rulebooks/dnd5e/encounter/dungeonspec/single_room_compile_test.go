@@ -38,20 +38,18 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 		require.True(t, errors.Is(err, ErrBadSpec))
 		require.Equal(t, Compiled{}, zero)
 	})
-	t.Run("empty scene arrays and pointer isolation", func(t *testing.T) {
+	// A room that declares no prop places none — and the scene it authored
+	// reaches the field in no other way (rpg-project#479): the compiled
+	// FieldInput is the geometry and nothing else.
+	t.Run("a room without declarations places nothing", func(t *testing.T) {
 		fresh, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
 		require.NoError(t, err)
 		spec := fresh.Spec
-		spec.Room.Scene.Items = []encounter.RoomSceneItem{}
-		spec.Room.Scene.Groups = []encounter.RoomSceneGroup{}
 		spec.Room.Gameplay.PropDeclarations = map[string]RoomPropDeclaration{}
 		compiled, err := CompileSingleRoom(CompileSingleRoomInput{Spec: spec})
 		require.NoError(t, err)
-		require.NotNil(t, compiled.Field.RoomScene)
-		require.NotNil(t, compiled.Field.RoomScene.Scene.Items)
-		require.NotNil(t, compiled.Field.RoomScene.Scene.Groups)
-		spec.Room.Scene.Name = "changed"
-		require.Equal(t, "Workshop", compiled.Field.RoomScene.Scene.Name)
+		require.Empty(t, compiled.Field.Placed)
+		require.Equal(t, "Workshop", compiled.Name, "the scene still names the dungeon")
 	})
 	t.Run("source refusals carry editable paths", func(t *testing.T) {
 		fresh, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
@@ -82,7 +80,7 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 		fresh, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
 		require.NoError(t, err)
 		spec := fresh.Spec
-		spec.Room.Scene.Items[0].Transform.X = math.Sqrt(3)
+		setItemTransform(t, spec, "table", "x", math.Sqrt(3))
 		compiled, err := Load(mustEncode(t, spec))
 		require.NoError(t, err)
 		require.NotEmpty(t, compiled.PartyStart)
@@ -114,12 +112,12 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 			edit func(*SingleRoomSpec)
 		}{
 			{"start under footprint", func(spec *SingleRoomSpec) {
-				spec.Room.Scene.Items[0].Transform.X = 0
-				spec.Room.Scene.Items[0].Transform.Z = 0
+				setItemTransform(t, spec, "table", "x", 0)
+				setItemTransform(t, spec, "table", "z", 0)
 			}},
 			{"monster under footprint", func(spec *SingleRoomSpec) {
-				spec.Room.Scene.Items[0].Transform.X = 2 * math.Sqrt(3)
-				spec.Room.Scene.Items[0].Transform.Z = 0
+				setItemTransform(t, spec, "table", "x", 2*math.Sqrt(3))
+				setItemTransform(t, spec, "table", "z", 0)
 			}},
 			{"duplicate monster cell", func(spec *SingleRoomSpec) {
 				m := spec.Room.Gameplay.Monsters[0]
@@ -196,7 +194,7 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 // TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder is the dispatch half
 // of the version seam. Load is the entry point consumers actually use, and a
 // version it routes to the v2 decoder is misreported as a malformed v2 dungeon
-// ("field play not found in type dungeonspec.Spec") rather than refused as a
+// (`play: "play" is not a key this build reads`) rather than refused as a
 // version this build does not speak.
 func TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder(t *testing.T) {
 	raw, err := os.ReadFile("testdata/world-builder-v3.yaml")
@@ -209,7 +207,7 @@ func TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder(t *testing.T) {
 	v4 := swapOneIn(t, raw, "version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room")
 	compiled, err := Load(v4)
 	require.NoError(t, err)
-	require.NotNil(t, compiled.Field.RoomScene, "the single-room compiler ran")
+	require.Equal(t, "Workshop", compiled.Name, "the single-room compiler ran")
 	require.Equal(t, v3, compiled, "v4-only-in-version compiled to the v3 world")
 	require.Equal(t, "workshop-room", compiled.Key)
 
@@ -220,8 +218,8 @@ func TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder(t *testing.T) {
 	_, err = Load(v5)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported version 5 (want 3 or 4)")
-	require.NotContains(t, err.Error(), "field play not found")
-	require.NotContains(t, err.Error(), "field room not found")
+	require.NotContains(t, err.Error(), `"play" is not a key`)
+	require.NotContains(t, err.Error(), `"room" is not a key`)
 }
 
 // TestSingleRoomValidationPaths locks source attribution for every placement
@@ -239,8 +237,8 @@ func TestSingleRoomValidationPaths(t *testing.T) {
 		{
 			name: "party blocked with monsters present", path: "room.room.partyStart", coordinate: "q=0 r=0",
 			edit: func(s *SingleRoomSpec) {
-				s.Room.Scene.Items[0].Transform.X = 0
-				s.Room.Scene.Items[0].Transform.Z = 0
+				setItemTransform(t, s, "table", "x", 0)
+				setItemTransform(t, s, "table", "z", 0)
 			},
 		},
 		{
@@ -250,8 +248,8 @@ func TestSingleRoomValidationPaths(t *testing.T) {
 		{
 			name: "first monster fails while later monster is valid", path: "room.room.monsters[0].cell", coordinate: "q=2 r=0",
 			edit: func(s *SingleRoomSpec) {
-				s.Room.Scene.Items[0].Transform.X = 2 * math.Sqrt(3)
-				s.Room.Scene.Items[0].Transform.Z = 0
+				setItemTransform(t, s, "table", "x", 2*math.Sqrt(3))
+				setItemTransform(t, s, "table", "z", 0)
 				s.Room.Gameplay.Monsters[0].Cell = RoomCell{Q: 2, R: 0}
 				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", Cell: RoomCell{Q: 1, R: 0}})
 			},
@@ -259,8 +257,8 @@ func TestSingleRoomValidationPaths(t *testing.T) {
 		{
 			name: "later monster fails", path: "room.room.monsters[1].cell", coordinate: "q=2 r=0",
 			edit: func(s *SingleRoomSpec) {
-				s.Room.Scene.Items[0].Transform.X = 2 * math.Sqrt(3)
-				s.Room.Scene.Items[0].Transform.Z = 0
+				setItemTransform(t, s, "table", "x", 2*math.Sqrt(3))
+				setItemTransform(t, s, "table", "z", 0)
 				s.Room.Gameplay.Monsters[0].Cell = RoomCell{Q: 1, R: 0}
 				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", Cell: RoomCell{Q: 2, R: 0}})
 			},

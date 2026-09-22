@@ -53,6 +53,8 @@ const (
 	hallGateRow  = 7
 	tombVault    = "tomb-vault-door"
 	hallGate     = "hall-gate-door"
+	vaultSecret  = "vault"
+	gateSecret   = "hall-gate"
 	vaultMap     = "vault-map"
 	scrollNotes  = "scroll-notes"
 	scrollMargin = "scroll-margin"
@@ -112,37 +114,33 @@ func heirloomField() encounter.FieldInput {
 		Regions: []encounter.RegionInput{
 			rectRegion("hall", 0, 0, 4, 8),
 			rectRegion("tomb", 4, 0, 4, 8),
-			func() encounter.RegionInput {
-				r := rectRegion("vault", 8, 0, 3, 8)
-				r.Concealed = true
-				return r
-			}(),
+			rectRegion("vault", 8, 0, 3, 8),
 		},
 		Walls: append(
 			seamWallExcept(3, 8, hallGapRow, hallGateRow),
 			seamWallExcept(7, 8, vaultSeamRow)...),
 		Doors: []encounter.DoorInput{
-			{
-				ID: tombVault, Edges: doorEdgesAcross(7, vaultSeamRow),
-				State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
-			},
-			// A second concealed door, so the scroll's second record has
-			// something of its own to reveal.
-			{
-				ID: hallGate, Edges: doorEdgesAcross(3, hallGateRow),
-				State: encounter.DoorIsClosed(), Concealed: vaultFindCheck(),
-			},
+			{ID: tombVault, Edges: doorEdgesAcross(7, vaultSeamRow), State: encounter.DoorIsClosed()},
+			{ID: hallGate, Edges: doorEdgesAcross(3, hallGateRow), State: encounter.DoorIsClosed()},
+		},
+		// THE TWO SECRETS. The vault is a hidden room whose door belongs to
+		// it; the hall gate is a lone hidden crossing, so the scroll's second
+		// record has something of its own to give away.
+		Concealments: []encounter.ConcealmentInput{
+			{ID: vaultSecret, Checks: vaultFindCheck(), Cells: rectCells(8, 0, 3, 8),
+				Doors: []encounter.DoorID{tombVault}},
+			{ID: gateSecret, Checks: vaultFindCheck(), Doors: []encounter.DoorID{hallGate}},
 		},
 		// The knowledge this field declares: one record, revealing the way
 		// into the vault. What the captain HOLDS is the record id; what it
 		// means is read from here when it changes hands.
 		Intel: []encounter.IntelRecord{
-			{ID: vaultMap, Reveals: encounter.RevealTargets{Door: tombVault}},
+			{ID: vaultMap, Reveals: encounter.RevealTargets{Concealment: vaultSecret}},
 			// The scroll's own records — TWO of them, because a letter can
 			// say more than one thing and a prop that carries exactly one
 			// would let a loop that applies only the first pass unnoticed.
-			{ID: scrollNotes, Reveals: encounter.RevealTargets{Door: tombVault}},
-			{ID: scrollMargin, Reveals: encounter.RevealTargets{Door: hallGate}},
+			{ID: scrollNotes, Reveals: encounter.RevealTargets{Concealment: vaultSecret}},
+			{ID: scrollMargin, Reveals: encounter.RevealTargets{Concealment: gateSecret}},
 		},
 		Props: []encounter.PropInput{
 			holdableProp(heirloom, "dnd5e:props:reliquary", heirloomCell),

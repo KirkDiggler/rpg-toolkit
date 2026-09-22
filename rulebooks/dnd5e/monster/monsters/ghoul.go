@@ -12,8 +12,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewGhoul creates a CR 1 ghoul with bite and claw component attacks.
-// Multiattack is deferred until a sequence profile and machine exist.
+// NewGhoul creates a CR 1 ghoul that makes two attacks, one with its bite
+// and one with its claws, over bite and claw components.
 func NewGhoul(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -31,7 +31,19 @@ func NewGhoul(id string) *monster.Monster {
 		},
 	})
 
-	// Component attacks remain available until a sequence profile exists.
+	// The SRD's "one with its bite and one with its claws", in that order,
+	// then the components it scripts.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.GhoulMultiattack(),
+		Name: "Multiattack",
+		Sequence: &combatActions.SequenceProfile{
+			Steps: []combatActions.SequenceStep{
+				{Action: *refs.MonsterActions.GhoulBite()},
+				{Action: *refs.MonsterActions.GhoulClaw()},
+			},
+		},
+	})
+
 	mustAddAction(m, combatActions.Definition{
 		Ref:  *refs.MonsterActions.GhoulBite(),
 		Name: "bite",

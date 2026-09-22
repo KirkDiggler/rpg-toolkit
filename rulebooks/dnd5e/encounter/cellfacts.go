@@ -43,6 +43,15 @@ const (
 	// ContribMember is a creature standing on the cell, folded by its stance
 	// to the mover.
 	ContribMember ContribKind = "member"
+
+	// ContribDoor is a SHUT DOOR standing as a footprint over the cell
+	// (rpg-project#485, R1). Its own kind rather than a prop's, because the
+	// difference is the whole point: a prop is a fact about the dungeon and
+	// a shut door is a thing with a state, which is the part a caller can do
+	// something about (rpg-toolkit#1123's lesson, one noun over). An edge
+	// door never appears here — it closes a CROSSING, not a cell, and the
+	// crossing fold is where it is answered.
+	ContribDoor ContribKind = "door"
 )
 
 // ContribRef is one contributor to a cell fact.
@@ -131,13 +140,23 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 	// overlapping tables do not erase each other's fact.
 	if len(e.field.placed) > 0 {
 		centre := e.field.plane.CellCentre(in.Cell)
+		now := e.field.placedNow()
 		for i := range e.field.placed {
 			p := &e.field.placed[i]
 			if !p.blocksMovement {
 				continue
 			}
+			// ONE ANSWER WITH [field.standingBlocks] (rpg-toolkit#1854): a
+			// placement in reserve or in somebody's hands closes no cell, and
+			// the fold that says so is the same one the step's own refusal
+			// reads — a router that saw a table nobody can walk into any more
+			// would hand back a path around nothing.
+			placement, standing := now.stands(p)
+			if !standing {
+				continue
+			}
 			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-				Placement: p.placement, From: centre, To: centre,
+				Placement: placement, From: centre, To: centre,
 			})
 			if err != nil || contact.Contact {
 				fact.Passage = PassageBlocked
@@ -146,6 +165,23 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 				})
 			}
 		}
+	}
+
+	// A DOOR THAT STANDS AS A FOOTPRINT (rpg-project#485, R1), by the same
+	// centre-covered rule and reported as the DOOR it is. It is here rather
+	// than only in the step's own refusal because this fold is what a route
+	// reads: a router that could not see a shut door would hand back a path
+	// through it and the step would refuse — rpg-toolkit#1652's defect, in
+	// the one noun that can change mid-scene.
+	//
+	// An OPEN door contributes nothing at all, not a non-blocking row: what
+	// the map reports about a doorway somebody walked through is what it
+	// reported before the door existed.
+	if door := e.field.doorStandingOn(in.Cell); door != nil {
+		fact.Passage = PassageBlocked
+		fact.Contribs = append(fact.Contribs, ContribRef{
+			Kind: ContribDoor, ID: string(door.id), Ref: string(door.id), Blocks: true,
+		})
 	}
 
 	for _, ent := range e.canvas.GetEntitiesAt(in.Cell) {
@@ -222,6 +258,32 @@ func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
 				return &StaticPlacementError{Index: i, At: authored, Reason: fmt.Sprintf("is occupied by footprint %q", p.id), Cause: ErrBadPlacement}
 			}
 		}
+		// A SHUT FOOTPRINT DOOR OCCUPIES ITS CELLS TOO (rpg-project#485, R1),
+		// in its AUTHORED state — which is what this question is about: a
+		// party seat or a monster placed inside a closed door is an author's
+		// defect, not something the run works out later. An open one occupies
+		// nothing, exactly as an open door's crossing blocks nothing.
+		//
+		// The doors are read from the INPUT rather than from compiled
+		// records, because this seam compiles the field alone; a door whose
+		// geometry is unmeasurable is refused by validateDoorInputs at
+		// construction, and is treated here as occupying the cell — fail
+		// closed, the rule the placed loop above already applies.
+		for _, d := range in.Doors {
+			if d.Placement == nil || d.Placement.Footprint.Box == nil || d.State == nil || !d.State.blocks() {
+				// A door with no box is a field construction refuses
+				// outright (validateDoorInputs), so there is nothing
+				// measurable here and nothing to be closed about.
+				continue
+			}
+			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: *d.Placement, From: centre, To: centre})
+			if traceErr != nil || contact.Contact {
+				return &StaticPlacementError{
+					Index: i, At: authored,
+					Reason: fmt.Sprintf("is occupied by door %q", d.ID), Cause: ErrBadPlacement,
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -241,7 +303,7 @@ func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
 // two true answers. Only contributors that actually [ContribRef.Blocks] are
 // eligible: an ally sharing a blocked cell did not block it.
 func (e *Encounter) blockedBy(fact CellFact, cell spatial.Position) string {
-	var prop, member string
+	var door, prop, member string
 	for _, c := range fact.Contribs {
 		if !c.Blocks {
 			continue
@@ -249,6 +311,14 @@ func (e *Encounter) blockedBy(fact CellFact, cell spatial.Position) string {
 		switch c.Kind {
 		case ContribField:
 			return e.field.notStandable(cell)
+		case ContribDoor:
+			// THE DOOR SPEAKS FIRST among the placed things, because it is
+			// the one a caller can do something about: "there is a table
+			// here" ends the conversation and "door X is closed" starts
+			// the next verb.
+			if door == "" {
+				door = fmt.Sprintf("is blocked by door %s", c.ID)
+			}
 		case ContribProp:
 			if prop == "" {
 				prop = fmt.Sprintf("is blocked by %s", c.Ref)
@@ -260,6 +330,8 @@ func (e *Encounter) blockedBy(fact CellFact, cell spatial.Position) string {
 		}
 	}
 	switch {
+	case door != "":
+		return door
 	case prop != "":
 		return prop
 	case member != "":

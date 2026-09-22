@@ -347,6 +347,14 @@ type propPlacement struct {
 	// at for the rest of the run, as an unreserved prop's stands at its
 	// authored cell — kept apart from at, which a later drop moves.
 	arrivedAt spatial.Position
+
+	// dropped is whether the LAST thing that happened to this prop was
+	// somebody putting it down. Narrower than moved, which an arrival also
+	// sets, and the difference is only visible for a PLACED footprint
+	// (rpg-toolkit#1854): an arrival leaves a rectangle exactly where its
+	// author drew it, and a drop is the one event that moves one. A legacy
+	// prop reads At for both, so nothing here changes for it.
+	dropped bool
 }
 
 // propPlacements folds where every prop physically is: arrived at a cell,
@@ -376,7 +384,10 @@ func (h *holdings) propPlacements() map[PropID]propPlacement {
 		case strings.HasPrefix(kind, droppedPrefix):
 			if id, at, ok := parseDropped(kind); ok {
 				prev := out[id]
-				out[id] = propPlacement{at: at, moved: true, arrived: prev.arrived, arrivedAt: prev.arrivedAt}
+				out[id] = propPlacement{
+					at: at, moved: true, dropped: true,
+					arrived: prev.arrived, arrivedAt: prev.arrivedAt,
+				}
 			}
 		}
 	}

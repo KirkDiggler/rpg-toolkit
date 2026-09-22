@@ -55,6 +55,19 @@ import (
 // nothing for two edges of one gate to disagree ABOUT. That makes "a gate opens
 // as one thing" structural rather than something the verbs have to remember to
 // do, and it is pinned that way (TestNoEdgeCarriesAStateOfItsOwn).
+//
+// # And a door that stands in no crossing at all (rpg-project#485)
+//
+// The paragraphs above say a door is a name and a state over geometry that
+// was already expressible. Edges were the only such geometry when they were
+// written; a PLACED FOOTPRINT (placed_props.go) is the second, and the
+// single-room dialect's doors stand as one because that dialect has no walls
+// to put a door in. Nothing above changes: the state machine, the three
+// verbs, the lock, the beats and the refusal sentences are the ones this file
+// already had, and what a door BLOCKS is still its state's answer and only
+// its state's answer. What a footprint door adds is where that answer is
+// asked — the placed-footprint queries, per read, instead of a boundary
+// registration. [DoorInput] takes one geometry or the other, never both.
 
 // DoorID names one door.
 //
@@ -84,8 +97,8 @@ const (
 //
 // A CHECK IS A LIST OF THESE, NOT ONE ABILITY AND ONE DC (ruled on
 // rpg-project#350): a locked door is forced with Strength or picked with
-// Dexterity and tools; a concealed door is spotted with Perception or
-// reasoned out with Investigation. Success by any listed approach, and the
+// Dexterity and tools; a concealment is spotted with Perception or reasoned
+// out with Investigation. Success by any listed approach, and the
 // author prices each route separately. Which approach an attempt actually
 // used is the caller's business — the resolver on the far side of the seam
 // picks it, rolls it, and tells this module only the verdict.
@@ -226,36 +239,58 @@ type DoorEdge struct {
 	To spatial.Position
 }
 
-// DoorInput authors one door: a name, the edges it stands in, and the state
-// they are all in.
+// DoorInput authors one door: a name, the GEOMETRY it stands in, and the
+// state that geometry is in.
+//
+// # Two geometries, one state (rpg-project#485, R1)
+//
+// A door is a name and a state over something the map already had. Which
+// something depends on how the room was drawn, and there are exactly two:
+//
+//   - EDGES, the v2 dialect's. A door is a position on a wall, and the
+//     crossings it opens are edges between adjacent floor cells.
+//   - A FOOTPRINT, the single-room dialect's. That dialect has no walls —
+//     "walls are currently just props that block los and movement", so
+//     placing a door IN one no longer means anything — and a door there is
+//     a placed rectangle like every other prop, whose blocking follows the
+//     door's state instead of a pair of authored flags.
+//
+// EXACTLY ONE, never both and never neither: a door with two geometries
+// would be two things sharing one state, which is the defect [DoorEdge]'s
+// missing flags exist to prevent, one level up.
 type DoorInput struct {
 	// ID is the door's unique identifier.
 	ID DoorID
 
 	// Edges are the crossings this door stands in — at least one, and as many
 	// as the gate is wide. They share one state, which is the whole design;
-	// see this file's own doc comment.
+	// see this file's own doc comment. Empty for a footprint door.
 	Edges []DoorEdge
+
+	// Placement is the door's FOOTPRINT: the canonical rectangle it stands
+	// as, in the same plane and the same units [PlacedPropInput.Placement]
+	// is measured in, and refused by the same [validatePlacement]. Nil for
+	// an edge door.
+	//
+	// WHAT IT BLOCKS IS THE STATE'S ANSWER, never a flag: closed and locked
+	// block movement and sight, open blocks neither. That is the whole
+	// difference between this and a placed prop, and it is why the blocking
+	// flags are refused on a door item in the authoring dialect — a flag
+	// here would be a second truth the state would have to be kept in step
+	// with (rpg-toolkit#1846, ruled: state wins).
+	Placement *spatial.FootprintPlacement
 
 	// State is what state the door starts in. REQUIRED — see [DoorState].
 	State DoorState
 
-	// Concealed is the find check when the door is authored concealed: the
-	// approaches that can find it, AT LEAST ONE when present. Nil means the
-	// door was never concealed — the zero value telling the truth — and nil
-	// with zero length is refused, a door hidden with no way to ever find
-	// it.
-	//
-	// NOT A FOURTH [DoorState]: concealment COMPOSES with open, closed, or
-	// locked underneath (rpg-project#350) — what a door is doing and
-	// whether anyone knows it is there are two separate authored facts, and
-	// this one never changes at this seam.
-	//
-	// CARRIED, NOT INTERPRETED. This module's geometry ignores it entirely:
-	// a concealed door blocks exactly what its state blocks, and who has
-	// FOUND it is knowledge the world layer owns (living-world slice 1,
-	// wave 1b), not a fact about the map.
-	Concealed []CheckApproach
+	// A DOOR NO LONGER SAYS WHETHER IT IS HIDDEN (rpg-project#490). It
+	// carried `Concealed []CheckApproach` until the concealment primitive
+	// landed; a door is hidden now by being named in a
+	// [ConcealmentInput.Doors], which is the same fact said once for the
+	// door, the cells behind it and the bookcase in front of it. What never
+	// changed is the law that field stated: concealment is NOT a fourth
+	// [DoorState] and never was — a hidden door blocks exactly what its
+	// state blocks, and who has found it is knowledge, not geometry.
 }
 
 // Door is a door's public read shape: what it is called, where it stands, and
@@ -266,28 +301,38 @@ type Door struct {
 
 	// Edges are the crossings it stands in, dungeon-absolute. Freshly
 	// allocated per call — this is a copy-out read, like [Encounter.Atlas].
+	// EMPTY for a footprint door, which stands in no crossing at all.
 	Edges []DoorEdge
+
+	// Placement is the footprint it stands as, or nil for an edge door —
+	// [DoorInput.Placement], read back. Freshly allocated per call, box
+	// included, as the edges are.
+	Placement *spatial.FootprintPlacement
 
 	// State is its state RIGHT NOW, not the one it was authored in.
 	State DoorState
-
-	// Concealed is the authored find check, or nil for a door that was
-	// never concealed — [DoorInput.Concealed], read back verbatim. Freshly
-	// allocated per call, as the edges are.
-	Concealed []CheckApproach
 }
 
 // doorRecord is what the composition stores about a door.
 //
-// The edges and the concealment are construction truth and never change; the
-// state is the only mutable thing, and it is held ONCE for however many edges
-// the door has.
+// The edges are construction truth and never change; the state is the only
+// mutable thing, and it is held ONCE for however many edges the door has.
+// Whether the door is hidden is not here at all — that is the field's
+// concealment table (concealment.go), asked by id.
 type doorRecord struct {
 	id        DoorID
 	edges     []DoorEdge
+	placement *spatial.FootprintPlacement
 	state     DoorState
-	concealed []CheckApproach
 }
+
+// blocks is what this door's geometry does right now: its state's answer,
+// for the edges and the footprint alike.
+//
+// One question, one place to ask it. [registerDoor] puts this on the edges
+// and the placed-footprint queries ask it per read, so an edge door and a
+// footprint door cannot come to disagree about what "closed" means.
+func (d *doorRecord) blocks() bool { return d.state.blocks() }
 
 // Doors reports every door, in stable ID order, with the state each is in now.
 //
@@ -320,8 +365,8 @@ func (e *Encounter) Doors() []Door {
 		out = append(out, Door{
 			ID:        d.id,
 			Edges:     append([]DoorEdge(nil), d.edges...),
+			Placement: copyPlacement(d.placement),
 			State:     d.state,
-			Concealed: copyApproaches(d.concealed),
 		})
 	}
 
@@ -390,21 +435,14 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 		if d.State == nil {
 			return fmt.Errorf("door %q does not say what state it is in (DoorInput.State): %w", d.ID, ErrBadDoor)
 		}
+		if err := validateDoorGeometry(d); err != nil {
+			return err
+		}
 		if lock, locked := d.State.Lock(); locked {
 			if err := validateCheck(d.ID, "is locked and lists no way through", lock.Approaches); err != nil {
 				return err
 			}
 		}
-		if d.Concealed != nil {
-			if err := validateCheck(d.ID, "is concealed and lists no way to find it", d.Concealed); err != nil {
-				return err
-			}
-		}
-
-		if len(d.Edges) == 0 {
-			return fmt.Errorf("door %q stands in no edges: %w", d.ID, ErrBadDoor)
-		}
-
 		for _, raw := range d.Edges {
 			edge := normalizeDoorEdge(raw)
 
@@ -450,10 +488,60 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 	return nil
 }
 
+// validateDoorGeometry refuses a door that stands in the wrong number of
+// geometries, and measures the footprint of one that stands in a rectangle.
+//
+// EXACTLY ONE (rpg-project#485, R1). A door with neither is a name and a
+// state over nothing; a door with both is one state over two shapes, which
+// is the disagreement [DoorEdge]'s missing flags exist to prevent. The
+// footprint goes through [validatePlacement] — the same refusals a placed
+// prop's geometry earns, because it is the same geometry in the same plane.
+//
+// A FOOTPRINT DOOR MAY BE HIDDEN NOW, and this is where it stopped being
+// refused (rpg-project#490, E1). The old sentence — "a footprint and
+// concealed, which nothing has built yet" — was right about the gap and
+// right to fail closed: a footprint door is a cell contributor, so a hidden
+// one would have leaked its own existence through the map. What closed the
+// gap is the concealment listing the cells its rectangle stands on
+// ([Encounter.hiddenCellsOf]): the floor goes with the door, so there is no
+// hole where the secret is, which is what the masquerade does for an edge
+// door's crossing.
+func validateDoorGeometry(d DoorInput) error {
+	switch {
+	case len(d.Edges) == 0 && d.Placement == nil:
+		return fmt.Errorf("door %q stands in no edges and has no footprint: %w", d.ID, ErrBadDoor)
+	case len(d.Edges) > 0 && d.Placement != nil:
+		return fmt.Errorf(
+			"door %q stands in edges AND as a footprint, and a door has one geometry: %w", d.ID, ErrBadDoor)
+	case d.Placement == nil:
+		return nil
+	}
+	if err := validatePlacement(*d.Placement); err != nil {
+		return fmt.Errorf("door %q: %w", d.ID, err)
+	}
+
+	return nil
+}
+
+// copyPlacement deep-copies a footprint placement, box included, with nil
+// staying nil — an edge door must read back as one. [compilePlaced]'s rule:
+// the box is the one pointer in a placement, and a caller editing theirs
+// must not reach a running field.
+func copyPlacement(p *spatial.FootprintPlacement) *spatial.FootprintPlacement {
+	if p == nil {
+		return nil
+	}
+	box := *p.Footprint.Box
+	out := *p
+	out.Footprint.Box = &box
+
+	return &out
+}
+
 // validateCheck rejects a malformed approach list: empty, or any approach
-// with nothing to beat. The empty-list sentence is the caller's, because a
-// lock nobody can pick and a concealment nobody can find are different
-// defects to the author fixing them. Abilities are NOT checked at this seam —
+// with nothing to beat. The empty-list sentence is the caller's, because two
+// defects on one door are different things to the author fixing them.
+// Abilities are NOT checked at this seam —
 // they are opaque host refs a check may legally leave empty here; requiring
 // one is the content compiler's rule ([CheckApproach]).
 func validateCheck(id DoorID, empty string, approaches []CheckApproach) error {
@@ -470,13 +558,33 @@ func validateCheck(id DoorID, empty string, approaches []CheckApproach) error {
 }
 
 // copyApproaches is a check's deep copy, with nil staying nil — an absent
-// concealment must read back as absent, not as an empty one.
+// check must read back as absent, not as an empty one.
 func copyApproaches(approaches []CheckApproach) []CheckApproach {
 	if approaches == nil {
 		return nil
 	}
 
 	return append([]CheckApproach(nil), approaches...)
+}
+
+// shutDoorRefusal is what a walker is told by a door that will not let them
+// through: the door's name, what it is doing, and — when it is locked — what
+// beating it would take.
+//
+// ONE SENTENCE PAIR FOR BOTH GEOMETRIES (rpg-project#485, R1). An edge door
+// is found along the travel ray and a footprint door is found by the
+// crossing and standing traces, but what they say is identical, because
+// which shape a door stands in is not something the refused walker can act
+// on and its STATE is. Three cases, three sentinels (rpg-toolkit#1135): a
+// locked door names its stakes as [Encounter.OpenDoor]'s refusal does, a
+// merely-shut door is its own answer, and ErrBadPlacement stays what its
+// name says — the position itself is not usable.
+func shutDoorRefusal(door *doorRecord) error {
+	if lock, locked := door.state.Lock(); locked {
+		return fmt.Errorf("door %q is locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
+	}
+
+	return fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrDoorShut)
 }
 
 // lockLabel renders a lock for a refusal — "DC 12 (dex)", or the routes
@@ -517,7 +625,12 @@ func doorRecordsFrom(doors []DoorInput) ([]*doorRecord, map[DoorID]*doorRecord) 
 		for _, e := range d.Edges {
 			edges = append(edges, normalizeDoorEdge(e))
 		}
-		rec := &doorRecord{id: d.ID, edges: edges, state: d.State, concealed: copyApproaches(d.Concealed)}
+		rec := &doorRecord{
+			id:        d.ID,
+			edges:     edges,
+			placement: copyPlacement(d.Placement),
+			state:     d.State,
+		}
 		records = append(records, rec)
 		byID[d.ID] = rec
 	}

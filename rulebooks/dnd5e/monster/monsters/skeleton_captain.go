@@ -13,9 +13,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewSkeletonCaptain creates a CR 2 skeleton captain with a longsword
-// component attack, vulnerability to bludgeoning, and immunity to poison.
-// Multiattack is deferred until a sequence profile and machine exist.
+// NewSkeletonCaptain creates a CR 2 skeleton captain that makes two longsword
+// attacks, with vulnerability to bludgeoning and immunity to poison.
 //
 // This is a skeleton-shaped boss, not a wight: a wight's signature Life Drain
 // ability needs a max-HP-reducing attack effect that does not exist in the
@@ -41,7 +40,22 @@ func NewSkeletonCaptain(id string) *monster.Monster {
 		},
 	})
 
-	// The component attack remains available until a sequence profile exists.
+	// Multiattack first, then the component it scripts. This captain is
+	// authored rather than SRD — see the type doc above — so its two-swing
+	// line is a design decision of this file's, and neither swing is
+	// penalised: nothing about a second longsword blow is harder than the
+	// first.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.SkeletonCaptainMultiattack(),
+		Name: "Multiattack",
+		Sequence: &combatActions.SequenceProfile{
+			Steps: []combatActions.SequenceStep{
+				{Action: *refs.MonsterActions.SkeletonCaptainLongsword()},
+				{Action: *refs.MonsterActions.SkeletonCaptainLongsword()},
+			},
+		},
+	})
+
 	mustAddAction(m, combatActions.Definition{
 		Ref:  *refs.MonsterActions.SkeletonCaptainLongsword(),
 		Name: "longsword",

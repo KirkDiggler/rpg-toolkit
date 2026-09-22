@@ -111,15 +111,18 @@ func (s *OpportunityAttackMeterSuite) triggers() *[]dnd5eEvents.ReactionTriggerE
 
 // character builds a reactor that keeps an action economy, plus the keeper
 // that owns its sheet. This is a player: it pays for its reaction.
+//
+// Standing, and said out loud: canReact refuses a reactor at zero hit points
+// before it reaches the meter, and these scenes are all about the meter.
 func (s *OpportunityAttackMeterSuite) character(id string, reactions int) *fakeSheetKeeper {
-	return s.sheetFor(&fakeConditionOwner{id: id, hasEconomy: true, reactions: reactions})
+	return s.sheetFor(&fakeConditionOwner{id: id, hasEconomy: true, reactions: reactions, hp: 12, maxHP: 12})
 }
 
 // monster builds a reactor that keeps no action economy, plus the keeper that
 // owns its sheet — and that keeper meters the one reaction a monster has,
 // exactly as the real monster keeper does.
 func (s *OpportunityAttackMeterSuite) monster(id string) *fakeSheetKeeper {
-	return s.sheetFor(&fakeConditionOwner{id: id})
+	return s.sheetFor(&fakeConditionOwner{id: id, hp: 7, maxHP: 7})
 }
 
 func (s *OpportunityAttackMeterSuite) sheetFor(sheet *fakeConditionOwner) *fakeSheetKeeper {

@@ -4,7 +4,6 @@
 package session
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
@@ -68,7 +67,22 @@ func projectLayout(o encounter.Orientation) HexLayout {
 // What remains is the translation S2 exists for: the composition's types
 // become this package's, so a host never recompiles when the inner module
 // changes shape. convert_test.go holds this honest field by field.
-func projectAtlas(in encounter.Atlas) (Atlas, error) {
+//
+// WHAT IT NO LONGER CARRIES IS THE ROOM'S APPEARANCE. This function used to
+// validate the World Builder's authored scene with the composition and
+// marshal the whole document onto the atlas, because the encounter was the
+// one thing a play view already fetched. The encounter has stopped carrying a
+// document it never reads (rpg-project#479): what a room looks like is
+// content, served by key from the registry that already holds the authored
+// file verbatim. So there is no scene here to copy, and no validation of one
+// — the codec that owns a scene is the only thing that should be judging it.
+//
+// AND THE KEY IS NOT THIS FUNCTION'S TO FILL. [Atlas.DungeonKey] names which
+// authored file a host should fetch that scene from, and the composition has
+// never been told: the key is the session record's fact. The two verbs fill
+// it from where each one can honestly get it — [Manager.Atlas] from the
+// record it loaded, [Manager.AtlasOf] from what the author passed in.
+func projectAtlas(in encounter.Atlas) Atlas {
 	out := Atlas{
 		// Hex is the field's only family as of rpg-project#256; the
 		// composition's Grid() has no other answer to give.
@@ -76,26 +90,13 @@ func projectAtlas(in encounter.Atlas) (Atlas, error) {
 		Layout:     projectLayout(in.Orientation),
 		Cells:      append([]spatial.Position(nil), in.Cells...),
 		Props:      make([]AtlasProp, 0, len(in.Props)),
+		Placed:     make([]AtlasPlacedProp, 0, len(in.Placed)),
 		Boundaries: make([]AtlasBoundary, 0, len(in.Boundaries)),
 		Doorways:   make([]AtlasDoorway, 0, len(in.Doorways)),
 		Regions:    make([]AtlasRegion, 0, len(in.Regions)),
 		Segments:   make([]AtlasSegment, 0, len(in.Segments)),
 		Sealed:     append([]spatial.Position(nil), in.Sealed...),
 		Exits:      make([]AtlasExit, 0, len(in.Exits)),
-	}
-
-	// RoomScene is already the encounter's canonical presentation. Validate
-	// with its owner and carry the complete document, rather than introducing
-	// a second DTO or reimplementing its graph/range rules.
-	if in.RoomScene != nil {
-		if defects := encounter.ValidateRoomScene(in.RoomScene); len(defects) != 0 {
-			return Atlas{}, fmt.Errorf("project atlas room scene: %s: %w", defects[0].Error(), ErrInvalidWorld)
-		}
-		raw, err := json.Marshal(in.RoomScene)
-		if err != nil {
-			return Atlas{}, fmt.Errorf("project atlas room scene: %w: %w", ErrInvalidWorld, err)
-		}
-		out.RoomSceneJSON = string(raw)
 	}
 
 	// THE HELD FILTER IS INHERITED, THE FIELDS ARE NOT. A prop somebody
@@ -138,6 +139,46 @@ func projectAtlas(in encounter.Atlas) (Atlas, error) {
 		})
 	}
 
+	// EVERY FIELD, THE CELLS INCLUDED (rpg-api-protos#351). Where a rectangle
+	// stands is derived ONCE, by the composition, and this carries that
+	// answer rather than rasterising the box a second time — a seam that
+	// re-measured it would be the very second geometry
+	// [AtlasPlacedProp.Cells] exists to prevent, one layer earlier than the
+	// client that would otherwise do it.
+	//
+	// THE GEOMETRY IS FLATTENED, not copied as the inner type. The
+	// composition's placement nests a footprint holding a POINTER to a box;
+	// this seam owns four plain numbers and two points instead, so no inner
+	// type crosses the exported surface (S2) and no host holds a pointer into
+	// a snapshot.
+	for _, p := range in.Placed {
+		// A placement with no box cannot reach here: the composition refuses
+		// one at construction (ErrNoField), and a box is what makes a
+		// rectangle a rectangle. Read through a guard anyway, because the
+		// alternative is a nil dereference inside a host's read verb, and a
+		// zero-sided rectangle is a visibly wrong answer rather than a silent
+		// one.
+		var width, depth float64
+		if box := p.Placement.Footprint.Box; box != nil {
+			width, depth = box.W, box.D
+		}
+
+		out.Placed = append(out.Placed, AtlasPlacedProp{
+			ID: string(p.ID),
+			Placement: FootprintPlacement{
+				Width:       width,
+				Depth:       depth,
+				Origin:      FootprintPoint{X: p.Placement.Origin.X, Y: p.Placement.Origin.Y},
+				Facing:      p.Placement.Facing,
+				LocalOffset: FootprintPoint{X: p.Placement.LocalOffset.X, Y: p.Placement.LocalOffset.Y},
+			},
+			BlocksMovement:    p.BlocksMovement,
+			BlocksLineOfSight: p.BlocksLineOfSight,
+			Holdable:          p.Holdable,
+			Cells:             append([]spatial.Position(nil), p.Cells...),
+		})
+	}
+
 	for _, b := range in.Boundaries {
 		out.Boundaries = append(out.Boundaries, AtlasBoundary{
 			From:              b.From,
@@ -166,7 +207,7 @@ func projectAtlas(in encounter.Atlas) (Atlas, error) {
 		})
 	}
 
-	return out, nil
+	return out
 }
 
 // intelIDs converts the seam's plain record ids to the composition's own type.

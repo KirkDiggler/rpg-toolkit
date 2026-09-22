@@ -239,8 +239,17 @@ func (e *Encounter) noticeDown(
 	// fall fires stays the story's last word. A member arriving refreshes
 	// sight for the roster inside this call, and the fight forms or is
 	// joined there.
+	//
+	// AND EVERY `until: { down }` IS ASKED THE SAME QUESTION FIRST
+	// (rpg-project#493, R2) — "until we kill its friend". Ahead of the
+	// arrivals for [Encounter.learnFact]'s reason: the world turns, and then
+	// what was waiting for the world to look like that arrives into it.
 	if e.outcome == nil && len(down) > 0 {
-		if err := e.arrivals(onFall(down), uint64(e.clock.ToData().HighWater)); err != nil {
+		at := uint64(e.clock.ToData().HighWater)
+		if err := e.turnUntils(onFall(down), at); err != nil {
+			return nil, nil, fmt.Errorf("participation stances: %w", err)
+		}
+		if err := e.arrivals(onFall(down), at); err != nil {
 			return nil, nil, fmt.Errorf("participation arrivals: %w", err)
 		}
 	}

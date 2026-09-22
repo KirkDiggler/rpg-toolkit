@@ -255,9 +255,11 @@ func (s *DoorSuite) TestAGateIsOneThingNotFour() {
 func (s *DoorSuite) TestNoEdgeCarriesAStateOfItsOwn() {
 	s.Equal([]string{"From", "To"}, structFieldNames(encounter.DoorEdge{}),
 		"an edge is two cells and nothing else — a blocking flag here would be a second truth")
-	s.Equal([]string{"ID", "Edges", "State", "Concealed"}, structFieldNames(encounter.Door{}),
-		"and the state is the DOOR's, held once for however many edges it has — "+
-			"Concealed is construction truth like the edges, not a second state")
+	s.Equal([]string{"ID", "Edges", "Placement", "State"}, structFieldNames(encounter.Door{}),
+		"and the state is the DOOR's, held ONCE — for however many edges it has, and for the footprint "+
+			"a single-room door stands as instead (rpg-project#485). Placement is construction truth like "+
+			"the edges: a second GEOMETRY is not a second state. Whether the door is HIDDEN is not here at "+
+			"all — that is the field's concealment table (rpg-project#490)")
 }
 
 // TestADoorMustSayWhatStateItIsIn is #1033's law again: a door with no declared
@@ -365,14 +367,6 @@ func (s *DoorSuite) TestADoorThatCannotBePartOfAFieldIsRefusedByName() {
 			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
 			State: encounter.DoorIsLocked(encounter.Lock{Approaches: []encounter.CheckApproach{
 				{Ability: "dex", DC: 12}, {Ability: "str"}}})}}, "nothing has to beat"},
-		{"a concealment that lists no way to find it", []encounter.DoorInput{{
-			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
-			State:     encounter.DoorIsClosed(),
-			Concealed: []encounter.CheckApproach{}}}, "lists no way to find it"},
-		{"a concealment approach nothing has to beat", []encounter.DoorInput{{
-			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
-			State:     encounter.DoorIsClosed(),
-			Concealed: []encounter.CheckApproach{{Ability: "perception", DC: 0}}}}, "nothing has to beat"},
 	} {
 		s.Run(tc.name, func() {
 			err := s.setup(withDoors(tc.doors...))
@@ -463,20 +457,26 @@ func (s *DoorSuite) TestDoorsIsACopyOut() {
 	s.False(s.sees(enc, nessa, orin), "and it is still shut across the crossing it was authored in")
 }
 
-// TestConcealmentIsCarriedNotInterpreted — living-world slice 1, wave 1a
-// (rpg-toolkit#1369). The find check is construction truth, like the edges:
-// authored on the input, read back verbatim, ridden through the blob, and
-// untouched by the verbs — an opened door is the same authored secret. And it
-// is carried ONLY: a concealed shut door blocks exactly what a shut door
-// blocks, because who has FOUND it is the world layer's knowledge (wave 1b),
-// not a fact about the map.
-func (s *DoorSuite) TestConcealmentIsCarriedNotInterpreted() {
+// TestAHiddenDoorBlocksExactlyWhatItsStateBlocks — the law that survived the
+// reshape (rpg-toolkit#1369, rpg-project#490). A door carried its own find
+// check until the concealment primitive landed; what it never did was let
+// that change the geometry, and it still does not: a shut door a concealment
+// hides blocks exactly what a shut door blocks, because who has FOUND it is
+// the world layer's knowledge and not a fact about the map.
+//
+// WHERE THE FIND CHECK LIVES NOW is the concealment's own list, round-tripped
+// through the blob beside the field rather than on the door.
+func (s *DoorSuite) TestAHiddenDoorBlocksExactlyWhatItsStateBlocks() {
 	find := []encounter.CheckApproach{
 		{Ability: "perception", DC: 15},
 		{Ability: "investigation", Tool: "dnd5e:item:magnifying-glass", DC: 12},
 	}
 	field := doorField(3, encounter.DoorIsClosed(), theDoor, 1)
-	field.Doors[0].Concealed = append([]encounter.CheckApproach(nil), find...)
+	field.Concealments = []encounter.ConcealmentInput{{
+		ID:     "the-secret",
+		Checks: append([]encounter.CheckApproach(nil), find...),
+		Doors:  []encounter.DoorID{theDoor},
+	}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
@@ -491,20 +491,16 @@ func (s *DoorSuite) TestConcealmentIsCarriedNotInterpreted() {
 	})
 	s.Require().NoError(err)
 
-	s.False(s.sees(enc, nessa, orin), "a concealed shut door blocks exactly what a shut door blocks")
-
-	handed := enc.Doors()
-	s.Require().Len(handed, 1)
-	s.Equal(find, handed[0].Concealed, "read back verbatim, in authored order")
-	handed[0].Concealed[0] = encounter.CheckApproach{Ability: "luck", DC: 1}
-	s.Equal(find, enc.Doors()[0].Concealed, "a copy-out, like the edges")
+	s.False(s.sees(enc, nessa, orin), "a hidden shut door blocks exactly what a shut door blocks")
 
 	data := enc.ToData()
 	s.Require().Len(data.Doors, 1)
+	s.Require().Len(data.Field.Concealments, 1)
 	s.Equal([]encounter.CheckApproachData{
 		{Ability: "perception", DC: 15},
 		{Ability: "investigation", Tool: "dnd5e:item:magnifying-glass", DC: 12},
-	}, data.Doors[0].Concealed, "the blob carries the find check verbatim")
+	}, data.Field.Concealments[0].Checks, "the blob carries the find check verbatim, beside the field")
+	s.Equal([]string{theDoor}, data.Field.Concealments[0].Doors)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      data,
@@ -515,14 +511,33 @@ func (s *DoorSuite) TestConcealmentIsCarriedNotInterpreted() {
 	s.Require().NoError(err)
 	_, err = back.OpenDoor(&encounter.OpenDoorInput{Door: theDoor})
 	s.Require().NoError(err)
-	s.Equal(find, back.Doors()[0].Concealed, "reloaded and opened, still the same authored secret")
+	s.Equal(data.Field.Concealments, back.ToData().Field.Concealments,
+		"reloaded and opened, still the same authored secret")
 
-	// The door that was never concealed says so by saying NOTHING: nil in,
-	// nil out, no key in the blob — which is every door in every dungeon
-	// authored before concealment existed, loading to the byte it always did.
+	// The field that hides nothing says so by saying NOTHING: no
+	// concealments in, none out, no key in the blob.
 	plain := s.doorway(encounter.DoorIsClosed())
-	s.Nil(plain.Doors()[0].Concealed)
-	s.Nil(plain.ToData().Doors[0].Concealed)
+	s.Nil(plain.ToData().Field.Concealments)
+}
+
+// TestABlobWithARetiredDoorFlagIsRefusedByName is the tombstone
+// (rpg-project#490): `doors[].concealed` was the door's own find check, and
+// a blob still carrying it is a blob from a dialect this build does not
+// speak. Refused BY NAME rather than loaded as a door whose secret quietly
+// evaporated — the standing fail-loudly precedent
+// (rpg-toolkit#1053/#1068).
+func (s *DoorSuite) TestABlobWithARetiredDoorFlagIsRefusedByName() {
+	data := s.doorway(encounter.DoorIsClosed()).ToData()
+	s.Require().Len(data.Doors, 1)
+	data.Doors[0].Concealed = []byte(`[{"ability":"perception","dc":15}]`)
+
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:      data,
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().ErrorIs(err, encounter.ErrBadDoor)
+	s.Contains(err.Error(), "the flag this build does not speak")
 }
 
 // TestAskingADoorForWhatItHasAlreadyDoneIsRefused is the no-silent-no-op rule,
@@ -604,8 +619,6 @@ func (s *DoorSuite) TestABlobWhoseDoorMakesNoSenseIsRefusedByName() {
 			d.State = "locked"
 			d.Lock = &encounter.LockData{}
 		}, "lists no way through"},
-		{"concealed, with no way to find it", func(d *encounter.DoorData) { d.Concealed = []encounter.CheckApproachData{} },
-			"lists no way to find it"},
 	} {
 		s.Run(tc.name, func() {
 			data := saved()

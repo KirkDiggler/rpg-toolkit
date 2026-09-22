@@ -553,6 +553,10 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
 	}
 
+	if err := e.FlushSightAreaTransitions(); err != nil {
+		return nil, err
+	}
+
 	// And now the world finds out what that beat just changed. AFTER the append,
 	// never before: the outcome is the cause, and a down beat ahead of the strike
 	// that explains it would be a story told backwards. See the godoc.
@@ -678,6 +682,15 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	for _, id := range targets {
 		if _, ok := e.members[id]; !ok {
 			return nil, fmt.Errorf("record: target %q: %w", id, ErrNoMember)
+		}
+		// AN NPC IS NOT A TARGET (rpg-project#493, R4), and only a swing is
+		// refused: a trade and a death save name members too, and neither is
+		// an attack. Struck and missed are exactly the two kinds that land a
+		// deed through [Encounter.landAttack].
+		if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
+			if err := e.attackable("record", id); err != nil {
+				return nil, err
+			}
 		}
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i] < targets[j] })

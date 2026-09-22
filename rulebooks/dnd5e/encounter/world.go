@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/KirkDiggler/rpg-toolkit/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
@@ -28,15 +27,32 @@ import (
 // # What the graph declares
 //
 // Entities: every faction (the two reserved ones and the declared ones),
-// every current member, and the concealed regions and doors. Edges:
+// every current member, and the concealments. Edges:
 // `belongs-to` from each member to its faction, and the stance edges —
 // `hostile-to` or `allied-with`, one per direction — for every pair of
 // factions, declared or default (disposition.go). Reducers: a [graph.Raise]
 // per fact id the field mentions, raising `knows:<fact>` on whoever a
-// `known:fact:<fact>` fact is about. Projections: a [graph.Settle] per
-// disposition with an `until: { fact }`, per mind of its pair — while the
-// mind carries the flag, the pair's stance edges are gone in both directions
-// (design R11, Kirk: "the graph should tell the truth").
+// `known:fact:<fact>` fact is about, and one per turnable pair per stance,
+// raising a settled flag on the pair. Projections: a [graph.Settle] per
+// disposition with an `until: { fact }`, per mind of its pair, and two per
+// turnable pair for the settled flags (design R11, Kirk: "the graph should
+// tell the truth").
+//
+// # A pair turns two ways, on two grains
+//
+// A `fact` on an `until` is the MIND'S: the Settle names the mind as Of, so
+// the camp knows what its chief knows and a scout reading the same letter
+// changes nothing (R3). Every other way a pair turns is PUBLIC, and is a
+// fact in this journal audienced to the two factions — a round the guards
+// were waiting for, a scout falling, another pair turning, or somebody
+// swinging across a neutral pair (rpg-project#493, R2 and R3). Public
+// because none of those is anybody's private knowledge: they are the world's
+// truth, and the pair is what witnessed them.
+//
+// The two settled Settles are declared NEUTRAL FIRST, HOSTILE SECOND, and
+// that order is the betrayed truce: a pair its own `until` turned neutral is
+// turned hostile again by an attack, because the later projection wins
+// ([graph.Settle]'s own rule for overruling an earlier one).
 //
 // # The graph is construction truth; the journal is the run
 //
@@ -67,8 +83,8 @@ const (
 )
 
 // factKnownPrefix and factKnownKind are the fact kind that records a member
-// coming to know a fact — `known:fact:<id>`, beside `known:door:` and
-// `known:region:`. The fact's ACTOR and SUBJECT are both the learner, and its
+// coming to know a fact — `known:fact:<id>`, beside `known:concealment:`.
+// The fact's ACTOR and SUBJECT are both the learner, and its
 // audience is the learner alone: the subject is what [graph.Raise] flags, the
 // audience is whose fold carries it.
 const factKnownPrefix = "known:fact:"
@@ -77,6 +93,42 @@ func factKnownKind(id FactID) journal.Kind { return journal.Kind(factKnownPrefix
 
 // knowsFlag is the flag a `known:fact:<id>` fact raises on its learner.
 func knowsFlag(id FactID) graph.Flag { return graph.Flag("knows:" + id) }
+
+// settledPrefix and settledKind are the fact kind that records a pair's
+// PUBLIC turn — `settled:<stance>:<a>|<b>`, beside `known:fact:` and
+// `known:concealment:` in the one journal (rpg-project#493).
+//
+// THE KIND NAMES THE RESULT, NOT THE CAUSE. A round, a fall, another pair's
+// stance and an attack all turn a pair the same way and are the same fact;
+// which of them it was is [journal.Outcome.Detail], the transcript's own
+// field, exactly as a pierce records why a member came to know a
+// concealment. One kind per pair per stance, because a flag is raised by
+// kind: a shared kind would settle every pair on any one of them turning.
+const settledPrefix = "settled:"
+
+func settledKind(to Stance, pair factionPair) journal.Kind {
+	return journal.Kind(settledPrefix + string(to) + ":" + pair.a + "|" + pair.b)
+}
+
+// settledFlag is the flag a settled fact raises on the pair.
+func settledFlag(to Stance, pair factionPair) graph.Flag {
+	return graph.Flag(settledPrefix + string(to) + ":" + pair.a + "|" + pair.b)
+}
+
+// settledStances are the two stances a pair can be settled to publicly, IN
+// PROJECTION ORDER — neutral first so hostile overrules it. Allied is not
+// among them: nothing turns a pair allied, and nothing turns an allied pair.
+var settledStances = []Stance{StanceNeutral, StanceHostile}
+
+// settledRelation is the edge a pair holds while it is settled to a stance:
+// the hostile edge, or none at all, which is what neutral means in a graph
+// whose only stances are edges.
+func settledRelation(to Stance) graph.Relation {
+	if to == StanceHostile {
+		return relHostileTo
+	}
+	return ""
+}
 
 // factionEntityID mints the graph entity for a faction. Members are their
 // own ids, unprefixed — every knowledge fact is audienced to a member by its
@@ -89,16 +141,16 @@ type encounterWorld struct {
 	structure *graph.World
 	log       *journal.Journal
 
-	// concealedDoors is every concealed door's ID, sorted (C8 — the sweep
-	// walks it, and beat order is observable).
-	concealedDoors []DoorID
-
-	// concealedRegions is every region authored as hidden space.
-	concealedRegions map[RegionID]bool
-
-	// doorRegions maps each concealed door to the concealed regions its
-	// edges touch, sorted — the regions perceiving it OPEN reveals.
-	doorRegions map[DoorID][]RegionID
+	// concealments is every concealment's ID, sorted (C8 — the sweep walks
+	// it, and beat order is observable).
+	//
+	// ONE LIST WHERE THERE WERE THREE. It replaced `concealedDoors`,
+	// `concealedRegions` and the `doorRegions` index that tied them
+	// together — the index existed only because finding a door and learning
+	// the room behind it were two knowledge moments that had to be kept in
+	// step. They are one moment now (rpg-project#490, R1), so the thing
+	// that kept them in step has nothing left to do.
+	concealments []ConcealmentID
 
 	// minds is each faction's mind AS THE GRAPH WAS DECLARED: the declared
 	// one while it is a current member, else the faction's sole current
@@ -119,16 +171,20 @@ func newEncounterWorld() *encounterWorld { return &encounterWorld{log: journal.N
 // conceals reports whether the field hid anything — the question the
 // projection asks before withholding, and the storage boundary asks before
 // writing a world key for a field nobody has learned anything in.
-func (w *encounterWorld) conceals() bool {
-	return len(w.concealedDoors) > 0 || len(w.concealedRegions) > 0
-}
+func (w *encounterWorld) conceals() bool { return len(w.concealments) > 0 }
 
-// knowledgeFacts is every fact of a knowledge kind, in append order — the
-// half of the one journal [EncounterData.World] carries.
+// knowledgeFacts is every fact the WORLD folds over, in append order — the
+// half of the one journal [EncounterData.World] carries: what somebody came
+// to know (`known:`) and what a pair publicly settled to (`settled:`).
+//
+// THE SETTLED FACTS PERSIST FOR THE SAME REASON THE KNOWN ONES DO. A pair's
+// stance is derived, never stored, so the fact that turned it is the whole
+// record; drop it from the blob and a camp the party provoked would reload
+// civil, which is the fail-silent this slice exists to remove.
 func (w *encounterWorld) knowledgeFacts() []journal.Fact {
 	var out []journal.Fact
 	for _, f := range w.log.All() {
-		if strings.HasPrefix(string(f.Kind), "known:") {
+		if strings.HasPrefix(string(f.Kind), "known:") || strings.HasPrefix(string(f.Kind), settledPrefix) {
 			out = append(out, f)
 		}
 	}
@@ -145,53 +201,27 @@ func (e *Encounter) buildWorld() error {
 		w = &encounterWorld{log: journal.New()}
 		e.world = w
 	}
-	w.concealedRegions = make(map[RegionID]bool)
-	w.doorRegions = make(map[DoorID][]RegionID)
-	w.concealedDoors = nil
+	w.concealments = nil
 	w.minds = make(map[FactionID]MemberID)
 	w.observers = make(map[factionPair][]MemberID)
 
 	cfg := graph.Config{Membership: worldMembership}
 
-	// Concealed structure, pierced per entity by its own minted kind — one
+	// The concealments, pierced per entity by their own minted kind — one
 	// kind per entity, because a pierce fires on kind alone: a shared kind
-	// would reveal every door on any door's find.
-	for _, r := range e.field.regions {
-		if !r.Concealed {
-			continue
-		}
-		w.concealedRegions[r.ID] = true
-		cfg.Entities = append(cfg.Entities, graph.Entity{ID: regionEntityID(r.ID), Kind: "region", Concealed: true})
+	// would give away every secret on any one of them being found.
+	for i := range e.field.concealments {
+		c := &e.field.concealments[i]
+		w.concealments = append(w.concealments, c.id)
+		cfg.Entities = append(cfg.Entities, graph.Entity{
+			ID: concealmentEntityID(c.id), Kind: "concealment", Concealed: true,
+		})
 		cfg.Pierces = append(cfg.Pierces, graph.Pierce{
-			On:       regionKnownKind(r.ID),
-			Entities: []journal.EntityID{regionEntityID(r.ID)},
+			On:       concealmentKnownKind(c.id),
+			Entities: []journal.EntityID{concealmentEntityID(c.id)},
 		})
 	}
-	for _, d := range e.doors {
-		if d.concealed == nil {
-			continue
-		}
-		w.concealedDoors = append(w.concealedDoors, d.id)
-		cfg.Entities = append(cfg.Entities, graph.Entity{ID: doorEntityID(d.id), Kind: "door", Concealed: true})
-		cfg.Pierces = append(cfg.Pierces, graph.Pierce{
-			On:       doorKnownKind(d.id),
-			Entities: []journal.EntityID{doorEntityID(d.id)},
-		})
-		// The concealed regions this door guards: the regions its edge
-		// endpoints stand in, deduplicated and sorted. Perceiving the door
-		// OPEN reveals exactly these.
-		seen := make(map[RegionID]bool)
-		for _, edge := range d.edges {
-			for _, cell := range []spatial.Position{edge.From, edge.To} {
-				if r, owned := e.field.regionOf(cell); owned && w.concealedRegions[r] && !seen[r] {
-					seen[r] = true
-					w.doorRegions[d.id] = append(w.doorRegions[d.id], r)
-				}
-			}
-		}
-		sort.Strings(w.doorRegions[d.id])
-	}
-	sort.Strings(w.concealedDoors)
+	sort.Strings(w.concealments)
 
 	// The sides: every faction, allied with itself, and the declared or
 	// default stance between every pair, one edge per direction.
@@ -237,8 +267,11 @@ func (e *Encounter) buildWorld() error {
 
 	// The flip: per fact a disposition waits on, a Raise flagging the
 	// learner; per such disposition, per mind of its pair, a Settle — while
-	// that mind carries the flag, the pair holds no stance edge at all,
-	// which is what neutral means (R2).
+	// that mind carries the flag, the pair holds the stance its declaration
+	// TURNS TO (rpg-project#493, R1). Hostile-until-a-fact settles to no
+	// edge at all, which is what neutral means; neutral-until-a-fact settles
+	// to the hostile edge, which is the direction that did not exist before
+	// this slice.
 	raised := make(map[FactID]bool)
 	for _, d := range e.field.dispositions {
 		fact, ok := d.Until.(TriggerFact)
@@ -260,9 +293,34 @@ func (e *Encounter) buildWorld() error {
 				Of:        journal.EntityID(mind),
 				Between:   [2]journal.EntityID{factionEntityID(pair.a), factionEntityID(pair.b)},
 				Relations: []graph.Relation{relHostileTo, relAlliedWith},
-				To:        "",
+				To:        settledRelation(turnsTo(d.Stance)),
 			})
 			w.observers[pair] = append(w.observers[pair], mind)
+		}
+	}
+
+	// The public turns: per turnable pair, per stance a pair can settle to,
+	// a Raise flagging the PAIR and a Settle reading that flag. Declared
+	// after every fact Settle and in [settledStances] order, so an attack
+	// overrules a truce a fact already granted.
+	//
+	// DECLARED FOR PAIRS NOTHING HAS TURNED YET, which is what makes a turn
+	// derivable at all: the graph is construction truth, rebuilt from the
+	// field on every Setup, Load, Join and Exit, and only the journal says
+	// whether a flag is up. A pair with no way to turn ([turnablePairsOf])
+	// gets neither, so an allied pair carries no machinery it could never
+	// use.
+	for _, pair := range turnablePairsOf(e.field) {
+		for _, to := range settledStances {
+			cfg.Reducers = append(cfg.Reducers,
+				graph.Raise{On: settledKind(to, pair), Flag: settledFlag(to, pair)})
+			cfg.Projections = append(cfg.Projections, graph.Settle{
+				OnFlag:    settledFlag(to, pair),
+				Of:        factionEntityID(pair.a),
+				Between:   [2]journal.EntityID{factionEntityID(pair.a), factionEntityID(pair.b)},
+				Relations: []graph.Relation{relHostileTo, relAlliedWith},
+				To:        settledRelation(to),
+			})
 		}
 	}
 
@@ -355,14 +413,13 @@ func (w *encounterWorld) knowledgeOf(member MemberID) *graph.State {
 	return w.structure.StateFor(journal.EntityID(member), w.log)
 }
 
-// knowsDoor reports whether a member's own fold shows the door.
-func (w *encounterWorld) knowsDoor(member MemberID, id DoorID) bool {
-	return w.knowledgeOf(member).Visible(doorEntityID(id))
-}
-
-// knowsRegion reports whether a member's own fold shows the region.
-func (w *encounterWorld) knowsRegion(member MemberID, id RegionID) bool {
-	return w.knowledgeOf(member).Visible(regionEntityID(id))
+// knowsConcealment reports whether a member's own fold shows the
+// concealment. A concealment this graph was never told about — every one, on
+// a field that hides nothing — folds as visible, which is what
+// [graph.State.Visible] answers for anything undeclared and is the honest
+// answer here: there is no secret to not know.
+func (w *encounterWorld) knowsConcealment(member MemberID, id ConcealmentID) bool {
+	return w.knowledgeOf(member).Visible(concealmentEntityID(id))
 }
 
 // knowsFact is THE ONE FOLD FOR KNOWLEDGE OF A FACT (design §3.3; no reader
@@ -380,26 +437,15 @@ func (w *encounterWorld) knowsFact(member MemberID, id FactID) bool {
 	return false
 }
 
-// learnDoor writes the fact that pierces one door for one member alone.
-// cause is a human-readable trace ([journal.Outcome.Detail]) — the causes
-// are exemplary, and the journal records which one it was.
-func (w *encounterWorld) learnDoor(member MemberID, id DoorID, cause string) error {
+// learnConcealment writes the fact that pierces one concealment for one
+// member alone. cause is a human-readable trace
+// ([journal.Outcome.Detail]) — the causes are exemplary, and the journal
+// records which one it was.
+func (w *encounterWorld) learnConcealment(member MemberID, id ConcealmentID, cause string) error {
 	_, err := w.log.Append(journal.Fact{
-		Kind:     doorKnownKind(id),
+		Kind:     concealmentKnownKind(id),
 		Actor:    journal.EntityID(member),
-		Subject:  doorEntityID(id),
-		Audience: journal.Audience{journal.EntityID(member)},
-		Outcome:  journal.Outcome{Detail: cause},
-	})
-	return err
-}
-
-// learnRegion writes the fact that pierces one region for one member alone.
-func (w *encounterWorld) learnRegion(member MemberID, id RegionID, cause string) error {
-	_, err := w.log.Append(journal.Fact{
-		Kind:     regionKnownKind(id),
-		Actor:    journal.EntityID(member),
-		Subject:  regionEntityID(id),
+		Subject:  concealmentEntityID(id),
 		Audience: journal.Audience{journal.EntityID(member)},
 		Outcome:  journal.Outcome{Detail: cause},
 	})
@@ -407,36 +453,99 @@ func (w *encounterWorld) learnRegion(member MemberID, id RegionID, cause string)
 }
 
 // stanceBetween is THE STANCE READER (design §3.2): what the graph says two
-// factions are to each other right now, folded as the pair's minds.
+// factions are to each other right now.
 //
-// Hostile while EVERY mind's fold still holds the hostile edge — any one of
-// them coming to know turns the pair; allied when a fold shows the allied
-// edge; neutral otherwise. A pair no mind can turn folds as nobody, which is
-// the declaration alone. Same faction twice is the allied-with-itself edge.
+// # Two folds, and the first difference wins
+//
+// The PAIR'S OWN fold is the base — folded as the faction entity, which
+// witnesses the declaration and the public turns audienced to it, and no
+// member's private knowledge. Then each mind whose knowledge can turn the
+// pair is folded in turn, and THE FIRST ONE THAT DISAGREES WITH THE BASE IS
+// THE ANSWER: one mind learning is enough, and it turns the pair for
+// everyone, because a pair is a pair (rpg-project#493, R1). A scout reading
+// the letter is not a mind and changes nothing (R3).
+//
+// THIS REPLACED "HOSTILE WHILE EVERY MIND STILL HOLDS THE EDGE", which said
+// the same thing in one direction and the opposite in the other. Under it a
+// neutral-declared pair whose chief learned the fact would have folded
+// neutral — the second mind's fold still shows no edge, so "every" is never
+// met — and the camp the author wrote as turnable would never turn. The rule
+// was never about the hostile edge; it was about a mind disagreeing with the
+// declaration, which is what this asks directly.
+//
+// A pair no mind can turn folds as the pair alone. Same faction twice is the
+// allied-with-itself edge.
 func (e *Encounter) stanceBetween(pair factionPair) Stance {
+	base := e.stanceAs(factionEntityID(pair.a), pair)
+	for _, mind := range e.world.observers[pair] {
+		if s := e.stanceAs(journal.EntityID(mind), pair); s != base {
+			return s
+		}
+	}
+	return base
+}
+
+// stanceAs folds one observer's present and reads the pair's stance out of
+// it: the hostile edge, the allied edge, or neither, which is neutral.
+func (e *Encounter) stanceAs(observer journal.EntityID, pair factionPair) Stance {
 	a, b := factionEntityID(pair.a), factionEntityID(pair.b)
-	observers := e.world.observers[pair]
-	if len(observers) == 0 {
-		observers = []MemberID{""}
-	}
-	hostile, allied := true, false
-	for _, o := range observers {
-		state := e.world.structure.StateFor(journal.EntityID(o), e.world.log)
-		if !state.HasEdge(a, relHostileTo, b) {
-			hostile = false
-		}
-		if state.HasEdge(a, relAlliedWith, b) {
-			allied = true
-		}
-	}
+	state := e.world.structure.StateFor(observer, e.world.log)
 	switch {
-	case hostile:
+	case state.HasEdge(a, relHostileTo, b):
 		return StanceHostile
-	case allied:
+	case state.HasEdge(a, relAlliedWith, b):
 		return StanceAllied
 	default:
 		return StanceNeutral
 	}
+}
+
+// settlePair writes the PUBLIC fact that a pair turned, audienced to the two
+// factions — which is every fold that asks about the pair: its own, and its
+// minds', who belong to it (design §6: a stance is truth, the same for
+// everybody). cause is the transcript's own word for why, and it is what
+// carries "attacked by <actor>" into the journal (R3).
+//
+// ACTOR AND SUBJECT ARE BOTH THE PAIR'S FIRST SIDE — the entity the Settle
+// names as Of. A pair turning has no one actor: the attacker is a cause, not
+// a doer of this, and two factions coming to blows have two. Idempotent by
+// construction — a flag already up cannot go further up — but asked anyway
+// by the callers, so a second turn writes no second fact.
+func (w *encounterWorld) settlePair(pair factionPair, to Stance, cause string) error {
+	side := factionEntityID(pair.a)
+	_, err := w.log.Append(journal.Fact{
+		Kind:     settledKind(to, pair),
+		Actor:    side,
+		Subject:  side,
+		Audience: journal.Audience{factionEntityID(pair.a), factionEntityID(pair.b)},
+		Outcome:  journal.Outcome{Detail: cause},
+	})
+	if err != nil {
+		return fmt.Errorf("settle %s to %s: %w", pair, to, err)
+	}
+	return nil
+}
+
+// settled reports whether a pair has already been settled to a stance
+// publicly — the one question a turn asks before writing, so an `until` that
+// keeps holding round after round turns its pair once.
+func (w *encounterWorld) settled(pair factionPair, to Stance) bool {
+	_, ok := w.settledCause(pair, to)
+	return ok
+}
+
+// settledCause is the reason a pair was settled to a stance publicly, and
+// whether it was — the FIRST such fact, because the first one is the one that
+// turned it and everything after is noise a later verb could not append
+// anyway ([encounterWorld.settled] is asked before every write).
+func (w *encounterWorld) settledCause(pair factionPair, to Stance) (string, bool) {
+	kind := settledKind(to, pair)
+	for _, f := range w.log.All() {
+		if f.Kind == kind {
+			return f.Outcome.Detail, true
+		}
+	}
+	return "", false
 }
 
 // opposed reports whether two members are on opposed sides: a hostile-to
@@ -568,13 +677,35 @@ func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
 	return e.stanceBetween(pairOf(fv, fs)), true
 }
 
-// turnablePairs is every pair whose stance a fact can change — the
-// dispositions with an until — sorted, so a stance table folds in one order.
-func (e *Encounter) turnablePairs() []factionPair {
-	out := make([]factionPair, 0, len(e.field.dispositions))
-	for _, d := range e.field.dispositions {
-		if d.Until != nil {
-			out = append(out, pairOf(d.Between[0], d.Between[1]))
+// turnablePairs is every pair whose stance this run can change, sorted, so a
+// stance table folds in one order.
+func (e *Encounter) turnablePairs() []factionPair { return turnablePairsOf(e.field) }
+
+// turnablePairsOf is the same list read off a field alone — [Encounter.buildWorld]
+// needs it before there is an encounter to ask.
+//
+// TWO WAYS IN, and between them they are the whole set (rpg-project#493):
+//
+//   - a pair with an `until`, either direction — hostile to neutral, or
+//     neutral to hostile;
+//   - EVERY NEUTRAL PAIR, authored or default, because the aggression law
+//     turns one hostile with nothing authored at all (R3).
+//
+// What is left out is exactly what cannot move: an allied pair, which takes
+// no until and is not turned by an attack, and a hostile pair with no until,
+// which has nothing to turn it — an attack across a pair already hostile
+// changes nothing.
+func turnablePairsOf(f *field) []factionPair {
+	ids := f.factionIDs()
+	out := make([]factionPair, 0, len(ids))
+	for i, a := range ids {
+		for _, b := range ids[i+1:] {
+			pair := pairOf(a, b)
+			switch declared, until := f.declaredStance(pair); {
+			case declared == StanceAllied:
+			case until != nil, declared == StanceNeutral:
+				out = append(out, pair)
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {

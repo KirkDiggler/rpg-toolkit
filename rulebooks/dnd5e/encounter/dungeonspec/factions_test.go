@@ -53,7 +53,7 @@ const (
 	dispoLine   = `  - { between: [raiders, party], stance: hostile, until: { fact: saved-wiseman } }`
 	intelLine   = `  - { id: wisemans-letter, reveals: { fact: saved-wiseman } }`
 	letterHolds = `      holds: [wisemans-letter], arrives: { round: 6 } }`
-	notBuilt    = "in this version a disposition turns only on a fact"
+	alliedUntil = "an allied pair has nothing to become"
 )
 
 // TestTheRaiderCampCompiles is the fixture's own gate: the camp is a legal
@@ -193,9 +193,12 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			want: []string{"dispositions[1].between", "already have a disposition at dispositions[0]"},
 		},
 		{
-			name: "an until on a stance that is not hostile",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "stance: hostile", "stance: neutral", 1),
-			want: []string{"dispositions[0].until", "only a hostile pair"},
+			// Neutral takes an until now and turns hostile (rpg-project#493,
+			// R1); allied is the one stance with nothing to become. This
+			// case replaced "an until on a stance that is not hostile".
+			name: "an until on an allied pair",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "stance: hostile", "stance: allied", 1),
+			want: []string{"dispositions[0].until", alliedUntil},
 		},
 		{
 			name: "an unknown faction in a disposition",
@@ -213,20 +216,25 @@ func TestTheCampRefusesEachWrongLine(t *testing.T) {
 			want: []string{"dispositions[0].stance", "not a stance"},
 		},
 		{
-			name: "an until on a fall is not built yet",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ down: chief }", 1),
-			want: []string{"dispositions[0].until", notBuilt},
+			// A `{ down }`, a `{ round }` and a `{ stance }` on an until are
+			// accepted now (R2); what is still refused is a predicate that
+			// cannot hold. These three replaced the "not built yet" cases,
+			// and each keeps the line's OWN defect rather than the blanket
+			// one that used to swallow it.
+			name: "an until on the fall of something that cannot fall",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ down: nobody }", 1),
+			want: []string{"dispositions[0].until.down", "not a placement in this dungeon"},
 		},
 		{
-			name: "an until on a round is not built yet",
-			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ round: 6 }", 1),
-			want: []string{"dispositions[0].until", notBuilt},
+			name: "an until on a round counted from zero",
+			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }", "{ round: 0 }", 1),
+			want: []string{"dispositions[0].until.round", "counted from 1"},
 		},
 		{
-			name: "an until on another stance is not built yet",
+			name: "an until on a stance the pair can never reach",
 			old:  dispoLine, replacement: strings.Replace(dispoLine, "{ fact: saved-wiseman }",
 				"{ stance: { between: [monsters, party], is: neutral } }", 1),
-			want: []string{"dispositions[0].until", notBuilt},
+			want: []string{"dispositions[0].until.stance", "can never be neutral"},
 		},
 		{
 			name: "a faction of many waiting for a fact with no mind",
@@ -268,7 +276,7 @@ func TestTheCampAllowsWhatTheDesignAllows(t *testing.T) {
 			"the singleton default is declared at compile, never inferred by the run")
 	})
 	t.Run("an until fact no record reveals — the dungeon allows, the scenario refuses", func(t *testing.T) {
-		source := edited(t, intelLine, `  - { id: wisemans-letter, reveals: { door: gate-yard } }`)
+		source := edited(t, intelLine, `  - { id: wisemans-letter, reveals: { fact: some-other-word } }`)
 		require.Empty(t, defectsIn(t, source))
 	})
 	t.Run("monsters and party may be named in a disposition", func(t *testing.T) {
@@ -294,21 +302,25 @@ func TestTheCampAllowsWhatTheDesignAllows(t *testing.T) {
 }
 
 // TestThePredicateDecodesStrictly is the grammar's own gate: exactly one
-// form, no unknown key, and each refusal names the line.
+// form, no unknown key, and each refusal named — an unknown key at its PATH
+// (rpg-project#481), and the rest at the line, because a form that says
+// nothing is not about any one key.
 func TestThePredicateDecodesStrictly(t *testing.T) {
 	scenes := []struct {
-		name, predicate, want string
+		name, predicate, path, want string
 	}{
-		{"two forms", "{ fact: saved-wiseman, round: 6 }", "says both `fact` and `round`"},
-		{"no form", "{}", "says nothing"},
-		{"an empty form", "{ fact: }", "`fact` says nothing"},
-		{"an unknown key", "{ facts: saved-wiseman }", "field facts not found in type dungeonspec.PredicateSpec"},
-		{"is outside the stance form", "{ fact: saved-wiseman, is: neutral }", "field is not found"},
-		{"a stance with no is", "{ stance: { between: [raiders, party] } }", "does not say which stance"},
-		{"a stance with no between", "{ stance: { is: neutral } }", "does not say which pair"},
+		{"two forms", "{ fact: saved-wiseman, round: 6 }", "", "says both `fact` and `round`"},
+		{"no form", "{}", "", "says nothing"},
+		{"an empty form", "{ fact: }", "", "`fact` says nothing"},
+		{"an unknown key", "{ facts: saved-wiseman }", "dispositions[0].until.facts",
+			`"facts" is not a key this build reads`},
+		{"is outside the stance form", "{ fact: saved-wiseman, is: neutral }", "dispositions[0].until.is",
+			`"is" is not a key this build reads`},
+		{"a stance with no is", "{ stance: { between: [raiders, party] } }", "", "does not say which stance"},
+		{"a stance with no between", "{ stance: { is: neutral } }", "", "does not say which pair"},
 		{"a stance with an unknown key", "{ stance: { between: [raiders, party], is: neutral, was: hostile } }",
-			"field was not found in type dungeonspec.StancePredicateSpec"},
-		{"a scalar", "round", "a predicate is exactly one of"},
+			"dispositions[0].until.stance.was", `"was" is not a key this build reads`},
+		{"a scalar", "round", "", "a predicate is exactly one of"},
 	}
 	for _, sc := range scenes {
 		t.Run(sc.name, func(t *testing.T) {
@@ -317,6 +329,13 @@ func TestThePredicateDecodesStrictly(t *testing.T) {
 			require.Error(t, err)
 			require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
 			require.Contains(t, err.Error(), sc.want)
+			if sc.path == "" {
+				return
+			}
+			var verr *dungeonspec.ValidationError
+			require.ErrorAs(t, err, &verr)
+			require.Contains(t, verr.Errors, dungeonspec.FieldError{Path: sc.path, Message: sc.want},
+				"the key is named at the author's address for it")
 		})
 	}
 }

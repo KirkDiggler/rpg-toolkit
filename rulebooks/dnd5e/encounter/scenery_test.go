@@ -285,11 +285,16 @@ func theYardstick() encounter.FieldInput {
 			rectRegion("hall", 0, 0, 3, 1),
 			{
 				ID: "vault", Name: "vault", Archetype: testArchetype, Lighting: fullLight(),
-				Cells: []spatial.Position{{X: 4, Y: 0}}, Concealed: true,
+				Cells: []spatial.Position{{X: 4, Y: 0}},
 			},
 		},
 		Scenery: sceneryCells(3, 3),
 		Walls:   []encounter.WallInput{wall(2, 0, 3, 0)},
+		Concealments: []encounter.ConcealmentInput{{
+			ID:     "vault",
+			Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+			Cells:  []spatial.Position{{X: 4, Y: 0}},
+		}},
 	}
 	return field
 }
@@ -326,8 +331,13 @@ func theWalledStrip(withVault bool) encounter.FieldInput {
 	if withVault {
 		field.Regions = append(field.Regions, encounter.RegionInput{
 			ID: "vault", Name: "vault", Archetype: testArchetype, Lighting: fullLight(),
-			Cells: []spatial.Position{{X: 5, Y: 0}}, Concealed: true,
+			Cells: []spatial.Position{{X: 5, Y: 0}},
 		})
+		field.Concealments = []encounter.ConcealmentInput{{
+			ID:     "vault",
+			Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
+			Cells:  []spatial.Position{{X: 5, Y: 0}},
+		}}
 	}
 	return field
 }

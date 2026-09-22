@@ -120,9 +120,8 @@ var wantClass = map[string]beatClass{
 // appear in exactly one of these two tables — the loop at the bottom of
 // TestCallSiteClassification is what enforces that.
 var recipientScoped = map[string]bool{
-	"sighted":         true,
-	"door_revealed":   true,
-	"region_revealed": true,
+	"sighted":              true,
+	"concealment_revealed": true,
 }
 
 // TestCallSiteClassification runs one scripted scene through every

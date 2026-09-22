@@ -19,7 +19,9 @@ package session_test
 //     recipient's own dense numbering, followed by a FIGHT_ENDED whose cause
 //     is the stance and an ENDED naming the hold-out;
 //   - a verb after the flip loads the stored world back and still answers
-//     neutral, with no stance in the blob (A9);
+//     neutral, with no stance in the blob (A9) — scoped, since
+//     rpg-project#493, to a flip a MIND caused: a pair turned publicly writes
+//     its own fact into that blob, and bothways_test.go is where that lives;
 //   - a faction the dungeon does not declare is refused by name.
 //
 // # The fixture
@@ -735,7 +737,20 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 			Holdings *encounter.HoldingsData
 		}{stored.Field, stored.Members, stored.World, stored.Holdings})
 		s.Require().NoError(err)
-		s.NotContains(string(structure), `"neutral"`, "the only place neutral appears is the story's own beat")
+		// SCOPED TO A FLIP A MIND CAUSED, since rpg-project#493. The stance
+		// is still derived and still never a field — that has not moved, and
+		// it is what this assertion is for. What DID move is the generality:
+		// a pair turned publicly (a round, a fall, a cascade, an attack) now
+		// writes a `settled:<stance>:<pair>` fact into this same blob, and
+		// must, or a provoked camp would reload civil. This scene's pair
+		// turns on a FACT its chief learned — audience grain, the mind's own
+		// knowledge — so the journal here holds `known:fact:letter` and
+		// nothing else. That a publicly turned pair comes back turned is
+		// pinned in the encounter suite (TestATurnedPairSurvivesASaveAndLoad)
+		// and, at this seam, by every read after the swing in
+		// bothways_test.go — each of those verbs reloads the blob.
+		s.NotContains(string(structure), `"neutral"`,
+			"a flip a mind caused writes the knowledge, never the stance")
 	})
 
 	s.stream.published = nil

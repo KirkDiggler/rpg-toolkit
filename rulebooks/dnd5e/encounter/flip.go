@@ -33,6 +33,16 @@ import (
 // RoundStarted milestone ([Encounter.noticeRounds]), a stance in the fold
 // after a flip ([Encounter.settleStances]). A member down keeps its home in
 // noticeDown.
+//
+// AN `until` IS EVALUATED AT THOSE SAME SITES (rpg-project#493, R2). A fact
+// until is the graph's own — the Settle reads the mind's flag, and nothing
+// here decides it. The other three are the world's truth and no flag exists
+// for them until somebody writes one, so [Encounter.turnUntils] runs at each
+// site beside the arrivals that site already fires: it asks the site's own
+// question of every non-fact until, writes the public settled fact for each
+// pair whose answer is yes, and hands the difference to settleStances. Same
+// question, same closure, one for the placement waiting and one for the pair
+// turning.
 
 // learnFact writes the fact that a member came to know a fact — actor and
 // subject the learner, audience the learner alone (the subject is what the
@@ -68,17 +78,26 @@ func (e *Encounter) learnFact(member MemberID, id FactID, cause string, at uint6
 
 // settleStances notices every pair whose stance the last append turned: the
 // `stance` beat to everyone (truth grain, like a door's state), the fights
-// that lost their sides, and the stance endings that now hold. before is the
-// fold from before the append; the fold after is asked here.
+// that lost their sides and the fight a turn STARTS, the untils that were
+// waiting on one of these pairs, and the stance endings that now hold.
+// before is the fold from before the append; the fold after is asked here.
+//
+// ANY CHANGE, IN EITHER DIRECTION (rpg-project#493, R1). This used to notice
+// only `hostile -> anything`, which was the whole of what could happen: the
+// one Settle removed a hostile edge and nothing wrote one back. A neutral
+// pair turning hostile is the other half, and it is not the first half read
+// backwards — it ends no fight, it starts one.
 func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) error {
 	after := e.stanceTable()
-	turned := false
+	turned, madeEnemies := false, false
 	for _, pair := range e.turnablePairs() {
-		if before[pair] != StanceHostile || after[pair] == StanceHostile {
+		if before[pair] == after[pair] {
 			continue
 		}
 		turned = true
-		if err := e.appendStanceBeat(pair, after[pair], at); err != nil {
+		madeEnemies = madeEnemies || after[pair] == StanceHostile
+		cause, _ := e.world.settledCause(pair, after[pair])
+		if err := e.appendStanceBeat(pair, after[pair], cause, at); err != nil {
 			return err
 		}
 	}
@@ -127,11 +146,33 @@ func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) erro
 		}
 	}
 
+	// AND A FIGHT THAT JUST GAINED SIDES STARTS. Asked only when a pair
+	// turned hostile, because that is the only turn that can make one.
+	if madeEnemies {
+		if err := e.formOnStance(before, after); err != nil {
+			return err
+		}
+	}
+
 	// The stance site (design §3.8; reserve.go): whatever waited for one of
 	// the turned pairs to fold to this stance arrives now, before the endings
 	// below.
 	if err := e.arrivals(onStance(before, after), at); err != nil {
 		return fmt.Errorf("stance arrivals: %w", err)
+	}
+
+	// THE CASCADE (rpg-project#493, R2): "when the raiders turn, so do their
+	// dogs". An until waiting on one of the pairs that just turned holds now,
+	// and turning its own pair re-enters here with a new before-and-after.
+	//
+	// IT TERMINATES BY THE FLAG. A pair is settled to a given stance once —
+	// [encounterWorld.settled] is asked before every write — and there are
+	// finitely many pairs, so each level of this recursion appends at least
+	// one fact that can never be appended again. A ring of untils waiting on
+	// each other runs once round and stops, rather than not being a ring the
+	// author is allowed to write.
+	if err := e.turnUntils(onStance(before, after), at); err != nil {
+		return err
 	}
 
 	// The stance endings, in the fold after the flip — declaration order,
@@ -160,12 +201,24 @@ func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) erro
 // STANCE_CHANGED goes to everyone in the run). The pair is UNORDERED and is
 // written in its one normalized order, so two flips of one pair read the
 // same whichever way the file spelled it.
-func (e *Encounter) appendStanceBeat(pair factionPair, to Stance, at uint64) error {
-	payload, err := json.Marshal(map[string]interface{}{
+//
+// THE CAUSE IS CARRIED WHEN THERE IS ONE (rpg-project#493, R3): "attacked by
+// <actor>", "the fall of scout", "round 3 started" — the same sentence the
+// journal holds, so a streamer watching a camp turn is told why rather than
+// left to infer it from the swing before it. It is absent for a turn a
+// faction's MIND caused, and that absence is the honest one: the fold is what
+// turned the pair, nobody wrote a cause, and inventing one here would be this
+// composition deciding a thing the graph decided.
+func (e *Encounter) appendStanceBeat(pair factionPair, to Stance, cause string, at uint64) error {
+	body := map[string]interface{}{
 		"beat":    "stance",
 		"between": []FactionID{pair.a, pair.b},
 		"stance":  string(to),
-	})
+	}
+	if cause != "" {
+		body["cause"] = cause
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("stance beat payload: %w", err)
 	}
@@ -261,6 +314,16 @@ func (e *Encounter) noticeRounds(bubble *clock.Turn, ms []clock.Milestone) error
 		// this round of a fight arrives now, before the endings below. A
 		// member arriving refreshes sight inside this call and joins the
 		// fight whose round this is, as a straggler walking into view would.
+		//
+		// THE GUARDS TURN AT MIDNIGHT (rpg-project#493, R2) — every
+		// `until: { round }` is asked first, so a placement waiting on the
+		// stance that round produced arrives into a world that already holds
+		// it. R9 applies unchanged: a round is a FIGHT's own clock, so
+		// `until: { round: 3 }` outside any fight has no milestone to notice
+		// and never holds, exactly as an `arrives: { round: 3 }` does not.
+		if err := e.turnUntils(onRound(m.Round), uint64(e.clock.ToData().HighWater)); err != nil {
+			return fmt.Errorf("round %d stances: %w", m.Round, err)
+		}
 		if err := e.arrivals(onRound(m.Round), uint64(e.clock.ToData().HighWater)); err != nil {
 			return fmt.Errorf("round %d arrivals: %w", m.Round, err)
 		}
@@ -366,10 +429,8 @@ func (e *Encounter) factRecordsHeldBy(member MemberID) []IntelID {
 		case item.record != "":
 			consider(item.record)
 		case item.prop != "":
-			if i := e.field.propIndexOf(item.prop); i >= 0 {
-				for _, id := range e.field.props[i].Holds {
-					consider(id)
-				}
+			for _, id := range e.field.propHolds(item.prop) {
+				consider(id)
 			}
 		}
 	}

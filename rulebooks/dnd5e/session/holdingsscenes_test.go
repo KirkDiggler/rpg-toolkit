@@ -24,7 +24,7 @@ import (
 // writer of the fact search writes, never a second mechanism), so what this
 // pins at the seam is that a second cause reaches a recipient through the
 // same recipient-scoped path, typed the same way.
-func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
+func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 	ctx := context.Background()
 	s.start(true)
 	before := s.atlasBytes("bob")
@@ -35,18 +35,20 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
 	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written,
 		"the transferred fact rides the world; the advanced stream cursors ride the session")
 
-	s.Run("the looter alone is told about the door", func() {
-		s.Equal([]session.EventKind{session.EventLooted, session.EventDoorRevealed, session.EventTick},
+	s.Run("the looter alone is told about the secret", func() {
+		s.Equal([]session.EventKind{session.EventLooted, session.EventConcealmentRevealed, session.EventTick},
 			s.kinds("alice"), "the verb's own beat first, then what it caused, then the round it spent")
-		body, ok := s.bodyOf("alice", session.EventDoorRevealed).(session.DoorRevealedBody)
+		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
 		s.Require().True(ok, "a reveal carries its typed body")
-		s.Equal("veil", body.Door)
-		s.Equal("closed", body.State, "looted is not opened — a found door is still shut")
+		s.Equal(vaultSecret, body.Concealment, "the record named the vault, so the vault is what arrives")
+		s.Require().Len(body.Doors, 1)
+		s.Equal("veil", body.Doors[0].Door)
+		s.Equal("closed", body.Doors[0].State, "looted is not opened — a found door is still shut")
 	})
 
 	s.Run("everyone present hears the LOOTED beat and nothing more", func() {
 		s.Equal([]session.EventKind{session.EventLooted, session.EventTick}, s.kinds("bob"),
-			"the loot, and the round it cost the world — but nothing about a door")
+			"the loot, and the round it cost the world — but nothing about a secret")
 		s.Equal(session.LootedBody{Looter: "alice", Body: "captain"},
 			s.bodyOf("bob", session.EventLooted),
 			"looter and body, and nothing of what moved")
@@ -68,10 +70,16 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheDoorToTheLooterAlone() {
 			"unchanged until the door is opened in their presence (slice 1, untouched)")
 	})
 
-	s.Run("knowing a door is not seeing the room behind it", func() {
+	s.Run("the record gives away the vault, not merely its hinge", func() {
+		// R7, at the seam. This sub-test used to read "knowing a door is not
+		// seeing the room behind it" and pin 36 cells: the map named a DOOR,
+		// and the room behind it was a second secret nobody had found. A
+		// record's target is the concealment now, so looting it hands over
+		// the floor and the door in one moment — which is what a map of the
+		// way in was always worth.
 		atlas := s.atlasOf("alice")
-		s.Len(atlas.Cells, 36, "the hall alone — 6x6 — even for the looter")
-		s.Require().Len(atlas.Doorways, 1, "two knowledge moments, deliberately distinct")
+		s.Len(atlas.Cells, 72, "both rooms — the looter read the way in")
+		s.Require().Len(atlas.Doorways, 1, "with the veil on her map")
 	})
 }
 
@@ -529,7 +537,7 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 		session.EventSighted,
 	}, s.kinds("alice"), "every beat arrived named, and in the order the fiction happened")
 	s.Equal([]session.EventKind{
-		session.EventLooted, session.EventDoorRevealed, session.EventTick,
+		session.EventLooted, session.EventConcealmentRevealed, session.EventTick,
 		session.EventHeld, session.EventExited, session.EventDropped,
 	}, s.kinds("bob"), "and the ACTOR's stream is the same list plus what his loot caused, "+
 		"which is the one beat nobody else may see")
@@ -674,12 +682,12 @@ func (s *HoldingsSuite) TestHoldingAScrollTeachesTheHolderAtTheSeam() {
 	s.Require().NoError(err)
 
 	s.Run("the holder is told what it says, after being told they hold it", func() {
-		s.Equal([]session.EventKind{session.EventHeld, session.EventDoorRevealed}, s.kinds("alice"),
+		s.Equal([]session.EventKind{session.EventHeld, session.EventConcealmentRevealed}, s.kinds("alice"),
 			"picking it up is the cause; what it teaches is the consequence")
 
-		body, ok := s.bodyOf("alice", session.EventDoorRevealed).(session.DoorRevealedBody)
+		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
 		s.Require().True(ok, "the reveal crosses as its own typed body")
-		s.Equal("veil", body.Door)
+		s.Equal(vaultSecret, body.Concealment)
 	})
 
 	s.Run("the bystander sees a thing picked up and is taught nothing", func() {

@@ -42,6 +42,12 @@ func deftCharacter(id string, dex int) *character.Data {
 // gatedWorld is read_test's hexWorld with the gate in a caller-chosen state
 // and alice standing at its west cell, one step from crossing it.
 func gatedWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
+	return gatedWorldSeating(t, state, spatial.Position{X: 5, Y: 0})
+}
+
+// gatedWorldSeating is gatedWorld with alice's authored seat chosen by the
+// caller, for the one scene that needs her measurably away from the gate.
+func gatedWorldSeating(t fataler, state encounter.DoorState, seat spatial.Position) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
@@ -59,7 +65,7 @@ func gatedWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: seat},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -203,6 +209,42 @@ func (s *DoorsSuite) TestOpenDoorRefusesALockedOne() {
 	s.Require().ErrorIs(err, session.ErrLocked, "Unlock is the way through a lock")
 }
 
+// TestTheReachRefusalArrivesAsThisPackagesOwn is the seam's own proof that
+// the composition's new refusal crosses it intact: the encounter refuses a
+// hand two cells from the gate with its ErrOutOfRange (rpg-toolkit#1856),
+// and what a HOST holds is this package's ErrOutOfRange — translate's
+// mapping, exercised through the verb rather than read off the switch.
+//
+// The same hand one cell closer opens the door, so what is pinned here is
+// the boundary itself and not merely a verb that refuses.
+func (s *DoorsSuite) TestTheReachRefusalArrivesAsThisPackagesOwn() {
+	ctx := context.Background()
+	s.startWith(gatedWorldSeating(s.T(), encounter.DoorIsClosed(), spatial.Position{X: 3, Y: 0}),
+		deftCharacter("alice", 14))
+
+	_, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{
+		Session: "sess", Member: "alice", Door: "gate"})
+	s.Require().ErrorIs(err, session.ErrOutOfRange,
+		"two cells from the gate is not beside it — and the sentinel a host compares is OURS")
+	s.NotErrorIs(err, session.ErrNoConnection,
+		"an authored door she can see is not a door that does not exist for her")
+
+	read, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal("closed", read.Doors[0].State, "the refused push moved nothing")
+	s.Empty(s.doorEvents("alice"), "and a refusal is not a beat")
+
+	// One cell east, and the same verb swings it.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(4, 0)}})
+	s.Require().NoError(err)
+
+	out, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{
+		Session: "sess", Member: "alice", Door: "gate"})
+	s.Require().NoError(err, "beside the door, the same hand reaches")
+	s.Equal(session.Door{ID: "gate", State: "open"}, out.Door)
+}
+
 func (s *DoorsSuite) TestUnlockRollsTheSheetAgainstTheDC() {
 	ctx := context.Background()
 	s.startWith(gatedWorld(s.T(), tombLock()), deftCharacter("alice", 14))
@@ -270,8 +312,19 @@ func (s *DoorsSuite) TestALockNamingNoRulebookAbilityIsRefusedLoudly() {
 }
 
 func (s *DoorsSuite) TestUnlockOfAnUnlockedDoorIsRefused() {
+	ctx := context.Background()
 	s.startWith(hexWorld(s.T()), deftCharacter("alice", 14))
-	_, err := s.mgr.Unlock(context.Background(), &session.UnlockInput{
+
+	// hexWorld seats alice at the corridor's west end; she walks up to the
+	// gate first, because a hand out of reach is told THAT and never reaches
+	// the lock at all (rpg-toolkit#1856). What this test pins is the answer
+	// for a door that has no lock to try.
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{hexCell(1, 0), hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0)}})
+	s.Require().NoError(err)
+
+	_, err = s.mgr.Unlock(ctx, &session.UnlockInput{
 		Session: "sess", Member: "alice", Door: "gate"})
 	s.Require().ErrorIs(err, session.ErrNoConnection,
 		"the composition's own refusal, translated — there is no lock to try")

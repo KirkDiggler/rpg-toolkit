@@ -76,6 +76,17 @@ type Compiled struct {
 	// what their dungeon declares without reaching into the field.
 	Intel []encounter.IntelRecord
 
+	// Concealments are the secrets this dungeon hides, in the order the
+	// field carries them, with ids COMPILED (`<key>/<id>`) exactly as a
+	// door's is (rpg-project#490). Nil when the file hides nothing.
+	//
+	// Also carried on [Compiled.Field] as the composition's own list, which
+	// is the copy that survives a save. This is the same list, surfaced here
+	// for a host that wants to show an author what their dungeon hides
+	// without reaching into the field — [Compiled.Intel]'s reason, one root
+	// declaration over.
+	Concealments []encounter.ConcealmentInput
+
 	// Factions and Dispositions are the sides this dungeon authored, in
 	// authored order, with the predicates compiled to the composition's
 	// triggers (rpg-project#375). Nil when the file declares none. Also
@@ -316,6 +327,10 @@ func Compile(spec *Spec) (Compiled, error) {
 	names := authoredOf(spec)
 	derived := deriveWalls(spec, orientation, floorOf(spec, orientation), nil)
 	doorEdges := doorCrossings(spec, orientation)
+	// WHICH CROSSINGS ARE WAYS, derived once from the walls beside them —
+	// what the concealment lowering asks to find a secret SUITE
+	// (concealments.go).
+	ways := waysOf(derived, doorEdges)
 
 	field := encounter.FieldInput{
 		Canvas:   encounter.CanvasInput{Void: void, Orientation: orientation},
@@ -326,13 +341,19 @@ func Compile(spec *Spec) (Compiled, error) {
 		Segments: segmentsOf(derived, names, doorEdges),
 		Sealed:   sealedOf(spec, orientation, derived),
 		Doors:    doorsOf(spec, orientation),
-		Exits:    exitsOf(spec),
-		Intel:    intelOf(spec),
+		Exits:    exitsOf(spec.Exits, v2Exit),
+		Intel:    intelOf(spec, orientation, ways),
+		// WHAT THIS DUNGEON HIDES, lowered from the two words this dialect
+		// spells it with (concealments.go, rpg-project#490). THE MERGE RULES
+		// ARE THIS ADAPTER'S — a suite of hidden rooms is one secret because
+		// one noun holds each cell once, and deciding that is the v2 reader's
+		// job rather than the primitive's.
+		Concealments: concealmentsOf(spec, orientation, ways),
 		// The sides ride the FIELD too (rpg-project#375): the graph is seeded
 		// from them at every Setup and Load, so they have to be where the
 		// field is.
-		Factions:     factionsOf(spec),
-		Dispositions: dispositionsOf(spec),
+		Factions:     factionsOf(spec.Factions, placedMembers(spec)),
+		Dispositions: dispositionsOf(spec.Dispositions),
 		// The way in rides the FIELD, so it survives being stored: a start
 		// kept only on Compiled would be lost the moment the dungeon was
 		// saved, and a live session's map could never answer for it
@@ -356,9 +377,10 @@ func Compile(spec *Spec) (Compiled, error) {
 		PartyStart:   start,
 		StartFacing:  spec.Start.Facing,
 		Monsters:     monstersOf(spec, orientation),
-		Scenarios:    scenariosOf(spec),
-		Endings:      endingsOf(spec),
+		Scenarios:    scenariosOf(spec.Scenarios),
+		Endings:      endingsOf(spec.Endings),
 		Intel:        field.Intel,
+		Concealments: field.Concealments,
 		Factions:     field.Factions,
 		Dispositions: field.Dispositions,
 	}, nil
@@ -367,31 +389,73 @@ func Compile(spec *Spec) (Compiled, error) {
 // endingsOf carries the authored endings through, each `when` compiled to
 // the composition's own trigger by [predicateOf] (rpg-project#375, R10). Nil
 // when none.
-func endingsOf(spec *Spec) []encounter.EndingInput {
+//
+// ONE FUNCTION, BOTH DIALECTS (rpg-project#488, slice 1). `endings:` is the
+// v2 root key reaching the single-room dialect unchanged — the same
+// [EndingSpec] off the same shape, so there is nothing about an ending for a
+// second dialect to spell differently. It takes the SLICE rather than a
+// [Spec] for exactly that reason: a helper that names one dialect's root can
+// only ever serve one dialect.
+func endingsOf(endings []EndingSpec) []encounter.EndingInput {
 	var out []encounter.EndingInput
-	for _, e := range spec.Endings {
+	for _, e := range endings {
 		out = append(out, encounter.EndingInput{Key: e.ID, Trigger: predicateOf(e.When)})
 	}
 	return out
 }
 
 // intelOf carries the authored records through, with ids compiled the way a
-// door's is (`<key>/<id>`) so two dungeons in one process cannot collide —
-// and with the door a record reveals compiled the same way, because that is
-// the id the composition's own door table is keyed by.
+// door's is (`<key>/<id>`) so two dungeons in one process cannot collide.
+//
+// WHAT A v2 RECORD REVEALS IS A CONCEALMENT NOW, and the author still writes
+// `door:` (rpg-project#490, E5). The engine's target moved from the door to
+// the secret holding it, so this dialect resolves the authored door id to the
+// concealment its own lowering put that door in — which is the whole of the
+// retarget, because "the way into the vault" always meant the vault.
 //
 // A FACT IS NOT PREFIXED. It is a word a disposition's `until` and a
 // record's `reveals` agree on within one file, and the composition matches
-// the two by that word; a fact belongs to the story, not to the door table.
-func intelOf(spec *Spec) []encounter.IntelRecord {
+// the two by that word; a fact belongs to the story, not to a table.
+func intelOf(spec *Spec, o encounter.Orientation, ways crossingWays) []encounter.IntelRecord {
+	holding := concealmentHoldingDoor(spec, o, ways)
+
+	return intelRecordsOf(spec.Key, spec.Intel, func(rev RevealsSpec) encounter.ConcealmentID {
+		return holding[rev.Door]
+	})
+}
+
+// intelRecordsOf is the minting itself, shared by BOTH DIALECTS
+// (rpg-project#488): a record is a root declaration in either document and
+// `<key>/<id>` is the one id the composition's tables are keyed by, so a
+// second spelling of it is exactly the drift one grammar exists to prevent.
+// Nil when the file declares none.
+//
+// WHICH CONCEALMENT A RECORD REVEALS IS THE DIALECT'S HALF, handed in as
+// `conceal`: v2 resolves an authored `door:` to the concealment its lowering
+// put that door in, and the single-room dialect mints its authored
+// `concealment:` id the way it mints every other root declaration. Both
+// answer the empty string for a record that reveals a fact instead, which is
+// the zero value meaning exactly what it says.
+func intelRecordsOf(
+	key string, records []IntelSpec, conceal func(RevealsSpec) encounter.ConcealmentID,
+) []encounter.IntelRecord {
 	var out []encounter.IntelRecord
-	for _, rec := range spec.Intel {
-		r := encounter.IntelRecord{ID: encounter.IntelID(spec.Key + "/" + rec.ID)}
-		if rec.Reveals.Door != "" {
-			r.Reveals.Door = encounter.DoorID(spec.Key + "/" + rec.Reveals.Door)
-		}
+	for _, rec := range records {
+		r := encounter.IntelRecord{ID: encounter.IntelID(key + "/" + rec.ID)}
+		r.Reveals.Concealment = conceal(rec.Reveals)
 		r.Reveals.Fact = rec.Reveals.Fact
 		out = append(out, r)
+	}
+	return out
+}
+
+// intelHoldingsOf is the compiled record ids one holder carries — the same
+// `<key>/<id>` minting, for [MonsterPlacement.Holds]. Nil when it holds
+// nothing, so a creature that carries none pictures as it always did.
+func intelHoldingsOf(key string, holds []string) []string {
+	var out []string
+	for _, id := range holds {
+		out = append(out, key+"/"+id)
 	}
 	return out
 }
@@ -407,42 +471,41 @@ func intelOf(spec *Spec) []encounter.IntelRecord {
 // standing in a faction, so a declared mind that falls or leaves is a
 // faction that cannot learn (R7 — accidental succession is still
 // succession). See [singletonMind].
-func factionsOf(spec *Spec) []encounter.FactionInput {
+func factionsOf(factions []FactionSpec, cast members) []encounter.FactionInput {
 	var out []encounter.FactionInput
-	for _, fa := range spec.Factions {
+	for _, fa := range factions {
 		mind := fa.Mind
 		if mind == "" {
-			mind = singletonMind(spec, fa.ID)
+			mind = singletonMind(cast, fa.ID)
 		}
 		out = append(out, encounter.FactionInput{ID: fa.ID, Mind: encounter.MemberID(mind)})
 	}
 	return out
 }
 
-// singletonMind is the id of a faction's one monster placement, or "" when
-// the faction has none, several, or one with no id to name.
-func singletonMind(spec *Spec, faction string) string {
-	var only *PlaceSpec
+// singletonMind is the id of a faction's one creature, or "" when the faction
+// has none, several, or one with no id to name.
+func singletonMind(cast members, faction string) string {
+	only := ""
 	n := 0
-	for i := range spec.Place {
-		pl := &spec.Place[i]
-		if kind, _ := refKind(pl.Ref); kind != typeMonsters || placementFaction(*pl) != faction {
+	for _, m := range cast.all {
+		if !m.isMonster() || m.side() != faction {
 			continue
 		}
-		only = pl
+		only = m.id
 		n++
 	}
 	if n != 1 {
 		return ""
 	}
-	return only.ID
+	return only
 }
 
 // dispositionsOf carries the authored dispositions through, each until
 // compiled to the composition's own trigger by [predicateOf]. Nil when none.
-func dispositionsOf(spec *Spec) []encounter.DispositionInput {
+func dispositionsOf(dispositions []DispositionSpec) []encounter.DispositionInput {
 	var out []encounter.DispositionInput
-	for _, d := range spec.Dispositions {
+	for _, d := range dispositions {
 		di := encounter.DispositionInput{Between: d.Between, Stance: encounter.Stance(d.Stance)}
 		if d.Until != nil {
 			di.Until = predicateOf(d.Until)
@@ -481,24 +544,41 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 // exitsOf carries the authored ways out through as they were written — an id
 // and a cell each, in authored order. Nothing is derived: `start` is not one
 // of these, by ruling (design §3.1).
-func exitsOf(spec *Spec) []encounter.FieldExit {
+//
+// ONE FUNCTION, BOTH DIALECTS, and `lower` is the one half of an exit a
+// dialect owns (rpg-project#488 R2): v2 authors an absolute `at: [col,row]`
+// in the orientation its document declares, the single room authors
+// `cell: {q, r}` in its own axial frame ([RoomExit]), and each spends its own
+// conversion on the way in. It is [doorStateOf]'s split one key over — the
+// state is shared and the geometry is the dialect's — with the difference
+// that everything else about an exit IS shared, so everything else is here.
+func exitsOf[E any](exits []E, lower func(E) (string, spatial.Position)) []encounter.FieldExit {
 	var out []encounter.FieldExit
-	for _, ex := range spec.Exits {
-		out = append(out, encounter.FieldExit{ID: ex.ID, At: authored(ex.At)})
+	for _, ex := range exits {
+		id, at := lower(ex)
+		out = append(out, encounter.FieldExit{ID: id, At: at})
 	}
 	return out
 }
+
+// v2Exit lowers one v2 exit: the authored [col,row] pair, converted the way
+// every other absolute cell in that dialect is ([authored]).
+func v2Exit(ex ExitSpec) (string, spatial.Position) { return ex.ID, authored(ex.At) }
 
 // scenariosOf deep-copies the scenario bindings so a caller cannot reach back
 // into the spec through the map it is handed. Nil in, nil out: a file that
 // binds no scenario compiles to a dungeon that carries none, rather than to
 // one carrying an empty map somebody has to tell apart from none.
-func scenariosOf(spec *Spec) map[string]map[string]string {
-	if len(spec.Scenarios) == 0 {
+//
+// ONE FUNCTION, BOTH DIALECTS, for [endingsOf]'s reason: `scenarios:` is the
+// v2 root key verbatim, down to the Go type, so it takes the MAP rather than
+// a [Spec].
+func scenariosOf(scenarios map[string]map[string]string) map[string]map[string]string {
+	if len(scenarios) == 0 {
 		return nil
 	}
-	out := make(map[string]map[string]string, len(spec.Scenarios))
-	for id, bindings := range spec.Scenarios {
+	out := make(map[string]map[string]string, len(scenarios))
+	for id, bindings := range scenarios {
 		copied := make(map[string]string, len(bindings))
 		for k, v := range bindings {
 			copied[k] = v
@@ -539,8 +619,7 @@ func regionsOf(spec *Spec) []encounter.RegionInput {
 		intensity := *r.Lighting.Intensity
 		out = append(out, encounter.RegionInput{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
-			Lighting:  &encounter.Lighting{Intensity: intensity},
-			Concealed: r.Concealed,
+			Lighting: &encounter.Lighting{Intensity: intensity},
 		})
 	}
 	return out
@@ -782,24 +861,33 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 		// other — and two files describing one dungeon must compile to one
 		// door, not to two orderings of it.
 		crossing := normalizedCrossing(here, there)
-		var state encounter.DoorState
-		switch {
-		case d.Locked != nil:
-			state = encounter.DoorIsLocked(encounter.Lock{Approaches: approachesOf(d.Locked)})
-		case d.Closed:
-			state = encounter.DoorIsClosed()
-		default:
-			state = encounter.DoorIsOpen()
-		}
 		out = append(out, encounter.DoorInput{
-			ID:        encounter.DoorID(spec.Key + "/" + d.ID),
-			Edges:     []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
-			State:     state,
-			Concealed: approachesOf(d.Concealed),
+			ID:    encounter.DoorID(spec.Key + "/" + d.ID),
+			Edges: []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
+			State: doorStateOf(d.Locked, d.Closed),
 		})
 	}
 
 	return out
+}
+
+// doorStateOf is the state an authored door starts in, from the two keys that
+// say so — v2's [DoorSpec] and the single room's [RoomDoorBinding] carry the
+// same pair and mean the same thing by it (rpg-project#485, R2).
+//
+// LOCKED OUTRANKS CLOSED, because a locked door is shut by definition and
+// [DoorSpec.Closed] says `closed` is ignored beside it; neither is an open
+// doorway. Written once so the two dialects cannot come to disagree about
+// what `locked: [...]` with no `closed:` means.
+func doorStateOf(locked CheckSpec, closed bool) encounter.DoorState {
+	switch {
+	case locked != nil:
+		return encounter.DoorIsLocked(encounter.Lock{Approaches: approachesOf(locked)})
+	case closed:
+		return encounter.DoorIsClosed()
+	default:
+		return encounter.DoorIsOpen()
+	}
 }
 
 // answersOf carries the authored answer table to the composition's shape,
@@ -888,9 +976,9 @@ func selectorOf(sel *SelectorSpec) *encounter.Selector {
 // THE PLACEMENT'S WORD WINS AND THE MIX IS NOT DEALT FOR IT (design §3). An
 // author who named this creature's temperament has already answered the
 // question the mix exists to ask, and dealing anyway would overwrite them.
-func temperOf(pl PlaceSpec, faction TemperSpec) encounter.Temper {
-	if pl.Temper != "" {
-		return encounter.Temper{Word: pl.Temper}
+func temperOf(word string, faction TemperSpec) encounter.Temper {
+	if word != "" {
+		return encounter.Temper{Word: word}
 	}
 	if faction.Word != "" {
 		return encounter.Temper{Word: faction.Word}
@@ -904,17 +992,6 @@ func temperOf(pl PlaceSpec, faction TemperSpec) encounter.Temper {
 	}
 
 	return encounter.Temper{Mix: mix}
-}
-
-// placedFaction is the faction a placement is in, as authored — empty means
-// the reserved `monsters`, which a faction block may declare and give orders
-// to like any other.
-func placedFaction(pl PlaceSpec) string {
-	if pl.Faction == "" {
-		return encounter.FactionMonsters
-	}
-
-	return pl.Faction
 }
 
 // CompileTable compiles a bare `on:` block — the text a rulebook ships its
@@ -959,10 +1036,19 @@ func CompileTable(source string) (encounter.Table, error) {
 		}
 	}
 
-	v := &validation{spec: &Spec{Orientation: "pointy"}, owner: map[spatial.Position]int{}}
-	v.placeOn("table", on)
-	if len(v.errs) > 0 {
-		return nil, fmt.Errorf("compile table: %w: %s", ErrBadSpec, v.errs[0])
+	// ONE GRAMMAR, TWO CALLERS, and here a third with no document under it at
+	// all: a kind's default table names no creature and stands on no floor, so
+	// the cast is empty and the frame is never reached — the loop above
+	// refused every `at:` before this line.
+	var errs []FieldError
+	g := newGrammar(grammarInput{
+		Add:     func(path, message string) { errs = append(errs, FieldError{Path: path, Message: message}) },
+		Members: newMembers(nil),
+		Cells:   floorCells{orientation: orientations["pointy"], owner: map[spatial.Position]int{}},
+	})
+	g.placeOn("table", on)
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("compile table: %w: %s", ErrBadSpec, errs[0])
 	}
 
 	return tableOf(on), nil
@@ -983,16 +1069,73 @@ func approachesOf(check CheckSpec) []encounter.CheckApproach {
 	return out
 }
 
+// inherited is what each declared faction hands the creatures in it: the
+// answer table its members lay their own over, and the temperament they fall
+// back to. Indexed once per compile, by [inheritedOrders], and read by
+// [ordersOf] per creature.
+type inherited struct {
+	on     map[string]map[string][]AnswerSpec
+	temper map[string]TemperSpec
+}
+
+// inheritedOrders indexes the declared factions' orders. The two maps are
+// keyed by faction id, and a creature on a side nobody declared simply finds
+// nothing — which is the zero value telling the truth, not a defect: the
+// reserved `monsters` side is a side whether or not a block declares it.
+func inheritedOrders(factions []FactionSpec) inherited {
+	out := inherited{
+		on:     make(map[string]map[string][]AnswerSpec, len(factions)),
+		temper: make(map[string]TemperSpec, len(factions)),
+	}
+	for _, fa := range factions {
+		out.on[fa.ID] = fa.On
+		out.temper[fa.ID] = fa.Temper
+	}
+
+	return out
+}
+
+// creatureOrders is one creature as the orders compile reads it: who it is,
+// which side it is on, and the three things a faction would otherwise supply.
+//
+// THE DIALECT DECIDES WHERE THESE COME FROM and the compile does not care: in
+// the v2 document all three are keys on the placement itself, and in the
+// single room they come off the creature's orders block, keyed by its id.
+// What they MEAN is the same, which is why there is one function below and
+// not one per dialect (rpg-project#484, design §2).
+type creatureOrders struct {
+	ID      string
+	Ref     string
+	Faction string
+	On      map[string][]AnswerSpec
+	Temper  string
+	Actions []string
+}
+
+// ordersOf is a creature's compiled orders: its faction's answer table with
+// its own laid over KEY BY KEY and the nearer layer winning wholesale, its own
+// temperament word beating its faction's word or mix, and its arms verbatim in
+// the author's order.
+//
+// The returned placement carries NOTHING GEOMETRIC — no region and no cell.
+// Each dialect fills those in its own frame, which is the whole reason this
+// function can be shared.
+func ordersOf(c creatureOrders, from inherited) MonsterPlacement {
+	side := sideOf(c.Faction)
+
+	return MonsterPlacement{
+		ID: c.ID, Ref: c.Ref, Faction: c.Faction,
+		Actions: append([]string(nil), c.Actions...),
+		Table:   encounter.Layer(tableOf(from.on[side]), tableOf(c.On)),
+		Temper:  temperOf(c.Temper, from.temper[side]),
+	}
+}
+
 // monstersOf is every authored monster, in authored order, each naming the
 // region whose floor it stands on.
 func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 	owner := ownerOf(spec, o)
-	factionOn := map[string]map[string][]AnswerSpec{}
-	factionTemper := map[string]TemperSpec{}
-	for _, fa := range spec.Factions {
-		factionOn[fa.ID] = fa.On
-		factionTemper[fa.ID] = fa.Temper
-	}
+	from := inheritedOrders(spec.Factions)
 	var out []MonsterPlacement
 	for _, p := range spec.Place {
 		if kind, _ := refKind(p.Ref); kind != typeMonsters {
@@ -1002,21 +1145,19 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		if p.Targeting != nil {
 			targeting = *p.Targeting
 		}
-		var holds []string
-		for _, id := range p.Holds {
-			holds = append(holds, spec.Key+"/"+id)
-		}
-		out = append(out, MonsterPlacement{
-			Ref: p.Ref, Region: owner[encounter.HexCellAt(o, p.At[0], p.At[1])],
-			At: authored(p.At), Targeting: targeting, Boss: p.Boss,
-			ID: p.ID, Holds: holds, Faction: p.Faction,
-			Actions:    append([]string(nil), p.Actions...),
-			Intimidate: approachesOf(p.Intimidate),
-			Persuade:   approachesOf(p.Persuade),
-			Table:      encounter.Layer(tableOf(factionOn[placedFaction(p)]), tableOf(p.On)),
-			Temper:     temperOf(p, factionTemper[placedFaction(p)]),
-			Arrives:    predicateOf(p.Arrives),
-		})
+		mp := ordersOf(creatureOrders{
+			ID: p.ID, Ref: p.Ref, Faction: p.Faction,
+			On: p.On, Temper: p.Temper, Actions: p.Actions,
+		}, from)
+		mp.Region = owner[encounter.HexCellAt(o, p.At[0], p.At[1])]
+		mp.At = authored(p.At)
+		mp.Targeting = targeting
+		mp.Boss = p.Boss
+		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
+		mp.Intimidate = approachesOf(p.Intimidate)
+		mp.Persuade = approachesOf(p.Persuade)
+		mp.Arrives = predicateOf(p.Arrives)
+		out = append(out, mp)
 	}
 	return out
 }

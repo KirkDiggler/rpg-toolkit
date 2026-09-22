@@ -93,7 +93,7 @@ func (s *AreaSuite) TestAFootprintMustBeAShapeSomebodyCanStandIn() {
 		want   string
 	}{
 		{"an unknown shape", func(f *actions.Footprint) { f.Shape = "cone" }, "unknown area shape"},
-		{"an unknown origin", func(f *actions.Footprint) { f.Origin = "point" }, "unknown area origin"},
+		{"an unknown origin", func(f *actions.Footprint) { f.Origin = "unknown-origin" }, "unknown area origin"},
 		{"no extent at all", func(f *actions.Footprint) { f.SizeFeet = 0 }, "positive size"},
 		{"a negative extent", func(f *actions.Footprint) { f.SizeFeet = -5 }, "positive size"},
 	} {
@@ -108,6 +108,17 @@ func (s *AreaSuite) TestAFootprintMustBeAShapeSomebodyCanStandIn() {
 		err := areaProfile(func(p *actions.CastProfile) { p.Area.Catches = "enemies" }).Validate()
 		s.Require().Error(err)
 		s.Contains(err.Error(), "unknown area projection")
+	})
+	s.Run("half-populated membership is refused", func() {
+		err := areaProfile(func(p *actions.CastProfile) { p.Area.MembershipRef = "dnd5e:conditions:in_fog" }).Validate()
+		s.Require().ErrorContains(err, "requires both ref and name")
+	})
+	s.Run("membership without sight obstruction is refused", func() {
+		err := areaProfile(func(p *actions.CastProfile) {
+			p.Area.MembershipRef = "dnd5e:conditions:in_fog"
+			p.Area.MembershipName = "In Fog"
+		}).Validate()
+		s.Require().ErrorContains(err, "requires an obscuring area")
 	})
 }
 

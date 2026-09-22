@@ -81,6 +81,19 @@ func (s *OpportunityAttackConditionSuite) subscribeTriggers() *[]dnd5eEvents.Rea
 	return collected
 }
 
+// standingFighter is the reactor every scene below reads itself as: a
+// character with its one reaction in hand and hit points above zero.
+//
+// The hit points are stated rather than left at the fake's zero value because
+// zero now decides the case. canReact refuses a downed reactor before it ever
+// asks the meter, so a fake left at the zero value would be refused for its
+// hit points and every negative test in this suite would pass without reaching
+// the guard it names — the hollow shape TestPreventionIsNotThisConditionsToApply
+// was written to prevent.
+func standingFighter(id string) *fakeConditionOwner {
+	return &fakeConditionOwner{id: id, hasEconomy: true, reactions: 1, hp: 12, maxHP: 12}
+}
+
 func (s *OpportunityAttackConditionSuite) TestApplyAndRemove() {
 	oa := NewOpportunityAttackCondition("fighter-1")
 	s.False(oa.IsApplied())
@@ -108,7 +121,7 @@ func (s *OpportunityAttackConditionSuite) TestPublishesTriggerWhenReadyAndLeavin
 	// The fighter's own sheet, installed the way resolution's one door
 	// installs it. A reactor reads its reaction slot off the cast now, so a
 	// fold without one has no sheet to ask and declines — see canReact.
-	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx := castOf(s.ctx, standingFighter("fighter-1"))
 	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
@@ -136,6 +149,55 @@ func (s *OpportunityAttackConditionSuite) TestPublishesTriggerWhenReadyAndLeavin
 	s.Equal("goblin-1", got.SourceEntity)
 }
 
+// A reactor at zero hit points takes no opportunity attack.
+//
+// This is the scene TestPublishesTriggerWhenReadyAndLeavingReach fires on,
+// with one number changed: the same reactor, the same unspent reaction, the
+// same readiness, the same square leaving the same reach — and the fighter at
+// zero hit points instead of twelve. The pair is the whole proof, since the
+// only thing that can account for the difference is the life gate.
+//
+// What shipped was the monster half of it. A goblin dropped to zero stays on
+// the map and its keeper refreshes its one reaction every turn, so the meter
+// said "ready" forever and the body swung at the first character to walk away
+// from it.
+func (s *OpportunityAttackConditionSuite) TestADownedReactorTakesNoOpportunityAttack() {
+	s.placeEntity("fighter-1", "character", 5, 5)
+	s.placeEntity("goblin-1", "monster", 5, 6)
+
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+
+	collected := s.subscribeTriggers()
+
+	downed := standingFighter("fighter-1")
+	downed.hp = 0
+	// Stated, because without it this test could pass for the meter's reason
+	// rather than the sheet's.
+	s.Require().True(downed.CanReact(), "the reaction must still be in hand")
+
+	ctx := castOf(s.ctx, downed)
+	ctx = gamectx.WithRoom(ctx, s.room)
+	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
+		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
+	})
+
+	c := events.NewStagedChain[*dnd5eEvents.MovementChainEvent](combat.ModifierStages)
+	movements := dnd5eEvents.MovementChain.On(s.bus)
+	event := &dnd5eEvents.MovementChainEvent{
+		EntityID:     "goblin-1",
+		EntityType:   "monster",
+		FromPosition: dnd5eEvents.Position{X: 5, Y: 6},
+		ToPosition:   dnd5eEvents.Position{X: 5, Y: 8},
+	}
+	mc, err := movements.PublishWithChain(ctx, event, c)
+	s.Require().NoError(err)
+	_, err = mc.Execute(ctx, event)
+	s.Require().NoError(err)
+
+	s.Empty(*collected, "a reactor at zero hit points published an OA trigger")
+}
+
 func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenReadinessOff() {
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 5, 6)
@@ -151,7 +213,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenReadinessOff() {
 	// until rpg-project#316 measured them (see
 	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
 	// bug behind it).
-	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx := castOf(s.ctx, standingFighter("fighter-1"))
 	ctx = gamectx.WithRoom(ctx, s.room)
 	// readiness map present but OA flag false
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
@@ -204,7 +266,7 @@ func (s *OpportunityAttackConditionSuite) TestPreventionIsNotThisConditionsToApp
 
 	// The cast the hollow test omitted, without which this predicate never
 	// reaches its own end.
-	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx := castOf(s.ctx, standingFighter("fighter-1"))
 	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
@@ -246,7 +308,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerOnSelfMovement() {
 	// until rpg-project#316 measured them (see
 	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
 	// bug behind it).
-	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx := castOf(s.ctx, standingFighter("fighter-1"))
 	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
@@ -283,7 +345,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenStillInReach() {
 	// until rpg-project#316 measured them (see
 	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
 	// bug behind it).
-	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx := castOf(s.ctx, standingFighter("fighter-1"))
 	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
@@ -320,7 +382,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenMoverNeverInReach() {
 	// until rpg-project#316 measured them (see
 	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
 	// bug behind it).
-	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx := castOf(s.ctx, standingFighter("fighter-1"))
 	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
@@ -363,4 +425,45 @@ func (s *OpportunityAttackConditionSuite) TestJSONShapeContainsRef() {
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	s.NotNil(data.Ref)
 	s.Equal(refs.Conditions.OpportunityAttack().String(), data.Ref.String())
+}
+
+type fogBlockedVisibility struct{}
+
+func (fogBlockedVisibility) SeesWithin(_, _ string, _ int) (bool, bool) { return false, true }
+
+func (s *OpportunityAttackConditionSuite) TestFogBlockedSightPreventsOpportunityAttack() {
+	// Fighter at (5,5), goblin moves from adjacent (5,6) to non-adjacent (5,8).
+	s.placeEntity("fighter-1", "character", 5, 5)
+	s.placeEntity("goblin-1", "monster", 5, 6)
+
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+
+	collected := s.subscribeTriggers()
+
+	// The fighter's own sheet, installed the way resolution's one door
+	// installs it. A reactor reads its reaction slot off the cast now, so a
+	// fold without one has no sheet to ask and declines — see canReact.
+	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx = gamectx.WithRoom(ctx, s.room)
+	ctx = gamectx.WithVisibility(ctx, fogBlockedVisibility{})
+	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
+		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
+	})
+
+	// Run via the explicit context — re-bind suite ctx for chain run.
+	c := events.NewStagedChain[*dnd5eEvents.MovementChainEvent](combat.ModifierStages)
+	movements := dnd5eEvents.MovementChain.On(s.bus)
+	event := &dnd5eEvents.MovementChainEvent{
+		EntityID:     "goblin-1",
+		EntityType:   "monster",
+		FromPosition: dnd5eEvents.Position{X: 5, Y: 6},
+		ToPosition:   dnd5eEvents.Position{X: 5, Y: 8},
+	}
+	mc, err := movements.PublishWithChain(ctx, event, c)
+	s.Require().NoError(err)
+	_, err = mc.Execute(ctx, event)
+	s.Require().NoError(err)
+
+	s.Empty(*collected, "an unseen creature leaving reach must not trigger an opportunity attack")
 }

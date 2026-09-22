@@ -61,17 +61,80 @@ type contentGolden struct {
 	PartyStart  []dungeonspec.Seat             `json:"party_start"`
 	Monsters    []dungeonspec.MonsterPlacement `json:"monsters"`
 
+	// Placed and Doors are THE TWO GEOMETRIES A FOOTPRINT CAN BE
+	// (rpg-project#485, rpg-toolkit#1850). Both were invisible in this
+	// picture before, which meant a change to how a footprint compiles — or
+	// to what state a door starts in — showed up in no golden at all.
+	//
+	// OMITTED WHEN EMPTY, so a file that authors neither writes exactly the
+	// bytes it wrote before they were pictured.
+	Placed []encounter.AtlasPlacedProp `json:"placed,omitempty"`
+	Doors  []goldenDoor                `json:"doors,omitempty"`
+
 	// Scenarios is what this slice added that a host can observe and the
 	// atlas does not carry (rpg-project#368). Exits, prop ids and
 	// holdability all ride in the atlas above, which is already here.
 	Intel     []encounter.IntelRecord      `json:"intel"`
 	Scenarios map[string]map[string]string `json:"scenarios"`
 
+	// Concealments is what the document HIDES, lowered from whichever
+	// dialect's words said so (rpg-project#490). It was invisible in this
+	// picture before — the region's flag rode Regions and the door's rode
+	// Doors — so a change to how a secret lowers now shows up here as a diff
+	// a reviewer reads. OMITTED WHEN EMPTY, so a file that hides nothing
+	// writes exactly the bytes it wrote before this line existed.
+	Concealments []encounter.ConcealmentInput `json:"concealments,omitempty"`
+
+	// Endings is the other half of what a document says about its own run,
+	// and it was invisible here — like [contentGolden.Placed] and
+	// [contentGolden.Doors] before rpg-project#485 — which meant a change to
+	// how an authored `when` compiles showed up in no golden at all. A
+	// trigger marshals as the concrete struct it is, and the four forms are
+	// told apart by the field each one carries.
+	//
+	// OMITTED WHEN EMPTY, so every file that authors no ending writes exactly
+	// the bytes it wrote before this line existed.
+	Endings []encounter.EndingInput `json:"endings,omitempty"`
+
 	// Factions and Dispositions are the sides (rpg-project#375). Omitted
 	// when a file declares none, so the four dungeons authored before
 	// factions existed picture byte-identically.
 	Factions     []encounter.FactionInput     `json:"factions,omitempty"`
 	Dispositions []encounter.DispositionInput `json:"dispositions,omitempty"`
+}
+
+// goldenDoor is one compiled door in the committed picture: what it is
+// called, the state it was AUTHORED in, and the one geometry it stands in.
+//
+// The state is carried as the WORD it is, for the reason the void and the
+// orientation are: [encounter.DoorState] is an interface and would marshal to
+// `{}`, which is a picture that shows nothing.
+type goldenDoor struct {
+	ID        string                      `json:"id"`
+	State     string                      `json:"state"`
+	Lock      []encounter.CheckApproach   `json:"lock,omitempty"`
+	Edges     []encounter.DoorEdge        `json:"edges,omitempty"`
+	Placement *spatial.FootprintPlacement `json:"placement,omitempty"`
+}
+
+// goldenDoorsOf renders the compiled doors for the picture, in the order the
+// field carries them.
+func goldenDoorsOf(doors []encounter.DoorInput) []goldenDoor {
+	out := make([]goldenDoor, 0, len(doors))
+	for _, d := range doors {
+		g := goldenDoor{
+			ID:        d.ID,
+			State:     string(d.State.Kind()),
+			Edges:     d.Edges,
+			Placement: d.Placement,
+		}
+		if lock, locked := d.State.Lock(); locked {
+			g.Lock = lock.Approaches
+		}
+		out = append(out, g)
+	}
+
+	return out
 }
 
 func contentGoldenOf(t *testing.T, path string) contentGolden {
@@ -90,9 +153,13 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		PartyStart:   compiled.PartyStart,
 		Monsters:     compiled.Monsters,
 		Intel:        compiled.Intel,
+		Concealments: compiled.Concealments,
 		Scenarios:    compiled.Scenarios,
+		Endings:      compiled.Endings,
 		Factions:     compiled.Factions,
 		Dispositions: compiled.Dispositions,
+		Placed:       atlas.Placed,
+		Doors:        goldenDoorsOf(compiled.Field.Doors),
 	}
 }
 
@@ -116,6 +183,12 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 	// THE SET, NOT THE COUNT. A length pin is a line somebody bumps when a
 	// fixture arrives; naming the files says which dungeons this package
 	// ships, so a deleted one fails as loudly as a new one.
+	//
+	// THE RAIDER LETTER IS IN THE SET NOW (rpg-toolkit#1854). It lived under
+	// testdata/decode-only/ while `propBindings` decoded and was refused at
+	// compile; a placed footprint can be held and can arrive, so it compiles
+	// like every other dungeon here and has a picture committed beside it.
+	// prop_bindings_test.go reads it by name for the equivalence claim.
 	names := make([]string, 0, len(files))
 	for _, path := range files {
 		names = append(names, filepath.Base(path))
@@ -128,6 +201,12 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"tomb-second-skeleton.yaml",
 		"world-builder-v3.yaml",
 		"world-builder-v4-site.yaml",
+		"world-builder-v4-front-room.yaml",
+		"world-builder-v4-raider-camp.yaml",
+		"world-builder-v4-raider-letter.yaml",
+		"world-builder-v4-truce.yaml",
+		"world-builder-v4-tomb-heirloom.yaml",
+		"world-builder-v4-tomb-vault.yaml",
 	}, names, "the authored dungeons this package ships")
 
 	for _, path := range files {

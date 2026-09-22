@@ -185,9 +185,8 @@ func (s *deathScene) beatKindsOf(enc *encounter.Encounter, audience encounter.Me
 // because the two live in different packages — encounter and encounter_test
 // — and the internal one is what actually guards the classification.
 var recipientScopedKinds = map[string]bool{
-	"sighted":         true,
-	"door_revealed":   true,
-	"region_revealed": true,
+	"sighted":              true,
+	"concealment_revealed": true,
 }
 
 func (s *deathScene) beatsOf(enc *encounter.Encounter, audience encounter.MemberID) []map[string]any {

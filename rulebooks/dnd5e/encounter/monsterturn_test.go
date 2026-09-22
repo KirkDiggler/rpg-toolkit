@@ -368,6 +368,21 @@ type scriptedStriker struct {
 	}
 }
 
+type pausingStriker struct {
+	calls int
+	pause bool
+}
+
+func (s *pausingStriker) Strike(_ context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref) error {
+	s.calls++
+	if s.pause {
+		s.pause = false
+		return encounter.ErrStrikePaused
+	}
+	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: attacker, Targets: []encounter.MemberID{target}, Attack: &encounter.AttackIdentity{Ref: action.String(), Name: "Test Strike", DamageType: "bludgeoning"}})
+	return err
+}
+
 func (s *scriptedStriker) Strike(
 	_ context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
 ) error {
@@ -841,6 +856,36 @@ func (s *MonsterTurnTestSuite) TestAttackExecutesAndConsumesTheBudget() {
 		}
 	}
 	s.True(sawMissed, "the striker's recorded outcome is in the story: %+v", beats)
+}
+
+// TestPausedStrikeSurvivesReloadAndDoesNotStrikeTwice proves that a pause raised
+// by the monster's attack is a resumable turn boundary: the original attack is
+// not replayed after reload, and the turn advances to the next actor.
+func (s *MonsterTurnTestSuite) TestPausedStrikeSurvivesReloadAndDoesNotStrikeTwice() {
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Attack{Target: alice, Action: testMeleeAction},
+	}}
+	striker := &pausingStriker{pause: true}
+	enc := s.adjacentSkeletonEncounter(driver, striker)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.True(enc.Paused())
+	data := enc.ToData()
+	s.Require().NotNil(data.PausedTurn)
+	s.True(data.PausedTurn.AfterStrike)
+
+	resumedStriker := &pausingStriker{}
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Striker: resumedStriker, Mover: quietMover{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+	_, err = loaded.ResumeTurn(context.Background())
+	s.Require().NoError(err)
+	s.Equal(1, striker.calls, "the paused attack was called once before the restart")
+	s.Equal(0, resumedStriker.calls, "resuming after a strike pause must not replay the hit")
 }
 
 // TestAttackOnOutOfReachTargetEndsTheTurnWithoutAborting is the brief's own
@@ -2164,4 +2209,35 @@ func TestARoutedIntentNamingAnUnsupportedPolicyIsRefused(t *testing.T) {
 
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	require.ErrorIs(t, err, encounter.ErrUnsupportedPolicy)
+}
+
+// Fog must fade both public sight and the monster's current targeting facts.
+// A later persisted position must not replace the location remembered before fog.
+func (s *MonsterTurnTestSuite) TestFogKeepsMovedTargetAtLastKnownLocation() {
+	driver := &scriptedDriver{}
+	enc := s.adjacentSkeletonEncounter(driver, &scriptedStriker{kind: encounter.OutcomeMissed})
+	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{
+		ID: "fog", SourceID: "caster", Center: cellAt(3, 2), RadiusFeet: 20,
+	}))
+	s.Require().NoError(enc.RefreshPerception())
+	holding := requireHolding(s.T(), enc, goblin, alice)
+	requireKnownLocation(s.T(), holding.Payload, cellAt(2, 2))
+	data := enc.ToData()
+	for i := range data.Members {
+		if data.Members[i].ID == alice {
+			moved := cellAt(1, 2)
+			data.Members[i].Cell = &encounter.PositionData{X: moved.X, Y: moved.Y}
+		}
+	}
+	enc = s.loadEncounterData(data, driver)
+	s.Require().NoError(enc.RefreshPerception())
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	s.Empty(driver.calls[0].Seen, "fog must withhold the live position from AI")
+	s.Require().Len(driver.calls[0].Remembered, 1)
+	s.Equal(cellAt(2, 2), driver.calls[0].Remembered[0].Position)
+	s.True(enc.RemoveSightArea("caster"))
+	s.Require().NoError(enc.RefreshPerception())
+	requireKnownLocation(s.T(), requireHolding(s.T(), enc, goblin, alice).Payload, cellAt(1, 2))
 }

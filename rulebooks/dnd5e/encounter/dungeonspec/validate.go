@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"sort"
-	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -99,6 +97,16 @@ func Validate(spec *Spec) []FieldError {
 	v := &validation{spec: spec}
 	v.header()
 	v.regions()
+	// THE GRAMMAR, over this dialect's cast and this dialect's frame
+	// (rpg-project#484). Built after regions(), because the floor a selector's
+	// cell is resolved against is the one the region list painted.
+	v.g = newGrammar(grammarInput{
+		Add:          func(path, message string) { v.errs = append(v.errs, FieldError{Path: path, Message: message}) },
+		Factions:     spec.Factions,
+		Dispositions: spec.Dispositions,
+		Members:      placedMembers(spec),
+		Cells:        floorCells{orientation: v.orientation, owner: v.owner},
+	})
 	if v.geometryUsable() {
 		// SCENERY FIRST inside the geometry block: everything below asks
 		// what is floor, and scenery is half the answer (rpg-project#360).
@@ -114,14 +122,14 @@ func Validate(spec *Spec) []FieldError {
 		// and place() asks whether it exists; MINDS AND DISPOSITIONS AFTER,
 		// because a mind is a placement, a `{ down }` names one, and a
 		// faction of one is counted from them (rpg-project#375).
-		v.factions()
+		v.g.factions()
 		// AND ITS ORDERS, which every placement in it inherits — the same
 		// refusals a placement's own `on:` earns, one layer up (design §1).
-		v.factionOrders()
+		v.g.factionOrders()
 		v.place()
-		v.minds()
+		v.g.minds()
 		v.exits()
-		v.dispositions()
+		v.g.dispositions()
 		// ARRIVALS AND ENDINGS AFTER THE DISPOSITIONS, because a `{ stance }`
 		// predicate is judged against the whole stance table, and after
 		// place() because a `{ down }` names a placement (rpg-project#375).
@@ -176,45 +184,22 @@ type validation struct {
 	// door, and is that door concealed?
 	doorAt map[[2]spatial.Position]int
 
-	// placeIDs is every authored placement id to the index that declared it
-	// — built by place(), read by scenarios() to answer "does this binding
-	// name something that exists". A collision is refused at place() and the
-	// FIRST index stays here, so a later binding to a duplicated id is
-	// reported once, at the duplicate, rather than twice.
-	placeIDs map[string]int
-
 	// exitIDs is every authored exit id to the index that declared it, the
-	// other half of what a binding may name.
-	exitIDs map[string]int
+	// other half of what a binding may name — indexed by the one [exitIDs]
+	// both dialects declare their ways out through (grammar.go).
+	exitIDs exitIDs
 
 	// intelIDs is every authored intel record id to the index that declared
 	// it — built by intel(), read by place() to answer "does this holder
 	// name a record that exists".
 	intelIDs map[string]int
 
-	// factionIDs is every declared faction id to the index that declared it
-	// — built by factions(), read by place(), dispositions() and scenarios().
-	// factionMembers is every faction, declared or reserved, to the monster
-	// placements in it — built by place(), read by minds() and
-	// dispositions() for the faction-of-one rule. mindValid is every faction
-	// whose declared mind passed minds(). dispositionAt is every normalized
-	// pair to the disposition that speaks for it (rpg-project#375).
-	factionIDs     map[string]int
-	factionMembers map[string][]int
-	mindValid      map[string]bool
-	dispositionAt  map[[2]string]int
-
-	// cellRefusal is the sentence a `{ at: [col, row] }` selector earns in a
-	// dialect that has no frame to resolve one in, or empty where the file
-	// declares an orientation and the cell is checked against the floor.
-	//
-	// THE SINGLE ROOM IS THAT DIALECT (rpg-toolkit#1826, ruling 1): its cells
-	// are axial {q, r} and it declares no orientation, so the same authored
-	// pair would name two different cells in the two dialects. Refused rather
-	// than guessed — and refused INSTEAD of the word/floor rules below, not
-	// beside them, because the frame is the whole defect and two messages for
-	// one mistake sends an author looking for a second problem.
-	cellRefusal string
+	// g is the gameplay grammar this document is judged by — the factions,
+	// the dispositions, the answer tables, the tempers and the actions, none
+	// of which are geometry (grammar.go). It holds the placement index every
+	// binding is resolved through, so everything here that asks "does this id
+	// name something" asks it.
+	g *grammar
 }
 
 func (v *validation) fail(path, format string, args ...any) {
@@ -493,14 +478,12 @@ func (v *validation) doors() {
 		} else {
 			ids[d.ID] = i
 		}
-		if d.Locked != nil {
-			v.approaches(p+".locked",
-				"this locked door needs at least one way through it — an ability and a DC", d.Locked)
-		}
-		if d.Concealed != nil {
-			v.approaches(p+".concealed",
-				"this concealed door needs at least one way to find it — an ability and a DC", d.Concealed)
-		}
+		// THE STATE HALF IS THE SHARED GRAMMAR'S (rpg-project#484, #485):
+		// the lock and the concealment mean the same thing in either
+		// dialect, so they are judged in one place. What stays here is the
+		// geometry — the side midpoint, the one wall, the crossing — which
+		// is this dialect's own and nobody else's.
+		v.g.doorState(p, d.Locked, d.Concealed)
 
 		at, ok := v.position(p, "at", g, d.At)
 		if !ok {
@@ -570,28 +553,6 @@ func (v *validation) wallLabel(i int) string {
 	return wallPath(i)
 }
 
-// approaches validates one authored check: at least one approach, each naming
-// the ability it rolls and a DC of at least 1. The empty-check refusal is the
-// caller's sentence — worded for the form-filler at the door, since "the
-// check has no approaches" means one thing on a lock and another on a
-// concealment — and every per-approach refusal names the field that is
-// missing at the row that misses it.
-func (v *validation) approaches(path, none string, check CheckSpec) {
-	if len(check) == 0 {
-		v.fail(path, "%s", none)
-		return
-	}
-	for j, a := range check {
-		ap := fmt.Sprintf("%s[%d]", path, j)
-		if a.Ability == "" {
-			v.fail(ap+".ability", "the approach does not say which ability it rolls")
-		}
-		if a.DC < 1 {
-			v.fail(ap+".dc", "an approach with dc %d has nothing to beat", a.DC)
-		}
-	}
-}
-
 func (v *validation) start() {
 	s := v.spec
 	if s.Start == nil {
@@ -638,11 +599,27 @@ func (v *validation) start() {
 	}
 }
 
+// placedMembers is this dialect's cast: every authored placement, in authored
+// order, as the three things the grammar reads off one — who it is, what it
+// is, and which side it is on. Index-aligned with [Spec.Place], so a defect
+// about a member is reported at the placement that declared it.
+//
+// PROPS ARE IN IT, because a prop is nameable here: a `{ down: … }` that names
+// one is refused for being a prop rather than for not existing, and a
+// scenario binds a holdable by its id.
+func placedMembers(spec *Spec) members {
+	all := make([]member, 0, len(spec.Place))
+	for _, pl := range spec.Place {
+		all = append(all, member{id: pl.ID, ref: pl.Ref, faction: pl.Faction})
+	}
+
+	return newMembers(all)
+}
+
 func (v *validation) place() {
 	s := v.spec
 	occupied := map[[2]int]int{}
 	bosses := map[int]int{} // region index -> place index of its boss
-	v.placeIDs = map[string]int{}
 	for i, pl := range s.Place {
 		p := fmt.Sprintf("place[%d]", i)
 		kind, err := refKind(pl.Ref)
@@ -651,12 +628,13 @@ func (v *validation) place() {
 		}
 		// P2: an id is optional, and unique when written. The refusal names
 		// BOTH lines because the author has to look at the two of them to
-		// decide which one keeps the name.
+		// decide which one keeps the name. The index is the grammar's, and it
+		// KEPT THE FIRST — so a later placement finding itself under someone
+		// else's index is the duplicate, and the one it points at is the line
+		// that keeps the name.
 		if pl.ID != "" {
-			if prev, dup := v.placeIDs[pl.ID]; dup {
+			if prev, _ := v.g.members.indexOf(pl.ID); prev != i {
 				v.fail(p+".id", "id %q is already declared by %q (place[%d])", pl.ID, s.Place[prev].Ref, prev)
-			} else {
-				v.placeIDs[pl.ID] = i
 			}
 		}
 		at := v.cell(pl.At)
@@ -702,7 +680,7 @@ func (v *validation) place() {
 		// Which side it is on (rpg-project#375): a monster's faction must
 		// exist, a prop has none, and either way the membership is counted
 		// for the faction-of-one rule.
-		v.placeFaction(p, i, pl, kind)
+		v.g.placeFaction(p, i, v.g.members.all[i], kind)
 
 		switch kind {
 		case typeMonsters:
@@ -724,23 +702,23 @@ func (v *validation) place() {
 			if pl.Targeting != nil && !targetings[*pl.Targeting] {
 				v.fail(p+".targeting", "%q declares targeting %q, which is not a word this build knows", pl.Ref, *pl.Targeting)
 			}
-			v.placeActions(p, pl)
+			v.g.placeActions(p, pl.Actions)
 			// A monster's authored check is a check like any other: at
 			// least one way through when the key is there at all, each
 			// naming an ability and a DC. Absent is legal and means the
 			// rulebook derives it ([PlaceSpec.Intimidate]).
 			if pl.Intimidate != nil {
-				v.approaches(p+".intimidate",
+				v.g.approaches(p+".intimidate",
 					"this monster declares an intimidate check with no way through it — an ability and a DC",
 					pl.Intimidate)
 			}
 			if pl.Persuade != nil {
-				v.approaches(p+".persuade",
+				v.g.approaches(p+".persuade",
 					"this monster declares a persuade check with no way through it — an ability and a DC",
 					pl.Persuade)
 			}
-			v.placeOn(p, pl.On)
-			v.placeTemper(p, pl)
+			v.g.placeOn(p, pl.On)
+			v.g.placeTemper(p, pl.Temper)
 			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {
 					v.fail(p+".boss", "region %q already names %q (place[%d]) as its boss", s.Regions[owner].ID, s.Place[prev].Ref, prev)
@@ -817,16 +795,14 @@ func (v *validation) place() {
 // [encounter.ErrNoEnding]'s liveness hole reached from the outside.
 func (v *validation) exits() {
 	s := v.spec
-	v.exitIDs = map[string]int{}
+	v.exitIDs = exitIDs{}
 	for i, ex := range s.Exits {
 		p := fmt.Sprintf("exits[%d]", i)
-		if ex.ID == "" {
-			v.fail(p+".id", "the exit has no id")
-		} else if prev, dup := v.exitIDs[ex.ID]; dup {
-			v.fail(p+".id", "exit %q is already declared at exits[%d]", ex.ID, prev)
-		} else {
-			v.exitIDs[ex.ID] = i
-		}
+		// THE ID IS THE SHARED HALF ([exitIDs.declare], grammar.go): an exit
+		// has one, and no two have the same one, whatever frame the cell is
+		// in. The three refusals below it are this dialect's own, and they
+		// are about the floor this document's regions painted.
+		v.exitIDs.declare(v.g, i, ex.ID)
 
 		at := v.cell(ex.At)
 		if v.sceneryAt[at] {
@@ -846,7 +822,8 @@ func (v *validation) exits() {
 
 // intel validates the authored knowledge records (design §2): each has an
 // id, no two share one, and each says exactly one thing it reveals that this
-// dungeon actually has.
+// dungeon actually has — and, for a door, that something hides it
+// (rpg-project#490, R7).
 //
 // RUN BEFORE place(), which asks whether a holder names a record that
 // exists — the same ordering reason scenery runs before walls.
@@ -854,9 +831,11 @@ func (v *validation) intel() {
 	s := v.spec
 	v.intelIDs = map[string]int{}
 	doorIDs := map[string]bool{}
-	for _, d := range s.Doors {
+	doorAt := map[string]int{}
+	for i, d := range s.Doors {
 		if d.ID != "" {
 			doorIDs[d.ID] = true
+			doorAt[d.ID] = i
 		}
 	}
 
@@ -884,69 +863,52 @@ func (v *validation) intel() {
 		case rec.Reveals.Door != "" && !doorIDs[rec.Reveals.Door]:
 			v.fail(p+".reveals.door",
 				"intel %q reveals door %q, and no door in this dungeon has that id", rec.ID, rec.Reveals.Door)
+		// A RECORD GIVES AWAY A SECRET, NOT A HINGE (rpg-project#490, R7).
+		// The engine's target is the concealment holding the door, so a
+		// record naming a door nothing hides has nothing to give away. This
+		// used to be LEGAL AND INERT — "revealing the way to a door anyone
+		// can already see tells nobody anything" — and inert is what it
+		// stopped being worth: there is no concealment to resolve it to, so
+		// the lowering would hand the composition a record that reveals the
+		// empty string.
+		case rec.Reveals.Door != "" && s.Doors[doorAt[rec.Reveals.Door]].Concealed == nil:
+			v.fail(p+".reveals.door",
+				"intel %q reveals door %q, and nothing hides that door — "+
+					"a record gives away a secret, so conceal the door or the room it opens onto",
+				rec.ID, rec.Reveals.Door)
 		}
 	}
 }
 
 // scenarios validates the scenario bindings, and validates EXACTLY ONE THING
-// about them: that every binding's value names a placement id or an exit id
-// that exists in this file (design law C1, ruled 2026-09-01 — "the dungeon
-// spec stores {scenario_id, bindings} as pure references").
+// about them: that every binding's value names something this file declares
+// (design law C1, ruled 2026-09-01 — "the dungeon spec stores
+// {scenario_id, bindings} as pure references").
 //
-// WHAT IS DELIBERATELY NOT CHECKED HERE, and where it is checked instead:
-// whether the scenario id is one that exists, which keys it wants, which are
-// required, and whether the thing a key names is the right KIND of thing —
-// a prop where a prop is wanted, an exit where an exit is wanted, and
-// holdable when the scenario is about carrying something out. Every one of
-// those is a fact about a SCENARIO, and a scenario is content this package
-// may not resolve. They are the scenario package's own refusals, made at its
-// `New(cfg, compiled)` in form-filler words, where the author is looking at
-// the form that asked the question.
-//
-// So the refusal here is about the FILE: a binding that names nothing is a
-// dangling reference whatever scenario reads it, and this package is the one
-// layer that can see the whole file at once.
-//
-// Enumeration is sorted by scenario id and then by field key, because a Go
-// map range is not, and a refusal list whose order changes between runs is
-// one nobody can diff.
+// THE WHOLE RULE IS THE SHARED GRAMMAR'S ([grammar.scenarios], grammar.go,
+// rpg-project#488), which is where the sentence, the sorted enumeration and
+// the long answer to "why is the KIND not checked here" all live. What this
+// dialect supplies is [validation.bindable]: the universe of ids it declares.
 func (v *validation) scenarios() {
-	s := v.spec
-	ids := make([]string, 0, len(s.Scenarios))
-	for id := range s.Scenarios {
-		ids = append(ids, id)
+	v.g.scenarios(v.spec.Scenarios, v.bindable)
+}
+
+// bindable is THIS DIALECT'S UNIVERSE of ids a scenario binding may name: a
+// placement — which here is props and creatures alike, because v2 puts both
+// in one `place:` list — an exit, or a faction.
+//
+// A FACTION IS BINDABLE TOO (rpg-project#375: `convince`), the reserved ones
+// included — whether the scenario can do anything with `party` is the
+// scenario's own refusal.
+func (v *validation) bindable(named string) bool {
+	if _, ok := v.g.members.indexOf(named); ok {
+		return true
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		bindings := s.Scenarios[id]
-		keys := make([]string, 0, len(bindings))
-		for k := range bindings {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			named := bindings[k]
-			p := fmt.Sprintf("scenarios.%s.%s", id, k)
-			if named == "" {
-				v.fail(p, "scenario %q binds %s to nothing", id, k)
-				continue
-			}
-			if _, ok := v.placeIDs[named]; ok {
-				continue
-			}
-			if _, ok := v.exitIDs[named]; ok {
-				continue
-			}
-			// A faction is bindable too (rpg-project#375: `convince`),
-			// the reserved ones included — whether the scenario can do
-			// anything with `party` is the scenario's own refusal.
-			if v.factionExists(named) {
-				continue
-			}
-			v.fail(p, "scenario %q binds %s to %q, and nothing in this dungeon has that id",
-				id, k, named)
-		}
+	if _, ok := v.exitIDs[named]; ok {
+		return true
 	}
+
+	return v.g.factionExists(named)
 }
 
 // arrivals validates every placement's `arrives` (rpg-project#375, design
@@ -973,7 +935,7 @@ func (v *validation) arrivals() {
 			continue
 		}
 		p := fmt.Sprintf("place[%d].arrives", i)
-		v.predicate(p, pl.Arrives, nil)
+		v.g.predicate(p, pl.Arrives, nil)
 		if pl.Arrives.Form() != predicateDown {
 			continue
 		}
@@ -981,7 +943,7 @@ func (v *validation) arrivals() {
 			v.fail(p+".down", "%q cannot wait for its own fall — it is not here to fall until it arrives", pl.ID)
 			continue
 		}
-		if j, ok := v.placeIDs[pl.Arrives.Down]; ok && s.Place[j].Arrives != nil {
+		if j, ok := v.g.members.indexOf(pl.Arrives.Down); ok && s.Place[j].Arrives != nil {
 			waitsOn[i] = j
 		}
 	}
@@ -1029,25 +991,12 @@ func (v *validation) placeLabel(i int) string {
 // reach" is refused here in the file's own path exactly as the run refuses it
 // at construction (ErrNoEnding).
 //
+// THE WHOLE RULE IS THE SHARED GRAMMAR'S (grammar.go, rpg-project#488): an
+// ending names no cell, so there is no half of it this dialect owns and the
+// single-room dialect is judged by the same function.
+//
 // RUN AFTER dispositions(), for arrivals()' reason.
-func (v *validation) endings() {
-	ids := map[string]int{}
-	for i, e := range v.spec.Endings {
-		p := fmt.Sprintf("endings[%d]", i)
-		if e.ID == "" {
-			v.fail(p+".id", "the ending has no id")
-		} else if prev, dup := ids[e.ID]; dup {
-			v.fail(p+".id", "ending %q is already declared at endings[%d]", e.ID, prev)
-		} else {
-			ids[e.ID] = i
-		}
-		if e.When == nil {
-			v.fail(p+".when", "the ending does not say when it fires — %s", predicateForms)
-			continue
-		}
-		v.predicate(p+".when", e.When, nil)
-	}
-}
+func (v *validation) endings() { v.g.endings(v.spec.Endings) }
 
 // axialSteps are the six unit crossings out of an axial hex cell. Fixed and
 // orientation-free BY CONSTRUCTION: orientation is spent converting the
@@ -1210,6 +1159,7 @@ func (v *validation) concealment() {
 			"this room can only be entered through a concealed door — "+
 				"conceal the room too, or give it another way in")
 	}
+
 }
 
 // wayIn is one way between two regions: which two, and how it reads from each
@@ -1411,276 +1361,6 @@ func (v *validation) crossingDesc(from, to spatial.Position, door int) string {
 // wrote. What stays here is the ROUTING, which is this compiler's own
 // question: scenery and monsters are what it can place, and anything else is
 // refused by name.
-// placeActions validates the weapons an author armed a monster with
-// (rpg-project#448, [PlaceSpec.Actions]).
-//
-// SHAPE AND VOCABULARY, NOT MEMBERSHIP. Each entry must be a well-formed
-// `dnd5e:weapons:<id>` — which is as far as this module can see. The weapons
-// catalog lives in the rulebook root, which this module does not import and
-// is not about to start importing for a string check; the session resolves
-// the id at spawn and refuses the file's boot when the catalog does not have
-// it (design §5, "fail closed at author time, not turn time" — boot IS author
-// time for a shipped file).
-//
-// A DUPLICATE IS ALLOWED AND MEANS SOMETHING. `[scimitar, scimitar]` lists
-// the same weapon twice, which is a pointless loadout rather than a malformed
-// one, and refusing it would be this compiler having an opinion about play.
-// placeOn validates the answer table an author wrote on this monster
-// ([PlaceSpec.On], rpg-project#458).
-//
-// THE KEY IS THE TRIGGER, and only the five this build rolls are accepted:
-// the four social outcomes, and `time`. A word the design NAMES and has not
-// built is refused by name in the entry's own decoder ([laterWords]); a key
-// nobody designed is refused here, listing what there is. Either way the
-// author finds out on the form instead of at the table.
-//
-// Refusals per entry, each its own sentence:
-//
-//   - a weight below 1, which is a row that can never fire;
-//   - two outcome words in one entry, so ordering never has to be guessed;
-//   - an entry with no word and nothing to say, which is a row written for no
-//     reason;
-//   - an empty `fact:`, which says the world learns something and not what;
-//   - a word under a key it is not legal on: `fact` and `flee` answer a social
-//     verdict, `hold`/`attack`/`toward`/`away` are what a creature does with
-//     time, and a `when` is a time word because a social key IS the condition;
-//   - `at:` on anything but `toward`, because walking away from a fixed cell
-//     is a direction rather than a flight and nothing has paid for one;
-//   - `actor` in an entry whose `when` names no deed, because there is no
-//     actor otherwise;
-//   - an `at:` cell that is not floor, the same refusal a placement's own `at`
-//     earns;
-//   - a trigger key with no entries at all, which is a table that cannot be
-//     rolled.
-//
-// WHAT IS NOT CHECKED IS THE FACT'S MEMBERSHIP. The dungeon ALLOWS a fact
-// nothing else mentions (R8, pre-release: show the cost) — a `fact` that no
-// disposition waits for is a cost, not a defect, and it joins the run's
-// mintable facts so a world blob may name it.
-func (v *validation) placeOn(path string, on map[string][]AnswerSpec) {
-	for _, key := range sortedKeys(on) {
-		at := fmt.Sprintf("%s.on.%s", path, key)
-		if !knownTableKey(key) {
-			v.fail(at, "%q is not a trigger this build rolls: they are %s",
-				key, strings.Join(tableKeyWords(), ", "))
-			continue
-		}
-		entries := on[key]
-		if len(entries) == 0 {
-			v.fail(at, "this names a trigger and lists nothing that happens on it")
-			continue
-		}
-		for j, entry := range entries {
-			v.answerEntry(fmt.Sprintf("%s[%d]", at, j), key, entry)
-		}
-	}
-}
-
-// answerEntry validates one row of one trigger's table.
-func (v *validation) answerEntry(at string, key string, entry AnswerSpec) {
-	if entry.Weight != nil && *entry.Weight < 1 {
-		v.fail(at+".weight", "a weight of %d can never be rolled: omit it for 1, or give it a share",
-			*entry.Weight)
-	}
-
-	// An empty `fact:` is its own sentence rather than a missing word: the
-	// author wrote the key, so they meant to teach something. Reported
-	// INSTEAD of the no-word refusal below, not beside it — two defects for
-	// one mistake sends an author looking for a second problem.
-	if entry.Fact != nil && *entry.Fact == "" {
-		v.fail(at+".fact", "this says the world learns something and does not say what")
-
-		return
-	}
-
-	words := entryWords(entry)
-	switch {
-	case len(words) > 1:
-		v.fail(at, "an entry does one thing: `%s` in the same entry is %d (line %d)",
-			strings.Join(words, "` and `"), len(words), entry.Line)
-
-		return
-	case len(words) == 0 && entry.Say == "":
-		v.fail(at, "this entry does nothing and says nothing (line %d)", entry.Line)
-
-		return
-	}
-
-	v.wordLegality(at, key, words, entry)
-	v.entrySelector(at, key, entry)
-}
-
-// wordLegality refuses a word, or a `when`, under a key it is not legal on.
-func (v *validation) wordLegality(at, key string, words []string, entry AnswerSpec) {
-	time := key == string(encounter.AnswerTime)
-	for _, word := range words {
-		switch word {
-		case "fact", "flee":
-			if time {
-				v.fail(at+"."+word,
-					"`%s` answers a social verdict, and `time` is not one (line %d)", word, entry.Line)
-			}
-		default:
-			if !time {
-				v.fail(at+"."+word,
-					"`%s` is what a creature does with time, and `%s` is an outcome (line %d)",
-					word, key, entry.Line)
-			}
-		}
-	}
-	if entry.When != nil && !time {
-		v.fail(at+".when",
-			"`%s` is already the condition — a `when` under it asks when a thing that just happened happened (line %d)",
-			key, entry.When.Line)
-	}
-}
-
-// entrySelector refuses a selector that names a cell where only a member can
-// stand, an `actor` with no deed to have been the actor of, and a cell that
-// is not floor.
-func (v *validation) entrySelector(at, _ string, entry AnswerSpec) {
-	word, sel := entrySelectorOf(entry)
-	if sel == nil {
-		return
-	}
-	if sel.At != nil {
-		if v.cellRefusal != "" {
-			v.fail(at+"."+word+".at", "%s", v.cellRefusal)
-
-			return
-		}
-		if word != "toward" {
-			v.fail(at+"."+word,
-				"a cell is somewhere to walk toward, and `%s` acts on a creature (line %d)", word, sel.Line)
-
-			return
-		}
-		if _, onFloor := v.owner[v.cell(*sel.At)]; !onFloor {
-			v.fail(at+"."+word+".at", "this walks to [%d,%d], which is not floor", sel.At[0], sel.At[1])
-		}
-
-		return
-	}
-	if sel.Word == string(encounter.SelectorActor) && (entry.When == nil || entry.When.Deed == "") {
-		v.fail(at+"."+word,
-			"`actor` is the actor of the deed this entry's `when` names, and this entry names no deed (line %d)",
-			sel.Line)
-	}
-}
-
-// entryWords is the outcome words this entry carries, in the order the design
-// lists them.
-func entryWords(entry AnswerSpec) []string {
-	var out []string
-	if entry.Fact != nil {
-		out = append(out, "fact")
-	}
-	if entry.Flee != nil {
-		out = append(out, "flee")
-	}
-	if entry.Hold != nil {
-		out = append(out, "hold")
-	}
-	if entry.Attack != nil {
-		out = append(out, "attack")
-	}
-	if entry.Toward != nil {
-		out = append(out, "toward")
-	}
-	if entry.Away != nil {
-		out = append(out, "away")
-	}
-
-	return out
-}
-
-// entrySelectorOf is the entry's selector and the word carrying it.
-func entrySelectorOf(entry AnswerSpec) (string, *SelectorSpec) {
-	switch {
-	case entry.Attack != nil:
-		return "attack", entry.Attack
-	case entry.Toward != nil:
-		return "toward", entry.Toward
-	case entry.Away != nil:
-		return "away", entry.Away
-	default:
-		return "", nil
-	}
-}
-
-// placeTemper refuses a temperament this build does not ship. The decoder
-// already refuses an unknown word inside a [TemperSpec]; a placement's own
-// `temper` is a plain string, so this is where its word is checked.
-func (v *validation) placeTemper(path string, pl PlaceSpec) {
-	if pl.Temper == "" {
-		return
-	}
-	if !encounter.ValidTemperWord(pl.Temper) {
-		v.fail(path+".temper", "%q is not a temperament this build ships: they are %s",
-			pl.Temper, strings.Join(encounter.TemperWords, ", "))
-	}
-}
-
-// factionOrders validates every faction's inherited `on:` block and its
-// temperament — the same refusals a placement's own earn, at the layer above
-// (design §1, layer 2).
-func (v *validation) factionOrders() {
-	for i, fa := range v.spec.Factions {
-		v.placeOn(fmt.Sprintf("factions[%d]", i), fa.On)
-	}
-}
-
-// knownTableKey reports whether a key is one the composition rolls.
-func knownTableKey(key string) bool {
-	for _, known := range encounter.TableKeys {
-		if key == string(known) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// tableKeyWords is every trigger key as a string, for a refusal that lists
-// what there is.
-func tableKeyWords() []string {
-	out := make([]string, 0, len(encounter.TableKeys))
-	for _, k := range encounter.TableKeys {
-		out = append(out, string(k))
-	}
-
-	return out
-}
-
-// sortedKeys orders a map's keys so a file with two bad `on:` entries reports
-// them in the same order every run — a validator whose defect list depends on
-// Go's map iteration is one no transcript can compare (C8).
-func sortedKeys(m map[string][]AnswerSpec) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-
-	return out
-}
-
-func (v *validation) placeActions(path string, pl PlaceSpec) {
-	for j, ref := range pl.Actions {
-		at := fmt.Sprintf("%s.actions[%d]", path, j)
-
-		parsed, err := core.ParseString(ref)
-		if err != nil {
-			v.fail(at, "%q is not a ref: %v", ref, err)
-			continue
-		}
-		if parsed.Module != moduleDND5e || parsed.Type != typeWeapons {
-			v.fail(at, "%q is not a weapon: an action names a weapon as %s:%s:<id>",
-				ref, moduleDND5e, typeWeapons)
-		}
-	}
-}
-
 func refKind(ref string) (string, error) {
 	parsed, err := core.ParseString(ref)
 	if err != nil {

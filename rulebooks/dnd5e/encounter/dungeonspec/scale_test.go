@@ -126,7 +126,9 @@ func TestTheScaleFixtureIsWhatItClaims(t *testing.T) {
 	require.Empty(t, compiled.Field.Sealed, "quarter lines seal nothing, at any size")
 
 	// The last room really is hidden, so a projection over this has work to do.
-	require.True(t, compiled.Field.Regions[10].Concealed)
+	require.Len(t, compiled.Field.Concealments, 1, "the secret room lowers to one concealment")
+	require.Equal(t, encounter.ConcealmentID("scale/room-10"), compiled.Field.Concealments[0].ID,
+		"minted from the hidden room's own id, under the dungeon's key")
 }
 
 // nobodyFindsAnything is the resolver a concealed door needs to be authorable.
