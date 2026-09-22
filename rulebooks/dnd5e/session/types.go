@@ -118,12 +118,12 @@ type Atlas struct {
 	// the World Builder drew — sorted by id (rpg-api-protos#351).
 	//
 	// A DIFFERENT KIND OF THING FROM [Atlas.Props], never an overlapping
-	// list. A prop occupies A CELL and names content a client draws it as; a
-	// placement occupies AN AREA and names only itself — it is the geometry a
-	// door, a table or a bookcase was drawn as, and what it looks like is the
-	// World Builder's business. The two id spaces are ONE, because the
-	// compiler refuses a placement whose name a cell prop already took, so a
-	// client may key both lists together without collision.
+	// list. A prop occupies A CELL and names the content a client draws it
+	// as; a placement occupies AN AREA and names only itself — it is the
+	// geometry a door, a table or a bookcase was drawn as, and what it looks
+	// like is the World Builder's business. The two id spaces are ONE,
+	// because the compiler refuses a placement whose name a cell prop already
+	// took, so a client may key both lists together without collision.
 	//
 	// THIS IS WHETHER THE THING IS THERE, which is why it crosses at all. A
 	// client drawing placed geometry out of the authored scene draws the
