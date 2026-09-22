@@ -350,7 +350,17 @@ func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcement
 	})
 
 	s.Run("the writes were one commit, not a split", func() {
-		s.Equal([]string{"character:alice", "encounter:" + campWorldID, "session:" + campSession}, out.Saved.Written)
+		// BOB'S SHEET IS IN HERE BECAUSE THE CHIEF PAID HIM (rpg-project#496).
+		// He never swung and never moved: the fall settles the party's
+		// experience inside the same commit as the blow, so his total is
+		// written beside alice's rather than waiting for a verb of his own —
+		// which is the claim this sub-test makes, now covering a second kind
+		// of write. Alice appears ONCE despite being written twice in the
+		// verb (the swing's damage, then her share), because the report names
+		// aggregates and not touches.
+		s.Equal([]string{
+			"character:alice", "character:bob", "encounter:" + campWorldID, "session:" + campSession,
+		}, out.Saved.Written)
 		s.Empty(out.Saved.Failed)
 	})
 }

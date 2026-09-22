@@ -76,6 +76,10 @@ func TestTheOutcomeBeatsAreTheCompositionsOwnStrings(t *testing.T) {
 		// (rpg-toolkit#1077), which is why the beat carries a member rather
 		// than an actor and targets.
 		{encounter.OutcomeDown, EventDowned},
+		// The fourth, and the only one this package itself pushes: the
+		// composition owns the kind, the session divides the worth and
+		// hands the beat back (rpg-project#496).
+		{encounter.OutcomeExperienceGained, EventExperienceGained},
 	}
 
 	for _, tc := range cases {
@@ -133,6 +137,15 @@ func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
 		{"bubble-formed with an empty order", EventFightStarted, `{"beat":"bubble-formed","order":[]}`},
 		{"bubble-dissolved with no cause", EventFightEnded, `{"beat":"bubble-dissolved"}`},
 		{"down with no member", EventDowned, `{"beat":"down"}`},
+		{"experience_gained with no detail", EventExperienceGained, `{"beat":"experience_gained","actor":"goblin"}`},
+		{"experience_gained with no member", EventExperienceGained,
+			`{"beat":"experience_gained","actor":"goblin","experience":{"grants":[{"character":"alice","amount":50,"total":50}]}}`},
+		{"experience_gained with no grants", EventExperienceGained,
+			`{"beat":"experience_gained","actor":"goblin","experience":{"member":"goblin","grants":[]}}`},
+		{"experience_gained with an unnamed grantee", EventExperienceGained,
+			`{"beat":"experience_gained","actor":"goblin","experience":{"member":"goblin","grants":[{"character":"","amount":50,"total":50}]}}`},
+		{"experience_gained paying nothing", EventExperienceGained,
+			`{"beat":"experience_gained","actor":"goblin","experience":{"member":"goblin","grants":[{"character":"alice","amount":0,"total":50}]}}`},
 		{"joined with no member", EventJoined, `{"beat":"joined"}`},
 		{"exited with no member", EventExited, `{"beat":"exited"}`},
 		{"struck with no actor", EventStruck, `{"beat":"struck","targets":["bob"],"attack":{"ref":"longsword"}}`},

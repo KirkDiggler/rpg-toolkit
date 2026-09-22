@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
@@ -1583,9 +1584,12 @@ func (m *Manager) persist(
 // told the ogre died, a world in which it did not, and no sequence gap to
 // betray the difference.
 //
-// exitDissolvedCombatants runs FIRST, before the save: a sheet it clears must
-// land in the SAME persist this verb already makes, never a second write
-// cycle a failure between the two could leave half-done.
+// The commit-time settlements — exitDissolvedCombatants, then
+// settleExperience — run FIRST, before the save: a sheet either of them writes
+// must land in the SAME persist this verb already makes, never a second write
+// cycle a failure between the two could leave half-done. Both read the act's
+// own delta, because what they settle is noticed by the composition at
+// whatever sight refresh caught it rather than declared by a verb.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
 	if err := scope.enc.FlushSightAreaTransitions(); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
@@ -1601,6 +1605,18 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	}
 
 	if err := m.exitDissolvedCombatants(ctx, scope); err != nil {
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
+	}
+
+	// Settlement, before numbering: the beat it records is this act's, so it
+	// must be numbered and delivered on this act's own fan-out rather than
+	// waiting for whatever verb comes next. It runs AFTER
+	// exitDissolvedCombatants for no ordering law of its own — the two touch
+	// different fields of different sheets — but reading them in one place,
+	// in one order, is what keeps "what commit settles" a list somebody can
+	// read rather than a search.
+	if err := m.settleExperience(ctx, scope); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
@@ -1781,6 +1797,228 @@ func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id 
 		return err
 	}
 	return m.saveWalker(ctx, scope, sheet)
+}
+
+// settleExperience pays the party for every monster that fell in this act and
+// records one beat per fall (rpg-project#496, R2/R4/R5).
+//
+// IT RUNS AT COMMIT TIME, beside [Manager.exitDissolvedCombatants] and for the
+// same reason: a fall is noticed by the composition at whatever sight refresh
+// happened to catch it, never by the verb that caused it, so there is no verb
+// to hang this off. Commit is the one place that sees the whole act, and the
+// sheets this writes must land in the SAME persist the verb already makes —
+// never a second write cycle a failure between the two could leave half-done.
+//
+// WHAT IT READS is the act's own delta: every ever-member's story
+// AfterSeq: scope.baseline, peeked for the composition's "down" beat, the
+// identical read [Manager.projectEvents] and exitDissolvedCombatants already
+// make. That bound is also the idempotence: [Encounter.noticeDown] appends the
+// down beat exactly once per fall and the baseline moves past it with the act,
+// so a fall settles once and the next verb sees nothing to settle.
+//
+// WHO IS A MONSTER comes from the ENCOUNTER's roster, never from whether an ID
+// happens to load out of a store — exitDissolvedCombatants' doc has the ID
+// collision that rule exists for, and it cuts the same way here: paying the
+// party for a "monster" that is really somebody's character would be the same
+// mistake wearing a credit instead of a reset. A player going down pays
+// nothing (R2 divides a MONSTER's worth), and neither does a KindWorld
+// member.
+//
+// WHO IS PAID is every KindPlayer on the CURRENT roster — Members, not
+// EverMembers — at settlement time, whatever their life state. RAW pays
+// everyone who took part and a dying character took part (R2). Somebody who
+// already exited the run is not on the roster and is not paid; that is the
+// same "at that moment" the ruling names.
+//
+// THE ORDER IS THE LAW (R5, and Death Save's character-first ordering at
+// [Manager.saveCharacterRecord]): every sheet is saved BEFORE the beat that
+// promises its total is recorded. A beat claiming a total the store does not
+// hold is the lie this refuses to tell, so a save failure fails the verb with
+// no beat written rather than announcing a grant that is not there.
+//
+// A FAILURE IS THE VERB'S FAILURE, not a skip. A fallen monster with no sheet
+// in the session record, a player on the roster the character store does not
+// hold, a save that will not land — each is a real inconsistency and each
+// returns, for exitCombatIfPlayer's own reason: this runs BEFORE
+// [Manager.persist], so nothing of the act has landed yet and a caller who
+// retries the whole verb finds the settlement still pending against the SAME
+// baseline. Swallowing it would let the fall persist while the grant it owed
+// never happened, and — because the next act's baseline moves past that down
+// beat — never be retried again.
+//
+// ONE WEDGE, NAMED RATHER THAN PATCHED, and it is the one [Manager.persist]
+// already admits for a swing's own damage (rpg-toolkit#1056): the sheets are
+// durable before persist runs, so a world save that fails afterwards leaves
+// the party paid for a fall the encounter never recorded. A retry of the verb
+// re-notices the fall against the unchanged baseline and pays again. The
+// report names every character written, which is what lets a host tell that
+// apart from nothing having happened; making the entry verbs idempotent is
+// the fix, it is the same fix that wedge already wants, and it is not this
+// slice's.
+//
+// NOTHING HERE IS FREE FOR AN ACT WITH NO FALL: the story read is the one
+// exitDissolvedCombatants already makes, and an act with no down beat records
+// nothing, saves nothing and returns nil.
+func (m *Manager) settleExperience(ctx context.Context, scope *writeScope) error {
+	// A pure view rather than ToData, for exitDissolvedCombatants' reason:
+	// this is a mid-verb roster read after the verb has appended beats, and
+	// the final storage boundary still belongs to commit.
+	view := scope.enc.WorldView()
+
+	kindByID := make(map[string]encounter.MemberKind, len(view.Members))
+	players := make([]string, 0, len(view.Members))
+	for _, member := range view.Members {
+		kindByID[string(member.ID)] = member.Kind
+		if member.Kind == encounter.KindPlayer {
+			players = append(players, string(member.ID))
+		}
+	}
+	// Sorted so the sheets are written, and the save report reads, in the same
+	// order for the same input (C8). The composition sorts the grants on the
+	// beat itself; this sorts what happens before the beat.
+	sort.Strings(players)
+
+	fallen := fallenMonsters(scope, &view, kindByID)
+
+	for _, id := range fallen {
+		if err := m.settleOneFall(ctx, scope, id, players); err != nil {
+			return fmt.Errorf("settle experience for fallen member %q: %w", id, err)
+		}
+	}
+
+	return nil
+}
+
+// fallenMonsters is every monster whose down beat this act appended, in the
+// order the falls were recorded.
+//
+// ORDERED BY THE DOWN BEAT'S OWN SEQUENCE rather than by roster or map order,
+// so two monsters falling in one act are paid — and narrated — in the order
+// they fell, identically on every run (C8). The story is read per member
+// because that is the only read the composition offers; the same fall appears
+// in several members' stories at the same global sequence, which is exactly
+// what makes the lowest-sequence-wins dedupe below well defined.
+//
+// A member whose OWN story cannot be read is skipped, the same best-effort law
+// [Manager.publish] states for delivery and exitDissolvedCombatants keeps for
+// its own read: one unreadable perception must not fail the table. What is NOT
+// best effort is a member the read DID name — that is settleOneFall's problem
+// and it returns.
+func fallenMonsters(
+	scope *writeScope, data *encounter.EncounterData, kindByID map[string]encounter.MemberKind,
+) []string {
+	firstSeq := map[string]uint64{}
+	for _, member := range data.EverMembers {
+		entries, err := scope.enc.Story(&encounter.StoryInput{
+			Audience: member, AfterSeq: scope.baseline,
+		})
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			var peek struct {
+				Beat   string `json:"beat"`
+				Member string `json:"member"`
+			}
+			if json.Unmarshal(entry.Payload, &peek) != nil ||
+				peek.Beat != string(encounter.OutcomeDown) || peek.Member == "" {
+				continue
+			}
+			if kindByID[peek.Member] != encounter.KindMonster {
+				continue
+			}
+			if seen, ok := firstSeq[peek.Member]; ok && seen <= entry.Seq {
+				continue
+			}
+			firstSeq[peek.Member] = entry.Seq
+		}
+	}
+
+	fallen := make([]string, 0, len(firstSeq))
+	for id := range firstSeq {
+		fallen = append(fallen, id)
+	}
+	sort.Slice(fallen, func(i, j int) bool { return firstSeq[fallen[i]] < firstSeq[fallen[j]] })
+
+	return fallen
+}
+
+// settleOneFall divides one monster's authored worth among the players, writes
+// every sheet, and then records the beat.
+//
+// THE WORTH IS READ OFF THE SESSION'S OWN RECORD, not recomputed from the
+// catalog: [SessionData.NPCs] is where a spawned monster's sheet lives and
+// where every verb that damages one writes back, so it is the sheet this
+// session actually played with — a builder variant's inherited worth included
+// (R1). A monster on the roster with no sheet there is an inconsistency of the
+// same family exitCombatIfPlayer refuses, and it returns.
+//
+// A WORTH OF NOTHING PAYS NOTHING AND SAYS NOTHING (R1): no grant, no beat, no
+// error. A monster nobody valued is worth nothing and an encounter that held
+// one simply has no experience beat in it. The same silence covers a share
+// that floors to zero — more players than points — because
+// [character.AddExperience] refuses a grant of nothing by design and the
+// caller, not the sheet, is the place that decides whether nothing is worth
+// reporting.
+func (m *Manager) settleOneFall(ctx context.Context, scope *writeScope, fallen string, players []string) error {
+	// ErrInvalidSession rather than a repository error: the repository kept
+	// its contract, and what is wrong is that this session record and the
+	// encounter's roster disagree about a member. That is the record being in
+	// a state this module could not have written, which is exactly what that
+	// sentinel says — and it sends whoever debugs it at the session blob
+	// rather than at the store.
+	sheet, ok := npcSheet(scope.data, fallen)
+	if !ok {
+		return fmt.Errorf("monster %q on the roster has no stored sheet: %w", fallen, ErrInvalidSession)
+	}
+
+	share := character.ExperienceShare(sheet.Experience, len(players))
+	if share <= 0 {
+		return nil
+	}
+
+	grants := make([]encounter.ExperienceGrant, 0, len(players))
+	for _, id := range players {
+		data, err := m.fetchCharacterData(ctx, "member", id)
+		if err != nil {
+			return err
+		}
+		paid, err := character.Load(ctx, data)
+		if err != nil {
+			return fmt.Errorf("member %q: %w: %v", id, ErrBadCharacter, err)
+		}
+		if err := paid.AddExperience(share); err != nil {
+			return fmt.Errorf("member %q: %w", id, err)
+		}
+		// SAVED BEFORE THE BEAT IS RECORDED, every one of them: the beat
+		// carries each character's new total, and a total the store does not
+		// hold is the one thing this settlement must never publish.
+		if err := m.saveWalker(ctx, scope, paid); err != nil {
+			return err
+		}
+		grants = append(grants, encounter.ExperienceGrant{
+			Character: id, Amount: share, Total: paid.Experience(),
+		})
+	}
+
+	// The fallen monster is the beat's actor as well as its cause — the
+	// composition names an actor on every beat and this one has no other
+	// candidate, the fall being anonymous by ruling (rpg-toolkit#959, R3).
+	// It is still on the roster: only Exit removes a member, and a body does
+	// not exit. No targets: the composition adds every grantee to the beat's
+	// subjects itself.
+	if _, err := scope.enc.Record(&encounter.RecordInput{
+		Kind:  encounter.OutcomeExperienceGained,
+		Actor: encounter.MemberID(fallen),
+		Experience: &encounter.ExperienceDetail{
+			Member: fallen, Grants: grants,
+		},
+	}); err != nil {
+		return translate(err)
+	}
+
+	return nil
 }
 
 // Recheck tells the session that something an observer could SEE about these
