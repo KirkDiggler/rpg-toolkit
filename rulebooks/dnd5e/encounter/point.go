@@ -16,9 +16,14 @@ func (e *Encounter) PointReachable(from, to spatial.Position, rangeFeet int) boo
 }
 
 // RefreshPerception recomputes every roster member's sight after geometry has
-// changed. The encounter remains the sole owner of perception and contact.
+// changed. This updates perception only: the caller must record the outcome
+// that caused the change before the normal participation pass may close a
+// fight or drive another turn. A pre-record refresh must never do that work.
 func (e *Encounter) RefreshPerception() error {
-	_, _, err := e.refreshSight(e.rosterIDs())
+	if e.outcome != nil {
+		return nil
+	}
+	_, err := e.rebuildPercepts(e.rosterIDs())
 	return err
 }
 
