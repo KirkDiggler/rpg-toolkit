@@ -194,15 +194,14 @@ type MonsterPlacement struct {
 	// Intimidate is the check a character must beat to frighten this
 	// monster ([PlaceSpec.Intimidate], rpg-project#454) — for a host to
 	// hand to [encounter.MemberInput.Intimidate] when it spawns the sheet.
-	// Nil when the author authored none, which means the rulebook derives
-	// the DC from the stat block's own passive Insight.
+	// Nil when the author authored none, which means the monster cannot be
+	// intimidated (rpg-project#494 R1).
 	Intimidate []encounter.CheckApproach `json:"Intimidate,omitempty"`
 
 	// Persuade is the check a character must beat to talk this monster round
 	// ([PlaceSpec.Persuade], rpg-project#458) — for a host to hand to
 	// [encounter.MemberInput.Persuade] when it spawns the sheet. Nil when the
-	// author authored none, which means the rulebook derives the DC from the
-	// stat block's own passive Insight.
+	// author authored none, which means the monster cannot be persuaded.
 	Persuade []encounter.CheckApproach `json:"Persuade,omitempty"`
 
 	// Table is this monster's authored policy — what it does, keyed by what
