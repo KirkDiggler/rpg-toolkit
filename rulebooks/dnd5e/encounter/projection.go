@@ -405,14 +405,19 @@ func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position)
 }
 
 // placedTouchesHidden reports whether a placement stands on any cell this
-// recipient cannot see. Asked of the rectangle's own cells
-// ([field.placedCells]) — the one derivation reach, the probe law and an
-// arrival fact all ask of a footprint, never a second measurement of it.
+// recipient cannot see. Asked of the rectangle's own cells — the one
+// derivation reach, the probe law and an arrival fact all ask of a
+// footprint, never a second measurement of it.
+//
+// READ OFF THE SNAPSHOT ([AtlasPlacedProp.Cells]) rather than measured here:
+// [Encounter.Atlas] already ran [field.placedCells] for this placement, and
+// running it a second time would be the same O(cells) walk for the same
+// answer.
 func (e *Encounter) placedTouchesHidden(p AtlasPlacedProp, hiddenCells map[spatial.Position]bool) bool {
 	if len(hiddenCells) == 0 {
 		return false
 	}
-	for _, cell := range e.field.placedCells(p.Placement) {
+	for _, cell := range p.Cells {
 		if hiddenCells[cell] {
 			return true
 		}

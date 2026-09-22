@@ -365,6 +365,21 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 	// where the secret is would be the tell the masquerade exists to remove.
 	full, err := enc.Atlas()
 	s.Require().NoError(err)
+
+	// A PRESENTED PLACEMENT CARRIES THE WHOLE OF WHERE IT STANDS
+	// (rpg-api-protos#351). The filter withholds a rectangle whole or
+	// presents it whole, so the entry that survives says the same cells the
+	// truth-grain atlas gives it — never a footing trimmed to what the
+	// recipient can see, which would be geometry the author never drew.
+	standsOn := map[encounter.PropID][]spatial.Position{}
+	for _, p := range full.Placed {
+		s.Require().NotEmptyf(p.Cells, "%q stands somewhere on the truth grain", p.ID)
+		standsOn[p.ID] = p.Cells
+	}
+	for _, p := range blind.Placed {
+		s.Equal(standsOn[p.ID], p.Cells,
+			"a placement this observer is shown carries the cells the unfiltered atlas gives it")
+	}
 	s.Greater(len(full.Cells), len(blind.Cells), "the covered floor is withheld with the door")
 	blindCells := map[spatial.Position]bool{}
 	for _, c := range blind.Cells {

@@ -244,6 +244,35 @@ type AtlasPlacedProp struct {
 	// offset — copied out per call.
 	Placement spatial.FootprintPlacement
 
+	// Cells is every cell this placement STANDS ON, in the atlas's own
+	// coordinate order (C8): the cells its rectangle covers, UNION the one
+	// cell the rectangle's own centre lies in. [field.placedCells] is the
+	// derivation, and this is that answer reported rather than re-derived.
+	//
+	// THE ADJACENCY A CLIENT READS, and the reason this field exists
+	// (rpg-api-protos#351). A footprint has no anchor cell, so "what is this
+	// thing next to?" is a geometry question — stationary footprint contact
+	// against every cell centre, plus the hex the centre point itself lies
+	// in for anything smaller than one cell. A client deriving that from
+	// [AtlasPlacedProp.Placement] would need this module's plane, its cell
+	// list and its tie-break to get the same answer, and would get a
+	// different one the day any of the three moved. IT NEVER RE-DERIVES IT:
+	// this list is the answer.
+	//
+	// THE SAME SET [Encounter.Hold]'S REACH JUDGES — holdPlaced in hold.go
+	// applies the legacy reach rule (grid distance, Range 0 meaning
+	// adjacent) to every cell [field.placedCells] returns, which is exactly
+	// this list. So a client offering Hold where this says the member is
+	// adjacent, and the engine refusing it, cannot disagree: one derivation,
+	// one answer, on both sides of the wire. It is also the set the probe
+	// law's visibility gate and an arrival fact's cell read ask
+	// (placed_props.go).
+	//
+	// NEVER EMPTY for a placement on this list: a compiled field has cells,
+	// so the centre clause always names one. Freshly allocated per call like
+	// every other slice here.
+	Cells []spatial.Position
+
 	// BlocksMovement and BlocksLineOfSight are the two answers the engine
 	// enforces, carried so a host need not guess from the shape.
 	BlocksMovement    bool
@@ -344,8 +373,20 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		}
 		box := *placement.Footprint.Box
 		out.Placed = append(out.Placed, AtlasPlacedProp{
-			ID:                p.id,
-			Placement:         placement,
+			ID:        p.id,
+			Placement: placement,
+			// WHERE IT STANDS, IN CELLS, derived once here rather than by
+			// every reader of this snapshot. Asked of the placement the
+			// fold returned, not of the authored one, so a dropped
+			// rectangle reports the cells it stands on NOW.
+			//
+			// This is the O(cells) walk [field.placedCells] is, once per
+			// standing placement — the cost of stating the derivation
+			// instead of leaving three protocols and one client to repeat
+			// it. AtlasFor pays nothing new for it: its own filter reads
+			// these cells rather than measuring the rectangle again
+			// ([Encounter.placedTouchesHidden]).
+			Cells:             f.placedCells(placement),
 			BlocksMovement:    p.blocksMovement,
 			BlocksLineOfSight: p.blocksLineOfSight,
 			Holdable:          p.holdable,
