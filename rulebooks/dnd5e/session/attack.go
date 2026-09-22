@@ -200,8 +200,8 @@ type AttackOutput struct {
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
 // ErrNoSession, ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet,
 // ErrNoCharacter, ErrBadCharacter, ErrBadRepository, ErrBadAttack,
-// ErrStaleDeclaration, ErrCannotAfford, ErrBadCost, ErrClosed, or ErrSaveFailed
-// with a populated report.
+// ErrNotATarget, ErrStaleDeclaration, ErrCannotAfford, ErrBadCost, ErrClosed,
+// or ErrSaveFailed with a populated report.
 //
 // Participant dependency failures normally surface before this verb through
 // Afford: unreadable targets keep candidate rows with ShortfallUnreadable, an
@@ -236,6 +236,28 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	}
 	if kinds[in.Attacker] != encounter.MemberKind(KindPlayer) {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
+	}
+
+	// AN NPC IS NOT A TARGET (rpg-project#493, R4), and the seam says so in
+	// its own words rather than letting the candidate gate answer.
+	//
+	// The composition refuses this too, and translate carries its sentinel —
+	// but nothing reaches it: buildTargetPreflight's universe already drops
+	// every KindWorld member, so a host forwarding a swing at a merchant used
+	// to be told ErrStaleDeclaration. That is a LIE about a permanent fact.
+	// Stale means re-read the offers; re-reading produces the same empty
+	// candidate list forever, and the only thing that would change the answer
+	// is authoring the creature as a monster with a disposition.
+	//
+	// BEFORE THE TURN GATE BELOW, because nothing about the clock is part of
+	// this answer. Whose turn it is cannot make a merchant attackable, and a
+	// host told "not your turn" would wait for a turn that changes nothing.
+	// It is also before any sheet is loaded and any world is written, which
+	// is what "refused at the verb, fail closed" means here.
+	if kinds[in.Target] == encounter.KindWorld {
+		return nil, fmt.Errorf(
+			"attack: target %q is an npc and cannot be attacked; author it as a monster to make it a target: %w",
+			in.Target, ErrNotATarget)
 	}
 
 	// NOT YOUR TURN, checked FIRST among the fact-about-this-member

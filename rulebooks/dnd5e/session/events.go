@@ -608,16 +608,23 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		var p struct {
 			Between []string `json:"between"`
 			Stance  string   `json:"stance"`
+			Cause   string   `json:"cause"`
 		}
 		// A stance is between exactly two named factions and is a word: a
 		// beat naming one faction, three, an empty id, or no stance has no
 		// lawful reading, and is left untyped rather than narrated as a pair
 		// with a hole in it.
+		//
+		// THE CAUSE IS NOT CHECKED FOR, because its absence is lawful
+		// (rpg-project#493): a pair turned by a faction's mind carries no
+		// cause, and the composition deliberately writes none rather than
+		// inventing one. Requiring it here would drop exactly the beat the
+		// hold-out has published since #375.
 		if json.Unmarshal(payload, &p) != nil || len(p.Between) != 2 ||
 			p.Between[0] == "" || p.Between[1] == "" || p.Stance == "" {
 			return nil
 		}
-		return StanceChangedBody{Between: p.Between, Stance: p.Stance}
+		return StanceChangedBody{Between: p.Between, Stance: p.Stance, Cause: p.Cause}
 	case EventArrived:
 		var p struct {
 			ID   string           `json:"id"`

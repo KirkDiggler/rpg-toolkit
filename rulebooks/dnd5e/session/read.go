@@ -766,6 +766,22 @@ func translate(err error) error {
 		// Loot's ordinary refusal: the body is up. Nothing to hide, so this
 		// says what it means (rpg-project#368 §4.2).
 		return fmt.Errorf("%w", ErrNotDown)
+	case errors.Is(err, encounter.ErrNotATarget):
+		// An attack pointed at a world NPC (rpg-project#493, R4). The
+		// composition refuses it at both its own doors — a recorded outcome
+		// and a cast carrying an attack roll — and this is the seam's word
+		// for the same fact.
+		//
+		// NO VERB DRIVES THIS ARM TODAY, and that is deliberate rather than
+		// unnoticed. Every candidate universe on this side already drops
+		// KindWorld members (excludeWorldNPCs), so a swing at a merchant is
+		// refused here, by name, before the composition is asked — Attack's
+		// own gate, which exists because ErrStaleDeclaration was the wrong
+		// sentence for a refusal that can never change. The arm is the same
+		// promise the resolution table below makes: an unmapped sentinel is
+		// a leak the moment its path opens, and the exclusion above it is a
+		// convenience, not a law of this boundary.
+		return fmt.Errorf("%w", ErrNotATarget)
 	case errors.Is(err, encounter.ErrNoProp):
 		// THE PROBE LAW SURVIVES THE SEAM. The composition already answers
 		// every refusal about a prop the member cannot see with a bare
