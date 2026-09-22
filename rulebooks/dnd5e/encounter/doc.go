@@ -162,16 +162,74 @@
 // edge stands between two members' factions, and under the defaults that is
 // exactly "a player and a monster", the whole table this module ran on
 // before factions existed. Knowledge is facts with audiences in the same
-// journal — `known:door:`, `known:region:`, `holds:`, and `known:fact:` —
-// each folded per member; a record may reveal a FACT, a disposition may be
-// hostile UNTIL a fact is known by the faction's MIND (a faction knows what
-// its mind knows), and the flip is the graph's own: a Raise on the fact and
-// a pair-settling projection, folded as the mind, so a scout who reads the
-// letter changes nothing. A fight whose two sides stopped being sides ends
-// with [ByStance]; a member holding the letter standing in the chief's
+// journal — `known:door:`, `known:region:`, `holds:`, `known:fact:`, and
+// `settled:<stance>:<pair>` — each folded per member; a record may reveal a
+// FACT, and the flip a fact causes is the graph's own: a Raise on the fact
+// and a pair-settling projection, folded as the mind, so a scout who reads
+// the letter changes nothing. A fight whose two sides stopped being sides
+// ends with [ByStance]; a member holding the letter standing in the chief's
 // region teaches the chief (presence transfer, on the same sweep occupancy
 // pierces by). Nothing stores a stance: it is derived on every question and
 // every load from the declaration plus the facts.
+//
+// # A pair turns BOTH WAYS, and one law nobody authors (rpg-project#493)
+//
+// A disposition's `until` is not the hostile-only, fact-only predicate this
+// charter once described. It turns a declared pair to THE OTHER of hostile
+// and neutral, in whichever direction it was declared: a hostile camp stands
+// down when its `until` holds, and a neutral camp turns on you when its own
+// does. `until` on `allied` is refused — an allied pair has nothing to
+// become — and one disposition carries one `until`, so authoring can never
+// oscillate a pair.
+//
+// FOUR PREDICATE FORMS, TWO GRAINS. `{ fact }` holds when the faction's MIND
+// knows it, which is the audience grain above and the only form a mind is
+// needed for. `{ down }`, `{ round }` and `{ stance }` are the world's own
+// truth, true for everyone the moment they happen, and nobody's mind has to
+// learn them (turning.go). A `round` is a FIGHT's round and never holds
+// outside one.
+//
+// THE TURN IS PUBLIC AND IT IS A FACT. `settled:<stance>:<pair>` is what a
+// turn writes — one kind per pair per stance, neutral projected before
+// hostile so a pair its own `until` stood down can be turned again by an
+// attack (the betrayed truce). Stances stay derived: the settled fact joins
+// the declaration, it does not replace it, and a blob claiming a turn this
+// field cannot produce is refused on load.
+//
+// AGGRESSION IS A LAW, NOT AN AUTHORED TRIGGER (rpg-project#493 R3, rebound
+// by its R5 — not the atomicity rule of the same name below). Hostile
+// intent delivered by a member of one faction to a member of a faction it is
+// NEUTRAL with turns the pair hostile — faction-wide, publicly, immediately,
+// through the same settle and the same `stance` beat an `until` uses. No file
+// writes "if attacked, become hostile", and no file can turn it off.
+//
+// HOSTILE INTENT IS READ OFF THE DELIVERY, NOT THE DOOR (turning.go). An
+// attack roll provokes hit or miss; a cast that asks that member for a save
+// provokes even when nothing lands, because the attempt is the provocation;
+// and a cast that delivers harm with no roll and no save at all — magic
+// missile's shape — provokes on what it delivered. A delivery that is wholly
+// a kindness provokes through none of them. Every one of them lands
+// [DeedAttack] on the recipient, so a creature hurt by a spell testifies to
+// it exactly as one hit by a sword does. An ALLIED pair is not
+// turned: friendly fire is not betrayal in this cut. Because a turn makes
+// strangers enemies where a later sight refresh would report only Refreshed,
+// the stance site synthesizes that first contact and feeds it through the one
+// formation path — precedence, surprise and straggler-join stay one set of
+// rules (turning.go).
+//
+// A [KindWorld] MEMBER IS NOT A TARGET, THROUGH ANY HOSTILE DOOR
+// (rpg-project#493 R4). The verbs refuse one by name, before anything is
+// appended, and say how to author a creature that can be attacked instead:
+// a swing, a spell attack, a save asked of it and a harmful gateless delivery
+// are all refused, while a kindness — healing the merchant — still reaches
+// it. A vendor that could hold an `attacked` deed could be provoked into its
+// own attack rows, which is the opposite of the ruling.
+//
+// It is the ref check in the words this module has:
+// a `dnd5e:npcs:*` placed by the session becomes a member of Kind world, and
+// this composition may not import the rulebook that would name the ref (C1).
+// Nothing else is spared — a player may be attacked, and so may every
+// monster. A world member is also in no faction, so no pair turns around it.
 //
 // # Atomicity, and what R5 does and does not promise
 //

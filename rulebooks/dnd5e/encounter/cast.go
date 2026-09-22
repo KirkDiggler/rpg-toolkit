@@ -380,11 +380,20 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 		seqs = append(seqs, appended.Seq)
 	}
 
+	// PROVOCATION IS THE DELIVERY'S, NOT THE ARM'S (rpg-project#493, R5;
+	// [hostileIntent]). Every recipient this cast delivered hostile intent to
+	// goes through the one path a swing goes through — the aggression law
+	// first, then the `attacked` deed — so a creature hurt by a spell learns
+	// it was hurt exactly as one hit by a sword does, whether the spell rolled
+	// against it, asked it for a save, or simply hit. In caller order, per
+	// recipient, because each names a pair of its own and a cast that catches
+	// two factions provokes both.
 	for _, target := range in.Targets {
-		if target.Attack != nil {
-			if err := e.landAttack(in.Actor, []MemberID{target.Target}); err != nil {
-				return nil, fmt.Errorf("record cast: %w", err)
-			}
+		if !hostileIntent(target) {
+			continue
+		}
+		if err := e.landAttack(in.Actor, []MemberID{target.Target}); err != nil {
+			return nil, fmt.Errorf("record cast: %w", err)
 		}
 	}
 	if err := e.FlushSightAreaTransitions(); err != nil {
@@ -435,10 +444,21 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		if _, duplicate := seenTargets[target.Target]; duplicate {
 			return nil, fmt.Errorf("record cast: target %d %q is duplicated: %w", i, target.Target, ErrInvalidData)
 		}
-		// AN NPC IS NOT A TARGET (rpg-project#493, R4). Only the attack arm
-		// is refused: a spell that asks its target for a save is not a swing,
-		// and what a save against a world NPC means is its own question.
-		if target.Attack != nil {
+		// AN NPC IS NOT A TARGET, THROUGH ANY HOSTILE DOOR (rpg-project#493,
+		// R4 as the review of #1868 extended it). "Not targetable" was written
+		// against the attack arm while a save against a world member was left
+		// as its own question — and R5 answered that question by side effect:
+		// once a save reaches [Encounter.landAttack], a vendor holds an
+		// `attacked` deed against the caster, and a vendor that can be
+		// provoked into its own `attacked within 3 -> attack: attacker` rows
+		// is the opposite of one that cannot be attacked.
+		//
+		// So the refusal asks the same question the provocation does
+		// ([hostileIntent]), at the verb, before anything is appended. A
+		// KINDNESS STILL REACHES A VENDOR: healing the merchant delivers
+		// nothing to provoke with, lands no deed, and is none of R4's
+		// business.
+		if hostileIntent(target) {
 			if err := e.attackable(fmt.Sprintf("record cast: target %d", i), target.Target); err != nil {
 				return nil, err
 			}

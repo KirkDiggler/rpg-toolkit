@@ -415,15 +415,26 @@ type DispositionSpec struct {
 	// Until is the predicate that TURNS the pair: when it holds the stance
 	// becomes the OTHER of hostile and neutral (rpg-project#493, R1). A
 	// hostile pair stands down; a neutral pair turns on you — "the guards
-	// are civil until midnight", "the wolves are calm until you kill the
-	// alpha". REFUSED ON `stance: allied`: an allied pair has nothing to
-	// become. Optional. See [PredicateSpec] — all four forms are legal here,
-	// and only `{ fact }` needs the pair to have a mind, because only a fact
-	// is somebody's knowledge.
+	// are civil until the third round of the brawl", "the wolves are calm
+	// until you kill the alpha". REFUSED ON `stance: allied`: an allied pair
+	// has nothing to become. Optional. See [PredicateSpec] — all four forms
+	// are legal here, and only `{ fact }` needs the pair to have a mind,
+	// because only a fact is somebody's knowledge.
 	//
-	// WHAT NO FILE WRITES is "if attacked, become hostile". Attacking across
-	// a neutral pair turns it hostile by law, authored or not (R3), so a
-	// camp is provokable the moment it is neutral.
+	// `until: { round: N }` COUNTS A FIGHT'S ROUNDS (hold-out R9): it holds
+	// when any fight in the run has started round N, and outside any fight it
+	// never holds at all. A party that never comes to blows with anyone walks
+	// past these guards forever. There is no world clock to write against
+	// yet, so "the guards turn at midnight" has no spelling here — an author
+	// who means world time is asking for a predicate this build does not
+	// have, not for this one.
+	//
+	// WHAT NO FILE WRITES is "if attacked, become hostile". Delivering hostile
+	// intent across a neutral pair turns it hostile by law, authored or not
+	// (R3 as R5 rebound it). What counts is the DELIVERY, not the door it came
+	// through — a swing, a spell that asks for a save, or one that simply
+	// lands its harm — so a camp is provokable the moment it is neutral, and
+	// a delivery that is wholly a kindness provokes nobody.
 	Until *PredicateSpec `yaml:"until,omitempty"`
 }
 
