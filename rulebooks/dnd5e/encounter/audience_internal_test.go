@@ -68,6 +68,67 @@ func TestAudienceForPolicy(t *testing.T) {
 	})
 }
 
+// TestAnExperienceBeatNamesEveryGranteeAsASubject pins the one thing v1's
+// "everyone" policy makes invisible from outside this package: who the beat
+// is ABOUT.
+//
+// An experience grant is the case that makes the distinction matter. Its
+// actor is the fallen monster — the cause — and the players it paid are named
+// nowhere else on the input, so an audience derived from the actor and its
+// targets would be an audience with no grantee in it. Today that is harmless
+// because audienceFor hands every beat to the whole roster; the day
+// rpg-toolkit#940 flips it to "subjects union the sight-holders", a player
+// who never saw the monster fall would silently stop being told they levelled.
+//
+// White-box for the reason this whole file is: the subject list is not
+// observable through Record, because v1 erases it.
+func TestAnExperienceBeatNamesEveryGranteeAsASubject(t *testing.T) {
+	enc, err := NewEncounter(&SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
+			Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
+		Members: []MemberInput{
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "zebra", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
+			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 0}},
+		},
+		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	// prepareRecord, not Record: it is the half that decides the subject list,
+	// and it appends nothing.
+	prepared, err := enc.prepareRecord(&RecordInput{
+		Kind: OutcomeExperienceGained, Actor: "goblin",
+		Experience: &ExperienceDetail{
+			Member: "goblin",
+			Grants: []ExperienceGrant{
+				{Character: "zebra", Amount: 25, Total: 125},
+				{Character: "alice", Amount: 25, Total: 325},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, prepared, 1)
+	require.Equal(t, []MemberID{"goblin", "alice", "zebra"}, prepared[0].subjects,
+		"the cause first, then every character it paid — in the same Character "+
+			"order the beat itself records them")
+
+	t.Run("a grantee who is also the actor is named once", func(t *testing.T) {
+		prepared, perr := enc.prepareRecord(&RecordInput{
+			Kind: OutcomeExperienceGained, Actor: "alice",
+			Experience: &ExperienceDetail{
+				Member: "goblin",
+				Grants: []ExperienceGrant{{Character: "alice", Amount: 50, Total: 350}},
+			},
+		})
+		require.NoError(t, perr)
+		require.Equal(t, []MemberID{"alice"}, prepared[0].subjects)
+	})
+}
+
 // beatKind decodes one story entry's "beat" field — the same convention
 // every append site in this module already writes its payload under.
 func beatKind(t *testing.T, payload []byte) string {

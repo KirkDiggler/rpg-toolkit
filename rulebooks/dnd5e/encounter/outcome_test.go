@@ -807,7 +807,7 @@ func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
 		"DamageComponents", "AdvantageSources", "DisadvantageSources", "Calculation", "DeathSave", "Trade",
-		"Warded", "PresentationID", "ConcentrationBreaks", "ConcentrationChecks",
+		"Warded", "Experience", "PresentationID", "ConcentrationBreaks", "ConcentrationChecks",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")
@@ -1245,4 +1245,334 @@ func (s *OutcomeTestSuite) storyEntriesForOutcome(enc *encounter.Encounter, seq 
 	}
 	s.FailNow("outcome sequence was not recorded", "seq %d", seq)
 	return record.Entry{}
+}
+
+// trio is [OutcomeTestSuite.wardScene]'s three-member set under a name that
+// does not say "ward": an experience grant needs two players to divide
+// between, and scene()'s alice/goblin pair only has one of them.
+func (s *OutcomeTestSuite) trio() *encounter.Encounter {
+	return s.wardScene()
+}
+
+// aGrant is one fall paying two players, the ordinary case the session SDK
+// hands over: the goblin's member id as the cause, one entry per character.
+func aGrant() *encounter.ExperienceDetail {
+	return &encounter.ExperienceDetail{
+		Member: string(goblin),
+		Grants: []encounter.ExperienceGrant{
+			{Character: string(alice), Amount: 25, Total: 325},
+			{Character: string(bob), Amount: 25, Total: 125},
+		},
+	}
+}
+
+// bossScene is a fight whose monster's death ENDS the run — TriggerMemberDown
+// over the goblin, the boss-down ending the experience beat has to survive.
+// Retention is unbounded because every test here reads the story back.
+func (s *OutcomeTestSuite) bossScene(standing encounter.Standing) *encounter.Encounter {
+	s.T().Helper()
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: standing,
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Retention: encounter.RetentionUnbounded,
+		Field: encounter.FieldInput{
+			Canvas:  openAir(),
+			Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+			{Key: "boss-down", Trigger: encounter.TriggerMemberDown{Member: goblin}},
+		},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestAGrantOfExperienceReachesTheStoryAndRejectsMismatches is
+// OutcomeExperienceGained's half of Record — the same shape
+// TestABoughtItemReachesTheStoryAndRejectsMismatches pins for the Trade
+// verb, because it is the same arrangement (rpg-project#496): somebody else
+// worked the numbers out, and this composition's whole job is to keep them.
+//
+// The refusals are the fail-closed floor: a cause, at least one payee, a name
+// for each, and a positive amount. Nothing about whether the shares are RIGHT
+// is checked, because the rulebook that knows what a monster is worth is a
+// package this module's go.mod cannot import.
+func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismatches() {
+	enc := s.trio()
+	detail := aGrant()
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: detail,
+	})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq)
+	s.Equal("outcome", last.Tags["tag"], "tagged like every other outcome beat")
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("experience_gained", beat["beat"])
+
+	raw, err := json.Marshal(beat["experience"])
+	s.Require().NoError(err)
+	var got encounter.ExperienceDetail
+	s.Require().NoError(json.Unmarshal(raw, &got))
+	s.Equal(*detail, got, "the amounts survive the beat verbatim")
+
+	s.Equal([]string{"Member", "Grants"}, structFieldNames(encounter.ExperienceDetail{}),
+		"closed detail has no caller prose field")
+	s.Equal([]string{"Character", "Amount", "Total"}, structFieldNames(encounter.ExperienceGrant{}),
+		"and neither does one grant")
+
+	s.Run("missing detail", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("no cause", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+			Experience: &encounter.ExperienceDetail{
+				Grants: []encounter.ExperienceGrant{{Character: string(alice), Amount: 50, Total: 350}},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("nobody was paid", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+			Experience: &encounter.ExperienceDetail{Member: string(goblin)},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a grant naming nobody", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+			Experience: &encounter.ExperienceDetail{
+				Member: string(goblin),
+				Grants: []encounter.ExperienceGrant{{Amount: 50, Total: 350}},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	// A zero is not a grant: the session does not record one, so a beat
+	// claiming it is a story about nothing happening.
+	s.Run("a grant of zero", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+			Experience: &encounter.ExperienceDetail{
+				Member: string(goblin),
+				Grants: []encounter.ExperienceGrant{{Character: string(alice), Amount: 0, Total: 300}},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a grant that takes experience away", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+			Experience: &encounter.ExperienceDetail{
+				Member: string(goblin),
+				Grants: []encounter.ExperienceGrant{{Character: string(alice), Amount: -50, Total: 250}},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("detail on a mismatched kind", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeMissed, Actor: alice, Experience: aGrant(),
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("an unknown grantee is not this composition's question", func() {
+		_, err := s.trio().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+			Experience: &encounter.ExperienceDetail{
+				Member: string(goblin),
+				Grants: []encounter.ExperienceGrant{{Character: "carl", Amount: 50, Total: 50}},
+			},
+		})
+		s.Require().NoError(err,
+			"who the session pays is the session's roster fact — a character "+
+				"this encounter never held is not a refusal it can make")
+	})
+}
+
+// TestEveryGranteeCanReadTheirOwnGrant is the audience half.
+//
+// v1 hands every beat to the whole roster regardless of who it is about
+// (audienceFor's own doc), so what this asserts from outside the package is
+// that the beat is not scoped to the actor: both players read the fall that
+// paid them, including the one who did not strike it. The other half — that
+// each grantee is named as a SUBJECT, which is what rpg-toolkit#940's flip
+// will read — is not observable out here and is pinned white-box in
+// audience_internal_test.go.
+func (s *OutcomeTestSuite) TestEveryGranteeCanReadTheirOwnGrant() {
+	enc := s.trio()
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: aGrant(),
+	})
+	s.Require().NoError(err)
+
+	for _, reader := range []encounter.MemberID{alice, bob} {
+		story, serr := enc.Story(&encounter.StoryInput{Audience: reader})
+		s.Require().NoError(serr)
+		s.Require().NotEmpty(story)
+		s.Equal(out.Seq, story[len(story)-1].Seq, "%s is owed the beat that paid them", reader)
+	}
+}
+
+// TestGrantsAreRecordedInAStableOrder is C8 applied to a set that has no
+// order of its own. A caller dividing a monster's worth across a Go map hands
+// them over in whatever order that map ranged in, and a story whose bytes
+// differ between two runs of the identical input cannot be compared. The
+// AMOUNTS are never touched; only the order is this composition's.
+func (s *OutcomeTestSuite) TestGrantsAreRecordedInAStableOrder() {
+	enc := s.trio()
+
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+		Experience: &encounter.ExperienceDetail{
+			Member: string(goblin),
+			Grants: []encounter.ExperienceGrant{
+				{Character: string(bob), Amount: 25, Total: 125},
+				{Character: string(alice), Amount: 25, Total: 325},
+			},
+		},
+	})
+	s.Require().NoError(err)
+
+	raw, err := json.Marshal(s.lastBeat(enc)["experience"])
+	s.Require().NoError(err)
+	var got encounter.ExperienceDetail
+	s.Require().NoError(json.Unmarshal(raw, &got))
+	s.Equal(*aGrant(), got, "the same grant, in Character order, whichever order it arrived in")
+}
+
+// TestExperienceIsRecordableAfterTheRunEnds is the exemption, and the reason
+// it exists is in the first half of the test rather than in a comment: the
+// blow that pays the party is the blow that ends the run.
+//
+// The goblin's death fires its declared ending inside the very Record that
+// reported the strike, so by the time the session has divided the monster's
+// worth and written the sheets, the encounter is closed. Every other kind is
+// refused on it — that is the control, and it is what keeps this from being a
+// hole rather than a door.
+func (s *OutcomeTestSuite) TestExperienceIsRecordableAfterTheRunEnds() {
+	down := &downList{}
+	enc := s.bossScene(down)
+
+	down.down = []encounter.MemberID{goblin}
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 9},
+	})
+	s.Require().NoError(err)
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.Require().False(status.Open, "the boss is down, so the run is over")
+	s.Require().NotNil(status.Outcome)
+	s.Equal("boss-down", status.Outcome.Ending)
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: aGrant(),
+	})
+	s.Require().NoError(err, "the fall that ended the run still pays for itself")
+	s.NotZero(out.Seq)
+	s.Equal("experience_gained", s.lastBeat(enc)["beat"])
+
+	s.Run("and nothing else gets in behind it", func() {
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 9},
+		})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+
+	// The other half of the exemption: the beat goes in, and NOTHING else
+	// does. bob drops after the run is over and nobody has narrated it — a
+	// Record that ran the standing consult anyway would append his body to a
+	// finished story, which is a second ending looking for somewhere to
+	// happen against a roster the run already settled.
+	s.Run("and the settled world is not consulted again", func() {
+		down.down = []encounter.MemberID{goblin, bob}
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
+			Experience: &encounter.ExperienceDetail{
+				Member: string(goblin),
+				Grants: []encounter.ExperienceGrant{{Character: string(alice), Amount: 10, Total: 335}},
+			},
+		})
+		s.Require().NoError(err)
+		s.Equal("experience_gained", s.lastBeat(enc)["beat"],
+			"the beat it was asked for is the last thing in the story")
+	})
+
+	s.Run("the closed encounter is still closed by the same ending", func() {
+		status, serr := enc.Status()
+		s.Require().NoError(serr)
+		s.False(status.Open)
+		s.Require().NotNil(status.Outcome)
+		s.Equal("boss-down", status.Outcome.Ending, "recording a beat did not re-decide the run")
+	})
+}
+
+// TestAGrantSurvivesTheRoundTrip: the beat is what a host persists and reloads,
+// and a detail that decoded only in the process that wrote it would be
+// unreadable to the session projection that actually renders it.
+func (s *OutcomeTestSuite) TestAGrantSurvivesTheRoundTrip() {
+	enc := s.trio()
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: aGrant(),
+	})
+	s.Require().NoError(err)
+
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:      enc.ToData(),
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Mover: quietMover{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+
+	story, err := reloaded.Story(&encounter.StoryInput{Audience: bob})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq)
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("experience_gained", beat["beat"])
+	s.Equal(string(goblin), beat["actor"])
+
+	raw, err := json.Marshal(beat["experience"])
+	s.Require().NoError(err)
+	var got encounter.ExperienceDetail
+	s.Require().NoError(json.Unmarshal(raw, &got))
+	s.Equal(*aGrant(), got, "every primitive comes back off the blob")
 }

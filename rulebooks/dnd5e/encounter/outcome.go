@@ -88,6 +88,36 @@ const (
 	// was no attack roll). Carries WardedDetail the same way OutcomeDeathSave
 	// carries DeathSaveDetail.
 	OutcomeWarded OutcomeKind = "warded"
+
+	// OutcomeExperienceGained is experience the party has already been paid,
+	// arriving here only to be remembered (rpg-project#496).
+	//
+	// ONE BEAT PER CAUSE. Today the cause is a monster's fall: its worth is
+	// authored on the monster, and the session SDK — which sees the fall at
+	// commit time — divides that worth among the players on its roster,
+	// writes the sheets, and THEN records this. A later slice pays an
+	// authored reward at an ending and will name the ending as its cause
+	// instead. That is one more cause, not one more kind.
+	//
+	// NOTHING HERE COMPUTES ANYTHING, and that division of labour is the
+	// whole reason this is a kind rather than a rule. The rulebook holds
+	// what a monster is worth and this module's go.mod cannot import it
+	// (C1); the session applies the grant, because applying it is a write to
+	// sheets this composition does not own; and the composition keeps the
+	// record, because the record is the one thing it does own. It is exactly
+	// the arrangement [OutcomeBought] already has with the Trade verb — the
+	// numbers are preserved, never checked against anything.
+	//
+	// A GRANT OF ZERO IS NOT A BEAT. The session does not record one, and
+	// this kind refuses one rather than writing a story about nothing
+	// happening; an encounter whose fallen monster was worth nothing simply
+	// has no experience beat in it.
+	//
+	// ACCEPTED AFTER THE ENCOUNTER HAS CLOSED, alone among the kinds. The
+	// fall that pays can be the fall that ends the run — see
+	// [Encounter.prepareRecord]'s refusal site for why that door has to be
+	// open and why it is safe.
+	OutcomeExperienceGained OutcomeKind = "experience_gained"
 )
 
 // OutcomeValue names one number a rulebook outcome carries.
@@ -190,6 +220,12 @@ type RecordInput struct {
 	// is required for that kind and invalid for every other kind.
 	Warded *WardedDetail
 
+	// Experience carries the authoritative primitive facts for
+	// OutcomeExperienceGained. It is required for that kind and invalid for
+	// every other kind; the encounter preserves the amounts without asking
+	// what anybody was worth or whether the shares add up.
+	Experience *ExperienceDetail
+
 	// PresentationID is the rulebook's opaque token for the ONE roll this
 	// beat describes, carried verbatim so the actor who declared it and
 	// every witness reading the same beat hold the same string for it.
@@ -285,6 +321,130 @@ type TradeDetail struct {
 	ItemType string `json:"item_type"`
 	ItemID   string `json:"item_id"`
 	Quantity int    `json:"quantity"`
+}
+
+// ExperienceDetail is the closed, rulebook-neutral story shape for one grant
+// of experience: what caused it, and what each character was paid.
+//
+// Its fields are primitive facts supplied by the authoritative caller, which
+// for [OutcomeExperienceGained] is the session SDK AFTER it applied the
+// grant. This composition validates presence and preserves the numbers
+// verbatim. What it never does is arithmetic — it does not divide, does not
+// check that the shares sum to anything, and cannot ask what a monster was
+// worth, because the rulebook that knows is a package its go.mod cannot
+// import (C1).
+type ExperienceDetail struct {
+	// Member is the cause: the fallen monster's member id, the same id the
+	// down beat carried.
+	//
+	// A PLAIN STRING RATHER THAN A MemberID, and checked for presence only.
+	// A later slice pays an authored reward at an ending and will name the
+	// ending here — a cause that is not a member and never will be. Reserving
+	// a second field for that today would be building it early; writing an
+	// ending key into this one later breaks nothing, because what this field
+	// carries is an identifier either way.
+	Member string `json:"member"`
+
+	// Grants is who was paid and how much, one entry per character. At least
+	// one is required: a grant nobody received is not a beat.
+	//
+	// Recorded sorted by Character, for the same C8 reason
+	// [RecordInput.Targets] is sorted — a set of payees has no meaningful
+	// order, a caller dividing a monster's worth across a Go map has no
+	// stable one, and two runs of identical input must produce the identical
+	// story. Only the ORDER is this composition's; the numbers are the
+	// caller's, untouched.
+	Grants []ExperienceGrant `json:"grants"`
+}
+
+// ExperienceGrant is one character's share of one grant.
+type ExperienceGrant struct {
+	// Character is who was paid.
+	//
+	// CHECKED FOR PRESENCE, NOT FOR MEMBERSHIP, unlike every MemberID on
+	// [RecordInput]. Who the session pays is the session's roster fact and
+	// this composition's roster is the encounter's — the two need not be the
+	// same list, and a composition that refused the difference would be
+	// deciding a question it was handed the answer to.
+	Character string `json:"character"`
+
+	// Amount is what this cause paid them. Must be positive — see
+	// [OutcomeExperienceGained] on why a zero never reaches the story.
+	Amount int `json:"amount"`
+
+	// Total is what they hold after it: the session's own number, carried so
+	// a reader can answer "how close am I" without summing every beat it
+	// ever saw. Never checked against Amount, because this composition does
+	// not know what they held before.
+	Total int `json:"total"`
+}
+
+// preparedExperience validates the experience detail against the outcome kind
+// and returns it as the story will keep it — nil for every kind that does not
+// carry one, an ErrInvalidData refusal for a kind/detail mismatch either way.
+//
+// The refusals are the fail-closed floor this composition CAN hold without a
+// rulebook: a cause, at least one payee, a name for each, and a positive
+// amount. What it cannot hold — that the amounts are the right amounts — is
+// exactly what the caller already settled before calling.
+func preparedExperience(in *RecordInput) (*ExperienceDetail, error) {
+	if in.Kind != OutcomeExperienceGained {
+		if in.Experience != nil {
+			return nil, fmt.Errorf(
+				"record: experience detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+		}
+		return nil, nil
+	}
+	if in.Experience == nil {
+		return nil, fmt.Errorf("record: experience detail is required: %w", ErrInvalidData)
+	}
+	if in.Experience.Member == "" {
+		return nil, fmt.Errorf("record: experience member is required: %w", ErrInvalidData)
+	}
+	if len(in.Experience.Grants) == 0 {
+		return nil, fmt.Errorf("record: experience grants are required: %w", ErrInvalidData)
+	}
+	for i, grant := range in.Experience.Grants {
+		if grant.Character == "" {
+			return nil, fmt.Errorf("record: experience grant %d character is required: %w", i, ErrInvalidData)
+		}
+		if grant.Amount <= 0 {
+			return nil, fmt.Errorf(
+				"record: experience grant %d amount %d must be positive: %w", i, grant.Amount, ErrInvalidData)
+		}
+	}
+
+	// Copied rather than sorted in place: the caller's own slice is not this
+	// composition's to rearrange behind its back.
+	grants := append([]ExperienceGrant(nil), in.Experience.Grants...)
+	sort.Slice(grants, func(i, j int) bool { return grants[i].Character < grants[j].Character })
+	return &ExperienceDetail{Member: in.Experience.Member, Grants: grants}, nil
+}
+
+// experienceSubjects appends every character an experience grant paid to the
+// beat's subject list, skipping anybody already on it.
+//
+// THE GRANTEES ARE WHAT THIS BEAT IS ABOUT. v1 hands every beat to the whole
+// roster regardless of its subjects (see [Encounter.audienceFor]), so this
+// changes nothing a reader can observe today — it is the answer
+// rpg-toolkit#940's flip will need, recorded while the fact is still in front
+// of us. A player who never saw the monster fall is owed their share all the
+// same, and an audience worked out from the actor alone is the one shape that
+// would drop it.
+func experienceSubjects(subjects []MemberID, detail *ExperienceDetail) []MemberID {
+	seen := make(map[MemberID]bool, len(subjects))
+	for _, id := range subjects {
+		seen[id] = true
+	}
+	for _, grant := range detail.Grants {
+		id := MemberID(grant.Character)
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		subjects = append(subjects, id)
+	}
+	return subjects
 }
 
 // DamageComponent carries one ordered, rulebook-neutral damage contribution.
@@ -502,9 +662,13 @@ type RecordOutput struct {
 //
 // # On error
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
-// target), ErrInvalidData (a kind or value name this composition does not
-// know, missing or mismatched DeathSave or Trade detail, an Attack or
+// Errors: ErrNilInput, ErrClosed (for every kind but
+// [OutcomeExperienceGained], which is recordable after the close — see
+// prepareRecord's refusal site for why), ErrNoMember (empty or unknown
+// actor, unknown target), ErrInvalidData (a kind or value name this
+// composition does not know, missing or mismatched DeathSave, Trade or
+// Experience detail, an experience grant naming no character or paying a
+// non-positive amount, an Attack or
 // Reaction whose Ref or Name is empty, a damage component whose roll facts
 // are missing or internally inconsistent, or a non-finite damage multiplier
 // JSON cannot represent), and anything the [Participation] capability answers with —
@@ -522,7 +686,6 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		return nil, err
 	}
 	beatBytes, subjects := prepared[0].payload, prepared[0].subjects
-	targets := subjects[1:]
 	breakBeats := prepared[1:]
 
 	appended, err := e.appendBeat(&record.AppendInput{
@@ -553,6 +716,16 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
 	}
 
+	// A CLOSED ENCOUNTER STOPS HERE. Only [OutcomeExperienceGained] reaches
+	// this line on one — see prepareRecord's refusal site — and a settled
+	// world has nothing left to notice: no sight to refresh, no standing to
+	// consult, no ending left to fire. Running the consult anyway would be a
+	// second ending looking for somewhere to happen, against a roster the run
+	// already finished with.
+	if e.outcome != nil {
+		return &RecordOutput{Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
+	}
+
 	if err := e.FlushSightAreaTransitions(); err != nil {
 		return nil, err
 	}
@@ -567,7 +740,10 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
 	// control until the eventual turn-settlement boundary.
 	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
-		if err := e.landAttack(in.Actor, targets); err != nil {
+		// subjects[1:] is the validated, sorted target list for these two
+		// kinds: only [OutcomeExperienceGained] puts anything else in there,
+		// and it never lands an attack.
+		if err := e.landAttack(in.Actor, subjects[1:]); err != nil {
 			return nil, fmt.Errorf("record: %w", err)
 		}
 	}
@@ -590,12 +766,31 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	if in == nil {
 		return nil, fmt.Errorf("record: %w", ErrNilInput)
 	}
-	if e.outcome != nil {
+	// THE ONE DOOR LEFT OPEN AFTER THE CLOSE. Every mutating verb in this
+	// module refuses a closed encounter and so does this one — except for
+	// [OutcomeExperienceGained], which is a consequence of the very fall that
+	// ended things.
+	//
+	// The sequence is not hypothetical: a boss going down fires its
+	// [TriggerMemberDown] ending inside [Encounter.noticeDown], which runs
+	// INSIDE the Record that reported the killing blow, so the encounter is
+	// already settled by the time the session has divided the monster's worth
+	// and written the sheets. Refusing here would mean the one death that
+	// mattered most is the only death nobody was paid for, on the record.
+	//
+	// It is safe because this kind cannot change anything. It is bookkeeping
+	// the session has already applied, it moves no clock, it names no target,
+	// and [Encounter.Record] skips the standing consult entirely once the
+	// encounter is closed — a settled world has nothing left to notice. The
+	// ending-reward slice [ExperienceDetail.Member] already anticipates comes
+	// through this same door. Every other kind stays refused.
+	if e.outcome != nil && in.Kind != OutcomeExperienceGained {
 		return nil, fmt.Errorf("record: %w", ErrClosed)
 	}
 
 	switch in.Kind {
-	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeBought, OutcomeSold, OutcomeWarded:
+	case OutcomeStruck, OutcomeMissed, OutcomeDeathSave, OutcomeBought, OutcomeSold, OutcomeWarded,
+		OutcomeExperienceGained:
 	default:
 		return nil, fmt.Errorf("record: outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
@@ -663,6 +858,10 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 		}
 	} else if in.Warded != nil {
 		return nil, fmt.Errorf("record: warded detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
+	experience, expErr := preparedExperience(in)
+	if expErr != nil {
+		return nil, expErr
 	}
 	if in.PresentationID != "" && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
 		return nil, fmt.Errorf("record: presentation id does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
@@ -785,6 +984,9 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	if in.Warded != nil {
 		payload["warded"] = in.Warded
 	}
+	if experience != nil {
+		payload["experience"] = experience
+	}
 	// Omitted when empty, unlike critical's unconditional false: absent and
 	// "" say the identical thing here — this swing has no shared roll to
 	// correlate — so writing the key would change nothing but the bytes of
@@ -837,6 +1039,10 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	}
 	breakBeats = append(checkBeats, breakBeats...)
 
-	prepared := []preparedActivationBeat{{payload: beatBytes, subjects: append([]MemberID{in.Actor}, targets...)}}
+	subjects := append([]MemberID{in.Actor}, targets...)
+	if experience != nil {
+		subjects = experienceSubjects(subjects, experience)
+	}
+	prepared := []preparedActivationBeat{{payload: beatBytes, subjects: subjects}}
 	return append(prepared, breakBeats...), nil
 }
