@@ -18,9 +18,9 @@ import (
 // for the rating the SRD gives a monster of that name — two blocks here differ
 // and the comments beside them say so.
 //
-// The table is exhaustive on purpose: a constructor added without a worth is a
-// monster the party kills for nothing, and nothing else in the engine would
-// notice.
+// What this proves is each named value. That a NEW constructor was given a
+// worth at all is TestNoRegisteredMonsterIsWorthNothing's job, and it proves it
+// for everything the engine can actually reach.
 func TestEveryConstructorAuthorsItsWorth(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -43,8 +43,6 @@ func TestEveryConstructorAuthorsItsWorth(t *testing.T) {
 		{name: "wolf", build: monsters.NewWolf, challenge: "1/4", experience: 50},
 		{name: "zombie", build: monsters.NewZombie, challenge: "1/4", experience: 50},
 	}
-
-	require.Len(t, cases, 13, "every constructor in this package is listed")
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
