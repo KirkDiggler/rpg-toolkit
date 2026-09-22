@@ -200,8 +200,8 @@ type AttackOutput struct {
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
 // ErrNoSession, ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet,
 // ErrNoCharacter, ErrBadCharacter, ErrBadRepository, ErrBadAttack,
-// ErrStaleDeclaration, ErrCannotAfford, ErrBadCost, ErrClosed, or ErrSaveFailed
-// with a populated report.
+// ErrNotATarget, ErrStaleDeclaration, ErrCannotAfford, ErrBadCost, ErrClosed,
+// or ErrSaveFailed with a populated report.
 //
 // Participant dependency failures normally surface before this verb through
 // Afford: unreadable targets keep candidate rows with ShortfallUnreadable, an
