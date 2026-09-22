@@ -413,9 +413,25 @@ func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position)
 // [Encounter.Atlas] already ran [field.placedCells] for this placement, and
 // running it a second time would be the same O(cells) walk for the same
 // answer.
+//
+// A PLACEMENT THAT SAYS IT STANDS NOWHERE IS WITHHELD, not presented. The
+// invariant is that [Encounter.Atlas] — the one construction site — always
+// fills Cells, and [field.placedCells] is never empty for a compiled field,
+// so this is unreachable today. It is guarded anyway because the zero value
+// LIES IN THE LEAK DIRECTION: an empty list reads as "touches no hidden
+// cell", so a second construction site that forgot to fill it would present
+// a rectangle standing wholly on floor this recipient cannot see, silently,
+// and the map would mark the secret it was hiding. Fail closed, and the
+// forgetful caller loses a rectangle instead of giving one away.
+//
+// AFTER the no-concealment short-circuit above, deliberately: a field that
+// hides nothing withholds nothing, whatever a placement says about itself.
 func (e *Encounter) placedTouchesHidden(p AtlasPlacedProp, hiddenCells map[spatial.Position]bool) bool {
 	if len(hiddenCells) == 0 {
 		return false
+	}
+	if len(p.Cells) == 0 {
+		return true
 	}
 	for _, cell := range p.Cells {
 		if hiddenCells[cell] {

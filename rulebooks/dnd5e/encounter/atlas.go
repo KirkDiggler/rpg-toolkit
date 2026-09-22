@@ -334,10 +334,16 @@ type AtlasDoorway struct {
 // ID. Copy-out: every returned slice is freshly allocated per call; mutating
 // the result never reaches internal state.
 //
-// O(cells) per call, which is what an enumerated floor costs and is the
-// honest shape of it: a region IS its cells now, so the list the host wants
-// is the list the composition already holds, copied. The field's cell budget
-// (maxFieldCells) is what bounds this.
+// O(cells) for the floor itself, which is what an enumerated floor costs and
+// is the honest shape of it: a region IS its cells now, so the list the host
+// wants is the list the composition already holds, copied.
+//
+// PLUS O(cells) PER STANDING PLACEMENT, so O(cells x (1+P)) per call for P of
+// them ([AtlasPlacedProp.Cells], rpg-api-protos#351): saying where a
+// rectangle stands is a walk over the floor, and this is the one place that
+// walk is paid rather than three readers and a client each paying it
+// separately. The field's cell budget (maxFieldCells) bounds both terms, and
+// P is the authored placement count, so the product is bounded too.
 func (e *Encounter) Atlas() (Atlas, error) {
 	f := e.field
 	out := Atlas{
@@ -383,9 +389,12 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			// This is the O(cells) walk [field.placedCells] is, once per
 			// standing placement — the cost of stating the derivation
 			// instead of leaving three protocols and one client to repeat
-			// it. AtlasFor pays nothing new for it: its own filter reads
-			// these cells rather than measuring the rectangle again
-			// ([Encounter.placedTouchesHidden]).
+			// it. AtlasFor pays it ONCE, here, instead of a second time in
+			// the filter: [Encounter.placedTouchesHidden] reads these cells
+			// rather than measuring the rectangle again. On a field that
+			// conceals nothing that filter never ran at all, so such a
+			// field does pay this walk where it paid none — the cost is
+			// stated in [Encounter.Atlas]' own doc rather than hidden here.
 			Cells:             f.placedCells(placement),
 			BlocksMovement:    p.blocksMovement,
 			BlocksLineOfSight: p.blocksLineOfSight,

@@ -520,6 +520,23 @@ func (s *PlacedOrdersSuite) TestADroppedPlacementLandsOnTheCellItWasDroppedOn() 
 		"the rectangle stands where they put it down")
 	s.Equal(slabPlacement().Facing, dropped.Placement.Facing, "turned no differently")
 	s.Equal(*slabPlacement().Footprint.Box, *dropped.Placement.Footprint.Box, "and the same shape")
+
+	// AND IT REPORTS THE CELLS IT STANDS ON NOW, not the ones it was
+	// authored over — the claim [AtlasPlacedProp.Cells] makes about being
+	// asked of the fold's placement rather than the compiled one.
+	//
+	// The two sets are DISJOINT here, which is what makes this an assertion
+	// rather than a restatement: a derivation reading the authored placement
+	// would answer the row the slab was drawn on, four rows away. The
+	// dropped set is smaller because the slab's far end now hangs off the
+	// edge of the hall, which is the floor answering rather than the
+	// rectangle.
+	s.ElementsMatch([]spatial.Position{cellAt(4, 1), standing}, dropped.Cells,
+		"the cells its rectangle covers where it was put down")
+	for _, authored := range []spatial.Position{cellAt(1, 4), slabCentre, cellAt(3, 4)} {
+		s.NotContains(dropped.Cells, authored,
+			"and not one cell of the row it was authored over")
+	}
 }
 
 // --- (5) A scenario's artifact may be a placement ---
