@@ -27,6 +27,19 @@ var (
 	// ErrNotMember is returned when an entity is not a member of this encounter.
 	ErrNotMember = errors.New("not a member")
 
+	// ErrNotATarget is returned when a verb points an ATTACK at a member
+	// that cannot be one (rpg-project#493, R4): a world NPC, which is what a
+	// `dnd5e:npcs:*` ref becomes when it is placed.
+	//
+	// FAIL CLOSED AT THE VERB, before anything is appended. A merchant is
+	// placed with no ref, no capabilities and no policy of its own
+	// ([KindWorld]); it has no table to fight with, no faction to be on and
+	// no side for a stance to be about, so an attack on one resolves into a
+	// creature the whole composition is built to leave out. A camp that can
+	// be provoked is authored as a MONSTER with a neutral disposition, and
+	// the refusal says so.
+	ErrNotATarget = errors.New("not a target")
+
 	// ErrNoRegion is returned when [Encounter.MembersIn] is asked about a
 	// region the field does not have. An EMPTY region is an ordinary answer —
 	// "nobody has reached the tomb yet" is a fact worth reporting — so a

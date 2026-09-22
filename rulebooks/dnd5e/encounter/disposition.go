@@ -69,10 +69,10 @@ func knownStance(s Stance) bool {
 //
 // Validation order (first failure wins, R5): per faction — no id, the
 // reserved `party`, an id twice; per disposition — a faction that is not
-// there, a pair of one, a stance outside the closed set, an until on a
-// stance that is not hostile, a pair declared twice; then every until as a
-// predicate ([field.validatePredicate]); then a ring of untils waiting on
-// each other's stance.
+// there, a pair of one, a stance outside the closed set, an until on an
+// ALLIED stance, a pair declared twice; then every until as a predicate
+// ([field.validatePredicate]), refusing first one that waits on its own
+// pair's stance.
 func (f *field) compileFactions(factions []FactionInput, dispositions []DispositionInput) error {
 	f.factions = append([]FactionInput(nil), factions...)
 	f.factionIndex = make(map[FactionID]int, len(factions))
@@ -107,10 +107,8 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 			return fmt.Errorf("dispositions[%d] declares stance %q, which is not hostile, neutral or allied: %w",
 				i, d.Stance, ErrNoFaction)
 		}
-		if d.Until != nil && d.Stance != StanceHostile {
-			return fmt.Errorf(
-				"dispositions[%d] is %s and has an until, and only a hostile pair has something to stop doing: %w",
-				i, d.Stance, ErrNoFaction)
+		if d.Until != nil && d.Stance == StanceAllied {
+			return fmt.Errorf("dispositions[%d] is allied and has an until, and %s: %w", i, untilOnAllied, ErrNoFaction)
 		}
 		pair := pairOf(d.Between[0], d.Between[1])
 		if prev, dup := f.dispositionOf[pair]; dup {
@@ -121,19 +119,20 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 		f.dispositionOf[pair] = i
 	}
 
-	// The predicates. ONLY A FACT TURNS A PAIR IN THIS VERSION
-	// (rpg-project#375, R11): the graph settles a pair on a flag a journal
-	// fact raised, and rounds, falls and other pairs' stances are not
-	// journal facts yet. The file refuses the other three forms at the line
-	// (dungeonspec), and the run refuses them again here — a producer is
-	// never trusted — rather than carrying a hostility that never turns.
+	// The predicates. EVERY FORM TURNS A PAIR (rpg-project#493, R2): a fact
+	// on the pair's minds, and a round, a fall or another pair's stance on
+	// the world's truth. The "only a fact is built" refusal this loop used
+	// to open with (hold-out R11, `untilNotBuilt`) is gone: the use case
+	// arrived, and the three other forms are evaluated at the sites that
+	// already notice their events (flip.go).
 	for i, d := range dispositions {
 		if d.Until == nil {
 			continue
 		}
 		what := fmt.Sprintf("dispositions[%d]'s until", i)
-		if _, ok := d.Until.(TriggerFact); !ok {
-			return fmt.Errorf("%s: %s: %w", what, untilNotBuilt, ErrNoFaction)
+		if ts, ok := d.Until.(TriggerStance); ok &&
+			pairOf(ts.Between[0], ts.Between[1]) == pairOf(d.Between[0], d.Between[1]) {
+			return fmt.Errorf("%s: %s: %w", what, untilOnItself, ErrNoFaction)
 		}
 		if err := f.validatePredicate(what, d.Until, ErrNoFaction); err != nil {
 			return err
@@ -143,10 +142,32 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 	return nil
 }
 
-// untilNotBuilt is the one sentence a round, a fall or a stance on an until
-// gets, in the file and in the run alike (rpg-project#375, R11).
-const untilNotBuilt = "in this version a disposition turns only on a fact; " +
-	"`until` on a round, a fall, or another stance is not built yet"
+// untilOnAllied is the one sentence an `until` on an allied pair gets, in the
+// file and in the run alike (rpg-project#493, R1). Hostile and neutral are
+// the two a pair moves between; allied is a static, authorable stance with no
+// other side to move to.
+const untilOnAllied = "an allied pair has nothing to become"
+
+// untilOnItself is the one sentence a disposition waiting on its OWN stance
+// gets. It used to be caught by accident — the pair held the stance it waited
+// for from the start, which [field.validatePredicate] refuses as unfireable —
+// and a neutral pair waiting to become hostile now passes that check honestly
+// (R3 makes it reachable), so the rule is stated rather than inferred.
+const untilOnItself = "a disposition cannot wait on its own stance"
+
+// turnsTo is the stance a declared one moves to when its `until` holds
+// (rpg-project#493, R1): the OTHER of hostile and neutral. Allied never
+// turns and never has an until ([untilOnAllied]), so it answers itself.
+func turnsTo(declared Stance) Stance {
+	switch declared {
+	case StanceHostile:
+		return StanceNeutral
+	case StanceNeutral:
+		return StanceHostile
+	default:
+		return declared
+	}
+}
 
 // validateMemberFaction refuses a member naming a faction this field does
 // not have, and a member arriving under a faction's mind id into some other
@@ -217,12 +238,26 @@ func DefaultStance(a, b FactionID) Stance {
 }
 
 // stanceReachable reports whether a pair holds a stance from the start (now)
-// and whether it can ever hold it (ever): the declared stance, or neutral
-// once a hostile pair's until holds — the only change there is (R2).
+// and whether it can ever hold it (ever).
+//
+// THREE WAYS A PAIR MOVES, and they are the whole answer (rpg-project#493):
+// it is declared that way; its own `until` holds, which turns it to the other
+// of hostile and neutral ([turnsTo], R1); or it is NEUTRAL and somebody
+// attacks across it, which turns it hostile with nothing authored at all
+// (R3). The third is why `{ stance: { between: [a, b], is: hostile } }` over
+// a neutral pair is never refused as unreachable any more: every neutral pair
+// can come to blows.
 func (f *field) stanceReachable(pair factionPair, s Stance) (now, ever bool) {
 	declared, until := f.declaredStance(pair)
 	now = declared == s
-	ever = now || (declared == StanceHostile && until != nil && s == StanceNeutral)
+	switch {
+	case now:
+		ever = true
+	case until != nil && s == turnsTo(declared):
+		ever = true
+	case declared == StanceNeutral && s == StanceHostile:
+		ever = true
+	}
 	return now, ever
 }
 

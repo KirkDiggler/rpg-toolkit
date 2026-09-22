@@ -1,0 +1,81 @@
+# The truce, in v4 (rpg-project#493, "Dispositions turn both ways") — the
+# first authored dungeon whose factions start CIVIL and turn on the party.
+#
+# THE CLAIM THIS FILE MAKES is that an `until` runs the other way and takes
+# every predicate form. Both pairs below are NEUTRAL with an until, which the
+# build before this slice refused twice over: once for the stance ("only a
+# hostile pair has something to stop doing") and once for the form ("in this
+# version a disposition turns only on a fact"). Both refusals are gone, and
+# the compiled picture beside this file is what they were hiding.
+#
+# NEITHER FACTION HAS A MIND, AND NEITHER NEEDS ONE. The mind rule is about
+# KNOWLEDGE: a `{ fact }` until waits for the faction's mind to come to know
+# something, so a faction with nobody to know it can never turn. A scout
+# falling and a round starting are the world's own truth — they happen to
+# everybody at once, and no chief has to be told.
+#
+# WHAT IS NOT WRITTEN HERE is the third way either pair turns. Attack a
+# neutral faction and it is hostile from that moment, whatever this file
+# says; an author never writes that line and cannot turn it off.
+version: 4
+key: truce-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+factions:
+  - id: goblins
+    temper: { coward: 1, soldier: 1 }
+  - id: guards
+    temper: { soldier: 1 }
+
+dispositions:
+  # "The wolves are calm until you kill the alpha." Kill the scout and the
+  # whole camp is on you — not the one goblin who saw it, the camp.
+  - { between: [goblins, party], stance: neutral, until: { down: scout } }
+  # "The guards are civil until midnight." Nothing happens; the clock runs
+  # out. Round 3 is a FIGHT's round (design R9), so a party that never comes
+  # to blows with anyone walks past these two forever.
+  - { between: [guards, party], stance: neutral, until: { round: 3 } }
+
+room:
+  version: 3
+  id: room-1
+  name: The Truce
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Truce
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
+      {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
+      {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
+      {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
+      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsters:
+      # THE SCOUT IS THE PREDICATE, and it is an ordinary goblin otherwise:
+      # nothing on the placement says it is load-bearing. The disposition
+      # names it, and that is the whole of what makes this camp turnable.
+      - {id: scout, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -1}, faction: goblins}
+      - {id: goblin-2, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -2}, faction: goblins}
+      - {id: guard-1, ref: 'dnd5e:monsters:bandit', cell: {q: 0, r: 2}, faction: guards}
+      - {id: guard-2, ref: 'dnd5e:monsters:bandit', cell: {q: -1, r: 2}, faction: guards}
+    monsterBindings:
+      scout:
+        actions: ['dnd5e:weapons:scimitar']
+      guard-1:
+        actions: ['dnd5e:weapons:scimitar']
+        on:
+          time:
+            - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
+            - { when: { enemy: reach },            attack: enemy }
+            - { when: { enemy: seen },             toward: enemy }
+            - { when: { enemy: none },             hold: {} }
