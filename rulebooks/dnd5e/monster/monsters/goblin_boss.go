@@ -62,11 +62,12 @@ const secondScimitarSwing = "second attack of a multiattack"
 // declared ability the engine ignores reads exactly like one it honours.
 func NewGoblinBoss(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Goblin Boss",
-		Ref:  refs.Monsters.GoblinBoss(),
-		HP:   21, // 6d6
-		AC:   17, // Chain shirt + shield
+		ID:         id,
+		Name:       "Goblin Boss",
+		Ref:        refs.Monsters.GoblinBoss(),
+		HP:         21,  // 6d6
+		AC:         17,  // Chain shirt + shield
+		Experience: 200, // CR 1
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 10, // +0
 			abilities.DEX: 14, // +2

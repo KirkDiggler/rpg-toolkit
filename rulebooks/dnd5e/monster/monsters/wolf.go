@@ -16,11 +16,12 @@ import (
 // NewWolf creates a CR 1/4 wolf with bite (knockdown), Pack Tactics, and TargetLowestHP
 func NewWolf(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Wolf",
-		Ref:  refs.Monsters.Wolf(),
-		HP:   11, // 2d8+2
-		AC:   13, // Natural armor
+		ID:         id,
+		Name:       "Wolf",
+		Ref:        refs.Monsters.Wolf(),
+		HP:         11, // 2d8+2
+		AC:         13, // Natural armor
+		Experience: 50, // CR 1/4
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 12, // +1
 			abilities.DEX: 15, // +2

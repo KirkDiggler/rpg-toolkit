@@ -30,6 +30,11 @@ func NewSkeletonCaptain(id string) *monster.Monster {
 		Ref:  refs.Monsters.SkeletonCaptain(),
 		HP:   45, // 6d8+18
 		AC:   16, // Chain shirt + shield
+		// 450 is CR 2 off the 2014 table. There is no SRD skeleton captain to
+		// check this against — the block is authored here (see the doc above)
+		// — so its rating is this file's claim and 450 is what that claim is
+		// worth.
+		Experience: 450, // CR 2
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16, // +3
 			abilities.DEX: 14, // +2

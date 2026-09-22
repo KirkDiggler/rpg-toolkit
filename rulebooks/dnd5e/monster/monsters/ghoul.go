@@ -16,11 +16,12 @@ import (
 // and one with its claws, over bite and claw components.
 func NewGhoul(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Ghoul",
-		Ref:  refs.Monsters.Ghoul(),
-		HP:   22, // 5d8
-		AC:   12, // Natural armor
+		ID:         id,
+		Name:       "Ghoul",
+		Ref:        refs.Monsters.Ghoul(),
+		HP:         22,  // 5d8
+		AC:         12,  // Natural armor
+		Experience: 200, // CR 1
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 13, // +1
 			abilities.DEX: 15, // +2

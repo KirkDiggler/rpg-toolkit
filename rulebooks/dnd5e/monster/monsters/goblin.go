@@ -15,11 +15,12 @@ import (
 // scimitar and a shortbow.
 func NewGoblin(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Goblin",
-		Ref:  refs.Monsters.Goblin(),
-		HP:   7,
-		AC:   15,
+		ID:         id,
+		Name:       "Goblin",
+		Ref:        refs.Monsters.Goblin(),
+		HP:         7,
+		AC:         15,
+		Experience: 50, // CR 1/4
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 8,
 			abilities.DEX: 14,

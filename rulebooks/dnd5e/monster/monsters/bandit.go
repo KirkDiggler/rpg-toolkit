@@ -16,11 +16,12 @@ import (
 // crossbow — the SRD bandit, blade first
 func NewBanditMelee(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Bandit",
-		Ref:  refs.Monsters.Bandit(),
-		HP:   11, // 2d8+2
-		AC:   12, // Leather armor
+		ID:         id,
+		Name:       "Bandit",
+		Ref:        refs.Monsters.Bandit(),
+		HP:         11, // 2d8+2
+		AC:         12, // Leather armor
+		Experience: 25, // CR 1/8
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 11, // +0
 			abilities.DEX: 12, // +1
@@ -46,11 +47,12 @@ func NewBanditMelee(id string) *monster.Monster {
 // NewBanditRanged creates a CR 1/8 bandit carrying a light crossbow alone
 func NewBanditRanged(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Bandit",
-		Ref:  refs.Monsters.BanditArcher(),
-		HP:   11, // 2d8+2
-		AC:   12, // Leather armor
+		ID:         id,
+		Name:       "Bandit",
+		Ref:        refs.Monsters.BanditArcher(),
+		HP:         11, // 2d8+2
+		AC:         12, // Leather armor
+		Experience: 25, // CR 1/8
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 11, // +0
 			abilities.DEX: 12, // +1

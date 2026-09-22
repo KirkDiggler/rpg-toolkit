@@ -16,11 +16,12 @@ import (
 // NewZombie creates a CR 1/4 zombie with slam attack, immunity to poison, and Undead Fortitude
 func NewZombie(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Zombie",
-		Ref:  refs.Monsters.Zombie(),
-		HP:   22, // 3d8+9
-		AC:   8,  // No armor
+		ID:         id,
+		Name:       "Zombie",
+		Ref:        refs.Monsters.Zombie(),
+		HP:         22, // 3d8+9
+		AC:         8,  // No armor
+		Experience: 50, // CR 1/4
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 13, // +1
 			abilities.DEX: 6,  // -2

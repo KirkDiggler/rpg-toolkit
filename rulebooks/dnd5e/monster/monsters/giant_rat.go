@@ -15,11 +15,12 @@ import (
 // NewGiantRat creates a CR 1/8 giant rat with bite attack and Pack Tactics
 func NewGiantRat(id string) *monster.Monster {
 	m := monster.New(monster.Config{
-		ID:   id,
-		Name: "Giant Rat",
-		Ref:  refs.Monsters.GiantRat(),
-		HP:   7,  // 2d6
-		AC:   12, // Natural armor
+		ID:         id,
+		Name:       "Giant Rat",
+		Ref:        refs.Monsters.GiantRat(),
+		HP:         7,  // 2d6
+		AC:         12, // Natural armor
+		Experience: 25, // CR 1/8
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 7,  // -2
 			abilities.DEX: 15, // +2
