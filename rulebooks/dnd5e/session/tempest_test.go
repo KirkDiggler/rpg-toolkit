@@ -44,7 +44,12 @@ func (s *CastSuite) TestFogCloudPublicCastPersistsWithoutDamageOrDice() {
 	s.Require().Len(areas, 1)
 	s.Equal(20, areas[0].RadiusFeet)
 	s.NotContains(areas[0].ID, "cleric")
-	s.Empty(s.beats(session.EventActivationResult))
+	results := s.beats(session.EventActivationResult)
+	s.Require().NotEmpty(results)
+	result := results[0].Body.(session.ActivationResultBody)
+	s.Require().NotNil(result.ConditionApplied)
+	s.Equal(refs.Conditions.InFog().String(), result.ConditionApplied.Ref)
+	s.Less(s.beats(session.EventCast)[0].Seq, results[0].Seq, "cast precedes membership narration")
 	s.reloadHealingScene()
 	again, err := s.mgr.Areas(context.Background(), &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
@@ -225,6 +230,26 @@ func (s *CastSuite) TestFogCloudExpiresAndRestoresSightAfterReload() {
 	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Empty(areas)
+	results := s.beats(session.EventActivationResult)
+	var ended []session.Event
+	for _, event := range results {
+		removed := event.Body.(session.ActivationResultBody).ConditionRemoved
+		if removed != nil && removed.Ref == refs.Conditions.InFog().String() {
+			s.Equal("area ended", removed.Reason)
+			ended = append(ended, event)
+		}
+	}
+	s.Require().NotEmpty(ended, "expiry narrates membership removal")
+	s.reloadHealingScene()
+	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	var replay []session.Event
+	for _, event := range story {
+		if event.Kind == session.EventActivationResult {
+			replay = append(replay, event)
+		}
+	}
+	s.Equal(results, replay, "expiration narration survives reload")
 	for _, raw := range s.characters.byID["cleric"].Conditions {
 		s.NotContains(string(raw), refs.Conditions.Concentrating().String())
 		s.NotContains(string(raw), refs.Conditions.InFog().String(), "expiry removes membership")
@@ -254,6 +279,25 @@ func (s *CastSuite) TestFogMembershipFollowsPublicMovement() {
 	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 3, Y: 1}, {X: 2, Y: 1}, {X: 1, Y: 1}}})
 	s.Require().NoError(err)
 	assertFog(false)
+	results := s.beats(session.EventActivationResult)
+	s.Require().Len(results, 2, "one entry and one exit, without duplicate reload narration")
+	entered := results[0].Body.(session.ActivationResultBody).ConditionApplied
+	left := results[1].Body.(session.ActivationResultBody).ConditionRemoved
+	s.Require().NotNil(entered)
+	s.Require().NotNil(left)
+	s.Equal("cleric", entered.Target)
+	s.Equal(entered.SourceID, left.SourceID)
+	s.Equal("left area", left.Reason)
+	s.reloadHealingScene()
+	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	var replay []session.Event
+	for _, event := range story {
+		if event.Kind == session.EventActivationResult {
+			replay = append(replay, event)
+		}
+	}
+	s.Equal(results, replay)
 }
 
 // A concentration-ending hit must be recorded before refreshed perception can

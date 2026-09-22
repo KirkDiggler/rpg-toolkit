@@ -1129,6 +1129,10 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		if err := scope.enc.ReplaceSightAreas(out.World.SightAreas); err != nil {
 			return translate(err)
 		}
+		if err := scope.enc.QueueSightAreaTransitions(scope.areaStoryBefore); err != nil {
+			return translate(err)
+		}
+		scope.areaStoryBefore = scope.enc.WorldView().SightAreas
 		if err := scope.enc.RefreshPerception(); err != nil {
 			return translate(err)
 		}

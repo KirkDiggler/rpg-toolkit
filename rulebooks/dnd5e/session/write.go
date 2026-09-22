@@ -1153,6 +1153,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		return nil, err
 	}
 	scope.enc = enc
+	scope.areaStoryBefore = enc.WorldView().SightAreas
 	scope.baseline = baseline
 	scope.standing = standing
 	return scope, nil
@@ -1214,6 +1215,9 @@ func (s *writeScope) frozen() error {
 // and the sequence boundary separating what was already recorded from what this
 // verb records.
 type writeScope struct {
+	// Snapshot of areas whose membership transitions have already been queued.
+	areaStoryBefore []encounter.SightAreaData
+
 	session   string
 	encounter string
 	data      *SessionData
@@ -1519,6 +1523,10 @@ func (m *Manager) persist(
 // land in the SAME persist this verb already makes, never a second write
 // cycle a failure between the two could leave half-done.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
+	if err := scope.enc.FlushSightAreaTransitions(); err != nil {
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
+	}
 	// Reconcile after all movement (including monster and forced movement),
 	// while the verb still owns the write lock and before delivery.
 	if len(scope.enc.WorldView().SightAreas) > 0 {
