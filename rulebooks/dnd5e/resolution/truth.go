@@ -90,7 +90,9 @@ func installTruth(ctx context.Context, room spatial.Room, cast *Participants, ru
 	// design §4). The run is nil on the entries that have no world — the same
 	// entries that install no room — and there a side question is unknown,
 	// the absent value that says what the author meant.
-	ctx = gamectx.WithCast(ctx, &castView{cast: cast, run: run})
+	view := &castView{cast: cast, run: run}
+	ctx = gamectx.WithCast(ctx, view)
+	ctx = gamectx.WithVisibility(ctx, view)
 
 	// The SIXTH registry in the family rpg-toolkit#1251 was about, installed
 	// zero times until it was wired here.

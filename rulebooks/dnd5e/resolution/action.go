@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -25,6 +26,9 @@ import (
 // change across every call site and it should ride a third profile arm rather
 // than this one.
 type ActionInput struct {
+	// AreaCenter is the encounter-validated selected point of a persistent area.
+	AreaCenter *spatial.Position
+
 	Definition combatActions.Definition
 	AttackerID string
 
@@ -212,6 +216,12 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	derived := profile.Target == combatActions.CastTargetArea
 	if derived {
 		targetIDs = append([]string(nil), in.AreaMembers...)
+		if profile.Area.ObscuresSight {
+			if in.AreaCenter == nil {
+				return nil, fmt.Errorf("%w: persistent area requires its selected centre", ErrBadAction)
+			}
+			targetIDs = nil
+		}
 	}
 
 	entries := make([]castTargetMachine, 0, len(targetIDs))
@@ -237,6 +247,7 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	return &castMachine{
 		spell: definition.Ref, spellName: definition.Name, casterID: casterID, option: in.Option,
 		profile: profile.Clone(), concentration: profile.Concentration, targets: entries,
+		areaCenter:     in.AreaCenter,
 		derivedTargets: derived, staleTargetPolicy: in.StaleTargetPolicy, roller: in.Roller,
 	}, nil
 }
@@ -277,6 +288,9 @@ type CastTargetOutcome struct {
 
 // CastOutcome is one paid cast with every target outcome in caller order.
 type CastOutcome struct {
+	// SightArea is the persistent volume authored by this cast, absent otherwise.
+	SightArea *encounter.SightAreaInput
+
 	// AttackDamageType is the authored primary attack damage type, including on a miss.
 	AttackDamageType damage.Type
 	Spell            core.Ref
@@ -314,6 +328,8 @@ type castTargetMachine struct {
 }
 
 type castMachine struct {
+	areaCenter *spatial.Position
+
 	spell         core.Ref
 	spellName     string
 	casterID      string
@@ -340,6 +356,18 @@ type castMachine struct {
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	m.cast = cast
 	m.outcome = CastOutcome{Spell: m.spell, CasterID: m.casterID}
+	if m.profile.Area != nil && m.profile.Area.ObscuresSight {
+		m.outcome.SightArea = &encounter.SightAreaInput{
+			ID: m.casterID + "/concentration", SourceID: m.casterID,
+			Ref: m.spell.String(), Name: m.spellName, Center: *m.areaCenter,
+			RadiusFeet:     m.profile.Area.Footprint.SizeFeet,
+			MembershipRef:  m.profile.Area.MembershipRef,
+			MembershipName: m.profile.Area.MembershipName,
+		}
+		if m.profile.Area.MembershipRef != "" {
+			m.outcome.SightArea.MembershipSourceID = opaqueFogSourceID(m.outcome.SightArea.ID)
+		}
+	}
 	if m.profile.Attack != nil && len(m.profile.Attack.Damage) > 0 {
 		m.outcome.AttackDamageType = m.profile.Attack.Damage[0].Type
 	}
@@ -424,6 +452,9 @@ func (m *castMachine) castRequest(target castTargetMachine, index int) Step {
 			m.outcome.Targets = append(m.outcome.Targets, shaped)
 			if shaped.Attack != nil {
 				m.outcome.FollowUps = append(m.outcome.FollowUps, shaped.Attack.FollowUps...)
+				if shaped.Attack.Retaliation != nil {
+					m.outcome.FollowUps = append(m.outcome.FollowUps, shaped.Attack.Retaliation.Result.FollowUps...)
+				}
 			}
 			if shaped.Save != nil {
 				m.outcome.FollowUps = append(m.outcome.FollowUps, shaped.Save.FollowUps...)

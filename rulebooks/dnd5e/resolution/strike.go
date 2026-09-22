@@ -60,6 +60,9 @@ type StrikeInput struct {
 // it succeeded. All of that is here, and the miss case carries the same
 // breakdown rather than an empty struct.
 type StrikeOutcome struct {
+	// Retaliation is the optional save and damage produced after this strike.
+	Retaliation *RetaliationOutcome
+
 	// AttackerID and TargetID name the two sides.
 	AttackerID string
 	TargetID   string
@@ -196,6 +199,12 @@ type strikeMachine struct {
 // records an attempt would record two — and re-rolling would throw away the
 // number the player was asked about.
 func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
+	if m.resume != nil && m.resume.frozen.PostHitPhase {
+		m.cast = cast
+		m.outcome = *m.resume.frozen.Outcome
+		m.outcome.FollowUps = nil
+		return m.resumePostHit(ctx)
+	}
 	if err := m.preflight(ctx, cast); err != nil {
 		return nil, err
 	}
@@ -425,6 +434,7 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 				})
 			}
 
+			applySightAttackModifiers(ctx, &event, m.in.AttackerID, m.in.TargetID, 1000000, m.sourceRef)
 			return gatherAttack(event, m.afterAttackChain), nil
 		},
 	}
@@ -938,7 +948,15 @@ func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
 
 func (m *strikeMachine) nextCondition(index int) (Step, error) {
 	if index >= len(m.prepared) {
-		return Done{Outcome: m.outcome}, nil
+		if !m.outcome.Hit {
+			return Done{Outcome: m.outcome}, nil
+		}
+		return collectPostHitOffers(m.outcome.AttackerID, m.outcome.TargetID, func(_ context.Context, offers []dnd5eEvents.PostHitOffer) (Step, error) {
+			if len(offers) == 0 {
+				return Done{Outcome: m.outcome}, nil
+			}
+			return m.posePostHit(offers[0])
+		}), nil
 	}
 	prepared := m.prepared[index]
 	application := prepared.declaration
@@ -1190,4 +1208,19 @@ func requestContest(in *ContestInput, next func(context.Context, ContestOutcome)
 			return next(ctx, contest)
 		},
 	}
+}
+
+func collectPostHitOffers(attackerID, targetID string, next func(context.Context, []dnd5eEvents.PostHitOffer) (Step, error)) Gather {
+	return Gather{name: "post hit reactions", run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+		event := &dnd5eEvents.PostHitEvent{AttackerID: attackerID, TargetID: targetID}
+		chain := events.NewStagedChain[*dnd5eEvents.PostHitEvent](combat.ModifierStages)
+		modified, err := dnd5eEvents.PostHitChain.On(bus).PublishWithChain(ctx, event, chain)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := modified.Execute(ctx, event); err != nil {
+			return nil, err
+		}
+		return next(ctx, event.Offers)
+	}}
 }

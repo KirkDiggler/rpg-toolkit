@@ -81,12 +81,22 @@ type frozenStrike struct {
 
 	// Offer is what was put on the table.
 	Offer dnd5eEvents.Offer `json:"offer"`
+
+	// PostHitPhase preserves the authoritative strike outcome when a host
+	// pauses after damage for a defender reaction. The continuation is
+	// intentionally opaque to the strike roll path; the host answers with
+	// Option and the strike is never rerolled.
+	Retaliation  json.RawMessage           `json:"retaliation,omitempty"`
+	PostHitPhase bool                      `json:"post_hit_phase,omitempty"`
+	Outcome      *StrikeOutcome            `json:"outcome,omitempty"`
+	PostHit      *dnd5eEvents.PostHitOffer `json:"post_hit,omitempty"`
 }
 
 // strikeResume is a frozen strike plus the answer it came back with.
 type strikeResume struct {
 	frozen frozenStrike
 	answer OfferAnswer
+	option string
 }
 
 // StrikeResumeInput continues a strike that posed.
@@ -97,6 +107,10 @@ type StrikeResumeInput struct {
 	// Answer is [OfferSpend] or [OfferKeep]. REQUIRED — an empty answer is a
 	// caller that has not asked anybody yet.
 	Answer OfferAnswer
+
+	// Option is the provider-authored post-hit reaction option when the frozen
+	// strike is in its post-hit phase. It is empty for ordinary roll offers.
+	Option string
 
 	// Roller rolls the offered die. REQUIRED whichever the answer is: the
 	// machine that rolls carries its own roller, and refusing a nil one at the
@@ -137,6 +151,21 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 	if err := json.Unmarshal(in.Frozen, &frozen); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
 	}
+	if frozen.PostHitPhase {
+		if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion || frozen.AttackerID == "" || frozen.TargetID == "" {
+			return nil, fmt.Errorf("%w: invalid post-hit identity", ErrBadFrozen)
+		}
+		if frozen.Outcome == nil || frozen.PostHit == nil || frozen.PostHit.ReactorID != frozen.TargetID || !frozen.Outcome.Hit {
+			return nil, fmt.Errorf("%w: incomplete post-hit phase", ErrBadFrozen)
+		}
+		if len(frozen.Retaliation) == 0 && in.Answer != OfferKeep && in.Option == "" {
+			return nil, fmt.Errorf("%w: post-hit spend requires an option", ErrNotOffered)
+		}
+		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Roller: in.Roller})
+		machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
+		return machine, nil
+	}
+
 	if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion {
 		return nil, fmt.Errorf("%w: kind %q version %d is not one this build froze",
 			ErrBadFrozen, frozen.Kind, frozen.Version)
@@ -175,7 +204,7 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 		Definition: frozen.Definition,
 		Roller:     in.Roller,
 	})
-	machine.resume = &strikeResume{frozen: frozen, answer: in.Answer}
+	machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
 	return machine, nil
 }
 
@@ -340,4 +369,19 @@ func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) err
 		return fmt.Errorf("publish offer taken: %w", err)
 	}
 	return nil
+}
+
+func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error) {
+	options := make([]string, 0, len(offer.Options)+1)
+	choices := make([]Choice, 0, len(offer.Options))
+	for _, option := range offer.Options {
+		options = append(options, option.ID)
+		choices = append(choices, Choice{ID: option.ID, Label: option.Label})
+	}
+	options = append(options, string(ReactionDecline))
+	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, PostHitPhase: true, Outcome: &m.outcome, PostHit: &offer})
+	if err != nil {
+		return nil, fmt.Errorf("%w: freeze post-hit reaction: %v", ErrBadFrozen, err)
+	}
+	return Pose{SettledStrike: &m.outcome, Ask: Ask{Audience: offer.ReactorID, Choices: choices, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Options: options}, Frozen: frozen}, nil
 }

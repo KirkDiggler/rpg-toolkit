@@ -100,6 +100,9 @@ type CastResumeInput struct {
 	// Answer is [OfferSpend] or [OfferKeep]. REQUIRED.
 	Answer OfferAnswer
 
+	// Option forwards a provider-authored post-hit choice.
+	Option string
+
 	// Roller rolls the offered die, and rolls for every target beyond the
 	// one that posed that has not yet made its own save. REQUIRED: the same
 	// interaction, the same roller, whether or not any one target suspended
@@ -149,7 +152,7 @@ func NewCastResumed(in *CastResumeInput) (Machine, error) {
 	var resumedInner Machine
 	var err error
 	if frozen.Definition.Cast.Attack != nil {
-		resumedInner, err = NewStrikeResumed(&StrikeResumeInput{Frozen: frozen.Contest, Answer: in.Answer, Roller: in.Roller})
+		resumedInner, err = NewStrikeResumed(&StrikeResumeInput{Frozen: frozen.Contest, Answer: in.Answer, Option: in.Option, Roller: in.Roller})
 	} else {
 		resumedInner, err = newContestResumed(frozen.Contest, in.Answer, in.Roller)
 	}

@@ -4,6 +4,8 @@
 package resolution
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
@@ -135,4 +137,33 @@ func (v *castView) IsAllied(a, b string) (allied, known bool) {
 	}
 
 	return v.run.IsAllied(encounter.MemberID(a), encounter.MemberID(b))
+}
+
+// SeesWithin carries the encounter's live visibility/reach answer to effects.
+func (v *castView) SeesWithin(observer, subject string, rangeFeet int) (bool, bool) {
+	if v.run == nil {
+		return false, false
+	}
+	return v.run.SeesWithin(encounter.MemberID(observer), encounter.MemberID(subject), rangeFeet)
+}
+
+// ResourceStatus exposes a resource read without widening the member surface.
+func (v *castView) ResourceStatus(id string, key coreResources.ResourceKey) (int, int, bool) {
+	if ch, ok := v.cast.Character(id); ok {
+		return ch.ResourceStatus(key)
+	}
+	return 0, 0, false
+}
+
+// HasCondition answers a condition predicate without exposing the live keeper.
+func (v *castView) HasCondition(id string, ref *core.Ref) (bool, bool) {
+	if ch, ok := v.cast.Character(id); ok {
+		for _, condition := range ch.GetConditions() {
+			if current := condition.Ref(); current != nil && ref != nil && *current == *ref {
+				return true, true
+			}
+		}
+		return false, true
+	}
+	return false, false
 }
