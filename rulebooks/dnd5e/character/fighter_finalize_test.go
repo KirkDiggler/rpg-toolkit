@@ -306,7 +306,7 @@ func (s *FighterFinalizeSuite) TestFighterWithInvalidStyleFails() {
 	err = draft.SetRace(&SetRaceInput{
 		RaceID: races.Human,
 		Choices: RaceChoices{
-			Languages: []languages.Language{languages.Common},
+			Languages: []languages.Language{languages.Dwarvish},
 		},
 	})
 	s.Require().NoError(err)

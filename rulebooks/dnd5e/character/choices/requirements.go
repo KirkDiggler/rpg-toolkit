@@ -53,10 +53,12 @@ type Requirements struct {
 
 // SkillRequirement defines skill choice requirements
 type SkillRequirement struct {
-	ID      ChoiceID       `json:"id"` // Unique identifier
-	Count   int            `json:"count"`
-	Options []skills.Skill `json:"options,omitempty"` // nil means any skill
-	Label   string         `json:"label"`             // e.g., "Choose 2 skills"
+	// Proficiency is the granted rank; zero retains ordinary proficiency.
+	Proficiency shared.ProficiencyLevel `json:"proficiency,omitempty"`
+	ID          ChoiceID                `json:"id"` // Unique identifier
+	Count       int                     `json:"count"`
+	Options     []skills.Skill          `json:"options,omitempty"` // nil means any skill
+	Label       string                  `json:"label"`             // e.g., "Choose 2 skills"
 }
 
 // EquipmentRequirement defines equipment choice requirements

@@ -127,10 +127,9 @@ func (s *KnownSpellsSuite) TestTheBardChoosesFourSupportedLevelledSpells() {
 	s.Require().NotNil(requirements.Cantrips, "the cast door asks for them")
 	s.Equal(choices.BardCantrips1, requirements.Cantrips.ID)
 	s.Equal(2, requirements.Cantrips.Count)
-	s.Equal([]spells.Spell{spells.BladeWard, spells.TrueStrike, spells.ViciousMockery, spells.Thunderclap},
+	s.Equal([]spells.Spell{spells.BladeWard, spells.Light, spells.TrueStrike, spells.ViciousMockery, spells.Thunderclap},
 		requirements.Cantrips.Options,
-		"gated to the cantrips this build can actually cast, in list order — the 2014 book "+
-			"list first, then what this build has added")
+		"shared selectable spells include catalog-only Light without changing the pick count")
 	s.Greater(len(requirements.Cantrips.Options), requirements.Cantrips.Count,
 		"and with Blade Ward there are more options than picks, so the choice is a real one")
 	s.Require().NotNil(requirements.Spellbook)

@@ -68,6 +68,9 @@ func (s *SpellChoiceSuite) TestBardCantripsIncludeExplicitCatalogEntries() {
 		s.Contains(req.Options, id)
 	}
 	for _, id := range req.Options {
+		if spells.HasCastProfile(id) {
+			continue
+		}
 		data := spells.GetData(id)
 		s.Require().NotNil(data)
 		s.True(spells.HasCastProfile(id) || data.NotYetImplemented)

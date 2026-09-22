@@ -513,7 +513,7 @@ func newFighterDraft(t *testing.T) *Draft {
 	require.NoError(t, draft.SetName(&SetNameInput{Name: "Arthur"}))
 	require.NoError(t, draft.SetRace(&SetRaceInput{
 		RaceID:  races.Human,
-		Choices: RaceChoices{Languages: []languages.Language{languages.Common}},
+		Choices: RaceChoices{Languages: []languages.Language{languages.Dwarvish}},
 	}))
 	require.NoError(t, draft.SetClass(&SetClassInput{
 		ClassID: classes.Fighter,
@@ -585,7 +585,7 @@ func newMonkDraft(t *testing.T) *Draft {
 	require.NoError(t, draft.SetName(&SetNameInput{Name: "Li"}))
 	require.NoError(t, draft.SetRace(&SetRaceInput{
 		RaceID:  races.Human,
-		Choices: RaceChoices{Languages: []languages.Language{languages.Common}},
+		Choices: RaceChoices{Languages: []languages.Language{languages.Dwarvish}},
 	}))
 	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	require.NoError(t, draft.SetClass(&SetClassInput{
@@ -618,7 +618,7 @@ func newRogueDraft(t *testing.T) *Draft {
 	require.NoError(t, draft.SetName(&SetNameInput{Name: "Vex"}))
 	require.NoError(t, draft.SetRace(&SetRaceInput{
 		RaceID:  races.Human,
-		Choices: RaceChoices{Languages: []languages.Language{languages.Common}},
+		Choices: RaceChoices{Languages: []languages.Language{languages.Dwarvish}},
 	}))
 	require.NoError(t, draft.SetBackground(&SetBackgroundInput{BackgroundID: backgrounds.Hermit}))
 	require.NoError(t, draft.SetClass(&SetClassInput{

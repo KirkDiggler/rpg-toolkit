@@ -7,6 +7,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -237,8 +238,9 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 
 	classes.KnowledgeDomain: {
 		AdditionalSkills: &SkillRequirement{
-			ID:    ChoiceID("cleric-knowledge-skills"),
-			Count: 2,
+			ID:          ChoiceID("cleric-knowledge-skills"),
+			Proficiency: shared.Expert,
+			Count:       2,
 			Options: []skills.Skill{
 				skills.Arcana,
 				skills.History,
@@ -251,7 +253,7 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 			{
 				ID:      ChoiceID("cleric-knowledge-languages"),
 				Count:   2,
-				Options: nil, // nil means any language
+				Options: append(languages.StandardLanguages(), languages.ExoticLanguages()...),
 				Label:   "Choose 2 languages (Knowledge Domain)",
 			},
 		},
