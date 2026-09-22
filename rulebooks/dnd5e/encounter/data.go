@@ -54,7 +54,8 @@ type EncounterData struct {
 	// from before doors existed, which load as a field with none — an
 	// ordinary field where every opening is a gap nobody can shut, which is
 	// exactly what those encounters meant.
-	Doors []DoorData `json:"doors,omitempty"`
+	Doors      []DoorData      `json:"doors,omitempty"`
+	SightAreas []SightAreaData `json:"sight_areas,omitempty"`
 	// World is the run's KNOWLEDGE: the journal facts recording who has
 	// found which concealment (rpg-toolkit#1371, rpg-project#490), and come
 	// to know which fact (rpg-project#375).
@@ -1823,6 +1824,7 @@ func (e *Encounter) snapshot() EncounterData {
 
 	// Deep-copy field from the compiled field's authored inputs
 	fieldData := fieldDataFrom(e.field)
+	sightAreasData := sightAreasDataFrom(e.sightAreas)
 
 	// Doors, in the records' own stable ID order (C8) — the state each is in
 	// right now, not the one it was authored in.
@@ -1906,6 +1908,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Field:       fieldData,
 		Members:     membersData,
 		Doors:       doorData,
+		SightAreas:  sightAreasData,
 		World:       worldData,
 		Holdings:    holdingsData,
 		Reserve:     reserveData,
@@ -2304,6 +2307,9 @@ func (in *LoadEncounterInput) Validate() error {
 func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
+	}
+	if err := validateSightAreasData(input.Data.SightAreas); err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
 	}
 	standingWithParticipation, ok := input.Standing.(StandingWithParticipation)
 	if !ok {
@@ -2792,6 +2798,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
+		sightAreas:    sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
 		initiative:    input.Initiative,

@@ -140,7 +140,9 @@ type Encounter struct {
 	// IT CANNOT BE PER VERB. The round site raises the world clock from inside
 	// EndTurn, which takes no die, and a creature's `time` pick happens there
 	// — so the die has to be the composition's, not the caller's.
-	roller dice.Roller
+	roller                      dice.Roller
+	sightAreas                  map[string]SightArea
+	pendingSightAreaTransitions []sightAreaTransition
 
 	// worldThinking guards [Encounter.worldThinks] against re-entry: the
 	// outer pass owns the world's round, and a nested one would consult the
@@ -1450,6 +1452,9 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	if err != nil {
 		return 0, err
 	}
+	if err := e.appendSightAreaMovementTransitions(action.member.ID, action.from, action.to); err != nil {
+		return 0, err
+	}
 	return appendOut.Seq, nil
 }
 
@@ -1513,6 +1518,9 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 //
 // Returns a DEEP COPY (mutation-proof), like every projection.
 func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Outcome, error) {
+	if err := e.FlushSightAreaTransitions(); err != nil {
+		return nil, err
+	}
 	e.outcome = &Outcome{
 		Ending:  key,
 		At:      at,
@@ -1810,6 +1818,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			positions: positions,
 			cells:     reach,
 			canvas:    e.canvas,
+			areas:     e.sightAreas,
 		},
 	})
 	if err != nil {
