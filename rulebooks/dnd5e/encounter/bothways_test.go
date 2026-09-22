@@ -165,6 +165,34 @@ func (s *BothWaysSuite) turnedTo(
 	return found
 }
 
+// formed is the one bubble-formed beat a scene produced, and nil when none
+// was: which members entered initiative, and which of them entered unaware.
+func (s *BothWaysSuite) formed(enc *encounter.Encounter, member core.EntityID) map[string]any {
+	story, err := enc.Story(&encounter.StoryInput{Audience: member})
+	s.Require().NoError(err)
+	var found map[string]any
+	for _, beat := range story {
+		var body map[string]any
+		s.Require().NoError(json.Unmarshal(beat.Payload, &body))
+		if body["beat"] != "bubble-formed" {
+			continue
+		}
+		s.Require().Nil(found, "two fights formed where the scene expects one")
+		found = body
+	}
+	return found
+}
+
+// engaged is who the bubble-formed beat put in initiative, as plain strings.
+func engaged(beat map[string]any) []string {
+	order, _ := beat["order"].([]any)
+	out := make([]string, 0, len(order))
+	for _, id := range order {
+		out = append(out, id.(string))
+	}
+	return out
+}
+
 func (s *BothWaysSuite) clockOf(enc *encounter.Encounter, member core.EntityID) encounter.ClockKind {
 	out, err := enc.ClockOf(&encounter.ClockOfInput{Member: member})
 	s.Require().NoError(err)
@@ -248,6 +276,17 @@ func (s *BothWaysSuite) TestANeutralPairTurnsHostileOnAFall() {
 	beat := s.turnedTo(enc, alice, bwGoblins, encounter.FactionParty)
 	s.Equal(string(encounter.StanceHostile), beat["stance"])
 	s.Equal("the fall of scout", beat["cause"], "the streamer is told why the camp turned")
+
+	// AND THE FIGHT FORMS IN THAT SAME SETTLE. Alice and the chief have been
+	// looking at each other since first light, so no later sight refresh will
+	// ever report a first contact between them; the turn is the transition,
+	// and without this the camp turns hostile and stands there.
+	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice))
+	s.Equal(encounter.ClockTurn, s.clockOf(enc, bwChief))
+	form := s.formed(enc, alice)
+	s.Require().NotNil(form, "a camp that turns with the party in view goes to initiative")
+	s.ElementsMatch([]string{string(alice), string(bwChief)}, engaged(form),
+		"the fallen scout is in no fight; everyone else who could see is")
 }
 
 // TestTheGuardsTurnAtMidnightAndTheirDogsWithThem is R2's `{ round }` and
@@ -309,9 +348,16 @@ func (s *BothWaysSuite) TestTheGuardsTurnAtMidnightAndTheirDogsWithThem() {
 			"the dogs turned because the goblins did, and the beat says so")
 	})
 
-	s.Run("and the newcomers are in the fight", func() {
+	s.Run("and the newcomers went to initiative without anyone stepping", func() {
 		s.Equal(encounter.ClockTurn, s.clockOf(enc, bwChief))
 		s.Equal(encounter.ClockTurn, s.clockOf(enc, bwDog))
+		// JOINED, NOT FORMED. The kobold's fight was already running, so a
+		// pair turning inside one is the straggler rule — the same arm a wolf
+		// rounding the corner takes — rather than a second bubble.
+		form := s.formed(enc, alice)
+		s.Require().NotNil(form)
+		s.ElementsMatch([]string{string(alice), string(bwKobold)}, engaged(form),
+			"the only bubble that ever formed is the one the kobold started")
 	})
 }
 
@@ -355,10 +401,20 @@ func (s *BothWaysSuite) TestAttackingANeutralCampTurnsItAndFormsTheFight() {
 		s.Equal(string(encounter.StanceHostile), beat["stance"])
 		s.Equal("attacked by alice", beat["cause"])
 	})
-	s.Run("and everyone who could see it is in the fight", func() {
+	s.Run("and everyone who could see it is in the fight, nobody surprised", func() {
 		s.Equal(encounter.ClockTurn, s.clockOf(enc, alice))
 		s.Equal(encounter.ClockTurn, s.clockOf(enc, bwScout))
 		s.Equal(encounter.ClockTurn, s.clockOf(enc, bwChief))
+
+		form := s.formed(enc, alice)
+		s.Require().NotNil(form)
+		s.ElementsMatch([]string{string(alice), string(bwScout), string(bwChief)}, engaged(form),
+			"the attacker and every member of the camp that could see it")
+		// SURPRISE IS READ FROM THE CURRENT VIEW, not from the synthesized
+		// contact (trigger.go). Everyone in this yard has been watching
+		// everyone since first light, so nobody enters unaware — which is the
+		// right answer and is NOT what a first contact would imply on its own.
+		s.NotContains(form, "surprised")
 	})
 }
 
@@ -399,17 +455,20 @@ func (s *BothWaysSuite) TestAWorldNPCIsNotATarget() {
 		},
 	)
 
+	before, err := enc.NextStorySeq()
+	s.Require().NoError(err)
+
 	s.Run("a swing at one is refused by name", func() {
-		_, err := enc.Record(&encounter.RecordInput{
+		_, rerr := enc.Record(&encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwVendor},
 			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 		})
-		s.Require().ErrorIs(err, encounter.ErrNotATarget)
-		s.Contains(err.Error(), "is an npc and cannot be attacked; author it as a monster to make it a target")
+		s.Require().ErrorIs(rerr, encounter.ErrNotATarget)
+		s.Contains(rerr.Error(), "is an npc and cannot be attacked; author it as a monster to make it a target")
 	})
 
 	s.Run("a spell attack at one is refused the same way", func() {
-		_, err := enc.RecordCast(&encounter.RecordCastInput{
+		_, cerr := enc.RecordCast(&encounter.RecordCastInput{
 			Actor: alice, Spell: encounter.SpellIdentity{Ref: "dnd5e:spells:fire-bolt", Name: "Fire Bolt"},
 			Targets: []encounter.CastTargetResult{{
 				Target: bwVendor,
@@ -419,11 +478,15 @@ func (s *BothWaysSuite) TestAWorldNPCIsNotATarget() {
 				},
 			}},
 		})
-		s.Require().ErrorIs(err, encounter.ErrNotATarget)
+		s.Require().ErrorIs(cerr, encounter.ErrNotATarget)
 	})
 
-	s.Run("and the refusal turned nothing and told nobody", func() {
+	s.Run("and both refusals happened BEFORE any append", func() {
+		after, serr := enc.NextStorySeq()
+		s.Require().NoError(serr)
+		s.Equal(before, after, "two refused attacks left no beat behind them")
 		s.Empty(s.stanceBeats(enc, alice))
+		s.Nil(s.formed(enc, alice))
 		s.Equal(encounter.ClockWorld, s.clockOf(enc, alice))
 		allied, known := enc.IsAllied(alice, bwVendor)
 		s.False(allied)
