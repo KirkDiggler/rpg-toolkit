@@ -70,6 +70,11 @@ var (
 
 	// ErrClosed is returned when a mutating verb (action, event, exit, etc.)
 	// is called on a closed encounter. A closed encounter has an Outcome.
+	//
+	// ONE KIND IS EXEMPT: [Encounter.Record] accepts
+	// [OutcomeExperienceGained] on a closed encounter, because the fall that
+	// pays the party can be the fall that ends the run. The reasoning, and
+	// why it does not open the door any wider, is at that refusal site.
 	ErrClosed = errors.New("encounter closed")
 
 	// ErrNoField is returned when the field as a whole cannot be built
