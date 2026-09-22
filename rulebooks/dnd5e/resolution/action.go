@@ -347,7 +347,12 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 		m.outcome.SightArea = &encounter.SightAreaInput{
 			ID: m.casterID + "/concentration", SourceID: m.casterID,
 			Ref: m.spell.String(), Name: m.spellName, Center: *m.areaCenter,
-			RadiusFeet: m.profile.Area.Footprint.SizeFeet,
+			RadiusFeet:     m.profile.Area.Footprint.SizeFeet,
+			MembershipRef:  m.profile.Area.MembershipRef,
+			MembershipName: m.profile.Area.MembershipName,
+		}
+		if m.profile.Area.MembershipRef != "" {
+			m.outcome.SightArea.MembershipSourceID = opaqueFogSourceID(m.outcome.SightArea.ID)
 		}
 	}
 	if m.profile.Attack != nil && len(m.profile.Attack.Damage) > 0 {
