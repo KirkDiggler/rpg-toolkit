@@ -1521,6 +1521,11 @@ func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Out
 	if err := e.FlushSightAreaTransitions(); err != nil {
 		return nil, err
 	}
+	// A reaction can finish the encounter while a turn or directed walk is
+	// suspended. No continuation survives an ending, and closed persisted worlds
+	// must never carry resumable work.
+	e.pausedTurn = nil
+	e.heldDirective = nil
 	e.outcome = &Outcome{
 		Ending:  key,
 		At:      at,

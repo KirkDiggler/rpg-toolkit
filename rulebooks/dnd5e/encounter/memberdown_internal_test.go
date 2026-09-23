@@ -82,3 +82,31 @@ func TestAClosedEncounterIsNotClosedAgainByAnArrival(t *testing.T) {
 	}
 	require.Equal(t, 1, endeds, "one close, one ended beat")
 }
+
+func TestClosingEncounterDiscardsSuspendedContinuations(t *testing.T) {
+	for _, held := range []bool{false, true} {
+		t.Run(map[bool]string{false: "turn", true: "directive"}[held], func(t *testing.T) {
+			enc, err := NewEncounter(&SetupInput{
+				Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+				Field:   FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("room-1", 0, 0, 10, 10)}},
+				Members: []MemberInput{{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 2}}},
+				Endings: []EndingInput{{Key: "done", Trigger: TriggerExternal{}}},
+			})
+			require.NoError(t, err)
+			if held {
+				enc.heldDirective = &heldDirective{member: "alice"}
+			} else {
+				enc.pausedTurn = &pausedTurn{member: "alice"}
+			}
+			require.True(t, enc.Paused())
+			_, err = enc.closeWith("done", 0)
+			require.NoError(t, err)
+			require.False(t, enc.Paused())
+			data := enc.ToData()
+			require.Nil(t, data.PausedTurn)
+			require.Nil(t, data.HeldDirective)
+			_, err = LoadEncounter(&LoadEncounterInput{Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}})
+			require.NoError(t, err, "an ending reached during a reaction must reload")
+		})
+	}
+}
