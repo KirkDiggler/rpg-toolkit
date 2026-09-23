@@ -109,6 +109,8 @@ func (MovementOutcome) isOutcome() {}
 
 // ReactionOutcome is one reaction that fired during a step.
 type ReactionOutcome struct {
+	ConcentrationChecks []encounter.ConcentrationCheck
+	ConcentrationBreaks []encounter.ConcentrationBreak
 	// Attack identity is carried as facts so the host can record a resumed swing.
 	AttackRef  core.Ref
 	AttackName string

@@ -457,3 +457,21 @@ func (c *concentrationCollector) attributeToSteps(
 
 	return sequence, nil
 }
+
+// attributeToReactions uses the same per-swing attribution as multiattack so a
+// paused walk preserves checks already made by earlier opportunity attacks.
+func (c *concentrationCollector) attributeToReactions(cast *Participants, moved MovementOutcome) (MovementOutcome, error) {
+	sequence := SequenceOutcome{Steps: make([]SequenceStepOutcome, len(moved.Reactions))}
+	for i, r := range moved.Reactions {
+		sequence.Steps[i] = SequenceStepOutcome{Strike: r.Struck, ConcentrationChecks: r.ConcentrationChecks, ConcentrationBreaks: r.ConcentrationBreaks}
+	}
+	attributed, err := c.attributeToSteps(cast, sequence)
+	if err != nil {
+		return MovementOutcome{}, err
+	}
+	for i, step := range attributed.Steps {
+		moved.Reactions[i].ConcentrationChecks = step.ConcentrationChecks
+		moved.Reactions[i].ConcentrationBreaks = step.ConcentrationBreaks
+	}
+	return moved, nil
+}
