@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -517,6 +518,9 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	}
 
 	consequences := outcome
+	if posed != nil && posed.Sequence != nil {
+		consequences = *posed.Sequence
+	}
 	if posed != nil && posed.SettledStrike != nil {
 		consequences = *posed.SettledStrike
 	}
@@ -545,6 +549,29 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 			return nil, attrErr
 		}
 		outcome = attributed
+		ended, kept = nil, nil
+	}
+
+	if posed != nil && posed.Sequence != nil {
+		attributed, attrErr := breaks.attributeToSteps(cast, *posed.Sequence)
+		if attrErr != nil {
+			return nil, attrErr
+		}
+		for i := range attributed.Steps {
+			attributed.Steps[i].Strike.FollowUps = nil
+		}
+		attributed.FollowUps = nil
+		var frozen frozenSequence
+		if err := json.Unmarshal(posed.Frozen, &frozen); err != nil {
+			return nil, err
+		}
+		frozen.Outcome = attributed
+		raw, err := json.Marshal(frozen)
+		if err != nil {
+			return nil, err
+		}
+		posed.Frozen = raw
+		posed.Sequence = &attributed
 		ended, kept = nil, nil
 	}
 

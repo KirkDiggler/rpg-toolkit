@@ -163,6 +163,10 @@ type Choice struct {
 }
 
 type Pose struct {
+	// Sequence carries already completed swings at a sequence pause.
+	Sequence *SequenceOutcome `json:"sequence,omitempty"`
+	// BeforeRoll reports an attack reaction posed before rolling the attack.
+	BeforeRoll bool `json:"before_roll,omitempty"`
 	// SettledStrike is populated only for the initial post-hit reaction pose.
 	SettledStrike *StrikeOutcome `json:"settled_strike,omitempty"`
 

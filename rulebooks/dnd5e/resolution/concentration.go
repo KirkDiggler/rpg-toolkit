@@ -412,6 +412,9 @@ func (c *concentrationCollector) attributeToSteps(
 	claimed := make([]bool, len(c.facts))
 
 	for i := range steps {
+		if len(steps[i].Strike.FollowUps) == 0 && (len(steps[i].ConcentrationChecks) > 0 || len(steps[i].ConcentrationBreaks) > 0) {
+			continue
+		}
 		followUps := steps[i].Strike.FollowUps
 
 		made, err := c.checksFrom(cast, followUps)

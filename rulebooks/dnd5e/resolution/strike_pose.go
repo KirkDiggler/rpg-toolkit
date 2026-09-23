@@ -54,8 +54,10 @@ const (
 // attempt would record two, and a sheet edited during the pause would change
 // what the player was asked about after they answered.
 type frozenStrike struct {
-	Kind    string `json:"kind"`
-	Version int    `json:"version"`
+	// BeforeRoll identifies a reaction posed before any attack dice exist.
+	BeforeRoll *dnd5eEvents.AttackRollOffer `json:"before_roll,omitempty"`
+	Kind       string                       `json:"kind"`
+	Version    int                          `json:"version"`
 
 	AttackerID string `json:"attacker_id"`
 	TargetID   string `json:"target_id"`
@@ -150,6 +152,17 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 	var frozen frozenStrike
 	if err := json.Unmarshal(in.Frozen, &frozen); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
+	}
+	if frozen.BeforeRoll != nil {
+		if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion || frozen.AttackerID == "" || frozen.TargetID == "" || frozen.BeforeRoll.ReactorID != frozen.TargetID || frozen.PostHitPhase || frozen.Roll != 0 || frozen.Calculation != nil || frozen.Outcome == nil || frozen.Outcome.Roll != 0 || frozen.BeforeRoll.ResourceKey == "" || frozen.BeforeRoll.Ref.ID == "" || frozen.BeforeRoll.Disadvantage.SourceRef == nil || len(frozen.Folded.BeforeRollOffers) == 0 {
+			return nil, fmt.Errorf("%w: invalid pre-roll reaction", ErrBadFrozen)
+		}
+		if (in.Answer == OfferSpend && in.Option != ReactionUse) || (in.Answer == OfferKeep && in.Option != "") {
+			return nil, fmt.Errorf("%w: invalid pre-roll answer", ErrNotOffered)
+		}
+		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Roller: in.Roller})
+		machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
+		return machine, nil
 	}
 	if frozen.PostHitPhase {
 		if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion || frozen.AttackerID == "" || frozen.TargetID == "" {
