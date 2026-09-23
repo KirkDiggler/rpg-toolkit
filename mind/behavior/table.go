@@ -227,6 +227,44 @@ func DeedVerbFor(word string) string {
 	}
 }
 
+// DeedScope says whose deed a `when: { <word>: … }` condition is about. An
+// empty scope is the reading this type was added beside — a deed AGAINST THE
+// CREATURE ITSELF — so a document that authors no scope means exactly what it
+// always meant and behaves identically.
+//
+// THE TWO NEW READINGS ARE DIFFERENT AXES, and neither is a new condition:
+//
+//   - [ScopeAlly] reads a deed against SOMEBODY ON THIS CREATURE'S SIDE. The
+//     deed is already in hand — deeds land on every witness, not only on the
+//     target — so this is a second reading of facts the creature holds, not a
+//     second fact source.
+//   - [ScopeActor] reads a deed the creature ITSELF DID. This is what a pause
+//     is made of ("after I strike, stand still"), so the grammar needs no
+//     separate pause concept.
+type DeedScope string
+
+const (
+	// ScopeSelf is a deed against the creature itself — the default, and the
+	// only reading this module knew before scopes existed. Spelled as the
+	// empty string so an unauthored scope means this, and a document written
+	// before scopes existed keeps its exact meaning.
+	ScopeSelf DeedScope = ""
+
+	// ScopeAlly is a deed against one of this creature's own side. WHICH
+	// members those are is the caller's answer (the stance graph, in the
+	// rulebook), asked when the condition is read — so a table keeps working
+	// when a disposition changes, and a document never names a faction.
+	ScopeAlly DeedScope = "ally"
+
+	// ScopeActor is a deed this creature did itself, which is the fact a
+	// pause reads.
+	ScopeActor DeedScope = "actor"
+)
+
+// DeedScopes is every scope a condition may name, in the order a refusal
+// lists them: the default first, then the two readings beside it.
+var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
+
 // When is a condition on WHAT THIS CREATURE HOLDS, and an entry whose When
 // does not hold is not on the table for this roll (design §2).
 //
@@ -235,20 +273,55 @@ func DeedVerbFor(word string) string {
 // entry is simply not a candidate, and the beat's candidate list is therefore
 // the honest account of what the creature could have done.
 //
-// EXACTLY ONE CONDITION. Either Enemy is set or Deed is; a When with both or
-// neither is refused by the dialect that built it and by [Table]'s own
-// validation. Two conditions in one entry would be an `and` this design has
-// not paid for, and reading it as one would be guessing which.
+// EXACTLY ONE CONDITION. Either Enemy is set or Deed is. A When with both or
+// neither is refused at the door the table came in through — the dialect that
+// built it, whose decoder owns every refusal in this grammar.
+//
+// THERE IS NO VALIDATION IN THIS MODULE, which an earlier revision of this
+// comment claimed there was ("[Table]'s own validation", corrected
+// 2026-09-23 in review). This package defines the shape and rolls it; it
+// refuses nothing, by its own design. A struct built in Go that names both or
+// neither therefore reaches [When.holds] unrefused — which is why `holds`
+// reads one thing and the decoder is the only place the rule is enforced.
+//
+// Two conditions in one entry would be an `and` this design has not paid for,
+// and reading it as one would be guessing which.
 type When struct {
 	// Enemy reads the two booleans on [Facts], or is empty when this
 	// condition names a deed instead.
 	Enemy EnemyWord
 
-	// Deed is the word for what this creature must hold AGAINST ITSELF — one
-	// of [WhenDeeds], in the author's own past tense — or empty when this
-	// condition names an enemy instead. [DeedVerbFor] is what turns it into
-	// the verb the deeds channel files under.
+	// Deed is the word for what this creature must hold — one of [WhenDeeds],
+	// in the author's own past tense — or empty when this condition names an
+	// enemy instead. [DeedVerbFor] is what turns it into the verb the deeds
+	// channel files under.
+	//
+	// WHOSE DEED IT IS, IS [When.Scope]'s ANSWER, not this word's: the word
+	// says WHAT happened and the scope says who it happened to or by.
 	Deed string
+
+	// Scope says WHOSE deed the Deed word is about, when Deed is set: the
+	// empty string is "against me" (the reading this field was added
+	// beside), [ScopeAlly] is "against one of mine", and [ScopeActor] is
+	// "done by me". It is a refinement of the deed form, not a second
+	// condition, so a When still names exactly one thing.
+	//
+	// ALLY IS A RELATIONSHIP, NOT A FACTION. Which members are "mine" is the
+	// caller's answer — the stance graph's, in the rulebook — and it is asked
+	// when the condition is read, never frozen into the document. That is
+	// what makes a table keep working when a disposition changes.
+	//
+	// ACTOR IS THE PAUSE. "After I strike, stand still for two rounds" is
+	// `{ attacked: { within: 2, as: actor } }` — a deed the creature DID,
+	// recently — so a pause needs no separate concept in this grammar.
+	//
+	// OMITTED WHEN EMPTY, unlike its siblings here, and that is the design
+	// claim made mechanical: the default reading IS the empty string, so a
+	// document authored before scopes existed must compile to the same
+	// picture it always did. A serializer that wrote `"Scope": ""` into every
+	// condition would move every committed golden for a field whose meaning
+	// is "nothing new".
+	Scope DeedScope `json:",omitempty"`
 
 	// Within is how many rounds ago the deed may have landed and still
 	// count, in THE CALLER'S OWN UNIT — whatever [Facts.Now] and a deed's
@@ -394,9 +467,15 @@ func (t Temper) factor(a Answer) int {
 	}
 }
 
-// HeldDeed is one deed this creature holds AGAINST ITSELF, projected out of
-// its own holdings for the table to read: what happened, who did it, and
-// when.
+// HeldDeed is one deed this creature HOLDS, projected out of its own holdings
+// for the table to read: what happened, who did it, and when.
+//
+// WHICH DEEDS DEPENDS ON THE READING, and the three are the same shape because
+// they are the same testimony read three ways (rpg-toolkit#1883): against the
+// creature itself ([Facts.Deeds]), against its own side ([Facts.AllyDeeds]),
+// or done by the creature ([Facts.OwnDeeds]). WHO it was done to is what
+// separates them, which is why the shape does not carry it — the projection
+// already answered that when it chose which list to append to.
 //
 // THE CREATURE'S OWN TESTIMONY, never anybody's live state. A deed is
 // stamped when it happened and never restamped, so [Facts.Now] minus At is
@@ -414,7 +493,8 @@ type HeldDeed struct {
 }
 
 // Facts is everything a [When] condition reads: what this creature can see,
-// what it remembers, and what has been done to it.
+// what it remembers, what has been done to it, what has been done to its own
+// side, and what it has itself done.
 //
 // A PROJECTION, BUILT PER PICK. There is no cache: a creature's facts are its
 // holdings and the clock, both of which the caller already holds, and a
@@ -458,8 +538,25 @@ type Facts struct {
 	CanAttack bool
 	CanMove   bool
 
-	// Deeds is every deed this creature holds against itself.
+	// Deeds is every deed this creature holds against itself — the [ScopeSelf]
+	// reading, and the only one this module knew before scopes existed.
 	Deeds []HeldDeed
+
+	// AllyDeeds is every deed this creature holds against ONE OF ITS OWN SIDE
+	// — the [ScopeAlly] reading. The caller decides who "its own side" is
+	// (the rulebook asks its stance graph), so this is the same deeds read a
+	// second way rather than a second fact source: deeds land on every
+	// witness, so a creature that watched an ally fall already holds it.
+	//
+	// EMPTY IS "I SAW NOTHING HAPPEN TO MY SIDE", and an unset field means
+	// the same thing, so a caller that has not thought about allies hands a
+	// table that authors no `on: ally` condition exactly what it had.
+	AllyDeeds []HeldDeed
+
+	// OwnDeeds is every deed this creature DID — the [ScopeActor] reading,
+	// and what a pause is made of. The verb is the creature's own action, so
+	// the actor of each is the creature itself.
+	OwnDeeds []HeldDeed
 
 	// Now is the clock's high-water when this pick was made — what a deed's
 	// At is subtracted from to age it.
@@ -480,6 +577,38 @@ func (f Facts) affords(a Answer) bool {
 		return f.CanMove
 	default:
 		return true
+	}
+}
+
+// deedsOf is the reading this condition's scope asks for: the deeds against
+// the creature ([ScopeSelf], the default), the deeds against its side
+// ([ScopeAlly]), or the deeds it did ([ScopeActor]).
+//
+// ONE PLACE THAT DECIDES, so the three readings cannot drift apart.
+//
+// AN UNKNOWN SCOPE MATCHES NOTHING, which is this module's policy for every
+// other unknown word: [DeedVerbFor] answers empty so a typo'd deed matches no
+// held deed, and `holds` refuses a span below 1 rather than reading a window
+// that does not exist. Returning [Facts.Deeds] here instead would FAIL OPEN —
+// a condition that meant `allie` would quietly read as "against me" and fire
+// on the wrong facts, which is worse than a row that is visibly dead. The row
+// is then absent from the candidates, the honest account of what the creature
+// could have done.
+//
+// THE DOOR STILL REFUSES BY NAME. The dialect refuses an unknown scope at
+// decode (rpg-toolkit#1885), so this arm is for a struct built in Go — a test,
+// a future rulebook, a consumer pinned one tag behind — which never passes
+// through that door.
+func (w *When) deedsOf(f Facts) []HeldDeed {
+	switch w.Scope {
+	case ScopeSelf:
+		return f.Deeds
+	case ScopeAlly:
+		return f.AllyDeeds
+	case ScopeActor:
+		return f.OwnDeeds
+	default:
+		return nil
 	}
 }
 
@@ -514,7 +643,7 @@ func (w *When) holds(f Facts) bool {
 	}
 
 	verb := DeedVerbFor(w.Deed)
-	for _, d := range f.Deeds {
+	for _, d := range w.deedsOf(f) {
 		if verb == "" || d.Kind != verb {
 			continue
 		}
