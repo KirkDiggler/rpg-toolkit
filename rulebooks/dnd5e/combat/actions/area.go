@@ -6,12 +6,6 @@ package actions
 import "fmt"
 
 // AreaShape is the kind of region a footprint covers.
-//
-// Two values, and each arrived with the spell that needed it — Thunderclap's
-// burst and Thunderwave's cube. A cone is still not declared here in advance:
-// nothing has asked for one, so an enum value for it would be an affordance
-// with nothing behind it. (rpg-toolkit#1626, the geometry that would answer a
-// cone, is answered by coverage now; the missing half is a customer.)
 type AreaShape string
 
 const (
@@ -26,6 +20,10 @@ const (
 	// with unequal sides has not been asked for, and splitting the field for
 	// one would be the affordance with nothing behind it.
 	AreaBox AreaShape = "box"
+
+	// AreaTriangle is equilateral, with its tip at the caster cell centre.
+	// SizeFeet is its altitude along the aimed bearing, not its side length.
+	AreaTriangle AreaShape = "triangle"
 )
 
 // AreaOrigin says where a footprint is anchored.
@@ -97,7 +95,7 @@ type Footprint struct {
 // absence reads as a known cost rather than an oversight.
 func (f Footprint) Validate() error {
 	switch f.Shape {
-	case AreaRadius, AreaBox:
+	case AreaRadius, AreaBox, AreaTriangle:
 	default:
 		return fmt.Errorf("unknown area shape %q", f.Shape)
 	}
@@ -117,6 +115,9 @@ func (f Footprint) Validate() error {
 	}
 	if f.Shape != AreaBox && f.Origin == AreaOriginCasterEdge {
 		return fmt.Errorf("only a box may be anchored on the caster's edge, got shape %q", f.Shape)
+	}
+	if f.Shape == AreaTriangle && f.Origin != AreaOriginCaster {
+		return fmt.Errorf("a triangle must be anchored on the caster, got origin %q", f.Origin)
 	}
 	if f.SizeFeet <= 0 {
 		return fmt.Errorf("area must declare a positive size in feet")

@@ -877,3 +877,21 @@ func (s *CastContentSuite) TestFogCloudDeclaresPersistentSightWithoutRecipientsO
 	clone.Cast.Area.MembershipRef = "changed"
 	s.Equal(refs.Conditions.InFog().String(), d.Cast.Area.MembershipRef)
 }
+
+func (s *CastContentSuite) TestBurningHandsDeclaresTriangleAndDexterityHalfFire() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.BurningHands, SpellSaveDC: 13})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(actions.CastTargetArea, d.Cast.Target)
+	s.Equal(actions.Footprint{Shape: actions.AreaTriangle, SizeFeet: 15, Origin: actions.AreaOriginCaster}, d.Cast.Area.Footprint)
+	s.Equal(actions.AreaCatchesOthers, d.Cast.Area.Catches)
+	s.Equal([]abilities.Ability{abilities.DEX}, d.Cast.Save.Abilities)
+	s.Equal(13, d.Cast.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Half, d.Cast.Save.OnSuccess)
+	s.Equal([]damage.Damage{{Dice: "3d6", Type: damage.Fire}}, d.Cast.Damage)
+	s.Nil(d.Cast.Move)
+	s.Nil(d.Cast.Concentration)
+	s.Contains(spells.Selectable([]spells.Spell{spells.BurningHands}), spells.BurningHands)
+}

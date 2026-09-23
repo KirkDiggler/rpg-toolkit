@@ -510,6 +510,22 @@ var castContent = map[Spell]castProfileBuilder{
 			}
 		},
 	},
+	BurningHands: {
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		name:    "Burning Hands",
+		cost:    slotCost(resources.SpellSlotLevel1),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 15, Target: actions.CastTargetArea,
+				Area: &actions.CastArea{
+					Footprint: actions.Footprint{Shape: actions.AreaTriangle, SizeFeet: 15, Origin: actions.AreaOriginCaster},
+					Catches:   actions.AreaCatchesOthers,
+				},
+				Save:   &saves.SaveGate{Abilities: []abilities.Ability{abilities.DEX}, DC: saves.DCStatic(spellSaveDC), OnSuccess: saves.Half, Recurrence: saves.RecurrenceNone},
+				Damage: []damage.Damage{{Dice: "3d6", Type: damage.Fire}},
+			}
+		},
+	},
 	Thunderwave: {
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		name:    "Thunderwave",

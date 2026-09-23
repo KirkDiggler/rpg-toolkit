@@ -1050,3 +1050,11 @@ reduce noise.
 - [Project board #10](https://github.com/users/KirkDiggler/projects/10)
 - [docs/adr/](adr/) — 29 ADRs covering major design decisions
 - [docs/journey/](journey/) — 48 journey docs, exploration history
+
+## Burning Hands content checkpoint
+
+The root spell registry now declares Burning Hands through the shared area save
+path: one action/level-one slot, Dexterity save, 3d6 fire, half on success.
+Its equilateral triangle has 15-foot altitude and its tip at the caster centre.
+No push or concentration. Session geometry and consumer adoption are separate
+release units; this root declaration alone does not complete live acceptance.
