@@ -6,6 +6,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -1519,4 +1520,39 @@ func (s *CastSuite) TestBurningHandsPreviewMatchesCastWithoutPayment() {
 	_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "bard", DeclarationID: row.ID, Cell: &aim})
 	s.Require().NoError(err)
 	s.Equal(before-9, s.storedSkeleton(), "preview did not consume any dice")
+}
+
+func (s *CastSuite) TestFaerieFirePreviewSavePaymentAndPersistedCondition() {
+	for _, save := range []int{1, 20} {
+		s.Run(fmt.Sprint(save), func() {
+			s.scene(castingBardWithSpells("bard", spells.FaerieFire), 3, save)
+			row := s.castRow(spells.FaerieFire)
+			s.Equal(session.FootprintShapeBox, row.Footprint.Shape)
+			s.Equal(session.FootprintOriginPoint, row.Footprint.Origin)
+			aim := s.cellOf("skeleton")
+			before := s.storedSkeleton()
+			preview, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bard", CastAim: &session.CastAim{DeclarationID: row.ID, Cell: &aim}})
+			s.Require().NoError(err)
+			s.Require().NotNil(preview.CastAim)
+			s.Equal([]string{"skeleton"}, preview.CastAim.AffectedMembers)
+			s.Equal(2, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
+			_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "bard", DeclarationID: row.ID, Cell: &aim})
+			s.Require().NoError(err)
+			s.Equal(before, s.storedSkeleton(), "Faerie Fire deals no damage")
+			s.Equal(1, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
+			s.Zero(s.characters.byID["bard"].ActionEconomy.ActionsRemaining)
+			s.Require().Len(s.beats(session.EventSaved), 1)
+			found := false
+			for _, beat := range s.beats(session.EventActivationResult) {
+				body := beat.Body.(session.ActivationResultBody)
+				s.Nil(body.DamageApplied)
+				if body.ConditionApplied != nil && body.ConditionApplied.Ref == refs.Conditions.FaerieFire().String() {
+					found = true
+					s.Equal("skeleton", body.ConditionApplied.Target)
+					s.Equal("bard", body.ConditionApplied.SourceID)
+				}
+			}
+			s.Equal(save == 1, found)
+		})
+	}
 }

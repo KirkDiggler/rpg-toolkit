@@ -33,7 +33,7 @@ func previewCastAim(enc *encounter.Encounter, member string, aim *CastAim, offer
 		return nil, nil
 	}
 	profile := selected.spell.Cast
-	if profile.Area.Footprint.Origin != combatActions.AreaOriginCaster && profile.Area.Footprint.Origin != combatActions.AreaOriginCasterEdge {
+	if profile.Area.ObscuresSight {
 		return nil, nil
 	}
 	cell := *aim.Cell
@@ -49,6 +49,9 @@ func previewCastAim(enc *encounter.Encounter, member string, aim *CastAim, offer
 	origin, ok := positions[member]
 	if !ok {
 		return nil, ErrNoMemberID
+	}
+	if profile.Area.Footprint.Origin == combatActions.AreaOriginPoint && !enc.PointReachable(origin, *aim.Cell, profile.RangeFeet) {
+		return nil, ErrBadCast
 	}
 	if _, err := castTargets(selected.spell, *selected, nil, castAim{cell: aim.Cell, casterAt: origin}); err != nil {
 		return nil, err
