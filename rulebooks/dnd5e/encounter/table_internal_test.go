@@ -137,6 +137,16 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 			says:  "counted from 1",
 		},
 		{
+			// THE SCOPE IS THE ONE FIELD OF THIS CONDITION THAT WAS NOT
+			// REFUSED HERE (rpg-toolkit#1890 thread 1). This function is the
+			// door for a hand-edited persisted blob, so an unknown scope must
+			// be named rather than reaching the evaluator, where it matches
+			// nothing and would silently revert an `on: ally` row.
+			name:  "a scope this build does not read",
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Deed: "attacked", Within: 1, Scope: DeedScope("banana")}}}},
+			says:  "not a scope this build reads",
+		},
+		{
 			name: "`actor` with no deed to have been the actor of",
 			table: Table{AnswerTime: {{Weight: 1, Away: &Selector{Word: SelectorActor},
 				When: &When{Enemy: EnemySeen}}}},

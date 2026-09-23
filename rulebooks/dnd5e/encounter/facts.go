@@ -233,6 +233,13 @@ func heldDeedsAgainstSide(e *Encounter, holdings []perception.Holding, self Memb
 		// neither, so a blow to a neutral bystander is not a blow to my side.
 		// That is the honest reading and it is what makes this follow a
 		// disposition that changes.
+		//
+		// `known` IS DISCARDED ON PURPOSE, and the choice is named rather than
+		// dropped (rpg-toolkit#1890 thread 4). It is false when either member
+		// is no longer askable — `Exit` deletes from the roster — so a blow
+		// against somebody who then LEFT holds no side and stops counting,
+		// while a blow against a defeated-but-retained ally still counts. Fail
+		// closed: a side this field can no longer ask about is not a side.
 		allied, _ := e.IsAllied(self, target)
 
 		return allied

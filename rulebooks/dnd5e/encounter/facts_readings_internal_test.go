@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -213,4 +214,106 @@ func TestAnUnauthoredScopeWritesNothing(t *testing.T) {
 
 	back := answerFromData(data)
 	require.Equal(t, ScopeSelf, back.When.Scope, "and loads back as the self reading")
+}
+
+// ---------------------------------------------------------------------------
+// The selectors follow the scope (rpg-toolkit#1890 thread 2)
+// ---------------------------------------------------------------------------
+//
+// THE ROW THIS WHOLE SLICE EXISTS FOR. `selectMember` read view.Deeds
+// unconditionally, so an ally-scoped vengeance row fired on the ALLY reading
+// and then resolved `attacker` off the SELF reading: with nobody having struck
+// the creature itself that was a Pass (the row won the roll and nothing
+// happened), and with somebody having struck it, it struck the WRONG member.
+//
+// These go through the real driver, because the defect lived in the pairing of
+// two functions and a unit test of either one alone is blind to it — which is
+// exactly how it survived the first round.
+
+// vengeanceTable is the natural row for the ally reading: avenge my side.
+func vengeanceTable() Table {
+	return Table{AnswerTime: {
+		{Weight: 100, Attack: &Selector{Word: SelectorAttacker},
+			When: &When{Deed: "attacked", Within: 3, Scope: ScopeAlly}},
+		{Weight: 1, Hold: true},
+	}}
+}
+
+// vengeanceView is a creature with a weapon in hand and an enemy in reach.
+func vengeanceView(now uint64) MonsterView {
+	return MonsterView{
+		Self:    "goblin",
+		Actions: []ActionView{{Ref: core.Ref{Type: "weapons", ID: "scimitar"}, RangeFeet: 5}},
+		// THE VENGEANCE TARGET IS THE ONE IN SIGHT AND IN REACH: `attackIntent`
+		// requires the member it swings at to be seen and reachable, so a test
+		// that names a deed actor nobody can see would pass for the wrong
+		// reason (found while writing these — the first cut did exactly that).
+		Seen: []SeenMember{{
+			ID: "goblin-slayer", Opposed: true, Standing: true,
+			InReach: map[core.Ref]bool{{Type: "weapons", ID: "scimitar"}: true},
+		}},
+		Budget: TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		Table:  vengeanceTable(),
+		At:     now,
+		Round:  1,
+	}
+}
+
+func (s *TableSuite) TestAnAllyVengeanceRowStrikesMyAlliesAttacker() {
+	// ONLY the ally reading is filled: nobody has struck the goblin itself.
+	view := vengeanceView(10)
+	view.AllyDeeds = []HeldDeed{{Kind: DeedAttack, Actor: "goblin-slayer", At: 9}}
+
+	decision, err := TableDriver{Roller: lowestDie{}}.Act(view)
+	s.Require().NoError(err)
+
+	attack, ok := decision.Intent.(Attack)
+	s.Require().True(ok, "the row fired on the ally reading, so the swing must land — not a silent Pass")
+	s.Equal(MemberID("goblin-slayer"), attack.Target,
+		"`attacker` must name whoever struck my ALLY, not whoever struck me (nobody did)")
+}
+
+func (s *TableSuite) TestAnAllyVengeanceRowDoesNotStrikeItsOwnAttacker() {
+	// BOTH readings are filled and they name different members. The scope says
+	// which one the selector reads, so the ally row must go for the ally's
+	// attacker and never for the goblin's own.
+	view := vengeanceView(10)
+	view.Deeds = []HeldDeed{{Kind: DeedAttack, Actor: "someone-else", At: 10}}
+	view.AllyDeeds = []HeldDeed{{Kind: DeedAttack, Actor: "goblin-slayer", At: 9}}
+
+	decision, err := TableDriver{Roller: lowestDie{}}.Act(view)
+	s.Require().NoError(err)
+
+	attack, ok := decision.Intent.(Attack)
+	s.Require().True(ok)
+	s.Equal(MemberID("goblin-slayer"), attack.Target,
+		"the condition and its selector must read the SAME deeds")
+	s.NotEqual(MemberID("someone-else"), attack.Target, "which is not the goblin's own attacker")
+}
+
+func (s *TableSuite) TestASelfScopedRowStillReadsItsOwnDeeds() {
+	// THE COMPATIBILITY HALF: the pre-scope pairing must not move. An unscoped
+	// `attacked` row reads the self deeds and strikes the self attacker.
+	table := Table{AnswerTime: {
+		{Weight: 100, Attack: &Selector{Word: SelectorAttacker},
+			When: &When{Deed: "attacked", Within: 3}},
+		{Weight: 1, Hold: true},
+	}}
+	view := vengeanceView(10)
+	view.Table = table
+	// THE SELF ATTACKER IS THE ONE IN SIGHT AND REACH here, since this row
+	// reads the self deeds and swings at whoever is named there.
+	view.Seen = []SeenMember{{
+		ID: "someone-else", Opposed: true, Standing: true,
+		InReach: map[core.Ref]bool{{Type: "weapons", ID: "scimitar"}: true},
+	}}
+	view.Deeds = []HeldDeed{{Kind: DeedAttack, Actor: "someone-else", At: 10}}
+	view.AllyDeeds = []HeldDeed{{Kind: DeedAttack, Actor: "goblin-slayer", At: 9}}
+
+	decision, err := TableDriver{Roller: lowestDie{}}.Act(view)
+	s.Require().NoError(err)
+
+	attack, ok := decision.Intent.(Attack)
+	s.Require().True(ok)
+	s.Equal(MemberID("someone-else"), attack.Target, "an unscoped row still means against me")
 }

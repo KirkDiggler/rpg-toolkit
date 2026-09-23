@@ -1170,6 +1170,14 @@ type WhenSpec struct {
 	Line int
 }
 
+// The three keys a deed condition's body may carry, sealed so the hand-read
+// refusal above and the decode below cannot drift apart.
+const (
+	whenBodyWithin = "within"
+	whenBodyOn     = "on"
+	whenBodyAs     = "as"
+)
+
 // withinSpec is the body a deed condition takes: `{ within: N }`, and — since
 // rpg-toolkit#1883 — optionally WHOSE deed it is about.
 //
@@ -1214,6 +1222,23 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 		return fmt.Errorf("line %d: `%s` is not a deed this build holds: they are %s (and `enemy`)",
 			value.Content[0].Line, key, strings.Join(encounter.WhenDeeds, ", "))
 	}
+	// UNKNOWN KEYS ARE REFUSED BY HAND, because Decode's strictness does not
+	// reach inside a custom unmarshaler (rpg-toolkit#1890 thread 3). Before
+	// scopes a dropped key in this body did nothing; now the dropped key
+	// decides WHOSE deeds the row reads — `no: ally` would leave the condition
+	// on the self reading, firing for the wrong wound and never for its own.
+	// [PredicateSpec.UnmarshalYAML] refuses its own keys for this same reason.
+	if body.Kind == yaml.MappingNode {
+		for i := 0; i < len(body.Content); i += 2 {
+			switch bodyKey := body.Content[i].Value; bodyKey {
+			case whenBodyWithin, whenBodyOn, whenBodyAs:
+			default:
+				return fmt.Errorf("line %d: field %s not found in type dungeonspec.withinSpec",
+					body.Content[i].Line, bodyKey)
+			}
+		}
+	}
+
 	var within withinSpec
 	if err := body.Decode(&within); err != nil {
 		return fmt.Errorf("line %d: `%s` takes { within: N }: %w", body.Line, key, err)

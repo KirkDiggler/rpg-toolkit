@@ -249,6 +249,13 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 		{name: "an `on` scope nobody reads", when: `{ attacked: { within: 3, on: friend } }`, says: "not a scope this build reads"},
 		{name: "an `as` scope nobody reads", when: `{ attacked: { within: 3, as: target } }`, says: "not a scope this build reads"},
 		{name: "both scopes at once", when: `{ attacked: { within: 3, on: ally, as: actor } }`, says: "asks one thing"},
+		// A TYPO'D KEY, not a typo'd value (rpg-toolkit#1890 thread 3).
+		// `body.Decode` is not strict inside a custom unmarshaler, so before
+		// this the key was silently DROPPED and the condition quietly became
+		// the self reading — a morale row authored for `on: ally` firing for
+		// the wrong wound and never for its own. Refused by hand, the shape
+		// [PredicateSpec.UnmarshalYAML] already uses.
+		{name: "a scope key nobody reads", when: `{ attacked: { within: 3, no: ally } }`, says: `"no" is not a key this build reads`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
@@ -256,7 +263,17 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 			_, err := dungeonspec.Decode([]byte(source))
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.says)
-			require.Contains(t, err.Error(), "line ", "and it says which line")
+			// WHERE it says the defect depends on who refused it, and both
+			// are the package's own voice: a refusal written BY HAND in this
+			// dialect names the line (yaml.v3's shape, which the unknown-key
+			// walk then rewrites), while an unknown KEY is rewritten to the
+			// author's own PATH by that walk. Asserting one form for every
+			// case would either lose the address or demand the wrong one.
+			if tc.says == `"no" is not a key this build reads` {
+				require.Contains(t, err.Error(), "when.attacked.no", "an unknown key is addressed by path")
+			} else {
+				require.Contains(t, err.Error(), "line ", "and it says which line")
+			}
 		})
 	}
 }
