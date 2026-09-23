@@ -163,6 +163,8 @@ type Choice struct {
 }
 
 type Pose struct {
+	// Movement carries completed opportunity attacks at an interrupted step.
+	Movement *MovementOutcome `json:"movement,omitempty"`
 	// Sequence carries already completed swings at a sequence pause.
 	Sequence *SequenceOutcome `json:"sequence,omitempty"`
 	// BeforeRoll reports an attack reaction posed before rolling the attack.
