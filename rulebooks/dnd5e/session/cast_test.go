@@ -1445,3 +1445,48 @@ func (s *CastSuite) TestATouchCastOffersSelfAsACandidate() {
 	_, found := castCandidate(s.T(), row, "cleric")
 	s.True(found, "self must be offered as a touch target: %#v", row.Candidates)
 }
+
+func (s *CastSuite) TestBurningHandsAimsPaysAndSavesForHalfWithoutPush() {
+	for _, tc := range []struct {
+		name       string
+		save, want int
+	}{{"failure", 1, 9}, {"success", 20, 4}} {
+		s.Run(tc.name, func() {
+			s.scene(castingBardWithSpells("bard", spells.BurningHands), 1, tc.save, 2, 3, 4)
+			row := s.castRow(spells.BurningHands)
+			s.Equal(session.TargetCell, row.TargetKind)
+			s.Equal(session.FootprintShapeTriangle, row.Footprint.Shape)
+			s.Equal(session.FootprintOriginCaster, row.Footprint.Origin)
+			aim := s.cellOf("skeleton")
+			before := s.storedSkeleton()
+			out, err := s.mgr.Cast(context.Background(), &session.CastInput{
+				Session: "sess", Member: "bard", DeclarationID: row.ID, Cell: &aim,
+			})
+			s.Require().NoError(err)
+			s.False(out.Paused)
+			s.Equal(before-tc.want, s.storedSkeleton())
+			s.Equal(aim, s.cellOf("skeleton"), "fire never pushes")
+			s.Equal(1, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
+			s.Zero(s.characters.byID["bard"].ActionEconomy.ActionsRemaining)
+			saved := s.beats(session.EventSaved)
+			s.Require().Len(saved, 1)
+			results := s.beats(session.EventActivationResult)
+			s.Require().Len(results, 1)
+			body := results[0].Body.(session.ActivationResultBody)
+			s.Require().NotNil(body.DamageApplied)
+			s.Equal(session.DamageFire, body.DamageApplied.DamageType)
+			s.Equal(refs.Spells.BurningHands().String(), body.DamageApplied.SourceRef)
+		})
+	}
+}
+
+func (s *CastSuite) TestBurningHandsRejectsMissingAndSelfAimBeforePayment() {
+	s.scene(castingBardWithSpells("bard", spells.BurningHands), 1)
+	own := s.cellOf("bard")
+	for _, cell := range []*spatial.Position{nil, &own} {
+		_, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.BurningHands).ID, Cell: cell})
+		s.ErrorIs(err, session.ErrBadCast)
+		s.Equal(2, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
+		s.Nil(s.characters.byID["bard"].ActionEconomy, "refusal must not persist an action economy change")
+	}
+}

@@ -121,6 +121,16 @@ func deriveAreaMembers(
 			caught, err = enc.MembersWithin(&encounter.MembersWithinInput{
 				Origin: origin.Position, RadiusCells: float64(cells),
 			})
+		case combatActions.AreaTriangle:
+			if cell == nil {
+				return nil, fmt.Errorf("%w: a triangle needs a cell to aim at", ErrBadCast)
+			}
+			var covered encounter.MembersCoveredOutput
+			covered, err = enc.MembersCovered(&encounter.MembersCoveredInput{
+				Footprint: spatial.Footprint{Triangle: &spatial.Triangle{Depth: float64(area.Footprint.SizeFeet)}},
+				Anchor:    origin.Position, Toward: *cell,
+			})
+			caught = covered.Members
 		default:
 			return nil, fmt.Errorf("%w: unsupported area shape %q", ErrBadCast, area.Footprint.Shape)
 		}

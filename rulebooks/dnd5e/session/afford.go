@@ -196,6 +196,9 @@ const (
 	// FootprintShapeBox is an equal-width-and-depth floor outline whose
 	// SizeFeet is one full edge, not a half-extent. It declares no height.
 	FootprintShapeBox FootprintShape = "box"
+
+	// FootprintShapeTriangle is equilateral with SizeFeet altitude and a caster-centre tip.
+	FootprintShapeTriangle FootprintShape = "triangle"
 )
 
 // FootprintOrigin says how a provider-authored outline is placed relative to

@@ -314,3 +314,19 @@ func (s *AreaCoveredSuite) TestACubeWithNoCellIsRefused() {
 	s.ErrorIs(err, ErrBadCast)
 	s.Contains(err.Error(), "cell")
 }
+
+func (s *AreaCoveredSuite) TestTriangleUsesTheSameHalfCoveragePolicy() {
+	profile := coveredProfile(15)
+	profile.Area.Footprint.Shape = combatActions.AreaTriangle
+	profile.Area.Footprint.Origin = combatActions.AreaOriginCaster
+	caught, err := deriveAreaMembers(s.enc, profile, coveredCaster, s.roster(), &s.aheadAt)
+	s.Require().NoError(err)
+	s.Equal([]string{coveredAhead}, caught.resolvable)
+	reverse, err := deriveAreaMembers(s.enc, profile, coveredCaster, s.roster(), &s.behindAt)
+	s.Require().NoError(err)
+	s.Equal([]string{coveredBehind}, reverse.resolvable, "allies in the shape are affected too")
+	_, err = deriveAreaMembers(s.enc, profile, coveredCaster, s.roster(), &s.casterAt)
+	s.Error(err, "same-cell aim has no bearing")
+	_, err = deriveAreaMembers(s.enc, profile, coveredCaster, s.roster(), nil)
+	s.ErrorIs(err, ErrBadCast)
+}
