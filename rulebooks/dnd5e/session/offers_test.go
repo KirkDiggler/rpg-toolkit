@@ -413,6 +413,7 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	// encounter's clock still names her active while the standing seam reads
 	// her downed.
 	characters.byID["alice"].HitPoints = 0
+	characters.byID["alice"].ActionEconomy.Granted[character.GrantedDeathSaves] = 1 // fixture injects dying state mid-turn
 
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)

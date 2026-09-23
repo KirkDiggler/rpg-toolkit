@@ -306,13 +306,12 @@ func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
 func (s *AffordSuite) TestAffordSavesNothing() {
 	s.fightScene(1, 15, 5, 1, 1)
 
-	s.Nil(s.storedEconomy(), "a stored sheet starts cold: no economy at all")
+	s.Require().NotNil(s.storedEconomy(), "combat entry initialized the economy")
+	initial := *s.storedEconomy()
 
 	before := s.afford()
 	s.True(s.attackDecl(before).Available)
-	s.Nil(s.storedEconomy(),
-		"asking what alice can afford must not light and persist her turn — a read that ignited "+
-			"the ledger on the way to answering would make asking indistinguishable from swinging")
+	s.Equal(initial, *s.storedEconomy(), "asking what is affordable must not persist any change")
 
 	_, err := s.swing()
 	s.Require().NoError(err, "the real swing lights and spends the economy")

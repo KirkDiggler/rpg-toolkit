@@ -670,7 +670,8 @@ func (s *IntimidateSuite) TestAnUnauthoredSpawnCannotBeThreatened() {
 	// before the action is spent, exactly as the sight check is.
 	stored, err := s.characters.GetCharacter(context.Background(), "alice")
 	s.Require().NoError(err)
-	s.Nil(stored.ActionEconomy)
+	s.Require().NotNil(stored.ActionEconomy)
+	s.Equal(1, stored.ActionEconomy.ActionsRemaining)
 }
 
 // The world half has the same road to travel. An authored

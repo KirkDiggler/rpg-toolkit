@@ -6,6 +6,8 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/stretchr/testify/require"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -150,9 +152,9 @@ func (f *fakeCharacters) GetCharacter(_ context.Context, id string) (*character.
 // round trip.
 func cloneCharacter(in *character.Data) *character.Data {
 	out := *in
-	out.Conditions = append([]json.RawMessage(nil), in.Conditions...)
-	out.Features = append([]json.RawMessage(nil), in.Features...)
-	out.Inventory = append([]character.InventoryItemData(nil), in.Inventory...)
+	out.Conditions = slices.Clone(in.Conditions)
+	out.Features = slices.Clone(in.Features)
+	out.Inventory = slices.Clone(in.Inventory)
 	return &out
 }
 
@@ -405,4 +407,11 @@ func (s *ManagerTestSuite) TestFullyWiredConstructs() {
 
 func TestManagerSuite(t *testing.T) {
 	suite.Run(t, new(ManagerTestSuite))
+}
+
+func storedJSON(t *testing.T, value any) string {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	require.NoError(t, err)
+	return string(raw)
 }

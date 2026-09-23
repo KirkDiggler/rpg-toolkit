@@ -695,7 +695,7 @@ func (s *ExperienceTestSuite) TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 	failing := &failNthArmedSaveCharacters{
-		fakeCharacters: s.characters, failAt: 2, err: errSettlementSave,
+		fakeCharacters: s.characters, failAt: 3, err: errSettlementSave,
 	}
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
@@ -720,7 +720,7 @@ func (s *ExperienceTestSuite) TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat
 	s.Require().Error(verbErr)
 	s.ErrorIs(verbErr, session.ErrSaveFailed, "this seam's vocabulary")
 	s.ErrorIs(verbErr, errSettlementSave, "and the host's own cause stays matchable")
-	s.Equal(2, failing.attempts, "alice's share landed before bob's was refused")
+	s.Equal(3, failing.attempts, "combat-end cleanup and alice's share landed before bob's was refused")
 
 	after, err := s.encounters.GetEncounter(context.Background(), "world")
 	s.Require().NoError(err)

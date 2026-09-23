@@ -155,10 +155,19 @@ func (s *ConditionsTestSuite) TestAVerbLeavesTheCharacterStoreUntouched() {
 	})
 
 	s.Run("move that starts a fight", func() {
-		before := s.storedBytes("alice")
+		before := cloneCharacter(s.characters.byID["alice"])
 		out := s.walkIntoTheAmbush(s.mgr)
 		s.Require().NotNil(out.Formed, "this walk is supposed to start a fight")
-		s.Equal(string(before), string(s.storedBytes("alice")))
+		after := cloneCharacter(s.characters.byID["alice"])
+		s.Require().NotNil(after.ActionEconomy, "combat entry grants the normal budget")
+		// Only the newly initialized economy and save timestamp may change.
+		after.ActionEconomy = before.ActionEconomy
+		after.UpdatedAt = before.UpdatedAt
+		if len(before.Inventory) == 0 {
+			s.Empty(after.Inventory)
+			after.Inventory = before.Inventory
+		}
+		s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), after))
 	})
 }
 

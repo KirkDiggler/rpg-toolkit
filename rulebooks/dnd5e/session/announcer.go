@@ -57,10 +57,6 @@ var _ encounter.Announcer = announcerSeam{}
 func (a announcerSeam) Announce(
 	ctx context.Context, enc *encounter.Encounter, crossed []encounter.Boundary,
 ) error {
-	machine, err := resolution.NewBoundary(&resolution.BoundaryInput{Crossed: crossed})
-	if err != nil {
-		return fmt.Errorf("announce: %w", err)
-	}
 
 	roster, err := enc.Members()
 	if err != nil {
@@ -68,6 +64,23 @@ func (a announcerSeam) Announce(
 	}
 
 	cast, err := a.boundaryCast(ctx, roster)
+	if err != nil {
+		return fmt.Errorf("announce: %w", err)
+	}
+
+	// Carry the live clock membership, including combatants whose first turn
+	// has not arrived. Resolution owns granting their normal reaction budget.
+	combatTurns := make(map[string]int)
+	for _, member := range roster {
+		clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: member.ID})
+		if err != nil {
+			return fmt.Errorf("announce clock: %w", translate(err))
+		}
+		if clock.Kind == encounter.ClockTurn {
+			combatTurns[string(member.ID)] = clock.Round
+		}
+	}
+	machine, err := resolution.NewBoundary(&resolution.BoundaryInput{Crossed: crossed, CombatTurns: combatTurns})
 	if err != nil {
 		return fmt.Errorf("announce: %w", err)
 	}

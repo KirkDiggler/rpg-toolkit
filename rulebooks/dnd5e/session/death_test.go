@@ -598,7 +598,8 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 	s.Require().NoError(err)
 	beforeAlice, err := s.characters.GetCharacter(context.Background(), "alice")
 	s.Require().NoError(err)
-	s.Require().Nil(beforeAlice.ActionEconomy)
+	s.Require().NotNil(beforeAlice.ActionEconomy)
+	s.Equal(1, beforeAlice.ActionEconomy.ActionsRemaining)
 	failing.armed = true
 
 	out, err := mgr.Attack(context.Background(), &session.AttackInput{

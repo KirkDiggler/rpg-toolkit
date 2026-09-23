@@ -138,37 +138,9 @@ func (m *Manager) priceSwing(
 
 // readyForTurn puts a sheet into the turn it is about to act in.
 //
-// # This is the economy's ignition, and nothing else in the stack has one
-//
-// [character.RefreshForTurn] refills a STALE bank and refuses to create one:
-// handed a sheet that is not in combat it returns having done nothing, on the
-// stated grounds that "combat starts somewhere else, and inventing an economy
-// here would put a character in a fight nobody put them in". That is correct and
-// it leaves a hole, because until this change NOTHING in session, encounter or
-// resolution ever called [character.StartTurn] or wrote an ActionEconomy. Every
-// stored sheet in the stack is cold.
-//
-// A cost handed to the door for a cold sheet is therefore not refused once, it
-// is refused forever — the gate's very first question is InCombat. The economy
-// had a price, a door and a ledger, and no ignition.
-//
-// Combat starts somewhere else, and THIS IS SOMEWHERE ELSE: the fight is the
-// composition's bubble, and this package is the only layer that sees both the
-// bubble and the sheet. The composition holds no sheets; resolution holds sheets
-// and is forbidden from reading a turn out of the world it is handed
-// ([resolution.Turn]). So the seam that knows both is the one that lights it.
-//
-// Stated as the rule it is: THE SESSION LIGHTS THE SHEET WHEN AN ACTOR ON THE
-// FIGHT CLOCK FIRST ACTS. Not when the bubble forms, because nothing loads the
-// sheets then; not for a free-roaming actor, because there is no turn to light.
-//
-// # Lit at the first ask, not pushed at the boundary
-//
-// Which is [character.RefreshForTurn]'s own argument, reused: "the sheet may not
-// have been loaded when the turn changed, and a bank that is only correct if
-// something remembered to announce the boundary is a bank that is eventually
-// wrong". A fight can start on somebody else's walk; nothing loads every
-// combatant's sheet when it does.
+// Combat boundaries initialize every participant on a fight clock, so an idle
+// character can react before their first action. This remains an idempotent
+// backstop when compiling a price from a cold or stale stored sheet.
 //
 // # And it runs BEFORE the price is compiled, which is not an ordering detail
 //

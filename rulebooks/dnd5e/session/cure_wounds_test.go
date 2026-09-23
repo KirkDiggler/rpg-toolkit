@@ -194,7 +194,7 @@ func (s *CastSuite) TestCureWoundsInvalidRequestsLeaveDiceSlotsAndHPAlone() {
 			s.Require().NoError(err)
 			_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.CureWounds).ID, Targets: targets})
 			s.Require().Error(err)
-			s.Equal(before, s.characters.byID["cleric"])
+			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(2, s.dice.next)
 			s.Empty(s.beats(session.EventCast, session.EventActivationResult))
 		})
@@ -260,7 +260,7 @@ func (s *CastSuite) TestCureWoundsRejectsExhaustedSlotsRemovedAccessAndDeadTarge
 			s.Require().NoError(err)
 			_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: id, Targets: []string{"patient"}})
 			s.ErrorIs(err, session.ErrStaleDeclaration)
-			s.Equal(before, s.characters.byID["cleric"])
+			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(3, s.dice.next)
 		})
 	}

@@ -190,7 +190,7 @@ func (s *CastSuite) TestHealingWordAndActionSpellsUseTheSameGateAfterReload() {
 			rolls := s.dice.next
 			_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: stale, Targets: []string{"cleric"}})
 			s.ErrorIs(err, session.ErrStaleDeclaration)
-			s.Equal(before, s.characters.byID["cleric"])
+			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(rolls, s.dice.next)
 			_, err = s.mgr.EndTurn(context.Background(), &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 			s.Require().NoError(err)
@@ -306,7 +306,7 @@ func (s *CastSuite) TestHealingWordRevalidatesSightAndTargetsBeforePayment() {
 			rolls := s.dice.next
 			_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: id, Targets: []string{target}})
 			s.ErrorIs(err, session.ErrStaleDeclaration)
-			s.Equal(before, s.characters.byID["cleric"])
+			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(rolls, s.dice.next)
 			s.Empty(s.beats(session.EventCast, session.EventActivationResult))
 		})

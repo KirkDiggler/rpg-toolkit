@@ -1484,16 +1484,18 @@ func (s *CastSuite) TestBurningHandsAimsPaysAndSavesForHalfWithoutPush() {
 func (s *CastSuite) TestBurningHandsRejectsMissingAndSelfAimBeforePayment() {
 	s.scene(castingBardWithSpells("bard", spells.BurningHands), 1)
 	own := s.cellOf("bard")
+	initial := storedJSON(s.T(), s.characters.byID["bard"].ActionEconomy)
 	for _, cell := range []*spatial.Position{nil, &own} {
 		_, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.BurningHands).ID, Cell: cell})
 		s.ErrorIs(err, session.ErrBadCast)
 		s.Equal(2, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
-		s.Nil(s.characters.byID["bard"].ActionEconomy, "refusal must not persist an action economy change")
+		s.JSONEq(initial, storedJSON(s.T(), s.characters.byID["bard"].ActionEconomy), "refusal must not persist an action economy change")
 	}
 }
 
 func (s *CastSuite) TestBurningHandsPreviewMatchesCastWithoutPayment() {
 	s.scene(castingBardWithSpells("bard", spells.BurningHands), 1, 1, 2, 3, 4)
+	initial := storedJSON(s.T(), s.characters.byID["bard"].ActionEconomy)
 	row := s.castRow(spells.BurningHands)
 	aim := s.cellOf("skeleton")
 	// A fractional bearing must stay fractional rather than snapping to a cell.
@@ -1516,7 +1518,7 @@ func (s *CastSuite) TestBurningHandsPreviewMatchesCastWithoutPayment() {
 	_, err = s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bard", CastAim: &session.CastAim{DeclarationID: "stale", Cell: &aim}})
 	s.ErrorIs(err, session.ErrStaleDeclaration)
 	s.Equal(2, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
-	s.Nil(s.characters.byID["bard"].ActionEconomy)
+	s.JSONEq(initial, storedJSON(s.T(), s.characters.byID["bard"].ActionEconomy))
 	_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "bard", DeclarationID: row.ID, Cell: &aim})
 	s.Require().NoError(err)
 	s.Equal(before-9, s.storedSkeleton(), "preview did not consume any dice")

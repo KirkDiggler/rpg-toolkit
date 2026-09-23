@@ -36,7 +36,9 @@ func (s *CastSuite) flareReaction() session.Declaration {
 func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 	for _, spend := range []bool{true, false} {
 		s.Run(map[bool]string{true: "use", false: "decline"}[spend], func() {
-			s.scene(s.flareSheet(), 1, 15, 2, 1, 4, 5)
+			sheet := s.flareSheet()
+			sheet.ActionEconomy = nil
+			s.scene(sheet, 1, 15, 2, 1, 4, 5)
 			ctx := context.Background()
 			newManager := func() {
 				var err error
@@ -109,13 +111,18 @@ func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep(
 	s.scene(s.flareSheet(), 1, 15, 2, 1)
 	ctx := context.Background()
 	before := s.dice.next
+	movement := s.characters.byID["cleric"].ActionEconomy.MovementRemaining
 	_, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
 	s.Require().NoError(err)
 	s.Equal(before, s.dice.next)
+	s.Equal(spatial.Position{X: 1, Y: 1}, s.cellOf("cleric"), "reaction pauses before leaving the cell")
+	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining)
 	s.reloadHealingScene()
 	row := s.flareReaction()
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactStrike, Option: "use"})
 	s.Require().NoError(err)
 	s.Len(s.beats(session.EventStruck, session.EventMissed), 1)
 	s.Equal(2, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
+	s.Equal(spatial.Position{X: 0, Y: 1}, s.cellOf("cleric"))
+	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "resuming does not pay movement twice")
 }
