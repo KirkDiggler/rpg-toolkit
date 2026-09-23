@@ -126,8 +126,53 @@ type SingleRoomSpec struct {
 	// this package never resolves content, and a scenario is content.
 	Scenarios map[string]map[string]string `yaml:"scenarios,omitempty" json:"scenarios,omitempty"`
 
+	// Tables are the answer tables this site declared, keyed by id
+	// (rpg-toolkit#1897). Optional; absent means none, and every document
+	// authored before this key existed decodes, compiles and marshals
+	// exactly as it did.
+	//
+	// AT THE ROOT, BESIDE `factions:` AND `concealments:`, BY RULE 3 of the
+	// placement law (rpg-project#488): what is NOT PLACED lives at the root.
+	// A table is declared once and named from whatever answers it
+	// ([RoomMonsterBinding.Table]), and it stands nowhere — so there is no
+	// placed thing to key it by, exactly as a record of knowledge has none.
+	//
+	// ONE COPY OF A SHARED TABLE, WHICH IS THE POINT. Before this key a table
+	// written for six goblins was written six times; here it is written once
+	// and six bindings name it. The grammar INSIDE a table is
+	// [RoomMonsterBinding.On]'s — the same map[string][]AnswerSpec, the same
+	// triggers, words, bands and refusals — because a second spelling of
+	// "what this creature does" is the drift a shared dialect exists to
+	// prevent.
+	//
+	// A BASE, NOT A REPLACEMENT. A referenced table is what a binding's own
+	// `on:` layers over, and a binding's own `on:` still layers over its
+	// faction's. [ordersOf] is unchanged and this key adds no rule to it —
+	// only another source of the same `On`.
+	Tables map[string]TableSpec `yaml:"tables,omitempty" json:"tables,omitempty"`
+
 	Room RoomSource `yaml:"room" json:"room"`
 }
+
+// TableSpec is one authored answer table at the root: a named block of orders
+// any number of bindings may name (rpg-toolkit#1897).
+//
+// THE SHAPE IS THE TABLE ITSELF, NOT A WRAPPER AROUND ONE. A root table is
+// keyed by id in [SingleRoomSpec.Tables], so the id is the MAP KEY and the
+// value is the table — [SingleRoomSpec.Concealments]' decision, and for its
+// reason: an `id:` field inside the value would be a second place the same
+// name is written, and the two could disagree.
+//
+//	tables:
+//	  goblin-mind:
+//	    time:
+//	      - { when: { enemy: reach }, attack: enemy }
+//	      - { when: { enemy: none }, hold: {} }
+//
+// A named type rather than a bare map so the field has somewhere to live and
+// so a refusal can name it; the underlying shape is
+// [RoomMonsterBinding.On]'s exactly.
+type TableSpec map[string][]AnswerSpec
 
 // RoomExit is one authored way out: an id, and the cell a member stands on to
 // leave through it (rpg-project#488 R2).
@@ -254,6 +299,27 @@ type RoomMonsterSource struct {
 // EVERY FIELD IS OPTIONAL, and the common state of this whole block is
 // absence: a creature with nothing to override needs no binding at all.
 type RoomMonsterBinding struct {
+	// Table names a root answer table ([SingleRoomSpec.Tables]) this creature
+	// answers with (rpg-toolkit#1897). Optional; absent means this creature
+	// names no shared table and its orders come from `on:` and its faction
+	// alone, exactly as they did before this field existed.
+	//
+	// A TABLE IS A BASE, AND `on:` STILL WINS. The referenced table is what
+	// this binding's own `on:` is laid over — the same key-by-key,
+	// nearer-layer-wholesale rule [ordersOf] already applies to a faction's
+	// table. So a creature may share a table and override one trigger of it
+	// without copying the rest:
+	//
+	//	monsterBindings:
+	//	  gob-2: { table: goblin-mind, on: { time: [{ when: { enemy: none }, hold: {} }] } }
+	//
+	// THE ID IS RESOLVED AND NEVER INTERPRETED. It names a table this
+	// document declares; an id this document does not declare is refused BY
+	// NAME at this path, [RoomMonsterBinding.Holds]' treatment of an
+	// undeclared record. Nothing here reads the table's contents — [ordersOf]
+	// does that, once, for every dialect.
+	Table string `yaml:"table,omitempty" json:"table,omitempty"`
+
 	// On is this creature's own answer table, LAID OVER its faction's
 	// ([FactionSpec.On]) key by key, the nearer layer winning WHOLESALE. The
 	// shape, the grammar and every refusal are [PlaceSpec.On]'s.

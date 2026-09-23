@@ -364,6 +364,28 @@ func bindingHolds(g *grammar, path, id string, holds []string, declared map[stri
 	}
 }
 
+// bindingTable refuses a binding naming a root table this document does not
+// declare — [bindingHolds]' refusal one noun over, at the same path and in
+// the same shape (rpg-toolkit#1897).
+//
+// AN EMPTY ID IS NOT A REFUSAL: it is an author who named no table, and
+// absence is the whole of "this creature answers from its `on:` and its
+// faction alone" — what every binding authored before this key does.
+//
+// A TABLE DECLARED AND NEVER NAMED IS NOT A DEFECT either. It is a table
+// waiting for its second creature, which is the reason to lift one to the
+// root at all, so nothing here counts references.
+func bindingTable(g *grammar, path, id, table string, declared map[string]TableSpec) {
+	if table == "" {
+		return
+	}
+	if _, ok := declared[table]; ok {
+		return
+	}
+	g.fail(path+".table",
+		"%q names the table %q, and no table in this dungeon has that id", id, table)
+}
+
 // bindingChecks refuses an authored `intimidate:` or `persuade:` with no way
 // through it — [validation.place]'s two sentences, judged by the one shared
 // [grammar.approaches] so every per-approach refusal is v2's as well.

@@ -914,6 +914,56 @@ func tableOf(on map[string][]AnswerSpec) encounter.Table {
 	return out
 }
 
+// rootTableOn is the table a binding NAMED at the root, or nil when it named
+// none or when no such table is declared (rpg-toolkit#1897).
+//
+// THE ID IS LOOKED UP, NEVER INTERPRETED. An id this document does not
+// declare is refused by name before any compile runs
+// ([roomTableRefusals]), so the nil branch here is the honest "named
+// nothing" case rather than a swallowed error: a binding with no `table:`
+// and a binding whose table the validator already refused both order from
+// their own `on:` alone.
+func rootTableOn(tables map[string]TableSpec, id string) map[string][]AnswerSpec {
+	if id == "" {
+		return nil
+	}
+
+	return tables[id]
+}
+
+// layerSpecs returns `over` laid on `base`, in the AUTHORING dialect's own
+// type: for each key the nearer layer wins WHOLESALE, which is
+// [encounter.Layer]'s rule said in `AnswerSpec` terms.
+//
+// This exists so a named root table can be stacked under a binding's own
+// `on:` WITHOUT the compile site leaving the dialect's type. The engine's
+// [encounter.Layer] is what actually decides the merged table, in [ordersOf]
+// — this only folds two authored sources into the one `On` that function
+// expects, so there is still exactly ONE layering rule in the package and
+// one place it is applied.
+//
+// NIL IS CONTAGIOUS IN THE RIGHT DIRECTION: two nils give nil, so a creature
+// that names no table and writes no `on:` carries nil — the same value it
+// carried before this key existed, and the reason every document authored
+// earlier pictures byte-identically.
+func layerSpecs(base, over map[string][]AnswerSpec) map[string][]AnswerSpec {
+	if len(base) == 0 {
+		return over
+	}
+	if len(over) == 0 {
+		return base
+	}
+	out := make(map[string][]AnswerSpec, len(base)+len(over))
+	for key, entries := range base {
+		out[key] = entries
+	}
+	for key, entries := range over {
+		out[key] = entries
+	}
+
+	return out
+}
+
 // answerOf compiles one authored entry: the weight resolved, the condition
 // and the selectors turned into the composition's own shapes.
 func answerOf(entry AnswerSpec) encounter.Answer {
