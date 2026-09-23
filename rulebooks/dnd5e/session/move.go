@@ -434,6 +434,7 @@ func (m *Manager) runWalk(
 	}
 
 	for i, cell := range path {
+		scope.walkContinuation = path[i:]
 		// ANNOUNCED BEFORE IT IS TAKEN, which is [encounter.Mover]'s contract
 		// and the reason an opportunity attack can fire at all: a reactor's
 		// swing is checked for reach against where the walker IS, and a walk
@@ -452,6 +453,10 @@ func (m *Manager) runWalk(
 				Mover: encounter.MemberID(member), From: from, To: cell,
 			},
 		); err != nil {
+			var paused *encounter.StepPausedError
+			if errors.As(err, &paused) {
+				return res, nil
+			}
 			return nil, fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, len(path), cell.X, cell.Y, err)
 		}
 

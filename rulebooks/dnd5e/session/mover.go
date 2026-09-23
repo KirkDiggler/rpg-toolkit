@@ -178,10 +178,28 @@ func (s moverSeam) offerStep(
 		return fmt.Errorf("move: %w", translateResolution(err))
 	}
 
+	if out.Posed != nil && out.Posed.Movement != nil {
+		moved := *out.Posed.Movement
+		if err := s.recordMovementResults(ctx, enc, out, moved); err != nil {
+			return err
+		}
+		p := pendingAttackWindowPayload{Movement: true, RecordedReactions: len(moved.Reactions), WalkPath: append([]spatial.Position(nil), s.scope.walkContinuation...), Target: moved.Mover}
+		if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
+			return err
+		}
+		ask := out.Posed.Ask
+		return &encounter.StepPausedError{Windows: []encounter.PausedWindow{{Audience: encounter.MemberID(ask.Audience), Reaction: encounter.ReactionIdentity{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}}}}
+	}
+
 	moved, ok := out.Outcome.(resolution.MovementOutcome)
 	if !ok {
 		return fmt.Errorf("move: %w: movement produced %T", ErrInvalidWorld, out.Outcome)
 	}
+
+	return s.recordMovementResults(ctx, enc, out, moved)
+}
+
+func (s moverSeam) recordMovementResults(ctx context.Context, enc *encounter.Encounter, out *resolution.Output, moved resolution.MovementOutcome) error {
 
 	// EVERY BEAT IS BUILT BEFORE ANY SHEET IS WRITTEN. The only way building
 	// one can fail is a reaction this package cannot name, and failing after
@@ -198,17 +216,15 @@ func (s moverSeam) offerStep(
 		// none: a reaction is a roll the server took on the reactor's behalf
 		// inside somebody else's Move, so no client simulated its die — see
 		// recordFor.
-		beat := recordFor(
-			&AttackInput{Attacker: reaction.ReactorID, Target: reaction.Against},
-			reaction.Struck,
-			reactions.answered[reaction.ReactorID],
-			"",
+		beat := recordStrike(
+			reaction.ReactorID, reaction.Against, reaction.Struck,
+			AttackRef{Ref: reaction.AttackRef.String(), Name: reaction.AttackName, DamageType: DamageType(reaction.DamageType)}, "",
 			// NO CONCENTRATION LISTS ON THE PER-REACTION BEAT. One move is one
 			// interaction and can produce several opportunity attacks, so the
 			// checks and breaks arrive once for the whole of it; copying them
 			// onto every beat would record one broken spell as many. They are
 			// attached below, to one beat.
-			&resolution.Output{},
+			nil, nil,
 		)
 		// What the beat was taken AS. The numbers already crossed as an
 		// ordinary strike; this is the only thing that explains why a fighter

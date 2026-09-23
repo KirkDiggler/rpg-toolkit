@@ -143,6 +143,21 @@ func (s strikerSeam) Strike(
 	}
 
 	if out.Posed != nil {
+		if out.Posed.BeforeRoll || out.Posed.Sequence != nil {
+			if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
+				return err
+			}
+			p := pendingAttackWindowPayload{Attacker: string(attacker), Target: string(target), Definition: definition, Components: attackerData.Actions}
+			if out.Posed.Sequence != nil {
+				if err := s.m.recordPendingSequence(s.scope, &p, *out.Posed.Sequence); err != nil {
+					return err
+				}
+			}
+			if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
+				return err
+			}
+			return encounter.ErrStrikePaused
+		}
 		if out.Posed.SettledStrike == nil {
 			return fmt.Errorf("strike: %w: unsupported pre-hit monster question", ErrInvalidWorld)
 		}

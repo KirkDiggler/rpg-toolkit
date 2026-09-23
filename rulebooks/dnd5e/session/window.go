@@ -371,7 +371,7 @@ func windowKindOf(raw []byte) (string, error) {
 		return "", fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
 	}
 	switch peek.Kind {
-	case windowKindReaction, windowKindPostRoll, windowKindCheckOffer, windowKindCastOffer, windowKindPostHit:
+	case windowKindPendingAttack, windowKindReaction, windowKindPostRoll, windowKindCheckOffer, windowKindCastOffer, windowKindPostHit:
 		return peek.Kind, nil
 	default:
 		return "", fmt.Errorf(
