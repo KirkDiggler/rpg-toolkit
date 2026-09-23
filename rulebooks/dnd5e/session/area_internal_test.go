@@ -330,3 +330,19 @@ func (s *AreaCoveredSuite) TestTriangleUsesTheSameHalfCoveragePolicy() {
 	_, err = deriveAreaMembers(s.enc, profile, coveredCaster, s.roster(), nil)
 	s.ErrorIs(err, ErrBadCast)
 }
+
+func (s *AreaDeriveSuite) TestPointBoxUsesSharedCoverageAndCatchesAlliesAndCaster() {
+	profile := areaProfile(20, combatActions.AreaCatchesEveryone)
+	profile.Area.Footprint.Shape = combatActions.AreaBox
+	profile.Area.Footprint.Origin = combatActions.AreaOriginPoint
+	caught, err := deriveAreaMembers(s.enc, profile, areaBard, s.roster(), &s.closeAt)
+	s.Require().NoError(err)
+	s.Contains(caught.resolvable, areaBard)
+	s.Contains(caught.resolvable, areaClose)
+	s.Contains(caught.resolvable, areaFar)
+	s.Require().Len(caught.unresolved, 1)
+	s.Equal(areaVendor, caught.unresolved[0].Member)
+	// Centring on the caster is a legal point selection, not a missing bearing.
+	_, err = deriveAreaMembers(s.enc, profile, areaBard, s.roster(), &s.bardAt)
+	s.Require().NoError(err)
+}

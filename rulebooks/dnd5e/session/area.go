@@ -135,6 +135,22 @@ func deriveAreaMembers(
 			return nil, fmt.Errorf("%w: unsupported area shape %q", ErrBadCast, area.Footprint.Shape)
 		}
 
+	case combatActions.AreaOriginPoint:
+		if area.Footprint.Shape != combatActions.AreaBox || cell == nil {
+			return nil, fmt.Errorf("%w: point area requires a box and selected cell", ErrBadCast)
+		}
+		// A point-selected box uses the grid's positive axial X bearing. It shares
+		// the same centred box coverage and half-cell rule as every other box.
+		toward := *cell
+		toward.X++
+		feet := float64(area.Footprint.SizeFeet)
+		var covered encounter.MembersCoveredOutput
+		covered, err = enc.MembersCovered(&encounter.MembersCoveredInput{
+			Footprint: spatial.Footprint{Box: &spatial.Box{W: feet, D: feet}},
+			Anchor:    *cell, Toward: toward,
+		})
+		caught = covered.Members
+
 	case combatActions.AreaOriginCasterEdge:
 		if area.Footprint.Shape != combatActions.AreaBox {
 			return nil, fmt.Errorf("%w: unsupported area shape %q on a caster-edge origin",
