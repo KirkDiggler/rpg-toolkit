@@ -671,3 +671,116 @@ func (s *TableSuite) TestAShareBelowOneCanNeverBeDealt() {
 	s.Require().Error(err)
 	s.ErrorIs(err, behavior.ErrBadMix)
 }
+
+// ---------------------------------------------------------------------------
+// The three readings of a deed condition (rpg-toolkit#1883, rpg-project#498)
+// ---------------------------------------------------------------------------
+//
+// A `when` on a deed gained a SCOPE: whose deed it is about. The default is
+// unchanged — a deed against the creature itself — so every test above still
+// proves what it always proved. These prove the two readings beside it, and
+// that the default did not move.
+
+// deedReadings builds a table whose ONLY eligible entry is the scoped one, so
+// the chosen index says which reading held.
+func deedReadings(scope behavior.DeedScope) behavior.Table {
+	return behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: &behavior.When{Deed: "attacked", Within: 3, Scope: scope},
+			Attack: &behavior.Selector{Word: behavior.SelectorAttacker}},
+		{Weight: 1, Hold: true},
+	}}
+}
+
+func (s *TableSuite) TestADeedConditionDefaultsToAgainstTheCreatureItself() {
+	// THE COMPATIBILITY CLAIM: a document that authors no scope means what it
+	// always meant. An empty scope reads `Deeds`, so the row that fired for a
+	// blow to the creature still fires.
+	facts := behavior.Facts{
+		Now: 11, CanAttack: true,
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+	}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: deedReadings(behavior.ScopeSelf),
+		Facts: facts, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(0, chosen.Entry, "a blow to me still reads the default scope")
+}
+
+func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
+	table := deedReadings(behavior.ScopeAlly)
+
+	// A blow to an ALLY holds, even though nothing was done to this creature.
+	toAlly := behavior.Facts{
+		Now: 11, CanAttack: true,
+		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+	}
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: toAlly, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(0, chosen.Entry, "an ally's wound is the fact this condition asks for")
+
+	// A blow to ME does NOT hold under `ally`, which is the whole point of the
+	// two readings being separate.
+	toMe := behavior.Facts{
+		Now: 11, CanAttack: true,
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+	}
+	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: toMe, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(1, chosen.Entry, "my own wound is not the ally reading")
+}
+
+func (s *TableSuite) TestActorScopeIsThePauseReadsWhatIDid() {
+	// THE PAUSE, with no separate concept in the grammar: "after I strike,
+	// stand still for two rounds" is a deed the creature DID, recently.
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: &behavior.When{Deed: "attacked", Within: 2, Scope: behavior.ScopeActor},
+			Hold: true},
+		{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+	}}
+
+	struck := behavior.Facts{
+		Now: 11, CanAttack: true,
+		OwnDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "me", At: 10}},
+	}
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: struck, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(0, chosen.Entry, "the round after I struck, the pause holds")
+
+	// Two rounds later the span has run out and it acts again.
+	fresh := behavior.Facts{
+		Now: 13, CanAttack: true,
+		OwnDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "me", At: 10}},
+	}
+	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: fresh, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(1, chosen.Entry, "the pause ends when its span does")
+
+	// AND A BLOW TO ME IS NOT A THING I DID: the actor reading does not fire
+	// on the creature's own Deeds, which is what keeps the two apart.
+	wasHit := behavior.Facts{
+		Now: 11, CanAttack: true,
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+	}
+	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: wasHit, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(1, chosen.Entry, "being hit is not doing it")
+}
+
+func (s *TableSuite) TestAnUnsetAllyReadingAuthorsNothing() {
+	// THE ZERO VALUE TELLS THE TRUTH, the same rule the rest of this package
+	// keeps: a caller that has not thought about allies hands `nil`, and a
+	// table that authors no `ally` condition behaves exactly as before.
+	facts := behavior.Facts{Now: 11, CanAttack: true}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: deedReadings(behavior.ScopeAlly),
+		Facts: facts, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(1, chosen.Entry, "no ally deeds means the ally row is not on the table")
+}

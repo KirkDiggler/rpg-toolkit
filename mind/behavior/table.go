@@ -227,6 +227,44 @@ func DeedVerbFor(word string) string {
 	}
 }
 
+// DeedScope says whose deed a `when: { <word>: … }` condition is about. An
+// empty scope is the reading this type was added beside — a deed AGAINST THE
+// CREATURE ITSELF — so a document that authors no scope means exactly what it
+// always meant and behaves identically.
+//
+// THE TWO NEW READINGS ARE DIFFERENT AXES, and neither is a new condition:
+//
+//   - [ScopeAlly] reads a deed against SOMEBODY ON THIS CREATURE'S SIDE. The
+//     deed is already in hand — deeds land on every witness, not only on the
+//     target — so this is a second reading of facts the creature holds, not a
+//     second fact source.
+//   - [ScopeActor] reads a deed the creature ITSELF DID. This is what a pause
+//     is made of ("after I strike, stand still"), so the grammar needs no
+//     separate pause concept.
+type DeedScope string
+
+const (
+	// ScopeSelf is a deed against the creature itself — the default, and the
+	// only reading this module knew before scopes existed. Spelled as the
+	// empty string so an unauthored scope means this, and a document written
+	// before scopes existed keeps its exact meaning.
+	ScopeSelf DeedScope = ""
+
+	// ScopeAlly is a deed against one of this creature's own side. WHICH
+	// members those are is the caller's answer (the stance graph, in the
+	// rulebook), asked when the condition is read — so a table keeps working
+	// when a disposition changes, and a document never names a faction.
+	ScopeAlly DeedScope = "ally"
+
+	// ScopeActor is a deed this creature did itself, which is the fact a
+	// pause reads.
+	ScopeActor DeedScope = "actor"
+)
+
+// DeedScopes is every scope a condition may name, in the order a refusal
+// lists them: the default first, then the two readings beside it.
+var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
+
 // When is a condition on WHAT THIS CREATURE HOLDS, and an entry whose When
 // does not hold is not on the table for this roll (design §2).
 //
@@ -249,6 +287,22 @@ type When struct {
 	// condition names an enemy instead. [DeedVerbFor] is what turns it into
 	// the verb the deeds channel files under.
 	Deed string
+
+	// Scope says WHOSE deed the Deed word is about, when Deed is set: the
+	// empty string is "against me" (the reading this field was added
+	// beside), [ScopeAlly] is "against one of mine", and [ScopeActor] is
+	// "done by me". It is a refinement of the deed form, not a second
+	// condition, so a When still names exactly one thing.
+	//
+	// ALLY IS A RELATIONSHIP, NOT A FACTION. Which members are "mine" is the
+	// caller's answer — the stance graph's, in the rulebook — and it is asked
+	// when the condition is read, never frozen into the document. That is
+	// what makes a table keep working when a disposition changes.
+	//
+	// ACTOR IS THE PAUSE. "After I strike, stand still for two rounds" is
+	// `{ attacked: { within: 2, as: actor } }` — a deed the creature DID,
+	// recently — so a pause needs no separate concept in this grammar.
+	Scope DeedScope
 
 	// Within is how many rounds ago the deed may have landed and still
 	// count, in THE CALLER'S OWN UNIT — whatever [Facts.Now] and a deed's
@@ -458,8 +512,25 @@ type Facts struct {
 	CanAttack bool
 	CanMove   bool
 
-	// Deeds is every deed this creature holds against itself.
+	// Deeds is every deed this creature holds against itself — the [ScopeSelf]
+	// reading, and the only one this module knew before scopes existed.
 	Deeds []HeldDeed
+
+	// AllyDeeds is every deed this creature holds against ONE OF ITS OWN SIDE
+	// — the [ScopeAlly] reading. The caller decides who "its own side" is
+	// (the rulebook asks its stance graph), so this is the same deeds read a
+	// second way rather than a second fact source: deeds land on every
+	// witness, so a creature that watched an ally fall already holds it.
+	//
+	// EMPTY IS "I SAW NOTHING HAPPEN TO MY SIDE", and an unset field means
+	// the same thing, so a caller that has not thought about allies hands a
+	// table that authors no `on: ally` condition exactly what it had.
+	AllyDeeds []HeldDeed
+
+	// OwnDeeds is every deed this creature DID — the [ScopeActor] reading,
+	// and what a pause is made of. The verb is the creature's own action, so
+	// the actor of each is the creature itself.
+	OwnDeeds []HeldDeed
 
 	// Now is the clock's high-water when this pick was made — what a deed's
 	// At is subtracted from to age it.
@@ -480,6 +551,24 @@ func (f Facts) affords(a Answer) bool {
 		return f.CanMove
 	default:
 		return true
+	}
+}
+
+// deedsOf is the reading this condition's scope asks for: the deeds against
+// the creature ([ScopeSelf], the default), the deeds against its side
+// ([ScopeAlly]), or the deeds it did ([ScopeActor]).
+//
+// ONE PLACE THAT DECIDES, so the three readings cannot drift apart and an
+// unknown scope (which the door refuses) reads as the default rather than
+// silently matching nothing.
+func (w *When) deedsOf(f Facts) []HeldDeed {
+	switch w.Scope {
+	case ScopeAlly:
+		return f.AllyDeeds
+	case ScopeActor:
+		return f.OwnDeeds
+	default:
+		return f.Deeds
 	}
 }
 
@@ -514,7 +603,7 @@ func (w *When) holds(f Facts) bool {
 	}
 
 	verb := DeedVerbFor(w.Deed)
-	for _, d := range f.Deeds {
+	for _, d := range w.deedsOf(f) {
 		if verb == "" || d.Kind != verb {
 			continue
 		}
