@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -282,4 +283,39 @@ func (s *BoundaryTestSuite) TestTheTableCoversEveryKindThisBuildKnows() {
 		s.True(ok, "boundaryTopics has no entry for %q, so announcing one would be refused", kind)
 	}
 	s.Len(boundaryTopics, 3, "a fourth entry here needs a fourth kind above and a test with it")
+}
+
+func (s *BoundaryTestSuite) TestColdCombatantCanReactBeforeFirstTurnAndOnlyOwnerTurnRefreshes() {
+	sheet := probeSheet(heroID)
+	sheet.ActionEconomy = nil
+	run := func(subject string, round int, combatTurns map[string]int) {
+		machine, err := NewBoundary(&BoundaryInput{Crossed: []encounter.Boundary{{Kind: encounter.TurnStarted, Subject: encounter.MemberID(subject), Round: round}}, CombatTurns: combatTurns})
+		s.Require().NoError(err)
+		out, err := Resolve(s.ctx, &Input{World: s.world(), Participants: []Participant{{Character: sheet}}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(), Machine: machine})
+		s.Require().NoError(err)
+		for _, dirty := range out.DirtyCharacters {
+			if dirty.ID == string(heroID) {
+				sheet = dirty
+			}
+		}
+	}
+	run("other", 1, nil)
+	s.Nil(sheet.ActionEconomy, "free-roaming characters are not initialized")
+	run("other", 1, map[string]int{string(heroID): 1})
+	s.Require().NotNil(sheet.ActionEconomy)
+	s.Equal(1, sheet.ActionEconomy.ReactionsRemaining, "available before first turn")
+	sheet.ActionEconomy.ReactionsRemaining = 0
+	run("other", 2, map[string]int{string(heroID): 2})
+	s.Equal(0, sheet.ActionEconomy.ReactionsRemaining, "another combatant's turn never refills a spent reaction")
+	run(string(heroID), 2, map[string]int{string(heroID): 2})
+	s.Equal(1, sheet.ActionEconomy.ReactionsRemaining)
+	s.Equal(2, sheet.ActionEconomy.TurnNumber)
+	s.Equal(1, sheet.ActionEconomy.ActionsRemaining)
+	// The ordinary pricing fallback sees this turn as current and cannot refill it.
+	sheet.ActionEconomy.ReactionsRemaining = 0
+	loaded, err := character.Load(s.ctx, sheet)
+	s.Require().NoError(err)
+	_, err = loaded.RefreshForTurn(s.ctx, &character.RefreshForTurnInput{TurnNumber: 2, Speed: loaded.GetSpeed()})
+	s.Require().NoError(err)
+	s.Equal(0, loaded.GetActionEconomy().ReactionsRemaining)
 }

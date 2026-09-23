@@ -109,6 +109,12 @@ func (MovementOutcome) isOutcome() {}
 
 // ReactionOutcome is one reaction that fired during a step.
 type ReactionOutcome struct {
+	ConcentrationChecks []encounter.ConcentrationCheck
+	ConcentrationBreaks []encounter.ConcentrationBreak
+	// Attack identity is carried as facts so the host can record a resumed swing.
+	AttackRef  core.Ref
+	AttackName string
+	DamageType string
 	// ReactorID is who reacted, ConditionRef is what let them, and Against is
 	// who they reacted to.
 	ReactorID    string
@@ -207,7 +213,9 @@ func NewMovement(in *MovementInput) (Machine, error) {
 }
 
 type movementMachine struct {
-	in *MovementInput
+	resumed     Machine
+	resumeIndex int
+	in          *MovementInput
 
 	folded    *dnd5eEvents.MovementChainEvent
 	triggers  []dnd5eEvents.ReactionTriggerEvent
@@ -217,6 +225,9 @@ type movementMachine struct {
 // Start is pure preflight — NewMovement already refused what it could — and
 // yields the fold without publishing.
 func (m *movementMachine) Start(_ context.Context, _ *Participants) (Step, error) {
+	if m.resumed != nil {
+		return m.react(m.resumeIndex), nil
+	}
 	return m.announce(), nil
 }
 
@@ -364,14 +375,15 @@ func (m *movementMachine) react(i int) Step {
 			continue
 		}
 
+		inner := NewStrike(&StrikeInput{AttackerID: trigger.ReactorID, TargetID: trigger.SourceEntity, Definition: definition, Roller: m.in.Roller})
+		if m.resumed != nil && i == m.resumeIndex {
+			inner = m.resumed
+			m.resumed = nil
+		}
 		return Request{
-			name: fmt.Sprintf("%s reacts to %s", trigger.ReactorID, trigger.SourceEntity),
-			machine: NewStrike(&StrikeInput{
-				AttackerID: trigger.ReactorID,
-				TargetID:   trigger.SourceEntity,
-				Definition: definition,
-				Roller:     m.in.Roller,
-			}),
+			name:    fmt.Sprintf("%s reacts to %s", trigger.ReactorID, trigger.SourceEntity),
+			machine: inner,
+			onPose:  func(_ context.Context, pose Pose) (Step, error) { return m.freezeMovement(i, definition, pose) },
 			next: func(_ context.Context, out Outcome) (Step, error) {
 				struck, ok := out.(StrikeOutcome)
 				if !ok {
@@ -379,6 +391,7 @@ func (m *movementMachine) react(i int) Step {
 						ErrBadMovement, trigger.ReactorID, out)
 				}
 				m.reactions = append(m.reactions, ReactionOutcome{
+					AttackRef: definition.Ref, AttackName: definition.Name, DamageType: movementDamageType(definition),
 					ReactorID:    trigger.ReactorID,
 					ConditionRef: trigger.ConditionRef,
 					Against:      trigger.SourceEntity,
@@ -459,4 +472,11 @@ func (m *movementMachine) outcome() MovementOutcome {
 	}
 
 	return out
+}
+
+func movementDamageType(d combatActions.Definition) string {
+	if d.Attack != nil && len(d.Attack.Damage) > 0 {
+		return string(d.Attack.Damage[0].Type)
+	}
+	return ""
 }

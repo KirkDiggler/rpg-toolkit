@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -517,6 +518,12 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	}
 
 	consequences := outcome
+	if posed != nil && posed.Movement != nil {
+		consequences = *posed.Movement
+	}
+	if posed != nil && posed.Sequence != nil {
+		consequences = *posed.Sequence
+	}
 	if posed != nil && posed.SettledStrike != nil {
 		consequences = *posed.SettledStrike
 	}
@@ -545,6 +552,59 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 			return nil, attrErr
 		}
 		outcome = attributed
+		ended, kept = nil, nil
+	}
+
+	if posed != nil && posed.Sequence != nil {
+		attributed, attrErr := breaks.attributeToSteps(cast, *posed.Sequence)
+		if attrErr != nil {
+			return nil, attrErr
+		}
+		for i := range attributed.Steps {
+			attributed.Steps[i].Strike.FollowUps = nil
+		}
+		attributed.FollowUps = nil
+		var frozen frozenSequence
+		if err := json.Unmarshal(posed.Frozen, &frozen); err != nil {
+			return nil, err
+		}
+		frozen.Outcome = attributed
+		raw, err := json.Marshal(frozen)
+		if err != nil {
+			return nil, err
+		}
+		posed.Frozen = raw
+		posed.Sequence = &attributed
+		ended, kept = nil, nil
+	}
+
+	if moved, ok := outcome.(MovementOutcome); ok {
+		attributed, e := breaks.attributeToReactions(cast, moved)
+		if e != nil {
+			return nil, e
+		}
+		outcome = attributed
+		ended, kept = nil, nil
+	}
+	if posed != nil && posed.Movement != nil {
+		attributed, e := breaks.attributeToReactions(cast, *posed.Movement)
+		if e != nil {
+			return nil, e
+		}
+		for i := range attributed.Reactions {
+			attributed.Reactions[i].Struck.FollowUps = nil
+		}
+		var frozen frozenMovement
+		if e = json.Unmarshal(posed.Frozen, &frozen); e != nil {
+			return nil, e
+		}
+		frozen.Outcome = attributed
+		raw, e := json.Marshal(frozen)
+		if e != nil {
+			return nil, e
+		}
+		posed.Frozen = raw
+		posed.Movement = &attributed
 		ended, kept = nil, nil
 	}
 

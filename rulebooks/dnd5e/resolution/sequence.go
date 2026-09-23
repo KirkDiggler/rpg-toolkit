@@ -138,7 +138,9 @@ func newSequence(in *ActionInput, normalizedTargetIDs []string) (Machine, error)
 	steps := make([]sequenceStep, 0, len(components))
 	for _, component := range components {
 		steps = append(steps, sequenceStep{
-			action: component.Definition.Ref,
+			action:     component.Definition.Ref,
+			definition: component.Definition,
+			imposed:    imposedFor(definition.Ref, in.AttackerID, component.Step),
 			inner: NewStrike(&StrikeInput{
 				AttackerID: in.AttackerID,
 				TargetID:   targetID,
@@ -182,9 +184,11 @@ func imposedFor(sequence core.Ref, attackerID string, step combatActions.Sequenc
 
 // sequenceStep is one component machine and the ref it was built from.
 type sequenceStep struct {
-	action core.Ref
-	inner  Machine
-	first  Step
+	definition combatActions.Definition
+	imposed    []dnd5eEvents.AttackModifierSource
+	action     core.Ref
+	inner      Machine
+	first      Step
 }
 
 // sequenceMachine runs component machines one at a time, in declared order.
@@ -195,11 +199,13 @@ type sequenceStep struct {
 // through [Request] exactly as a cast composes a contest per target. What it
 // owns is the order, the stop rule, and the collected outcome.
 type sequenceMachine struct {
-	action     core.Ref
-	name       string
-	attackerID string
-	targetID   string
-	steps      []sequenceStep
+	resumeIndex int
+	resumed     bool
+	action      core.Ref
+	name        string
+	attackerID  string
+	targetID    string
+	steps       []sequenceStep
 
 	// roller is carried for the same reason [castMachine] carries one: this
 	// machine's own door validates it, and a sequence with no roller is a
@@ -248,9 +254,11 @@ func (m *sequenceMachine) Start(ctx context.Context, cast *Participants) (Step, 
 		return nil, err
 	}
 	m.target = target
-	m.outcome = SequenceOutcome{Action: m.action, AttackerID: m.attackerID, TargetID: m.targetID}
+	if !m.resumed {
+		m.outcome = SequenceOutcome{Action: m.action, AttackerID: m.attackerID, TargetID: m.targetID}
+	}
 
-	for index := range m.steps {
+	for index := m.resumeIndex; index < len(m.steps); index++ {
 		first, startErr := m.steps[index].inner.Start(ctx, cast)
 		if startErr != nil {
 			return nil, fmt.Errorf("sequence %s step %d %s: %w",
@@ -259,7 +267,7 @@ func (m *sequenceMachine) Start(ctx context.Context, cast *Participants) (Step, 
 		m.steps[index].first = first
 	}
 
-	return m.resolveStep(0), nil
+	return m.resolveStep(m.resumeIndex), nil
 }
 
 // resolveStep runs the step at index, or ends the sequence when the script is
@@ -272,6 +280,7 @@ func (m *sequenceMachine) resolveStep(index int) Step {
 
 	return Request{
 		name:    fmt.Sprintf("sequence %s step %d: %s", m.action.String(), index, step.action.String()),
+		onPose:  func(_ context.Context, pose Pose) (Step, error) { return m.freezeSequence(index, pose) },
 		machine: startedMachine{first: step.first},
 		next: func(_ context.Context, out Outcome) (Step, error) {
 			struck, ok := out.(StrikeOutcome)

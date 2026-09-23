@@ -209,6 +209,9 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 		return nil, err
 	}
 	if m.resume != nil {
+		if m.resume.frozen.BeforeRoll != nil {
+			return m.resumeBeforeRoll(), nil
+		}
 		return m.resumeStep(), nil
 	}
 	return m.sanctuaryStep(cast), nil
@@ -458,6 +461,10 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	m.outcome.Folded = folded
 	if folded.IsCancelled() {
 		return Done{Outcome: m.outcome}, nil
+	}
+
+	if len(folded.BeforeRollOffers) > 0 {
+		return m.poseBeforeRoll(folded)
 	}
 
 	if m.in.Roller == nil {
