@@ -320,6 +320,9 @@ type AttackChainEvent struct {
 	IsMelee    bool       // True for melee attacks, false for ranged
 	AttackType AttackType // Type of attack (standard or opportunity)
 
+	// BeforeRollOffers are optional reactions; collecting them never spends or rolls.
+	BeforeRollOffers []AttackRollOffer
+
 	// Advantage/Disadvantage (inputs to the roll)
 	AdvantageSources    []AttackModifierSource // Sources granting advantage
 	DisadvantageSources []AttackModifierSource // Sources imposing disadvantage

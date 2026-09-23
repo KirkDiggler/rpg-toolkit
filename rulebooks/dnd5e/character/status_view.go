@@ -413,6 +413,9 @@ func ownerResourceAllowed(class classes.Class, key coreResources.ResourceKey) bo
 }
 
 func ownerResourceAllowedForCharacter(class classes.Class, subclass classes.Subclass, key coreResources.ResourceKey) bool {
+	if key == resources.WardingFlare {
+		return class == classes.Cleric && subclass == classes.LightDomain
+	}
 	if key == resources.WrathOfTheStorm {
 		return class == classes.Cleric && subclass == classes.TempestDomain
 	}
@@ -465,6 +468,8 @@ func featureResourceCatalog(ref core.Ref) (classes.Class, coreResources.Resource
 		return classes.Monk, resources.Ki, true
 	case refs.Features.BardicInspiration().String():
 		return classes.Bard, resources.Inspiration, true
+	case refs.Features.WardingFlare().String():
+		return classes.Cleric, resources.WardingFlare, true
 	case refs.Features.WrathOfTheStorm().String():
 		return classes.Cleric, resources.WrathOfTheStorm, true
 	default:

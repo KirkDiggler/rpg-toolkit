@@ -57,6 +57,12 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return secondWind, nil
+	case refs.Features.WardingFlare().ID:
+		flare := &WardingFlare{}
+		if err := flare.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load warding flare: %w", err)
+		}
+		return flare, nil
 	case refs.Features.WrathOfTheStorm().ID:
 		wrath := &WrathOfTheStorm{}
 		if err := wrath.loadJSON(data); err != nil {

@@ -5,6 +5,7 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Feature singletons - unexported for controlled access via methods
 var (
+	featureWardingFlare    = &core.Ref{Module: Module, Type: TypeFeatures, ID: "warding_flare"}
 	featureDiscipleOfLife  = &core.Ref{Module: Module, Type: TypeFeatures, ID: "disciple_of_life"}
 	featureWrathOfTheStorm = &core.Ref{Module: Module, Type: TypeFeatures, ID: "wrath_of_the_storm"}
 
@@ -72,3 +73,6 @@ func (n featuresNS) DivineSmite() *core.Ref { return featureDivineSmite }
 // BardicInspiration returns the ref for the bard's level-1 feature: a bonus
 // action that hands an ally a die they spend on a roll of their own.
 func (n featuresNS) BardicInspiration() *core.Ref { return featureBardicInspiration }
+
+// WardingFlare identifies the Light Domain defensive reaction.
+func (n featuresNS) WardingFlare() *core.Ref { return featureWardingFlare }

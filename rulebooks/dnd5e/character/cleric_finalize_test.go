@@ -836,3 +836,35 @@ func (s *ClericFinalizeSuite) TestKnowledgeRejectsAlreadyKnownLanguageAndForeign
 	in.Choices.SubclassChoices = knowledgeChoices()
 	s.Error(draft.SetClass(in), "Life cannot submit Knowledge's choices")
 }
+
+func (s *ClericFinalizeSuite) TestLightWardingFlareLifecycle() {
+	input := s.classInput()
+	input.SubclassID = classes.LightDomain
+	input.Choices.Cantrips = []spells.Spell{spells.Guidance, spells.SacredFlame, spells.Resistance}
+	input.Choices.Equipment[1].OptionID = choices.ClericArmorScale
+	char, err := s.draft(input).ToCharacter(context.Background(), "light-flare", events.NewEventBus())
+	s.Require().NoError(err)
+	s.Require().NotNil(char.GetResource(resources.WardingFlare))
+	s.Equal(3, char.GetResource(resources.WardingFlare).Maximum(), "uses final Wisdom including ancestry")
+	s.Require().NoError(char.UseResource(resources.WardingFlare, 1))
+	data := char.ToData()
+	loaded, err := LoadFromData(context.Background(), data, events.NewEventBus())
+	s.Require().NoError(err)
+	view, err := loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	var resource *ResourceView
+	for i := range view.View.Resources {
+		if view.View.Resources[i].Key == resources.WardingFlare {
+			resource = &view.View.Resources[i]
+		}
+	}
+	s.Require().NotNil(resource)
+	s.Equal("Warding Flare", resource.Name)
+	s.Equal(2, resource.Current)
+	s.Equal(3, resource.Maximum)
+	s.Require().NoError(loaded.LongRest(context.Background()))
+	s.Equal(3, loaded.GetResource(resources.WardingFlare).Current())
+	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
+	s.NotContains(data.ArmorProficiencies, proficiencies.ArmorHeavy)
+	s.NotContains(data.WeaponProficiencies, proficiencies.WeaponMartial)
+}

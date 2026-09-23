@@ -1429,6 +1429,14 @@ func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) 
 		featureList = append(featureList, output.Feature)
 	}
 
+	if d.class == classes.Cleric && d.subclass == classes.LightDomain {
+		output, err := features.CreateFromRef(&features.CreateFromRefInput{Ref: refs.Features.WardingFlare().String(), CharacterID: characterID})
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to create Warding Flare")
+		}
+		featureList = append(featureList, output.Feature)
+	}
+
 	return featureList, nil
 }
 
@@ -2029,12 +2037,16 @@ func buildClassResources(
 		}
 
 	case classes.Cleric:
-		if char.subclassID == classes.TempestDomain {
+		if char.subclassID == classes.TempestDomain || char.subclassID == classes.LightDomain {
+			key := resources.WrathOfTheStorm
+			if char.subclassID == classes.LightDomain {
+				key = resources.WardingFlare
+			}
 			maxUses := char.abilityScores.Modifier(abilities.WIS)
 			if maxUses < 1 {
 				maxUses = 1
 			}
-			built[resources.WrathOfTheStorm] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{ID: string(resources.WrathOfTheStorm), Maximum: maxUses, CharacterID: char.id, ResetType: coreResources.ResetLongRest})
+			built[key] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{ID: string(key), Maximum: maxUses, CharacterID: char.id, ResetType: coreResources.ResetLongRest})
 		}
 
 	case classes.Bard:
