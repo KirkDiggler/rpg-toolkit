@@ -273,10 +273,19 @@ var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
 // entry is simply not a candidate, and the beat's candidate list is therefore
 // the honest account of what the creature could have done.
 //
-// EXACTLY ONE CONDITION. Either Enemy is set or Deed is; a When with both or
-// neither is refused by the dialect that built it and by [Table]'s own
-// validation. Two conditions in one entry would be an `and` this design has
-// not paid for, and reading it as one would be guessing which.
+// EXACTLY ONE CONDITION. Either Enemy is set or Deed is. A When with both or
+// neither is refused at the door the table came in through — the dialect that
+// built it, whose decoder owns every refusal in this grammar.
+//
+// THERE IS NO VALIDATION IN THIS MODULE, which an earlier revision of this
+// comment claimed there was ("[Table]'s own validation", corrected
+// 2026-09-23 in review). This package defines the shape and rolls it; it
+// refuses nothing, by its own design. A struct built in Go that names both or
+// neither therefore reaches [When.holds] unrefused — which is why `holds`
+// reads one thing and the decoder is the only place the rule is enforced.
+//
+// Two conditions in one entry would be an `and` this design has not paid for,
+// and reading it as one would be guessing which.
 type When struct {
 	// Enemy reads the two booleans on [Facts], or is empty when this
 	// condition names a deed instead.
