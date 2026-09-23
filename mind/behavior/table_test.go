@@ -5,6 +5,7 @@ package behavior_test
 
 import (
 	"context"
+	"encoding/json"
 	"math/rand"
 	"testing"
 
@@ -783,4 +784,46 @@ func (s *TableSuite) TestAnUnsetAllyReadingAuthorsNothing() {
 		Facts: facts, Die: &facedDie{face: 1}})
 	s.Require().NoError(err)
 	s.Equal(1, chosen.Entry, "no ally deeds means the ally row is not on the table")
+}
+
+// TestAnUnknownScopeMatchesNothing is the fail-closed guard (found in review,
+// rpg-toolkit#1884 thread 1): a scope that is neither the default nor one of
+// the two readings must make the row ABSENT, not quietly read as "against me".
+//
+// The dialect refuses an unknown scope at decode, so this arm is for a struct
+// built in Go — a test, a future rulebook, a consumer pinned one tag behind —
+// which never passes through that door. Failing open there would fire a row on
+// the wrong facts, which is worse than a row that is visibly dead.
+func (s *TableSuite) TestAnUnknownScopeMatchesNothing() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: &behavior.When{Deed: "attacked", Within: 3, Scope: behavior.DeedScope("allie")},
+			Attack: &behavior.Selector{Word: behavior.SelectorAttacker}},
+		{Weight: 1, Hold: true},
+	}}
+
+	// The creature WAS attacked, so a fail-open reading would fire entry 0.
+	facts := behavior.Facts{
+		Now: 11, CanAttack: true,
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+	}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: facts, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(1, chosen.Entry, "a typo'd scope is a dead row, not the default reading")
+}
+
+// TestAnEmptyScopeIsOmittedWhenMarshalled pins the claim the field doc makes
+// (found in review, rpg-toolkit#1884 thread 3). The consumer's goldens caught
+// the defect this prevents, but the proof belongs where the field lives: a
+// future serializer change should fail HERE first, not three modules away.
+func (s *TableSuite) TestAnEmptyScopeIsOmittedWhenMarshalled() {
+	unscoped, err := json.Marshal(behavior.When{Deed: "attacked", Within: 3})
+	s.Require().NoError(err)
+	s.NotContains(string(unscoped), "Scope",
+		"the pre-scope reading writes no key, which is what keeps every committed golden byte-identical")
+
+	scoped, err := json.Marshal(behavior.When{Deed: "attacked", Within: 3, Scope: behavior.ScopeAlly})
+	s.Require().NoError(err)
+	s.Contains(string(scoped), `"Scope":"ally"`, "and a real scope does carry")
 }
