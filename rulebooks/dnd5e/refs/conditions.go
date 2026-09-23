@@ -240,3 +240,8 @@ var conditionInFog = &core.Ref{Module: Module, Type: TypeConditions, ID: "in_fog
 
 // InFog returns membership in a source-qualified Fog Cloud area, not Blinded.
 func (n conditionsNS) InFog() *core.Ref { return conditionInFog }
+
+var conditionFaerieFire = &core.Ref{Module: Module, Type: TypeConditions, ID: "faerie_fire"}
+
+// FaerieFire returns the concentration-owned outline on an affected creature.
+func (n conditionsNS) FaerieFire() *core.Ref { return conditionFaerieFire }

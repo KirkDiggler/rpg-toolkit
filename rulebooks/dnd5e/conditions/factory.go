@@ -135,6 +135,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		if err == nil {
 			condition, err = NewDivineFavorCondition(NewDivineFavorConditionInput{MemberID: input.MemberID, SourceID: input.MemberID, SourceRef: ref})
 		}
+	case refs.Conditions.FaerieFire().ID:
+		condition, err = createFaerieFire(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.ShieldOfFaith().ID:
 		condition, err = createShieldOfFaith(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Guided().ID:
@@ -717,4 +719,26 @@ func createShieldOfFaith(config json.RawMessage, memberID, sourceRef string) (*S
 	return NewShieldOfFaithCondition(NewShieldOfFaithConditionInput{
 		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
 	})
+}
+
+func createFaerieFire(config json.RawMessage, memberID, sourceRef string) (*FaerieFireCondition, error) {
+	var cfg faerieFireConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse faerieFire config")
+		}
+	}
+
+	ref, err := core.ParseString(sourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse faerieFire source ref: %s", sourceRef)
+	}
+
+	return NewFaerieFireCondition(NewFaerieFireConditionInput{
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+	})
+}
+
+type faerieFireConfig struct {
+	SourceID string `json:"source_id"`
 }

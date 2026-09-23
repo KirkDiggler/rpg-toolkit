@@ -225,6 +225,13 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return divineFavor, nil
 	},
+	refs.Conditions.FaerieFire().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		shieldOfFaith := &FaerieFireCondition{}
+		if err := shieldOfFaith.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load shieldOfFaith condition")
+		}
+		return shieldOfFaith, nil
+	},
 	refs.Conditions.ShieldOfFaith().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		shieldOfFaith := &ShieldOfFaithCondition{}
 		if err := shieldOfFaith.loadJSON(data); err != nil {

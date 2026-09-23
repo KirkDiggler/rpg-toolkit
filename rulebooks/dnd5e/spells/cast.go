@@ -350,6 +350,23 @@ var castContent = map[Spell]castProfileBuilder{
 			}
 		},
 	},
+	FaerieFire: {
+		name:    "Faerie Fire",
+		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
+		cost:    slotCost(resources.SpellSlotLevel1),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 60, Target: actions.CastTargetArea,
+				Area: &actions.CastArea{
+					Footprint: actions.Footprint{Shape: actions.AreaBox, SizeFeet: 20, Origin: actions.AreaOriginPoint},
+					Catches:   actions.AreaCatchesEveryone,
+				},
+				Save:          &saves.SaveGate{Abilities: []abilities.Ability{abilities.DEX}, DC: saves.DCStatic(spellSaveDC), OnSuccess: saves.Negated, Recurrence: saves.RecurrenceNone},
+				Effects:       []actions.CastEffect{{Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.FaerieFire(), CounterpartKey: "source_id"}},
+				Concentration: &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true},
+			}
+		},
+	},
 	FogCloud: {
 		name:    "Fog Cloud",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
