@@ -780,7 +780,8 @@ func castTargets(
 				return nil, fmt.Errorf("%w: spell %q needs a cell to aim at",
 					ErrBadCast, definition.Ref.String())
 			}
-			if profile.Area != nil && profile.Area.Footprint.Origin == combatActions.AreaOriginCasterEdge && *aim.cell == aim.casterAt {
+			if profile.Area != nil && (profile.Area.Footprint.Origin == combatActions.AreaOriginCasterEdge ||
+				profile.Area.Footprint.Shape == combatActions.AreaTriangle) && *aim.cell == aim.casterAt {
 				return nil, fmt.Errorf(
 					"%w: spell %q cannot be aimed at the caster's own cell, which is no direction",
 					ErrBadCast, definition.Ref.String())
