@@ -6,6 +6,10 @@ package resolution
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -22,6 +26,10 @@ type BoundaryInput struct {
 	// Crossed is the boundaries, in the causal order the composition crossed
 	// them. Required and non-empty — see [NewBoundary].
 	Crossed []encounter.Boundary
+	// CombatTurns names the participants currently on a fight clock and its round.
+	// The caller supplies clock facts; this interaction initializes cold sheets
+	// and refreshes an existing economy only at its owner's TurnStarted boundary.
+	CombatTurns map[string]int
 }
 
 // BoundaryOutcome is what a boundary interaction produced.
@@ -90,7 +98,7 @@ func NewBoundary(in *BoundaryInput) (Machine, error) {
 	}
 	crossed := make([]encounter.Boundary, len(in.Crossed))
 	copy(crossed, in.Crossed)
-	return &boundaryMachine{crossed: crossed}, nil
+	return &boundaryMachine{crossed: crossed, combatTurns: maps.Clone(in.CombatTurns)}, nil
 }
 
 // boundaryTopics is the whole map from a crossing to what it publishes.
@@ -129,13 +137,32 @@ var boundaryTopics = map[encounter.BoundaryKind]func(
 }
 
 type boundaryMachine struct {
-	crossed []encounter.Boundary
+	crossed     []encounter.Boundary
+	combatTurns map[string]int
+	cast        *Participants
 }
 
 // Start is pure preflight: it validates nothing further (NewBoundary already
 // refused what it could) and yields the first crossing without publishing.
-func (m *boundaryMachine) Start(_ context.Context, _ *Participants) (Step, error) {
-	return m.at(0), nil
+func (m *boundaryMachine) Start(_ context.Context, cast *Participants) (Step, error) {
+	m.cast = cast
+	return Gather{
+		name: "initialize combat economies",
+		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
+			for _, id := range slices.Sorted(maps.Keys(m.combatTurns)) {
+				sheet, ok := cast.Character(id)
+				if !ok || sheet.InCombat() {
+					continue
+				}
+				// An entrant has a reaction before their first turn. Stamp the previous
+				// round so their first actual turn can refresh a reaction already spent.
+				if _, err := sheet.StartTurn(ctx, &character.StartTurnInput{TurnNumber: m.combatTurns[id] - 1, Speed: sheet.GetSpeed()}); err != nil {
+					return nil, err
+				}
+			}
+			return m.at(0), nil
+		},
+	}, nil
 }
 
 // at yields the step that publishes crossing i, or Done when they are exhausted.
@@ -153,6 +180,13 @@ func (m *boundaryMachine) at(i int) Step {
 	return Gather{
 		name: fmt.Sprintf("announce %s for %s", b.Kind, b.Subject),
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			if _, fighting := m.combatTurns[string(b.Subject)]; fighting && b.Kind == encounter.TurnStarted {
+				if sheet, ok := m.cast.Character(string(b.Subject)); ok {
+					if _, err := sheet.StartTurn(ctx, &character.StartTurnInput{TurnNumber: b.Round, Speed: sheet.GetSpeed()}); err != nil {
+						return nil, err
+					}
+				}
+			}
 			if err := publish(ctx, bus, b); err != nil {
 				return nil, fmt.Errorf("announce %s for %q: %w", b.Kind, b.Subject, err)
 			}
