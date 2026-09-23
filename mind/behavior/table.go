@@ -302,7 +302,14 @@ type When struct {
 	// ACTOR IS THE PAUSE. "After I strike, stand still for two rounds" is
 	// `{ attacked: { within: 2, as: actor } }` — a deed the creature DID,
 	// recently — so a pause needs no separate concept in this grammar.
-	Scope DeedScope
+	//
+	// OMITTED WHEN EMPTY, unlike its siblings here, and that is the design
+	// claim made mechanical: the default reading IS the empty string, so a
+	// document authored before scopes existed must compile to the same
+	// picture it always did. A serializer that wrote `"Scope": ""` into every
+	// condition would move every committed golden for a field whose meaning
+	// is "nothing new".
+	Scope DeedScope `json:",omitempty"`
 
 	// Within is how many rounds ago the deed may have landed and still
 	// count, in THE CALLER'S OWN UNIT — whatever [Facts.Now] and a deed's
