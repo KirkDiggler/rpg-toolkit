@@ -76,3 +76,8 @@ func (n featuresNS) BardicInspiration() *core.Ref { return featureBardicInspirat
 
 // WardingFlare identifies the Light Domain defensive reaction.
 func (n featuresNS) WardingFlare() *core.Ref { return featureWardingFlare }
+
+// BlessingOfTheTrickster identifies the Trickery Domain blessing.
+func (n featuresNS) BlessingOfTheTrickster() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "blessing_of_the_trickster"}
+}

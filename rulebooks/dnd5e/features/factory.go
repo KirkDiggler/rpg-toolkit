@@ -64,6 +64,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	var feature Feature
 
 	switch ref.ID {
+	case refs.Features.BlessingOfTheTrickster().ID:
+		feature = &BlessingOfTheTrickster{}
 	case refs.Features.WardingFlare().ID:
 		feature = &WardingFlare{id: refs.Features.WardingFlare().ID, name: "Warding Flare", characterID: input.CharacterID}
 	case refs.Features.Rage().ID:
