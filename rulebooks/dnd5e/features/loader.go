@@ -36,6 +36,8 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 
 	// Route based on Ref ID
 	switch metadata.Ref.ID {
+	case refs.Features.BlessingOfTheTrickster().ID:
+		return &BlessingOfTheTrickster{}, nil
 	case refs.Features.BardicInspiration().ID:
 		bardic := &BardicInspiration{}
 		if err := bardic.loadJSON(data); err != nil {

@@ -1429,6 +1429,10 @@ func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) 
 		featureList = append(featureList, output.Feature)
 	}
 
+	if d.class == classes.Cleric && d.subclass == classes.TrickeryDomain {
+		featureList = append(featureList, &features.BlessingOfTheTrickster{})
+	}
+
 	if d.class == classes.Cleric && d.subclass == classes.LightDomain {
 		output, err := features.CreateFromRef(&features.CreateFromRefInput{Ref: refs.Features.WardingFlare().String(), CharacterID: characterID})
 		if err != nil {
