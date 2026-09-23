@@ -151,6 +151,9 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
+	if kind == windowKindPendingAttack {
+		return m.answerPendingAttack(ctx, scope, window, in)
+	}
 	if kind == windowKindPostHit {
 		return m.answerPostHit(ctx, scope, window, in)
 	}

@@ -297,6 +297,7 @@ type failAfterCharacterSave struct {
 	inner       *fakeCharacters
 	err         error
 	saved       bool
+	armed       bool
 	failedReads int
 }
 
@@ -312,7 +313,7 @@ func (f *failAfterCharacterSave) SaveCharacter(ctx context.Context, data *charac
 	if err := f.inner.SaveCharacter(ctx, data); err != nil {
 		return err
 	}
-	f.saved = true
+	f.saved = f.armed
 	return nil
 }
 
@@ -357,6 +358,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	require.NoError(t, err)
 
 	id := activationSelector(t, mgr, "alice", refs.Features.Rage().String())
+	characters.armed = true
 	persistedBefore, err := copyOf(encounters.byID["world"])
 	require.NoError(t, err)
 	encounterSavesBefore := encounters.saves

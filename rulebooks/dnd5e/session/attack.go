@@ -469,6 +469,24 @@ func (m *Manager) poseAttackWindow(
 	definition combatActions.Definition, presentationID string,
 ) (*AttackOutput, error) {
 
+	if out.Posed.BeforeRoll {
+		if err := m.adopt(ctx, scope, out.World); err != nil {
+			return nil, err
+		}
+		if err := m.saveDirty(ctx, scope, out); err != nil {
+			return nil, err
+		}
+		p := pendingAttackWindowPayload{Attacker: in.Attacker, Target: in.Target, Definition: definition, PresentationID: presentationID}
+		if err := posePendingAttackWindow(scope, out.Posed, p); err != nil {
+			return nil, err
+		}
+		report, delivery, err := m.commit(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		return &AttackOutput{Paused: true, Saved: report, Delivery: delivery, Attack: attackRefFor(definition), PresentationID: presentationID}, nil
+	}
+
 	if out.Posed.SettledStrike != nil {
 		if err := m.adopt(ctx, scope, out.World); err != nil {
 			return nil, err

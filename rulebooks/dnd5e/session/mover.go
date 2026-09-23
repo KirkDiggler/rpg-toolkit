@@ -178,10 +178,28 @@ func (s moverSeam) offerStep(
 		return fmt.Errorf("move: %w", translateResolution(err))
 	}
 
+	if out.Posed != nil && out.Posed.Movement != nil {
+		moved := *out.Posed.Movement
+		if err := s.recordMovementResults(ctx, enc, out, moved); err != nil {
+			return err
+		}
+		p := pendingAttackWindowPayload{Movement: true, RecordedReactions: len(moved.Reactions), WalkPath: append([]spatial.Position(nil), s.scope.walkContinuation...), Target: moved.Mover}
+		if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
+			return err
+		}
+		ask := out.Posed.Ask
+		return &encounter.StepPausedError{Windows: []encounter.PausedWindow{{Audience: encounter.MemberID(ask.Audience), Reaction: encounter.ReactionIdentity{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}}}}
+	}
+
 	moved, ok := out.Outcome.(resolution.MovementOutcome)
 	if !ok {
 		return fmt.Errorf("move: %w: movement produced %T", ErrInvalidWorld, out.Outcome)
 	}
+
+	return s.recordMovementResults(ctx, enc, out, moved)
+}
+
+func (s moverSeam) recordMovementResults(ctx context.Context, enc *encounter.Encounter, out *resolution.Output, moved resolution.MovementOutcome) error {
 
 	// EVERY BEAT IS BUILT BEFORE ANY SHEET IS WRITTEN. The only way building
 	// one can fail is a reaction this package cannot name, and failing after
@@ -198,51 +216,16 @@ func (s moverSeam) offerStep(
 		// none: a reaction is a roll the server took on the reactor's behalf
 		// inside somebody else's Move, so no client simulated its die — see
 		// recordFor.
-		beat := recordFor(
-			&AttackInput{Attacker: reaction.ReactorID, Target: reaction.Against},
-			reaction.Struck,
-			reactions.answered[reaction.ReactorID],
-			"",
-			// NO CONCENTRATION LISTS ON THE PER-REACTION BEAT. One move is one
-			// interaction and can produce several opportunity attacks, so the
-			// checks and breaks arrive once for the whole of it; copying them
-			// onto every beat would record one broken spell as many. They are
-			// attached below, to one beat.
-			&resolution.Output{},
+		beat := recordStrike(
+			reaction.ReactorID, reaction.Against, reaction.Struck,
+			AttackRef{Ref: reaction.AttackRef.String(), Name: reaction.AttackName, DamageType: DamageType(reaction.DamageType)}, "",
+			reaction.ConcentrationChecks, reaction.ConcentrationBreaks,
 		)
 		// What the beat was taken AS. The numbers already crossed as an
 		// ordinary strike; this is the only thing that explains why a fighter
 		// dealt damage on a skeleton's turn (encounter.ReactionIdentity).
 		beat.Reaction = &encounter.ReactionIdentity{Ref: reaction.ConditionRef, Name: name}
 		recorded = append(recorded, beat)
-	}
-
-	// # The interaction's concentration consequences, attached to ONE beat
-	//
-	// A move deals no damage of its own; what breaks a walker's concentration
-	// during one is an opportunity attack, and resolution reports every check
-	// and break the whole move produced as one flat pair of lists with no beat
-	// attribution in them. So they ride the LAST reaction beat: by then every
-	// swing of this move has landed, which is the earliest point the record can
-	// honestly say the consequences were all in.
-	//
-	// WITH ONE REACTION — which is the case the fight actually produces — that
-	// beat is the swing that caused it and the placement is exact. With two it
-	// is a small ordering imprecision inside a single interaction rather than a
-	// wrong fact, and it is named here rather than hidden. Splitting the lists
-	// per reactor is resolution's attribution to make, not this seam's.
-	if len(out.ConcentrationChecks) > 0 || len(out.ConcentrationBreaks) > 0 {
-		if len(recorded) == 0 {
-			// A move that broke a concentration and swung at nobody has no
-			// beat for the break to ride, and dropping it would end a spell
-			// that nothing in the story ever mentions. Refused rather than
-			// recorded silently.
-			return fmt.Errorf("move: %w: the walk ended a concentration with no beat to carry it",
-				ErrInvalidWorld)
-		}
-		last := recorded[len(recorded)-1]
-		last.ConcentrationChecks = out.ConcentrationChecks
-		last.ConcentrationBreaks = out.ConcentrationBreaks
 	}
 
 	// Sheets first, then the beats — the ordering [Manager.saveDirty] states:

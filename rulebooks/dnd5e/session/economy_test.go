@@ -397,7 +397,8 @@ func (s *EconomySuite) TestABankLeftOverFromLastTurnDoesNotMispriceThisOne() {
 func (s *EconomySuite) TestTheTurnIsLitOnceAndSpentFromThereafter() {
 	s.fightScene(1, 1, 1, 1, 1)
 
-	s.Nil(s.storedEconomy(), "a stored sheet starts cold: no economy at all")
+	s.Require().NotNil(s.storedEconomy(), "combat entry initializes the bank")
+	s.Equal(1, s.storedEconomy().ActionsRemaining)
 
 	_, err := s.swing()
 	s.Require().NoError(err)

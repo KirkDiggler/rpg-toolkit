@@ -510,7 +510,7 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	s.Positive(stored.HitPoints, "the driven strike starts from full rested truth, not the old seven HP")
 	s.Less(stored.HitPoints, stored.MaxHitPoints,
 		"the driven damage survives; no stale rest save may overwrite it")
-	s.Equal(2, characters.saves, "the early rest and later driven damage are both durable")
+	s.Equal(4, characters.saves, "rest, combat entry, driven damage, and the first own turn are durable")
 }
 
 func (s *JoinLongRestTestSuite) assertWrittenOnly(err error, identities ...string) {

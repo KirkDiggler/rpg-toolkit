@@ -326,7 +326,7 @@ func (s *ReactWindowSuite) TestTheFighterIsAskedAndHoldsThenIsAskedAndStrikes() 
 	s.Equal("Opportunity Attack", beats[0].Reaction.Name)
 
 	s.Equal(hexCell(0, 0), s.where(mgr, "skel-2"), "the second skeleton's turn finishes from where it stopped")
-	s.Equal(0, s.reactionsLeft("fighter"), "spent once, by the swing she took")
+	s.Equal(1, s.reactionsLeft("fighter"), "the spent reaction refreshes at her next turn start")
 	s.Empty(s.reactRow(mgr, "fighter").ID, "nothing is being asked any more")
 
 	turn, err := mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "fighter"})

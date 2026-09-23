@@ -1280,6 +1280,8 @@ func (s *writeScope) frozen() error {
 // and the sequence boundary separating what was already recorded from what this
 // verb records.
 type writeScope struct {
+	// The already-paid remainder is frozen only if a direct walk poses.
+	walkContinuation []spatial.Position
 	// Snapshot of areas whose membership transitions have already been queued.
 	areaStoryBefore []encounter.SightAreaData
 

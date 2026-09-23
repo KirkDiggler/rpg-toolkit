@@ -117,7 +117,7 @@ func (s *CastSuite) TestSpareTheDyingPublicCastRevalidatesLifeState() {
 				Session: "sess", Member: "cleric", DeclarationID: row.ID, Targets: []string{"patient"},
 			})
 			s.ErrorIs(err, session.ErrStaleDeclaration)
-			s.Equal(before, s.characters.byID["cleric"])
+			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(rolls, s.dice.next)
 			s.Empty(s.beats(session.EventCast, session.EventActivationResult))
 		})

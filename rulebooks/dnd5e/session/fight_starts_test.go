@@ -533,7 +533,7 @@ func (s *FightStartsTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
 
 	var saved *session.SaveError
 	s.Require().ErrorAs(err, &saved, "the report must survive the error, not die in persist")
-	s.Equal([]string{"encounter:world"}, saved.Report.Written,
+	s.Equal([]string{"character:alice", "encounter:world"}, saved.Report.Written,
 		"the world landed — the skeleton is really standing there")
 	s.Equal([]string{"session:sess"}, saved.Report.Failed,
 		"its sheet did not — this is a repair, not a retry")

@@ -832,6 +832,9 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 	if err != nil {
 		return Declaration{}, err
 	}
+	if kind == windowKindPendingAttack {
+		return pendingAttackDeclaration(session, member, window)
+	}
 	if kind == windowKindPostHit {
 		return postHitDeclaration(session, member, window)
 	}
