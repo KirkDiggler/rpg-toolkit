@@ -93,6 +93,7 @@ var displayCatalog = map[string]Display{
 	// rather than filed separately since it is a one-line addition to the
 	// exact catalog Resistance's own entry touches, for the same reason.
 	refs.Conditions.DivineFavor().String():     {Name: DivineFavorName},
+	refs.Conditions.FaerieFire().String():      {Name: FaerieFireName},
 	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName},
 	refs.Conditions.Guided().String():          {Name: GuidedName},
 	refs.Conditions.Resistance().String():      {Name: ResistanceName},

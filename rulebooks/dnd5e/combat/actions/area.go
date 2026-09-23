@@ -27,13 +27,6 @@ const (
 )
 
 // AreaOrigin says where a footprint is anchored.
-//
-// Both values today anchor on the CASTER, and that is what keeps them cheap: a
-// range check measured from the caster still bounds every cell either one can
-// reach. A footprint anchored at a chosen point — Fireball's "a point you
-// choose within range" — is still the next one, and still a bigger change than
-// an enum value: it needs a point to arrive from the client, and it breaks
-// that caster-centred check. Declared when that work is done, not before.
 type AreaOrigin string
 
 const (
@@ -110,8 +103,8 @@ func (f Footprint) Validate() error {
 	// edge anchor would be silently ignored. Both are refused rather than
 	// reinterpreted: a shape drawn in the wrong place with nothing saying why
 	// is the failure worth paying two lines to prevent.
-	if f.Shape == AreaBox && f.Origin != AreaOriginCasterEdge {
-		return fmt.Errorf("a box must be anchored on the caster's edge, got origin %q", f.Origin)
+	if f.Shape == AreaBox && f.Origin != AreaOriginCasterEdge && f.Origin != AreaOriginPoint {
+		return fmt.Errorf("a box must be anchored on the caster's edge or a selected point, got origin %q", f.Origin)
 	}
 	if f.Shape != AreaBox && f.Origin == AreaOriginCasterEdge {
 		return fmt.Errorf("only a box may be anchored on the caster's edge, got shape %q", f.Shape)

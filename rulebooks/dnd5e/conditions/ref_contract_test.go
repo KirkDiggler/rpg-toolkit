@@ -47,6 +47,12 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
+	faerieFire, err := NewFaerieFireCondition(NewFaerieFireConditionInput{
+		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.FaerieFire(),
+	})
+	if err != nil {
+		panic(err)
+	}
 	shieldOfFaith, err := NewShieldOfFaithCondition(NewShieldOfFaithConditionInput{
 		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.ShieldOfFaith(),
 	})
@@ -84,6 +90,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	}
 	return map[string]dnd5eEvents.ConditionBehavior{
 		inFog.Ref().String(): inFog,
+		"faerie_fire":        faerieFire,
 		"shield_of_faith":    shieldOfFaith,
 		"divine_favor":       divineFavor,
 		"guiding_bolt":       guidingBolt,

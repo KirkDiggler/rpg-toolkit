@@ -895,3 +895,24 @@ func (s *CastContentSuite) TestBurningHandsDeclaresTriangleAndDexterityHalfFire(
 	s.Nil(d.Cast.Concentration)
 	s.Contains(spells.Selectable([]spells.Spell{spells.BurningHands}), spells.BurningHands)
 }
+
+func (s *CastContentSuite) TestFaerieFireDeclaresSharedPointBoxSaveAndConcentration() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.FaerieFire, SpellSaveDC: 13})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
+	s.Equal(actions.CastTargetArea, d.Cast.Target)
+	s.Equal(actions.Footprint{Shape: actions.AreaBox, SizeFeet: 20, Origin: actions.AreaOriginPoint}, d.Cast.Area.Footprint)
+	s.Equal(actions.AreaCatchesEveryone, d.Cast.Area.Catches)
+	s.Equal([]abilities.Ability{abilities.DEX}, d.Cast.Save.Abilities)
+	s.Equal(13, d.Cast.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, d.Cast.Save.OnSuccess)
+	s.Empty(d.Cast.Damage)
+	s.Equal(60, d.Cast.RangeFeet)
+	s.Equal(*refs.Conditions.FaerieFire(), d.Cast.Effects[0].Ref)
+	s.Nil(d.Cast.Move)
+	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.Contains(spells.Selectable([]spells.Spell{spells.FaerieFire}), spells.FaerieFire)
+}
