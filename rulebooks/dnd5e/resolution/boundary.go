@@ -182,7 +182,7 @@ func (m *boundaryMachine) at(i int) Step {
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
 			if _, fighting := m.combatTurns[string(b.Subject)]; fighting && b.Kind == encounter.TurnStarted {
 				if sheet, ok := m.cast.Character(string(b.Subject)); ok {
-					if _, err := sheet.StartTurn(ctx, &character.StartTurnInput{TurnNumber: b.Round, Speed: sheet.GetSpeed()}); err != nil {
+					if _, err := sheet.RefreshForTurn(ctx, &character.RefreshForTurnInput{TurnNumber: b.Round, Speed: sheet.GetSpeed()}); err != nil {
 						return nil, err
 					}
 				}
