@@ -45,7 +45,7 @@ func (b *BlessingOfTheTrickster) Status(*StatusInput) (*StatusOutput, error) {
 
 // CanActivate keeps the placeholder unavailable without spending anything.
 func (*BlessingOfTheTrickster) CanActivate(context.Context, core.Entity, FeatureInput) error {
-	return fmt.Errorf("Blessing of the Trickster is not yet implemented")
+	return fmt.Errorf("blessing of the trickster is not yet implemented")
 }
 
 // Activate refuses even direct calls; an NYI grant cannot silently succeed.
