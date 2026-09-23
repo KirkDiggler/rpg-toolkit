@@ -1705,6 +1705,8 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Table:      m.Table,
 		Temper:     m.Temper,
 		Deeds:      heldDeedsAgainst(holdings, m.ID),
+		AllyDeeds:  heldDeedsAgainstSide(e, holdings, m.ID),
+		OwnDeeds:   heldDeedsBy(holdings, m.ID),
 		Holdings:   holdings,
 		At:         uint64(e.clock.ToData().HighWater),
 		Seen:       seen,

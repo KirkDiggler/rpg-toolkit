@@ -948,6 +948,9 @@ func whenOf(when *WhenSpec) *encounter.When {
 
 	return &encounter.When{
 		Enemy: encounter.EnemyWord(when.Enemy), Deed: when.Deed, Within: when.Within,
+		// The scope rides with the deed (rpg-toolkit#1883): the condition's
+		// own reading of WHOSE deed it is about.
+		Scope: when.Scope,
 	}
 }
 

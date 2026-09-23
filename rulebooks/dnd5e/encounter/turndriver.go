@@ -129,6 +129,15 @@ type MonsterView struct {
 	// every driver ages a deed the same way.
 	Deeds []HeldDeed
 
+	// AllyDeeds and OwnDeeds are the two readings beside Deeds
+	// (rpg-toolkit#1883): the blows that landed on this member's own side,
+	// and the deeds this member did. A `when` asks for one of the three by
+	// scope, so all three travel together — a driver handed only Deeds could
+	// answer `on: ally` or `as: actor` with an empty list, which reads as
+	// "nothing happened" rather than "this projection did not fill it".
+	AllyDeeds []HeldDeed
+	OwnDeeds  []HeldDeed
+
 	// Holdings is everything this member holds, on every channel, as values
 	// — the raw testimony Seen and Remembered are decoded from, plus what
 	// they drop (a deeds-channel holding, for one). A mind that reads

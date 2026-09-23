@@ -244,6 +244,18 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 		{name: "a deed nobody holds", when: `{ insulted: { within: 3 } }`, says: "not a deed this build holds"},
 		{name: "a span counted from zero", when: `{ attacked: { within: 0 } }`, says: "counted from 1"},
 		{name: "a deed with no span", when: `{ attacked: {} }`, says: "names no span"},
+		// THE SCOPE (rpg-toolkit#1883). `on:` and `as:` name whose deed the
+		// condition is about, and each takes exactly one word.
+		{name: "an `on` scope nobody reads", when: `{ attacked: { within: 3, on: friend } }`, says: "not a scope this build reads"},
+		{name: "an `as` scope nobody reads", when: `{ attacked: { within: 3, as: target } }`, says: "not a scope this build reads"},
+		{name: "both scopes at once", when: `{ attacked: { within: 3, on: ally, as: actor } }`, says: "asks one thing"},
+		// A TYPO'D KEY, not a typo'd value (rpg-toolkit#1890 thread 3).
+		// `body.Decode` is not strict inside a custom unmarshaler, so before
+		// this the key was silently DROPPED and the condition quietly became
+		// the self reading — a morale row authored for `on: ally` firing for
+		// the wrong wound and never for its own. Refused by hand, the shape
+		// [PredicateSpec.UnmarshalYAML] already uses.
+		{name: "a scope key nobody reads", when: `{ attacked: { within: 3, no: ally } }`, says: `"no" is not a key this build reads`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
@@ -251,7 +263,55 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 			_, err := dungeonspec.Decode([]byte(source))
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.says)
-			require.Contains(t, err.Error(), "line ", "and it says which line")
+			// WHERE it says the defect depends on who refused it, and both
+			// are the package's own voice: a refusal written BY HAND in this
+			// dialect names the line (yaml.v3's shape, which the unknown-key
+			// walk then rewrites), while an unknown KEY is rewritten to the
+			// author's own PATH by that walk. Asserting one form for every
+			// case would either lose the address or demand the wrong one.
+			if tc.says == `"no" is not a key this build reads` {
+				require.Contains(t, err.Error(), "when.attacked.no", "an unknown key is addressed by path")
+			} else {
+				require.Contains(t, err.Error(), "line ", "and it says which line")
+			}
+		})
+	}
+}
+
+// TestAScopeCompilesOntoTheCondition: `on: ally` and `as: actor` are carried
+// from the file onto the compiled condition, and omitting the scope compiles
+// to the self reading — which is what keeps every document written before
+// scopes existed meaning exactly what it meant (rpg-toolkit#1883).
+func TestAScopeCompilesOntoTheCondition(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		body  string
+		scope encounter.DeedScope
+	}{
+		{name: "no scope is the creature itself", body: `{ within: 3 }`, scope: encounter.ScopeSelf},
+		{name: "on: ally", body: `{ within: 3, on: ally }`, scope: encounter.ScopeAlly},
+		{name: "as: actor", body: `{ within: 3, as: actor }`, scope: encounter.ScopeActor},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
+      holds: [vault-map], on: { time: [ { when: { attacked: `+tc.body+` }, hold: {} } ] } }`)
+			spec, err := dungeonspec.Decode([]byte(source))
+			require.NoError(t, err)
+
+			// BY ID, not by index: the fixture has more than one placement
+			// and this test is about the captain's own table.
+			var captain *dungeonspec.PlaceSpec
+			for i := range spec.Place {
+				if spec.Place[i].ID == "captain" {
+					captain = &spec.Place[i]
+				}
+			}
+			require.NotNil(t, captain, "the fixture still places the captain")
+
+			entries := captain.On[string(encounter.AnswerTime)]
+			require.Len(t, entries, 1, "the placement authored one time entry")
+			require.NotNil(t, entries[0].When, "the condition compiled")
+			require.Equal(t, tc.scope, entries[0].When.Scope)
 		})
 	}
 }

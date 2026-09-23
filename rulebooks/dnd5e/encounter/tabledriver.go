@@ -240,6 +240,45 @@ func (d TableDriver) pathTo(view MonsterView, target MemberID) []spatial.Positio
 	return nil
 }
 
+// scopeOf is the reading an entry's condition asks for, or the self reading
+// when the entry names no condition — a `time` row with no `when` is a
+// standing order, and its selectors read the creature's own deeds.
+func scopeOf(entry Answer) DeedScope {
+	if entry.When == nil {
+		return ScopeSelf
+	}
+
+	return entry.When.Scope
+}
+
+// deedsForScope is the deeds list ONE SCOPE reads, off the view: the mirror of
+// the evaluator's own dispatch (behavior's When.deedsOf), so a condition and
+// the selector it pairs with can never read different deeds.
+//
+// FOUND IN REVIEW (rpg-toolkit#1890 thread 2): selectMember read view.Deeds
+// unconditionally, so the row this whole slice exists for —
+// `when: { attacked: { within: 3, on: ally } }, attack: attacker` — fired on
+// the ALLY reading and then resolved `attacker` off the SELF reading. With
+// nobody having struck the creature itself that is a Pass (the row won the roll
+// and nothing happened, silently); with somebody having struck it, it struck
+// the WRONG member.
+//
+// AN UNKNOWN SCOPE MATCHES NOTHING, the same policy the evaluator keeps, so a
+// scope this build does not read names nobody rather than silently reading as
+// the self one.
+func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
+	switch scope {
+	case ScopeSelf:
+		return view.Deeds
+	case ScopeAlly:
+		return view.AllyDeeds
+	case ScopeActor:
+		return view.OwnDeeds
+	default:
+		return nil
+	}
+}
+
 // selectMember resolves a selector word against the view.
 //
 //   - `enemy`: the nearest opposed member in sight, else the nearest opposed
@@ -259,7 +298,7 @@ func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) 
 		return nearestOpposed(view)
 
 	case SelectorAttacker:
-		if held, ok := freshestDeed(view.Deeds, DeedAttack); ok && held.Actor != "" {
+		if held, ok := freshestDeed(deedsForScope(view, scopeOf(entry)), DeedAttack); ok && held.Actor != "" {
 			return held.Actor, true
 		}
 
@@ -269,7 +308,7 @@ func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) 
 		if entry.When == nil || entry.When.Deed == "" {
 			return "", false
 		}
-		if held, ok := freshestDeed(view.Deeds, DeedVerbFor(entry.When.Deed)); ok && held.Actor != "" {
+		if held, ok := freshestDeed(deedsForScope(view, scopeOf(entry)), DeedVerbFor(entry.When.Deed)); ok && held.Actor != "" {
 			return held.Actor, true
 		}
 

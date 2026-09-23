@@ -453,8 +453,33 @@ func validateWhen(when *When) error {
 	if when.Within < 1 {
 		return fmt.Errorf("a span of %d rounds is counted from 1: %w", when.Within, ErrBadAnswer)
 	}
+	// THE SCOPE IS REFUSED HERE TOO, which is the one field of this condition
+	// that was not (rpg-toolkit#1890 thread 1). This function is the door for
+	// "every other caller, including a persisted blob somebody edited", so a
+	// scope a future build wrote — or a hand-edit — must be refused by name
+	// rather than reaching the evaluator, where an unknown scope matches
+	// nothing and would silently revert an `on: ally` row to the self reading.
+	if refusal := scopeRefusal(when.Scope); refusal != "" {
+		return fmt.Errorf("%s: %w", refusal, ErrBadAnswer)
+	}
 
 	return nil
+}
+
+// scopeRefusal names why a scope is not one this build reads, or empty when it
+// is. The default is the empty string, so an unscoped condition — every
+// document authored before scopes existed — passes.
+func scopeRefusal(scope DeedScope) string {
+	if scope == ScopeSelf {
+		return ""
+	}
+	for _, known := range DeedScopes {
+		if scope == known {
+			return ""
+		}
+	}
+
+	return fmt.Sprintf("`%s` is not a scope this build reads: they are ally, actor", scope)
 }
 
 // selectorOf is the entry's selector, whichever word carries it, or nil.
