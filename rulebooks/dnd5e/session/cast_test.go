@@ -1490,3 +1490,33 @@ func (s *CastSuite) TestBurningHandsRejectsMissingAndSelfAimBeforePayment() {
 		s.Nil(s.characters.byID["bard"].ActionEconomy, "refusal must not persist an action economy change")
 	}
 }
+
+func (s *CastSuite) TestBurningHandsPreviewMatchesCastWithoutPayment() {
+	s.scene(castingBardWithSpells("bard", spells.BurningHands), 1, 1, 2, 3, 4)
+	row := s.castRow(spells.BurningHands)
+	aim := s.cellOf("skeleton")
+	// A fractional bearing must stay fractional rather than snapping to a cell.
+	aim.X += 0.01
+	before := s.storedSkeleton()
+	out, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bard", CastAim: &session.CastAim{DeclarationID: row.ID, Cell: &aim}})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.CastAim)
+	s.True(out.CastAim.Available)
+	s.Equal(aim, *out.CastAim.Aim.Cell)
+	s.Equal([]string{"skeleton"}, out.CastAim.AffectedMembers)
+	s.Equal(before, s.storedSkeleton())
+	own := s.cellOf("bard")
+	away := spatial.Position{X: 2*own.X - aim.X, Y: 2*own.Y - aim.Y}
+	empty, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bard", CastAim: &session.CastAim{DeclarationID: row.ID, Cell: &away}})
+	s.Require().NoError(err)
+	s.Require().NotNil(empty.CastAim)
+	s.True(empty.CastAim.Available)
+	s.Empty(empty.CastAim.AffectedMembers)
+	_, err = s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bard", CastAim: &session.CastAim{DeclarationID: "stale", Cell: &aim}})
+	s.ErrorIs(err, session.ErrStaleDeclaration)
+	s.Equal(2, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
+	s.Nil(s.characters.byID["bard"].ActionEconomy)
+	_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "bard", DeclarationID: row.ID, Cell: &aim})
+	s.Require().NoError(err)
+	s.Equal(before-9, s.storedSkeleton(), "preview did not consume any dice")
+}

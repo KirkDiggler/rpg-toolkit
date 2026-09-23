@@ -15,10 +15,27 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // AffordInput asks what one member can still declare this turn.
+// CastAim asks about an area placement without casting or spending resources.
+type CastAim struct {
+	DeclarationID string            `json:"declaration_id"`
+	Cell          *spatial.Position `json:"cell"`
+}
+
+// CastAimPreview reports only currently visible affected members.
+type CastAimPreview struct {
+	Aim             CastAim    `json:"aim"`
+	Available       bool       `json:"available"`
+	Why             *Shortfall `json:"why,omitempty"`
+	AffectedMembers []string   `json:"affected_members"`
+}
+
 type AffordInput struct {
+	CastAim *CastAim
+
 	// Session is the session to look inside.
 	Session string
 
@@ -400,6 +417,7 @@ type Declaration struct {
 
 // AffordOutput is what one member can still declare this turn.
 type AffordOutput struct {
+	CastAim *CastAimPreview `json:"cast_aim,omitempty"`
 	// Clock is which kind of time the member is in. ClockWorld means the
 	// action economy does not apply to them at all: Declarations is empty,
 	// and that IS the answer rather than a shorter way of asking again.
@@ -616,7 +634,11 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		declarations = append(declarations, o.declaration)
 	}
 	sortDeclarations(declarations)
-	return &AffordOutput{Clock: ClockTurn, Declarations: declarations}, nil
+	preview, err := previewCastAim(enc, in.Member, in.CastAim, offers)
+	if err != nil {
+		return nil, fmt.Errorf("afford aim: %w", err)
+	}
+	return &AffordOutput{Clock: ClockTurn, Declarations: declarations, CastAim: preview}, nil
 }
 
 // blockedDeclaration is the shape every early per-verb blocker emits:
