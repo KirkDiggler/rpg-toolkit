@@ -694,7 +694,13 @@ func (v *validation) place() {
 				v.fail(p+".blocks_los", "%q is not a prop and cannot declare what it blocks", pl.Ref)
 			}
 			if pl.Facing != "" {
-				v.fail(p+".facing", "%q is not a prop and cannot declare an authored facing", pl.Ref)
+				// A DEFERRAL, NOT A FINDING (rpg-toolkit#1892): spawn facing
+				// is authored INITIAL STATE and belongs on a placement beside
+				// `at`. It is refused only because the field was authored for
+				// props first and the monster case was filed to #201 without
+				// leaving the owner or the trigger behind. The message names
+				// that rather than telling an author the field is not theirs.
+				v.fail(p+".facing", "%q cannot declare an authored facing yet: spawn facing on a monster is deferred to rpg-toolkit#1892 (the field is a prop's today, and what #201 owns is facing IN PLAY, not how a creature stands when the door opens)", pl.Ref)
 			}
 			if pl.Offset != nil {
 				v.fail(p+".offset", "%q is not a prop and cannot declare an authored offset", pl.Ref)

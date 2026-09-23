@@ -278,8 +278,11 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"place[0].offset", "outside [-0.5,0.5]"},
 		{"an offset that is not two numbers", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.1] }`,
 			"place[0].offset", "must be [x,y]"},
-		{"a monster with an authored facing", `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, facing: n }`,
-			"place[8].facing", "cannot declare an authored facing"},
+		// The refusal is a DEFERRAL, and the message now says so: the path
+		// still fails, but it names the issue and separates spawn facing from
+		// what #201 owns (rpg-toolkit#1892).
+		{"a monster with an authored facing, deferred", `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, facing: n }`,
+			"place[8].facing", "deferred to rpg-toolkit#1892"},
 		{"a monster with an authored offset", `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, offset: [0.1, 0.1] }`,
 			"place[8].offset", "cannot declare an authored offset"},
 		{"a prop with an explicitly empty offset list", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [] }`,
@@ -392,6 +395,29 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			s.Contains(errs[0].Message, tc.says)
 		})
 	}
+
+	// THE REFUSAL NAMES ITSELF AS A DEFERRAL (rpg-toolkit#1892). The path
+	// assertion above pins that the field is still refused; this one pins WHY
+	// THE MESSAGE MATTERS — a bare "not a prop" read as settled doctrine and
+	// was acted on as one, so the message must name the issue and must keep
+	// spawn facing apart from what #201 owns. A future session that flips this
+	// validation to acceptance deletes this test deliberately, which is the
+	// point: the deferral should not disappear silently.
+	s.Run("the monster facing refusal names its issue, and separates spawn from #201", func() {
+		errs := s.validate(s.tombWith(
+			`at: [11,3], targeting: lowest-health }`,
+			`at: [11,3], targeting: lowest-health, facing: n }`))
+
+		s.Require().NotEmpty(errs)
+		s.Contains(errs[0].Message, "rpg-toolkit#1892",
+			"an author hitting this must be able to find the decision behind it")
+		s.Contains(errs[0].Message, "#201",
+			"and must be told that facing IN PLAY is a different thing (#201) "+
+				"from how a creature stands when the door opens")
+		s.NotContains(errs[0].Message, "is not a prop",
+			"the old wording claimed the field was not a monster's at all, which "+
+				"is the overclaim that got this deferred as if it were decided")
+	})
 
 	// The concealed-check shape cases stand on an INNER shortcut door — both
 	// endpoints in the hall — so each differs from a valid file by exactly the
