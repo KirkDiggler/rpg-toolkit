@@ -46,7 +46,17 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 
 	facts := Facts{
 		Deeds: heldDeedsAgainst(holdings, id),
-		Now:   uint64(e.clock.ToData().HighWater),
+		// THE TWO READINGS BESIDE THE FIRST (rpg-toolkit#1883, rpg-project#498).
+		// Every deed a witness holds is ALREADY here — deeds land on every
+		// witness, and the payload carries `Target` — so these are the same
+		// holdings read two more ways, not a second fact source.
+		//
+		// ALLY IS THE STANCE GRAPH'S ANSWER, asked per deed at the moment it
+		// is read: a disposition that changes changes this reading, and the
+		// document never names a faction.
+		AllyDeeds: heldDeedsAgainstSide(e, holdings, id),
+		OwnDeeds:  heldDeedsBy(holdings, id),
+		Now:       uint64(e.clock.ToData().HighWater),
 		// NOTHING A SOCIAL VERDICT CAN ANSWER WITH IS PAID OUT OF A TURN.
 		// `fact`, `flee` and a bare line cost nothing a budget runs out of,
 		// and the three budgeted words are refused under a social key at
@@ -137,8 +147,10 @@ func narrowToOneBand(facts *Facts) {
 // position.
 func factsFromView(view MonsterView) Facts {
 	facts := Facts{
-		Deeds: view.Deeds,
-		Now:   view.At,
+		Deeds:     view.Deeds,
+		AllyDeeds: view.AllyDeeds,
+		OwnDeeds:  view.OwnDeeds,
+		Now:       view.At,
 		// AFFORDABILITY IS ELIGIBILITY (rpg-project#465, ruled on an
 		// api-builder finding): what the creature can still pay for this turn
 		// decides which entries are on the table at all. The budget is the
@@ -190,7 +202,64 @@ func factsFromView(view MonsterView) Facts {
 // watched somebody else get hit holds that deed too; it is testimony about
 // the room and not a thing that happened to the creature, and reading it as
 // one would have a goblin retaliate for a blow it merely witnessed.
+//
+// THE WITNESSED DEED IS NOT THROWN AWAY, and this filter is where it stops
+// being invisible: [heldDeedsAgainstSide] reads the SAME holdings for the
+// blows that landed on this creature's own side, which is the reading
+// `when: { <deed>: { … , on: ally } }` asks for (rpg-toolkit#1883).
 func heldDeedsAgainst(holdings []perception.Holding, self MemberID) []HeldDeed {
+	return heldDeedsWhere(holdings, func(d deed.Deed) bool { return d.Target == self })
+}
+
+// heldDeedsAgainstSide is every deed this creature holds that was done to ONE
+// OF ITS OWN SIDE — the reading `on: ally` asks for.
+//
+// THE STANCE GRAPH ANSWERS "WHOSE", asked here, per deed, at the moment the
+// facts are projected. That is what makes this reading follow a disposition
+// that changes: a member who was an ally when the blow landed and is an enemy
+// now is not counted, because the question is asked against the CURRENT
+// graph, not against a list frozen into the document.
+//
+// SELF IS NOT ONE OF ITS OWN SIDE. A blow to the creature is [Deeds]'s
+// reading, and counting it here too would make `on: ally` fire for a wound to
+// the creature itself — the two readings would stop being different questions.
+func heldDeedsAgainstSide(e *Encounter, holdings []perception.Holding, self MemberID) []HeldDeed {
+	return heldDeedsWhere(holdings, func(d deed.Deed) bool {
+		target := MemberID(d.Target)
+		if target == "" || target == self {
+			return false
+		}
+		// THE ALLIED EDGE, NOT "NOT HOSTILE": two neutral factions are
+		// neither, so a blow to a neutral bystander is not a blow to my side.
+		// That is the honest reading and it is what makes this follow a
+		// disposition that changes.
+		allied, _ := e.IsAllied(self, target)
+
+		return allied
+	})
+}
+
+// heldDeedsBy is every deed this creature DID — the reading `as: actor` asks
+// for, and what a pause is made of ("after I strike, stand still").
+//
+// THE ACTOR IS THE CREATURE, and nothing checks whether anyone was there to
+// see it: a creature knows what it did. The deed is on this creature's own
+// holdings because it was a witness to itself, which is how every deed lands
+// on its actor as well as on the room.
+func heldDeedsBy(holdings []perception.Holding, self MemberID) []HeldDeed {
+	return heldDeedsWhere(holdings, func(d deed.Deed) bool { return d.Actor == self })
+}
+
+// heldDeedsWhere is the ONE walk every reading goes through: decode each
+// holding on the deeds channel, keep the ones this reading asks for, and sort
+// by actor so two identical situations read identically (C8).
+//
+// ONE WALK, THREE ANSWERS. The three readings are filters over the same
+// holdings, so they cannot disagree about how old a deed is or which payload
+// decodes — the failure a second decode loop would eventually produce.
+func heldDeedsWhere(
+	holdings []perception.Holding, keep func(deed.Deed) bool,
+) []HeldDeed {
 	var out []HeldDeed
 	for _, h := range holdings {
 		if h.Channel != deed.Channel {
@@ -204,7 +273,7 @@ func heldDeedsAgainst(holdings []perception.Holding, self MemberID) []HeldDeed {
 			// read is a condition that does not hold.
 			continue
 		}
-		if d.Target != self {
+		if !keep(d) {
 			continue
 		}
 		out = append(out, HeldDeed{Kind: d.Verb, Actor: d.Actor, At: h.Confirmed})

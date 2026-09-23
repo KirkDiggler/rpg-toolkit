@@ -244,6 +244,11 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 		{name: "a deed nobody holds", when: `{ insulted: { within: 3 } }`, says: "not a deed this build holds"},
 		{name: "a span counted from zero", when: `{ attacked: { within: 0 } }`, says: "counted from 1"},
 		{name: "a deed with no span", when: `{ attacked: {} }`, says: "names no span"},
+		// THE SCOPE (rpg-toolkit#1883). `on:` and `as:` name whose deed the
+		// condition is about, and each takes exactly one word.
+		{name: "an `on` scope nobody reads", when: `{ attacked: { within: 3, on: friend } }`, says: "not a scope this build reads"},
+		{name: "an `as` scope nobody reads", when: `{ attacked: { within: 3, as: target } }`, says: "not a scope this build reads"},
+		{name: "both scopes at once", when: `{ attacked: { within: 3, on: ally, as: actor } }`, says: "asks one thing"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
@@ -252,6 +257,44 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.says)
 			require.Contains(t, err.Error(), "line ", "and it says which line")
+		})
+	}
+}
+
+// TestAScopeCompilesOntoTheCondition: `on: ally` and `as: actor` are carried
+// from the file onto the compiled condition, and omitting the scope compiles
+// to the self reading — which is what keeps every document written before
+// scopes existed meaning exactly what it meant (rpg-toolkit#1883).
+func TestAScopeCompilesOntoTheCondition(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		body  string
+		scope encounter.DeedScope
+	}{
+		{name: "no scope is the creature itself", body: `{ within: 3 }`, scope: encounter.ScopeSelf},
+		{name: "on: ally", body: `{ within: 3, on: ally }`, scope: encounter.ScopeAlly},
+		{name: "as: actor", body: `{ within: 3, as: actor }`, scope: encounter.ScopeActor},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
+      holds: [vault-map], on: { time: [ { when: { attacked: `+tc.body+` }, hold: {} } ] } }`)
+			spec, err := dungeonspec.Decode([]byte(source))
+			require.NoError(t, err)
+
+			// BY ID, not by index: the fixture has more than one placement
+			// and this test is about the captain's own table.
+			var captain *dungeonspec.PlaceSpec
+			for i := range spec.Place {
+				if spec.Place[i].ID == "captain" {
+					captain = &spec.Place[i]
+				}
+			}
+			require.NotNil(t, captain, "the fixture still places the captain")
+
+			entries := captain.On[string(encounter.AnswerTime)]
+			require.Len(t, entries, 1, "the placement authored one time entry")
+			require.NotNil(t, entries[0].When, "the condition compiled")
+			require.Equal(t, tc.scope, entries[0].When.Scope)
 		})
 	}
 }

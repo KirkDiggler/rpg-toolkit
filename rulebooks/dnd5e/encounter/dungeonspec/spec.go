@@ -1149,14 +1149,38 @@ type WhenSpec struct {
 	// count. AT LEAST 1: a span is counted from 1.
 	Within int
 
+	// Scope says WHOSE deed this condition is about — empty for the creature
+	// itself (the reading that existed before scopes), `ally` for one of its
+	// own side, `actor` for a deed the creature did. It refines the deed
+	// form rather than adding a second condition, so a `when` still names
+	// exactly one thing (rpg-toolkit#1883, rpg-project#498).
+	//
+	// ALLY IS A RELATIONSHIP, NOT A FACTION. Which members are "its own side"
+	// is the stance graph's answer at evaluation time — so a table keeps
+	// working when a disposition changes, and a document never names a
+	// faction as an ally.
+	//
+	// ACTOR IS THE PAUSE: `{ attacked: { within: 2, as: actor } }` is "I
+	// struck recently", which is the fact "after I strike, stand still"
+	// needs.
+	Scope encounter.DeedScope
+
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
 	Line int
 }
 
-// withinSpec is the body a deed condition takes: `{ within: N }`.
+// withinSpec is the body a deed condition takes: `{ within: N }`, and — since
+// rpg-toolkit#1883 — optionally WHOSE deed it is about.
+//
+// THE TWO SPELLINGS CANNOT BOTH BE GIVEN: `on: ally` reads a blow to my side,
+// `as: actor` reads what I did. Two at once is an author asking a question this
+// grammar has not paid for, refused by name rather than silently preferring
+// one.
 type withinSpec struct {
-	Within *int `yaml:"within"`
+	Within *int    `yaml:"within"`
+	On     *string `yaml:"on"`
+	As     *string `yaml:"as"`
 }
 
 // UnmarshalYAML reads one condition, refusing two conditions in one `when`,
@@ -1200,10 +1224,71 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	if *within.Within < 1 {
 		return fmt.Errorf("line %d: a span of %d rounds is counted from 1", body.Line, *within.Within)
 	}
+	scope, err := scopeOf(within, body.Line, key)
+	if err != nil {
+		return err
+	}
 	w.Deed = key
 	w.Within = *within.Within
+	w.Scope = scope
 
 	return nil
+}
+
+// scopeOf reads WHOSE deed a condition is about off its body — `on: ally`,
+// `as: actor`, or neither for the creature itself.
+//
+// THE TWO SPELLINGS ARE ONE ANSWER, so giving both is refused rather than
+// silently preferring one: `on: ally` and `as: actor` are different questions
+// ("was my side hit" vs "did I act"), and an author who wrote both has made a
+// mistake this grammar cannot resolve for them.
+//
+// AN UNKNOWN WORD IS REFUSED BY NAME, in the same shape every other refusal in
+// this dialect takes — the word means something, it is simply not a scope this
+// build reads.
+func scopeOf(in withinSpec, line int, deed string) (encounter.DeedScope, error) {
+	if in.On != nil && in.As != nil {
+		return "", fmt.Errorf(
+			"line %d: `%s` names both `on: %s` and `as: %s`, and a condition asks one thing: "+
+				"`on: ally` is a deed against your side, `as: actor` is one you did",
+			line, deed, *in.On, *in.As)
+	}
+	if in.On != nil {
+		if *in.On != string(encounter.ScopeAlly) {
+			return "", fmt.Errorf(
+				"line %d: `on: %s` is not a scope this build reads: they are %s "+
+					"(and omitting it means the creature itself)",
+				line, *in.On, scopeWords())
+		}
+
+		return encounter.ScopeAlly, nil
+	}
+	if in.As != nil {
+		if *in.As != string(encounter.ScopeActor) {
+			return "", fmt.Errorf(
+				"line %d: `as: %s` is not a scope this build reads: they are %s "+
+					"(and omitting it means the creature itself)",
+				line, *in.As, scopeWords())
+		}
+
+		return encounter.ScopeActor, nil
+	}
+
+	return encounter.ScopeSelf, nil
+}
+
+// scopeWords names the scopes a refusal lists: the two named readings, since
+// the default is what omitting the field means and saying so twice would read
+// as a third option.
+func scopeWords() string {
+	named := make([]string, 0, len(encounter.DeedScopes))
+	for _, scope := range encounter.DeedScopes {
+		if scope != encounter.ScopeSelf {
+			named = append(named, string(scope))
+		}
+	}
+
+	return strings.Join(named, ", ")
 }
 
 // SelectorSpec names what a `attack`/`toward`/`away` entry acts on: a word,

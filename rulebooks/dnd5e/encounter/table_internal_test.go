@@ -4,11 +4,13 @@
 package encounter
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -212,4 +214,143 @@ func (s *TableSuite) TestEachDirectionNamesItselfInTheCause() {
 	s.Equal("encounter:table:away", away.Cause.String(), "which is not the same word")
 
 	s.NotEqual(tableCauseToward, tableCauseAway, "two directions, two causes")
+}
+
+// ---------------------------------------------------------------------------
+// The pause, through the real driver (rpg-toolkit#1883, rpg-project#498)
+// ---------------------------------------------------------------------------
+//
+// THE CLAIM THIS SLICE WAS RULED ON: "after I strike, stand still for two
+// rounds" is expressible without a new concept in the grammar. It is
+// `{ attacked: { within: 2, as: actor } }` — a deed the creature DID — read
+// against OwnDeeds.
+//
+// These go through TableDriver.Act, which is the path a `time` pick actually
+// takes, so what they prove is the ability to fire and not only that a
+// projection exists. The driver is driven directly with a view, exactly as the
+// other tests in this file do: no board and no clock are needed to ask what a
+// creature does with its turn.
+
+// lowestDie answers every roll with 1, so a weighted table picks the entry a
+// test named without sampling. It is declared HERE rather than reached for
+// from testroller_test.go because that file is the EXTERNAL test package and
+// this one is internal — the boundary the toolkit keeps between tests that see
+// internals and tests that do not.
+type lowestDie struct{}
+
+func (lowestDie) Roll(_ context.Context, _ int) (int, error) { return 1, nil }
+
+func (lowestDie) RollN(_ context.Context, count, _ int) ([]int, error) {
+	out := make([]int, count)
+	for i := range out {
+		out[i] = 1
+	}
+
+	return out, nil
+}
+
+// pauseTable is a guard that opens a fight, then stands still for two rounds
+// before swinging again — and holds when there is nobody, so the table is
+// never empty.
+func pauseTable() Table {
+	return Table{AnswerTime: {
+		{Weight: 100, Hold: true,
+			When: &When{Deed: "attacked", Within: 2, Scope: ScopeActor}},
+		{Weight: 1, Attack: &Selector{Word: SelectorEnemy},
+			When: &When{Enemy: EnemyReach}},
+		{Weight: 1, Hold: true, When: &When{Enemy: EnemyNone}},
+	}}
+}
+
+// pauseView is a guard with a weapon in hand and an enemy in reach, having
+// acted `ago` rounds before `now`.
+func pauseView(now uint64, ago int) MonsterView {
+	return MonsterView{
+		Self:    "guard",
+		Actions: []ActionView{{Ref: core.Ref{Type: "weapons", ID: "spear"}, RangeFeet: 5}},
+		Seen: []SeenMember{{
+			ID: "intruder", Opposed: true, Standing: true, InReach: map[core.Ref]bool{{Type: "weapons", ID: "spear"}: true},
+		}},
+		Budget:   TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		Table:    pauseTable(),
+		At:       now,
+		Round:    1,
+		OwnDeeds: []HeldDeed{{Kind: DeedAttack, Actor: "guard", At: now - uint64(ago)}},
+	}
+}
+
+func (s *TableSuite) TestAPauseHoldsTheRoundAfterIStruck() {
+	// THE ROUND ITSELF: the creature struck at `now`, so the pause is on and
+	// it stands there — even though an enemy is in reach and it could swing.
+	d := TableDriver{Roller: lowestDie{}}
+	decision, err := d.Act(pauseView(10, 0))
+	s.Require().NoError(err)
+	s.IsType(Pass{}, decision.Intent, "the round I struck, I stand still")
+
+	// ONE ROUND LATER, still inside the span.
+	decision, err = d.Act(pauseView(11, 1))
+	s.Require().NoError(err)
+	s.IsType(Pass{}, decision.Intent, "still inside the two-round span")
+
+	// THE SPAN RUNS OUT and the guard is free to act again — which is what
+	// makes this a pause rather than a creature that stopped fighting.
+	decision, err = d.Act(pauseView(13, 3))
+	s.Require().NoError(err)
+	s.IsType(Attack{}, decision.Intent, "three rounds on, the pause is over and it swings")
+}
+
+func (s *TableSuite) TestBeingHitIsNotAPause() {
+	// THE TWO READINGS STAY APART: a blow TO the guard is `Deeds`, which is
+	// not what the pause asks for. Without this the guard would freeze every
+	// time it was wounded instead of retaliating.
+	d := TableDriver{Roller: lowestDie{}}
+	view := pauseView(10, 0)
+	view.OwnDeeds = nil
+	view.Deeds = []HeldDeed{{Kind: DeedAttack, Actor: "intruder", At: 10}}
+
+	decision, err := d.Act(view)
+	s.Require().NoError(err)
+	s.IsType(Attack{}, decision.Intent, "being struck does not silence the guard")
+}
+
+// TestTheAllyReadingFeedsARowThatFires is the second half of the objective:
+// attrition morale. A creature whose SIDE has been hurt closes on the enemy
+// rather than holding — the same machinery, the other reading.
+func (s *TableSuite) TestTheAllyReadingFeedsARowThatFires() {
+	table := Table{AnswerTime: {
+		// "A friend has been struck in the last three rounds: avenge it."
+		{Weight: 100, Attack: &Selector{Word: SelectorEnemy},
+			When: &When{Deed: "attacked", Within: 3, Scope: ScopeAlly}},
+		{Weight: 1, Hold: true},
+	}}
+
+	d := TableDriver{Roller: lowestDie{}}
+	view := MonsterView{
+		Self:    "goblin",
+		Actions: []ActionView{{Ref: core.Ref{Type: "weapons", ID: "scimitar"}, RangeFeet: 5}},
+		Seen: []SeenMember{{
+			ID: "intruder", Opposed: true, Standing: true, InReach: map[core.Ref]bool{{Type: "weapons", ID: "scimitar"}: true},
+		}},
+		Budget: TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		Table:  table,
+		At:     10,
+		Round:  1,
+	}
+
+	// Nothing has happened to its side: the row is not on the table.
+	decision, err := d.Act(view)
+	s.Require().NoError(err)
+	s.IsType(Pass{}, decision.Intent, "nobody on my side has been hurt")
+
+	// A friend was struck: the row fires and the goblin attacks.
+	view.AllyDeeds = []HeldDeed{{Kind: DeedAttack, Actor: "intruder", At: 10}}
+	decision, err = d.Act(view)
+	s.Require().NoError(err)
+	s.IsType(Attack{}, decision.Intent, "an ally's wound puts the row on the table")
+
+	// And it ages out like every other span.
+	view.At = 20
+	decision, err = d.Act(view)
+	s.Require().NoError(err)
+	s.IsType(Pass{}, decision.Intent, "the span is a span, whoever it was about")
 }

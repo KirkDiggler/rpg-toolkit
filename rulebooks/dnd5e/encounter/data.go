@@ -1234,6 +1234,21 @@ type WhenData struct {
 	Enemy  string `json:"enemy,omitempty"`
 	Deed   string `json:"deed,omitempty"`
 	Within int    `json:"within,omitempty"`
+
+	// Scope says whose deed this condition is about — the creature itself
+	// (omitted), its own side, or the creature as the doer
+	// (rpg-toolkit#1883).
+	//
+	// IT HAS TO BE HERE, and finding that out is why this field exists: the
+	// compiled condition carries the scope, so a table saved and loaded
+	// without it would come back reading `Deeds` — an `on: ally` or
+	// `as: actor` row would silently revert to the self reading, which is the
+	// quiet degrade this module refuses everywhere else.
+	//
+	// OMITTED WHEN EMPTY, like its siblings: the self reading is the empty
+	// string, so a record written before scopes existed loads to exactly the
+	// condition it always meant.
+	Scope string `json:"scope,omitempty"`
 }
 
 // SelectorData is the persistent representation of a [Selector]: the word, or
@@ -1330,6 +1345,7 @@ func answerDataFrom(entry Answer) AnswerData {
 	if entry.When != nil {
 		out.When = &WhenData{
 			Enemy: string(entry.When.Enemy), Deed: entry.When.Deed, Within: entry.When.Within,
+			Scope: string(entry.When.Scope),
 		}
 	}
 
@@ -1385,6 +1401,7 @@ func answerFromData(row AnswerData) Answer {
 	if row.When != nil {
 		out.When = &When{
 			Enemy: EnemyWord(row.When.Enemy), Deed: row.When.Deed, Within: row.When.Within,
+			Scope: DeedScope(row.When.Scope),
 		}
 	}
 

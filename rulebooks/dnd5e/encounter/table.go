@@ -61,6 +61,11 @@ type (
 	// EnemyWord is a `when: { enemy: … }` band.
 	EnemyWord = behavior.EnemyWord
 
+	// DeedScope says whose deed a `when: { <deed>: … }` condition is about:
+	// the creature itself (the default), its own side, or the creature as
+	// the doer (rpg-toolkit#1883).
+	DeedScope = behavior.DeedScope
+
 	// Selector names what a word acts on.
 	Selector = behavior.Selector
 
@@ -130,6 +135,28 @@ var (
 	// WhenDeeds is every word a `when: { <deed>: { within: N } }` may name,
 	// in the author's own past tense.
 	WhenDeeds = behavior.WhenDeeds
+
+	// DeedScopes is every scope a deed condition may name — the creature
+	// itself (the empty string, and the default), its own side, or the
+	// creature as the doer (rpg-toolkit#1883).
+	DeedScopes = behavior.DeedScopes
+)
+
+// The three scopes a `when: { <deed>: { within: N, … } }` may carry, read
+// from the evaluator's own declaration so a scope the composition fills and a
+// scope the dialect refuses cannot drift apart.
+const (
+	// ScopeSelf is a deed against the creature itself — what omitting the
+	// scope means, and what every document written before scopes means.
+	ScopeSelf = behavior.ScopeSelf
+
+	// ScopeAlly is a deed against somebody on this creature's own side. WHO
+	// that is comes from the stance graph ([Encounter.IsAllied]), so the
+	// reading follows a disposition that changes.
+	ScopeAlly = behavior.ScopeAlly
+
+	// ScopeActor is a deed the creature did — the fact a pause reads.
+	ScopeActor = behavior.ScopeActor
 )
 
 // DeedVerbFor is the deed a `when` word reads: the verb the deeds channel
