@@ -27,6 +27,9 @@ type placedBox struct {
 }
 
 func footprintBox(in FootprintPlacement) (placedBox, error) {
+	if in.Footprint.Triangle != nil {
+		return placedBox{}, ErrBadFootprint
+	}
 	if in.Footprint.Box == nil {
 		return placedBox{}, ErrNoFootprint
 	}
@@ -76,4 +79,25 @@ func footprintBox(in FootprintPlacement) (placedBox, error) {
 	}
 
 	return f, nil
+}
+
+// footprintPolygon shares the validated placement transform for coverage.
+func footprintPolygon(in FootprintPlacement) ([]Point, error) {
+	if in.Footprint.Triangle == nil {
+		box, err := footprintBox(in)
+		return box.corners[:], err
+	}
+	if in.Footprint.Box != nil {
+		return nil, ErrBadFootprint
+	}
+	depth := in.Footprint.Triangle.Depth
+	// The bounding box's centre is half an altitude ahead of the triangle tip.
+	in.Footprint = Footprint{Box: &Box{D: depth, W: 2 * depth / math.Sqrt(3)}}
+	in.LocalOffset.X += depth / 2
+	box, err := footprintBox(in)
+	if err != nil {
+		return nil, err
+	}
+	tip := Point{X: (box.corners[0].X + box.corners[3].X) / 2, Y: (box.corners[0].Y + box.corners[3].Y) / 2}
+	return []Point{tip, box.corners[1], box.corners[2]}, nil
 }
