@@ -126,3 +126,43 @@ func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep(
 	s.Equal(spatial.Position{X: 0, Y: 1}, s.cellOf("cleric"))
 	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "resuming does not pay movement twice")
 }
+
+func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
+	for _, spend := range []bool{false, true} {
+		s.Run(map[bool]string{false: "decline", true: "use"}[spend], func() {
+			sheet := s.flareSheet()
+			sheet.HitPoints = 1
+			rolls := []int{20, 6, 6}
+			if spend {
+				rolls = []int{20, 20, 6, 6}
+			}
+			s.scene(sheet, 1, rolls...)
+			ctx := context.Background()
+			var err error
+			s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.Require().NoError(err)
+			_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
+			s.Require().NoError(err)
+			row := s.flareReaction()
+			in := &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold}
+			if spend {
+				in.Choice = session.ReactStrike
+				in.Option = "use"
+			}
+			_, err = s.mgr.React(ctx, in)
+			s.Require().NoError(err, "a finishing attack must commit rather than resume a closed encounter")
+			s.Zero(s.characters.byID["cleric"].HitPoints)
+			s.Require().NotNil(s.encounters.byID["world"].Outcome)
+			s.Nil(s.encounters.byID["world"].PausedTurn)
+			s.Len(s.beats(session.EventStruck), 1)
+			expected := 3
+			if spend {
+				expected = 2
+			}
+			s.Equal(expected, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
+			s.reloadHealingScene()
+			_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
+			s.Require().NoError(err, "closed world reloads")
+		})
+	}
+}
