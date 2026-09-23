@@ -1577,9 +1577,40 @@ type PlaceSpec struct {
 	// to stand squarely against an axis-true wall whatever way the hexes
 	// point). A name outside the set is refused by name, never silently
 	// snapped to the nearest valid one. Optional: omitted means the asset's
-	// own default facing. REFUSED on monsters, for BlocksMovement's reason —
-	// a monster faces dynamically in play; authored spawn facing is a shelf
-	// item for the Monster AI journey, not smuggled in here.
+	// own default facing. REFUSED on monsters today.
+	//
+	// THAT REFUSAL IS A DEFERRAL, NOT A FINDING, AND IT SAYS SO HERE BECAUSE
+	// IT DID NOT BEFORE (rpg-toolkit#1892). The field was authored for props
+	// first and the monster case was filed under "not now" with an OWNER —
+	// ideas/dungeon-builder/prop-facing-offset.md: "authored spawn facing is
+	// a shelf item for the Monster AI journey"; cardinal-facings.md lists
+	// "monster spawn facing (#201)" beside free-angle facing and wall height.
+	// A later comment kept the decision and dropped both the owner and the
+	// reason it was temporary, so it read as settled doctrine and was acted
+	// on as one — a session designing a per-placement reference reasoned from
+	// it that ANY per-instance monster fact on a placement was a shelf item.
+	//
+	// TWO THINGS WERE CONFLATED, and only one of them is the AI journey's:
+	//
+	//   - facing IN PLAY — a monster turns to track a target. That is #201's.
+	//   - facing AT SPAWN — which way it stood when the door opened. That is
+	//     authored INITIAL STATE, the sibling of [PlaceSpec.At], and nobody
+	//     owns it. Kirk, 2026-09-24: "a monster should face a direction when
+	//     starting. weird opening a door and the monsters are not facing the
+	//     door." That is the staging problem: the encounter's first frame is
+	//     wrong, with no read of who was aware and an unearned beat for the
+	//     party. None of it is the AI's to fix.
+	//
+	// WHAT WOULD LIFT IT: a ruling on #1892 accepting `facing` on monsters
+	// under `place[]`, separate from #201. The vocabulary already exists
+	// ([facings]) and the field already parses, so it is a validation flip and
+	// its goldens rather than new capability.
+	//
+	// THE GENERAL RULE THIS IS AN INSTANCE OF: a "not now" in this dialect
+	// must name its owner and its trigger, or it will be read as a ruling. The
+	// refusals that get this right say where the word went ([laterWords],
+	// [knowsRefusal]); this one said only "no", and the cost was a session
+	// arguing against authored spawn facing from a scope fence.
 	Facing string `yaml:"facing,omitempty"`
 
 	// Offset is an authored VISUAL displacement: [x,y] within-cell nudge
