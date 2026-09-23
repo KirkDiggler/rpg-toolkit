@@ -10,6 +10,8 @@ import (
 // Resource key constants for D&D 5e class resources.
 // These are used with Character.GetResource() to access resource pools.
 const (
+	// WardingFlare is the Light cleric reaction pool, recovered on long rest.
+	WardingFlare    coreResources.ResourceKey = "warding_flare"
 	WrathOfTheStorm coreResources.ResourceKey = "wrath_of_the_storm"
 
 	// RageCharges is the barbarian's rage uses per long rest.
@@ -118,6 +120,8 @@ func SpellSlotLevel(spellLevel int) (coreResources.ResourceKey, bool) {
 // therefore cannot become valid-looking status rows by accident.
 func DisplayName(key coreResources.ResourceKey) (string, bool) {
 	switch key {
+	case WardingFlare:
+		return "Warding Flare", true
 	case WrathOfTheStorm:
 		return "Wrath of the Storm", true
 	case RageCharges:
