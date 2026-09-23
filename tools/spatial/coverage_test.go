@@ -215,3 +215,40 @@ func (s *CoverageTestSuite) TestRefusals() {
 	})
 	s.ErrorIs(err, ErrBadCellWidth, "an embedding with no frame rasterises nothing")
 }
+
+func (s *CoverageTestSuite) TestTriangleIsEquilateralAndTipAnchored() {
+	for _, bearing := range []float64{0, 30, 60, 123, 240} {
+		placement := FootprintPlacement{
+			Footprint: Footprint{Triangle: &Triangle{Depth: 15}},
+			Origin:    Point{X: 12, Y: -7}, Facing: bearing,
+		}
+		polygon, err := footprintPolygon(placement)
+		s.Require().NoError(err)
+		s.Require().Len(polygon, 3)
+		s.InDelta(placement.Origin.X, polygon[0].X, 1e-9)
+		s.InDelta(placement.Origin.Y, polygon[0].Y, 1e-9)
+		for i, p := range polygon {
+			next := polygon[(i+1)%3]
+			s.InDelta(30/math.Sqrt(3), math.Hypot(p.X-next.X, p.Y-next.Y), 1e-9)
+		}
+		out, err := Coverage(s.emb, s.grid, CoverageInput{Footprint: placement.Footprint, Facing: bearing})
+		s.Require().NoError(err)
+		s.InDelta(225/math.Sqrt(3), sumFractions(out.Cells)*25*math.Sqrt(3)/2, 1e-8)
+		s.Less(out.Cells[Position{}], 0.5, "the tip never covers half the caster cell")
+	}
+}
+
+func (s *CoverageTestSuite) TestTriangleHalfCellAndInvalidShapes() {
+	out, err := Coverage(s.emb, s.grid, CoverageInput{Footprint: Footprint{Triangle: &Triangle{Depth: 15}}, Facing: 0})
+	s.Require().NoError(err)
+	s.InDelta(0.5, out.Cells[Position{X: 3}], 1e-9, "the far edge bisects this hex")
+	s.Zero(out.Cells[Position{X: -1}], "nothing behind the caster")
+	for _, depth := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		_, err := Coverage(s.emb, s.grid, CoverageInput{Footprint: Footprint{Triangle: &Triangle{Depth: depth}}})
+		s.ErrorIs(err, ErrBadFootprint)
+	}
+	_, err = Coverage(s.emb, s.grid, CoverageInput{
+		Footprint: Footprint{Box: &Box{W: 1, D: 1}, Triangle: &Triangle{Depth: 15}},
+	})
+	s.ErrorIs(err, ErrBadFootprint)
+}

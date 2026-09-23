@@ -13,10 +13,16 @@ type Box struct {
 	D float64 `json:"d"`
 }
 
-// Footprint is a shape in the plane. Today a box is the only one; a polygon
-// joins it when something in the game is shaped like one.
+// Triangle is equilateral. Depth is the altitude from its tip along Facing.
+// Its tip, rather than its centroid, sits at the placement origin.
+type Triangle struct {
+	Depth float64 `json:"depth"`
+}
+
+// Footprint is exactly one shape in the plane.
 type Footprint struct {
-	Box *Box `json:"box,omitempty"`
+	Box      *Box      `json:"box,omitempty"`
+	Triangle *Triangle `json:"triangle,omitempty"`
 }
 
 // AnchorRule says where a footprint sits relative to the cell it is placed at.
@@ -81,10 +87,17 @@ const coverageEpsilon = 1e-9
 // sides are not positive and finite, ErrBadCellWidth when the embedding has no
 // frame, and ErrBadFootprintPlacement for an invalid anchor or facing.
 func Coverage(emb HexEmbedding, g Grid, in CoverageInput) (CoverageOutput, error) {
-	if in.Footprint.Box == nil {
+	var b Box
+	switch {
+	case in.Footprint.Box != nil && in.Footprint.Triangle == nil:
+		b = *in.Footprint.Box
+	case in.Footprint.Triangle != nil && in.Footprint.Box == nil:
+		b = Box{D: in.Footprint.Triangle.Depth, W: 2 * in.Footprint.Triangle.Depth / math.Sqrt(3)}
+	case in.Footprint.Box == nil && in.Footprint.Triangle == nil:
 		return CoverageOutput{}, ErrNoFootprint
+	default:
+		return CoverageOutput{}, ErrBadFootprint
 	}
-	b := *in.Footprint.Box
 	for _, v := range []float64{b.W, b.D} {
 		if v <= 0 || math.IsNaN(v) || math.IsInf(v, 0) {
 			return CoverageOutput{}, ErrBadFootprint
@@ -97,9 +110,12 @@ func Coverage(emb HexEmbedding, g Grid, in CoverageInput) (CoverageOutput, error
 		Footprint: in.Footprint, Origin: emb.CellCentre(in.At), Facing: in.Facing,
 	}
 	if in.Anchor == AnchorAtEdge {
-		placement.LocalOffset.X = (emb.cellWidth + b.D) / 2
+		placement.LocalOffset.X = emb.cellWidth / 2
+		if in.Footprint.Box != nil {
+			placement.LocalOffset.X += b.D / 2
+		}
 	}
-	if _, err := footprintBox(placement); err != nil {
+	if _, err := footprintPolygon(placement); err != nil {
 		return CoverageOutput{}, err
 	}
 	radius := math.Ceil((b.D+b.W/2)/emb.cellWidth) + 1

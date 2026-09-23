@@ -18,7 +18,7 @@ var ErrBadCoverageCell = errors.New("spatial: invalid coverage cell")
 // PlacedCoverage returns area fractions for a freely placed footprint over Cells.
 // Misses are absent. Inputs are not retained; errors return no partial map.
 func PlacedCoverage(in PlacedCoverageInput) (CoverageOutput, error) {
-	f, err := footprintBox(in.Placement)
+	f, err := footprintPolygon(in.Placement)
 	if err != nil {
 		return CoverageOutput{}, err
 	}
@@ -43,7 +43,7 @@ func PlacedCoverage(in PlacedCoverageInput) (CoverageOutput, error) {
 		if whole <= 0 || math.IsNaN(whole) || math.IsInf(whole, 0) {
 			return CoverageOutput{}, ErrBadCoverageCell
 		}
-		clipped := clipConvex(hex[:], f.corners[:])
+		clipped := clipConvex(hex[:], f)
 		area := polygonArea(clipped)
 		fraction := area / whole
 		if math.IsNaN(fraction) || math.IsInf(fraction, 0) {

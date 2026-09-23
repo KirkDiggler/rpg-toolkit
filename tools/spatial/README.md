@@ -1743,3 +1743,10 @@ When contributing to the spatial module:
 ## License
 
 Part of the RPG Toolkit - see main repository for license information.
+### Triangle coverage
+
+`Footprint.Triangle` declares an equilateral triangle by its altitude (`Depth`).
+Its tip sits at the placement origin and extends along Facing; Coverage and
+PlacedCoverage return fractions using the existing convex clipping path.
+Coverage supports centre-tip or cell-edge-tip anchoring. Thresholds remain
+caller-owned. TraceFootprint remains rectangle-only and rejects triangles.
