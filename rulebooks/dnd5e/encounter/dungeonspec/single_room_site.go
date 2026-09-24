@@ -81,7 +81,8 @@ func (singleRoomCells) cellAt([2]int) cellAnswer {
 // dialect (rpg-project#481, R2; unknown_key.go).
 
 // siteScopeShape reads the optional root scope: `factions` and
-// `dispositions`, each a list of mappings.
+// `dispositions`, each a list of mappings, and `tables`, a mapping of id to
+// table (rpg-toolkit#1897).
 func siteScopeShape(doc *yaml.Node, add errSink) {
 	if factions := optionalNode(doc, "factions", "", add); factions != nil {
 		for i, fa := range factions.Content {
@@ -91,6 +92,30 @@ func siteScopeShape(doc *yaml.Node, add errSink) {
 	if dispositions := optionalNode(doc, "dispositions", "", add); dispositions != nil {
 		for i, d := range dispositions.Content {
 			dispositionShape(d, fmt.Sprintf("dispositions[%d]", i), add)
+		}
+	}
+	// THE ROOT TABLES, judged for the same one thing the other root blocks
+	// are: an authored `null` where the typed decode would read the Go zero
+	// value and lose the author's intent. THE GRAMMAR INSIDE a table is
+	// [grammar.placeOn]'s, asked by [siteGrammar] for every table this
+	// document declares — so a trigger, a word or a band is refused here in
+	// exactly the words a binding's own `on:` gets, and there is one place
+	// the table grammar lives rather than two.
+	if tables := optionalNode(doc, "tables", "", add); tables != nil {
+		if tables.Kind != yaml.MappingNode {
+			add("tables", "expected a map of table id to table")
+		} else {
+			for i := 0; i+1 < len(tables.Content); i += 2 {
+				t := tables.Content[i]
+				p := "tables." + t.Value
+				if t.Value == "" {
+					add("tables", "a table has no id")
+					continue
+				}
+				if body := resolveNode(tables.Content[i+1]); body == nil || isNull(body) {
+					add(p, errNotNull)
+				}
+			}
 		}
 	}
 }
@@ -103,6 +128,9 @@ func factionShape(fa *yaml.Node, p string, add errSink) {
 	optionalNode(fa, "id", p, add)
 	optionalReference(fa, "mind", p, add)
 	optionalNode(fa, "on", p, add)
+	// A faction's `table:` is a NAME that must name something —
+	// [optionalReference]'s case, exactly as `mind` is (rpg-toolkit#1897).
+	optionalReference(fa, "table", p, add)
 	// `temper` is a WORD OR A MIX, so only its null-ness is judged here; the
 	// two spellings and the sealed words are [TemperSpec.UnmarshalYAML]'s.
 	optionalNode(fa, "temper", p, add)
@@ -188,11 +216,23 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Add:          add,
 		Factions:     s.Factions,
 		Dispositions: s.Dispositions,
+		Tables:       s.Tables,
 		Members:      roomMembers(gp),
 		Cells:        singleRoomCells{},
 	})
 	g.factions()
 	g.factionOrders()
+	// THE ROOT TABLES, EACH JUDGED BY THE SAME GRAMMAR A BINDING'S OWN `on:`
+	// GETS (rpg-toolkit#1897). Asked here rather than in the member loop
+	// below because a table is NOT OWNED by any creature — that is the whole
+	// reason it is at the root — so a table no binding happens to name must
+	// still be judged, and a table six bindings name must be judged once.
+	//
+	// Judged BEFORE the bindings so a table's own defect is reported at the
+	// table's path rather than six times at six creatures' paths.
+	for _, id := range sortedTableIDs(s.Tables) {
+		g.placeOn("tables."+id, s.Tables[id])
+	}
 	// THE RECORDS BEFORE ANY HOLDER, which is [validation.intel]'s own
 	// ordering reason: the orders loop below asks whether a `holds:` names a
 	// record that exists, so the universe it may name has to be indexed
@@ -223,6 +263,10 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		// named once, below, and asking a second question about its contents
 		// would send an author looking for a second problem.
 		bindingHolds(g, at, m.id, b.Holds, declared)
+		// AND THE TABLE IT NAMES, which is [bindingHolds]' shape one noun
+		// over (rpg-toolkit#1897): a name that names nothing is refused at
+		// the author's own path, naming this creature and the id it wrote.
+		bindingTable(g, at, m.id, b.Table, s.Tables)
 		bindingChecks(g, at, b)
 	}
 	g.minds()
@@ -266,6 +310,19 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 func sortedBindingIDs(bindings map[string]RoomMonsterBinding) []string {
 	out := make([]string, 0, len(bindings))
 	for id := range bindings {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+
+	return out
+}
+
+// sortedTableIDs orders the root tables' ids, for [sortedBindingIDs]' reason:
+// a defect list that depends on Go's map iteration is one no author can
+// compare run to run (rpg-toolkit#1897).
+func sortedTableIDs(tables map[string]TableSpec) []string {
+	out := make([]string, 0, len(tables))
+	for id := range tables {
 		out = append(out, id)
 	}
 	sort.Strings(out)

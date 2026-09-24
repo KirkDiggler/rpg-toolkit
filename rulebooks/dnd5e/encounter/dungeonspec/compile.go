@@ -914,6 +914,56 @@ func tableOf(on map[string][]AnswerSpec) encounter.Table {
 	return out
 }
 
+// rootTableOn is the table a binding NAMED at the root, or nil when it named
+// none or when no such table is declared (rpg-toolkit#1897).
+//
+// THE ID IS LOOKED UP, NEVER INTERPRETED. An id this document does not
+// declare is refused by name before any compile runs ([bindingTable], asked
+// from [siteGrammar]), so the nil branch here is the honest "named
+// nothing" case rather than a swallowed error: a binding with no `table:`
+// and a binding whose table the validator already refused both order from
+// their own `on:` alone.
+func rootTableOn(tables map[string]TableSpec, id string) map[string][]AnswerSpec {
+	if id == "" {
+		return nil
+	}
+
+	return tables[id]
+}
+
+// layerSpecs returns `over` laid on `base`, in the AUTHORING dialect's own
+// type: for each key the nearer layer wins WHOLESALE, which is
+// [encounter.Layer]'s rule said in `AnswerSpec` terms.
+//
+// This exists so a named root table can be stacked under a binding's own
+// `on:` WITHOUT the compile site leaving the dialect's type. The engine's
+// [encounter.Layer] is what actually decides the merged table, in [ordersOf]
+// — this only folds two authored sources into the one `On` that function
+// expects, so there is still exactly ONE layering rule in the package and
+// one place it is applied.
+//
+// NIL IS CONTAGIOUS IN THE RIGHT DIRECTION: two nils give nil, so a creature
+// that names no table and writes no `on:` carries nil — the same value it
+// carried before this key existed, and the reason every document authored
+// earlier pictures byte-identically.
+func layerSpecs(base, over map[string][]AnswerSpec) map[string][]AnswerSpec {
+	if len(base) == 0 {
+		return over
+	}
+	if len(over) == 0 {
+		return base
+	}
+	out := make(map[string][]AnswerSpec, len(base)+len(over))
+	for key, entries := range base {
+		out[key] = entries
+	}
+	for key, entries := range over {
+		out[key] = entries
+	}
+
+	return out
+}
+
 // answerOf compiles one authored entry: the weight resolved, the condition
 // and the selectors turned into the composition's own shapes.
 func answerOf(entry AnswerSpec) encounter.Answer {
@@ -1084,13 +1134,18 @@ type inherited struct {
 // keyed by faction id, and a creature on a side nobody declared simply finds
 // nothing — which is the zero value telling the truth, not a defect: the
 // reserved `monsters` side is a side whether or not a block declares it.
-func inheritedOrders(factions []FactionSpec) inherited {
+func inheritedOrders(factions []FactionSpec, tables map[string]TableSpec) inherited {
 	out := inherited{
 		on:     make(map[string]map[string][]AnswerSpec, len(factions)),
 		temper: make(map[string]TemperSpec, len(factions)),
 	}
 	for _, fa := range factions {
-		out.on[fa.ID] = fa.On
+		// A NAMED TABLE IS THE FACTION'S BASE, and its own `on:` is laid over
+		// it (rpg-toolkit#1897) — [layerSpecs]' order, the same one a binding
+		// uses against the table it names. A faction that names nothing falls
+		// through to its `on:` alone, which is what every faction authored
+		// before this key does.
+		out.on[fa.ID] = layerSpecs(rootTableOn(tables, fa.Table), fa.On)
 		out.temper[fa.ID] = fa.Temper
 	}
 
@@ -1137,7 +1192,16 @@ func ordersOf(c creatureOrders, from inherited) MonsterPlacement {
 // region whose floor it stands on.
 func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 	owner := ownerOf(spec, o)
-	from := inheritedOrders(spec.Factions)
+	// NIL, AND THAT IS THE HONEST ANSWER FOR THIS DIALECT. The v2 `Spec` has no
+	// root `tables:` key — root tables are the single-room dialect's
+	// (rpg-toolkit#1897) — so a v2 faction's `table:` resolves to nothing and
+	// its orders are its own `on:` alone, exactly as before this field existed.
+	//
+	// A v2 FILE CARRYING `table:` IS REFUSED rather than read as absent:
+	// `KnownFields(true)` rejects a key this shape does not have, so an author
+	// learns the spelling is not this dialect's instead of silently getting a
+	// faction with no orders.
+	from := inheritedOrders(spec.Factions, nil)
 	var out []MonsterPlacement
 	for _, p := range spec.Place {
 		if kind, _ := refKind(p.Ref); kind != typeMonsters {

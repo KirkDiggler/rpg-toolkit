@@ -68,7 +68,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	spec := in.Spec
 	// The cast this dialect placed, and what each declared side hands it.
 	cast := roomMembers(&spec.Room.Gameplay)
-	from := inheritedOrders(spec.Factions)
+	from := inheritedOrders(spec.Factions, spec.Tables)
 	o := spatial.HexOrientationPointyTop
 	cells := make([]spatial.Position, 0, len(spec.Room.Gameplay.WalkableHexes))
 	for _, c := range spec.Room.Gameplay.WalkableHexes {
@@ -141,9 +141,18 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// Its membership comes off the actor and its orders off the binding —
 		// absent is the zero block, which orders nothing.
 		b := spec.Room.Gameplay.MonsterBindings[m.ID]
+		// AND A NAMED ROOT TABLE IS THE BASE ITS OWN `on:` LAYS OVER
+		// (rpg-toolkit#1897). [ordersOf] already layers a creature's `on:`
+		// over its faction's key by key; naming a table inserts one more
+		// source UNDER those two, through the SAME [encounter.Layer] — so
+		// there is no second layering rule and no new meaning for "nearer
+		// wins wholesale". An id this document does not declare cannot reach
+		// here: `bindingTable` refuses it by name at the author's path before
+		// the compile is called.
+		on := layerSpecs(rootTableOn(spec.Tables, b.Table), b.On)
 		mp := ordersOf(creatureOrders{
 			ID: m.ID, Ref: m.Ref, Faction: m.Faction,
-			On: b.On, Temper: b.Temper, Actions: b.Actions,
+			On: on, Temper: b.Temper, Actions: b.Actions,
 		}, from)
 		mp.Region = spec.Room.Gameplay.ImplicitRegionID
 		mp.At = at

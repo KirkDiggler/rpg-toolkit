@@ -373,6 +373,27 @@ type FactionSpec struct {
 	// refused ("name a mind, or the faction cannot learn").
 	Mind string `yaml:"mind,omitempty"`
 
+	// Table names a root answer table ([SingleRoomSpec.Tables]) this side
+	// answers with (rpg-toolkit#1897). Optional; absent means this faction's
+	// orders are its own `on:` alone, exactly as they were before this field
+	// existed.
+	//
+	// THE SAME MECHANISM AS A BINDING'S `table:`, ONE LEVEL UP. A faction's
+	// `table:` is what its members' own `on:` layers over, and a member's own
+	// `table:` layers over THAT. So a side may share one drill and a single
+	// creature may still answer its own — [ordersOf] is unchanged and this
+	// adds no rule to it, only another source of the same `On`.
+	//
+	//	factions:
+	//	  - id: watch
+	//	    table: watch-drill
+	//
+	// BOTH SPELLINGS MAY BE WRITTEN, and the NAMED TABLE WINS the keys it
+	// carries: it is the more specific declaration, and an author who names a
+	// table AND writes `on:` is stating a base plus an addition. That is the
+	// same nearest-layer-wins-wholesale rule the rest of the stack uses.
+	Table string `yaml:"table,omitempty"`
+
 	// On is the author's ORDERS for every placement in this faction — the
 	// same `on:` block a placement writes, inherited (design §1, layer 2).
 	//
