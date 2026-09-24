@@ -263,8 +263,23 @@ type RoomCell struct {
 // RoomPartyStart identifies the authored party start cell.
 type RoomPartyStart = RoomCell
 
-// RoomMonsterSource declares a monster, its authored placement cell, and the
-// side it is on.
+// RoomStartingCell is a monster's authored start: where it stands and which
+// way it faces, one noun rather than a cell beside a sibling field. A hex
+// with a location has an orientation (rpg-toolkit#1899).
+type RoomStartingCell struct {
+	// Location is the authored axial hex coordinate.
+	Location RoomCell `yaml:"location" json:"location"`
+
+	// Facing is the direction the monster faces when it arrives, one of the
+	// eight true-compass names — n|ne|e|se|s|sw|w|nw — or empty, which means
+	// the asset's own default facing. Optional: a model has no "no
+	// orientation", so absent is a default, not a gap. Carried verbatim and
+	// never turned into an angle — angle math is a render concern.
+	Facing string `yaml:"facing,omitempty" json:"facing,omitempty"`
+}
+
+// RoomMonsterSource declares a monster, its authored start, and the side it
+// is on.
 //
 // THE ACTOR CARRIES IDENTITY; THE BINDING CARRIES ORDERS (rpg-project#477,
 // Decision 4). Everything a faction SUPPLIES — its table, its temperament,
@@ -273,9 +288,12 @@ type RoomPartyStart = RoomCell
 // require a binding: four goblins in one faction with no overrides would
 // otherwise need four orders blocks that exist only to record who they are.
 type RoomMonsterSource struct {
-	ID   string   `yaml:"id" json:"id"`
-	Ref  string   `yaml:"ref" json:"ref"`
-	Cell RoomCell `yaml:"cell" json:"cell"`
+	ID  string `yaml:"id" json:"id"`
+	Ref string `yaml:"ref" json:"ref"`
+
+	// StartingCell is where the monster stands and which way it faces when
+	// it arrives. See [RoomStartingCell].
+	StartingCell RoomStartingCell `yaml:"startingCell" json:"startingCell"`
 
 	// Faction is the faction this monster is in, AS AUTHORED. Optional, and
 	// ABSENT WHEN UNAUTHORED — never written out as `faction: monsters`.

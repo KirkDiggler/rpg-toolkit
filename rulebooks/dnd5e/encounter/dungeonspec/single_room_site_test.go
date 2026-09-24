@@ -134,8 +134,8 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 	}{
 		{
 			name: "a member of a faction nobody declared",
-			old:  "{id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: -1}}",
-			repl: "{id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: -1}, faction: bandits}",
+			old:  "{id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: -1 } }}",
+			repl: "{id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: -1 } }, faction: bandits}",
 			want: FieldError{
 				Path: "room.room.monsters[1].faction",
 				Message: "\"dnd5e:monsters:skeleton\" is in faction \"bandits\", and no faction in this dungeon " +
@@ -201,8 +201,8 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 		},
 		{
 			name: "a creature in the players' side",
-			old:  "cell: {q: 2, r: 0}, faction: goblins}",
-			repl: "cell: {q: 2, r: 0}, faction: party}",
+			old:  "startingCell: { location: { q: 2, r: 0 } }, faction: goblins}",
+			repl: "startingCell: { location: { q: 2, r: 0 } }, faction: party}",
 			want: FieldError{
 				Path:    "room.room.monsters[0].faction",
 				Message: "\"dnd5e:monsters:goblin\" cannot be in `party`: that is the players' side",
@@ -210,8 +210,8 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 		},
 		{
 			name: "a membership authored as nothing",
-			old:  "cell: {q: 2, r: 0}, faction: goblins}",
-			repl: "cell: {q: 2, r: 0}, faction: ''}",
+			old:  "startingCell: { location: { q: 2, r: 0 } }, faction: goblins}",
+			repl: "startingCell: { location: { q: 2, r: 0 } }, faction: ''}",
 			want: FieldError{Path: "room.room.monsters[0].faction", Message: "must not be empty"},
 		},
 	}
@@ -264,11 +264,11 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 		},
 		{
 			name: "beside a creature",
-			old:  "cell: {q: 0, r: -1}}",
-			repl: "cell: {q: 0, r: -1}, temper: coward}",
+			old:  "startingCell: { location: { q: 0, r: -1 } }}",
+			repl: "startingCell: { location: { q: 0, r: -1 } }, temper: coward}",
 			want: FieldError{
 				Path:    "room.room.monsters[2].temper",
-				Message: `"temper" is not a key this build reads: they are cell, faction, id, ref`,
+				Message: `"temper" is not a key this build reads: they are faction, id, ref, startingCell`,
 			},
 		},
 		{

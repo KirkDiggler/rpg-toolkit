@@ -71,12 +71,17 @@ room:
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}
     monsters:
-      - {id: front-goblin, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -1}, faction: goblins}
-      - {id: front-goblin-2, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -2}, faction: goblins}
-      - {id: front-goblin-3, ref: 'dnd5e:monsters:goblin', cell: {q: 1, r: 1}, faction: goblins}
-      - {id: front-goblin-4, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: 0}, faction: goblins}
-      - {id: bandit-1, ref: 'dnd5e:monsters:bandit', cell: {q: 0, r: 2}, faction: bandits}
-      - {id: bandit-2, ref: 'dnd5e:monsters:bandit', cell: {q: -1, r: 2}, faction: bandits}
+      # The two goblins at the front of the room face the party's way in
+      # (partyStart, the western edge). Authoring a facing here is the issue's
+      # own worked example (rpg-toolkit#1899): "two guards face the door" --
+      # the authored word pinned end-to-end through decode, compile and the
+      # golden picture, the way tomb-faced-props.yaml pins v2 prop facings.
+      - {id: front-goblin, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -1 }, facing: w }, faction: goblins}
+      - {id: front-goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -2 }, facing: w }, faction: goblins}
+      - {id: front-goblin-3, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 1, r: 1 } }, faction: goblins}
+      - {id: front-goblin-4, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } }, faction: goblins}
+      - {id: bandit-1, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: 0, r: 2 } }, faction: bandits}
+      - {id: bandit-2, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: -1, r: 2 } }, faction: bandits}
     monsterBindings:
       # THE ONE PRICED CREATURE, and the asymmetry is the point: DC 12 to lean
       # on and DC 10 to talk round, where its stat block would derive 9 for

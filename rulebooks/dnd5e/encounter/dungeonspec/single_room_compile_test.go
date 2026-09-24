@@ -157,8 +157,8 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 			spec.Room.Gameplay.PartyStart.Q += shift.Q
 			spec.Room.Gameplay.PartyStart.R += shift.R
 			for i := range spec.Room.Gameplay.Monsters {
-				spec.Room.Gameplay.Monsters[i].Cell.Q += shift.Q
-				spec.Room.Gameplay.Monsters[i].Cell.R += shift.R
+				spec.Room.Gameplay.Monsters[i].StartingCell.Location.Q += shift.Q
+				spec.Room.Gameplay.Monsters[i].StartingCell.Location.R += shift.R
 			}
 			compiled, err := Load(mustEncode(t, spec))
 			require.NoError(t, err)
@@ -183,8 +183,8 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 			require.Len(t, compiled.Monsters, len(spec.Room.Gameplay.Monsters))
 			for i, m := range compiled.Monsters {
 				abs := encounter.HexCellAt(compiled.Field.Canvas.Orientation, int(m.At.X), int(m.At.Y))
-				require.Equal(t, float64(spec.Room.Gameplay.Monsters[i].Cell.Q), abs.X)
-				require.Equal(t, float64(spec.Room.Gameplay.Monsters[i].Cell.R), abs.Y)
+				require.Equal(t, float64(spec.Room.Gameplay.Monsters[i].StartingCell.Location.Q), abs.X)
+				require.Equal(t, float64(spec.Room.Gameplay.Monsters[i].StartingCell.Location.R), abs.Y)
 				require.Equal(t, spec.Room.Gameplay.Monsters[i].ID, m.ID, "stable monster id")
 			}
 		}
@@ -246,21 +246,21 @@ func TestSingleRoomValidationPaths(t *testing.T) {
 			edit: func(s *SingleRoomSpec) { s.Room.Gameplay.PartyStart = &RoomCell{Q: -3, R: -1} },
 		},
 		{
-			name: "first monster fails while later monster is valid", path: "room.room.monsters[0].cell", coordinate: "q=2 r=0",
+			name: "first monster fails while later monster is valid", path: "room.room.monsters[0].startingCell.location", coordinate: "q=2 r=0",
 			edit: func(s *SingleRoomSpec) {
 				setItemTransform(t, s, "table", "x", 2*math.Sqrt(3))
 				setItemTransform(t, s, "table", "z", 0)
-				s.Room.Gameplay.Monsters[0].Cell = RoomCell{Q: 2, R: 0}
-				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", Cell: RoomCell{Q: 1, R: 0}})
+				s.Room.Gameplay.Monsters[0].StartingCell.Location = RoomCell{Q: 2, R: 0}
+				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", StartingCell: RoomStartingCell{Location: RoomCell{Q: 1, R: 0}}})
 			},
 		},
 		{
-			name: "later monster fails", path: "room.room.monsters[1].cell", coordinate: "q=2 r=0",
+			name: "later monster fails", path: "room.room.monsters[1].startingCell.location", coordinate: "q=2 r=0",
 			edit: func(s *SingleRoomSpec) {
 				setItemTransform(t, s, "table", "x", 2*math.Sqrt(3))
 				setItemTransform(t, s, "table", "z", 0)
-				s.Room.Gameplay.Monsters[0].Cell = RoomCell{Q: 1, R: 0}
-				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", Cell: RoomCell{Q: 2, R: 0}})
+				s.Room.Gameplay.Monsters[0].StartingCell.Location = RoomCell{Q: 1, R: 0}
+				s.Room.Gameplay.Monsters = append(s.Room.Gameplay.Monsters, RoomMonsterSource{ID: "skeleton-b", Ref: "dnd5e:monsters:skeleton", StartingCell: RoomStartingCell{Location: RoomCell{Q: 2, R: 0}}})
 			},
 		},
 	}

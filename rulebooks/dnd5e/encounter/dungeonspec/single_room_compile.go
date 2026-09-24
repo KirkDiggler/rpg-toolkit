@@ -132,11 +132,11 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "is occupied")
 	}
 	for i, m := range spec.Room.Gameplay.Monsters {
-		if m.Cell == *spec.Room.Gameplay.PartyStart || occupied[m.Cell] {
-			return Compiled{}, singleRoomCompileError(fmt.Sprintf("room.room.monsters[%d].cell", i), "is occupied")
+		if m.StartingCell.Location == *spec.Room.Gameplay.PartyStart || occupied[m.StartingCell.Location] {
+			return Compiled{}, singleRoomCompileError(fmt.Sprintf("room.room.monsters[%d].startingCell.location", i), "is occupied")
 		}
-		occupied[m.Cell] = true
-		at := axialOffset(m.Cell, o)
+		occupied[m.StartingCell.Location] = true
+		at := axialOffset(m.StartingCell.Location, o)
 		starts = append(starts, at)
 		// Its membership comes off the actor and its orders off the binding —
 		// absent is the zero block, which orders nothing.
@@ -156,6 +156,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		}, from)
 		mp.Region = spec.Room.Gameplay.ImplicitRegionID
 		mp.At = at
+		mp.Facing = m.StartingCell.Facing
 		// AND THE FOUR GAMEPLAY KEYS THE BINDING CARRIES (rpg-project#488
 		// R1/R5), each through the SAME compiler the v2 dialect's placement
 		// goes through: the records it holds minted by [intelHoldingsOf], the
@@ -187,7 +188,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 			path string
 			cell RoomCell
 			at   spatial.Position
-		}{path: fmt.Sprintf("room.room.monsters[%d].cell", i), cell: m.Cell, at: starts[i+1]})
+		}{path: fmt.Sprintf("room.room.monsters[%d].startingCell.location", i), cell: m.StartingCell.Location, at: starts[i+1]})
 	}
 	// AND EVERY WAY OUT, because an exit is the same kind of authored cell a
 	// start is (rpg-project#488 R2). v2 answers this against the floor its

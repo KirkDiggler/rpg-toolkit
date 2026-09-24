@@ -99,7 +99,7 @@ room:
     # In v2 he holds the vault map; here there is no vault and no record to
     # hold, so he is a creature standing between the party and the prize.
     monsters:
-      - {id: captain, ref: 'dnd5e:monsters:skeleton-captain', cell: {q: -3, r: 0}}
+      - {id: captain, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: -3, r: 0 } }}
     monsterBindings: {}
     # THE PRIZE, AND THE PAPER BESIDE IT. Both are takeable; neither carries a
     # record, because the two the v2 tomb declares both reveal a door.

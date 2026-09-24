@@ -304,8 +304,8 @@ room:
         stamped-chair: { blocksMovement: false, blocksLineOfSight: false, footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 } }
     partyStart: { q: 0, r: 0 }
     monsters:
-      - { id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 } }
-      - { id: goblin-2, ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 1 } }
+      - { id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } } }
+      - { id: goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 1, r: 1 } } }
 %s
 `, root, gameplay)
 }

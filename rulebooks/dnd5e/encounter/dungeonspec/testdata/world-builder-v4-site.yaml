@@ -61,9 +61,9 @@ room:
     arrangementDeclarations: {}
     partyStart: {q: 0, r: 0}
     monsters:
-      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: 0}, faction: goblins}
-      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: -1}}
-      - {id: skeleton-b, ref: 'dnd5e:monsters:skeleton', cell: {q: 0, r: -1}}
+      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } }, faction: goblins}
+      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: -1 } }}
+      - {id: skeleton-b, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 0, r: -1 } }}
     # The leaf stands across the one crossing into the goblin's cell, shut.
     doorBindings:
       cellar-door: {closed: true}

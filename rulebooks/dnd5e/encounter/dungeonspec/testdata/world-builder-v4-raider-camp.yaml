@@ -93,12 +93,12 @@ room:
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}
     monsters:
-      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', cell: {q: 2, r: -1}, faction: raiders}
-      - {id: scout, ref: 'dnd5e:monsters:skeleton', cell: {q: 0, r: 0}, faction: raiders}
-      - {id: messenger, ref: 'dnd5e:monsters:skeleton', cell: {q: 1, r: 1}, faction: raiders}
-      - {id: reinforcement-1, ref: 'dnd5e:monsters:zombie', cell: {q: -1, r: 2}, faction: raiders}
-      - {id: reinforcement-2, ref: 'dnd5e:monsters:zombie', cell: {q: 0, r: 2}, faction: raiders}
-      - {id: reinforcement-3, ref: 'dnd5e:monsters:zombie', cell: {q: -2, r: 2}, faction: raiders}
+      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: 2, r: -1 } }, faction: raiders}
+      - {id: scout, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 0, r: 0 } }, faction: raiders}
+      - {id: messenger, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: 1 } }, faction: raiders}
+      - {id: reinforcement-1, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: -1, r: 2 } }, faction: raiders}
+      - {id: reinforcement-2, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: 0, r: 2 } }, faction: raiders}
+      - {id: reinforcement-3, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: -2, r: 2 } }, faction: raiders}
     monsterBindings:
       # TWO CREATURES HOLD ONE RECORD, and that is a law rather than a
       # duplicate: intel COPIES rather than moving, so two guards may both
