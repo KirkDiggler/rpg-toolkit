@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Tools Should Make Building Easier</title>
+<meta name="description" content="A fresh start in C++, a card-game use case, and remembering that tools should make building a game easier.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/tools-should-make-building-easier/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Tools Should Make Building Easier">
+<meta property="og:description" content="A fresh start in C++, a card-game use case, and remembering that tools should make building a game easier.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/tools-should-make-building-easier/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/tools-should-make-building-easier.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/tools-should-make-building-easier.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading Tools Should Make Building Easier beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tools Should Make Building Easier">
+<meta name="twitter:description" content="A fresh start in C++, a card-game use case, and remembering that tools should make building a game easier.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/tools-should-make-building-easier.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading Tools Should Make Building Easier beside a blue D20 wireframe.">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91;--pressure-soft:#2b1e20}
+*{box-sizing:border-box}
+html{background:var(--ground);color-scheme:dark;overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}
+a{color:var(--bright);text-underline-offset:3px}
+.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}
+.eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}
+h1{max-width:950px;margin:.3em 0 .3em;font-size:clamp(3.7rem,8vw,6.2rem);letter-spacing:-.035em}
+.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}
+.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}
+.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}
+.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.legend{display:flex;flex-wrap:wrap;gap:1.5rem;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase}
+.legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}
+.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}
+.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}
+.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}
+.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}
+.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+p{max-width:74ch;margin:.76em 0}.lead,.reflection{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}
+code{color:var(--bright);font-size:.87em}
+figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-block:1px solid var(--rule-strong);scrollbar-color:var(--rule-strong) var(--ground)}
+figure svg{display:block;width:100%;min-width:840px;height:auto;margin:0 auto}
+figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}
+.law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",monospace}.law b{color:var(--primary);font-weight:500}
+.pressure-law{border-left-color:var(--pressure)}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}
+footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer a{white-space:nowrap}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px}
+svg .t-title{font-size:22px;font-weight:600}svg .t-big{font-size:29px;font-weight:600}svg .mono{font-size:15px}svg .label{fill:var(--muted);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.8px}svg .small{fill:var(--muted);font-size:16px}svg .blue{fill:var(--bright)}svg .rust{fill:var(--pressure-text)}svg .faint{fill:var(--faint)}
+svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.5}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.4;stroke-dasharray:7 6}
+svg .wire{fill:none;stroke:var(--muted);stroke-width:1.5}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .dash{stroke-dasharray:7 6}
+figure::before{display:none}
+@media(max-width:760px){
+ .page{padding:14px 14px 70px}header{padding:50px 14px 48px 42px}
+ .origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{flex-direction:column;gap:.6rem}
+ .timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}
+ .panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}figure svg{min-width:900px}footer{margin:48px 0 0 42px}
+ figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-block:1px solid var(--accent);background:var(--ground);color:var(--bright);font:500 .69rem/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.35rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Layer 9 · A realignment</div>
+    <h1>Tools Should Make Building Easier</h1>
+    <p class="dek">I had stepped away because work, ultra training, and the architectural rethink were more than I could fit in. After the run, I came back knowing we had taken some wrong turns. A good starting point was: <strong>what would I build if I started over?</strong></p>
+    <nav class="origin-links" aria-label="Field-note navigation">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets →</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/working-pieces-were-not-enough/"><span>Previous field note</span><strong>Working Pieces Were Not Enough →</strong></a>
+    </nav>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Setting</b><span>a fresh start in C++</span></div><div><b>Pressure</b><span>familiar rules, difficult choices</span></div><div><b>Horizon</b><span>remembering what tools are for</span></div></div>
+    <div class="legend" aria-label="Diagram legend"><span><i></i>room to reconsider</span><span><i></i>the existing pressure</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Four panels: starting over, familiar pressure, seeing a tool in Blueprints, and bringing that purpose back">
+    <section class="timeline-panel pressure-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">The return</span></div>
+      <div class="panel-body">
+        <div class="question-label">Every option on the table</div>
+        <h2 id="panel-1-title">What would I build if I started over?</h2>
+        <p class="lead">The break had left every option open. I still liked what the tools could do, but the toolkit had become hard to rethink from inside its existing shape. Starting again in C++ let me ask a different question: not how to repair this implementation, but how I would build it now.</p>
+        <figure tabindex="0" aria-label="Diagram: carry the experience from the existing toolkit into a fresh C++ experiment">
+          <svg viewBox="0 0 960 366" role="img" aria-labelledby="d1-title d1-desc">
+            <title id="d1-title">Keep the learning. Reopen the shape.</title>
+            <desc id="d1-desc">The existing toolkit contained useful pieces and difficult architectural choices. A small C++ experiment offered a fresh implementation. The connection is learning carried forward, not a faithful port or a claim that the Go game was replaced.</desc>
+            <defs><marker id="d1-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <text x="28" y="30" class="label">THE STARTING POINT WAS EXPERIENCE, NOT A BLANK SLATE</text>
+            <rect x="28" y="66" width="344" height="174" class="pressure"/>
+            <text x="52" y="108" class="t-big">The existing toolkit</text>
+            <text x="52" y="157" class="t-title">Useful pieces</text>
+            <text x="52" y="200" class="small">Difficult architecture choices</text>
+            <path d="M372 166H547" class="wire-blue" marker-end="url(#d1-blue-arrow)"/>
+            <text x="460" y="140" text-anchor="middle" class="mono blue">fresh approach</text>
+            <rect x="556" y="66" width="376" height="174" class="soft"/>
+            <text x="580" y="108" class="t-big">A small C++ experiment</text>
+            <text x="580" y="157" class="t-title">A new implementation</text>
+            <text x="580" y="200" class="small">Small goals. Open choices.</text>
+            <path d="M28 281H932" class="wire-blue"/>
+            <text x="480" y="326" text-anchor="middle" class="t-title blue">Keep what I had learned. Reconsider how to build it.</text>
+          </svg>
+          <figcaption>A fresh start meant reusing the experience without treating the existing implementation as the answer.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">A fresh setting</span></div>
+      <div class="panel-body">
+        <div class="question-label">A different game, familiar questions</div>
+        <h2 id="panel-2-title">Smaller goals. Familiar pressure.</h2>
+        <p class="lead">I used the card game <em>Across the Obelisk</em> as a use case because of its conditions and resistances, not because its rules were simple. I already knew the toolkit’s conditions needed help. A small card-game experiment gave me a place to explore those interactions with a fresh approach.</p>
+        <figure tabindex="0" aria-label="Diagram: one planned C++ strike combines two effects and returns an explainable result">
+          <svg viewBox="0 0 960 432" role="img" aria-labelledby="d2-title d2-desc">
+            <title id="d2-title">A small design case still asks the tools to compose rules</title>
+            <desc id="d2-desc">A planned integration test in the Tumult design starts a strike at eight damage. Vulnerable increases it by fifty percent to twelve. Tough Skin then reduces it by one to eleven. The returned breakdown names each contribution so a host can show what happened. This is a case from an implementation plan, not a recovered playthrough or Across the Obelisk's damage rules.</desc>
+            <defs><marker id="d2-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <text x="28" y="30" class="label">ONE PLANNED STRIKE · TWO EFFECTS · ONE RESULT</text>
+            <rect x="28" y="66" width="240" height="160" class="box"/>
+            <text x="148" y="103" text-anchor="middle" class="label">BASE STRIKE</text>
+            <text x="148" y="157" text-anchor="middle" class="t-big">8</text>
+            <text x="148" y="201" text-anchor="middle" class="small">starting damage</text>
+            <path d="M268 146H350" class="wire-blue" marker-end="url(#d2-blue-arrow)"/>
+            <rect x="360" y="66" width="240" height="160" class="soft"/>
+            <text x="480" y="103" text-anchor="middle" class="label blue">VULNERABLE</text>
+            <text x="480" y="157" text-anchor="middle" class="t-big blue">12</text>
+            <text x="480" y="201" text-anchor="middle" class="small">increase by 50%</text>
+            <path d="M600 146H682" class="wire-blue" marker-end="url(#d2-blue-arrow)"/>
+            <rect x="692" y="66" width="240" height="160" class="soft"/>
+            <text x="812" y="103" text-anchor="middle" class="label blue">TOUGH SKIN</text>
+            <text x="812" y="157" text-anchor="middle" class="t-big blue">11</text>
+            <text x="812" y="201" text-anchor="middle" class="small">reduce by 1</text>
+            <path d="M812 226V266H480V303" class="wire-blue" marker-end="url(#d2-blue-arrow)"/>
+            <rect x="222" y="312" width="516" height="96" class="soft"/>
+            <text x="480" y="349" text-anchor="middle" class="t-title">Result + named contributions</text>
+            <text x="480" y="385" text-anchor="middle" class="small">The host can show what happened.</text>
+          </svg>
+          <figcaption>A case from the C++ implementation plan, not Across the Obelisk’s rules. The result should explain which effects contributed.</figcaption>
+        </figure>
+        <div class="law"><b>A smaller first slice did not remove the hard interactions.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">Inside Unreal</span></div>
+      <div class="panel-body">
+        <div class="question-label">From making it to building with it</div>
+        <h2 id="panel-3-title">I was making a tool again</h2>
+        <p class="lead">I don’t remember which class it was. I remember seeing a class I’d written in C++ show up in Unreal’s Blueprints. I was learning more about the language and the engine, but that was the part that stayed with me: I could build with something I had made.</p>
+        <figure tabindex="0" aria-label="Diagram: a class written in C++ becomes available to use in Unreal Blueprints">
+          <svg viewBox="0 0 960 370" role="img" aria-labelledby="d3-title d3-desc">
+            <title id="d3-title">The class I made became a building block in Unreal</title>
+            <desc id="d3-desc">A conceptual C++ class is exposed to Unreal and becomes available in Blueprints. This illustrates Kirk’s recollection, not an editor screenshot or a particular Blueprint node. The workshop source contains several reflected classes and callable functions; the exact class he remembers is unknown.</desc>
+            <defs><marker id="d3-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <text x="28" y="30" class="label">THE SAME PIECE, SEEN FROM THE BUILDER’S SIDE</text>
+            <rect x="28" y="66" width="344" height="192" class="box"/>
+            <text x="52" y="103" class="label">C++</text>
+            <text x="52" y="155" class="t-big">A class I wrote</text>
+            <text x="52" y="218" class="small">Defined in code.</text>
+            <path d="M372 173H644" class="wire-blue" marker-end="url(#d3-blue-arrow)"/>
+            <text x="508" y="147" text-anchor="middle" class="mono blue">exposed to UE</text>
+            <rect x="654" y="66" width="278" height="192" class="soft"/>
+            <text x="793" y="103" text-anchor="middle" class="label blue">UNREAL BLUEPRINTS</text>
+            <text x="793" y="155" text-anchor="middle" class="t-big blue">A piece I could use</text>
+            <text x="793" y="218" text-anchor="middle" class="small">Ready to build with.</text>
+            <path d="M28 292H932" class="wire-blue"/>
+            <text x="480" y="339" text-anchor="middle" class="t-title blue">The thing I made became something I could build with.</text>
+          </svg>
+          <figcaption>The bridge, not a recovered editor screenshot. The exact class is still uncertain.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">Realignment</span></div>
+      <div class="panel-body">
+        <div class="question-label">Remembering the purpose</div>
+        <h2 id="panel-4-title">Bring that purpose back</h2>
+        <p class="lead">The toolkit was becoming an application. The C++ work reminded me that I am a tool builder. I love building things with great tools. That was more than a reason to enjoy the experiment. It was a reason to reconsider what the toolkit itself should be.</p>
+        <p class="reflection">The game still mattered. So did the tools. I wanted useful pieces I could put together, not a toolkit that decided the whole application’s shape. That meant looking again at Encounter, the toolkit module that ran the game. Working was not the only test.</p>
+        <p class="end-question">The toolkit was supposed to make the game easier to build.<br>Not become the application I had to build around.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>The time off, return after the run, choice of C++, <em>Across the Obelisk</em> as a use case, interest in Unreal, and the tool-builder realization are Kirk’s recollections. He places his return around mid-June; repository dates do not establish the exact personal timeline.</p>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-project/blob/3423c1e/ideas/portable-combat-core/design.md">portable-core exploration</a>, dated June 9 and committed June 10, describes language-independent contracts and a separate effort, not a migration of the Go game. The <a href="https://github.com/KirkDiggler/rpg-project/blob/6f36d85/ideas/tumult/design.md">June 23 Tumult design</a> distinguishes rpgkit’s reusable core, tumult’s game library, and Unreal as a host.</p>
+    <p>The numerical diagram follows <a href="https://github.com/KirkDiggler/rpg-project/blob/6f36d85/ideas/tumult/plan.md#L1954-L1992">a planned integration test</a>: Vulnerable is applied before Tough Skin, yielding 8 → 12 → 11 and a breakdown naming both contributions. This is design evidence, not verification of the C++ implementation or a completed Unreal playthrough.</p>
+    <p>The June 14 Unreal workshop <a href="https://github.com/KirkDiggler/rpgkit-ue/blob/39874c9/Source/RPGKitUE/RPGKitEffect.h">effect classes</a> and <a href="https://github.com/KirkDiggler/rpgkit-ue/blob/39874c9/Source/RPGKitUE/RPGKitGameMode.h">card and GameMode types</a> expose C++ types, properties and operations to Blueprints. They support the bridge shown here, but do not identify the exact class Kirk remembers or establish a fresh editor/playtest verification.</p>
+    <p class="scope">This is a realignment, not a claim that the toolkit was already rebuilt or that a particular C++ fix was carried back into Go. The later Encounter audit and teardown remain a separate chapter, not an immediate event dated to this exploration.</p>
+  </footer>
+</main>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+</body>
+</html>
