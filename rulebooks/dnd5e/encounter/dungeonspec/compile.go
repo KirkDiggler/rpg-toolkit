@@ -146,6 +146,16 @@ type MonsterPlacement struct {
 	// At is its ABSOLUTE authored cell, offset [col,row].
 	At spatial.Position
 
+	// Facing is the direction the monster faces when it arrives, one of the
+	// eight true-compass names (n|ne|e|se|s|sw|w|nw), or empty when the
+	// author stated none — the asset's own default facing. CARRIED VERBATIM
+	// (rpg-toolkit#1899): it is the authored word, never an angle, and this
+	// package never turns it into one — which way the model is turned at
+	// spawn is a render concern. A v2 placement cannot author one (its
+	// `facing` is refused there), so the field is empty for the legacy
+	// dialect.
+	Facing string `json:"Facing,omitempty"`
+
 	// Targeting is the author's word for how it picks a target, or empty.
 	// CARRIED, NEVER INTERPRETED.
 	Targeting string

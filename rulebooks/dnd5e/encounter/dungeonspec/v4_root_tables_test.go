@@ -205,7 +205,7 @@ room:
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }
     monsters:
-      - { id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 }, faction: sneaks }
+      - { id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } }, faction: sneaks }
     monsterBindings:
       goblin-1:
         table: goblin-mind
@@ -285,7 +285,7 @@ room:
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }
     monsters:
-      - { id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 }, faction: watch }
+      - { id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } }, faction: watch }
 `
 
 	compiled, err := dungeonspec.Load([]byte(doc))

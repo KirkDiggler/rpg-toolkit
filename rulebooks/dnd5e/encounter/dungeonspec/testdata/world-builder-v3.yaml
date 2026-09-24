@@ -46,4 +46,4 @@ room:
     arrangementDeclarations: {}
     partyStart: {q: 0, r: 0}
     monsters:
-      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 2, r: 0}}
+      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}

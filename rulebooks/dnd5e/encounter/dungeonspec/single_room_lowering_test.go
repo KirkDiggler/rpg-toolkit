@@ -206,7 +206,7 @@ func TestANonPositiveWorkspaceRadiusIsOneDefect(t *testing.T) {
 	oneCell = swapOneIn(t, oneCell, "    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},\n"+
 		"      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},\n"+
 		"      {q: 0, r: -1}, {q: 1, r: -1}]\n", "    walkableHexes: [{q: 0, r: 0}]\n")
-	oneCell = swapOneIn(t, oneCell, "cell: {q: 2, r: 0}", "cell: {q: 0, r: 0}")
+	oneCell = swapOneIn(t, oneCell, "startingCell: { location: { q: 2, r: 0 } }", "startingCell: { location: { q: 0, r: 0 } }")
 	_, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: oneCell})
 	require.NoError(t, err, "a positive radius is a floor, however small")
 }

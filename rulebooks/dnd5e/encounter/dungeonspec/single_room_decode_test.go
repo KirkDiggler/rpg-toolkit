@@ -197,7 +197,7 @@ func (s *SingleRoomSourceSuite) TestDecodePreservesOptionalAbsence() {
 		{"missing partyStart", "    partyStart: {q: 0, r: 0}\n", "", func(out *SingleRoomDecodeResult) bool {
 			return out.Spec.Room.Gameplay.PartyStart == nil
 		}},
-		{"empty monsters", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 2, r: 0}}\n", "    monsters: []\n", func(out *SingleRoomDecodeResult) bool {
+		{"empty monsters", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsters: []\n", func(out *SingleRoomDecodeResult) bool {
 			return len(out.Spec.Room.Gameplay.Monsters) == 0
 		}},
 	}
@@ -225,12 +225,12 @@ func (s *SingleRoomSourceSuite) TestDecodeAcceptsTemplateDeclarations() {
 
 func (s *SingleRoomSourceSuite) TestDecodeRejectsAuthoredNulls() {
 	cases := []struct{ name, old, repl string }{
-		{"null monster cell", "cell: {q: 2, r: 0}", "cell: null"},
-		{"null monster coordinate", "cell: {q: 2, r: 0}", "cell: {q: null, r: 0}"},
+		{"null monster cell", "location: { q: 2, r: 0 }", "location: null"},
+		{"null monster coordinate", "location: { q: 2, r: 0 }", "location: { q: null, r: 0 }"},
 		{"null partyStart", "partyStart: {q: 0, r: 0}", "partyStart: null"},
 		{"null key", "key: workshop-room", "key: null"},
 		{"null walkableHexes", "    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},\n      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},\n      {q: 0, r: -1}, {q: 1, r: -1}]\n", "    walkableHexes: null\n"},
-		{"null monsters", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 2, r: 0}}\n", "    monsters: null\n"},
+		{"null monsters", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsters: null\n"},
 		{"null propDeclarations", "    propDeclarations:\n      table:\n        blocksMovement: true\n        blocksLineOfSight: false\n        footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}\n", "    propDeclarations: null\n"},
 		{"null declaration", "    propDeclarations:\n      table:\n        blocksMovement: true\n        blocksLineOfSight: false\n        footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}\n", "    propDeclarations:\n      table: null\n"},
 	}
@@ -245,8 +245,8 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsAuthoredNulls() {
 func (s *SingleRoomSourceSuite) TestDecodeRejectsTruncatedIntegers() {
 	cases := []struct{ name, old, repl string }{
 		{"fractional walkable q", "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: 0.5, r: 0}"},
-		{"fractional monster q", "cell: {q: 2, r: 0}", "cell: {q: 2.5, r: 0}"},
-		{"integral float monster q", "cell: {q: 2, r: 0}", "cell: {q: 2.0, r: 0}"},
+		{"fractional monster q", "location: { q: 2, r: 0 }", "location: { q: 2.5, r: 0 }"},
+		{"integral float monster q", "location: { q: 2, r: 0 }", "location: { q: 2.0, r: 0 }"},
 		{"float root version", "version: 3\nkey: workshop-room", "version: 3.0\nkey: workshop-room"},
 		{"float room version", "  version: 3\n  id: room-1", "  version: 3.0\n  id: room-1"},
 	}
@@ -262,14 +262,14 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsMissingRequiredFields() {
 	cases := []struct{ name, old, repl string }{
 		{"missing footprint offsetX", "offsetX: 0.1, ", ""},
 		{"missing footprint width", "footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}", "footprint: {depth: 0.5, offsetX: 0.1, offsetZ: -0.2}"},
-		{"missing monster q", "cell: {q: 2, r: 0}", "cell: {r: 0}"},
+		{"missing monster q", "location: { q: 2, r: 0 }", "location: { r: 0 }"},
 		{"missing monster ref", "ref: 'dnd5e:monsters:skeleton', ", ""},
 		{"missing declaration flags", "blocksMovement: true\n        ", ""},
 		{"missing template flags", "arrangementDeclarations: {}",
 			"arrangementDeclarations: {arr: {template: {footprint: {width: 1, depth: 1, offsetX: 0, offsetZ: 0}}}}"},
 		{"missing template footprint", "arrangementDeclarations: {}",
 			"arrangementDeclarations: {arr: {template: {blocksMovement: true, blocksLineOfSight: false}}}"},
-		{"missing monsters list", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 2, r: 0}}\n", ""},
+		{"missing monsters list", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", ""},
 		{"missing walkableHexes", "    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},\n      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},\n      {q: 0, r: -1}, {q: 1, r: -1}]\n", ""},
 		{"missing propDeclarations", "    propDeclarations:\n      table:\n        blocksMovement: true\n        blocksLineOfSight: false\n        footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}\n", ""},
 		{"missing arrangementDeclarations", "    arrangementDeclarations: {}\n", ""},
@@ -346,7 +346,7 @@ func (s *SingleRoomSourceSuite) TestDecodeRoundTripsYAMLWithOptionalAbsence() {
 	s.Require().NoError(err)
 	s.Equal(string(encoded), string(againBytes))
 
-	empty := s.swapOne("    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 2, r: 0}}\n", "    monsters: []\n")
+	empty := s.swapOne("    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsters: []\n")
 	empty = []byte(strings.Replace(string(empty), "    partyStart: {q: 0, r: 0}\n", "", 1))
 	trimmed, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: empty})
 	s.Require().NoError(err)

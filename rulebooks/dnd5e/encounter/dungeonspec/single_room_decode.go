@@ -482,13 +482,29 @@ func monsterShape(m *yaml.Node, p string, add errSink) {
 	}
 	requireString(m, "id", p, add)
 	requireString(m, "ref", p, add)
-	if c := requiredNode(m, "cell", p, add); c != nil {
-		cellShape(c, p+".cell", add)
+	if sc := requireMapping(m, "startingCell", p, add); sc != nil {
+		startingCellShape(sc, p+".startingCell", add)
 	}
 	// The side it is on is OPTIONAL — absent means the kind's default — and
 	// may be neither null nor empty, because "" is the same bytes as absence
 	// with a different meaning.
 	optionalReference(m, "faction", p, add)
+}
+
+// startingCellShape reads a monster's start: a required location cell beside
+// an optional facing. The location is a cell in the author's own frame; the
+// facing is a word the value pass validates against the closed set, and this
+// walk only pins its shape.
+func startingCellShape(sc *yaml.Node, p string, add errSink) {
+	if c := requiredNode(sc, "location", p, add); c != nil {
+		cellShape(c, p+".location", add)
+	}
+	// Optional, and refused when authored null: an author deleting the word
+	// wrote a different event than one who never wrote it. The word itself
+	// is [monsterValues]'s to validate against the closed set.
+	if f := optionalNode(sc, "facing", p, add); f != nil && f.Tag != "!!str" {
+		add(fieldPath(p, "facing"), errNotAString)
+	}
 }
 
 // declarationShape is the shared shape for prop and arrangement-template
@@ -736,6 +752,12 @@ func monsterValues(monsters []RoomMonsterSource, add errSink) {
 			add(p+".ref", "invalid ref: "+err.Error())
 		} else if parsed.Type != monstersRefType {
 			add(p+".ref", "must reference monsters")
+		}
+		// The facing word, when authored, is one of the eight true-compass
+		// names — the same [facings] set the prop path speaks. The value is
+		// carried verbatim and never turned into an angle.
+		if m.StartingCell.Facing != "" && !facings[m.StartingCell.Facing] {
+			add(p+".startingCell.facing", fmt.Sprintf("%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", m.StartingCell.Facing))
 		}
 	}
 }
