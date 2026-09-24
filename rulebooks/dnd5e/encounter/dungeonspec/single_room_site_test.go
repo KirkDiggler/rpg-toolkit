@@ -259,7 +259,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "  - id: goblins\n    stance: hostile",
 			want: FieldError{
 				Path:    "factions[0].stance",
-				Message: `"stance" is not a key this build reads: they are id, mind, on, temper`,
+				Message: `"stance" is not a key this build reads: they are id, mind, on, table, temper`,
 			},
 		},
 		{

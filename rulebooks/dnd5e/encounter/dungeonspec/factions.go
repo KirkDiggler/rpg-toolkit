@@ -59,7 +59,27 @@ func (g *grammar) factions() {
 				g.factionIDs[fa.ID] = i
 			}
 		}
+		// AND THE TABLE IT NAMES, which is [bindingTable]'s refusal one level
+		// up (rpg-toolkit#1897): a name that names nothing is refused at the
+		// author's own path, naming the faction and the id it wrote.
+		g.factionTable(p, fa.ID, fa.Table)
 	}
+}
+
+// factionTable refuses a faction naming a root table this document does not
+// declare — [bindingTable]'s shape and sentence, said about a side.
+//
+// AN EMPTY ID IS NOT A REFUSAL: it is a faction whose orders are its own
+// `on:` alone, which is what every faction authored before this key does.
+func (g *grammar) factionTable(path, id, table string) {
+	if table == "" {
+		return
+	}
+	if _, ok := g.tables[table]; ok {
+		return
+	}
+	g.fail(path+".table",
+		"faction %q names the table %q, and no table in this dungeon has that id", id, table)
 }
 
 // factionExists reports whether an id names a faction this file has: one

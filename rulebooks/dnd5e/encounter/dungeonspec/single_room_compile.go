@@ -68,7 +68,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	spec := in.Spec
 	// The cast this dialect placed, and what each declared side hands it.
 	cast := roomMembers(&spec.Room.Gameplay)
-	from := inheritedOrders(spec.Factions)
+	from := inheritedOrders(spec.Factions, spec.Tables)
 	o := spatial.HexOrientationPointyTop
 	cells := make([]spatial.Position, 0, len(spec.Room.Gameplay.WalkableHexes))
 	for _, c := range spec.Room.Gameplay.WalkableHexes {
@@ -147,7 +147,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// source UNDER those two, through the SAME [encounter.Layer] — so
 		// there is no second layering rule and no new meaning for "nearer
 		// wins wholesale". An id this document does not declare cannot reach
-		// here: `roomTables` refuses it by name at the author's path before
+		// here: `bindingTable` refuses it by name at the author's path before
 		// the compile is called.
 		on := layerSpecs(rootTableOn(spec.Tables, b.Table), b.On)
 		mp := ordersOf(creatureOrders{

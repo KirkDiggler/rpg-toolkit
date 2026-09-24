@@ -128,6 +128,9 @@ func factionShape(fa *yaml.Node, p string, add errSink) {
 	optionalNode(fa, "id", p, add)
 	optionalReference(fa, "mind", p, add)
 	optionalNode(fa, "on", p, add)
+	// A faction's `table:` is a NAME that must name something —
+	// [optionalReference]'s case, exactly as `mind` is (rpg-toolkit#1897).
+	optionalReference(fa, "table", p, add)
 	// `temper` is a WORD OR A MIX, so only its null-ness is judged here; the
 	// two spellings and the sealed words are [TemperSpec.UnmarshalYAML]'s.
 	optionalNode(fa, "temper", p, add)
@@ -213,6 +216,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Add:          add,
 		Factions:     s.Factions,
 		Dispositions: s.Dispositions,
+		Tables:       s.Tables,
 		Members:      roomMembers(gp),
 		Cells:        singleRoomCells{},
 	})

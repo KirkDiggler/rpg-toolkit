@@ -202,6 +202,12 @@ type grammarInput struct {
 	Factions     []FactionSpec
 	Dispositions []DispositionSpec
 
+	// Tables is the site's root answer tables, by id (rpg-toolkit#1897). The
+	// grammar needs them to judge a NAME — a faction's `table:` and a
+	// binding's — and judging a name is all it does with them: the tables
+	// themselves are judged by [siteGrammar]'s own loop, once each.
+	Tables map[string]TableSpec
+
 	// Members is the cast; Cells is the frame.
 	Members members
 	Cells   cells
@@ -211,6 +217,9 @@ type grammarInput struct {
 // at the path the dialect named it by.
 type grammar struct {
 	add errSink
+
+	// tables is what a `table:` name may resolve to.
+	tables map[string]TableSpec
 
 	declaredFactions     []FactionSpec
 	declaredDispositions []DispositionSpec
@@ -240,6 +249,7 @@ func newGrammar(in grammarInput) *grammar {
 		declaredDispositions: in.Dispositions,
 		members:              in.Members,
 		cells:                in.Cells,
+		tables:               in.Tables,
 	}
 }
 
