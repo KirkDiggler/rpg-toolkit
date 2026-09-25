@@ -1,400 +1,52 @@
-# Spatial Module Development Guidelines
-
-## Module Purpose
-
-2D spatial positioning and movement infrastructure **WITHOUT game-specific rules**.
-
-This module provides the mathematical foundation for position-based game systems:
-- Grid systems (square, hex, gridless)
-- Entity placement and movement
-- Multi-room orchestration
-- Spatial queries and line of sight
-
-**We do NOT implement**: Game rules, combat mechanics, movement costs based on terrain.
-**Game implementations decide**: How to use spatial data, what entities can do, rule interpretations.
-
-## Current Status: Production Ready
-
-✅ **All core features implemented and tested**
-✅ **Events v0.6.1 compliant** (import ordering follows standard)
-✅ **Comprehensive documentation** (43KB README.md)
-✅ **Thread-safe operations** (proper mutex usage)
-✅ **Observer event publication** (typed topics; never an internal result channel)
-
-### Dependencies
-- `events v0.6.2`
-- `core v0.11.0` (`Entity` + shared `EntityID`)
-- `game` (Context pattern for data persistence)
-
-## Key Architectural Decisions
-
-### ADR-0015: Abstract Connections (Critical Understanding)
-
-Connections are **abstract links** between rooms, NOT physical objects:
-- Connections do NOT have positions themselves
-- Positions are managed by the game layer (e.g., door entities placed in rooms)
-- Supports bidirectional and unidirectional movement
-- Requirements and costs can be entity-specific
-
-**Example**: A door connection links room A position (9,5) to room B position (0,5), but the door entity itself is placed in the room at that position by the game layer.
-
-### Observer-Only Event Architecture
-
-Uses typed topics from events v0.6.0+:
-```go
-// Entity lifecycle
-EntityPlacedTopic
-EntityMovedTopic
-EntityRemovedTopic
-
-// Room lifecycle
-RoomCreatedTopic
-RoomAddedTopic
-RoomRemovedTopic
-
-// Orchestrator lifecycle
-ConnectionAddedTopic
-ConnectionRemovedTopic
-EntityRoomTransitionTopic
-LayoutChangedTopic
-```
-
-**Important**: `ConnectToEventBus()` is optional and enables observer
-publication only. Standalone rooms may be mutated directly. Once a room is
-added to a `BasicRoomOrchestrator`, use its `ManagedRoomMutator` verbs for
-placement, movement, removal, and transition; the orchestrator never consumes
-room events to maintain membership. Retained-room mutation and sharing one room
-across orchestrators are unsupported alias bypasses that can stale indexes.
-
-### Thread Safety Pattern
-
-Both `BasicRoom` and `BasicRoomOrchestrator` use `sync.RWMutex`:
-- Read operations use `RLock()/RUnlock()`
-- Write operations use `Lock()/Unlock()`
-- Orchestrator locks are released before room calls and event publication
-- Hosts serialize managed mutations; concurrent reads remain safe
-- Triple-tracking system for efficient lookups (entities map, positions map, occupancy map)
-
-## Grid Systems
-
-### Three Grid Shapes, Four Implementations
-
-1. **SquareGrid**: Chebyshev distance, 8 neighbors
-2. **HexGrid**: non-negative offset column/row coordinates, 6 neighbors
-   - bounded from `(0,0)` by Width/Height
-   - supports pointy-top and flat-top orientation
-3. **AxialHexGrid**: origin-centered axial Q/R coordinates, 6 neighbors
-   - bounded symmetrically by SpanWidth/SpanHeight
-   - no orientation setting; Q/R already defines the axes
-4. **GridlessRoom**: Euclidean distance, continuous positions
-
-`HexGrid` and `AxialHexGrid` are distinct public coordinate contracts. Do not
-feed axial positions to `HexGrid` or offset positions to `AxialHexGrid`, and do
-not consolidate or rename them without an explicit migration.
-
-### Distance Calculation Philosophy
-
-**Position type does NOT enforce distance calculations** - Each Grid implementation handles its own math.
-
-This allows:
-- Grid-dependent distance rules
-- Flexibility in distance calculation methods
-- Separation of data (Position) from behavior (Grid)
-
-## Data Persistence Pattern
-
-### RoomData Structure
-
-Serializable room state for saving/loading:
-```go
-type RoomData struct {
-    RoomID      string
-    RoomType    string
-    GridType    string
-    Width       int
-    Height      int
-    Orientation string  // For hex grids: "pointy" or "flat"
-    Entities    []PlaceableData
-}
-```
-
-### Loading Pattern
-
-```go
-// Load from game context
-room, err := LoadRoomFromContext(ctx, gameCtx)
-if err != nil {
-    return err
-}
-
-// ALWAYS connect to event bus after creation
-room.ConnectToEventBus(eventBus)
-```
-
-**Critical**: Event bus connection is separate from room creation to allow flexibility in when events start publishing.
-
-## Testing Patterns
-
-### Always Use Testify Suite
-
-```go
-type MyTestSuite struct {
-    suite.Suite
-    room      *spatial.BasicRoom
-    eventBus  events.EventBus
-}
-
-func (s *MyTestSuite) SetupTest() {
-    s.eventBus = events.NewEventBus()
-    // Create room...
-}
-
-func (s *MyTestSuite) TestSomething() {
-    s.Run("descriptive subtest name", func() {
-        // Test code
-    })
-}
-
-func TestMyTestSuite(t *testing.T) {
-    suite.Run(t, new(MyTestSuite))
-}
-```
-
-### Import Ordering (Events v0.6.1 Compliant)
-
-**Third-party imports BEFORE local imports**:
-```go
-import (
-    "context"
-    "testing"
-
-    "github.com/stretchr/testify/suite"  // ✅ Testify FIRST
-
-    "github.com/KirkDiggler/rpg-toolkit/core"
-    "github.com/KirkDiggler/rpg-toolkit/events"
-    "github.com/KirkDiggler/rpg-toolkit/tools/spatial"  // ✅ Local AFTER
-)
-```
-
-This is the v0.6.1 standard enforced by `goimports`.
-
-## Common Implementation Patterns
-
-### Creating Multi-Room Scenarios
-
-```go
-// 1. Create orchestrator with layout type
-orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-    ID:       "dungeon-orch",
-    Type:     "orchestrator",
-    EventBus: eventBus,
-    Layout:   spatial.LayoutTypeOrganic,
-})
-
-// 2. Create and add rooms
-room1 := spatial.NewBasicRoom(spatial.BasicRoomConfig{...})
-room2 := spatial.NewBasicRoom(spatial.BasicRoomConfig{...})
-orchestrator.AddRoom(room1)
-orchestrator.AddRoom(room2)
-
-// 3. Connect rooms with typed connections
-door := spatial.CreateDoorConnection("door-1", "room-1", "room-2", 1.0)
-orchestrator.AddConnection(door)
-
-// 4. Mutate managed membership and consume returned values
-placed, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-    RoomID: "room-1", Entity: hero, Position: spatial.Position{X: 2, Y: 2},
-})
-// Optional subscriptions observe the same room event; they do not update the index.
-
-// 5. Use pathfinding for AI movement
-path, err := orchestrator.FindPath("room-1", "room-2")
-```
-
-### Entity Filtering
-
-Entity-type vocabulary belongs to callers. Build generic filters explicitly:
-
-```go
-filter := spatial.NewSimpleEntityFilter().WithEntityTypes("ally", "opponent")
-filter := spatial.CreateIncludeFilter(entityIDs...)
-filter := spatial.CreateExcludeFilter(entityIDs...)
-```
-
-### Connection Types
-
-Six pre-built connection helpers:
-```go
-spatial.CreateDoorConnection()      // Standard doors
-spatial.CreateStairsConnection()    // Vertical movement (one-way by default)
-spatial.CreatePassageConnection()   // Open hallways
-spatial.CreatePortalConnection()    // Magical/instant transport
-spatial.CreateBridgeConnection()    // Crossable gaps
-spatial.CreateTunnelConnection()    // Underground passages
-```
-
-## Performance Considerations
-
-### Query System
-
-- **Single-room queries**: Use room methods directly (`GetEntitiesInRange()`)
-- **Multi-room queries**: Use SpatialQueryHandler with event-based queries
-- **Built-in caching**: QueryHandler caches results until entity positions change
-
-### Large Orchestrators
-
-- Consider batching room additions (reduces event overhead)
-- Cache frequently used paths (pathfinding can be expensive)
-- Use entity filters to reduce query result sizes
-- Profile before optimizing (current implementation handles 100+ rooms efficiently)
-
-## Documentation Standards
-
-### README.md is Authoritative
-
-The `README.md` file (43KB) is the comprehensive guide:
-- Keep README in sync with code changes
-- Update examples when API changes
-- Document new grid types or connection types
-- Include integration examples
-
-### All Public APIs Must Have Comments
-
-Follow existing patterns:
-```go
-// NewBasicRoom creates a new room with the specified configuration.
-// The room will not publish events until ConnectToEventBus is called.
-func NewBasicRoom(config BasicRoomConfig) *BasicRoom {
-```
-
-- Explain purpose and behavior
-- Document when events are published
-- Note error conditions
-- Include usage hints
-
-## Working with Other Modules
-
-### Core Module
-
-All entities implement `core.Entity`:
-```go
-type Entity interface {
-    GetID() string
-    GetType() EntityType
-}
-```
-
-The `Placeable` interface extends this for spatial entities.
-
-### Events Module
-
-- Uses typed topics (v0.6.0+)
-- Import ordering must follow v0.6.1 standard
-- Always subscribe before publishing events
-
-### Game Module
-
-- RoomData uses `game.Context` for persistence
-- LoadRoomFromContext integrates with game infrastructure
-- Event bus passed through game context
-
-## Upgrading to Events v0.6.1
-
-When v0.6.1 is available:
-
-```bash
-cd /home/kirk/personal/rpg-toolkit/tools/spatial
-go get github.com/KirkDiggler/rpg-toolkit/events@v0.6.1
-go mod tidy
-```
-
-**No code changes required** - import ordering is already compliant.
-
-The v0.6.1 change was only import ordering standardization (testify before local imports).
-
-## Common Pitfalls
-
-### 1. Forgetting to Connect Event Bus
-
-```go
-// ❌ BAD - events won't publish
-room := spatial.NewBasicRoom(config)
-
-// ✅ GOOD - events will publish
-room := spatial.NewBasicRoom(config)
-room.ConnectToEventBus(eventBus)
-```
-
-### 2. Confusing Connections with Entities
-
-```go
-// ❌ WRONG - connections don't have positions
-connection.GetPosition()  // This method doesn't exist
-
-// ✅ RIGHT - connections link positions in two rooms
-connection := spatial.CreateDoorConnection(
-    "door-1",
-    "room-1", "room-2",
-    spatial.Position{X: 9, Y: 5},  // Position in room-1
-    spatial.Position{X: 0, Y: 5},  // Position in room-2
-)
-
-// The door entity itself would be placed in the room by the game layer
-room1.PlaceEntity(doorEntity, spatial.Position{X: 9, Y: 5})
-```
-
-### 3. Mixing Grid Distance Calculations
-
-```go
-// ❌ BAD - using wrong distance calculation
-distance := math.Sqrt(dx*dx + dy*dy)  // Euclidean for square grid
-
-// ✅ GOOD - let the grid handle it
-distance := grid.Distance(pos1, pos2)
-```
-
-### 4. Race Conditions in Tests
-
-```go
-// ❌ BAD - event might not have processed yet
-room.PlaceEntity(entity, pos)
-// Immediately check event handler state
-
-// ✅ GOOD - use synchronous event handlers or wait
-var eventReceived bool
-spatial.EntityPlacedTopic.On(eventBus).Subscribe(func(ctx context.Context, event spatial.EntityPlacedEvent) error {
-    eventReceived = true
-    return nil
-})
-room.PlaceEntity(entity, pos)
-s.Eventually(func() bool { return eventReceived }, time.Second, 10*time.Millisecond)
-```
-
-## Questions to Ask Before Adding Features
-
-1. **Is this spatial infrastructure or game rules?**
-   - Spatial: Distance calculations, position tracking, movement validation
-   - Game rules: Movement costs, terrain types, special movement abilities
-
-2. **Does this belong in spatial or game layer?**
-   - Spatial: Where entities are, how far apart
-   - Game: What entities can do, why they can do it
-
-3. **Is this a Grid concern or a Room concern?**
-   - Grid: Mathematical calculations (distance, neighbors, line of sight)
-   - Room: Entity management (placement, tracking, queries)
-
-4. **Should this be an event or a direct call?**
-   - Event: When other systems need to react (entity moved)
-   - Direct call: When you need immediate results (can entity move here?)
-
-## Remember
-
-- **Spatial is infrastructure, not game rules**
-- **Event bus connection is optional, observer-only, and separate from creation**
-- **Import ordering matters for v0.6.1 compatibility**
-- **Thread safety is built-in - don't add extra locks**
-- **README.md is the source of truth for usage patterns**
-- **Tests use testify suite pattern exclusively**
-- **Grid type determines distance calculation method**
-- **Connections are abstract links, not physical objects**
+# Spatial Module
+
+## Purpose
+
+2D spatial positioning and movement infrastructure **without game-specific
+rules**: grid systems (square, hex, gridless), entity placement and movement,
+multi-room orchestration, spatial queries and line of sight.
+
+We implement: the mathematical foundation. Game implementations decide: how to
+use spatial data, what entities can do, rule interpretations — movement costs
+and terrain rules belong to the game layer.
+
+Mechanics, persistence shapes, orchestration semantics, connection types,
+worked patterns and pitfalls live in
+`docs/architecture/components/tools-spatial.md`. The `README.md` beside this
+file is the authoritative usage guide — keep it in sync with code changes.
+
+## Laws
+
+- **Spatial is infrastructure, not game rules.** A new capability here answers
+  "where is it / how far apart"; what entities may do with that belongs to
+  the rulebook.
+- **Connections are abstract links between rooms, not physical objects**
+  (ADR-0015). Connections carry no position; the game layer places door
+  entities at the linked positions.
+- **The event bus is optional and observer-only, and connecting is separate
+  from creation.** A standalone room mutates directly and publishes nothing
+  until `ConnectToEventBus`. Once a room is added to an orchestrator, mutate
+  only through its `ManagedRoomMutator` verbs — retained-room mutation and
+  sharing one room across orchestrators are unsupported alias bypasses that
+  stale indexes.
+- **Thread safety is built in** (RWMutex; orchestrator locks are released
+  before room calls and event publication; triple-tracking indexes for
+  entities, positions and occupancy). Do not add extra locks; hosts serialize
+  managed mutations while concurrent reads stay safe.
+- **Grid types are distinct public contracts.** `HexGrid` (offset, with
+  pointy/flat orientation) and `AxialHexGrid` (Q/R, no orientation) are not
+  interchangeable — never feed one the other's positions, and do not
+  consolidate or rename them without an explicit migration.
+- **The grid owns the math.** `Position` does not enforce distance; each grid
+  implementation handles its own distance and neighbors.
+- **Imports follow the events ordering standard** — testify (third-party)
+  before local imports, enforced by goimports.
+- **All public APIs carry comments** naming purpose, when events publish, and
+  error conditions.
+
+## Pointers
+
+- Mechanics, files, gaps: `docs/architecture/components/tools-spatial.md`
+- ADR-0015 (abstract connections): `docs/adr/`
+- Test commands and the testify suite pattern: `docs/how-to/run-tests.md`
+- Current health: `docs/status.md`
