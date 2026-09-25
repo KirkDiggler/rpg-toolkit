@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>The Game Moved Into the Toolkit</title>
+<meta name="description" content="Moving game-running work out of the API and into Encounter was progress, not a claim that the application had become a toolbox.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/the-game-moved-into-the-toolkit/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Game Moved Into the Toolkit">
+<meta property="og:description" content="Moving game-running work out of the API and into Encounter was progress, not a claim that the application had become a toolbox.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/the-game-moved-into-the-toolkit/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/the-game-moved-into-the-toolkit.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/the-game-moved-into-the-toolkit.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading The Game Moved Into the Toolkit beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Game Moved Into the Toolkit">
+<meta name="twitter:description" content="Moving game-running work out of the API and into Encounter was progress, not a claim that the application had become a toolbox.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/the-game-moved-into-the-toolkit.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading The Game Moved Into the Toolkit beside a blue D20 wireframe.">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91;--pressure-soft:#2b1e20}
+*{box-sizing:border-box}
+html{background:var(--ground);color-scheme:dark;overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}
+a{color:var(--bright);text-underline-offset:3px}
+.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}
+.eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}
+h1{max-width:950px;margin:.3em 0 .3em;font-size:clamp(3.7rem,8vw,6.2rem);letter-spacing:-.035em}
+.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}
+.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}
+.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}
+.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.legend{display:flex;flex-wrap:wrap;gap:1.5rem;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase}
+.legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}
+.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}
+.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}
+.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}
+.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}
+.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+p{max-width:74ch;margin:.76em 0}.lead,.reflection{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}
+code{color:var(--bright);font-size:.87em}
+figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-block:1px solid var(--rule-strong);scrollbar-color:var(--rule-strong) var(--ground)}
+figure svg{display:block;width:100%;min-width:840px;height:auto;margin:0 auto}
+figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}
+.law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",monospace}.law b{color:var(--primary);font-weight:500}
+.pressure-law{border-left-color:var(--pressure)}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}
+footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer a{white-space:nowrap}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px}
+svg .t-title{font-size:22px;font-weight:600}svg .t-big{font-size:29px;font-weight:600}svg .mono{font-size:15px}svg .label{fill:var(--muted);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.8px}svg .small{fill:var(--muted);font-size:16px}svg .blue{fill:var(--bright)}svg .rust{fill:var(--pressure-text)}svg .faint{fill:var(--faint)}
+svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.5}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.4;stroke-dasharray:7 6}
+svg .wire{fill:none;stroke:var(--muted);stroke-width:1.5}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .dash{stroke-dasharray:7 6}
+figure::before{display:none}
+@media(max-width:760px){
+ .page{padding:14px 14px 70px}header{padding:50px 14px 48px 42px}
+ .origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{flex-direction:column;gap:.6rem}
+ .timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}
+ .panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}figure svg{min-width:900px}footer{margin:48px 0 0 42px}
+ figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-block:1px solid var(--accent);background:var(--ground);color:var(--bright);font:500 .69rem/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.35rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Layer 10 · Finding the seams</div>
+    <h1>The Game Moved Into the Toolkit</h1>
+    <p class="dek">Getting back to tools meant looking at the application we had built. I already knew the API was doing too much. Moving Encounter into the toolkit was a useful step, but <strong>I knew it was still an application.</strong> I hoped bringing that work together would make the seams easier to see.</p>
+    <nav class="origin-links" aria-label="Field-note navigation">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets →</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/tools-should-make-building-easier/"><span>Previous field note</span><strong>Tools Should Make Building Easier →</strong></a>
+    </nav>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Setting</b><span>the game-running work</span></div><div><b>Pressure</b><span>an API carrying too much</span></div><div><b>Horizon</b><span>a better place to find the seams</span></div></div>
+    <div class="legend" aria-label="Diagram legend"><span><i></i>a clearer responsibility</span><span><i></i>the application still inside</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Four panels: the overloaded API, an encounter verb, the application inside the toolkit, and the pressure still to come">
+    <section class="timeline-panel pressure-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">The older API</span></div>
+      <div class="panel-body">
+        <div class="question-label">More than accepting a request</div>
+        <h2 id="panel-1-title">A move was a procedure in the API</h2>
+        <p class="lead">The API accepted the request, but it also helped run the game. In the older movement path it gathered room and wall data, checked the path, calculated movement cost, changed positions, saved state, and published the result. That was not just translating a request into toolkit calls.</p>
+        <figure tabindex="0" aria-label="Diagram: the older API carries the movement procedure from world data through saving and reporting">
+          <svg viewBox="0 0 960 410" role="img" aria-labelledby="d1-title d1-desc">
+            <title id="d1-title">The API joins the pieces into a move</title>
+            <desc id="d1-desc">A requested path enters the API. The older movement routine loads room and wall data, checks the path and movement cost, updates the position, then persists and publishes the result. It uses toolkit pieces but carries the procedure that joins them.</desc>
+            <defs><marker id="d1-rust-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker></defs>
+            <rect x="320" y="20" width="320" height="61" class="box"/>
+            <text x="480" y="59" text-anchor="middle" class="t-title">Move along this path</text>
+            <path d="M480 81V123" class="wire-rust" marker-end="url(#d1-rust-arrow)"/>
+            <rect x="28" y="132" width="904" height="247" class="pressure"/>
+            <text x="52" y="174" class="label rust">RPG-API · THE OLDER MOVEMENT ROUTINE</text>
+            <rect x="52" y="207" width="240" height="125" class="box"/>
+            <text x="172" y="249" text-anchor="middle" class="t-title">Load the world</text>
+            <text x="172" y="294" text-anchor="middle" class="small">room + walls</text>
+            <path d="M292 270H351" class="wire-rust" marker-end="url(#d1-rust-arrow)"/>
+            <rect x="360" y="207" width="240" height="125" class="box"/>
+            <text x="480" y="249" text-anchor="middle" class="t-title">Run the move</text>
+            <text x="480" y="294" text-anchor="middle" class="small">path + cost + position</text>
+            <path d="M600 270H659" class="wire-rust" marker-end="url(#d1-rust-arrow)"/>
+            <rect x="668" y="207" width="240" height="125" class="box"/>
+            <text x="788" y="249" text-anchor="middle" class="t-title">Save and report</text>
+            <text x="788" y="294" text-anchor="middle" class="small">state + event</text>
+          </svg>
+          <figcaption>The API used toolkit pieces. It also carried the procedure that joined them.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">The newer route</span></div>
+      <div class="panel-body">
+        <div class="question-label">Give the host an encounter operation</div>
+        <h2 id="panel-2-title">The API could ask Encounter to move</h2>
+        <p class="lead">For movement, the API’s outer routine became load, call <code>Move</code>, persist. Encounter coordinated the path, combat movement spending, position updates and player-specific events. Rulebook adapters still lived in the API. Even so, the server could invoke an encounter operation instead of owning that whole procedure.</p>
+        <figure tabindex="0" aria-label="Diagram: API loads and persists while toolkit Encounter coordinates a move using supplied adapters">
+          <svg viewBox="0 0 960 650" role="img" aria-labelledby="d2-title d2-desc">
+            <title id="d2-title">Movement becomes an encounter verb</title>
+            <desc id="d2-desc">The API loads saved data and supplies rulebook adapters to LoadFromData. Toolkit Encounter.Move coordinates movement steps through the supplied resolver, spends combat movement through Character, updates positions and projects player events. The API then obtains ToData and persists Character and encounter data. This describes the movement route, not every API operation.</desc>
+            <defs><marker id="d2-blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <rect x="164" y="24" width="632" height="86" class="box"/>
+            <text x="190" y="58" class="label">API</text>
+            <text x="190" y="90" class="t-title">Load saved data · supply rulebook adapters</text>
+            <path d="M480 110V174" class="wire-blue" marker-end="url(#d2-blue-arrow)"/>
+            <text x="505" y="146" class="mono blue">LoadFromData</text>
+            <rect x="28" y="184" width="904" height="282" class="soft"/>
+            <text x="52" y="223" class="label blue">RPG-TOOLKIT</text>
+            <text x="52" y="263" class="t-big">Encounter.Move</text>
+            <rect x="52" y="289" width="240" height="102" class="box"/>
+            <text x="172" y="327" text-anchor="middle" class="t-title">Coordinate steps</text>
+            <text x="172" y="365" text-anchor="middle" class="small">supplied rulebook adapter</text>
+            <rect x="360" y="289" width="240" height="102" class="box"/>
+            <text x="480" y="327" text-anchor="middle" class="t-title">Spend movement</text>
+            <text x="480" y="365" text-anchor="middle" class="small">through Character</text>
+            <rect x="668" y="289" width="240" height="102" class="box"/>
+            <text x="788" y="327" text-anchor="middle" class="t-title">Update + project</text>
+            <text x="788" y="365" text-anchor="middle" class="small">position + player events</text>
+            <text x="480" y="434" text-anchor="middle" class="mono blue">One encounter verb coordinates the operation.</text>
+            <path d="M480 466V530" class="wire-blue" marker-end="url(#d2-blue-arrow)"/>
+            <text x="505" y="503" class="mono blue">ToData</text>
+            <rect x="164" y="540" width="632" height="86" class="box"/>
+            <text x="190" y="574" class="label">API</text>
+            <text x="190" y="606" class="t-title">Persist Character + encounter data</text>
+          </svg>
+          <figcaption>This is the movement route, not a claim that every API path became equally thin. The host still supplied adapters and persistence.</figcaption>
+        </figure>
+        <div class="law"><b>A clearer host boundary was progress. It was not the final shape.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">Inside the toolkit</span></div>
+      <div class="panel-body">
+        <div class="question-label">The location did not make it generic</div>
+        <h2 id="panel-3-title">The root package still knew D&amp;D</h2>
+        <p class="lead">Encounter lived at the toolkit root, but depended directly on the D&amp;D rulebook. D&amp;D gameplay and more general infrastructure still shared one module. There were interfaces, but the application was still bundled together. I hoped that having the work here would make its seams easier to see.</p>
+        <figure tabindex="0" aria-label="Diagram: the root-level Encounter module bundles game flow and infrastructure and imports the D&D rulebook">
+          <svg viewBox="0 0 960 414" role="img" aria-labelledby="d3-title d3-desc">
+            <title id="d3-title">A root-level module with a rulebook dependency</title>
+            <desc id="d3-desc">The root-level encounter package includes game flow alongside player views and event delivery. It imports rulebooks/dnd5e. These are selected responsibilities, not an exhaustive module map. The diagram shows the application shape that remained; changing the folder name alone would not untangle it.</desc>
+            <defs><marker id="d3-rust-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker></defs>
+            <rect x="28" y="28" width="520" height="292" class="pressure"/>
+            <text x="52" y="66" class="label rust">AT THE TOOLKIT ROOT</text>
+            <text x="52" y="105" class="t-big">encounter/</text>
+            <rect x="52" y="132" width="472" height="65" class="box"/>
+            <text x="76" y="173" class="t-title">D&amp;D game flow</text>
+            <rect x="52" y="217" width="472" height="65" class="box"/>
+            <text x="76" y="258" class="t-title">player views + event delivery</text>
+            <path d="M548 174H661" class="wire-rust" marker-end="url(#d3-rust-arrow)"/>
+            <text x="606" y="148" text-anchor="middle" class="mono rust">imports</text>
+            <rect x="670" y="96" width="262" height="156" class="box"/>
+            <text x="801" y="148" text-anchor="middle" class="mono">rulebooks/</text>
+            <text x="801" y="200" text-anchor="middle" class="t-big">dnd5e/</text>
+            <text x="480" y="373" text-anchor="middle" class="t-title rust">Different responsibilities. One application-shaped module.</text>
+          </svg>
+          <figcaption>The dependency was concrete. The larger question was how to separate the responsibilities, not just where to put the directory.</figcaption>
+        </figure>
+        <div class="law pressure-law"><b>A module boundary is not automatically a useful tool boundary.</b></div>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">The limit of the move</span></div>
+      <div class="panel-body">
+        <div class="question-label">Concentrating the work, not declaring it finished</div>
+        <h2 id="panel-4-title">Seeing the shape was only a start</h2>
+        <p class="lead">I wasn’t mistaking the application for a toolbox. I knew the difference, and moving it was still worth doing. The work was closer to the rules and the pieces it used. I wanted to examine what belonged together and what might deserve a life of its own.</p>
+        <p class="reflection">Knowing the problems did not tell me which boundary would matter most when I tried to build something different. That would take more than looking at the code.</p>
+        <p class="end-question">I could see the architectural problems.<br>I hadn’t yet felt how much they would get in the way of what I wanted to build.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>Kirk recalls already knowing that the API did too much, knowingly moving an application into the toolkit, and hoping the seams would become easier to see. The <a href="https://github.com/KirkDiggler/rpg-project/blob/af606f1/ideas/encounter/v1alpha2/sdk-direction.md">May SDK direction</a> records the intended transfer of lifecycle, dispatch and player-facing projection. The root skeleton began in May; its growth and adoption were not one move dated to his personal return.</p>
+    <p>The earlier <a href="https://github.com/KirkDiggler/rpg-api/blob/f6ed5c9/internal/orchestrators/encounter/orchestrator.go#L4643-L4860">API movement routine</a> carries path, budget and position work. The later <a href="https://github.com/KirkDiggler/rpg-api/blob/a9ad2a68/internal/orchestrators/encounter/v2/move_entity.go">MoveEntity route</a> calls a loaded Encounter and persists its result. That API snapshot pins encounter v0.24.4, which resolves to the <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/7bd662b3/encounter/encounter.go#L590-L683">toolkit movement implementation</a> shown here.</p>
+    <p>This was not the disappearance of all host-side work. The API still supplied rulebook adapters, Character loading/persistence and NPC-turn dispatch. The toolkit’s <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/7bd662b3/encounter/go.mod">module dependencies</a> and <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/f83c2666/docs/adr/0034-where-encounter-logic-lives.md">July placement decision</a> document the D&amp;D coupling and mixed responsibilities. That decision moved no code.</p>
+    <p class="scope">Historical source and dependency pins were inspected; no historical build, test suite or complete gameplay walk was run. This note ends before the later authoring pressure and composable rebuild. Diagrams explain selected responsibilities, not a complete system inventory.</p>
+  </footer>
+</main>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+</body>
+</html>
