@@ -303,7 +303,7 @@ room:
       nook:
         stamped-chair: { blocksMovement: false, blocksLineOfSight: false, footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 } }
     partyStart: { q: 0, r: 0 }
-    monsters:
+    monsterDeclarations:
       - { id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } } }
       - { id: goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 1, r: 1 } } }
 %s
@@ -581,7 +581,7 @@ func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 
 	requireExactDefect(t, refusals(t, v4With("", "    monsterBindings:\n      goblin-1: { tempre: coward }")),
 		"room.room.monsterBindings.goblin-1.tempre",
-		`"tempre" is not a key this build reads: they are actions, arrives, holds, intimidate, on, persuade, table, temper`)
+		`"tempre" is not a key this build reads: they are actions, arrives, faction, holds, intimidate, on, persuade, table, temper`)
 }
 
 // A binding whose creature is gone is named ONCE. Its contents are not asked

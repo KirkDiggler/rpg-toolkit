@@ -70,24 +70,28 @@ room:
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}
-    monsters:
+    monsterDeclarations:
       # The two goblins at the front of the room face the party's way in
       # (partyStart, the western edge). Authoring a facing here is the issue's
       # own worked example (rpg-toolkit#1899): "two guards face the door" --
       # the authored word pinned end-to-end through decode, compile and the
       # golden picture, the way tomb-faced-props.yaml pins v2 prop facings.
-      - {id: front-goblin, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -1 }, facing: w }, faction: goblins}
-      - {id: front-goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -2 }, facing: w }, faction: goblins}
-      - {id: front-goblin-3, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 1, r: 1 } }, faction: goblins}
-      - {id: front-goblin-4, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } }, faction: goblins}
-      - {id: bandit-1, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: 0, r: 2 } }, faction: bandits}
-      - {id: bandit-2, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: -1, r: 2 } }, faction: bandits}
+      - {id: front-goblin, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -1 }, facing: w }}
+      - {id: front-goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -2 }, facing: w }}
+      - {id: front-goblin-3, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 1, r: 1 } }}
+      - {id: front-goblin-4, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } }}
+      - {id: bandit-1, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: 0, r: 2 } }}
+      - {id: bandit-2, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: -1, r: 2 } }}
     monsterBindings:
+      front-goblin-2: {faction: goblins}
+      front-goblin-3: {faction: goblins}
+      front-goblin-4: {faction: goblins}
       # THE ONE PRICED CREATURE, and the asymmetry is the point: DC 12 to lean
       # on and DC 10 to talk round, where its stat block would derive 9 for
       # both. "This goblin would rather be talked to than shouted at" is a
       # thing an author can now say in v4, and this line is the whole slice.
       front-goblin:
+        faction: goblins
         actions: ['dnd5e:weapons:scimitar']
         intimidate: [{ ability: intimidation, dc: 12 }]
         persuade: [{ ability: persuasion, dc: 10 }]
@@ -99,6 +103,7 @@ room:
       # failed appeal mints `cellar-is-clear` and they walk in — the party
       # followed the goblin's bad directions and met what was down there.
       bandit-1:
+        faction: bandits
         actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:light-crossbow']
         arrives: { fact: cellar-is-clear }
         on:
@@ -109,6 +114,7 @@ room:
             - { when: { enemy: seen },             toward: enemy }
             - { when: { enemy: remembered },       toward: enemy }
       bandit-2:
+        faction: bandits
         actions: ['dnd5e:weapons:light-crossbow']
         arrives: { fact: cellar-is-clear }
         on:

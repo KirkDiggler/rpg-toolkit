@@ -95,6 +95,12 @@ func unknownKeyDefect(line, message string, keys authoredKeys) (FieldError, bool
 // `Line` the file never authors, and [TemperSpec] takes a word OR a mix. An
 // author reading "they are ..." must be able to trust the list.
 func unknownKeySentence(key, typeName string) string {
+	if typeName == "dungeonspec.RoomGameplaySource" && key == "monsters" {
+		return "monsters has been renamed to monsterDeclarations; rename this key"
+	}
+	if typeName == "dungeonspec.RoomMonsterSource" && key == "faction" {
+		return "faction belongs in monsterBindings, keyed by this monster's id; move it there"
+	}
 	allowed := authoredKeysOfType(typeName)
 	if len(allowed) == 0 {
 		return fmt.Sprintf("%q is not a key this build reads", key)

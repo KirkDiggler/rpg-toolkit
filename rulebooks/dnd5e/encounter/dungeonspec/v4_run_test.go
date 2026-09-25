@@ -234,7 +234,7 @@ room:
       table: { blocksMovement: true, blocksLineOfSight: false, footprint: { width: 2, depth: 2, offsetX: 0, offsetZ: 0 } }
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }
-    monsters: []
+    monsterDeclarations: []
 `, root)
 }
 

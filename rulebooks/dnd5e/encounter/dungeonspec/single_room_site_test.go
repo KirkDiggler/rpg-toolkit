@@ -134,10 +134,10 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 	}{
 		{
 			name: "a member of a faction nobody declared",
-			old:  "{id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: -1 } }}",
-			repl: "{id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: -1 } }, faction: bandits}",
+			old:  "skeleton-a:\n        actions:",
+			repl: "skeleton-a:\n        faction: bandits\n        actions:",
 			want: FieldError{
-				Path: "room.room.monsters[1].faction",
+				Path: "room.room.monsterBindings.skeleton-a.faction",
 				Message: "\"dnd5e:monsters:skeleton\" is in faction \"bandits\", and no faction in this dungeon " +
 					"has that id — declare it under `factions:`",
 			},
@@ -201,18 +201,18 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 		},
 		{
 			name: "a creature in the players' side",
-			old:  "startingCell: { location: { q: 2, r: 0 } }, faction: goblins}",
-			repl: "startingCell: { location: { q: 2, r: 0 } }, faction: party}",
+			old:  "faction: goblins",
+			repl: "faction: party",
 			want: FieldError{
-				Path:    "room.room.monsters[0].faction",
+				Path:    "room.room.monsterBindings.goblin-1.faction",
 				Message: "\"dnd5e:monsters:goblin\" cannot be in `party`: that is the players' side",
 			},
 		},
 		{
 			name: "a membership authored as nothing",
-			old:  "startingCell: { location: { q: 2, r: 0 } }, faction: goblins}",
-			repl: "startingCell: { location: { q: 2, r: 0 } }, faction: ''}",
-			want: FieldError{Path: "room.room.monsters[0].faction", Message: "must not be empty"},
+			old:  "faction: goblins",
+			repl: "faction: ''",
+			want: FieldError{Path: "room.room.monsterBindings.goblin-1.faction", Message: "must not be empty"},
 		},
 	}
 	for _, tc := range cases {
@@ -250,7 +250,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "        temper: coward\n        mind: goblin-1",
 			want: FieldError{
 				Path:    "room.room.monsterBindings.goblin-1.mind",
-				Message: `"mind" is not a key this build reads: they are actions, arrives, holds, intimidate, on, persuade, table, temper`,
+				Message: `"mind" is not a key this build reads: they are actions, arrives, faction, holds, intimidate, on, persuade, table, temper`,
 			},
 		},
 		{
@@ -267,8 +267,8 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			old:  "startingCell: { location: { q: 0, r: -1 } }}",
 			repl: "startingCell: { location: { q: 0, r: -1 } }, temper: coward}",
 			want: FieldError{
-				Path:    "room.room.monsters[2].temper",
-				Message: `"temper" is not a key this build reads: they are faction, id, ref, startingCell`,
+				Path:    "room.room.monsterDeclarations[2].temper",
+				Message: `"temper" is not a key this build reads: they are id, ref, startingCell`,
 			},
 		},
 		{
@@ -323,7 +323,7 @@ func TestTheSiteDocumentReportsEveryUnknownKey(t *testing.T) {
 		{Path: "height", Message: `"height" is not a key this build reads: ` +
 			"they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, version"},
 		{Path: "room.room.monsterBindings.goblin-1.tempre",
-			Message: `"tempre" is not a key this build reads: they are actions, arrives, holds, intimidate, on, persuade, table, temper`},
+			Message: `"tempre" is not a key this build reads: they are actions, arrives, faction, holds, intimidate, on, persuade, table, temper`},
 	}, validation.Errors, "both of them, in the order they were written")
 }
 
@@ -358,7 +358,7 @@ func TestAbsenceRoundTripsAsAbsence(t *testing.T) {
 	require.Nil(t, decoded.Spec.Factions)
 	require.Nil(t, decoded.Spec.Dispositions)
 	require.Nil(t, decoded.Spec.Room.Gameplay.MonsterBindings)
-	require.Empty(t, decoded.Spec.Room.Gameplay.Monsters[0].Faction)
+	require.Empty(t, decoded.Spec.Room.Gameplay.MonsterBindings["skeleton-a"].Faction)
 
 	encoded, err := yaml.Marshal(decoded.Spec)
 	require.NoError(t, err)
@@ -397,8 +397,8 @@ func TestTheV4FixtureRoundTripsItsSiteKeys(t *testing.T) {
 	require.Equal(t, map[string]int{"coward": 2, "soldier": 1, "aggressive": 1}, decoded.Spec.Factions[0].Temper.Mix)
 	require.Len(t, decoded.Spec.Dispositions, 1)
 	require.Equal(t, "goblin-cowed", decoded.Spec.Dispositions[0].Until.Fact)
-	require.Equal(t, "goblins", decoded.Spec.Room.Gameplay.Monsters[0].Faction)
-	require.Empty(t, decoded.Spec.Room.Gameplay.Monsters[1].Faction, "unauthored stays unauthored")
+	require.Equal(t, "goblins", decoded.Spec.Room.Gameplay.MonsterBindings["goblin-1"].Faction)
+	require.Empty(t, decoded.Spec.Room.Gameplay.MonsterBindings["skeleton-a"].Faction, "unauthored stays unauthored")
 
 	bindings := decoded.Spec.Room.Gameplay.MonsterBindings
 	require.Len(t, bindings, 2)

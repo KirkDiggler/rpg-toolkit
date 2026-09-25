@@ -126,14 +126,14 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "is required")
 	}
 	starts = append(starts, axialOffset(*spec.Room.Gameplay.PartyStart, o))
-	monsters := make([]MonsterPlacement, 0, len(spec.Room.Gameplay.Monsters))
+	monsters := make([]MonsterPlacement, 0, len(spec.Room.Gameplay.MonsterDeclarations))
 	occupied := map[RoomCell]bool{}
 	if occupied[*spec.Room.Gameplay.PartyStart] {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "is occupied")
 	}
-	for i, m := range spec.Room.Gameplay.Monsters {
+	for i, m := range spec.Room.Gameplay.MonsterDeclarations {
 		if m.StartingCell.Location == *spec.Room.Gameplay.PartyStart || occupied[m.StartingCell.Location] {
-			return Compiled{}, singleRoomCompileError(fmt.Sprintf("room.room.monsters[%d].startingCell.location", i), "is occupied")
+			return Compiled{}, singleRoomCompileError(fmt.Sprintf("room.room.monsterDeclarations[%d].startingCell.location", i), "is occupied")
 		}
 		occupied[m.StartingCell.Location] = true
 		at := axialOffset(m.StartingCell.Location, o)
@@ -151,7 +151,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// the compile is called.
 		on := layerSpecs(rootTableOn(spec.Tables, b.Table), b.On)
 		mp := ordersOf(creatureOrders{
-			ID: m.ID, Ref: m.Ref, Faction: m.Faction,
+			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
 			On: on, Temper: b.Temper, Actions: b.Actions,
 		}, from)
 		mp.Region = spec.Room.Gameplay.ImplicitRegionID
@@ -183,12 +183,12 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		cell RoomCell
 		at   spatial.Position
 	}{path: "room.room.partyStart", cell: *spec.Room.Gameplay.PartyStart, at: starts[0]})
-	for i, m := range spec.Room.Gameplay.Monsters {
+	for i, m := range spec.Room.Gameplay.MonsterDeclarations {
 		placements = append(placements, struct {
 			path string
 			cell RoomCell
 			at   spatial.Position
-		}{path: fmt.Sprintf("room.room.monsters[%d].startingCell.location", i), cell: m.StartingCell.Location, at: starts[i+1]})
+		}{path: fmt.Sprintf("room.room.monsterDeclarations[%d].startingCell.location", i), cell: m.StartingCell.Location, at: starts[i+1]})
 	}
 	// AND EVERY WAY OUT, because an exit is the same kind of authored cell a
 	// start is (rpg-project#488 R2). v2 answers this against the floor its

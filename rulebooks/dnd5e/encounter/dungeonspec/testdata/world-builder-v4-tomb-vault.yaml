@@ -113,11 +113,10 @@ room:
         footprint: {width: 0.3, depth: 0.3, offsetX: 0, offsetZ: 0}
     arrangementDeclarations: {}
     partyStart: {q: 0, r: 3}
-    monsters:
-      - {id: captain, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: -3, r: 0 } },
-         faction: monsters}
+    monsterDeclarations:
+      - {id: captain, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: -3, r: 0 } }}
     monsterBindings:
-      captain: { holds: [vault-map] }
+      captain: {faction: monsters,  holds: [vault-map] }
     doorBindings:
       vault-door: { closed: true }
     propBindings:

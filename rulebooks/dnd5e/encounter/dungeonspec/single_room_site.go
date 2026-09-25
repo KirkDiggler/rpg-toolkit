@@ -23,7 +23,7 @@ import (
 // call: the cast it placed, the frame it has for a cell, and the paths its
 // defects are reported at. Paths are part of the contract — the World Builder
 // draws each refusal on the thing it names — so they are this dialect's own
-// (`room.room.monsters[2].faction`,
+// (`room.room.monsterBindings.goblin-1.faction`,
 // `room.room.monsterBindings.goblin-1.on.time[0]`), which is why each
 // grammar function is called with the path rather than having one rewritten
 // after the fact.
@@ -166,6 +166,10 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 		// A binding's `temper` is a placement's own WORD, so an empty one is
 		// [optionalReference]'s case: a name that names nothing.
 		optionalReference(b, "temper", p, add)
+		// The side it is on is OPTIONAL — absent means the kind's default — and
+		// may be neither null nor empty, because "" is the same bytes as absence
+		// with a different meaning.
+		optionalReference(b, "faction", p, add)
 		optionalNode(b, "actions", p, add)
 		// AND THE FOUR GAMEPLAY KEYS (rpg-project#488,
 		// single_room_gameplay.go). Each is judged here for the same one
@@ -183,16 +187,16 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 //
 // roomMembers is the cast this dialect hands the grammar: every authored
 // creature, in authored order, as who it is, what it is and which side it is
-// on. Index-aligned with `monsters:`, so a defect about a membership is
-// reported at `room.room.monsters[i].faction`.
+// on. Identity comes from monsterDeclarations; membership comes from the
+// ID-keyed binding, where membership defects are also reported.
 //
-// EVERY MEMBER HERE IS A MONSTER. `monsters:` is the only list this dialect
+// EVERY MEMBER HERE IS A MONSTER. `monsterDeclarations:` is the only list this dialect
 // places; its props are scenery, declared under their own key and nameable by
 // nothing that takes a member id.
 func roomMembers(gp *RoomGameplaySource) members {
-	all := make([]member, 0, len(gp.Monsters))
-	for _, m := range gp.Monsters {
-		all = append(all, member{id: m.ID, ref: m.Ref, faction: m.Faction})
+	all := make([]member, 0, len(gp.MonsterDeclarations))
+	for _, m := range gp.MonsterDeclarations {
+		all = append(all, member{id: m.ID, ref: m.Ref, faction: gp.MonsterBindings[m.ID].Faction})
 	}
 
 	return newMembers(all)
@@ -246,9 +250,9 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	for i, m := range g.members.all {
 		// EVERY MEMBER HERE IS A MONSTER, and the kind says so rather than
 		// being read back off the ref: [monsterValues] already refuses a ref
-		// that is not one, at `room.room.monsters[i].ref`, so asking refKind
+		// that is not one, at `room.room.monsterDeclarations[i].ref`, so asking refKind
 		// again would report a second defect for the one bad ref.
-		g.placeFaction(fmt.Sprintf("room.room.monsters[%d]", i), i, m, typeMonsters)
+		g.placeFaction("room.room.monsterBindings."+m.id, i, m, typeMonsters)
 		b, bound := gp.MonsterBindings[m.id]
 		if !bound {
 			continue
