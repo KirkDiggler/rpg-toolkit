@@ -606,9 +606,9 @@ type RoomGameplaySource struct {
 	PartyStart              *RoomCell                                 `yaml:"partyStart,omitempty" json:"partyStart,omitempty"`
 	MonsterDeclarations     []RoomMonsterSource                       `yaml:"monsterDeclarations" json:"monsterDeclarations"`
 
-	// MonsterBindings is each creature's orders, under its stable id.
-	// Optional, and ABSENT WHEN NOBODY HAS ANY: a room whose creatures
-	// override nothing writes the bytes it wrote before this key existed.
+	// MonsterBindings holds each creature's shared references and overrides,
+	// under its stable id. Optional when no creature authors either; a
+	// creature naming a faction needs a binding even without overrides.
 	MonsterBindings map[string]RoomMonsterBinding `yaml:"monsterBindings,omitempty" json:"monsterBindings,omitempty"`
 
 	// DoorBindings is which placed items are doors, and the state each one

@@ -485,9 +485,6 @@ func monsterShape(m *yaml.Node, p string, add errSink) {
 	if sc := requireMapping(m, "startingCell", p, add); sc != nil {
 		startingCellShape(sc, p+".startingCell", add)
 	}
-	// The side it is on is OPTIONAL — absent means the kind's default — and
-	// may be neither null nor empty, because "" is the same bytes as absence
-	// with a different meaning.
 }
 
 // startingCellShape reads a monster's start: a required location cell beside

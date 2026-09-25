@@ -166,6 +166,9 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 		// A binding's `temper` is a placement's own WORD, so an empty one is
 		// [optionalReference]'s case: a name that names nothing.
 		optionalReference(b, "temper", p, add)
+		// The side it is on is OPTIONAL — absent means the kind's default — and
+		// may be neither null nor empty, because "" is the same bytes as absence
+		// with a different meaning.
 		optionalReference(b, "faction", p, add)
 		optionalNode(b, "actions", p, add)
 		// AND THE FOUR GAMEPLAY KEYS (rpg-project#488,
