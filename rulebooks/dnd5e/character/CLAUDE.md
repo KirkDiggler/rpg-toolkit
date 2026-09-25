@@ -150,7 +150,7 @@ d.recordChoice(equipmentChoice1)
 d.recordChoice(equipmentChoice2)
 ```
 
-**Fixed in Issue #344:** Previously, changing classes would accumulate equipment choices because different classes had different ChoiceIDs. Now, source-level clearing prevents this.
+**Why the clear comes first:** different classes use different ChoiceIDs — an old class's equipment choices do not conflict with the new class's, so without the source-level clear they accumulate. (Incident record: issue #344.)
 
 ### 4. Equipment Choice Complexity
 
