@@ -45,5 +45,5 @@ room:
         footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}
     arrangementDeclarations: {}
     partyStart: {q: 0, r: 0}
-    monsters:
+    monsterDeclarations:
       - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}

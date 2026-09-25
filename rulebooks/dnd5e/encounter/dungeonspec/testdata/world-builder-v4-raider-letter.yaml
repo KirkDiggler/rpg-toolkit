@@ -63,9 +63,10 @@ room:
         footprint: {width: 0.3, depth: 0.3, offsetX: 0, offsetZ: 0}
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}
-    monsters:
-      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: 2, r: -1 } }, faction: raiders}
-    monsterBindings: {}
+    monsterDeclarations:
+      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: 2, r: -1 } }}
+    monsterBindings:
+      chief: {faction: raiders}
     # THE FOURTH DECLARATION KIND, all three of its keys. The letter is not on
     # the ground when the party comes in: a messenger drops it at the gate
     # when round 6 of a fight starts.

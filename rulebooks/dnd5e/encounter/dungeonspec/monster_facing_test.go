@@ -28,8 +28,8 @@ func TestMonsterStartingFacing(t *testing.T) {
 		decoded, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
 		require.NoError(t, err)
 		spec := decoded.Spec
-		require.Len(t, spec.Room.Gameplay.Monsters, 1)
-		spec.Room.Gameplay.Monsters[0].StartingCell.Facing = facing
+		require.Len(t, spec.Room.Gameplay.MonsterDeclarations, 1)
+		spec.Room.Gameplay.MonsterDeclarations[0].StartingCell.Facing = facing
 		compiled, err := Load(mustEncode(t, spec))
 		if err != nil {
 			return nil, err
@@ -58,7 +58,7 @@ func TestMonsterStartingFacing(t *testing.T) {
 		var validation *ValidationError
 		require.ErrorAs(t, err, &validation)
 		require.NotEmpty(t, validation.Errors)
-		require.Equal(t, "room.room.monsters[0].startingCell.facing", validation.Errors[0].Path)
+		require.Equal(t, "room.room.monsterDeclarations[0].startingCell.facing", validation.Errors[0].Path)
 		require.Contains(t, validation.Errors[0].Message, "northeast",
 			"the refusal quotes the word the author wrote")
 		require.Contains(t, validation.Errors[0].Message, "n|ne|e|se|s|sw|w|nw",
@@ -86,6 +86,6 @@ func TestTheCellRenameRefusesTheOldSpelling(t *testing.T) {
 		msgs = append(msgs, e.Message)
 	}
 	require.Contains(t, msgs,
-		`"cell" is not a key this build reads: they are faction, id, ref, startingCell`,
+		`"cell" is not a key this build reads: they are id, ref, startingCell`,
 		"the old spelling is refused and the replacement is offered")
 }

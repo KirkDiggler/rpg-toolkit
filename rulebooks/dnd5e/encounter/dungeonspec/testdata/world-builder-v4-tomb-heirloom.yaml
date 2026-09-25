@@ -98,7 +98,7 @@ room:
     # a scenario says so, not because a monster has a flag on it (design R8).
     # In v2 he holds the vault map; here there is no vault and no record to
     # hold, so he is a creature standing between the party and the prize.
-    monsters:
+    monsterDeclarations:
       - {id: captain, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: -3, r: 0 } }}
     monsterBindings: {}
     # THE PRIZE, AND THE PAPER BESIDE IT. Both are takeable; neither carries a

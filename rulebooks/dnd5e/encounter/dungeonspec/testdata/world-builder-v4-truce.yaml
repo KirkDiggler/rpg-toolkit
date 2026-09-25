@@ -60,18 +60,22 @@ room:
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}
-    monsters:
+    monsterDeclarations:
       # THE SCOUT IS THE PREDICATE, and it is an ordinary goblin otherwise:
       # nothing on the placement says it is load-bearing. The disposition
       # names it, and that is the whole of what makes this camp turnable.
-      - {id: scout, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -1 } }, faction: goblins}
-      - {id: goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -2 } }, faction: goblins}
-      - {id: guard-1, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: 0, r: 2 } }, faction: guards}
-      - {id: guard-2, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: -1, r: 2 } }, faction: guards}
+      - {id: scout, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -1 } }}
+      - {id: goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -2 } }}
+      - {id: guard-1, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: 0, r: 2 } }}
+      - {id: guard-2, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: -1, r: 2 } }}
     monsterBindings:
+      guard-2: {faction: guards}
+      goblin-2: {faction: goblins}
       scout:
+        faction: goblins
         actions: ['dnd5e:weapons:scimitar']
       guard-1:
+        faction: guards
         actions: ['dnd5e:weapons:scimitar']
         on:
           time:

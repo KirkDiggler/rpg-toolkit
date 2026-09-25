@@ -197,8 +197,8 @@ func (s *SingleRoomSourceSuite) TestDecodePreservesOptionalAbsence() {
 		{"missing partyStart", "    partyStart: {q: 0, r: 0}\n", "", func(out *SingleRoomDecodeResult) bool {
 			return out.Spec.Room.Gameplay.PartyStart == nil
 		}},
-		{"empty monsters", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsters: []\n", func(out *SingleRoomDecodeResult) bool {
-			return len(out.Spec.Room.Gameplay.Monsters) == 0
+		{"empty monsters", "    monsterDeclarations:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsterDeclarations: []\n", func(out *SingleRoomDecodeResult) bool {
+			return len(out.Spec.Room.Gameplay.MonsterDeclarations) == 0
 		}},
 	}
 	for _, tc := range cases {
@@ -230,7 +230,7 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsAuthoredNulls() {
 		{"null partyStart", "partyStart: {q: 0, r: 0}", "partyStart: null"},
 		{"null key", "key: workshop-room", "key: null"},
 		{"null walkableHexes", "    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},\n      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},\n      {q: 0, r: -1}, {q: 1, r: -1}]\n", "    walkableHexes: null\n"},
-		{"null monsters", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsters: null\n"},
+		{"null monsters", "    monsterDeclarations:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsterDeclarations: null\n"},
 		{"null propDeclarations", "    propDeclarations:\n      table:\n        blocksMovement: true\n        blocksLineOfSight: false\n        footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}\n", "    propDeclarations: null\n"},
 		{"null declaration", "    propDeclarations:\n      table:\n        blocksMovement: true\n        blocksLineOfSight: false\n        footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}\n", "    propDeclarations:\n      table: null\n"},
 	}
@@ -269,7 +269,7 @@ func (s *SingleRoomSourceSuite) TestDecodeRejectsMissingRequiredFields() {
 			"arrangementDeclarations: {arr: {template: {footprint: {width: 1, depth: 1, offsetX: 0, offsetZ: 0}}}}"},
 		{"missing template footprint", "arrangementDeclarations: {}",
 			"arrangementDeclarations: {arr: {template: {blocksMovement: true, blocksLineOfSight: false}}}"},
-		{"missing monsters list", "    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", ""},
+		{"missing monsters list", "    monsterDeclarations:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", ""},
 		{"missing walkableHexes", "    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},\n      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},\n      {q: 0, r: -1}, {q: 1, r: -1}]\n", ""},
 		{"missing propDeclarations", "    propDeclarations:\n      table:\n        blocksMovement: true\n        blocksLineOfSight: false\n        footprint: {width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2}\n", ""},
 		{"missing arrangementDeclarations", "    arrangementDeclarations: {}\n", ""},
@@ -346,12 +346,12 @@ func (s *SingleRoomSourceSuite) TestDecodeRoundTripsYAMLWithOptionalAbsence() {
 	s.Require().NoError(err)
 	s.Equal(string(encoded), string(againBytes))
 
-	empty := s.swapOne("    monsters:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsters: []\n")
+	empty := s.swapOne("    monsterDeclarations:\n      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: 0 } }}\n", "    monsterDeclarations: []\n")
 	empty = []byte(strings.Replace(string(empty), "    partyStart: {q: 0, r: 0}\n", "", 1))
 	trimmed, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: empty})
 	s.Require().NoError(err)
 	s.Nil(trimmed.Spec.Room.Gameplay.PartyStart)
-	s.Empty(trimmed.Spec.Room.Gameplay.Monsters)
+	s.Empty(trimmed.Spec.Room.Gameplay.MonsterDeclarations)
 	enc2, err := yaml.Marshal(trimmed.Spec)
 	s.Require().NoError(err)
 	again2, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: enc2})

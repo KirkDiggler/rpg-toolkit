@@ -92,14 +92,15 @@ room:
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}
-    monsters:
-      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: 2, r: -1 } }, faction: raiders}
-      - {id: scout, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 0, r: 0 } }, faction: raiders}
-      - {id: messenger, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: 1 } }, faction: raiders}
-      - {id: reinforcement-1, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: -1, r: 2 } }, faction: raiders}
-      - {id: reinforcement-2, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: 0, r: 2 } }, faction: raiders}
-      - {id: reinforcement-3, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: -2, r: 2 } }, faction: raiders}
+    monsterDeclarations:
+      - {id: chief, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: 2, r: -1 } }}
+      - {id: scout, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 0, r: 0 } }}
+      - {id: messenger, ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: 1 } }}
+      - {id: reinforcement-1, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: -1, r: 2 } }}
+      - {id: reinforcement-2, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: 0, r: 2 } }}
+      - {id: reinforcement-3, ref: 'dnd5e:monsters:zombie', startingCell: { location: { q: -2, r: 2 } }}
     monsterBindings:
+      scout: {faction: raiders}
       # TWO CREATURES HOLD ONE RECORD, and that is a law rather than a
       # duplicate: intel COPIES rather than moving, so two guards may both
       # know the way in and looting either teaches it. Nothing refuses it.
@@ -111,20 +112,25 @@ room:
       # win is refused (R8), which is why it is authored here rather than
       # refused here.
       chief:
+        faction: raiders
         holds: [wisemans-letter]
       # THE RECORD ARRIVES ON THE CLOCK, and the messenger's copy is the one
       # a party can actually use: drop him, take the letter, and the chief is
       # still alive to be told. Hold out six rounds and the way to
       # turn the camp walks in; drop the messenger and take it off the body.
       messenger:
+        faction: raiders
         holds: [wisemans-letter]
         arrives: { round: 6 }
       # AND IF THE CHIEF FALLS INSTEAD, three zombies come through the gate.
       # Until its predicate holds a creature is NOWHERE — on no map and in no
       # roster — exactly as if it had never been written.
       reinforcement-1:
+        faction: raiders
         arrives: { down: chief }
       reinforcement-2:
+        faction: raiders
         arrives: { down: chief }
       reinforcement-3:
+        faction: raiders
         arrives: { down: chief }

@@ -278,15 +278,9 @@ type RoomStartingCell struct {
 	Facing string `yaml:"facing,omitempty" json:"facing,omitempty"`
 }
 
-// RoomMonsterSource declares a monster, its authored start, and the side it
-// is on.
-//
-// THE ACTOR CARRIES IDENTITY; THE BINDING CARRIES ORDERS (rpg-project#477,
-// Decision 4). Everything a faction SUPPLIES — its table, its temperament,
-// its arms — is overridable and lives in [RoomMonsterBinding]. `faction` is
-// what SELECTS those defaults, nothing overrides it, and membership must not
-// require a binding: four goblins in one faction with no overrides would
-// otherwise need four orders blocks that exist only to record who they are.
+// RoomMonsterSource declares what a monster is and where it started.
+// Shared references and overrides belong to [RoomMonsterBinding], including
+// faction membership. This source declaration is not live runtime state.
 type RoomMonsterSource struct {
 	ID  string `yaml:"id" json:"id"`
 	Ref string `yaml:"ref" json:"ref"`
@@ -294,29 +288,20 @@ type RoomMonsterSource struct {
 	// StartingCell is where the monster stands and which way it faces when
 	// it arrives. See [RoomStartingCell].
 	StartingCell RoomStartingCell `yaml:"startingCell" json:"startingCell"`
-
-	// Faction is the faction this monster is in, AS AUTHORED. Optional, and
-	// ABSENT WHEN UNAUTHORED — never written out as `faction: monsters`.
-	// `factionOf` (encounter/field.go) stores it as given and resolves the
-	// kind's default on every read, so a creature whose author named no side
-	// persists byte-identically to one from before factions existed. A
-	// faction this document does not declare is refused by name, and `party`
-	// is refused as the players' side.
-	Faction string `yaml:"faction,omitempty" json:"faction,omitempty"`
 }
 
-// RoomMonsterBinding is one creature's ORDERS: what it does, what it is like,
-// and what it fights with (rpg-project#477, Decision 4).
-//
-// One of the FOUR declaration kinds on a placed thing, beside
-// `propDeclarations`, `doorBindings` and `propBindings`, and keyed the same
-// way: by the id of the thing it is about. A binding naming a creature no
-// `monsters:` entry declares is refused exactly as a prop declaration with no
-// live owner is — a declaration can never outlive the thing it names.
+// RoomMonsterBinding holds one creature's shared references and overrides:
+// faction, table, temperament, arms, and gameplay interactions. It is keyed by
+// the id declared in monsterDeclarations. A binding naming no declared
+// creature is refused; a faction-only binding is valid and inherits its orders.
 //
 // EVERY FIELD IS OPTIONAL, and the common state of this whole block is
 // absence: a creature with nothing to override needs no binding at all.
 type RoomMonsterBinding struct {
+	// Faction names a declared side. Absence preserves the monster's default
+	// side; membership is a shared reference, not part of its declaration.
+	Faction string `yaml:"faction,omitempty" json:"faction,omitempty"`
+
 	// Table names a root answer table ([SingleRoomSpec.Tables]) this creature
 	// answers with (rpg-toolkit#1897). Optional; absent means this creature
 	// names no shared table and its orders come from `on:` and its faction
@@ -369,7 +354,7 @@ type RoomMonsterBinding struct {
 	// `…monsterBindings.<id>.holds[<j>]`.
 	//
 	// ORDERS, NOT IDENTITY, which is why it is here and not on the
-	// `monsters:` entry (rule 1). "The captain is not a role: it is a monster
+	// `monsterDeclarations:` entry (rule 1). "The captain is not a role: it is a monster
 	// holding a record, and nothing in the game needs the word captain."
 	//
 	// THE SAME RECORD MAY BE HELD BY SEVERAL CREATURES, for [PlaceSpec.Holds]'
@@ -619,7 +604,7 @@ type RoomGameplaySource struct {
 	PropDeclarations        map[string]RoomPropDeclaration            `yaml:"propDeclarations" json:"propDeclarations"`
 	ArrangementDeclarations map[string]map[string]RoomPropDeclaration `yaml:"arrangementDeclarations" json:"arrangementDeclarations"`
 	PartyStart              *RoomCell                                 `yaml:"partyStart,omitempty" json:"partyStart,omitempty"`
-	Monsters                []RoomMonsterSource                       `yaml:"monsters" json:"monsters"`
+	MonsterDeclarations     []RoomMonsterSource                       `yaml:"monsterDeclarations" json:"monsterDeclarations"`
 
 	// MonsterBindings is each creature's orders, under its stable id.
 	// Optional, and ABSENT WHEN NOBODY HAS ANY: a room whose creatures

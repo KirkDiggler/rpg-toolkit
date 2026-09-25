@@ -89,7 +89,7 @@ const (
 // template declarations and may name IDs that were never instantiated.
 // Declaration flags and footprints are validated identically for both.
 // Monster refs are checked for grammar and the `monsters` type only — no
-// rulebook definition is resolved (design C1). `monsters` is required and
+// rulebook definition is resolved (design C1). `monsterDeclarations` is required and
 // may be empty; `partyStart` is optional while editing, so a draft without
 // it is valid source, and no playable result is implied by any successful
 // decode.
@@ -447,9 +447,9 @@ func gameplayShape(gp *yaml.Node, add errSink) {
 	if ps := optionalNode(gp, "partyStart", "room.room", add); ps != nil {
 		cellShape(ps, "room.room.partyStart", add)
 	}
-	if monsters := requireSequence(gp, "monsters", "room.room", add); monsters != nil {
+	if monsters := requireSequence(gp, "monsterDeclarations", "room.room", add); monsters != nil {
 		for i, m := range monsters.Content {
-			monsterShape(m, fmt.Sprintf("room.room.monsters[%d]", i), add)
+			monsterShape(m, fmt.Sprintf("room.room.monsterDeclarations[%d]", i), add)
 		}
 	}
 	monsterBindingsShape(gp, add)
@@ -488,7 +488,6 @@ func monsterShape(m *yaml.Node, p string, add errSink) {
 	// The side it is on is OPTIONAL — absent means the kind's default — and
 	// may be neither null nor empty, because "" is the same bytes as absence
 	// with a different meaning.
-	optionalReference(m, "faction", p, add)
 }
 
 // startingCellShape reads a monster's start: a required location cell beside
@@ -631,7 +630,7 @@ func gameplayValues(gp *RoomGameplaySource, read roomRead, add errSink) {
 	walkableValues(gp.WalkableHexes, read.WorkspaceHexRadius, read.WorkspaceKnown, add)
 	propDeclarationValues(gp.PropDeclarations, read.ItemIDs, add)
 	arrangementDeclarationValues(gp.ArrangementDeclarations, add)
-	monsterValues(gp.Monsters, add)
+	monsterValues(gp.MonsterDeclarations, add)
 }
 
 // walkableValues reports duplicate cells and cells outside the painted
@@ -739,7 +738,7 @@ func boundFootprint(v, lo, hi float64, p string, add errSink) {
 func monsterValues(monsters []RoomMonsterSource, add errSink) {
 	seen := make(map[string]bool, len(monsters))
 	for i, m := range monsters {
-		p := fmt.Sprintf("room.room.monsters[%d]", i)
+		p := fmt.Sprintf("room.room.monsterDeclarations[%d]", i)
 		if m.ID == "" {
 			add(p+".id", errRequired)
 		}
