@@ -71,6 +71,27 @@ type SourcedRef struct {
 
 `SourcedRef` carries provenance through the modifier chain so the UI knows that a +2 bonus came from "Barbarian (class) — Rage" rather than an anonymous integer.
 
+### Identifier constants — the source of truth
+
+Toolkit is the source of truth for game-mechanics identifiers; rpg-api is a
+pure translator: proto enum in → toolkit typed constant → toolkit validates,
+processes, returns result/error → server maps the response to proto and passes
+it through unchanged. If the game server passes a decision parameter to the
+toolkit, it must be a typed constant. Toolkit error messages are user-facing
+because they pass through unchanged.
+
+Base types live in `shared/` or the domain package; constants live in domain
+packages:
+
+```go
+// weapons/common.go
+type WeaponID = shared.EquipmentID
+const (
+    Longsword WeaponID = "longsword"
+    Dagger    WeaponID = "dagger"
+)
+```
+
 ---
 
 ## Serializable data structs
@@ -144,6 +165,33 @@ type RagingData struct {
 ```
 
 `LoadJSON(data json.RawMessage)` peeks at `ref.Value`, switches to the correct constructor, unmarshals the full struct. This keeps rpg-api's stored JSON opaque — it never needs to parse condition internals.
+
+The runtime/serialized separation is the load-bearing part:
+
+- The **runtime struct** carries no JSON tags and holds non-serialized state
+- The **data struct** carries the JSON tags and a `core.Ref` for routing
+- `ToJSON()` serializes runtime → data struct; `loadJSON()` restores it
+- The **loader** peeks `ref.Value` and routes to the correct constructor
+
+```go
+func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
+    var peek struct { Ref core.Ref `json:"ref"` }
+    json.Unmarshal(data, &peek)
+
+    switch peek.Ref.Value {
+    case "raging":
+        c := &RagingCondition{}
+        c.loadJSON(data)
+        return c, nil
+    // ...
+    }
+}
+```
+
+Why this shape: type-safe serialization (never `map[string]interface{}`), a
+clear separation between runtime and serialized state, rpg-api never needs
+to understand toolkit internals, and a new condition/feature type adds one
+data struct plus one loader case.
 
 ### ActionEconomyData
 
