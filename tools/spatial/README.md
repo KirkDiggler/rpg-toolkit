@@ -958,6 +958,15 @@ reports hard obstructions that cannot be bypassed and soft obstructions that an
 alternate lane may bypass; both block the lane on which they appear. `At`
 reports an opaque alternate origin. It is not a movement or standing query.
 
+An alternate lane is eligible only when its connection to the original
+endpoint is also clear. Both hard and soft obstructions block that connection;
+checking the alternate center alone would allow sight to start beyond a thin
+footprint. This applies at both endpoints, and connection-query errors propagate
+like other obstruction errors. A clear connection still permits looking around
+a soft obstacle. Continuous adapters that report an endpoint inside an opaque
+footprint also block departures from that footprint; the query does not grant
+an escape viewpoint through opaque geometry.
+
 Each `Along` call receives one canonical `Ray`, oriented from `From` toward
 `To`. Treat the ray as read-only and do not retain it. The query retains no
 callbacks and takes no locks, so callers own a stable view for its duration.
