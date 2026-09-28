@@ -69,8 +69,21 @@ type Step struct {
 	Seq uint64 `json:"seq"`
 }
 
+// MovementStatus distinguishes a completed route from a resumable reaction
+// pause or an early stop. Steps always contains only cells actually entered.
+type MovementStatus string
+
+const (
+	MovementCompleted MovementStatus = "completed"
+	MovementPaused    MovementStatus = "paused"
+	MovementStopped   MovementStatus = "stopped"
+)
+
 // MoveOutput reports how far the member got and what it revealed.
 type MoveOutput struct {
+	// StopReason is the observation-safe explanation for an ordinary obstruction.
+	StopReason string         `json:"stop_reason,omitempty"`
+	Status     MovementStatus `json:"status"`
 	// JoinedCombat reports entry from the current cell before the next step.
 	JoinedCombat bool `json:"joined_combat,omitempty"`
 	// Steps is what actually happened, in order.
@@ -246,6 +259,8 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	}
 
 	return &MoveOutput{
+		Status:       res.status,
+		StopReason:   res.stopReason,
 		Steps:        res.steps,
 		JoinedCombat: res.joinedCombat,
 		Discovered:   nilIfEmpty(res.discovered),
@@ -323,6 +338,8 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 
 // walkResult is what one run of the walk produced.
 type walkResult struct {
+	stopReason   string
+	status       MovementStatus
 	steps        []Step
 	discovered   map[string]Discovery
 	outcome      *Outcome
@@ -351,7 +368,7 @@ type walkResult struct {
 func (m *Manager) runWalk(
 	ctx context.Context, scope *writeScope, member string, path []spatial.Position,
 ) (*walkResult, error) {
-	res := &walkResult{discovered: map[string]Discovery{}}
+	res := &walkResult{discovered: map[string]Discovery{}, status: MovementStopped}
 
 	// Where the walker STILL stands, advanced from each step's own answer
 	// rather than from the cell that was asked for — the same reason the loop
@@ -396,6 +413,7 @@ func (m *Manager) runWalk(
 		); err != nil {
 			var paused *encounter.StepPausedError
 			if errors.As(err, &paused) {
+				res.status = MovementPaused
 				return res, nil
 			}
 			return nil, fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, len(path), cell.X, cell.Y, err)
@@ -442,12 +460,27 @@ func (m *Manager) runWalk(
 				scope.walker = data
 			}
 		}
+		if clock.Kind == encounter.ClockTurn {
+			sheet, loadErr := character.Load(ctx, scope.walker)
+			if loadErr != nil {
+				return nil, fmt.Errorf("walk sheet: %w", loadErr)
+			}
+			if !combat.CanPay(sheet, &combat.SpendProfile{Capacity: map[combat.CapacityType]int{combat.CapacityMovement: 5}}) {
+				return res, nil
+			}
+		}
+
 		stepped, err := scope.enc.Step(&encounter.StepInput{
 			Member:  encounter.MemberID(member),
 			To:      cell,
 			EndWalk: i == len(path)-1,
 		})
 		if err != nil {
+			var obstruction *encounter.StepObstructedError
+			if errors.As(err, &obstruction) {
+				res.stopReason = refusedStep(i, len(path), cell, err).Error()
+				return res, nil
+			}
 			// Nothing is saved on a mid-walk rejection. The member has really
 			// moved in memory for the steps already taken, but that encounter is
 			// discarded unsaved, so the persisted world is untouched.
@@ -499,6 +532,7 @@ func (m *Manager) runWalk(
 		}
 	}
 
+	res.status = MovementCompleted
 	return res, nil
 }
 

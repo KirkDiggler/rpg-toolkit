@@ -309,18 +309,17 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
+	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
 		// The vault's column 6, row 1: a real cell, a genuine neighbour of the
 		// threshold she is standing on, and joined to it by nothing — the gate
 		// is on row 0. (This cell is unchanged; only the threshold moved.)
 		Path: []spatial.Position{hexCell(6, 1)},
 	})
-	s.Require().Error(err)
-	s.NotErrorIs(err, session.ErrBrokenPath, "the cells ARE adjacent — that is the point")
-	s.ErrorIs(err, session.ErrBadPosition,
-		"currently the only answer available: the composition does not distinguish "+
-			"a walled crossing from a cell that is not there (rpg-toolkit#1135)")
+	s.Require().NoError(err)
+	s.Equal(session.MovementStopped, out.Status)
+	s.Empty(out.Steps)
+	s.NotEmpty(out.StopReason)
 }
 
 // TestAWalkComesBackThroughTheSameDoorway pins the direction a fixture will not

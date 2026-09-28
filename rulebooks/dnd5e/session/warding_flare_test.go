@@ -112,8 +112,9 @@ func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep(
 	ctx := context.Background()
 	before := s.dice.next
 	movement := s.characters.byID["cleric"].ActionEconomy.MovementRemaining
-	_, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
 	s.Require().NoError(err)
+	s.Equal(session.MovementPaused, out.Status)
 	s.Equal(before, s.dice.next)
 	s.Equal(spatial.Position{X: 1, Y: 1}, s.cellOf("cleric"), "reaction pauses before leaving the cell")
 	s.Equal(movement, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "paused before stepping: unused movement is not charged")
