@@ -28,7 +28,7 @@ const (
 	Shillelagh     Spell = "shillelagh"
 	Frostbite      Spell = "frostbite"
 	PrimalSavagery Spell = "primal-savagery"
-	Thornwhip      Spell = "thornwhip"
+	Thornwhip      Spell = "thorn-whip"
 	CreateBonfire  Spell = "create-bonfire"
 	Druidcraft     Spell = "druidcraft"
 	Infestation    Spell = "infestation"
