@@ -478,7 +478,7 @@ func (m *Manager) runWalk(
 		if err != nil {
 			var obstruction *encounter.StepObstructedError
 			if errors.As(err, &obstruction) {
-				res.stopReason = refusedStep(i, len(path), cell, err).Error()
+				res.stopReason = obstruction.PublicReason()
 				return res, nil
 			}
 			// Nothing is saved on a mid-walk rejection. The member has really

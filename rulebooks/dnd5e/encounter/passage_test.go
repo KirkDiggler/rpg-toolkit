@@ -194,3 +194,11 @@ func (s *PassageSuite) TestRecordedFallUpdatesWitnessPassageWithoutMovement() {
 	s.Require().NoError(err)
 	s.Equal(encounter.PassageStandable, passages[goblin])
 }
+
+func (s *PassageSuite) TestObstructionPublicReasonNeverNamesItsOccupant() {
+	_, err := s.enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
+	var obstruction *encounter.StepObstructedError
+	s.Require().ErrorAs(err, &obstruction)
+	s.NotContains(obstruction.PublicReason(), string(goblin))
+	s.ErrorIs(err, encounter.ErrBadPlacement)
+}
