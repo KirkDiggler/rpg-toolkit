@@ -272,8 +272,8 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 			if door := e.field.doorAcrossCrossing(here, to); door != nil {
 				return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 			}
-			return executedAction{}, fmt.Errorf("the crossing from %v into %v is through %q: %w",
-				here, to, prop, ErrBadPlacement)
+			return executedAction{}, &StepObstructedError{cause: fmt.Errorf("the crossing from %v into %v is through %q: %w",
+				here, to, prop, ErrBadPlacement)}
 		}
 		crossingBlocked = crossed
 
@@ -296,9 +296,9 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 		// illusion breaking, which is the whole of what a forced move
 		// through a secret means.
 		if e.masqueradeBlocks(member.ID, here, to) {
-			return executedAction{}, fmt.Errorf(
+			return executedAction{}, &StepObstructedError{cause: fmt.Errorf(
 				"movemember: %w: entity %s cannot cross movement-blocking boundary from %v to %v",
-				ErrBadPlacement, member.ID, here, to)
+				ErrBadPlacement, member.ID, here, to)}
 		}
 	}
 
