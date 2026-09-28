@@ -18,6 +18,7 @@ import (
 // SubclassModifications represents how a subclass modifies the base class
 type SubclassModifications struct {
 	// Additional choice requirements
+	AdditionalCantrips  []*CantripRequirement  // Bonus cantrips chosen separately from class cantrips
 	AdditionalSkills    *SkillRequirement      // Knowledge Cleric: 2 from Arcana/History/Nature/Religion
 	AdditionalLanguages []*LanguageRequirement // Knowledge Cleric: 2 languages
 	AdditionalTools     *ToolRequirement       // Some artificer subclasses
@@ -62,6 +63,12 @@ func GetSubclassModifications(subclass classes.Subclass) *SubclassModifications 
 func ApplySubclassModifications(reqs *Requirements, mods *SubclassModifications) {
 	if mods == nil {
 		return
+	}
+
+	for _, req := range mods.AdditionalCantrips {
+		clone := *req
+		clone.Options = append([]spells.Spell(nil), req.Options...)
+		reqs.AdditionalCantrips = append(reqs.AdditionalCantrips, &clone)
 	}
 
 	// Add additional skill requirements
@@ -162,44 +169,15 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 	},
 
 	classes.NatureDomain: {
-		// Nature Domain gets a druid cantrip
-		ModifyFunction: func(reqs *Requirements) {
-			// Add a druid cantrip choice
-			// This is complex enough to warrant a custom function
-			natureCantrip := &CantripRequirement{
-				ID:    ChoiceID("cleric-nature-cantrip"),
-				Count: 1,
-				Options: []spells.Spell{
-					spells.Druidcraft,
-					spells.Shillelagh,
-					spells.Mending,
-					spells.Guidance,
-					spells.Resistance,
-					spells.PoisonSpray,
-					spells.Thornwhip,
-				},
-				Label: "Choose 1 druid cantrip (Nature Domain)",
-			}
-
-			// Add as additional cantrip requirement
-			// TODO(#308): May need to handle multiple cantrip requirements better
-			if reqs.Cantrips != nil {
-				// For now, increase the count
-				reqs.Cantrips.Count++
-				// And add druid cantrips to options if not present
-				for _, cantrip := range natureCantrip.Options {
-					found := false
-					for _, existing := range reqs.Cantrips.Options {
-						if existing == cantrip {
-							found = true
-							break
-						}
-					}
-					if !found {
-						reqs.Cantrips.Options = append(reqs.Cantrips.Options, cantrip)
-					}
-				}
-			}
+		AdditionalCantrips: []*CantripRequirement{{
+			ID: ClericNatureCantrip, Count: 1,
+			Options: spells.Selectable(classCantripOptions[classes.Druid]),
+			Label:   "Choose 1 druid cantrip (Nature Domain)",
+		}},
+		AdditionalSkills: &SkillRequirement{
+			ID: ClericNatureSkill, Count: 1,
+			Options: []skills.Skill{skills.AnimalHandling, skills.Nature, skills.Survival},
+			Label:   "Choose 1 Nature Domain skill",
 		},
 		GrantedProficiencies: GrantedProficiencies{
 			Armor: []shared.EquipmentCategory{armor.CategoryHeavy},

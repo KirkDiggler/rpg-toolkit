@@ -868,3 +868,85 @@ func (s *ClericFinalizeSuite) TestLightWardingFlareLifecycle() {
 	s.NotContains(data.ArmorProficiencies, proficiencies.ArmorHeavy)
 	s.NotContains(data.WeaponProficiencies, proficiencies.WeaponMartial)
 }
+
+func (s *ClericFinalizeSuite) natureInput(cantrip spells.Spell) *SetClassInput {
+	in := s.classInput()
+	in.SubclassID = classes.NatureDomain
+	in.Choices.SubclassChoices = []choices.Submission{
+		{Category: shared.ChoiceSkills, ChoiceID: choices.ClericNatureSkill, Values: []shared.SelectionID{skills.Survival}},
+		{Category: shared.ChoiceCantrips, ChoiceID: choices.ClericNatureCantrip, Values: []shared.SelectionID{cantrip}},
+	}
+	return in
+}
+
+func (s *ClericFinalizeSuite) TestNatureCreationGrantsPersistAndProject() {
+	for _, spell := range []spells.Spell{spells.Shillelagh, spells.PoisonSpray, spells.Thornwhip, spells.Druidcraft, spells.Mending, spells.Resistance, spells.Guidance} {
+		s.Run(string(spell), func() {
+			in := s.natureInput(spell)
+			in.Choices.Cantrips = []spells.Spell{spells.SacredFlame, spells.Light, spells.Thaumaturgy}
+			draft := s.draft(in)
+			s.True(draft.IsClassComplete())
+			blob, err := json.Marshal(draft.ToData())
+			s.Require().NoError(err)
+			var saved DraftData
+			s.Require().NoError(json.Unmarshal(blob, &saved))
+			c, err := LoadDraftFromData(&saved).ToCharacter(context.Background(), "nature", events.NewEventBus())
+			s.Require().NoError(err)
+			blob, err = json.Marshal(c.ToData())
+			s.Require().NoError(err)
+			var stored Data
+			s.Require().NoError(json.Unmarshal(blob, &stored))
+			c, err = LoadFromData(context.Background(), &stored, events.NewEventBus())
+			s.Require().NoError(err)
+			data := c.ToData()
+			s.Contains(data.ArmorProficiencies, proficiencies.ArmorHeavy)
+			s.NotContains(data.WeaponProficiencies, proficiencies.WeaponMartial)
+			s.Equal(shared.Proficient, data.Skills[skills.Survival])
+			s.Equal(c.GetAbilityModifier(abilities.WIS)+c.ProficiencyBonus(), c.GetSkillModifier(skills.Survival))
+			s.Len(data.KnownCantrips, 4)
+			s.Contains(data.KnownCantrips, refs.Spells.ByID(string(spell)).String())
+			s.Contains(data.KnownSpells, refs.Spells.AnimalFriendship().String())
+			s.Contains(data.KnownSpells, refs.Spells.SpeakWithAnimals().String())
+			s.Len(data.KnownSpells, 6, "four preparations plus two domain spells")
+			_, err = c.StatusView(&StatusViewInput{})
+			s.Require().NoError(err)
+			s.Equal(2, c.GetResource(resources.SpellSlotLevel1).Maximum())
+			s.Require().NoError(c.LongRest(context.Background()))
+			_, err = c.StatusView(&StatusViewInput{})
+			s.Require().NoError(err)
+			s.Require().NoError(draft.SetClass(s.classInput()))
+			changed, err := draft.ToCharacter(context.Background(), "life", events.NewEventBus())
+			s.Require().NoError(err)
+			s.NotContains(changed.ToData().Skills, skills.Survival)
+			s.Len(changed.ToData().KnownCantrips, 3)
+		})
+	}
+}
+
+func (s *ClericFinalizeSuite) TestNatureRejectsMissingForeignAndDuplicateBonusPicks() {
+	for _, kind := range []string{"missing cantrip", "missing skill", "foreign cantrip", "foreign skill", "duplicate cantrip", "two druid cantrips", "four cleric cantrips"} {
+		s.Run(kind, func() {
+			in := s.natureInput(spells.Thornwhip)
+			switch kind {
+			case "missing cantrip":
+				in.Choices.SubclassChoices = in.Choices.SubclassChoices[:1]
+			case "missing skill":
+				in.Choices.SubclassChoices = in.Choices.SubclassChoices[1:]
+			case "foreign cantrip":
+				in.Choices.SubclassChoices[1].Values = []shared.SelectionID{spells.SacredFlame}
+			case "foreign skill":
+				in.Choices.SubclassChoices[0].Values = []shared.SelectionID{skills.Athletics}
+			case "duplicate cantrip":
+				in.Choices.SubclassChoices[1].Values = []shared.SelectionID{spells.Guidance}
+			case "two druid cantrips":
+				in.Choices.SubclassChoices[1].Values = []shared.SelectionID{spells.Thornwhip, spells.Shillelagh}
+			case "four cleric cantrips":
+				in.Choices.Cantrips = append(in.Choices.Cantrips, spells.Resistance)
+			}
+			draft := s.draft(in)
+			s.False(draft.IsClassComplete())
+			_, err := draft.ToCharacter(context.Background(), "invalid", events.NewEventBus())
+			s.Error(err)
+		})
+	}
+}

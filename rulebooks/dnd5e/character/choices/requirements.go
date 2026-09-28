@@ -25,6 +25,8 @@ import (
 
 // Requirements represents what choices need to be made
 type Requirements struct {
+	// AdditionalCantrips are separately counted bonus choices, such as Nature Domain.
+	AdditionalCantrips []*CantripRequirement `json:"additional_cantrips,omitempty"`
 	// Skills that need to be chosen
 	Skills           *SkillRequirement   `json:"skills,omitempty"`
 	AdditionalSkills []*SkillRequirement `json:"additional_skills,omitempty"` // For subclass-granted skills

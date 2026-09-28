@@ -380,12 +380,9 @@ func (s *ClassComprehensiveSuite) TestClericDomains() {
 				})
 			}
 
-			// Nature Domain gets an extra Druid cantrip
 			if domain == classes.NatureDomain {
-				// TODO(#308): Nature Domain should grant a bonus Druid cantrip
-				// but the requirements system doesn't handle this correctly yet
-				// Skip this test for now
-				s.T().Skip("Nature Domain cantrip requirements not fully implemented")
+				updatedSubs.Add(choices.Submission{Category: shared.ChoiceCantrips, Source: shared.SourceSubclass, ChoiceID: choices.ClericNatureCantrip, Values: []shared.SelectionID{spells.Thornwhip}})
+				updatedSubs.Add(choices.Submission{Category: shared.ChoiceSkills, Source: shared.SourceSubclass, ChoiceID: choices.ClericNatureSkill, Values: []shared.SelectionID{skills.Survival}})
 			}
 
 			result := s.validator.Validate(reqs, updatedSubs)
